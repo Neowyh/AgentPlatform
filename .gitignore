@@ -38,6 +38,8 @@ coverage/
 .deer-flow/
 .claude/
 skills/custom/*
+!skills/custom/fault-zeroing/
+!skills/custom/fault-zeroing/**
 logs/
 log/
 debug.log
