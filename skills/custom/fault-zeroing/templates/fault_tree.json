@@ -1,0 +1,16 @@
+{
+  "top_event": "",
+  "intermediate_events": [],
+  "bottom_events": [
+    {
+      "id": "",
+      "name": "",
+      "description": "",
+      "evidence": [],
+      "probability": null,
+      "confidence": "low",
+      "status": "to_verify"
+    }
+  ],
+  "logic": []
+}
