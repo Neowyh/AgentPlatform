@@ -42,6 +42,8 @@ skills/custom/*
 !skills/custom/fault-zeroing/
 !skills/custom/fault-zeroing/**
 logs/
+!docs/fault-zeroing-agent/samples/**/logs/
+!docs/fault-zeroing-agent/samples/**/logs/**
 log/
 debug.log
 
