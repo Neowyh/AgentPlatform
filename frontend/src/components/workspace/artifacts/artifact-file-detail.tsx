@@ -43,6 +43,7 @@ import { useThread } from "../messages/context";
 import { Tooltip } from "../tooltip";
 
 import { useArtifacts } from "./context";
+import { FaultTreeViewer } from "./fault-tree-viewer";
 
 export function ArtifactFileDetail({
   className,
@@ -68,6 +69,12 @@ export function ArtifactFileDetail({
   const isSkillFile = useMemo(() => {
     return filepath.endsWith(".skill");
   }, [filepath]);
+  const isFaultTreeFile = useMemo(() => {
+    return getFileName(filepath) === "fault_tree.json";
+  }, [filepath]);
+  const isSvgFile = useMemo(() => {
+    return filepath.toLowerCase().endsWith(".svg");
+  }, [filepath]);
   const { isCodeFile, language } = useMemo(() => {
     if (isWriteFile) {
       let language = checkCodeFile(filepath).language;
@@ -78,11 +85,19 @@ export function ArtifactFileDetail({
     if (isSkillFile) {
       return { isCodeFile: true, language: "markdown" };
     }
+    if (isSvgFile) {
+      return { isCodeFile: true, language: "svg" };
+    }
     return checkCodeFile(filepath);
-  }, [filepath, isWriteFile, isSkillFile]);
+  }, [filepath, isWriteFile, isSkillFile, isSvgFile]);
   const isSupportPreview = useMemo(() => {
-    return language === "html" || language === "markdown";
-  }, [language]);
+    return (
+      language === "html" ||
+      language === "markdown" ||
+      language === "svg" ||
+      isFaultTreeFile
+    );
+  }, [language, isFaultTreeFile]);
   const { content } = useArtifactContent({
     threadId,
     filepath: filepathFromProps,
@@ -162,10 +177,10 @@ export function ArtifactFileDetail({
                 }
               }}
             >
-              <ToggleGroupItem value="code">
+              <ToggleGroupItem aria-label="Code" value="code">
                 <Code2Icon />
               </ToggleGroupItem>
-              <ToggleGroupItem value="preview">
+              <ToggleGroupItem aria-label="Preview" value="preview">
                 <EyeIcon />
               </ToggleGroupItem>
             </ToggleGroup>
@@ -251,10 +266,15 @@ export function ArtifactFileDetail({
       <ArtifactContent className="p-0">
         {isSupportPreview &&
           viewMode === "preview" &&
-          (language === "markdown" || language === "html") && (
+          (language === "markdown" ||
+            language === "html" ||
+            language === "svg" ||
+            isFaultTreeFile) && (
             <ArtifactFilePreview
               content={displayContent}
               language={language ?? "text"}
+              filepath={filepath}
+              isFaultTreeFile={isFaultTreeFile}
             />
           )}
         {isCodeFile && viewMode === "code" && (
@@ -277,12 +297,17 @@ export function ArtifactFileDetail({
 
 export function ArtifactFilePreview({
   content,
+  filepath,
+  isFaultTreeFile = false,
   language,
 }: {
   content: string;
+  filepath?: string;
+  isFaultTreeFile?: boolean;
   language: string;
 }) {
   const [htmlPreviewUrl, setHtmlPreviewUrl] = useState<string>();
+  const [svgPreviewUrl, setSvgPreviewUrl] = useState<string>();
 
   useEffect(() => {
     if (language !== "html") {
@@ -299,6 +324,24 @@ export function ArtifactFilePreview({
     };
   }, [content, language]);
 
+  useEffect(() => {
+    if (language !== "svg") {
+      setSvgPreviewUrl(undefined);
+      return;
+    }
+
+    const blob = new Blob([content ?? ""], { type: "image/svg+xml" });
+    const url = URL.createObjectURL(blob);
+    setSvgPreviewUrl(url);
+
+    return () => {
+      URL.revokeObjectURL(url);
+    };
+  }, [content, language]);
+
+  if (isFaultTreeFile) {
+    return <FaultTreeViewer content={content ?? ""} />;
+  }
   if (language === "markdown") {
     return (
       <div className="size-full px-4">
@@ -320,6 +363,19 @@ export function ArtifactFilePreview({
         sandbox="allow-scripts allow-forms"
         src={htmlPreviewUrl}
       />
+    );
+  }
+  if (language === "svg") {
+    return (
+      <div className="bg-muted/20 flex size-full items-center justify-center overflow-auto p-4">
+        {svgPreviewUrl && (
+          <img
+            alt={filepath ? getFileName(filepath) : "SVG artifact"}
+            className="max-h-full max-w-full"
+            src={svgPreviewUrl}
+          />
+        )}
+      </div>
     );
   }
   return null;

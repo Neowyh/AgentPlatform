@@ -1,0 +1,757 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>新智能体安装作业指导书</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #17202a;
+      --muted: #5f6f7d;
+      --line: #d8e0e7;
+      --soft: #f5f8fb;
+      --soft-2: #eef5f1;
+      --accent: #1d6f42;
+      --warn: #9b5b00;
+      --danger: #9a2e2e;
+      --code: #102033;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+      color: var(--ink);
+      background: #ffffff;
+      line-height: 1.65;
+    }
+
+    header {
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(180deg, #f8fbfd 0%, #ffffff 100%);
+    }
+
+    .wrap {
+      width: min(1080px, calc(100% - 32px));
+      margin: 0 auto;
+    }
+
+    .hero {
+      padding: 42px 0 28px;
+    }
+
+    h1 {
+      margin: 0 0 12px;
+      font-size: clamp(28px, 4vw, 42px);
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+
+    .subtitle {
+      max-width: 820px;
+      margin: 0;
+      color: var(--muted);
+      font-size: 17px;
+    }
+
+    main {
+      padding: 28px 0 56px;
+    }
+
+    section {
+      padding: 24px 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    h2 {
+      margin: 0 0 14px;
+      font-size: 24px;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      margin: 22px 0 10px;
+      font-size: 18px;
+      letter-spacing: 0;
+    }
+
+    p {
+      margin: 8px 0;
+    }
+
+    ul,
+    ol {
+      margin: 10px 0 10px 22px;
+      padding: 0;
+    }
+
+    li {
+      margin: 6px 0;
+    }
+
+    .notice {
+      margin: 14px 0;
+      padding: 14px 16px;
+      border-left: 4px solid var(--accent);
+      background: var(--soft-2);
+    }
+
+    .warning {
+      border-left-color: var(--warn);
+      background: #fff7e8;
+    }
+
+    .danger {
+      border-left-color: var(--danger);
+      background: #fff1f1;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 12px;
+      margin: 16px 0;
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px 16px;
+      background: #ffffff;
+    }
+
+    .card strong {
+      display: block;
+      margin-bottom: 6px;
+    }
+
+    .checklist {
+      list-style: none;
+      margin-left: 0;
+    }
+
+    .checklist li {
+      padding-left: 30px;
+      position: relative;
+    }
+
+    .checklist li::before {
+      content: "□";
+      position: absolute;
+      left: 0;
+      top: 0;
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    code {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      color: var(--code);
+      background: #eef2f6;
+      padding: 2px 5px;
+      border-radius: 4px;
+      overflow-wrap: anywhere;
+    }
+
+    pre {
+      margin: 12px 0;
+      padding: 14px 16px;
+      overflow-x: auto;
+      background: #101820;
+      color: #edf6ff;
+      border-radius: 8px;
+      line-height: 1.5;
+    }
+
+    pre code {
+      padding: 0;
+      color: inherit;
+      background: transparent;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 14px 0;
+      font-size: 15px;
+    }
+
+    th,
+    td {
+      border: 1px solid var(--line);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: var(--soft);
+      font-weight: 700;
+    }
+
+    .step {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 30px;
+      height: 30px;
+      margin-right: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: #ffffff;
+      font-weight: 700;
+      font-size: 14px;
+    }
+
+    .footer {
+      color: var(--muted);
+      font-size: 14px;
+      padding-top: 18px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap hero">
+      <h1>全新智能体配置开发作业指导书</h1>
+      <p class="subtitle">适用于 DeerFlow 本地验证环境。按本文操作，可以从 0 准备配置文件、编写智能体模板、安装到指定用户账号，并确认它能在页面中看到、能正常调用。</p>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section>
+      <h2>一、作业目标</h2>
+      <p>完成一个全新智能体的配置开发全流程：准备基础配置、编写智能体文件、按需编写 Skill 和子智能体、安装到用户运行目录、启动服务并验收。</p>
+      <div class="notice">
+        <strong>本指导书默认你已经在项目根目录操作：</strong>
+        <pre><code>cd /home/wangyh/workspace/deer-flow</code></pre>
+        <p>如果目录不对，后面的命令可能找不到文件。</p>
+      </div>
+    </section>
+
+    <section>
+      <h2>二、先准备这些信息</h2>
+      <div class="grid">
+        <div class="card">
+          <strong>目标用户 ID</strong>
+          <p>智能体安装给哪个用户，就要使用哪个用户 ID。</p>
+          <p>示例：<code>7c5af71e-0069-4712-bf16-c54cd35639aa</code></p>
+        </div>
+        <div class="card">
+          <strong>智能体名称</strong>
+          <p>用英文小写、数字和横线，例如 <code>quality-reviewer</code>。名称要和智能体配置里的 <code>name</code> 一致。</p>
+        </div>
+        <div class="card">
+          <strong>Skill 名称</strong>
+          <p>如果智能体需要固定流程或模板，准备一个 Skill 名称，例如 <code>quality-review</code>。不需要 Skill 时可以跳过。</p>
+        </div>
+        <div class="card">
+          <strong>是否需要子智能体</strong>
+          <p>如果要拆成多个角色处理任务，例如“资料读取员”“报告审查员”，就需要准备 <code>subagents.yaml</code>。</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>三、配置文件清单</h2>
+      <p>先看清哪些文件是基础运行必需，哪些是开发某类智能体时才需要。</p>
+      <table>
+        <thead>
+          <tr>
+            <th>文件</th>
+            <th>是否必需</th>
+            <th>模板或示例位置</th>
+            <th>用途</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>config.yaml</code></td>
+            <td>必需</td>
+            <td><code>config.example.yaml</code></td>
+            <td>应用主配置。模型、工具组、Skill 路径、数据库、subagents 都从这里生效。</td>
+          </tr>
+          <tr>
+            <td><code>.env</code></td>
+            <td>必需</td>
+            <td><code>.env.example</code></td>
+            <td>放 API Key、数据库地址等本地密钥。不要提交。</td>
+          </tr>
+          <tr>
+            <td><code>frontend/.env</code></td>
+            <td>必需</td>
+            <td><code>frontend/.env.example</code></td>
+            <td>前端本地配置。本地用 <code>localhost:2026</code> 时通常不用改。</td>
+          </tr>
+          <tr>
+            <td><code>extensions_config.json</code></td>
+            <td>按需</td>
+            <td><code>extensions_config.example.json</code></td>
+            <td>接 MCP 服务或控制 Skill 启用状态时使用。普通本地验证可不创建。</td>
+          </tr>
+          <tr>
+            <td><code>docs/&lt;agent-name&gt;/agent/config.yaml</code></td>
+            <td>必需</td>
+            <td>本指导书提供通用模板；示例见 <code>docs/fault-zeroing-agent/agent/config.yaml</code></td>
+            <td>单个智能体的名称、描述、工具权限和 Skill 白名单。</td>
+          </tr>
+          <tr>
+            <td><code>docs/&lt;agent-name&gt;/agent/SOUL.md</code></td>
+            <td>必需</td>
+            <td>本指导书提供通用模板；示例见 <code>docs/fault-zeroing-agent/agent/SOUL.md</code></td>
+            <td>定义智能体身份、工作原则、输入输出要求和禁止事项。</td>
+          </tr>
+          <tr>
+            <td><code>skills/custom/&lt;skill-name&gt;/SKILL.md</code></td>
+            <td>按需</td>
+            <td>本指导书提供通用模板；示例见 <code>skills/custom/fault-zeroing/SKILL.md</code></td>
+            <td>固化专业流程、规则和报告模板。</td>
+          </tr>
+          <tr>
+            <td><code>docs/&lt;agent-name&gt;/subagents.yaml</code></td>
+            <td>按需</td>
+            <td>本指导书提供通用模板；示例见 <code>docs/fault-zeroing-agent/subagents.yaml</code></td>
+            <td>定义 <code>task</code> 可调用的 custom subagents。</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="warning notice">
+        <strong>不要把模板和实际配置混在一起：</strong>
+        <p><code>config.example.yaml</code>、<code>.env.example</code> 只是模板；真正运行时读取的是 <code>config.yaml</code>、<code>.env</code>、<code>frontend/.env</code>。</p>
+      </div>
+    </section>
+
+    <section>
+      <h2>四、准备基础运行配置</h2>
+      <p>这一步是让 DeerFlow 本身能运行。先做它，再开发智能体。</p>
+
+      <h3><span class="step">1</span>生成基础配置文件</h3>
+      <p>如果没有 <code>config.yaml</code>、<code>.env</code>、<code>frontend/.env</code>，运行：</p>
+      <pre><code>make config</code></pre>
+      <p>如果已经有这些文件，不要覆盖，先备份主配置：</p>
+      <pre><code>cp config.yaml config.yaml.bak-before-agent</code></pre>
+
+      <h3><span class="step">2</span>检查基础文件是否齐全</h3>
+      <pre><code>ls config.yaml
+ls .env
+ls frontend/.env</code></pre>
+      <p>三条命令都能看到对应文件名，才继续。</p>
+
+      <h3><span class="step">3</span>填写模型密钥</h3>
+      <p>打开 <code>config.yaml</code>，确认 <code>models:</code> 下面至少有一个可用模型。模型里如果写了 <code>api_key: $OPENAI_API_KEY</code>，就在 <code>.env</code> 里填写：</p>
+      <pre><code>OPENAI_API_KEY=这里换成你的真实密钥</code></pre>
+      <p>如果用的是其他供应商，就按 <code>config.yaml</code> 里引用的变量名填写，例如 <code>VOLCENGINE_API_KEY</code>、<code>GEMINI_API_KEY</code>、<code>DEEPSEEK_API_KEY</code>。</p>
+
+      <h3><span class="step">4</span>确认本地数据库</h3>
+      <p>本地验证建议使用默认 sqlite，不需要手动配置 Postgres。看到或默认具备下面配置即可：</p>
+      <pre><code>database:
+  backend: sqlite
+  sqlite_dir: .deer-flow/data</code></pre>
+
+      <h3><span class="step">5</span>确认 Skill 路径</h3>
+      <p>本地默认从项目里的 <code>skills/</code> 读取 Skill。一般保留默认配置即可：</p>
+      <pre><code>skills:
+  container_path: /mnt/skills</code></pre>
+
+      <h3><span class="step">6</span>什么时候需要 extensions 配置</h3>
+      <p>如果只是开发普通智能体，不需要创建 <code>extensions_config.json</code>。如果要接 MCP 服务，再从模板复制：</p>
+      <pre><code>cp extensions_config.example.json extensions_config.json</code></pre>
+      <p>复制后只启用你真正需要的 MCP 服务，并把密钥写进 <code>.env</code>。</p>
+    </section>
+
+    <section>
+      <h2>五、新建智能体配置包</h2>
+      <p>一个智能体至少需要两个文件：<code>config.yaml</code> 和 <code>SOUL.md</code>。下面以 <code>quality-reviewer</code> 为例，你可以换成自己的名称。</p>
+
+      <h3><span class="step">1</span>创建目录</h3>
+      <pre><code>mkdir -p docs/quality-reviewer/agent</code></pre>
+
+      <h3><span class="step">2</span>填写智能体 config.yaml</h3>
+      <p>新建 <code>docs/quality-reviewer/agent/config.yaml</code>，内容可以从下面开始改：</p>
+      <pre><code>name: quality-reviewer
+description: 质量审查智能体，用于读取资料、检查问题并生成审查报告
+tool_groups:
+  - file:read
+  - file:write
+skills:
+  - quality-review</code></pre>
+
+      <table>
+        <thead>
+          <tr>
+            <th>字段</th>
+            <th>填写说明</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>name</code></td>
+            <td>智能体唯一名称。建议只用小写英文、数字和横线。</td>
+          </tr>
+          <tr>
+            <td><code>description</code></td>
+            <td>一句话说明智能体用途，会展示给用户看。</td>
+          </tr>
+          <tr>
+            <td><code>tool_groups</code></td>
+            <td>限制智能体能用哪些工具。越少越安全。</td>
+          </tr>
+          <tr>
+            <td><code>skills</code></td>
+            <td>只加载指定 Skill。不需要 Skill 时可以删掉这一段。</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3><span class="step">3</span>选择工具权限</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>工具组</th>
+            <th>什么时候使用</th>
+            <th>建议</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>file:read</code></td>
+            <td>需要读取上传资料、日志、文档。</td>
+            <td>大多数资料分析类智能体都需要。</td>
+          </tr>
+          <tr>
+            <td><code>file:write</code></td>
+            <td>需要生成报告、表格、JSON 或中间文件。</td>
+            <td>需要输出文件时再开启。</td>
+          </tr>
+          <tr>
+            <td><code>web</code></td>
+            <td>需要联网搜索或读取网页。</td>
+            <td>没有外部检索需求时不要开启。</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3><span class="step">4</span>填写 SOUL.md</h3>
+      <p>新建 <code>docs/quality-reviewer/agent/SOUL.md</code>，内容可以从下面开始改：</p>
+      <pre><code># Quality Reviewer Agent SOUL
+
+## 身份
+
+你是质量审查智能体，负责根据用户提供的资料检查问题、形成结论并输出审查报告。
+
+## 目标
+
+1. 读取用户提供的资料。
+2. 找出事实问题、风险点和待确认事项。
+3. 生成结构清晰的审查结果。
+
+## 工作原则
+
+1. 先读资料，再下结论。
+2. 每个关键结论都要说明依据。
+3. 证据不足时写“待确认”，不要猜测。
+4. 区分事实、推断和建议。
+
+## 输出要求
+
+默认使用中文。最终输出应包含问题清单、依据说明、风险等级和建议动作。
+
+## 禁止事项
+
+不得编造不存在的资料、数据或结论。</code></pre>
+
+      <h3><span class="step">5</span>检查 YAML 是否能解析</h3>
+      <pre><code>python3 -c "import yaml; yaml.safe_load(open('docs/quality-reviewer/agent/config.yaml', encoding='utf-8')); print('agent config ok')"</code></pre>
+      <p>看到 <code>agent config ok</code> 才继续。</p>
+    </section>
+
+    <section>
+      <h2>六、按需新建 Skill 模板</h2>
+      <p>如果智能体只是普通对话和文件处理，可以跳过本节。如果它需要固定流程、规则、报告模板，就创建 Skill。</p>
+
+      <h3><span class="step">1</span>创建 Skill 目录</h3>
+      <pre><code>mkdir -p skills/custom/quality-review</code></pre>
+
+      <h3><span class="step">2</span>填写 SKILL.md</h3>
+      <p>新建 <code>skills/custom/quality-review/SKILL.md</code>，内容可以从下面开始改：</p>
+      <pre><code>---
+name: quality-review
+description: 用于资料质量审查、问题识别和审查报告生成
+---
+
+# Quality Review Skill
+
+## 使用场景
+
+当用户要求审查资料、检查问题、生成质量报告时，使用本技能。
+
+## 工作步骤
+
+1. 读取用户提供的资料和目录。
+2. 摘要说明资料范围。
+3. 按问题类型列出发现。
+4. 为每个问题标注依据。
+5. 输出审查报告。
+
+## 输出格式
+
+- 问题编号
+- 问题描述
+- 依据来源
+- 风险等级
+- 建议动作</code></pre>
+
+      <h3><span class="step">3</span>确认 Skill 文件存在</h3>
+      <pre><code>ls skills/custom/quality-review/SKILL.md</code></pre>
+      <p>如果智能体 <code>config.yaml</code> 里写了 <code>skills: [quality-review]</code>，这里必须能找到文件。</p>
+    </section>
+
+    <section>
+      <h2>七、按需新建 subagents 模板</h2>
+      <p>如果主智能体要把任务拆给多个角色，例如“资料读取员”“报告审查员”，才需要本节。普通智能体可以跳过。</p>
+
+      <h3><span class="step">1</span>编写 subagents.yaml</h3>
+      <p>新建 <code>docs/quality-reviewer/subagents.yaml</code>，内容可以从下面开始改：</p>
+      <pre><code>subagents:
+  custom_agents:
+    evidence-reader:
+      description: 读取资料并抽取关键证据
+      system_prompt: |
+        你是资料读取子智能体。只负责读取资料、抽取证据和标注来源，不做最终结论。
+      tools:
+        - read_file
+        - grep
+      skills:
+        - quality-review
+      model: inherit
+      max_turns: 30
+      timeout_seconds: 600
+
+    report-reviewer:
+      description: 检查报告是否完整、清晰、有依据
+      system_prompt: |
+        你是报告审查子智能体。只检查报告质量，输出问题清单和修改建议。
+      tools:
+        - read_file
+        - write_file
+      skills:
+        - quality-review
+      model: inherit
+      max_turns: 30
+      timeout_seconds: 600</code></pre>
+
+      <h3><span class="step">2</span>字段说明</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>字段</th>
+            <th>填写说明</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>description</code></td>
+            <td>说明什么时候应该调用这个子智能体。</td>
+          </tr>
+          <tr>
+            <td><code>system_prompt</code></td>
+            <td>定义子智能体的角色、边界和输出要求。</td>
+          </tr>
+          <tr>
+            <td><code>tools</code></td>
+            <td>子智能体可用工具。按最少够用原则填写。</td>
+          </tr>
+          <tr>
+            <td><code>skills</code></td>
+            <td>子智能体可加载的 Skill。没有 Skill 时可以删掉。</td>
+          </tr>
+          <tr>
+            <td><code>model</code></td>
+            <td>通常写 <code>inherit</code>，表示沿用主智能体模型。</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3><span class="step">3</span>检查 YAML</h3>
+      <pre><code>python3 -c "import yaml; yaml.safe_load(open('docs/quality-reviewer/subagents.yaml', encoding='utf-8')); print('subagents ok')"</code></pre>
+
+      <div class="warning notice">
+        <strong>重要：</strong>
+        <p>仅创建 <code>subagents.yaml</code> 还不够。custom subagents 必须合并进应用级 <code>config.yaml</code> 的 <code>subagents.custom_agents</code> 后，运行时才能通过 <code>task</code> 调用。</p>
+      </div>
+    </section>
+
+    <section>
+      <h2>八、手工安装到目标用户运行目录</h2>
+      <p>DeerFlow 前端只会显示安装到用户运行目录里的智能体。放在 <code>docs/</code> 下只是源码模板，不会自动出现在页面中。</p>
+
+      <h3><span class="step">1</span>设置名称和用户 ID</h3>
+      <pre><code>AGENT_NAME=quality-reviewer
+USER_ID=7c5af71e-0069-4712-bf16-c54cd35639aa
+RUNTIME_BASE=backend/.deer-flow</code></pre>
+      <p>如果你设置了 <code>DEER_FLOW_HOME</code>，则把 <code>RUNTIME_BASE</code> 改为该目录。</p>
+
+      <h3><span class="step">2</span>创建目标目录</h3>
+      <pre><code>mkdir -p "$RUNTIME_BASE/users/$USER_ID/agents/$AGENT_NAME"</code></pre>
+
+      <h3><span class="step">3</span>复制智能体文件</h3>
+      <pre><code>cp "docs/$AGENT_NAME/agent/config.yaml" "$RUNTIME_BASE/users/$USER_ID/agents/$AGENT_NAME/config.yaml"
+cp "docs/$AGENT_NAME/agent/SOUL.md" "$RUNTIME_BASE/users/$USER_ID/agents/$AGENT_NAME/SOUL.md"</code></pre>
+
+      <h3><span class="step">4</span>确认已安装</h3>
+      <pre><code>ls "$RUNTIME_BASE/users/$USER_ID/agents/$AGENT_NAME/config.yaml"
+ls "$RUNTIME_BASE/users/$USER_ID/agents/$AGENT_NAME/SOUL.md"</code></pre>
+
+      <div class="danger notice">
+        <strong>不要直接覆盖已有目录：</strong>
+        <p>如果目标目录已经存在，先人工确认是否是旧版本或本地定制。确认无用后再处理。</p>
+      </div>
+
+      <h3><span class="step">5</span>fault-zeroing 示例的专用安装方式</h3>
+      <p>如果安装的是示例智能体 <code>fault-zeroing</code>，可以使用已有脚本：</p>
+      <pre><code>python3 scripts/install_fault_zeroing_agent.py --user-id "$USER_ID"</code></pre>
+      <p>其他新智能体不要使用这个脚本，因为它是 <code>fault-zeroing</code> 专用。</p>
+    </section>
+
+    <section>
+      <h2>九、合并并检查 custom subagents</h2>
+      <p>没有使用 subagents 的智能体可以跳过本节。使用了 subagents 的智能体，必须把 <code>docs/&lt;agent-name&gt;/subagents.yaml</code> 合并进应用级 <code>config.yaml</code>。</p>
+
+      <h3><span class="step">1</span>先备份应用配置</h3>
+      <pre><code>cp config.yaml config.yaml.bak-before-subagents</code></pre>
+
+      <h3><span class="step">2</span>手工合并位置</h3>
+      <p>打开 <code>config.yaml</code>，把 <code>subagents.yaml</code> 中的内容合并到下面位置：</p>
+      <pre><code>subagents:
+  custom_agents:
+    evidence-reader:
+      ...
+    report-reviewer:
+      ...</code></pre>
+      <p>如果 <code>config.yaml</code> 里已经有同名 subagent，不要直接覆盖，先确认是否是旧配置。</p>
+
+      <h3><span class="step">3</span>检查 registry 是否能识别</h3>
+      <p>把下面命令里的名字换成你自己的 subagent 名称：</p>
+      <pre><code>python3 -c "
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path('backend/packages/harness').resolve()))
+from deerflow.config.app_config import reload_app_config
+from deerflow.subagents.registry import get_subagent_config
+cfg = reload_app_config('config.yaml')
+names = ['evidence-reader','report-reviewer']
+missing = [n for n in names if get_subagent_config(n, app_config=cfg) is None]
+print('missing=', missing)
+raise SystemExit(1 if missing else 0)
+"</code></pre>
+      <p>正确结果是：</p>
+      <pre><code>missing= []</code></pre>
+    </section>
+
+    <section>
+      <h2>十、启动服务并页面验收</h2>
+      <h3><span class="step">1</span>启动服务</h3>
+      <pre><code>scripts/run-local-services.sh restart</code></pre>
+      <p>看到下面结果，表示服务已经起来：</p>
+      <pre><code>OK Gateway
+OK Frontend
+OK Unified entrypoint
+DeerFlow is running: http://localhost:2026</code></pre>
+
+      <h3><span class="step">2</span>浏览器检查</h3>
+      <ol>
+        <li>打开 <code>http://localhost:2026</code>。</li>
+        <li>登录 DeerFlow。</li>
+        <li>进入智能体列表或智能体选择入口。</li>
+        <li>确认能看到你的智能体，例如 <code>quality-reviewer</code>。</li>
+        <li>进入该智能体，发起一次简单对话。</li>
+        <li>如果用了 custom subagents，确认没有出现 <code>Unknown subagent type</code>。</li>
+      </ol>
+
+      <div class="notice">
+        <strong>接口检查说明：</strong>
+        <p><code>/api/agents</code> 需要登录态。未登录时返回 <code>not_authenticated</code> 是正常的，不代表安装失败。</p>
+      </div>
+    </section>
+
+    <section>
+      <h2>十一、开发完成检查</h2>
+      <ul class="checklist">
+        <li><code>config.yaml</code>、<code>.env</code>、<code>frontend/.env</code> 都存在。</li>
+        <li><code>config.yaml</code> 中 <code>models:</code> 至少有一个可用模型。</li>
+        <li>模型需要的 API Key 已写入 <code>.env</code>。</li>
+        <li><code>docs/&lt;agent-name&gt;/agent/config.yaml</code> 能被 YAML 解析。</li>
+        <li><code>docs/&lt;agent-name&gt;/agent/SOUL.md</code> 已写明身份、原则和输出要求。</li>
+        <li>如果配置了 Skill，对应 <code>skills/custom/&lt;skill-name&gt;/SKILL.md</code> 存在。</li>
+        <li>如果配置了 subagents，已合并进应用级 <code>config.yaml</code> 并通过 registry 检查。</li>
+        <li>智能体文件已复制到 <code>backend/.deer-flow/users/&lt;user-id&gt;/agents/&lt;agent-name&gt;/</code>。</li>
+        <li>服务脚本输出 <code>DeerFlow is running: http://localhost:2026</code>。</li>
+        <li>浏览器登录后能看到新智能体，并能完成一次简单对话。</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>十二、常见问题处理</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>现象</th>
+            <th>原因</th>
+            <th>处理方法</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>提示 <code>config.yaml not found</code></td>
+            <td>项目配置文件不存在。</td>
+            <td>运行 <code>make config</code> 生成基础配置；如果已有文件，先备份再检查。</td>
+          </tr>
+          <tr>
+            <td>页面看不到新智能体</td>
+            <td>文件只放在 <code>docs/</code> 下，未安装到用户运行目录。</td>
+            <td>把 <code>config.yaml</code> 和 <code>SOUL.md</code> 复制到 <code>backend/.deer-flow/users/&lt;user-id&gt;/agents/&lt;agent-name&gt;/</code>。</td>
+          </tr>
+          <tr>
+            <td>提示模型不可用或模型名不在列表</td>
+            <td>请求使用的模型没有写进 <code>config.yaml</code> 的 <code>models:</code>。</td>
+            <td>把请求模型改成已有模型，或在 <code>config.yaml</code> 中补充模型配置和对应密钥。</td>
+          </tr>
+          <tr>
+            <td>出现 <code>Unknown subagent type</code></td>
+            <td>子智能体没有合并进应用级 <code>config.yaml</code>。</td>
+            <td>把 <code>docs/&lt;agent-name&gt;/subagents.yaml</code> 合并到 <code>config.yaml</code>，再运行 registry 检查。</td>
+          </tr>
+          <tr>
+            <td><code>/api/agents</code> 返回 <code>not_authenticated</code></td>
+            <td>当前请求没有登录态。</td>
+            <td>先在浏览器登录，再检查智能体列表。</td>
+          </tr>
+          <tr>
+            <td>页面打不开</td>
+            <td>本地服务没有启动或端口被占用。</td>
+            <td>运行 <code>scripts/run-local-services.sh restart</code>，再访问 <code>http://localhost:2026</code>。</td>
+          </tr>
+          <tr>
+            <td>YAML 检查失败</td>
+            <td>缩进、冒号或列表格式写错。</td>
+            <td>对照模板检查缩进。YAML 中列表项要以 <code>- </code> 开头，冒号后通常要留空格。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>十三、停止服务</h2>
+      <p>验证完成后，如果不再使用本地服务，可以停止：</p>
+      <pre><code>scripts/run-local-services.sh stop</code></pre>
+      <p>看到 <code>Stopped.</code> 即表示后台服务已关闭。</p>
+    </section>
+
+    <p class="footer">版本：2026-05-21。本指导书面向本地 DeerFlow 验证环境。生产环境请另行确认权限、账号、密钥、数据库和发布流程。</p>
+  </main>
+</body>
+</html>

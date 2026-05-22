@@ -1,6 +1,10 @@
 import { getBackendBaseURL } from "../config";
 import type { AgentThread } from "../threads";
 
+function normalizeArtifactPath(filepath: string) {
+  return filepath.startsWith("/") ? filepath : `/${filepath}`;
+}
+
 export function urlOfArtifact({
   filepath,
   threadId,
@@ -12,10 +16,11 @@ export function urlOfArtifact({
   download?: boolean;
   isMock?: boolean;
 }) {
+  const artifactPath = normalizeArtifactPath(filepath);
   if (isMock) {
-    return `${getBackendBaseURL()}/mock/api/threads/${threadId}/artifacts${filepath}${download ? "?download=true" : ""}`;
+    return `${getBackendBaseURL()}/mock/api/threads/${threadId}/artifacts${artifactPath}${download ? "?download=true" : ""}`;
   }
-  return `${getBackendBaseURL()}/api/threads/${threadId}/artifacts${filepath}${download ? "?download=true" : ""}`;
+  return `${getBackendBaseURL()}/api/threads/${threadId}/artifacts${artifactPath}${download ? "?download=true" : ""}`;
 }
 
 export function extractArtifactsFromThread(thread: AgentThread) {
@@ -23,5 +28,5 @@ export function extractArtifactsFromThread(thread: AgentThread) {
 }
 
 export function resolveArtifactURL(absolutePath: string, threadId: string) {
-  return `${getBackendBaseURL()}/api/threads/${threadId}/artifacts${absolutePath}`;
+  return `${getBackendBaseURL()}/api/threads/${threadId}/artifacts${normalizeArtifactPath(absolutePath)}`;
 }

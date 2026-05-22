@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import uuid
+from collections.abc import Iterable
 from dataclasses import replace
 from typing import TYPE_CHECKING, Annotated, Any, cast
 
@@ -108,10 +109,43 @@ def _find_usage_recorder(runtime: Any) -> Any | None:
     callbacks = config.get("callbacks", [])
     if not callbacks:
         return None
-    for cb in callbacks:
+    for cb in _iter_runtime_callbacks(callbacks):
         if hasattr(cb, "record_external_llm_usage_records"):
             return cb
     return None
+
+
+def _iter_runtime_callbacks(callbacks: Any) -> list[Any]:
+    """Return callback handlers from list-like configs and callback managers."""
+    if callbacks is None:
+        return []
+
+    found: list[Any] = []
+    seen: set[int] = set()
+
+    def add(callback: Any) -> None:
+        if callback is None:
+            return
+        callback_id = id(callback)
+        if callback_id in seen:
+            return
+        seen.add(callback_id)
+        found.append(callback)
+
+    if hasattr(callbacks, "record_external_llm_usage_records"):
+        add(callbacks)
+
+    for attr in ("handlers", "inheritable_handlers", "local_handlers"):
+        handlers = getattr(callbacks, attr, None)
+        if isinstance(handlers, Iterable) and not isinstance(handlers, (str, bytes)):
+            for handler in handlers:
+                add(handler)
+
+    if isinstance(callbacks, Iterable) and not isinstance(callbacks, (str, bytes)):
+        for callback in callbacks:
+            add(callback)
+
+    return found
 
 
 def _summarize_usage(records: list[dict] | None) -> dict | None:
@@ -135,11 +169,11 @@ def _report_subagent_usage(runtime: Any, result: Any) -> None:
     records = getattr(result, "token_usage_records", None) or []
     if not records:
         return
-    journal = _find_usage_recorder(runtime)
-    if journal is None:
-        logger.debug("No usage recorder found in runtime callbacks — subagent token usage not recorded")
-        return
     try:
+        journal = _find_usage_recorder(runtime)
+        if journal is None:
+            logger.debug("No usage recorder found in runtime callbacks — subagent token usage not recorded")
+            return
         journal.record_external_llm_usage_records(records)
         result.usage_reported = True
     except Exception:

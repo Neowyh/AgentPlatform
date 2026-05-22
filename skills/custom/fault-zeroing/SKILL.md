@@ -58,7 +58,11 @@ allowed-tools:
 输出文件写入 `/mnt/user-data/outputs/`：
 
 1. `/mnt/user-data/outputs/fault_tree.json`
-2. `/mnt/user-data/outputs/bottom_event_assessment.md`
-3. `/mnt/user-data/outputs/zeroing_report.md`
+2. `/mnt/user-data/outputs/fault_tree.svg`
+3. `/mnt/user-data/outputs/bottom_event_assessment.md`
+4. `/mnt/user-data/outputs/analysis_process.svg`
+5. `/mnt/user-data/outputs/zeroing_report.md`
 
-写完后调用 `present_files` 展示三份文件。输出前检查报告是否包含问题概述、输入资料、故障现象、故障树分析、底事件评估、根因归因、验证计划、纠正措施、遗留风险和证据附录。
+`fault_tree.svg` 必须是静态 SVG 框图，展示顶事件、中间事件、底事件、逻辑门和底事件状态。`analysis_process.svg` 必须展示证据读取、故障树构建、底事件评估、根因归因、报告审查这条分析链路。SVG 只使用内联 `<svg>`、`<rect>`、`<line>`、`<text>` 等静态元素，不写脚本和外链资源。
+
+写完后调用 `present_files` 展示五份文件。输出前检查报告是否包含问题概述、输入资料、故障现象、故障树分析、底事件评估、根因归因、验证计划、纠正措施、遗留风险和证据附录。

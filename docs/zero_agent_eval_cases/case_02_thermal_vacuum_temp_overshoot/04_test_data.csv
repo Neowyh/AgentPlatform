@@ -1,0 +1,9 @@
+evidence_id,time_min,stage,vacuum_pa,tc09_c,tc10_c,tc12_c,heater_zone,hz2_duty_pct,control_profile,event
+A-C2-001,130,ramp,0.0034,82.1,82.3,80.4,HZ-2,91,A,near end of ramp
+A-C2-002,138,hold_transition,0.0032,84.8,84.9,84.1,HZ-2,88,B,profile switched to B
+A-C2-003,140,hold,0.0031,85.4,85.6,87.8,HZ-2,74,B,duty remains high
+A-C2-004,142,hold,0.0033,85.8,86.0,91.2,HZ-2,66,B,tc12 exceeds limit
+A-C2-005,144,hold,0.0035,86.1,86.2,94.6,HZ-2,58,B,peak internal overshoot
+A-C2-006,146,hold,0.0032,85.2,85.4,93.8,HZ-2,41,B,slow decay
+A-C2-007,148,manual_safe_hold,0.0033,84.7,84.9,90.1,HZ-2,28,C,manual switch to profile C
+A-C2-008,152,manual_safe_hold,0.0032,84.4,84.6,87.2,HZ-2,24,C,recovered below limit

@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
+from langchain_core.callbacks.manager import AsyncCallbackManager
 
 from deerflow.subagents.config import SubagentConfig
 
@@ -41,6 +42,20 @@ def _make_runtime(*, app_config=None) -> SimpleNamespace:
         context=context,
         config={"metadata": {"model_name": "ark-model", "trace_id": "trace-1"}},
     )
+
+
+class FakeUsageRecorder:
+    def __init__(self):
+        self.records = []
+
+    def record_external_llm_usage_records(self, records):
+        self.records.extend(records)
+
+
+class FakeCallbackManager:
+    def __init__(self, **groups):
+        for name, callbacks in groups.items():
+            setattr(self, name, callbacks)
 
 
 def _make_subagent_config(name: str = "general-purpose") -> SubagentConfig:
@@ -116,6 +131,101 @@ def test_task_tool_rejects_bash_subagent_when_host_bash_disabled(monkeypatch):
     )
 
     assert result.startswith("Error: Bash subagent is disabled")
+
+
+@pytest.mark.parametrize(
+    "callbacks_factory",
+    [
+        lambda recorder: [object(), recorder],
+        lambda recorder: FakeCallbackManager(handlers=[recorder]),
+        lambda recorder: FakeCallbackManager(inheritable_handlers=[recorder]),
+        lambda recorder: FakeCallbackManager(local_handlers=[recorder]),
+        lambda recorder: recorder,
+    ],
+)
+def test_find_usage_recorder_accepts_callback_runtime_shapes(callbacks_factory):
+    recorder = FakeUsageRecorder()
+    runtime = SimpleNamespace(config={"callbacks": callbacks_factory(recorder)})
+
+    assert task_tool_module._find_usage_recorder(runtime) is recorder
+
+
+@pytest.mark.parametrize("callbacks", [object(), FakeCallbackManager(handlers=[object()]), None])
+def test_find_usage_recorder_ignores_unknown_callback_shapes(callbacks):
+    runtime = SimpleNamespace(config={"callbacks": callbacks})
+
+    assert task_tool_module._find_usage_recorder(runtime) is None
+
+
+def test_find_usage_recorder_accepts_langchain_async_callback_manager():
+    recorder = FakeUsageRecorder()
+    runtime = SimpleNamespace(config={"callbacks": AsyncCallbackManager([recorder])})
+
+    assert task_tool_module._find_usage_recorder(runtime) is recorder
+
+
+def test_report_subagent_usage_records_from_callback_manager():
+    recorder = FakeUsageRecorder()
+    runtime = SimpleNamespace(config={"callbacks": FakeCallbackManager(handlers=[recorder])})
+    result = _make_result(
+        FakeSubagentStatus.COMPLETED,
+        token_usage_records=[{"input_tokens": 10, "output_tokens": 4, "total_tokens": 14}],
+    )
+
+    task_tool_module._report_subagent_usage(runtime, result)
+
+    assert recorder.records == [{"input_tokens": 10, "output_tokens": 4, "total_tokens": 14}]
+    assert result.usage_reported is True
+
+
+def test_report_subagent_usage_does_not_raise_for_unknown_callback_shape():
+    runtime = SimpleNamespace(config={"callbacks": object()})
+    result = _make_result(
+        FakeSubagentStatus.COMPLETED,
+        token_usage_records=[{"input_tokens": 10, "output_tokens": 4, "total_tokens": 14}],
+    )
+
+    task_tool_module._report_subagent_usage(runtime, result)
+
+    assert result.usage_reported is False
+
+
+def test_task_tool_completed_path_reports_usage_from_callback_manager(monkeypatch):
+    config = _make_subagent_config()
+    recorder = FakeUsageRecorder()
+    runtime = _make_runtime(app_config=SimpleNamespace(token_usage=SimpleNamespace(enabled=False)))
+    runtime.config["callbacks"] = FakeCallbackManager(handlers=[recorder])
+    events = []
+    cleanup_calls = []
+    records = [{"input_tokens": 10, "output_tokens": 4, "total_tokens": 14}]
+    result = _make_result(FakeSubagentStatus.COMPLETED, result="done", token_usage_records=records)
+
+    monkeypatch.setattr(task_tool_module, "SubagentStatus", FakeSubagentStatus)
+    monkeypatch.setattr(
+        task_tool_module,
+        "SubagentExecutor",
+        type("DummyExecutor", (), {"__init__": lambda self, **kwargs: None, "execute_async": lambda self, prompt, task_id=None: task_id}),
+    )
+    monkeypatch.setattr(task_tool_module, "get_subagent_config", lambda *args, **kwargs: config)
+    monkeypatch.setattr(task_tool_module, "get_available_subagent_names", lambda **kwargs: ["general-purpose"])
+    monkeypatch.setattr(task_tool_module, "get_background_task_result", lambda _: result)
+    monkeypatch.setattr(task_tool_module, "get_stream_writer", lambda: events.append)
+    monkeypatch.setattr(task_tool_module.asyncio, "sleep", _no_sleep)
+    monkeypatch.setattr(task_tool_module, "cleanup_background_task", lambda task_id: cleanup_calls.append(task_id))
+    monkeypatch.setattr("deerflow.tools.get_available_tools", MagicMock(return_value=[]))
+
+    task_result = _run_task_tool(
+        runtime=runtime,
+        description="test",
+        prompt="do work",
+        subagent_type="general-purpose",
+        tool_call_id="tc-manager-usage",
+    )
+
+    assert task_result == "Task Succeeded. Result: done"
+    assert recorder.records == records
+    assert result.usage_reported is True
+    assert cleanup_calls == ["tc-manager-usage"]
 
 
 def test_task_tool_threads_runtime_app_config_to_subagent_dependencies(monkeypatch):

@@ -1,0 +1,9 @@
+evidence_id,time_s,condition,mach,total_temp_k,total_pressure_kpa,hf05_mw_m2,hf06_mw_m2,hf07_mw_m2,hf08_mw_m2,cooling_water_c,ch07_status,note
+A-C1-001,96,condition_4,6.19,1477,519.2,0.98,1.01,1.03,1.00,23.4,normal,stable before anomaly
+A-C1-002,108,condition_4,6.20,1481,520.4,0.99,1.02,1.05,1.01,23.5,normal,stable pressure and temperature
+A-C1-003,118,condition_4,6.21,1483,521.0,1.00,1.03,1.12,1.02,23.6,normal,hf07 starts drifting
+A-C1-004,130,condition_4,6.20,1479,519.8,1.01,1.04,1.18,1.03,23.6,normal,no adjacent synchronous increase
+A-C1-005,142,condition_4,6.20,1482,520.1,1.01,1.05,1.23,1.04,23.7,normal,hf07 exceeds criterion
+A-C1-006,154,condition_4,6.19,1476,518.9,1.00,1.04,1.25,1.05,23.7,ch07_noise_flag,channel noise flag appears
+A-C1-007,164,condition_4,6.20,1478,520.5,1.00,1.03,1.24,1.04,23.8,ch07_noise_flag,continued hf07 high reading
+A-C1-008,190,shutdown,0.00,302,101.3,0.01,0.01,0.09,0.01,23.9,zero_offset,post-run zero offset on ch07
