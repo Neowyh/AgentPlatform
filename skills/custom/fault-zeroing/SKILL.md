@@ -25,18 +25,32 @@ allowed-tools:
 4. 长文档按章节或行号范围读取，不一次性吞入无关内容。
 5. 缺少关键输入时调用 `ask_clarification`，不得用假设替代资料。
 6. 即使用户只给出一句“做归零排故分析”，也必须主动盘点上传目录并按本工作流执行，不要求用户补写详细 prompt。
-7. 资料覆盖至少检查问题描述、设计方案或接口约束、试验大纲或试验记录、总结报告或复现记录、试验数据或日志、历史/复核记录。缺失项必须写入报告“输入资料”和“遗留风险”。
+7. 资料覆盖矩阵必须逐项检查五类资料：问题描述、设计约束、试验记录或日志、总结报告、历史或复核记录。缺失项必须同时写入报告“输入资料”和“遗留风险”。
+8. `06_expected_analysis.md`、`*_expected_analysis.md` 等验收参考文件只可用于人工验收，不得作为底事件、根因或报告结论的证据来源。
+
+## 固定执行阶段
+
+必须按顺序完成以下阶段，不得跳步，不得先写根因再补证据：
+
+1. 资料盘点：输出已读取、未读取和缺失资料清单，形成资料覆盖矩阵。
+2. 证据台账：先生成 evidence table，字段必须包含 `id`、`source`、`grade`、`type`、`summary`、`supports`、`contradicts`。
+3. 故障树构建：基于证据台账构建顶事件、中间事件、底事件和逻辑关系。
+4. 底事件评估：逐项评估证据强度、机理一致性、反证、复现实验和验证状态。
+5. 根因归因：根因和报告关键结论只能引用已有 evidence id 或明确资料来源。
+6. 验证计划：为待验证项、冲突证据、低置信根因生成验证项。
+7. 报告生成：生成五件套输出并保证 JSON 与报告一致。
+8. 报告审查：检查结构、证据闭环、过度归因、SVG 安全性和遗留风险。
 
 ## 证据处理规则
 
-执行前读取 `references/evidence_rules.md`。每条关键结论必须包含证据来源，来源至少包含文件路径；能定位行号时写明行号或章节名。把内容区分为事实、推断、假设、待验证项。
+执行前读取 `references/evidence_rules.md`。每条关键结论必须包含 evidence id 或明确资料来源，来源至少包含文件路径；能定位行号时写明行号或章节名。把内容区分为事实、推断、假设、待验证项。先生成证据台账，再构建故障树；底事件、根因和报告结论不得引用证据台账之外的 evidence id。
 
 ## 故障树构建规则
 
 1. 顶事件必须来自用户问题或资料原文。
 2. 中间事件用于表达故障传播链、功能失效链或条件组合。
 3. 底事件必须可验证，避免把笼统原因写成底事件。
-4. 对每个底事件记录 `id`、`name`、`description`、`parent_ids`、`evidence`、`probability`、`probability_basis`、`confidence`、`status`、`verification_suggestion`。
+4. 对每个底事件记录 `id`、`name`、`description`、`parent_ids`、`evidence_ids`、`probability`、`probability_basis`、`confidence`、`status`、`verification_suggestion`。
 5. 证据不足时，`probability` 填 `null`，`confidence` 填 `low`，`status` 填 `to_verify`。
 6. `fault_tree.json` 必须符合 `templates/fault_tree.schema.json`。不确定字段也要保留键名并填 `null`、空数组或“待验证”说明。
 
@@ -48,11 +62,11 @@ allowed-tools:
 
 复杂资料包必须优先委托子智能体，但最多只进行一轮核心委托。收到子智能体结果后，主智能体必须进入产物生成和自检，不得反复委托导致不产出。
 
-1. `evidence-reader`：抽取关键证据和来源。
-2. `fault-tree-builder`：构建故障树草案。
+1. `evidence-reader`：抽取关键证据和来源；evidence-reader 不输出根因。
+2. `fault-tree-builder`：构建故障树草案；fault-tree-builder 不给最终归因。
 3. `probability-assessor`：评估底事件概率、置信度和验证状态。
 4. `root-cause-analyst`：形成根因归因和验证建议。
-5. `report-reviewer`：检查章节完整性、证据闭环和待验证项。
+5. `report-reviewer`：检查章节完整性、证据闭环和待验证项；report-reviewer 不新增技术结论。
 
 子智能体失败时，记录失败原因，再由主智能体直接读取资料完成降级分析。
 
@@ -76,3 +90,5 @@ allowed-tools:
 4. 数值概率必须有统计、历史频次或专家打分依据；没有依据时 `probability` 保持 `null`。
 5. `zeroing_report.md` 的顶事件、主根因和待验证项必须与 `fault_tree.json` 一致。
 6. 两个 SVG 均为静态内容，不包含脚本、外链、远程图片或动态交互代码。
+7. 报告必须显式包含资料覆盖矩阵、证据台账摘要、待验证项和遗留风险。
+8. 写完五件套后提示用户可运行离线 validator：`python scripts/validate_fault_zeroing_outputs.py --outputs-dir /mnt/user-data/outputs`。

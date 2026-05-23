@@ -1,0 +1,184 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Fault Zeroing Fault Tree",
+  "type": "object",
+  "required": [
+    "top_event",
+    "intermediate_events",
+    "bottom_events",
+    "logic",
+    "evidence",
+    "root_causes",
+    "verification_plan"
+  ],
+  "properties": {
+    "top_event": {
+      "type": "string",
+      "minLength": 1
+    },
+    "intermediate_events": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/event_node"
+      }
+    },
+    "bottom_events": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/bottom_event"
+      }
+    },
+    "logic": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/logic_edge"
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/evidence"
+      }
+    },
+    "root_causes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/root_cause"
+      }
+    },
+    "verification_plan": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/verification_item"
+      }
+    }
+  },
+  "$defs": {
+    "status": {
+      "enum": ["confirmed", "rejected", "to_verify", "in_progress", "not_applicable"]
+    },
+    "confidence": {
+      "enum": ["high", "medium", "low", "unknown"]
+    },
+    "evidence_grade": {
+      "enum": ["A", "B", "C", "D"]
+    },
+    "event_node": {
+      "type": "object",
+      "required": ["id", "name", "description", "parent_ids", "logic"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "description": { "type": "string" },
+        "parent_ids": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "logic": { "enum": ["AND", "OR", "NONE", null] }
+      }
+    },
+    "bottom_event": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "description",
+        "parent_ids",
+        "evidence_ids",
+        "probability",
+        "probability_basis",
+        "confidence",
+        "status",
+        "verification_suggestion"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 1 },
+        "parent_ids": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "evidence_ids": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "probability": {
+          "type": ["string", "number", "null"]
+        },
+        "probability_basis": {
+          "type": ["string", "null"]
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        },
+        "status": {
+          "$ref": "#/$defs/status"
+        },
+        "verification_suggestion": {
+          "type": "string"
+        }
+      }
+    },
+    "logic_edge": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "source": { "type": "string" },
+        "target": { "type": "string" },
+        "parent": { "type": "string" },
+        "children": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "type": { "enum": ["AND", "OR"] }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "required": ["id", "source", "grade", "type", "summary", "supports", "contradicts"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "source": { "type": "string", "minLength": 1 },
+        "grade": { "$ref": "#/$defs/evidence_grade" },
+        "type": { "type": "string", "minLength": 1 },
+        "summary": { "type": "string", "minLength": 1 },
+        "supports": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "contradicts": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "root_cause": {
+      "type": "object",
+      "required": ["id", "name", "description", "evidence_ids", "status", "confidence"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "description": { "type": "string" },
+        "evidence_ids": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "status": { "$ref": "#/$defs/status" },
+        "confidence": { "$ref": "#/$defs/confidence" }
+      }
+    },
+    "verification_item": {
+      "type": "object",
+      "required": ["id", "target_id", "item", "method", "expected_result", "status"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "target_id": { "type": "string", "minLength": 1 },
+        "item": { "type": "string", "minLength": 1 },
+        "method": { "type": "string", "minLength": 1 },
+        "expected_result": { "type": "string" },
+        "status": { "$ref": "#/$defs/status" }
+      }
+    }
+  }
+}

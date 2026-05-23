@@ -1,16 +1,74 @@
 {
-  "top_event": "",
-  "intermediate_events": [],
-  "bottom_events": [
+  "top_event": "顶事件原文",
+  "intermediate_events": [
     {
-      "id": "",
-      "name": "",
-      "description": "",
-      "evidence": [],
-      "probability": null,
-      "confidence": "low",
-      "status": "to_verify"
+      "id": "IE-001",
+      "name": "中间事件名称",
+      "description": "功能链路、传播链路或条件组合说明",
+      "parent_ids": [
+        "TOP"
+      ],
+      "logic": "OR"
     }
   ],
-  "logic": []
+  "bottom_events": [
+    {
+      "id": "BE-001",
+      "name": "底事件名称",
+      "description": "可验证对象、条件和判据",
+      "parent_ids": [
+        "IE-001"
+      ],
+      "evidence_ids": [
+        "EV-001"
+      ],
+      "probability": null,
+      "probability_basis": null,
+      "confidence": "low",
+      "status": "to_verify",
+      "verification_suggestion": "下一步验证动作"
+    }
+  ],
+  "logic": [
+    {
+      "source": "TOP",
+      "target": "IE-001",
+      "type": "OR"
+    }
+  ],
+  "evidence": [
+    {
+      "id": "EV-001",
+      "source": "文件路径#章节或行号",
+      "grade": "C",
+      "type": "test_record",
+      "summary": "证据事实摘要",
+      "supports": [
+        "BE-001"
+      ],
+      "contradicts": []
+    }
+  ],
+  "root_causes": [
+    {
+      "id": "RC-001",
+      "name": "根因名称或待验证根因",
+      "description": "归因说明",
+      "evidence_ids": [
+        "EV-001"
+      ],
+      "status": "to_verify",
+      "confidence": "low"
+    }
+  ],
+  "verification_plan": [
+    {
+      "id": "VP-001",
+      "target_id": "BE-001",
+      "item": "验证项名称",
+      "method": "验证方法",
+      "expected_result": "期望结果",
+      "status": "to_verify"
+    }
+  ]
 }
