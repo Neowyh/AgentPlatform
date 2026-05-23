@@ -1,7 +1,13 @@
+## Local Startup Helper
+
+`scripts/start-local.sh` is a POSIX `sh` wrapper for production-mode local startup. It checks required commands, validates `config.yaml`, and verifies required model-key environment variables before running `make start` from the repository root.
+
+Use `START_TARGET` to select another make target and `REQUIRED_ENV_VARS` for a comma-separated list of required environment variable names. Keep both values to simple identifiers/targets; the script validates them before invoking `make`.
+
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **deer-flow** (23293 symbols, 42946 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **deer-flow** (23959 symbols, 43867 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 

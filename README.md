@@ -283,6 +283,13 @@ On Windows, run the local development flow from Git Bash. Native `cmd.exe` and P
    ```bash
    make dev
    ```
+   For a production-mode local preflight that checks required commands, `config.yaml`,
+   and required model key environment variables before starting, use:
+   ```bash
+   sh scripts/start-local.sh
+   ```
+   Set `START_TARGET` to choose another make target and `REQUIRED_ENV_VARS` to a
+   comma-separated allowlist of required environment variable names.
 
 6. **Access**: http://localhost:2026
 

@@ -24,6 +24,8 @@ allowed-tools:
 3. 不确定文件位置时，先用 `glob` 获取目录结构，再用 `grep` 定位关键词。
 4. 长文档按章节或行号范围读取，不一次性吞入无关内容。
 5. 缺少关键输入时调用 `ask_clarification`，不得用假设替代资料。
+6. 即使用户只给出一句“做归零排故分析”，也必须主动盘点上传目录并按本工作流执行，不要求用户补写详细 prompt。
+7. 资料覆盖至少检查问题描述、设计方案或接口约束、试验大纲或试验记录、总结报告或复现记录、试验数据或日志、历史/复核记录。缺失项必须写入报告“输入资料”和“遗留风险”。
 
 ## 证据处理规则
 
@@ -34,8 +36,9 @@ allowed-tools:
 1. 顶事件必须来自用户问题或资料原文。
 2. 中间事件用于表达故障传播链、功能失效链或条件组合。
 3. 底事件必须可验证，避免把笼统原因写成底事件。
-4. 对每个底事件记录 `id`、`name`、`description`、`evidence`、`probability`、`confidence`、`status`。
+4. 对每个底事件记录 `id`、`name`、`description`、`parent_ids`、`evidence`、`probability`、`probability_basis`、`confidence`、`status`、`verification_suggestion`。
 5. 证据不足时，`probability` 填 `null`，`confidence` 填 `low`，`status` 填 `to_verify`。
+6. `fault_tree.json` 必须符合 `templates/fault_tree.schema.json`。不确定字段也要保留键名并填 `null`、空数组或“待验证”说明。
 
 ## 底事件评估规则
 
@@ -43,7 +46,7 @@ allowed-tools:
 
 ## 子智能体协作规则
 
-复杂资料包必须优先委托子智能体：
+复杂资料包必须优先委托子智能体，但最多只进行一轮核心委托。收到子智能体结果后，主智能体必须进入产物生成和自检，不得反复委托导致不产出。
 
 1. `evidence-reader`：抽取关键证据和来源。
 2. `fault-tree-builder`：构建故障树草案。
@@ -65,4 +68,11 @@ allowed-tools:
 
 `fault_tree.svg` 必须是静态 SVG 框图，展示顶事件、中间事件、底事件、逻辑门和底事件状态。`analysis_process.svg` 必须展示证据读取、故障树构建、底事件评估、根因归因、报告审查这条分析链路。SVG 只使用内联 `<svg>`、`<rect>`、`<line>`、`<text>` 等静态元素，不写脚本和外链资源。
 
-写完后调用 `present_files` 展示五份文件。输出前检查报告是否包含问题概述、输入资料、故障现象、故障树分析、底事件评估、根因归因、验证计划、纠正措施、遗留风险和证据附录。
+写完后调用 `present_files` 展示五份文件。输出前必须自检：
+
+1. 五份文件全部存在，缺一份即视为失败并补齐。
+2. 报告包含问题概述、输入资料、故障现象、故障树分析、底事件评估、根因归因、验证计划、纠正措施、遗留风险和证据附录。
+3. 根因结论至少引用一条 A/B 级证据；否则必须写“待验证”。
+4. 数值概率必须有统计、历史频次或专家打分依据；没有依据时 `probability` 保持 `null`。
+5. `zeroing_report.md` 的顶事件、主根因和待验证项必须与 `fault_tree.json` 一致。
+6. 两个 SVG 均为静态内容，不包含脚本、外链、远程图片或动态交互代码。
