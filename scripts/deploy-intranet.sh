@@ -104,7 +104,7 @@ generate_secret() {
         return 0
     fi
 
-    die "python3 or openssl is required to generate BETTER_AUTH_SECRET"
+    die "python3 or openssl is required to generate secrets"
 }
 
 find_bundle_file() {
@@ -163,14 +163,104 @@ seed_file() {
     local target="$1"
     local source="$2"
     if [ ! -f "$target" ]; then
+        [ -f "$source" ] || die "missing seed source: $source"
         cp "$source" "$target"
     fi
+}
+
+seed_config() {
+    local target="$RUNTIME_DIR/config.yaml"
+    local source="$SOURCE_DIR/config.example.yaml"
+    if [ -f "$target" ]; then
+        return 0
+    fi
+    [ -f "$source" ] || die "missing seed source: $source"
+    awk '
+        /^[[:space:]]*models:[[:space:]]*$/ { print "models: []"; next }
+        { print }
+    ' "$source" > "$target"
+}
+
+load_or_create_secret_file() {
+    local secret_file="$1"
+    local secret
+    if [ -f "$secret_file" ]; then
+        secret="$(tr -d '\r\n' < "$secret_file")"
+        if [ -n "$secret" ]; then
+            printf '%s\n' "$secret"
+            return 0
+        fi
+    fi
+
+    secret="$(generate_secret)"
+    printf '%s\n' "$secret" > "$secret_file"
+    chmod 600 "$secret_file"
+    printf '%s\n' "$secret"
+}
+
+validate_runtime() {
+    require_file "$RUNTIME_DIR/config.yaml"
+    require_file "$RUNTIME_DIR/.env"
+    require_file "$RUNTIME_DIR/frontend.env"
+    require_file "$RUNTIME_DIR/extensions_config.json"
+    require_file "$ENV_FILE"
+
+    awk -v path="$RUNTIME_DIR/config.yaml" '
+        function fail() {
+            print path ": models must be a list" > "/dev/stderr"
+            exit 1
+        }
+        /^models:[[:space:]]*$/ {
+            in_models = 1
+            found = 1
+            next
+        }
+        /^models:[[:space:]]*\[/ {
+            found = 1
+            in_models = 0
+            next
+        }
+        /^models:[[:space:]]*null[[:space:]]*$/ {
+            found = 1
+            fail()
+        }
+        in_models {
+            if ($0 ~ /^[[:space:]]*($|#)/) {
+                next
+            }
+            if ($0 ~ /^[[:space:]]*-/) {
+                in_models = 0
+                next
+            }
+            fail()
+        }
+        END {
+            if (in_models) {
+                fail()
+            }
+        }
+    ' "$RUNTIME_DIR/config.yaml"
+}
+
+append_env_if_missing() {
+    local key="$1"
+    local value="$2"
+
+    if grep -q "^${key}=" "$ENV_FILE"; then
+        return 0
+    fi
+
+    log "appending missing $key to $ENV_FILE"
+    if [ -s "$ENV_FILE" ] && [ -n "$(tail -c 1 "$ENV_FILE")" ]; then
+        printf '\n' >> "$ENV_FILE"
+    fi
+    printf '%s=%s\n' "$key" "$value" >> "$ENV_FILE"
 }
 
 seed_runtime() {
     mkdir -p "$RUNTIME_DIR/data"
 
-    seed_file "$RUNTIME_DIR/config.yaml" "$SOURCE_DIR/config.example.yaml"
+    seed_config
     seed_file "$RUNTIME_DIR/.env" "$SOURCE_DIR/.env.example"
     seed_file "$RUNTIME_DIR/frontend.env" "$SOURCE_DIR/frontend/.env.example"
     if [ ! -f "$RUNTIME_DIR/extensions_config.json" ]; then
@@ -180,6 +270,9 @@ seed_runtime() {
             printf '{"mcpServers":{},"skills":{}}\n' > "$RUNTIME_DIR/extensions_config.json"
         fi
     fi
+
+    BETTER_AUTH_SECRET_VALUE="$(load_or_create_secret_file "$RUNTIME_DIR/data/.better-auth-secret")"
+    DEER_FLOW_INTERNAL_AUTH_TOKEN_VALUE="$(load_or_create_secret_file "$RUNTIME_DIR/data/.internal-auth-token")"
 
     if [ ! -f "$ENV_FILE" ]; then
         cat > "$ENV_FILE" <<EOF
@@ -191,12 +284,16 @@ DEER_FLOW_EXTENSIONS_CONFIG_PATH=$RUNTIME_DIR/extensions_config.json
 DEER_FLOW_ENV_FILE=$RUNTIME_DIR/.env
 DEER_FLOW_FRONTEND_ENV_FILE=$RUNTIME_DIR/frontend.env
 DEER_FLOW_DOCKER_SOCKET=/var/run/docker.sock
-BETTER_AUTH_SECRET=$(generate_secret)
+BETTER_AUTH_SECRET=$BETTER_AUTH_SECRET_VALUE
+DEER_FLOW_INTERNAL_AUTH_TOKEN=$DEER_FLOW_INTERNAL_AUTH_TOKEN_VALUE
 DEER_FLOW_GATEWAY_IMAGE=deer-flow-gateway:$VERSION
 DEER_FLOW_FRONTEND_IMAGE=deer-flow-frontend:$VERSION
 NGINX_IMAGE=nginx:alpine
 EOF
     fi
+
+    append_env_if_missing "BETTER_AUTH_SECRET" "$BETTER_AUTH_SECRET_VALUE"
+    append_env_if_missing "DEER_FLOW_INTERNAL_AUTH_TOKEN" "$DEER_FLOW_INTERNAL_AUTH_TOKEN_VALUE"
 }
 
 load_images() {
@@ -213,9 +310,38 @@ compose_cmd() {
     docker compose -p deer-flow -f "$COMPOSE_FILE" --env-file "$ENV_FILE" "$@"
 }
 
+wait_for_http() {
+    local url="$1"
+    local label="$2"
+    local attempt
+    if ! command -v curl >/dev/null 2>&1; then
+        log "curl not found; skipping $label health check"
+        return 0
+    fi
+
+    for attempt in $(seq 1 30); do
+        if curl -fsS "$url" >/dev/null 2>&1; then
+            log "$label is healthy: $url"
+            return 0
+        fi
+        sleep 2
+    done
+
+    die "$label health check failed: $url. Run './deploy-intranet.sh logs gateway' and './deploy-intranet.sh logs frontend' for details."
+}
+
+verify_services() {
+    # shellcheck disable=SC1090
+    . "$ENV_FILE"
+    wait_for_http "http://127.0.0.1:${PORT:-2026}/health" "gateway"
+    wait_for_http "http://127.0.0.1:${PORT:-2026}/api/v1/auth/setup-status" "auth setup-status"
+    wait_for_http "http://127.0.0.1:${PORT:-2026}/" "frontend"
+}
+
 prepare_bundle() {
     extract_source
     seed_runtime
+    validate_runtime
 }
 
 case "$COMMAND" in
@@ -233,12 +359,14 @@ case "$COMMAND" in
         load_images
         log "starting services..."
         compose_cmd up -d --remove-orphans
+        verify_services
         ;;
     restart)
         prepare_bundle
         load_images
         log "restarting services..."
         compose_cmd up -d --remove-orphans --force-recreate
+        verify_services
         ;;
     stop|down)
         prepare_bundle

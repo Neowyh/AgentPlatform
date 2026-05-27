@@ -16,6 +16,11 @@ services:
     networks:
       - deer-flow
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://localhost:2026/health >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
 
   frontend:
     image: ${DEER_FLOW_FRONTEND_IMAGE:-deer-flow-frontend:latest}
@@ -25,10 +30,15 @@ services:
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
       - DEER_FLOW_INTERNAL_GATEWAY_BASE_URL=http://gateway:8001
     env_file:
-      - ${DEER_FLOW_FRONTEND_ENV_FILE:-../frontend/.env}
+      - ${DEER_FLOW_FRONTEND_ENV_FILE:?DEER_FLOW_FRONTEND_ENV_FILE must be set}
     networks:
       - deer-flow
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3000').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 6
 
   gateway:
     image: ${DEER_FLOW_GATEWAY_IMAGE:-deer-flow-gateway:latest}
@@ -41,18 +51,6 @@ services:
       - ../skills:/app/skills:ro
       - ${DEER_FLOW_HOME}:/app/backend/.deer-flow
       - ${DEER_FLOW_DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
-      - type: bind
-        source: ${HOME:?HOME must be set}/.claude
-        target: /root/.claude
-        read_only: true
-        bind:
-          create_host_path: true
-      - type: bind
-        source: ${HOME:?HOME must be set}/.codex
-        target: /root/.codex
-        read_only: true
-        bind:
-          create_host_path: true
     working_dir: /app
     environment:
       - CI=true
@@ -62,16 +60,22 @@ services:
       - DEER_FLOW_EXTENSIONS_CONFIG_PATH=/app/backend/extensions_config.json
       - DEER_FLOW_CHANNELS_LANGGRAPH_URL=${DEER_FLOW_CHANNELS_LANGGRAPH_URL:-http://gateway:8001/api}
       - DEER_FLOW_CHANNELS_GATEWAY_URL=${DEER_FLOW_CHANNELS_GATEWAY_URL:-http://gateway:8001}
+      - DEER_FLOW_INTERNAL_AUTH_TOKEN=${DEER_FLOW_INTERNAL_AUTH_TOKEN}
       - DEER_FLOW_HOST_BASE_DIR=${DEER_FLOW_HOME}
       - DEER_FLOW_HOST_SKILLS_PATH=${DEER_FLOW_REPO_ROOT}/skills
       - DEER_FLOW_SANDBOX_HOST=host.docker.internal
     env_file:
-      - ${DEER_FLOW_ENV_FILE:-../.env}
+      - ${DEER_FLOW_ENV_FILE:?DEER_FLOW_ENV_FILE must be set}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
       - deer-flow
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8001/health', timeout=5).read()\""]
+      interval: 10s
+      timeout: 5s
+      retries: 6
 
 networks:
   deer-flow:

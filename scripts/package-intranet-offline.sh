@@ -198,14 +198,22 @@ tar \
     --exclude='backend/.venv' \
     --exclude='backend/.deer-flow' \
     --exclude='backend/.pytest_cache' \
+    --exclude='backend/.ruff_cache' \
     --exclude='backend/__pycache__' \
+    --exclude='**/__pycache__' \
+    --exclude='*.pyc' \
     --exclude='frontend/node_modules' \
     --exclude='frontend/.next' \
     --exclude='frontend/.cache' \
+    --exclude='frontend/.env' \
+    --exclude='frontend/test-results' \
+    --exclude='frontend/playwright-report' \
+    --exclude='frontend/tsconfig.tsbuildinfo' \
     --exclude='node_modules' \
     --exclude='logs' \
     --exclude='*.log' \
     -czf "$SOURCE_TAR" \
+    .env.example \
     Makefile \
     README.md \
     backend \
@@ -223,15 +231,19 @@ cp "$DEPLOY_SCRIPT_FILE" "$OUTPUT_DIR/$DEPLOY_BASENAME"
 
 cat > "$ENV_EXAMPLE" <<EOF
 # Copy this file to env.intranet and update the values for your environment.
+# /home/deploy/deer-flow is only an example bundle root. You may replace it with any
+# deployment directory. The deploy script
+# regenerates env.intranet from the actual --bundle-root or DEER_FLOW_BUNDLE_ROOT.
 PORT=2026
-DEER_FLOW_HOME=/opt/deer-flow/runtime/data
-DEER_FLOW_CONFIG_PATH=/opt/deer-flow/runtime/config.yaml
-DEER_FLOW_EXTENSIONS_CONFIG_PATH=/opt/deer-flow/runtime/extensions_config.json
-DEER_FLOW_REPO_ROOT=/opt/deer-flow/source
-DEER_FLOW_ENV_FILE=/opt/deer-flow/runtime/.env
-DEER_FLOW_FRONTEND_ENV_FILE=/opt/deer-flow/runtime/frontend.env
+DEER_FLOW_HOME=/home/deploy/deer-flow/runtime/data
+DEER_FLOW_CONFIG_PATH=/home/deploy/deer-flow/runtime/config.yaml
+DEER_FLOW_EXTENSIONS_CONFIG_PATH=/home/deploy/deer-flow/runtime/extensions_config.json
+DEER_FLOW_REPO_ROOT=/home/deploy/deer-flow/source
+DEER_FLOW_ENV_FILE=/home/deploy/deer-flow/runtime/.env
+DEER_FLOW_FRONTEND_ENV_FILE=/home/deploy/deer-flow/runtime/frontend.env
 DEER_FLOW_DOCKER_SOCKET=/var/run/docker.sock
 BETTER_AUTH_SECRET=replace-with-a-fixed-secret
+DEER_FLOW_INTERNAL_AUTH_TOKEN=replace-with-a-fixed-internal-token
 DEER_FLOW_GATEWAY_IMAGE=${GATEWAY_IMAGE}
 DEER_FLOW_FRONTEND_IMAGE=${FRONTEND_IMAGE}
 NGINX_IMAGE=${NGINX_IMAGE}
@@ -252,6 +264,9 @@ Files:
 - $DEPLOY_BASENAME
 - $(basename "$MANIFEST_FILE")
 - $(basename "$SHA_FILE")
+
+Usage:
+- Use ./deploy-intranet.sh instead of running docker compose directly from this bundle root.
 EOF
 
 (cd "$OUTPUT_DIR" && sha256sum "$(basename "$IMAGES_TAR")" "$(basename "$SOURCE_TAR")" "$(basename "$COMPOSE_FILE")" "$(basename "$ENV_EXAMPLE")" "$GUIDE_BASENAME" "$DEPLOY_BASENAME" "$(basename "$MANIFEST_FILE")" > "$(basename "$SHA_FILE")")
