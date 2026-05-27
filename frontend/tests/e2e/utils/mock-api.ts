@@ -25,6 +25,7 @@ export type MockThread = {
   title?: string;
   updated_at?: string;
   agent_name?: string;
+  messages?: unknown[];
   artifacts?: string[];
 };
 
@@ -144,23 +145,63 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
   );
 
   // Thread history — useStream fetches state history on mount
-  void page.route(
-    /\/(?:api\/langgraph|mock\/api)\/threads\/[^/]+\/history$/,
-    (route) => {
-      const url = route.request().url();
+  void page.route("**/api/langgraph/threads/*/history", (route) => {
+    const url = route.request().url();
 
-      // For threads that exist in our mock data, return history with messages
+    // For threads that exist in our mock data, return history with messages
+    const matchingThread = threads.find((t) => url.includes(t.thread_id));
+    if (matchingThread) {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([
+          {
+            values: {
+              title: matchingThread.title ?? "Untitled",
+              messages: matchingThread.messages ?? [
+                {
+                  type: "human",
+                  id: `msg-human-${matchingThread.thread_id}`,
+                  content: [{ type: "text", text: "Previous question" }],
+                },
+                {
+                  type: "ai",
+                  id: `msg-ai-${matchingThread.thread_id}`,
+                  content: `Response in thread ${matchingThread.title ?? matchingThread.thread_id}`,
+                },
+              ],
+              artifacts: matchingThread.artifacts ?? [],
+            },
+            next: [],
+            metadata: {},
+            created_at: "2025-01-01T00:00:00Z",
+            parent_config: null,
+          },
+        ]),
+      });
+    }
+
+    // New threads — empty history
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: "[]",
+    });
+  });
+
+  // Thread state — getState for individual thread
+  void page.route("**/api/langgraph/threads/*/state", (route) => {
+    if (route.request().method() === "GET") {
+      const url = route.request().url();
       const matchingThread = threads.find((t) => url.includes(t.thread_id));
-      if (matchingThread) {
-        return route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify([
-            {
-              values: {
-                title: matchingThread.title ?? "Untitled",
-                artifacts: matchingThread.artifacts ?? [],
-                messages: [
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          values: {
+            title: matchingThread?.title ?? "Untitled",
+            messages: matchingThread
+              ? (matchingThread.messages ?? [
                   {
                     type: "human",
                     id: `msg-human-${matchingThread.thread_id}`,
@@ -171,64 +212,18 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
                     id: `msg-ai-${matchingThread.thread_id}`,
                     content: `Response in thread ${matchingThread.title ?? matchingThread.thread_id}`,
                   },
-                ],
-              },
-              next: [],
-              metadata: {},
-              created_at: "2025-01-01T00:00:00Z",
-              parent_config: null,
-            },
-          ]),
-        });
-      }
-
-      // New threads — empty history
-      return route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: "[]",
+                ])
+              : [],
+            artifacts: matchingThread?.artifacts ?? [],
+          },
+          next: [],
+          metadata: {},
+          created_at: "2025-01-01T00:00:00Z",
+        }),
       });
-    },
-  );
-
-  // Thread state — getState for individual thread
-  void page.route(
-    /\/(?:api\/langgraph|mock\/api)\/threads\/[^/]+\/state$/,
-    (route) => {
-      if (route.request().method() === "GET") {
-        const url = route.request().url();
-        const matchingThread = threads.find((t) => url.includes(t.thread_id));
-        return route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify({
-            values: {
-              title: matchingThread?.title ?? "Untitled",
-              artifacts: matchingThread?.artifacts ?? [],
-              messages: matchingThread
-                ? [
-                    {
-                      type: "human",
-                      id: `msg-human-${matchingThread.thread_id}`,
-                      content: [{ type: "text", text: "Previous question" }],
-                    },
-                    {
-                      type: "ai",
-                      id: `msg-ai-${matchingThread.thread_id}`,
-                      content: `Response in thread ${matchingThread.title ?? matchingThread.thread_id}`,
-                    },
-                  ]
-                : [],
-            },
-            next: [],
-            metadata: {},
-            created_at: "2025-01-01T00:00:00Z",
-          }),
-        });
-      }
-      return route.fallback();
-    },
-  );
+    }
+    return route.fallback();
+  });
 
   // The URL carries a query string (e.g. `?limit=10&offset=0`), which Playwright
   // glob `*` does NOT cross, so we match with a regex anchored to `/runs`
@@ -241,6 +236,32 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
           status: 200,
           contentType: "application/json",
           body: "[]",
+        });
+      }
+      return route.fallback();
+    },
+  );
+
+  void page.route(
+    /\/api\/threads\/([^/]+)\/runs\/([^/]+)\/messages/,
+    (route) => {
+      if (route.request().method() === "GET") {
+        const url = route.request().url();
+        const matchingThread = threads.find((t) =>
+          url.includes(`/api/threads/${t.thread_id}/runs/`),
+        );
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            data: (matchingThread?.messages ?? []).map((message, index) => ({
+              run_id: `run-${matchingThread?.thread_id ?? "unknown"}`,
+              content: message,
+              metadata: { caller: "lead_agent" },
+              created_at: `2025-01-01T00:00:${String(index).padStart(2, "0")}Z`,
+            })),
+            hasMore: false,
+          }),
         });
       }
       return route.fallback();
