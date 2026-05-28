@@ -186,6 +186,21 @@ seed_config() {
     ' "$source" > "$target"
 }
 
+# Ensure agents_api.enabled is true so the custom-agent management API
+# (including the bundled fault-zeroing agent) is accessible after deploy.
+# config.example.yaml ships with agents_api.enabled: false; this patches
+# it to true.  Idempotent: no-ops if already true or if agents_api block
+# is absent.
+patch_agents_api_enabled() {
+    local config="$RUNTIME_DIR/config.yaml"
+    [ -f "$config" ] || return 0
+
+    if grep -A1 '^agents_api:' "$config" | grep -q 'enabled: false'; then
+        log "enabling agents_api in $config ..."
+        sed -i '/^agents_api:/{n;s/enabled: false/enabled: true/;}' "$config"
+    fi
+}
+
 load_or_create_secret_file() {
     local secret_file="$1"
     local secret
@@ -275,6 +290,7 @@ seed_runtime() {
     mkdir -p "$RUNTIME_DIR/data"
 
     seed_config
+    patch_agents_api_enabled
     seed_file "$RUNTIME_DIR/.env" "$SOURCE_DIR/.env.example"
     seed_file "$RUNTIME_DIR/frontend.env" "$SOURCE_DIR/frontend/.env.example"
     if [ ! -f "$RUNTIME_DIR/extensions_config.json" ]; then
