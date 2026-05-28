@@ -415,6 +415,12 @@ def test_intranet_compose_uses_runtime_env_contract_and_internal_token():
     assert "DEER_FLOW_INTERNAL_AUTH_TOKEN=${DEER_FLOW_INTERNAL_AUTH_TOKEN}" in compose
 
 
+def test_intranet_gateway_startup_does_not_sync_dependencies():
+    compose = COMPOSE_FILE.read_text(encoding="utf-8")
+
+    assert "uv run --no-sync uvicorn app.gateway.app:app" in compose
+
+
 def test_intranet_runbook_points_frontend_env_to_runtime_file():
     guide = GUIDE_FILE.read_text(encoding="utf-8")
 
