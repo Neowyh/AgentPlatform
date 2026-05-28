@@ -361,17 +361,38 @@ compose_cmd() {
     docker compose -p deer-flow -f "$COMPOSE_FILE" --env-file "$ENV_FILE" "$@"
 }
 
+http_ok() {
+    local url="$1"
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsS "$url" >/dev/null 2>&1
+        return $?
+    fi
+
+    if command -v wget >/dev/null 2>&1; then
+        wget -q -O- "$url" >/dev/null 2>&1
+        return $?
+    fi
+
+    if command -v python3 >/dev/null 2>&1; then
+        python3 -c 'import sys, urllib.request; urllib.request.urlopen(sys.argv[1], timeout=5).read()' "$url" >/dev/null 2>&1
+        return $?
+    fi
+
+    if command -v python >/dev/null 2>&1; then
+        python -c 'import sys, urllib.request; urllib.request.urlopen(sys.argv[1], timeout=5).read()' "$url" >/dev/null 2>&1
+        return $?
+    fi
+
+    die "curl, wget, python3, or python is required for HTTP health checks"
+}
+
 wait_for_http() {
     local url="$1"
     local label="$2"
     local attempt
-    if ! command -v curl >/dev/null 2>&1; then
-        log "curl not found; skipping $label health check"
-        return 0
-    fi
 
     for attempt in $(seq 1 30); do
-        if curl -fsS "$url" >/dev/null 2>&1; then
+        if http_ok "$url"; then
             log "$label is healthy: $url"
             return 0
         fi
