@@ -13,6 +13,7 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEPLOY_SCRIPT = REPO_ROOT / "scripts" / "deploy-intranet.sh"
 PACKAGE_SCRIPT = REPO_ROOT / "scripts" / "package-intranet-offline.sh"
+INSTALL_SCRIPT = REPO_ROOT / "scripts" / "install_fault_zeroing_agent.py"
 COMPOSE_FILE = REPO_ROOT / "docker" / "docker-compose.intranet.yaml"
 GUIDE_FILE = REPO_ROOT / "docs" / "deployment" / "禁公网内网离线部署作业指导书.md"
 
@@ -24,7 +25,7 @@ def _write_executable(path: Path, content: str) -> None:
 
 def _fake_docker_bin(tmp_path: Path) -> Path:
     bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
+    bin_dir.mkdir(parents=True)
     _write_executable(
         bin_dir / "docker",
         """#!/usr/bin/env sh
@@ -82,6 +83,7 @@ def _write_source_tree(root: Path, *, include_frontend_env: bool = True) -> None
     (root / "frontend").mkdir(parents=True)
     (root / "docker" / "nginx").mkdir(parents=True)
     (root / "scripts").mkdir()
+    (root / "docs" / "fault-zeroing-agent" / "agent").mkdir(parents=True)
     (root / "skills").mkdir()
     (root / "README.md").write_text("test\n", encoding="utf-8")
     (root / "Makefile").write_text("help:\n\t@true\n", encoding="utf-8")
@@ -110,11 +112,36 @@ sandbox:
         '{"mcpServers":{},"skills":{}}\n',
         encoding="utf-8",
     )
+    (root / "docs" / "fault-zeroing-agent" / "agent" / "config.yaml").write_text(
+        "name: fault-zeroing\n",
+        encoding="utf-8",
+    )
+    (root / "docs" / "fault-zeroing-agent" / "agent" / "SOUL.md").write_text(
+        "# Fault Zeroing\n",
+        encoding="utf-8",
+    )
+    (root / "docs" / "fault-zeroing-agent" / "subagents.yaml").write_text(
+        """subagents:
+  custom_agents:
+    evidence-reader:
+      description: evidence-reader
+    fault-tree-builder:
+      description: fault-tree-builder
+    probability-assessor:
+      description: probability-assessor
+    root-cause-analyst:
+      description: root-cause-analyst
+    report-reviewer:
+      description: report-reviewer
+""",
+        encoding="utf-8",
+    )
+    _write_executable(root / "scripts" / "install_fault_zeroing_agent.py", INSTALL_SCRIPT.read_text(encoding="utf-8"))
 
 
 def _make_bundle(tmp_path: Path, *, version: str = "test", include_frontend_env: bool = True) -> Path:
     bundle_root = tmp_path / "bundle"
-    bundle_root.mkdir()
+    bundle_root.mkdir(parents=True)
     source_root = tmp_path / "source-input"
     _write_source_tree(source_root, include_frontend_env=include_frontend_env)
     with tarfile.open(bundle_root / f"deer-flow-source-{version}.tar.gz", "w:gz") as tar:
@@ -133,6 +160,25 @@ def _run_deploy(bundle_root: Path, *args: str, env: dict[str, str]) -> subproces
         text=True,
         check=False,
     )
+
+
+def test_packaged_deploy_script_defaults_to_its_bundle_directory(tmp_path: Path):
+    bundle_root = _make_bundle(tmp_path)
+    packaged_script = bundle_root / "deploy-intranet.sh"
+    packaged_script.write_text(DEPLOY_SCRIPT.read_text(encoding="utf-8"), encoding="utf-8")
+
+    proc = subprocess.run(
+        ["bash", "./deploy-intranet.sh", "prepare"],
+        cwd=bundle_root,
+        env=_env_with_fake_docker(tmp_path),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert (bundle_root / "runtime" / "config.yaml").is_file()
+    assert (bundle_root / "env.intranet").is_file()
 
 
 def test_up_fails_when_frontend_route_is_unhealthy(tmp_path: Path):
@@ -188,6 +234,50 @@ def test_prepare_seeds_valid_runtime_config_and_stable_auth_files(tmp_path: Path
     assert f"DEER_FLOW_FRONTEND_ENV_FILE={runtime_dir}/frontend.env" in env_text
     assert "BETTER_AUTH_SECRET=" in env_text
     assert "DEER_FLOW_INTERNAL_AUTH_TOKEN=" in env_text
+
+
+def test_prepare_installs_fault_zeroing_agent_to_shared_runtime_dir(tmp_path: Path):
+    bundle_root = _make_bundle(tmp_path)
+
+    proc = _run_deploy(bundle_root, "prepare", env=_env_with_fake_docker(tmp_path))
+
+    assert proc.returncode == 0, proc.stderr
+    runtime_dir = bundle_root / "runtime"
+    agent_dir = runtime_dir / "data" / "agents" / "fault-zeroing"
+    assert (agent_dir / "config.yaml").read_text(encoding="utf-8") == "name: fault-zeroing\n"
+    assert (agent_dir / "SOUL.md").read_text(encoding="utf-8") == "# Fault Zeroing\n"
+    cfg = yaml.safe_load((runtime_dir / "config.yaml").read_text(encoding="utf-8"))
+    assert set(cfg["subagents"]["custom_agents"]) == {
+        "evidence-reader",
+        "fault-tree-builder",
+        "probability-assessor",
+        "root-cause-analyst",
+        "report-reviewer",
+    }
+    assert "Agent directory:" in proc.stdout
+    assert "Registry check passed:" in proc.stdout
+
+
+def test_prepare_skips_fault_zeroing_install_when_disabled(tmp_path: Path):
+    bundle_root = _make_bundle(tmp_path)
+    env = _env_with_fake_docker(tmp_path)
+    env["DEER_FLOW_INSTALL_FAULT_ZEROING"] = "0"
+
+    proc = _run_deploy(bundle_root, "prepare", env=env)
+
+    assert proc.returncode == 0, proc.stderr
+    assert not (bundle_root / "runtime" / "data" / "agents" / "fault-zeroing").exists()
+    cfg = yaml.safe_load((bundle_root / "runtime" / "config.yaml").read_text(encoding="utf-8"))
+    assert "subagents" not in cfg
+
+
+def test_status_logs_and_stop_do_not_install_fault_zeroing_agent(tmp_path: Path):
+    for command in ("status", "logs", "stop"):
+        bundle_root = _make_bundle(tmp_path / command)
+        proc = _run_deploy(bundle_root, command, env=_env_with_fake_docker(tmp_path / f"{command}-env"))
+
+        assert proc.returncode == 0, proc.stderr
+        assert not (bundle_root / "runtime" / "data" / "agents" / "fault-zeroing").exists()
 
 
 def test_prepare_reuses_persisted_auth_secrets_when_env_file_is_recreated(tmp_path: Path):
@@ -251,15 +341,13 @@ def test_prepare_reports_missing_seed_source_with_actionable_error(tmp_path: Pat
 def test_package_script_documents_runtime_contract_and_excludes_local_artifacts():
     script = PACKAGE_SCRIPT.read_text(encoding="utf-8")
 
-    assert "/home/deploy/deer-flow is only an example bundle root" in script
-    assert "DEER_FLOW_BUNDLE_ROOT" in script
-    assert "DEER_FLOW_INTERNAL_AUTH_TOKEN=replace-with-a-fixed-internal-token" in script
     assert "--exclude='frontend/.env'" in script
     assert "--exclude='frontend/test-results'" in script
     assert "--exclude='frontend/playwright-report'" in script
     assert "--exclude='frontend/tsconfig.tsbuildinfo'" in script
     assert "--exclude='backend/.ruff_cache'" in script
-    assert "Use ./deploy-intranet.sh instead of running docker compose directly" in script
+    assert "Use ./deploy-intranet.sh" in script
+    assert "generates env.intranet plus runtime/* files during prepare" in script
 
 
 def test_package_source_archive_includes_runtime_seed_templates(tmp_path: Path):
@@ -291,6 +379,15 @@ def test_package_source_archive_includes_runtime_seed_templates(tmp_path: Path):
     assert "extensions_config.example.json" in names
     assert "frontend/.env.example" in names
     assert "frontend/.env" not in names
+    assert not (output_dir / "docker-compose.intranet.yaml").exists()
+    assert not (output_dir / "env.intranet.example").exists()
+
+    manifest = (output_dir / "MANIFEST.txt").read_text(encoding="utf-8")
+    sha256sums = (output_dir / "SHA256SUMS").read_text(encoding="utf-8")
+    assert "- docker-compose.intranet.yaml" not in manifest
+    assert "env.intranet.example" not in manifest
+    assert "docker-compose.intranet.yaml" not in sha256sums
+    assert "env.intranet.example" not in sha256sums
 
 
 def test_intranet_compose_uses_runtime_env_contract_and_internal_token():
@@ -305,6 +402,12 @@ def test_intranet_runbook_points_frontend_env_to_runtime_file():
     guide = GUIDE_FILE.read_text(encoding="utf-8")
 
     assert "runtime/frontend.env" in guide
+    assert "脚本所在目录" in guide
+    assert "ls -la runtime" in guide
+    assert "ls -l runtime/.env" in guide
+    assert "source/docker/docker-compose.intranet.yaml" in guide
+    assert "docker-compose.intranet.yaml\n" not in guide
+    assert "env.intranet.example" not in guide
     assert "frontend` 启动失败：确认 `frontend/.env` 存在" not in guide
     assert "登录后无法进入主页" in guide
     assert "frontend is healthy: http://127.0.0.1:2026/" in guide

@@ -142,11 +142,8 @@ FRONTEND_IMAGE="deer-flow-frontend:$VERSION"
 NGINX_IMAGE="nginx:alpine"
 SOURCE_TAR="$OUTPUT_DIR/deer-flow-source-$VERSION.tar.gz"
 IMAGES_TAR="$OUTPUT_DIR/deer-flow-images-$VERSION.tar"
-COMPOSE_FILE="$OUTPUT_DIR/docker-compose.intranet.yaml"
-ENV_EXAMPLE="$OUTPUT_DIR/env.intranet.example"
 MANIFEST_FILE="$OUTPUT_DIR/MANIFEST.txt"
 SHA_FILE="$OUTPUT_DIR/SHA256SUMS"
-SOURCE_COMPOSE_FILE="$REPO_ROOT/docker/docker-compose.intranet.yaml"
 GUIDE_FILE="$REPO_ROOT/docs/deployment/禁公网内网离线部署作业指导书.md"
 DEPLOY_SCRIPT_FILE="$REPO_ROOT/scripts/deploy-intranet.sh"
 GUIDE_BASENAME="$(basename "$GUIDE_FILE")"
@@ -225,29 +222,8 @@ tar \
     scripts \
     skills
 
-cp "$SOURCE_COMPOSE_FILE" "$COMPOSE_FILE"
 cp "$GUIDE_FILE" "$OUTPUT_DIR/$GUIDE_BASENAME"
 cp "$DEPLOY_SCRIPT_FILE" "$OUTPUT_DIR/$DEPLOY_BASENAME"
-
-cat > "$ENV_EXAMPLE" <<EOF
-# Copy this file to env.intranet and update the values for your environment.
-# /home/deploy/deer-flow is only an example bundle root. You may replace it with any
-# deployment directory. The deploy script
-# regenerates env.intranet from the actual --bundle-root or DEER_FLOW_BUNDLE_ROOT.
-PORT=2026
-DEER_FLOW_HOME=/home/deploy/deer-flow/runtime/data
-DEER_FLOW_CONFIG_PATH=/home/deploy/deer-flow/runtime/config.yaml
-DEER_FLOW_EXTENSIONS_CONFIG_PATH=/home/deploy/deer-flow/runtime/extensions_config.json
-DEER_FLOW_REPO_ROOT=/home/deploy/deer-flow/source
-DEER_FLOW_ENV_FILE=/home/deploy/deer-flow/runtime/.env
-DEER_FLOW_FRONTEND_ENV_FILE=/home/deploy/deer-flow/runtime/frontend.env
-DEER_FLOW_DOCKER_SOCKET=/var/run/docker.sock
-BETTER_AUTH_SECRET=replace-with-a-fixed-secret
-DEER_FLOW_INTERNAL_AUTH_TOKEN=replace-with-a-fixed-internal-token
-DEER_FLOW_GATEWAY_IMAGE=${GATEWAY_IMAGE}
-DEER_FLOW_FRONTEND_IMAGE=${FRONTEND_IMAGE}
-NGINX_IMAGE=${NGINX_IMAGE}
-EOF
 
 cat > "$MANIFEST_FILE" <<EOF
 DeerFlow offline bundle
@@ -258,24 +234,21 @@ Created at: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
 Files:
 - $(basename "$IMAGES_TAR")
 - $(basename "$SOURCE_TAR")
-- $(basename "$COMPOSE_FILE")
-- $(basename "$ENV_EXAMPLE")
 - $GUIDE_BASENAME
 - $DEPLOY_BASENAME
 - $(basename "$MANIFEST_FILE")
 - $(basename "$SHA_FILE")
 
 Usage:
-- Use ./deploy-intranet.sh instead of running docker compose directly from this bundle root.
+- Use ./deploy-intranet.sh. It extracts source/docker/docker-compose.intranet.yaml
+  and generates env.intranet plus runtime/* files during prepare.
 EOF
 
-(cd "$OUTPUT_DIR" && sha256sum "$(basename "$IMAGES_TAR")" "$(basename "$SOURCE_TAR")" "$(basename "$COMPOSE_FILE")" "$(basename "$ENV_EXAMPLE")" "$GUIDE_BASENAME" "$DEPLOY_BASENAME" "$(basename "$MANIFEST_FILE")" > "$(basename "$SHA_FILE")")
+(cd "$OUTPUT_DIR" && sha256sum "$(basename "$IMAGES_TAR")" "$(basename "$SOURCE_TAR")" "$GUIDE_BASENAME" "$DEPLOY_BASENAME" "$(basename "$MANIFEST_FILE")" > "$(basename "$SHA_FILE")")
 
 log "done"
 log "images tar: $IMAGES_TAR"
 log "source tar:  $SOURCE_TAR"
-log "compose:     $COMPOSE_FILE"
-log "env sample:  $ENV_EXAMPLE"
 log "guide:       $OUTPUT_DIR/$GUIDE_BASENAME"
 log "deploy:      $OUTPUT_DIR/$DEPLOY_BASENAME"
 log "sha256:      $SHA_FILE"

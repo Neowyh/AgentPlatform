@@ -24,6 +24,7 @@ Options:
 
 Environment:
   DEER_FLOW_BUNDLE_ROOT, DEER_FLOW_VERSION, DEER_FLOW_NO_LOAD
+  DEER_FLOW_INSTALL_FAULT_ZEROING=0 skips installing the bundled shared fault-zeroing agent
 EOF
 }
 
@@ -37,7 +38,11 @@ log() {
 }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DEFAULT_BUNDLE_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+if [ "$(basename "$SCRIPT_DIR")" = "scripts" ]; then
+    DEFAULT_BUNDLE_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+else
+    DEFAULT_BUNDLE_ROOT="$SCRIPT_DIR"
+fi
 BUNDLE_ROOT="${DEER_FLOW_BUNDLE_ROOT:-$DEFAULT_BUNDLE_ROOT}"
 VERSION="${DEER_FLOW_VERSION:-}"
 NO_LOAD="${DEER_FLOW_NO_LOAD:-0}"
@@ -296,6 +301,19 @@ EOF
     append_env_if_missing "DEER_FLOW_INTERNAL_AUTH_TOKEN" "$DEER_FLOW_INTERNAL_AUTH_TOKEN_VALUE"
 }
 
+install_fault_zeroing_agent() {
+    if [ "${DEER_FLOW_INSTALL_FAULT_ZEROING:-1}" = "0" ]; then
+        log "skipping fault-zeroing agent install"
+        return 0
+    fi
+
+    require_file "$SOURCE_DIR/scripts/install_fault_zeroing_agent.py"
+    log "installing bundled fault-zeroing agent..."
+    DEER_FLOW_HOME="$RUNTIME_DIR/data" \
+        DEER_FLOW_CONFIG_PATH="$RUNTIME_DIR/config.yaml" \
+        python3 "$SOURCE_DIR/scripts/install_fault_zeroing_agent.py"
+}
+
 load_images() {
     if [ "$NO_LOAD" -eq 1 ]; then
         log "skipping docker load"
@@ -339,14 +357,18 @@ verify_services() {
 }
 
 prepare_bundle() {
+    local install_fault_zeroing="${1:-1}"
     extract_source
     seed_runtime
+    if [ "$install_fault_zeroing" = "1" ]; then
+        install_fault_zeroing_agent
+    fi
     validate_runtime
 }
 
 case "$COMMAND" in
     prepare)
-        prepare_bundle
+        prepare_bundle 1
         log "prepared source: $SOURCE_DIR"
         log "prepared runtime: $RUNTIME_DIR"
         log "env file: $ENV_FILE"
@@ -355,21 +377,21 @@ case "$COMMAND" in
         load_images
         ;;
     up|start)
-        prepare_bundle
+        prepare_bundle 1
         load_images
         log "starting services..."
         compose_cmd up -d --remove-orphans
         verify_services
         ;;
     restart)
-        prepare_bundle
+        prepare_bundle 1
         load_images
         log "restarting services..."
         compose_cmd up -d --remove-orphans --force-recreate
         verify_services
         ;;
     stop|down)
-        prepare_bundle
+        prepare_bundle 0
         if [ -f "$COMPOSE_FILE" ]; then
             compose_cmd down
         else
@@ -377,7 +399,7 @@ case "$COMMAND" in
         fi
         ;;
     status)
-        prepare_bundle
+        prepare_bundle 0
         if [ -f "$COMPOSE_FILE" ]; then
             compose_cmd ps
         else
@@ -385,7 +407,7 @@ case "$COMMAND" in
         fi
         ;;
     logs)
-        prepare_bundle
+        prepare_bundle 0
         if [ -f "$COMPOSE_FILE" ]; then
             if [ -n "${LOG_SERVICE:-}" ]; then
                 compose_cmd logs -f "$LOG_SERVICE"

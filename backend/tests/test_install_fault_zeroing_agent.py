@@ -1,3 +1,4 @@
+import ast
 import importlib.util
 import os
 import shutil
@@ -42,7 +43,86 @@ def make_subagents_file(path: Path) -> dict:
     return data
 
 
-def test_install_fault_zeroing_agent_copies_config_and_soul(tmp_path: Path) -> None:
+def test_installer_uses_only_standard_library_imports_for_offline_deploy_hosts() -> None:
+    tree = ast.parse(SCRIPT_PATH.read_text(encoding="utf-8"))
+    imported_modules = {alias.name.split(".", 1)[0] for node in ast.walk(tree) if isinstance(node, ast.Import) for alias in node.names}
+    imported_modules.update(node.module.split(".", 1)[0] for node in ast.walk(tree) if isinstance(node, ast.ImportFrom) and node.module)
+
+    assert "yaml" not in imported_modules
+    assert "deerflow" not in imported_modules
+
+
+def test_install_fault_zeroing_agent_defaults_to_shared_agent_dir(tmp_path: Path) -> None:
+    source_dir = tmp_path / "source"
+    base_dir = tmp_path / "runtime"
+    make_agent_source(source_dir)
+
+    target_dir, status = install_fault_zeroing_agent(
+        source_dir=source_dir,
+        base_dir=base_dir,
+    )
+
+    assert target_dir == base_dir / "agents" / "fault-zeroing"
+    assert status == "copied"
+    assert (target_dir / "config.yaml").read_text(encoding="utf-8") == "name: fault-zeroing\n"
+    assert (target_dir / "SOUL.md").read_text(encoding="utf-8") == "# Soul\n"
+
+
+def test_install_fault_zeroing_agent_skips_when_files_match(tmp_path: Path) -> None:
+    source_dir = tmp_path / "source"
+    base_dir = tmp_path / "runtime"
+    target_dir = base_dir / "agents" / "fault-zeroing"
+    make_agent_source(source_dir)
+    target_dir.mkdir(parents=True)
+    shutil.copy2(source_dir / "config.yaml", target_dir / "config.yaml")
+    shutil.copy2(source_dir / "SOUL.md", target_dir / "SOUL.md")
+
+    installed_dir, status = install_fault_zeroing_agent(
+        source_dir=source_dir,
+        base_dir=base_dir,
+    )
+
+    assert installed_dir == target_dir
+    assert status == "skipped"
+
+
+def test_install_fault_zeroing_agent_refuses_to_overwrite_different_files(tmp_path: Path) -> None:
+    source_dir = tmp_path / "source"
+    base_dir = tmp_path / "runtime"
+    target_dir = base_dir / "agents" / "fault-zeroing"
+    make_agent_source(source_dir, soul="# New Soul\n")
+    target_dir.mkdir(parents=True)
+    shutil.copy2(source_dir / "config.yaml", target_dir / "config.yaml")
+    existing_soul = target_dir / "SOUL.md"
+    existing_soul.write_text("# Existing Soul\n", encoding="utf-8")
+
+    with pytest.raises(FileExistsError, match="local customizations"):
+        install_fault_zeroing_agent(
+            source_dir=source_dir,
+            base_dir=base_dir,
+        )
+
+    assert existing_soul.read_text(encoding="utf-8") == "# Existing Soul\n"
+
+
+def test_install_fault_zeroing_agent_refuses_partial_existing_directory(tmp_path: Path) -> None:
+    source_dir = tmp_path / "source"
+    base_dir = tmp_path / "runtime"
+    target_dir = base_dir / "agents" / "fault-zeroing"
+    make_agent_source(source_dir)
+    target_dir.mkdir(parents=True)
+    shutil.copy2(source_dir / "config.yaml", target_dir / "config.yaml")
+
+    with pytest.raises(FileExistsError, match="partially installed"):
+        install_fault_zeroing_agent(
+            source_dir=source_dir,
+            base_dir=base_dir,
+        )
+
+    assert not (target_dir / "SOUL.md").exists()
+
+
+def test_install_fault_zeroing_agent_keeps_user_id_compatibility(tmp_path: Path) -> None:
     source_dir = tmp_path / "source"
     base_dir = tmp_path / "runtime"
     make_agent_source(source_dir)
@@ -55,65 +135,6 @@ def test_install_fault_zeroing_agent_copies_config_and_soul(tmp_path: Path) -> N
 
     assert target_dir == base_dir / "users" / "user-123" / "agents" / "fault-zeroing"
     assert status == "copied"
-    assert (target_dir / "config.yaml").read_text(encoding="utf-8") == "name: fault-zeroing\n"
-    assert (target_dir / "SOUL.md").read_text(encoding="utf-8") == "# Soul\n"
-
-
-def test_install_fault_zeroing_agent_skips_when_files_match(tmp_path: Path) -> None:
-    source_dir = tmp_path / "source"
-    base_dir = tmp_path / "runtime"
-    target_dir = base_dir / "users" / "user-123" / "agents" / "fault-zeroing"
-    make_agent_source(source_dir)
-    target_dir.mkdir(parents=True)
-    shutil.copy2(source_dir / "config.yaml", target_dir / "config.yaml")
-    shutil.copy2(source_dir / "SOUL.md", target_dir / "SOUL.md")
-
-    installed_dir, status = install_fault_zeroing_agent(
-        user_id="user-123",
-        source_dir=source_dir,
-        base_dir=base_dir,
-    )
-
-    assert installed_dir == target_dir
-    assert status == "skipped"
-
-
-def test_install_fault_zeroing_agent_refuses_to_overwrite_different_files(tmp_path: Path) -> None:
-    source_dir = tmp_path / "source"
-    base_dir = tmp_path / "runtime"
-    target_dir = base_dir / "users" / "user-123" / "agents" / "fault-zeroing"
-    make_agent_source(source_dir, soul="# New Soul\n")
-    target_dir.mkdir(parents=True)
-    shutil.copy2(source_dir / "config.yaml", target_dir / "config.yaml")
-    existing_soul = target_dir / "SOUL.md"
-    existing_soul.write_text("# Existing Soul\n", encoding="utf-8")
-
-    with pytest.raises(FileExistsError, match="local customizations"):
-        install_fault_zeroing_agent(
-            user_id="user-123",
-            source_dir=source_dir,
-            base_dir=base_dir,
-        )
-
-    assert existing_soul.read_text(encoding="utf-8") == "# Existing Soul\n"
-
-
-def test_install_fault_zeroing_agent_refuses_partial_existing_directory(tmp_path: Path) -> None:
-    source_dir = tmp_path / "source"
-    base_dir = tmp_path / "runtime"
-    target_dir = base_dir / "users" / "user-123" / "agents" / "fault-zeroing"
-    make_agent_source(source_dir)
-    target_dir.mkdir(parents=True)
-    shutil.copy2(source_dir / "config.yaml", target_dir / "config.yaml")
-
-    with pytest.raises(FileExistsError, match="partially installed"):
-        install_fault_zeroing_agent(
-            user_id="user-123",
-            source_dir=source_dir,
-            base_dir=base_dir,
-        )
-
-    assert not (target_dir / "SOUL.md").exists()
 
 
 def test_default_base_dir_uses_deer_flow_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -165,6 +186,31 @@ def test_merge_subagents_skips_existing_matching_subagent(tmp_path: Path) -> Non
 
     assert summary["skipped"] == [existing_name]
     assert summary["added"] == REQUIRED_SUBAGENTS[1:]
+
+
+def test_merge_subagents_inserts_inside_existing_custom_agents_block(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.yaml"
+    subagents_file = tmp_path / "subagents.yaml"
+    config_path.write_text(
+        """subagents:
+  custom_agents:
+    existing-agent:
+      description: keep me
+  max_concurrency: 3
+safety_finish_reason:
+  enabled: true
+""",
+        encoding="utf-8",
+    )
+    make_subagents_file(subagents_file)
+
+    install_script.merge_fault_zeroing_subagents(config_path, subagents_file)
+
+    merged = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    assert "existing-agent" in merged["subagents"]["custom_agents"]
+    assert set(REQUIRED_SUBAGENTS).issubset(merged["subagents"]["custom_agents"])
+    assert merged["subagents"]["max_concurrency"] == 3
+    assert merged["safety_finish_reason"]["enabled"] is True
 
 
 def test_merge_subagents_refuses_conflict_without_partial_write(tmp_path: Path) -> None:
