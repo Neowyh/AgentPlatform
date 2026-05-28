@@ -130,6 +130,7 @@ export interface Translations {
     delete: string;
     deleteConfirm: string;
     deleteSuccess: string;
+    template: string;
     newChat: string;
     createPageTitle: string;
     createPageSubtitle: string;

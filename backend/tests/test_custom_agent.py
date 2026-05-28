@@ -565,6 +565,78 @@ class TestAgentsAPI:
         response = agent_client.post("/api/agents", json={"name": "legacy-agent", "soul": "x"})
         assert response.status_code == 409
 
+    def test_shared_agent_appears_read_only(self, agent_client, tmp_path):
+        """A shared-only agent should appear in the list with read_only=True."""
+        shared_dir = tmp_path / "agents" / "shared-bot"
+        shared_dir.mkdir(parents=True)
+        (shared_dir / "config.yaml").write_text("name: shared-bot\ndescription: Shared bot\n", encoding="utf-8")
+        (shared_dir / "SOUL.md").write_text("shared soul", encoding="utf-8")
+
+        response = agent_client.get("/api/agents")
+        assert response.status_code == 200
+        agents = response.json()["agents"]
+        shared = next(a for a in agents if a["name"] == "shared-bot")
+        assert shared["read_only"] is True
+
+    def test_shared_agent_get_returns_read_only(self, agent_client, tmp_path):
+        """GET /api/agents/{name} for a shared-only agent returns read_only=True."""
+        shared_dir = tmp_path / "agents" / "shared-bot"
+        shared_dir.mkdir(parents=True)
+        (shared_dir / "config.yaml").write_text("name: shared-bot\n", encoding="utf-8")
+        (shared_dir / "SOUL.md").write_text("shared soul", encoding="utf-8")
+
+        response = agent_client.get("/api/agents/shared-bot")
+        assert response.status_code == 200
+        assert response.json()["read_only"] is True
+
+    def test_per_user_agent_not_read_only(self, agent_client):
+        """An agent created via the API should return read_only=False."""
+        agent_client.post("/api/agents", json={"name": "my-agent", "soul": "test"})
+
+        response = agent_client.get("/api/agents/my-agent")
+        assert response.status_code == 200
+        assert response.json()["read_only"] is False
+
+    def test_per_user_shadows_shared_not_read_only(self, agent_client, tmp_path):
+        """When a per-user agent shadows a shared agent, read_only should be False."""
+        shared_dir = tmp_path / "agents" / "shadowed"
+        shared_dir.mkdir(parents=True)
+        (shared_dir / "config.yaml").write_text("name: shadowed\n", encoding="utf-8")
+        (shared_dir / "SOUL.md").write_text("shared soul", encoding="utf-8")
+
+        # Create per-user copy directly on disk (POST would reject the name collision)
+        user_dir = tmp_path / "users" / "test-user-autouse" / "agents" / "shadowed"
+        user_dir.mkdir(parents=True)
+        (user_dir / "config.yaml").write_text("name: shadowed\n", encoding="utf-8")
+        (user_dir / "SOUL.md").write_text("user soul", encoding="utf-8")
+
+        response = agent_client.get("/api/agents/shadowed")
+        assert response.status_code == 200
+        assert response.json()["read_only"] is False
+        assert response.json()["soul"] == "user soul"
+
+    def test_update_shared_agent_returns_409(self, agent_client, tmp_path):
+        """PUT on a shared-only agent should return 409 with read-only message."""
+        shared_dir = tmp_path / "agents" / "shared-bot"
+        shared_dir.mkdir(parents=True)
+        (shared_dir / "config.yaml").write_text("name: shared-bot\n", encoding="utf-8")
+        (shared_dir / "SOUL.md").write_text("shared soul", encoding="utf-8")
+
+        response = agent_client.put("/api/agents/shared-bot", json={"description": "new"})
+        assert response.status_code == 409
+        assert "shared read-only template" in response.json()["detail"]
+
+    def test_delete_shared_agent_returns_409(self, agent_client, tmp_path):
+        """DELETE on a shared-only agent should return 409 with read-only message."""
+        shared_dir = tmp_path / "agents" / "shared-bot"
+        shared_dir.mkdir(parents=True)
+        (shared_dir / "config.yaml").write_text("name: shared-bot\n", encoding="utf-8")
+        (shared_dir / "SOUL.md").write_text("shared soul", encoding="utf-8")
+
+        response = agent_client.delete("/api/agents/shared-bot")
+        assert response.status_code == 409
+        assert "shared read-only template" in response.json()["detail"]
+
 
 # ===========================================================================
 # 9. Gateway API – User Profile endpoints

@@ -204,13 +204,22 @@ load_or_create_secret_file() {
 }
 
 validate_runtime() {
-    require_file "$RUNTIME_DIR/config.yaml"
-    require_file "$RUNTIME_DIR/.env"
-    require_file "$RUNTIME_DIR/frontend.env"
-    require_file "$RUNTIME_DIR/extensions_config.json"
     require_file "$ENV_FILE"
 
-    awk -v path="$RUNTIME_DIR/config.yaml" '
+    # shellcheck disable=SC1090
+    . "$ENV_FILE"
+
+    local config_path="${DEER_FLOW_CONFIG_PATH:-$RUNTIME_DIR/config.yaml}"
+    local backend_env_path="${DEER_FLOW_ENV_FILE:-$RUNTIME_DIR/.env}"
+    local frontend_env_path="${DEER_FLOW_FRONTEND_ENV_FILE:-$RUNTIME_DIR/frontend.env}"
+    local extensions_config_path="${DEER_FLOW_EXTENSIONS_CONFIG_PATH:-$RUNTIME_DIR/extensions_config.json}"
+
+    require_file "$config_path"
+    require_file "$backend_env_path"
+    require_file "$frontend_env_path"
+    require_file "$extensions_config_path"
+
+    awk -v path="$config_path" '
         function fail() {
             print path ": models must be a list" > "/dev/stderr"
             exit 1
@@ -244,7 +253,7 @@ validate_runtime() {
                 fail()
             }
         }
-    ' "$RUNTIME_DIR/config.yaml"
+    ' "$config_path"
 }
 
 append_env_if_missing() {
@@ -302,15 +311,23 @@ EOF
 }
 
 install_fault_zeroing_agent() {
+    require_file "$SOURCE_DIR/scripts/install_fault_zeroing_agent.py"
+    require_file "$ENV_FILE"
+    # shellcheck disable=SC1090
+    . "$ENV_FILE"
+
     if [ "${DEER_FLOW_INSTALL_FAULT_ZEROING:-1}" = "0" ]; then
         log "skipping fault-zeroing agent install"
         return 0
     fi
 
-    require_file "$SOURCE_DIR/scripts/install_fault_zeroing_agent.py"
+    local runtime_home="${DEER_FLOW_HOME:-$RUNTIME_DIR/data}"
+    local config_path="${DEER_FLOW_CONFIG_PATH:-$RUNTIME_DIR/config.yaml}"
+    require_file "$config_path"
+
     log "installing bundled fault-zeroing agent..."
-    DEER_FLOW_HOME="$RUNTIME_DIR/data" \
-        DEER_FLOW_CONFIG_PATH="$RUNTIME_DIR/config.yaml" \
+    DEER_FLOW_HOME="$runtime_home" \
+        DEER_FLOW_CONFIG_PATH="$config_path" \
         python3 "$SOURCE_DIR/scripts/install_fault_zeroing_agent.py"
 }
 
@@ -360,10 +377,10 @@ prepare_bundle() {
     local install_fault_zeroing="${1:-1}"
     extract_source
     seed_runtime
+    validate_runtime
     if [ "$install_fault_zeroing" = "1" ]; then
         install_fault_zeroing_agent
     fi
-    validate_runtime
 }
 
 case "$COMMAND" in

@@ -258,6 +258,23 @@ def test_prepare_installs_fault_zeroing_agent_to_shared_runtime_dir(tmp_path: Pa
     assert "Registry check passed:" in proc.stdout
 
 
+def test_prepare_does_not_install_fault_zeroing_agent_to_user_dirs(tmp_path: Path):
+    """Shared-only install: agent should NOT be copied to per-user directories."""
+    bundle_root = _make_bundle(tmp_path)
+    user_dir = bundle_root / "runtime" / "data" / "users" / "alice"
+    user_dir.mkdir(parents=True)
+
+    proc = _run_deploy(bundle_root, "prepare", env=_env_with_fake_docker(tmp_path))
+
+    assert proc.returncode == 0, proc.stderr
+    runtime_dir = bundle_root / "runtime"
+    # Shared agent should exist
+    assert (runtime_dir / "data" / "agents" / "fault-zeroing" / "config.yaml").is_file()
+    # Per-user agent should NOT exist
+    assert not (user_dir / "agents" / "fault-zeroing" / "config.yaml").exists()
+    assert "installing bundled fault-zeroing agent for existing user" not in proc.stdout
+
+
 def test_prepare_skips_fault_zeroing_install_when_disabled(tmp_path: Path):
     bundle_root = _make_bundle(tmp_path)
     env = _env_with_fake_docker(tmp_path)
@@ -403,8 +420,8 @@ def test_intranet_runbook_points_frontend_env_to_runtime_file():
 
     assert "runtime/frontend.env" in guide
     assert "脚本所在目录" in guide
-    assert "ls -la runtime" in guide
-    assert "ls -l runtime/.env" in guide
+    assert "find runtime -maxdepth 4 -type f | sort" in guide
+    assert "ls runtime/data" not in guide
     assert "source/docker/docker-compose.intranet.yaml" in guide
     assert "docker-compose.intranet.yaml\n" not in guide
     assert "env.intranet.example" not in guide

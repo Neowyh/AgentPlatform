@@ -28,6 +28,7 @@ class AgentResponse(BaseModel):
     tool_groups: list[str] | None = Field(default=None, description="Optional tool group whitelist")
     skills: list[str] | None = Field(default=None, description="Optional skill whitelist (None=all, []=none)")
     soul: str | None = Field(default=None, description="SOUL.md content")
+    read_only: bool = Field(default=False, description="Whether this agent is a shared read-only template")
 
 
 class AgentsListResponse(BaseModel):
@@ -87,7 +88,13 @@ def _require_agents_api_enabled() -> None:
         )
 
 
-def _agent_config_to_response(agent_cfg: AgentConfig, include_soul: bool = False, *, user_id: str | None = None) -> AgentResponse:
+def _is_shared_only(agent_name: str, user_id: str) -> bool:
+    """Return True if the agent exists only in the shared read-only template directory."""
+    paths = get_paths()
+    return paths.agent_dir(agent_name).exists() and not paths.user_agent_dir(user_id, agent_name).exists()
+
+
+def _agent_config_to_response(agent_cfg: AgentConfig, include_soul: bool = False, *, user_id: str | None = None, read_only: bool = False) -> AgentResponse:
     """Convert AgentConfig to AgentResponse."""
     soul: str | None = None
     if include_soul:
@@ -100,6 +107,7 @@ def _agent_config_to_response(agent_cfg: AgentConfig, include_soul: bool = False
         tool_groups=agent_cfg.tool_groups,
         skills=agent_cfg.skills,
         soul=soul,
+        read_only=read_only,
     )
 
 
@@ -120,7 +128,7 @@ async def list_agents() -> AgentsListResponse:
     user_id = get_effective_user_id()
     try:
         agents = list_custom_agents(user_id=user_id)
-        return AgentsListResponse(agents=[_agent_config_to_response(a, include_soul=True, user_id=user_id) for a in agents])
+        return AgentsListResponse(agents=[_agent_config_to_response(a, include_soul=True, user_id=user_id, read_only=_is_shared_only(a.name, user_id)) for a in agents])
     except Exception as e:
         logger.error(f"Failed to list agents: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to list agents: {str(e)}")
@@ -180,7 +188,7 @@ async def get_agent(name: str) -> AgentResponse:
 
     try:
         agent_cfg = load_agent_config(name, user_id=user_id)
-        return _agent_config_to_response(agent_cfg, include_soul=True, user_id=user_id)
+        return _agent_config_to_response(agent_cfg, include_soul=True, user_id=user_id, read_only=_is_shared_only(name, user_id))
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"Agent '{name}' not found")
     except Exception as e:
@@ -244,7 +252,7 @@ async def create_agent_endpoint(request: AgentCreateRequest) -> AgentResponse:
         logger.info(f"Created agent '{normalized_name}' at {agent_dir}")
 
         agent_cfg = load_agent_config(normalized_name, user_id=user_id)
-        return _agent_config_to_response(agent_cfg, include_soul=True, user_id=user_id)
+        return _agent_config_to_response(agent_cfg, include_soul=True, user_id=user_id, read_only=False)
 
     except HTTPException:
         raise
@@ -290,7 +298,7 @@ async def update_agent(name: str, request: AgentUpdateRequest) -> AgentResponse:
     if not agent_dir.exists() and paths.agent_dir(name).exists():
         raise HTTPException(
             status_code=409,
-            detail=(f"Agent '{name}' only exists in the legacy shared layout and is not scoped to a user. Run scripts/migrate_user_isolation.py to move legacy agents into the per-user layout before updating."),
+            detail=f"Agent '{name}' is a shared read-only template and cannot be modified.",
         )
 
     try:
@@ -333,7 +341,7 @@ async def update_agent(name: str, request: AgentUpdateRequest) -> AgentResponse:
         logger.info(f"Updated agent '{name}'")
 
         refreshed_cfg = load_agent_config(name, user_id=user_id)
-        return _agent_config_to_response(refreshed_cfg, include_soul=True, user_id=user_id)
+        return _agent_config_to_response(refreshed_cfg, include_soul=True, user_id=user_id, read_only=False)
 
     except HTTPException:
         raise
@@ -434,7 +442,7 @@ async def delete_agent(name: str) -> None:
         if paths.agent_dir(name).exists():
             raise HTTPException(
                 status_code=409,
-                detail=(f"Agent '{name}' only exists in the legacy shared layout and is not scoped to a user. Run scripts/migrate_user_isolation.py to move legacy agents into the per-user layout before deleting."),
+                detail=f"Agent '{name}' is a shared read-only template and cannot be deleted.",
             )
         raise HTTPException(status_code=404, detail=f"Agent '{name}' not found")
 
