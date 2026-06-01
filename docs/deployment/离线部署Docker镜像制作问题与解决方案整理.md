@@ -352,6 +352,58 @@ agents_api:
 
 在 `runtime/config.yaml` 中将 `agents_api.enabled` 设为 `true`。这应由 `deploy-intranet.sh prepare` 自动修复，人工排查时也要把该字段作为归零智能体可见性的必查项。
 
+### Agent 记忆写入用户 `agents/` 目录导致共享智能体被遮蔽
+
+#### 问题现象
+
+共享归零智能体已经安装在运行态共享目录，例如 `runtime/data/agents/fault-zeroing/config.yaml` 和 `SOUL.md` 都存在；但某个用户使用 `fault-zeroing` 后，系统可能在该用户目录下生成：
+
+```text
+runtime/data/users/<user_id>/agents/fault-zeroing/memory.json
+```
+
+后续再加载 `fault-zeroing` 时，自定义智能体解析逻辑会优先看到用户级 `users/<user_id>/agents/fault-zeroing/` 目录。这个目录里只有 `memory.json`，没有 `config.yaml` 和 `SOUL.md`，于是共享智能体可能表现为找不到配置、无法加载，或看起来被某个用户目录下的残缺同名目录遮蔽。
+
+#### 问题根因
+
+早期按 Agent 记忆和自定义 Agent 配置共用了同一个目录命名空间：`agents/`。自定义 Agent 配置资产使用：
+
+```text
+{base_dir}/users/{user_id}/agents/{agent_name}/config.yaml
+{base_dir}/users/{user_id}/agents/{agent_name}/SOUL.md
+```
+
+但按 Agent 记忆也写到：
+
+```text
+{base_dir}/users/{user_id}/agents/{agent_name}/memory.json
+```
+
+这会让一次普通 memory 保存动作创建出用户级 `agents/<agent_name>/` 目录。对于 `fault-zeroing` 这类共享智能体，用户本来没有自己的同名自定义 Agent 配置；但 memory 写入创建了同名目录后，配置加载器会把它当成用户级 Agent 目录优先处理，从而遮蔽共享目录 `agents/fault-zeroing/`。
+
+直白地说，记忆文件把“配置目录”占住了；目录名一样，系统先看到用户目录，就不再回退到共享智能体。
+
+#### 解决方案
+
+将按 Agent 记忆从配置命名空间中拆出来，固定写入新的 `agent-memory/` 目录：
+
+```text
+{base_dir}/users/{user_id}/agent-memory/{agent_name}/memory.json
+{base_dir}/agent-memory/{agent_name}/memory.json
+```
+
+`agents/` 只保存 Agent 配置资产，例如 `config.yaml` 和 `SOUL.md`；`agent-memory/` 只保存 Agent 记忆状态。为兼容旧部署，读取 memory 时先读新路径，如果新路径不存在，再回退读取旧的 `agents/<agent_name>/memory.json`；但保存时始终写入新路径，不再创建 `users/<user_id>/agents/<agent_name>/`。
+
+现场排查同类问题时，可以检查用户目录下是否存在只有 `memory.json` 的残缺目录：
+
+```bash
+find runtime/data/users -path '*/agents/fault-zeroing' -type d -print
+find runtime/data/users -path '*/agents/fault-zeroing/config.yaml' -type f -print
+find runtime/data/users -path '*/agent-memory/fault-zeroing/memory.json' -type f -print
+```
+
+修复后的预期状态是：新产生的记忆文件出现在 `users/<user_id>/agent-memory/fault-zeroing/memory.json`；用户没有自定义同名 Agent 时，不应再自动生成 `users/<user_id>/agents/fault-zeroing/`。旧路径下已经存在的 memory 文件不需要运行时自动迁移或删除，系统仍会在新路径不存在时兼容读取。
+
 ### 多 worker 与内存流状态导致 HTTP 409
 
 #### 问题现象
