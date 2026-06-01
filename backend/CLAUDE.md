@@ -410,8 +410,8 @@ Bridges external messaging platforms (Feishu, Slack, Telegram, DingTalk) to the 
 
 **Per-User Isolation**:
 - Memory is stored per-user at `{base_dir}/users/{user_id}/memory.json`
-- Per-agent per-user memory at `{base_dir}/users/{user_id}/agents/{agent_name}/memory.json`
-- Custom agent definitions (`SOUL.md` + `config.yaml`) are also per-user at `{base_dir}/users/{user_id}/agents/{agent_name}/`. The legacy shared layout `{base_dir}/agents/{agent_name}/` remains read-only fallback for unmigrated installations
+- Per-agent per-user memory at `{base_dir}/users/{user_id}/agent-memory/{agent_name}/memory.json`
+- Custom agent definitions (`SOUL.md` + `config.yaml`) are per-user at `{base_dir}/users/{user_id}/agents/{agent_name}/`, separate from memory state under `agent-memory/`. The legacy shared layout `{base_dir}/agents/{agent_name}/` remains read-only fallback for unmigrated installations
 - `user_id` is resolved via `get_effective_user_id()` from `deerflow.runtime.user_context`
 - In no-auth mode, `user_id` defaults to `"default"` (constant `DEFAULT_USER_ID`)
 - Absolute `storage_path` in config opts out of per-user isolation

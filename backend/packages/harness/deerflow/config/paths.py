@@ -70,7 +70,9 @@ class Paths:
         ├── agents/
         │   └── {agent_name}/
         │       ├── config.yaml
-        │       ├── SOUL.md  <-- agent personality/identity (injected alongside lead prompt)
+        │       └── SOUL.md  <-- agent personality/identity (injected alongside lead prompt)
+        ├── agent-memory/
+        │   └── {agent_name}/
         │       └── memory.json
         └── threads/
             └── {thread_id}/
@@ -145,6 +147,10 @@ class Paths:
         return self.agents_dir / name.lower()
 
     def agent_memory_file(self, name: str) -> Path:
+        """Per-agent memory file: `{base_dir}/agent-memory/{name}/memory.json`."""
+        return self.base_dir / "agent-memory" / name.lower() / "memory.json"
+
+    def legacy_agent_memory_file(self, name: str) -> Path:
         """Legacy per-agent memory file: `{base_dir}/agents/{name}/memory.json`."""
         return self.agent_dir(name) / "memory.json"
 
@@ -165,7 +171,11 @@ class Paths:
         return self.user_agents_dir(user_id) / agent_name.lower()
 
     def user_agent_memory_file(self, user_id: str, agent_name: str) -> Path:
-        """Per-user per-agent memory: `{base_dir}/users/{user_id}/agents/{name}/memory.json`."""
+        """Per-user per-agent memory: `{base_dir}/users/{user_id}/agent-memory/{name}/memory.json`."""
+        return self.user_dir(user_id) / "agent-memory" / agent_name.lower() / "memory.json"
+
+    def legacy_user_agent_memory_file(self, user_id: str, agent_name: str) -> Path:
+        """Legacy per-user per-agent memory: `{base_dir}/users/{user_id}/agents/{name}/memory.json`."""
         return self.user_agent_dir(user_id, agent_name) / "memory.json"
 
     def thread_dir(self, thread_id: str, *, user_id: str | None = None) -> Path:

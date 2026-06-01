@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+import yaml
 
 from deerflow.agents.memory.storage import FileMemoryStorage, create_empty_memory
 
@@ -101,7 +102,7 @@ class TestUserIsolatedStorage:
                 assert s.load(user_id="alice")["user"]["workContext"]["summary"] == "alice"
 
     def test_user_agent_memory_file_location(self, base_dir: Path):
-        """Per-user per-agent memory uses the user_agent_memory_file path."""
+        """Per-user per-agent memory writes to agent-memory, not agents."""
         from deerflow.config.paths import Paths
 
         paths = Paths(base_dir)
@@ -110,8 +111,78 @@ class TestUserIsolatedStorage:
             memory = create_empty_memory()
             memory["user"]["workContext"]["summary"] = "agent scoped"
             s.save(memory, "test-agent", user_id="alice")
-            expected_path = base_dir / "users" / "alice" / "agents" / "test-agent" / "memory.json"
+            expected_path = base_dir / "users" / "alice" / "agent-memory" / "test-agent" / "memory.json"
             assert expected_path.exists()
+            assert not (base_dir / "users" / "alice" / "agents" / "test-agent").exists()
+
+    def test_user_agent_memory_reads_legacy_file_when_new_file_absent(self, base_dir: Path):
+        """Existing memory under the old agents namespace remains readable."""
+        from deerflow.config.paths import Paths
+
+        paths = Paths(base_dir)
+        legacy_file = base_dir / "users" / "alice" / "agents" / "test-agent" / "memory.json"
+        legacy_file.parent.mkdir(parents=True)
+        legacy_memory = create_empty_memory()
+        legacy_memory["user"]["workContext"]["summary"] = "legacy agent memory"
+
+        import json
+
+        legacy_file.write_text(json.dumps(legacy_memory), encoding="utf-8")
+
+        with patch("deerflow.agents.memory.storage.get_paths", return_value=paths):
+            s = FileMemoryStorage()
+            loaded = s.load("test-agent", user_id="alice")
+
+        assert loaded["user"]["workContext"]["summary"] == "legacy agent memory"
+
+    def test_user_agent_memory_prefers_new_file_over_legacy_file(self, base_dir: Path):
+        """New agent-memory state wins when both layouts contain memory.json."""
+        from deerflow.config.paths import Paths
+
+        paths = Paths(base_dir)
+        new_file = base_dir / "users" / "alice" / "agent-memory" / "test-agent" / "memory.json"
+        legacy_file = base_dir / "users" / "alice" / "agents" / "test-agent" / "memory.json"
+        new_file.parent.mkdir(parents=True)
+        legacy_file.parent.mkdir(parents=True)
+
+        import json
+
+        new_memory = create_empty_memory()
+        new_memory["user"]["workContext"]["summary"] = "new"
+        legacy_memory = create_empty_memory()
+        legacy_memory["user"]["workContext"]["summary"] = "legacy"
+        new_file.write_text(json.dumps(new_memory), encoding="utf-8")
+        legacy_file.write_text(json.dumps(legacy_memory), encoding="utf-8")
+
+        with patch("deerflow.agents.memory.storage.get_paths", return_value=paths):
+            s = FileMemoryStorage()
+            loaded = s.load("test-agent", user_id="alice")
+
+        assert loaded["user"]["workContext"]["summary"] == "new"
+
+    def test_saving_memory_does_not_shadow_shared_agent_config(self, base_dir: Path):
+        """Memory writes for a shared agent name must not create a per-user agent config dir."""
+        from deerflow.config.agents_config import load_agent_config
+        from deerflow.config.paths import Paths
+
+        paths = Paths(base_dir)
+        shared_dir = base_dir / "agents" / "fault-zeroing"
+        shared_dir.mkdir(parents=True)
+        (shared_dir / "config.yaml").write_text(yaml.safe_dump({"name": "fault-zeroing", "description": "shared"}), encoding="utf-8")
+        (shared_dir / "SOUL.md").write_text("shared soul", encoding="utf-8")
+
+        with (
+            patch("deerflow.agents.memory.storage.get_paths", return_value=paths),
+            patch("deerflow.config.agents_config.get_paths", return_value=paths),
+        ):
+            s = FileMemoryStorage()
+            assert s.save(create_empty_memory(), "fault-zeroing", user_id="alice") is True
+            cfg = load_agent_config("fault-zeroing", user_id="alice")
+
+        assert (base_dir / "users" / "alice" / "agent-memory" / "fault-zeroing" / "memory.json").exists()
+        assert not (base_dir / "users" / "alice" / "agents" / "fault-zeroing").exists()
+        assert cfg is not None
+        assert cfg.description == "shared"
 
     def test_cache_key_is_user_agent_tuple(self, base_dir: Path):
         """Cache keys must be (user_id, agent_name) tuples, not bare agent names."""

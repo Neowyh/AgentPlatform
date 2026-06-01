@@ -225,7 +225,7 @@ agent 在 sandbox 内看到统一虚拟路径：
 
 ```text
 {base_dir}/users/{user_id}/memory.json
-{base_dir}/users/{user_id}/agents/{agent_name}/memory.json
+{base_dir}/users/{user_id}/agent-memory/{agent_name}/memory.json
 ```
 
 有用户上下文时，空或相对 `memory.storage_path` 都使用上述 per-user 默认路径；只有绝对 `memory.storage_path` 会视为显式 opt-out（退出） per-user isolation，所有用户共享该路径。无用户上下文的 legacy 路径仍会把相对 `storage_path` 解析到 `Paths.base_dir` 下。
@@ -237,11 +237,10 @@ agent 在 sandbox 内看到统一虚拟路径：
 ```text
 {base_dir}/users/{user_id}/agents/{agent_name}/
 ├── config.yaml
-├── SOUL.md
-└── memory.json
+└── SOUL.md
 ```
 
-旧布局 `{base_dir}/agents/{agent_name}/` 只作为只读兼容回退。更新或删除旧共享 agent 会要求先运行迁移脚本。
+Agent 配置资产保存在 `agents/`；按 agent 记忆状态保存在 `{base_dir}/users/{user_id}/agent-memory/{agent_name}/memory.json`。旧布局 `{base_dir}/agents/{agent_name}/` 只作为只读兼容回退。更新或删除旧共享 agent 会要求先运行迁移脚本。
 
 ## 内部调用与 IM 渠道
 
@@ -327,5 +326,6 @@ PYTHONPATH=. python scripts/migrate_user_isolation.py --user-id <target-user-id>
 | `app/channels/manager.py` | IM channel 内部认证调用 |
 | `scripts/migrate_user_isolation.py` | legacy 数据迁移到 per-user layout |
 | `.deer-flow/data/deerflow.db` | 统一 SQLite 数据库，包含 users / threads_meta / runs / feedback 等表 |
-| `.deer-flow/users/{user_id}/agents/{agent_name}/` | 用户自定义 agent 配置、SOUL 和 agent memory |
+| `.deer-flow/users/{user_id}/agents/{agent_name}/` | 用户自定义 agent 配置、SOUL |
+| `.deer-flow/users/{user_id}/agent-memory/{agent_name}/memory.json` | 用户级 agent memory |
 | `.deer-flow/admin_initial_credentials.txt` | `reset_admin` 生成的新凭据文件（0600，读完应删除） |

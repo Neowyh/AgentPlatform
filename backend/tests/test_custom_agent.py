@@ -54,7 +54,7 @@ class TestPaths:
 
     def test_agent_memory_file(self, tmp_path):
         paths = _make_paths(tmp_path)
-        assert paths.agent_memory_file("code-reviewer") == tmp_path / "agents" / "code-reviewer" / "memory.json"
+        assert paths.agent_memory_file("code-reviewer") == tmp_path / "agent-memory" / "code-reviewer" / "memory.json"
 
     def test_user_md_file(self, tmp_path):
         paths = _make_paths(tmp_path)
@@ -64,7 +64,7 @@ class TestPaths:
         paths = _make_paths(tmp_path)
         assert paths.memory_file != paths.agent_memory_file("my-agent")
         assert paths.memory_file == tmp_path / "memory.json"
-        assert paths.agent_memory_file("my-agent") == tmp_path / "agents" / "my-agent" / "memory.json"
+        assert paths.agent_memory_file("my-agent") == tmp_path / "agent-memory" / "my-agent" / "memory.json"
 
 
 # ===========================================================================
@@ -350,7 +350,7 @@ class TestMemoryFilePath:
         ):
             storage = FileMemoryStorage()
             path = storage._get_memory_file_path("code-reviewer")
-        assert path == tmp_path / "agents" / "code-reviewer" / "memory.json"
+        assert path == tmp_path / "agent-memory" / "code-reviewer" / "memory.json"
 
     def test_different_paths_for_different_agents(self, tmp_path):
         from deerflow.agents.memory.storage import FileMemoryStorage

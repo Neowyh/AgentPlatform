@@ -82,7 +82,7 @@ class FileMemoryStorage(MemoryStorage):
             raise ValueError(f"Invalid agent name {agent_name!r}: names must match {AGENT_NAME_PATTERN.pattern}")
 
     def _get_memory_file_path(self, agent_name: str | None = None, *, user_id: str | None = None) -> Path:
-        """Get the path to the memory file."""
+        """Get the canonical path to the memory file."""
         if user_id is not None:
             if agent_name is not None:
                 self._validate_agent_name(agent_name)
@@ -101,9 +101,25 @@ class FileMemoryStorage(MemoryStorage):
             return p if p.is_absolute() else get_paths().base_dir / p
         return get_paths().memory_file
 
+    def _get_read_memory_file_path(self, agent_name: str | None = None, *, user_id: str | None = None) -> Path:
+        """Get the file path to read, falling back to legacy agent memory locations."""
+        file_path = self._get_memory_file_path(agent_name, user_id=user_id)
+        if file_path.exists() or agent_name is None:
+            return file_path
+
+        paths = get_paths()
+        if user_id is not None:
+            legacy_path = paths.legacy_user_agent_memory_file(user_id, agent_name)
+        else:
+            legacy_path = paths.legacy_agent_memory_file(agent_name)
+
+        if legacy_path.exists():
+            return legacy_path
+        return file_path
+
     def _load_memory_from_file(self, agent_name: str | None = None, *, user_id: str | None = None) -> dict[str, Any]:
         """Load memory data from file."""
-        file_path = self._get_memory_file_path(agent_name, user_id=user_id)
+        file_path = self._get_read_memory_file_path(agent_name, user_id=user_id)
 
         if not file_path.exists():
             return create_empty_memory()
@@ -122,7 +138,7 @@ class FileMemoryStorage(MemoryStorage):
 
     def load(self, agent_name: str | None = None, *, user_id: str | None = None) -> dict[str, Any]:
         """Load memory data (cached with file modification time check)."""
-        file_path = self._get_memory_file_path(agent_name, user_id=user_id)
+        file_path = self._get_read_memory_file_path(agent_name, user_id=user_id)
         cache_key = self._cache_key(agent_name, user_id=user_id)
 
         try:
@@ -144,7 +160,7 @@ class FileMemoryStorage(MemoryStorage):
 
     def reload(self, agent_name: str | None = None, *, user_id: str | None = None) -> dict[str, Any]:
         """Reload memory data from file, forcing cache invalidation."""
-        file_path = self._get_memory_file_path(agent_name, user_id=user_id)
+        file_path = self._get_read_memory_file_path(agent_name, user_id=user_id)
         memory_data = self._load_memory_from_file(agent_name, user_id=user_id)
         cache_key = self._cache_key(agent_name, user_id=user_id)
 

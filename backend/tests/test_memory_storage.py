@@ -63,13 +63,13 @@ class TestFileMemoryStorage:
 
         def mock_get_paths():
             mock_paths = MagicMock()
-            mock_paths.agent_memory_file.return_value = tmp_path / "agents" / "test-agent" / "memory.json"
+            mock_paths.agent_memory_file.return_value = tmp_path / "agent-memory" / "test-agent" / "memory.json"
             return mock_paths
 
         with patch("deerflow.agents.memory.storage.get_paths", side_effect=mock_get_paths):
             storage = FileMemoryStorage()
             path = storage._get_memory_file_path("test-agent")
-            assert path == tmp_path / "agents" / "test-agent" / "memory.json"
+            assert path == tmp_path / "agent-memory" / "test-agent" / "memory.json"
 
     @pytest.mark.parametrize("invalid_name", ["", "../etc/passwd", "agent/name", "agent\\name", "agent name", "agent@123", "agent_name"])
     def test_validate_agent_name_invalid(self, invalid_name):

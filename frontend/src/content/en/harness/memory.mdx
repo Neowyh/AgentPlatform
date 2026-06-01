@@ -74,7 +74,7 @@ memory:
 DeerFlow supports two levels of memory:
 
 - **Global memory**: stored at `{base_dir}/memory.json`. Used when no specific agent is active or when the agent has no per-agent memory file.
-- **Per-agent memory**: stored at `{base_dir}/agents/{agent_name}/memory.json`. Used when a custom agent is active, keeping that agent's learned knowledge separate.
+- **Per-agent memory**: stored at `{base_dir}/agent-memory/{agent_name}/memory.json`. Used when a custom agent is active, keeping that agent's learned knowledge separate from custom-agent configuration assets under `agents/`.
 
 The `MemoryMiddleware` automatically selects the correct memory file based on the active `agent_name` in the request configuration.
 
@@ -86,7 +86,7 @@ By default, memory files are stored under the backend base directory:
 
 - Base directory: `backend/.deer-flow/`
 - Global memory: `backend/.deer-flow/memory.json`
-- Per-agent memory: `backend/.deer-flow/agents/{agent_name}/memory.json`
+- Per-agent memory: `backend/.deer-flow/agent-memory/{agent_name}/memory.json`
 
 You can change the storage path with the `storage_path` field. Relative paths are resolved against the base directory. Use an absolute path to store memory in a custom location.
 

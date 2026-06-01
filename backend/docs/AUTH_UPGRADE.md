@@ -97,7 +97,8 @@ rm -f backend/.deer-flow/data/deerflow.db
 | `.deer-flow/data/deerflow.db` | 统一 SQLite 数据库（users、threads_meta、runs、feedback 等应用数据） |
 | `.deer-flow/users/{user_id}/threads/{thread_id}/user-data/` | 用户线程的 workspace、uploads、outputs |
 | `.deer-flow/users/{user_id}/memory.json` | 用户级 memory |
-| `.deer-flow/users/{user_id}/agents/{agent_name}/` | 用户自定义 agent 配置、SOUL 和 agent memory |
+| `.deer-flow/users/{user_id}/agents/{agent_name}/` | 用户自定义 agent 配置、SOUL |
+| `.deer-flow/users/{user_id}/agent-memory/{agent_name}/memory.json` | 用户级 agent memory |
 | `.deer-flow/admin_initial_credentials.txt` | `reset_admin` 生成的新凭据文件（0600，读完应删除） |
 | `.env` 中的 `AUTH_JWT_SECRET` | JWT 签名密钥（未设置时自动生成并持久化到 `.deer-flow/.jwt_secret`，重启后 session 保持） |
 
