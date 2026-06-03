@@ -366,6 +366,8 @@ tool_groups:
   - name: file:read
   - name: file:write
   - name: bash
+  - name: document
+  - name: code
 
 # ============================================================================
 # Tools Configuration
@@ -511,6 +513,21 @@ tools:
   - name: bash
     group: bash
     use: ideer.sandbox.tools:bash_tool
+
+  # Document reader tool — extracts text from PDF, Word, Excel, PowerPoint
+  - name: read_document
+    group: document
+    use: ideer.community.doc_reader.tools:read_document_tool
+
+  # Code interpreter tool — executes Python/JavaScript code in sandbox
+  - name: code_interpreter
+    group: code
+    use: ideer.community.code_interpreter.tools:code_interpreter_tool
+
+  # Data analyzer tool — statistical analysis of CSV/Excel/JSON files
+  - name: data_analyzer
+    group: code
+    use: ideer.community.data_analyzer.tools:data_analyzer_tool
 
 # ============================================================================
 # Tool Search Configuration (Deferred Tool Loading)
