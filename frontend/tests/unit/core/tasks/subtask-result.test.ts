@@ -26,7 +26,7 @@ describe("parseSubtaskResult", () => {
   });
 
   it("recognises the cancelled-by-user prefix", () => {
-    // bytedance/deer-flow#3131 review: this is one of the five terminal
+    // bytedance/ideer#3131 review: this is one of the five terminal
     // strings task_tool.py actually emits — the previous cut treated it as
     // unrecognised content and pushed the card back to in_progress.
     const parsed = parseSubtaskResult("Task cancelled by user.");
@@ -81,7 +81,7 @@ describe("parseSubtaskResult", () => {
   });
 
   it("treats middleware-wrapped tool errors as terminal failures", () => {
-    // bytedance/deer-flow issue #3107 BUG-007: the parent-visible ToolMessage
+    // bytedance/ideer issue #3107 BUG-007: the parent-visible ToolMessage
     // produced by ToolErrorHandlingMiddleware never matches the three legacy
     // prefixes, so subtask cards stay stuck on "in_progress".
     const parsed = parseSubtaskResult(

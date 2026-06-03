@@ -6,10 +6,10 @@ import os
 import secrets
 from types import SimpleNamespace
 
-from deerflow.runtime.user_context import DEFAULT_USER_ID
+from ideer.runtime.user_context import DEFAULT_USER_ID
 
-INTERNAL_AUTH_HEADER_NAME = "X-DeerFlow-Internal-Token"
-INTERNAL_AUTH_ENV_VAR = "DEER_FLOW_INTERNAL_AUTH_TOKEN"
+INTERNAL_AUTH_HEADER_NAME = "X-IDeer-Internal-Token"
+INTERNAL_AUTH_ENV_VAR = "IDEER_INTERNAL_AUTH_TOKEN"
 
 
 def _load_internal_auth_token() -> str:

@@ -28,7 +28,7 @@ const config = {
   async rewrites() {
     const rewrites = [];
     const gatewayURL = getInternalServiceURL(
-      "DEER_FLOW_INTERNAL_GATEWAY_BASE_URL",
+      "IDEER_INTERNAL_GATEWAY_BASE_URL",
       "http://127.0.0.1:8001",
     );
 

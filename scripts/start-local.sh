@@ -13,7 +13,7 @@ usage() {
     cat <<'EOF'
 Usage: sh scripts/start-local.sh [--print-command]
 
-Starts the local DeerFlow stack from the repository root.
+Starts the local iDeer stack from the repository root.
 
 Environment variables:
   CONFIG_FILE         Path to the active config.yaml (default: ./config.yaml)
@@ -90,7 +90,7 @@ if [ "$print_only" -eq 1 ]; then
     exit 0
 fi
 
-printf 'Starting DeerFlow from %s\n' "$REPO_ROOT"
+printf 'Starting iDeer from %s\n' "$REPO_ROOT"
 printf 'Using config: %s\n' "$CONFIG_FILE"
 cd "$REPO_ROOT"
 exec make "$START_TARGET"

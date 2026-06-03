@@ -218,7 +218,7 @@
   <header>
     <div class="wrap hero">
       <h1>全新智能体配置开发作业指导书</h1>
-      <p class="subtitle">适用于 DeerFlow 本地验证环境。按本文操作，可以从 0 准备配置文件、编写智能体模板、安装到指定用户账号，并确认它能在页面中看到、能正常调用。</p>
+      <p class="subtitle">适用于 iDeer 本地验证环境。按本文操作，可以从 0 准备配置文件、编写智能体模板、安装到指定用户账号，并确认它能在页面中看到、能正常调用。</p>
     </div>
   </header>
 
@@ -228,7 +228,7 @@
       <p>完成一个全新智能体的配置开发全流程：准备基础配置、编写智能体文件、按需编写 Skill 和子智能体、安装到用户运行目录、启动服务并验收。</p>
       <div class="notice">
         <strong>本指导书默认你已经在项目根目录操作：</strong>
-        <pre><code>cd /home/wangyh/workspace/deer-flow</code></pre>
+        <pre><code>cd /home/wangyh/workspace/ideer</code></pre>
         <p>如果目录不对，后面的命令可能找不到文件。</p>
       </div>
     </section>
@@ -327,7 +327,7 @@
 
     <section>
       <h2>四、准备基础运行配置</h2>
-      <p>这一步是让 DeerFlow 本身能运行。先做它，再开发智能体。</p>
+      <p>这一步是让 iDeer 本身能运行。先做它，再开发智能体。</p>
 
       <h3><span class="step">1</span>生成基础配置文件</h3>
       <p>如果没有 <code>config.yaml</code>、<code>.env</code>、<code>frontend/.env</code>，运行：</p>
@@ -350,7 +350,7 @@ ls frontend/.env</code></pre>
       <p>本地验证建议使用默认 sqlite，不需要手动配置 Postgres。看到或默认具备下面配置即可：</p>
       <pre><code>database:
   backend: sqlite
-  sqlite_dir: .deer-flow/data</code></pre>
+  sqlite_dir: .ideer/data</code></pre>
 
       <h3><span class="step">5</span>确认 Skill 路径</h3>
       <p>本地默认从项目里的 <code>skills/</code> 读取 Skill。一般保留默认配置即可：</p>
@@ -587,13 +587,13 @@ description: 用于资料质量审查、问题识别和审查报告生成
 
     <section>
       <h2>八、手工安装到目标用户运行目录</h2>
-      <p>DeerFlow 前端只会显示安装到用户运行目录里的智能体。放在 <code>docs/</code> 下只是源码模板，不会自动出现在页面中。</p>
+      <p>iDeer 前端只会显示安装到用户运行目录里的智能体。放在 <code>docs/</code> 下只是源码模板，不会自动出现在页面中。</p>
 
       <h3><span class="step">1</span>设置名称和用户 ID</h3>
       <pre><code>AGENT_NAME=quality-reviewer
 USER_ID=7c5af71e-0069-4712-bf16-c54cd35639aa
-RUNTIME_BASE=backend/.deer-flow</code></pre>
-      <p>如果你设置了 <code>DEER_FLOW_HOME</code>，则把 <code>RUNTIME_BASE</code> 改为该目录。</p>
+RUNTIME_BASE=backend/.ideer</code></pre>
+      <p>如果你设置了 <code>IDEER_HOME</code>，则把 <code>RUNTIME_BASE</code> 改为该目录。</p>
 
       <h3><span class="step">2</span>创建目标目录</h3>
       <pre><code>mkdir -p "$RUNTIME_BASE/users/$USER_ID/agents/$AGENT_NAME"</code></pre>
@@ -640,8 +640,8 @@ ls "$RUNTIME_BASE/users/$USER_ID/agents/$AGENT_NAME/SOUL.md"</code></pre>
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path('backend/packages/harness').resolve()))
-from deerflow.config.app_config import reload_app_config
-from deerflow.subagents.registry import get_subagent_config
+from ideer.config.app_config import reload_app_config
+from ideer.subagents.registry import get_subagent_config
 cfg = reload_app_config('config.yaml')
 names = ['evidence-reader','report-reviewer']
 missing = [n for n in names if get_subagent_config(n, app_config=cfg) is None]
@@ -660,12 +660,12 @@ raise SystemExit(1 if missing else 0)
       <pre><code>OK Gateway
 OK Frontend
 OK Unified entrypoint
-DeerFlow is running: http://localhost:2026</code></pre>
+iDeer is running: http://localhost:2026</code></pre>
 
       <h3><span class="step">2</span>浏览器检查</h3>
       <ol>
         <li>打开 <code>http://localhost:2026</code>。</li>
-        <li>登录 DeerFlow。</li>
+        <li>登录 iDeer。</li>
         <li>进入智能体列表或智能体选择入口。</li>
         <li>确认能看到你的智能体，例如 <code>quality-reviewer</code>。</li>
         <li>进入该智能体，发起一次简单对话。</li>
@@ -688,8 +688,8 @@ DeerFlow is running: http://localhost:2026</code></pre>
         <li><code>docs/&lt;agent-name&gt;/agent/SOUL.md</code> 已写明身份、原则和输出要求。</li>
         <li>如果配置了 Skill，对应 <code>skills/custom/&lt;skill-name&gt;/SKILL.md</code> 存在。</li>
         <li>如果配置了 subagents，已合并进应用级 <code>config.yaml</code> 并通过 registry 检查。</li>
-        <li>智能体文件已复制到 <code>backend/.deer-flow/users/&lt;user-id&gt;/agents/&lt;agent-name&gt;/</code>。</li>
-        <li>服务脚本输出 <code>DeerFlow is running: http://localhost:2026</code>。</li>
+        <li>智能体文件已复制到 <code>backend/.ideer/users/&lt;user-id&gt;/agents/&lt;agent-name&gt;/</code>。</li>
+        <li>服务脚本输出 <code>iDeer is running: http://localhost:2026</code>。</li>
         <li>浏览器登录后能看到新智能体，并能完成一次简单对话。</li>
       </ul>
     </section>
@@ -713,7 +713,7 @@ DeerFlow is running: http://localhost:2026</code></pre>
           <tr>
             <td>页面看不到新智能体</td>
             <td>文件只放在 <code>docs/</code> 下，未安装到用户运行目录。</td>
-            <td>把 <code>config.yaml</code> 和 <code>SOUL.md</code> 复制到 <code>backend/.deer-flow/users/&lt;user-id&gt;/agents/&lt;agent-name&gt;/</code>。</td>
+            <td>把 <code>config.yaml</code> 和 <code>SOUL.md</code> 复制到 <code>backend/.ideer/users/&lt;user-id&gt;/agents/&lt;agent-name&gt;/</code>。</td>
           </tr>
           <tr>
             <td>提示模型不可用或模型名不在列表</td>
@@ -751,7 +751,7 @@ DeerFlow is running: http://localhost:2026</code></pre>
       <p>看到 <code>Stopped.</code> 即表示后台服务已关闭。</p>
     </section>
 
-    <p class="footer">版本：2026-05-21。本指导书面向本地 DeerFlow 验证环境。生产环境请另行确认权限、账号、密钥、数据库和发布流程。</p>
+    <p class="footer">版本：2026-05-21。本指导书面向本地 iDeer 验证环境。生产环境请另行确认权限、账号、密钥、数据库和发布流程。</p>
   </main>
 </body>
 </html>

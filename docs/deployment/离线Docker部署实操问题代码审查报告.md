@@ -19,7 +19,7 @@
 - `frontend/src/core/auth/server.ts`
 - `frontend/src/app/workspace/layout.tsx`
 - `config.example.yaml`
-- `backend/packages/harness/deerflow/config/app_config.py`
+- `backend/packages/harness/ideer/config/app_config.py`
 - `backend/app/gateway/internal_auth.py`
 - `backend/app/channels/manager.py`
 - `scripts/deploy.sh`
@@ -55,14 +55,14 @@ seed_file "$RUNTIME_DIR/frontend.env" "$SOURCE_DIR/frontend/.env.example"
 同一脚本生成 `env.intranet` 时写入：
 
 ```bash
-DEER_FLOW_FRONTEND_ENV_FILE=$RUNTIME_DIR/frontend.env
+IDEER_FRONTEND_ENV_FILE=$RUNTIME_DIR/frontend.env
 ```
 
 `docker/docker-compose.intranet.yaml` 中前端容器读取：
 
 ```yaml
 env_file:
-  - ${DEER_FLOW_FRONTEND_ENV_FILE:-../frontend/.env}
+  - ${IDEER_FRONTEND_ENV_FILE:-../frontend/.env}
 ```
 
 但作业指导书的故障提示写的是：
@@ -92,7 +92,7 @@ runtime/frontend.env
 需要同步修改：
 
 1. `scripts/deploy-intranet.sh`：启动前显式校验 `$RUNTIME_DIR/frontend.env` 存在。
-2. `docker/docker-compose.intranet.yaml`：保留 `${DEER_FLOW_FRONTEND_ENV_FILE}`，但避免误导性 fallback。
+2. `docker/docker-compose.intranet.yaml`：保留 `${IDEER_FRONTEND_ENV_FILE}`，但避免误导性 fallback。
 3. `docs/deployment/禁公网内网离线部署作业指导书.md`：把 `frontend/.env` 改为 `runtime/frontend.env`。
 4. `scripts/package-intranet-offline.sh` 生成的 `env.intranet.example`：保持同一命名。
 
@@ -164,7 +164,7 @@ models: []
 建议增加类似校验：
 
 ```bash
-python3 -c "from deerflow.config.app_config import AppConfig; AppConfig.from_file('$RUNTIME_DIR/config.yaml')"
+python3 -c "from ideer.config.app_config import AppConfig; AppConfig.from_file('$RUNTIME_DIR/config.yaml')"
 ```
 
 离线环境未必有宿主机 Python 依赖，因此也可以提供容器内校验命令，或在 Gateway 启动前通过临时容器执行。
@@ -208,7 +208,7 @@ const res = await fetch(`${internalGatewayUrl}/api/v1/auth/me`, {
 ```yaml
 environment:
   - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
-  - DEER_FLOW_INTERNAL_GATEWAY_BASE_URL=http://gateway:8001
+  - IDEER_INTERNAL_GATEWAY_BASE_URL=http://gateway:8001
 ```
 
 ### 影响
@@ -236,7 +236,7 @@ curl -fsS http://127.0.0.1:${PORT:-2026}/api/v1/auth/setup-status
 3. compose 中为 `gateway`、`frontend`、`nginx` 增加 `healthcheck`。
 4. 作业指导书中把“前端无渲染/登录后无法进入主页”定位顺序写清楚：先查 Gateway 日志，再查前端日志，最后查 nginx 代理。
 
-## 问题 4：离线 compose 缺少 DEER_FLOW_INTERNAL_AUTH_TOKEN
+## 问题 4：离线 compose 缺少 IDEER_INTERNAL_AUTH_TOKEN
 
 严重级别：高
 
@@ -245,13 +245,13 @@ curl -fsS http://127.0.0.1:${PORT:-2026}/api/v1/auth/setup-status
 正式 Docker compose 在 Gateway 环境变量中注入内部鉴权 token：
 
 ```yaml
-- DEER_FLOW_INTERNAL_AUTH_TOKEN=${DEER_FLOW_INTERNAL_AUTH_TOKEN}
+- IDEER_INTERNAL_AUTH_TOKEN=${IDEER_INTERNAL_AUTH_TOKEN}
 ```
 
 `scripts/deploy.sh` 会把该 token 生成并持久化到：
 
 ```text
-$DEER_FLOW_HOME/.internal-auth-token
+$IDEER_HOME/.internal-auth-token
 ```
 
 但 `docker/docker-compose.intranet.yaml` 的 Gateway `environment` 中没有该变量，`scripts/deploy-intranet.sh` 的 `seed_runtime()` 和 `env.intranet` 生成逻辑也没有生成或持久化它。
@@ -287,7 +287,7 @@ create_internal_auth_headers()
 1. 在 `docker/docker-compose.intranet.yaml` 的 Gateway 环境变量中补充：
 
 ```yaml
-- DEER_FLOW_INTERNAL_AUTH_TOKEN=${DEER_FLOW_INTERNAL_AUTH_TOKEN}
+- IDEER_INTERNAL_AUTH_TOKEN=${IDEER_INTERNAL_AUTH_TOKEN}
 ```
 
 2. 在 `scripts/deploy-intranet.sh` 中仿照 `scripts/deploy.sh` 生成并持久化：
@@ -296,7 +296,7 @@ create_internal_auth_headers()
 _internal_auth_token_file="$RUNTIME_DIR/data/.internal-auth-token"
 ```
 
-3. 在 `env.intranet` 和 `env.intranet.example` 中写入稳定的 `DEER_FLOW_INTERNAL_AUTH_TOKEN`。
+3. 在 `env.intranet` 和 `env.intranet.example` 中写入稳定的 `IDEER_INTERNAL_AUTH_TOKEN`。
 
 ## 问题 5：源码包可能打入本机 frontend/.env，放大 env 混乱和泄漏风险
 
@@ -310,7 +310,7 @@ _internal_auth_token_file="$RUNTIME_DIR/data/.internal-auth-token"
 --exclude='.git'
 --exclude='dist'
 --exclude='backend/.venv'
---exclude='backend/.deer-flow'
+--exclude='backend/.ideer'
 --exclude='backend/.pytest_cache'
 --exclude='backend/__pycache__'
 --exclude='frontend/node_modules'
@@ -437,7 +437,7 @@ BETTER_AUTH_SECRET=$(generate_secret)
 该值直接写入 `env.intranet`。相比之下，正式 `scripts/deploy.sh` 会把 secret 单独持久化到：
 
 ```text
-$DEER_FLOW_HOME/.better-auth-secret
+$IDEER_HOME/.better-auth-secret
 ```
 
 ### 影响
@@ -548,7 +548,7 @@ $SOURCE_DIR/docker/docker-compose.intranet.yaml
 1. 不再直接把 `config.example.yaml` 作为可运行 `config.yaml`。
 2. 统一离线前端 env 文件名，建议固定为 `runtime/frontend.env`。
 3. `deploy-intranet.sh up` 前增加运行时配置文件存在性校验。
-4. 为离线部署补齐稳定的 `DEER_FLOW_INTERNAL_AUTH_TOKEN`。
+4. 为离线部署补齐稳定的 `IDEER_INTERNAL_AUTH_TOKEN`。
 
 ### P1：建议紧随其后
 
@@ -605,7 +605,7 @@ curl -fsS http://127.0.0.1:2026/api/v1/auth/setup-status
 内部鉴权 token 验证：
 
 ```bash
-grep '^DEER_FLOW_INTERNAL_AUTH_TOKEN=' env.intranet
+grep '^IDEER_INTERNAL_AUTH_TOKEN=' env.intranet
 ./deploy-intranet.sh logs gateway
 ```
 

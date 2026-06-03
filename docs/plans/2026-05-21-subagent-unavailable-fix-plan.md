@@ -21,7 +21,7 @@
 
 ### 2.1 加入 callbacks 归一化逻辑
 
-在 `backend/packages/harness/deerflow/tools/builtins/task_tool.py` 中增加一个轻量归一化函数，例如 `_iter_runtime_callbacks(callbacks)`，让它支持：
+在 `backend/packages/harness/ideer/tools/builtins/task_tool.py` 中增加一个轻量归一化函数，例如 `_iter_runtime_callbacks(callbacks)`，让它支持：
 
 - `None` -> 空
 - `list / tuple / set` -> 直接遍历

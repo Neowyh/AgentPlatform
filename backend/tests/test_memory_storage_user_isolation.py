@@ -6,7 +6,7 @@ from unittest.mock import patch
 import pytest
 import yaml
 
-from deerflow.agents.memory.storage import FileMemoryStorage, create_empty_memory
+from ideer.agents.memory.storage import FileMemoryStorage, create_empty_memory
 
 
 @pytest.fixture
@@ -21,10 +21,10 @@ def storage() -> FileMemoryStorage:
 
 class TestUserIsolatedStorage:
     def test_save_and_load_per_user(self, storage: FileMemoryStorage, base_dir: Path):
-        from deerflow.config.paths import Paths
+        from ideer.config.paths import Paths
 
         paths = Paths(base_dir)
-        with patch("deerflow.agents.memory.storage.get_paths", return_value=paths):
+        with patch("ideer.agents.memory.storage.get_paths", return_value=paths):
             memory_a = create_empty_memory()
             memory_a["user"]["workContext"]["summary"] = "User A context"
             storage.save(memory_a, user_id="alice")
@@ -40,10 +40,10 @@ class TestUserIsolatedStorage:
             assert loaded_b["user"]["workContext"]["summary"] == "User B context"
 
     def test_user_memory_file_location(self, base_dir: Path):
-        from deerflow.config.paths import Paths
+        from ideer.config.paths import Paths
 
         paths = Paths(base_dir)
-        with patch("deerflow.agents.memory.storage.get_paths", return_value=paths):
+        with patch("ideer.agents.memory.storage.get_paths", return_value=paths):
             s = FileMemoryStorage()
             memory = create_empty_memory()
             s.save(memory, user_id="alice")
@@ -51,10 +51,10 @@ class TestUserIsolatedStorage:
             assert expected_path.exists()
 
     def test_cache_isolated_per_user(self, base_dir: Path):
-        from deerflow.config.paths import Paths
+        from ideer.config.paths import Paths
 
         paths = Paths(base_dir)
-        with patch("deerflow.agents.memory.storage.get_paths", return_value=paths):
+        with patch("ideer.agents.memory.storage.get_paths", return_value=paths):
             s = FileMemoryStorage()
             memory_a = create_empty_memory()
             memory_a["user"]["workContext"]["summary"] = "A"
@@ -68,12 +68,12 @@ class TestUserIsolatedStorage:
             assert loaded_a["user"]["workContext"]["summary"] == "A"
 
     def test_no_user_id_uses_legacy_path(self, base_dir: Path):
-        from deerflow.config.memory_config import MemoryConfig
-        from deerflow.config.paths import Paths
+        from ideer.config.memory_config import MemoryConfig
+        from ideer.config.paths import Paths
 
         paths = Paths(base_dir)
-        with patch("deerflow.agents.memory.storage.get_paths", return_value=paths):
-            with patch("deerflow.agents.memory.storage.get_memory_config", return_value=MemoryConfig(storage_path="")):
+        with patch("ideer.agents.memory.storage.get_paths", return_value=paths):
+            with patch("ideer.agents.memory.storage.get_memory_config", return_value=MemoryConfig(storage_path="")):
                 s = FileMemoryStorage()
                 memory = create_empty_memory()
                 s.save(memory, user_id=None)
@@ -82,12 +82,12 @@ class TestUserIsolatedStorage:
 
     def test_user_and_legacy_do_not_interfere(self, base_dir: Path):
         """user_id=None (legacy) and user_id='alice' must use different files and caches."""
-        from deerflow.config.memory_config import MemoryConfig
-        from deerflow.config.paths import Paths
+        from ideer.config.memory_config import MemoryConfig
+        from ideer.config.paths import Paths
 
         paths = Paths(base_dir)
-        with patch("deerflow.agents.memory.storage.get_paths", return_value=paths):
-            with patch("deerflow.agents.memory.storage.get_memory_config", return_value=MemoryConfig(storage_path="")):
+        with patch("ideer.agents.memory.storage.get_paths", return_value=paths):
+            with patch("ideer.agents.memory.storage.get_memory_config", return_value=MemoryConfig(storage_path="")):
                 s = FileMemoryStorage()
 
                 legacy_mem = create_empty_memory()
@@ -103,10 +103,10 @@ class TestUserIsolatedStorage:
 
     def test_user_agent_memory_file_location(self, base_dir: Path):
         """Per-user per-agent memory writes to agent-memory, not agents."""
-        from deerflow.config.paths import Paths
+        from ideer.config.paths import Paths
 
         paths = Paths(base_dir)
-        with patch("deerflow.agents.memory.storage.get_paths", return_value=paths):
+        with patch("ideer.agents.memory.storage.get_paths", return_value=paths):
             s = FileMemoryStorage()
             memory = create_empty_memory()
             memory["user"]["workContext"]["summary"] = "agent scoped"
@@ -117,7 +117,7 @@ class TestUserIsolatedStorage:
 
     def test_user_agent_memory_reads_legacy_file_when_new_file_absent(self, base_dir: Path):
         """Existing memory under the old agents namespace remains readable."""
-        from deerflow.config.paths import Paths
+        from ideer.config.paths import Paths
 
         paths = Paths(base_dir)
         legacy_file = base_dir / "users" / "alice" / "agents" / "test-agent" / "memory.json"
@@ -129,7 +129,7 @@ class TestUserIsolatedStorage:
 
         legacy_file.write_text(json.dumps(legacy_memory), encoding="utf-8")
 
-        with patch("deerflow.agents.memory.storage.get_paths", return_value=paths):
+        with patch("ideer.agents.memory.storage.get_paths", return_value=paths):
             s = FileMemoryStorage()
             loaded = s.load("test-agent", user_id="alice")
 
@@ -137,7 +137,7 @@ class TestUserIsolatedStorage:
 
     def test_user_agent_memory_prefers_new_file_over_legacy_file(self, base_dir: Path):
         """New agent-memory state wins when both layouts contain memory.json."""
-        from deerflow.config.paths import Paths
+        from ideer.config.paths import Paths
 
         paths = Paths(base_dir)
         new_file = base_dir / "users" / "alice" / "agent-memory" / "test-agent" / "memory.json"
@@ -154,7 +154,7 @@ class TestUserIsolatedStorage:
         new_file.write_text(json.dumps(new_memory), encoding="utf-8")
         legacy_file.write_text(json.dumps(legacy_memory), encoding="utf-8")
 
-        with patch("deerflow.agents.memory.storage.get_paths", return_value=paths):
+        with patch("ideer.agents.memory.storage.get_paths", return_value=paths):
             s = FileMemoryStorage()
             loaded = s.load("test-agent", user_id="alice")
 
@@ -162,8 +162,8 @@ class TestUserIsolatedStorage:
 
     def test_saving_memory_does_not_shadow_shared_agent_config(self, base_dir: Path):
         """Memory writes for a shared agent name must not create a per-user agent config dir."""
-        from deerflow.config.agents_config import load_agent_config
-        from deerflow.config.paths import Paths
+        from ideer.config.agents_config import load_agent_config
+        from ideer.config.paths import Paths
 
         paths = Paths(base_dir)
         shared_dir = base_dir / "agents" / "fault-zeroing"
@@ -172,8 +172,8 @@ class TestUserIsolatedStorage:
         (shared_dir / "SOUL.md").write_text("shared soul", encoding="utf-8")
 
         with (
-            patch("deerflow.agents.memory.storage.get_paths", return_value=paths),
-            patch("deerflow.config.agents_config.get_paths", return_value=paths),
+            patch("ideer.agents.memory.storage.get_paths", return_value=paths),
+            patch("ideer.config.agents_config.get_paths", return_value=paths),
         ):
             s = FileMemoryStorage()
             assert s.save(create_empty_memory(), "fault-zeroing", user_id="alice") is True
@@ -186,10 +186,10 @@ class TestUserIsolatedStorage:
 
     def test_cache_key_is_user_agent_tuple(self, base_dir: Path):
         """Cache keys must be (user_id, agent_name) tuples, not bare agent names."""
-        from deerflow.config.paths import Paths
+        from ideer.config.paths import Paths
 
         paths = Paths(base_dir)
-        with patch("deerflow.agents.memory.storage.get_paths", return_value=paths):
+        with patch("ideer.agents.memory.storage.get_paths", return_value=paths):
             s = FileMemoryStorage()
             memory = create_empty_memory()
             s.save(memory, user_id="alice")
@@ -198,10 +198,10 @@ class TestUserIsolatedStorage:
 
     def test_reload_with_user_id(self, base_dir: Path):
         """reload() with user_id should force re-read from the user-scoped file."""
-        from deerflow.config.paths import Paths
+        from ideer.config.paths import Paths
 
         paths = Paths(base_dir)
-        with patch("deerflow.agents.memory.storage.get_paths", return_value=paths):
+        with patch("ideer.agents.memory.storage.get_paths", return_value=paths):
             s = FileMemoryStorage()
             memory = create_empty_memory()
             memory["user"]["workContext"]["summary"] = "initial"

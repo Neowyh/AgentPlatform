@@ -1,13 +1,13 @@
 ---
 title: Work with Memory
-description: This tutorial shows you how to enable and use DeerFlow's memory system so the agent remembers important information about you across multiple sessions.
+description: This tutorial shows you how to enable and use iDeer's memory system so the agent remembers important information about you across multiple sessions.
 ---
 
 import { Callout } from "nextra/components";
 
 # Work with Memory
 
-This tutorial shows you how to enable and use DeerFlow's memory system so the agent remembers important information about you across multiple sessions.
+This tutorial shows you how to enable and use iDeer's memory system so the agent remembers important information about you across multiple sessions.
 
 ## Enable memory
 
@@ -49,10 +49,10 @@ The agent will automatically produce FastAPI-style code with type annotations.
 
 ## Inspect memory
 
-Memory is stored in `backend/.deer-flow/memory.json`:
+Memory is stored in `backend/.ideer/memory.json`:
 
 ```bash
-cat backend/.deer-flow/memory.json
+cat backend/.ideer/memory.json
 ```
 
 ## Per-agent memory
@@ -60,12 +60,12 @@ cat backend/.deer-flow/memory.json
 When a custom agent is active, it maintains its own memory file at:
 
 ```
-backend/.deer-flow/agent-memory/{agent_name}/memory.json
+backend/.ideer/agent-memory/{agent_name}/memory.json
 ```
 
 This keeps each agent's learned knowledge separate. The `agents/` directory is reserved for custom-agent configuration assets.
 
 ## Next steps
 
-- [Deploy Your Own DeerFlow](/docs/tutorials/deploy-your-own-deerflow)
+- [Deploy Your Own iDeer](/docs/tutorials/deploy-your-own-ideer)
 - [Memory System Reference](/docs/harness/memory)

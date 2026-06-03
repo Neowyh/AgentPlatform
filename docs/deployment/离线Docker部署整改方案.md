@@ -50,14 +50,14 @@ seed_file "$RUNTIME_DIR/frontend.env" "$SOURCE_DIR/frontend/.env.example"
 3. `env.intranet` 和 `env.intranet.example` 保持：
 
 ```bash
-DEER_FLOW_FRONTEND_ENV_FILE=<bundle-root>/runtime/frontend.env
+IDEER_FRONTEND_ENV_FILE=<bundle-root>/runtime/frontend.env
 ```
 
 4. `docker-compose.intranet.yaml` 中建议去掉误导性 fallback，改成强依赖变量：
 
 ```yaml
 env_file:
-  - ${DEER_FLOW_FRONTEND_ENV_FILE:?DEER_FLOW_FRONTEND_ENV_FILE must be set}
+  - ${IDEER_FRONTEND_ENV_FILE:?IDEER_FRONTEND_ENV_FILE must be set}
 ```
 
 5. 作业指导书中所有 `frontend/.env` 运行时提示改为 `runtime/frontend.env`。
@@ -65,7 +65,7 @@ env_file:
 验收标准：
 
 - `./deploy-intranet.sh prepare` 后存在 `runtime/frontend.env`。
-- `env.intranet` 中 `DEER_FLOW_FRONTEND_ENV_FILE` 指向 `runtime/frontend.env`。
+- `env.intranet` 中 `IDEER_FRONTEND_ENV_FILE` 指向 `runtime/frontend.env`。
 - 文档不再把离线运行时前端 env 指向 `frontend/.env`。
 
 #### 任务 2：避免直接把 config.example.yaml 当可运行配置
@@ -103,7 +103,7 @@ models: []
 - `models` 字段至少是 list，不再是 `null`。
 - Gateway 不再因 `models Input should be a valid list` 在启动阶段失败。
 
-#### 任务 3：补齐 DEER_FLOW_INTERNAL_AUTH_TOKEN
+#### 任务 3：补齐 IDEER_INTERNAL_AUTH_TOKEN
 
 涉及文件：
 
@@ -116,7 +116,7 @@ models: []
 1. `docker-compose.intranet.yaml` 的 Gateway `environment` 中增加：
 
 ```yaml
-- DEER_FLOW_INTERNAL_AUTH_TOKEN=${DEER_FLOW_INTERNAL_AUTH_TOKEN}
+- IDEER_INTERNAL_AUTH_TOKEN=${IDEER_INTERNAL_AUTH_TOKEN}
 ```
 
 2. `deploy-intranet.sh` 在 `seed_runtime()` 中生成并持久化：
@@ -128,18 +128,18 @@ _internal_auth_token_file="$RUNTIME_DIR/data/.internal-auth-token"
 3. `env.intranet` 生成时写入：
 
 ```bash
-DEER_FLOW_INTERNAL_AUTH_TOKEN=<stable-token>
+IDEER_INTERNAL_AUTH_TOKEN=<stable-token>
 ```
 
 4. `package-intranet-offline.sh` 的 `env.intranet.example` 增加：
 
 ```bash
-DEER_FLOW_INTERNAL_AUTH_TOKEN=replace-with-a-fixed-internal-token
+IDEER_INTERNAL_AUTH_TOKEN=replace-with-a-fixed-internal-token
 ```
 
 验收标准：
 
-- `env.intranet` 中存在 `DEER_FLOW_INTERNAL_AUTH_TOKEN=`。
+- `env.intranet` 中存在 `IDEER_INTERNAL_AUTH_TOKEN=`。
 - `docker compose config` 能看到 Gateway 注入该变量。
 - 多 worker 下内部 channel 调用不再依赖各 worker 自行生成随机 token。
 
@@ -331,7 +331,7 @@ env.intranet
 
 验收标准：
 
-- 新生成的 `deer-flow-source-<version>.tar.gz` 中不包含 `frontend/.env`。
+- 新生成的 `ideer-source-<version>.tar.gz` 中不包含 `frontend/.env`。
 - 不包含 Playwright 报告、测试结果和 TypeScript 增量缓存。
 
 #### 任务 10：处理输出目录根部 compose 文件误用
@@ -390,7 +390,7 @@ docker/docker-compose.intranet.cli-auth.yaml
 - 统一 `runtime/frontend.env`。
 - 修复 `runtime/config.yaml` 生成。
 - 增加 runtime 文件预检。
-- 补齐 `DEER_FLOW_INTERNAL_AUTH_TOKEN`。
+- 补齐 `IDEER_INTERNAL_AUTH_TOKEN`。
 
 验证：
 
@@ -427,7 +427,7 @@ curl -fsS http://127.0.0.1:2026/api/v1/auth/setup-status
 
 ```bash
 scripts/package-intranet-offline.sh --version test-intranet --force
-tar -tzf dist/intranet/deer-flow-test-intranet/deer-flow-source-test-intranet.tar.gz | grep -E 'frontend/\\.env|frontend/test-results|frontend/playwright-report|frontend/tsconfig.tsbuildinfo' && echo FAIL || echo OK
+tar -tzf dist/intranet/ideer-test-intranet/ideer-source-test-intranet.tar.gz | grep -E 'frontend/\\.env|frontend/test-results|frontend/playwright-report|frontend/tsconfig.tsbuildinfo' && echo FAIL || echo OK
 ```
 
 ## 回归验证清单
@@ -443,7 +443,7 @@ docker compose -f docker/docker-compose.intranet.yaml config
 
 ```bash
 scripts/package-intranet-offline.sh --version test-intranet --force
-ls dist/intranet/deer-flow-test-intranet
+ls dist/intranet/ideer-test-intranet
 ```
 
 ### 离线包准备验证
@@ -456,7 +456,7 @@ ls runtime/config.yaml
 ls runtime/.env
 ls runtime/frontend.env
 ls runtime/extensions_config.json
-grep '^DEER_FLOW_INTERNAL_AUTH_TOKEN=' env.intranet
+grep '^IDEER_INTERNAL_AUTH_TOKEN=' env.intranet
 ```
 
 ### 配置验证
@@ -496,7 +496,7 @@ curl -fsS http://127.0.0.1:2026/api/v1/auth/setup-status
 
 1. `./deploy-intranet.sh prepare` 生成的 runtime 文件名与文档完全一致。
 2. `runtime/config.yaml` 不再因 `models: null` 导致 Gateway 启动失败。
-3. `env.intranet` 包含稳定的 `BETTER_AUTH_SECRET` 和 `DEER_FLOW_INTERNAL_AUTH_TOKEN`。
+3. `env.intranet` 包含稳定的 `BETTER_AUTH_SECRET` 和 `IDEER_INTERNAL_AUTH_TOKEN`。
 4. `./deploy-intranet.sh up` 后脚本能验证 Gateway 基础健康。
 5. 登录后 `/workspace` 可服务端渲染并进入主页。
 6. 新离线源码包不包含本机 `frontend/.env` 和测试/缓存产物。

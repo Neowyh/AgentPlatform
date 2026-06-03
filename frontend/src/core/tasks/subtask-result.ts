@@ -13,9 +13,9 @@ export interface SubtaskResultUpdate {
  *
  * These values are not user-facing copy — they are part of the
  * backend↔frontend contract defined in
- * `backend/packages/harness/deerflow/tools/builtins/task_tool.py` (returned
+ * `backend/packages/harness/ideer/tools/builtins/task_tool.py` (returned
  * from the tool body) and in
- * `backend/packages/harness/deerflow/agents/middlewares/tool_error_handling_middleware.py`
+ * `backend/packages/harness/ideer/agents/middlewares/tool_error_handling_middleware.py`
  * (wrapper for tool exceptions). Any change here must be paired with the
  * matching backend change. Exported so a future structured-status migration
  * can reference the same values from one place.
@@ -36,7 +36,7 @@ export const ERROR_WRAPPER_PATTERN = /^Error\b/i;
 /**
  * Map a `task` tool result string to a {@link SubtaskStatus}.
  *
- * Bytedance/deer-flow issue #3107 BUG-007: parent-visible task tool errors do
+ * Bytedance/ideer issue #3107 BUG-007: parent-visible task tool errors do
  * not always start with one of the three legacy prefixes (e.g. when
  * `ToolErrorHandlingMiddleware` wraps an exception as
  * `Error: Tool 'task' failed ...`). Treat any leading `Error:` token as a

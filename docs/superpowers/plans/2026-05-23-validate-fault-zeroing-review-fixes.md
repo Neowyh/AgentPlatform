@@ -247,7 +247,7 @@ Expected: no output and exit code 0.
 Run GitNexus change detection:
 
 ```text
-gitnexus_detect_changes(scope="all", repo="deer-flow")
+gitnexus_detect_changes(scope="all", repo="ideer")
 ```
 
 Expected: changed symbols limited to `EXPECTED_ANALYSIS_PATTERN`, `_validate_report`, the new `_coverage_matrix_rows` helper, and the validator tests. If unrelated symbols appear, inspect the diff before committing.

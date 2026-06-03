@@ -2,8 +2,8 @@
 
 import pytest
 
-from deerflow.agents.middlewares.title_middleware import TitleMiddleware
-from deerflow.config.title_config import TitleConfig, get_title_config, set_title_config
+from ideer.agents.middlewares.title_middleware import TitleMiddleware
+from ideer.config.title_config import TitleConfig, get_title_config, set_title_config
 
 
 class TestTitleConfig:

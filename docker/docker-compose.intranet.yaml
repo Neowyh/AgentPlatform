@@ -2,7 +2,7 @@ services:
   nginx:
     image: ${NGINX_IMAGE:-nginx:alpine}
     pull_policy: never
-    container_name: deer-flow-nginx
+    container_name: ideer-nginx
     ports:
       - "${PORT:-2026}:2026"
     volumes:
@@ -14,7 +14,7 @@ services:
       - frontend
       - gateway
     networks:
-      - deer-flow
+      - ideer
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O- http://localhost:2026/health >/dev/null"]
@@ -23,16 +23,16 @@ services:
       retries: 6
 
   frontend:
-    image: ${DEER_FLOW_FRONTEND_IMAGE:-deer-flow-frontend:latest}
+    image: ${IDEER_FRONTEND_IMAGE:-ideer-frontend:latest}
     pull_policy: never
-    container_name: deer-flow-frontend
+    container_name: ideer-frontend
     environment:
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
-      - DEER_FLOW_INTERNAL_GATEWAY_BASE_URL=http://gateway:8001
+      - IDEER_INTERNAL_GATEWAY_BASE_URL=http://gateway:8001
     env_file:
-      - ${DEER_FLOW_FRONTEND_ENV_FILE:?DEER_FLOW_FRONTEND_ENV_FILE must be set}
+      - ${IDEER_FRONTEND_ENV_FILE:?IDEER_FRONTEND_ENV_FILE must be set}
     networks:
-      - deer-flow
+      - ideer
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3000').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
@@ -41,38 +41,38 @@ services:
       retries: 6
 
   gateway:
-    image: ${DEER_FLOW_GATEWAY_IMAGE:-deer-flow-gateway:latest}
+    image: ${IDEER_GATEWAY_IMAGE:-ideer-gateway:latest}
     pull_policy: never
-    container_name: deer-flow-gateway
+    container_name: ideer-gateway
     # Runs and stream buffers are process-local while stream_bridge.type=memory.
     # Keep offline Docker single-worker by default so stream reconnect/join
     # requests hit the same worker that owns the active run.
     command: sh -c "cd backend && PYTHONPATH=. uv run --no-sync uvicorn app.gateway.app:app --host 0.0.0.0 --port 8001 --workers ${GATEWAY_WORKERS:-1}"
     volumes:
-      - ${DEER_FLOW_CONFIG_PATH}:/app/backend/config.yaml:ro
-      - ${DEER_FLOW_EXTENSIONS_CONFIG_PATH}:/app/backend/extensions_config.json:ro
+      - ${IDEER_CONFIG_PATH}:/app/backend/config.yaml:ro
+      - ${IDEER_EXTENSIONS_CONFIG_PATH}:/app/backend/extensions_config.json:ro
       - ../skills:/app/skills:ro
-      - ${DEER_FLOW_HOME}:/app/backend/.deer-flow
-      - ${DEER_FLOW_DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
+      - ${IDEER_HOME}:/app/backend/.ideer
+      - ${IDEER_DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
     working_dir: /app
     environment:
       - CI=true
-      - DEER_FLOW_PROJECT_ROOT=/app
-      - DEER_FLOW_HOME=/app/backend/.deer-flow
-      - DEER_FLOW_CONFIG_PATH=/app/backend/config.yaml
-      - DEER_FLOW_EXTENSIONS_CONFIG_PATH=/app/backend/extensions_config.json
-      - DEER_FLOW_CHANNELS_LANGGRAPH_URL=${DEER_FLOW_CHANNELS_LANGGRAPH_URL:-http://gateway:8001/api}
-      - DEER_FLOW_CHANNELS_GATEWAY_URL=${DEER_FLOW_CHANNELS_GATEWAY_URL:-http://gateway:8001}
-      - DEER_FLOW_INTERNAL_AUTH_TOKEN=${DEER_FLOW_INTERNAL_AUTH_TOKEN}
-      - DEER_FLOW_HOST_BASE_DIR=${DEER_FLOW_HOME}
-      - DEER_FLOW_HOST_SKILLS_PATH=${DEER_FLOW_REPO_ROOT}/skills
-      - DEER_FLOW_SANDBOX_HOST=host.docker.internal
+      - IDEER_PROJECT_ROOT=/app
+      - IDEER_HOME=/app/backend/.ideer
+      - IDEER_CONFIG_PATH=/app/backend/config.yaml
+      - IDEER_EXTENSIONS_CONFIG_PATH=/app/backend/extensions_config.json
+      - IDEER_CHANNELS_LANGGRAPH_URL=${IDEER_CHANNELS_LANGGRAPH_URL:-http://gateway:8001/api}
+      - IDEER_CHANNELS_GATEWAY_URL=${IDEER_CHANNELS_GATEWAY_URL:-http://gateway:8001}
+      - IDEER_INTERNAL_AUTH_TOKEN=${IDEER_INTERNAL_AUTH_TOKEN}
+      - IDEER_HOST_BASE_DIR=${IDEER_HOME}
+      - IDEER_HOST_SKILLS_PATH=${IDEER_REPO_ROOT}/skills
+      - IDEER_SANDBOX_HOST=host.docker.internal
     env_file:
-      - ${DEER_FLOW_ENV_FILE:?DEER_FLOW_ENV_FILE must be set}
+      - ${IDEER_ENV_FILE:?IDEER_ENV_FILE must be set}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
-      - deer-flow
+      - ideer
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8001/health', timeout=5).read()\""]
@@ -81,5 +81,5 @@ services:
       retries: 6
 
 networks:
-  deer-flow:
+  ideer:
     driver: bridge

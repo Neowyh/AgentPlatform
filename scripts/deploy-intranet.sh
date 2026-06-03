@@ -23,8 +23,8 @@ Options:
   --help              Show this help text
 
 Environment:
-  DEER_FLOW_BUNDLE_ROOT, DEER_FLOW_VERSION, DEER_FLOW_NO_LOAD
-  DEER_FLOW_INSTALL_FAULT_ZEROING=0 skips installing the bundled shared fault-zeroing agent
+  IDEER_BUNDLE_ROOT, IDEER_VERSION, IDEER_NO_LOAD
+  IDEER_INSTALL_FAULT_ZEROING=0 skips installing the bundled shared fault-zeroing agent
 EOF
 }
 
@@ -43,9 +43,9 @@ if [ "$(basename "$SCRIPT_DIR")" = "scripts" ]; then
 else
     DEFAULT_BUNDLE_ROOT="$SCRIPT_DIR"
 fi
-BUNDLE_ROOT="${DEER_FLOW_BUNDLE_ROOT:-$DEFAULT_BUNDLE_ROOT}"
-VERSION="${DEER_FLOW_VERSION:-}"
-NO_LOAD="${DEER_FLOW_NO_LOAD:-0}"
+BUNDLE_ROOT="${IDEER_BUNDLE_ROOT:-$DEFAULT_BUNDLE_ROOT}"
+VERSION="${IDEER_VERSION:-}"
+NO_LOAD="${IDEER_NO_LOAD:-0}"
 COMMAND="up"
 
 while [ "$#" -gt 0 ]; do
@@ -135,15 +135,15 @@ find_bundle_file() {
 
 if [ -n "$VERSION" ]; then
     IMAGES_TAR="$(
-        find_bundle_file "deer-flow-images-$VERSION.tar" "deer-flow-images-$VERSION.tar"
-    )" || die "could not find deer-flow-images-$VERSION.tar"
+        find_bundle_file "ideer-images-$VERSION.tar" "ideer-images-$VERSION.tar"
+    )" || die "could not find ideer-images-$VERSION.tar"
     SOURCE_TAR="$(
-        find_bundle_file "deer-flow-source-$VERSION.tar.gz" "deer-flow-source-$VERSION.tar.gz"
-    )" || die "could not find deer-flow-source-$VERSION.tar.gz"
+        find_bundle_file "ideer-source-$VERSION.tar.gz" "ideer-source-$VERSION.tar.gz"
+    )" || die "could not find ideer-source-$VERSION.tar.gz"
 else
-    IMAGES_TAR="$(find_bundle_file 'deer-flow-images-*.tar' '')" || die "could not find a unique deer-flow-images-*.tar"
-    SOURCE_TAR="$(find_bundle_file 'deer-flow-source-*.tar.gz' '')" || die "could not find a unique deer-flow-source-*.tar.gz"
-    VERSION="$(basename "$IMAGES_TAR" | sed -E 's/^deer-flow-images-(.*)\.tar$/\1/')"
+    IMAGES_TAR="$(find_bundle_file 'ideer-images-*.tar' '')" || die "could not find a unique ideer-images-*.tar"
+    SOURCE_TAR="$(find_bundle_file 'ideer-source-*.tar.gz' '')" || die "could not find a unique ideer-source-*.tar.gz"
+    VERSION="$(basename "$IMAGES_TAR" | sed -E 's/^ideer-images-(.*)\.tar$/\1/')"
 fi
 
 SOURCE_DIR="$BUNDLE_ROOT/source"
@@ -224,10 +224,10 @@ validate_runtime() {
     # shellcheck disable=SC1090
     . "$ENV_FILE"
 
-    local config_path="${DEER_FLOW_CONFIG_PATH:-$RUNTIME_DIR/config.yaml}"
-    local backend_env_path="${DEER_FLOW_ENV_FILE:-$RUNTIME_DIR/.env}"
-    local frontend_env_path="${DEER_FLOW_FRONTEND_ENV_FILE:-$RUNTIME_DIR/frontend.env}"
-    local extensions_config_path="${DEER_FLOW_EXTENSIONS_CONFIG_PATH:-$RUNTIME_DIR/extensions_config.json}"
+    local config_path="${IDEER_CONFIG_PATH:-$RUNTIME_DIR/config.yaml}"
+    local backend_env_path="${IDEER_ENV_FILE:-$RUNTIME_DIR/.env}"
+    local frontend_env_path="${IDEER_FRONTEND_ENV_FILE:-$RUNTIME_DIR/frontend.env}"
+    local extensions_config_path="${IDEER_EXTENSIONS_CONFIG_PATH:-$RUNTIME_DIR/extensions_config.json}"
 
     require_file "$config_path"
     require_file "$backend_env_path"
@@ -302,28 +302,28 @@ seed_runtime() {
     fi
 
     BETTER_AUTH_SECRET_VALUE="$(load_or_create_secret_file "$RUNTIME_DIR/data/.better-auth-secret")"
-    DEER_FLOW_INTERNAL_AUTH_TOKEN_VALUE="$(load_or_create_secret_file "$RUNTIME_DIR/data/.internal-auth-token")"
+    IDEER_INTERNAL_AUTH_TOKEN_VALUE="$(load_or_create_secret_file "$RUNTIME_DIR/data/.internal-auth-token")"
 
     if [ ! -f "$ENV_FILE" ]; then
         cat > "$ENV_FILE" <<EOF
 PORT=2026
-DEER_FLOW_REPO_ROOT=$SOURCE_DIR
-DEER_FLOW_HOME=$RUNTIME_DIR/data
-DEER_FLOW_CONFIG_PATH=$RUNTIME_DIR/config.yaml
-DEER_FLOW_EXTENSIONS_CONFIG_PATH=$RUNTIME_DIR/extensions_config.json
-DEER_FLOW_ENV_FILE=$RUNTIME_DIR/.env
-DEER_FLOW_FRONTEND_ENV_FILE=$RUNTIME_DIR/frontend.env
-DEER_FLOW_DOCKER_SOCKET=/var/run/docker.sock
+IDEER_REPO_ROOT=$SOURCE_DIR
+IDEER_HOME=$RUNTIME_DIR/data
+IDEER_CONFIG_PATH=$RUNTIME_DIR/config.yaml
+IDEER_EXTENSIONS_CONFIG_PATH=$RUNTIME_DIR/extensions_config.json
+IDEER_ENV_FILE=$RUNTIME_DIR/.env
+IDEER_FRONTEND_ENV_FILE=$RUNTIME_DIR/frontend.env
+IDEER_DOCKER_SOCKET=/var/run/docker.sock
 BETTER_AUTH_SECRET=$BETTER_AUTH_SECRET_VALUE
-DEER_FLOW_INTERNAL_AUTH_TOKEN=$DEER_FLOW_INTERNAL_AUTH_TOKEN_VALUE
-DEER_FLOW_GATEWAY_IMAGE=deer-flow-gateway:$VERSION
-DEER_FLOW_FRONTEND_IMAGE=deer-flow-frontend:$VERSION
+IDEER_INTERNAL_AUTH_TOKEN=$IDEER_INTERNAL_AUTH_TOKEN_VALUE
+IDEER_GATEWAY_IMAGE=ideer-gateway:$VERSION
+IDEER_FRONTEND_IMAGE=ideer-frontend:$VERSION
 NGINX_IMAGE=nginx:alpine
 EOF
     fi
 
     append_env_if_missing "BETTER_AUTH_SECRET" "$BETTER_AUTH_SECRET_VALUE"
-    append_env_if_missing "DEER_FLOW_INTERNAL_AUTH_TOKEN" "$DEER_FLOW_INTERNAL_AUTH_TOKEN_VALUE"
+    append_env_if_missing "IDEER_INTERNAL_AUTH_TOKEN" "$IDEER_INTERNAL_AUTH_TOKEN_VALUE"
 }
 
 install_fault_zeroing_agent() {
@@ -332,18 +332,18 @@ install_fault_zeroing_agent() {
     # shellcheck disable=SC1090
     . "$ENV_FILE"
 
-    if [ "${DEER_FLOW_INSTALL_FAULT_ZEROING:-1}" = "0" ]; then
+    if [ "${IDEER_INSTALL_FAULT_ZEROING:-1}" = "0" ]; then
         log "skipping fault-zeroing agent install"
         return 0
     fi
 
-    local runtime_home="${DEER_FLOW_HOME:-$RUNTIME_DIR/data}"
-    local config_path="${DEER_FLOW_CONFIG_PATH:-$RUNTIME_DIR/config.yaml}"
+    local runtime_home="${IDEER_HOME:-$RUNTIME_DIR/data}"
+    local config_path="${IDEER_CONFIG_PATH:-$RUNTIME_DIR/config.yaml}"
     require_file "$config_path"
 
     log "installing bundled fault-zeroing agent..."
-    DEER_FLOW_HOME="$runtime_home" \
-        DEER_FLOW_CONFIG_PATH="$config_path" \
+    IDEER_HOME="$runtime_home" \
+        IDEER_CONFIG_PATH="$config_path" \
         python3 "$SOURCE_DIR/scripts/install_fault_zeroing_agent.py"
 }
 
@@ -358,7 +358,7 @@ load_images() {
 }
 
 compose_cmd() {
-    docker compose -p deer-flow -f "$COMPOSE_FILE" --env-file "$ENV_FILE" "$@"
+    docker compose -p ideer -f "$COMPOSE_FILE" --env-file "$ENV_FILE" "$@"
 }
 
 http_ok() {

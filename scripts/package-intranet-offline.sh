@@ -5,11 +5,11 @@ usage() {
     cat <<'EOF'
 Usage: scripts/package-intranet-offline.sh [options]
 
-Build DeerFlow runtime images and assemble an offline deployment bundle.
+Build iDeer runtime images and assemble an offline deployment bundle.
 
 Options:
   --version <value>       Bundle version tag. Default: YYYYMMDD-<git short hash>
-  --output-dir <path>     Output directory. Default: dist/intranet/deer-flow-<version>
+  --output-dir <path>     Output directory. Default: dist/intranet/ideer-<version>
   --platform <value>      Build platform. Default: linux/amd64
   --force                 Remove the output directory if it already exists
   --no-cache              Rebuild Docker images without using cache
@@ -85,7 +85,7 @@ if [ -z "$VERSION" ]; then
 fi
 
 if [ -z "$OUTPUT_DIR" ]; then
-    OUTPUT_DIR="$REPO_ROOT/dist/intranet/deer-flow-$VERSION"
+    OUTPUT_DIR="$REPO_ROOT/dist/intranet/ideer-$VERSION"
 fi
 
 GIT_AVAILABLE=0
@@ -137,11 +137,11 @@ fi
 
 mkdir -p "$OUTPUT_DIR"
 
-GATEWAY_IMAGE="deer-flow-gateway:$VERSION"
-FRONTEND_IMAGE="deer-flow-frontend:$VERSION"
+GATEWAY_IMAGE="ideer-gateway:$VERSION"
+FRONTEND_IMAGE="ideer-frontend:$VERSION"
 NGINX_IMAGE="nginx:alpine"
-SOURCE_TAR="$OUTPUT_DIR/deer-flow-source-$VERSION.tar.gz"
-IMAGES_TAR="$OUTPUT_DIR/deer-flow-images-$VERSION.tar"
+SOURCE_TAR="$OUTPUT_DIR/ideer-source-$VERSION.tar.gz"
+IMAGES_TAR="$OUTPUT_DIR/ideer-images-$VERSION.tar"
 MANIFEST_FILE="$OUTPUT_DIR/MANIFEST.txt"
 SHA_FILE="$OUTPUT_DIR/SHA256SUMS"
 GUIDE_FILE="$REPO_ROOT/docs/deployment/禁公网内网离线部署作业指导书.md"
@@ -193,7 +193,7 @@ tar \
     --exclude='.git' \
     --exclude='dist' \
     --exclude='backend/.venv' \
-    --exclude='backend/.deer-flow' \
+    --exclude='backend/.ideer' \
     --exclude='backend/.pytest_cache' \
     --exclude='backend/.ruff_cache' \
     --exclude='backend/__pycache__' \
@@ -226,7 +226,7 @@ cp "$GUIDE_FILE" "$OUTPUT_DIR/$GUIDE_BASENAME"
 cp "$DEPLOY_SCRIPT_FILE" "$OUTPUT_DIR/$DEPLOY_BASENAME"
 
 cat > "$MANIFEST_FILE" <<EOF
-DeerFlow offline bundle
+iDeer offline bundle
 Version: $VERSION
 Platform: $PLATFORM
 Created at: $(date -u +"%Y-%m-%dT%H:%M:%SZ")

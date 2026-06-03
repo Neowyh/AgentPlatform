@@ -1,0 +1,244 @@
+{
+  "case_id": "case_01_wind_tunnel_heat_flux_drift",
+  "top_event": {
+    "id": "TE-01",
+    "name": "第4工况HF-07热流读数持续上升并超判据且与邻近测点不同步",
+    "description": "高焓风洞第4工况保持阶段，HF-07热流读数连续上升并超过设计判据12%，但邻近测点和喷流总压未同步变化。",
+    "evidence": [
+      {
+        "level": "A",
+        "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-01-files-20260521/user-data/workspace/cases/case_01_wind_tunnel_heat_flux_drift/00_problem_statement.md，章节: 顶事件"
+      },
+      {
+        "level": "A",
+        "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-01-files-20260521/user-data/workspace/cases/case_01_wind_tunnel_heat_flux_drift/03_test_summary试验总结报告.md，章节: 异常现象"
+      }
+    ]
+  },
+  "logic": {
+    "id": "IE-01",
+    "name": "HF-07异常读数形成",
+    "gate": "OR",
+    "children": [
+      "IE-REAL",
+      "IE-MEAS",
+      "BE-INSTALL"
+    ]
+  },
+  "intermediate_events": [
+    {
+      "id": "IE-REAL",
+      "name": "HF-07位置真实热环境异常",
+      "gate": "OR",
+      "children": [
+        "BE-FLOW-LOCAL",
+        "BE-FACILITY-CONDITION"
+      ],
+      "evidence": [
+        {
+          "level": "A",
+          "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-01-files-20260521/user-data/workspace/cases/case_01_wind_tunnel_heat_flux_drift/01_design方案.md，章节: 测点布置"
+        },
+        {
+          "level": "B",
+          "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-01-files-20260521/user-data/workspace/cases/case_01_wind_tunnel_heat_flux_drift/05_historical_or_review_notes.md，章节: 专家复核记录"
+        }
+      ]
+    },
+    {
+      "id": "IE-MEAS",
+      "name": "HF-07测量链路异常",
+      "gate": "OR",
+      "children": [
+        "BE-SENSOR-DRIFT",
+        "BE-CHANNEL-NOISE",
+        "BE-DATA-CONVERSION"
+      ],
+      "evidence": [
+        {
+          "level": "A",
+          "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-01-files-20260521/user-data/workspace/cases/case_01_wind_tunnel_heat_flux_drift/01_design方案.md，章节: 约束和判据"
+        },
+        {
+          "level": "A",
+          "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-01-files-20260521/user-data/workspace/cases/case_01_wind_tunnel_heat_flux_drift/04_test_data.csv:4-9"
+        },
+        {
+          "level": "A",
+          "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-01-files-20260521/user-data/workspace/cases/case_01_wind_tunnel_heat_flux_drift/03_test_summary试验总结报告.md，章节: 初步排查"
+        }
+      ]
+    }
+  ],
+  "bottom_events": [
+    {
+      "id": "BE-SENSOR-DRIFT",
+      "name": "HF-07传感器本体零点/灵敏度漂移",
+      "description": "高温保持后HF-07自身零点或灵敏度发生漂移，导致单点热流读数持续抬升。",
+      "evidence": [
+        {
+          "level": "A",
+          "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-01-files-20260521/user-data/workspace/cases/case_01_wind_tunnel_heat_flux_drift/03_test_summary试验总结报告.md，章节: 初步排查（HF-07 零点回读 +8.4%FS；HF-07 复标尚未完成）"
+        },
+        {
+          "level": "A",
+          "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-01-files-20260521/user-data/workspace/cases/case_01_wind_tunnel_heat_flux_drift/04_test_data.csv:2-9"
+        },
+        {
+          "level": "B",
+          "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-01-files-20260521/user-data/workspace/cases/case_01_wind_tunnel_heat_flux_drift/05_historical_or_review_notes.md，章节: 相似问题"
+        }
+      ],
+      "counter_evidence": [
+        {
+          "level": "D",
+          "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-01-files-20260521/user-data/workspace/cases/case_01_wind_tunnel_heat_flux_drift/03_test_summary试验总结报告.md，章节: 未关闭问题（复标未完成，尚不能最终确认）"
+        }
+      ],
+      "probability": "high",
+      "confidence": "medium",
+      "status": "to_verify"
+    },
+    {
+      "id": "BE-CHANNEL-NOISE",
+      "name": "CH-07通道接地/屏蔽异常导致噪声或偏置漂移",
+      "description": "CH-07采集通道可能存在接地、屏蔽或连接异常，造成高温保持后噪声标志和零点偏移。",
+      "evidence": [
+        {
+          "level": "A",
+          "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-01-files-20260521/user-data/workspace/cases/case_01_wind_tunnel_heat_flux_drift/04_test_data.csv:7-9（ch07_noise_flag, zero_offset）"
+        },
+        {
+          "level": "D",
+          "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-01-files-20260521/user-data/workspace/cases/case_01_wind_tunnel_heat_flux_drift/03_test_summary试验总结报告.md，章节: 未关闭问题（CH-07 屏蔽层接地状态尚未拆检）"
+        }
+      ],
+      "counter_evidence": [
+        {
+          "level": "A",
+          "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-01-files-20260521/user-data/workspace/cases/case_01_wind_tunnel_heat_flux_drift/04_test_data.csv:4-7（HF-07在118 s已开始漂移，而noise_flag到154 s才出现）"
+        }
+      ],
+      "probability": "medium",
+      "confidence": "medium",
+      "status": "to_verify"
+    },
+    {
+      "id": "BE-INSTALL",
+      "name": "HF-07贴装或热接触异常",
+      "description": "HF-07贴装层、背衬或局部热接触异常可能导致读数失真。",
+      "evidence": [
+        {
+          "level": "B",
+          "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-01-files-20260521/user-data/workspace/cases/case_01_wind_tunnel_heat_flux_drift/03_test_summary试验总结报告.md，章节: 当前判断（不能排除局部贴装热接触异常）"
+        },
+        {
+          "level": "A",
+          "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-01-files-20260521/user-data/workspace/cases/case_01_wind_tunnel_heat_flux_drift/01_design方案.md，章节: 测点布置（HF-07关注峰值热流和局部分离）"
+        }
+      ],
+      "counter_evidence": [
+        {
+          "level": "B",
+          "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-01-files-20260521/user-data/workspace/cases/case_01_wind_tunnel_heat_flux_drift/03_test_summary试验总结报告.md，章节: 初步排查（未见烧蚀、剥落或异常变色）"
+        },
+        {
+          "level": "B",
+          "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-01-files-20260521/user-data/workspace/cases/case_01_wind_tunnel_heat_flux_drift/05_historical_or_review_notes.md，章节: 专家复核记录"
+        }
+      ],
+      "probability": "low",
+      "confidence": "low",
+      "status": "to_verify"
+    },
+    {
+      "id": "BE-FLOW-LOCAL",
+      "name": "HF-07位置真实局部热流升高",
+      "description": "HF-07所在局部区域出现真实热环境升高，例如局部分离或局部流动改变。",
+      "evidence": [
+        {
+          "level": "A",
+          "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-01-files-20260521/user-data/workspace/cases/case_01_wind_tunnel_heat_flux_drift/03_test_summary试验总结报告.md，章节: 异常现象（HF-07读数确有升高）"
+        }
+      ],
+      "counter_evidence": [
+        {
+          "level": "A",
+          "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-01-files-20260521/user-data/workspace/cases/case_01_wind_tunnel_heat_flux_drift/03_test_summary试验总结报告.md，章节: 异常现象（HF-06和HF-08同期保持1.01至1.06 MW/m2）"
+        },
+        {
+          "level": "A",
+          "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-01-files-20260521/user-data/workspace/cases/case_01_wind_tunnel_heat_flux_drift/03_test_summary试验总结报告.md，章节: 初步排查（总压波动<1.1%，总温波动<9 K）"
+        },
+        {
+          "level": "B",
+          "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-01-files-20260521/user-data/workspace/cases/case_01_wind_tunnel_heat_flux_drift/05_historical_or_review_notes.md，章节: 专家复核记录"
+        }
+      ],
+      "probability": "low",
+      "confidence": "medium",
+      "status": "contradicted"
+    },
+    {
+      "id": "BE-FACILITY-CONDITION",
+      "name": "风洞主流工况异常导致热流整体抬升",
+      "description": "若总压、总温等主流工况异常，可能导致热流整体变化。",
+      "evidence": [
+        {
+          "level": "A",
+          "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-01-files-20260521/user-data/workspace/cases/case_01_wind_tunnel_heat_flux_drift/02_test_outline试验大纲.md，章节: 工况矩阵"
+        }
+      ],
+      "counter_evidence": [
+        {
+          "level": "A",
+          "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-01-files-20260521/user-data/workspace/cases/case_01_wind_tunnel_heat_flux_drift/03_test_summary试验总结报告.md，章节: 初步排查（总压波动<1.1%，总温波动<9 K）"
+        },
+        {
+          "level": "A",
+          "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-01-files-20260521/user-data/workspace/cases/case_01_wind_tunnel_heat_flux_drift/04_test_data.csv:4-8（总温1476-1483 K，总压518.9-521.0 kPa）"
+        }
+      ],
+      "probability": "low",
+      "confidence": "high",
+      "status": "contradicted"
+    },
+    {
+      "id": "BE-DATA-CONVERSION",
+      "name": "后处理或换算链路异常",
+      "description": "采集后的数据换算、时间同步或后处理异常导致HF-07读数虚高。",
+      "evidence": [
+        {
+          "level": "C",
+          "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-01-files-20260521/user-data/workspace/cases/case_01_wind_tunnel_heat_flux_drift/03_test_summary试验总结报告.md，章节: 未关闭问题（未见直接复核记录）"
+        }
+      ],
+      "counter_evidence": [],
+      "probability": null,
+      "confidence": "low",
+      "status": "to_verify"
+    }
+  ],
+  "current_root_cause_judgement": {
+    "summary": "当前资料更支持HF-07测量链路异常，而非真实热环境异常。优先下位原因为HF-07传感器本体零点/灵敏度漂移，其次为CH-07通道接地/屏蔽异常。由于HF-07复标和CH-07接地拆检未完成，最终结论状态为待验证。",
+    "evidence": [
+      {
+        "level": "A",
+        "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-01-files-20260521/user-data/workspace/cases/case_01_wind_tunnel_heat_flux_drift/01_design方案.md，章节: 约束和判据"
+      },
+      {
+        "level": "A",
+        "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-01-files-20260521/user-data/workspace/cases/case_01_wind_tunnel_heat_flux_drift/03_test_summary试验总结报告.md，章节: 当前判断, 未关闭问题"
+      },
+      {
+        "level": "A",
+        "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-01-files-20260521/user-data/workspace/cases/case_01_wind_tunnel_heat_flux_drift/04_test_data.csv:4-9"
+      },
+      {
+        "level": "B",
+        "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-01-files-20260521/user-data/workspace/cases/case_01_wind_tunnel_heat_flux_drift/05_historical_or_review_notes.md，章节: 专家复核记录"
+      }
+    ],
+    "status": "to_verify"
+  }
+}

@@ -21,8 +21,8 @@
 
 - **Status:** complete
 - Actions taken:
-  - 修复 `scripts/deploy-intranet.sh`：生成合法 `models: []`、校验 seed 源文件、持久化 `.better-auth-secret` 和 `.internal-auth-token`、写入 `DEER_FLOW_INTERNAL_AUTH_TOKEN`、增加 runtime 预检和启动后 HTTP 健康检查。
-  - 修复 `docker/docker-compose.intranet.yaml`：强制 runtime env file、注入 `DEER_FLOW_INTERNAL_AUTH_TOKEN`、增加 healthcheck、移除默认 `.claude` / `.codex` 挂载。
+  - 修复 `scripts/deploy-intranet.sh`：生成合法 `models: []`、校验 seed 源文件、持久化 `.better-auth-secret` 和 `.internal-auth-token`、写入 `IDEER_INTERNAL_AUTH_TOKEN`、增加 runtime 预检和启动后 HTTP 健康检查。
+  - 修复 `docker/docker-compose.intranet.yaml`：强制 runtime env file、注入 `IDEER_INTERNAL_AUTH_TOKEN`、增加 healthcheck、移除默认 `.claude` / `.codex` 挂载。
   - 修复 `scripts/package-intranet-offline.sh`：补充源码 tar exclude、`env.intranet.example` 增加内部 token、MANIFEST 提示使用 `deploy-intranet.sh`。
   - 更新 `docs/deployment/禁公网内网离线部署作业指导书.md`：统一 `runtime/frontend.env`、增加健康检查、登录后无法进入主页排障、CLI auth 挂载说明。
 - Files created/modified:
@@ -47,9 +47,9 @@
 - **Status:** complete
 - Actions taken:
   - 用户要求重新更新离线部署方案和作业指导书，适应当前更改，并照顾电脑小白操作需求。
-  - 重写 `docs/deployment/禁公网内网离线部署方案.md`，同步当前脚本行为：可配置部署路径、`/home/deploy/deer-flow` 示例、runtime 配置生成、`models: []` 默认值、持久化认证密钥和健康检查。
+  - 重写 `docs/deployment/禁公网内网离线部署方案.md`，同步当前脚本行为：可配置部署路径、`/home/deploy/ideer` 示例、runtime 配置生成、`models: []` 默认值、持久化认证密钥和健康检查。
   - 重写 `docs/deployment/禁公网内网离线部署作业指导书.md`，将打包、拷贝、校验、加载镜像、prepare、模型配置、启动、验证、升级、回滚、排障拆成更细步骤，并为关键步骤补充原理说明。
-  - 使用 `rg` 核对文档关键路径和关键配置名，确认未残留 `/opt/deer-flow` 示例。
+  - 使用 `rg` 核对文档关键路径和关键配置名，确认未残留 `/opt/ideer` 示例。
   - 运行新增 pytest，通过。
   - 运行 shell 语法检查，通过。
 - Files created/modified:
@@ -62,9 +62,9 @@
 
 - **Status:** complete
 - Actions taken:
-  - 核实外部 review 意见：旧部署升级时 `env.intranet` 已存在，当前 `prepare` 不会写入新增的 `DEER_FLOW_INTERNAL_AUTH_TOKEN`。
+  - 核实外部 review 意见：旧部署升级时 `env.intranet` 已存在，当前 `prepare` 不会写入新增的 `IDEER_INTERNAL_AUTH_TOKEN`。
   - 新增 `test_prepare_backfills_auth_secrets_into_existing_env_file`，先确认旧实现无法为已有 env 补写认证变量。
-  - 修改 `scripts/deploy-intranet.sh`，新增缺失 env key 追加逻辑；已有 key 不覆盖，缺失的 `BETTER_AUTH_SECRET` 和 `DEER_FLOW_INTERNAL_AUTH_TOKEN` 从持久化 secret 文件补写。
+  - 修改 `scripts/deploy-intranet.sh`，新增缺失 env key 追加逻辑；已有 key 不覆盖，缺失的 `BETTER_AUTH_SECRET` 和 `IDEER_INTERNAL_AUTH_TOKEN` 从持久化 secret 文件补写。
   - 验证重复执行 `prepare` 不会重复追加认证 key，且旧 env 中已有 `PORT` 和镜像配置保持不变。
 - Files created/modified:
   - `scripts/deploy-intranet.sh`
@@ -152,7 +152,7 @@
 | Intranet deploy tests | `env UV_CACHE_DIR=/tmp/uv-cache uv run pytest backend/tests/test_intranet_deploy_scripts.py` | 6 tests pass | 6 passed | pass |
 | Shell syntax | `bash -n scripts/package-intranet-offline.sh scripts/deploy-intranet.sh` | exit 0 | exit 0 | pass |
 | Compose config | `docker compose -f docker/docker-compose.intranet.yaml config` with required env | exit 0 | exit 0 | pass |
-| Deployment docs keyword check | `rg '/opt/deer-flow|/home/deploy/deer-flow|DEER_FLOW_BUNDLE_ROOT|models: \[\]|runtime/frontend.env|better-auth|internal-auth|登录后无法进入主页|原理说明' docs/deployment/禁公网内网离线部署方案.md docs/deployment/禁公网内网离线部署作业指导书.md` | 新路径、关键配置和排障项存在，旧 `/opt/deer-flow` 不出现 | 通过 | pass |
+| Deployment docs keyword check | `rg '/opt/ideer|/home/deploy/ideer|IDEER_BUNDLE_ROOT|models: \[\]|runtime/frontend.env|better-auth|internal-auth|登录后无法进入主页|原理说明' docs/deployment/禁公网内网离线部署方案.md docs/deployment/禁公网内网离线部署作业指导书.md` | 新路径、关键配置和排障项存在，旧 `/opt/ideer` 不出现 | 通过 | pass |
 | Existing env backfill red test | `env UV_CACHE_DIR=/tmp/uv-cache uv run pytest backend/tests/test_intranet_deploy_scripts.py::test_prepare_backfills_auth_secrets_into_existing_env_file -q` before fix | test fails because env lacks auth secrets | failed as expected | pass |
 | Existing env backfill green test | same command after fix | test passes | 1 passed | pass |
 | Intranet deploy tests after backfill | `env UV_CACHE_DIR=/tmp/uv-cache uv run pytest backend/tests/test_intranet_deploy_scripts.py -q` | 7 tests pass | 7 passed | pass |

@@ -1,1 +1,1 @@
-# DeerFlow Setup Wizard package
+# iDeer Setup Wizard package

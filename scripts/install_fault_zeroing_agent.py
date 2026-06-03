@@ -36,17 +36,17 @@ def default_subagents_file() -> Path:
 
 
 def default_base_dir() -> Path:
-    if deer_flow_home := os.environ.get("DEER_FLOW_HOME"):
+    if deer_flow_home := os.environ.get("IDEER_HOME"):
         return Path(deer_flow_home).resolve()
-    return repo_root() / "backend" / ".deer-flow"
+    return repo_root() / "backend" / ".ideer"
 
 
 def resolve_config_path() -> Path:
-    if config_path := os.environ.get("DEER_FLOW_CONFIG_PATH"):
+    if config_path := os.environ.get("IDEER_CONFIG_PATH"):
         path = Path(config_path).resolve()
         if path.is_file():
             return path
-        raise FileNotFoundError(f"Config file specified by DEER_FLOW_CONFIG_PATH does not exist: {path}")
+        raise FileNotFoundError(f"Config file specified by IDEER_CONFIG_PATH does not exist: {path}")
 
     for path in (repo_root() / "config.yaml", repo_root() / "backend" / "config.yaml"):
         if path.is_file():
@@ -263,8 +263,8 @@ def validate_fault_zeroing_subagent_registry(config_path: Path) -> list[str]:
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Install the bundled fault-zeroing agent for DeerFlow.")
-    parser.add_argument("--user-id", help="Install into one DeerFlow user's agent directory instead of the shared directory.")
+    parser = argparse.ArgumentParser(description="Install the bundled fault-zeroing agent for iDeer.")
+    parser.add_argument("--user-id", help="Install into one iDeer user's agent directory instead of the shared directory.")
     return parser.parse_args(argv)
 
 

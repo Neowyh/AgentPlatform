@@ -14,7 +14,7 @@
   - `config.example.yaml` 被直接复制为 `runtime/config.yaml`，其中 `models:` 解析为 `null`，会导致 `AppConfig` 校验失败。
   - 前端 env 文件存在 `runtime/frontend.env`、`frontend/.env`、compose fallback `../frontend/.env` 三套命名/路径，脚本、compose、文档合同不一致。
   - Gateway 启动失败会导致 Next SSR 在 `/workspace` 鉴权阶段访问 `/api/v1/auth/me` 失败，表现为登录后无法进入主页或页面无渲染。
-  - 离线 compose 缺少稳定的 `DEER_FLOW_INTERNAL_AUTH_TOKEN`，多 worker 内部调用存在鉴权不一致风险。
+  - 离线 compose 缺少稳定的 `IDEER_INTERNAL_AUTH_TOKEN`，多 worker 内部调用存在鉴权不一致风险。
 - 审查报告确认的 P1/P2 类问题：
   - 打包源码未排除 `frontend/.env`、测试报告、缓存文件。
   - `deploy-intranet.sh` 缺少 runtime 文件和种子源文件预检。
@@ -37,7 +37,7 @@
 | P1 加固内部 token、secret 持久化和健康检查 | 解决多 worker、重启和排障稳定性问题 |
 | P2 处理打包清理和可选挂载 | 降低泄漏和环境差异风险，不阻断首轮启动 |
 | 修改方案包含文件级任务和验收标准 | 方便后续按任务直接实施和验证 |
-| 示例部署目录统一为 `/home/deploy/deer-flow` | 规避 `/opt` 权限门槛，降低新手操作难度 |
+| 示例部署目录统一为 `/home/deploy/ideer` | 规避 `/opt` 权限门槛，降低新手操作难度 |
 | 宿主机部署目录保持可配置 | 不把离线部署绑定到单一目录，兼容不同服务器分区和权限策略 |
 
 ## Issues Encountered
@@ -54,7 +54,7 @@
 - `docker/docker-compose.intranet.yaml`
 - `docs/deployment/禁公网内网离线部署作业指导书.md`
 - `scripts/deploy.sh`
-- `backend/packages/harness/deerflow/config/app_config.py`
+- `backend/packages/harness/ideer/config/app_config.py`
 - `backend/app/gateway/internal_auth.py`
 - `frontend/src/core/auth/server.ts`
 - `frontend/src/app/workspace/layout.tsx`

@@ -7,11 +7,11 @@ from langchain.agents.middleware import AgentMiddleware
 from langchain.tools import ToolRuntime
 from langgraph.runtime import Runtime
 
-from deerflow.sandbox.middleware import SandboxMiddleware
-from deerflow.sandbox.sandbox import Sandbox
-from deerflow.sandbox.sandbox_provider import SandboxProvider, reset_sandbox_provider, set_sandbox_provider
-from deerflow.sandbox.search import GrepMatch
-from deerflow.sandbox.tools import ls_tool
+from ideer.sandbox.middleware import SandboxMiddleware
+from ideer.sandbox.sandbox import Sandbox
+from ideer.sandbox.sandbox_provider import SandboxProvider, reset_sandbox_provider, set_sandbox_provider
+from ideer.sandbox.search import GrepMatch
+from ideer.sandbox.tools import ls_tool
 
 
 class _SyncProvider(SandboxProvider):

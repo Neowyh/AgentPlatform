@@ -98,7 +98,7 @@ token_usage:
   enabled: true
 models:
 sandbox:
-  use: deerflow.sandbox.local.local_sandbox_provider:LocalSandboxProvider
+  use: ideer.sandbox.local.local_sandbox_provider:LocalSandboxProvider
 """,
         encoding="utf-8",
     )
@@ -144,10 +144,10 @@ def _make_bundle(tmp_path: Path, *, version: str = "test", include_frontend_env:
     bundle_root.mkdir(parents=True)
     source_root = tmp_path / "source-input"
     _write_source_tree(source_root, include_frontend_env=include_frontend_env)
-    with tarfile.open(bundle_root / f"deer-flow-source-{version}.tar.gz", "w:gz") as tar:
+    with tarfile.open(bundle_root / f"ideer-source-{version}.tar.gz", "w:gz") as tar:
         for child in source_root.iterdir():
             tar.add(child, arcname=child.name)
-    (bundle_root / f"deer-flow-images-{version}.tar").write_text("fake images\n", encoding="utf-8")
+    (bundle_root / f"ideer-images-{version}.tar").write_text("fake images\n", encoding="utf-8")
     return bundle_root
 
 
@@ -231,9 +231,9 @@ def test_prepare_seeds_valid_runtime_config_and_stable_auth_files(tmp_path: Path
     assert (runtime_dir / "data" / ".internal-auth-token").is_file()
 
     env_text = (bundle_root / "env.intranet").read_text(encoding="utf-8")
-    assert f"DEER_FLOW_FRONTEND_ENV_FILE={runtime_dir}/frontend.env" in env_text
+    assert f"IDEER_FRONTEND_ENV_FILE={runtime_dir}/frontend.env" in env_text
     assert "BETTER_AUTH_SECRET=" in env_text
-    assert "DEER_FLOW_INTERNAL_AUTH_TOKEN=" in env_text
+    assert "IDEER_INTERNAL_AUTH_TOKEN=" in env_text
 
 
 def test_prepare_installs_fault_zeroing_agent_to_shared_runtime_dir(tmp_path: Path):
@@ -278,7 +278,7 @@ def test_prepare_does_not_install_fault_zeroing_agent_to_user_dirs(tmp_path: Pat
 def test_prepare_skips_fault_zeroing_install_when_disabled(tmp_path: Path):
     bundle_root = _make_bundle(tmp_path)
     env = _env_with_fake_docker(tmp_path)
-    env["DEER_FLOW_INSTALL_FAULT_ZEROING"] = "0"
+    env["IDEER_INSTALL_FAULT_ZEROING"] = "0"
 
     proc = _run_deploy(bundle_root, "prepare", env=env)
 
@@ -313,7 +313,7 @@ def test_prepare_reuses_persisted_auth_secrets_when_env_file_is_recreated(tmp_pa
     assert second.returncode == 0, second.stderr
     env_text = (bundle_root / "env.intranet").read_text(encoding="utf-8")
     assert f"BETTER_AUTH_SECRET={better_secret}" in env_text
-    assert f"DEER_FLOW_INTERNAL_AUTH_TOKEN={internal_token}" in env_text
+    assert f"IDEER_INTERNAL_AUTH_TOKEN={internal_token}" in env_text
 
 
 def test_prepare_backfills_auth_secrets_into_existing_env_file(tmp_path: Path):
@@ -321,8 +321,8 @@ def test_prepare_backfills_auth_secrets_into_existing_env_file(tmp_path: Path):
     env = _env_with_fake_docker(tmp_path)
     (bundle_root / "env.intranet").write_text(
         """PORT=3001
-DEER_FLOW_GATEWAY_IMAGE=deer-flow-gateway:old
-DEER_FLOW_FRONTEND_IMAGE=deer-flow-frontend:old
+IDEER_GATEWAY_IMAGE=ideer-gateway:old
+IDEER_FRONTEND_IMAGE=ideer-frontend:old
 NGINX_IMAGE=nginx:alpine
 """,
         encoding="utf-8",
@@ -338,11 +338,11 @@ NGINX_IMAGE=nginx:alpine
     internal_token = (runtime_dir / "data" / ".internal-auth-token").read_text(encoding="utf-8").strip()
     env_text = (bundle_root / "env.intranet").read_text(encoding="utf-8")
     assert "PORT=3001" in env_text
-    assert "DEER_FLOW_GATEWAY_IMAGE=deer-flow-gateway:old" in env_text
+    assert "IDEER_GATEWAY_IMAGE=ideer-gateway:old" in env_text
     assert f"BETTER_AUTH_SECRET={better_secret}" in env_text
-    assert f"DEER_FLOW_INTERNAL_AUTH_TOKEN={internal_token}" in env_text
+    assert f"IDEER_INTERNAL_AUTH_TOKEN={internal_token}" in env_text
     assert env_text.count("BETTER_AUTH_SECRET=") == 1
-    assert env_text.count("DEER_FLOW_INTERNAL_AUTH_TOKEN=") == 1
+    assert env_text.count("IDEER_INTERNAL_AUTH_TOKEN=") == 1
 
 
 def test_prepare_reports_missing_seed_source_with_actionable_error(tmp_path: Path):
@@ -388,7 +388,7 @@ def test_package_source_archive_includes_runtime_seed_templates(tmp_path: Path):
     )
 
     assert proc.returncode == 0, proc.stderr
-    with tarfile.open(output_dir / "deer-flow-source-test.tar.gz", "r:gz") as tar:
+    with tarfile.open(output_dir / "ideer-source-test.tar.gz", "r:gz") as tar:
         names = set(tar.getnames())
 
     assert ".env.example" in names
@@ -410,9 +410,9 @@ def test_package_source_archive_includes_runtime_seed_templates(tmp_path: Path):
 def test_intranet_compose_uses_runtime_env_contract_and_internal_token():
     compose = COMPOSE_FILE.read_text(encoding="utf-8")
 
-    assert "${DEER_FLOW_FRONTEND_ENV_FILE:?DEER_FLOW_FRONTEND_ENV_FILE must be set}" in compose
-    assert "${DEER_FLOW_ENV_FILE:?DEER_FLOW_ENV_FILE must be set}" in compose
-    assert "DEER_FLOW_INTERNAL_AUTH_TOKEN=${DEER_FLOW_INTERNAL_AUTH_TOKEN}" in compose
+    assert "${IDEER_FRONTEND_ENV_FILE:?IDEER_FRONTEND_ENV_FILE must be set}" in compose
+    assert "${IDEER_ENV_FILE:?IDEER_ENV_FILE must be set}" in compose
+    assert "IDEER_INTERNAL_AUTH_TOKEN=${IDEER_INTERNAL_AUTH_TOKEN}" in compose
 
 
 def test_intranet_gateway_startup_does_not_sync_dependencies():

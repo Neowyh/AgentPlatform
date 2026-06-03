@@ -49,7 +49,7 @@ def test_installer_uses_only_standard_library_imports_for_offline_deploy_hosts()
     imported_modules.update(node.module.split(".", 1)[0] for node in ast.walk(tree) if isinstance(node, ast.ImportFrom) and node.module)
 
     assert "yaml" not in imported_modules
-    assert "deerflow" not in imported_modules
+    assert "ideer" not in imported_modules
 
 
 def test_install_fault_zeroing_agent_defaults_to_shared_agent_dir(tmp_path: Path) -> None:
@@ -139,7 +139,7 @@ def test_install_fault_zeroing_agent_keeps_user_id_compatibility(tmp_path: Path)
 
 def test_default_base_dir_uses_deer_flow_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     runtime_home = tmp_path / "runtime-home"
-    monkeypatch.setenv("DEER_FLOW_HOME", str(runtime_home))
+    monkeypatch.setenv("IDEER_HOME", str(runtime_home))
 
     assert install_script.default_base_dir() == runtime_home.resolve()
 
@@ -147,7 +147,7 @@ def test_default_base_dir_uses_deer_flow_home(monkeypatch: pytest.MonkeyPatch, t
 def test_resolve_config_path_uses_deer_flow_config_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     config_path = tmp_path / "config.yaml"
     config_path.write_text("{}\n", encoding="utf-8")
-    monkeypatch.setenv("DEER_FLOW_CONFIG_PATH", str(config_path))
+    monkeypatch.setenv("IDEER_CONFIG_PATH", str(config_path))
 
     assert install_script.resolve_config_path() == config_path.resolve()
 
@@ -246,7 +246,7 @@ def test_registry_module_import_does_not_eagerly_import_executor() -> None:
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path('backend/packages/harness').resolve()))
-from deerflow.subagents.registry import get_subagent_config
+from ideer.subagents.registry import get_subagent_config
 print(callable(get_subagent_config))
 """
     env = os.environ.copy()

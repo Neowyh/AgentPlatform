@@ -4,7 +4,7 @@
 missing, except ``get_store`` which returns ``None``.
 
 ``AppConfig`` is intentionally *not* cached on ``app.state``. Routers and the
-run path resolve it through :func:`deerflow.config.app_config.get_app_config`,
+run path resolve it through :func:`ideer.config.app_config.get_app_config`,
 which performs mtime-based hot reload, so edits to ``config.yaml`` take
 effect on the next request without a process restart. The engines created in
 :func:`langgraph_runtime` (stream bridge, persistence, checkpointer, store,
@@ -25,19 +25,19 @@ from typing import TYPE_CHECKING, TypeVar, cast
 from fastapi import FastAPI, HTTPException, Request
 from langgraph.types import Checkpointer
 
-from deerflow.config.app_config import AppConfig, get_app_config
-from deerflow.persistence.feedback import FeedbackRepository
-from deerflow.runtime import RunContext, RunManager, StreamBridge
-from deerflow.runtime.events.store.base import RunEventStore
-from deerflow.runtime.runs.store.base import RunStore
+from ideer.config.app_config import AppConfig, get_app_config
+from ideer.persistence.feedback import FeedbackRepository
+from ideer.runtime import RunContext, RunManager, StreamBridge
+from ideer.runtime.events.store.base import RunEventStore
+from ideer.runtime.runs.store.base import RunStore
 
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from app.gateway.auth.local_provider import LocalAuthProvider
     from app.gateway.auth.repositories.sqlite import SQLiteUserRepository
-    from deerflow.persistence.thread_meta.base import ThreadMetaStore
-    from deerflow.runtime import RunRecord
+    from ideer.persistence.thread_meta.base import ThreadMetaStore
+    from ideer.runtime import RunRecord
 
 
 T = TypeVar("T")
@@ -70,14 +70,14 @@ async def _mark_latest_recovered_threads_error(
 def get_config() -> AppConfig:
     """Return the freshest ``AppConfig`` for the current request.
 
-    Routes through :func:`deerflow.config.app_config.get_app_config`, which
+    Routes through :func:`ideer.config.app_config.get_app_config`, which
     honours runtime ``ContextVar`` overrides and reloads ``config.yaml`` from
     disk when its mtime changes. ``AppConfig`` is not cached on ``app.state``
     at all — the only startup-time snapshot lives as a local
     ``startup_config`` variable inside ``lifespan()`` and is passed
     explicitly into :func:`langgraph_runtime` for the engines that are
     restart-required by design. Routing every request through
-    :func:`get_app_config` closes the bytedance/deer-flow issue #3107 BUG-001
+    :func:`get_app_config` closes the bytedance/ideer issue #3107 BUG-001
     split-brain where the worker / lead-agent thread saw a stale startup
     snapshot.
 
@@ -118,10 +118,10 @@ async def langgraph_runtime(app: FastAPI, startup_config: AppConfig) -> AsyncGen
         async with langgraph_runtime(app, startup_config):
             yield
     """
-    from deerflow.persistence.engine import close_engine, get_session_factory, init_engine_from_config
-    from deerflow.runtime import make_store, make_stream_bridge
-    from deerflow.runtime.checkpointer.async_provider import make_checkpointer
-    from deerflow.runtime.events.store import make_run_event_store
+    from ideer.persistence.engine import close_engine, get_session_factory, init_engine_from_config
+    from ideer.runtime import make_store, make_stream_bridge
+    from ideer.runtime.checkpointer.async_provider import make_checkpointer
+    from ideer.runtime.events.store import make_run_event_store
 
     async with AsyncExitStack() as stack:
         config = startup_config
@@ -138,18 +138,18 @@ async def langgraph_runtime(app: FastAPI, startup_config: AppConfig) -> AsyncGen
         # Initialize repositories — one get_session_factory() call for all.
         sf = get_session_factory()
         if sf is not None:
-            from deerflow.persistence.feedback import FeedbackRepository
-            from deerflow.persistence.run import RunRepository
+            from ideer.persistence.feedback import FeedbackRepository
+            from ideer.persistence.run import RunRepository
 
             app.state.run_store = RunRepository(sf)
             app.state.feedback_repo = FeedbackRepository(sf)
         else:
-            from deerflow.runtime.runs.store.memory import MemoryRunStore
+            from ideer.runtime.runs.store.memory import MemoryRunStore
 
             app.state.run_store = MemoryRunStore()
             app.state.feedback_repo = None
 
-        from deerflow.persistence.thread_meta import make_thread_store
+        from ideer.persistence.thread_meta import make_thread_store
 
         app.state.thread_store = make_thread_store(sf, app.state.store)
 
@@ -164,7 +164,7 @@ async def langgraph_runtime(app: FastAPI, startup_config: AppConfig) -> AsyncGen
         # RunManager with store backing for persistence
         app.state.run_manager = RunManager(store=app.state.run_store)
         if getattr(config.database, "backend", None) == "sqlite":
-            from deerflow.utils.time import now_iso
+            from ideer.utils.time import now_iso
 
             # Startup-only recovery: clean shutdowns return no active rows and
             # the thread-status update below becomes a no-op.
@@ -257,7 +257,7 @@ def get_local_provider() -> LocalAuthProvider:
     global _cached_local_provider, _cached_repo
     if _cached_repo is None:
         from app.gateway.auth.repositories.sqlite import SQLiteUserRepository
-        from deerflow.persistence.engine import get_session_factory
+        from ideer.persistence.engine import get_session_factory
 
         sf = get_session_factory()
         if sf is None:

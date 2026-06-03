@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-DeerFlow is a full-stack agent application. `backend/` contains the Python FastAPI/LangGraph gateway, channel integrations, and tests in `backend/tests/`. `frontend/` contains the Next.js app: routes in `frontend/src/app/`, UI in `frontend/src/components/`, domain logic in `frontend/src/core/`, and tests in `frontend/tests/`. Shared scripts live in `scripts/`, deployment assets in `docker/`, public skills in `skills/public/`, and planning material in `docs/`. Respect narrower guidance in `backend/AGENTS.md` and `frontend/AGENTS.md`.
+iDeer is a full-stack agent application. `backend/` contains the Python FastAPI/LangGraph gateway, channel integrations, and tests in `backend/tests/`. `frontend/` contains the Next.js app: routes in `frontend/src/app/`, UI in `frontend/src/components/`, domain logic in `frontend/src/core/`, and tests in `frontend/tests/`. Shared scripts live in `scripts/`, deployment assets in `docker/`, public skills in `skills/public/`, and planning material in `docs/`. Respect narrower guidance in `backend/AGENTS.md` and `frontend/AGENTS.md`.
 
 ## Build, Test, and Development Commands
 
@@ -36,7 +36,7 @@ Do not commit local secrets. Start from `config.example.yaml`, `.env.example`, o
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **deer-flow** (26213 symbols, 48319 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **ideer** (26213 symbols, 48319 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
@@ -59,10 +59,10 @@ This project is indexed by GitNexus as **deer-flow** (26213 symbols, 48319 relat
 
 | Resource | Use for |
 |----------|---------|
-| `gitnexus://repo/deer-flow/context` | Codebase overview, check index freshness |
-| `gitnexus://repo/deer-flow/clusters` | All functional areas |
-| `gitnexus://repo/deer-flow/processes` | All execution flows |
-| `gitnexus://repo/deer-flow/process/{name}` | Step-by-step execution trace |
+| `gitnexus://repo/ideer/context` | Codebase overview, check index freshness |
+| `gitnexus://repo/ideer/clusters` | All functional areas |
+| `gitnexus://repo/ideer/processes` | All execution flows |
+| `gitnexus://repo/ideer/process/{name}` | Step-by-step execution trace |
 
 ## CLI
 

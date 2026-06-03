@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# run-local-services.sh - Start DeerFlow local services for browser validation.
+# run-local-services.sh - Start iDeer local services for browser validation.
 #
 # This launcher keeps Gateway and Frontend in tmux sessions, then starts nginx
 # as the unified localhost:2026 entrypoint. It is intentionally small and
@@ -12,8 +12,8 @@ set -euo pipefail
 REPO_ROOT="$(builtin cd "$(dirname "${BASH_SOURCE[0]}")/.." >/dev/null 2>&1 && pwd -P)"
 cd "$REPO_ROOT"
 
-GATEWAY_SESSION="deerflow-gateway"
-FRONTEND_SESSION="deerflow-frontend"
+GATEWAY_SESSION="ideer-gateway"
+FRONTEND_SESSION="ideer-frontend"
 NGINX_CONF="$REPO_ROOT/temp/nginx.local.runtime.conf"
 NGINX_SOURCE_CONF="$REPO_ROOT/docker/nginx/nginx.local.conf"
 
@@ -23,7 +23,7 @@ Usage: scripts/run-local-services.sh [start|stop|restart|status|logs]
 
 Commands:
   start     Start Gateway, Frontend, and nginx in the background (default)
-  stop      Stop local DeerFlow services started by this script
+  stop      Stop local iDeer services started by this script
   restart   Stop, then start
   status    Show service health and background sessions
   logs      Show recent Gateway, Frontend, and nginx logs
@@ -114,7 +114,7 @@ stop_nginx() {
 }
 
 stop_services() {
-    echo "Stopping DeerFlow local services..."
+    echo "Stopping iDeer local services..."
     stop_nginx
     tmux kill-session -t "$GATEWAY_SESSION" >/dev/null 2>&1 || true
     tmux kill-session -t "$FRONTEND_SESSION" >/dev/null 2>&1 || true
@@ -143,7 +143,7 @@ start_services() {
     wait_url "Unified entrypoint" "http://localhost:2026/health" 30
 
     echo ""
-    echo "DeerFlow is running: http://localhost:2026"
+    echo "iDeer is running: http://localhost:2026"
     echo "Logs: logs/gateway.log, logs/frontend.log, logs/nginx-error.log"
     echo "Stop: scripts/run-local-services.sh stop"
 }

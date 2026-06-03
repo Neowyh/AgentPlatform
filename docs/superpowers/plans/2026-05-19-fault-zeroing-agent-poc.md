@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build a source-controlled DeerFlow PoC package for a fault-zeroing custom agent that can read uploaded evidence files, build a fault tree, assess bottom events, and generate Markdown deliverables.
+**Goal:** Build a source-controlled iDeer PoC package for a fault-zeroing custom agent that can read uploaded evidence files, build a fault tree, assess bottom events, and generate Markdown deliverables.
 
-**Architecture:** Keep DeerFlow runtime unchanged. Add a custom skill under `skills/custom/fault-zeroing/`, source-controlled agent/subagent configuration templates under `docs/fault-zeroing-agent/`, and sample evidence packages for repeatable manual validation. Runtime installation remains an explicit copy/bootstrap step because DeerFlow custom agents are stored per user under `backend/.deer-flow/users/{user_id}/agents/{agent_name}/`.
+**Architecture:** Keep iDeer runtime unchanged. Add a custom skill under `skills/custom/fault-zeroing/`, source-controlled agent/subagent configuration templates under `docs/fault-zeroing-agent/`, and sample evidence packages for repeatable manual validation. Runtime installation remains an explicit copy/bootstrap step because iDeer custom agents are stored per user under `backend/.ideer/users/{user_id}/agents/{agent_name}/`.
 
-**Tech Stack:** Markdown, YAML, JSON templates, DeerFlow custom agents, DeerFlow custom skills, sandbox tools (`glob`, `grep`, `read_file`, `write_file`), built-in tools (`task`, `ask_clarification`, `present_files`).
+**Tech Stack:** Markdown, YAML, JSON templates, iDeer custom agents, iDeer custom skills, sandbox tools (`glob`, `grep`, `read_file`, `write_file`), built-in tools (`task`, `ask_clarification`, `present_files`).
 
 **Important constraint:** Do not edit runtime symbols for this PoC. If implementation later changes Python or TypeScript functions/classes/methods, run GitNexus impact analysis before editing the symbol as required by `AGENTS.md`.
 
@@ -635,10 +635,10 @@ Create `docs/fault-zeroing-agent/验证记录.md` with this content:
 
 ## 安装准备
 
-1. 将 `docs/fault-zeroing-agent/agent/config.yaml` 和 `docs/fault-zeroing-agent/agent/SOUL.md` 安装到当前用户的 DeerFlow custom agent 目录。
+1. 将 `docs/fault-zeroing-agent/agent/config.yaml` 和 `docs/fault-zeroing-agent/agent/SOUL.md` 安装到当前用户的 iDeer custom agent 目录。
 2. 将 `docs/fault-zeroing-agent/subagents.yaml` 中的 `subagents` 配置合并到本地 `config.yaml`。
 3. 确认 `skills/custom/fault-zeroing/SKILL.md` 存在。
-4. 启动 DeerFlow 后选择 `fault-zeroing` 智能体。
+4. 启动 iDeer 后选择 `fault-zeroing` 智能体。
 
 ## 推荐测试提示词
 
@@ -691,7 +691,7 @@ Expected: both commands exit successfully.
 Run GitNexus change detection:
 
 ```text
-gitnexus_detect_changes(scope="all", repo="deer-flow")
+gitnexus_detect_changes(scope="all", repo="ideer")
 ```
 
 Expected: changed symbols list is empty or limited to non-code documentation/skill artifacts. If Python or TypeScript symbols appear unexpectedly, stop and investigate before committing.
@@ -714,7 +714,7 @@ Expected: commit succeeds.
 - This PoC intentionally does not add a formal RAG/vector knowledge base.
 - This PoC intentionally does not add dedicated front-end pages.
 - This PoC intentionally does not edit FastAPI, LangGraph, Next.js, or runtime loader code.
-- Runtime installation of the custom agent is per-user. Use the source templates in `docs/fault-zeroing-agent/agent/` as the canonical files, then copy them into the target user's DeerFlow agent directory during manual validation.
+- Runtime installation of the custom agent is per-user. Use the source templates in `docs/fault-zeroing-agent/agent/` as the canonical files, then copy them into the target user's iDeer agent directory during manual validation.
 - If a later task requires automating runtime installation, add a separate plan task for a small script and tests rather than expanding this file/template task.
 
 ## Self-Review
@@ -731,5 +731,5 @@ Spec coverage:
 
 Known gaps:
 
-- This plan does not automate copying agent templates into `backend/.deer-flow/users/{user_id}/agents/fault-zeroing/`.
-- This plan does not execute the PoC through a live DeerFlow chat session because that requires selecting the runtime user, local config, model availability, and server mode.
+- This plan does not automate copying agent templates into `backend/.ideer/users/{user_id}/agents/fault-zeroing/`.
+- This plan does not execute the PoC through a live iDeer chat session because that requires selecting the runtime user, local config, model availability, and server mode.

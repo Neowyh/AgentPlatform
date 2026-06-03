@@ -1,0 +1,177 @@
+{
+  "case_id": "Case-03",
+  "title": "电弧加热烧蚀异常归零故障树",
+  "top_event": {
+    "id": "TE-01",
+    "name": "P-3样件中央区域烧蚀异常加深",
+    "description": "电弧加热热防护材料筛选试验后，样件P-3中央区域烧蚀深度1.42 mm，较其余同批/同试验样件显著偏大，且出现偏右侧条带状加深。",
+    "evidence": [
+      "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-03-main-20260521/user-data/uploads/00_problem_statement.md，章节: 顶事件",
+      "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-03-main-20260521/user-data/uploads/03_test_summary试验总结报告.md，章节: 异常现象",
+      "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-03-main-20260521/user-data/uploads/04_test_data.csv"
+    ]
+  },
+  "logic": "OR",
+  "intermediate_events": [
+    {
+      "id": "IE-01",
+      "name": "外部热载输入异常导致局部烧蚀增大",
+      "logic": "OR",
+      "evidence": [
+        "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-03-main-20260521/user-data/uploads/01_design方案.md，章节: 关键判据",
+        "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-03-main-20260521/user-data/uploads/03_test_summary试验总结报告.md，章节: 排查记录",
+        "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-03-main-20260521/user-data/uploads/04_test_data.csv"
+      ],
+      "children": ["BE-01", "BE-02", "BE-03"]
+    },
+    {
+      "id": "IE-02",
+      "name": "装夹/入射条件异常导致局部热集中",
+      "logic": "OR",
+      "evidence": [
+        "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-03-main-20260521/user-data/uploads/01_design方案.md，章节: 关键判据",
+        "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-03-main-20260521/user-data/uploads/02_test_outline试验大纲.md，章节: 异常处置",
+        "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-03-main-20260521/user-data/uploads/03_test_summary试验总结报告.md，章节: 排查记录",
+        "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-03-main-20260521/user-data/uploads/05_historical_or_review_notes.md"
+      ],
+      "children": ["BE-04", "BE-05"]
+    },
+    {
+      "id": "IE-03",
+      "name": "材料局部抗烧蚀能力异常",
+      "logic": "OR",
+      "evidence": [
+        "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-03-main-20260521/user-data/uploads/01_design方案.md，章节: 关键判据",
+        "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-03-main-20260521/user-data/uploads/03_test_summary试验总结报告.md，章节: 排查记录",
+        "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-03-main-20260521/user-data/uploads/05_historical_or_review_notes.md，章节: 专家复核意见"
+      ],
+      "children": ["BE-06", "BE-07"]
+    },
+    {
+      "id": "IE-04",
+      "name": "测量或记录偏差导致异常被放大或误判",
+      "logic": "OR",
+      "evidence": [
+        "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-03-main-20260521/user-data/uploads/02_test_outline试验大纲.md，章节: 数据记录",
+        "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-03-main-20260521/user-data/uploads/03_test_summary试验总结报告.md，章节: 异常现象"
+      ],
+      "children": ["BE-08"]
+    }
+  ],
+  "bottom_events": [
+    {
+      "id": "BE-01",
+      "name": "试前热流计标定异常导致热流判断失真",
+      "description": "若热流计标定异常，可能低估实际热流输入。",
+      "evidence": [
+        "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-03-main-20260521/user-data/uploads/03_test_summary试验总结报告.md，章节: 排查记录（试前标定偏差+1.8%）"
+      ],
+      "probability": null,
+      "likelihood": "低倾向",
+      "confidence": "high",
+      "status": "unlikely"
+    },
+    {
+      "id": "BE-02",
+      "name": "P-3试验期间喷流整体热流超限",
+      "description": "若P-3暴露期间平均或峰值热流明显超判据，可能解释烧蚀异常。",
+      "evidence": [
+        "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-03-main-20260521/user-data/uploads/03_test_summary试验总结报告.md，章节: 排查记录（均值2.43 MW/m2，峰值2.51 MW/m2）",
+        "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-03-main-20260521/user-data/uploads/04_test_data.csv"
+      ],
+      "probability": null,
+      "likelihood": "低倾向",
+      "confidence": "high",
+      "status": "unlikely"
+    },
+    {
+      "id": "BE-03",
+      "name": "弧电流异常波动导致能量输入异常",
+      "description": "若弧电流显著失稳，可能形成异常烧蚀。",
+      "evidence": [
+        "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-03-main-20260521/user-data/uploads/03_test_summary试验总结报告.md，章节: 排查记录（最大波动2.2%）",
+        "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-03-main-20260521/user-data/uploads/04_test_data.csv"
+      ],
+      "probability": null,
+      "likelihood": "低倾向",
+      "confidence": "high",
+      "status": "unlikely"
+    },
+    {
+      "id": "BE-04",
+      "name": "P-3装夹偏角或局部垫片未贴合导致局部入射角异常",
+      "description": "记录偏角0.8 deg未超1.0 deg判据，但照片和备注提示右侧垫片接触不确定，可能造成局部间隙、边界层扰动和条带状加深。",
+      "evidence": [
+        "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-03-main-20260521/user-data/uploads/03_test_summary试验总结报告.md，章节: 排查记录（照片显示边缘垫片疑似未完全贴合）",
+        "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-03-main-20260521/user-data/uploads/04_test_data.csv（photo_note: right-side shim contact uncertain / suspected local gap in fixture photo）",
+        "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-03-main-20260521/user-data/uploads/05_historical_or_review_notes.md，章节: 历史相似案例",
+        "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-03-main-20260521/user-data/uploads/05_historical_or_review_notes.md，章节: 专家复核意见"
+      ],
+      "probability": null,
+      "likelihood": "中高倾向",
+      "confidence": "medium",
+      "status": "to_verify"
+    },
+    {
+      "id": "BE-05",
+      "name": "局部流场扰动在装夹边界处引起条带状烧蚀加深",
+      "description": "不一定表现为整体热流超限，但可能在局部形成更高热/剪切负荷。",
+      "evidence": [
+        "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-03-main-20260521/user-data/uploads/03_test_summary试验总结报告.md，章节: 异常现象（偏右侧条带状加深）",
+        "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-03-main-20260521/user-data/uploads/05_historical_or_review_notes.md，章节: 专家复核意见"
+      ],
+      "probability": null,
+      "likelihood": "中等倾向",
+      "confidence": "medium",
+      "status": "to_verify"
+    },
+    {
+      "id": "BE-06",
+      "name": "B26-042批次存在系统性材料性能异常",
+      "description": "若同批次整体性能异常，应影响P-3和P-4等同批样件。",
+      "evidence": [
+        "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-03-main-20260521/user-data/uploads/03_test_summary试验总结报告.md，章节: 排查记录（P-3/P-4同属B26-042，P-4未异常）",
+        "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-03-main-20260521/user-data/uploads/05_historical_or_review_notes.md，章节: 专家复核意见"
+      ],
+      "probability": null,
+      "likelihood": "低倾向",
+      "confidence": "medium",
+      "status": "unlikely"
+    },
+    {
+      "id": "BE-07",
+      "name": "P-3存在局部密度/孔隙率缺陷等单件材料局部异常",
+      "description": "单件局部缺陷可在同批次另一件正常时仍触发异常烧蚀。当前未完成复检。",
+      "evidence": [
+        "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-03-main-20260521/user-data/uploads/03_test_summary试验总结报告.md，章节: 排查记录（材料复检尚未完成）",
+        "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-03-main-20260521/user-data/uploads/05_historical_or_review_notes.md，章节: 专家复核意见"
+      ],
+      "probability": null,
+      "likelihood": "中等倾向",
+      "confidence": "low",
+      "status": "to_verify"
+    },
+    {
+      "id": "BE-08",
+      "name": "烧蚀深度测量或记录偏差",
+      "description": "若测点、读数或记录存在偏差，可能夸大异常程度；当前资料未提供复测结果。",
+      "evidence": [
+        "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-03-main-20260521/user-data/uploads/02_test_outline试验大纲.md，章节: 数据记录（每件5点）",
+        "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-03-main-20260521/user-data/uploads/03_test_summary试验总结报告.md，章节: 异常现象"
+      ],
+      "probability": null,
+      "likelihood": "待验证",
+      "confidence": "low",
+      "status": "to_verify"
+    }
+  ],
+  "preliminary_root_cause": {
+    "statement": "现有资料下，更可疑的是P-3装夹局部接触/入射条件异常所致的局部热集中；材料单件局部缺陷为并列待验证原因。尚不足以确认系统性喷流超限或批次系统性失效。",
+    "basis": [
+      "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-03-main-20260521/user-data/uploads/03_test_summary试验总结报告.md，章节: 初步判断",
+      "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-03-main-20260521/user-data/uploads/05_historical_or_review_notes.md，章节: 专家复核意见",
+      "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-03-main-20260521/user-data/uploads/04_test_data.csv"
+    ],
+    "status": "to_verify"
+  }
+}

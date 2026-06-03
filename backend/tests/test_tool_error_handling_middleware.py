@@ -5,15 +5,15 @@ import pytest
 from langchain_core.messages import ToolMessage
 from langgraph.errors import GraphInterrupt
 
-from deerflow.agents.middlewares.tool_error_handling_middleware import (
+from ideer.agents.middlewares.tool_error_handling_middleware import (
     ToolErrorHandlingMiddleware,
     build_subagent_runtime_middlewares,
 )
-from deerflow.agents.middlewares.view_image_middleware import ViewImageMiddleware
-from deerflow.config.app_config import AppConfig, CircuitBreakerConfig
-from deerflow.config.guardrails_config import GuardrailsConfig
-from deerflow.config.model_config import ModelConfig
-from deerflow.config.sandbox_config import SandboxConfig
+from ideer.agents.middlewares.view_image_middleware import ViewImageMiddleware
+from ideer.config.app_config import AppConfig, CircuitBreakerConfig
+from ideer.config.guardrails_config import GuardrailsConfig
+from ideer.config.model_config import ModelConfig
+from ideer.config.sandbox_config import SandboxConfig
 
 
 def _request(name: str = "web_search", tool_call_id: str | None = "tc-1"):
@@ -60,31 +60,31 @@ def _stub_runtime_middleware_imports(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setitem(
         sys.modules,
-        "deerflow.agents.middlewares.llm_error_handling_middleware",
+        "ideer.agents.middlewares.llm_error_handling_middleware",
         _module(
-            "deerflow.agents.middlewares.llm_error_handling_middleware",
+            "ideer.agents.middlewares.llm_error_handling_middleware",
             LLMErrorHandlingMiddleware=FakeLLMErrorHandlingMiddleware,
         ),
     )
     monkeypatch.setitem(
         sys.modules,
-        "deerflow.agents.middlewares.thread_data_middleware",
-        _module("deerflow.agents.middlewares.thread_data_middleware", ThreadDataMiddleware=FakeMiddleware),
+        "ideer.agents.middlewares.thread_data_middleware",
+        _module("ideer.agents.middlewares.thread_data_middleware", ThreadDataMiddleware=FakeMiddleware),
     )
     monkeypatch.setitem(
         sys.modules,
-        "deerflow.sandbox.middleware",
-        _module("deerflow.sandbox.middleware", SandboxMiddleware=FakeMiddleware),
+        "ideer.sandbox.middleware",
+        _module("ideer.sandbox.middleware", SandboxMiddleware=FakeMiddleware),
     )
     monkeypatch.setitem(
         sys.modules,
-        "deerflow.agents.middlewares.dangling_tool_call_middleware",
-        _module("deerflow.agents.middlewares.dangling_tool_call_middleware", DanglingToolCallMiddleware=FakeMiddleware),
+        "ideer.agents.middlewares.dangling_tool_call_middleware",
+        _module("ideer.agents.middlewares.dangling_tool_call_middleware", DanglingToolCallMiddleware=FakeMiddleware),
     )
     monkeypatch.setitem(
         sys.modules,
-        "deerflow.agents.middlewares.sandbox_audit_middleware",
-        _module("deerflow.agents.middlewares.sandbox_audit_middleware", SandboxAuditMiddleware=FakeMiddleware),
+        "ideer.agents.middlewares.sandbox_audit_middleware",
+        _module("ideer.agents.middlewares.sandbox_audit_middleware", SandboxAuditMiddleware=FakeMiddleware),
     )
 
 
@@ -104,31 +104,31 @@ def test_build_subagent_runtime_middlewares_threads_app_config_to_llm_middleware
 
     monkeypatch.setitem(
         sys.modules,
-        "deerflow.agents.middlewares.llm_error_handling_middleware",
+        "ideer.agents.middlewares.llm_error_handling_middleware",
         _module(
-            "deerflow.agents.middlewares.llm_error_handling_middleware",
+            "ideer.agents.middlewares.llm_error_handling_middleware",
             LLMErrorHandlingMiddleware=FakeLLMErrorHandlingMiddleware,
         ),
     )
     monkeypatch.setitem(
         sys.modules,
-        "deerflow.agents.middlewares.thread_data_middleware",
-        _module("deerflow.agents.middlewares.thread_data_middleware", ThreadDataMiddleware=FakeMiddleware),
+        "ideer.agents.middlewares.thread_data_middleware",
+        _module("ideer.agents.middlewares.thread_data_middleware", ThreadDataMiddleware=FakeMiddleware),
     )
     monkeypatch.setitem(
         sys.modules,
-        "deerflow.sandbox.middleware",
-        _module("deerflow.sandbox.middleware", SandboxMiddleware=FakeMiddleware),
+        "ideer.sandbox.middleware",
+        _module("ideer.sandbox.middleware", SandboxMiddleware=FakeMiddleware),
     )
     monkeypatch.setitem(
         sys.modules,
-        "deerflow.agents.middlewares.dangling_tool_call_middleware",
-        _module("deerflow.agents.middlewares.dangling_tool_call_middleware", DanglingToolCallMiddleware=FakeMiddleware),
+        "ideer.agents.middlewares.dangling_tool_call_middleware",
+        _module("ideer.agents.middlewares.dangling_tool_call_middleware", DanglingToolCallMiddleware=FakeMiddleware),
     )
     monkeypatch.setitem(
         sys.modules,
-        "deerflow.agents.middlewares.sandbox_audit_middleware",
-        _module("deerflow.agents.middlewares.sandbox_audit_middleware", SandboxAuditMiddleware=FakeMiddleware),
+        "ideer.agents.middlewares.sandbox_audit_middleware",
+        _module("ideer.agents.middlewares.sandbox_audit_middleware", SandboxAuditMiddleware=FakeMiddleware),
     )
 
     middlewares = build_subagent_runtime_middlewares(app_config=app_config, lazy_init=False)
@@ -137,7 +137,7 @@ def test_build_subagent_runtime_middlewares_threads_app_config_to_llm_middleware
     # 6 baseline (ThreadData, Sandbox, DanglingToolCall, LLMErrorHandling,
     # SandboxAudit, ToolErrorHandling) + 1 SafetyFinishReasonMiddleware
     # (enabled by default — see SafetyFinishReasonConfig).
-    from deerflow.agents.middlewares.safety_finish_reason_middleware import SafetyFinishReasonMiddleware
+    from ideer.agents.middlewares.safety_finish_reason_middleware import SafetyFinishReasonMiddleware
 
     assert len(middlewares) == 7
     assert any(isinstance(m, ToolErrorHandlingMiddleware) for m in middlewares)

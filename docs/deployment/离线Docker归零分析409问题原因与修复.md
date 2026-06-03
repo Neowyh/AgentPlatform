@@ -20,7 +20,7 @@ HTTP 409: {"detail":"Run 565e99e2-28c9-49ee-a4e7-1e581722b9b0 is not active on t
 
 如果部署目录根部的 `env.intranet` 中没有设置 `GATEWAY_WORKERS`，Docker Compose 会使用默认值 `4`，也就是启动 4 个 Gateway worker 进程。
 
-当前 DeerFlow 的 run 任务、取消控制状态和 `MemoryStreamBridge` 流式事件缓冲都保存在单个 Python 进程内存中。多 worker 场景下可能出现如下链路：
+当前 iDeer 的 run 任务、取消控制状态和 `MemoryStreamBridge` 流式事件缓冲都保存在单个 Python 进程内存中。多 worker 场景下可能出现如下链路：
 
 1. 前端发起归零分析，请求落到 worker A，run 任务和 SSE 流缓冲也在 worker A 内存中创建。
 2. 页面刷新、网络重连或 SDK `joinStream` 请求落到 worker B。
@@ -47,7 +47,7 @@ runtime/.env
 原因是 `--workers ${GATEWAY_WORKERS:-4}` 是 Docker Compose 解析 compose 文件时完成变量替换的，`deploy-intranet.sh` 调用 Compose 时使用的是：
 
 ```bash
-docker compose -p deer-flow -f source/docker/docker-compose.intranet.yaml --env-file env.intranet ...
+docker compose -p ideer -f source/docker/docker-compose.intranet.yaml --env-file env.intranet ...
 ```
 
 所以 `${GATEWAY_WORKERS:-4}` 读取的是 `env.intranet`。
@@ -89,7 +89,7 @@ scripts/package-intranet-offline.sh --version <version> --force
 部署后确认实际 worker 数：
 
 ```bash
-docker compose -p deer-flow -f source/docker/docker-compose.intranet.yaml --env-file env.intranet config | grep -- '--workers'
+docker compose -p ideer -f source/docker/docker-compose.intranet.yaml --env-file env.intranet config | grep -- '--workers'
 ```
 
 期望输出中包含：
@@ -125,13 +125,13 @@ GATEWAY_WORKERS=1
 确认 Compose 解析结果：
 
 ```bash
-docker compose -p deer-flow -f source/docker/docker-compose.intranet.yaml --env-file env.intranet config | grep -- '--workers'
+docker compose -p ideer -f source/docker/docker-compose.intranet.yaml --env-file env.intranet config | grep -- '--workers'
 ```
 
 确认运行中容器命令：
 
 ```bash
-docker inspect deer-flow-gateway --format '{{json .Config.Cmd}}'
+docker inspect ideer-gateway --format '{{json .Config.Cmd}}'
 ```
 
 两处都应体现：
@@ -149,7 +149,7 @@ docker inspect deer-flow-gateway --format '{{json .Config.Cmd}}'
 1. 修改 `env.intranet`。
 2. 执行 `./deploy-intranet.sh restart`。
 3. 确认 `docker compose ... config` 输出为 `--workers 1`。
-4. 确认 `docker inspect deer-flow-gateway ...` 输出为 `--workers 1`。
+4. 确认 `docker inspect ideer-gateway ...` 输出为 `--workers 1`。
 5. 刷新浏览器页面。
 6. 新建或重新发起一轮归零智能体分析。
 7. 观察是否仍出现 `not active on this worker and cannot be streamed`。

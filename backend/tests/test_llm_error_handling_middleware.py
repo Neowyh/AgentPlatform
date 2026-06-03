@@ -8,11 +8,11 @@ import pytest
 from langchain_core.messages import AIMessage
 from langgraph.errors import GraphBubbleUp
 
-from deerflow.agents.middlewares.llm_error_handling_middleware import (
+from ideer.agents.middlewares.llm_error_handling_middleware import (
     LLMErrorHandlingMiddleware,
 )
-from deerflow.config.app_config import AppConfig
-from deerflow.config.sandbox_config import SandboxConfig
+from ideer.config.app_config import AppConfig
+from ideer.config.sandbox_config import SandboxConfig
 
 
 def _make_app_config() -> AppConfig:

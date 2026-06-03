@@ -4,7 +4,7 @@
 
 ## 一、背景
 
-这份文档用于记录 DeerFlow 禁公网内网离线部署 Docker 镜像包制作、交付和现场启动过程中实际遇到过的问题。它不是预先设计出来的风险清单，而是根据昨晚到现在的打包、部署、排查和修复过程整理出来的复盘材料，供后续再次制作离线包、交接部署流程或排查同类故障时参考。
+这份文档用于记录 iDeer 禁公网内网离线部署 Docker 镜像包制作、交付和现场启动过程中实际遇到过的问题。它不是预先设计出来的风险清单，而是根据昨晚到现在的打包、部署、排查和修复过程整理出来的复盘材料，供后续再次制作离线包、交接部署流程或排查同类故障时参考。
 
 当时涉及的主要链路包括：
 
@@ -45,7 +45,7 @@
 
 #### 问题现象
 
-脚本落地后只执行了 `bash -n scripts/package-intranet-offline.sh`，随后被误认为离线镜像包已制作完成，但 `dist/intranet/` 下没有可交付的 `deer-flow-images-*.tar`。
+脚本落地后只执行了 `bash -n scripts/package-intranet-offline.sh`，随后被误认为离线镜像包已制作完成，但 `dist/intranet/` 下没有可交付的 `ideer-images-*.tar`。
 
 #### 问题根因
 
@@ -87,7 +87,7 @@
 
 #### 解决方案
 
-`deer-flow-images-*.tar` 和 `dist/intranet/` 下的离线制品不要提交到普通 Git 历史。已经进入未发布历史时，需要改写未发布历史移除 blob，或改用 Git LFS、制品库、内网文件服务器、对象存储等交付渠道。
+`ideer-images-*.tar` 和 `dist/intranet/` 下的离线制品不要提交到普通 Git 历史。已经进入未发布历史时，需要改写未发布历史移除 blob，或改用 Git LFS、制品库、内网文件服务器、对象存储等交付渠道。
 
 ## 四、离线包运行时配置合同
 
@@ -107,13 +107,13 @@
 
 #### 解决方案
 
-离线部署只把 `runtime/frontend.env` 作为前端运行时 env 文件，`env.intranet` 中通过 `DEER_FLOW_FRONTEND_ENV_FILE` 把该路径传给 compose。部署人员不要修改源码目录 `frontend/.env` 来修复内网运行问题；所有运行态配置都应落在部署根目录的 `runtime/` 和 `env.intranet`。
+离线部署只把 `runtime/frontend.env` 作为前端运行时 env 文件，`env.intranet` 中通过 `IDEER_FRONTEND_ENV_FILE` 把该路径传给 compose。部署人员不要修改源码目录 `frontend/.env` 来修复内网运行问题；所有运行态配置都应落在部署根目录的 `runtime/` 和 `env.intranet`。
 
 ### 内网部署根目录为 `/opt` 时路径假设失效
 
 #### 问题现象
 
-离线包被解压到内网服务器的 `/opt` 或 `/opt/deer-flow` 后，手工命令、诊断命令或 compose 路径引用仍沿用开发机目录，导致找不到 `source/docker/docker-compose.intranet.yaml`、`runtime/config.yaml` 或 env 文件。
+离线包被解压到内网服务器的 `/opt` 或 `/opt/ideer` 后，手工命令、诊断命令或 compose 路径引用仍沿用开发机目录，导致找不到 `source/docker/docker-compose.intranet.yaml`、`runtime/config.yaml` 或 env 文件。
 
 #### 问题根因
 
@@ -123,7 +123,7 @@
 
 #### 解决方案
 
-在内网服务器上以离线包解压后的 bundle root 为工作目录执行命令，例如先 `cd /opt/deer-flow`，再运行 `./deploy-intranet.sh prepare`、`./deploy-intranet.sh up`、`./deploy-intranet.sh status`。compose、env 和 runtime 路径都由 `deploy-intranet.sh` 统一拼接，不要直接复用开发机绝对路径。
+在内网服务器上以离线包解压后的 bundle root 为工作目录执行命令，例如先 `cd /opt/ideer`，再运行 `./deploy-intranet.sh prepare`、`./deploy-intranet.sh up`、`./deploy-intranet.sh status`。compose、env 和 runtime 路径都由 `deploy-intranet.sh` 统一拼接，不要直接复用开发机绝对路径。
 
 ### `models: null` 导致 `config.yaml` 启动失败
 
@@ -149,13 +149,13 @@ Gateway 容器启动时报 `config.yaml` 格式或类型错误，后端配置模
 
 #### 问题根因
 
-`BETTER_AUTH_SECRET` 和 `DEER_FLOW_INTERNAL_AUTH_TOKEN` 如果只临时写在 env 文件中，删除或重建 env 后会变化。多 worker 或多次重启时，不稳定的 token 会放大内部调用和会话校验问题。
+`BETTER_AUTH_SECRET` 和 `IDEER_INTERNAL_AUTH_TOKEN` 如果只临时写在 env 文件中，删除或重建 env 后会变化。多 worker 或多次重启时，不稳定的 token 会放大内部调用和会话校验问题。
 
 这类密钥一旦变了，系统会把原来的登录态或内部请求当成“不可信”，表现出来就是登录或服务间调用异常。
 
 #### 解决方案
 
-将 `BETTER_AUTH_SECRET` 持久化到 `runtime/data/.better-auth-secret`，将 `DEER_FLOW_INTERNAL_AUTH_TOKEN` 持久化到 `runtime/data/.internal-auth-token`。`deploy-intranet.sh` 生成或修复 `env.intranet` 时应复用已有值，不覆盖已经存在的密钥。
+将 `BETTER_AUTH_SECRET` 持久化到 `runtime/data/.better-auth-secret`，将 `IDEER_INTERNAL_AUTH_TOKEN` 持久化到 `runtime/data/.internal-auth-token`。`deploy-intranet.sh` 生成或修复 `env.intranet` 时应复用已有值，不覆盖已经存在的密钥。
 
 ### 源码包泄露本地 env、缓存或报告
 
@@ -301,7 +301,7 @@ Gateway 容器启动时报 `config.yaml` 格式或类型错误，后端配置模
 
 #### 问题根因
 
-Frontend 的服务端渲染需要访问 Gateway 的鉴权接口。若 `DEER_FLOW_INTERNAL_GATEWAY_BASE_URL`、公开访问 URL、auth secret 或 Gateway 启动配置错误，前端会把后端配置问题外显为登录页或注册页不加载。
+Frontend 的服务端渲染需要访问 Gateway 的鉴权接口。若 `IDEER_INTERNAL_GATEWAY_BASE_URL`、公开访问 URL、auth secret 或 Gateway 启动配置错误，前端会把后端配置问题外显为登录页或注册页不加载。
 
 这里的直观理解是：前端页面在服务端先问一次后端“这个用户是谁”，这一步问不到，页面就可能直接加载不出来。
 
@@ -334,7 +334,7 @@ agents_api:
   enabled: true
 ```
 
-如需临时跳过归零智能体安装，可以在部署命令前设置 `DEER_FLOW_INSTALL_FAULT_ZEROING=0`，但这只适合排查部署基础链路，不应作为正式交付默认状态。
+如需临时跳过归零智能体安装，可以在部署命令前设置 `IDEER_INSTALL_FAULT_ZEROING=0`，但这只适合排查部署基础链路，不应作为正式交付默认状态。
 
 ### `agents_api.enabled` 未开启
 
@@ -418,7 +418,7 @@ Gateway 多 worker 启动时，run 任务、`MemoryStreamBridge` 和流式缓冲
 
 #### 解决方案
 
-离线 Docker 默认使用 `GATEWAY_WORKERS=1`，保证长任务和流式重连落在同一进程内。新离线包通过 compose 默认值继承该修复；旧包必须在部署根目录 `env.intranet` 写入 `GATEWAY_WORKERS=1` 后重启，因为 `runtime/.env` 不参与 Compose 命令插值。重启后可用 `docker compose ... config | grep -- '--workers'` 或 `docker inspect deer-flow-gateway --format '{{json .Config.Cmd}}'` 确认启动命令已经是单 worker。验证修复时要新发起一轮归零分析，不要用修复前遗留的旧 run id 复测。
+离线 Docker 默认使用 `GATEWAY_WORKERS=1`，保证长任务和流式重连落在同一进程内。新离线包通过 compose 默认值继承该修复；旧包必须在部署根目录 `env.intranet` 写入 `GATEWAY_WORKERS=1` 后重启，因为 `runtime/.env` 不参与 Compose 命令插值。重启后可用 `docker compose ... config | grep -- '--workers'` 或 `docker inspect ideer-gateway --format '{{json .Config.Cmd}}'` 确认启动命令已经是单 worker。验证修复时要新发起一轮归零分析，不要用修复前遗留的旧 run id 复测。
 
 该方案适用于当前单机离线部署和内存态流式任务；如果未来要恢复多 worker，需要引入跨 worker 的任务状态和流缓冲共享机制，而不能只调大 worker 数。
 
@@ -426,7 +426,7 @@ Gateway 多 worker 启动时，run 任务、`MemoryStreamBridge` 和流式缓冲
 
 构建机先确认 Docker daemon 可用，再执行 `scripts/package-intranet-offline.sh` 生成离线镜像包、源码包和校验文件；镜像 tar 作为交付制品管理，不进入普通 Git 历史。
 
-内网服务器将离线包上传并解压到实际部署目录，例如 `/opt/deer-flow`，先用 `sha256sum -c SHA256SUMS` 校验包完整性，再通过 `./deploy-intranet.sh prepare` 和 `./deploy-intranet.sh up` 启动。首次启动会导入镜像；如果镜像已经提前 `docker load` 过，可以按脚本支持的 `--no-load` 路径跳过重复导入。
+内网服务器将离线包上传并解压到实际部署目录，例如 `/opt/ideer`，先用 `sha256sum -c SHA256SUMS` 校验包完整性，再通过 `./deploy-intranet.sh prepare` 和 `./deploy-intranet.sh up` 启动。首次启动会导入镜像；如果镜像已经提前 `docker load` 过，可以按脚本支持的 `--no-load` 路径跳过重复导入。
 
 运行配置集中修改 `runtime/config.yaml`、`runtime/.env`、`runtime/frontend.env` 和部署根目录的 `env.intranet`，不要回到源码目录修改 `frontend/.env`。仅模型端点、密钥或访问域名变化时，优先修改运行配置后执行 `./deploy-intranet.sh restart`，不需要重新制作镜像。
 

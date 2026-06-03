@@ -69,7 +69,7 @@ Complete
 
 - [x] 按当前脚本和 compose 行为重写离线部署方案
 - [x] 按电脑小白操作需求重写作业指导书
-- [x] 将示例部署目录统一为 `/home/deploy/deer-flow`
+- [x] 将示例部署目录统一为 `/home/deploy/ideer`
 - [x] 补充每一步操作的原理说明和常见故障排查
 - [x] 运行文档关键字核对、脚本语法检查和离线部署回归测试
 - **Status:** complete
@@ -117,4 +117,4 @@ Complete
 ## Notes
 
 - 已按用户要求完成脚本、compose、测试和部署文档更新。
-- 离线部署文档示例目录统一为 `/home/deploy/deer-flow`，实际路径仍可通过脚本参数或环境变量配置。
+- 离线部署文档示例目录统一为 `/home/deploy/ideer`，实际路径仍可通过脚本参数或环境变量配置。

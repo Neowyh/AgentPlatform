@@ -1,0 +1,223 @@
+{
+  "case_id": "Case-02",
+  "top_event": {
+    "id": "TE-01",
+    "name": "热真空试验保温切换后TC-12内部测点超调",
+    "description": "升温平台切换至保温阶段后，TC-12温度达到94.6C，超过目标上限9.6C，持续约7分30秒，超出允许判据。",
+    "evidence": [
+      {
+        "level": "A",
+        "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-02-main-20260521/user-data/uploads/00_problem_statement.md，章节: 顶事件"
+      },
+      {
+        "level": "A",
+        "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-02-main-20260521/user-data/uploads/03_test_summary试验总结报告.md，章节: 异常现象"
+      },
+      {
+        "level": "A",
+        "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-02-main-20260521/user-data/uploads/04_test_data.csv"
+      }
+    ]
+  },
+  "logic": {
+    "gate": "OR",
+    "children": [
+      "IE-01",
+      "IE-02"
+    ]
+  },
+  "intermediate_events": [
+    {
+      "id": "IE-01",
+      "name": "保温切换后加热输入未及时下降",
+      "gate": "OR",
+      "children": [
+        "BE-01",
+        "BE-02"
+      ],
+      "evidence": [
+        {
+          "level": "A",
+          "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-02-main-20260521/user-data/uploads/01_design方案.md，章节: 控制约束"
+        },
+        {
+          "level": "A",
+          "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-02-main-20260521/user-data/uploads/02_test_outline试验大纲.md，章节: 判据"
+        },
+        {
+          "level": "A",
+          "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-02-main-20260521/user-data/uploads/03_test_summary试验总结报告.md，章节: 排查记录"
+        },
+        {
+          "level": "A",
+          "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-02-main-20260521/user-data/uploads/04_test_data.csv"
+        }
+      ]
+    },
+    {
+      "id": "IE-02",
+      "name": "测量或热惯性因素放大内部超调表征",
+      "gate": "OR",
+      "children": [
+        "BE-03",
+        "BE-04"
+      ],
+      "evidence": [
+        {
+          "level": "A",
+          "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-02-main-20260521/user-data/uploads/01_design方案.md，章节: 控制约束"
+        },
+        {
+          "level": "B",
+          "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-02-main-20260521/user-data/uploads/03_test_summary试验总结报告.md，章节: 初步判断"
+        },
+        {
+          "level": "B",
+          "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-02-main-20260521/user-data/uploads/05_historical_or_review_notes.md，章节: 复核意见"
+        }
+      ]
+    }
+  ],
+  "bottom_events": [
+    {
+      "id": "BE-01",
+      "name": "参数组B积分限幅或相关控制参数误配置",
+      "description": "参数组B在试验前一日由2026B-2改为2026B-3，切保温后占空比在120s内仍高于58%，与设计/试验要求不符；历史相似案例显示积分限幅未同步更新可导致类似超调。",
+      "evidence": [
+        {
+          "level": "A",
+          "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-02-main-20260521/user-data/uploads/03_test_summary试验总结报告.md，章节: 排查记录"
+        },
+        {
+          "level": "B",
+          "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-02-main-20260521/user-data/uploads/03_test_summary试验总结报告.md，章节: 未关闭问题"
+        },
+        {
+          "level": "B",
+          "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-02-main-20260521/user-data/uploads/05_historical_or_review_notes.md，章节: 历史相似案例"
+        }
+      ],
+      "probability": null,
+      "tendency": "高",
+      "confidence": "medium",
+      "status": "to_verify"
+    },
+    {
+      "id": "BE-02",
+      "name": "保温切换逻辑使占空比下降过慢",
+      "description": "设计要求切换后60s内占空比降至35%以下，但试验记录显示120s内仍保持58%以上，且人工切换参数组C后占空比降至28%并恢复。",
+      "evidence": [
+        {
+          "level": "A",
+          "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-02-main-20260521/user-data/uploads/01_design方案.md，章节: 控制约束"
+        },
+        {
+          "level": "A",
+          "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-02-main-20260521/user-data/uploads/02_test_outline试验大纲.md，章节: 判据"
+        },
+        {
+          "level": "A",
+          "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-02-main-20260521/user-data/uploads/04_test_data.csv"
+        }
+      ],
+      "probability": null,
+      "tendency": "高",
+      "confidence": "high",
+      "status": "suspected"
+    },
+    {
+      "id": "BE-03",
+      "name": "TC-12导热胶层偏厚导致动态响应失真",
+      "description": "目视复查认为TC-12未脱落，但胶层偏厚需复测。专家复核认为该因素通常造成读数响应滞后，不足以单独解释持续超调。",
+      "evidence": [
+        {
+          "level": "B",
+          "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-02-main-20260521/user-data/uploads/03_test_summary试验总结报告.md，章节: 排查记录"
+        },
+        {
+          "level": "B",
+          "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-02-main-20260521/user-data/uploads/05_historical_or_review_notes.md，章节: 复核意见"
+        },
+        {
+          "level": "B",
+          "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-02-main-20260521/user-data/uploads/03_test_summary试验总结报告.md，章节: 初步判断"
+        }
+      ],
+      "probability": null,
+      "tendency": "低",
+      "confidence": "medium",
+      "status": "to_verify"
+    },
+    {
+      "id": "BE-04",
+      "name": "热惯性模型与实际内部热响应不一致",
+      "description": "设计文件明确指出若内部测点超调而外壁反馈正常，应检查热惯性模型和控制参数切换逻辑；当前仅有间接迹象，缺少模型复核记录。",
+      "evidence": [
+        {
+          "level": "A",
+          "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-02-main-20260521/user-data/uploads/01_design方案.md，章节: 控制约束"
+        },
+        {
+          "level": "B",
+          "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-02-main-20260521/user-data/uploads/03_test_summary试验总结报告.md，章节: 初步判断"
+        }
+      ],
+      "probability": null,
+      "tendency": "中",
+      "confidence": "low",
+      "status": "to_verify"
+    }
+  ],
+  "screened_out_factors": [
+    {
+      "factor": "真空度异常",
+      "conclusion": "现有证据不支持",
+      "basis": [
+        {
+          "level": "A",
+          "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-02-main-20260521/user-data/uploads/02_test_outline试验大纲.md，章节: 判据"
+        },
+        {
+          "level": "A",
+          "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-02-main-20260521/user-data/uploads/03_test_summary试验总结报告.md，章节: 排查记录"
+        },
+        {
+          "level": "A",
+          "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-02-main-20260521/user-data/uploads/04_test_data.csv"
+        }
+      ]
+    },
+    {
+      "factor": "外壁反馈测点失控",
+      "conclusion": "现有证据不支持",
+      "basis": [
+        {
+          "level": "A",
+          "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-02-main-20260521/user-data/uploads/03_test_summary试验总结报告.md，章节: 异常现象"
+        },
+        {
+          "level": "A",
+          "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-02-main-20260521/user-data/uploads/04_test_data.csv"
+        }
+      ]
+    }
+  ],
+  "root_cause_preliminary": {
+    "statement": "当前证据最支持的主导原因是：保温参数组B切换后控制输出下降过慢，且参数组B新版本存在误配置嫌疑；TC-12胶层偏厚更可能是次要影响因素而非单独根因。",
+    "status": "to_verify",
+    "evidence": [
+      {
+        "level": "A",
+        "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-02-main-20260521/user-data/uploads/03_test_summary试验总结报告.md，章节: 初步判断"
+      },
+      {
+        "level": "A",
+        "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-02-main-20260521/user-data/uploads/04_test_data.csv"
+      },
+      {
+        "level": "B",
+        "source": "文件: /home/wangyh/workspace/deer-flow/backend/.deer-flow/users/7c5af71e-0069-4712-bf16-c54cd35639aa/threads/zero-eval-case-02-main-20260521/user-data/uploads/05_historical_or_review_notes.md，章节: 复核意见"
+      }
+    ]
+  }
+}

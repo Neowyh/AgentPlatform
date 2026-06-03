@@ -141,8 +141,8 @@ env UV_CACHE_DIR=/tmp/uv-cache UV_TOOL_DIR=/tmp/uv-tools \
 ```bash
 env UV_CACHE_DIR=/tmp/uv-cache UV_TOOL_DIR=/tmp/uv-tools \
   uv run ruff check \
-  packages/harness/deerflow/config/paths.py \
-  packages/harness/deerflow/agents/memory/storage.py \
+  packages/harness/ideer/config/paths.py \
+  packages/harness/ideer/agents/memory/storage.py \
   tests/test_paths_user_isolation.py \
   tests/test_memory_storage_user_isolation.py \
   tests/test_memory_storage.py \
@@ -158,7 +158,7 @@ All checks passed!
 执行过的 GitNexus 提交前检查：
 
 ```text
-detect_changes(scope="all", repo="deer-flow")
+detect_changes(scope="all", repo="ideer")
 ```
 
 结果摘要：
