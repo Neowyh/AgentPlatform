@@ -239,6 +239,19 @@ class SkillStorage(ABC):
         except Exception as e:
             logger.warning("Failed to load extensions config: %s", e)
 
+        # Filter out internet-dependent skills in offline mode
+        from ideer.config.network_mode import is_offline
+
+        if is_offline():
+            offline_skipped = [s.name for s in skills if s.requires_internet]
+            if offline_skipped:
+                logger.warning(
+                    "Offline mode: skipping %d internet-dependent skill(s): %s",
+                    len(offline_skipped),
+                    ", ".join(offline_skipped),
+                )
+            skills = [s for s in skills if not s.requires_internet]
+
         if enabled_only:
             skills = [s for s in skills if s.enabled]
 

@@ -29,6 +29,7 @@ class Skill:
     category: SkillCategory  # 'public' or 'custom'
     allowed_tools: list[str] | None = None
     enabled: bool = False  # Whether this skill is enabled
+    requires_internet: bool = False  # Whether this skill requires internet access
 
     @property
     def skill_path(self) -> str:

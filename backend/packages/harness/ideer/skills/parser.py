@@ -93,6 +93,8 @@ def parse_skill_file(skill_file: Path, category: SkillCategory, relative_path: P
             logger.error("Invalid allowed-tools in %s: %s", skill_file, exc)
             return None
 
+        requires_internet = bool(metadata.get("requires-internet", False))
+
         return Skill(
             name=name,
             description=description,
@@ -103,6 +105,7 @@ def parse_skill_file(skill_file: Path, category: SkillCategory, relative_path: P
             category=category,
             allowed_tools=allowed_tools,
             enabled=True,  # Actual state comes from the extensions config file.
+            requires_internet=requires_internet,
         )
 
     except Exception:

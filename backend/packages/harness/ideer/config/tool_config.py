@@ -17,4 +17,8 @@ class ToolConfig(BaseModel):
         ...,
         description="Variable name of the tool provider(e.g. ideer.sandbox.tools:bash_tool)",
     )
+    requires_network: bool = Field(
+        default=False,
+        description="Whether this tool requires internet access. Tools with requires_network=true are skipped in offline mode.",
+    )
     model_config = ConfigDict(extra="allow")

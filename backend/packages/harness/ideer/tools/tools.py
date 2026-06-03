@@ -4,6 +4,7 @@ from langchain.tools import BaseTool
 
 from ideer.config import get_app_config
 from ideer.config.app_config import AppConfig
+from ideer.config.network_mode import is_offline
 from ideer.reflection import resolve_variable
 from ideer.sandbox.security import is_host_bash_allowed
 from ideer.tools.builtins import ask_clarification_tool, present_file_tool, task_tool, view_image_tool
@@ -65,6 +66,17 @@ def get_available_tools(
     """
     config = app_config or get_app_config()
     tool_configs = [tool for tool in config.tools if groups is None or tool.group in groups]
+
+    # Filter out network-dependent tools in offline mode
+    if is_offline():
+        offline_skipped = [tool.name for tool in tool_configs if tool.requires_network]
+        if offline_skipped:
+            logger.info(
+                "Offline mode: skipping %d network-dependent tool(s): %s",
+                len(offline_skipped),
+                ", ".join(offline_skipped),
+            )
+        tool_configs = [tool for tool in tool_configs if not tool.requires_network]
 
     # Do not expose host bash by default when LocalSandboxProvider is active.
     if not is_host_bash_allowed(config):

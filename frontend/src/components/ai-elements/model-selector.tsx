@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import type { ComponentProps, ReactNode } from "react";
+import { useState } from "react";
 
 export type ModelSelectorProps = ComponentProps<typeof Dialog>;
 
@@ -165,20 +166,48 @@ export type ModelSelectorLogoProps = Omit<
     | (string & {});
 };
 
+/** Initial-letter fallback when the CDN logo fails to load (e.g. intranet). */
+const ModelLogoFallback = ({
+  provider,
+  className,
+}: {
+  provider: string;
+  className?: string;
+}) => (
+  <span
+    className={cn(
+      "bg-muted text-muted-foreground inline-flex size-3 items-center justify-center rounded-full text-[8px] font-semibold uppercase",
+      className,
+    )}
+    aria-label={`${provider} logo fallback`}
+  >
+    {provider.charAt(0)}
+  </span>
+);
+
 export const ModelSelectorLogo = ({
   provider,
   className,
   ...props
-}: ModelSelectorLogoProps) => (
-  <img
-    {...props}
-    alt={`${provider} logo`}
-    className={cn("size-3 dark:invert", className)}
-    height={12}
-    src={`https://models.dev/logos/${provider}.svg`}
-    width={12}
-  />
-);
+}: ModelSelectorLogoProps) => {
+  const [hasError, setHasError] = useState(false);
+
+  if (hasError) {
+    return <ModelLogoFallback provider={provider} className={className} />;
+  }
+
+  return (
+    <img
+      {...props}
+      alt={`${provider} logo`}
+      className={cn("size-3 dark:invert", className)}
+      height={12}
+      src={`https://models.dev/logos/${provider}.svg`}
+      width={12}
+      onError={() => setHasError(true)}
+    />
+  );
+};
 
 export type ModelSelectorLogoGroupProps = ComponentProps<"div">;
 

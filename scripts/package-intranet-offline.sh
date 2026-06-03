@@ -24,7 +24,7 @@ die() {
 }
 
 log() {
-    printf '%s\n' "$1"
+    printf '[%s] %s\n' "$(date '+%H:%M:%S')" "$1"
 }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -146,19 +146,22 @@ MANIFEST_FILE="$OUTPUT_DIR/MANIFEST.txt"
 SHA_FILE="$OUTPUT_DIR/SHA256SUMS"
 GUIDE_FILE="$REPO_ROOT/docs/deployment/禁公网内网离线部署作业指导书.md"
 DEPLOY_SCRIPT_FILE="$REPO_ROOT/scripts/deploy-intranet.sh"
+CHECK_SCRIPT_FILE="$REPO_ROOT/scripts/check-intranet.sh"
 GUIDE_BASENAME="$(basename "$GUIDE_FILE")"
 DEPLOY_BASENAME="$(basename "$DEPLOY_SCRIPT_FILE")"
+CHECK_BASENAME="$(basename "$CHECK_SCRIPT_FILE")"
 
 log "output: $OUTPUT_DIR"
 log "version: $VERSION"
 log "platform: $PLATFORM"
+echo ""
 
 BUILD_CACHE_ARGS=()
 if [ "$NO_CACHE" -eq 1 ]; then
     BUILD_CACHE_ARGS+=(--no-cache)
 fi
 
-log "building gateway image..."
+log "[1/6] building gateway image..."
 docker build \
     "${BUILD_CACHE_ARGS[@]}" \
     --platform "$PLATFORM" \
@@ -170,7 +173,7 @@ docker build \
     -t "$GATEWAY_IMAGE" \
     "$REPO_ROOT"
 
-log "building frontend image..."
+log "[2/6] building frontend image..."
 docker build \
     "${BUILD_CACHE_ARGS[@]}" \
     --platform "$PLATFORM" \
@@ -181,13 +184,13 @@ docker build \
     -t "$FRONTEND_IMAGE" \
     "$REPO_ROOT"
 
-log "pulling nginx image..."
+log "[3/6] pulling nginx image..."
 docker pull "$NGINX_IMAGE"
 
-log "saving images..."
+log "[4/6] saving docker images..."
 docker save -o "$IMAGES_TAR" "$GATEWAY_IMAGE" "$FRONTEND_IMAGE" "$NGINX_IMAGE"
 
-log "packing source archive..."
+log "[5/6] packing source archive..."
 tar \
     -C "$REPO_ROOT" \
     --exclude='.git' \
@@ -215,6 +218,7 @@ tar \
     README.md \
     backend \
     config.example.yaml \
+    config.intranet.yaml \
     docker \
     docs \
     extensions_config.example.json \
@@ -222,33 +226,74 @@ tar \
     scripts \
     skills
 
+log "[6/6] assembling bundle..."
 cp "$GUIDE_FILE" "$OUTPUT_DIR/$GUIDE_BASENAME"
 cp "$DEPLOY_SCRIPT_FILE" "$OUTPUT_DIR/$DEPLOY_BASENAME"
+cp "$CHECK_SCRIPT_FILE" "$OUTPUT_DIR/$CHECK_BASENAME"
+
+# Copy config files if they exist
+if [ -f "$REPO_ROOT/config.intranet.yaml" ]; then
+    cp "$REPO_ROOT/config.intranet.yaml" "$OUTPUT_DIR/config.intranet.yaml"
+fi
+if [ -f "$REPO_ROOT/docker/.env.intranet" ]; then
+    cp "$REPO_ROOT/docker/.env.intranet" "$OUTPUT_DIR/.env.intranet"
+fi
+
+# Collect image digests for the manifest
+GATEWAY_DIGEST="$(docker image inspect "$GATEWAY_IMAGE" --format '{{.Id}}' 2>/dev/null | cut -c8-19 || echo 'unknown')"
+FRONTEND_DIGEST="$(docker image inspect "$FRONTEND_IMAGE" --format '{{.Id}}' 2>/dev/null | cut -c8-19 || echo 'unknown')"
+NGINX_DIGEST="$(docker image inspect "$NGINX_IMAGE" --format '{{.Id}}' 2>/dev/null | cut -c8-19 || echo 'unknown')"
 
 cat > "$MANIFEST_FILE" <<EOF
-iDeer offline bundle
+iDeer Intranet Offline Bundle
+=============================
 Version: $VERSION
 Platform: $PLATFORM
 Created at: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+Git commit: $(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || echo 'unknown')
+
+Docker Images:
+  - $GATEWAY_IMAGE (digest: $GATEWAY_DIGEST)
+  - $FRONTEND_IMAGE (digest: $FRONTEND_DIGEST)
+  - $NGINX_IMAGE (digest: $NGINX_DIGEST)
 
 Files:
-- $(basename "$IMAGES_TAR")
-- $(basename "$SOURCE_TAR")
-- $GUIDE_BASENAME
-- $DEPLOY_BASENAME
-- $(basename "$MANIFEST_FILE")
-- $(basename "$SHA_FILE")
+  - $(basename "$IMAGES_TAR")        (Docker images archive)
+  - $(basename "$SOURCE_TAR")       (Source code archive)
+  - $GUIDE_BASENAME (Deployment guide)
+  - $DEPLOY_BASENAME  (Deploy script)
+  - $CHECK_BASENAME  (Pre-check script)
+  - config.intranet.yaml  (Intranet config template)
+  - .env.intranet         (Intranet environment template)
+  - $(basename "$MANIFEST_FILE")        (This manifest)
+  - $(basename "$SHA_FILE")          (SHA256 checksums)
 
-Usage:
-- Use ./deploy-intranet.sh. It extracts source/docker/docker-compose.intranet.yaml
-  and generates env.intranet plus runtime/* files during prepare.
+Deployment Steps:
+  1. Copy this entire bundle to the target intranet machine
+  2. Run: ./check-intranet.sh     (verify prerequisites)
+  3. Run: ./deploy-intranet.sh up (deploy and start services)
+  4. Access http://localhost:2026 (or the configured port)
+
+For details, see the deployment guide included in this bundle.
 EOF
 
-(cd "$OUTPUT_DIR" && sha256sum "$(basename "$IMAGES_TAR")" "$(basename "$SOURCE_TAR")" "$GUIDE_BASENAME" "$DEPLOY_BASENAME" "$(basename "$MANIFEST_FILE")" > "$(basename "$SHA_FILE")")
+(cd "$OUTPUT_DIR" && sha256sum \
+    "$(basename "$IMAGES_TAR")" \
+    "$(basename "$SOURCE_TAR")" \
+    "$GUIDE_BASENAME" \
+    "$DEPLOY_BASENAME" \
+    "$CHECK_BASENAME" \
+    "$(basename "$MANIFEST_FILE")" \
+    > "$(basename "$SHA_FILE")")
 
-log "done"
-log "images tar: $IMAGES_TAR"
-log "source tar:  $SOURCE_TAR"
-log "guide:       $OUTPUT_DIR/$GUIDE_BASENAME"
-log "deploy:      $OUTPUT_DIR/$DEPLOY_BASENAME"
-log "sha256:      $SHA_FILE"
+echo ""
+log "=== Bundle Complete ==="
+log "images tar:    $IMAGES_TAR"
+log "source tar:    $SOURCE_TAR"
+log "guide:         $OUTPUT_DIR/$GUIDE_BASENAME"
+log "deploy script: $OUTPUT_DIR/$DEPLOY_BASENAME"
+log "check script:  $OUTPUT_DIR/$CHECK_BASENAME"
+log "manifest:      $MANIFEST_FILE"
+log "sha256:        $SHA_FILE"
+echo ""
+log "Bundle size: $(du -sh "$OUTPUT_DIR" | awk '{print $1}')"

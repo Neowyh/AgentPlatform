@@ -378,6 +378,7 @@ tools:
     group: web
     use: ideer.community.ddg_search.tools:web_search_tool
     max_results: 5
+    requires_network: true
 
   # Web search tool (uses Serper - Google Search API, requires SERPER_API_KEY)
   # Serper provides real-time Google Search results. Sign up at https://serper.dev
@@ -387,6 +388,7 @@ tools:
   #   group: web
   #   use: ideer.community.serper.tools:web_search_tool
   #   max_results: 5
+  #   requires_network: true
   #   # api_key: $SERPER_API_KEY  # Optional if SERPER_API_KEY env var is set
 
   # Web search tool (requires Tavily API key)
@@ -394,6 +396,7 @@ tools:
   #   group: web
   #   use: ideer.community.tavily.tools:web_search_tool
   #   max_results: 5
+  #   requires_network: true
   #   # api_key: $TAVILY_API_KEY  # Set if needed
 
   # Web search tool (uses InfoQuest, requires InfoQuest API key)
@@ -402,6 +405,7 @@ tools:
   #   use: ideer.community.infoquest.tools:web_search_tool
   #   # Used to limit the scope of search results, only returns content within the specified time range. Set to -1 to disable time filtering
   #   search_time_range: 10
+  #   requires_network: true
 
   # Web search tool (uses Exa, requires EXA_API_KEY)
   # - name: web_search
@@ -410,6 +414,7 @@ tools:
   #   max_results: 5
   #   search_type: auto  # Options: auto, neural, keyword
   #   contents_max_characters: 1000
+  #   requires_network: true
   #   # api_key: $EXA_API_KEY
 
   # Web search tool (uses Firecrawl, requires FIRECRAWL_API_KEY)
@@ -417,6 +422,7 @@ tools:
   #   group: web
   #   use: ideer.community.firecrawl.tools:web_search_tool
   #   max_results: 5
+  #   requires_network: true
   #   # api_key: $FIRECRAWL_API_KEY
 
   # Web fetch tool (uses Exa)
@@ -425,6 +431,7 @@ tools:
   # - name: web_fetch
   #   group: web
   #   use: ideer.community.exa.tools:web_fetch_tool
+  #   requires_network: true
   #   # api_key: $EXA_API_KEY
 
   # Web fetch tool (uses Jina AI reader)
@@ -432,6 +439,7 @@ tools:
     group: web
     use: ideer.community.jina_ai.tools:web_fetch_tool
     timeout: 10
+    requires_network: true
 
   # Web fetch tool (uses InfoQuest)
   # - name: web_fetch
@@ -443,11 +451,13 @@ tools:
   #   fetch_time: 10
   #   # Timeout for navigating to the page (in seconds). Set to positive value to enable, -1 to disable
   #   navigation_timeout: 30
+  #   requires_network: true
 
   # Web fetch tool (uses Firecrawl, requires FIRECRAWL_API_KEY)
   # - name: web_fetch
   #   group: web
   #   use: ideer.community.firecrawl.tools:web_fetch_tool
+  #   requires_network: true
   #   # api_key: $FIRECRAWL_API_KEY
 
   # Image search tool (uses DuckDuckGo)
@@ -456,6 +466,7 @@ tools:
     group: web
     use: ideer.community.image_search.tools:image_search_tool
     max_results: 5
+    requires_network: true
 
   # Image search tool (uses InfoQuest)
   # - name: image_search
@@ -465,6 +476,7 @@ tools:
   #   image_search_time_range: 10
   #   # Image size filter. Options: "l" (large), "m" (medium), "i" (icon).
   #   image_size: "i"
+  #   requires_network: true
 
   # File operations tools
   - name: ls

@@ -20,6 +20,8 @@ Options:
   --version <value>   Use a specific bundle version
   --bundle-root <dir> Use a specific bundle directory
   --no-load           Skip docker load when running up/start/restart
+  --skip-check        Skip the pre-deployment environment check
+  --dry-run           Show what would be done without executing
   --help              Show this help text
 
 Environment:
@@ -37,6 +39,10 @@ log() {
     printf '%s\n' "$1"
 }
 
+warn() {
+    printf 'warning: %s\n' "$1" >&2
+}
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [ "$(basename "$SCRIPT_DIR")" = "scripts" ]; then
     DEFAULT_BUNDLE_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -47,6 +53,8 @@ BUNDLE_ROOT="${IDEER_BUNDLE_ROOT:-$DEFAULT_BUNDLE_ROOT}"
 VERSION="${IDEER_VERSION:-}"
 NO_LOAD="${IDEER_NO_LOAD:-0}"
 COMMAND="up"
+SKIP_CHECK=0
+DRY_RUN=0
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -62,6 +70,14 @@ while [ "$#" -gt 0 ]; do
             ;;
         --no-load)
             NO_LOAD=1
+            shift
+            ;;
+        --skip-check)
+            SKIP_CHECK=1
+            shift
+            ;;
+        --dry-run)
+            DRY_RUN=1
             shift
             ;;
         --help|-h)
@@ -85,6 +101,40 @@ while [ "$#" -gt 0 ]; do
 done
 
 BUNDLE_ROOT="$(cd "$BUNDLE_ROOT" && pwd)"
+
+# ---------------------------------------------------------------------------
+# Pre-deployment check
+# ---------------------------------------------------------------------------
+run_pre_check() {
+    if [ "$SKIP_CHECK" -eq 1 ]; then
+        log "skipping pre-deployment check (--skip-check)"
+        return 0
+    fi
+
+    local check_script="$SCRIPT_DIR/check-intranet.sh"
+    if [ ! -x "$check_script" ]; then
+        warn "pre-check script not found or not executable: $check_script"
+        warn "skipping pre-deployment check"
+        return 0
+    fi
+
+    log "running pre-deployment check..."
+    if ! "$check_script"; then
+        die "pre-deployment check failed. Fix the issues above and retry, or use --skip-check to bypass."
+    fi
+    echo ""
+}
+
+# ---------------------------------------------------------------------------
+# Dry-run wrapper
+# ---------------------------------------------------------------------------
+run_cmd() {
+    if [ "$DRY_RUN" -eq 1 ]; then
+        log "[dry-run] $*"
+        return 0
+    fi
+    "$@"
+}
 
 if ! command -v docker >/dev/null 2>&1; then
     die "docker is required"
@@ -159,9 +209,9 @@ extract_source() {
     fi
 
     log "extracting source tar..."
-    rm -rf "$SOURCE_DIR"
-    mkdir -p "$SOURCE_DIR"
-    tar -xzf "$SOURCE_TAR" -C "$SOURCE_DIR"
+    run_cmd rm -rf "$SOURCE_DIR"
+    run_cmd mkdir -p "$SOURCE_DIR"
+    run_cmd tar -xzf "$SOURCE_TAR" -C "$SOURCE_DIR"
 }
 
 seed_file() {
@@ -169,17 +219,25 @@ seed_file() {
     local source="$2"
     if [ ! -f "$target" ]; then
         [ -f "$source" ] || die "missing seed source: $source"
-        cp "$source" "$target"
+        run_cmd cp "$source" "$target"
     fi
 }
 
 seed_config() {
     local target="$RUNTIME_DIR/config.yaml"
-    local source="$SOURCE_DIR/config.example.yaml"
+    local source="$SOURCE_DIR/config.intranet.yaml"
+    # Fall back to config.example.yaml if config.intranet.yaml is not in the bundle
+    if [ ! -f "$source" ]; then
+        source="$SOURCE_DIR/config.example.yaml"
+    fi
     if [ -f "$target" ]; then
         return 0
     fi
     [ -f "$source" ] || die "missing seed source: $source"
+    if [ "$DRY_RUN" -eq 1 ]; then
+        log "[dry-run] generate $target from $source (with models: [])"
+        return 0
+    fi
     awk '
         /^[[:space:]]*models:[[:space:]]*$/ { print "models: []"; next }
         { print }
@@ -197,7 +255,7 @@ patch_agents_api_enabled() {
 
     if grep -A1 '^agents_api:' "$config" | grep -q 'enabled: false'; then
         log "enabling agents_api in $config ..."
-        sed -i '/^agents_api:/{n;s/enabled: false/enabled: true/;}' "$config"
+        run_cmd sed -i '/^agents_api:/{n;s/enabled: false/enabled: true/;}' "$config"
     fi
 }
 
@@ -210,6 +268,11 @@ load_or_create_secret_file() {
             printf '%s\n' "$secret"
             return 0
         fi
+    fi
+
+    if [ "$DRY_RUN" -eq 1 ]; then
+        printf '%s\n' "<dry-run-placeholder-secret>"
+        return 0
     fi
 
     secret="$(generate_secret)"
@@ -280,6 +343,9 @@ append_env_if_missing() {
     fi
 
     log "appending missing $key to $ENV_FILE"
+    if [ "$DRY_RUN" -eq 1 ]; then
+        return 0
+    fi
     if [ -s "$ENV_FILE" ] && [ -n "$(tail -c 1 "$ENV_FILE")" ]; then
         printf '\n' >> "$ENV_FILE"
     fi
@@ -287,7 +353,7 @@ append_env_if_missing() {
 }
 
 seed_runtime() {
-    mkdir -p "$RUNTIME_DIR/data"
+    run_cmd mkdir -p "$RUNTIME_DIR/data"
 
     seed_config
     patch_agents_api_enabled
@@ -295,9 +361,13 @@ seed_runtime() {
     seed_file "$RUNTIME_DIR/frontend.env" "$SOURCE_DIR/frontend/.env.example"
     if [ ! -f "$RUNTIME_DIR/extensions_config.json" ]; then
         if [ -f "$SOURCE_DIR/extensions_config.example.json" ]; then
-            cp "$SOURCE_DIR/extensions_config.example.json" "$RUNTIME_DIR/extensions_config.json"
+            run_cmd cp "$SOURCE_DIR/extensions_config.example.json" "$RUNTIME_DIR/extensions_config.json"
         else
-            printf '{"mcpServers":{},"skills":{}}\n' > "$RUNTIME_DIR/extensions_config.json"
+            if [ "$DRY_RUN" -eq 1 ]; then
+                log "[dry-run] create $RUNTIME_DIR/extensions_config.json"
+            else
+                printf '{"mcpServers":{},"skills":{}}\n' > "$RUNTIME_DIR/extensions_config.json"
+            fi
         fi
     fi
 
@@ -305,7 +375,10 @@ seed_runtime() {
     IDEER_INTERNAL_AUTH_TOKEN_VALUE="$(load_or_create_secret_file "$RUNTIME_DIR/data/.internal-auth-token")"
 
     if [ ! -f "$ENV_FILE" ]; then
-        cat > "$ENV_FILE" <<EOF
+        if [ "$DRY_RUN" -eq 1 ]; then
+            log "[dry-run] create $ENV_FILE"
+        else
+            cat > "$ENV_FILE" <<EOF
 PORT=2026
 IDEER_REPO_ROOT=$SOURCE_DIR
 IDEER_HOME=$RUNTIME_DIR/data
@@ -319,11 +392,14 @@ IDEER_INTERNAL_AUTH_TOKEN=$IDEER_INTERNAL_AUTH_TOKEN_VALUE
 IDEER_GATEWAY_IMAGE=ideer-gateway:$VERSION
 IDEER_FRONTEND_IMAGE=ideer-frontend:$VERSION
 NGINX_IMAGE=nginx:alpine
+IDEER_NETWORK_MODE=offline
 EOF
+        fi
     fi
 
     append_env_if_missing "BETTER_AUTH_SECRET" "$BETTER_AUTH_SECRET_VALUE"
     append_env_if_missing "IDEER_INTERNAL_AUTH_TOKEN" "$IDEER_INTERNAL_AUTH_TOKEN_VALUE"
+    append_env_if_missing "IDEER_NETWORK_MODE" "offline"
 }
 
 install_fault_zeroing_agent() {
@@ -342,7 +418,7 @@ install_fault_zeroing_agent() {
     require_file "$config_path"
 
     log "installing bundled fault-zeroing agent..."
-    IDEER_HOME="$runtime_home" \
+    run_cmd env IDEER_HOME="$runtime_home" \
         IDEER_CONFIG_PATH="$config_path" \
         python3 "$SOURCE_DIR/scripts/install_fault_zeroing_agent.py"
 }
@@ -354,11 +430,11 @@ load_images() {
     fi
 
     log "loading docker images..."
-    docker load -i "$IMAGES_TAR"
+    run_cmd docker load -i "$IMAGES_TAR"
 }
 
 compose_cmd() {
-    docker compose -p ideer -f "$COMPOSE_FILE" --env-file "$ENV_FILE" "$@"
+    run_cmd docker compose -p ideer -f "$COMPOSE_FILE" --env-file "$ENV_FILE" "$@"
 }
 
 http_ok() {
@@ -410,6 +486,38 @@ verify_services() {
     wait_for_http "http://127.0.0.1:${PORT:-2026}/" "frontend"
 }
 
+print_rollback_instructions() {
+    cat >&2 <<'EOF'
+
+=== Rollback Instructions ===
+If the deployment failed, you can recover using these steps:
+
+1. Stop the services:
+   ./deploy-intranet.sh stop
+
+2. Check service logs for errors:
+   ./deploy-intranet.sh logs gateway
+   ./deploy-intranet.sh logs frontend
+   ./deploy-intranet.sh logs nginx
+
+3. If images are corrupted, re-load them:
+   ./deploy-intranet.sh load
+
+4. If config is corrupted, remove the runtime directory and re-prepare:
+   rm -rf runtime/
+   ./deploy-intranet.sh prepare
+
+5. Full reset (stop, clean, re-deploy):
+   ./deploy-intranet.sh stop
+   rm -rf runtime/ source/ env.intranet
+   ./deploy-intranet.sh up
+
+6. If Docker containers are stuck:
+   docker compose -p ideer down --remove-orphans
+   docker system prune -f
+EOF
+}
+
 prepare_bundle() {
     local install_fault_zeroing="${1:-1}"
     extract_source
@@ -419,6 +527,23 @@ prepare_bundle() {
         install_fault_zeroing_agent
     fi
 }
+
+# ---------------------------------------------------------------------------
+# Main entry point
+# ---------------------------------------------------------------------------
+
+# Run pre-check for commands that modify state
+case "$COMMAND" in
+    up|start|restart|prepare)
+        run_pre_check
+        ;;
+esac
+
+if [ "$DRY_RUN" -eq 1 ]; then
+    log "=== DRY RUN MODE ==="
+    log "No changes will be made. Commands that would run are shown below."
+    echo ""
+fi
 
 case "$COMMAND" in
     prepare)
@@ -431,18 +556,36 @@ case "$COMMAND" in
         load_images
         ;;
     up|start)
-        prepare_bundle 1
+        if ! prepare_bundle 1; then
+            print_rollback_instructions
+            die "prepare step failed"
+        fi
         load_images
         log "starting services..."
-        compose_cmd up -d --remove-orphans
-        verify_services
+        if ! compose_cmd up -d --remove-orphans; then
+            print_rollback_instructions
+            die "failed to start services"
+        fi
+        if [ "$DRY_RUN" -eq 0 ]; then
+            verify_services
+        fi
+        log "deployment complete"
         ;;
     restart)
-        prepare_bundle 1
+        if ! prepare_bundle 1; then
+            print_rollback_instructions
+            die "prepare step failed"
+        fi
         load_images
         log "restarting services..."
-        compose_cmd up -d --remove-orphans --force-recreate
-        verify_services
+        if ! compose_cmd up -d --remove-orphans --force-recreate; then
+            print_rollback_instructions
+            die "failed to restart services"
+        fi
+        if [ "$DRY_RUN" -eq 0 ]; then
+            verify_services
+        fi
+        log "restart complete"
         ;;
     stop|down)
         prepare_bundle 0

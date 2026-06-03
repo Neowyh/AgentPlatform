@@ -4,6 +4,7 @@ description: Deploy applications and websites to Vercel. Use this skill when the
 metadata:
   author: vercel
   version: "1.0.0"
+requires-internet: true
 ---
 
 # Vercel Deploy
