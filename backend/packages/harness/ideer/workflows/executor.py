@@ -11,19 +11,18 @@ from typing import Any
 from .schema import RetryPolicy, StepDef, StepType, WorkflowDef
 from .state import RunStatus, WorkflowState
 from .steps import execute_step
+from .store import WorkflowStore, get_workflow_store
 from .template import render_value
 
 logger = logging.getLogger(__name__)
 
-# Active run instances: run_id → WorkflowState
-_active_runs: dict[str, WorkflowState] = {}
-
 
 class WorkflowExecutor:
-    """Executes a parsed workflow definition."""
+    """Executes a parsed workflow definition with database persistence."""
 
-    def __init__(self, workflow: WorkflowDef):
+    def __init__(self, workflow: WorkflowDef, store: WorkflowStore | None = None):
         self.workflow = workflow
+        self.store = store or get_workflow_store()
 
     async def run(self, inputs: dict[str, Any], run_id: str | None = None) -> WorkflowState:
         """Execute the full workflow."""
@@ -33,8 +32,10 @@ class WorkflowExecutor:
             run_id=run_id,
             inputs=inputs,
         )
-        _active_runs[run_id] = state
         state.status = RunStatus.RUNNING
+
+        # Persist initial state
+        await self.store.save_run_state(state)
 
         try:
             for step in self.workflow.steps:
@@ -45,18 +46,21 @@ class WorkflowExecutor:
                 state.current_step = step.id
                 await self._execute_step(step, state)
 
+                # Persist after each step
+                await self.store.save_run_state(state)
+
                 if state.status == RunStatus.FAILED:
                     break
 
             if state.status == RunStatus.RUNNING:
                 state.status = RunStatus.COMPLETED
+                await self.store.save_run_state(state)
 
         except Exception as e:
             state.status = RunStatus.FAILED
             state.error = str(e)
+            await self.store.save_run_state(state)
             logger.exception("Workflow %s failed", run_id)
-        finally:
-            _active_runs.pop(run_id, None)
 
         return state
 
@@ -100,6 +104,11 @@ class WorkflowExecutor:
         if step.type == StepType.CONDITION:
             return await self._execute_condition(step, state)
 
+        if step.type == StepType.HUMAN_REVIEW:
+            from .steps.human_step import execute_human_review_step
+
+            return await execute_human_review_step(step_dict, state, self.store)
+
         return await execute_step(step.type, step_dict, state)
 
     async def _execute_condition(self, step: StepDef, state: WorkflowState) -> Any:
@@ -122,8 +131,3 @@ class WorkflowExecutor:
 
 def _now() -> str:
     return datetime.now(UTC).isoformat()
-
-
-def get_active_run(run_id: str) -> WorkflowState | None:
-    """Get the state of an active run."""
-    return _active_runs.get(run_id)

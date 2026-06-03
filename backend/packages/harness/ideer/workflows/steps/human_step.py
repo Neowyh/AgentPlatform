@@ -1,4 +1,10 @@
-"""Human review step executor — pauses execution and waits for human input."""
+"""Human review step executor — database-backed pause/resume.
+
+Instead of in-memory asyncio.Future (single-process only), this
+implementation persists the waiting state to the database and polls
+for the review result.  Supports multi-worker deployments and
+survives server restarts.
+"""
 
 from __future__ import annotations
 
@@ -7,26 +13,28 @@ import logging
 from typing import Any
 
 from ..state import RunStatus, WorkflowState
+from ..store import WorkflowStore
 
 logger = logging.getLogger(__name__)
 
-# Global registry: run_id → Future for human_review pause/resume
-_pending_reviews: dict[str, asyncio.Future] = {}
 
-
-async def execute_human_review_step(step_def: dict[str, Any], state: WorkflowState) -> dict[str, Any]:
+async def execute_human_review_step(
+    step_def: dict[str, Any],
+    state: WorkflowState,
+    store: WorkflowStore,
+) -> dict[str, Any]:
     """Execute a human review step.
 
-    1. Set workflow status to WAITING_HUMAN.
-    2. Create a Future and suspend.
-    3. Wait for API callback via resume_review().
-    4. Return the review result.
+    1. Set workflow status to WAITING_HUMAN and persist.
+    2. Poll the database for a review_result.
+    3. Return the review result when available.
     """
     state.status = RunStatus.WAITING_HUMAN
+    await store.save_run_state(state)
 
-    loop = asyncio.get_event_loop()
-    future: asyncio.Future[dict[str, Any]] = loop.create_future()
-    _pending_reviews[state.run_id] = future
+    timeout = step_def.get("timeout", 3600)  # default 1 hour
+    poll_interval = 2  # seconds
+    elapsed = 0.0
 
     logger.info(
         "Workflow %s paused at human_review step '%s'",
@@ -34,25 +42,25 @@ async def execute_human_review_step(step_def: dict[str, Any], state: WorkflowSta
         step_def["id"],
     )
 
-    try:
-        timeout = step_def.get("timeout")
-        result = await asyncio.wait_for(future, timeout=timeout)
-        return result
-    finally:
-        _pending_reviews.pop(state.run_id, None)
-        state.status = RunStatus.RUNNING
+    while elapsed < timeout:
+        await asyncio.sleep(poll_interval)
+        elapsed += poll_interval
 
+        run_data = await store.load_run_state(state.run_id)
+        if run_data is None:
+            raise RuntimeError(f"Run {state.run_id} disappeared from database")
 
-async def resume_review(run_id: str, result: dict[str, Any]) -> bool:
-    """Resume a paused human review step via API callback."""
-    future = _pending_reviews.get(run_id)
-    if future is None or future.done():
-        return False
-    future.set_result(result)
-    return True
+        # Check if review has been submitted
+        # The API endpoint sets review_result and status back to "running"
+        if run_data.status == RunStatus.RUNNING and run_data.review_result is not None:
+            state.status = RunStatus.RUNNING
+            # Copy review_result into the run state so downstream steps can access it
+            state.set_step_result(
+                step_def["id"],
+                status="completed",
+                output=run_data.review_result,
+            )
+            logger.info("Workflow %s resumed after human_review", state.run_id)
+            return run_data.review_result
 
-
-def get_pending_review(run_id: str) -> bool:
-    """Check if a run has a pending human review."""
-    future = _pending_reviews.get(run_id)
-    return future is not None and not future.done()
+    raise TimeoutError(f"Human review timed out after {timeout}s")

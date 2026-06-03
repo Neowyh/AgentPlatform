@@ -5,26 +5,19 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.gateway.authz import get_current_rbac_user, get_optional_rbac_user, require_role
 from ideer.persistence.models.user import UserModel, UserRole
-from ideer.workflows.executor import WorkflowExecutor, get_active_run
+from ideer.workflows.executor import WorkflowExecutor
 from ideer.workflows.parser import parse_workflow_string
-from ideer.workflows.steps.human_step import get_pending_review, resume_review
+from ideer.workflows.store import get_workflow_store
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/workflows", tags=["workflows"])
-
-# In-memory workflow storage (YAML content keyed by name)
-_workflow_store: dict[str, str] = {}
-
-# Workflow file directory
-_WORKFLOW_DIR = Path("workflows")
 
 
 class WorkflowCreateRequest(BaseModel):
@@ -45,21 +38,6 @@ class HumanReviewRequest(BaseModel):
     data: dict = {}
 
 
-def _get_workflow_dir() -> Path:
-    """Get or create the workflow directory."""
-    _WORKFLOW_DIR.mkdir(parents=True, exist_ok=True)
-    return _WORKFLOW_DIR
-
-
-def _load_workflows_from_disk() -> None:
-    """Load all YAML files from the workflow directory into memory."""
-    wf_dir = _get_workflow_dir()
-    for f in wf_dir.glob("*.yaml"):
-        name = f.stem
-        if name not in _workflow_store:
-            _workflow_store[name] = f.read_text(encoding="utf-8")
-
-
 # --- CRUD ---
 
 
@@ -68,24 +46,8 @@ async def list_workflows(
     current_user: UserModel | None = Depends(get_optional_rbac_user),
 ):
     """List all workflows."""
-    _load_workflows_from_disk()
-
-    workflows = []
-    for name, yaml_content in sorted(_workflow_store.items()):
-        try:
-            wf = parse_workflow_string(yaml_content)
-            workflows.append(
-                {
-                    "name": wf.name,
-                    "description": wf.description,
-                    "version": wf.version,
-                    "steps_count": len(wf.steps),
-                    "inputs": {k: v.model_dump() for k, v in wf.inputs.items()},
-                }
-            )
-        except Exception as e:
-            workflows.append({"name": name, "error": str(e)})
-
+    store = get_workflow_store()
+    workflows = await store.list_workflows()
     return {"workflows": workflows, "total": len(workflows)}
 
 
@@ -95,9 +57,8 @@ async def get_workflow(
     current_user: UserModel | None = Depends(get_optional_rbac_user),
 ):
     """Get workflow details."""
-    _load_workflows_from_disk()
-
-    yaml_content = _workflow_store.get(workflow_name)
+    store = get_workflow_store()
+    yaml_content = await store.load_workflow(workflow_name)
     if yaml_content is None:
         raise HTTPException(404, f"Workflow '{workflow_name}' not found")
 
@@ -128,14 +89,12 @@ async def create_workflow(
     except Exception as e:
         raise HTTPException(400, f"Invalid workflow YAML: {e}")
 
-    if wf.name in _workflow_store:
+    store = get_workflow_store()
+    existing = await store.load_workflow(wf.name)
+    if existing is not None:
         raise HTTPException(409, f"Workflow '{wf.name}' already exists")
 
-    # Store in memory and on disk
-    _workflow_store[wf.name] = body.yaml_content
-    wf_dir = _get_workflow_dir()
-    (wf_dir / f"{wf.name}.yaml").write_text(body.yaml_content, encoding="utf-8")
-
+    await store.save_workflow(wf.name, body.yaml_content)
     return {"name": wf.name, "description": wf.description, "version": wf.version}
 
 
@@ -147,11 +106,10 @@ async def update_workflow(
     current_user: UserModel = Depends(get_current_rbac_user),
 ):
     """Update an existing workflow."""
-    if workflow_name not in _workflow_store:
-        # Try loading from disk
-        _load_workflows_from_disk()
-        if workflow_name not in _workflow_store:
-            raise HTTPException(404, f"Workflow '{workflow_name}' not found")
+    store = get_workflow_store()
+    existing = await store.load_workflow(workflow_name)
+    if existing is None:
+        raise HTTPException(404, f"Workflow '{workflow_name}' not found")
 
     # Validate new YAML
     try:
@@ -159,10 +117,7 @@ async def update_workflow(
     except Exception as e:
         raise HTTPException(400, f"Invalid workflow YAML: {e}")
 
-    _workflow_store[workflow_name] = body.yaml_content
-    wf_dir = _get_workflow_dir()
-    (wf_dir / f"{workflow_name}.yaml").write_text(body.yaml_content, encoding="utf-8")
-
+    await store.save_workflow(workflow_name, body.yaml_content)
     return {"name": wf.name, "description": wf.description, "version": wf.version}
 
 
@@ -173,16 +128,10 @@ async def delete_workflow(
     current_user: UserModel = Depends(get_current_rbac_user),
 ):
     """Delete a workflow."""
-    _load_workflows_from_disk()
-
-    if workflow_name not in _workflow_store:
+    store = get_workflow_store()
+    deleted = await store.delete_workflow(workflow_name)
+    if not deleted:
         raise HTTPException(404, f"Workflow '{workflow_name}' not found")
-
-    del _workflow_store[workflow_name]
-    wf_file = _get_workflow_dir() / f"{workflow_name}.yaml"
-    if wf_file.exists():
-        wf_file.unlink()
-
     return {"success": True}
 
 
@@ -196,9 +145,8 @@ async def run_workflow(
     current_user: UserModel | None = Depends(get_optional_rbac_user),
 ):
     """Start a workflow execution."""
-    _load_workflows_from_disk()
-
-    yaml_content = _workflow_store.get(workflow_name)
+    store = get_workflow_store()
+    yaml_content = await store.load_workflow(workflow_name)
     if yaml_content is None:
         raise HTTPException(404, f"Workflow '{workflow_name}' not found")
 
@@ -219,7 +167,7 @@ async def run_workflow(
             inputs[name] = param.default
 
     run_id = str(uuid.uuid4())
-    executor = WorkflowExecutor(wf)
+    executor = WorkflowExecutor(wf, store)
 
     # Run in background
     asyncio.create_task(executor.run(inputs, run_id=run_id))
@@ -234,9 +182,10 @@ async def get_run_status(
     current_user: UserModel | None = Depends(get_optional_rbac_user),
 ):
     """Get workflow run status."""
-    state = get_active_run(run_id)
+    store = get_workflow_store()
+    state = await store.load_run_state(run_id)
     if state is None:
-        raise HTTPException(404, "Run not found or already completed")
+        raise HTTPException(404, "Run not found")
 
     return {
         "run_id": state.run_id,
@@ -258,6 +207,17 @@ async def get_run_status(
     }
 
 
+@router.get("/{workflow_name}/runs")
+async def list_runs(
+    workflow_name: str,
+    current_user: UserModel | None = Depends(get_optional_rbac_user),
+):
+    """List run history for a workflow."""
+    store = get_workflow_store()
+    runs = await store.list_runs(workflow_name)
+    return {"runs": runs, "total": len(runs)}
+
+
 @router.post("/{workflow_name}/runs/{run_id}/review")
 async def submit_review(
     workflow_name: str,
@@ -266,11 +226,8 @@ async def submit_review(
     current_user: UserModel = Depends(get_current_rbac_user),
 ):
     """Submit a human review result to resume a paused workflow."""
-    if not get_pending_review(run_id):
-        raise HTTPException(404, "No pending review for this run")
-
-    ok = await resume_review(run_id, {"approved": body.approved, **body.data})
+    store = get_workflow_store()
+    ok = await store.save_review_result(run_id, {"approved": body.approved, **body.data})
     if not ok:
-        raise HTTPException(400, "Failed to resume review")
-
+        raise HTTPException(404, "No pending review for this run")
     return {"success": True, "run_id": run_id}

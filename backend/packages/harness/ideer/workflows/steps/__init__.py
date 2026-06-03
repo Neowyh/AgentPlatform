@@ -1,4 +1,8 @@
-"""Step executors for each workflow step type."""
+"""Step executors for each workflow step type.
+
+Note: HUMAN_REVIEW is handled directly by the executor (which passes
+the store), so it is not dispatched here.
+"""
 
 from __future__ import annotations
 
@@ -19,11 +23,6 @@ async def execute_step(step_type: StepType, step_def: dict[str, Any], state: Wor
         from .tool_step import execute_tool_step
 
         return await execute_tool_step(step_def, state)
-
-    elif step_type == StepType.HUMAN_REVIEW:
-        from .human_step import execute_human_review_step
-
-        return await execute_human_review_step(step_def, state)
 
     elif step_type == StepType.CONDITION:
         from .condition_step import execute_condition_step

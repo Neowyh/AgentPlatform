@@ -17,6 +17,7 @@ there is no matching entity directory.
 from ideer.persistence.feedback.model import FeedbackRow
 from ideer.persistence.models.run_event import RunEventRow
 from ideer.persistence.models.user import DepartmentModel, ResourceVisibility, UserModel, UserRole
+from ideer.persistence.models.workflow import WorkflowRunRow
 from ideer.persistence.run.model import RunRow
 from ideer.persistence.thread_meta.model import ThreadMetaRow
 from ideer.persistence.user.model import UserRow
@@ -31,4 +32,5 @@ __all__ = [
     "UserModel",
     "UserRole",
     "UserRow",
+    "WorkflowRunRow",
 ]
