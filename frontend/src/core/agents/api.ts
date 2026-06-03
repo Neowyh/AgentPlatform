@@ -111,3 +111,30 @@ export async function checkAgentName(
   }
   return res.json() as Promise<{ available: boolean; name: string }>;
 }
+
+// ── Export / Import ──────────────────────────────────────────────
+
+export async function exportAgent(name: string): Promise<Blob> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/agents/${encodeURIComponent(name)}/export`,
+  );
+  if (!res.ok) throw new Error(`Failed to export agent: ${res.statusText}`);
+  return res.blob();
+}
+
+export async function importAgent(file: File): Promise<Agent> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await fetch(`${getBackendBaseURL()}/api/agents/import`, {
+    method: "POST",
+    body: formData,
+  });
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { detail?: string };
+    if (isAgentsApiDisabledDetail(err.detail)) {
+      throw new AgentsApiDisabledError(err.detail!);
+    }
+    throw new Error(err.detail ?? `Failed to import agent: ${res.statusText}`);
+  }
+  return res.json() as Promise<Agent>;
+}

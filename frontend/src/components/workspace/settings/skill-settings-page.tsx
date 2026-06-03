@@ -1,10 +1,18 @@
 "use client";
 
-import { SparklesIcon } from "lucide-react";
+import { EditIcon, PlayIcon, SparklesIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Empty,
   EmptyContent,
@@ -16,18 +24,24 @@ import {
 import {
   Item,
   ItemActions,
-  ItemTitle,
   ItemContent,
   ItemDescription,
+  ItemTitle,
 } from "@/components/ui/item";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useI18n } from "@/core/i18n/hooks";
 import { useEnableSkill, useSkills } from "@/core/skills/hooks";
 import type { Skill } from "@/core/skills/type";
 import { env } from "@/env";
 
 import { SettingsSection } from "./settings-section";
+import { SkillEditor } from "./skill-editor";
 
 export function SkillSettingsPage({ onClose }: { onClose?: () => void } = {}) {
   const { t } = useI18n();
@@ -59,14 +73,33 @@ function SkillSettingsList({
   const router = useRouter();
   const [filter, setFilter] = useState<string>("public");
   const { mutate: enableSkill } = useEnableSkill();
+  const [editingSkill, setEditingSkill] = useState<Skill | null>(null);
+  const [testingSkill, setTestingSkill] = useState<Skill | null>(null);
+
   const filteredSkills = useMemo(
     () => skills.filter((skill) => skill.category === filter),
     [skills, filter],
   );
+
   const handleCreateSkill = () => {
     onClose?.();
     router.push("/workspace/chats/new?mode=skill");
   };
+
+  const handleEditSkill = (skill: Skill) => {
+    setEditingSkill(skill);
+  };
+
+  const handleTestSkill = (skill: Skill) => {
+    setTestingSkill(skill);
+  };
+
+  const handleSaveSkill = async (content: string) => {
+    // TODO: Implement save skill content API
+    console.log("Saving skill:", editingSkill?.name, content);
+    setEditingSkill(null);
+  };
+
   return (
     <div className="flex w-full flex-col gap-4">
       <header className="flex justify-between">
@@ -93,23 +126,128 @@ function SkillSettingsList({
           <Item className="w-full" variant="outline" key={skill.name}>
             <ItemContent>
               <ItemTitle>
-                <div className="flex items-center gap-2">{skill.name}</div>
+                <div className="flex items-center gap-2">
+                  <button
+                    className="text-left font-medium hover:underline"
+                    onClick={() => handleEditSkill(skill)}
+                  >
+                    {skill.name}
+                  </button>
+                  <Badge variant="outline" className="text-xs">
+                    {skill.category}
+                  </Badge>
+                  {skill.license === "requires_internet" && (
+                    <Tooltip>
+                      <TooltipTrigger>
+                        <Badge variant="secondary" className="text-xs">
+                          Requires Internet
+                        </Badge>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        This skill requires an internet connection to function
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
+                </div>
               </ItemTitle>
               <ItemDescription className="line-clamp-4">
                 {skill.description}
               </ItemDescription>
             </ItemContent>
             <ItemActions>
-              <Switch
-                checked={skill.enabled}
-                disabled={env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true"}
-                onCheckedChange={(checked) =>
-                  enableSkill({ skillName: skill.name, enabled: checked })
-                }
-              />
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={() => handleEditSkill(skill)}
+                  title="Edit skill"
+                >
+                  <EditIcon className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={() => handleTestSkill(skill)}
+                  title="Test skill"
+                >
+                  <PlayIcon className="h-4 w-4" />
+                </Button>
+                <Switch
+                  checked={skill.enabled}
+                  disabled={env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true"}
+                  onCheckedChange={(checked) =>
+                    enableSkill({ skillName: skill.name, enabled: checked })
+                  }
+                />
+              </div>
             </ItemActions>
           </Item>
         ))}
+
+      {/* Skill Editor Dialog */}
+      <Dialog
+        open={!!editingSkill}
+        onOpenChange={(open) => !open && setEditingSkill(null)}
+      >
+        <DialogContent className="max-h-[90vh] max-w-4xl p-0">
+          {editingSkill && (
+            <SkillEditor
+              skillName={editingSkill.name}
+              initialContent={`---
+name: ${editingSkill.name}
+description: ${editingSkill.description}
+---
+
+# ${editingSkill.name}
+
+${editingSkill.description}
+`}
+              onSave={handleSaveSkill}
+              onClose={() => setEditingSkill(null)}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Test Skill Dialog */}
+      <Dialog
+        open={!!testingSkill}
+        onOpenChange={(open) => !open && setTestingSkill(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Test Skill: {testingSkill?.name}</DialogTitle>
+            <DialogDescription>
+              Test this skill by sending a message. The skill will be available
+              in the conversation context.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-4">
+            <p className="text-muted-foreground text-sm">
+              To test this skill, start a new conversation with the skill
+              enabled. You can do this by:
+            </p>
+            <ol className="text-muted-foreground list-inside list-decimal space-y-2 text-sm">
+              <li>Going to a new chat</li>
+              <li>Enabling the skill in the chat settings</li>
+              <li>Sending a message that uses the skill</li>
+            </ol>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setTestingSkill(null)}>
+                Close
+              </Button>
+              <Button
+                onClick={() => {
+                  setTestingSkill(null);
+                  router.push("/workspace/chats/new");
+                }}
+              >
+                Start New Chat
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -11,6 +11,7 @@ from app.gateway.config import get_gateway_config
 from app.gateway.csrf_middleware import CSRFMiddleware, get_configured_cors_origins
 from app.gateway.deps import langgraph_runtime
 from app.gateway.routers import (
+    admin,
     agents,
     artifacts,
     assistants_compat,
@@ -25,6 +26,7 @@ from app.gateway.routers import (
     suggestions,
     thread_runs,
     threads,
+    tools,
     uploads,
 )
 from ideer.config import app_config as ideer_app_config
@@ -307,6 +309,14 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
                 "name": "health",
                 "description": "Health check and system status endpoints",
             },
+            {
+                "name": "admin",
+                "description": "Admin management APIs for users, departments, and system configuration",
+            },
+            {
+                "name": "tools",
+                "description": "Tool management APIs for listing, testing, and configuring tools",
+            },
         ],
     )
 
@@ -374,6 +384,12 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
 
     # Stateless Runs API (stream/wait without a pre-existing thread)
     app.include_router(runs.router)
+
+    # Admin API is mounted at /api/admin
+    app.include_router(admin.router)
+
+    # Tools API is mounted at /api/tools
+    app.include_router(tools.router)
 
     @app.get("/health", tags=["health"])
     async def health_check() -> dict[str, str]:

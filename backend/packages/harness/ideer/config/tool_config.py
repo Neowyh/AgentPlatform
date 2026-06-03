@@ -21,4 +21,8 @@ class ToolConfig(BaseModel):
         default=False,
         description="Whether this tool requires internet access. Tools with requires_network=true are skipped in offline mode.",
     )
+    description: str = Field(
+        default="",
+        description="Human-readable description of what this tool does.",
+    )
     model_config = ConfigDict(extra="allow")

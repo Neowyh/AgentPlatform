@@ -1,6 +1,12 @@
 "use client";
 
-import { BotIcon, LockIcon, MessageSquareIcon, Trash2Icon } from "lucide-react";
+import {
+  BotIcon,
+  DownloadIcon,
+  LockIcon,
+  MessageSquareIcon,
+  Trash2Icon,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -25,6 +31,7 @@ import {
 } from "@/components/ui/dialog";
 import { useDeleteAgent } from "@/core/agents";
 import type { Agent } from "@/core/agents";
+import { exportAgent } from "@/core/agents/api";
 import { useI18n } from "@/core/i18n/hooks";
 
 interface AgentCardProps {
@@ -46,6 +53,23 @@ export function AgentCard({ agent }: AgentCardProps) {
       await deleteAgent.mutateAsync(agent.name);
       toast.success(t.agents.deleteSuccess);
       setDeleteOpen(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  async function handleExport() {
+    try {
+      const blob = await exportAgent(agent.name);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${agent.name}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success("智能体已导出");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     }
@@ -116,6 +140,15 @@ export function AgentCard({ agent }: AgentCardProps) {
             {t.agents.chat}
           </Button>
           <div className="flex gap-1">
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-8 w-8 shrink-0"
+              onClick={handleExport}
+              title="导出"
+            >
+              <DownloadIcon className="h-3.5 w-3.5" />
+            </Button>
             {!agent.read_only && (
               <Button
                 size="icon"

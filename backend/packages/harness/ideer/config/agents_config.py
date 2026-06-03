@@ -47,6 +47,9 @@ class AgentConfig(BaseModel):
     # - [] (explicit empty list): disable all skills
     # - ["skill1", "skill2"]: load only the specified skills
     skills: list[str] | None = None
+    visibility: str = "private"  # private | department | public
+    owner_id: str | None = None
+    department_id: str | None = None
 
 
 def resolve_agent_dir(name: str, *, user_id: str | None = None) -> Path:

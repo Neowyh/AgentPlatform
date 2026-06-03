@@ -1,21 +1,41 @@
 "use client";
 
-import { BotIcon, PlusIcon } from "lucide-react";
+import { BotIcon, PlusIcon, UploadIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useRef } from "react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { useAgents } from "@/core/agents";
+import { importAgent } from "@/core/agents/api";
 import { useI18n } from "@/core/i18n/hooks";
 
 import { AgentCard } from "./agent-card";
 
 export function AgentGallery() {
   const { t } = useI18n();
-  const { agents, isLoading } = useAgents();
+  const { agents, isLoading, refetch } = useAgents();
   const router = useRouter();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleNewAgent = () => {
     router.push("/workspace/agents/new");
+  };
+
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      await importAgent(file);
+      toast.success("智能体已导入");
+      await refetch();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    }
+    // Reset file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
   };
 
   return (
@@ -28,10 +48,26 @@ export function AgentGallery() {
             {t.agents.description}
           </p>
         </div>
-        <Button onClick={handleNewAgent}>
-          <PlusIcon className="mr-1.5 h-4 w-4" />
-          {t.agents.newAgent}
-        </Button>
+        <div className="flex items-center gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".zip"
+            className="hidden"
+            onChange={handleImport}
+          />
+          <Button
+            variant="outline"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <UploadIcon className="mr-1.5 h-4 w-4" />
+            {t.common.import}
+          </Button>
+          <Button onClick={handleNewAgent}>
+            <PlusIcon className="mr-1.5 h-4 w-4" />
+            {t.agents.newAgent}
+          </Button>
+        </div>
       </div>
 
       {/* Content */}

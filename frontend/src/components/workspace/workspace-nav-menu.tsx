@@ -1,11 +1,16 @@
 "use client";
 
 import {
+  Building2Icon,
   ChevronsUpDown,
   InfoIcon,
   Settings2Icon,
   SettingsIcon,
+  ShieldIcon,
+  UsersIcon,
+  WrenchIcon,
 } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import {
@@ -22,6 +27,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { useAuth } from "@/core/auth/AuthProvider";
 import { useI18n } from "@/core/i18n/hooks";
 
 import { SettingsDialog } from "./settings";
@@ -54,6 +60,9 @@ export function WorkspaceNavMenu() {
   const [mounted, setMounted] = useState(false);
   const { open: isSidebarOpen } = useSidebar();
   const { t } = useI18n();
+  const { user } = useAuth();
+
+  const isAdmin = user?.system_role === "admin";
 
   useEffect(() => {
     setMounted(true);
@@ -95,6 +104,37 @@ export function WorkspaceNavMenu() {
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                 </DropdownMenuGroup>
+                {isAdmin && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuGroup>
+                      <DropdownMenuItem asChild>
+                        <Link href="/workspace/admin">
+                          <ShieldIcon />
+                          管理后台
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link href="/workspace/admin/users">
+                          <UsersIcon />
+                          用户管理
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link href="/workspace/admin/departments">
+                          <Building2Icon />
+                          部门管理
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link href="/workspace/admin/tools">
+                          <WrenchIcon />
+                          工具管理
+                        </Link>
+                      </DropdownMenuItem>
+                    </DropdownMenuGroup>
+                  </>
+                )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={() => {

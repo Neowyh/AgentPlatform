@@ -27,6 +27,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { ArtifactsProvider } from "@/components/workspace/artifacts";
 import { MessageList } from "@/components/workspace/messages";
 import { ThreadContext } from "@/components/workspace/messages/context";
@@ -37,6 +45,7 @@ import {
   checkAgentName,
   getAgent,
 } from "@/core/agents/api";
+import { useAuth } from "@/core/auth/AuthProvider";
 import { useI18n } from "@/core/i18n/hooks";
 import { useThreadStream } from "@/core/threads/hooks";
 import { uuid } from "@/core/utils/uuid";
@@ -70,9 +79,12 @@ async function getAgentWithRetry(agentName: string) {
   return null;
 }
 
+type Visibility = "private" | "department" | "public";
+
 export default function NewAgentPage() {
   const { t } = useI18n();
   const router = useRouter();
+  const { user } = useAuth();
 
   const [step, setStep] = useState<Step>("name");
   const [nameInput, setNameInput] = useState("");
@@ -83,6 +95,9 @@ export default function NewAgentPage() {
   const [showSaveHint, setShowSaveHint] = useState(false);
   const [setupAgentStatus, setSetupAgentStatus] =
     useState<SetupAgentStatus>("idle");
+  const [visibility, setVisibility] = useState<Visibility>("private");
+
+  const isAdmin = user?.system_role === "admin";
 
   const threadId = useMemo(() => uuid(), []);
 
@@ -306,6 +321,33 @@ export default function NewAgentPage() {
               {nameError ? (
                 <p className="text-destructive text-sm">{nameError}</p>
               ) : null}
+
+              <div className="space-y-2">
+                <Label htmlFor="visibility">可见性</Label>
+                <Select
+                  value={visibility}
+                  onValueChange={(v) => setVisibility(v as Visibility)}
+                >
+                  <SelectTrigger id="visibility" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="private">私有</SelectItem>
+                    <SelectItem value="department" disabled={!isAdmin}>
+                      部门共享
+                    </SelectItem>
+                    <SelectItem value="public" disabled={!isAdmin}>
+                      公开
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                {!isAdmin && (
+                  <p className="text-muted-foreground text-xs">
+                    部门共享和公开选项仅管理员可用
+                  </p>
+                )}
+              </div>
+
               <Button
                 className="w-full"
                 onClick={() => void handleConfirmName()}

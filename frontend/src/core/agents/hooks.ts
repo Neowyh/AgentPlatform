@@ -10,11 +10,11 @@ import {
 import type { CreateAgentRequest, UpdateAgentRequest } from "./types";
 
 export function useAgents() {
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["agents"],
     queryFn: () => listAgents(),
   });
-  return { agents: data ?? [], isLoading, error };
+  return { agents: data ?? [], isLoading, error, refetch };
 }
 
 export function useAgent(name: string | null | undefined) {

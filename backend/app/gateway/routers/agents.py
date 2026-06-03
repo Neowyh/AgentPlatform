@@ -1,8 +1,10 @@
 """CRUD API for custom agents."""
 
+import json
 import logging
 import re
 import shutil
+from datetime import UTC, datetime
 
 import yaml
 from fastapi import APIRouter, HTTPException
@@ -15,6 +17,81 @@ from ideer.runtime.user_context import get_effective_user_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["agents"])
+
+
+# ---------------------------------------------------------------------------
+# RBAC helpers (stub — wired up when auth user model is ready)
+# ---------------------------------------------------------------------------
+
+VALID_ROLES = ("user", "department_admin", "super_admin")
+
+
+def _get_current_user_stub() -> dict | None:
+    """Return the current user context dict, or None if auth is not wired.
+
+    Expected shape (once auth is ready)::
+
+        {
+            "id": "<uuid>",
+            "role": "user" | "department_admin" | "super_admin",
+            "department_id": "<uuid>" | None,
+        }
+    """
+    # TODO: Replace with real auth dependency (e.g. Depends(get_current_user))
+    return None
+
+
+def _check_resource_modify(resource_owner_id: str | None, resource_department_id: str | None, current_user: dict | None) -> None:
+    """Raise 403 if *current_user* is not allowed to modify the resource.
+
+    Rules:
+    - super_admin: always allowed
+    - department_admin: allowed if same department
+    - user: allowed only if they own the resource
+    - No user context (auth disabled): always allowed
+    """
+    if current_user is None:
+        return  # auth not wired — allow everything
+
+    role = current_user.get("role", "user")
+    if role == "super_admin":
+        return
+
+    user_id = current_user.get("id")
+    user_dept = current_user.get("department_id")
+
+    if role == "department_admin":
+        if resource_department_id and resource_department_id == user_dept:
+            return
+        # Also allow if the user owns it directly
+        if resource_owner_id and resource_owner_id == user_id:
+            return
+        raise HTTPException(status_code=403, detail="Department admins can only modify resources in their own department")
+
+    # Regular user
+    if resource_owner_id and resource_owner_id == user_id:
+        return
+    raise HTTPException(status_code=403, detail="You can only modify your own resources")
+
+
+def _can_set_visibility(visibility: str, current_user: dict | None) -> bool:
+    """Check whether the user is allowed to set the given visibility level.
+
+    - private: anyone
+    - department: department_admin or super_admin
+    - public: super_admin only
+    - No user context: always allowed
+    """
+    if current_user is None:
+        return True
+
+    role = current_user.get("role", "user")
+    if visibility == "public":
+        return role == "super_admin"
+    if visibility == "department":
+        return role in ("department_admin", "super_admin")
+    return True  # private — anyone
+
 
 AGENT_NAME_PATTERN = re.compile(r"^[A-Za-z0-9-]+$")
 
@@ -29,6 +106,9 @@ class AgentResponse(BaseModel):
     skills: list[str] | None = Field(default=None, description="Optional skill whitelist (None=all, []=none)")
     soul: str | None = Field(default=None, description="SOUL.md content")
     read_only: bool = Field(default=False, description="Whether this agent is a shared read-only template")
+    visibility: str = Field(default="private", description="Visibility: private, department, or public")
+    owner_id: str | None = Field(default=None, description="Owner user ID")
+    department_id: str | None = Field(default=None, description="Department ID for department-scoped visibility")
 
 
 class AgentsListResponse(BaseModel):
@@ -46,6 +126,7 @@ class AgentCreateRequest(BaseModel):
     tool_groups: list[str] | None = Field(default=None, description="Optional tool group whitelist")
     skills: list[str] | None = Field(default=None, description="Optional skill whitelist (None=all enabled, []=none)")
     soul: str = Field(default="", description="SOUL.md content — agent personality and behavioral guardrails")
+    visibility: str = Field(default="private", description="Visibility: private, department, or public")
 
 
 class AgentUpdateRequest(BaseModel):
@@ -94,7 +175,69 @@ def _is_shared_only(agent_name: str, user_id: str) -> bool:
     return paths.agent_dir(agent_name).exists() and not paths.user_agent_dir(user_id, agent_name).exists()
 
 
-def _agent_config_to_response(agent_cfg: AgentConfig, include_soul: bool = False, *, user_id: str | None = None, read_only: bool = False) -> AgentResponse:
+def _agent_meta_path(agent_name: str, user_id: str):
+    """Return the path to the agent's RBAC metadata JSON file."""
+    paths = get_paths()
+    return paths.user_agent_dir(user_id, agent_name) / ".meta.json"
+
+
+def _load_agent_meta(agent_name: str, user_id: str) -> dict:
+    """Load agent RBAC metadata from disk. Returns empty dict if missing."""
+    meta_file = _agent_meta_path(agent_name, user_id)
+    if not meta_file.exists():
+        return {}
+    try:
+        return json.loads(meta_file.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _save_agent_meta(agent_name: str, user_id: str, meta: dict) -> None:
+    """Persist agent RBAC metadata to disk."""
+    meta_file = _agent_meta_path(agent_name, user_id)
+    meta_file.parent.mkdir(parents=True, exist_ok=True)
+    meta_file.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def _is_visible_to_user(visibility: str, owner_id: str | None, department_id: str | None, current_user: dict) -> bool:
+    """Check whether an agent with the given visibility is visible to *current_user*.
+
+    Visibility rules:
+    - private: only the owner
+    - department: same department members + owner
+    - public: everyone
+    """
+    role = current_user.get("role", "user")
+    user_id = current_user.get("id")
+    user_dept = current_user.get("department_id")
+
+    if visibility == "public":
+        return True
+    if visibility == "department":
+        if user_dept and department_id and user_dept == department_id:
+            return True
+        # Also visible to super_admin
+        if role == "super_admin":
+            return True
+        # Fall through to owner check
+    # private or department (non-matching dept): only owner or super_admin
+    if role == "super_admin":
+        return True
+    if owner_id and owner_id == user_id:
+        return True
+    return False
+
+
+def _agent_config_to_response(
+    agent_cfg: AgentConfig,
+    include_soul: bool = False,
+    *,
+    user_id: str | None = None,
+    read_only: bool = False,
+    visibility: str = "private",
+    owner_id: str | None = None,
+    department_id: str | None = None,
+) -> AgentResponse:
     """Convert AgentConfig to AgentResponse."""
     soul: str | None = None
     if include_soul:
@@ -108,6 +251,9 @@ def _agent_config_to_response(agent_cfg: AgentConfig, include_soul: bool = False
         skills=agent_cfg.skills,
         soul=soul,
         read_only=read_only,
+        visibility=visibility,
+        owner_id=owner_id,
+        department_id=department_id,
     )
 
 
@@ -122,13 +268,42 @@ async def list_agents() -> AgentsListResponse:
 
     Returns:
         List of all custom agents with their metadata and soul content.
+        Results are filtered by visibility based on the current user's role
+        and department when auth is active.
     """
     _require_agents_api_enabled()
 
     user_id = get_effective_user_id()
+    current_user = _get_current_user_stub()
     try:
         agents = list_custom_agents(user_id=user_id)
-        return AgentsListResponse(agents=[_agent_config_to_response(a, include_soul=True, user_id=user_id, read_only=_is_shared_only(a.name, user_id)) for a in agents])
+
+        # Build response with RBAC metadata
+        responses: list[AgentResponse] = []
+        for a in agents:
+            # Load agent metadata for visibility filtering
+            meta = _load_agent_meta(a.name, user_id)
+            visibility = meta.get("visibility", "private")
+            owner_id = meta.get("owner_id")
+            dept_id = meta.get("department_id")
+
+            # Filter by visibility when auth is active
+            if current_user is not None and not _is_visible_to_user(visibility, owner_id, dept_id, current_user):
+                continue
+
+            responses.append(
+                _agent_config_to_response(
+                    a,
+                    include_soul=True,
+                    user_id=user_id,
+                    read_only=_is_shared_only(a.name, user_id),
+                    visibility=visibility,
+                    owner_id=owner_id,
+                    department_id=dept_id,
+                )
+            )
+
+        return AgentsListResponse(agents=responses)
     except Exception as e:
         logger.error(f"Failed to list agents: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to list agents: {str(e)}")
@@ -188,7 +363,16 @@ async def get_agent(name: str) -> AgentResponse:
 
     try:
         agent_cfg = load_agent_config(name, user_id=user_id)
-        return _agent_config_to_response(agent_cfg, include_soul=True, user_id=user_id, read_only=_is_shared_only(name, user_id))
+        meta = _load_agent_meta(name, user_id)
+        return _agent_config_to_response(
+            agent_cfg,
+            include_soul=True,
+            user_id=user_id,
+            read_only=_is_shared_only(name, user_id),
+            visibility=meta.get("visibility", "private"),
+            owner_id=meta.get("owner_id"),
+            department_id=meta.get("department_id"),
+        )
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"Agent '{name}' not found")
     except Exception as e:
@@ -219,7 +403,15 @@ async def create_agent_endpoint(request: AgentCreateRequest) -> AgentResponse:
     _validate_agent_name(request.name)
     normalized_name = _normalize_agent_name(request.name)
     user_id = get_effective_user_id()
+    current_user = _get_current_user_stub()
     paths = get_paths()
+
+    # Validate visibility permissions
+    if not _can_set_visibility(request.visibility, current_user):
+        raise HTTPException(
+            status_code=403,
+            detail=f"Your role does not have permission to set visibility to '{request.visibility}'",
+        )
 
     agent_dir = paths.user_agent_dir(user_id, normalized_name)
     legacy_dir = paths.agent_dir(normalized_name)
@@ -249,10 +441,29 @@ async def create_agent_endpoint(request: AgentCreateRequest) -> AgentResponse:
         soul_file = agent_dir / "SOUL.md"
         soul_file.write_text(request.soul, encoding="utf-8")
 
+        # Persist RBAC metadata
+        owner_id = current_user.get("id") if current_user else user_id
+        dept_id = current_user.get("department_id") if current_user else None
+        meta = {
+            "visibility": request.visibility,
+            "owner_id": owner_id,
+            "department_id": dept_id,
+            "created_at": datetime.now(UTC).isoformat(),
+        }
+        _save_agent_meta(normalized_name, user_id, meta)
+
         logger.info(f"Created agent '{normalized_name}' at {agent_dir}")
 
         agent_cfg = load_agent_config(normalized_name, user_id=user_id)
-        return _agent_config_to_response(agent_cfg, include_soul=True, user_id=user_id, read_only=False)
+        return _agent_config_to_response(
+            agent_cfg,
+            include_soul=True,
+            user_id=user_id,
+            read_only=False,
+            visibility=request.visibility,
+            owner_id=owner_id,
+            department_id=dept_id,
+        )
 
     except HTTPException:
         raise
@@ -287,6 +498,7 @@ async def update_agent(name: str, request: AgentUpdateRequest) -> AgentResponse:
     _validate_agent_name(name)
     name = _normalize_agent_name(name)
     user_id = get_effective_user_id()
+    current_user = _get_current_user_stub()
 
     try:
         agent_cfg = load_agent_config(name, user_id=user_id)
@@ -300,6 +512,10 @@ async def update_agent(name: str, request: AgentUpdateRequest) -> AgentResponse:
             status_code=409,
             detail=f"Agent '{name}' is a shared read-only template and cannot be modified.",
         )
+
+    # RBAC: check ownership before allowing edit
+    meta = _load_agent_meta(name, user_id)
+    _check_resource_modify(meta.get("owner_id"), meta.get("department_id"), current_user)
 
     try:
         # Update config if any config fields changed
@@ -341,7 +557,16 @@ async def update_agent(name: str, request: AgentUpdateRequest) -> AgentResponse:
         logger.info(f"Updated agent '{name}'")
 
         refreshed_cfg = load_agent_config(name, user_id=user_id)
-        return _agent_config_to_response(refreshed_cfg, include_soul=True, user_id=user_id, read_only=False)
+        meta = _load_agent_meta(name, user_id)
+        return _agent_config_to_response(
+            refreshed_cfg,
+            include_soul=True,
+            user_id=user_id,
+            read_only=False,
+            visibility=meta.get("visibility", "private"),
+            owner_id=meta.get("owner_id"),
+            department_id=meta.get("department_id"),
+        )
 
     except HTTPException:
         raise
@@ -435,6 +660,7 @@ async def delete_agent(name: str) -> None:
     _validate_agent_name(name)
     name = _normalize_agent_name(name)
     user_id = get_effective_user_id()
+    current_user = _get_current_user_stub()
     paths = get_paths()
     agent_dir = paths.user_agent_dir(user_id, name)
 
@@ -446,9 +672,223 @@ async def delete_agent(name: str) -> None:
             )
         raise HTTPException(status_code=404, detail=f"Agent '{name}' not found")
 
+    # RBAC: check ownership before allowing delete
+    meta = _load_agent_meta(name, user_id)
+    _check_resource_modify(meta.get("owner_id"), meta.get("department_id"), current_user)
+
     try:
         shutil.rmtree(agent_dir)
         logger.info(f"Deleted agent '{name}' from {agent_dir}")
     except Exception as e:
         logger.error(f"Failed to delete agent '{name}': {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to delete agent: {str(e)}")
+
+
+# ---------------------------------------------------------------------------
+# Export / Import / Stats
+# ---------------------------------------------------------------------------
+
+
+class AgentExportResponse(BaseModel):
+    """Response model for agent export."""
+
+    name: str
+    config: dict
+    soul: str
+    meta: dict
+
+
+class AgentImportRequest(BaseModel):
+    """Request body for agent import."""
+
+    name: str = Field(..., description="Agent name (must match ^[A-Za-z0-9-]+$)")
+    config: dict = Field(default_factory=dict, description="Agent config.yaml content as dict")
+    soul: str = Field(default="", description="SOUL.md content")
+    visibility: str = Field(default="private", description="Visibility: private, department, or public")
+
+
+class AgentStatsResponse(BaseModel):
+    """Response model for agent statistics."""
+
+    name: str
+    visibility: str
+    owner_id: str | None = None
+    department_id: str | None = None
+    created_at: str | None = None
+    has_soul: bool = False
+    tool_groups_count: int = 0
+    skills_count: int = 0
+
+
+@router.post(
+    "/agents/{name}/export",
+    response_model=AgentExportResponse,
+    summary="Export Custom Agent",
+    description="Export an agent's config, SOUL.md, and metadata as a JSON bundle.",
+)
+async def export_agent(name: str) -> AgentExportResponse:
+    """Export a custom agent for sharing or backup.
+
+    Args:
+        name: The agent name.
+
+    Returns:
+        Agent config, soul content, and RBAC metadata.
+    """
+    _require_agents_api_enabled()
+    _validate_agent_name(name)
+    name = _normalize_agent_name(name)
+    user_id = get_effective_user_id()
+
+    try:
+        agent_cfg = load_agent_config(name, user_id=user_id)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Agent '{name}' not found")
+
+    meta = _load_agent_meta(name, user_id)
+    soul = load_agent_soul(name, user_id=user_id) or ""
+
+    config_dict: dict = {
+        "name": agent_cfg.name,
+        "description": agent_cfg.description,
+    }
+    if agent_cfg.model is not None:
+        config_dict["model"] = agent_cfg.model
+    if agent_cfg.tool_groups is not None:
+        config_dict["tool_groups"] = agent_cfg.tool_groups
+    if agent_cfg.skills is not None:
+        config_dict["skills"] = agent_cfg.skills
+
+    return AgentExportResponse(
+        name=name,
+        config=config_dict,
+        soul=soul,
+        meta=meta,
+    )
+
+
+@router.post(
+    "/agents/import",
+    response_model=AgentResponse,
+    status_code=201,
+    summary="Import Custom Agent",
+    description="Import an agent from an exported JSON bundle.",
+)
+async def import_agent(request: AgentImportRequest) -> AgentResponse:
+    """Import a custom agent from an export bundle.
+
+    Args:
+        request: The agent import request with config, soul, and metadata.
+
+    Returns:
+        The imported agent details.
+    """
+    _require_agents_api_enabled()
+    _validate_agent_name(request.name)
+    normalized_name = _normalize_agent_name(request.name)
+    user_id = get_effective_user_id()
+    current_user = _get_current_user_stub()
+    paths = get_paths()
+
+    # Validate visibility permissions
+    if not _can_set_visibility(request.visibility, current_user):
+        raise HTTPException(
+            status_code=403,
+            detail=f"Your role does not have permission to set visibility to '{request.visibility}'",
+        )
+
+    agent_dir = paths.user_agent_dir(user_id, normalized_name)
+    legacy_dir = paths.agent_dir(normalized_name)
+
+    if agent_dir.exists() or legacy_dir.exists():
+        raise HTTPException(status_code=409, detail=f"Agent '{normalized_name}' already exists")
+
+    try:
+        agent_dir.mkdir(parents=True, exist_ok=True)
+
+        # Write config.yaml from the imported config dict
+        config_data: dict = {"name": normalized_name}
+        for key in ("description", "model", "tool_groups", "skills"):
+            if key in request.config:
+                config_data[key] = request.config[key]
+
+        config_file = agent_dir / "config.yaml"
+        with open(config_file, "w", encoding="utf-8") as f:
+            yaml.dump(config_data, f, default_flow_style=False, allow_unicode=True)
+
+        # Write SOUL.md
+        soul_file = agent_dir / "SOUL.md"
+        soul_file.write_text(request.soul, encoding="utf-8")
+
+        # Persist RBAC metadata
+        owner_id = current_user.get("id") if current_user else user_id
+        dept_id = current_user.get("department_id") if current_user else None
+        meta = {
+            "visibility": request.visibility,
+            "owner_id": owner_id,
+            "department_id": dept_id,
+            "created_at": datetime.now(UTC).isoformat(),
+            "imported": True,
+        }
+        _save_agent_meta(normalized_name, user_id, meta)
+
+        logger.info(f"Imported agent '{normalized_name}' to {agent_dir}")
+
+        agent_cfg = load_agent_config(normalized_name, user_id=user_id)
+        return _agent_config_to_response(
+            agent_cfg,
+            include_soul=True,
+            user_id=user_id,
+            read_only=False,
+            visibility=request.visibility,
+            owner_id=owner_id,
+            department_id=dept_id,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        if agent_dir.exists():
+            shutil.rmtree(agent_dir)
+        logger.error(f"Failed to import agent '{request.name}': {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to import agent: {str(e)}")
+
+
+@router.get(
+    "/agents/{name}/stats",
+    response_model=AgentStatsResponse,
+    summary="Get Agent Statistics",
+    description="Get statistics and metadata for a custom agent.",
+)
+async def get_agent_stats(name: str) -> AgentStatsResponse:
+    """Get statistics for a custom agent.
+
+    Args:
+        name: The agent name.
+
+    Returns:
+        Agent statistics including visibility, ownership, and counts.
+    """
+    _require_agents_api_enabled()
+    _validate_agent_name(name)
+    name = _normalize_agent_name(name)
+    user_id = get_effective_user_id()
+
+    try:
+        agent_cfg = load_agent_config(name, user_id=user_id)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Agent '{name}' not found")
+
+    meta = _load_agent_meta(name, user_id)
+    soul = load_agent_soul(name, user_id=user_id)
+
+    return AgentStatsResponse(
+        name=name,
+        visibility=meta.get("visibility", "private"),
+        owner_id=meta.get("owner_id"),
+        department_id=meta.get("department_id"),
+        created_at=meta.get("created_at"),
+        has_soul=bool(soul and soul.strip()),
+        tool_groups_count=len(agent_cfg.tool_groups) if agent_cfg.tool_groups else 0,
+        skills_count=len(agent_cfg.skills) if agent_cfg.skills else 0,
+    )

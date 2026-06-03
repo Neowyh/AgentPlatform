@@ -25,20 +25,31 @@ Inspired by LangGraph Auth system: https://github.com/langchain-ai/langgraph/blo
 - runs:create   - Run agent
 - runs:read     - View run
 - runs:cancel   - Cancel run
+
+**RBAC Permission Model (software factory):**
+
+- ``require_role(*roles)``: decorator requiring one of the given roles
+- ``check_resource_access(user, ...)``: visibility-based read access
+- ``check_resource_modify(user, ...)``: ownership/role-based write access
+- ``filter_visible_resources(items, user)``: bulk-filter a list of resources
 """
 
 from __future__ import annotations
 
 import functools
 import inspect
+import logging
 from collections.abc import Callable
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar
 
-from fastapi import HTTPException, Request
+from fastapi import HTTPException, Request, status
 
 if TYPE_CHECKING:
     from app.gateway.auth.models import User
+    from ideer.persistence.models.user import UserModel
+
+logger = logging.getLogger(__name__)
 
 P = ParamSpec("P")
 T = TypeVar("T")
@@ -299,3 +310,137 @@ def require_permission(
         return wrapper
 
     return decorator
+
+
+# ---------------------------------------------------------------------------
+# RBAC permission checking for iDeer software factory
+# ---------------------------------------------------------------------------
+
+
+def require_role(*roles: str):
+    """Decorator: require the current user to have one of the specified roles.
+
+    Expects ``current_user`` to be injected as a keyword argument by FastAPI
+    dependency injection.
+
+    Usage::
+
+        @require_role("super_admin", "department_admin")
+        async def admin_endpoint(current_user: UserModel = Depends(...)):
+            ...
+    """
+
+    def decorator(func: Callable) -> Callable:
+        @functools.wraps(func)
+        async def wrapper(*args: Any, **kwargs: Any) -> Any:
+            current_user = kwargs.get("current_user")
+            if current_user is None:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Authentication required",
+                )
+            if current_user.role not in roles:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Requires role: {', '.join(roles)}",
+                )
+            return await func(*args, **kwargs)
+
+        return wrapper
+
+    return decorator
+
+
+def check_resource_access(
+    user: UserModel,
+    resource_owner_id: str | None,
+    resource_department_id: str | None,
+    resource_visibility: str,
+) -> bool:
+    """Check if *user* can read a resource based on RBAC visibility rules.
+
+    Rules (in evaluation order):
+    1. ``super_admin`` -- always allowed.
+    2. Owner -- always allowed for own resources.
+    3. ``public`` visibility -- allowed for everyone.
+    4. ``department`` visibility -- allowed if user belongs to the same department.
+    5. ``department_admin`` -- allowed for resources in own department.
+
+    Returns ``True`` when access is granted, ``False`` otherwise.
+    """
+    from ideer.persistence.models.user import ResourceVisibility, UserRole
+
+    # super_admin: access everything
+    if user.role == UserRole.SUPER_ADMIN:
+        return True
+
+    # Owner: always access own resources
+    if resource_owner_id and user.id == resource_owner_id:
+        return True
+
+    # Public resources: everyone can access
+    if resource_visibility == ResourceVisibility.PUBLIC:
+        return True
+
+    # Department resources: same department
+    if resource_visibility == ResourceVisibility.DEPARTMENT:
+        if user.department_id and resource_department_id and user.department_id == resource_department_id:
+            return True
+
+    # department_admin: access own department resources
+    if user.role == UserRole.DEPARTMENT_ADMIN:
+        if user.department_id and resource_department_id and user.department_id == resource_department_id:
+            return True
+
+    return False
+
+
+def check_resource_modify(
+    user: UserModel,
+    resource_owner_id: str | None,
+    resource_department_id: str | None,
+) -> bool:
+    """Check if *user* can modify (edit/delete) a resource.
+
+    Rules (in evaluation order):
+    1. ``super_admin`` -- can modify everything.
+    2. Owner -- can modify own resources.
+    3. ``department_admin`` -- can modify resources in own department.
+
+    Returns ``True`` when modification is allowed, ``False`` otherwise.
+    """
+    from ideer.persistence.models.user import UserRole
+
+    # super_admin: modify everything
+    if user.role == UserRole.SUPER_ADMIN:
+        return True
+
+    # Owner: modify own resources
+    if resource_owner_id and user.id == resource_owner_id:
+        return True
+
+    # department_admin: modify department resources
+    if user.role == UserRole.DEPARTMENT_ADMIN:
+        if user.department_id and resource_department_id and user.department_id == resource_department_id:
+            return True
+
+    return False
+
+
+def filter_visible_resources(items: list, user: UserModel) -> list:
+    """Filter a list of resources by visibility rules.
+
+    Each item in *items* is expected to have ``owner_id``, ``department_id``,
+    and ``visibility`` attributes (as plain attributes or via ``getattr``
+    defaults).
+    """
+    return [
+        item
+        for item in items
+        if check_resource_access(
+            user,
+            getattr(item, "owner_id", None),
+            getattr(item, "department_id", None),
+            getattr(item, "visibility", "private"),
+        )
+    ]
