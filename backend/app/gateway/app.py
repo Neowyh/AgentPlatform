@@ -28,6 +28,7 @@ from app.gateway.routers import (
     threads,
     tools,
     uploads,
+    workflows,
 )
 from ideer.config import app_config as ideer_app_config
 from ideer.config.app_config import apply_logging_level
@@ -317,6 +318,10 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
                 "name": "tools",
                 "description": "Tool management APIs for listing, testing, and configuring tools",
             },
+            {
+                "name": "workflows",
+                "description": "Workflow management APIs for creating, running, and monitoring YAML-based workflows",
+            },
         ],
     )
 
@@ -390,6 +395,9 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
 
     # Tools API is mounted at /api/tools
     app.include_router(tools.router)
+
+    # Workflows API is mounted at /api/workflows
+    app.include_router(workflows.router)
 
     @app.get("/health", tags=["health"])
     async def health_check() -> dict[str, str]:

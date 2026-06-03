@@ -53,6 +53,22 @@ function getBreadcrumbSegments(pathname: string): BreadcrumbSegment[] {
       if (parts[2] && parts[2] !== "new") {
         segments.push({ label: "Thread" });
       }
+    } else if (parts[1] === "workflows") {
+      segments.push({ label: "Workflows", href: "/workspace/workflows" });
+
+      if (parts[2]) {
+        const workflowName = parts[2];
+        segments.push({
+          label: workflowName,
+          href: `/workspace/workflows/${workflowName}`,
+        });
+
+        if (parts[3] === "edit") {
+          segments.push({ label: "Edit" });
+        } else if (parts[3] === "runs") {
+          segments.push({ label: "Runs" });
+        }
+      }
     } else if (parts[1] === "admin") {
       segments.push({ label: "Admin", href: "/workspace/admin" });
 

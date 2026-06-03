@@ -173,6 +173,7 @@ export const enUS: Translations = {
     recentChats: "Recent chats",
     demoChats: "Demo chats",
     agents: "Agents",
+    workflows: "Workflows",
   },
 
   // Agents
