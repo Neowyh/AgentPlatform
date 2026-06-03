@@ -4,6 +4,33 @@
 
 Use `START_TARGET` to select another make target and `REQUIRED_ENV_VARS` for a comma-separated list of required environment variable names. Keep both values to simple identifiers/targets; the script validates them before invoking `make`.
 
+## Enterprise Platform Modules
+
+This project has been extended with enterprise intranet platform capabilities on top of the iDeer open-source framework.
+
+### RBAC & Admin
+- RBAC model: 4 roles (super_admin > department_admin > user > viewer)
+- DB models: `backend/packages/harness/ideer/persistence/models/rbac.py`
+- Auth bridge: `backend/app/gateway/authz.py` (`get_current_rbac_user`)
+- Admin API: `backend/app/gateway/routers/admin.py`
+
+### Workflow Engine
+- YAML DSL with 6 step types: agent, tool, human_review, condition, parallel, loop
+- Core module: `backend/packages/harness/ideer/workflows/`
+- API: `backend/app/gateway/routers/workflows.py`
+- Frontend: `frontend/src/app/workspace/workflows/`
+
+### Enterprise Tools
+- `read_document`: PDF/Word/Excel/PPT → Markdown (`community/doc_reader/`)
+- `code_interpreter`: Python/JS execution (`community/code_interpreter/`)
+- `data_analyzer`: CSV/Excel/JSON analysis (`community/data_analyzer/`)
+- Each tool has both Community Tool and MCP Server deployment modes
+
+### Testing
+- Workflow tests: `backend/tests/test_schema_parser.py`, `test_template.py`
+- Tool tests: `backend/tests/test_doc_reader.py`, `test_code_interpreter.py`, `test_data_analyzer.py`
+- Run with venv: `.venv/bin/python -m pytest backend/tests/`
+
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 

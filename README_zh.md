@@ -56,6 +56,7 @@ https://github.com/user-attachments/assets/a8bcadc4-e040-4cf2-8fda-dd768b999c18
     - [Sandbox 与文件系统](#sandbox-与文件系统)
     - [Context Engineering](#context-engineering)
     - [长期记忆](#长期记忆)
+    - [企业平台扩展](#企业平台扩展)
   - [推荐模型](#推荐模型)
   - [内嵌 Python Client](#内嵌-python-client)
   - [文档](#文档)
@@ -510,6 +511,33 @@ iDeer 不只是“会说它能做”，它是真的有一台自己的“电脑�
 大多数 agents 会在对话结束后把一切都忘掉，iDeer 不一样。
 
 跨 session 使用时，iDeer 会逐步积累关于你的持久 memory，包括你的个人偏好、知识背景，以及长期沉淀下来的工作习惯。你用得越多，它越了解你的写作风格、技术栈和重复出现的工作流。memory 保存在本地，控制权也始终在你手里。
+
+### 企业平台扩展
+
+在 iDeer 基础框架之上，新增了面向企业内网部署的平台能力：
+
+**RBAC 权限管理**
+- 4 级角色体系：超级管理员 > 部门管理员 > 普通用户 > 访客
+- 部门组织架构管理
+- Agent/Skill/Tool 的可见性控制
+
+**工作流引擎**
+- YAML DSL 声明式工作流编排
+- 6 种步骤类型：Agent 调用、工具调用、人工审批、条件分支、并行执行、循环遍历
+- 变量传递与模板引擎（`{{inputs.xxx}}`、`{{steps.xxx.output}}`）
+- 运行状态数据库持久化，支持断点恢复
+
+**企业工具集**
+- `read_document`：文档读取（PDF/Word/Excel/PPT → Markdown）
+- `code_interpreter`：代码解释器（Python/JS 安全执行）
+- `data_analyzer`：数据分析（CSV/Excel/JSON 统计摘要）
+- 支持 Community Tool 和 MCP Server 两种部署模式
+
+**内网部署**
+- 离线模式自动检测
+- 工具/技能按网络依赖自动过滤
+- 前端外部资源本地化
+- Docker Compose 内网专用配置
 
 ## 推荐模型
 
