@@ -8,7 +8,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-_PATH_RE = re.compile(r"\{\{(.+?)\}\}")
+_PATH_RE = re.compile(r"\{\{([^{}]+?)\}\}")
 
 
 def render_value(template: str, context: dict[str, Any]) -> Any:
