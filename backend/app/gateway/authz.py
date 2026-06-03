@@ -44,6 +44,7 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar
 
 from fastapi import HTTPException, Request, status
+from sqlalchemy import func
 
 if TYPE_CHECKING:
     from app.gateway.auth.models import User
@@ -444,3 +445,72 @@ def filter_visible_resources(items: list, user: UserModel) -> list:
             getattr(item, "visibility", "private"),
         )
     ]
+
+
+# ---------------------------------------------------------------------------
+# FastAPI dependencies for RBAC user resolution
+# ---------------------------------------------------------------------------
+
+
+async def get_current_rbac_user(request: Request) -> UserModel:
+    """FastAPI dependency: resolve the authenticated user to a ``UserModel``.
+
+    Bridges the JWT auth system (``AuthContext.user``) with the RBAC
+    persistence layer (``UserModel`` in ``users_ext``).  If the user has
+    no ``users_ext`` row yet, one is created automatically with the
+    default ``user`` role.  The very first user is promoted to
+    ``super_admin`` so the system always has at least one admin.
+
+    Raises:
+        HTTPException 401 if the request is not authenticated.
+    """
+    from ideer.persistence.engine import get_session_factory
+    from ideer.persistence.models.user import UserRole
+
+    auth: AuthContext | None = getattr(request.state, "auth", None)
+    if auth is None or not auth.is_authenticated:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    auth_user = auth.require_user()
+    user_id = str(auth_user.id)
+
+    sf = get_session_factory()
+    if sf is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+
+    async with sf() as session:
+        from sqlalchemy import select
+
+        stmt = select(UserModel).where(UserModel.id == user_id)
+        result = await session.execute(stmt)
+        rbac_user = result.scalar_one_or_none()
+
+        if rbac_user is None:
+            # Auto-create RBAC profile for first-time users.
+            # Check if any super_admin exists; if not, promote this user.
+            count_stmt = select(func.count()).select_from(UserModel).where(UserModel.role == UserRole.SUPER_ADMIN)
+            admin_count = (await session.execute(count_stmt)).scalar() or 0
+
+            rbac_user = UserModel(
+                id=user_id,
+                username=getattr(auth_user, "email", user_id),
+                role=UserRole.SUPER_ADMIN if admin_count == 0 else UserRole.USER,
+                department_id=None,
+            )
+            session.add(rbac_user)
+            await session.commit()
+            await session.refresh(rbac_user)
+            logger.info("Auto-created RBAC user %s with role %s", user_id, rbac_user.role)
+
+    return rbac_user
+
+
+async def get_optional_rbac_user(request: Request) -> UserModel | None:
+    """Like ``get_current_rbac_user`` but returns ``None`` for unauthenticated requests."""
+    auth: AuthContext | None = getattr(request.state, "auth", None)
+    if auth is None or not auth.is_authenticated:
+        return None
+    try:
+        return await get_current_rbac_user(request)
+    except HTTPException:
+        return None

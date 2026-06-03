@@ -5,11 +5,13 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from app.gateway.authz import get_current_rbac_user, get_optional_rbac_user, require_role
 from app.gateway.deps import get_config
 from app.gateway.path_utils import resolve_thread_virtual_path
 from ideer.agents.lead_agent.prompt import refresh_skills_system_prompt_cache_async
 from ideer.config.app_config import AppConfig
 from ideer.config.extensions_config import ExtensionsConfig, SkillStateConfig, get_extensions_config, reload_extensions_config
+from ideer.persistence.models.user import UserModel, UserRole
 from ideer.skills import Skill
 from ideer.skills.installer import SkillAlreadyExistsError
 from ideer.skills.security_scanner import scan_skill_content
@@ -22,96 +24,41 @@ router = APIRouter(prefix="/api", tags=["skills"])
 
 
 # ---------------------------------------------------------------------------
-# RBAC helpers (stub — wired up when auth user model is ready)
+# RBAC helpers — now backed by real UserModel from authz.py
 # ---------------------------------------------------------------------------
 
-VALID_ROLES = ("user", "department_admin", "super_admin")
 
-
-def _get_current_user_stub() -> dict | None:
-    """Return the current user context dict, or None if auth is not wired.
-
-    Expected shape (once auth is ready)::
-
-        {
-            "id": "<uuid>",
-            "role": "user" | "department_admin" | "super_admin",
-            "department_id": "<uuid>" | None,
-        }
-    """
-    # TODO: Replace with real auth dependency (e.g. Depends(get_current_user))
-    return None
-
-
-def _require_role(current_user: dict | None, allowed_roles: tuple[str, ...]) -> None:
-    """Raise 403 if the user's role is not in *allowed_roles*.
-
-    If no user context (auth disabled), always allows.
-    """
+def _check_resource_modify(resource_owner_id: str | None, resource_department_id: str | None, current_user: UserModel | None) -> None:
+    """Raise 403 if *current_user* is not allowed to modify the resource."""
     if current_user is None:
-        return  # auth not wired — allow everything
-
-    role = current_user.get("role", "user")
-    if role not in allowed_roles:
-        raise HTTPException(status_code=403, detail=f"Role '{role}' is not authorized for this action")
-
-
-def _check_resource_modify(resource_owner_id: str | None, resource_department_id: str | None, current_user: dict | None) -> None:
-    """Raise 403 if *current_user* is not allowed to modify the resource.
-
-    Rules:
-    - super_admin: always allowed
-    - department_admin: allowed if same department
-    - user: allowed only if they own the resource
-    - No user context (auth disabled): always allowed
-    """
-    if current_user is None:
-        return  # auth not wired — allow everything
-
-    role = current_user.get("role", "user")
-    if role == "super_admin":
         return
 
-    user_id = current_user.get("id")
-    user_dept = current_user.get("department_id")
+    if current_user.role == UserRole.SUPER_ADMIN:
+        return
 
-    if role == "department_admin":
-        if resource_department_id and resource_department_id == user_dept:
+    if current_user.role == UserRole.DEPARTMENT_ADMIN:
+        if resource_department_id and resource_department_id == current_user.department_id:
             return
-        if resource_owner_id and resource_owner_id == user_id:
+        if resource_owner_id and resource_owner_id == current_user.id:
             return
         raise HTTPException(status_code=403, detail="Department admins can only modify resources in their own department")
 
-    # Regular user
-    if resource_owner_id and resource_owner_id == user_id:
+    if resource_owner_id and resource_owner_id == current_user.id:
         return
     raise HTTPException(status_code=403, detail="You can only modify your own resources")
 
 
-def _is_visible_to_user(visibility: str, owner_id: str | None, department_id: str | None, current_user: dict) -> bool:
-    """Check whether a skill with the given visibility is visible to *current_user*.
-
-    Visibility rules:
-    - private: only the owner
-    - department: same department members + owner
-    - public: everyone
-    """
-    role = current_user.get("role", "user")
-    user_id = current_user.get("id")
-    user_dept = current_user.get("department_id")
-
+def _is_visible_to_user(visibility: str, owner_id: str | None, department_id: str | None, current_user: UserModel) -> bool:
+    """Check whether a skill with the given visibility is visible to *current_user*."""
     if visibility == "public":
         return True
+    if current_user.role == UserRole.SUPER_ADMIN:
+        return True
+    if owner_id and owner_id == current_user.id:
+        return True
     if visibility == "department":
-        if user_dept and department_id and user_dept == department_id:
+        if current_user.department_id and department_id and current_user.department_id == department_id:
             return True
-        if role == "super_admin":
-            return True
-    # private or department (non-matching dept): only owner or super_admin
-    if role == "super_admin":
-        return True
-    if owner_id and owner_id == user_id:
-        return True
     return False
 
 
@@ -198,30 +145,23 @@ def _skill_to_response(skill: Skill) -> SkillResponse:
     summary="List All Skills",
     description="Retrieve a list of all available skills from both public and custom directories.",
 )
-async def list_skills(config: AppConfig = Depends(get_config)) -> SkillsListResponse:
-    """List all skills, filtered by visibility when auth is active.
-
-    Visibility rules:
-    - Public skills: visible to everyone
-    - Custom skills: visible based on RBAC metadata (owner/department)
-    """
+async def list_skills(
+    config: AppConfig = Depends(get_config),
+    current_user: UserModel | None = Depends(get_optional_rbac_user),
+) -> SkillsListResponse:
+    """List all skills, filtered by visibility when auth is active."""
     try:
-        current_user = _get_current_user_stub()
         skills = get_or_new_skill_storage(app_config=config).load_skills(enabled_only=False)
 
-        # When auth is not wired, return all skills
         if current_user is None:
             return SkillsListResponse(skills=[_skill_to_response(skill) for skill in skills])
 
-        # Filter by visibility when auth is active
         filtered: list[Skill] = []
         for skill in skills:
-            # Public/built-in skills are always visible
             if skill.category == SkillCategory.PUBLIC:
                 filtered.append(skill)
                 continue
 
-            # Custom skills: check RBAC metadata if available
             meta = _get_skill_meta(skill.name, config)
             visibility = meta.get("visibility", "private")
             owner_id = meta.get("owner_id")
@@ -242,13 +182,16 @@ async def list_skills(config: AppConfig = Depends(get_config)) -> SkillsListResp
     summary="Install Skill",
     description="Install a skill from a .skill file (ZIP archive) located in the thread's user-data directory. Requires admin or department_admin role.",
 )
-async def install_skill(request: SkillInstallRequest, config: AppConfig = Depends(get_config)) -> SkillInstallResponse:
+@require_role(UserRole.DEPARTMENT_ADMIN, UserRole.SUPER_ADMIN)
+async def install_skill(
+    request: SkillInstallRequest,
+    config: AppConfig = Depends(get_config),
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> SkillInstallResponse:
     """Install a skill from an archive.
 
     RBAC: Only admin and department_admin roles can install new skills.
     """
-    current_user = _get_current_user_stub()
-    _require_role(current_user, ("department_admin", "super_admin"))
 
     try:
         skill_file_path = resolve_thread_virtual_path(request.thread_id, request.path)
@@ -269,17 +212,17 @@ async def install_skill(request: SkillInstallRequest, config: AppConfig = Depend
 
 
 @router.get("/skills/custom", response_model=SkillsListResponse, summary="List Custom Skills")
-async def list_custom_skills(config: AppConfig = Depends(get_config)) -> SkillsListResponse:
+async def list_custom_skills(
+    config: AppConfig = Depends(get_config),
+    current_user: UserModel | None = Depends(get_optional_rbac_user),
+) -> SkillsListResponse:
     """List custom skills, filtered by visibility when auth is active."""
     try:
-        current_user = _get_current_user_stub()
         skills = [skill for skill in get_or_new_skill_storage(app_config=config).load_skills(enabled_only=False) if skill.category == SkillCategory.CUSTOM]
 
-        # When auth is not wired, return all custom skills
         if current_user is None:
             return SkillsListResponse(skills=[_skill_to_response(skill) for skill in skills])
 
-        # Filter by visibility when auth is active
         filtered: list[Skill] = []
         for skill in skills:
             meta = _get_skill_meta(skill.name, config)
@@ -313,9 +256,13 @@ async def get_custom_skill(skill_name: str, config: AppConfig = Depends(get_conf
 
 
 @router.put("/skills/custom/{skill_name}", response_model=CustomSkillContentResponse, summary="Edit Custom Skill")
-async def update_custom_skill(skill_name: str, request: CustomSkillUpdateRequest, config: AppConfig = Depends(get_config)) -> CustomSkillContentResponse:
+async def update_custom_skill(
+    skill_name: str,
+    request: CustomSkillUpdateRequest,
+    config: AppConfig = Depends(get_config),
+    current_user: UserModel | None = Depends(get_optional_rbac_user),
+) -> CustomSkillContentResponse:
     """Update a custom skill's content. Checks ownership when auth is active."""
-    current_user = _get_current_user_stub()
 
     try:
         skill_name = skill_name.replace("\r\n", "").replace("\n", "")
@@ -357,9 +304,12 @@ async def update_custom_skill(skill_name: str, request: CustomSkillUpdateRequest
 
 
 @router.delete("/skills/custom/{skill_name}", summary="Delete Custom Skill")
-async def delete_custom_skill(skill_name: str, config: AppConfig = Depends(get_config)) -> dict[str, bool]:
+async def delete_custom_skill(
+    skill_name: str,
+    config: AppConfig = Depends(get_config),
+    current_user: UserModel | None = Depends(get_optional_rbac_user),
+) -> dict[str, bool]:
     """Delete a custom skill. Checks ownership when auth is active."""
-    current_user = _get_current_user_stub()
 
     try:
         skill_name = skill_name.replace("\r\n", "").replace("\n", "")

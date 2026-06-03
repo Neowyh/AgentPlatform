@@ -7,12 +7,16 @@ import shutil
 from datetime import UTC, datetime
 
 import yaml
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy import func, select
 
+from app.gateway.authz import get_optional_rbac_user
 from ideer.config.agents_api_config import get_agents_api_config
 from ideer.config.agents_config import AgentConfig, list_custom_agents, load_agent_config, load_agent_soul
 from ideer.config.paths import get_paths
+from ideer.persistence.engine import get_session_factory
+from ideer.persistence.models.user import UserModel, UserRole
 from ideer.runtime.user_context import get_effective_user_id
 
 logger = logging.getLogger(__name__)
@@ -20,28 +24,13 @@ router = APIRouter(prefix="/api", tags=["agents"])
 
 
 # ---------------------------------------------------------------------------
-# RBAC helpers (stub — wired up when auth user model is ready)
+# RBAC helpers — now backed by real UserModel from authz.py
 # ---------------------------------------------------------------------------
 
-VALID_ROLES = ("user", "department_admin", "super_admin")
+VALID_ROLES = tuple(UserRole)
 
 
-def _get_current_user_stub() -> dict | None:
-    """Return the current user context dict, or None if auth is not wired.
-
-    Expected shape (once auth is ready)::
-
-        {
-            "id": "<uuid>",
-            "role": "user" | "department_admin" | "super_admin",
-            "department_id": "<uuid>" | None,
-        }
-    """
-    # TODO: Replace with real auth dependency (e.g. Depends(get_current_user))
-    return None
-
-
-def _check_resource_modify(resource_owner_id: str | None, resource_department_id: str | None, current_user: dict | None) -> None:
+def _check_resource_modify(resource_owner_id: str | None, resource_department_id: str | None, current_user: UserModel | None) -> None:
     """Raise 403 if *current_user* is not allowed to modify the resource.
 
     Rules:
@@ -53,28 +42,23 @@ def _check_resource_modify(resource_owner_id: str | None, resource_department_id
     if current_user is None:
         return  # auth not wired — allow everything
 
-    role = current_user.get("role", "user")
-    if role == "super_admin":
+    if current_user.role == UserRole.SUPER_ADMIN:
         return
 
-    user_id = current_user.get("id")
-    user_dept = current_user.get("department_id")
-
-    if role == "department_admin":
-        if resource_department_id and resource_department_id == user_dept:
+    if current_user.role == UserRole.DEPARTMENT_ADMIN:
+        if resource_department_id and resource_department_id == current_user.department_id:
             return
-        # Also allow if the user owns it directly
-        if resource_owner_id and resource_owner_id == user_id:
+        if resource_owner_id and resource_owner_id == current_user.id:
             return
         raise HTTPException(status_code=403, detail="Department admins can only modify resources in their own department")
 
     # Regular user
-    if resource_owner_id and resource_owner_id == user_id:
+    if resource_owner_id and resource_owner_id == current_user.id:
         return
     raise HTTPException(status_code=403, detail="You can only modify your own resources")
 
 
-def _can_set_visibility(visibility: str, current_user: dict | None) -> bool:
+def _can_set_visibility(visibility: str, current_user: UserModel | None) -> bool:
     """Check whether the user is allowed to set the given visibility level.
 
     - private: anyone
@@ -85,11 +69,10 @@ def _can_set_visibility(visibility: str, current_user: dict | None) -> bool:
     if current_user is None:
         return True
 
-    role = current_user.get("role", "user")
     if visibility == "public":
-        return role == "super_admin"
+        return current_user.role == UserRole.SUPER_ADMIN
     if visibility == "department":
-        return role in ("department_admin", "super_admin")
+        return current_user.role in (UserRole.DEPARTMENT_ADMIN, UserRole.SUPER_ADMIN)
     return True  # private — anyone
 
 
@@ -199,7 +182,7 @@ def _save_agent_meta(agent_name: str, user_id: str, meta: dict) -> None:
     meta_file.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
-def _is_visible_to_user(visibility: str, owner_id: str | None, department_id: str | None, current_user: dict) -> bool:
+def _is_visible_to_user(visibility: str, owner_id: str | None, department_id: str | None, current_user: UserModel) -> bool:
     """Check whether an agent with the given visibility is visible to *current_user*.
 
     Visibility rules:
@@ -207,24 +190,15 @@ def _is_visible_to_user(visibility: str, owner_id: str | None, department_id: st
     - department: same department members + owner
     - public: everyone
     """
-    role = current_user.get("role", "user")
-    user_id = current_user.get("id")
-    user_dept = current_user.get("department_id")
-
     if visibility == "public":
         return True
+    if current_user.role == UserRole.SUPER_ADMIN:
+        return True
+    if owner_id and owner_id == current_user.id:
+        return True
     if visibility == "department":
-        if user_dept and department_id and user_dept == department_id:
+        if current_user.department_id and department_id and current_user.department_id == department_id:
             return True
-        # Also visible to super_admin
-        if role == "super_admin":
-            return True
-        # Fall through to owner check
-    # private or department (non-matching dept): only owner or super_admin
-    if role == "super_admin":
-        return True
-    if owner_id and owner_id == user_id:
-        return True
     return False
 
 
@@ -263,7 +237,9 @@ def _agent_config_to_response(
     summary="List Custom Agents",
     description="List all custom agents available in the agents directory, including their soul content.",
 )
-async def list_agents() -> AgentsListResponse:
+async def list_agents(
+    current_user: UserModel | None = Depends(get_optional_rbac_user),
+) -> AgentsListResponse:
     """List all custom agents.
 
     Returns:
@@ -274,7 +250,6 @@ async def list_agents() -> AgentsListResponse:
     _require_agents_api_enabled()
 
     user_id = get_effective_user_id()
-    current_user = _get_current_user_stub()
     try:
         agents = list_custom_agents(user_id=user_id)
 
@@ -387,7 +362,10 @@ async def get_agent(name: str) -> AgentResponse:
     summary="Create Custom Agent",
     description="Create a new custom agent with its config and SOUL.md.",
 )
-async def create_agent_endpoint(request: AgentCreateRequest) -> AgentResponse:
+async def create_agent_endpoint(
+    request: AgentCreateRequest,
+    current_user: UserModel | None = Depends(get_optional_rbac_user),
+) -> AgentResponse:
     """Create a new custom agent.
 
     Args:
@@ -403,7 +381,6 @@ async def create_agent_endpoint(request: AgentCreateRequest) -> AgentResponse:
     _validate_agent_name(request.name)
     normalized_name = _normalize_agent_name(request.name)
     user_id = get_effective_user_id()
-    current_user = _get_current_user_stub()
     paths = get_paths()
 
     # Validate visibility permissions
@@ -442,8 +419,8 @@ async def create_agent_endpoint(request: AgentCreateRequest) -> AgentResponse:
         soul_file.write_text(request.soul, encoding="utf-8")
 
         # Persist RBAC metadata
-        owner_id = current_user.get("id") if current_user else user_id
-        dept_id = current_user.get("department_id") if current_user else None
+        owner_id = current_user.id if current_user else user_id
+        dept_id = current_user.department_id if current_user else None
         meta = {
             "visibility": request.visibility,
             "owner_id": owner_id,
@@ -481,7 +458,11 @@ async def create_agent_endpoint(request: AgentCreateRequest) -> AgentResponse:
     summary="Update Custom Agent",
     description="Update an existing custom agent's config and/or SOUL.md.",
 )
-async def update_agent(name: str, request: AgentUpdateRequest) -> AgentResponse:
+async def update_agent(
+    name: str,
+    request: AgentUpdateRequest,
+    current_user: UserModel | None = Depends(get_optional_rbac_user),
+) -> AgentResponse:
     """Update an existing custom agent.
 
     Args:
@@ -498,7 +479,6 @@ async def update_agent(name: str, request: AgentUpdateRequest) -> AgentResponse:
     _validate_agent_name(name)
     name = _normalize_agent_name(name)
     user_id = get_effective_user_id()
-    current_user = _get_current_user_stub()
 
     try:
         agent_cfg = load_agent_config(name, user_id=user_id)
@@ -646,7 +626,10 @@ async def update_user_profile(request: UserProfileUpdateRequest) -> UserProfileR
     summary="Delete Custom Agent",
     description="Delete a custom agent and all its files (config, SOUL.md, memory).",
 )
-async def delete_agent(name: str) -> None:
+async def delete_agent(
+    name: str,
+    current_user: UserModel | None = Depends(get_optional_rbac_user),
+) -> None:
     """Delete a custom agent.
 
     Args:
@@ -660,7 +643,6 @@ async def delete_agent(name: str) -> None:
     _validate_agent_name(name)
     name = _normalize_agent_name(name)
     user_id = get_effective_user_id()
-    current_user = _get_current_user_stub()
     paths = get_paths()
     agent_dir = paths.user_agent_dir(user_id, name)
 
@@ -718,6 +700,8 @@ class AgentStatsResponse(BaseModel):
     has_soul: bool = False
     tool_groups_count: int = 0
     skills_count: int = 0
+    total_runs: int = 0
+    total_messages: int = 0
 
 
 @router.post(
@@ -774,7 +758,10 @@ async def export_agent(name: str) -> AgentExportResponse:
     summary="Import Custom Agent",
     description="Import an agent from an exported JSON bundle.",
 )
-async def import_agent(request: AgentImportRequest) -> AgentResponse:
+async def import_agent(
+    request: AgentImportRequest,
+    current_user: UserModel | None = Depends(get_optional_rbac_user),
+) -> AgentResponse:
     """Import a custom agent from an export bundle.
 
     Args:
@@ -787,7 +774,6 @@ async def import_agent(request: AgentImportRequest) -> AgentResponse:
     _validate_agent_name(request.name)
     normalized_name = _normalize_agent_name(request.name)
     user_id = get_effective_user_id()
-    current_user = _get_current_user_stub()
     paths = get_paths()
 
     # Validate visibility permissions
@@ -821,8 +807,8 @@ async def import_agent(request: AgentImportRequest) -> AgentResponse:
         soul_file.write_text(request.soul, encoding="utf-8")
 
         # Persist RBAC metadata
-        owner_id = current_user.get("id") if current_user else user_id
-        dept_id = current_user.get("department_id") if current_user else None
+        owner_id = current_user.id if current_user else user_id
+        dept_id = current_user.department_id if current_user else None
         meta = {
             "visibility": request.visibility,
             "owner_id": owner_id,
@@ -882,6 +868,26 @@ async def get_agent_stats(name: str) -> AgentStatsResponse:
     meta = _load_agent_meta(name, user_id)
     soul = load_agent_soul(name, user_id=user_id)
 
+    # Query real run/message stats from the database
+    total_runs = 0
+    total_messages = 0
+    sf = get_session_factory()
+    if sf is not None:
+        try:
+            from ideer.persistence.models.run_event import RunEventRow
+            from ideer.persistence.run.model import RunRow
+
+            async with sf() as session:
+                # Count runs for this agent (graph_id matches agent name)
+                run_count_stmt = select(func.count()).select_from(RunRow).where(RunRow.graph_id == name)
+                total_runs = (await session.execute(run_count_stmt)).scalar() or 0
+
+                # Count messages for this agent's runs
+                msg_count_stmt = select(func.count()).select_from(RunEventRow).join(RunRow, RunRow.run_id == RunEventRow.run_id).where(RunRow.graph_id == name, RunEventRow.category == "message")
+                total_messages = (await session.execute(msg_count_stmt)).scalar() or 0
+        except Exception:
+            logger.debug("Could not query run stats for agent %s", name, exc_info=True)
+
     return AgentStatsResponse(
         name=name,
         visibility=meta.get("visibility", "private"),
@@ -891,4 +897,6 @@ async def get_agent_stats(name: str) -> AgentStatsResponse:
         has_soul=bool(soul and soul.strip()),
         tool_groups_count=len(agent_cfg.tool_groups) if agent_cfg.tool_groups else 0,
         skills_count=len(agent_cfg.skills) if agent_cfg.skills else 0,
+        total_runs=total_runs,
+        total_messages=total_messages,
     )
