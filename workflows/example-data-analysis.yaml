@@ -1,0 +1,56 @@
+name: example-data-analysis
+description: 示例数据分析工作流 — 收集数据、分析、生成报告
+version: "1.0"
+
+inputs:
+  data_source:
+    type: string
+    required: true
+    description: "数据来源（如：数据库名、文件路径）"
+  analysis_type:
+    type: string
+    default: "summary"
+    description: "分析类型：summary / trend / anomaly"
+
+steps:
+  # 步骤 1: 收集数据
+  - id: collect_data
+    type: agent
+    agent: data-analyst
+    prompt: |
+      请从以下数据源收集数据：
+      数据来源: {{inputs.data_source}}
+      分析类型: {{inputs.analysis_type}}
+
+      输出原始数据的概要统计。
+
+  # 步骤 2: 数据分析
+  - id: analyze
+    type: agent
+    agent: data-analyst
+    prompt: |
+      基于以下数据进行 {{inputs.analysis_type}} 分析：
+
+      {{steps.collect_data.output}}
+
+      请提供详细的分析结果和关键发现。
+    retry:
+      max: 2
+      backoff: 5
+
+  # 步骤 3: 人工审核
+  - id: review
+    type: human_review
+    message: "请审核分析结果"
+
+  # 步骤 4: 生成报告（仅在审核通过后执行）
+  - id: generate_report
+    type: agent
+    agent: report-writer
+    prompt: |
+      根据以下分析结果生成最终报告：
+
+      {{analyze.output}}
+
+      审核意见: {{steps.review.data}}
+    condition: "{{steps.review.approved}}"
