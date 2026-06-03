@@ -27,6 +27,30 @@
       ],
       "env": {},
       "description": "PostgreSQL database access"
+    },
+    "doc-reader": {
+      "enabled": false,
+      "type": "stdio",
+      "command": "python",
+      "args": ["-m", "ideer.community.doc_reader.mcp_server"],
+      "env": {},
+      "description": "Read and extract text from documents (PDF, Word, Excel, PowerPoint)"
+    },
+    "code-interpreter": {
+      "enabled": false,
+      "type": "stdio",
+      "command": "python",
+      "args": ["-m", "ideer.community.code_interpreter.mcp_server"],
+      "env": {},
+      "description": "Execute Python or JavaScript code in a secure sandbox"
+    },
+    "data-analyzer": {
+      "enabled": false,
+      "type": "stdio",
+      "command": "python",
+      "args": ["-m", "ideer.community.data_analyzer.mcp_server"],
+      "env": {},
+      "description": "Analyze structured data files (CSV, Excel, JSON) and generate statistical insights"
     }
   },
   "skills": {}
