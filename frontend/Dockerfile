@@ -3,13 +3,11 @@
 #   --target dev   — install deps only, run `pnpm dev` at container start
 #   --target prod  — full build baked in, run `pnpm start` at container start (default if no --target is specified)
 
-# Build args for intranet mirror overrides (defaults work for internet builds)
-ARG NODE_IMAGE=node:22-alpine
 ARG PNPM_STORE_PATH=/root/.local/share/pnpm/store
 ARG NPM_REGISTRY
 
 # ── Base: shared setup ────────────────────────────────────────────────────────
-FROM ${NODE_IMAGE} AS base
+FROM node:22-alpine AS base
 ARG PNPM_STORE_PATH
 ARG NPM_REGISTRY
 # Configure corepack registry before installing pnpm so the download itself
@@ -37,8 +35,7 @@ RUN cd /app/frontend && pnpm install --frozen-lockfile
 RUN cd /app/frontend && SKIP_ENV_VALIDATION=1 pnpm build
 
 # ── Prod: minimal runtime with pre-built output ───────────────────────────────
-ARG NODE_IMAGE=node:22-alpine
-FROM ${NODE_IMAGE} AS prod
+FROM node:22-alpine AS prod
 ARG PNPM_STORE_PATH
 ARG NPM_REGISTRY
 RUN if [ -n "${NPM_REGISTRY}" ]; then \
