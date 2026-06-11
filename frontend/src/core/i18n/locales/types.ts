@@ -173,6 +173,10 @@ export interface Translations {
     contactUs: string;
     about: string;
     logout: string;
+    adminPanel: string;
+    userManagement: string;
+    departmentManagement: string;
+    toolManagement: string;
   };
 
   // Conversation

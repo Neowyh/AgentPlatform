@@ -40,8 +40,8 @@ async def execute_agent_step(step_def: dict[str, Any], state: WorkflowState) -> 
     # Load agent config
     try:
         agent_config = load_agent_config(agent_name)
-    except FileNotFoundError:
-        raise ValueError(f"Agent '{agent_name}' not found")
+    except FileNotFoundError as e:
+        raise ValueError(f"Agent '{agent_name}' not found") from e
 
     app_config = get_app_config()
     soul = load_agent_soul(agent_name)
@@ -67,9 +67,11 @@ async def execute_agent_step(step_def: dict[str, Any], state: WorkflowState) -> 
     # Execute
     result = await executor._aexecute(prompt)
 
-    if result.status == SubagentStatus.COMPLETED and result.result:
+    if result.status == SubagentStatus.COMPLETED and result.result is not None:
         return result.result
     elif result.error:
         raise RuntimeError(f"Agent '{agent_name}' failed: {result.error}")
+    elif result.status != SubagentStatus.COMPLETED:
+        raise RuntimeError(f"Agent '{agent_name}' ended with unexpected status: {result.status}")
     else:
-        return str(result.result or "")
+        return str(result.result) if result.result is not None else ""

@@ -6,6 +6,7 @@ export interface User {
   role: UserRole;
   department_id: string | null;
   department_name?: string;
+  disabled?: boolean;
   created_at: string;
   last_login: string | null;
 }

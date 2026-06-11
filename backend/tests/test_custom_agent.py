@@ -377,11 +377,31 @@ class TestMemoryFilePath:
 
 def _make_test_app(tmp_path: Path):
     """Create a FastAPI app with the agents router, patching paths to tmp_path."""
-    from fastapi import FastAPI
+    from unittest.mock import MagicMock
 
+    from _router_auth_helpers import make_authed_test_app
+
+    from app.gateway.authz import get_current_rbac_user, get_optional_rbac_user
     from app.gateway.routers.agents import router
+    from ideer.persistence.models.user import UserRole
 
-    app = FastAPI()
+    app = make_authed_test_app()
+
+    # Mock RBAC user to bypass database lookup in get_current_rbac_user
+    mock_user = MagicMock()
+    mock_user.id = "test-user-autouse"
+    mock_user.role = UserRole.SUPER_ADMIN
+    mock_user.department_id = None
+    mock_user.disabled = False
+
+    async def _stub_current_user():
+        return mock_user
+
+    async def _stub_optional_user():
+        return mock_user
+
+    app.dependency_overrides[get_current_rbac_user] = _stub_current_user
+    app.dependency_overrides[get_optional_rbac_user] = _stub_optional_user
     app.include_router(router)
     return app
 

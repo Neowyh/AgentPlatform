@@ -250,7 +250,7 @@ class LoopDetectionMiddleware(AgentMiddleware[AgentState]):
         thread_id = runtime.context.get("thread_id") if runtime.context else None
         if thread_id:
             return str(thread_id)
-        return "default"
+        return f"anon-{id(runtime)}"
 
     def _get_run_id(self, runtime: Runtime) -> str:
         """Extract run_id from runtime context for per-run warning scoping."""

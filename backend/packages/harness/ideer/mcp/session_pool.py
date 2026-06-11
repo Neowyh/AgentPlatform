@@ -97,8 +97,14 @@ class MCPSessionPool:
         session = await cm.__aenter__()
         await session.initialize()
 
-        # Phase 3: register the new session under the lock.
+        # Phase 2.5: Check if another coroutine already created this key
         with self._lock:
+            if key in self._entries:
+                # Another coroutine won the race -- close our session and use theirs
+                await cm.__aexit__(None, None, None)
+                existing_session, _ = self._entries[key]
+                return existing_session
+            # Register the new session under the lock.
             self._entries[key] = (session, current_loop)
             self._context_managers[key] = cm
         logger.info("Created persistent MCP session for %s/%s", server_name, scope_key)

@@ -29,16 +29,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { fetch } from "@/core/api/fetcher";
-import { getBackendBaseURL } from "@/core/config";
-
-interface Tool {
-  name: string;
-  description: string;
-  group: string;
-  status: "available" | "offline";
-  parameters?: Record<string, unknown>;
-}
+import { listTools, testTool } from "@/core/admin/api";
+import type { Tool } from "@/core/tools/types";
 
 export default function ToolsPage() {
   const [tools, setTools] = useState<Tool[]>([]);
@@ -52,11 +44,7 @@ export default function ToolsPage() {
   const [testing, setTesting] = useState(false);
 
   useEffect(() => {
-    fetch(`${getBackendBaseURL()}/api/admin/tools`)
-      .then((res) => {
-        if (!res.ok) throw new Error(`Failed to load tools: ${res.statusText}`);
-        return res.json() as Promise<{ tools: Tool[] }>;
-      })
+    listTools()
       .then((data) => setTools(data.tools))
       .catch((err) =>
         setError(err instanceof Error ? err.message : String(err)),
@@ -73,7 +61,7 @@ export default function ToolsPage() {
 
   const openDetail = (tool: Tool) => {
     setSelectedTool(tool);
-    setTestInput(JSON.stringify(tool.parameters ?? {}, null, 2));
+    setTestInput(JSON.stringify(tool.param_schema ?? {}, null, 2));
     setTestResult(null);
     setDetailOpen(true);
   };
@@ -90,15 +78,7 @@ export default function ToolsPage() {
         setTestResult("Error: Invalid JSON input");
         return;
       }
-      const res = await fetch(
-        `${getBackendBaseURL()}/api/admin/tools/${selectedTool.name}/test`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(parsedInput),
-        },
-      );
-      const data = await res.json();
+      const data = await testTool(selectedTool.name, parsedInput);
       setTestResult(JSON.stringify(data, null, 2));
     } catch (err) {
       setTestResult(
@@ -182,11 +162,9 @@ export default function ToolsPage() {
                       </div>
                     </div>
                     <Badge
-                      variant={
-                        tool.status === "available" ? "default" : "secondary"
-                      }
+                      variant={tool.requires_network ? "secondary" : "default"}
                     >
-                      {tool.status === "available" ? "可用" : "离线"}
+                      {tool.requires_network ? "需联网" : "可用"}
                     </Badge>
                   </div>
                 </CardHeader>
@@ -213,10 +191,10 @@ export default function ToolsPage() {
               <Badge variant="outline">{selectedTool?.group}</Badge>
               <Badge
                 variant={
-                  selectedTool?.status === "available" ? "default" : "secondary"
+                  selectedTool?.requires_network ? "secondary" : "default"
                 }
               >
-                {selectedTool?.status === "available" ? "可用" : "离线"}
+                {selectedTool?.requires_network ? "需联网" : "可用"}
               </Badge>
             </div>
             <div className="space-y-2">
@@ -229,10 +207,7 @@ export default function ToolsPage() {
                 placeholder='{"key": "value"}'
               />
             </div>
-            <Button
-              onClick={handleTest}
-              disabled={testing || selectedTool?.status !== "available"}
-            >
+            <Button onClick={handleTest} disabled={testing}>
               <PlayIcon className="mr-1.5 h-4 w-4" />
               {testing ? "测试中..." : "测试工具"}
             </Button>

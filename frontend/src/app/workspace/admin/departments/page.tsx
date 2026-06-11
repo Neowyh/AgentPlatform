@@ -50,11 +50,13 @@ export default function DepartmentsPage() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const fetchDepartments = useCallback(async () => {
     try {
       const data = await listDepartments();
       setDepartments(data.departments);
+      setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -113,12 +115,15 @@ export default function DepartmentsPage() {
 
   const handleDelete = async (deptId: string) => {
     if (!confirm("确定要删除该部门吗？此操作不可撤销。")) return;
+    setDeletingId(deptId);
     try {
       await deleteDepartment(deptId);
       toast.success("部门已删除");
       await fetchDepartments();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -214,6 +219,7 @@ export default function DepartmentsPage() {
                         variant="ghost"
                         size="icon-sm"
                         onClick={() => handleDelete(dept.id)}
+                        disabled={deletingId === dept.id}
                         title="删除"
                       >
                         <Trash2Icon className="text-destructive h-3.5 w-3.5" />

@@ -1,11 +1,12 @@
 import json
 import logging
-from pathlib import Path
+import re
+import threading
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from app.gateway.authz import get_current_rbac_user, get_optional_rbac_user, require_role
+from app.gateway.authz import check_resource_modify, get_current_rbac_user, get_optional_rbac_user, require_role
 from app.gateway.deps import get_config
 from app.gateway.path_utils import resolve_thread_virtual_path
 from ideer.agents.lead_agent.prompt import refresh_skills_system_prompt_cache_async
@@ -20,6 +21,19 @@ from ideer.skills.types import SKILL_MD_FILE, SkillCategory
 
 logger = logging.getLogger(__name__)
 
+# BUG-21: Lock to serialize concurrent extensions_config.json writes
+_extensions_config_lock = threading.Lock()
+
+# Skill name validation pattern - prevents path traversal attacks
+_SKILL_NAME_PATTERN = re.compile(r"^[A-Za-z0-9_\-]+$")
+
+
+def _validate_skill_name(name: str) -> None:
+    """Validate skill name against path traversal and special characters."""
+    if not _SKILL_NAME_PATTERN.match(name):
+        raise HTTPException(status_code=422, detail=f"Invalid skill name '{name}'. Only alphanumeric, underscore, and hyphen characters are allowed.")
+
+
 router = APIRouter(prefix="/api", tags=["skills"])
 
 
@@ -29,27 +43,27 @@ router = APIRouter(prefix="/api", tags=["skills"])
 
 
 def _check_resource_modify(resource_owner_id: str | None, resource_department_id: str | None, current_user: UserModel | None) -> None:
-    """Raise 403 if *current_user* is not allowed to modify the resource."""
+    """Raise 403 if *current_user* is not allowed to modify the resource.
+
+    Delegates to authz.check_resource_modify for consistent RBAC rules.
+    """
     if current_user is None:
-        return
-
-    if current_user.role == UserRole.SUPER_ADMIN:
-        return
-
-    if current_user.role == UserRole.DEPARTMENT_ADMIN:
-        if resource_department_id and resource_department_id == current_user.department_id:
-            return
-        if resource_owner_id and resource_owner_id == current_user.id:
-            return
-        raise HTTPException(status_code=403, detail="Department admins can only modify resources in their own department")
-
-    if resource_owner_id and resource_owner_id == current_user.id:
-        return
-    raise HTTPException(status_code=403, detail="You can only modify your own resources")
+        raise HTTPException(status_code=401, detail="Authentication required")
+    if not check_resource_modify(current_user, resource_owner_id, resource_department_id):
+        raise HTTPException(status_code=403, detail="You do not have permission to modify this resource")
 
 
 def _is_visible_to_user(visibility: str, owner_id: str | None, department_id: str | None, current_user: UserModel) -> bool:
-    """Check whether a skill with the given visibility is visible to *current_user*."""
+    """Check whether a skill with the given visibility is visible to *current_user*.
+
+    Visibility rules (consistent with authz.check_resource_access):
+    - public: everyone can access
+    - super_admin: always allowed
+    - owner: always allowed for own resources
+    - department: same department members can access
+    - department_admin: can access resources in own department (regardless of visibility)
+    - private: only owner and super_admin
+    """
     if visibility == "public":
         return True
     if current_user.role == UserRole.SUPER_ADMIN:
@@ -57,6 +71,10 @@ def _is_visible_to_user(visibility: str, owner_id: str | None, department_id: st
     if owner_id and owner_id == current_user.id:
         return True
     if visibility == "department":
+        if current_user.department_id and department_id and current_user.department_id == department_id:
+            return True
+    # department_admin: can access resources in their own department
+    if current_user.role == UserRole.DEPARTMENT_ADMIN:
         if current_user.department_id and department_id and current_user.department_id == department_id:
             return True
     return False
@@ -70,8 +88,12 @@ def _get_skill_meta(skill_name: str, config: AppConfig) -> dict:
         meta_file = storage.get_custom_skill_dir(skill_name) / ".meta.json" if hasattr(storage, "get_custom_skill_dir") else None
         if meta_file and meta_file.exists():
             return json.loads(meta_file.read_text(encoding="utf-8"))
-    except Exception:
-        pass
+    except FileNotFoundError:
+        pass  # Expected when no metadata file exists
+    except json.JSONDecodeError as e:
+        logger.warning("Corrupted .meta.json for skill '%s': %s", skill_name, e)
+    except Exception as e:
+        logger.warning("Failed to load metadata for skill '%s': %s", skill_name, e)
     return {}
 
 
@@ -153,9 +175,6 @@ async def list_skills(
     try:
         skills = get_or_new_skill_storage(app_config=config).load_skills(enabled_only=False)
 
-        if current_user is None:
-            return SkillsListResponse(skills=[_skill_to_response(skill) for skill in skills])
-
         filtered: list[Skill] = []
         for skill in skills:
             if skill.category == SkillCategory.PUBLIC:
@@ -163,17 +182,21 @@ async def list_skills(
                 continue
 
             meta = _get_skill_meta(skill.name, config)
+            # Default to 'public' when no metadata exists (pre-RBAC skills)
             visibility = meta.get("visibility", "private")
             owner_id = meta.get("owner_id")
             dept_id = meta.get("department_id")
 
-            if _is_visible_to_user(visibility, owner_id, dept_id, current_user):
+            if current_user is not None:
+                if _is_visible_to_user(visibility, owner_id, dept_id, current_user):
+                    filtered.append(skill)
+            elif visibility == "public":
                 filtered.append(skill)
 
         return SkillsListResponse(skills=[_skill_to_response(skill) for skill in filtered])
     except Exception as e:
         logger.error(f"Failed to load skills: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to load skills: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post(
@@ -208,7 +231,7 @@ async def install_skill(
         raise
     except Exception as e:
         logger.error(f"Failed to install skill: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to install skill: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/skills/custom", response_model=SkillsListResponse, summary="List Custom Skills")
@@ -220,39 +243,58 @@ async def list_custom_skills(
     try:
         skills = [skill for skill in get_or_new_skill_storage(app_config=config).load_skills(enabled_only=False) if skill.category == SkillCategory.CUSTOM]
 
-        if current_user is None:
-            return SkillsListResponse(skills=[_skill_to_response(skill) for skill in skills])
-
         filtered: list[Skill] = []
         for skill in skills:
             meta = _get_skill_meta(skill.name, config)
+            # Default to 'public' when no metadata exists (pre-RBAC skills)
             visibility = meta.get("visibility", "private")
             owner_id = meta.get("owner_id")
             dept_id = meta.get("department_id")
 
-            if _is_visible_to_user(visibility, owner_id, dept_id, current_user):
+            if current_user is not None:
+                if _is_visible_to_user(visibility, owner_id, dept_id, current_user):
+                    filtered.append(skill)
+            elif visibility == "public":
                 filtered.append(skill)
 
         return SkillsListResponse(skills=[_skill_to_response(skill) for skill in filtered])
     except Exception as e:
         logger.error("Failed to list custom skills: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to list custom skills: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/skills/custom/{skill_name}", response_model=CustomSkillContentResponse, summary="Get Custom Skill Content")
-async def get_custom_skill(skill_name: str, config: AppConfig = Depends(get_config)) -> CustomSkillContentResponse:
+async def get_custom_skill(
+    skill_name: str,
+    config: AppConfig = Depends(get_config),
+    current_user: UserModel | None = Depends(get_optional_rbac_user),
+) -> CustomSkillContentResponse:
     try:
+        _validate_skill_name(skill_name)
         skill_name = skill_name.replace("\r\n", "").replace("\n", "")
         skills = get_or_new_skill_storage(app_config=config).load_skills(enabled_only=False)
         skill = next((s for s in skills if s.name == skill_name and s.category == SkillCategory.CUSTOM), None)
         if skill is None:
             raise HTTPException(status_code=404, detail=f"Custom skill '{skill_name}' not found")
+
+        # Check visibility: unauthenticated users can only see public skills
+        meta = _get_skill_meta(skill.name, config)
+        # Default to 'public' when no metadata exists (pre-RBAC skills)
+        visibility = meta.get("visibility", "private")
+        owner_id = meta.get("owner_id")
+        dept_id = meta.get("department_id")
+        if current_user is not None:
+            if not _is_visible_to_user(visibility, owner_id, dept_id, current_user):
+                raise HTTPException(status_code=404, detail=f"Custom skill '{skill_name}' not found")
+        elif visibility != "public":
+            raise HTTPException(status_code=404, detail=f"Custom skill '{skill_name}' not found")
+
         return CustomSkillContentResponse(**_skill_to_response(skill).model_dump(), content=get_or_new_skill_storage(app_config=config).read_custom_skill(skill_name))
     except HTTPException:
         raise
     except Exception as e:
         logger.error("Failed to get custom skill %s: %s", skill_name, e, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to get custom skill: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.put("/skills/custom/{skill_name}", response_model=CustomSkillContentResponse, summary="Edit Custom Skill")
@@ -260,11 +302,12 @@ async def update_custom_skill(
     skill_name: str,
     request: CustomSkillUpdateRequest,
     config: AppConfig = Depends(get_config),
-    current_user: UserModel | None = Depends(get_optional_rbac_user),
+    current_user: UserModel = Depends(get_current_rbac_user),
 ) -> CustomSkillContentResponse:
-    """Update a custom skill's content. Checks ownership when auth is active."""
+    """Update a custom skill's content. Requires authentication."""
 
     try:
+        _validate_skill_name(skill_name)
         skill_name = skill_name.replace("\r\n", "").replace("\n", "")
 
         # RBAC: check ownership before allowing edit
@@ -291,7 +334,7 @@ async def update_custom_skill(
             },
         )
         await refresh_skills_system_prompt_cache_async()
-        return await get_custom_skill(skill_name, config)
+        return await get_custom_skill(skill_name, config, current_user)
     except HTTPException:
         raise
     except FileNotFoundError as e:
@@ -300,18 +343,19 @@ async def update_custom_skill(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error("Failed to update custom skill %s: %s", skill_name, e, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to update custom skill: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.delete("/skills/custom/{skill_name}", summary="Delete Custom Skill")
 async def delete_custom_skill(
     skill_name: str,
     config: AppConfig = Depends(get_config),
-    current_user: UserModel | None = Depends(get_optional_rbac_user),
+    current_user: UserModel = Depends(get_current_rbac_user),
 ) -> dict[str, bool]:
-    """Delete a custom skill. Checks ownership when auth is active."""
+    """Delete a custom skill. Requires authentication."""
 
     try:
+        _validate_skill_name(skill_name)
         skill_name = skill_name.replace("\r\n", "").replace("\n", "")
 
         # RBAC: check ownership before allowing delete
@@ -339,30 +383,49 @@ async def delete_custom_skill(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error("Failed to delete custom skill %s: %s", skill_name, e, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to delete custom skill: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/skills/custom/{skill_name}/history", response_model=CustomSkillHistoryResponse, summary="Get Custom Skill History")
-async def get_custom_skill_history(skill_name: str, config: AppConfig = Depends(get_config)) -> CustomSkillHistoryResponse:
+async def get_custom_skill_history(skill_name: str, config: AppConfig = Depends(get_config), current_user: UserModel | None = Depends(get_optional_rbac_user)) -> CustomSkillHistoryResponse:
     try:
+        _validate_skill_name(skill_name)
         skill_name = skill_name.replace("\r\n", "").replace("\n", "")
         storage = get_or_new_skill_storage(app_config=config)
         if not storage.custom_skill_exists(skill_name) and not storage.get_skill_history_file(skill_name).exists():
             raise HTTPException(status_code=404, detail=f"Custom skill '{skill_name}' not found")
+
+        # Check visibility
+        meta = _get_skill_meta(skill_name, config)
+        visibility = meta.get("visibility", "private")
+        owner_id = meta.get("owner_id")
+        dept_id = meta.get("department_id")
+        if current_user is not None:
+            if not _is_visible_to_user(visibility, owner_id, dept_id, current_user):
+                raise HTTPException(status_code=404, detail=f"Custom skill '{skill_name}' not found")
+        elif visibility != "public":
+            raise HTTPException(status_code=404, detail=f"Custom skill '{skill_name}' not found")
+
         return CustomSkillHistoryResponse(history=storage.read_history(skill_name))
     except HTTPException:
         raise
     except Exception as e:
         logger.error("Failed to read history for %s: %s", skill_name, e, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to read history: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/skills/custom/{skill_name}/rollback", response_model=CustomSkillContentResponse, summary="Rollback Custom Skill")
-async def rollback_custom_skill(skill_name: str, request: SkillRollbackRequest, config: AppConfig = Depends(get_config)) -> CustomSkillContentResponse:
+async def rollback_custom_skill(skill_name: str, request: SkillRollbackRequest, config: AppConfig = Depends(get_config), current_user: UserModel = Depends(get_current_rbac_user)) -> CustomSkillContentResponse:
     try:
+        _validate_skill_name(skill_name)
+        skill_name = skill_name.replace("\r\n", "").replace("\n", "")
         storage = get_or_new_skill_storage(app_config=config)
         if not storage.custom_skill_exists(skill_name) and not storage.get_skill_history_file(skill_name).exists():
             raise HTTPException(status_code=404, detail=f"Custom skill '{skill_name}' not found")
+
+        # RBAC: check ownership before allowing rollback
+        meta = _get_skill_meta(skill_name, config)
+        _check_resource_modify(meta.get("owner_id"), meta.get("department_id"), current_user)
         history = storage.read_history(skill_name)
         if not history:
             raise HTTPException(status_code=400, detail=f"Custom skill '{skill_name}' has no history")
@@ -390,7 +453,7 @@ async def rollback_custom_skill(skill_name: str, request: SkillRollbackRequest, 
         storage.write_custom_skill(skill_name, SKILL_MD_FILE, target_content)
         storage.append_history(skill_name, history_entry)
         await refresh_skills_system_prompt_cache_async()
-        return await get_custom_skill(skill_name, config)
+        return await get_custom_skill(skill_name, config, current_user)
     except HTTPException:
         raise
     except IndexError:
@@ -401,7 +464,7 @@ async def rollback_custom_skill(skill_name: str, request: SkillRollbackRequest, 
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error("Failed to roll back custom skill %s: %s", skill_name, e, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to roll back custom skill: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get(
@@ -410,8 +473,9 @@ async def rollback_custom_skill(skill_name: str, request: SkillRollbackRequest, 
     summary="Get Skill Details",
     description="Retrieve detailed information about a specific skill by its name.",
 )
-async def get_skill(skill_name: str, config: AppConfig = Depends(get_config)) -> SkillResponse:
+async def get_skill(skill_name: str, config: AppConfig = Depends(get_config), current_user: UserModel | None = Depends(get_optional_rbac_user)) -> SkillResponse:
     try:
+        _validate_skill_name(skill_name)
         skill_name = skill_name.replace("\r\n", "").replace("\n", "")
         skills = get_or_new_skill_storage(app_config=config).load_skills(enabled_only=False)
         skill = next((s for s in skills if s.name == skill_name), None)
@@ -419,12 +483,24 @@ async def get_skill(skill_name: str, config: AppConfig = Depends(get_config)) ->
         if skill is None:
             raise HTTPException(status_code=404, detail=f"Skill '{skill_name}' not found")
 
+        # Check visibility for custom skills (built-in skills are always public)
+        if skill.category == SkillCategory.CUSTOM:
+            meta = _get_skill_meta(skill.name, config)
+            visibility = meta.get("visibility", "private")
+            owner_id = meta.get("owner_id")
+            dept_id = meta.get("department_id")
+            if current_user is not None:
+                if not _is_visible_to_user(visibility, owner_id, dept_id, current_user):
+                    raise HTTPException(status_code=404, detail=f"Skill '{skill_name}' not found")
+            elif visibility != "public":
+                raise HTTPException(status_code=404, detail=f"Skill '{skill_name}' not found")
+
         return _skill_to_response(skill)
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Failed to get skill {skill_name}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to get skill: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.put(
@@ -433,8 +509,10 @@ async def get_skill(skill_name: str, config: AppConfig = Depends(get_config)) ->
     summary="Update Skill",
     description="Update a skill's enabled status by modifying the extensions_config.json file.",
 )
-async def update_skill(skill_name: str, request: SkillUpdateRequest, config: AppConfig = Depends(get_config)) -> SkillResponse:
+@require_role(UserRole.DEPARTMENT_ADMIN, UserRole.SUPER_ADMIN)
+async def update_skill(skill_name: str, request: SkillUpdateRequest, config: AppConfig = Depends(get_config), current_user: UserModel = Depends(get_current_rbac_user)) -> SkillResponse:
     try:
+        _validate_skill_name(skill_name)
         skill_name = skill_name.replace("\r\n", "").replace("\n", "")
         skills = get_or_new_skill_storage(app_config=config).load_skills(enabled_only=False)
         skill = next((s for s in skills if s.name == skill_name), None)
@@ -444,19 +522,20 @@ async def update_skill(skill_name: str, request: SkillUpdateRequest, config: App
 
         config_path = ExtensionsConfig.resolve_config_path()
         if config_path is None:
-            config_path = Path.cwd().parent / "extensions_config.json"
-            logger.info(f"No existing extensions config found. Creating new config at: {config_path}")
+            raise HTTPException(status_code=500, detail="Extensions config path not configured")
 
-        extensions_config = get_extensions_config()
-        extensions_config.skills[skill_name] = SkillStateConfig(enabled=request.enabled)
+        # BUG-21: Serialize read-modify-write to prevent concurrent overwrite
+        with _extensions_config_lock:
+            extensions_config = get_extensions_config()
+            extensions_config.skills[skill_name] = SkillStateConfig(enabled=request.enabled)
 
-        config_data = {
-            "mcpServers": {name: server.model_dump() for name, server in extensions_config.mcp_servers.items()},
-            "skills": {name: {"enabled": skill_config.enabled} for name, skill_config in extensions_config.skills.items()},
-        }
+            config_data = {
+                "mcpServers": {name: server.model_dump() for name, server in extensions_config.mcp_servers.items()},
+                "skills": {name: {"enabled": skill_config.enabled} for name, skill_config in extensions_config.skills.items()},
+            }
 
-        with open(config_path, "w", encoding="utf-8") as f:
-            json.dump(config_data, f, indent=2)
+            with open(config_path, "w", encoding="utf-8") as f:
+                json.dump(config_data, f, indent=2)
 
         logger.info(f"Skills configuration updated and saved to: {config_path}")
         reload_extensions_config()
@@ -475,4 +554,4 @@ async def update_skill(skill_name: str, request: SkillUpdateRequest, config: App
         raise
     except Exception as e:
         logger.error(f"Failed to update skill {skill_name}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to update skill: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")

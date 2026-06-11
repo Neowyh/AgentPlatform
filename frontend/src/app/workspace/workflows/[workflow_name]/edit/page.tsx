@@ -14,6 +14,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { WorkspaceBreadcrumb } from "@/components/workspace/workspace-breadcrumb";
 import { useUpdateWorkflow, useWorkflow } from "@/core/workflows";
+import { validateYaml } from "@/core/workflows/validate";
 
 const customDarkTheme = monokaiInit({
   settings: {
@@ -31,26 +32,6 @@ const customLightTheme = basicLightInit({
     fontSize: "var(--text-sm)",
   },
 });
-
-function validateYaml(content: string): string[] {
-  const errors: string[] = [];
-  const trimmed = content.trim();
-
-  if (!trimmed) {
-    errors.push("YAML content cannot be empty");
-    return errors;
-  }
-
-  // Basic structural checks
-  if (!trimmed.includes("name:")) {
-    errors.push('Missing required field: "name"');
-  }
-  if (!trimmed.includes("steps:")) {
-    errors.push('Missing required field: "steps"');
-  }
-
-  return errors;
-}
 
 export default function WorkflowEditPage() {
   const router = useRouter();

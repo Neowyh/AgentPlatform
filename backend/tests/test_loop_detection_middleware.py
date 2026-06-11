@@ -555,14 +555,15 @@ class TestLoopDetection:
         assert isinstance(mw._lock, type(mw._lock))
 
     def test_fallback_thread_id_when_missing(self):
-        """When runtime context has no thread_id, should use 'default'."""
+        """When runtime context has no thread_id, should use anon-{id(runtime)}."""
         mw = LoopDetectionMiddleware(warn_threshold=2)
         runtime = MagicMock()
         runtime.context = {}
         call = [_bash_call("ls")]
 
         mw._apply(_make_state(tool_calls=call), runtime)
-        assert "default" in mw._history
+        # Fallback is now anon-{id(runtime)} instead of "default"
+        assert any(k.startswith("anon-") for k in mw._history)
 
 
 class TestLoopDetectionAgentGraphIntegration:

@@ -48,7 +48,9 @@ async def _auto_create_postgres_db(url: str) -> None:
     maint_engine = create_async_engine(maint_url, isolation_level="AUTOCOMMIT")
     try:
         async with maint_engine.connect() as conn:
-            await conn.execute(text(f'CREATE DATABASE "{db_name}"'))
+            # P2-PERSIST-01: Escape embedded double-quotes to prevent SQL injection
+            db_name_escaped = db_name.replace('"', '""')
+            await conn.execute(text(f'CREATE DATABASE "{db_name_escaped}"'))
         logger.info("Auto-created PostgreSQL database: %s", db_name)
     finally:
         await maint_engine.dispose()
@@ -122,11 +124,14 @@ async def init_engine(
             finally:
                 cursor.close()
     elif backend == "postgres":
+        # P2-PERSIST-05: Add pool_recycle and pool_timeout for cloud/PgBouncer stability
         _engine = create_async_engine(
             url,
             echo=echo,
             pool_size=pool_size,
             pool_pre_ping=True,
+            pool_recycle=1800,  # 30 minutes — recycle connections before cloud LB timeout
+            pool_timeout=30,  # 30 seconds — fail fast when pool is exhausted
             json_serializer=_json_serializer,
         )
     else:
@@ -148,14 +153,23 @@ async def init_engine(
 
     try:
         async with _engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+            # P2-PERSIST-02: Skip create_all when Alembic is managing the schema
+            # to avoid conflicts (Alembic ALTER TABLE migrations get skipped
+            # because create_all thinks tables already exist).
+            from sqlalchemy import inspect as sa_inspect
+
+            has_alembic = await conn.run_sync(lambda sync_conn: sa_inspect(sync_conn).has_table("alembic_version"))
+            if has_alembic:
+                logger.debug("Alembic version table found; skipping create_all")
+            else:
+                await conn.run_sync(Base.metadata.create_all)
     except Exception as exc:
         if backend == "postgres" and "does not exist" in str(exc):
             # Database not yet created — attempt to auto-create it, then retry.
             await _auto_create_postgres_db(url)
             # Rebuild engine against the now-existing database
             await _engine.dispose()
-            _engine = create_async_engine(url, echo=echo, pool_size=pool_size, pool_pre_ping=True, json_serializer=_json_serializer)
+            _engine = create_async_engine(url, echo=echo, pool_size=pool_size, pool_pre_ping=True, pool_recycle=1800, pool_timeout=30, json_serializer=_json_serializer)
             _session_factory = async_sessionmaker(_engine, expire_on_commit=False)
             async with _engine.begin() as conn:
                 await conn.run_sync(Base.metadata.create_all)

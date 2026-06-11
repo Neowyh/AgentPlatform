@@ -16,8 +16,23 @@ from ideer.utils.file_conversion import convert_file_to_markdown
 logger = logging.getLogger(__name__)
 
 _DEFAULT_MAX_CHARS = 50_000
+_MAX_FILE_SIZE = 100_000_000  # 100 MB
 
 _SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt"}
+
+# Security: only allow reading files under these prefixes
+_ALLOWED_PATH_PREFIXES = ["/mnt/user-data", "/tmp"]
+
+
+def _validate_path(file_path: str) -> Path:
+    """Validate and resolve file path, ensuring it is within allowed directories.
+
+    Raises PermissionError if the path escapes the allowed prefix.
+    """
+    path = Path(file_path).resolve()
+    if not any(str(path).startswith(prefix) for prefix in _ALLOWED_PATH_PREFIXES):
+        raise PermissionError(f"Access denied: file must be under one of {_ALLOWED_PATH_PREFIXES}, got: {file_path}")
+    return path
 
 
 def _truncate_output(text: str, max_chars: int) -> str:
@@ -44,11 +59,10 @@ def _get_page_count(file_path: Path) -> int | None:
     try:
         import pymupdf
 
-        doc = pymupdf.open(str(file_path))
-        count = len(doc)
-        doc.close()
-        return count
-    except Exception:
+        with pymupdf.open(str(file_path)) as doc:
+            return len(doc)
+    except Exception as e:
+        logger.warning("Failed to get page count for %s: %s", file_path.name, e)
         return None
 
 
@@ -70,11 +84,13 @@ def _extract_pdf_pages(file_path: Path, page_range: str) -> str | None:
         if pages is None:
             return None
         return pymupdf4llm.to_markdown(str(file_path), pages=pages)
-    except Exception:
+    except Exception as e:
         logger.warning(
-            "pymupdf4llm page-range extraction failed for %s (range=%s); falling back to full document",
+            "pymupdf4llm page-range extraction failed for %s (range=%s): %s: %s; falling back to full document",
             file_path.name,
             page_range,
+            type(e).__name__,
+            e,
         )
         return None
 
@@ -85,6 +101,7 @@ def _parse_page_range(page_range: str) -> list[int] | None:
     Accepts formats like "1-5", "3", "1-3,7,10-12".
     Returns None if the format is invalid.
     """
+    _MAX_PAGES = 10000  # hard cap to prevent memory exhaustion
     pages: list[int] = []
     try:
         for part in page_range.split(","):
@@ -95,19 +112,23 @@ def _parse_page_range(page_range: str) -> list[int] | None:
                 end = int(end_s.strip())
                 if start < 1 or end < start:
                     return None
+                if (end - start + 1) > _MAX_PAGES:
+                    return None
                 pages.extend(range(start - 1, end))  # convert to 0-indexed
             else:
                 num = int(part)
                 if num < 1:
                     return None
                 pages.append(num - 1)  # convert to 0-indexed
+        if len(pages) > _MAX_PAGES:
+            return None
     except (ValueError, AttributeError):
         return None
     return pages if pages else None
 
 
 @tool("read_document", parse_docstring=True)
-def read_document_tool(file_path: str, page_range: str | None = None) -> str:
+async def read_document_tool(file_path: str, page_range: str | None = None) -> str:
     """Read and extract text content from documents (PDF, Word, Excel, PowerPoint).
 
     Converts documents to Markdown format for easy reading. Supports .pdf, .docx,
@@ -117,7 +138,10 @@ def read_document_tool(file_path: str, page_range: str | None = None) -> str:
         file_path: Path to the document file. Supports virtual paths like /mnt/user-data/uploads/xxx.
         page_range: Page range for PDF files, e.g. "1-5" or "3". If not specified, reads all pages.
     """
-    path = Path(file_path)
+    try:
+        path = _validate_path(file_path)
+    except PermissionError as e:
+        return json.dumps({"error": str(e)}, ensure_ascii=False)
 
     # --- Validate path existence ---
     if not path.exists():
@@ -145,6 +169,13 @@ def read_document_tool(file_path: str, page_range: str | None = None) -> str:
 
     file_size = path.stat().st_size
 
+    # --- File size guard ---
+    if file_size > _MAX_FILE_SIZE:
+        return json.dumps(
+            {"error": f"File too large: {file_size} bytes (max {_MAX_FILE_SIZE} bytes)"},
+            ensure_ascii=False,
+        )
+
     # --- Handle PDF page-range extraction ---
     pdf_page_range_text = None
     if page_range and suffix == ".pdf":
@@ -158,7 +189,8 @@ def read_document_tool(file_path: str, page_range: str | None = None) -> str:
     # --- If page-range extraction succeeded, use that directly ---
     if pdf_page_range_text is not None:
         page_count = _get_page_count(path)
-        header = f"<!-- file: {path.name} | size: {file_size} bytes"
+        safe_name = path.name.replace("-->", "-- >")
+        header = f"<!-- file: {safe_name} | size: {file_size} bytes"
         if page_count is not None:
             header += f" | pages: {page_count} (showing {page_range})"
         header += " -->\n\n"
@@ -166,13 +198,14 @@ def read_document_tool(file_path: str, page_range: str | None = None) -> str:
         return _truncate_output(result, _DEFAULT_MAX_CHARS)
 
     # --- Full document conversion ---
-    import asyncio
-
     try:
-        md_path = asyncio.get_event_loop().run_until_complete(convert_file_to_markdown(path))
-    except RuntimeError:
-        # No running event loop — create a new one
-        md_path = asyncio.run(convert_file_to_markdown(path))
+        md_path = await convert_file_to_markdown(path)
+    except Exception as e:
+        logger.error("Document conversion failed for %s: %s", path.name, e)
+        return json.dumps(
+            {"error": f"Failed to convert document: {path.name}"},
+            ensure_ascii=False,
+        )
 
     if md_path is None:
         return json.dumps(
@@ -191,9 +224,15 @@ def read_document_tool(file_path: str, page_range: str | None = None) -> str:
     except Exception as e:
         logger.error("Failed to read converted file %s: %s", md_path.name, e)
         return json.dumps(
-            {"error": f"Failed to read converted file: {e}"},
+            {"error": "Failed to read converted file"},
             ensure_ascii=False,
         )
+    finally:
+        # Clean up temporary markdown sidecar file
+        try:
+            md_path.unlink(missing_ok=True)
+        except OSError:
+            pass
 
     if not content.strip():
         return json.dumps(
@@ -203,7 +242,8 @@ def read_document_tool(file_path: str, page_range: str | None = None) -> str:
 
     # --- Build metadata header ---
     page_count = _get_page_count(path)
-    header = f"<!-- file: {path.name} | size: {file_size} bytes"
+    safe_name = path.name.replace("-->", "-- >")
+    header = f"<!-- file: {safe_name} | size: {file_size} bytes"
     if page_count is not None:
         header += f" | pages: {page_count}"
     header += " -->\n\n"

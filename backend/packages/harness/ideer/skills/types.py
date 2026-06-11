@@ -2,6 +2,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
+from ideer.persistence.models.user import ResourceVisibility
+
 SKILL_MD_FILE = "SKILL.md"
 
 
@@ -30,7 +32,7 @@ class Skill:
     allowed_tools: list[str] | None = None
     enabled: bool = False  # Whether this skill is enabled
     requires_internet: bool = False  # Whether this skill requires internet access
-    visibility: str = "private"
+    visibility: ResourceVisibility = ResourceVisibility.PRIVATE
     owner_id: str | None = None
     department_id: str | None = None
 
@@ -49,12 +51,24 @@ class Skill:
 
         Returns:
             Full container path to the skill directory
+
+        Raises:
+            ValueError: If the resolved path escapes the container base directory
         """
         category_base = f"{container_base_path}/{self.category}"
         skill_path = self.skill_path
         if skill_path:
-            return f"{category_base}/{skill_path}"
-        return category_base
+            full_path = f"{category_base}/{skill_path}"
+        else:
+            full_path = category_base
+
+        # Prevent path traversal: resolve and verify the path stays under container_base_path
+        resolved = Path(full_path).resolve()
+        resolved_base = Path(container_base_path).resolve()
+        if not resolved.is_relative_to(resolved_base):
+            raise ValueError(f"Path traversal detected: skill path '{skill_path}' escapes container base '{container_base_path}'")
+
+        return full_path
 
     def get_container_file_path(self, container_base_path: str = "/mnt/skills") -> str:
         """

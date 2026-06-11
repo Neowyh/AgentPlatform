@@ -74,15 +74,15 @@ def test_find_usage_recorder_returns_none_when_callbacks_is_none():
     assert _find_usage_recorder(runtime) is None
 
 
-def test_find_usage_recorder_returns_none_for_single_handler_object():
-    """A single handler instance (not wrapped in a list or manager) should not crash.
+def test_find_usage_recorder_finds_single_handler_with_recorder_method():
+    """A single handler with record_external_llm_usage_records is found directly.
 
-    LangChain's contract is that ``config["callbacks"]`` is a list-or-manager,
-    but we treat any other shape defensively rather than letting a ``for`` loop
-    blow up at runtime.
+    When ``config["callbacks"]`` is a bare handler object (not wrapped in a list
+    or manager), we still find it if it has the recorder method.
     """
-    runtime = _make_runtime(_RecorderHandler())
-    assert _find_usage_recorder(runtime) is None
+    handler = _RecorderHandler()
+    runtime = _make_runtime(handler)
+    assert _find_usage_recorder(runtime) is handler
 
 
 def test_find_usage_recorder_returns_none_when_config_not_dict():

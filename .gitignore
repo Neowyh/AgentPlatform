@@ -37,6 +37,7 @@ extensions_config.json
 coverage.xml
 coverage/
 .ideer/
+.deer-flow/
 .claude/
 skills/custom/*
 !skills/custom/fault-zeroing/

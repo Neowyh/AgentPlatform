@@ -31,10 +31,33 @@ This project has been extended with enterprise intranet platform capabilities on
 - Tool tests: `backend/tests/test_doc_reader.py`, `test_code_interpreter.py`, `test_data_analyzer.py`
 - Run with venv: `.venv/bin/python -m pytest backend/tests/`
 
+### Validation Skills
+
+三个验证 skill 提供 AI 生成代码的全流程测试验证：
+
+| Skill | 职责 | 触发命令 |
+|-------|------|----------|
+| **frontend-validator** | 前端代码质量验证 | "check frontend", "前端验证" |
+| **backend-validator** | 后端 Python 代码验证 | "check backend", "后端验证" |
+| **qa-tester** | 整个应用功能验证 | "qa test", "功能测试" |
+| **validation-orchestrator** | 统一编排三个 skill | "validate all", "全面验证" |
+
+**验证级别**:
+- **quick**: 快速反馈（1-2 min）
+- **standard**: 标准验证（3-5 min）
+- **full**: 完整验证（10+ min）
+
+**变更阶段覆盖**:
+- 未暂存更改：代码质量检查
+- 已暂存更改：构建验证、完整测试
+- 提交后更改：功能验证、集成验证
+
+**详细文档**: `docs/ai-code-validation-skill-analysis.md`
+
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **ideer** (26213 symbols, 48319 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **deer-flow** (29931 symbols, 52835 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
@@ -57,10 +80,10 @@ This project is indexed by GitNexus as **ideer** (26213 symbols, 48319 relations
 
 | Resource | Use for |
 |----------|---------|
-| `gitnexus://repo/ideer/context` | Codebase overview, check index freshness |
-| `gitnexus://repo/ideer/clusters` | All functional areas |
-| `gitnexus://repo/ideer/processes` | All execution flows |
-| `gitnexus://repo/ideer/process/{name}` | Step-by-step execution trace |
+| `gitnexus://repo/deer-flow/context` | Codebase overview, check index freshness |
+| `gitnexus://repo/deer-flow/clusters` | All functional areas |
+| `gitnexus://repo/deer-flow/processes` | All execution flows |
+| `gitnexus://repo/deer-flow/process/{name}` | Step-by-step execution trace |
 
 ## CLI
 

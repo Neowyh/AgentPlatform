@@ -49,6 +49,7 @@ export default function UsersPage() {
   const [error, setError] = useState<string | null>(null);
   const [filterDept, setFilterDept] = useState<string>("all");
   const [filterRole, setFilterRole] = useState<string>("all");
+  const [disablingId, setDisablingId] = useState<string | null>(null);
 
   const fetchUsers = useCallback(async () => {
     try {
@@ -57,6 +58,7 @@ export default function UsersPage() {
       if (filterRole !== "all") params.role = filterRole;
       const data = await listUsers(params);
       setUsers(data.users);
+      setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -74,6 +76,19 @@ export default function UsersPage() {
   }, [fetchUsers]);
 
   const handleRoleChange = async (userId: string, newRole: string) => {
+    const user = users.find((u) => u.id === userId);
+    if (!user) return;
+    const currentLabel = ROLE_LABELS[user.role] ?? user.role;
+    const newLabel = ROLE_LABELS[newRole as UserRole] ?? newRole;
+    // Confirm sensitive role changes (promoting to super_admin or demoting from super_admin)
+    if (newRole === "super_admin" || user.role === "super_admin") {
+      if (
+        !confirm(
+          `确定要将用户 "${user.username}" 的角色从 ${currentLabel} 变更为 ${newLabel} 吗？`,
+        )
+      )
+        return;
+    }
     try {
       await updateUserRole(userId, newRole);
       toast.success("用户角色已更新");
@@ -85,12 +100,15 @@ export default function UsersPage() {
 
   const handleDisable = async (userId: string) => {
     if (!confirm("确定要禁用该用户吗？")) return;
+    setDisablingId(userId);
     try {
       await disableUser(userId);
       toast.success("用户已禁用");
       await fetchUsers();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDisablingId(null);
     }
   };
 
@@ -171,13 +189,19 @@ export default function UsersPage() {
                           {user.username}
                         </CardTitle>
                         <CardDescription>
-                          {user.department_name ?? "未分配部门"}
+                          {departments.find((d) => d.id === user.department_id)
+                            ?.name ?? "未分配部门"}
                         </CardDescription>
                       </div>
                     </div>
-                    <Badge variant={ROLE_VARIANTS[user.role]}>
-                      {ROLE_LABELS[user.role]}
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={ROLE_VARIANTS[user.role]}>
+                        {ROLE_LABELS[user.role]}
+                      </Badge>
+                      {user.disabled && (
+                        <Badge variant="destructive">已禁用</Badge>
+                      )}
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent>
@@ -217,6 +241,7 @@ export default function UsersPage() {
                         variant="ghost"
                         size="icon-sm"
                         onClick={() => handleDisable(user.id)}
+                        disabled={disablingId === user.id}
                         title="禁用用户"
                       >
                         <ShieldOffIcon className="text-destructive h-4 w-4" />

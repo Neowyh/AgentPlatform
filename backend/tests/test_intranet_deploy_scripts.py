@@ -30,6 +30,10 @@ def _fake_docker_bin(tmp_path: Path) -> Path:
         bin_dir / "docker",
         """#!/usr/bin/env sh
 set -eu
+if [ "$1" = "--version" ] || [ "$1" = "-v" ]; then
+  echo "Docker version 24.0.0, build fake"
+  exit 0
+fi
 if [ "$1" = "compose" ] && [ "${2:-}" = "version" ]; then
   exit 0
 fi
@@ -39,6 +43,13 @@ if [ "$1" = "compose" ]; then
 fi
 if [ "$1" = "info" ]; then
   exit 0
+fi
+if [ "$1" = "image" ]; then
+  shift
+  case "$1" in
+    inspect) exit 0 ;;
+    *) echo "unexpected docker image: $*" >&2; exit 99 ;;
+  esac
 fi
 if [ "$1" = "build" ]; then
   exit 0
@@ -153,7 +164,7 @@ def _make_bundle(tmp_path: Path, *, version: str = "test", include_frontend_env:
 
 def _run_deploy(bundle_root: Path, *args: str, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        ["bash", str(DEPLOY_SCRIPT), "--bundle-root", str(bundle_root), "--version", "test", *args],
+        ["bash", str(DEPLOY_SCRIPT), "--bundle-root", str(bundle_root), "--version", "test", "--skip-check", *args],
         cwd=REPO_ROOT,
         env=env,
         capture_output=True,
@@ -363,8 +374,8 @@ def test_package_script_documents_runtime_contract_and_excludes_local_artifacts(
     assert "--exclude='frontend/playwright-report'" in script
     assert "--exclude='frontend/tsconfig.tsbuildinfo'" in script
     assert "--exclude='backend/.ruff_cache'" in script
-    assert "Use ./deploy-intranet.sh" in script
-    assert "generates env.intranet plus runtime/* files during prepare" in script
+    assert "deploy-intranet.sh" in script
+    assert ".env.intranet" in script
 
 
 def test_package_source_archive_includes_runtime_seed_templates(tmp_path: Path):

@@ -19,12 +19,14 @@ class NetworkMode(StrEnum):
 
 
 def get_network_mode() -> NetworkMode:
-    """Get the current network mode from environment or config.
+    """Get the current network mode from environment.
 
     Priority:
     1. IDEER_NETWORK_MODE env var (explicit override)
-    2. Auto-detect by checking if external services are reachable
-    3. Default to 'online'
+    2. Default to 'online'
+
+    Note: Auto-detection of network mode is not implemented.
+    In intranet environments, set IDEER_NETWORK_MODE=offline explicitly.
     """
     env_mode = os.environ.get("IDEER_NETWORK_MODE", "").lower()
     if env_mode == "offline":
@@ -32,6 +34,12 @@ def get_network_mode() -> NetworkMode:
         return NetworkMode.OFFLINE
     elif env_mode == "online":
         return NetworkMode.ONLINE
+    elif env_mode:
+        # Unrecognized value - warn and default to online
+        logger.warning(
+            "Unrecognized IDEER_NETWORK_MODE value %r, defaulting to ONLINE. Valid values: 'online', 'offline'",
+            env_mode,
+        )
 
     # Default to online — explicit offline via env var or config
     return NetworkMode.ONLINE

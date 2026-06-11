@@ -9,7 +9,7 @@ import { useWorkflows } from "@/core/workflows";
 import { WorkflowCard } from "./workflow-card";
 
 export function WorkflowGallery() {
-  const { workflows, isLoading } = useWorkflows();
+  const { workflows, isLoading, error } = useWorkflows();
   const router = useRouter();
 
   return (
@@ -35,6 +35,10 @@ export function WorkflowGallery() {
         {isLoading ? (
           <div className="text-muted-foreground flex h-40 items-center justify-center text-sm">
             Loading...
+          </div>
+        ) : error ? (
+          <div className="text-destructive flex h-40 items-center justify-center text-sm">
+            Failed to load workflows: {error.message}
           </div>
         ) : workflows.length === 0 ? (
           <div className="flex h-64 flex-col items-center justify-center gap-3 text-center">

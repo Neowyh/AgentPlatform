@@ -130,6 +130,21 @@ class SubagentResult:
 _background_tasks: dict[str, SubagentResult] = {}
 _background_tasks_lock = threading.Lock()
 
+# P2-RUNTIME-02: TTL for completed background tasks to prevent memory leaks
+_MAX_TASK_AGE_SECONDS = 3600  # 1 hour
+
+
+def _evict_stale_tasks() -> None:
+    """Remove completed background tasks older than _MAX_TASK_AGE_SECONDS."""
+    now = datetime.now().timestamp()
+    with _background_tasks_lock:
+        stale = [tid for tid, r in _background_tasks.items() if r.completed_at and (now - r.completed_at.timestamp()) > _MAX_TASK_AGE_SECONDS]
+        for tid in stale:
+            del _background_tasks[tid]
+        if stale:
+            logger.info("Evicted %d stale background tasks", len(stale))
+
+
 # Thread pool for background task scheduling and orchestration
 _scheduler_pool = ThreadPoolExecutor(max_workers=3, thread_name_prefix="subagent-scheduler-")
 
@@ -815,6 +830,7 @@ def get_background_task_result(task_id: str) -> SubagentResult | None:
     Returns:
         SubagentResult if found, None otherwise.
     """
+    _evict_stale_tasks()  # P2-RUNTIME-02: clean up expired tasks
     with _background_tasks_lock:
         return _background_tasks.get(task_id)
 

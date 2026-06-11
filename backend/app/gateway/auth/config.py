@@ -67,6 +67,9 @@ def get_auth_config() -> AuthConfig:
         load_dotenv()
         jwt_secret = os.environ.get("AUTH_JWT_SECRET")
         if not jwt_secret:
+            # P2-AUTH-02: In production, require explicit JWT secret
+            if os.environ.get("IDEER_ENVIRONMENT") == "production":
+                raise RuntimeError('AUTH_JWT_SECRET must be set in production environment. Generate one with: python -c "import secrets; print(secrets.token_urlsafe(32))"')
             jwt_secret = _load_or_create_secret()
             os.environ["AUTH_JWT_SECRET"] = jwt_secret
             logger.warning(

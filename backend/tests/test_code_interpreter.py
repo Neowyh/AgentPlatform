@@ -4,10 +4,46 @@ from __future__ import annotations
 
 import json
 import shutil
+import subprocess
+from unittest.mock import patch
 
 import pytest
 
+from packages.harness.ideer.community.code_interpreter import tools as ci_tools
 from packages.harness.ideer.community.code_interpreter.tools import code_interpreter_tool
+
+# ── Mock sandbox for testing ──────────────────────────────────────────
+
+
+class _MockSandbox:
+    """A minimal sandbox that executes commands directly via subprocess.
+
+    Used only in tests — production code must use a real sandbox.
+    """
+
+    def execute_command(self, command: str) -> str:
+        try:
+            result = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=30)
+            output = result.stdout
+            if result.stderr:
+                output += f"\nStd Error:\n{result.stderr}"
+            if result.returncode != 0:
+                output += f"\nExit Code: {result.returncode}"
+            return output or "(no output)"
+        except subprocess.TimeoutExpired:
+            return "Error: Command timed out"
+
+    def write_file(self, path: str, content: str, append: bool = False) -> None:
+        with open(path, "w" if not append else "a") as f:
+            f.write(content)
+
+
+@pytest.fixture(autouse=True)
+def _mock_sandbox():
+    """Patch ensure_sandbox_initialized to return a mock sandbox for all tests."""
+    with patch.object(ci_tools, "ensure_sandbox_initialized", return_value=_MockSandbox()):
+        yield
+
 
 # ── Tool function basics ─────────────────────────────────────────────
 
@@ -34,6 +70,18 @@ def test_invalid_language_returns_error():
     data = json.loads(result)
     assert "error" in data
     assert "unsupported" in data["error"].lower() or "Unsupported" in data["error"]
+
+
+# ── Sandbox requirement ──────────────────────────────────────────────
+
+
+def test_no_sandbox_returns_error():
+    """Without a sandbox, the tool should return an error."""
+    with patch.object(ci_tools, "ensure_sandbox_initialized", side_effect=RuntimeError("no sandbox")):
+        result = code_interpreter_tool.invoke({"code": "print(1)"})
+        data = json.loads(result)
+        assert "error" in data
+        assert "sandbox" in data["error"].lower()
 
 
 # ── Timeout clamping ─────────────────────────────────────────────────

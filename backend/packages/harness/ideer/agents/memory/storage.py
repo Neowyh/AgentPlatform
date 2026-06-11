@@ -141,20 +141,28 @@ class FileMemoryStorage(MemoryStorage):
         file_path = self._get_read_memory_file_path(agent_name, user_id=user_id)
         cache_key = self._cache_key(agent_name, user_id=user_id)
 
-        try:
-            current_mtime = file_path.stat().st_mtime if file_path.exists() else None
-        except OSError:
-            current_mtime = None
-
+        # P2-RUNTIME-01: Read mtime inside the lock to prevent TOCTOU
+        # where the file changes between reading mtime and checking cache.
         with self._cache_lock:
+            try:
+                current_mtime = file_path.stat().st_mtime if file_path.exists() else None
+            except OSError:
+                current_mtime = None
+
             cached = self._memory_cache.get(cache_key)
             if cached is not None and cached[1] == current_mtime:
                 return cached[0]
 
         memory_data = self._load_memory_from_file(agent_name, user_id=user_id)
 
+        # Re-read mtime after load to capture any concurrent writes
+        try:
+            final_mtime = file_path.stat().st_mtime if file_path.exists() else None
+        except OSError:
+            final_mtime = None
+
         with self._cache_lock:
-            self._memory_cache[cache_key] = (memory_data, current_mtime)
+            self._memory_cache[cache_key] = (memory_data, final_mtime)
 
         return memory_data
 

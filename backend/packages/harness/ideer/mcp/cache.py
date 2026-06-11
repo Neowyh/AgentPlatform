@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import os
+import threading
 
 from langchain_core.tools import BaseTool
 
@@ -11,6 +12,8 @@ logger = logging.getLogger(__name__)
 _mcp_tools_cache: list[BaseTool] | None = None
 _cache_initialized = False
 _initialization_lock = asyncio.Lock()
+# P2-RUNTIME-04: Thread-level lock for cross-thread lazy initialization
+_thread_init_lock = threading.Lock()
 _config_mtime: float | None = None  # Track config file modification time
 
 
@@ -101,31 +104,36 @@ def get_cached_mcp_tools() -> list[BaseTool]:
         reset_mcp_tools_cache()
 
     if not _cache_initialized:
-        logger.info("MCP tools not initialized, performing lazy initialization...")
-        try:
-            # Try to initialize in the current event loop
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # If loop is already running (e.g., in LangGraph Studio),
-                # we need to create a new loop in a thread
-                import concurrent.futures
-
-                with concurrent.futures.ThreadPoolExecutor() as executor:
-                    future = executor.submit(asyncio.run, initialize_mcp_tools())
-                    future.result()
-            else:
-                # If no loop is running, we can use the current loop
-                loop.run_until_complete(initialize_mcp_tools())
-        except RuntimeError:
-            # No event loop exists, create one
+        # P2-RUNTIME-04: Use threading.Lock to prevent concurrent
+        # lazy initialization from multiple threads
+        with _thread_init_lock:
+            if _cache_initialized:
+                return _mcp_tools_cache or []
+            logger.info("MCP tools not initialized, performing lazy initialization...")
             try:
-                asyncio.run(initialize_mcp_tools())
+                # Try to initialize in the current event loop
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    # If loop is already running (e.g., in LangGraph Studio),
+                    # we need to create a new loop in a thread
+                    import concurrent.futures
+
+                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                        future = executor.submit(asyncio.run, initialize_mcp_tools())
+                        future.result()
+                else:
+                    # If no loop is running, we can use the current loop
+                    loop.run_until_complete(initialize_mcp_tools())
+            except RuntimeError:
+                # No event loop exists, create one
+                try:
+                    asyncio.run(initialize_mcp_tools())
+                except Exception:
+                    logger.exception("Failed to lazy-initialize MCP tools")
+                    return []
             except Exception:
                 logger.exception("Failed to lazy-initialize MCP tools")
                 return []
-        except Exception:
-            logger.exception("Failed to lazy-initialize MCP tools")
-            return []
 
     return _mcp_tools_cache or []
 

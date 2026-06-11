@@ -16,6 +16,7 @@ import asyncio
 import json
 import logging
 import os
+import resource
 import subprocess
 import tempfile
 
@@ -29,6 +30,29 @@ server = Server("code-interpreter")
 _MAX_TIMEOUT = 300
 _DEFAULT_TIMEOUT = 60
 _MAX_OUTPUT_CHARS = 20000
+_MAX_CODE_SIZE = 1_000_000  # 1 MB - prevent disk exhaustion from oversized code
+
+# MCP server runs as a standalone process — sandbox is not available.
+# Code is executed in an isolated subprocess with restricted environment.
+_SAFE_ENV_KEYS = {"PATH", "LANG", "LC_ALL", "TZ", "USER", "TMPDIR"}
+
+
+def _build_safe_env() -> dict[str, str]:
+    """Build a sanitized environment dict for subprocess execution."""
+    return {k: v for k, v in os.environ.items() if k in _SAFE_ENV_KEYS}
+
+
+def _set_resource_limits() -> None:
+    """Set resource limits for child processes (Unix only)."""
+    try:
+        # 512 MB memory limit
+        resource.setrlimit(resource.RLIMIT_AS, (512 * 1024 * 1024, 512 * 1024 * 1024))
+        # 100 MB file size limit
+        resource.setrlimit(resource.RLIMIT_FSIZE, (100 * 1024 * 1024, 100 * 1024 * 1024))
+        # Max 64 processes
+        resource.setrlimit(resource.RLIMIT_NPROC, (64, 64))
+    except (ValueError, OSError):
+        pass  # Resource limits not available on this platform
 
 
 def _truncate_output(output: str, max_chars: int = _MAX_OUTPUT_CHARS) -> str:
@@ -66,6 +90,13 @@ async def code_interpreter(code: str, language: str = "python", timeout: int = 6
         language: Programming language — "python" or "javascript". Default is "python".
         timeout: Maximum execution time in seconds. Default is 60. Max is 300.
     """
+    # Validate code size to prevent disk exhaustion
+    if len(code) > _MAX_CODE_SIZE:
+        return json.dumps(
+            {"error": f"Code too large: {len(code)} bytes (max {_MAX_CODE_SIZE} bytes)", "stdout": "", "stderr": "", "exit_code": 1},
+            ensure_ascii=False,
+        )
+
     # Validate language
     if language not in ("python", "javascript"):
         return json.dumps(
@@ -94,11 +125,14 @@ async def code_interpreter(code: str, language: str = "python", timeout: int = 6
             f.write(code)
             tmp_fd = None  # fdopen takes ownership
 
-        result = subprocess.run(
+        result = await asyncio.to_thread(
+            subprocess.run,
             [interpreter, tmp_path],
             capture_output=True,
             text=True,
             timeout=timeout,
+            env=_build_safe_env(),
+            preexec_fn=_set_resource_limits,
         )
 
         stdout = _truncate_output(result.stdout)
@@ -109,12 +143,13 @@ async def code_interpreter(code: str, language: str = "python", timeout: int = 6
             ensure_ascii=False,
         )
 
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired as e:
+        logger.warning("Code execution timed out after %s seconds", timeout)
         return json.dumps(
             {
                 "error": f"Execution timed out after {timeout} seconds",
-                "stdout": "",
-                "stderr": "",
+                "stdout": _truncate_output(e.stdout or ""),
+                "stderr": _truncate_output(e.stderr or ""),
                 "exit_code": -1,
             },
             ensure_ascii=False,
@@ -132,10 +167,15 @@ async def code_interpreter(code: str, language: str = "python", timeout: int = 6
     except Exception as e:
         logger.error("Code interpreter failed: %s: %s", type(e).__name__, e)
         return json.dumps(
-            {"error": f"{type(e).__name__}: {e}", "stdout": "", "stderr": "", "exit_code": -1},
+            {"error": "Code execution failed", "stdout": "", "stderr": "", "exit_code": -1},
             ensure_ascii=False,
         )
     finally:
+        if tmp_fd is not None:
+            try:
+                os.close(tmp_fd)
+            except OSError:
+                pass
         if tmp_path and os.path.exists(tmp_path):
             try:
                 os.unlink(tmp_path)

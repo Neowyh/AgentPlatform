@@ -1,0 +1,77 @@
+name: Migration Tests
+
+on:
+  push:
+    branches: [ 'main' ]
+    paths:
+      - 'backend/packages/harness/ideer/persistence/**'
+      - '.github/workflows/migration-tests.yml'
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'backend/packages/harness/ideer/persistence/**'
+      - '.github/workflows/migration-tests.yml'
+
+concurrency:
+  group: migration-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  migration-up-down:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: uv sync --group dev
+
+      - name: Prepare temp database directory
+        run: mkdir -p backend/data
+
+      - name: Run migration upgrade
+        working-directory: backend
+        run: |
+          PYTHONPATH=. uv run alembic \
+            -c packages/harness/ideer/persistence/migrations/alembic.ini \
+            upgrade head
+
+      - name: Verify current revision
+        working-directory: backend
+        run: |
+          PYTHONPATH=. uv run alembic \
+            -c packages/harness/ideer/persistence/migrations/alembic.ini \
+            current
+
+      - name: Run migration downgrade
+        working-directory: backend
+        run: |
+          PYTHONPATH=. uv run alembic \
+            -c packages/harness/ideer/persistence/migrations/alembic.ini \
+            downgrade -1
+
+      - name: Re-upgrade to head
+        working-directory: backend
+        run: |
+          PYTHONPATH=. uv run alembic \
+            -c packages/harness/ideer/persistence/migrations/alembic.ini \
+            upgrade head
+
+      - name: Cleanup
+        if: always()
+        run: rm -f backend/data/ideer.db

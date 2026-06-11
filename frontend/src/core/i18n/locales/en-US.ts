@@ -242,6 +242,10 @@ export const enUS: Translations = {
     contactUs: "Contact us",
     about: "About iDeer",
     logout: "Log out",
+    adminPanel: "Admin Panel",
+    userManagement: "User Management",
+    departmentManagement: "Department Management",
+    toolManagement: "Tool Management",
   },
 
   // Conversation

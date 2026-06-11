@@ -1,0 +1,71 @@
+name: Backend QA Tests
+
+on:
+  push:
+    branches: [ 'main' ]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend-qa-tests.yml'
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend-qa-tests.yml'
+
+concurrency:
+  group: backend-qa-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend-qa-tests:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: uv sync --group dev
+
+      - name: Prepare CI config
+        run: cp config.example.yaml config.yaml
+
+      - name: Start backend server
+        run: |
+          cd backend && PYTHONPATH=. PYTHONIOENCODING=utf-8 PYTHONUTF8=1 nohup uv run uvicorn app.gateway.app:app --host 0.0.0.0 --port 8001 > /tmp/gateway.log 2>&1 &
+          echo $! > /tmp/gateway.pid
+          ./scripts/wait-for-port.sh 8001 30 Gateway
+          curl -sf http://localhost:8001/health
+
+      - name: Run QA tests
+        working-directory: backend
+        run: PYTHONPATH=. uv run pytest tests/qa/ -v --timeout=60
+
+      - name: Upload gateway log
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: gateway-log
+          path: /tmp/gateway.log
+          retention-days: 3
+
+      - name: Stop backend server
+        if: always()
+        run: |
+          if [ -f /tmp/gateway.pid ]; then
+            kill $(cat /tmp/gateway.pid) 2>/dev/null || true
+          fi

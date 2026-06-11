@@ -111,25 +111,25 @@ export function WorkspaceNavMenu() {
                       <DropdownMenuItem asChild>
                         <Link href="/workspace/admin">
                           <ShieldIcon />
-                          管理后台
+                          {t.workspace.adminPanel}
                         </Link>
                       </DropdownMenuItem>
                       <DropdownMenuItem asChild>
                         <Link href="/workspace/admin/users">
                           <UsersIcon />
-                          用户管理
+                          {t.workspace.userManagement}
                         </Link>
                       </DropdownMenuItem>
                       <DropdownMenuItem asChild>
                         <Link href="/workspace/admin/departments">
                           <Building2Icon />
-                          部门管理
+                          {t.workspace.departmentManagement}
                         </Link>
                       </DropdownMenuItem>
                       <DropdownMenuItem asChild>
                         <Link href="/workspace/admin/tools">
                           <WrenchIcon />
-                          工具管理
+                          {t.workspace.toolManagement}
                         </Link>
                       </DropdownMenuItem>
                     </DropdownMenuGroup>

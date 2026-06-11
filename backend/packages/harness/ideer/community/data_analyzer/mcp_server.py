@@ -30,6 +30,20 @@ logger = logging.getLogger(__name__)
 server = Server("data-analyzer")
 
 _MAX_OUTPUT_CHARS = 10000
+_MAX_FILE_SIZE = 200_000_000  # 200 MB
+_MAX_MEMORY_BYTES = 500_000_000  # 500 MB - decompression bomb protection
+_MAX_ROWS = 500_000  # row limit to prevent OOM on decompression bombs
+
+# Security: only allow reading files under these prefixes
+_ALLOWED_PATH_PREFIXES = ["/mnt/user-data", "/tmp"]
+
+
+def _validate_path(file_path: str) -> str:
+    """Validate file path is within allowed directories. Returns resolved path."""
+    resolved = os.path.realpath(file_path)
+    if not any(resolved.startswith(prefix) for prefix in _ALLOWED_PATH_PREFIXES):
+        raise PermissionError(f"Access denied: file must be under one of {_ALLOWED_PATH_PREFIXES}, got: {file_path}")
+    return resolved
 
 
 def _check_pandas() -> str | None:
@@ -44,26 +58,51 @@ def _read_file(file_path: str):
 
     Returns (df, error) tuple. On success error is None.
     """
+    if pd is None:
+        return None, "pandas is required for data analysis. Install it with: pip install pandas"
+
+    # Security: validate path is within allowed directories
+    try:
+        file_path = _validate_path(file_path)
+    except PermissionError as e:
+        return None, str(e)
+
     if not os.path.exists(file_path):
         return None, f"File not found: {file_path}"
+
+    file_size = os.path.getsize(file_path)
+    if file_size > _MAX_FILE_SIZE:
+        return None, f"File too large: {file_size} bytes (max {_MAX_FILE_SIZE} bytes)"
 
     ext = os.path.splitext(file_path)[1].lower()
 
     try:
         if ext == ".csv":
-            df = pd.read_csv(file_path)
+            df = pd.read_csv(file_path, nrows=_MAX_ROWS)
         elif ext in (".xlsx", ".xls"):
-            df = pd.read_excel(file_path)
+            df = pd.read_excel(file_path, nrows=_MAX_ROWS)
         elif ext == ".json":
             try:
-                df = pd.read_json(file_path)
-            except ValueError:
-                # Try line-delimited JSON
-                df = pd.read_json(file_path, lines=True)
+                df = pd.read_json(file_path, nrows=_MAX_ROWS)
+            except (ValueError, TypeError):
+                try:
+                    df = pd.read_json(file_path, lines=True, nrows=_MAX_ROWS)
+                except (ValueError, TypeError):
+                    # Fallback: use chunked reading to avoid loading entire file
+                    try:
+                        chunks = pd.read_json(file_path, chunksize=_MAX_ROWS)
+                        df = next(chunks)  # Only take the first chunk
+                    except (ValueError, TypeError):
+                        return None, f"Failed to parse JSON file: {file_path}"
         else:
             return None, f"Unsupported file format: {ext}. Supported formats: .csv, .xlsx, .xls, .json"
     except Exception as e:
         return None, f"Failed to read file: {e}"
+
+    # Decompression bomb protection: check actual memory usage after loading
+    memory_usage = df.memory_usage(deep=True).sum()
+    if memory_usage > _MAX_MEMORY_BYTES:
+        return None, f"DataFrame too large after decompression: {memory_usage} bytes (max {_MAX_MEMORY_BYTES} bytes)"
 
     if df.empty:
         return None, "The file is empty or contains no data rows."
@@ -164,17 +203,17 @@ async def data_analyzer(file_path: str, analysis_type: str = "summary") -> str:
             "describe" (statistical summary of numeric columns),
             "correlation" (correlation matrix for numeric columns).
     """
+    return await asyncio.to_thread(_data_analyzer_sync, file_path, analysis_type)
+
+
+def _data_analyzer_sync(file_path: str, analysis_type: str) -> str:
+    """Synchronous implementation of data_analyzer — runs in a thread pool."""
     # Check pandas availability
     pandas_err = _check_pandas()
     if pandas_err:
         return json.dumps({"error": pandas_err}, ensure_ascii=False)
 
-    # Read file
-    df, read_err = _read_file(file_path)
-    if read_err:
-        return json.dumps({"error": read_err, "file_path": file_path}, ensure_ascii=False)
-
-    # Run requested analysis
+    # Validate analysis_type before reading file (expensive operation)
     valid_types = {"summary", "describe", "correlation"}
     if analysis_type not in valid_types:
         return json.dumps(
@@ -182,6 +221,12 @@ async def data_analyzer(file_path: str, analysis_type: str = "summary") -> str:
             ensure_ascii=False,
         )
 
+    # Read file
+    df, read_err = _read_file(file_path)
+    if read_err:
+        return json.dumps({"error": read_err, "file_path": file_path}, ensure_ascii=False)
+
+    # Run requested analysis
     try:
         if analysis_type == "summary":
             result = _analyze_summary(df)
@@ -190,8 +235,8 @@ async def data_analyzer(file_path: str, analysis_type: str = "summary") -> str:
         else:
             result = _analyze_correlation(df)
     except Exception as e:
-        logger.error("Analysis failed for %s: %s", file_path, e)
-        return json.dumps({"error": f"Analysis failed: {e}"}, ensure_ascii=False)
+        logger.error("Analysis failed for %s: %s", file_path, e, exc_info=True)
+        return json.dumps({"error": "Analysis failed. Check server logs for details."}, ensure_ascii=False)
 
     output = {
         "file_path": file_path,
@@ -208,7 +253,25 @@ async def data_analyzer(file_path: str, analysis_type: str = "summary") -> str:
             len(text),
             _MAX_OUTPUT_CHARS,
         )
-        text = text[:_MAX_OUTPUT_CHARS] + "\n... [truncated]"
+        # Binary search for the longest result prefix that fits in _MAX_OUTPUT_CHARS
+        # after JSON re-escaping. This guarantees the output always fits.
+        result_compact = json.dumps(output.get("result", {}), ensure_ascii=False)
+        marker = "... [truncated]"
+        lo, hi = 0, len(result_compact)
+        while lo < hi:
+            mid = (lo + hi + 1) // 2
+            test_out = json.dumps(
+                {"file_path": file_path, "analysis_type": analysis_type, "result_summary": result_compact[:mid] + marker, "truncated": True},
+                ensure_ascii=False,
+            )
+            if len(test_out) <= _MAX_OUTPUT_CHARS:
+                lo = mid
+            else:
+                hi = mid - 1
+        return json.dumps(
+            {"file_path": file_path, "analysis_type": analysis_type, "result_summary": result_compact[:lo] + marker, "truncated": True},
+            ensure_ascii=False,
+        )
 
     return text
 

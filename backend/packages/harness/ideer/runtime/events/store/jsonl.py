@@ -30,6 +30,11 @@ class JsonlRunEventStore(RunEventStore):
     def __init__(self, base_dir: str | Path | None = None):
         self._base_dir = Path(base_dir) if base_dir else Path(".ideer")
         self._seq_counters: dict[str, int] = {}  # thread_id -> current max seq
+        # P2-BUILD-05: Warn about multi-process limitations
+        logger.info(
+            "JsonlRunEventStore initialized (base_dir=%s). Note: this backend is single-process only; do not run multiple Gateway workers with file-based event storage.",
+            self._base_dir,
+        )
 
     @staticmethod
     def _validate_id(value: str, label: str) -> str:

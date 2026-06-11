@@ -17,13 +17,14 @@ class StepType(StrEnum):
     CONDITION = "condition"
     PARALLEL = "parallel"
     LOOP = "loop"
+    RETRY = "retry"
 
 
 class RetryPolicy(BaseModel):
     """Retry configuration for a step."""
 
-    max: int = 3
-    backoff: float = 5.0
+    max: int = Field(3, ge=0)
+    backoff: float = Field(5.0, ge=0)
     on_errors: list[str] = Field(default_factory=lambda: ["*"])
 
 
@@ -63,6 +64,8 @@ class StepDef(BaseModel):
     # parallel / loop
     steps: list[StepDef] | None = None
     items: str | None = None
+    max_iterations: int = Field(1000, ge=0)
+    fail_fast: bool = False  # BUG-12: Stop loop on first sub-step failure
 
     # common
     condition: str | None = None
@@ -76,7 +79,7 @@ class StepDef(BaseModel):
 class WorkflowDef(BaseModel):
     """Top-level workflow definition parsed from YAML."""
 
-    name: str
+    name: str = Field(..., max_length=60)
     description: str = ""
     version: str = "1.0"
     inputs: dict[str, InputParam] = Field(default_factory=dict)

@@ -17,7 +17,7 @@ export function useWorkflows() {
     queryKey: ["workflows"],
     queryFn: () => listWorkflows(),
   });
-  return { workflows: data ?? [], isLoading, error, refetch };
+  return { workflows: data?.workflows ?? [], isLoading, error, refetch };
 }
 
 export function useWorkflow(name: string | null | undefined) {
@@ -88,7 +88,12 @@ export function useRunStatus(
     enabled: !!name && !!runId,
     refetchInterval: (query) => {
       const status = query.state.data?.status;
-      if (status === "running" || status === "pending") return 2000;
+      if (
+        status === "running" ||
+        status === "pending" ||
+        status === "waiting_human"
+      )
+        return 2000;
       return false;
     },
   });
@@ -96,6 +101,7 @@ export function useRunStatus(
 }
 
 export function useSubmitReview() {
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({
       name,
@@ -106,5 +112,12 @@ export function useSubmitReview() {
       runId: string;
       data: ReviewData;
     }) => submitReview(name, runId, data),
+    onSuccess: (_data, { name, runId }) => {
+      // Invalidate run status so the UI picks up the transition from
+      // waiting_human → running and resumes polling.
+      void queryClient.invalidateQueries({
+        queryKey: ["workflows", name, "runs", runId],
+      });
+    },
   });
 }

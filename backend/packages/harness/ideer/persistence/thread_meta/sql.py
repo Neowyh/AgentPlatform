@@ -166,9 +166,12 @@ class ThreadMetaRepository(ThreadMetaStore):
         """Update the display_name (title) for a thread."""
         resolved_user_id = resolve_user_id(user_id, method_name="ThreadMetaRepository.update_display_name")
         async with self._sf() as session:
-            if not await self._check_ownership(session, thread_id, resolved_user_id):
-                return
-            await session.execute(update(ThreadMetaRow).where(ThreadMetaRow.thread_id == thread_id).values(display_name=display_name, updated_at=datetime.now(UTC)))
+            # P2-PERSIST-04: Merge ownership check into UPDATE to prevent TOCTOU
+            stmt = update(ThreadMetaRow).where(ThreadMetaRow.thread_id == thread_id)
+            if resolved_user_id is not None:
+                stmt = stmt.where(ThreadMetaRow.user_id == resolved_user_id)
+            stmt = stmt.values(display_name=display_name, updated_at=datetime.now(UTC))
+            await session.execute(stmt)
             await session.commit()
 
     async def update_status(
@@ -180,9 +183,12 @@ class ThreadMetaRepository(ThreadMetaStore):
     ) -> None:
         resolved_user_id = resolve_user_id(user_id, method_name="ThreadMetaRepository.update_status")
         async with self._sf() as session:
-            if not await self._check_ownership(session, thread_id, resolved_user_id):
-                return
-            await session.execute(update(ThreadMetaRow).where(ThreadMetaRow.thread_id == thread_id).values(status=status, updated_at=datetime.now(UTC)))
+            # P2-PERSIST-04: Merge ownership check into UPDATE to prevent TOCTOU
+            stmt = update(ThreadMetaRow).where(ThreadMetaRow.thread_id == thread_id)
+            if resolved_user_id is not None:
+                stmt = stmt.where(ThreadMetaRow.user_id == resolved_user_id)
+            stmt = stmt.values(status=status, updated_at=datetime.now(UTC))
+            await session.execute(stmt)
             await session.commit()
 
     async def update_metadata(
@@ -194,13 +200,19 @@ class ThreadMetaRepository(ThreadMetaStore):
     ) -> None:
         """Merge ``metadata`` into ``metadata_json``.
 
-        Read-modify-write inside a single session/transaction so concurrent
-        callers see consistent state. No-op if the row does not exist or
+        Read-modify-write inside a single session/transaction.  Uses
+        SELECT FOR UPDATE (where supported) to prevent lost updates
+        under concurrent callers.  No-op if the row does not exist or
         the user_id check fails.
         """
         resolved_user_id = resolve_user_id(user_id, method_name="ThreadMetaRepository.update_metadata")
         async with self._sf() as session:
-            row = await session.get(ThreadMetaRow, thread_id)
+            # P2-PERSIST-03: Lock the row to prevent concurrent lost updates
+            try:
+                row = await session.get(ThreadMetaRow, thread_id, with_for_update=True)
+            except Exception:
+                # SQLite doesn't support FOR UPDATE — fall back to plain get
+                row = await session.get(ThreadMetaRow, thread_id)
             if row is None:
                 return
             if resolved_user_id is not None and row.user_id != resolved_user_id:

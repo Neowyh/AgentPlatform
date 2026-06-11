@@ -93,7 +93,10 @@ class DatabaseConfig(BaseModel):
             return f"sqlite+aiosqlite:///{self.sqlite_path}"
         if self.backend == "postgres":
             url = self.postgres_url
-            if url.startswith("postgresql://"):
+            # P2-BUILD-04: Handle both postgres:// and postgresql:// URI schemes
+            if url.startswith("postgres://"):
+                url = url.replace("postgres://", "postgresql+asyncpg://", 1)
+            elif url.startswith("postgresql://"):
                 url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
             return url
         raise ValueError(f"No SQLAlchemy URL for backend={self.backend!r}")

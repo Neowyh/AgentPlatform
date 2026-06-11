@@ -32,8 +32,9 @@ async def execute_human_review_step(
     state.status = RunStatus.WAITING_HUMAN
     await store.save_run_state(state)
 
-    timeout = step_def.get("timeout", 3600)  # default 1 hour
-    poll_interval = 2  # seconds
+    timeout = step_def.get("timeout") if step_def.get("timeout") is not None else 3600  # default 1 hour
+    poll_interval = 2  # starts at 2s
+    max_poll_interval = 30  # caps at 30s
     elapsed = 0.0
 
     logger.info(
@@ -42,25 +43,50 @@ async def execute_human_review_step(
         step_def["id"],
     )
 
-    while elapsed < timeout:
-        await asyncio.sleep(poll_interval)
-        elapsed += poll_interval
+    try:
+        while elapsed < timeout:
+            await asyncio.sleep(poll_interval)
+            elapsed += poll_interval
 
-        run_data = await store.load_run_state(state.run_id)
-        if run_data is None:
-            raise RuntimeError(f"Run {state.run_id} disappeared from database")
+            run_data = await store.load_run_state(state.run_id)
+            if run_data is None:
+                raise RuntimeError(f"Run {state.run_id} disappeared from database")
 
-        # Check if review has been submitted
-        # The API endpoint sets review_result and status back to "running"
-        if run_data.status == RunStatus.RUNNING and run_data.review_result is not None:
-            state.status = RunStatus.RUNNING
-            # Copy review_result into the run state so downstream steps can access it
-            state.set_step_result(
-                step_def["id"],
-                status="completed",
-                output=run_data.review_result,
-            )
-            logger.info("Workflow %s resumed after human_review", state.run_id)
-            return run_data.review_result
+            # Check if the run was cancelled externally
+            if run_data.status == RunStatus.CANCELLED:
+                state.status = RunStatus.CANCELLED
+                raise RuntimeError(f"Workflow {state.run_id} was cancelled during human review")
 
-    raise TimeoutError(f"Human review timed out after {timeout}s")
+            # Check if review has been submitted
+            # The API endpoint sets review_result and status back to "running"
+            if run_data.status == RunStatus.RUNNING and run_data.review_result is not None:
+                state.status = RunStatus.RUNNING
+                # Copy review_result into the run state so downstream steps can access it
+                state.set_step_result(
+                    step_def["id"],
+                    status="completed",
+                    output=run_data.review_result,
+                )
+                logger.info("Workflow %s resumed after human_review", state.run_id)
+                return run_data.review_result
+
+            # Exponential backoff
+            poll_interval = min(poll_interval * 1.5, max_poll_interval)
+
+        # Timeout reached — transition state before raising
+        state.status = RunStatus.FAILED
+        state.error = f"Human review timed out after {timeout}s"
+        await store.save_run_state(state)
+        raise TimeoutError(f"Human review timed out after {timeout}s")
+    except (TimeoutError, RuntimeError):
+        raise
+    except Exception:
+        # Ensure state is never left in WAITING_HUMAN on unexpected errors
+        if state.status == RunStatus.WAITING_HUMAN:
+            state.status = RunStatus.FAILED
+            state.error = f"Human review step '{step_def['id']}' failed"
+            try:
+                await store.save_run_state(state)
+            except Exception:
+                logger.exception("Failed to persist error state")
+        raise

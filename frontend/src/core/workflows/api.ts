@@ -1,3 +1,4 @@
+import { extractError } from "@/core/api/errors";
 import { fetch } from "@/core/api/fetcher";
 import { getBackendBaseURL } from "@/core/config";
 
@@ -9,18 +10,20 @@ import type {
   WorkflowSummary,
 } from "./types";
 
-export async function listWorkflows(): Promise<WorkflowSummary[]> {
+export async function listWorkflows(): Promise<{
+  workflows: WorkflowSummary[];
+  total: number;
+}> {
   const res = await fetch(`${getBackendBaseURL()}/api/workflows`);
-  if (!res.ok) throw new Error(`Failed to load workflows: ${res.statusText}`);
-  const data = (await res.json()) as { workflows: WorkflowSummary[] };
-  return data.workflows;
+  if (!res.ok) return extractError(res, "Failed to load workflows");
+  return res.json() as Promise<{ workflows: WorkflowSummary[]; total: number }>;
 }
 
 export async function getWorkflow(name: string): Promise<WorkflowDetail> {
   const res = await fetch(
     `${getBackendBaseURL()}/api/workflows/${encodeURIComponent(name)}`,
   );
-  if (!res.ok) throw new Error(`Workflow '${name}' not found`);
+  if (!res.ok) return extractError(res, `Workflow '${name}' not found`);
   return res.json() as Promise<WorkflowDetail>;
 }
 
@@ -67,7 +70,7 @@ export async function deleteWorkflow(name: string): Promise<void> {
     `${getBackendBaseURL()}/api/workflows/${encodeURIComponent(name)}`,
     { method: "DELETE" },
   );
-  if (!res.ok) throw new Error(`Failed to delete workflow: ${res.statusText}`);
+  if (!res.ok) return extractError(res, "Failed to delete workflow");
 }
 
 export async function runWorkflow(
@@ -79,7 +82,7 @@ export async function runWorkflow(
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(inputs),
+      body: JSON.stringify({ inputs }),
     },
   );
   if (!res.ok) {
@@ -96,7 +99,7 @@ export async function getRunStatus(
   const res = await fetch(
     `${getBackendBaseURL()}/api/workflows/${encodeURIComponent(name)}/runs/${encodeURIComponent(runId)}`,
   );
-  if (!res.ok) throw new Error(`Failed to get run status: ${res.statusText}`);
+  if (!res.ok) return extractError(res, "Failed to get run status");
   return res.json() as Promise<RunStatus>;
 }
 
@@ -104,18 +107,21 @@ export async function submitReview(
   name: string,
   runId: string,
   data: ReviewData,
-): Promise<RunStatus> {
+): Promise<{ success: boolean; run_id: string }> {
   const res = await fetch(
     `${getBackendBaseURL()}/api/workflows/${encodeURIComponent(name)}/runs/${encodeURIComponent(runId)}/review`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
+      body: JSON.stringify({
+        approved: data.approved,
+        data: { comment: data.comment },
+      }),
     },
   );
   if (!res.ok) {
     const err = (await res.json().catch(() => ({}))) as { detail?: string };
     throw new Error(err.detail ?? `Failed to submit review: ${res.statusText}`);
   }
-  return res.json() as Promise<RunStatus>;
+  return res.json() as Promise<{ success: boolean; run_id: string }>;
 }

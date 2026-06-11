@@ -162,10 +162,6 @@ class AppConfig(BaseModel):
         config_data = cls.resolve_env_variables(config_data)
         cls._apply_database_defaults(config_data)
 
-        # Load circuit_breaker config if present
-        if "circuit_breaker" in config_data:
-            config_data["circuit_breaker"] = config_data["circuit_breaker"]
-
         # Load extensions config separately (it's in a different file)
         extensions_config = ExtensionsConfig.from_file()
         config_data["extensions"] = extensions_config.model_dump()

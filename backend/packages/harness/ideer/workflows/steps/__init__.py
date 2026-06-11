@@ -39,4 +39,9 @@ async def execute_step(step_type: StepType, step_def: dict[str, Any], state: Wor
 
         return await execute_loop_step(step_def, state)
 
+    elif step_type == StepType.RETRY:
+        from .retry_step import execute_retry_step
+
+        return await execute_retry_step(step_def, state)
+
     raise ValueError(f"Unknown step type: {step_type}")

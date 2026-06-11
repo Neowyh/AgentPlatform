@@ -1,6 +1,7 @@
 """Unified extensions configuration for MCP servers and skills."""
 
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Any, Literal
@@ -8,6 +9,8 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from ideer.config.runtime_paths import existing_project_file
+
+logger = logging.getLogger(__name__)
 
 
 class McpOAuthConfig(BaseModel):
@@ -163,12 +166,12 @@ class ExtensionsConfig(BaseModel):
         if isinstance(config, str):
             if not config.startswith("$"):
                 return config
-            env_value = os.getenv(config[1:])
+            env_name = config[1:]
+            env_value = os.getenv(env_name)
             if env_value is None:
-                # Unresolved placeholder — store empty string so downstream
-                # consumers (e.g. MCP servers) don't receive the literal "$VAR"
-                # token as an actual environment value.
-                return ""
+                # BUG-10: Raise error for missing env vars instead of silent
+                # substitution, consistent with app_config.py behavior.
+                raise ValueError(f"Required environment variable '{env_name}' is not set. Set it before starting the server.")
             return env_value
 
         if isinstance(config, dict):

@@ -28,8 +28,8 @@ def test_extensions_config_resolves_env_variables_inside_nested_collections(monk
     monkeypatch.setenv("MCP_TOKEN", "secret")
     monkeypatch.delenv("MISSING_TOKEN", raising=False)
     raw_config = {
-        "args": ["--token", "$MCP_TOKEN", {"nested": ["$MCP_TOKEN", "$MISSING_TOKEN"]}],
-        "tuple_args": ("$MCP_TOKEN", "$MISSING_TOKEN"),
+        "args": ["--token", "$MCP_TOKEN", {"nested": ["$MCP_TOKEN"]}],
+        "tuple_args": ("$MCP_TOKEN",),
         "env": {"API_KEY": "$MCP_TOKEN"},
         "enabled": True,
         "timeout": 30,
@@ -37,11 +37,19 @@ def test_extensions_config_resolves_env_variables_inside_nested_collections(monk
 
     resolved = ExtensionsConfig.resolve_env_variables(raw_config)
 
-    assert resolved["args"] == ["--token", "secret", {"nested": ["secret", ""]}]
-    assert resolved["tuple_args"] == ("secret", "")
+    assert resolved["args"] == ["--token", "secret", {"nested": ["secret"]}]
+    assert resolved["tuple_args"] == ("secret",)
     assert resolved["env"] == {"API_KEY": "secret"}
     assert resolved["enabled"] is True
     assert resolved["timeout"] == 30
+
+
+def test_extensions_config_raises_for_missing_env_var(monkeypatch):
+    monkeypatch.delenv("MISSING_TOKEN", raising=False)
+    raw_config = {"key": "$MISSING_TOKEN"}
+
+    with pytest.raises(ValueError, match="MISSING_TOKEN"):
+        ExtensionsConfig.resolve_env_variables(raw_config)
 
 
 def test_build_server_params_stdio_requires_command():

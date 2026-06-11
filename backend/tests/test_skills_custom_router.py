@@ -38,9 +38,32 @@ def _make_skill(name: str, *, enabled: bool) -> Skill:
 
 
 def _make_test_app(config) -> FastAPI:
-    app = FastAPI()
+    from unittest.mock import MagicMock
+
+    from _router_auth_helpers import make_authed_test_app
+
+    from app.gateway.authz import get_current_rbac_user, get_optional_rbac_user
+    from ideer.persistence.models.user import UserRole
+
+    app = make_authed_test_app()
     app.state.config = config  # kept for any startup-style reads
     app.dependency_overrides[get_config] = lambda: config
+
+    # Mock RBAC user to bypass database lookup
+    mock_user = MagicMock()
+    mock_user.id = "test-user"
+    mock_user.role = UserRole.SUPER_ADMIN
+    mock_user.department_id = None
+    mock_user.disabled = False
+
+    async def _stub_current_user():
+        return mock_user
+
+    async def _stub_optional_user():
+        return mock_user
+
+    app.dependency_overrides[get_current_rbac_user] = _stub_current_user
+    app.dependency_overrides[get_optional_rbac_user] = _stub_optional_user
     app.include_router(skills_router.router)
     return app
 
@@ -325,7 +348,7 @@ def test_custom_skill_delete_fails_when_skill_dir_removal_fails(monkeypatch, tmp
         delete_response = client.delete("/api/skills/custom/demo-skill")
 
     assert delete_response.status_code == 500
-    assert "Failed to delete custom skill" in delete_response.json()["detail"]
+    assert "Internal server error" in delete_response.json()["detail"]
     assert custom_dir.exists()
     assert refresh_calls == []
 

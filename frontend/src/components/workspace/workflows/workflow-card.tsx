@@ -54,6 +54,14 @@ export function WorkflowCard({ workflow }: WorkflowCardProps) {
       <Card
         className="group flex cursor-pointer flex-col transition-shadow hover:shadow-md"
         onClick={handleClick}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            handleClick();
+          }
+        }}
       >
         <CardHeader className="pb-3">
           <div className="flex items-start justify-between gap-2">
@@ -66,7 +74,7 @@ export function WorkflowCard({ workflow }: WorkflowCardProps) {
                   {workflow.name}
                 </CardTitle>
                 <Badge variant="secondary" className="mt-0.5 text-xs">
-                  v{workflow.version}
+                  v{workflow.version ?? "unknown"}
                 </Badge>
               </div>
             </div>
@@ -81,10 +89,10 @@ export function WorkflowCard({ workflow }: WorkflowCardProps) {
         <CardContent className="pt-0 pb-3">
           <div className="flex flex-wrap gap-1">
             <Badge variant="outline" className="text-xs">
-              {workflow.steps_count}{" "}
-              {workflow.steps_count === 1 ? "step" : "steps"}
+              {workflow.steps_count ?? 0}{" "}
+              {(workflow.steps_count ?? 0) === 1 ? "step" : "steps"}
             </Badge>
-            {Object.keys(workflow.inputs).length > 0 && (
+            {workflow.inputs && Object.keys(workflow.inputs).length > 0 && (
               <Badge variant="outline" className="text-xs">
                 {Object.keys(workflow.inputs).length}{" "}
                 {Object.keys(workflow.inputs).length === 1 ? "input" : "inputs"}

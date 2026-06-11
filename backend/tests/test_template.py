@@ -1,7 +1,5 @@
 """Tests for the workflow template engine (render_value, render_params, _resolve)."""
 
-import pytest
-
 from packages.harness.ideer.workflows.template import render_params, render_value
 
 # ── render_value ────────────────────────────────────────────────────
@@ -124,7 +122,7 @@ def test_deep_path():
     assert render_value("{{steps.step1.output.field}}", ctx) == "deep"
 
 
-def test_missing_key_raises_key_error():
+def test_missing_key_returns_none():
     ctx = {"inputs": {}}
-    with pytest.raises(KeyError):
-        render_value("{{inputs.missing}}", ctx)
+    result = render_value("{{inputs.missing}}", ctx)
+    assert result is None

@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
-from app.gateway.authz import get_optional_rbac_user
+from app.gateway.authz import check_resource_modify, get_current_rbac_user, get_optional_rbac_user
 from ideer.config.agents_api_config import get_agents_api_config
 from ideer.config.agents_config import AgentConfig, list_custom_agents, load_agent_config, load_agent_soul
 from ideer.config.paths import get_paths
@@ -33,29 +33,12 @@ VALID_ROLES = tuple(UserRole)
 def _check_resource_modify(resource_owner_id: str | None, resource_department_id: str | None, current_user: UserModel | None) -> None:
     """Raise 403 if *current_user* is not allowed to modify the resource.
 
-    Rules:
-    - super_admin: always allowed
-    - department_admin: allowed if same department
-    - user: allowed only if they own the resource
-    - No user context (auth disabled): always allowed
+    Delegates to authz.check_resource_modify for consistent RBAC rules.
     """
     if current_user is None:
-        return  # auth not wired — allow everything
-
-    if current_user.role == UserRole.SUPER_ADMIN:
-        return
-
-    if current_user.role == UserRole.DEPARTMENT_ADMIN:
-        if resource_department_id and resource_department_id == current_user.department_id:
-            return
-        if resource_owner_id and resource_owner_id == current_user.id:
-            return
-        raise HTTPException(status_code=403, detail="Department admins can only modify resources in their own department")
-
-    # Regular user
-    if resource_owner_id and resource_owner_id == current_user.id:
-        return
-    raise HTTPException(status_code=403, detail="You can only modify your own resources")
+        raise HTTPException(status_code=401, detail="Authentication required")
+    if not check_resource_modify(current_user, resource_owner_id, resource_department_id):
+        raise HTTPException(status_code=403, detail="You do not have permission to modify this resource")
 
 
 def _can_set_visibility(visibility: str, current_user: UserModel | None) -> bool:
@@ -120,6 +103,7 @@ class AgentUpdateRequest(BaseModel):
     tool_groups: list[str] | None = Field(default=None, description="Updated tool group whitelist")
     skills: list[str] | None = Field(default=None, description="Updated skill whitelist (None=all, []=none)")
     soul: str | None = Field(default=None, description="Updated SOUL.md content")
+    visibility: str | None = Field(default=None, description="Updated visibility: private, department, or public")
 
 
 def _validate_agent_name(name: str) -> None:
@@ -185,10 +169,13 @@ def _save_agent_meta(agent_name: str, user_id: str, meta: dict) -> None:
 def _is_visible_to_user(visibility: str, owner_id: str | None, department_id: str | None, current_user: UserModel) -> bool:
     """Check whether an agent with the given visibility is visible to *current_user*.
 
-    Visibility rules:
-    - private: only the owner
-    - department: same department members + owner
-    - public: everyone
+    Visibility rules (consistent with authz.check_resource_access):
+    - public: everyone can access
+    - super_admin: always allowed
+    - owner: always allowed for own resources
+    - department: same department members can access
+    - department_admin: can access resources in own department (regardless of visibility)
+    - private: only owner and super_admin
     """
     if visibility == "public":
         return True
@@ -197,6 +184,10 @@ def _is_visible_to_user(visibility: str, owner_id: str | None, department_id: st
     if owner_id and owner_id == current_user.id:
         return True
     if visibility == "department":
+        if current_user.department_id and department_id and current_user.department_id == department_id:
+            return True
+    # department_admin: can access resources in their own department
+    if current_user.role == UserRole.DEPARTMENT_ADMIN:
         if current_user.department_id and department_id and current_user.department_id == department_id:
             return True
     return False
@@ -256,14 +247,26 @@ async def list_agents(
         # Build response with RBAC metadata
         responses: list[AgentResponse] = []
         for a in agents:
-            # Load agent metadata for visibility filtering
-            meta = _load_agent_meta(a.name, user_id)
-            visibility = meta.get("visibility", "private")
-            owner_id = meta.get("owner_id")
-            dept_id = meta.get("department_id")
+            # BUG-07: Check if agent is shared-only (exists in template dir but not user dir).
+            # Shared agents are treated as public visibility regardless of metadata.
+            is_shared = _is_shared_only(a.name, user_id)
+            if is_shared:
+                visibility = "public"
+                owner_id = None
+                dept_id = None
+            else:
+                # Load agent metadata for visibility filtering
+                meta = _load_agent_meta(a.name, user_id)
+                # Default to 'private' when no metadata exists (secure-by-default for pre-RBAC agents)
+                visibility = meta.get("visibility", "private")
+                owner_id = meta.get("owner_id")
+                dept_id = meta.get("department_id")
 
-            # Filter by visibility when auth is active
-            if current_user is not None and not _is_visible_to_user(visibility, owner_id, dept_id, current_user):
+            # Filter by visibility
+            if current_user is not None:
+                if not _is_visible_to_user(visibility, owner_id, dept_id, current_user):
+                    continue
+            elif visibility != "public":
                 continue
 
             responses.append(
@@ -281,7 +284,7 @@ async def list_agents(
         return AgentsListResponse(agents=responses)
     except Exception as e:
         logger.error(f"Failed to list agents: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to list agents: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get(
@@ -289,7 +292,7 @@ async def list_agents(
     summary="Check Agent Name",
     description="Validate an agent name and check if it is available (case-insensitive).",
 )
-async def check_agent_name(name: str) -> dict:
+async def check_agent_name(name: str, current_user: UserModel | None = Depends(get_optional_rbac_user)) -> dict:
     """Check whether an agent name is valid and not yet taken.
 
     Args:
@@ -319,7 +322,10 @@ async def check_agent_name(name: str) -> dict:
     summary="Get Custom Agent",
     description="Retrieve details and SOUL.md content for a specific custom agent.",
 )
-async def get_agent(name: str) -> AgentResponse:
+async def get_agent(
+    name: str,
+    current_user: UserModel | None = Depends(get_optional_rbac_user),
+) -> AgentResponse:
     """Get a specific custom agent by name.
 
     Args:
@@ -329,7 +335,7 @@ async def get_agent(name: str) -> AgentResponse:
         Agent details including SOUL.md content.
 
     Raises:
-        HTTPException: 404 if agent not found.
+        HTTPException: 404 if agent not found or not visible to user.
     """
     _require_agents_api_enabled()
     _validate_agent_name(name)
@@ -338,21 +344,42 @@ async def get_agent(name: str) -> AgentResponse:
 
     try:
         agent_cfg = load_agent_config(name, user_id=user_id)
-        meta = _load_agent_meta(name, user_id)
+
+        # BUG-20: Shared agents are treated as public
+        is_shared = _is_shared_only(name, user_id)
+        if is_shared:
+            visibility = "public"
+            owner_id = None
+            department_id = None
+        else:
+            meta = _load_agent_meta(name, user_id)
+            visibility = meta.get("visibility", "private")
+            owner_id = meta.get("owner_id")
+            department_id = meta.get("department_id")
+
+        # Check visibility
+        if current_user is not None:
+            if not _is_visible_to_user(visibility, owner_id, department_id, current_user):
+                raise HTTPException(status_code=404, detail=f"Agent '{name}' not found")
+        elif visibility != "public":
+            raise HTTPException(status_code=404, detail=f"Agent '{name}' not found")
+
         return _agent_config_to_response(
             agent_cfg,
             include_soul=True,
             user_id=user_id,
-            read_only=_is_shared_only(name, user_id),
-            visibility=meta.get("visibility", "private"),
-            owner_id=meta.get("owner_id"),
-            department_id=meta.get("department_id"),
+            read_only=is_shared,
+            visibility=visibility,
+            owner_id=owner_id,
+            department_id=department_id,
         )
+    except HTTPException:
+        raise
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"Agent '{name}' not found")
     except Exception as e:
         logger.error(f"Failed to get agent '{name}': {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to get agent: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post(
@@ -364,7 +391,7 @@ async def get_agent(name: str) -> AgentResponse:
 )
 async def create_agent_endpoint(
     request: AgentCreateRequest,
-    current_user: UserModel | None = Depends(get_optional_rbac_user),
+    current_user: UserModel = Depends(get_current_rbac_user),
 ) -> AgentResponse:
     """Create a new custom agent.
 
@@ -393,12 +420,16 @@ async def create_agent_endpoint(
     agent_dir = paths.user_agent_dir(user_id, normalized_name)
     legacy_dir = paths.agent_dir(normalized_name)
 
-    if agent_dir.exists() or legacy_dir.exists():
+    if legacy_dir.exists():
         raise HTTPException(status_code=409, detail=f"Agent '{normalized_name}' already exists")
 
     try:
-        agent_dir.mkdir(parents=True, exist_ok=True)
+        # Use exist_ok=False to prevent TOCTOU race on concurrent creation
+        agent_dir.mkdir(parents=True, exist_ok=False)
+    except FileExistsError:
+        raise HTTPException(status_code=409, detail=f"Agent '{normalized_name}' already exists")
 
+    try:
         # Write config.yaml
         config_data: dict = {"name": normalized_name}
         if request.description:
@@ -449,7 +480,7 @@ async def create_agent_endpoint(
         if agent_dir.exists():
             shutil.rmtree(agent_dir)
         logger.error(f"Failed to create agent '{request.name}': {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to create agent: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.put(
@@ -461,7 +492,7 @@ async def create_agent_endpoint(
 async def update_agent(
     name: str,
     request: AgentUpdateRequest,
-    current_user: UserModel | None = Depends(get_optional_rbac_user),
+    current_user: UserModel = Depends(get_current_rbac_user),
 ) -> AgentResponse:
     """Update an existing custom agent.
 
@@ -497,7 +528,18 @@ async def update_agent(
     meta = _load_agent_meta(name, user_id)
     _check_resource_modify(meta.get("owner_id"), meta.get("department_id"), current_user)
 
+    # BUG-22: Validate visibility change permissions
+    if request.visibility is not None and request.visibility != meta.get("visibility", "private"):
+        if not _can_set_visibility(request.visibility, current_user):
+            raise HTTPException(
+                status_code=403,
+                detail=f"Your role does not have permission to set visibility to '{request.visibility}'",
+            )
+
     try:
+        # Ensure user directory exists before writing files
+        agent_dir.mkdir(parents=True, exist_ok=True)
+
         # Update config if any config fields changed
         # Use model_fields_set to distinguish "field omitted" from "explicitly set to null".
         # This is critical for skills where None means "inherit all" (not "don't change").
@@ -536,6 +578,11 @@ async def update_agent(
 
         logger.info(f"Updated agent '{name}'")
 
+        # BUG-22: Persist visibility change to metadata
+        if request.visibility is not None and request.visibility != meta.get("visibility", "private"):
+            meta["visibility"] = request.visibility
+            _save_agent_meta(name, user_id, meta)
+
         refreshed_cfg = load_agent_config(name, user_id=user_id)
         meta = _load_agent_meta(name, user_id)
         return _agent_config_to_response(
@@ -552,7 +599,7 @@ async def update_agent(
         raise
     except Exception as e:
         logger.error(f"Failed to update agent '{name}': {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to update agent: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 class UserProfileResponse(BaseModel):
@@ -573,7 +620,7 @@ class UserProfileUpdateRequest(BaseModel):
     summary="Get User Profile",
     description="Read the global USER.md file that is injected into all custom agents.",
 )
-async def get_user_profile() -> UserProfileResponse:
+async def get_user_profile(current_user: UserModel = Depends(get_current_rbac_user)) -> UserProfileResponse:
     """Return the current USER.md content.
 
     Returns:
@@ -589,7 +636,7 @@ async def get_user_profile() -> UserProfileResponse:
         return UserProfileResponse(content=raw or None)
     except Exception as e:
         logger.error(f"Failed to read user profile: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to read user profile: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.put(
@@ -598,7 +645,7 @@ async def get_user_profile() -> UserProfileResponse:
     summary="Update User Profile",
     description="Write the global USER.md file that is injected into all custom agents.",
 )
-async def update_user_profile(request: UserProfileUpdateRequest) -> UserProfileResponse:
+async def update_user_profile(request: UserProfileUpdateRequest, current_user: UserModel = Depends(get_current_rbac_user)) -> UserProfileResponse:
     """Create or overwrite the global USER.md.
 
     Args:
@@ -617,7 +664,7 @@ async def update_user_profile(request: UserProfileUpdateRequest) -> UserProfileR
         return UserProfileResponse(content=request.content or None)
     except Exception as e:
         logger.error(f"Failed to update user profile: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to update user profile: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.delete(
@@ -628,7 +675,7 @@ async def update_user_profile(request: UserProfileUpdateRequest) -> UserProfileR
 )
 async def delete_agent(
     name: str,
-    current_user: UserModel | None = Depends(get_optional_rbac_user),
+    current_user: UserModel = Depends(get_current_rbac_user),
 ) -> None:
     """Delete a custom agent.
 
@@ -663,7 +710,7 @@ async def delete_agent(
         logger.info(f"Deleted agent '{name}' from {agent_dir}")
     except Exception as e:
         logger.error(f"Failed to delete agent '{name}': {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to delete agent: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 # ---------------------------------------------------------------------------
@@ -710,7 +757,10 @@ class AgentStatsResponse(BaseModel):
     summary="Export Custom Agent",
     description="Export an agent's config, SOUL.md, and metadata as a JSON bundle.",
 )
-async def export_agent(name: str) -> AgentExportResponse:
+async def export_agent(
+    name: str,
+    current_user: UserModel | None = Depends(get_optional_rbac_user),
+) -> AgentExportResponse:
     """Export a custom agent for sharing or backup.
 
     Args:
@@ -729,7 +779,26 @@ async def export_agent(name: str) -> AgentExportResponse:
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"Agent '{name}' not found")
 
-    meta = _load_agent_meta(name, user_id)
+    # BUG-20: Shared agents are treated as public
+    is_shared = _is_shared_only(name, user_id)
+    if is_shared:
+        visibility = "public"
+        owner_id = None
+        department_id = None
+        meta = {}
+    else:
+        meta = _load_agent_meta(name, user_id)
+        visibility = meta.get("visibility", "private")
+        owner_id = meta.get("owner_id")
+        department_id = meta.get("department_id")
+
+    # Check visibility
+    if current_user is not None:
+        if not _is_visible_to_user(visibility, owner_id, department_id, current_user):
+            raise HTTPException(status_code=404, detail=f"Agent '{name}' not found")
+    elif visibility != "public":
+        raise HTTPException(status_code=404, detail=f"Agent '{name}' not found")
+
     soul = load_agent_soul(name, user_id=user_id) or ""
 
     config_dict: dict = {
@@ -760,7 +829,7 @@ async def export_agent(name: str) -> AgentExportResponse:
 )
 async def import_agent(
     request: AgentImportRequest,
-    current_user: UserModel | None = Depends(get_optional_rbac_user),
+    current_user: UserModel = Depends(get_current_rbac_user),
 ) -> AgentResponse:
     """Import a custom agent from an export bundle.
 
@@ -786,12 +855,16 @@ async def import_agent(
     agent_dir = paths.user_agent_dir(user_id, normalized_name)
     legacy_dir = paths.agent_dir(normalized_name)
 
-    if agent_dir.exists() or legacy_dir.exists():
+    if legacy_dir.exists():
         raise HTTPException(status_code=409, detail=f"Agent '{normalized_name}' already exists")
 
     try:
-        agent_dir.mkdir(parents=True, exist_ok=True)
+        # Use exist_ok=False to prevent TOCTOU race on concurrent creation
+        agent_dir.mkdir(parents=True, exist_ok=False)
+    except FileExistsError:
+        raise HTTPException(status_code=409, detail=f"Agent '{normalized_name}' already exists")
 
+    try:
         # Write config.yaml from the imported config dict
         config_data: dict = {"name": normalized_name}
         for key in ("description", "model", "tool_groups", "skills"):
@@ -837,7 +910,7 @@ async def import_agent(
         if agent_dir.exists():
             shutil.rmtree(agent_dir)
         logger.error(f"Failed to import agent '{request.name}': {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to import agent: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get(
@@ -846,7 +919,10 @@ async def import_agent(
     summary="Get Agent Statistics",
     description="Get statistics and metadata for a custom agent.",
 )
-async def get_agent_stats(name: str) -> AgentStatsResponse:
+async def get_agent_stats(
+    name: str,
+    current_user: UserModel | None = Depends(get_optional_rbac_user),
+) -> AgentStatsResponse:
     """Get statistics for a custom agent.
 
     Args:
@@ -865,7 +941,26 @@ async def get_agent_stats(name: str) -> AgentStatsResponse:
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"Agent '{name}' not found")
 
-    meta = _load_agent_meta(name, user_id)
+    # BUG-20: Shared agents are treated as public
+    is_shared = _is_shared_only(name, user_id)
+    if is_shared:
+        visibility = "public"
+        owner_id = None
+        department_id = None
+        meta = {}
+    else:
+        meta = _load_agent_meta(name, user_id)
+        visibility = meta.get("visibility", "private")
+        owner_id = meta.get("owner_id")
+        department_id = meta.get("department_id")
+
+    # Check visibility
+    if current_user is not None:
+        if not _is_visible_to_user(visibility, owner_id, department_id, current_user):
+            raise HTTPException(status_code=404, detail=f"Agent '{name}' not found")
+    elif visibility != "public":
+        raise HTTPException(status_code=404, detail=f"Agent '{name}' not found")
+
     soul = load_agent_soul(name, user_id=user_id)
 
     # Query real run/message stats from the database
@@ -886,10 +981,11 @@ async def get_agent_stats(name: str) -> AgentStatsResponse:
                 msg_count_stmt = select(func.count()).select_from(RunEventRow).join(RunRow, RunRow.run_id == RunEventRow.run_id).where(RunRow.graph_id == name, RunEventRow.category == "message")
                 total_messages = (await session.execute(msg_count_stmt)).scalar() or 0
         except Exception:
-            logger.debug("Could not query run stats for agent %s", name, exc_info=True)
+            logger.warning("Could not query run stats for agent %s", name, exc_info=True)
 
     return AgentStatsResponse(
         name=name,
+        # Default to 'private' when no metadata exists (secure-by-default for pre-RBAC agents)
         visibility=meta.get("visibility", "private"),
         owner_id=meta.get("owner_id"),
         department_id=meta.get("department_id"),

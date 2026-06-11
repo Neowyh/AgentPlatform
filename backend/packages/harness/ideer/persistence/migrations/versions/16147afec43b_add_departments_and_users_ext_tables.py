@@ -26,22 +26,22 @@ def upgrade() -> None:
     """
     op.create_table(
         "departments",
-        sa.Column("id", sa.String(), nullable=False),
-        sa.Column("name", sa.String(), nullable=False),
-        sa.Column("description", sa.String(), nullable=True),
-        sa.Column("created_at", sa.DateTime(), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=True),
+        sa.Column("id", sa.String(length=36), nullable=False),
+        sa.Column("name", sa.String(length=128), nullable=False),
+        sa.Column("description", sa.String(length=512), nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=True),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("name"),
     )
 
     op.create_table(
         "users_ext",
-        sa.Column("id", sa.String(), nullable=False),
-        sa.Column("username", sa.String(), nullable=False),
-        sa.Column("role", sa.String(), nullable=True),
-        sa.Column("department_id", sa.String(), nullable=True),
-        sa.Column("created_at", sa.DateTime(), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=True),
-        sa.Column("last_login", sa.DateTime(), nullable=True),
+        sa.Column("id", sa.String(length=36), nullable=False),
+        sa.Column("username", sa.String(length=128), nullable=False),
+        sa.Column("role", sa.String(length=32), nullable=True),
+        sa.Column("department_id", sa.String(length=36), nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=True),
+        sa.Column("last_login", sa.DateTime(timezone=True), nullable=True),
         sa.ForeignKeyConstraint(["department_id"], ["departments.id"]),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("username"),

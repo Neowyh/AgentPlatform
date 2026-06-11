@@ -19,6 +19,10 @@ export const DEFAULT_LOCAL_SETTINGS: LocalSettings = {
 export const LOCAL_SETTINGS_KEY = "ideer.local-settings";
 export const THREAD_MODEL_KEY_PREFIX = "ideer.thread-model.";
 
+// Legacy keys from before the rebrand (deer-flow → iDeer)
+const LEGACY_LOCAL_SETTINGS_KEY = "deerflow.local-settings";
+const LEGACY_THREAD_MODEL_KEY_PREFIX = "deerflow.thread-model.";
+
 function isBrowser(): boolean {
   return typeof window !== "undefined";
 }
@@ -72,7 +76,22 @@ export function getThreadModelName(threadId: string): string | undefined {
   if (!isBrowser()) {
     return undefined;
   }
-  return localStorage.getItem(getThreadModelStorageKey(threadId)) ?? undefined;
+  const key = getThreadModelStorageKey(threadId);
+  let value = localStorage.getItem(key);
+  // Migrate from legacy key if new key is empty
+  if (value === null) {
+    const legacyKey = `${LEGACY_THREAD_MODEL_KEY_PREFIX}${threadId}`;
+    value = localStorage.getItem(legacyKey);
+    if (value !== null) {
+      try {
+        localStorage.setItem(key, value);
+        localStorage.removeItem(legacyKey);
+      } catch {
+        // QuotaExceededError or other storage error — use legacy value directly
+      }
+    }
+  }
+  return value ?? undefined;
 }
 
 export function saveThreadModelName(
@@ -110,7 +129,19 @@ export function getLocalSettings(): LocalSettings {
   if (!isBrowser()) {
     return DEFAULT_LOCAL_SETTINGS;
   }
-  const json = localStorage.getItem(LOCAL_SETTINGS_KEY);
+  let json = localStorage.getItem(LOCAL_SETTINGS_KEY);
+  // Migrate from legacy key if new key is empty
+  if (json === null) {
+    json = localStorage.getItem(LEGACY_LOCAL_SETTINGS_KEY);
+    if (json !== null) {
+      try {
+        localStorage.setItem(LOCAL_SETTINGS_KEY, json);
+        localStorage.removeItem(LEGACY_LOCAL_SETTINGS_KEY);
+      } catch {
+        // QuotaExceededError or other storage error — use legacy value directly
+      }
+    }
+  }
   try {
     if (json) {
       const settings = JSON.parse(json) as Partial<LocalSettings>;

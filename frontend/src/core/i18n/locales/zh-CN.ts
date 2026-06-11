@@ -230,6 +230,10 @@ export const zhCN: Translations = {
     contactUs: "联系我们",
     about: "关于 iDeer",
     logout: "退出登录",
+    adminPanel: "管理后台",
+    userManagement: "用户管理",
+    departmentManagement: "部门管理",
+    toolManagement: "工具管理",
   },
 
   // Conversation

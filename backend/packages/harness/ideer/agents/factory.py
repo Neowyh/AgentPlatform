@@ -289,10 +289,13 @@ def _assemble_from_features(
     # --- Insert extra_middleware via @Next/@Prev ---
     if extra_middleware:
         _insert_extra(chain, extra_middleware)
-        # Invariant: ClarificationMiddleware must always be last.
-        # @Next(ClarificationMiddleware) could push it off the tail.
-        clar_idx = next(i for i, m in enumerate(chain) if isinstance(m, ClarificationMiddleware))
-        if clar_idx != len(chain) - 1:
+        # P2-RUNTIME-06: Invariant — all ClarificationMiddleware instances
+        # must be at the end.  @Next(ClarificationMiddleware) could push
+        # one off the tail.  Use a loop to handle multiple instances.
+        while True:
+            clar_idx = next((i for i, m in enumerate(chain) if isinstance(m, ClarificationMiddleware)), None)
+            if clar_idx is None or clar_idx == len(chain) - 1:
+                break
             chain.append(chain.pop(clar_idx))
 
     return chain, extra_tools

@@ -69,6 +69,15 @@ export default function WorkflowDetailPage() {
   }
 
   async function handleRun() {
+    if (!workflow) return;
+    // Validate required inputs
+    for (const [key, param] of Object.entries(workflow.inputs)) {
+      if (param.required && !inputValues[key]?.trim()) {
+        toast.error(`Required input "${key}" is missing`);
+        return;
+      }
+    }
+
     const inputs: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(inputValues)) {
       if (value.trim()) {
@@ -132,7 +141,9 @@ export default function WorkflowDetailPage() {
         <div className="flex items-center gap-2">
           <Badge variant="secondary">v{workflow.version}</Badge>
           <Button variant="outline" asChild>
-            <Link href={`/workspace/workflows/${workflow_name}/edit`}>
+            <Link
+              href={`/workspace/workflows/${encodeURIComponent(workflow_name)}/edit`}
+            >
               <EditIcon className="mr-1.5 h-4 w-4" />
               Edit
             </Link>

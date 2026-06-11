@@ -34,7 +34,7 @@ if _skip_reason:
 @pytest.fixture(scope="module")
 def client():
     """Create a real IDeerClient (no mocks)."""
-    return IDeerClient(thinking_enabled=False)
+    return IDeerClient(model_name="mimo", thinking_enabled=False)
 
 
 @pytest.fixture

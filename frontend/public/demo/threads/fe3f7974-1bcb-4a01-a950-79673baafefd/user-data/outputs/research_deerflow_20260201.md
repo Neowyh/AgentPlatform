@@ -128,7 +128,7 @@ Open Issues: 196 (ongoing maintenance and feature development)
 
 ### Feature Comparison
 
-| Feature                  | iDeer        | OpenAI Deep Research | LangChain OpenDeepResearch |
+| Feature                  | iDeer           | OpenAI Deep Research | LangChain OpenDeepResearch |
 | ------------------------ | --------------- | -------------------- | -------------------------- |
 | Multi-Agent Architecture | ✅              | ❌                   | ✅                         |
 | Local LLM Support        | ✅              | ❌                   | ✅                         |

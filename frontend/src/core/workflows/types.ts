@@ -5,16 +5,44 @@ export interface InputParam {
   description: string;
 }
 
+export interface RetryPolicy {
+  max: number;
+  backoff: number;
+  on_errors: string[];
+}
+
 export interface StepDef {
   id: string;
   type: string;
+
+  // agent step
   agent?: string;
-  tool?: string;
   prompt?: string;
+
+  // tool step
+  tool?: string;
   params?: Record<string, unknown>;
-  depends_on?: string[];
-  retries?: number;
+
+  // human_review step
+  message?: string;
+  input_schema?: Record<string, unknown>;
+  approvers?: string[];
+
+  // condition step
+  expression?: string;
+  then?: string | StepDef;
+  else?: string | StepDef;
+
+  // parallel / loop
+  steps?: StepDef[];
+  items?: string;
+  max_iterations?: number;
+
+  // common
+  condition?: string;
   timeout?: number;
+  retry?: RetryPolicy;
+  on_error?: string;
 }
 
 export interface WorkflowSummary {

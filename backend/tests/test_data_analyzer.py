@@ -90,3 +90,21 @@ def test_describe_contains_statistics():
         assert "mean" in res["numeric_summary"] or "count" in res["numeric_summary"]
     finally:
         os.unlink(tmp_path)
+
+
+# ── Path security ────────────────────────────────────────────────────
+
+
+def test_path_outside_allowed_prefix_rejected():
+    """Reading /etc/passwd should be rejected by path validation."""
+    result = data_analyzer_tool.invoke({"file_path": "/etc/passwd"})
+    data = json.loads(result)
+    assert "error" in data
+    assert "access denied" in data["error"].lower()
+
+
+def test_path_traversal_rejected():
+    """Path traversal attempting to escape allowed prefix should be rejected."""
+    result = data_analyzer_tool.invoke({"file_path": "/mnt/user-data/../../../etc/shadow"})
+    data = json.loads(result)
+    assert "error" in data

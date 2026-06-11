@@ -503,9 +503,15 @@ class LocalContainerBackend(SandboxBackend):
         """
         cmd = [self._runtime, "run"]
 
-        # Docker-specific security options
-        if self._runtime == "docker":
-            cmd.extend(["--security-opt", "seccomp=unconfined"])
+        # P2-TOOL-03: Use Docker's default seccomp profile instead of
+        # unconfined. The default profile blocks ~44 dangerous syscalls
+        # while allowing everything a typical application needs.
+        # If a custom profile is needed, set IDEER_SECCOMP_PROFILE env var.
+        import os
+
+        seccomp_profile = os.environ.get("IDEER_SECCOMP_PROFILE")
+        if self._runtime == "docker" and seccomp_profile:
+            cmd.extend(["--security-opt", f"seccomp={seccomp_profile}"])
 
         if self._runtime == "docker":
             port_mapping = f"{_resolve_docker_bind_host()}:{port}:8080"

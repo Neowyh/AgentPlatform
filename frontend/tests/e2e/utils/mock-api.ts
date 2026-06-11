@@ -33,6 +33,11 @@ export type MockAgent = {
   name: string;
   description?: string;
   system_prompt?: string;
+  model?: string | null;
+  tool_groups?: string[] | null;
+  skills?: string[] | null;
+  soul?: string | null;
+  read_only?: boolean;
 };
 
 export type MockArtifact = {
@@ -41,10 +46,69 @@ export type MockArtifact = {
   headers?: Record<string, string>;
 };
 
+export type MockWorkflow = {
+  name: string;
+  description?: string;
+  version?: string;
+  yaml_content?: string;
+  steps?: { id: string; type: string; agent?: string; prompt?: string }[];
+  inputs?: Record<
+    string,
+    {
+      type: string;
+      required?: boolean;
+      default?: unknown;
+      description?: string;
+    }
+  >;
+};
+
+export type MockSkill = {
+  name: string;
+  description?: string;
+  category: "public" | "custom";
+  license?: string | null;
+  enabled: boolean;
+};
+
+export type MockUser = {
+  id: string;
+  username: string;
+  email?: string;
+  department_id?: string | null;
+  department_name?: string;
+  role: string;
+  disabled?: boolean;
+  created_at?: string;
+  last_login?: string;
+};
+
+export type MockDepartment = {
+  id: string;
+  name: string;
+  description?: string;
+  member_count?: number;
+  agent_count?: number;
+  skill_count?: number;
+  created_at?: string;
+};
+
+export type MockTool = {
+  name: string;
+  group?: string;
+  description?: string;
+  requires_network?: boolean;
+};
+
 export type MockAPIOptions = {
   threads?: MockThread[];
   agents?: MockAgent[];
   artifacts?: Record<string, MockArtifact>;
+  workflows?: MockWorkflow[];
+  skills?: MockSkill[];
+  users?: MockUser[];
+  departments?: MockDepartment[];
+  tools?: MockTool[];
 };
 
 function normalizeArtifactPath(filepath: string) {
@@ -89,6 +153,11 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
   const threads = options?.threads ?? [];
   const agents = options?.agents ?? [];
   const artifacts = options?.artifacts ?? {};
+  const workflows = options?.workflows ?? [];
+  const skills = options?.skills ?? [];
+  const users = options?.users ?? [];
+  const departments = options?.departments ?? [];
+  const tools = options?.tools ?? [];
 
   // Thread search — sidebar thread list & chats list page
   void page.route(
@@ -145,63 +214,22 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
   );
 
   // Thread history — useStream fetches state history on mount
-  void page.route("**/api/langgraph/threads/*/history", (route) => {
-    const url = route.request().url();
-
-    // For threads that exist in our mock data, return history with messages
-    const matchingThread = threads.find((t) => url.includes(t.thread_id));
-    if (matchingThread) {
-      return route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify([
-          {
-            values: {
-              title: matchingThread.title ?? "Untitled",
-              messages: matchingThread.messages ?? [
-                {
-                  type: "human",
-                  id: `msg-human-${matchingThread.thread_id}`,
-                  content: [{ type: "text", text: "Previous question" }],
-                },
-                {
-                  type: "ai",
-                  id: `msg-ai-${matchingThread.thread_id}`,
-                  content: `Response in thread ${matchingThread.title ?? matchingThread.thread_id}`,
-                },
-              ],
-              artifacts: matchingThread.artifacts ?? [],
-            },
-            next: [],
-            metadata: {},
-            created_at: "2025-01-01T00:00:00Z",
-            parent_config: null,
-          },
-        ]),
-      });
-    }
-
-    // New threads — empty history
-    return route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: "[]",
-    });
-  });
-
-  // Thread state — getState for individual thread
-  void page.route("**/api/langgraph/threads/*/state", (route) => {
-    if (route.request().method() === "GET") {
+  void page.route(
+    /\/(?:api\/langgraph|mock\/api)\/threads\/[^/]+\/history$/,
+    (route) => {
       const url = route.request().url();
+
+      // For threads that exist in our mock data, return history with messages
       const matchingThread = threads.find((t) => url.includes(t.thread_id));
-      return route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          values: {
-            title: matchingThread?.title ?? "Untitled",
-            messages: matchingThread
-              ? (matchingThread.messages ?? [
+      if (matchingThread) {
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify([
+            {
+              values: {
+                title: matchingThread.title ?? "Untitled",
+                messages: matchingThread.messages ?? [
                   {
                     type: "human",
                     id: `msg-human-${matchingThread.thread_id}`,
@@ -212,18 +240,65 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
                     id: `msg-ai-${matchingThread.thread_id}`,
                     content: `Response in thread ${matchingThread.title ?? matchingThread.thread_id}`,
                   },
-                ])
-              : [],
-            artifacts: matchingThread?.artifacts ?? [],
-          },
-          next: [],
-          metadata: {},
-          created_at: "2025-01-01T00:00:00Z",
-        }),
+                ],
+                artifacts: matchingThread.artifacts ?? [],
+              },
+              next: [],
+              metadata: {},
+              created_at: "2025-01-01T00:00:00Z",
+              parent_config: null,
+            },
+          ]),
+        });
+      }
+
+      // New threads — empty history
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: "[]",
       });
-    }
-    return route.fallback();
-  });
+    },
+  );
+
+  // Thread state — getState for individual thread
+  void page.route(
+    /\/(?:api\/langgraph|mock\/api)\/threads\/[^/]+\/state$/,
+    (route) => {
+      if (route.request().method() === "GET") {
+        const url = route.request().url();
+        const matchingThread = threads.find((t) => url.includes(t.thread_id));
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            values: {
+              title: matchingThread?.title ?? "Untitled",
+              messages: matchingThread
+                ? (matchingThread.messages ?? [
+                    {
+                      type: "human",
+                      id: `msg-human-${matchingThread.thread_id}`,
+                      content: [{ type: "text", text: "Previous question" }],
+                    },
+                    {
+                      type: "ai",
+                      id: `msg-ai-${matchingThread.thread_id}`,
+                      content: `Response in thread ${matchingThread.title ?? matchingThread.thread_id}`,
+                    },
+                  ])
+                : [],
+              artifacts: matchingThread?.artifacts ?? [],
+            },
+            next: [],
+            metadata: {},
+            created_at: "2025-01-01T00:00:00Z",
+          }),
+        });
+      }
+      return route.fallback();
+    },
+  );
 
   // The URL carries a query string (e.g. `?limit=10&offset=0`), which Playwright
   // glob `*` does NOT cross, so we match with a regex anchored to `/runs`
@@ -344,10 +419,51 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
     return route.fallback();
   });
 
-  // Individual agent — agent chat page
-  void page.route("**/api/agents/*", (route) => {
+  // Individual agent — agent chat page, CRUD, export/import
+  void page.route(/\/api\/agents\/check/, (route) => {
     if (route.request().method() === "GET") {
-      const url = route.request().url();
+      const url = new URL(route.request().url());
+      const name = url.searchParams.get("name") ?? "";
+      const exists = agents.some((a) => a.name === name);
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ available: !exists, name }),
+      });
+    }
+    return route.fallback();
+  });
+
+  void page.route("**/api/agents/import", (route) => {
+    if (route.request().method() === "POST") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          name: "imported-agent",
+          description: "An imported agent",
+        }),
+      });
+    }
+    return route.fallback();
+  });
+
+  void page.route("**/api/agents/*", (route) => {
+    const method = route.request().method();
+    const url = route.request().url();
+
+    if (method === "GET") {
+      // Export endpoint
+      if (url.includes("/export")) {
+        return route.fulfill({
+          status: 200,
+          contentType: "application/zip",
+          headers: {
+            "Content-Disposition": 'attachment; filename="agent.zip"',
+          },
+          body: Buffer.from("fake-zip-content"),
+        });
+      }
       const agent = agents.find((a) => url.endsWith(`/api/agents/${a.name}`));
       if (agent) {
         return route.fulfill({
@@ -357,11 +473,358 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
         });
       }
     }
+
+    if (method === "PUT") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ name: "updated-agent", description: "Updated" }),
+      });
+    }
+
+    if (method === "DELETE") {
+      return route.fulfill({ status: 204 });
+    }
+
     return route.fulfill({
       status: 404,
       contentType: "application/json",
       body: JSON.stringify({ detail: "Agent not found" }),
     });
+  });
+
+  // ── Workflow CRUD + Run ─────────────────────────────────────────
+
+  void page.route("**/api/workflows", (route) => {
+    const method = route.request().method();
+    if (method === "GET") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ workflows, total: workflows.length }),
+      });
+    }
+    if (method === "POST") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          name: "new-workflow",
+          description: "",
+          version: "1.0",
+          steps_count: 1,
+          inputs: {},
+        }),
+      });
+    }
+    return route.fallback();
+  });
+
+  void page.route("**/api/workflows/*/runs/*", (route) => {
+    const method = route.request().method();
+    const url = route.request().url();
+
+    // Run status polling
+    if (method === "GET" && url.includes("/runs/")) {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          run_id: "mock-run-id",
+          workflow: "test-workflow",
+          status: "completed",
+          current_step: null,
+          error: null,
+          steps: {
+            step1: {
+              status: "completed",
+              output: "done",
+              error: null,
+              retries: 0,
+              started_at: "2025-01-01T00:00:00Z",
+              finished_at: "2025-01-01T00:00:01Z",
+            },
+          },
+        }),
+      });
+    }
+
+    // Submit review
+    if (method === "POST") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ success: true, run_id: "mock-run-id" }),
+      });
+    }
+
+    return route.fallback();
+  });
+
+  void page.route("**/api/workflows/*/run", (route) => {
+    if (route.request().method() === "POST") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          run_id: "mock-run-id",
+          status: "running",
+          workflow: "test-workflow",
+        }),
+      });
+    }
+    return route.fallback();
+  });
+
+  void page.route("**/api/workflows/*", (route) => {
+    const method = route.request().method();
+    const url = route.request().url();
+    const wfName = url
+      .split("/api/workflows/")[1]
+      ?.split("/")[0]
+      ?.split("?")[0];
+    const wf = workflows.find((w) => w.name === wfName);
+
+    if (method === "GET") {
+      if (wf) {
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            name: wf.name,
+            description: wf.description ?? "",
+            version: wf.version ?? "1.0",
+            yaml_content:
+              wf.yaml_content ??
+              `name: ${wf.name}\ndescription: ""\nversion: "1.0"\ninputs: {}\nsteps:\n  - id: step1\n    type: agent\n    agent: ""\n    prompt: ""`,
+            steps: wf.steps ?? [
+              { id: "step1", type: "agent", agent: "", prompt: "" },
+            ],
+            steps_count: (wf.steps ?? []).length || 1,
+            inputs: wf.inputs ?? {},
+          }),
+        });
+      }
+      // Default workflow detail for any name
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          name: wfName ?? "workflow",
+          description: "A workflow",
+          version: "1.0",
+          yaml_content: `name: ${wfName ?? "workflow"}\ndescription: "A workflow"\nversion: "1.0"\ninputs: {}\nsteps:\n  - id: step1\n    type: agent\n    agent: test-agent\n    prompt: "Hello"`,
+          steps: [
+            {
+              id: "step1",
+              type: "agent",
+              agent: "test-agent",
+              prompt: "Hello",
+            },
+          ],
+          steps_count: 1,
+          inputs: {},
+        }),
+      });
+    }
+
+    if (method === "PUT") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          name: wfName ?? "workflow",
+          description: "Updated",
+          version: "1.0",
+          steps_count: 1,
+          inputs: {},
+        }),
+      });
+    }
+
+    if (method === "DELETE") {
+      return route.fulfill({ status: 204 });
+    }
+
+    return route.fallback();
+  });
+
+  // ── Skills ──────────────────────────────────────────────────────
+
+  void page.route("**/api/skills/install", (route) => {
+    if (route.request().method() === "POST") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          success: true,
+          skill_name: "installed-skill",
+          message: "Skill installed successfully",
+        }),
+      });
+    }
+    return route.fallback();
+  });
+
+  void page.route("**/api/skills/*", (route) => {
+    const method = route.request().method();
+    if (method === "PUT") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ name: "updated-skill", enabled: true }),
+      });
+    }
+    return route.fallback();
+  });
+
+  void page.route("**/api/skills", (route) => {
+    if (route.request().method() === "GET") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ skills }),
+      });
+    }
+    return route.fallback();
+  });
+
+  // ── Admin ───────────────────────────────────────────────────────
+
+  void page.route("**/api/admin/stats", (route) => {
+    if (route.request().method() === "GET") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          total_users: users.length || 5,
+          total_departments: departments.length || 2,
+          total_agents: agents.length || 3,
+          total_skills: skills.length || 10,
+        }),
+      });
+    }
+    return route.fallback();
+  });
+
+  void page.route("**/api/admin/users", (route) => {
+    if (route.request().method() === "GET") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          users,
+          total: users.length,
+          limit: 50,
+          offset: 0,
+        }),
+      });
+    }
+    return route.fallback();
+  });
+
+  void page.route("**/api/admin/users/*", (route) => {
+    const method = route.request().method();
+    if (method === "PUT") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          id: "user-1",
+          username: "updated-user",
+          system_role: "user",
+        }),
+      });
+    }
+    return route.fallback();
+  });
+
+  void page.route("**/api/admin/departments", (route) => {
+    const method = route.request().method();
+    if (method === "GET") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ departments, total: departments.length }),
+      });
+    }
+    if (method === "POST") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          id: "new-dept",
+          name: "New Department",
+          description: "",
+          member_count: 0,
+        }),
+      });
+    }
+    return route.fallback();
+  });
+
+  void page.route("**/api/admin/departments/*", (route) => {
+    const method = route.request().method();
+    if (method === "PUT") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ id: "dept-1", name: "Updated Dept" }),
+      });
+    }
+    if (method === "DELETE") {
+      return route.fulfill({ status: 204 });
+    }
+    return route.fallback();
+  });
+
+  // ── Tools ───────────────────────────────────────────────────────
+
+  void page.route("**/api/tools/*/test", (route) => {
+    if (route.request().method() === "POST") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ success: true, output: "Test completed" }),
+      });
+    }
+    return route.fallback();
+  });
+
+  void page.route("**/api/tools/*", (route) => {
+    if (route.request().method() === "GET") {
+      const url = route.request().url();
+      const toolName = url.split("/api/tools/")[1]?.split("?")[0];
+      const tool = tools.find((t) => t.name === toolName);
+      if (tool) {
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(tool),
+        });
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          name: toolName ?? "tool",
+          description: "A tool",
+          group: "default",
+        }),
+      });
+    }
+    return route.fallback();
+  });
+
+  void page.route("**/api/tools", (route) => {
+    if (route.request().method() === "GET") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ tools, total: tools.length }),
+      });
+    }
+    return route.fallback();
   });
 }
 

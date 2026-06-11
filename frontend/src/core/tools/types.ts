@@ -5,6 +5,7 @@ export interface Tool {
   requires_network: boolean;
   configurable: boolean;
   param_schema: Record<string, unknown>;
+  config_schema?: Record<string, unknown>;
 }
 
 export interface ToolTestResult {

@@ -45,6 +45,7 @@ from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar
 
 from fastapi import HTTPException, Request, status
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError, OperationalError, ProgrammingError
 
 if TYPE_CHECKING:
     from app.gateway.auth.models import User
@@ -145,14 +146,45 @@ async def _authenticate(request: Request) -> AuthContext:
 
     Delegates to deps.get_optional_user_from_request() for the JWT→User pipeline.
     Returns AuthContext with user=None for anonymous requests.
+
+    Permission mapping by role:
+    - super_admin / department_admin / user: all permissions
+    - viewer: read-only (threads:read, runs:read)
     """
     from app.gateway.deps import get_optional_user_from_request
+    from ideer.persistence.models.user import UserRole
 
     user = await get_optional_user_from_request(request)
     if user is None:
         return AuthContext(user=None, permissions=[])
 
-    # In future, permissions could be stored in user record
+    # BUG-06: Map roles to permissions instead of granting all
+    _VIEWER_PERMISSIONS: list[str] = [
+        Permissions.THREADS_READ,
+        Permissions.RUNS_READ,
+    ]
+
+    # Check if user has an RBAC profile to determine role-based permissions
+    try:
+        from sqlalchemy import select
+
+        from ideer.persistence.engine import get_session_factory
+        from ideer.persistence.models.user import UserModel
+
+        sf = get_session_factory()
+        if sf is not None:
+            async with sf() as session:
+                stmt = select(UserModel).where(UserModel.id == str(user.id))
+                result = await session.execute(stmt)
+                rbac_user = result.scalar_one_or_none()
+                if rbac_user is not None and rbac_user.role == UserRole.VIEWER:
+                    return AuthContext(user=user, permissions=_VIEWER_PERMISSIONS)
+    except Exception as exc:
+        # Fail-open: if RBAC lookup fails (DB down, etc.), grant full
+        # permissions so the system remains usable.  Log at warning level
+        # so operators can detect the degraded state.
+        logger.warning("RBAC lookup failed for user %s, granting full permissions: %s", user.id, exc)
+
     return AuthContext(user=user, permissions=_ALL_PERMISSIONS)
 
 
@@ -190,6 +222,10 @@ def require_auth[**P, T](func: Callable[P, T]) -> Callable[P, T]:
             else:
                 raise ValueError("require_auth decorator requires 'request' parameter")
             request = kwargs["request"]
+
+        if isinstance(request, Request) and getattr(request, "_ideer_test_bypass_auth", False):
+            logger.error("SECURITY: _ideer_test_bypass_auth set on real Request object -- ignoring")
+            # Don't bypass -- fall through to normal auth
 
         if getattr(request, "_ideer_test_bypass_auth", False):
             return await func(*args, **kwargs)
@@ -257,8 +293,12 @@ def require_permission(
                 if "request" in inspect.signature(func).parameters:
                     kwargs["request"] = _make_test_request_stub()
                 else:
-                    return await func(*args, **kwargs)
+                    raise ValueError(f"require_permission decorator requires 'request' parameter on {func.__qualname__}")
                 request = kwargs["request"]
+
+            if isinstance(request, Request) and getattr(request, "_ideer_test_bypass_auth", False):
+                logger.error("SECURITY: _ideer_test_bypass_auth set on real Request object -- ignoring")
+                # Don't bypass -- fall through to normal auth
 
             if getattr(request, "_ideer_test_bypass_auth", False):
                 return await func(*args, **kwargs)
@@ -318,11 +358,33 @@ def require_permission(
 # ---------------------------------------------------------------------------
 
 
+def _find_user_param(func: Callable) -> str:
+    """Find the name of the parameter annotated as UserModel.
+
+    Inspects the function signature to locate the user parameter dynamically,
+    so require_role does not hardcode ``current_user`` as the parameter name.
+    Falls back to ``"current_user"`` if no annotated parameter is found.
+    """
+    try:
+        for name, param in inspect.signature(func).parameters.items():
+            ann = param.annotation
+            # Handle string annotations (from __future__ annotations)
+            if isinstance(ann, str) and "UserModel" in ann:
+                return name
+            # Handle resolved type annotations
+            if hasattr(ann, "__name__") and ann.__name__ == "UserModel":
+                return name
+    except (ValueError, TypeError):
+        pass
+    return "current_user"
+
+
 def require_role(*roles: str):
     """Decorator: require the current user to have one of the specified roles.
 
-    Expects ``current_user`` to be injected as a keyword argument by FastAPI
-    dependency injection.
+    Finds the user parameter by inspecting the function's type annotations
+    (looks for a parameter annotated as ``UserModel``). Falls back to
+    ``current_user`` if no annotated parameter is found.
 
     Usage::
 
@@ -332,9 +394,11 @@ def require_role(*roles: str):
     """
 
     def decorator(func: Callable) -> Callable:
+        user_param = _find_user_param(func)
+
         @functools.wraps(func)
         async def wrapper(*args: Any, **kwargs: Any) -> Any:
-            current_user = kwargs.get("current_user")
+            current_user = kwargs.get(user_param)
             if current_user is None:
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
@@ -465,7 +529,7 @@ async def get_current_rbac_user(request: Request) -> UserModel:
         HTTPException 401 if the request is not authenticated.
     """
     from ideer.persistence.engine import get_session_factory
-    from ideer.persistence.models.user import UserRole
+    from ideer.persistence.models.user import UserModel, UserRole
 
     auth: AuthContext | None = getattr(request.state, "auth", None)
     if auth is None or not auth.is_authenticated:
@@ -485,11 +549,20 @@ async def get_current_rbac_user(request: Request) -> UserModel:
         result = await session.execute(stmt)
         rbac_user = result.scalar_one_or_none()
 
+        if rbac_user is not None and rbac_user.disabled:
+            raise HTTPException(status_code=403, detail="User account is disabled")
+
         if rbac_user is None:
             # Auto-create RBAC profile for first-time users.
-            # Check if any super_admin exists; if not, promote this user.
-            count_stmt = select(func.count()).select_from(UserModel).where(UserModel.role == UserRole.SUPER_ADMIN)
-            admin_count = (await session.execute(count_stmt)).scalar() or 0
+            # Use SELECT FOR UPDATE to prevent two concurrent first users
+            # from both being promoted to super_admin.
+            try:
+                count_stmt = select(func.count()).select_from(UserModel).where(UserModel.role == UserRole.SUPER_ADMIN, UserModel.disabled.is_not(True)).with_for_update(nowait=False)
+                admin_count = (await session.execute(count_stmt)).scalar() or 0
+            except (OperationalError, ProgrammingError):
+                # If FOR UPDATE is not supported (e.g., SQLite), fall back to plain count
+                count_stmt = select(func.count()).select_from(UserModel).where(UserModel.role == UserRole.SUPER_ADMIN, UserModel.disabled.is_not(True))
+                admin_count = (await session.execute(count_stmt)).scalar() or 0
 
             rbac_user = UserModel(
                 id=user_id,
@@ -497,10 +570,55 @@ async def get_current_rbac_user(request: Request) -> UserModel:
                 role=UserRole.SUPER_ADMIN if admin_count == 0 else UserRole.USER,
                 department_id=None,
             )
-            session.add(rbac_user)
-            await session.commit()
-            await session.refresh(rbac_user)
-            logger.info("Auto-created RBAC user %s with role %s", user_id, rbac_user.role)
+            try:
+                session.add(rbac_user)
+                await session.commit()
+                await session.refresh(rbac_user)
+                logger.info("Auto-created RBAC user %s with role %s", user_id, rbac_user.role)
+            except IntegrityError:
+                # Concurrent request created the user first — re-query
+                await session.rollback()
+                stmt = select(UserModel).where(UserModel.id == user_id)
+                result = await session.execute(stmt)
+                rbac_user = result.scalar_one_or_none()
+                if rbac_user is None:
+                    # IntegrityError was not from a race condition (e.g., FK violation)
+                    logger.error("Failed to create RBAC user %s: IntegrityError but user not found after rollback", user_id)
+                    raise HTTPException(status_code=500, detail="Failed to create user profile")
+                if rbac_user.disabled:
+                    raise HTTPException(status_code=403, detail="User account is disabled")
+
+                # P2-AUTH-01: Re-check admin_count — if the concurrent request
+                # also promoted this user to super_admin, downgrade to USER
+                # when more than one super_admin now exists.
+                if rbac_user.role == UserRole.SUPER_ADMIN:
+                    async with sf() as recheck_session:
+                        recheck_count_stmt = (
+                            select(func.count())
+                            .select_from(UserModel)
+                            .where(
+                                UserModel.role == UserRole.SUPER_ADMIN,
+                                UserModel.disabled.is_not(True),
+                            )
+                        )
+                        admin_count = (await recheck_session.execute(recheck_count_stmt)).scalar() or 0
+                        if admin_count > 1:
+                            # Re-query user in new session to modify
+                            recheck_user_stmt = select(UserModel).where(UserModel.id == user_id)
+                            recheck_result = await recheck_session.execute(recheck_user_stmt)
+                            recheck_user = recheck_result.scalar_one_or_none()
+                            if recheck_user is not None:
+                                recheck_user.role = UserRole.USER
+                                rbac_user.role = UserRole.USER
+                                await recheck_session.commit()
+                                logger.info("Downgraded concurrent first-user %s from super_admin to USER (admin_count=%d)", user_id, admin_count)
+
+    # P2-AUTH-05: Validate role is a valid enum value
+    try:
+        UserRole(rbac_user.role)
+    except ValueError:
+        logger.error("Invalid role '%s' for user %s, defaulting to viewer", rbac_user.role, rbac_user.id)
+        rbac_user.role = UserRole.VIEWER
 
     return rbac_user
 
@@ -512,5 +630,10 @@ async def get_optional_rbac_user(request: Request) -> UserModel | None:
         return None
     try:
         return await get_current_rbac_user(request)
-    except HTTPException:
+    except HTTPException as e:
+        # Only swallow 401 (unauthenticated) — let callers see "no user".
+        # Re-raise 403 (disabled) and everything else (500 DB errors, etc.)
+        # so disabled users cannot silently access optional-auth endpoints.
+        if e.status_code != status.HTTP_401_UNAUTHORIZED:
+            raise
         return None

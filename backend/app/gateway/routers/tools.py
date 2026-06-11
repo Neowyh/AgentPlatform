@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.gateway.authz import get_current_rbac_user, require_role
 from ideer.config.app_config import get_app_config
@@ -18,11 +19,11 @@ router = APIRouter(prefix="/api/tools", tags=["tools"])
 
 
 class ToolTestRequest(BaseModel):
-    params: dict = {}
+    params: dict = Field(default_factory=dict)
 
 
 class ToolConfigUpdate(BaseModel):
-    config: dict = {}
+    config: dict = Field(default_factory=dict)
 
 
 @router.get("")
@@ -51,6 +52,7 @@ async def list_tools(
                 "configurable": t.configurable,
                 "config_schema": t.config_schema,
                 "param_schema": t.param_schema,
+                "config": t.config,
             }
             for t in tools
         ],
@@ -90,6 +92,7 @@ async def get_tool_detail(
         "configurable": tool.configurable,
         "config_schema": tool.config_schema,
         "param_schema": tool.param_schema,
+        "config": tool.config,
     }
 
 
@@ -114,7 +117,7 @@ async def test_tool(
         from ideer.tools.tools import get_available_tools
 
         config = get_app_config()
-        available = get_available_tools(config)
+        available = get_available_tools(app_config=config)
         tool_instance = None
         for t in available:
             if hasattr(t, "name") and t.name == tool_name:
@@ -127,28 +130,31 @@ async def test_tool(
                 detail=f"Tool '{tool_name}' is not currently available (check config.yaml)",
             )
 
-        # Execute the tool with provided params
+        # Execute the tool with provided params (BUG-19: with timeout)
         try:
+            _TEST_TIMEOUT = 300.0  # 5 minutes max for tool testing
             if hasattr(tool_instance, "ainvoke"):
-                result = await tool_instance.ainvoke(body.params)
+                result = await asyncio.wait_for(tool_instance.ainvoke(body.params), timeout=_TEST_TIMEOUT)
             else:
-                result = tool_instance.invoke(body.params)
+                # Run synchronous invoke in a thread to avoid blocking the event loop
+                result = await asyncio.wait_for(asyncio.to_thread(tool_instance.invoke, body.params), timeout=_TEST_TIMEOUT)
             return {
                 "success": True,
                 "tool": tool_name,
                 "result": str(result)[:2000],
             }
         except Exception as e:
+            logger.error("Tool execution failed for %s: %s", tool_name, e, exc_info=True)
             return {
                 "success": False,
                 "tool": tool_name,
-                "error": str(e),
+                "error": "Tool execution failed. Check server logs for details.",
             }
     except HTTPException:
         raise
     except Exception as e:
         logger.error("Failed to test tool %s: %s", tool_name, e, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to test tool: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.put("/{tool_name}/config")
@@ -167,9 +173,11 @@ async def update_tool_config(
     if not tool_info.configurable:
         raise HTTPException(status_code=400, detail=f"Tool '{tool_name}' is not configurable")
 
-    logger.info("Tool config update for %s: %s", tool_name, body.config)
+    if not registry.update_config(tool_name, body.config):
+        raise HTTPException(status_code=400, detail=f"Failed to update config for tool '{tool_name}'. Check that all keys are valid.")
+    logger.info("Tool config updated for %s: keys=%s", tool_name, list(body.config.keys()))
     return {
         "success": True,
         "tool": tool_name,
-        "message": "Config update acknowledged.",
+        "message": "Config updated.",
     }

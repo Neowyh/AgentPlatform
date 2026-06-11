@@ -24,10 +24,11 @@ def test_step_type_enum_values():
     assert StepType.CONDITION == "condition"
     assert StepType.PARALLEL == "parallel"
     assert StepType.LOOP == "loop"
+    assert StepType.RETRY == "retry"
 
 
-def test_step_type_has_exactly_six_members():
-    assert len(StepType) == 6
+def test_step_type_has_exactly_seven_members():
+    assert len(StepType) == 7
 
 
 # ── WorkflowDef ────────────────────────────────────────────────────
@@ -227,6 +228,7 @@ inputs:
 steps:
   - id: s1
     type: tool
+    tool: my_tool
 """
     wf = parse_workflow_string(yaml_content)
     assert wf.inputs["query"].type == "string"
@@ -295,7 +297,7 @@ steps:
   - id: s1
     type: agent
 """
-    with pytest.raises(KeyError):
+    with pytest.raises((KeyError, ValueError)):
         parse_workflow_string(yaml_content)
 
 
@@ -305,7 +307,7 @@ name: bad
 steps:
   - type: agent
 """
-    with pytest.raises(KeyError):
+    with pytest.raises(ValueError, match="missing required 'id' field"):
         parse_workflow_string(yaml_content)
 
 
