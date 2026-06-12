@@ -3,10 +3,12 @@ import logging
 from pathlib import Path
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from app.gateway.authz import get_current_rbac_user, require_role
 from ideer.config.extensions_config import ExtensionsConfig, get_extensions_config, reload_extensions_config
+from ideer.persistence.models.user import UserModel, UserRole
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["mcp"])
@@ -195,7 +197,11 @@ async def get_mcp_configuration() -> McpConfigResponse:
     summary="Update MCP Configuration",
     description="Update Model Context Protocol (MCP) server configurations and save to file.",
 )
-async def update_mcp_configuration(request: McpConfigUpdateRequest) -> McpConfigResponse:
+@require_role(UserRole.USER, UserRole.DEPARTMENT_ADMIN, UserRole.SUPER_ADMIN)
+async def update_mcp_configuration(
+    request: McpConfigUpdateRequest,
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> McpConfigResponse:
     """Update the MCP configuration.
 
     This will:

@@ -97,7 +97,9 @@ export default function NewAgentPage() {
     useState<SetupAgentStatus>("idle");
   const [visibility, setVisibility] = useState<Visibility>("private");
 
-  const isAdmin = user?.system_role === "admin";
+  const isAdmin =
+    user?.system_role === "super_admin" ||
+    user?.system_role === "department_admin";
 
   const threadId = useMemo(() => uuid(), []);
 

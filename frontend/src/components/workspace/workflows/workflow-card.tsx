@@ -23,6 +23,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useI18n } from "@/core/i18n/hooks";
 import { useDeleteWorkflow } from "@/core/workflows";
 import type { WorkflowSummary } from "@/core/workflows";
 
@@ -34,6 +35,7 @@ export function WorkflowCard({ workflow }: WorkflowCardProps) {
   const router = useRouter();
   const deleteWorkflow = useDeleteWorkflow();
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const { t } = useI18n();
 
   function handleClick() {
     router.push(`/workspace/workflows/${workflow.name}`);
@@ -42,7 +44,7 @@ export function WorkflowCard({ workflow }: WorkflowCardProps) {
   async function handleDelete() {
     try {
       await deleteWorkflow.mutateAsync(workflow.name);
-      toast.success("Workflow deleted");
+      toast.success(t.workflows.deleteSuccess);
       setDeleteOpen(false);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
@@ -74,7 +76,7 @@ export function WorkflowCard({ workflow }: WorkflowCardProps) {
                   {workflow.name}
                 </CardTitle>
                 <Badge variant="secondary" className="mt-0.5 text-xs">
-                  v{workflow.version ?? "unknown"}
+                  v{workflow.version ?? t.workflows.unknown}
                 </Badge>
               </div>
             </div>
@@ -89,13 +91,11 @@ export function WorkflowCard({ workflow }: WorkflowCardProps) {
         <CardContent className="pt-0 pb-3">
           <div className="flex flex-wrap gap-1">
             <Badge variant="outline" className="text-xs">
-              {workflow.steps_count ?? 0}{" "}
-              {(workflow.steps_count ?? 0) === 1 ? "step" : "steps"}
+              {t.workflows.steps(workflow.steps_count ?? 0)}
             </Badge>
             {workflow.inputs && Object.keys(workflow.inputs).length > 0 && (
               <Badge variant="outline" className="text-xs">
-                {Object.keys(workflow.inputs).length}{" "}
-                {Object.keys(workflow.inputs).length === 1 ? "input" : "inputs"}
+                {t.workflows.inputs(Object.keys(workflow.inputs).length)}
               </Badge>
             )}
           </div>
@@ -111,7 +111,7 @@ export function WorkflowCard({ workflow }: WorkflowCardProps) {
             }}
           >
             <PlayIcon className="mr-1.5 h-3.5 w-3.5" />
-            View
+            {t.workflows.view}
           </Button>
           <Button
             size="icon"
@@ -131,10 +131,9 @@ export function WorkflowCard({ workflow }: WorkflowCardProps) {
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete Workflow</DialogTitle>
+            <DialogTitle>{t.workflows.deleteTitle}</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete &quot;{workflow.name}&quot;? This
-              action cannot be undone.
+              {t.workflows.deleteConfirm(workflow.name)}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -143,14 +142,16 @@ export function WorkflowCard({ workflow }: WorkflowCardProps) {
               onClick={() => setDeleteOpen(false)}
               disabled={deleteWorkflow.isPending}
             >
-              Cancel
+              {t.common.cancel}
             </Button>
             <Button
               variant="destructive"
               onClick={handleDelete}
               disabled={deleteWorkflow.isPending}
             >
-              {deleteWorkflow.isPending ? "Deleting..." : "Delete"}
+              {deleteWorkflow.isPending
+                ? t.workflows.deleting
+                : t.common.delete}
             </Button>
           </DialogFooter>
         </DialogContent>

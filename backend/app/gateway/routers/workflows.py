@@ -103,7 +103,13 @@ async def create_workflow(
         raise HTTPException(409, f"Workflow '{wf.name}' already exists")
 
     await store.save_workflow(wf.name, body.yaml_content)
-    return {"name": wf.name, "description": wf.description, "version": wf.version}
+    return {
+        "name": wf.name,
+        "description": wf.description,
+        "version": wf.version,
+        "steps_count": len(wf.steps),
+        "inputs": {k: v.model_dump() for k, v in wf.inputs.items()},
+    }
 
 
 @router.put("/{workflow_name}")
@@ -133,7 +139,13 @@ async def update_workflow(
         )
 
     await store.save_workflow(workflow_name, body.yaml_content)
-    return {"name": workflow_name, "description": wf.description, "version": wf.version}
+    return {
+        "name": workflow_name,
+        "description": wf.description,
+        "version": wf.version,
+        "steps_count": len(wf.steps),
+        "inputs": {k: v.model_dump() for k, v in wf.inputs.items()},
+    }
 
 
 @router.delete("/{workflow_name}")

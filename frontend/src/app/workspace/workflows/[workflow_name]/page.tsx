@@ -26,6 +26,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { WorkspaceBreadcrumb } from "@/components/workspace/workspace-breadcrumb";
+import { useI18n } from "@/core/i18n/hooks";
 import { useRunStatus, useRunWorkflow, useWorkflow } from "@/core/workflows";
 import type { WorkflowRunResult } from "@/core/workflows";
 
@@ -34,6 +35,7 @@ export default function WorkflowDetailPage() {
   const { workflow_name } = useParams<{ workflow_name: string }>();
   const { workflow, isLoading, error } = useWorkflow(workflow_name);
   const runWorkflowMutation = useRunWorkflow();
+  const { t } = useI18n();
 
   const [runDialogOpen, setRunDialogOpen] = useState(false);
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
@@ -47,7 +49,7 @@ export default function WorkflowDetailPage() {
   if (isLoading) {
     return (
       <div className="flex size-full items-center justify-center">
-        <div className="text-muted-foreground text-sm">Loading...</div>
+        <div className="text-muted-foreground text-sm">{t.common.loading}</div>
       </div>
     );
   }
@@ -56,13 +58,13 @@ export default function WorkflowDetailPage() {
     return (
       <div className="flex size-full flex-col items-center justify-center gap-4">
         <div className="text-destructive text-sm">
-          {error?.message ?? "Workflow not found"}
+          {error?.message ?? t.workflows.notFound}
         </div>
         <Button
           variant="outline"
           onClick={() => router.push("/workspace/workflows")}
         >
-          Back to Workflows
+          {t.workflows.backToWorkflows}
         </Button>
       </div>
     );
@@ -73,7 +75,7 @@ export default function WorkflowDetailPage() {
     // Validate required inputs
     for (const [key, param] of Object.entries(workflow.inputs)) {
       if (param.required && !inputValues[key]?.trim()) {
-        toast.error(`Required input "${key}" is missing`);
+        toast.error(t.workflows.requiredMissing(key));
         return;
       }
     }
@@ -96,7 +98,7 @@ export default function WorkflowDetailPage() {
       });
       setActiveRun(result);
       setRunDialogOpen(false);
-      toast.success("Workflow started");
+      toast.success(t.workflows.started);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     }
@@ -145,12 +147,12 @@ export default function WorkflowDetailPage() {
               href={`/workspace/workflows/${encodeURIComponent(workflow_name)}/edit`}
             >
               <EditIcon className="mr-1.5 h-4 w-4" />
-              Edit
+              {t.workflows.edit}
             </Link>
           </Button>
           <Button onClick={() => setRunDialogOpen(true)}>
             <PlayIcon className="mr-1.5 h-4 w-4" />
-            Run
+            {t.workflows.run}
           </Button>
         </div>
       </div>
@@ -163,14 +165,14 @@ export default function WorkflowDetailPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <WorkflowIcon className="h-5 w-5" />
-                Steps ({workflow.steps_count})
+                {t.workflows.stepsTitle(workflow.steps_count)}
               </CardTitle>
-              <CardDescription>Workflow execution steps</CardDescription>
+              <CardDescription>{t.workflows.stepsDescription}</CardDescription>
             </CardHeader>
             <CardContent>
               {workflow.steps.length === 0 ? (
                 <p className="text-muted-foreground text-sm">
-                  No steps defined
+                  {t.workflows.noSteps}
                 </p>
               ) : (
                 <div className="space-y-3">
@@ -211,9 +213,9 @@ export default function WorkflowDetailPage() {
           {Object.keys(workflow.inputs).length > 0 && (
             <Card>
               <CardHeader>
-                <CardTitle>Inputs</CardTitle>
+                <CardTitle>{t.workflows.inputsTitle}</CardTitle>
                 <CardDescription>
-                  Required and optional input parameters
+                  {t.workflows.inputsDescription}
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -239,7 +241,7 @@ export default function WorkflowDetailPage() {
                         </Badge>
                         {param.required && (
                           <Badge variant="destructive" className="text-xs">
-                            required
+                            {t.workflows.required}
                           </Badge>
                         )}
                       </div>
@@ -255,12 +257,15 @@ export default function WorkflowDetailPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">
-                  <span>Run Status</span>
+                  <span>{t.workflows.runStatus}</span>
                   <Badge variant="outline" className={statusColor}>
                     {runStatus.status}
                   </Badge>
                 </CardTitle>
-                <CardDescription>Run ID: {runStatus.run_id}</CardDescription>
+                <CardDescription>
+                  {t.workflows.runId}
+                  {runStatus.run_id}
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 {runStatus.error && (
@@ -306,7 +311,7 @@ export default function WorkflowDetailPage() {
           {/* YAML preview */}
           <Card>
             <CardHeader>
-              <CardTitle>YAML Definition</CardTitle>
+              <CardTitle>{t.workflows.yamlDefinition}</CardTitle>
             </CardHeader>
             <CardContent>
               <pre className="bg-muted max-h-96 overflow-auto rounded-md p-4 text-sm">
@@ -321,9 +326,9 @@ export default function WorkflowDetailPage() {
       <Dialog open={runDialogOpen} onOpenChange={setRunDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Run Workflow</DialogTitle>
+            <DialogTitle>{t.workflows.runDialog}</DialogTitle>
             <DialogDescription>
-              Provide input values for the workflow execution.
+              {t.workflows.runDialogDescription}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -344,8 +349,8 @@ export default function WorkflowDetailPage() {
                   id={`input-${key}`}
                   placeholder={
                     param.default !== undefined
-                      ? `Default: ${JSON.stringify(param.default)}`
-                      : `Enter ${key}...`
+                      ? `${t.workflows.defaultPrefix}${JSON.stringify(param.default)}`
+                      : t.workflows.enterInput(key)
                   }
                   value={inputValues[key] ?? ""}
                   onChange={(e) =>
@@ -359,19 +364,21 @@ export default function WorkflowDetailPage() {
             ))}
             {Object.keys(workflow.inputs).length === 0 && (
               <p className="text-muted-foreground text-sm">
-                This workflow has no input parameters.
+                {t.workflows.noInputs}
               </p>
             )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setRunDialogOpen(false)}>
-              Cancel
+              {t.common.cancel}
             </Button>
             <Button
               onClick={handleRun}
               disabled={runWorkflowMutation.isPending}
             >
-              {runWorkflowMutation.isPending ? "Starting..." : "Run"}
+              {runWorkflowMutation.isPending
+                ? t.workflows.starting
+                : t.workflows.run}
             </Button>
           </DialogFooter>
         </DialogContent>

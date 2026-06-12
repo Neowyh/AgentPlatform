@@ -117,17 +117,27 @@ export async function checkAgentName(
 export async function exportAgent(name: string): Promise<Blob> {
   const res = await fetch(
     `${getBackendBaseURL()}/api/agents/${encodeURIComponent(name)}/export`,
+    { method: "POST" },
   );
   if (!res.ok) throw new Error(`Failed to export agent: ${res.statusText}`);
   return res.blob();
 }
 
 export async function importAgent(file: File): Promise<Agent> {
-  const formData = new FormData();
-  formData.append("file", file);
+  // Read file content and parse as JSON
+  // Backend expects AgentImportRequest JSON: {name, config, soul, visibility}
+  const fileContent = await file.text();
+  let importData: Record<string, unknown>;
+  try {
+    importData = JSON.parse(fileContent);
+  } catch {
+    throw new Error("Invalid import file: must be valid JSON");
+  }
+
   const res = await fetch(`${getBackendBaseURL()}/api/agents/import`, {
     method: "POST",
-    body: formData,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(importData),
   });
   if (!res.ok) {
     const err = (await res.json().catch(() => ({}))) as { detail?: string };

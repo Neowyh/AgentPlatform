@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+
+from app.gateway.authz import get_current_rbac_user, require_role
+from ideer.persistence.models.user import UserModel, UserRole
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +38,11 @@ async def get_channels_status() -> ChannelStatusResponse:
 
 
 @router.post("/{name}/restart", response_model=ChannelRestartResponse)
-async def restart_channel(name: str) -> ChannelRestartResponse:
+@require_role(UserRole.USER, UserRole.DEPARTMENT_ADMIN, UserRole.SUPER_ADMIN)
+async def restart_channel(
+    name: str,
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> ChannelRestartResponse:
     """Restart a specific IM channel."""
     from app.channels.service import get_channel_service
 

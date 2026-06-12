@@ -50,6 +50,16 @@ class CircuitBreakerConfig(BaseModel):
     recovery_timeout_sec: int = Field(default=60, description="Time in seconds before attempting to recover the circuit")
 
 
+class UploadsConfig(BaseModel):
+    """Configuration for file uploads."""
+
+    max_files: int = Field(default=20, description="Maximum number of files per upload")
+    max_file_size: int = Field(default=52428800, description="Maximum file size in bytes (50MB)")
+    max_total_size: int = Field(default=209715200, description="Maximum total upload size in bytes (200MB)")
+    auto_convert_documents: bool = Field(default=True, description="Automatically convert documents to markdown")
+    pdf_converter: str = Field(default="default", description="PDF converter to use")
+
+
 def _legacy_config_candidates() -> tuple[Path, ...]:
     """Return source-tree config.yaml locations for monorepo compatibility."""
     backend_dir = Path(__file__).resolve().parents[4]
@@ -104,6 +114,7 @@ class AppConfig(BaseModel):
     circuit_breaker: CircuitBreakerConfig = Field(default_factory=CircuitBreakerConfig, description="LLM circuit breaker configuration")
     loop_detection: LoopDetectionConfig = Field(default_factory=LoopDetectionConfig, description="Loop detection middleware configuration")
     safety_finish_reason: SafetyFinishReasonConfig = Field(default_factory=SafetyFinishReasonConfig, description="Provider safety-filter finish_reason interception middleware configuration")
+    uploads: UploadsConfig = Field(default_factory=UploadsConfig, description="File upload configuration")
     model_config = ConfigDict(extra="allow")
     database: DatabaseConfig = Field(default_factory=DatabaseConfig, description="Unified database backend configuration")
     run_events: RunEventsConfig = Field(default_factory=RunEventsConfig, description="Run event storage configuration")

@@ -214,10 +214,64 @@ export const zhCN: Translations = {
     backToGallery: "返回 Gallery",
   },
 
+  // Workflows
+  workflows: {
+    // Gallery
+    title: "工作流",
+    description: "管理和运行工作流定义",
+    newWorkflow: "新建工作流",
+    emptyTitle: "还没有工作流",
+    emptyDescription: "创建你的第一个工作流以开始使用",
+    // Card
+    view: "查看",
+    deleteTitle: "删除工作流",
+    deleteConfirm: (name: string) =>
+      `确定要删除「${name}」吗？此操作不可撤销。`,
+    deleteSuccess: "工作流已删除",
+    deleting: "删除中...",
+    unknown: "未知",
+    steps: (count: number) => `${count} 个步骤`,
+    inputs: (count: number) => `${count} 个输入`,
+    // Detail
+    notFound: "工作流未找到",
+    backToWorkflows: "返回工作流",
+    edit: "编辑",
+    run: "运行",
+    stepsTitle: (count: number) => `步骤 (${count})`,
+    stepsDescription: "工作流执行步骤",
+    noSteps: "未定义步骤",
+    inputsTitle: "输入参数",
+    inputsDescription: "必填和可选的输入参数",
+    required: "必填",
+    runStatus: "运行状态",
+    runId: "运行 ID：",
+    yamlDefinition: "YAML 定义",
+    // Run Dialog
+    runDialog: "运行工作流",
+    runDialogDescription: "为工作流执行提供输入值。",
+    defaultPrefix: "默认值：",
+    enterInput: (key: string) => `输入 ${key}...`,
+    noInputs: "此工作流没有输入参数。",
+    starting: "启动中...",
+    // Create/Edit
+    createSubtitle: "用 YAML 定义新的工作流",
+    yamlEditor: "YAML 编辑器",
+    creating: "创建中...",
+    saving: "保存中...",
+    created: "工作流已创建",
+    updated: "工作流已更新",
+    requiredMissing: (key: string) => `缺少必填输入「${key}」`,
+    started: "工作流已启动",
+    saveChanges: "保存更改",
+  },
+
   // Breadcrumb
   breadcrumb: {
     workspace: "工作区",
     chats: "对话",
+    workflows: "工作流",
+    edit: "编辑",
+    runs: "运行记录",
   },
 
   // Workspace

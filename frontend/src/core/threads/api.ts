@@ -1,3 +1,4 @@
+import { extractError } from "@/core/api/errors";
 import { fetch as fetchWithAuth } from "@/core/api/fetcher";
 import { getBackendBaseURL } from "@/core/config";
 
@@ -17,7 +18,7 @@ export async function fetchThreadTokenUsage(
     if (response.status === 403 || response.status === 404) {
       return null;
     }
-    throw new Error("Failed to load thread token usage.");
+    await extractError(response, "Failed to load thread token usage");
   }
 
   return (await response.json()) as ThreadTokenUsageResponse;

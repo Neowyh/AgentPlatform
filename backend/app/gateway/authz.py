@@ -177,8 +177,11 @@ async def _authenticate(request: Request) -> AuthContext:
                 stmt = select(UserModel).where(UserModel.id == str(user.id))
                 result = await session.execute(stmt)
                 rbac_user = result.scalar_one_or_none()
-                if rbac_user is not None and rbac_user.role == UserRole.VIEWER:
-                    return AuthContext(user=user, permissions=_VIEWER_PERMISSIONS)
+                if rbac_user is not None:
+                    if rbac_user.role == UserRole.VIEWER:
+                        return AuthContext(user=user, permissions=_VIEWER_PERMISSIONS)
+                    if rbac_user.role is None:
+                        logger.warning("User %s has NULL role in database, defaulting to USER permissions", user.id)
     except Exception as exc:
         # Fail-open: if RBAC lookup fails (DB down, etc.), grant full
         # permissions so the system remains usable.  Log at warning level

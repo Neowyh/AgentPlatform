@@ -226,10 +226,64 @@ export const enUS: Translations = {
     backToGallery: "Back to Gallery",
   },
 
+  // Workflows
+  workflows: {
+    // Gallery
+    title: "Workflows",
+    description: "Manage and run your workflow definitions",
+    newWorkflow: "New Workflow",
+    emptyTitle: "No workflows yet",
+    emptyDescription: "Create your first workflow to get started",
+    // Card
+    view: "View",
+    deleteTitle: "Delete Workflow",
+    deleteConfirm: (name: string) =>
+      `Are you sure you want to delete "${name}"? This action cannot be undone.`,
+    deleteSuccess: "Workflow deleted",
+    deleting: "Deleting...",
+    unknown: "unknown",
+    steps: (count: number) => `${count} step${count === 1 ? "" : "s"}`,
+    inputs: (count: number) => `${count} input${count === 1 ? "" : "s"}`,
+    // Detail
+    notFound: "Workflow not found",
+    backToWorkflows: "Back to Workflows",
+    edit: "Edit",
+    run: "Run",
+    stepsTitle: (count: number) => `Steps (${count})`,
+    stepsDescription: "Workflow execution steps",
+    noSteps: "No steps defined",
+    inputsTitle: "Inputs",
+    inputsDescription: "Required and optional input parameters",
+    required: "required",
+    runStatus: "Run Status",
+    runId: "Run ID: ",
+    yamlDefinition: "YAML Definition",
+    // Run Dialog
+    runDialog: "Run Workflow",
+    runDialogDescription: "Provide input values for the workflow execution.",
+    defaultPrefix: "Default: ",
+    enterInput: (key: string) => `Enter ${key}...`,
+    noInputs: "This workflow has no input parameters.",
+    starting: "Starting...",
+    // Create/Edit
+    createSubtitle: "Define a new workflow in YAML",
+    yamlEditor: "YAML Editor",
+    creating: "Creating...",
+    saving: "Saving...",
+    created: "Workflow created",
+    updated: "Workflow updated",
+    requiredMissing: (key: string) => `Required input "${key}" is missing`,
+    started: "Workflow started",
+    saveChanges: "Save Changes",
+  },
+
   // Breadcrumb
   breadcrumb: {
     workspace: "Workspace",
     chats: "Chats",
+    workflows: "Workflows",
+    edit: "Edit",
+    runs: "Runs",
   },
 
   // Workspace

@@ -1,8 +1,9 @@
 """Memory API router for retrieving and managing global memory data."""
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from app.gateway.authz import get_current_rbac_user, require_role
 from ideer.agents.memory.updater import (
     clear_memory_data,
     create_memory_fact,
@@ -13,6 +14,7 @@ from ideer.agents.memory.updater import (
     update_memory_fact,
 )
 from ideer.config.memory_config import get_memory_config
+from ideer.persistence.models.user import UserModel, UserRole
 from ideer.runtime.user_context import get_effective_user_id
 
 router = APIRouter(prefix="/api", tags=["memory"])
@@ -159,7 +161,10 @@ async def get_memory() -> MemoryResponse:
     summary="Reload Memory Data",
     description="Reload memory data from the storage file, refreshing the in-memory cache.",
 )
-async def reload_memory() -> MemoryResponse:
+@require_role(UserRole.USER, UserRole.DEPARTMENT_ADMIN, UserRole.SUPER_ADMIN)
+async def reload_memory(
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> MemoryResponse:
     """Reload memory data from file.
 
     This forces a reload of the memory data from the storage file,
@@ -179,7 +184,10 @@ async def reload_memory() -> MemoryResponse:
     summary="Clear All Memory Data",
     description="Delete all saved memory data and reset the memory structure to an empty state.",
 )
-async def clear_memory() -> MemoryResponse:
+@require_role(UserRole.USER, UserRole.DEPARTMENT_ADMIN, UserRole.SUPER_ADMIN)
+async def clear_memory(
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> MemoryResponse:
     """Clear all persisted memory data."""
     try:
         memory_data = clear_memory_data(user_id=get_effective_user_id())
@@ -196,7 +204,11 @@ async def clear_memory() -> MemoryResponse:
     summary="Create Memory Fact",
     description="Create a single saved memory fact manually.",
 )
-async def create_memory_fact_endpoint(request: FactCreateRequest) -> MemoryResponse:
+@require_role(UserRole.USER, UserRole.DEPARTMENT_ADMIN, UserRole.SUPER_ADMIN)
+async def create_memory_fact_endpoint(
+    request: FactCreateRequest,
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> MemoryResponse:
     """Create a single fact manually."""
     try:
         memory_data = create_memory_fact(
@@ -220,7 +232,11 @@ async def create_memory_fact_endpoint(request: FactCreateRequest) -> MemoryRespo
     summary="Delete Memory Fact",
     description="Delete a single saved memory fact by its fact id.",
 )
-async def delete_memory_fact_endpoint(fact_id: str) -> MemoryResponse:
+@require_role(UserRole.USER, UserRole.DEPARTMENT_ADMIN, UserRole.SUPER_ADMIN)
+async def delete_memory_fact_endpoint(
+    fact_id: str,
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> MemoryResponse:
     """Delete a single fact from memory by fact id."""
     try:
         memory_data = delete_memory_fact(fact_id, user_id=get_effective_user_id())
@@ -239,7 +255,12 @@ async def delete_memory_fact_endpoint(fact_id: str) -> MemoryResponse:
     summary="Patch Memory Fact",
     description="Partially update a single saved memory fact by its fact id while preserving omitted fields.",
 )
-async def update_memory_fact_endpoint(fact_id: str, request: FactPatchRequest) -> MemoryResponse:
+@require_role(UserRole.USER, UserRole.DEPARTMENT_ADMIN, UserRole.SUPER_ADMIN)
+async def update_memory_fact_endpoint(
+    fact_id: str,
+    request: FactPatchRequest,
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> MemoryResponse:
     """Partially update a single fact manually."""
     try:
         memory_data = update_memory_fact(
@@ -279,7 +300,11 @@ async def export_memory() -> MemoryResponse:
     summary="Import Memory Data",
     description="Import and overwrite the current global memory data from a JSON payload.",
 )
-async def import_memory(request: MemoryResponse) -> MemoryResponse:
+@require_role(UserRole.USER, UserRole.DEPARTMENT_ADMIN, UserRole.SUPER_ADMIN)
+async def import_memory(
+    request: MemoryResponse,
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> MemoryResponse:
     """Import and persist memory data."""
     try:
         memory_data = import_memory_data(request.model_dump(), user_id=get_effective_user_id())

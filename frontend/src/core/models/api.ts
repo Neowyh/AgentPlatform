@@ -1,3 +1,4 @@
+import { extractError } from "../api/errors";
 import { getBackendBaseURL } from "../config";
 import { isStaticWebsiteOnly } from "../static-mode";
 
@@ -14,6 +15,9 @@ export async function loadModels(): Promise<ModelsResponse> {
   }
 
   const res = await fetch(`${getBackendBaseURL()}/api/models`);
+  if (!res.ok) {
+    await extractError(res, "Failed to load models");
+  }
   const data = (await res.json()) as Partial<ModelsResponse>;
   return {
     models: data.models ?? [],

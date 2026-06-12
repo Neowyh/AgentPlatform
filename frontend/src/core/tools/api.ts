@@ -1,3 +1,4 @@
+import { extractError } from "@/core/api/errors";
 import { fetch } from "@/core/api/fetcher";
 import { getBackendBaseURL } from "@/core/config";
 
@@ -15,13 +16,17 @@ export async function listTools(params?: {
   const url = `${getBackendBaseURL()}/api/tools${query ? `?${query}` : ""}`;
 
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`Failed to load tools: ${res.statusText}`);
+  if (!res.ok) {
+    await extractError(res, "Failed to load tools");
+  }
   return res.json() as Promise<{ tools: Tool[]; total: number }>;
 }
 
 export async function getToolDetail(name: string): Promise<Tool> {
   const res = await fetch(`${getBackendBaseURL()}/api/tools/${name}`);
-  if (!res.ok) throw new Error(`Tool '${name}' not found`);
+  if (!res.ok) {
+    await extractError(res, `Tool '${name}' not found`);
+  }
   return res.json() as Promise<Tool>;
 }
 
@@ -35,8 +40,7 @@ export async function testTool(
     body: JSON.stringify({ params }),
   });
   if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { detail?: string };
-    throw new Error(err.detail ?? `Failed to test tool: ${res.statusText}`);
+    await extractError(res, `Failed to test tool '${name}'`);
   }
   return res.json() as Promise<ToolTestResult>;
 }

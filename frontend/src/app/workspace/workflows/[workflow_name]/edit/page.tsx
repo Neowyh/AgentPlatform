@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { WorkspaceBreadcrumb } from "@/components/workspace/workspace-breadcrumb";
+import { useI18n } from "@/core/i18n/hooks";
 import { useUpdateWorkflow, useWorkflow } from "@/core/workflows";
 import { validateYaml } from "@/core/workflows/validate";
 
@@ -39,6 +40,7 @@ export default function WorkflowEditPage() {
   const { workflow, isLoading: isLoadingWorkflow } = useWorkflow(workflow_name);
   const updateWorkflow = useUpdateWorkflow();
   const { resolvedTheme } = useTheme();
+  const { t } = useI18n();
 
   const [content, setContent] = useState("");
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
@@ -66,17 +68,17 @@ export default function WorkflowEditPage() {
         name: workflow_name,
         data: { yaml_content: content },
       });
-      toast.success("Workflow updated");
+      toast.success(t.workflows.updated);
       router.push(`/workspace/workflows/${workflow_name}`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     }
-  }, [content, router, updateWorkflow, workflow_name]);
+  }, [content, router, updateWorkflow, workflow_name, t]);
 
   if (isLoadingWorkflow) {
     return (
       <div className="flex size-full items-center justify-center">
-        <div className="text-muted-foreground text-sm">Loading...</div>
+        <div className="text-muted-foreground text-sm">{t.common.loading}</div>
       </div>
     );
   }
@@ -84,12 +86,12 @@ export default function WorkflowEditPage() {
   if (!workflow) {
     return (
       <div className="flex size-full flex-col items-center justify-center gap-4">
-        <div className="text-destructive text-sm">Workflow not found</div>
+        <div className="text-destructive text-sm">{t.workflows.notFound}</div>
         <Button
           variant="outline"
           onClick={() => router.push("/workspace/workflows")}
         >
-          Back to Workflows
+          {t.workflows.backToWorkflows}
         </Button>
       </div>
     );
@@ -109,7 +111,7 @@ export default function WorkflowEditPage() {
             <ArrowLeftIcon className="h-4 w-4" />
           </Button>
           <div>
-            <h1 className="text-xl font-semibold">Edit Workflow</h1>
+            <h1 className="text-xl font-semibold">{t.workflows.edit}</h1>
             <p className="text-muted-foreground mt-0.5 text-sm">
               {workflow_name}
             </p>
@@ -120,11 +122,13 @@ export default function WorkflowEditPage() {
             variant="outline"
             onClick={() => router.push(`/workspace/workflows/${workflow_name}`)}
           >
-            Cancel
+            {t.common.cancel}
           </Button>
           <Button onClick={handleSave} disabled={updateWorkflow.isPending}>
             <SaveIcon className="mr-1.5 h-4 w-4" />
-            {updateWorkflow.isPending ? "Saving..." : "Save Changes"}
+            {updateWorkflow.isPending
+              ? t.workflows.saving
+              : t.workflows.saveChanges}
           </Button>
         </div>
       </div>
@@ -148,7 +152,9 @@ export default function WorkflowEditPage() {
       <div className="flex min-h-0 flex-1">
         <div className="flex w-full flex-col">
           <div className="border-b px-4 py-2">
-            <span className="text-sm font-medium">YAML Editor</span>
+            <span className="text-sm font-medium">
+              {t.workflows.yamlEditor}
+            </span>
           </div>
           <div className="flex-1 overflow-auto">
             <CodeMirror

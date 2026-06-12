@@ -62,8 +62,23 @@ def _make_app():
     ``app.state``.  Each test patches those functions at their import location
     in the router module.
     """
+
+    from app.gateway.authz import get_current_rbac_user
+
     app = make_authed_test_app()
     app.include_router(memory_router)
+
+    # Mock the RBAC user for @require_role decorators
+    rbac_user = MagicMock()
+    rbac_user.id = "test-user-id"
+    rbac_user.role = "user"
+    rbac_user.department_id = None
+    rbac_user.disabled = False
+
+    async def _stub_rbac_user():
+        return rbac_user
+
+    app.dependency_overrides[get_current_rbac_user] = _stub_rbac_user
     return app
 
 

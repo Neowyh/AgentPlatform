@@ -27,6 +27,67 @@ _engine: AsyncEngine | None = None
 _session_factory: async_sessionmaker[AsyncSession] | None = None
 
 
+async def _stamp_alembic_head(conn, backend: str) -> None:
+    """Stamp the alembic version table with the latest revision.
+
+    Called after create_all() to mark all migrations as applied.
+    This prevents future alembic upgrade head calls from failing
+    with "table already exists" errors.
+
+    Uses direct SQL to avoid async issues with alembic command.
+    """
+    try:
+        import os
+
+        from sqlalchemy import text
+
+        # Find the latest migration revision by scanning the versions directory
+        persistence_dir = os.path.dirname(os.path.abspath(__file__))
+        versions_dir = os.path.join(persistence_dir, "migrations", "versions")
+
+        if not os.path.exists(versions_dir):
+            logger.warning("Migrations versions directory not found; skipping stamp")
+            return
+
+        # Find the head revision by looking at migration files
+        # The head is the one that no other migration depends on
+        all_revisions = set()
+        all_down_revisions = set()
+
+        for filename in os.listdir(versions_dir):
+            if not filename.endswith(".py") or filename.startswith("__"):
+                continue
+            filepath = os.path.join(versions_dir, filename)
+            with open(filepath) as f:
+                content = f.read()
+                # Extract revision and down_revision
+                for line in content.split("\n"):
+                    if line.startswith("revision:"):
+                        rev = line.split("=")[1].strip().strip('"').strip("'")
+                        all_revisions.add(rev)
+                    elif line.startswith("down_revision:"):
+                        down = line.split("=")[1].strip().strip('"').strip("'")
+                        if down != "None":
+                            all_down_revisions.add(down)
+
+        # Head revision is one that's not referenced as down_revision by any other
+        head_revisions = all_revisions - all_down_revisions
+        if not head_revisions:
+            logger.warning("Could not determine head revision; skipping stamp")
+            return
+
+        head_revision = head_revisions.pop()  # Should be exactly one in a linear chain
+
+        # Create alembic_version table and insert the head revision
+        await conn.execute(text("CREATE TABLE IF NOT EXISTS alembic_version (version_num VARCHAR(32) NOT NULL)"))
+        await conn.execute(text("DELETE FROM alembic_version"))
+        await conn.execute(text("INSERT INTO alembic_version (version_num) VALUES (:rev)"), {"rev": head_revision})
+
+        logger.info("Stamped alembic version to head: %s", head_revision)
+    except Exception as exc:
+        logger.warning("Failed to stamp alembic version: %s", exc)
+
+
 async def _auto_create_postgres_db(url: str) -> None:
     """Connect to the ``postgres`` maintenance DB and CREATE DATABASE.
 
@@ -162,7 +223,15 @@ async def init_engine(
             if has_alembic:
                 logger.debug("Alembic version table found; skipping create_all")
             else:
-                await conn.run_sync(Base.metadata.create_all)
+                # Check if tables already exist (created by previous create_all)
+                has_users = await conn.run_sync(lambda sync_conn: sa_inspect(sync_conn).has_table("users_ext"))
+                if has_users:
+                    logger.info("Tables exist but alembic_version missing; stamping to head")
+                else:
+                    await conn.run_sync(Base.metadata.create_all)
+                # Stamp alembic version to head so future alembic upgrade head
+                # calls are no-ops instead of failing with "table already exists".
+                await _stamp_alembic_head(conn, backend)
     except Exception as exc:
         if backend == "postgres" and "does not exist" in str(exc):
             # Database not yet created — attempt to auto-create it, then retry.

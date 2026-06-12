@@ -2,11 +2,13 @@
  * API functions for file uploads
  */
 
+import { extractError } from "../api/errors";
 import { fetch } from "../api/fetcher";
 import { getBackendBaseURL } from "../config";
 
 export interface UploadedFileInfo {
   filename: string;
+  original_filename?: string;
   size: number;
   path: string;
   virtual_path: string;
@@ -23,19 +25,12 @@ export interface UploadResponse {
   success: boolean;
   files: UploadedFileInfo[];
   message: string;
+  skipped_files?: string[];
 }
 
 export interface ListFilesResponse {
   files: UploadedFileInfo[];
   count: number;
-}
-
-async function readErrorDetail(
-  response: Response,
-  fallback: string,
-): Promise<string> {
-  const error = await response.json().catch(() => ({ detail: fallback }));
-  return error.detail ?? fallback;
 }
 
 /**
@@ -60,7 +55,7 @@ export async function uploadFiles(
   );
 
   if (!response.ok) {
-    throw new Error(await readErrorDetail(response, "Upload failed"));
+    await extractError(response, "Upload failed");
   }
 
   return response.json();
@@ -77,9 +72,7 @@ export async function listUploadedFiles(
   );
 
   if (!response.ok) {
-    throw new Error(
-      await readErrorDetail(response, "Failed to list uploaded files"),
-    );
+    await extractError(response, "Failed to list uploaded files");
   }
 
   return response.json();
@@ -100,7 +93,7 @@ export async function deleteUploadedFile(
   );
 
   if (!response.ok) {
-    throw new Error(await readErrorDetail(response, "Failed to delete file"));
+    await extractError(response, "Failed to delete file");
   }
 
   return response.json();

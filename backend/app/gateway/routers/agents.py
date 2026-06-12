@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
-from app.gateway.authz import check_resource_modify, get_current_rbac_user, get_optional_rbac_user
+from app.gateway.authz import check_resource_modify, get_current_rbac_user, get_optional_rbac_user, require_role
 from ideer.config.agents_api_config import get_agents_api_config
 from ideer.config.agents_config import AgentConfig, list_custom_agents, load_agent_config, load_agent_soul
 from ideer.config.paths import get_paths
@@ -389,6 +389,7 @@ async def get_agent(
     summary="Create Custom Agent",
     description="Create a new custom agent with its config and SOUL.md.",
 )
+@require_role(UserRole.USER, UserRole.DEPARTMENT_ADMIN, UserRole.SUPER_ADMIN)
 async def create_agent_endpoint(
     request: AgentCreateRequest,
     current_user: UserModel = Depends(get_current_rbac_user),
@@ -489,6 +490,7 @@ async def create_agent_endpoint(
     summary="Update Custom Agent",
     description="Update an existing custom agent's config and/or SOUL.md.",
 )
+@require_role(UserRole.USER, UserRole.DEPARTMENT_ADMIN, UserRole.SUPER_ADMIN)
 async def update_agent(
     name: str,
     request: AgentUpdateRequest,
@@ -645,6 +647,7 @@ async def get_user_profile(current_user: UserModel = Depends(get_current_rbac_us
     summary="Update User Profile",
     description="Write the global USER.md file that is injected into all custom agents.",
 )
+@require_role(UserRole.USER, UserRole.DEPARTMENT_ADMIN, UserRole.SUPER_ADMIN)
 async def update_user_profile(request: UserProfileUpdateRequest, current_user: UserModel = Depends(get_current_rbac_user)) -> UserProfileResponse:
     """Create or overwrite the global USER.md.
 
@@ -673,6 +676,7 @@ async def update_user_profile(request: UserProfileUpdateRequest, current_user: U
     summary="Delete Custom Agent",
     description="Delete a custom agent and all its files (config, SOUL.md, memory).",
 )
+@require_role(UserRole.USER, UserRole.DEPARTMENT_ADMIN, UserRole.SUPER_ADMIN)
 async def delete_agent(
     name: str,
     current_user: UserModel = Depends(get_current_rbac_user),
@@ -827,6 +831,7 @@ async def export_agent(
     summary="Import Custom Agent",
     description="Import an agent from an exported JSON bundle.",
 )
+@require_role(UserRole.USER, UserRole.DEPARTMENT_ADMIN, UserRole.SUPER_ADMIN)
 async def import_agent(
     request: AgentImportRequest,
     current_user: UserModel = Depends(get_current_rbac_user),

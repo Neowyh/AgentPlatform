@@ -5,6 +5,7 @@ export interface MemoryFact {
   confidence: number;
   createdAt: string;
   source: string;
+  sourceError?: string | null;
 }
 
 export interface MemoryFactInput {

@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { WorkspaceBreadcrumb } from "@/components/workspace/workspace-breadcrumb";
+import { useI18n } from "@/core/i18n/hooks";
 import { useCreateWorkflow } from "@/core/workflows";
 import { validateYaml } from "@/core/workflows/validate";
 
@@ -48,6 +49,7 @@ export default function NewWorkflowPage() {
   const router = useRouter();
   const createWorkflow = useCreateWorkflow();
   const { resolvedTheme } = useTheme();
+  const { t } = useI18n();
 
   const [content, setContent] = useState(DEFAULT_YAML);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
@@ -66,12 +68,12 @@ export default function NewWorkflowPage() {
 
     try {
       await createWorkflow.mutateAsync({ yaml_content: content });
-      toast.success("Workflow created");
+      toast.success(t.workflows.created);
       router.push("/workspace/workflows");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     }
-  }, [content, createWorkflow, router]);
+  }, [content, createWorkflow, router, t]);
 
   return (
     <div className="flex size-full flex-col">
@@ -87,9 +89,9 @@ export default function NewWorkflowPage() {
             <ArrowLeftIcon className="h-4 w-4" />
           </Button>
           <div>
-            <h1 className="text-xl font-semibold">New Workflow</h1>
+            <h1 className="text-xl font-semibold">{t.workflows.newWorkflow}</h1>
             <p className="text-muted-foreground mt-0.5 text-sm">
-              Define a new workflow in YAML
+              {t.workflows.createSubtitle}
             </p>
           </div>
         </div>
@@ -98,11 +100,13 @@ export default function NewWorkflowPage() {
             variant="outline"
             onClick={() => router.push("/workspace/workflows")}
           >
-            Cancel
+            {t.common.cancel}
           </Button>
           <Button onClick={handleSave} disabled={createWorkflow.isPending}>
             <SaveIcon className="mr-1.5 h-4 w-4" />
-            {createWorkflow.isPending ? "Creating..." : "Create Workflow"}
+            {createWorkflow.isPending
+              ? t.workflows.creating
+              : t.workflows.newWorkflow}
           </Button>
         </div>
       </div>
@@ -126,7 +130,9 @@ export default function NewWorkflowPage() {
       <div className="flex min-h-0 flex-1">
         <div className="flex w-full flex-col">
           <div className="border-b px-4 py-2">
-            <span className="text-sm font-medium">YAML Editor</span>
+            <span className="text-sm font-medium">
+              {t.workflows.yamlEditor}
+            </span>
           </div>
           <div className="flex-1 overflow-auto">
             <CodeMirror

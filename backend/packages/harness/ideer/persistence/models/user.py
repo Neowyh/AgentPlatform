@@ -43,7 +43,7 @@ class UserModel(Base):
 
     id = Column(String, primary_key=True)
     username = Column(String, unique=True, nullable=False)
-    role = Column(String, default=UserRole.USER)
+    role = Column(String, default=UserRole.USER, server_default=UserRole.USER, nullable=False)
     department_id = Column(String, ForeignKey("departments.id"), nullable=True)
     disabled = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, server_default=func.now())

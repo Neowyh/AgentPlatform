@@ -157,10 +157,63 @@ export interface Translations {
     backToGallery: string;
   };
 
+  // Workflows
+  workflows: {
+    // Gallery
+    title: string;
+    description: string;
+    newWorkflow: string;
+    emptyTitle: string;
+    emptyDescription: string;
+    // Card
+    view: string;
+    deleteTitle: string;
+    deleteConfirm: (name: string) => string;
+    deleteSuccess: string;
+    deleting: string;
+    unknown: string;
+    steps: (count: number) => string;
+    inputs: (count: number) => string;
+    // Detail
+    notFound: string;
+    backToWorkflows: string;
+    edit: string;
+    run: string;
+    stepsTitle: (count: number) => string;
+    stepsDescription: string;
+    noSteps: string;
+    inputsTitle: string;
+    inputsDescription: string;
+    required: string;
+    runStatus: string;
+    runId: string;
+    yamlDefinition: string;
+    // Run Dialog
+    runDialog: string;
+    runDialogDescription: string;
+    defaultPrefix: string;
+    enterInput: (key: string) => string;
+    noInputs: string;
+    starting: string;
+    // Create/Edit
+    createSubtitle: string;
+    yamlEditor: string;
+    creating: string;
+    saving: string;
+    created: string;
+    updated: string;
+    requiredMissing: (key: string) => string;
+    started: string;
+    saveChanges: string;
+  };
+
   // Breadcrumb
   breadcrumb: {
     workspace: string;
     chats: string;
+    workflows: string;
+    edit: string;
+    runs: string;
   };
 
   // Workspace

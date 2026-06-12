@@ -6,6 +6,9 @@ export interface Agent {
   skills: string[] | null;
   soul?: string | null;
   read_only?: boolean;
+  visibility: string;
+  owner_id: string | null;
+  department_id: string | null;
 }
 
 export interface CreateAgentRequest {
@@ -15,6 +18,7 @@ export interface CreateAgentRequest {
   tool_groups?: string[] | null;
   skills?: string[] | null;
   soul?: string;
+  visibility?: string;
 }
 
 export interface UpdateAgentRequest {
@@ -23,4 +27,5 @@ export interface UpdateAgentRequest {
   tool_groups?: string[] | null;
   skills?: string[] | null;
   soul?: string | null;
+  visibility?: string;
 }

@@ -15,7 +15,7 @@ export interface Department {
   id: string;
   name: string;
   description: string;
-  member_count: number;
+  member_count: number | null;
   agent_count: number;
   skill_count: number;
   created_at: string;

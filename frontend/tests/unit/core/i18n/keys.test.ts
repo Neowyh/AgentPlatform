@@ -28,6 +28,36 @@ describe("i18n translation keys", () => {
     it("zh-CN has workflows sidebar key", () => {
       expect(zhCN.sidebar).toHaveProperty("workflows");
     });
+
+    it("en-US has workflows section", () => {
+      expect(enUS).toHaveProperty("workflows");
+      expect(enUS.workflows).toHaveProperty("title");
+      expect(enUS.workflows).toHaveProperty("newWorkflow");
+      expect(enUS.workflows).toHaveProperty("emptyTitle");
+      expect(enUS.workflows).toHaveProperty("runDialog");
+      expect(enUS.workflows).toHaveProperty("yamlEditor");
+    });
+
+    it("zh-CN has workflows section", () => {
+      expect(zhCN).toHaveProperty("workflows");
+      expect(zhCN.workflows).toHaveProperty("title");
+      expect(zhCN.workflows).toHaveProperty("newWorkflow");
+      expect(zhCN.workflows).toHaveProperty("emptyTitle");
+      expect(zhCN.workflows).toHaveProperty("runDialog");
+      expect(zhCN.workflows).toHaveProperty("yamlEditor");
+    });
+
+    it("en-US has workflow breadcrumb keys", () => {
+      expect(enUS.breadcrumb).toHaveProperty("workflows");
+      expect(enUS.breadcrumb).toHaveProperty("edit");
+      expect(enUS.breadcrumb).toHaveProperty("runs");
+    });
+
+    it("zh-CN has workflow breadcrumb keys", () => {
+      expect(zhCN.breadcrumb).toHaveProperty("workflows");
+      expect(zhCN.breadcrumb).toHaveProperty("edit");
+      expect(zhCN.breadcrumb).toHaveProperty("runs");
+    });
   });
 
   describe("brand keys", () => {
@@ -56,6 +86,18 @@ describe("i18n translation keys", () => {
     it("en-US and zh-CN sidebar keys match", () => {
       const enKeys = Object.keys(enUS.sidebar).sort();
       const zhKeys = Object.keys(zhCN.sidebar).sort();
+      expect(enKeys).toEqual(zhKeys);
+    });
+
+    it("en-US and zh-CN workflows keys match", () => {
+      const enKeys = Object.keys(enUS.workflows).sort();
+      const zhKeys = Object.keys(zhCN.workflows).sort();
+      expect(enKeys).toEqual(zhKeys);
+    });
+
+    it("en-US and zh-CN breadcrumb keys match", () => {
+      const enKeys = Object.keys(enUS.breadcrumb).sort();
+      const zhKeys = Object.keys(zhCN.breadcrumb).sort();
       expect(enKeys).toEqual(zhKeys);
     });
   });

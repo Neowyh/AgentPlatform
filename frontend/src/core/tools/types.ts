@@ -6,6 +6,7 @@ export interface Tool {
   configurable: boolean;
   param_schema: Record<string, unknown>;
   config_schema?: Record<string, unknown>;
+  config: Record<string, unknown>;
 }
 
 export interface ToolTestResult {

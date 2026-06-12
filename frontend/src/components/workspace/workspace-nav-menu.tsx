@@ -62,7 +62,9 @@ export function WorkspaceNavMenu() {
   const { t } = useI18n();
   const { user } = useAuth();
 
-  const isAdmin = user?.system_role === "admin";
+  const isAdmin =
+    user?.system_role === "super_admin" ||
+    user?.system_role === "department_admin";
 
   useEffect(() => {
     setMounted(true);
