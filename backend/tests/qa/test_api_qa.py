@@ -28,8 +28,8 @@ import pytest
 
 # 测试配置
 BASE_URL = os.environ.get("QA_BASE_URL", "http://localhost:8001")
-TEST_EMAIL = os.environ.get("QA_ADMIN_EMAIL", "admin@test.com")
-TEST_PASSWORD = os.environ.get("QA_ADMIN_PASSWORD", "Test1234!")
+TEST_EMAIL = os.environ.get("QA_ADMIN_EMAIL", "super_admin@test.com")
+TEST_PASSWORD = os.environ.get("QA_ADMIN_PASSWORD", "super_admin@test.com")
 
 
 class QAAuthHelper:
@@ -38,6 +38,7 @@ class QAAuthHelper:
     def __init__(self, base_url: str):
         self.base_url = base_url
         self.token: str | None = None
+        self.csrf_token: str | None = None
 
     async def ensure_admin(self) -> str:
         """确保有管理员账户并获取 token"""
@@ -85,13 +86,42 @@ class QAAuthHelper:
 
                 pytest.skip(f"Login failed: {error_code} - {error_message}\n使用凭据: {TEST_EMAIL}{suggestion}")
 
-            self.token = response.json()["access_token"]
+            # Token 通过 Set-Cookie 返回，从 cookie 中提取
+            cookies = response.cookies
+            if "access_token" in cookies:
+                self.token = cookies["access_token"]
+            else:
+                # 备用方案：从响应体中获取
+                response_data = response.json()
+                self.token = response_data.get("access_token")
+                if not self.token:
+                    pytest.skip(f"Login succeeded but no access_token found in response or cookies. Response: {response_data}")
+
+            # 获取 CSRF token
+            if "csrf_token" in cookies:
+                self.csrf_token = cookies["csrf_token"]
+            else:
+                # 如果登录响应中没有 CSRF token，手动获取
+                # CSRF token 会在首次 POST 请求后设置
+                self.csrf_token = None
+
             return self.token
 
     def headers(self) -> dict:
         """获取认证 headers"""
         assert self.token, "Must call ensure_admin() first"
-        return {"Authorization": f"Bearer {self.token}"}
+        headers = {"Authorization": f"Bearer {self.token}"}
+        if self.csrf_token:
+            headers["X-CSRF-Token"] = self.csrf_token
+        return headers
+
+    def cookies(self) -> dict:
+        """获取认证 cookies"""
+        assert self.token, "Must call ensure_admin() first"
+        cookies = {"access_token": self.token}
+        if self.csrf_token:
+            cookies["csrf_token"] = self.csrf_token
+        return cookies
 
 
 @pytest.fixture(scope="session")
@@ -108,6 +138,18 @@ def auth():
 def auth_headers(auth):
     """认证 headers fixture"""
     return auth.headers()
+
+
+@pytest.fixture
+def auth_cookies(auth):
+    """认证 cookies fixture"""
+    return auth.cookies()
+
+
+@pytest.fixture
+def auth_headers_and_cookies(auth):
+    """认证 headers 和 cookies fixture"""
+    return auth.headers(), auth.cookies()
 
 
 class TestAuthQA:
@@ -137,9 +179,13 @@ class TestAuthQA:
             if response.status_code != 200:
                 pytest.skip(f"Login failed with test credentials: {response.text}")
 
+            # 验证登录成功
             data = response.json()
-            assert "access_token" in data
-            assert "token_type" in data
+            assert "expires_in" in data
+            assert response.status_code == 200
+
+            # 验证 token 通过 cookie 返回
+            assert "access_token" in response.cookies, "access_token should be in cookies"
 
     @pytest.mark.asyncio
     async def test_login_wrong_password(self):
@@ -153,12 +199,12 @@ class TestAuthQA:
             assert response.status_code in (401, 422, 429)
 
     @pytest.mark.asyncio
-    async def test_me(self, auth_headers):
+    async def test_me(self, auth_cookies):
         """GET /api/v1/auth/me"""
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 f"{BASE_URL}/api/v1/auth/me",
-                headers=auth_headers,
+                cookies=auth_cookies,
             )
             assert response.status_code == 200
             data = response.json()
@@ -176,26 +222,28 @@ class TestAgentsQA:
     """Agent 模块 QA 测试"""
 
     @pytest.mark.asyncio
-    async def test_list_agents(self, auth_headers):
+    async def test_list_agents(self, auth_cookies):
         """GET /api/agents"""
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 f"{BASE_URL}/api/agents",
-                headers=auth_headers,
+                cookies=auth_cookies,
             )
             assert response.status_code == 200
             data = response.json()
             assert isinstance(data, (list, dict))
 
     @pytest.mark.asyncio
-    async def test_agent_crud(self, auth_headers):
+    async def test_agent_crud(self, auth_headers_and_cookies):
         """Agent 完整 CRUD 流程"""
+        auth_headers, auth_cookies = auth_headers_and_cookies
         agent_name = "qa-test-agent"
 
         async with httpx.AsyncClient() as client:
             # 创建
             response = await client.post(
                 f"{BASE_URL}/api/agents",
+                cookies=auth_cookies,
                 headers=auth_headers,
                 json={
                     "name": agent_name,
@@ -208,13 +256,14 @@ class TestAgentsQA:
             # 获取
             response = await client.get(
                 f"{BASE_URL}/api/agents/{agent_name}",
-                headers=auth_headers,
+                cookies=auth_cookies,
             )
             assert response.status_code == 200
 
             # 更新
             response = await client.put(
                 f"{BASE_URL}/api/agents/{agent_name}",
+                cookies=auth_cookies,
                 headers=auth_headers,
                 json={"description": "Updated by QA"},
             )
@@ -223,6 +272,7 @@ class TestAgentsQA:
             # 删除
             response = await client.delete(
                 f"{BASE_URL}/api/agents/{agent_name}",
+                cookies=auth_cookies,
                 headers=auth_headers,
             )
             assert response.status_code in (200, 204)
@@ -230,17 +280,17 @@ class TestAgentsQA:
             # 验证删除
             response = await client.get(
                 f"{BASE_URL}/api/agents/{agent_name}",
-                headers=auth_headers,
+                cookies=auth_cookies,
             )
             assert response.status_code == 404
 
     @pytest.mark.asyncio
-    async def test_check_agent_name(self, auth_headers):
+    async def test_check_agent_name(self, auth_cookies):
         """GET /api/agents/check?name=xxx"""
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 f"{BASE_URL}/api/agents/check?name=nonexistent-agent",
-                headers=auth_headers,
+                cookies=auth_cookies,
             )
             assert response.status_code == 200
 
@@ -249,18 +299,19 @@ class TestWorkflowsQA:
     """Workflow 模块 QA 测试"""
 
     @pytest.mark.asyncio
-    async def test_list_workflows(self, auth_headers):
+    async def test_list_workflows(self, auth_cookies):
         """GET /api/workflows"""
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 f"{BASE_URL}/api/workflows",
-                headers=auth_headers,
+                cookies=auth_cookies,
             )
             assert response.status_code == 200
 
     @pytest.mark.asyncio
-    async def test_workflow_crud(self, auth_headers):
+    async def test_workflow_crud(self, auth_headers_and_cookies):
         """Workflow 完整 CRUD 流程"""
+        auth_headers, auth_cookies = auth_headers_and_cookies
         wf_name = "qa-test-workflow"
         wf_yaml = f"name: {wf_name}\nsteps:\n  - id: step1\n    type: agent\n    agent: default"
 
@@ -268,15 +319,16 @@ class TestWorkflowsQA:
             # 创建
             response = await client.post(
                 f"{BASE_URL}/api/workflows",
+                cookies=auth_cookies,
                 headers=auth_headers,
-                json={"yaml": wf_yaml},
+                json={"yaml_content": wf_yaml},
             )
             assert response.status_code in (200, 201)
 
             # 获取
             response = await client.get(
                 f"{BASE_URL}/api/workflows/{wf_name}",
-                headers=auth_headers,
+                cookies=auth_cookies,
             )
             assert response.status_code == 200
 
@@ -284,14 +336,16 @@ class TestWorkflowsQA:
             updated_yaml = f"name: {wf_name}\nsteps:\n  - id: step1\n    type: agent\n    agent: default\n    prompt: updated"
             response = await client.put(
                 f"{BASE_URL}/api/workflows/{wf_name}",
+                cookies=auth_cookies,
                 headers=auth_headers,
-                json={"yaml": updated_yaml},
+                json={"yaml_content": updated_yaml},
             )
             assert response.status_code == 200
 
             # 删除
             response = await client.delete(
                 f"{BASE_URL}/api/workflows/{wf_name}",
+                cookies=auth_cookies,
                 headers=auth_headers,
             )
             assert response.status_code in (200, 204)
@@ -301,11 +355,13 @@ class TestThreadsQA:
     """Thread 模块 QA 测试"""
 
     @pytest.mark.asyncio
-    async def test_search_threads(self, auth_headers):
+    async def test_search_threads(self, auth_headers_and_cookies):
         """POST /api/threads/search"""
+        auth_headers, auth_cookies = auth_headers_and_cookies
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 f"{BASE_URL}/api/threads/search",
+                cookies=auth_cookies,
                 headers=auth_headers,
                 json={"limit": 10},
             )
@@ -314,11 +370,13 @@ class TestThreadsQA:
             assert isinstance(data, (list, dict))
 
     @pytest.mark.asyncio
-    async def test_create_thread(self, auth_headers):
+    async def test_create_thread(self, auth_headers_and_cookies):
         """POST /api/threads"""
+        auth_headers, auth_cookies = auth_headers_and_cookies
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 f"{BASE_URL}/api/threads",
+                cookies=auth_cookies,
                 headers=auth_headers,
                 json={},
             )
@@ -329,34 +387,34 @@ class TestAdminQA:
     """Admin 模块 QA 测试"""
 
     @pytest.mark.asyncio
-    async def test_stats(self, auth_headers):
+    async def test_stats(self, auth_cookies):
         """GET /api/admin/stats"""
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 f"{BASE_URL}/api/admin/stats",
-                headers=auth_headers,
+                cookies=auth_cookies,
             )
             assert response.status_code == 200
             data = response.json()
             assert isinstance(data, dict)
 
     @pytest.mark.asyncio
-    async def test_users(self, auth_headers):
+    async def test_users(self, auth_cookies):
         """GET /api/admin/users"""
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 f"{BASE_URL}/api/admin/users",
-                headers=auth_headers,
+                cookies=auth_cookies,
             )
             assert response.status_code == 200
 
     @pytest.mark.asyncio
-    async def test_departments(self, auth_headers):
+    async def test_departments(self, auth_cookies):
         """GET /api/admin/departments"""
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 f"{BASE_URL}/api/admin/departments",
-                headers=auth_headers,
+                cookies=auth_cookies,
             )
             assert response.status_code == 200
 
@@ -365,12 +423,12 @@ class TestSkillsQA:
     """Skills 模块 QA 测试"""
 
     @pytest.mark.asyncio
-    async def test_list_skills(self, auth_headers):
+    async def test_list_skills(self, auth_cookies):
         """GET /api/skills"""
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 f"{BASE_URL}/api/skills",
-                headers=auth_headers,
+                cookies=auth_cookies,
             )
             assert response.status_code == 200
 
@@ -379,12 +437,12 @@ class TestToolsQA:
     """Tools 模块 QA 测试"""
 
     @pytest.mark.asyncio
-    async def test_list_tools(self, auth_headers):
+    async def test_list_tools(self, auth_cookies):
         """GET /api/tools"""
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 f"{BASE_URL}/api/tools",
-                headers=auth_headers,
+                cookies=auth_cookies,
             )
             assert response.status_code == 200
 
@@ -393,22 +451,22 @@ class TestMemoryQA:
     """Memory 模块 QA 测试"""
 
     @pytest.mark.asyncio
-    async def test_load_memory(self, auth_headers):
+    async def test_load_memory(self, auth_cookies):
         """GET /api/memory"""
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 f"{BASE_URL}/api/memory",
-                headers=auth_headers,
+                cookies=auth_cookies,
             )
             assert response.status_code == 200
 
     @pytest.mark.asyncio
-    async def test_export_memory(self, auth_headers):
+    async def test_export_memory(self, auth_cookies):
         """GET /api/memory/export"""
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 f"{BASE_URL}/api/memory/export",
-                headers=auth_headers,
+                cookies=auth_cookies,
             )
             assert response.status_code == 200
 
@@ -417,12 +475,12 @@ class TestModelsQA:
     """Models 模块 QA 测试"""
 
     @pytest.mark.asyncio
-    async def test_list_models(self, auth_headers):
+    async def test_list_models(self, auth_cookies):
         """GET /api/models"""
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 f"{BASE_URL}/api/models",
-                headers=auth_headers,
+                cookies=auth_cookies,
             )
             assert response.status_code == 200
 
@@ -431,11 +489,11 @@ class TestMCPConfigQA:
     """MCP Config 模块 QA 测试"""
 
     @pytest.mark.asyncio
-    async def test_get_config(self, auth_headers):
+    async def test_get_config(self, auth_cookies):
         """GET /api/mcp/config"""
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 f"{BASE_URL}/api/mcp/config",
-                headers=auth_headers,
+                cookies=auth_cookies,
             )
             assert response.status_code == 200
