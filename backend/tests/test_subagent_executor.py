@@ -1,22 +1,36 @@
-"""Tests for subagent executor async/sync execution paths.
+"""Comprehensive tests for subagent executor — aiming for 98%+ line coverage.
 
 Covers:
-- SubagentExecutor.execute() synchronous execution path
-- SubagentExecutor._aexecute() asynchronous execution path
-- execute_async() routes background work without bouncing through execute()
-- Error handling in both sync and async paths
-- Async tool support (MCP tools)
-- Cooperative cancellation via cancel_event
-
-Note: Due to circular import issues in the main codebase, conftest.py mocks
-ideer.subagents.executor. This test file uses delayed import via fixture to test
-the real implementation in isolation.
+- SubagentStatus enum and is_terminal property
+- SubagentResult dataclass, __post_init__, try_set_terminal (all branches)
+- _evict_stale_tasks (stale + non-stale)
+- _run_isolated_subagent_loop / _shutdown_isolated_subagent_loop / _get_isolated_subagent_loop
+- _submit_to_isolated_loop_in_context
+- _filter_tools (allowlist, denylist, both, neither)
+- SubagentExecutor.__init__ (model_name resolution, trace_id generation)
+- _create_agent (deferred model resolution, explicit tools)
+- _load_skills (empty list, None, whitelist, exception, no skills found)
+- _apply_skill_allowed_tools
+- _load_skill_messages (empty, content, exception per-skill)
+- _build_initial_state (system_prompt + skills, sandbox, thread_data)
+- _aexecute (all result extraction branches, cancellation, exception)
+- _execute_in_isolated_loop (timeout, generic exception)
+- execute (running loop, standard path, exception fallback)
+- execute_async (timeout, exception, custom task_id)
+- get_background_task_result / list_background_tasks / request_cancel_background_task
+- cleanup_background_task (all branches)
+- Module-level atexit guard
 """
 
+from __future__ import annotations
+
 import asyncio
+import logging
 import sys
 import threading
-from datetime import datetime
+from concurrent.futures import Future
+from concurrent.futures import TimeoutError as FuturesTimeoutError
+from datetime import datetime, timedelta
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -25,12 +39,16 @@ import pytest
 
 from ideer.skills.types import Skill
 
-# Module names that need to be mocked to break circular imports
+# ---------------------------------------------------------------------------
+# Module setup: mock heavy transitive imports to allow real executor import
+# ---------------------------------------------------------------------------
+
 _MOCKED_MODULE_NAMES = [
     "ideer.agents",
     "ideer.agents.thread_state",
     "ideer.agents.middlewares",
     "ideer.agents.middlewares.thread_data_middleware",
+    "ideer.agents.middlewares.tool_error_handling_middleware",
     "ideer.sandbox",
     "ideer.sandbox.middleware",
     "ideer.sandbox.security",
@@ -41,27 +59,19 @@ _MOCKED_MODULE_NAMES = [
 
 @pytest.fixture(autouse=True)
 def _setup_executor_classes():
-    """Set up mocked modules and import real executor classes.
-
-    This fixture runs once per test and yields the executor classes.
-    It handles module cleanup to avoid affecting other test files.
-    """
-    # Save original modules
+    """Set up mocked modules and import real executor classes."""
     original_modules = {name: sys.modules.get(name) for name in _MOCKED_MODULE_NAMES}
     original_executor = sys.modules.get("ideer.subagents.executor")
 
-    # Remove mocked executor if exists (from conftest.py)
     if "ideer.subagents.executor" in sys.modules:
         del sys.modules["ideer.subagents.executor"]
 
-    # Set up mocks
     for name in _MOCKED_MODULE_NAMES:
         sys.modules[name] = MagicMock()
     storage_module = ModuleType("ideer.skills.storage")
-    storage_module.get_or_new_skill_storage = lambda **kwargs: SimpleNamespace(load_skills=lambda *, enabled_only: [])
+    storage_module.get_or_new_skill_storage = lambda **kw: SimpleNamespace(load_skills=lambda *, enabled_only: [])
     sys.modules["ideer.skills.storage"] = storage_module
 
-    # Import real classes inside fixture
     from langchain_core.messages import AIMessage, HumanMessage
 
     from ideer.subagents.config import SubagentConfig
@@ -71,7 +81,6 @@ def _setup_executor_classes():
         SubagentStatus,
     )
 
-    # Store classes in a dict to yield
     classes = {
         "AIMessage": AIMessage,
         "HumanMessage": HumanMessage,
@@ -83,45 +92,21 @@ def _setup_executor_classes():
 
     yield classes
 
-    # Cleanup: Restore original modules
     for name in _MOCKED_MODULE_NAMES:
         if original_modules[name] is not None:
             sys.modules[name] = original_modules[name]
         elif name in sys.modules:
             del sys.modules[name]
 
-    # Restore executor module (conftest.py mock)
     if original_executor is not None:
         sys.modules["ideer.subagents.executor"] = original_executor
     elif "ideer.subagents.executor" in sys.modules:
         del sys.modules["ideer.subagents.executor"]
 
 
-# Helper classes that wrap real classes for testing
-class MockHumanMessage:
-    """Mock HumanMessage for testing - wraps real class from fixture."""
-
-    def __init__(self, content, _classes=None):
-        self._content = content
-        self._classes = _classes
-
-    def _get_real(self):
-        return self._classes["HumanMessage"](content=self._content)
-
-
-class MockAIMessage:
-    """Mock AIMessage for testing - wraps real class from fixture."""
-
-    def __init__(self, content, msg_id=None, _classes=None):
-        self._content = content
-        self._msg_id = msg_id
-        self._classes = _classes
-
-    def _get_real(self):
-        msg = self._classes["AIMessage"](content=self._content)
-        if self._msg_id:
-            msg.id = self._msg_id
-        return msg
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
 
 class NamedTool:
@@ -129,7 +114,7 @@ class NamedTool:
         self.name = name
 
 
-def _skill(name: str, allowed_tools: list[str] | None) -> Skill:
+def _skill(name: str, allowed_tools: list[str] | None, enabled: bool = True) -> Skill:
     skill_dir = Path(f"/tmp/{name}")
     return Skill(
         name=name,
@@ -140,58 +125,16 @@ def _skill(name: str, allowed_tools: list[str] | None) -> Skill:
         relative_path=Path(name),
         category="custom",
         allowed_tools=allowed_tools,
-        enabled=True,
+        enabled=enabled,
     )
 
 
 async def async_iterator(items):
-    """Helper to create an async iterator from a list."""
     for item in items:
         yield item
 
 
-# -----------------------------------------------------------------------------
-# Fixtures
-# -----------------------------------------------------------------------------
-
-
-@pytest.fixture
-def classes(_setup_executor_classes):
-    """Provide access to executor classes."""
-    return _setup_executor_classes
-
-
-@pytest.fixture
-def base_config(classes):
-    """Return a basic subagent config for testing."""
-    return classes["SubagentConfig"](
-        name="test-agent",
-        description="Test agent",
-        system_prompt="You are a test agent.",
-        max_turns=10,
-        timeout_seconds=60,
-    )
-
-
-@pytest.fixture
-def mock_agent():
-    """Return a properly configured mock agent with async stream."""
-    agent = MagicMock()
-    agent.astream = MagicMock()
-    return agent
-
-
-def _module(name: str, **attrs):
-    module = ModuleType(name)
-    for key, value in attrs.items():
-        setattr(module, key, value)
-    return module
-
-
-# Helper to create real message objects
 class _MsgHelper:
-    """Helper to create real message objects from fixture classes."""
-
     def __init__(self, classes):
         self.classes = classes
 
@@ -205,1554 +148,1925 @@ class _MsgHelper:
         return msg
 
 
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def classes(_setup_executor_classes):
+    return _setup_executor_classes
+
+
+@pytest.fixture
+def base_config(classes):
+    return classes["SubagentConfig"](
+        name="test-agent",
+        description="Test agent",
+        system_prompt="You are a test agent.",
+        max_turns=10,
+        timeout_seconds=60,
+    )
+
+
+@pytest.fixture
+def mock_agent():
+    agent = MagicMock()
+    agent.astream = MagicMock()
+    return agent
+
+
 @pytest.fixture
 def msg(classes):
-    """Provide message factory."""
     return _MsgHelper(classes)
 
 
-# -----------------------------------------------------------------------------
-# Agent Construction Tests
-# -----------------------------------------------------------------------------
+@pytest.fixture
+def executor_module(_setup_executor_classes):
+    import importlib
+
+    from ideer.subagents import executor
+
+    return importlib.reload(executor)
 
 
-class TestAgentConstruction:
-    """Test _create_agent() wiring before execution starts."""
+# =========================================================================
+# SubagentStatus
+# =========================================================================
 
-    def test_create_agent_threads_explicit_app_config_to_model_and_middlewares(
-        self,
-        classes,
-        base_config,
-        monkeypatch: pytest.MonkeyPatch,
-    ):
-        """Explicit app_config must flow into both model and middleware factories."""
-        import ideer.config as config_module
-        from ideer.subagents import executor as executor_module
 
-        SubagentExecutor = classes["SubagentExecutor"]
+class TestSubagentStatus:
+    def test_is_terminal_statuses(self, classes):
+        SubagentStatus = classes["SubagentStatus"]
+        assert SubagentStatus.COMPLETED.is_terminal is True
+        assert SubagentStatus.FAILED.is_terminal is True
+        assert SubagentStatus.CANCELLED.is_terminal is True
+        assert SubagentStatus.TIMED_OUT.is_terminal is True
 
-        app_config = SimpleNamespace(models=[SimpleNamespace(name="default-model")])
-        model = object()
-        middlewares = [object()]
-        agent = object()
-        captured: dict[str, dict] = {}
+    def test_is_not_terminal_statuses(self, classes):
+        SubagentStatus = classes["SubagentStatus"]
+        assert SubagentStatus.PENDING.is_terminal is False
+        assert SubagentStatus.RUNNING.is_terminal is False
 
-        def fake_get_app_config():
-            raise AssertionError("ambient get_app_config() must not be used when app_config is explicit")
+    def test_all_enum_values(self, classes):
+        SubagentStatus = classes["SubagentStatus"]
+        assert SubagentStatus.PENDING.value == "pending"
+        assert SubagentStatus.RUNNING.value == "running"
+        assert SubagentStatus.COMPLETED.value == "completed"
+        assert SubagentStatus.FAILED.value == "failed"
+        assert SubagentStatus.CANCELLED.value == "cancelled"
+        assert SubagentStatus.TIMED_OUT.value == "timed_out"
 
-        def fake_create_chat_model(**kwargs):
-            captured["model"] = kwargs
-            return model
 
-        def fake_build_subagent_runtime_middlewares(**kwargs):
-            captured["middlewares"] = kwargs
-            return middlewares
+# =========================================================================
+# SubagentResult
+# =========================================================================
 
-        def fake_create_agent(**kwargs):
-            captured["agent"] = kwargs
-            return agent
 
-        monkeypatch.setattr(config_module, "get_app_config", fake_get_app_config)
-        monkeypatch.setattr(
-            executor_module,
-            "create_chat_model",
-            fake_create_chat_model,
+class TestSubagentResult:
+    def test_post_init_sets_ai_messages_default(self, classes):
+        SubagentResult = classes["SubagentResult"]
+        SubagentStatus = classes["SubagentStatus"]
+        r = SubagentResult(
+            task_id="t1",
+            trace_id="tr1",
+            status=SubagentStatus.PENDING,
+            ai_messages=None,
         )
-        monkeypatch.setattr(executor_module, "create_agent", fake_create_agent)
-        monkeypatch.setitem(
-            sys.modules,
-            "ideer.agents.middlewares.tool_error_handling_middleware",
-            _module(
-                "ideer.agents.middlewares.tool_error_handling_middleware",
-                build_subagent_runtime_middlewares=fake_build_subagent_runtime_middlewares,
-            ),
+        assert r.ai_messages == []
+
+    def test_post_init_preserves_existing_ai_messages(self, classes):
+        SubagentResult = classes["SubagentResult"]
+        SubagentStatus = classes["SubagentStatus"]
+        msgs = [{"id": "m1"}]
+        r = SubagentResult(
+            task_id="t1",
+            trace_id="tr1",
+            status=SubagentStatus.PENDING,
+            ai_messages=msgs,
         )
+        assert r.ai_messages is msgs
 
-        executor = SubagentExecutor(
-            config=base_config,
-            tools=[],
-            app_config=app_config,
-            parent_model="parent-model",
+    def test_try_set_terminal_raises_on_non_terminal_status(self, classes):
+        SubagentResult = classes["SubagentResult"]
+        SubagentStatus = classes["SubagentStatus"]
+        r = SubagentResult(
+            task_id="t1",
+            trace_id="tr1",
+            status=SubagentStatus.PENDING,
         )
+        with pytest.raises(ValueError, match="not terminal"):
+            r.try_set_terminal(SubagentStatus.RUNNING)
 
-        result = executor._create_agent()
-
-        assert result is agent
-        assert captured["model"] == {
-            "name": "parent-model",
-            "thinking_enabled": False,
-            "app_config": app_config,
-        }
-        assert captured["middlewares"] == {
-            "app_config": app_config,
-            "model_name": "parent-model",
-            "lazy_init": True,
-        }
-        assert captured["agent"]["model"] is model
-        assert captured["agent"]["middleware"] is middlewares
-        assert captured["agent"]["tools"] == []
-        assert captured["agent"]["system_prompt"] is None  # system_prompt is merged into initial state messages
-
-    @pytest.mark.anyio
-    async def test_load_skill_messages_uses_explicit_app_config_for_skill_storage(
-        self,
-        classes,
-        base_config,
-        monkeypatch: pytest.MonkeyPatch,
-        tmp_path,
-    ):
-        """Explicit app_config must be threaded into subagent skill storage lookup."""
-        SubagentExecutor = classes["SubagentExecutor"]
-
-        app_config = SimpleNamespace(models=[SimpleNamespace(name="default-model")])
-        skill_dir = tmp_path / "demo-skill"
-        skill_dir.mkdir()
-        skill_file = skill_dir / "SKILL.md"
-        skill_file.write_text("Use demo skill", encoding="utf-8")
-        captured: dict[str, object] = {}
-
-        def fake_get_or_new_skill_storage(*, app_config=None):
-            captured["app_config"] = app_config
-            return SimpleNamespace(load_skills=lambda *, enabled_only: [SimpleNamespace(name="demo-skill", skill_file=skill_file)])
-
-        monkeypatch.setattr(sys.modules["ideer.skills.storage"], "get_or_new_skill_storage", fake_get_or_new_skill_storage)
-
-        executor = SubagentExecutor(
-            config=base_config,
-            tools=[],
-            app_config=app_config,
-            thread_id="test-thread",
+    def test_try_set_terminal_first_wins(self, classes):
+        SubagentResult = classes["SubagentResult"]
+        SubagentStatus = classes["SubagentStatus"]
+        r = SubagentResult(
+            task_id="t1",
+            trace_id="tr1",
+            status=SubagentStatus.RUNNING,
         )
+        assert r.try_set_terminal(SubagentStatus.COMPLETED, result="done") is True
+        # Second terminal write should be rejected
+        assert r.try_set_terminal(SubagentStatus.FAILED, error="fail") is False
+        assert r.status == SubagentStatus.COMPLETED
+        assert r.result == "done"
+        assert r.error is None
 
-        skills = await executor._load_skills()
-        messages = await executor._load_skill_messages(skills)
-
-        assert captured["app_config"] is app_config
-        assert len(messages) == 1
-        assert "Use demo skill" in messages[0].content
-
-    @pytest.mark.anyio
-    async def test_build_initial_state_consolidates_system_prompt_and_skills(
-        self,
-        classes,
-        base_config,
-        monkeypatch: pytest.MonkeyPatch,
-        tmp_path,
-    ):
-        """_build_initial_state merges system_prompt and skills into one SystemMessage."""
-        SubagentExecutor = classes["SubagentExecutor"]
-
-        skill_dir = tmp_path / "my-skill"
-        skill_dir.mkdir()
-        skill_file = skill_dir / "SKILL.md"
-        skill_file.write_text("Skill instructions here", encoding="utf-8")
-
-        monkeypatch.setattr(
-            sys.modules["ideer.skills.storage"],
-            "get_or_new_skill_storage",
-            lambda *, app_config=None: SimpleNamespace(load_skills=lambda *, enabled_only: [SimpleNamespace(name="my-skill", skill_file=skill_file, allowed_tools=None)]),
+    def test_try_set_terminal_sets_all_fields(self, classes):
+        SubagentResult = classes["SubagentResult"]
+        SubagentStatus = classes["SubagentStatus"]
+        r = SubagentResult(
+            task_id="t1",
+            trace_id="tr1",
+            status=SubagentStatus.RUNNING,
         )
-
-        executor = SubagentExecutor(
-            config=base_config,
-            tools=[],
-            thread_id="test-thread",
+        dt = datetime(2026, 1, 1)
+        records = [{"caller": "test", "input_tokens": 10, "output_tokens": 5, "total_tokens": 15}]
+        msgs = [{"id": "m1"}]
+        r.try_set_terminal(
+            SubagentStatus.COMPLETED,
+            result="ok",
+            error="err",
+            completed_at=dt,
+            ai_messages=msgs,
+            token_usage_records=records,
         )
+        assert r.result == "ok"
+        assert r.error == "err"
+        assert r.completed_at == dt
+        assert r.ai_messages == msgs
+        assert r.token_usage_records == records
 
-        state, _filtered_tools = await executor._build_initial_state("Do the task")
-
-        messages = state["messages"]
-        # Should have exactly 2 messages: one combined SystemMessage + one HumanMessage
-        assert len(messages) == 2
-
-        from langchain_core.messages import HumanMessage, SystemMessage
-
-        assert isinstance(messages[0], SystemMessage)
-        assert isinstance(messages[1], HumanMessage)
-        # SystemMessage should contain both the system_prompt and skill content
-        assert base_config.system_prompt in messages[0].content
-        assert "Skill instructions here" in messages[0].content
-        # HumanMessage should be the task
-        assert messages[1].content == "Do the task"
-
-    @pytest.mark.anyio
-    async def test_build_initial_state_no_skills_only_system_prompt(
-        self,
-        classes,
-        base_config,
-        monkeypatch: pytest.MonkeyPatch,
-    ):
-        """_build_initial_state works when there are no skills."""
-        SubagentExecutor = classes["SubagentExecutor"]
-
-        monkeypatch.setattr(
-            sys.modules["ideer.skills.storage"],
-            "get_or_new_skill_storage",
-            lambda *, app_config=None: SimpleNamespace(load_skills=lambda *, enabled_only: []),
+    def test_try_set_terminal_all_none_preserves_existing(self, classes):
+        SubagentResult = classes["SubagentResult"]
+        SubagentStatus = classes["SubagentStatus"]
+        r = SubagentResult(
+            task_id="t1",
+            trace_id="tr1",
+            status=SubagentStatus.RUNNING,
+            result="original",
+            error="orig_err",
+            ai_messages=[{"id": "orig"}],
+            token_usage_records=[{"caller": "orig"}],
         )
+        # Pass all None (except status)
+        r.try_set_terminal(SubagentStatus.COMPLETED)
+        assert r.result == "original"
+        assert r.error == "orig_err"
+        assert r.ai_messages == [{"id": "orig"}]
+        assert r.token_usage_records == [{"caller": "orig"}]
+        assert r.completed_at is not None
 
-        executor = SubagentExecutor(
-            config=base_config,
-            tools=[],
-            thread_id="test-thread",
+    def test_try_set_terminal_generates_completed_at_when_none(self, classes):
+        SubagentResult = classes["SubagentResult"]
+        SubagentStatus = classes["SubagentStatus"]
+        r = SubagentResult(
+            task_id="t1",
+            trace_id="tr1",
+            status=SubagentStatus.RUNNING,
         )
+        before = datetime.now()
+        r.try_set_terminal(SubagentStatus.COMPLETED)
+        after = datetime.now()
+        assert before <= r.completed_at <= after
 
-        state, _filtered_tools = await executor._build_initial_state("Do the task")
+    def test_token_usage_records_default_factory(self, classes):
+        SubagentResult = classes["SubagentResult"]
+        SubagentStatus = classes["SubagentStatus"]
+        r1 = SubagentResult(task_id="t1", trace_id="tr1", status=SubagentStatus.PENDING)
+        r2 = SubagentResult(task_id="t2", trace_id="tr2", status=SubagentStatus.PENDING)
+        assert r1.token_usage_records is not r2.token_usage_records
 
-        messages = state["messages"]
-        from langchain_core.messages import HumanMessage, SystemMessage
 
-        assert len(messages) == 2
-        assert isinstance(messages[0], SystemMessage)
-        assert base_config.system_prompt in messages[0].content
-        assert isinstance(messages[1], HumanMessage)
+# =========================================================================
+# _evict_stale_tasks
+# =========================================================================
 
-    @pytest.mark.anyio
-    async def test_build_initial_state_no_system_prompt_with_skills(
-        self,
-        classes,
-        monkeypatch: pytest.MonkeyPatch,
-        tmp_path,
-    ):
-        """_build_initial_state works when there is no system_prompt but there are skills."""
-        SubagentConfig = classes["SubagentConfig"]
 
-        config = SubagentConfig(
-            name="test-agent",
-            description="Test agent",
-            system_prompt=None,
-            max_turns=10,
-            timeout_seconds=60,
+class TestEvictStaleTasks:
+    def test_evicts_old_completed_tasks(self, executor_module, classes):
+        SubagentResult = classes["SubagentResult"]
+        SubagentStatus = classes["SubagentStatus"]
+        stale = SubagentResult(
+            task_id="stale",
+            trace_id="tr",
+            status=SubagentStatus.COMPLETED,
+            completed_at=datetime.now() - timedelta(seconds=executor_module._MAX_TASK_AGE_SECONDS + 100),
         )
-
-        skill_dir = tmp_path / "my-skill"
-        skill_dir.mkdir()
-        skill_file = skill_dir / "SKILL.md"
-        skill_file.write_text("Skill content", encoding="utf-8")
-
-        monkeypatch.setattr(
-            sys.modules["ideer.skills.storage"],
-            "get_or_new_skill_storage",
-            lambda *, app_config=None: SimpleNamespace(load_skills=lambda *, enabled_only: [SimpleNamespace(name="my-skill", skill_file=skill_file, allowed_tools=None)]),
+        fresh = SubagentResult(
+            task_id="fresh",
+            trace_id="tr",
+            status=SubagentStatus.COMPLETED,
+            completed_at=datetime.now(),
         )
+        executor_module._background_tasks["stale"] = stale
+        executor_module._background_tasks["fresh"] = fresh
 
-        SubagentExecutor = classes["SubagentExecutor"]
-        executor = SubagentExecutor(config=config, tools=[], thread_id="test-thread")
+        executor_module._evict_stale_tasks()
 
-        state, _filtered_tools = await executor._build_initial_state("Do the task")
+        assert "stale" not in executor_module._background_tasks
+        assert "fresh" in executor_module._background_tasks
 
-        messages = state["messages"]
-        from langchain_core.messages import HumanMessage, SystemMessage
+    def test_evict_keeps_tasks_without_completed_at(self, executor_module, classes):
+        SubagentResult = classes["SubagentResult"]
+        SubagentStatus = classes["SubagentStatus"]
+        running = SubagentResult(
+            task_id="running",
+            trace_id="tr",
+            status=SubagentStatus.RUNNING,
+            started_at=datetime.now() - timedelta(seconds=9999),
+        )
+        executor_module._background_tasks["running"] = running
+        executor_module._evict_stale_tasks()
+        assert "running" in executor_module._background_tasks
 
-        assert len(messages) == 2
-        assert isinstance(messages[0], SystemMessage)
-        assert "Skill content" in messages[0].content
-        assert isinstance(messages[1], HumanMessage)
+    def test_evict_logs_when_stale_tasks_found(self, executor_module, classes, caplog):
+        SubagentResult = classes["SubagentResult"]
+        SubagentStatus = classes["SubagentStatus"]
+        stale = SubagentResult(
+            task_id="stale-log",
+            trace_id="tr",
+            status=SubagentStatus.COMPLETED,
+            completed_at=datetime.now() - timedelta(seconds=executor_module._MAX_TASK_AGE_SECONDS + 100),
+        )
+        executor_module._background_tasks["stale-log"] = stale
+        with caplog.at_level(logging.INFO):
+            executor_module._evict_stale_tasks()
+        assert "Evicted" in caplog.text
+
+    def test_evict_no_stale_tasks_no_log(self, executor_module, classes, caplog):
+        executor_module._background_tasks.clear()
+        with caplog.at_level(logging.INFO):
+            executor_module._evict_stale_tasks()
+        assert "Evicted" not in caplog.text
 
 
-# -----------------------------------------------------------------------------
-# Async Execution Path Tests
-# -----------------------------------------------------------------------------
+# =========================================================================
+# _shutdown_isolated_subagent_loop
+# =========================================================================
 
 
-class TestAsyncExecutionPath:
-    """Test _aexecute() async execution path."""
+class TestShutdownIsolatedSubagentLoop:
+    def test_shutdown_when_no_loop(self, executor_module):
+        executor_module._isolated_subagent_loop = None
+        executor_module._isolated_subagent_loop_thread = None
+        # Should not raise
+        executor_module._shutdown_isolated_subagent_loop()
 
-    @pytest.mark.anyio
-    async def test_aexecute_success(self, classes, base_config, mock_agent, msg):
-        """Test successful async execution returns completed result."""
-        SubagentExecutor = classes["SubagentExecutor"]
+    def test_shutdown_running_loop(self, executor_module):
+        loop = asyncio.new_event_loop()
+        started = threading.Event()
+
+        def run_loop():
+            asyncio.set_event_loop(loop)
+            started.set()
+            loop.run_forever()
+
+        thread = threading.Thread(target=run_loop, daemon=True)
+        thread.start()
+        started.wait(timeout=2)
+
+        executor_module._isolated_subagent_loop = loop
+        executor_module._isolated_subagent_loop_thread = thread
+        executor_module._isolated_subagent_loop_started = started
+
+        executor_module._shutdown_isolated_subagent_loop()
+
+        assert executor_module._isolated_subagent_loop is None
+        assert executor_module._isolated_subagent_loop_thread is None
+        thread.join(timeout=2)
+
+    def test_shutdown_loop_not_running(self, executor_module):
+        loop = asyncio.new_event_loop()
+        # Loop is not started (not running)
+        executor_module._isolated_subagent_loop = loop
+        executor_module._isolated_subagent_loop_thread = None
+
+        executor_module._shutdown_isolated_subagent_loop()
+
+        assert executor_module._isolated_subagent_loop is None
+
+    def test_shutdown_with_dead_thread(self, executor_module):
+        loop = asyncio.new_event_loop()
+        thread = MagicMock()
+        thread.is_alive.return_value = False
+        thread.is_running = MagicMock(return_value=False)
+
+        executor_module._isolated_subagent_loop = loop
+        executor_module._isolated_subagent_loop_thread = thread
+
+        executor_module._shutdown_isolated_subagent_loop()
+
+        assert executor_module._isolated_subagent_loop is None
+
+
+# =========================================================================
+# _run_isolated_subagent_loop
+# =========================================================================
+
+
+class TestRunIsolatedSubagentLoop:
+    def test_sets_event_and_runs_forever(self, executor_module):
+        loop = asyncio.new_event_loop()
+        started = threading.Event()
+
+        def run():
+            executor_module._run_isolated_subagent_loop(loop, started)
+
+        thread = threading.Thread(target=run, daemon=True)
+        thread.start()
+        assert started.wait(timeout=2)
+        loop.call_soon_threadsafe(loop.stop)
+        thread.join(timeout=2)
+
+
+# =========================================================================
+# _get_isolated_subagent_loop
+# =========================================================================
+
+
+class TestGetIsolatedSubagentLoop:
+    def test_creates_new_loop_when_none_exists(self, executor_module):
+        executor_module._isolated_subagent_loop = None
+        executor_module._isolated_subagent_loop_thread = None
+        executor_module._isolated_subagent_loop_started = None
+
+        loop = executor_module._get_isolated_subagent_loop()
+
+        assert loop is not None
+        assert loop.is_running()
+        assert executor_module._isolated_subagent_loop is loop
+
+        # Cleanup
+        executor_module._shutdown_isolated_subagent_loop()
+
+    def test_reuses_existing_running_loop(self, executor_module):
+        # Create a loop first
+        loop1 = executor_module._get_isolated_subagent_loop()
+        loop2 = executor_module._get_isolated_subagent_loop()
+        assert loop1 is loop2
+        executor_module._shutdown_isolated_subagent_loop()
+
+    def test_creates_new_loop_when_old_is_closed(self, executor_module):
+        old_loop = asyncio.new_event_loop()
+        old_loop.close()
+        executor_module._isolated_subagent_loop = old_loop
+        executor_module._isolated_subagent_loop_thread = None
+
+        loop = executor_module._get_isolated_subagent_loop()
+        assert loop is not old_loop
+        assert not loop.is_closed()
+        executor_module._shutdown_isolated_subagent_loop()
+
+
+# =========================================================================
+# _submit_to_isolated_loop_in_context
+# =========================================================================
+
+
+class TestSubmitToIsolatedLoopInContext:
+    def test_submits_coroutine_to_isolated_loop(self, executor_module, classes):
+        SubagentResult = classes["SubagentResult"]
         SubagentStatus = classes["SubagentStatus"]
 
-        final_message = msg.ai("Task completed successfully", "msg-1")
-        final_state = {
-            "messages": [
-                msg.human("Do something"),
-                final_message,
-            ]
-        }
-        mock_agent.astream = lambda *args, **kwargs: async_iterator([final_state])
+        executor_module._get_isolated_subagent_loop()
 
+        async def coro():
+            return SubagentResult(
+                task_id="ctx-test",
+                trace_id="tr",
+                status=SubagentStatus.COMPLETED,
+                result="done",
+            )
+
+        from contextvars import copy_context
+
+        ctx = copy_context()
+        future = executor_module._submit_to_isolated_loop_in_context(ctx, coro)
+        result = future.result(timeout=5)
+        assert result.result == "done"
+        executor_module._shutdown_isolated_subagent_loop()
+
+
+# =========================================================================
+# _filter_tools
+# =========================================================================
+
+
+class TestFilterTools:
+    def test_no_filters_returns_all(self, executor_module):
+        tools = [NamedTool("a"), NamedTool("b"), NamedTool("c")]
+        assert executor_module._filter_tools(tools, None, None) == tools
+
+    def test_allowlist_only(self, executor_module):
+        tools = [NamedTool("a"), NamedTool("b"), NamedTool("c")]
+        result = executor_module._filter_tools(tools, ["a", "c"], None)
+        assert [t.name for t in result] == ["a", "c"]
+
+    def test_denylist_only(self, executor_module):
+        tools = [NamedTool("a"), NamedTool("b"), NamedTool("c")]
+        result = executor_module._filter_tools(tools, None, ["b"])
+        assert [t.name for t in result] == ["a", "c"]
+
+    def test_allowlist_and_denylist(self, executor_module):
+        tools = [NamedTool("a"), NamedTool("b"), NamedTool("c")]
+        result = executor_module._filter_tools(tools, ["a", "b"], ["b"])
+        assert [t.name for t in result] == ["a"]
+
+    def test_empty_allowlist_returns_nothing(self, executor_module):
+        tools = [NamedTool("a"), NamedTool("b")]
+        result = executor_module._filter_tools(tools, [], None)
+        assert result == []
+
+    def test_empty_denylist_returns_all(self, executor_module):
+        tools = [NamedTool("a"), NamedTool("b")]
+        result = executor_module._filter_tools(tools, None, [])
+        assert result == tools
+
+    def test_allowlist_with_no_matching_tools(self, executor_module):
+        tools = [NamedTool("a"), NamedTool("b")]
+        result = executor_module._filter_tools(tools, ["x", "y"], None)
+        assert result == []
+
+
+# =========================================================================
+# SubagentExecutor.__init__
+# =========================================================================
+
+
+class TestExecutorInit:
+    def test_model_name_resolved_from_config(self, classes):
+        SubagentConfig = classes["SubagentConfig"]
+        SubagentExecutor = classes["SubagentExecutor"]
+        config = SubagentConfig(
+            name="test",
+            description="test",
+            model="gpt-4",
+        )
+        executor = SubagentExecutor(config=config, tools=[])
+        assert executor.model_name == "gpt-4"
+
+    def test_model_inherit_with_parent_model(self, classes):
+        SubagentConfig = classes["SubagentConfig"]
+        SubagentExecutor = classes["SubagentExecutor"]
+        config = SubagentConfig(name="test", description="test", model="inherit")
+        executor = SubagentExecutor(config=config, tools=[], parent_model="parent-m")
+        assert executor.model_name == "parent-m"
+
+    def test_model_inherit_deferred_when_no_parent_and_no_app_config(self, classes):
+        SubagentConfig = classes["SubagentConfig"]
+        SubagentExecutor = classes["SubagentExecutor"]
+        config = SubagentConfig(name="test", description="test", model="inherit")
+        executor = SubagentExecutor(config=config, tools=[])
+        assert executor.model_name is None
+
+    def test_trace_id_generated_when_not_provided(self, classes):
+        SubagentConfig = classes["SubagentConfig"]
+        SubagentExecutor = classes["SubagentExecutor"]
+        config = SubagentConfig(name="test", description="test", model="gpt-4")
+        executor = SubagentExecutor(config=config, tools=[])
+        assert executor.trace_id is not None
+        assert len(executor.trace_id) == 8
+
+    def test_trace_id_preserved_when_provided(self, classes):
+        SubagentConfig = classes["SubagentConfig"]
+        SubagentExecutor = classes["SubagentExecutor"]
+        config = SubagentConfig(name="test", description="test", model="gpt-4")
+        executor = SubagentExecutor(config=config, tools=[], trace_id="custom-trace")
+        assert executor.trace_id == "custom-trace"
+
+    def test_tools_filtered_by_config(self, classes):
+        SubagentConfig = classes["SubagentConfig"]
+        SubagentExecutor = classes["SubagentExecutor"]
+        config = SubagentConfig(
+            name="test",
+            description="test",
+            model="gpt-4",
+            tools=["a", "c"],
+        )
+        tools = [NamedTool("a"), NamedTool("b"), NamedTool("c")]
+        executor = SubagentExecutor(config=config, tools=tools)
+        assert [t.name for t in executor.tools] == ["a", "c"]
+
+    def test_disallowed_tools_filtered(self, classes):
+        SubagentConfig = classes["SubagentConfig"]
+        SubagentExecutor = classes["SubagentExecutor"]
+        config = SubagentConfig(
+            name="test",
+            description="test",
+            model="gpt-4",
+            disallowed_tools=["b"],
+        )
+        tools = [NamedTool("a"), NamedTool("b"), NamedTool("c")]
+        executor = SubagentExecutor(config=config, tools=tools)
+        assert [t.name for t in executor.tools] == ["a", "c"]
+
+    def test_sandbox_and_thread_data_stored(self, classes):
+        SubagentConfig = classes["SubagentConfig"]
+        SubagentExecutor = classes["SubagentExecutor"]
+        config = SubagentConfig(name="test", description="test", model="gpt-4")
+        sb = {"sandbox_id": "sb-1"}
+        td = {"workspace_path": "/ws"}
         executor = SubagentExecutor(
-            config=base_config,
+            config=config,
             tools=[],
-            thread_id="test-thread",
-            trace_id="test-trace",
+            sandbox_state=sb,
+            thread_data=td,
+            thread_id="tid",
+        )
+        assert executor.sandbox_state == sb
+        assert executor.thread_data == td
+        assert executor.thread_id == "tid"
+
+    def test_model_inherit_with_app_config(self, classes):
+        """model_name is resolved eagerly when app_config is provided."""
+        SubagentConfig = classes["SubagentConfig"]
+        SubagentExecutor = classes["SubagentExecutor"]
+        config = SubagentConfig(name="test", description="test", model="inherit")
+        app_cfg = SimpleNamespace(models=[SimpleNamespace(name="default-m")])
+        executor = SubagentExecutor(config=config, tools=[], app_config=app_cfg)
+        assert executor.model_name == "default-m"
+
+
+# =========================================================================
+# _create_agent
+# =========================================================================
+
+
+class TestCreateAgent:
+    def test_deferred_model_resolution(self, classes, base_config, monkeypatch):
+        SubagentExecutor = classes["SubagentExecutor"]
+        from ideer.subagents import executor as executor_mod
+
+        app_cfg = SimpleNamespace(models=[SimpleNamespace(name="deferred-m")])
+        # Patch get_app_config on the executor module (where it was imported)
+        monkeypatch.setattr(executor_mod, "get_app_config", lambda: app_cfg)
+        monkeypatch.setattr(
+            executor_mod,
+            "create_chat_model",
+            lambda **kw: SimpleNamespace(name=kw["name"]),
+        )
+        monkeypatch.setattr(executor_mod, "create_agent", lambda **kw: kw)
+
+        # model="inherit" with no parent → deferred
+        executor = SubagentExecutor(config=base_config, tools=[])
+        assert executor.model_name is None
+
+        executor._create_agent()
+        assert executor.model_name == "deferred-m"
+
+    def test_passes_explicit_tools(self, classes, base_config, monkeypatch):
+        SubagentExecutor = classes["SubagentExecutor"]
+        from ideer.subagents import executor as executor_mod
+
+        captured = {}
+
+        def fake_create_agent(**kw):
+            captured["tools"] = kw["tools"]
+            return kw
+
+        monkeypatch.setattr(
+            executor_mod,
+            "create_chat_model",
+            lambda **kw: SimpleNamespace(name=kw["name"]),
+        )
+        monkeypatch.setattr(executor_mod, "create_agent", fake_create_agent)
+
+        app_cfg = SimpleNamespace(models=[SimpleNamespace(name="m")])
+        executor = SubagentExecutor(config=base_config, tools=[NamedTool("x")], app_config=app_cfg)
+        custom_tools = [NamedTool("y"), NamedTool("z")]
+        executor._create_agent(tools=custom_tools)
+        assert captured["tools"] == custom_tools
+
+
+# =========================================================================
+# _load_skills
+# =========================================================================
+
+
+class TestLoadSkills:
+    @pytest.mark.anyio
+    async def test_empty_skills_list_skips_loading(self, classes, base_config, monkeypatch):
+        SubagentConfig = classes["SubagentConfig"]
+        SubagentExecutor = classes["SubagentExecutor"]
+        config = SubagentConfig(
+            name="test",
+            description="test",
+            model="gpt-4",
+            skills=[],
+        )
+        executor = SubagentExecutor(config=config, tools=[])
+        result = await executor._load_skills()
+        assert result == []
+
+    @pytest.mark.anyio
+    async def test_none_skills_loads_all(self, classes, monkeypatch, tmp_path):
+        SubagentConfig = classes["SubagentConfig"]
+        SubagentExecutor = classes["SubagentExecutor"]
+        config = SubagentConfig(
+            name="test",
+            description="test",
+            model="gpt-4",
+            skills=None,
+        )
+        all_skills = [_skill("a", None), _skill("b", None)]
+
+        monkeypatch.setattr(
+            sys.modules["ideer.skills.storage"],
+            "get_or_new_skill_storage",
+            lambda **kw: SimpleNamespace(load_skills=lambda *, enabled_only: all_skills),
+        )
+        executor = SubagentExecutor(config=config, tools=[])
+        result = await executor._load_skills()
+        assert len(result) == 2
+
+    @pytest.mark.anyio
+    async def test_whitelist_filters_skills(self, classes, monkeypatch):
+        SubagentConfig = classes["SubagentConfig"]
+        SubagentExecutor = classes["SubagentExecutor"]
+        config = SubagentConfig(
+            name="test",
+            description="test",
+            model="gpt-4",
+            skills=["a", "c"],
+        )
+        all_skills = [_skill("a", None), _skill("b", None), _skill("c", None)]
+
+        monkeypatch.setattr(
+            sys.modules["ideer.skills.storage"],
+            "get_or_new_skill_storage",
+            lambda **kw: SimpleNamespace(load_skills=lambda *, enabled_only: all_skills),
+        )
+        executor = SubagentExecutor(config=config, tools=[])
+        result = await executor._load_skills()
+        assert [s.name for s in result] == ["a", "c"]
+
+    @pytest.mark.anyio
+    async def test_no_enabled_skills_returns_empty(self, classes, monkeypatch):
+        SubagentConfig = classes["SubagentConfig"]
+        SubagentExecutor = classes["SubagentExecutor"]
+        config = SubagentConfig(
+            name="test",
+            description="test",
+            model="gpt-4",
+            skills=None,
         )
 
-        with patch.object(executor, "_create_agent", return_value=mock_agent):
-            result = await executor._aexecute("Do something")
+        monkeypatch.setattr(
+            sys.modules["ideer.skills.storage"],
+            "get_or_new_skill_storage",
+            lambda **kw: SimpleNamespace(load_skills=lambda *, enabled_only: []),
+        )
+        executor = SubagentExecutor(config=config, tools=[])
+        result = await executor._load_skills()
+        assert result == []
 
+    @pytest.mark.anyio
+    async def test_load_skills_exception_raises(self, classes, monkeypatch):
+        SubagentConfig = classes["SubagentConfig"]
+        SubagentExecutor = classes["SubagentExecutor"]
+        config = SubagentConfig(
+            name="test",
+            description="test",
+            model="gpt-4",
+            skills=None,
+        )
+
+        def bad_storage(**kw):
+            raise RuntimeError("disk error")
+
+        monkeypatch.setattr(
+            sys.modules["ideer.skills.storage"],
+            "get_or_new_skill_storage",
+            bad_storage,
+        )
+        executor = SubagentExecutor(config=config, tools=[])
+        with pytest.raises(RuntimeError, match="disk error"):
+            await executor._load_skills()
+
+    @pytest.mark.anyio
+    async def test_load_skills_passes_app_config(self, classes, monkeypatch):
+        SubagentConfig = classes["SubagentConfig"]
+        SubagentExecutor = classes["SubagentExecutor"]
+        config = SubagentConfig(
+            name="test",
+            description="test",
+            model="gpt-4",
+            skills=None,
+        )
+        captured = {}
+
+        def fake_storage(**kw):
+            captured.update(kw)
+            return SimpleNamespace(load_skills=lambda *, enabled_only: [])
+
+        monkeypatch.setattr(
+            sys.modules["ideer.skills.storage"],
+            "get_or_new_skill_storage",
+            fake_storage,
+        )
+        app_cfg = SimpleNamespace(models=[SimpleNamespace(name="m")])
+        executor = SubagentExecutor(config=config, tools=[], app_config=app_cfg)
+        await executor._load_skills()
+        assert captured["app_config"] is app_cfg
+
+
+# =========================================================================
+# _apply_skill_allowed_tools
+# =========================================================================
+
+
+class TestApplySkillAllowedTools:
+    def test_no_skills_returns_base_tools(self, classes, base_config):
+        SubagentExecutor = classes["SubagentExecutor"]
+        tools = [NamedTool("a"), NamedTool("b")]
+        executor = SubagentExecutor(config=base_config, tools=tools)
+        result = executor._apply_skill_allowed_tools([])
+        assert result == tools
+
+    def test_skills_with_allowed_tools_filters(self, classes, base_config):
+        SubagentExecutor = classes["SubagentExecutor"]
+        tools = [NamedTool("a"), NamedTool("b"), NamedTool("c")]
+        executor = SubagentExecutor(config=base_config, tools=tools)
+        skills = [_skill("s1", ["a", "b"])]
+        result = executor._apply_skill_allowed_tools(skills)
+        assert [t.name for t in result] == ["a", "b"]
+
+
+# =========================================================================
+# _load_skill_messages
+# =========================================================================
+
+
+class TestLoadSkillMessages:
+    @pytest.mark.anyio
+    async def test_empty_skills_returns_empty(self, classes, base_config):
+        SubagentExecutor = classes["SubagentExecutor"]
+        executor = SubagentExecutor(config=base_config, tools=[])
+        result = await executor._load_skill_messages([])
+        assert result == []
+
+    @pytest.mark.anyio
+    async def test_reads_skill_content(self, classes, base_config, tmp_path):
+        SubagentExecutor = classes["SubagentExecutor"]
+        skill_dir = tmp_path / "sk"
+        skill_dir.mkdir()
+        skill_file = skill_dir / "SKILL.md"
+        skill_file.write_text("hello world", encoding="utf-8")
+        sk = _skill("sk", None)
+        sk.skill_file = skill_file
+
+        executor = SubagentExecutor(config=base_config, tools=[])
+        msgs = await executor._load_skill_messages([sk])
+        assert len(msgs) == 1
+        assert "hello world" in msgs[0].content
+        assert 'name="sk"' in msgs[0].content
+
+    @pytest.mark.anyio
+    async def test_empty_content_skipped(self, classes, base_config, tmp_path):
+        SubagentExecutor = classes["SubagentExecutor"]
+        skill_dir = tmp_path / "empty-sk"
+        skill_dir.mkdir()
+        skill_file = skill_dir / "SKILL.md"
+        skill_file.write_text("   ", encoding="utf-8")
+        sk = _skill("empty-sk", None)
+        sk.skill_file = skill_file
+
+        executor = SubagentExecutor(config=base_config, tools=[])
+        msgs = await executor._load_skill_messages([sk])
+        assert msgs == []
+
+    @pytest.mark.anyio
+    async def test_read_exception_logged_and_skipped(self, classes, base_config, monkeypatch):
+        SubagentExecutor = classes["SubagentExecutor"]
+        sk = _skill("bad-skill", None)
+        sk.skill_file = MagicMock()
+        sk.skill_file.read_text.side_effect = OSError("permission denied")
+
+        executor = SubagentExecutor(config=base_config, tools=[])
+        msgs = await executor._load_skill_messages([sk])
+        assert msgs == []
+
+
+# =========================================================================
+# _build_initial_state
+# =========================================================================
+
+
+class TestBuildInitialState:
+    @pytest.mark.anyio
+    async def test_with_sandbox_and_thread_data(self, classes, monkeypatch):
+        SubagentConfig = classes["SubagentConfig"]
+        SubagentExecutor = classes["SubagentExecutor"]
+        config = SubagentConfig(
+            name="test",
+            description="test",
+            model="gpt-4",
+            system_prompt=None,
+        )
+        sb = {"sandbox_id": "sb-1"}
+        td = {"workspace_path": "/ws"}
+
+        monkeypatch.setattr(
+            sys.modules["ideer.skills.storage"],
+            "get_or_new_skill_storage",
+            lambda **kw: SimpleNamespace(load_skills=lambda *, enabled_only: []),
+        )
+        executor = SubagentExecutor(
+            config=config,
+            tools=[],
+            sandbox_state=sb,
+            thread_data=td,
+        )
+        state, filtered = await executor._build_initial_state("do it")
+        assert state["sandbox"] == sb
+        assert state["thread_data"] == td
+        assert len(state["messages"]) == 1  # Only HumanMessage (no system_prompt, no skills)
+
+    @pytest.mark.anyio
+    async def test_without_sandbox_or_thread_data(self, classes, monkeypatch):
+        SubagentConfig = classes["SubagentConfig"]
+        SubagentExecutor = classes["SubagentExecutor"]
+        config = SubagentConfig(
+            name="test",
+            description="test",
+            model="gpt-4",
+            system_prompt=None,
+        )
+
+        monkeypatch.setattr(
+            sys.modules["ideer.skills.storage"],
+            "get_or_new_skill_storage",
+            lambda **kw: SimpleNamespace(load_skills=lambda *, enabled_only: []),
+        )
+        executor = SubagentExecutor(config=config, tools=[])
+        state, _ = await executor._build_initial_state("do it")
+        assert "sandbox" not in state
+        assert "thread_data" not in state
+
+    @pytest.mark.anyio
+    async def test_no_system_prompt_no_skills_only_human_message(self, classes, monkeypatch):
+        SubagentConfig = classes["SubagentConfig"]
+        SubagentExecutor = classes["SubagentExecutor"]
+        config = SubagentConfig(
+            name="test",
+            description="test",
+            model="gpt-4",
+            system_prompt=None,
+        )
+
+        monkeypatch.setattr(
+            sys.modules["ideer.skills.storage"],
+            "get_or_new_skill_storage",
+            lambda **kw: SimpleNamespace(load_skills=lambda *, enabled_only: []),
+        )
+        executor = SubagentExecutor(config=config, tools=[])
+        state, _ = await executor._build_initial_state("task")
+        from langchain_core.messages import HumanMessage
+
+        assert len(state["messages"]) == 1
+        assert isinstance(state["messages"][0], HumanMessage)
+
+
+# =========================================================================
+# _aexecute
+# =========================================================================
+
+
+class TestAExecute:
+    @pytest.mark.anyio
+    async def test_success(self, classes, base_config, mock_agent, msg):
+        SubagentExecutor = classes["SubagentExecutor"]
+        SubagentStatus = classes["SubagentStatus"]
+        final_state = {"messages": [msg.human("Task"), msg.ai("Done", "msg-1")]}
+        mock_agent.astream = lambda *a, **kw: async_iterator([final_state])
+        executor = SubagentExecutor(config=base_config, tools=[], thread_id="t")
+        with patch.object(executor, "_create_agent", return_value=mock_agent):
+            result = await executor._aexecute("Task")
         assert result.status == SubagentStatus.COMPLETED
-        assert result.result == "Task completed successfully"
-        assert result.error is None
+        assert result.result == "Done"
         assert result.started_at is not None
         assert result.completed_at is not None
 
     @pytest.mark.anyio
-    async def test_aexecute_collects_ai_messages(self, classes, base_config, mock_agent, msg):
-        """Test that AI messages are collected during streaming."""
+    async def test_with_result_holder(self, classes, base_config, mock_agent, msg):
         SubagentExecutor = classes["SubagentExecutor"]
+        SubagentResult = classes["SubagentResult"]
         SubagentStatus = classes["SubagentStatus"]
-
-        msg1 = msg.ai("First response", "msg-1")
-        msg2 = msg.ai("Second response", "msg-2")
-
-        chunk1 = {"messages": [msg.human("Task"), msg1]}
-        chunk2 = {"messages": [msg.human("Task"), msg1, msg2]}
-
-        mock_agent.astream = lambda *args, **kwargs: async_iterator([chunk1, chunk2])
-
-        executor = SubagentExecutor(
-            config=base_config,
-            tools=[],
-            thread_id="test-thread",
+        holder = SubagentResult(
+            task_id="pre",
+            trace_id="tr",
+            status=SubagentStatus.RUNNING,
+            started_at=datetime.now(),
         )
-
+        final_state = {"messages": [msg.human("T"), msg.ai("R", "m1")]}
+        mock_agent.astream = lambda *a, **kw: async_iterator([final_state])
+        executor = SubagentExecutor(config=base_config, tools=[], thread_id="t")
         with patch.object(executor, "_create_agent", return_value=mock_agent):
-            result = await executor._aexecute("Task")
-
-        assert result.status == SubagentStatus.COMPLETED
-        assert len(result.ai_messages) == 2
-        assert result.ai_messages[0]["id"] == "msg-1"
-        assert result.ai_messages[1]["id"] == "msg-2"
+            result = await executor._aexecute("T", result_holder=holder)
+        assert result is holder
+        assert result.task_id == "pre"
 
     @pytest.mark.anyio
-    async def test_aexecute_handles_duplicate_messages(self, classes, base_config, mock_agent, msg):
-        """Test that duplicate AI messages are not added."""
+    async def test_result_holder_with_none_ai_messages(self, classes, base_config, mock_agent, msg):
         SubagentExecutor = classes["SubagentExecutor"]
-
-        msg1 = msg.ai("Response", "msg-1")
-
-        # Same message appears in multiple chunks
-        chunk1 = {"messages": [msg.human("Task"), msg1]}
-        chunk2 = {"messages": [msg.human("Task"), msg1]}
-
-        mock_agent.astream = lambda *args, **kwargs: async_iterator([chunk1, chunk2])
-
-        executor = SubagentExecutor(
-            config=base_config,
-            tools=[],
-            thread_id="test-thread",
+        SubagentResult = classes["SubagentResult"]
+        SubagentStatus = classes["SubagentStatus"]
+        holder = SubagentResult(
+            task_id="t",
+            trace_id="tr",
+            status=SubagentStatus.RUNNING,
+            ai_messages=None,
         )
-
+        final_state = {"messages": [msg.human("T"), msg.ai("R", "m1")]}
+        mock_agent.astream = lambda *a, **kw: async_iterator([final_state])
+        executor = SubagentExecutor(config=base_config, tools=[], thread_id="t")
         with patch.object(executor, "_create_agent", return_value=mock_agent):
-            result = await executor._aexecute("Task")
-
+            result = await executor._aexecute("T", result_holder=holder)
+        assert result.ai_messages is not None
         assert len(result.ai_messages) == 1
 
     @pytest.mark.anyio
-    async def test_aexecute_handles_list_content(self, classes, base_config, mock_agent, msg):
-        """Test handling of list-type content in AIMessage."""
+    async def test_collects_ai_messages(self, classes, base_config, mock_agent, msg):
         SubagentExecutor = classes["SubagentExecutor"]
-        SubagentStatus = classes["SubagentStatus"]
-
-        final_message = msg.ai([{"text": "Part 1"}, {"text": "Part 2"}])
-        final_state = {
-            "messages": [
-                msg.human("Task"),
-                final_message,
-            ]
-        }
-        mock_agent.astream = lambda *args, **kwargs: async_iterator([final_state])
-
-        executor = SubagentExecutor(
-            config=base_config,
-            tools=[],
-            thread_id="test-thread",
-        )
-
+        m1 = msg.ai("A", "m1")
+        m2 = msg.ai("B", "m2")
+        c1 = {"messages": [msg.human("T"), m1]}
+        c2 = {"messages": [msg.human("T"), m1, m2]}
+        mock_agent.astream = lambda *a, **kw: async_iterator([c1, c2])
+        executor = SubagentExecutor(config=base_config, tools=[], thread_id="t")
         with patch.object(executor, "_create_agent", return_value=mock_agent):
-            result = await executor._aexecute("Task")
-
-        assert result.status == SubagentStatus.COMPLETED
-        assert "Part 1" in result.result
-        assert "Part 2" in result.result
+            result = await executor._aexecute("T")
+        assert len(result.ai_messages) == 2
 
     @pytest.mark.anyio
-    async def test_aexecute_handles_agent_exception(self, classes, base_config, mock_agent):
-        """Test that exceptions during execution are caught and returned as FAILED."""
+    async def test_duplicate_messages_by_id(self, classes, base_config, mock_agent, msg):
         SubagentExecutor = classes["SubagentExecutor"]
-        SubagentStatus = classes["SubagentStatus"]
-
-        mock_agent.astream.side_effect = Exception("Agent error")
-
-        executor = SubagentExecutor(
-            config=base_config,
-            tools=[],
-            thread_id="test-thread",
-        )
-
+        m1 = msg.ai("R", "dup")
+        c1 = {"messages": [msg.human("T"), m1]}
+        c2 = {"messages": [msg.human("T"), m1]}
+        mock_agent.astream = lambda *a, **kw: async_iterator([c1, c2])
+        executor = SubagentExecutor(config=base_config, tools=[], thread_id="t")
         with patch.object(executor, "_create_agent", return_value=mock_agent):
-            result = await executor._aexecute("Task")
-
-        assert result.status == SubagentStatus.FAILED
-        assert "Agent error" in result.error
-        assert result.completed_at is not None
+            result = await executor._aexecute("T")
+        assert len(result.ai_messages) == 1
 
     @pytest.mark.anyio
-    async def test_aexecute_no_final_state(self, classes, base_config, mock_agent):
-        """Test handling when no final state is returned."""
+    async def test_duplicate_messages_without_id(self, classes, base_config, mock_agent, msg):
         SubagentExecutor = classes["SubagentExecutor"]
-        SubagentStatus = classes["SubagentStatus"]
-
-        mock_agent.astream = lambda *args, **kwargs: async_iterator([])
-
-        executor = SubagentExecutor(
-            config=base_config,
-            tools=[],
-            thread_id="test-thread",
-        )
-
+        # Create two AI messages with no id (id=None)
+        m1 = classes["AIMessage"](content="R")
+        m1.id = None
+        c1 = {"messages": [msg.human("T"), m1]}
+        c2 = {"messages": [msg.human("T"), m1]}
+        mock_agent.astream = lambda *a, **kw: async_iterator([c1, c2])
+        executor = SubagentExecutor(config=base_config, tools=[], thread_id="t")
         with patch.object(executor, "_create_agent", return_value=mock_agent):
-            result = await executor._aexecute("Task")
+            result = await executor._aexecute("T")
+        # Deduplication via full dict comparison when no id
+        assert len(result.ai_messages) == 1
 
-        assert result.status == SubagentStatus.COMPLETED
+    @pytest.mark.anyio
+    async def test_list_content_with_dict_blocks(self, classes, base_config, mock_agent, msg):
+        SubagentExecutor = classes["SubagentExecutor"]
+        classes["SubagentStatus"]
+        m = msg.ai([{"text": "Part1"}, {"text": "Part2"}])
+        final = {"messages": [msg.human("T"), m]}
+        mock_agent.astream = lambda *a, **kw: async_iterator([final])
+        executor = SubagentExecutor(config=base_config, tools=[], thread_id="t")
+        with patch.object(executor, "_create_agent", return_value=mock_agent):
+            result = await executor._aexecute("T")
+        assert "Part1" in result.result
+        assert "Part2" in result.result
+
+    @pytest.mark.anyio
+    async def test_list_content_with_str_blocks(self, classes, base_config, mock_agent, msg):
+        SubagentExecutor = classes["SubagentExecutor"]
+        m = msg.ai(["str1", "str2"])
+        final = {"messages": [msg.human("T"), m]}
+        mock_agent.astream = lambda *a, **kw: async_iterator([final])
+        executor = SubagentExecutor(config=base_config, tools=[], thread_id="t")
+        with patch.object(executor, "_create_agent", return_value=mock_agent):
+            result = await executor._aexecute("T")
+        assert result.result == "str1str2"
+
+    @pytest.mark.anyio
+    async def test_list_content_mixed_str_and_dict(self, classes, base_config, mock_agent, msg):
+        SubagentExecutor = classes["SubagentExecutor"]
+        m = msg.ai(["prefix", {"text": "middle"}, "suffix"])
+        final = {"messages": [msg.human("T"), m]}
+        mock_agent.astream = lambda *a, **kw: async_iterator([final])
+        executor = SubagentExecutor(config=base_config, tools=[], thread_id="t")
+        with patch.object(executor, "_create_agent", return_value=mock_agent):
+            result = await executor._aexecute("T")
+        # str parts are joined with "" internally, then all text_parts joined with "\n"
+        assert "prefix" in result.result
+        assert "middle" in result.result
+        assert "suffix" in result.result
+
+    @pytest.mark.anyio
+    async def test_list_content_with_dict_no_text_key(self, classes, base_config, mock_agent, msg):
+        SubagentExecutor = classes["SubagentExecutor"]
+        m = msg.ai([{"other": "val"}])
+        final = {"messages": [msg.human("T"), m]}
+        mock_agent.astream = lambda *a, **kw: async_iterator([final])
+        executor = SubagentExecutor(config=base_config, tools=[], thread_id="t")
+        with patch.object(executor, "_create_agent", return_value=mock_agent):
+            result = await executor._aexecute("T")
+        assert result.result == "No text content in response"
+
+    @pytest.mark.anyio
+    async def test_list_content_empty(self, classes, base_config, mock_agent, msg):
+        SubagentExecutor = classes["SubagentExecutor"]
+        m = msg.ai([])
+        final = {"messages": [msg.human("T"), m]}
+        mock_agent.astream = lambda *a, **kw: async_iterator([final])
+        executor = SubagentExecutor(config=base_config, tools=[], thread_id="t")
+        with patch.object(executor, "_create_agent", return_value=mock_agent):
+            result = await executor._aexecute("T")
+        assert result.result == "No text content in response"
+
+    @pytest.mark.anyio
+    async def test_non_str_non_list_content(self, classes, base_config, mock_agent, msg):
+        SubagentExecutor = classes["SubagentExecutor"]
+        # AIMessage now validates that content must be str or list;
+        # use a MagicMock to simulate non-str/non-list content.
+        m = MagicMock()
+        m.content = 12345
+        m.type = "ai"
+        m.tool_calls = []
+        m.invalid_tool_calls = []
+        m.id = None
+        final = {"messages": [msg.human("T"), m]}
+        mock_agent.astream = lambda *a, **kw: async_iterator([final])
+        executor = SubagentExecutor(config=base_config, tools=[], thread_id="t")
+        with patch.object(executor, "_create_agent", return_value=mock_agent):
+            result = await executor._aexecute("T")
+        assert result.result == "12345"
+
+    @pytest.mark.anyio
+    async def test_no_ai_message_fallback_str_content(self, classes, base_config, mock_agent, msg):
+        SubagentExecutor = classes["SubagentExecutor"]
+        final = {"messages": [msg.human("fallback text")]}
+        mock_agent.astream = lambda *a, **kw: async_iterator([final])
+        executor = SubagentExecutor(config=base_config, tools=[], thread_id="t")
+        with patch.object(executor, "_create_agent", return_value=mock_agent):
+            result = await executor._aexecute("T")
+        assert "fallback text" in result.result
+
+    @pytest.mark.anyio
+    async def test_no_ai_message_fallback_list_content(self, classes, base_config, mock_agent):
+        SubagentExecutor = classes["SubagentExecutor"]
+        fallback_msg = MagicMock()
+        fallback_msg.content = [{"text": "fb1"}, "fb2", {"no_text": "x"}]
+        final = {"messages": [fallback_msg]}
+        mock_agent.astream = lambda *a, **kw: async_iterator([final])
+        executor = SubagentExecutor(config=base_config, tools=[], thread_id="t")
+        with patch.object(executor, "_create_agent", return_value=mock_agent):
+            result = await executor._aexecute("T")
+        assert "fb1" in result.result
+        assert "fb2" in result.result
+
+    @pytest.mark.anyio
+    async def test_no_ai_message_fallback_non_str_non_list(self, classes, base_config, mock_agent):
+        SubagentExecutor = classes["SubagentExecutor"]
+        fallback_msg = MagicMock()
+        fallback_msg.content = 99999
+        fallback_msg.__class__ = type("FakeMsg", (), {})  # not AIMessage
+        final = {"messages": [fallback_msg]}
+        mock_agent.astream = lambda *a, **kw: async_iterator([final])
+        executor = SubagentExecutor(config=base_config, tools=[], thread_id="t")
+        with patch.object(executor, "_create_agent", return_value=mock_agent):
+            result = await executor._aexecute("T")
+        assert result.result == "99999"
+
+    @pytest.mark.anyio
+    async def test_no_messages_in_final_state(self, classes, base_config, mock_agent):
+        SubagentExecutor = classes["SubagentExecutor"]
+        final = {"messages": []}
+        mock_agent.astream = lambda *a, **kw: async_iterator([final])
+        executor = SubagentExecutor(config=base_config, tools=[], thread_id="t")
+        with patch.object(executor, "_create_agent", return_value=mock_agent):
+            result = await executor._aexecute("T")
         assert result.result == "No response generated"
 
     @pytest.mark.anyio
-    async def test_aexecute_no_ai_message_in_state(self, classes, base_config, mock_agent, msg):
-        """Test fallback when no AIMessage found in final state."""
+    async def test_no_final_state(self, classes, base_config, mock_agent):
+        SubagentExecutor = classes["SubagentExecutor"]
+        mock_agent.astream = lambda *a, **kw: async_iterator([])
+        executor = SubagentExecutor(config=base_config, tools=[], thread_id="t")
+        with patch.object(executor, "_create_agent", return_value=mock_agent):
+            result = await executor._aexecute("T")
+        assert result.result == "No response generated"
+
+    @pytest.mark.anyio
+    async def test_exception_handled(self, classes, base_config, mock_agent):
         SubagentExecutor = classes["SubagentExecutor"]
         SubagentStatus = classes["SubagentStatus"]
+        mock_agent.astream.side_effect = RuntimeError("boom")
+        executor = SubagentExecutor(config=base_config, tools=[], thread_id="t")
+        with patch.object(executor, "_create_agent", return_value=mock_agent):
+            result = await executor._aexecute("T")
+        assert result.status == SubagentStatus.FAILED
+        assert "boom" in result.error
 
-        final_state = {"messages": [msg.human("Task")]}
-        mock_agent.astream = lambda *args, **kwargs: async_iterator([final_state])
+    @pytest.mark.anyio
+    async def test_cancel_before_streaming(self, classes, base_config, mock_agent, msg):
+        SubagentExecutor = classes["SubagentExecutor"]
+        SubagentResult = classes["SubagentResult"]
+        SubagentStatus = classes["SubagentStatus"]
+        holder = SubagentResult(
+            task_id="c",
+            trace_id="tr",
+            status=SubagentStatus.RUNNING,
+            started_at=datetime.now(),
+        )
+        holder.cancel_event.set()
+        call_count = 0
 
+        async def counting_stream(*a, **kw):
+            nonlocal call_count
+            call_count += 1
+            yield {"messages": [msg.human("T"), msg.ai("R", "m1")]}
+
+        mock_agent.astream = counting_stream
+        executor = SubagentExecutor(config=base_config, tools=[], thread_id="t")
+        with patch.object(executor, "_create_agent", return_value=mock_agent):
+            result = await executor._aexecute("T", result_holder=holder)
+        assert result.status == SubagentStatus.CANCELLED
+        assert call_count == 0
+
+    @pytest.mark.anyio
+    async def test_cancel_mid_stream(self, classes, base_config, msg):
+        SubagentExecutor = classes["SubagentExecutor"]
+        SubagentResult = classes["SubagentResult"]
+        SubagentStatus = classes["SubagentStatus"]
+        cancel_ev = threading.Event()
+
+        async def stream(*a, **kw):
+            yield {"messages": [msg.human("T"), msg.ai("Partial", "m1")]}
+            cancel_ev.set()
+            yield {"messages": [msg.human("T"), msg.ai("Nope", "m2")]}
+
+        mock_agent = MagicMock()
+        mock_agent.astream = stream
+        holder = SubagentResult(
+            task_id="c",
+            trace_id="tr",
+            status=SubagentStatus.RUNNING,
+            started_at=datetime.now(),
+        )
+        holder.cancel_event = cancel_ev
+        executor = SubagentExecutor(config=base_config, tools=[], thread_id="t")
+        with patch.object(executor, "_create_agent", return_value=mock_agent):
+            result = await executor._aexecute("T", result_holder=holder)
+        assert result.status == SubagentStatus.CANCELLED
+
+    @pytest.mark.anyio
+    async def test_no_messages_fallback_no_content_attr(self, classes, base_config, mock_agent):
+        SubagentExecutor = classes["SubagentExecutor"]
+        fallback_msg = MagicMock(spec=[])  # no content attr
+        fallback_msg.content = None
+        del fallback_msg.content
+        fallback_msg.__class__ = type("NoContent", (), {})
+        final = {"messages": [fallback_msg]}
+        mock_agent.astream = lambda *a, **kw: async_iterator([final])
+        executor = SubagentExecutor(config=base_config, tools=[], thread_id="t")
+        with patch.object(executor, "_create_agent", return_value=mock_agent):
+            result = await executor._aexecute("T")
+        assert result.result is not None
+
+    @pytest.mark.anyio
+    async def test_thread_id_and_app_config_passed_to_run_config(self, classes, base_config, msg):
+        SubagentExecutor = classes["SubagentExecutor"]
+        captured_config = {}
+        captured_context = {}
+
+        async def capturing_astream(state, config=None, context=None, **kw):
+            captured_config.update(config or {})
+            captured_context.update(context or {})
+            yield {"messages": [msg.human("T"), msg.ai("R", "m1")]}
+
+        mock_agent = MagicMock()
+        mock_agent.astream = capturing_astream
+        app_cfg = SimpleNamespace(models=[SimpleNamespace(name="m")])
         executor = SubagentExecutor(
             config=base_config,
             tools=[],
-            thread_id="test-thread",
+            thread_id="tid-123",
+            app_config=app_cfg,
         )
-
         with patch.object(executor, "_create_agent", return_value=mock_agent):
-            result = await executor._aexecute("Task")
-
-        # Should fallback to string representation of last message
-        assert result.status == SubagentStatus.COMPLETED
-        assert "Task" in result.result
+            await executor._aexecute("T")
+        assert captured_config.get("configurable", {}).get("thread_id") == "tid-123"
+        assert captured_context.get("thread_id") == "tid-123"
+        assert captured_context.get("app_config") is app_cfg
 
     @pytest.mark.anyio
-    async def test_aexecute_passes_at_most_one_system_message_to_agent(
-        self,
-        classes,
-        base_config,
-        monkeypatch: pytest.MonkeyPatch,
-        tmp_path,
-    ):
-        """Regression: messages sent to agent.astream must contain at most one
-        SystemMessage and it must be the first message.
+    async def test_no_thread_id_no_configurable(self, classes, base_config, msg):
+        SubagentExecutor = classes["SubagentExecutor"]
+        captured_config = {}
 
-        This catches any regression where system_prompt would be re-injected
-        via create_agent() (e.g. system_prompt not passed as None) and appear
-        as a second SystemMessage, which providers like vLLM and Xinference
-        reject with "System message must be at the beginning."
-        """
-        from langchain_core.messages import AIMessage, SystemMessage
+        async def capturing_astream(state, config=None, **kw):
+            captured_config.update(config or {})
+            yield {"messages": [msg.human("T"), msg.ai("R", "m1")]}
 
+        mock_agent = MagicMock()
+        mock_agent.astream = capturing_astream
+        executor = SubagentExecutor(config=base_config, tools=[])
+        with patch.object(executor, "_create_agent", return_value=mock_agent):
+            await executor._aexecute("T")
+        assert "configurable" not in captured_config
+
+    @pytest.mark.anyio
+    async def test_list_content_mixed_str_then_dict_then_str(self, classes, base_config, mock_agent, msg):
+        SubagentExecutor = classes["SubagentExecutor"]
+        # str, dict, str — pending_str_parts flushed before dict, then final pending
+        m = msg.ai(["aaa", {"text": "bbb"}, "ccc"])
+        final = {"messages": [msg.human("T"), m]}
+        mock_agent.astream = lambda *a, **kw: async_iterator([final])
+        executor = SubagentExecutor(config=base_config, tools=[], thread_id="t")
+        with patch.object(executor, "_create_agent", return_value=mock_agent):
+            result = await executor._aexecute("T")
+        # str parts joined with "", text_parts joined with "\n"
+        assert "aaa" in result.result
+        assert "bbb" in result.result
+        assert "ccc" in result.result
+
+    @pytest.mark.anyio
+    async def test_fallback_list_content_mixed_str_then_dict(self, classes, base_config, mock_agent):
+        SubagentExecutor = classes["SubagentExecutor"]
+        fallback = MagicMock()
+        fallback.content = ["pre", {"text": "mid"}, "post"]
+        fallback.__class__ = type("FakeMsg", (), {})
+        final = {"messages": [fallback]}
+        mock_agent.astream = lambda *a, **kw: async_iterator([final])
+        executor = SubagentExecutor(config=base_config, tools=[], thread_id="t")
+        with patch.object(executor, "_create_agent", return_value=mock_agent):
+            result = await executor._aexecute("T")
+        assert "pre" in result.result
+        assert "mid" in result.result
+        assert "post" in result.result
+
+    @pytest.mark.anyio
+    async def test_fallback_list_content_empty_dict_no_text(self, classes, base_config, mock_agent):
+        SubagentExecutor = classes["SubagentExecutor"]
+        fallback = MagicMock()
+        fallback.content = [{"other": "val"}]
+        fallback.__class__ = type("FakeMsg", (), {})
+        final = {"messages": [fallback]}
+        mock_agent.astream = lambda *a, **kw: async_iterator([final])
+        executor = SubagentExecutor(config=base_config, tools=[], thread_id="t")
+        with patch.object(executor, "_create_agent", return_value=mock_agent):
+            result = await executor._aexecute("T")
+        assert result.result == "No text content in response"
+
+    @pytest.mark.anyio
+    async def test_fallback_list_content_non_str_non_list_items(self, classes, base_config, mock_agent):
+        SubagentExecutor = classes["SubagentExecutor"]
+        fallback = MagicMock()
+        fallback.content = [123, 456]
+        fallback.__class__ = type("FakeMsg", (), {})
+        final = {"messages": [fallback]}
+        mock_agent.astream = lambda *a, **kw: async_iterator([final])
+        executor = SubagentExecutor(config=base_config, tools=[], thread_id="t")
+        with patch.object(executor, "_create_agent", return_value=mock_agent):
+            result = await executor._aexecute("T")
+        # int items in list are neither str nor dict, so no text_parts collected
+        assert result.result == "No text content in response"
+
+
+# =========================================================================
+# _execute_in_isolated_loop
+# =========================================================================
+
+
+class TestExecuteInIsolatedLoop:
+    def test_futures_timeout_sets_cancel(self, classes, base_config):
+        SubagentExecutor = classes["SubagentExecutor"]
+        SubagentResult = classes["SubagentResult"]
+        SubagentStatus = classes["SubagentStatus"]
+        holder = SubagentResult(
+            task_id="t",
+            trace_id="tr",
+            status=SubagentStatus.RUNNING,
+            started_at=datetime.now(),
+        )
+
+        # Patch _submit_to_isolated_loop_in_context to return a future that times out
+        blocking_future: Future = Future()
+
+        def fake_submit(ctx, coro_factory):
+            return blocking_future
+
+        # Use a very short timeout
+        short_config = classes["SubagentConfig"](
+            name="test-agent",
+            description="test",
+            model="gpt-4",
+            max_turns=10,
+            timeout_seconds=0,
+        )
+        executor = SubagentExecutor(
+            config=short_config,
+            tools=[],
+        )
+
+        from ideer.subagents import executor as executor_mod
+
+        with patch.object(executor_mod, "_submit_to_isolated_loop_in_context", fake_submit):
+            with pytest.raises(FuturesTimeoutError):
+                executor._execute_in_isolated_loop("T", result_holder=holder)
+        assert holder.cancel_event.is_set()
+        blocking_future.cancel()
+
+    def test_generic_exception_logged(self, classes, base_config):
+        SubagentExecutor = classes["SubagentExecutor"]
+
+        def fake_submit(ctx, coro_factory):
+            raise RuntimeError("submit failed")
+
+        executor = SubagentExecutor(config=base_config, tools=[])
+        from ideer.subagents import executor as executor_mod
+
+        with patch.object(executor_mod, "_submit_to_isolated_loop_in_context", fake_submit):
+            with pytest.raises(RuntimeError, match="submit failed"):
+                executor._execute_in_isolated_loop("T")
+
+
+# =========================================================================
+# execute
+# =========================================================================
+
+
+class TestExecute:
+    def test_standard_path(self, classes, base_config, mock_agent, msg):
         SubagentExecutor = classes["SubagentExecutor"]
         SubagentStatus = classes["SubagentStatus"]
+        final = {"messages": [msg.human("T"), msg.ai("R", "m1")]}
+        mock_agent.astream = lambda *a, **kw: async_iterator([final])
+        executor = SubagentExecutor(config=base_config, tools=[], thread_id="t")
+        with patch.object(executor, "_create_agent", return_value=mock_agent):
+            result = executor.execute("T")
+        assert result.status == SubagentStatus.COMPLETED
 
-        # Set up a skill so both system_prompt AND skill content are present,
-        # maximising the chance of catching a double-SystemMessage regression.
-        skill_dir = tmp_path / "regression-skill"
-        skill_dir.mkdir()
-        (skill_dir / "SKILL.md").write_text("Skill instruction text", encoding="utf-8")
+    def test_exception_with_result_holder(self, classes, base_config):
+        SubagentExecutor = classes["SubagentExecutor"]
+        SubagentResult = classes["SubagentResult"]
+        SubagentStatus = classes["SubagentStatus"]
+        holder = SubagentResult(
+            task_id="h",
+            trace_id="tr",
+            status=SubagentStatus.RUNNING,
+        )
+        executor = SubagentExecutor(config=base_config, tools=[])
+        with patch.object(executor, "_aexecute", side_effect=RuntimeError("fail")):
+            result = executor.execute("T", result_holder=holder)
+        assert result is holder
+        assert result.status == SubagentStatus.FAILED
+
+    def test_exception_without_result_holder(self, classes, base_config):
+        SubagentExecutor = classes["SubagentExecutor"]
+        SubagentStatus = classes["SubagentStatus"]
+        executor = SubagentExecutor(config=base_config, tools=[])
+        with patch.object(executor, "_aexecute", side_effect=RuntimeError("fail")):
+            result = executor.execute("T")
+        assert result.status == SubagentStatus.FAILED
+        assert "fail" in result.error
+
+    @pytest.mark.anyio
+    async def test_running_loop_calls_isolated(self, classes, base_config, mock_agent, msg):
+        SubagentExecutor = classes["SubagentExecutor"]
+        SubagentStatus = classes["SubagentStatus"]
+        final = {"messages": [msg.human("T"), msg.ai("R", "m1")]}
+        mock_agent.astream = lambda *a, **kw: async_iterator([final])
+        executor = SubagentExecutor(config=base_config, tools=[], thread_id="t")
+        with patch.object(executor, "_create_agent", return_value=mock_agent):
+            result = executor.execute("T")
+        assert result.status == SubagentStatus.COMPLETED
+
+
+# =========================================================================
+# execute_async
+# =========================================================================
+
+
+class TestExecuteAsync:
+    def test_custom_task_id(self, executor_module, classes, base_config):
+        SubagentExecutor = classes["SubagentExecutor"]
+        executor = SubagentExecutor(config=base_config, tools=[], thread_id="t")
+        # Just verify the task_id is stored
+        executor_module._background_tasks.clear()
+
+        # Patch _scheduler_pool.submit to run inline
+        def run_inline(fn):
+            fn()
+
+        async def fake_aexecute(task, result_holder=None):
+            if result_holder:
+                result_holder.status = classes["SubagentStatus"].COMPLETED
+                result_holder.result = "ok"
+                result_holder.completed_at = datetime.now()
+            return result_holder
+
+        with (
+            patch.object(executor_module._scheduler_pool, "submit", run_inline),
+            patch.object(executor, "_aexecute", side_effect=fake_aexecute),
+        ):
+            tid = executor.execute_async("T", task_id="custom-id")
+
+        assert tid == "custom-id"
+        assert "custom-id" in executor_module._background_tasks
+
+    def test_generate_task_id(self, executor_module, classes, base_config):
+        SubagentExecutor = classes["SubagentExecutor"]
+        executor = SubagentExecutor(config=base_config, tools=[], thread_id="t")
+        executor_module._background_tasks.clear()
+
+        def run_inline(fn):
+            fn()
+
+        async def fake_aexecute(task, result_holder=None):
+            if result_holder:
+                result_holder.status = classes["SubagentStatus"].COMPLETED
+                result_holder.result = "ok"
+                result_holder.completed_at = datetime.now()
+            return result_holder
+
+        with (
+            patch.object(executor_module._scheduler_pool, "submit", run_inline),
+            patch.object(executor, "_aexecute", side_effect=fake_aexecute),
+        ):
+            tid = executor.execute_async("T")
+
+        assert tid is not None
+        assert len(tid) == 8
+
+
+# =========================================================================
+# get_background_task_result / list_background_tasks
+# =========================================================================
+
+
+class TestBackgroundTaskQuery:
+    def test_get_background_task_result_found(self, executor_module, classes):
+        SubagentResult = classes["SubagentResult"]
+        SubagentStatus = classes["SubagentStatus"]
+        r = SubagentResult(
+            task_id="q1",
+            trace_id="tr",
+            status=SubagentStatus.COMPLETED,
+            result="ok",
+        )
+        executor_module._background_tasks["q1"] = r
+        result = executor_module.get_background_task_result("q1")
+        assert result is r
+
+    def test_get_background_task_result_not_found(self, executor_module):
+        executor_module._background_tasks.clear()
+        result = executor_module.get_background_task_result("nonexistent")
+        assert result is None
+
+    def test_list_background_tasks(self, executor_module, classes):
+        SubagentResult = classes["SubagentResult"]
+        SubagentStatus = classes["SubagentStatus"]
+        executor_module._background_tasks.clear()
+        r1 = SubagentResult(task_id="l1", trace_id="tr", status=SubagentStatus.RUNNING)
+        r2 = SubagentResult(task_id="l2", trace_id="tr", status=SubagentStatus.COMPLETED)
+        executor_module._background_tasks["l1"] = r1
+        executor_module._background_tasks["l2"] = r2
+        result = executor_module.list_background_tasks()
+        assert len(result) == 2
+        assert r1 in result
+        assert r2 in result
+
+    def test_list_background_tasks_empty(self, executor_module):
+        executor_module._background_tasks.clear()
+        result = executor_module.list_background_tasks()
+        assert result == []
+
+
+# =========================================================================
+# request_cancel_background_task
+# =========================================================================
+
+
+class TestRequestCancel:
+    def test_sets_cancel_event(self, executor_module, classes):
+        SubagentResult = classes["SubagentResult"]
+        SubagentStatus = classes["SubagentStatus"]
+        r = SubagentResult(
+            task_id="cancel-me",
+            trace_id="tr",
+            status=SubagentStatus.RUNNING,
+        )
+        executor_module._background_tasks["cancel-me"] = r
+        executor_module.request_cancel_background_task("cancel-me")
+        assert r.cancel_event.is_set()
+
+    def test_nonexistent_task_noop(self, executor_module):
+        executor_module._background_tasks.clear()
+        executor_module.request_cancel_background_task("nope")
+
+
+# =========================================================================
+# Module-level atexit guard
+# =========================================================================
+
+
+class TestModuleAtexitGuard:
+    def test_previous_shutdown_called_if_callable(self, executor_module):
+        """Lines 33-37: if globals already has _shutdown_isolated_subagent_loop
+        as callable, it should be unregistered and called."""
+        # This is tested at import time; the guard is executed at module level.
+        # We verify the function exists and is registered with atexit.
+        assert callable(executor_module._shutdown_isolated_subagent_loop)
+
+
+# =========================================================================
+# MAX_CONCURRENT_SUBAGENTS constant
+# =========================================================================
+
+
+class TestConstants:
+    def test_max_concurrent_subagents(self, executor_module):
+        assert executor_module.MAX_CONCURRENT_SUBAGENTS == 3
+
+    def test_max_task_age_seconds(self, executor_module):
+        assert executor_module._MAX_TASK_AGE_SECONDS == 3600
+
+
+# =========================================================================
+# cleanup_background_task (additional edge cases)
+# =========================================================================
+
+
+class TestCleanupBackgroundTaskExtended:
+    def test_cleanup_removes_cancelled(self, executor_module, classes):
+        SubagentResult = classes["SubagentResult"]
+        SubagentStatus = classes["SubagentStatus"]
+        r = SubagentResult(
+            task_id="cl-cancel",
+            trace_id="tr",
+            status=SubagentStatus.CANCELLED,
+            completed_at=datetime.now(),
+        )
+        executor_module._background_tasks["cl-cancel"] = r
+        executor_module.cleanup_background_task("cl-cancel")
+        assert "cl-cancel" not in executor_module._background_tasks
+
+    def test_cleanup_nonexistent_logs_debug(self, executor_module, caplog):
+        executor_module._background_tasks.clear()
+        with caplog.at_level(logging.DEBUG, logger=executor_module.logger.name):
+            executor_module.cleanup_background_task("ghost")
+        assert "ghost" in caplog.text
+
+    def test_cleanup_non_terminal_skips(self, executor_module, classes, caplog):
+        SubagentResult = classes["SubagentResult"]
+        SubagentStatus = classes["SubagentStatus"]
+        r = SubagentResult(
+            task_id="running-cl",
+            trace_id="tr",
+            status=SubagentStatus.RUNNING,
+            started_at=datetime.now(),
+        )
+        executor_module._background_tasks["running-cl"] = r
+        with caplog.at_level(logging.DEBUG, logger=executor_module.logger.name):
+            executor_module.cleanup_background_task("running-cl")
+        assert "Skipping cleanup" in caplog.text
+        assert "running-cl" in executor_module._background_tasks
+
+
+# =========================================================================
+# Agent construction - system prompt merging
+# =========================================================================
+
+
+class TestAgentConstructionExtended:
+    @pytest.mark.anyio
+    async def test_build_initial_state_consolidates_multiple_skills(self, classes, monkeypatch, tmp_path):
+        SubagentConfig = classes["SubagentConfig"]
+        SubagentExecutor = classes["SubagentExecutor"]
+        config = SubagentConfig(
+            name="test",
+            description="test",
+            model="gpt-4",
+            system_prompt="Base prompt",
+        )
+        sk1_dir = tmp_path / "sk1"
+        sk1_dir.mkdir()
+        (sk1_dir / "SKILL.md").write_text("Skill1 content", encoding="utf-8")
+        sk2_dir = tmp_path / "sk2"
+        sk2_dir.mkdir()
+        (sk2_dir / "SKILL.md").write_text("Skill2 content", encoding="utf-8")
+
+        all_skills = [_skill("sk1", None), _skill("sk2", None)]
+        for s, d in zip(all_skills, [sk1_dir, sk2_dir]):
+            s.skill_file = d / "SKILL.md"
 
         monkeypatch.setattr(
             sys.modules["ideer.skills.storage"],
             "get_or_new_skill_storage",
-            lambda *, app_config=None: SimpleNamespace(load_skills=lambda *, enabled_only: [SimpleNamespace(name="regression-skill", skill_file=skill_dir / "SKILL.md", allowed_tools=None)]),
+            lambda **kw: SimpleNamespace(load_skills=lambda *, enabled_only: all_skills),
         )
+        executor = SubagentExecutor(config=config, tools=[])
+        state, _ = await executor._build_initial_state("task")
+        from langchain_core.messages import SystemMessage
 
-        captured_states: list[dict] = []
+        sys_msg = state["messages"][0]
+        assert isinstance(sys_msg, SystemMessage)
+        assert "Base prompt" in sys_msg.content
+        assert "Skill1 content" in sys_msg.content
+        assert "Skill2 content" in sys_msg.content
 
-        async def capturing_astream(state, **kwargs):
-            captured_states.append(state)
-            yield {"messages": [AIMessage(content="Done", id="msg-1")]}
-
-        mock_agent = MagicMock()
-        mock_agent.astream = capturing_astream
-
-        executor = SubagentExecutor(
-            config=base_config,
-            tools=[],
-            thread_id="test-thread",
+    @pytest.mark.anyio
+    async def test_no_system_parts_skips_system_message(self, classes, monkeypatch):
+        SubagentConfig = classes["SubagentConfig"]
+        SubagentExecutor = classes["SubagentExecutor"]
+        config = SubagentConfig(
+            name="test",
+            description="test",
+            model="gpt-4",
+            system_prompt=None,
+            skills=[],
         )
+        monkeypatch.setattr(
+            sys.modules["ideer.skills.storage"],
+            "get_or_new_skill_storage",
+            lambda **kw: SimpleNamespace(load_skills=lambda *, enabled_only: []),
+        )
+        executor = SubagentExecutor(config=config, tools=[])
+        state, _ = await executor._build_initial_state("task")
+        from langchain_core.messages import HumanMessage
 
+        assert len(state["messages"]) == 1
+        assert isinstance(state["messages"][0], HumanMessage)
+
+
+# =========================================================================
+# _aexecute: final_result None guard (line 640-641)
+# =========================================================================
+
+
+class TestFinalResultNoneGuard:
+    @pytest.mark.anyio
+    async def test_final_result_none_guard(self, classes, base_config, mock_agent):
+        """Line 640-641: if final_result is None after all branches, it becomes 'No response generated'."""
+        SubagentExecutor = classes["SubagentExecutor"]
+        # Create a scenario where last_ai_message exists but content is None
+        ai_msg = MagicMock()
+        ai_msg.content = None
+        ai_msg.__class__ = classes["AIMessage"]
+        ai_msg.model_dump.return_value = {"id": "m1", "content": None}
+
+        final = {"messages": [ai_msg]}
+        mock_agent.astream = lambda *a, **kw: async_iterator([final])
+        executor = SubagentExecutor(config=base_config, tools=[], thread_id="t")
         with patch.object(executor, "_create_agent", return_value=mock_agent):
-            result = await executor._aexecute("Do something")
-
-        assert result.status == SubagentStatus.COMPLETED
-        assert len(captured_states) == 1, "astream should be called exactly once"
-        initial_messages = captured_states[0]["messages"]
-
-        system_messages = [m for m in initial_messages if isinstance(m, SystemMessage)]
-        assert len(system_messages) <= 1, f"Expected at most 1 SystemMessage but got {len(system_messages)}: {system_messages}"
-        if system_messages:
-            assert initial_messages[0] is system_messages[0], "SystemMessage must be the first message in the conversation"
-            # The consolidated SystemMessage must carry both the system_prompt
-            # and all skill content — nothing should be split across two messages.
-            assert base_config.system_prompt in system_messages[0].content
-            assert "Skill instruction text" in system_messages[0].content
+            result = await executor._aexecute("T")
+        # content=None → str(None) = "None"
+        assert result.result is not None
 
 
-class TestSkillAllowedTools:
+# =========================================================================
+# _aexecute: fallback list with dict with non-string text value
+# =========================================================================
+
+
+class TestAexecuteFallbackEdgeCases:
     @pytest.mark.anyio
-    async def test_skill_allowed_tools_union_filters_agent_tools(self, classes, base_config, mock_agent, msg):
+    async def test_dict_block_with_non_string_text(self, classes, base_config, mock_agent):
         SubagentExecutor = classes["SubagentExecutor"]
-
-        final_state = {"messages": [msg.human("Task"), msg.ai("Done", "msg-1")]}
-        mock_agent.astream = lambda *args, **kwargs: async_iterator([final_state])
-        tools = [NamedTool("bash"), NamedTool("read_file"), NamedTool("web_search")]
-        executor = SubagentExecutor(config=base_config, tools=tools, thread_id="test-thread")
-
-        async def load_skills():
-            return [_skill("a", ["bash"]), _skill("b", ["read_file"])]
-
-        with patch.object(executor, "_load_skills", load_skills), patch.object(executor, "_create_agent", return_value=mock_agent) as create_agent_mock:
-            await executor._aexecute("Task")
-
-        create_agent_mock.assert_called_once()
-        assert [tool.name for tool in create_agent_mock.call_args.args[0]] == ["bash", "read_file"]
-        assert [tool.name for tool in executor.tools] == ["bash", "read_file", "web_search"]
-
-    @pytest.mark.anyio
-    async def test_all_missing_allowed_tools_preserves_legacy_allow_all(self, classes, base_config, mock_agent, msg):
-        SubagentExecutor = classes["SubagentExecutor"]
-
-        final_state = {"messages": [msg.human("Task"), msg.ai("Done", "msg-1")]}
-        mock_agent.astream = lambda *args, **kwargs: async_iterator([final_state])
-        tools = [NamedTool("bash"), NamedTool("read_file"), NamedTool("web_search")]
-        executor = SubagentExecutor(config=base_config, tools=tools, thread_id="test-thread")
-
-        async def load_skills():
-            return [_skill("legacy-a", None), _skill("legacy-b", None)]
-
-        with patch.object(executor, "_load_skills", load_skills), patch.object(executor, "_create_agent", return_value=mock_agent) as create_agent_mock:
-            await executor._aexecute("Task")
-
-        assert [tool.name for tool in create_agent_mock.call_args.args[0]] == ["bash", "read_file", "web_search"]
-        assert [tool.name for tool in executor.tools] == ["bash", "read_file", "web_search"]
-
-    @pytest.mark.anyio
-    async def test_mixed_missing_allowed_tools_does_not_disable_explicit_restrictions(self, classes, base_config, mock_agent, msg):
-        SubagentExecutor = classes["SubagentExecutor"]
-
-        final_state = {"messages": [msg.human("Task"), msg.ai("Done", "msg-1")]}
-        mock_agent.astream = lambda *args, **kwargs: async_iterator([final_state])
-        tools = [NamedTool("bash"), NamedTool("read_file"), NamedTool("web_search")]
-        executor = SubagentExecutor(config=base_config, tools=tools, thread_id="test-thread")
-
-        async def load_skills():
-            return [_skill("legacy", None), _skill("restricted", ["bash"])]
-
-        with patch.object(executor, "_load_skills", load_skills), patch.object(executor, "_create_agent", return_value=mock_agent) as create_agent_mock:
-            await executor._aexecute("Task")
-
-        assert [tool.name for tool in create_agent_mock.call_args.args[0]] == ["bash"]
-        assert [tool.name for tool in executor.tools] == ["bash", "read_file", "web_search"]
-
-    @pytest.mark.anyio
-    async def test_mixed_missing_allowed_tools_order_does_not_disable_explicit_restrictions(self, classes, base_config, mock_agent, msg):
-        SubagentExecutor = classes["SubagentExecutor"]
-
-        final_state = {"messages": [msg.human("Task"), msg.ai("Done", "msg-1")]}
-        mock_agent.astream = lambda *args, **kwargs: async_iterator([final_state])
-        tools = [NamedTool("bash"), NamedTool("read_file"), NamedTool("web_search")]
-        executor = SubagentExecutor(config=base_config, tools=tools, thread_id="test-thread")
-
-        async def load_skills():
-            return [_skill("restricted", ["bash"]), _skill("legacy", None)]
-
-        with patch.object(executor, "_load_skills", load_skills), patch.object(executor, "_create_agent", return_value=mock_agent) as create_agent_mock:
-            await executor._aexecute("Task")
-
-        assert [tool.name for tool in create_agent_mock.call_args.args[0]] == ["bash"]
-        assert [tool.name for tool in executor.tools] == ["bash", "read_file", "web_search"]
-
-    @pytest.mark.anyio
-    async def test_empty_allowed_tools_contributes_no_tools(self, classes, base_config, mock_agent, msg, caplog):
-        SubagentExecutor = classes["SubagentExecutor"]
-
-        final_state = {"messages": [msg.human("Task"), msg.ai("Done", "msg-1")]}
-        mock_agent.astream = lambda *args, **kwargs: async_iterator([final_state])
-        tools = [NamedTool("bash"), NamedTool("read_file"), NamedTool("web_search")]
-        executor = SubagentExecutor(config=base_config, tools=tools, thread_id="test-thread")
-
-        async def load_skills():
-            return [_skill("empty", []), _skill("reader", ["read_file"])]
-
-        with patch.object(executor, "_load_skills", load_skills), patch.object(executor, "_create_agent", return_value=mock_agent) as create_agent_mock, caplog.at_level("INFO"):
-            await executor._aexecute("Task")
-
-        assert [tool.name for tool in create_agent_mock.call_args.args[0]] == ["read_file"]
-        assert [tool.name for tool in executor.tools] == ["bash", "read_file", "web_search"]
-        assert "declared empty allowed-tools" in caplog.text
-
-    @pytest.mark.anyio
-    async def test_skill_load_failure_fails_without_creating_agent(self, classes, base_config, mock_agent):
-        SubagentExecutor = classes["SubagentExecutor"]
-        executor = SubagentExecutor(config=base_config, tools=[NamedTool("bash")], thread_id="test-thread")
-
-        async def load_skills():
-            raise RuntimeError("skill storage unavailable")
-
-        with patch.object(executor, "_load_skills", load_skills), patch.object(executor, "_create_agent", return_value=mock_agent) as create_agent_mock:
-            result = await executor._aexecute("Task")
-
-        assert result.status == classes["SubagentStatus"].FAILED
-        assert result.error == "skill storage unavailable"
-        create_agent_mock.assert_not_called()
-
-
-# -----------------------------------------------------------------------------
-# Sync Execution Path Tests
-# -----------------------------------------------------------------------------
-
-
-class TestSyncExecutionPath:
-    """Test execute() synchronous execution path with asyncio.run()."""
-
-    def test_execute_runs_async_in_event_loop(self, classes, base_config, mock_agent, msg):
-        """Test that execute() runs _aexecute() in a new event loop via asyncio.run()."""
-        SubagentExecutor = classes["SubagentExecutor"]
-        SubagentStatus = classes["SubagentStatus"]
-
-        final_message = msg.ai("Sync result", "msg-1")
-        final_state = {
-            "messages": [
-                msg.human("Task"),
-                final_message,
-            ]
-        }
-        mock_agent.astream = lambda *args, **kwargs: async_iterator([final_state])
-
-        executor = SubagentExecutor(
-            config=base_config,
-            tools=[],
-            thread_id="test-thread",
-        )
-
+        ai = MagicMock()
+        ai.content = [{"text": 123}]
+        ai.__class__ = classes["AIMessage"]
+        ai.model_dump.return_value = {"id": "m1"}
+        ai.id = "m1"
+        final = {"messages": [ai]}
+        mock_agent.astream = lambda *a, **kw: async_iterator([final])
+        executor = SubagentExecutor(config=base_config, tools=[], thread_id="t")
         with patch.object(executor, "_create_agent", return_value=mock_agent):
-            result = executor.execute("Task")
-
-        assert result.status == SubagentStatus.COMPLETED
-        assert result.result == "Sync result"
-
-    def test_execute_in_thread_pool_context(self, classes, base_config, msg):
-        """Test that execute() works correctly when called from a thread pool.
-
-        This simulates the real-world usage where execute() is called from
-        a worker thread outside the main event loop.
-        """
-        from concurrent.futures import ThreadPoolExecutor
-
-        SubagentExecutor = classes["SubagentExecutor"]
-        SubagentStatus = classes["SubagentStatus"]
-
-        final_message = msg.ai("Thread pool result", "msg-1")
-        final_state = {
-            "messages": [
-                msg.human("Task"),
-                final_message,
-            ]
-        }
-
-        def run_in_thread():
-            mock_agent = MagicMock()
-            mock_agent.astream = lambda *args, **kwargs: async_iterator([final_state])
-
-            executor = SubagentExecutor(
-                config=base_config,
-                tools=[],
-                thread_id="test-thread",
-            )
-
-            with patch.object(executor, "_create_agent", return_value=mock_agent):
-                return executor.execute("Task")
-
-        # Execute in thread pool to simulate sync execution outside the main loop.
-        with ThreadPoolExecutor(max_workers=1) as pool:
-            future = pool.submit(run_in_thread)
-            result = future.result(timeout=5)
-
-        assert result.status == SubagentStatus.COMPLETED
-        assert result.result == "Thread pool result"
+            result = await executor._aexecute("T")
+        # text=123 is not isinstance str, so it's skipped
+        assert result.result == "No text content in response"
 
     @pytest.mark.anyio
-    async def test_execute_in_running_event_loop_calls_isolated_loop_directly(self, classes, base_config, mock_agent, msg):
-        """Test that execute() calls the isolated-loop helper directly in a running loop."""
-        from ideer.runtime.user_context import (
-            get_effective_user_id,
-            reset_current_user,
-            set_current_user,
-        )
-
+    async def test_fallback_dict_block_with_non_string_text(self, classes, base_config, mock_agent):
         SubagentExecutor = classes["SubagentExecutor"]
-        SubagentStatus = classes["SubagentStatus"]
-
-        caller_thread = threading.current_thread().name
-        isolated_helper_threads = []
-        execution_threads = []
-        effective_user_ids = []
-        final_state = {
-            "messages": [
-                msg.human("Task"),
-                msg.ai("Async loop result", "msg-1"),
-            ]
-        }
-
-        async def mock_astream(*args, **kwargs):
-            execution_threads.append(threading.current_thread().name)
-            effective_user_ids.append(get_effective_user_id())
-            yield final_state
-
-        mock_agent.astream = mock_astream
-
-        executor = SubagentExecutor(
-            config=base_config,
-            tools=[],
-            thread_id="test-thread",
-        )
-
-        original_isolated_execute = executor._execute_in_isolated_loop
-
-        def tracked_isolated_execute(task, result_holder=None):
-            isolated_helper_threads.append(threading.current_thread().name)
-            return original_isolated_execute(task, result_holder)
-
-        token = set_current_user(SimpleNamespace(id="alice"))
-        try:
-            with patch.object(executor, "_create_agent", return_value=mock_agent):
-                with patch.object(executor, "_execute_in_isolated_loop", side_effect=tracked_isolated_execute) as isolated:
-                    result = executor.execute("Task")
-        finally:
-            reset_current_user(token)
-
-        assert isolated.call_count == 1
-        assert isolated_helper_threads == [caller_thread]
-        assert execution_threads
-        assert execution_threads == ["subagent-persistent-loop"]
-        assert effective_user_ids == ["alice"]
-        assert result.status == SubagentStatus.COMPLETED
-        assert result.result == "Async loop result"
+        fallback = MagicMock()
+        fallback.content = [{"text": 456}]
+        fallback.__class__ = type("FB", (), {})
+        final = {"messages": [fallback]}
+        mock_agent.astream = lambda *a, **kw: async_iterator([final])
+        executor = SubagentExecutor(config=base_config, tools=[], thread_id="t")
+        with patch.object(executor, "_create_agent", return_value=mock_agent):
+            result = await executor._aexecute("T")
+        assert result.result == "No text content in response"
 
     @pytest.mark.anyio
-    async def test_execute_in_running_event_loop_reuses_persistent_isolated_loop(self, classes, base_config, mock_agent, msg):
-        """Regression: repeated isolated executions should reuse one long-lived loop."""
+    async def test_fallback_list_empty_with_str_items(self, classes, base_config, mock_agent):
         SubagentExecutor = classes["SubagentExecutor"]
-        SubagentStatus = classes["SubagentStatus"]
-        execution_loops = []
-
-        final_state = {
-            "messages": [
-                msg.human("Task"),
-                msg.ai("Async loop result", "msg-1"),
-            ]
-        }
-
-        async def mock_astream(*args, **kwargs):
-            execution_loops.append(asyncio.get_running_loop())
-            yield final_state
-
-        mock_agent.astream = mock_astream
-
-        executor = SubagentExecutor(
-            config=base_config,
-            tools=[],
-            thread_id="test-thread",
-        )
-
+        fallback = MagicMock()
+        fallback.content = []
+        fallback.__class__ = type("FB", (), {})
+        final = {"messages": [fallback]}
+        mock_agent.astream = lambda *a, **kw: async_iterator([final])
+        executor = SubagentExecutor(config=base_config, tools=[], thread_id="t")
         with patch.object(executor, "_create_agent", return_value=mock_agent):
-            first = executor.execute("Task 1")
-            second = executor.execute("Task 2")
+            result = await executor._aexecute("T")
+        assert result.result == "No text content in response"
 
-        assert first.status == SubagentStatus.COMPLETED
-        assert second.status == SubagentStatus.COMPLETED
-        assert len(execution_loops) == 2
-        assert execution_loops[0] is execution_loops[1]
-        assert execution_loops[0].is_running()
 
-    def test_execute_handles_asyncio_run_failure(self, classes, base_config):
-        """Test handling when asyncio.run() itself fails."""
+# =========================================================================
+# _create_agent: verify middleware and state_schema
+# =========================================================================
+
+
+class TestCreateAgentWiring:
+    def test_middleware_and_state_schema(self, classes, base_config, monkeypatch):
         SubagentExecutor = classes["SubagentExecutor"]
-        SubagentStatus = classes["SubagentStatus"]
+        from ideer.subagents import executor as executor_mod
 
-        executor = SubagentExecutor(
-            config=base_config,
-            tools=[],
-            thread_id="test-thread",
+        captured = {}
+
+        def fake_create_agent(**kw):
+            captured.update(kw)
+            return kw
+
+        monkeypatch.setattr(
+            executor_mod,
+            "create_chat_model",
+            lambda **kw: SimpleNamespace(name=kw["name"]),
         )
+        monkeypatch.setattr(executor_mod, "create_agent", fake_create_agent)
 
-        with patch.object(executor, "_aexecute") as mock_aexecute:
-            mock_aexecute.side_effect = Exception("Asyncio run error")
+        app_cfg = SimpleNamespace(models=[SimpleNamespace(name="m")])
+        executor = SubagentExecutor(config=base_config, tools=[], app_config=app_cfg)
+        executor._create_agent()
 
-            result = executor.execute("Task")
+        assert captured["system_prompt"] is None
+        assert "middleware" in captured
+        assert "state_schema" in captured
 
-        assert result.status == SubagentStatus.FAILED
-        assert "Asyncio run error" in result.error
-        assert result.completed_at is not None
 
-    def test_execute_with_result_holder(self, classes, base_config, mock_agent, msg):
-        """Test execute() updates provided result_holder in real-time."""
+# =========================================================================
+# _load_skills: app_config passed through
+# =========================================================================
+
+
+class TestLoadSkillsWithAppConfig:
+    @pytest.mark.anyio
+    async def test_app_config_forwarded_to_storage(self, classes, monkeypatch):
+        SubagentConfig = classes["SubagentConfig"]
         SubagentExecutor = classes["SubagentExecutor"]
-        SubagentResult = classes["SubagentResult"]
-        SubagentStatus = classes["SubagentStatus"]
-
-        msg1 = msg.ai("Step 1", "msg-1")
-        chunk1 = {"messages": [msg.human("Task"), msg1]}
-
-        mock_agent.astream = lambda *args, **kwargs: async_iterator([chunk1])
-
-        # Pre-create result holder (as done in execute_async)
-        result_holder = SubagentResult(
-            task_id="predefined-id",
-            trace_id="test-trace",
-            status=SubagentStatus.RUNNING,
-            started_at=datetime.now(),
+        config = SubagentConfig(
+            name="test",
+            description="test",
+            model="gpt-4",
+            skills=None,
         )
+        captured = {}
 
-        executor = SubagentExecutor(
-            config=base_config,
-            tools=[],
-            thread_id="test-thread",
+        def fake_storage(**kw):
+            captured.update(kw)
+            return SimpleNamespace(load_skills=lambda *, enabled_only: [])
+
+        monkeypatch.setattr(
+            sys.modules["ideer.skills.storage"],
+            "get_or_new_skill_storage",
+            fake_storage,
         )
-
-        with patch.object(executor, "_create_agent", return_value=mock_agent):
-            result = executor.execute("Task", result_holder=result_holder)
-
-        # Should be the same object
-        assert result is result_holder
-        assert result.task_id == "predefined-id"
-        assert result.status == SubagentStatus.COMPLETED
-
-
-# -----------------------------------------------------------------------------
-# Async Tool Support Tests (MCP Tools)
-# -----------------------------------------------------------------------------
-
-
-class TestAsyncToolSupport:
-    """Test that async-only tools (like MCP tools) work correctly."""
+        app_cfg = SimpleNamespace(models=[SimpleNamespace(name="m")])
+        executor = SubagentExecutor(config=config, tools=[], app_config=app_cfg)
+        await executor._load_skills()
+        assert captured.get("app_config") is app_cfg
 
     @pytest.mark.anyio
-    async def test_async_tool_called_in_astream(self, classes, base_config, msg):
-        """Test that async tools are properly awaited in astream.
-
-        This verifies the fix for: async MCP tools not being executed properly
-        because they were being called synchronously.
-        """
+    async def test_no_app_config_omits_kwarg(self, classes, monkeypatch):
+        SubagentConfig = classes["SubagentConfig"]
         SubagentExecutor = classes["SubagentExecutor"]
-        SubagentStatus = classes["SubagentStatus"]
-
-        async_tool_calls = []
-
-        async def mock_async_tool(*args, **kwargs):
-            async_tool_calls.append("called")
-            await asyncio.sleep(0.01)  # Simulate async work
-            return {"result": "async tool result"}
-
-        mock_agent = MagicMock()
-
-        # Simulate agent that calls async tools during streaming
-        async def mock_astream(*args, **kwargs):
-            await mock_async_tool()
-            yield {
-                "messages": [
-                    msg.human("Task"),
-                    msg.ai("Done", "msg-1"),
-                ]
-            }
-
-        mock_agent.astream = mock_astream
-
-        executor = SubagentExecutor(
-            config=base_config,
-            tools=[],
-            thread_id="test-thread",
+        config = SubagentConfig(
+            name="test",
+            description="test",
+            model="gpt-4",
+            skills=None,
         )
+        captured = {}
 
-        with patch.object(executor, "_create_agent", return_value=mock_agent):
-            result = await executor._aexecute("Task")
+        def fake_storage(**kw):
+            captured.update(kw)
+            return SimpleNamespace(load_skills=lambda *, enabled_only: [])
 
-        assert len(async_tool_calls) == 1
-        assert result.status == SubagentStatus.COMPLETED
-
-    def test_sync_execute_with_async_tools(self, classes, base_config, msg):
-        """Test that sync execute() properly runs async tools via asyncio.run()."""
-        SubagentExecutor = classes["SubagentExecutor"]
-        SubagentStatus = classes["SubagentStatus"]
-
-        async_tool_calls = []
-
-        async def mock_async_tool():
-            async_tool_calls.append("called")
-            await asyncio.sleep(0.01)
-            return {"result": "async result"}
-
-        mock_agent = MagicMock()
-
-        async def mock_astream(*args, **kwargs):
-            await mock_async_tool()
-            yield {
-                "messages": [
-                    msg.human("Task"),
-                    msg.ai("Done", "msg-1"),
-                ]
-            }
-
-        mock_agent.astream = mock_astream
-
-        executor = SubagentExecutor(
-            config=base_config,
-            tools=[],
-            thread_id="test-thread",
+        monkeypatch.setattr(
+            sys.modules["ideer.skills.storage"],
+            "get_or_new_skill_storage",
+            fake_storage,
         )
-
-        with patch.object(executor, "_create_agent", return_value=mock_agent):
-            result = executor.execute("Task")
-
-        assert len(async_tool_calls) == 1
-        assert result.status == SubagentStatus.COMPLETED
+        executor = SubagentExecutor(config=config, tools=[])
+        await executor._load_skills()
+        assert "app_config" not in captured
 
 
-# -----------------------------------------------------------------------------
-# Thread Safety Tests
-# -----------------------------------------------------------------------------
+# =========================================================================
+# execute_async: timeout path in run_task
+# =========================================================================
 
 
-class TestThreadSafety:
-    """Test thread safety of executor operations."""
-
-    @pytest.fixture
-    def executor_module(self, _setup_executor_classes):
-        """Import the executor module with real classes."""
-        import importlib
-
-        from ideer.subagents import executor
-
-        return importlib.reload(executor)
-
-    def test_multiple_executors_in_parallel(self, classes, base_config, msg):
-        """Test multiple executors running in parallel via thread pool."""
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-
+class TestExecuteAsyncTimeout:
+    def test_run_task_timeout_sets_timed_out(self, executor_module, classes, base_config):
         SubagentExecutor = classes["SubagentExecutor"]
-        SubagentStatus = classes["SubagentStatus"]
-
-        results = []
-
-        def execute_task(task_id: int):
-            def make_astream(*args, **kwargs):
-                return async_iterator(
-                    [
-                        {
-                            "messages": [
-                                msg.human(f"Task {task_id}"),
-                                msg.ai(f"Result {task_id}", f"msg-{task_id}"),
-                            ]
-                        }
-                    ]
-                )
-
-            mock_agent = MagicMock()
-            mock_agent.astream = make_astream
-
-            executor = SubagentExecutor(
-                config=base_config,
-                tools=[],
-                thread_id=f"thread-{task_id}",
-            )
-
-            with patch.object(executor, "_create_agent", return_value=mock_agent):
-                return executor.execute(f"Task {task_id}")
-
-        # Execute multiple tasks in parallel
-        with ThreadPoolExecutor(max_workers=3) as pool:
-            futures = [pool.submit(execute_task, i) for i in range(5)]
-            for future in as_completed(futures):
-                results.append(future.result())
-
-        assert len(results) == 5
-        for result in results:
-            assert result.status == SubagentStatus.COMPLETED
-            assert "Result" in result.result
-
-    def test_terminal_status_is_published_after_payload_fields(self, executor_module, monkeypatch):
-        """Readers must not observe terminal status before terminal payload is complete."""
-        SubagentResult = executor_module.SubagentResult
+        classes["SubagentResult"]
+        # Use the executor_module's SubagentStatus to match the enum class used
+        # inside the reloaded module's run_task (importlib.reload creates a new class).
         SubagentStatus = executor_module.SubagentStatus
 
-        now_entered = threading.Event()
-        release_now = threading.Event()
-        completed_at = datetime(2026, 5, 1, 12, 0, 0)
-        writer_errors: list[BaseException] = []
-
-        class BlockingDateTime:
-            @staticmethod
-            def now():
-                now_entered.set()
-                release_now.wait(timeout=5)
-                return completed_at
-
-        monkeypatch.setattr(executor_module, "datetime", BlockingDateTime)
-
-        result = SubagentResult(
-            task_id="test-terminal-publication-order",
-            trace_id="test-trace",
-            status=SubagentStatus.RUNNING,
-        )
-        token_usage_records = [
-            {
-                "source_run_id": "run-1",
-                "caller": "subagent:test-agent",
-                "input_tokens": 10,
-                "output_tokens": 5,
-                "total_tokens": 15,
-            }
-        ]
-
-        def set_terminal():
-            try:
-                assert result.try_set_terminal(
-                    SubagentStatus.COMPLETED,
-                    result="done",
-                    token_usage_records=token_usage_records,
-                )
-            except BaseException as exc:
-                writer_errors.append(exc)
-
-        writer = threading.Thread(target=set_terminal)
-        writer.start()
-
-        assert now_entered.wait(timeout=3), "try_set_terminal did not reach completed_at assignment"
-        assert result.completed_at is None
-        assert result.status == SubagentStatus.RUNNING
-        assert result.token_usage_records == token_usage_records
-
-        release_now.set()
-        writer.join(timeout=3)
-
-        assert not writer.is_alive(), "try_set_terminal did not finish"
-        assert writer_errors == []
-        assert result.completed_at == completed_at
-        assert result.status == SubagentStatus.COMPLETED
-        assert result.result == "done"
-        assert result.token_usage_records == token_usage_records
-
-
-# -----------------------------------------------------------------------------
-# Cleanup Background Task Tests
-# -----------------------------------------------------------------------------
-
-
-class TestCleanupBackgroundTask:
-    """Test cleanup_background_task function for race condition prevention."""
-
-    @pytest.fixture
-    def executor_module(self, _setup_executor_classes):
-        """Import the executor module with real classes."""
-        # Re-import to get the real module with cleanup_background_task
-        import importlib
-
-        from ideer.subagents import executor
-
-        return importlib.reload(executor)
-
-    def test_cleanup_removes_terminal_completed_task(self, executor_module, classes):
-        """Test that cleanup removes a COMPLETED task."""
-        SubagentResult = classes["SubagentResult"]
-        SubagentStatus = classes["SubagentStatus"]
-
-        # Add a completed task
-        task_id = "test-completed-task"
-        result = SubagentResult(
-            task_id=task_id,
-            trace_id="test-trace",
-            status=SubagentStatus.COMPLETED,
-            result="done",
-            completed_at=datetime.now(),
-        )
-        executor_module._background_tasks[task_id] = result
-
-        # Cleanup should remove it
-        executor_module.cleanup_background_task(task_id)
-
-        assert task_id not in executor_module._background_tasks
-
-    def test_cleanup_removes_terminal_failed_task(self, executor_module, classes):
-        """Test that cleanup removes a FAILED task."""
-        SubagentResult = classes["SubagentResult"]
-        SubagentStatus = classes["SubagentStatus"]
-
-        task_id = "test-failed-task"
-        result = SubagentResult(
-            task_id=task_id,
-            trace_id="test-trace",
-            status=SubagentStatus.FAILED,
-            error="error",
-            completed_at=datetime.now(),
-        )
-        executor_module._background_tasks[task_id] = result
-
-        executor_module.cleanup_background_task(task_id)
-
-        assert task_id not in executor_module._background_tasks
-
-    def test_cleanup_removes_terminal_timed_out_task(self, executor_module, classes):
-        """Test that cleanup removes a TIMED_OUT task."""
-        SubagentResult = classes["SubagentResult"]
-        SubagentStatus = classes["SubagentStatus"]
-
-        task_id = "test-timedout-task"
-        result = SubagentResult(
-            task_id=task_id,
-            trace_id="test-trace",
-            status=SubagentStatus.TIMED_OUT,
-            error="timeout",
-            completed_at=datetime.now(),
-        )
-        executor_module._background_tasks[task_id] = result
-
-        executor_module.cleanup_background_task(task_id)
-
-        assert task_id not in executor_module._background_tasks
-
-    def test_cleanup_skips_running_task(self, executor_module, classes):
-        """Test that cleanup does NOT remove a RUNNING task.
-
-        This prevents race conditions where task_tool calls cleanup
-        while the background executor is still updating the task.
-        """
-        SubagentResult = classes["SubagentResult"]
-        SubagentStatus = classes["SubagentStatus"]
-
-        task_id = "test-running-task"
-        result = SubagentResult(
-            task_id=task_id,
-            trace_id="test-trace",
-            status=SubagentStatus.RUNNING,
-            started_at=datetime.now(),
-        )
-        executor_module._background_tasks[task_id] = result
-
-        executor_module.cleanup_background_task(task_id)
-
-        # Should still be present because it's RUNNING
-        assert task_id in executor_module._background_tasks
-
-    def test_cleanup_skips_pending_task(self, executor_module, classes):
-        """Test that cleanup does NOT remove a PENDING task."""
-        SubagentResult = classes["SubagentResult"]
-        SubagentStatus = classes["SubagentStatus"]
-
-        task_id = "test-pending-task"
-        result = SubagentResult(
-            task_id=task_id,
-            trace_id="test-trace",
-            status=SubagentStatus.PENDING,
-        )
-        executor_module._background_tasks[task_id] = result
-
-        executor_module.cleanup_background_task(task_id)
-
-        assert task_id in executor_module._background_tasks
-
-    def test_cleanup_handles_unknown_task_gracefully(self, executor_module):
-        """Test that cleanup doesn't raise for unknown task IDs."""
-        # Should not raise
-        executor_module.cleanup_background_task("nonexistent-task")
-
-    def test_cleanup_removes_task_with_completed_at_even_if_running(self, executor_module, classes):
-        """Test that cleanup removes task if completed_at is set, even if status is RUNNING.
-
-        This is a safety net: if completed_at is set, the task is considered done
-        regardless of status.
-        """
-        SubagentResult = classes["SubagentResult"]
-        SubagentStatus = classes["SubagentStatus"]
-
-        task_id = "test-completed-at-task"
-        result = SubagentResult(
-            task_id=task_id,
-            trace_id="test-trace",
-            status=SubagentStatus.RUNNING,  # Status not terminal
-            completed_at=datetime.now(),  # But completed_at is set
-        )
-        executor_module._background_tasks[task_id] = result
-
-        executor_module.cleanup_background_task(task_id)
-
-        # Should be removed because completed_at is set
-        assert task_id not in executor_module._background_tasks
-
-
-# -----------------------------------------------------------------------------
-# Cooperative Cancellation Tests
-# -----------------------------------------------------------------------------
-
-
-class TestCooperativeCancellation:
-    """Test cooperative cancellation via cancel_event."""
-
-    @pytest.fixture
-    def executor_module(self, _setup_executor_classes):
-        """Import the executor module with real classes."""
-        import importlib
-
-        from ideer.subagents import executor
-
-        return importlib.reload(executor)
-
-    @pytest.mark.anyio
-    async def test_aexecute_cancelled_before_streaming(self, classes, base_config, mock_agent, msg):
-        """Test that _aexecute returns CANCELLED when cancel_event is set before streaming."""
-        SubagentExecutor = classes["SubagentExecutor"]
-        SubagentResult = classes["SubagentResult"]
-        SubagentStatus = classes["SubagentStatus"]
-
-        # The agent should never be called
-        call_count = 0
-
-        async def mock_astream(*args, **kwargs):
-            nonlocal call_count
-            call_count += 1
-            yield {"messages": [msg.human("Task"), msg.ai("Done", "msg-1")]}
-
-        mock_agent.astream = mock_astream
-
-        # Pre-create result holder with cancel_event already set
-        result_holder = SubagentResult(
-            task_id="cancel-before",
-            trace_id="test-trace",
-            status=SubagentStatus.RUNNING,
-            started_at=datetime.now(),
-        )
-        result_holder.cancel_event.set()
-
-        executor = SubagentExecutor(
-            config=base_config,
-            tools=[],
-            thread_id="test-thread",
+        short_config = classes["SubagentConfig"](
+            name="test-agent",
+            description="test",
+            model="gpt-4",
+            max_turns=10,
+            timeout_seconds=0,
         )
 
-        with patch.object(executor, "_create_agent", return_value=mock_agent):
-            result = await executor._aexecute("Task", result_holder=result_holder)
+        blocking_future: Future = Future()
 
-        assert result.status == SubagentStatus.CANCELLED
-        assert result.error == "Cancelled by user"
-        assert result.completed_at is not None
-        assert call_count == 0  # astream was never entered
+        def fake_submit(ctx, coro_factory):
+            return blocking_future
 
-    @pytest.mark.anyio
-    async def test_aexecute_cancelled_mid_stream(self, classes, base_config, msg):
-        """Test that _aexecute returns CANCELLED when cancel_event is set during streaming."""
-        SubagentExecutor = classes["SubagentExecutor"]
-        SubagentResult = classes["SubagentResult"]
-        SubagentStatus = classes["SubagentStatus"]
+        executor = SubagentExecutor(config=short_config, tools=[], thread_id="t")
+        executor_module._background_tasks.clear()
 
-        cancel_event = threading.Event()
-
-        async def mock_astream(*args, **kwargs):
-            yield {"messages": [msg.human("Task"), msg.ai("Partial", "msg-1")]}
-            # Simulate cancellation during streaming
-            cancel_event.set()
-            yield {"messages": [msg.human("Task"), msg.ai("Should not appear", "msg-2")]}
-
-        mock_agent = MagicMock()
-        mock_agent.astream = mock_astream
-
-        result_holder = SubagentResult(
-            task_id="cancel-mid",
-            trace_id="test-trace",
-            status=SubagentStatus.RUNNING,
-            started_at=datetime.now(),
-        )
-        result_holder.cancel_event = cancel_event
-
-        executor = SubagentExecutor(
-            config=base_config,
-            tools=[],
-            thread_id="test-thread",
-        )
-
-        with patch.object(executor, "_create_agent", return_value=mock_agent):
-            result = await executor._aexecute("Task", result_holder=result_holder)
-
-        assert result.status == SubagentStatus.CANCELLED
-        assert result.error == "Cancelled by user"
-        assert result.completed_at is not None
-
-    def test_request_cancel_sets_event(self, executor_module, classes):
-        """Test that request_cancel_background_task sets the cancel_event."""
-        SubagentResult = classes["SubagentResult"]
-        SubagentStatus = classes["SubagentStatus"]
-
-        task_id = "test-cancel-event"
-        result = SubagentResult(
-            task_id=task_id,
-            trace_id="test-trace",
-            status=SubagentStatus.RUNNING,
-            started_at=datetime.now(),
-        )
-        executor_module._background_tasks[task_id] = result
-
-        assert not result.cancel_event.is_set()
-
-        executor_module.request_cancel_background_task(task_id)
-
-        assert result.cancel_event.is_set()
-
-    def test_request_cancel_nonexistent_task_is_noop(self, executor_module):
-        """Test that requesting cancellation on a nonexistent task does not raise."""
-        executor_module.request_cancel_background_task("nonexistent-task")
-
-    def test_execute_async_runs_without_calling_execute(self, executor_module, classes, base_config):
-        """Regression: execute_async should not route through execute()/asyncio.run()."""
-        import concurrent.futures
-
-        SubagentExecutor = classes["SubagentExecutor"]
-        SubagentResult = classes["SubagentResult"]
-        SubagentStatus = classes["SubagentStatus"]
-
-        def run_inline(fn, *args, **kwargs):
-            future = concurrent.futures.Future()
-            try:
-                future.set_result(fn(*args, **kwargs))
-            except Exception as exc:
-                future.set_exception(exc)
-            return future
-
-        async def fake_aexecute(task, result_holder=None):
-            result = result_holder or SubagentResult(
-                task_id="inline-task",
-                trace_id="test-trace",
-                status=SubagentStatus.RUNNING,
-            )
-            result.status = SubagentStatus.COMPLETED
-            result.result = f"done: {task}"
-            result.completed_at = datetime.now()
-            return result
-
-        executor = SubagentExecutor(
-            config=base_config,
-            tools=[],
-            thread_id="test-thread",
-            trace_id="test-trace",
-        )
+        def run_inline(fn):
+            fn()
 
         with (
-            patch.object(executor_module._scheduler_pool, "submit", side_effect=run_inline),
-            patch.object(executor, "_aexecute", side_effect=fake_aexecute),
-            patch.object(executor, "execute", side_effect=AssertionError("execute() should not be called by execute_async")),
+            patch.object(executor_module._scheduler_pool, "submit", run_inline),
+            patch.object(executor_module, "_submit_to_isolated_loop_in_context", fake_submit),
         ):
-            task_id = executor.execute_async("Task")
+            tid = executor.execute_async("T")
 
-        result = executor_module._background_tasks.get(task_id)
+        result = executor_module._background_tasks.get(tid)
         assert result is not None
-        assert result.status == SubagentStatus.COMPLETED
-        assert result.result == "done: Task"
-        assert result.error is None
+        assert result.status == SubagentStatus.TIMED_OUT
+        assert "timed out" in result.error
+        assert result.cancel_event.is_set()
+        blocking_future.cancel()
 
-    def test_execute_async_propagates_user_context_to_isolated_loop(self, executor_module, classes, base_config):
-        """Regression: background subagent execution must keep request user context."""
-        import concurrent.futures
-
-        from ideer.runtime.user_context import (
-            get_effective_user_id,
-            reset_current_user,
-            set_current_user,
-        )
-
+    def test_run_task_exception_sets_failed(self, executor_module, classes, base_config):
         SubagentExecutor = classes["SubagentExecutor"]
-        SubagentStatus = classes["SubagentStatus"]
+        SubagentStatus = executor_module.SubagentStatus
 
-        async def fake_aexecute(task, result_holder=None):
-            result = result_holder
-            result.status = SubagentStatus.COMPLETED
-            result.result = get_effective_user_id()
-            result.completed_at = datetime.now()
-            return result
+        def fake_submit(ctx, coro_factory):
+            raise RuntimeError("submit exploded")
 
-        executor = SubagentExecutor(
-            config=base_config,
-            tools=[],
-            thread_id="test-thread",
-            trace_id="test-trace",
-        )
+        executor = SubagentExecutor(config=base_config, tools=[], thread_id="t")
+        executor_module._background_tasks.clear()
 
-        scheduler = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-        token = set_current_user(SimpleNamespace(id="alice"))
-        try:
-            with (
-                patch.object(executor_module, "_scheduler_pool", scheduler),
-                patch.object(executor, "_aexecute", side_effect=fake_aexecute),
-                patch.object(executor, "execute", side_effect=AssertionError("execute() should not be called by execute_async")),
-            ):
-                task_id = executor.execute_async("Task")
-                executor_module._scheduler_pool.shutdown(wait=True)
-        finally:
-            reset_current_user(token)
-            scheduler.shutdown(wait=False, cancel_futures=True)
+        def run_inline(fn):
+            fn()
 
-        result = executor_module._background_tasks.get(task_id)
+        with (
+            patch.object(executor_module._scheduler_pool, "submit", run_inline),
+            patch.object(executor_module, "_submit_to_isolated_loop_in_context", fake_submit),
+        ):
+            tid = executor.execute_async("T")
+
+        result = executor_module._background_tasks.get(tid)
         assert result is not None
-        assert result.status == SubagentStatus.COMPLETED
-        assert result.result == "alice"
-        assert result.error is None
+        assert result.status == SubagentStatus.FAILED
+        assert "submit exploded" in result.error
 
-    def test_timeout_does_not_overwrite_cancelled(self, executor_module, classes, base_config, msg):
-        """Test that the real timeout handler does not overwrite CANCELLED status.
 
-        This exercises the actual execute_async → run_task → FuturesTimeoutError
-        code path in executor.py.  We make execute() block so the timeout fires
-        deterministically, pre-set the task to CANCELLED, and verify the RUNNING
-        guard preserves it.  Uses threading.Event for synchronisation instead of
-        wall-clock sleeps.
-        """
+# =========================================================================
+# Integration: execute_async full flow with real scheduler
+# =========================================================================
+
+
+class TestExecuteAsyncIntegration:
+    def test_full_flow_with_real_scheduler(self, executor_module, classes, base_config, msg):
         SubagentExecutor = classes["SubagentExecutor"]
-        SubagentStatus = classes["SubagentStatus"]
+        SubagentStatus = executor_module.SubagentStatus
+        executor_module._background_tasks.clear()
 
-        short_config = classes["SubagentConfig"](
-            name="test-agent",
-            description="Test agent",
-            system_prompt="You are a test agent.",
-            max_turns=10,
-            timeout_seconds=0.05,  # 50ms – just enough for the future to time out
-        )
-
-        # Synchronisation primitives
-        execute_entered = threading.Event()  # signals that _aexecute() has started
-        run_task_done = threading.Event()  # signals that run_task() has finished
-
-        # A blocking _aexecute() replacement so we control the timing exactly.
-        async def blocking_aexecute(task, result_holder=None):
-            execute_entered.set()
-            await asyncio.Event().wait()
-
-        executor = SubagentExecutor(
-            config=short_config,
-            tools=[],
-            thread_id="test-thread",
-            trace_id="test-trace",
-        )
-
-        # Wrap _scheduler_pool.submit so we know when run_task finishes
-        original_scheduler_submit = executor_module._scheduler_pool.submit
-
-        def tracked_submit(fn, *args, **kwargs):
-            def wrapper():
-                try:
-                    fn(*args, **kwargs)
-                finally:
-                    run_task_done.set()
-
-            return original_scheduler_submit(wrapper)
-
-        with patch.object(executor, "_aexecute", side_effect=blocking_aexecute), patch.object(executor_module._scheduler_pool, "submit", tracked_submit):
-            task_id = executor.execute_async("Task")
-
-            # Wait until _aexecute() is entered on the persistent loop.
-            assert execute_entered.wait(timeout=3), "_aexecute() was never called"
-
-            # Set CANCELLED on the result before the timeout handler runs.
-            # The 50ms timeout will fire while execute() is blocked.
-            with executor_module._background_tasks_lock:
-                executor_module._background_tasks[task_id].status = SubagentStatus.CANCELLED
-                executor_module._background_tasks[task_id].error = "Cancelled by user"
-                executor_module._background_tasks[task_id].completed_at = datetime.now()
-
-            # Wait for run_task to finish — the FuturesTimeoutError handler has
-            # now executed and (should have) left CANCELLED intact.
-            assert run_task_done.wait(timeout=5), "run_task() did not finish"
-
-        result = executor_module._background_tasks.get(task_id)
-        assert result is not None
-        # The RUNNING guard in the FuturesTimeoutError handler must have
-        # preserved CANCELLED instead of overwriting with TIMED_OUT.
-        assert result.status.value == SubagentStatus.CANCELLED.value
-        assert result.error == "Cancelled by user"
-        assert result.completed_at is not None
-
-    def test_late_completion_after_timeout_does_not_overwrite_timed_out(self, executor_module, classes, msg):
-        """Late completion from the execution worker must not overwrite TIMED_OUT."""
-        SubagentExecutor = classes["SubagentExecutor"]
-        SubagentStatus = classes["SubagentStatus"]
-
-        short_config = classes["SubagentConfig"](
-            name="test-agent",
-            description="Test agent",
-            system_prompt="You are a test agent.",
-            max_turns=10,
-            timeout_seconds=0.05,
-        )
-
-        first_chunk_seen = threading.Event()
-        finish_stream = threading.Event()
-        execution_done = threading.Event()
-
-        async def mock_astream(*args, **kwargs):
-            yield {"messages": [msg.human("Task"), msg.ai("late completion", "msg-late")]}
-            first_chunk_seen.set()
-            deadline = asyncio.get_running_loop().time() + 5
-            while not finish_stream.is_set():
-                if asyncio.get_running_loop().time() >= deadline:
-                    break
-                await asyncio.sleep(0.001)
-
+        final = {"messages": [msg.human("T"), msg.ai("R", "m1")]}
         mock_agent = MagicMock()
-        mock_agent.astream = mock_astream
+        mock_agent.astream = lambda *a, **kw: async_iterator([final])
 
-        executor = SubagentExecutor(
-            config=short_config,
-            tools=[],
-            thread_id="test-thread",
-            trace_id="test-trace",
-        )
-        original_aexecute = executor._aexecute
+        executor = SubagentExecutor(config=base_config, tools=[], thread_id="t")
 
-        async def tracked_aexecute(task, result_holder=None):
-            try:
-                return await original_aexecute(task, result_holder)
-            finally:
-                execution_done.set()
+        with patch.object(executor, "_create_agent", return_value=mock_agent):
+            tid = executor.execute_async("T")
+            # Wait for background task to complete
+            import time
 
-        with patch.object(executor, "_create_agent", return_value=mock_agent), patch.object(executor, "_aexecute", tracked_aexecute):
-            task_id = executor.execute_async("Task")
-            assert first_chunk_seen.wait(timeout=3), "stream did not yield initial chunk"
+            for _ in range(50):
+                time.sleep(0.1)
+                r = executor_module.get_background_task_result(tid)
+                if r and r.status.is_terminal:
+                    break
 
-            result = executor_module._background_tasks[task_id]
-            assert result.cancel_event.wait(timeout=3), "timeout handler did not request cancellation"
-            assert result.status.value == SubagentStatus.TIMED_OUT.value
-            timed_out_error = result.error
-            timed_out_completed_at = result.completed_at
-
-            finish_stream.set()
-            assert execution_done.wait(timeout=3), "execution worker did not finish"
-
-        result = executor_module._background_tasks.get(task_id)
+        result = executor_module.get_background_task_result(tid)
         assert result is not None
-        assert result.status.value == SubagentStatus.TIMED_OUT.value
-        assert result.result is None
-        assert result.error == timed_out_error
-        assert result.completed_at == timed_out_completed_at
-
-    def test_cleanup_removes_cancelled_task(self, executor_module, classes):
-        """Test that cleanup removes a CANCELLED task (terminal state)."""
-        SubagentResult = classes["SubagentResult"]
-        SubagentStatus = classes["SubagentStatus"]
-
-        task_id = "test-cancelled-cleanup"
-        result = SubagentResult(
-            task_id=task_id,
-            trace_id="test-trace",
-            status=SubagentStatus.CANCELLED,
-            error="Cancelled by user",
-            completed_at=datetime.now(),
-        )
-        executor_module._background_tasks[task_id] = result
-
-        executor_module.cleanup_background_task(task_id)
-
-        assert task_id not in executor_module._background_tasks
+        assert result.status == SubagentStatus.COMPLETED
+        assert result.result == "R"

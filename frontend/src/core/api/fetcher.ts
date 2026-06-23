@@ -36,6 +36,11 @@ export function readCsrfCookie(): string | null {
   return null;
 }
 
+export interface FetchOptions extends RequestInit {
+  /** When false, skip the automatic 401 → login redirect. Default: true. */
+  redirectOn401?: boolean;
+}
+
 /**
  * Fetch with credentials and automatic CSRF protection.
  *
@@ -49,13 +54,13 @@ export function readCsrfCookie(): string | null {
  *    403 if the header is missing — silently breaking every call site
  *    that uses raw ``fetch()`` instead of this wrapper.
  *
- * Auto-redirects to ``/login`` on 401. Caller-supplied headers are
- * preserved; the helper only ADDS the CSRF header when it isn't already
- * present, so explicit overrides win.
+ * Auto-redirects to ``/login`` on 401 (unless ``redirectOn401: false``).
+ * Caller-supplied headers are preserved; the helper only ADDS the CSRF
+ * header when it isn't already present, so explicit overrides win.
  */
 export async function fetch(
   input: RequestInfo | string,
-  init?: RequestInit,
+  init?: FetchOptions,
 ): Promise<Response> {
   const url = typeof input === "string" ? input : input.url;
 
@@ -80,7 +85,7 @@ export async function fetch(
     credentials: "include",
   });
 
-  if (res.status === 401) {
+  if (res.status === 401 && init?.redirectOn401 !== false) {
     window.location.href = buildLoginUrl(window.location.pathname);
     throw new Error("Unauthorized");
   }

@@ -95,10 +95,12 @@ export function SettingsDialog(props: SettingsDialogProps) {
     <Dialog
       {...dialogProps}
       onOpenChange={(open) => props.onOpenChange?.(open)}
+      data-testid="settings-dialog"
     >
       <DialogContent
         className="flex h-[75vh] max-h-[calc(100vh-2rem)] flex-col sm:max-w-5xl md:max-w-6xl"
         aria-describedby={undefined}
+        data-testid="settings-dialog-content"
       >
         <DialogHeader className="gap-1">
           <DialogTitle>{t.settings.title}</DialogTitle>
@@ -116,6 +118,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
                     <button
                       type="button"
                       onClick={() => setActiveSection(id as SettingsSection)}
+                      data-testid={`settings-tab-${id}`}
                       className={cn(
                         "flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
                         active

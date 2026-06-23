@@ -1,0 +1,19 @@
+{
+  "page": "sidebar-expanded",
+  "route": "/workspace/chats/new",
+  "timestamp": "2026-06-19T02:06:21.979Z",
+  "viewport": "mobile",
+  "status": "fail",
+  "checks": {
+    "consoleErrors": [],
+    "failedRequests": [],
+    "pageEmpty": false,
+    "horizontalOverflow": false,
+    "reactError": false,
+    "urlDrift": false,
+    "wrongPage": null,
+    "missingElements": [
+      "[data-testid=\"sidebar\"], nav, aside"
+    ]
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "page": "error-workflow-invalid-yaml",
+  "route": "/workspace/workflows/new",
+  "timestamp": "2026-06-19T02:06:12.011Z",
+  "viewport": "desktop",
+  "status": "ok",
+  "checks": {
+    "consoleErrors": [],
+    "failedRequests": [],
+    "pageEmpty": false,
+    "horizontalOverflow": false,
+    "reactError": false,
+    "urlDrift": false,
+    "wrongPage": null,
+    "missingElements": []
+  }
+}

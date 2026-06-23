@@ -845,6 +845,7 @@ export const PromptInput = ({
         ref={inputRef}
         title="Upload files"
         type="file"
+        data-testid="file-input"
       />
       <form
         className={cn("w-full", className)}

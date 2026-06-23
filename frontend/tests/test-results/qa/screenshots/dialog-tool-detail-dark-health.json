@@ -1,0 +1,19 @@
+{
+  "page": "dialog-tool-detail",
+  "route": "/workspace/admin/tools",
+  "timestamp": "2026-06-19T02:06:46.109Z",
+  "viewport": "dark",
+  "status": "fail",
+  "checks": {
+    "consoleErrors": [],
+    "failedRequests": [],
+    "pageEmpty": false,
+    "horizontalOverflow": false,
+    "reactError": false,
+    "urlDrift": false,
+    "wrongPage": null,
+    "missingElements": [
+      "[role=\"dialog\"]"
+    ]
+  }
+}

@@ -16,7 +16,9 @@
     "start": "next start",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "typecheck": "tsc --noEmit"
+    "test:e2e:auth": "playwright test --config=playwright.auth.config.ts",
+    "typecheck": "tsc --noEmit",
+    "typecheck:tests": "tsc --noEmit --project tsconfig.test.json"
   },
   "dependencies": {
     "@codemirror/lang-css": "^6.3.1",
@@ -94,8 +96,10 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.11.3",
+    "@browserbasehq/stagehand": "^3.5.0",
     "@eslint/eslintrc": "^3.3.1",
-    "@playwright/test": "^1.59.1",
+    "@lhci/cli": "^0.15.1",
+    "@playwright/test": "^1.60.0",
     "@tailwindcss/postcss": "^4.0.15",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
@@ -104,6 +108,8 @@
     "@types/node": "^20.14.10",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@vitest/coverage-v8": "^4.1.4",
+    "dependency-cruiser": "^17.4.3",
     "eslint": "^9.23.0",
     "eslint-config-next": "^15.2.3",
     "jsdom": "^29.1.1",

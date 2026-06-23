@@ -698,7 +698,12 @@ class TestAgentsApiDisabled:
     def test_agents_list_returns_403(self, disabled_agent_client):
         response = disabled_agent_client.get("/api/agents")
         assert response.status_code == 403
-        assert "agents_api.enabled=true" in response.json()["detail"]
+        detail = response.json()["detail"]
+        # Handle both string and dict response formats
+        if isinstance(detail, dict):
+            assert "agents_api.enabled=true" in detail.get("message", "")
+        else:
+            assert "agents_api.enabled=true" in detail
 
     def test_agent_get_returns_403(self, disabled_agent_client):
         response = disabled_agent_client.get("/api/agents/example-agent")

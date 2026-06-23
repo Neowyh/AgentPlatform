@@ -77,7 +77,10 @@ export function AgentCard({ agent }: AgentCardProps) {
 
   return (
     <>
-      <Card className="group flex flex-col transition-shadow hover:shadow-md">
+      <Card
+        className="group flex flex-col transition-shadow hover:shadow-md"
+        data-testid="agent-card"
+      >
         <CardHeader className="pb-3">
           <div className="flex items-start justify-between gap-2">
             <div className="flex items-center gap-2">
@@ -135,7 +138,12 @@ export function AgentCard({ agent }: AgentCardProps) {
         )}
 
         <CardFooter className="mt-auto flex items-center justify-between gap-2 pt-3">
-          <Button size="sm" className="flex-1" onClick={handleChat}>
+          <Button
+            size="sm"
+            className="flex-1"
+            onClick={handleChat}
+            data-testid="agent-chat-button"
+          >
             <MessageSquareIcon className="mr-1.5 h-3.5 w-3.5" />
             {t.agents.chat}
           </Button>
@@ -146,6 +154,7 @@ export function AgentCard({ agent }: AgentCardProps) {
               className="h-8 w-8 shrink-0"
               onClick={handleExport}
               title="导出"
+              data-testid="agent-export-button"
             >
               <DownloadIcon className="h-3.5 w-3.5" />
             </Button>
@@ -156,6 +165,7 @@ export function AgentCard({ agent }: AgentCardProps) {
                 className="text-destructive hover:text-destructive h-8 w-8 shrink-0"
                 onClick={() => setDeleteOpen(true)}
                 title={t.agents.delete}
+                data-testid="agent-delete-button"
               >
                 <Trash2Icon className="h-3.5 w-3.5" />
               </Button>

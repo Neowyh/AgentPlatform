@@ -1,0 +1,19 @@
+{
+  "page": "state-file-upload-preview",
+  "route": "/workspace/chats/new",
+  "timestamp": "2026-06-19T02:05:58.978Z",
+  "viewport": "desktop",
+  "status": "fail",
+  "checks": {
+    "consoleErrors": [],
+    "failedRequests": [],
+    "pageEmpty": false,
+    "horizontalOverflow": false,
+    "reactError": false,
+    "urlDrift": false,
+    "wrongPage": null,
+    "missingElements": [
+      "[data-testid=\"file-preview\"], .file-card, .file-preview"
+    ]
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "page": "landing",
+  "route": "/",
+  "timestamp": "2026-06-19T02:06:16.775Z",
+  "viewport": "mobile",
+  "status": "warn",
+  "checks": {
+    "consoleErrors": [],
+    "failedRequests": [],
+    "pageEmpty": false,
+    "horizontalOverflow": true,
+    "reactError": false,
+    "urlDrift": false,
+    "wrongPage": null,
+    "missingElements": []
+  }
+}

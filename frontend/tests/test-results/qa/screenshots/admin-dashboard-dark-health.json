@@ -1,0 +1,17 @@
+{
+  "page": "admin-dashboard",
+  "route": "/workspace/admin",
+  "timestamp": "2026-06-19T02:06:40.017Z",
+  "viewport": "dark",
+  "status": "ok",
+  "checks": {
+    "consoleErrors": [],
+    "failedRequests": [],
+    "pageEmpty": false,
+    "horizontalOverflow": false,
+    "reactError": false,
+    "urlDrift": false,
+    "wrongPage": null,
+    "missingElements": []
+  }
+}

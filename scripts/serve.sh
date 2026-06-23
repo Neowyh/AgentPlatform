@@ -362,6 +362,11 @@ run_service() {
 mkdir -p logs
 mkdir -p temp/client_body_temp temp/proxy_temp temp/fastcgi_temp temp/uwsgi_temp temp/scgi_temp
 
+# 0. Database migrations
+echo "Running database migrations..."
+cd "$REPO_ROOT/backend" && uv run alembic upgrade head && cd "$REPO_ROOT"
+echo "✓ Database migrations completed"
+
 # 1. Gateway API
 run_service "Gateway" \
     "cd backend && PYTHONPATH=. uv run uvicorn app.gateway.app:app --host 0.0.0.0 --port 8001 $GATEWAY_EXTRA_FLAGS > ../logs/gateway.log 2>&1" \

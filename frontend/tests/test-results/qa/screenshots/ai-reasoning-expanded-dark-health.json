@@ -1,0 +1,19 @@
+{
+  "page": "ai-reasoning-expanded",
+  "route": "/workspace/chats/new",
+  "timestamp": "2026-06-19T02:07:09.889Z",
+  "viewport": "dark",
+  "status": "fail",
+  "checks": {
+    "consoleErrors": [],
+    "failedRequests": [],
+    "pageEmpty": false,
+    "horizontalOverflow": false,
+    "reactError": false,
+    "urlDrift": false,
+    "wrongPage": null,
+    "missingElements": [
+      "[data-testid=\"reasoning\"], .reasoning-block"
+    ]
+  }
+}

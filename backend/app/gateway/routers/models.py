@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from app.gateway.authz import require_permission
 from app.gateway.deps import get_config
 from ideer.config.app_config import AppConfig
 
@@ -37,7 +38,8 @@ class ModelsListResponse(BaseModel):
     summary="List All Models",
     description="Retrieve a list of all available AI models configured in the system.",
 )
-async def list_models(config: AppConfig = Depends(get_config)) -> ModelsListResponse:
+@require_permission("models", "read")
+async def list_models(request: Request, config: AppConfig = Depends(get_config)) -> ModelsListResponse:
     """List all available models from configuration.
 
     Returns model information suitable for frontend display,
@@ -96,7 +98,8 @@ async def list_models(config: AppConfig = Depends(get_config)) -> ModelsListResp
     summary="Get Model Details",
     description="Retrieve detailed information about a specific AI model by its name.",
 )
-async def get_model(model_name: str, config: AppConfig = Depends(get_config)) -> ModelResponse:
+@require_permission("models", "read")
+async def get_model(request: Request, model_name: str, config: AppConfig = Depends(get_config)) -> ModelResponse:
     """Get a specific model by name.
 
     Args:

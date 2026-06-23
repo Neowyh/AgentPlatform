@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+from _router_auth_helpers import make_authed_test_app
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -22,7 +23,7 @@ from app.gateway.routers.models import router as models_router
 
 def _make_app(mock_config: MagicMock) -> FastAPI:
     """Create a test FastAPI app with models router, overriding get_config dependency."""
-    app = FastAPI()
+    app = make_authed_test_app()
     app.include_router(models_router)
     app.dependency_overrides[get_config] = lambda: mock_config
     return app

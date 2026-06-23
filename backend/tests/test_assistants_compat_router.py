@@ -9,6 +9,7 @@ Covers:
 
 from __future__ import annotations
 
+from _router_auth_helpers import make_authed_test_app
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -21,7 +22,7 @@ from app.gateway.routers.assistants_compat import router as assistants_router
 
 def _make_app() -> FastAPI:
     """Create a test FastAPI app with assistants compat router."""
-    app = FastAPI()
+    app = make_authed_test_app()
     app.include_router(assistants_router)
     return app
 

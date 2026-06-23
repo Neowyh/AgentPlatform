@@ -38,15 +38,16 @@ test.describe("File Upload", () => {
   });
 
   test("file can be selected via file input", async ({ page }) => {
-    await page.goto("/workspace");
+    // Navigate directly to the new-chat page where the input box (with file
+    // input) is mounted.  Going through /workspace triggers a redirect and
+    // may race with the conditional mount of the InputBox component.
+    await page.goto("/workspace/chats/new");
     await page.waitForLoadState("networkidle");
 
-    const fileInput = page.locator('input[type="file"]').first();
-
-    if ((await fileInput.count()) === 0) {
-      test.skip();
-      return;
-    }
+    // The PromptInput component renders a hidden <input type="file"> with
+    // data-testid="file-input".
+    const fileInput = page.locator('[data-testid="file-input"]').first();
+    await expect(fileInput).toBeAttached({ timeout: 10000 });
 
     // Upload a small text file
     await fileInput.setInputFiles({

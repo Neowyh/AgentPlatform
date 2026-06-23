@@ -64,6 +64,7 @@ export function WorkflowCard({ workflow }: WorkflowCardProps) {
             handleClick();
           }
         }}
+        data-testid="workflow-card"
       >
         <CardHeader className="pb-3">
           <div className="flex items-start justify-between gap-2">
@@ -109,6 +110,7 @@ export function WorkflowCard({ workflow }: WorkflowCardProps) {
               e.stopPropagation();
               handleClick();
             }}
+            data-testid="workflow-run-button"
           >
             <PlayIcon className="mr-1.5 h-3.5 w-3.5" />
             {t.workflows.view}
@@ -121,6 +123,7 @@ export function WorkflowCard({ workflow }: WorkflowCardProps) {
               e.stopPropagation();
               setDeleteOpen(true);
             }}
+            data-testid="workflow-delete-button"
           >
             <Trash2Icon className="h-3.5 w-3.5" />
           </Button>

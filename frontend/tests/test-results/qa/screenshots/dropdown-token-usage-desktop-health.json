@@ -1,0 +1,19 @@
+{
+  "page": "dropdown-token-usage",
+  "route": "/workspace/chats/new",
+  "timestamp": "2026-06-19T02:05:57.342Z",
+  "viewport": "desktop",
+  "status": "fail",
+  "checks": {
+    "consoleErrors": [],
+    "failedRequests": [],
+    "pageEmpty": false,
+    "horizontalOverflow": false,
+    "reactError": false,
+    "urlDrift": false,
+    "wrongPage": null,
+    "missingElements": [
+      "[role=\"menu\"]"
+    ]
+  }
+}

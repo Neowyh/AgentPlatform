@@ -372,6 +372,7 @@ export default function ProgressiveSkillsAnimation() {
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
             onClick={handleTogglePlayPause}
+            aria-label={isPlaying ? "Pause animation" : "Play animation"}
             className="flex h-12 w-12 items-center justify-center rounded-full bg-white/10 backdrop-blur-md transition-all hover:scale-110 hover:bg-white/20 active:scale-95"
           >
             {isPlaying ? (

@@ -1,0 +1,25 @@
+{
+  "page": "agent-edit",
+  "route": "/workspace/agents/research-assistant/edit",
+  "timestamp": "2026-06-19T02:06:18.038Z",
+  "viewport": "mobile",
+  "status": "fail",
+  "checks": {
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "failedRequests": [
+      "404 http://localhost:3000/api/agents/research-assistant",
+      "404 http://localhost:3000/api/agents/research-assistant"
+    ],
+    "pageEmpty": false,
+    "horizontalOverflow": false,
+    "reactError": false,
+    "urlDrift": false,
+    "wrongPage": null,
+    "missingElements": [
+      "input[name=\"name\"], input[name=\"description\"], textarea"
+    ]
+  }
+}

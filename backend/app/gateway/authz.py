@@ -71,6 +71,12 @@ class Permissions:
     RUNS_READ = "runs:read"
     RUNS_CANCEL = "runs:cancel"
 
+    # Assistants
+    ASSISTANTS_READ = "assistants:read"
+
+    # Models
+    MODELS_READ = "models:read"
+
 
 class AuthContext:
     """Authentication context for the current request.
@@ -129,6 +135,8 @@ _ALL_PERMISSIONS: list[str] = [
     Permissions.RUNS_CREATE,
     Permissions.RUNS_READ,
     Permissions.RUNS_CANCEL,
+    Permissions.ASSISTANTS_READ,
+    Permissions.MODELS_READ,
 ]
 
 
@@ -216,6 +224,15 @@ def require_auth[**P, T](func: Callable[P, T]) -> Callable[P, T]:
     @functools.wraps(func)
     async def wrapper(*args: Any, **kwargs: Any) -> Any:
         request = kwargs.get("request")
+        if request is None and args:
+            # FastAPI may pass request as a positional argument in some
+            # decorator stacking scenarios.  Fall back to positional lookup.
+            sig = inspect.signature(func)
+            params = list(sig.parameters.keys())
+            if params and params[0] == "request":
+                request = args[0]
+                kwargs["request"] = request
+                args = args[1:]
         if request is None:
             # Unit tests may call decorated handlers directly without a
             # FastAPI Request object. Inject a minimal request stub when
@@ -289,6 +306,15 @@ def require_permission(
         @functools.wraps(func)
         async def wrapper(*args: Any, **kwargs: Any) -> Any:
             request = kwargs.get("request")
+            if request is None and args:
+                # FastAPI may pass request as a positional argument in some
+                # decorator stacking scenarios.  Fall back to positional lookup.
+                sig = inspect.signature(func)
+                params = list(sig.parameters.keys())
+                if params and params[0] == "request":
+                    request = args[0]
+                    kwargs["request"] = request
+                    args = args[1:]
             if request is None:
                 # Unit tests may call decorated route handlers directly without
                 # constructing a FastAPI Request object. Inject a minimal stub

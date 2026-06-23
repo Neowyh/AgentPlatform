@@ -1,0 +1,17 @@
+{
+  "page": "admin-tools",
+  "route": "/workspace/admin/tools",
+  "timestamp": "2026-06-19T02:06:21.323Z",
+  "viewport": "mobile",
+  "status": "ok",
+  "checks": {
+    "consoleErrors": [],
+    "failedRequests": [],
+    "pageEmpty": false,
+    "horizontalOverflow": false,
+    "reactError": false,
+    "urlDrift": false,
+    "wrongPage": null,
+    "missingElements": []
+  }
+}

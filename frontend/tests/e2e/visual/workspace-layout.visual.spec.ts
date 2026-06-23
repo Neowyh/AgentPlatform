@@ -11,7 +11,12 @@ test.describe("Workspace layout — visual regression", () => {
   test("default viewport screenshot", async ({ page }) => {
     await page.goto("/workspace");
     await page.waitForLoadState("networkidle");
-    await page.waitForTimeout(500);
+    // Wait for the workspace content to render
+    await page
+      .locator("main, [class*='flex'], h1")
+      .first()
+      .waitFor({ state: "visible", timeout: 10000 });
+    await page.waitForTimeout(1000);
 
     await expect(page).toHaveScreenshot("workspace-default.png", {
       fullPage: true,
@@ -22,7 +27,11 @@ test.describe("Workspace layout — visual regression", () => {
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto("/workspace");
     await page.waitForLoadState("networkidle");
-    await page.waitForTimeout(500);
+    await page
+      .locator("main, [class*='flex'], h1")
+      .first()
+      .waitFor({ state: "visible", timeout: 10000 });
+    await page.waitForTimeout(1000);
 
     await expect(page).toHaveScreenshot("workspace-mobile.png", {
       fullPage: true,
@@ -33,7 +42,11 @@ test.describe("Workspace layout — visual regression", () => {
     await page.emulateMedia({ colorScheme: "dark" });
     await page.goto("/workspace");
     await page.waitForLoadState("networkidle");
-    await page.waitForTimeout(500);
+    await page
+      .locator("main, [class*='flex'], h1")
+      .first()
+      .waitFor({ state: "visible", timeout: 10000 });
+    await page.waitForTimeout(1000);
 
     await expect(page).toHaveScreenshot("workspace-dark.png", {
       fullPage: true,

@@ -132,7 +132,10 @@ def _require_agents_api_enabled() -> None:
     if not get_agents_api_config().enabled:
         raise HTTPException(
             status_code=403,
-            detail=("Custom-agent management API is disabled. Set agents_api.enabled=true to expose agent and user-profile routes over HTTP."),
+            detail={
+                "code": "AGENTS_API_DISABLED",
+                "message": "Custom-agent management API is disabled. Set agents_api.enabled=true to expose agent and user-profile routes over HTTP.",
+            },
         )
 
 

@@ -10,9 +10,22 @@ import { mockLangGraphAPI } from "../utils/mock-api";
  * (sandbox-test.template.py); this file focuses on front-end behaviour.
  */
 
+const MOCK_AGENTS = [
+  {
+    name: "e2e-test-agent",
+    description: "A test agent for E2E sandbox verification",
+    model: "gpt-4o",
+    tool_groups: [],
+    skills: [],
+    visibility: "private",
+    owner_id: "e2e-user",
+    department_id: null,
+  },
+];
+
 test.describe("Sandbox Management", () => {
   test.beforeEach(async ({ page }) => {
-    mockLangGraphAPI(page);
+    mockLangGraphAPI(page, { agents: MOCK_AGENTS });
   });
 
   test("workspace page loads without sandbox errors", async ({ page }) => {
@@ -36,24 +49,22 @@ test.describe("Sandbox Management", () => {
   });
 
   test("agent chat page renders without sandbox errors", async ({ page }) => {
-    await page.goto("/workspace");
+    // The agents gallery lives at /workspace/agents, not the base /workspace
+    // path (which redirects to /workspace/chats/new).
+    await page.goto("/workspace/agents");
     await page.waitForLoadState("networkidle");
 
-    // Navigate to an agent chat if available
-    const agentLink = page
-      .locator(
-        '[data-testid="agent-card"], [data-testid="agent-item"], a[href*="/agent"]',
-      )
-      .first();
+    // Wait for the agent card to appear (rendered from mock agents data)
+    const agentCard = page.locator('[data-testid="agent-card"]').first();
+    await expect(agentCard).toBeVisible({ timeout: 10000 });
 
-    if ((await agentLink.count()) === 0) {
-      test.skip();
-      return;
-    }
-
-    await agentLink.click();
+    // Click the "Chat" button inside the agent card to navigate to the agent
+    // chat page — this is where sandbox execution would occur.
+    const chatButton = agentCard.locator('[data-testid="agent-chat-button"]');
+    await chatButton.click();
     await page.waitForLoadState("networkidle");
 
+    // The agent chat page should render without sandbox-related errors
     await expect(page.locator("body")).toBeVisible();
   });
 });

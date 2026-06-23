@@ -1,4 +1,4 @@
-import { extractError } from "@/core/api/errors";
+import { extractError, formatErrorMessage } from "@/core/api/errors";
 import { fetch } from "@/core/api/fetcher";
 import { getBackendBaseURL } from "@/core/config";
 
@@ -60,9 +60,10 @@ export async function installSkill(
   });
 
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    const errorMessage =
-      errorData.detail ?? `HTTP ${response.status}: ${response.statusText}`;
+    const errorMessage = await formatErrorMessage(
+      response,
+      "Failed to install skill",
+    );
     return {
       success: false,
       skill_name: "",

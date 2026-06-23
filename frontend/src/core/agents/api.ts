@@ -1,3 +1,9 @@
+import {
+  extractError,
+  formatDetail,
+  parseErrorDetail,
+  type ErrorDetail,
+} from "@/core/api/errors";
 import { fetch } from "@/core/api/fetcher";
 import { getBackendBaseURL } from "@/core/config";
 
@@ -22,20 +28,28 @@ export class AgentsApiDisabledError extends Error {
   }
 }
 
-function isAgentsApiDisabledDetail(detail: string | undefined): boolean {
+/**
+ * Check if the error detail indicates the agents API is disabled.
+ * Handles both structured format ({code: "AGENTS_API_DISABLED"})
+ * and legacy string format (containing "agents_api.enabled").
+ */
+function isAgentsApiDisabledDetail(detail: ErrorDetail): boolean {
+  if (typeof detail === "object" && detail !== null && !Array.isArray(detail)) {
+    return (detail as { code?: string }).code === "AGENTS_API_DISABLED";
+  }
   return typeof detail === "string" && detail.includes("agents_api.enabled");
 }
 
 export async function listAgents(): Promise<Agent[]> {
   const res = await fetch(`${getBackendBaseURL()}/api/agents`);
-  if (!res.ok) throw new Error(`Failed to load agents: ${res.statusText}`);
+  if (!res.ok) await extractError(res, "Failed to load agents");
   const data = (await res.json()) as { agents: Agent[] };
   return data.agents;
 }
 
 export async function getAgent(name: string): Promise<Agent> {
   const res = await fetch(`${getBackendBaseURL()}/api/agents/${name}`);
-  if (!res.ok) throw new Error(`Agent '${name}' not found`);
+  if (!res.ok) await extractError(res, `Agent '${name}' not found`);
   return res.json() as Promise<Agent>;
 }
 
@@ -46,11 +60,16 @@ export async function createAgent(request: CreateAgentRequest): Promise<Agent> {
     body: JSON.stringify(request),
   });
   if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { detail?: string };
-    if (isAgentsApiDisabledDetail(err.detail)) {
-      throw new AgentsApiDisabledError(err.detail!);
+    const parsed = await parseErrorDetail(res);
+    const detail = parsed?.detail;
+    if (isAgentsApiDisabledDetail(detail)) {
+      throw new AgentsApiDisabledError(
+        formatDetail(detail, "Failed to create agent", res.statusText),
+      );
     }
-    throw new Error(err.detail ?? `Failed to create agent: ${res.statusText}`);
+    throw new Error(
+      formatDetail(detail, "Failed to create agent", res.statusText),
+    );
   }
   return res.json() as Promise<Agent>;
 }
@@ -64,10 +83,7 @@ export async function updateAgent(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(request),
   });
-  if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { detail?: string };
-    throw new Error(err.detail ?? `Failed to update agent: ${res.statusText}`);
-  }
+  if (!res.ok) await extractError(res, "Failed to update agent");
   return res.json() as Promise<Agent>;
 }
 
@@ -75,7 +91,7 @@ export async function deleteAgent(name: string): Promise<void> {
   const res = await fetch(`${getBackendBaseURL()}/api/agents/${name}`, {
     method: "DELETE",
   });
-  if (!res.ok) throw new Error(`Failed to delete agent: ${res.statusText}`);
+  if (!res.ok) await extractError(res, "Failed to delete agent");
 }
 
 export async function checkAgentName(
@@ -94,9 +110,12 @@ export async function checkAgentName(
   }
 
   if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { detail?: string };
-    if (isAgentsApiDisabledDetail(err.detail)) {
-      throw new AgentsApiDisabledError(err.detail!);
+    const parsed = await parseErrorDetail(res);
+    const detail = parsed?.detail;
+    if (isAgentsApiDisabledDetail(detail)) {
+      throw new AgentsApiDisabledError(
+        formatDetail(detail, "Failed to check agent name", res.statusText),
+      );
     }
     if (BACKEND_UNAVAILABLE_STATUSES.has(res.status)) {
       throw new AgentNameCheckError(
@@ -105,7 +124,7 @@ export async function checkAgentName(
       );
     }
     throw new AgentNameCheckError(
-      err.detail ?? `Failed to check agent name: ${res.statusText}`,
+      formatDetail(detail, "Failed to check agent name", res.statusText),
       "request_failed",
     );
   }
@@ -119,7 +138,7 @@ export async function exportAgent(name: string): Promise<Blob> {
     `${getBackendBaseURL()}/api/agents/${encodeURIComponent(name)}/export`,
     { method: "POST" },
   );
-  if (!res.ok) throw new Error(`Failed to export agent: ${res.statusText}`);
+  if (!res.ok) await extractError(res, "Failed to export agent");
   return res.blob();
 }
 
@@ -140,11 +159,16 @@ export async function importAgent(file: File): Promise<Agent> {
     body: JSON.stringify(importData),
   });
   if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { detail?: string };
-    if (isAgentsApiDisabledDetail(err.detail)) {
-      throw new AgentsApiDisabledError(err.detail!);
+    const parsed = await parseErrorDetail(res);
+    const detail = parsed?.detail;
+    if (isAgentsApiDisabledDetail(detail)) {
+      throw new AgentsApiDisabledError(
+        formatDetail(detail, "Failed to import agent", res.statusText),
+      );
     }
-    throw new Error(err.detail ?? `Failed to import agent: ${res.statusText}`);
+    throw new Error(
+      formatDetail(detail, "Failed to import agent", res.statusText),
+    );
   }
   return res.json() as Promise<Agent>;
 }

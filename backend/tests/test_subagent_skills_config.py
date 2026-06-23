@@ -237,6 +237,7 @@ class TestGetSkillsFor:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.serial
 class TestLoadSubagentsConfigWithSkills:
     def teardown_method(self):
         _reset_subagents_config()
@@ -315,6 +316,7 @@ class TestLoadSubagentsConfigWithSkills:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.serial
 class TestRegistryCustomAgentLookup:
     def teardown_method(self):
         _reset_subagents_config()
@@ -441,6 +443,7 @@ class TestRegistryCustomAgentLookup:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.serial
 class TestRegistrySkillsOverride:
     def teardown_method(self):
         _reset_subagents_config()
@@ -498,6 +501,7 @@ class TestRegistrySkillsOverride:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.serial
 class TestRegistryAvailableNames:
     def teardown_method(self):
         _reset_subagents_config()
@@ -555,6 +559,7 @@ class TestRegistryAvailableNames:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.serial
 class TestRegistryListSubagentsWithCustom:
     def teardown_method(self):
         _reset_subagents_config()

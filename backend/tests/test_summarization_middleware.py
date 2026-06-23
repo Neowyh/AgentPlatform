@@ -9,7 +9,13 @@ from langchain_core.messages import AIMessage, HumanMessage, RemoveMessage, Tool
 
 from ideer.agents.memory.summarization_hook import memory_flush_hook
 from ideer.agents.middlewares.dynamic_context_middleware import _DYNAMIC_CONTEXT_REMINDER_KEY, DynamicContextMiddleware
-from ideer.agents.middlewares.summarization_middleware import IDeerSummarizationMiddleware, SummarizationEvent
+from ideer.agents.middlewares.summarization_middleware import (
+    IDeerSummarizationMiddleware,
+    SummarizationEvent,
+    _resolve_agent_name,
+    _resolve_thread_id,
+    _tool_call_path,
+)
 from ideer.config.memory_config import MemoryConfig
 
 
@@ -97,6 +103,109 @@ def _raw_tool_call(tool_id: str, name: str = "read_file") -> dict:
         "type": "function",
         "function": {"name": name, "arguments": "{}"},
     }
+
+
+# ---------------------------------------------------------------------------
+# _resolve_thread_id / _resolve_agent_name
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_thread_id_from_runtime_context():
+    runtime = _runtime(thread_id="t-123")
+    assert _resolve_thread_id(runtime) == "t-123"
+
+
+def test_resolve_thread_id_from_langgraph_config():
+    runtime = SimpleNamespace(context={})
+    with mock.patch(
+        "ideer.agents.middlewares.summarization_middleware.get_config",
+        return_value={"configurable": {"thread_id": "cfg-thread"}},
+    ):
+        assert _resolve_thread_id(runtime) == "cfg-thread"
+
+
+def test_resolve_thread_id_returns_none_when_no_context():
+    runtime = SimpleNamespace(context={})
+    with mock.patch(
+        "ideer.agents.middlewares.summarization_middleware.get_config",
+        side_effect=RuntimeError("no config"),
+    ):
+        assert _resolve_thread_id(runtime) is None
+
+
+def test_resolve_thread_id_none_context():
+    runtime = SimpleNamespace(context=None)
+    assert _resolve_thread_id(runtime) is None
+
+
+def test_resolve_agent_name_from_runtime_context():
+    runtime = _runtime(agent_name="researcher")
+    assert _resolve_agent_name(runtime) == "researcher"
+
+
+def test_resolve_agent_name_from_langgraph_config():
+    runtime = SimpleNamespace(context={})
+    with mock.patch(
+        "ideer.agents.middlewares.summarization_middleware.get_config",
+        return_value={"configurable": {"agent_name": "writer"}},
+    ):
+        assert _resolve_agent_name(runtime) == "writer"
+
+
+def test_resolve_agent_name_returns_none_when_no_context():
+    runtime = SimpleNamespace(context={})
+    with mock.patch(
+        "ideer.agents.middlewares.summarization_middleware.get_config",
+        side_effect=RuntimeError("no config"),
+    ):
+        assert _resolve_agent_name(runtime) is None
+
+
+def test_resolve_agent_name_none_context():
+    runtime = SimpleNamespace(context=None)
+    assert _resolve_agent_name(runtime) is None
+
+
+# ---------------------------------------------------------------------------
+# _tool_call_path
+# ---------------------------------------------------------------------------
+
+
+def test_tool_call_path_with_path_key():
+    assert _tool_call_path({"args": {"path": "/foo/bar"}}) == "/foo/bar"
+
+
+def test_tool_call_path_with_file_path_key():
+    assert _tool_call_path({"args": {"file_path": "/foo/bar"}}) == "/foo/bar"
+
+
+def test_tool_call_path_with_filepath_key():
+    assert _tool_call_path({"args": {"filepath": "/foo/bar"}}) == "/foo/bar"
+
+
+def test_tool_call_path_no_matching_key():
+    assert _tool_call_path({"args": {"other": "val"}}) is None
+
+
+def test_tool_call_path_non_dict_args():
+    assert _tool_call_path({"args": "invalid"}) is None
+
+
+def test_tool_call_path_no_args():
+    assert _tool_call_path({}) is None
+
+
+def test_tool_call_path_empty_path():
+    assert _tool_call_path({"args": {"path": ""}}) is None
+
+
+def test_tool_call_path_non_string_path():
+    assert _tool_call_path({"args": {"path": 123}}) is None
+
+
+# ---------------------------------------------------------------------------
+# Hook tests
+# ---------------------------------------------------------------------------
 
 
 def test_before_summarization_hook_receives_messages_before_compression() -> None:
@@ -193,6 +302,171 @@ async def test_abefore_model_calls_hooks_same_as_sync() -> None:
     assert [message.content for message in captured[0].messages_to_summarize] == ["user-1", "assistant-1"]
 
 
+# ---------------------------------------------------------------------------
+# _preserve_dynamic_context_reminders edge cases
+# ---------------------------------------------------------------------------
+
+
+def test_preserve_dynamic_context_reminders_no_reminders() -> None:
+    middleware = _middleware()
+    msgs = [HumanMessage(content="a"), AIMessage(content="b")]
+    to_sum, preserved = middleware._preserve_dynamic_context_reminders(msgs, [])
+    assert to_sum == msgs
+    assert preserved == []
+
+
+def test_preserve_dynamic_context_reminders_with_reminder() -> None:
+    middleware = _middleware()
+    reminder = _dynamic_context_reminder()
+    other = HumanMessage(content="user")
+    to_sum, preserved = middleware._preserve_dynamic_context_reminders([reminder, other], [])
+    assert other in to_sum
+    assert reminder not in to_sum
+    assert reminder in preserved
+
+
+# ---------------------------------------------------------------------------
+# _fire_hooks edge cases
+# ---------------------------------------------------------------------------
+
+
+def test_fire_hooks_no_hooks() -> None:
+    middleware = _middleware(before_summarization=[])
+    # Should not raise
+    middleware._fire_hooks([], [], _runtime())
+
+
+def test_fire_hooks_hook_with_no_name() -> None:
+    """Hook without __name__ falls back to type().__name__."""
+
+    class NoNameHook:
+        def __call__(self, event):
+            raise RuntimeError("fail")
+
+    middleware = _middleware(before_summarization=[NoNameHook()])
+    # Should not raise (exception is caught internally)
+    middleware._fire_hooks([], [], _runtime())
+
+
+# ---------------------------------------------------------------------------
+# _is_skill_tool_call edge cases
+# ---------------------------------------------------------------------------
+
+
+def test_is_skill_tool_call_non_read_tool() -> None:
+    middleware = _middleware()
+    tc = {"name": "write_file", "args": {"path": "/mnt/skills/public/foo/SKILL.md"}}
+    assert middleware._is_skill_tool_call(tc, "/mnt/skills") is False
+
+
+def test_is_skill_tool_call_path_outside_root() -> None:
+    middleware = _middleware()
+    tc = {"name": "read_file", "args": {"path": "/other/path/SKILL.md"}}
+    assert middleware._is_skill_tool_call(tc, "/mnt/skills") is False
+
+
+def test_is_skill_tool_call_path_at_root() -> None:
+    middleware = _middleware()
+    tc = {"name": "read_file", "args": {"path": "/mnt/skills"}}
+    assert middleware._is_skill_tool_call(tc, "/mnt/skills") is True
+
+
+def test_is_skill_tool_call_path_under_root() -> None:
+    middleware = _middleware()
+    tc = {"name": "read_file", "args": {"path": "/mnt/skills/public/foo/SKILL.md"}}
+    assert middleware._is_skill_tool_call(tc, "/mnt/skills") is True
+
+
+def test_is_skill_tool_call_custom_tool_name() -> None:
+    middleware = _middleware(skill_file_read_tool_names=["my_reader"])
+    tc = {"name": "my_reader", "args": {"path": "/mnt/skills/public/foo/SKILL.md"}}
+    assert middleware._is_skill_tool_call(tc, "/mnt/skills") is True
+
+
+def test_is_skill_tool_call_no_path() -> None:
+    middleware = _middleware()
+    tc = {"name": "read_file", "args": {}}
+    assert middleware._is_skill_tool_call(tc, "/mnt/skills") is False
+
+
+# ---------------------------------------------------------------------------
+# _select_bundles_to_rescue edge cases
+# ---------------------------------------------------------------------------
+
+
+def test_select_bundles_to_rescue_empty() -> None:
+    middleware = _middleware(preserve_recent_skill_count=5, preserve_recent_skill_tokens=10000)
+    assert middleware._select_bundles_to_rescue([]) == []
+
+
+def test_select_bundles_to_rescue_deduplicates_skill_keys() -> None:
+    from ideer.agents.middlewares.summarization_middleware import _SkillBundle
+
+    middleware = _middleware(preserve_recent_skill_count=5, preserve_recent_skill_tokens=10000, preserve_recent_skill_tokens_per_skill=10000)
+    b1 = _SkillBundle(ai_index=0, skill_tool_indices=(1,), skill_tool_call_ids=frozenset({"t1"}), skill_tool_tokens=100, skill_key="alpha")
+    b2 = _SkillBundle(ai_index=2, skill_tool_indices=(3,), skill_tool_call_ids=frozenset({"t2"}), skill_tool_tokens=100, skill_key="alpha")
+    selected = middleware._select_bundles_to_rescue([b1, b2])
+    # Newest (b2) should be selected, b1 skipped (same key)
+    assert len(selected) == 1
+    assert selected[0].skill_key == "alpha"
+
+
+def test_select_bundles_to_rescue_respects_total_token_budget() -> None:
+    from ideer.agents.middlewares.summarization_middleware import _SkillBundle
+
+    middleware = _middleware(preserve_recent_skill_count=5, preserve_recent_skill_tokens=50, preserve_recent_skill_tokens_per_skill=10000)
+    b1 = _SkillBundle(ai_index=0, skill_tool_indices=(1,), skill_tool_call_ids=frozenset({"t1"}), skill_tool_tokens=100, skill_key="a")
+    selected = middleware._select_bundles_to_rescue([b1])
+    assert selected == []
+
+
+# ---------------------------------------------------------------------------
+# _find_skill_bundles edge cases
+# ---------------------------------------------------------------------------
+
+
+def test_find_skill_bundles_no_tool_messages() -> None:
+    middleware = _middleware()
+    messages = [
+        HumanMessage(content="u1"),
+        AIMessage(content="", tool_calls=[_skill_read_call("t1", "alpha")]),
+        # No ToolMessage follows
+        HumanMessage(content="u2"),
+    ]
+    bundles = middleware._find_skill_bundles(messages, "/mnt/skills")
+    assert bundles == []
+
+
+def test_find_skill_bundles_no_matching_tool_results() -> None:
+    middleware = _middleware()
+    messages = [
+        HumanMessage(content="u1"),
+        AIMessage(content="", tool_calls=[_skill_read_call("t1", "alpha")]),
+        ToolMessage(content="result", tool_call_id="t_other"),
+        HumanMessage(content="u2"),
+    ]
+    bundles = middleware._find_skill_bundles(messages, "/mnt/skills")
+    assert bundles == []
+
+
+# ---------------------------------------------------------------------------
+# _partition_with_skill_rescue edge cases
+# ---------------------------------------------------------------------------
+
+
+def test_partition_with_skill_rescue_exception_falls_back() -> None:
+    middleware = _middleware(preserve_recent_skill_count=5, preserve_recent_skill_tokens=10000)
+    # Force exception in _find_skill_bundles by passing very short cutoff
+    to_sum, preserved = middleware._partition_with_skill_rescue(_messages(), 1)
+    # Should fall back to parent partitioning
+    assert len(to_sum) > 0 or len(preserved) > 0
+
+
+# ---------------------------------------------------------------------------
+# Memory flush hook
+# ---------------------------------------------------------------------------
+
+
 def test_memory_flush_hook_skips_when_memory_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
     queue = MagicMock()
     monkeypatch.setattr("ideer.agents.memory.summarization_hook.get_memory_config", lambda: MemoryConfig(enabled=False))
@@ -257,6 +531,49 @@ def test_memory_flush_hook_enqueues_filtered_messages_and_flushes(monkeypatch: p
     assert add_kwargs["reinforcement_detected"] is False
 
 
+def test_memory_flush_hook_preserves_agent_scoped_memory(monkeypatch: pytest.MonkeyPatch) -> None:
+    queue = MagicMock()
+    monkeypatch.setattr("ideer.agents.memory.summarization_hook.get_memory_config", lambda: MemoryConfig(enabled=True))
+    monkeypatch.setattr("ideer.agents.memory.summarization_hook.get_memory_queue", lambda: queue)
+
+    memory_flush_hook(
+        SummarizationEvent(
+            messages_to_summarize=tuple(_messages()[:2]),
+            preserved_messages=(),
+            thread_id="thread-1",
+            agent_name="research-agent",
+            runtime=_runtime(agent_name="research-agent"),
+        )
+    )
+
+    queue.add_nowait.assert_called_once()
+    assert queue.add_nowait.call_args.kwargs["agent_name"] == "research-agent"
+
+
+def test_memory_flush_hook_passes_runtime_user_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    queue = MagicMock()
+    monkeypatch.setattr("ideer.agents.memory.summarization_hook.get_memory_config", lambda: MemoryConfig(enabled=True))
+    monkeypatch.setattr("ideer.agents.memory.summarization_hook.get_memory_queue", lambda: queue)
+
+    memory_flush_hook(
+        SummarizationEvent(
+            messages_to_summarize=tuple(_messages()[:2]),
+            preserved_messages=(),
+            thread_id="main",
+            agent_name="researcher",
+            runtime=_runtime(thread_id="main", agent_name="researcher", user_id="alice"),
+        )
+    )
+
+    queue.add_nowait.assert_called_once()
+    assert queue.add_nowait.call_args.kwargs["user_id"] == "alice"
+
+
+# ---------------------------------------------------------------------------
+# Skill rescue tests
+# ---------------------------------------------------------------------------
+
+
 def test_skill_rescue_keeps_recent_skill_reads_out_of_summary() -> None:
     captured: list[SummarizationEvent] = []
     middleware = _middleware(
@@ -274,19 +591,15 @@ def test_skill_rescue_keeps_recent_skill_reads_out_of_summary() -> None:
     summarized_ids = {id(m) for m in captured[0].messages_to_summarize}
     preserved = captured[0].preserved_messages
 
-    # Both skill-read bundles should be rescued into preserved_messages,
-    # tool_call ↔ tool_result pairs stay intact.
     assert any(isinstance(m, ToolMessage) and m.content == "alpha skill body" for m in preserved)
     assert any(isinstance(m, ToolMessage) and m.content == "beta skill body" for m in preserved)
     for m in preserved:
         if isinstance(m, ToolMessage) and m.content in {"alpha skill body", "beta skill body"}:
             assert id(m) not in summarized_ids
 
-    # Preserved output order: rescued bundles first, then the tail kept by parent cutoff.
     contents = [getattr(m, "content", None) for m in preserved]
     assert contents[-2:] == ["u3", "final"]
 
-    # The final emitted state should start with RemoveMessage + summary, then preserved messages.
     emitted = result["messages"]
     assert isinstance(emitted[0], RemoveMessage)
     assert emitted[1].content.startswith("Here is a summary")
@@ -308,7 +621,6 @@ def test_skill_rescue_respects_count_budget() -> None:
 
     preserved = captured[0].preserved_messages
     summarized = captured[0].messages_to_summarize
-    # Newest skill (beta) rescued; older skill (alpha) falls into summary.
     assert any(isinstance(m, ToolMessage) and m.content == "beta skill body" for m in preserved)
     assert not any(isinstance(m, ToolMessage) and m.content == "alpha skill body" for m in preserved)
     assert any(isinstance(m, ToolMessage) and m.content == "alpha skill body" for m in summarized)
@@ -373,7 +685,6 @@ def test_skill_rescue_respects_per_skill_token_cap() -> None:
         keep=("messages", 2),
         preserve_recent_skill_count=5,
         preserve_recent_skill_tokens=10_000,
-        # token_counter=len counts one token per message; per-skill cap of 0 rejects every bundle.
         preserve_recent_skill_tokens_per_skill=0,
     )
 
@@ -621,41 +932,3 @@ def test_skill_rescue_only_preserves_skill_calls_with_matched_tool_results() -> 
     assert [tc["id"] for tc in summarized_ai.tool_calls] == ["skill-2"]
     assert any(isinstance(m, ToolMessage) and m.content == "alpha skill body" for m in preserved)
     assert not any(isinstance(m, ToolMessage) and getattr(m, "tool_call_id", None) == "skill-2" for m in preserved)
-
-
-def test_memory_flush_hook_preserves_agent_scoped_memory(monkeypatch: pytest.MonkeyPatch) -> None:
-    queue = MagicMock()
-    monkeypatch.setattr("ideer.agents.memory.summarization_hook.get_memory_config", lambda: MemoryConfig(enabled=True))
-    monkeypatch.setattr("ideer.agents.memory.summarization_hook.get_memory_queue", lambda: queue)
-
-    memory_flush_hook(
-        SummarizationEvent(
-            messages_to_summarize=tuple(_messages()[:2]),
-            preserved_messages=(),
-            thread_id="thread-1",
-            agent_name="research-agent",
-            runtime=_runtime(agent_name="research-agent"),
-        )
-    )
-
-    queue.add_nowait.assert_called_once()
-    assert queue.add_nowait.call_args.kwargs["agent_name"] == "research-agent"
-
-
-def test_memory_flush_hook_passes_runtime_user_id(monkeypatch: pytest.MonkeyPatch) -> None:
-    queue = MagicMock()
-    monkeypatch.setattr("ideer.agents.memory.summarization_hook.get_memory_config", lambda: MemoryConfig(enabled=True))
-    monkeypatch.setattr("ideer.agents.memory.summarization_hook.get_memory_queue", lambda: queue)
-
-    memory_flush_hook(
-        SummarizationEvent(
-            messages_to_summarize=tuple(_messages()[:2]),
-            preserved_messages=(),
-            thread_id="main",
-            agent_name="researcher",
-            runtime=_runtime(thread_id="main", agent_name="researcher", user_id="alice"),
-        )
-    )
-
-    queue.add_nowait.assert_called_once()
-    assert queue.add_nowait.call_args.kwargs["user_id"] == "alice"

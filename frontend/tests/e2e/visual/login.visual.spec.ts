@@ -11,7 +11,8 @@ test.describe("Login — visual regression", () => {
   test("default viewport screenshot", async ({ page }) => {
     await page.goto("/login");
     await page.waitForLoadState("networkidle");
-    await page.waitForTimeout(500);
+    // When auth is disabled, /login redirects to /workspace. Wait for either form or redirect.
+    await page.waitForTimeout(1500); // wait for potential redirect
 
     await expect(page).toHaveScreenshot("login-default.png", {
       fullPage: true,
@@ -22,7 +23,7 @@ test.describe("Login — visual regression", () => {
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto("/login");
     await page.waitForLoadState("networkidle");
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(1500);
 
     await expect(page).toHaveScreenshot("login-mobile.png", {
       fullPage: true,
@@ -33,7 +34,7 @@ test.describe("Login — visual regression", () => {
     await page.emulateMedia({ colorScheme: "dark" });
     await page.goto("/login");
     await page.waitForLoadState("networkidle");
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(1500);
 
     await expect(page).toHaveScreenshot("login-dark.png", {
       fullPage: true,

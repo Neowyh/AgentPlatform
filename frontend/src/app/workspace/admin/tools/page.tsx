@@ -2,6 +2,7 @@
 
 import { ArrowLeftIcon, PlayIcon, WrenchIcon } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -30,9 +31,12 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { listTools, testTool } from "@/core/admin/api";
+import { useAuth } from "@/core/auth/AuthProvider";
 import type { Tool } from "@/core/tools/types";
 
 export default function ToolsPage() {
+  const { user } = useAuth();
+  const router = useRouter();
   const [tools, setTools] = useState<Tool[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -44,13 +48,22 @@ export default function ToolsPage() {
   const [testing, setTesting] = useState(false);
 
   useEffect(() => {
+    // Only fetch data for authorized users
+    if (user?.system_role !== "super_admin") return;
+
     listTools()
       .then((data) => setTools(data.tools))
       .catch((err) =>
         setError(err instanceof Error ? err.message : String(err)),
       )
       .finally(() => setLoading(false));
-  }, []);
+  }, [user]);
+
+  // Role check: only super_admin can access admin pages
+  if (user?.system_role !== "super_admin") {
+    router.replace("/workspace");
+    return null;
+  }
 
   const groups = Array.from(new Set(tools.map((t) => t.group))).sort();
 
@@ -141,12 +154,16 @@ export default function ToolsPage() {
             <p className="text-muted-foreground text-sm">暂无工具</p>
           </div>
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div
+            className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
+            data-testid="tool-list"
+          >
             {filteredTools.map((tool) => (
               <Card
                 key={tool.name}
                 className="cursor-pointer transition-shadow hover:shadow-md"
                 onClick={() => openDetail(tool)}
+                data-testid="tool-card"
               >
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">

@@ -60,6 +60,7 @@ export function ExportTrigger({ threadId }: { threadId: string }) {
           <Button
             className="text-muted-foreground hover:text-foreground"
             variant="ghost"
+            data-testid="export-trigger-button"
           >
             <Download />
             {t.common.export}

@@ -1,0 +1,23 @@
+{
+  "page": "blog-post",
+  "route": "/blog/posts",
+  "timestamp": "2026-06-19T02:06:31.316Z",
+  "viewport": "mobile",
+  "status": "fail",
+  "checks": {
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+    ],
+    "failedRequests": [
+      "500 http://localhost:3000/blog/posts"
+    ],
+    "pageEmpty": false,
+    "horizontalOverflow": false,
+    "reactError": false,
+    "urlDrift": false,
+    "wrongPage": null,
+    "missingElements": [
+      "main, article, .post-content"
+    ]
+  }
+}

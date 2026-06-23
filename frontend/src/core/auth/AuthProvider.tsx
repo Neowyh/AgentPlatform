@@ -10,6 +10,8 @@ import React, {
   type ReactNode,
 } from "react";
 
+import { fetch } from "@/core/api/fetcher";
+
 import { isStaticWebsiteOnly } from "../static-mode";
 
 import { type User, buildLoginUrl } from "./types";
@@ -62,7 +64,7 @@ export function AuthProvider({ children, initialUser }: AuthProviderProps) {
     try {
       setIsLoading(true);
       const res = await fetch("/api/v1/auth/me", {
-        credentials: "include",
+        redirectOn401: false,
       });
 
       if (res.ok) {
@@ -100,7 +102,6 @@ export function AuthProvider({ children, initialUser }: AuthProviderProps) {
     try {
       await fetch("/api/v1/auth/logout", {
         method: "POST",
-        credentials: "include",
       });
     } catch (err) {
       console.error("Logout request failed:", err);

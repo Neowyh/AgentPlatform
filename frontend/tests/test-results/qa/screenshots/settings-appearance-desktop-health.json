@@ -1,0 +1,19 @@
+{
+  "page": "settings-appearance",
+  "route": "/workspace/chats/new",
+  "timestamp": "2026-06-19T02:06:04.698Z",
+  "viewport": "desktop",
+  "status": "fail",
+  "checks": {
+    "consoleErrors": [],
+    "failedRequests": [],
+    "pageEmpty": false,
+    "horizontalOverflow": false,
+    "reactError": false,
+    "urlDrift": false,
+    "wrongPage": null,
+    "missingElements": [
+      "[data-testid=\"theme-card\"], .theme-preview, [role=\"tablist\"]"
+    ]
+  }
+}

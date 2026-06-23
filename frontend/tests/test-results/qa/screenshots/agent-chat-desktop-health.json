@@ -1,0 +1,19 @@
+{
+  "page": "agent-chat",
+  "route": "/workspace/agents/research-assistant/chats/new",
+  "timestamp": "2026-06-19T04:08:15.689Z",
+  "viewport": "desktop",
+  "status": "fail",
+  "checks": {
+    "consoleErrors": [],
+    "failedRequests": [],
+    "pageEmpty": false,
+    "horizontalOverflow": false,
+    "reactError": false,
+    "urlDrift": true,
+    "wrongPage": "被重定向到登录页",
+    "missingElements": [
+      "textarea, [data-testid=\"chat-input\"], [contenteditable=\"true\"]"
+    ]
+  }
+}

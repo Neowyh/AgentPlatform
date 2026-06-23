@@ -68,6 +68,11 @@ jobs:
           cd frontend
           pnpm typecheck
 
+      - name: Architecture boundary check
+        run: |
+          cd frontend
+          npx depcruise src/ --config .dependency-cruiser.cjs
+
       - name: Build frontend
         run: |
           cd frontend

@@ -3,28 +3,42 @@
 Verifies the factory produces a working LangGraph agent that can actually
 process messages end-to-end with a real LLM.
 
-Tests marked ``requires_llm`` are skipped in CI or when OPENAI_API_KEY is unset.
+Tests marked ``requires_llm`` are skipped in CI or when OPENAI_API_KEY is unset
+(handled by ``_skip_llm_if_no_key`` in conftest.py).  Supports OpenAI-compatible
+APIs (like Mimo) via OPENAI_BASE_URL environment variable.
 """
 
 import os
 import uuid
 
 import pytest
+from dotenv import load_dotenv
 from langchain_core.tools import tool
 
-requires_llm = pytest.mark.skipif(
-    os.getenv("CI", "").lower() in ("true", "1") or not os.getenv("OPENAI_API_KEY"),
-    reason="Requires LLM API key — skipped in CI or when OPENAI_API_KEY is unset",
-)
+# Load .env from project root (for OPENAI_API_KEY etc.)
+load_dotenv(os.path.join(os.path.dirname(__file__), "../../.env"))
 
 
 def _make_model():
-    """Create a real chat model from environment variables."""
+    """Create a real chat model from environment variables.
+
+    Supports OpenAI-compatible APIs (like Mimo) via OPENAI_BASE_URL.
+    When OPENAI_BASE_URL is set, uses a default model for that API.
+    """
     from langchain_openai import ChatOpenAI
 
+    # Support OpenAI-compatible APIs (like Mimo) via OPENAI_BASE_URL
+    base_url = os.getenv("E2E_BASE_URL", "https://ark-cn-beijing.bytedance.net/api/v3")
+    model_id = os.getenv("E2E_MODEL_ID", "ep-20251211175242-llcmh")
+    if os.getenv("OPENAI_BASE_URL"):
+        base_url = os.getenv("OPENAI_BASE_URL")
+        # Use a default model for OpenAI-compatible APIs if not specified
+        if not os.getenv("E2E_MODEL_ID"):
+            model_id = "mimo-v2.5-pro"
+
     return ChatOpenAI(
-        model=os.getenv("E2E_MODEL_ID", "ep-20251211175242-llcmh"),
-        base_url=os.getenv("E2E_BASE_URL", "https://ark-cn-beijing.bytedance.net/api/v3"),
+        model=model_id,
+        base_url=base_url,
         api_key=os.getenv("OPENAI_API_KEY", ""),
         max_tokens=256,
         temperature=0,
@@ -34,7 +48,7 @@ def _make_model():
 # ---------------------------------------------------------------------------
 # 1. Minimal creation — model only, no features
 # ---------------------------------------------------------------------------
-@requires_llm
+@pytest.mark.requires_llm
 def test_minimal_agent_responds():
     """create_ideer_agent(model) produces a graph that returns a response."""
     from ideer.agents.factory import create_ideer_agent
@@ -57,7 +71,7 @@ def test_minimal_agent_responds():
 # ---------------------------------------------------------------------------
 # 2. With custom tool — verifies tool injection and execution
 # ---------------------------------------------------------------------------
-@requires_llm
+@pytest.mark.requires_llm
 def test_agent_with_custom_tool():
     """Agent can invoke a user-provided tool and return the result."""
     from ideer.agents.factory import create_ideer_agent
@@ -85,7 +99,7 @@ def test_agent_with_custom_tool():
 # ---------------------------------------------------------------------------
 # 3. RuntimeFeatures mode — middleware chain runs without errors
 # ---------------------------------------------------------------------------
-@requires_llm
+@pytest.mark.requires_llm
 def test_features_mode_middleware_chain():
     """RuntimeFeatures assembles a working middleware chain that executes."""
     from ideer.agents.factory import create_ideer_agent

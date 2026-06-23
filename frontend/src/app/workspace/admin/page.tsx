@@ -2,6 +2,7 @@
 
 import { Building2Icon, ShieldIcon, UsersIcon, WrenchIcon } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import {
@@ -12,6 +13,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { getAdminStats, type AdminStats } from "@/core/admin/api";
+import { useAuth } from "@/core/auth/AuthProvider";
 
 const statCards = [
   {
@@ -45,21 +47,32 @@ const statCards = [
 ];
 
 export default function AdminDashboardPage() {
+  const { user } = useAuth();
+  const router = useRouter();
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Only fetch stats for authorized users
+    if (user?.system_role !== "super_admin") return;
+
     getAdminStats()
       .then(setStats)
       .catch((err) =>
         setError(err instanceof Error ? err.message : String(err)),
       )
       .finally(() => setLoading(false));
-  }, []);
+  }, [user]);
+
+  // Role check: only super_admin can access admin pages
+  if (user?.system_role !== "super_admin") {
+    router.replace("/workspace");
+    return null;
+  }
 
   return (
-    <div className="flex size-full flex-col">
+    <div className="flex size-full flex-col" data-testid="admin-dashboard">
       {/* Page header */}
       <div className="flex items-center justify-between border-b px-6 py-4">
         <div>
@@ -84,7 +97,10 @@ export default function AdminDashboardPage() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {statCards.map((card) => (
               <Link key={card.key} href={card.href}>
-                <Card className="transition-shadow hover:shadow-md">
+                <Card
+                  className="transition-shadow hover:shadow-md"
+                  data-testid="admin-stat-card"
+                >
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium">
                       {card.label}

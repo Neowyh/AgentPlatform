@@ -10,13 +10,32 @@
 
 import { test, expect } from "@playwright/test";
 
-import { mockLangGraphAPI } from "../utils/mock-api";
+import { mockLangGraphAPI, type MockWorkflow } from "../utils/mock-api";
 
 const BASE_URL = process.env.BASE_URL ?? "http://localhost:3000";
 
+const MOCK_WORKFLOWS: MockWorkflow[] = [
+  {
+    name: "data-pipeline",
+    description: "ETL data processing workflow",
+    version: "1.0",
+    steps: [
+      { id: "step1", type: "agent", agent: "default", prompt: "Process data" },
+    ],
+  },
+  {
+    name: "review-process",
+    description: "Automated code review workflow",
+    version: "1.0",
+    steps: [
+      { id: "step1", type: "agent", agent: "reviewer", prompt: "Review code" },
+    ],
+  },
+];
+
 test.describe("Workflow Management", () => {
   test.beforeEach(async ({ page }) => {
-    mockLangGraphAPI(page);
+    mockLangGraphAPI(page, { workflows: MOCK_WORKFLOWS });
   });
 
   test("should list workflows", async ({ page }) => {
@@ -34,10 +53,10 @@ test.describe("Workflow Management", () => {
   test("should navigate to create workflow", async ({ page }) => {
     await page.goto(`${BASE_URL}/workspace/workflows`);
 
-    // 查找创建按钮
+    // 查找创建按钮 - text is "New Workflow" / "新建工作流"
     const createButton = page
       .locator(
-        'button:has-text("创建"), button:has-text("Create"), a:has-text("创建"), a:has-text("Create")',
+        'button:has-text("New Workflow"), button:has-text("新建工作流"), button:has-text("Create"), button:has-text("创建")',
       )
       .first();
     await expect(createButton).toBeVisible({ timeout: 10000 });
@@ -63,10 +82,10 @@ test.describe("Workflow Management", () => {
     await editor.click();
     await page.keyboard.type(yamlContent);
 
-    // 保存
+    // 保存 - the button text is "New Workflow" (t.workflows.newWorkflow)
     const saveButton = page
       .locator(
-        'button:has-text("保存"), button:has-text("Save"), button[type="submit"]',
+        'button:has-text("New Workflow"), button:has-text("创建工作流"), button:has-text("Save"), button:has-text("保存")',
       )
       .first();
     await saveButton.click();

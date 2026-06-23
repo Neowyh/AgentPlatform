@@ -10,6 +10,7 @@ import {
   WrenchIcon,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -39,8 +40,11 @@ import {
   updateDepartment,
 } from "@/core/admin/api";
 import type { Department } from "@/core/admin/types";
+import { useAuth } from "@/core/auth/AuthProvider";
 
 export default function DepartmentsPage() {
+  const { user } = useAuth();
+  const router = useRouter();
   const [departments, setDepartments] = useState<Department[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -63,8 +67,17 @@ export default function DepartmentsPage() {
   }, []);
 
   useEffect(() => {
+    // Only fetch data for authorized users
+    if (user?.system_role !== "super_admin") return;
+
     void fetchDepartments().finally(() => setLoading(false));
-  }, [fetchDepartments]);
+  }, [fetchDepartments, user]);
+
+  // Role check: only super_admin can access admin pages
+  if (user?.system_role !== "super_admin") {
+    router.replace("/workspace");
+    return null;
+  }
 
   const handleCreate = async () => {
     if (!name.trim()) {
@@ -190,9 +203,16 @@ export default function DepartmentsPage() {
             </Button>
           </div>
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div
+            className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
+            data-testid="department-list"
+          >
             {departments.map((dept) => (
-              <Card key={dept.id} className="transition-shadow hover:shadow-md">
+              <Card
+                key={dept.id}
+                className="transition-shadow hover:shadow-md"
+                data-testid="department-card"
+              >
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-2">
@@ -212,6 +232,7 @@ export default function DepartmentsPage() {
                         size="icon-sm"
                         onClick={() => openEditDialog(dept)}
                         title="编辑"
+                        data-testid="department-edit-button"
                       >
                         <EditIcon className="h-3.5 w-3.5" />
                       </Button>
@@ -221,6 +242,7 @@ export default function DepartmentsPage() {
                         onClick={() => handleDelete(dept.id)}
                         disabled={deletingId === dept.id}
                         title="删除"
+                        data-testid="department-delete-button"
                       >
                         <Trash2Icon className="text-destructive h-3.5 w-3.5" />
                       </Button>

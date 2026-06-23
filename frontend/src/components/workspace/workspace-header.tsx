@@ -54,8 +54,12 @@ export function WorkspaceHeader({ className }: { className?: string }) {
           <SidebarMenuButton
             isActive={pathname === "/workspace/chats/new"}
             asChild
+            data-testid="new-chat-button"
           >
-            <Link className="text-muted-foreground" href="/workspace/chats/new">
+            <Link
+              className="text-sidebar-foreground"
+              href="/workspace/chats/new"
+            >
               <MessageSquarePlus size={16} />
               <span>{t.sidebar.newChat}</span>
             </Link>

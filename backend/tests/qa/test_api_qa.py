@@ -22,6 +22,7 @@ API QA 测试框架
 """
 
 import os
+import uuid
 
 import httpx
 import pytest
@@ -237,7 +238,7 @@ class TestAgentsQA:
     async def test_agent_crud(self, auth_headers_and_cookies):
         """Agent 完整 CRUD 流程"""
         auth_headers, auth_cookies = auth_headers_and_cookies
-        agent_name = "qa-test-agent"
+        agent_name = f"qa-test-agent-{uuid.uuid4().hex[:8]}"
 
         async with httpx.AsyncClient() as client:
             # 创建

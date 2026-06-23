@@ -173,13 +173,17 @@ export function RecentChatList() {
         </SidebarGroupLabel>
         <SidebarGroupContent className="group-data-[collapsible=icon]:pointer-events-none group-data-[collapsible=icon]:-mt-8 group-data-[collapsible=icon]:opacity-0">
           <SidebarMenu>
-            <div className="flex w-full flex-col gap-1">
+            <div
+              className="flex w-full flex-col gap-1"
+              data-testid="thread-list"
+            >
               {threads.map((thread) => {
                 const isActive = pathOfThread(thread) === pathname;
                 return (
                   <SidebarMenuItem
                     key={thread.thread_id}
                     className="group/side-menu-item"
+                    data-testid="thread-item"
                   >
                     <SidebarMenuButton isActive={isActive} asChild>
                       <div>
@@ -195,6 +199,7 @@ export function RecentChatList() {
                               <SidebarMenuAction
                                 showOnHover
                                 className="bg-background/50 hover:bg-background"
+                                data-testid="thread-actions-trigger"
                               >
                                 <MoreHorizontal />
                                 <span className="sr-only">{t.common.more}</span>
@@ -212,6 +217,7 @@ export function RecentChatList() {
                                     titleOfThread(thread),
                                   )
                                 }
+                                data-testid="thread-rename-action"
                               >
                                 <Pencil className="text-muted-foreground" />
                                 <span>{t.common.rename}</span>
@@ -249,6 +255,7 @@ export function RecentChatList() {
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
                                 onSelect={() => handleDelete(thread.thread_id)}
+                                data-testid="thread-delete-action"
                               >
                                 <Trash2 className="text-muted-foreground" />
                                 <span>{t.common.delete}</span>

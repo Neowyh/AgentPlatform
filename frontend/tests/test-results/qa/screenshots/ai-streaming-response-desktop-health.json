@@ -1,0 +1,19 @@
+{
+  "page": "ai-streaming-response",
+  "route": "/workspace/chats/new",
+  "timestamp": "2026-06-19T02:06:00.007Z",
+  "viewport": "desktop",
+  "status": "fail",
+  "checks": {
+    "consoleErrors": [],
+    "failedRequests": [],
+    "pageEmpty": false,
+    "horizontalOverflow": false,
+    "reactError": false,
+    "urlDrift": false,
+    "wrongPage": null,
+    "missingElements": [
+      ".streaming-indicator, [data-testid=\"streaming\"], .animate-pulse"
+    ]
+  }
+}

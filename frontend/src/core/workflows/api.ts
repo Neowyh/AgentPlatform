@@ -35,12 +35,7 @@ export async function createWorkflow(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
-  if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { detail?: string };
-    throw new Error(
-      err.detail ?? `Failed to create workflow: ${res.statusText}`,
-    );
-  }
+  if (!res.ok) return extractError(res, "Failed to create workflow");
   return res.json() as Promise<WorkflowSummary>;
 }
 
@@ -56,12 +51,7 @@ export async function updateWorkflow(
       body: JSON.stringify(data),
     },
   );
-  if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { detail?: string };
-    throw new Error(
-      err.detail ?? `Failed to update workflow: ${res.statusText}`,
-    );
-  }
+  if (!res.ok) return extractError(res, "Failed to update workflow");
   return res.json() as Promise<WorkflowSummary>;
 }
 
@@ -85,10 +75,7 @@ export async function runWorkflow(
       body: JSON.stringify({ inputs }),
     },
   );
-  if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { detail?: string };
-    throw new Error(err.detail ?? `Failed to run workflow: ${res.statusText}`);
-  }
+  if (!res.ok) return extractError(res, "Failed to run workflow");
   return res.json() as Promise<WorkflowRunResult>;
 }
 
@@ -119,9 +106,6 @@ export async function submitReview(
       }),
     },
   );
-  if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { detail?: string };
-    throw new Error(err.detail ?? `Failed to submit review: ${res.statusText}`);
-  }
+  if (!res.ok) return extractError(res, "Failed to submit review");
   return res.json() as Promise<{ success: boolean; run_id: string }>;
 }

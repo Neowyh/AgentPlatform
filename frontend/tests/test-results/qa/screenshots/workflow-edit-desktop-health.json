@@ -1,0 +1,19 @@
+{
+  "page": "workflow-edit",
+  "route": "/workspace/workflows/research-workflow/edit",
+  "timestamp": "2026-06-19T02:05:37.798Z",
+  "viewport": "desktop",
+  "status": "fail",
+  "checks": {
+    "consoleErrors": [],
+    "failedRequests": [],
+    "pageEmpty": false,
+    "horizontalOverflow": false,
+    "reactError": false,
+    "urlDrift": false,
+    "wrongPage": null,
+    "missingElements": [
+      "textarea"
+    ]
+  }
+}

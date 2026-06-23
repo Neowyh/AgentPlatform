@@ -40,4 +40,39 @@ jobs:
 
       - name: Run unit tests of frontend
         working-directory: frontend
-        run: make test
+        run: make test-coverage
+
+      - name: Check frontend coverage threshold
+        working-directory: frontend
+        run: |
+          COVERAGE_JSON="coverage/coverage-final.json"
+          if [ ! -f "$COVERAGE_JSON" ]; then
+            echo "::error::Coverage JSON not found at $COVERAGE_JSON"
+            exit 1
+          fi
+          STATEMENTS=$(node -e "
+            const fs = require('fs');
+            const data = JSON.parse(fs.readFileSync('$COVERAGE_JSON', 'utf8'));
+            let total = 0, covered = 0;
+            for (const file of Object.values(data)) {
+              const s = file.s || {};
+              for (const count of Object.values(s)) {
+                total++;
+                if (count > 0) covered++;
+              }
+            }
+            console.log(((covered / total) * 100).toFixed(2));
+          ")
+          echo "Frontend statement coverage: ${STATEMENTS}%"
+          if (( $(echo "$STATEMENTS < 98.0" | bc -l) )); then
+            echo "::error::Frontend coverage ${STATEMENTS}% is below 98% threshold"
+            exit 1
+          fi
+          echo "Frontend coverage: ${STATEMENTS}% ✓"
+
+      - name: Coverage Summary
+        if: always()
+        working-directory: frontend
+        run: |
+          echo "## Frontend Coverage Report" >> $GITHUB_STEP_SUMMARY
+          pnpm vitest run --coverage --reporter=verbose 2>&1 | grep -E "^(All files|File|%|---)" >> $GITHUB_STEP_SUMMARY || true

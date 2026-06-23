@@ -27,7 +27,12 @@ test.describe(`${PAGE_NAME} — visual regression`, () => {
   test("default viewport screenshot", async ({ page }) => {
     await page.goto(TEST_ROUTE);
     await page.waitForLoadState("networkidle");
-    await page.waitForTimeout(500); // let animations settle
+    // Wait for main content to render before screenshot
+    await page
+      .locator("main, h1, [class*='flex']")
+      .first()
+      .waitFor({ state: "visible", timeout: 10000 });
+    await page.waitForTimeout(1000); // let animations settle
 
     await expect(page).toHaveScreenshot(`${PAGE_NAME}-default.png`, {
       fullPage: true,
@@ -40,7 +45,11 @@ test.describe(`${PAGE_NAME} — visual regression`, () => {
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto(TEST_ROUTE);
     await page.waitForLoadState("networkidle");
-    await page.waitForTimeout(500);
+    await page
+      .locator("main, h1, [class*='flex']")
+      .first()
+      .waitFor({ state: "visible", timeout: 10000 });
+    await page.waitForTimeout(1000);
 
     await expect(page).toHaveScreenshot(`${PAGE_NAME}-mobile.png`, {
       fullPage: true,
@@ -51,7 +60,11 @@ test.describe(`${PAGE_NAME} — visual regression`, () => {
     await page.emulateMedia({ colorScheme: "dark" });
     await page.goto(TEST_ROUTE);
     await page.waitForLoadState("networkidle");
-    await page.waitForTimeout(500);
+    await page
+      .locator("main, h1, [class*='flex']")
+      .first()
+      .waitFor({ state: "visible", timeout: 10000 });
+    await page.waitForTimeout(1000);
 
     await expect(page).toHaveScreenshot(`${PAGE_NAME}-dark.png`, {
       fullPage: true,

@@ -55,6 +55,7 @@ def test_code_interpreter_tool_is_invocable():
 # ── Python execution ────────────────────────────────────────────────
 
 
+@pytest.mark.serial
 def test_python_print_expression():
     result = code_interpreter_tool.invoke({"code": "print(2+2)"})
     data = json.loads(result)
@@ -106,6 +107,7 @@ def test_timeout_clamped_to_max():
     shutil.which("node") is None,
     reason="node not installed",
 )
+@pytest.mark.serial
 def test_javascript_hello():
     result = code_interpreter_tool.invoke({"code": 'console.log("hello")', "language": "javascript"})
     data = json.loads(result)

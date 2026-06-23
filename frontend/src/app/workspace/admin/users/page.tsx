@@ -2,6 +2,7 @@
 
 import { ArrowLeftIcon, ShieldOffIcon, UserIcon } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -28,6 +29,7 @@ import {
   updateUserRole,
 } from "@/core/admin/api";
 import type { Department, User, UserRole } from "@/core/admin/types";
+import { useAuth } from "@/core/auth/AuthProvider";
 
 const ROLE_LABELS: Record<UserRole, string> = {
   user: "普通用户",
@@ -43,6 +45,8 @@ const ROLE_VARIANTS: Record<UserRole, "default" | "secondary" | "destructive"> =
   };
 
 export default function UsersPage() {
+  const { user: currentUser } = useAuth();
+  const router = useRouter();
   const [users, setUsers] = useState<User[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [loading, setLoading] = useState(true);
@@ -65,6 +69,9 @@ export default function UsersPage() {
   }, [filterDept, filterRole]);
 
   useEffect(() => {
+    // Only fetch data for authorized users
+    if (currentUser?.system_role !== "super_admin") return;
+
     Promise.all([
       fetchUsers(),
       listDepartments().then((data) => setDepartments(data.departments)),
@@ -73,9 +80,19 @@ export default function UsersPage() {
         setError(err instanceof Error ? err.message : String(err)),
       )
       .finally(() => setLoading(false));
-  }, [fetchUsers]);
+  }, [fetchUsers, currentUser]);
+
+  // Role check: only super_admin can access admin pages
+  if (currentUser?.system_role !== "super_admin") {
+    router.replace("/workspace");
+    return null;
+  }
 
   const handleRoleChange = async (userId: string, newRole: string) => {
+    if (userId === currentUser?.id) {
+      toast.error("不能修改自己的角色");
+      return;
+    }
     const user = users.find((u) => u.id === userId);
     if (!user) return;
     const currentLabel = ROLE_LABELS[user.role] ?? user.role;
@@ -99,6 +116,10 @@ export default function UsersPage() {
   };
 
   const handleDisable = async (userId: string) => {
+    if (userId === currentUser?.id) {
+      toast.error("不能禁用自己的账号");
+      return;
+    }
     if (!confirm("确定要禁用该用户吗？")) return;
     setDisablingId(userId);
     try {
@@ -175,82 +196,91 @@ export default function UsersPage() {
             <p className="text-muted-foreground text-sm">暂无用户</p>
           </div>
         ) : (
-          <div className="grid gap-4">
-            {users.map((user) => (
-              <Card key={user.id}>
-                <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="bg-primary/10 flex h-10 w-10 items-center justify-center rounded-full">
-                        <UserIcon className="text-primary h-5 w-5" />
+          <div className="grid gap-4" data-testid="user-list">
+            {users.map((user) => {
+              const isSelf = user.id === currentUser?.id;
+              return (
+                <Card key={user.id} data-testid="user-card">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="bg-primary/10 flex h-10 w-10 items-center justify-center rounded-full">
+                          <UserIcon className="text-primary h-5 w-5" />
+                        </div>
+                        <div>
+                          <CardTitle className="text-base">
+                            {user.username}
+                          </CardTitle>
+                          <CardDescription>
+                            {departments.find(
+                              (d) => d.id === user.department_id,
+                            )?.name ?? "未分配部门"}
+                          </CardDescription>
+                        </div>
                       </div>
-                      <div>
-                        <CardTitle className="text-base">
-                          {user.username}
-                        </CardTitle>
-                        <CardDescription>
-                          {departments.find((d) => d.id === user.department_id)
-                            ?.name ?? "未分配部门"}
-                        </CardDescription>
+                      <div className="flex items-center gap-2">
+                        {isSelf && <Badge variant="outline">当前用户</Badge>}
+                        <Badge variant={ROLE_VARIANTS[user.role]}>
+                          {ROLE_LABELS[user.role]}
+                        </Badge>
+                        {user.disabled && (
+                          <Badge variant="destructive">已禁用</Badge>
+                        )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant={ROLE_VARIANTS[user.role]}>
-                        {ROLE_LABELS[user.role]}
-                      </Badge>
-                      {user.disabled && (
-                        <Badge variant="destructive">已禁用</Badge>
-                      )}
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center justify-between">
-                    <div className="text-muted-foreground text-xs">
-                      <span>
-                        创建于 {new Date(user.created_at).toLocaleDateString()}
-                      </span>
-                      {user.last_login && (
-                        <span className="ml-4">
-                          最后登录{" "}
-                          {new Date(user.last_login).toLocaleDateString()}
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center justify-between">
+                      <div className="text-muted-foreground text-xs">
+                        <span>
+                          创建于{" "}
+                          {new Date(user.created_at).toLocaleDateString()}
                         </span>
-                      )}
+                        {user.last_login && (
+                          <span className="ml-4">
+                            最后登录{" "}
+                            {new Date(user.last_login).toLocaleDateString()}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Select
+                          value={user.role}
+                          onValueChange={(value) =>
+                            handleRoleChange(user.id, value)
+                          }
+                          disabled={isSelf}
+                          data-testid="user-role-select"
+                        >
+                          <SelectTrigger className="w-36">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="user">普通用户</SelectItem>
+                            <SelectItem value="department_admin">
+                              部门管理员
+                            </SelectItem>
+                            <SelectItem value="super_admin">
+                              超级管理员
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() => handleDisable(user.id)}
+                          disabled={isSelf || disablingId === user.id}
+                          title={isSelf ? "不能禁用自己的账号" : "禁用用户"}
+                          data-testid="user-disable-button"
+                        >
+                          <ShieldOffIcon className="text-destructive h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Select
-                        value={user.role}
-                        onValueChange={(value) =>
-                          handleRoleChange(user.id, value)
-                        }
-                      >
-                        <SelectTrigger className="w-36">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="user">普通用户</SelectItem>
-                          <SelectItem value="department_admin">
-                            部门管理员
-                          </SelectItem>
-                          <SelectItem value="super_admin">
-                            超级管理员
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={() => handleDisable(user.id)}
-                        disabled={disablingId === user.id}
-                        title="禁用用户"
-                      >
-                        <ShieldOffIcon className="text-destructive h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
         )}
       </div>

@@ -23,6 +23,8 @@ from ideer.config.tool_search_config import get_tool_search_config, load_tool_se
 from ideer.runtime.checkpointer import get_checkpointer, reset_checkpointer
 from ideer.runtime.store import get_store, reset_store
 
+pytestmark = pytest.mark.serial
+
 
 def _reset_config_singletons() -> None:
     load_title_config_from_dict({})

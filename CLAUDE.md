@@ -31,26 +31,32 @@ This project has been extended with enterprise intranet platform capabilities on
 - Tool tests: `backend/tests/test_doc_reader.py`, `test_code_interpreter.py`, `test_data_analyzer.py`
 - Run with venv: `.venv/bin/python -m pytest backend/tests/`
 
+### AI 测试工具
+
+- **Qodo Cover**: AI 自动生成单元测试（前端 Vitest + 后端 pytest），配置文件 `frontend/.qodo-cover.json` 和 `backend/.qodo-cover.json`
+- **Stagehand**: AI 驱动的自然语言 E2E 测试（基于 Playwright），测试目录 `frontend/tests/e2e/stagehand/`
+- **覆盖率**: 前端 `@vitest/coverage-v8`，后端 `pytest-cov`，运行 `make test-coverage` 查看
+
 ### Validation Skills
 
-三个验证 skill 提供 AI 生成代码的全流程测试验证：
+四个验证 skill 提供 AI 生成代码的全流程测试验证，集成 Qodo Cover（AI 测试生成）和 Stagehand（自然语言 E2E）：
 
 | Skill | 职责 | 触发命令 |
 |-------|------|----------|
-| **frontend-validator** | 前端代码质量验证 | "check frontend", "前端验证" |
-| **backend-validator** | 后端 Python 代码验证 | "check backend", "后端验证" |
-| **qa-tester** | 整个应用功能验证 | "qa test", "功能测试" |
+| **frontend-validator** | 前端代码质量验证 + AI 测试生成 | "check frontend", "前端验证", "generate tests" |
+| **backend-validator** | 后端 Python 代码验证 + AI 测试生成 | "check backend", "后端验证", "write tests" |
+| **qa-tester** | 整个应用功能验证（Playwright + Stagehand） | "qa test", "功能测试" |
 | **validation-orchestrator** | 统一编排三个 skill | "validate all", "全面验证" |
 
 **验证级别**:
-- **quick**: 快速反馈（1-2 min）
-- **standard**: 标准验证（3-5 min）
-- **full**: 完整验证（10+ min）
+- **quick**: 快速反馈（1-2 min）— TypeCheck + Lint + 格式 + 受影响测试
+- **standard**: 标准验证（3-5 min）— Quick + 覆盖率报告 + AI 测试缺口分析 + E2E 关键流程
+- **full**: 完整验证（10+ min）— Standard + AI 自动生成测试 + 全量 E2E + Stagehand + PR 就绪评分
 
 **变更阶段覆盖**:
 - 未暂存更改：代码质量检查
-- 已暂存更改：构建验证、完整测试
-- 提交后更改：功能验证、集成验证
+- 已暂存更改：构建验证、完整测试、覆盖率报告
+- 提交后更改：功能验证、集成验证、AI 测试生成
 
 **详细文档**: `docs/ai-code-validation-skill-analysis.md`
 

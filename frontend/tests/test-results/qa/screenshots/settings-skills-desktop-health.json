@@ -1,0 +1,19 @@
+{
+  "page": "settings-skills",
+  "route": "/workspace/chats/new",
+  "timestamp": "2026-06-19T02:06:06.601Z",
+  "viewport": "desktop",
+  "status": "fail",
+  "checks": {
+    "consoleErrors": [],
+    "failedRequests": [],
+    "pageEmpty": false,
+    "horizontalOverflow": false,
+    "reactError": false,
+    "urlDrift": false,
+    "wrongPage": null,
+    "missingElements": [
+      "[data-testid=\"skill-list\"], .skill-item"
+    ]
+  }
+}

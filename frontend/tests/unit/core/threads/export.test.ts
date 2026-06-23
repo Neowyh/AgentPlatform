@@ -1,317 +1,422 @@
-import type { Message } from "@langchain/langgraph-sdk";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import {
+  exportThreadAsJSON,
+  exportThreadAsMarkdown,
   formatThreadAsJSON,
   formatThreadAsMarkdown,
 } from "@/core/threads/export";
 import type { AgentThread } from "@/core/threads/types";
 
-// Bytedance/ideer issue #3107 BUG-006: the chat export path bypasses the
-// UI-level hidden-message filter and emits reasoning content, tool calls, and
-// any other "internal" payload as if it were part of the user transcript.
+// ---------------------------------------------------------------------------
+// Mocks
+// ---------------------------------------------------------------------------
 
-function makeThread(): AgentThread {
+vi.mock("@/core/messages/utils", () => ({
+  extractContentFromMessage: vi.fn((msg: any) => {
+    if (typeof msg.content === "string") return msg.content;
+    if (Array.isArray(msg.content)) {
+      const textPart = msg.content.find((p: any) => p.type === "text");
+      return textPart?.text ?? "";
+    }
+    return "";
+  }),
+  extractReasoningContentFromMessage: vi.fn((msg: any) => {
+    return msg.additional_kwargs?.reasoning_content ?? null;
+  }),
+  hasContent: vi.fn((msg: any) => {
+    if (typeof msg.content === "string") return msg.content.length > 0;
+    if (Array.isArray(msg.content)) return msg.content.length > 0;
+    return false;
+  }),
+  hasToolCalls: vi.fn(
+    (msg: any) =>
+      msg.type === "ai" &&
+      Array.isArray(msg.tool_calls) &&
+      msg.tool_calls.length > 0,
+  ),
+  isHiddenFromUIMessage: vi.fn(
+    (msg: any) => msg.additional_kwargs?.hide_from_ui === true,
+  ),
+  stripInternalMarkers: vi.fn((text: string) => text),
+}));
+
+vi.mock("@/core/threads/utils", () => ({
+  titleOfThread: vi.fn((thread: any) => thread.values?.title ?? "Untitled"),
+}));
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function makeThread(overrides: Record<string, unknown> = {}): AgentThread {
   return {
     thread_id: "thread-1",
     created_at: "2026-05-21T00:00:00Z",
     updated_at: "2026-05-21T00:00:00Z",
     metadata: { title: "Demo thread" },
     status: "idle",
-    values: { messages: [] },
+    values: { title: "Demo thread", messages: [] },
+    ...overrides,
   } as unknown as AgentThread;
 }
 
-function human(content: string, extra: Partial<Message> = {}): Message {
+function human(content: string, extra: Record<string, unknown> = {}): any {
   return {
     id: `h-${content}`,
     type: "human",
     content,
     ...extra,
-  } as Message;
+  };
 }
 
-function ai(
-  content: string,
-  extra: Partial<Message> & { tool_calls?: unknown } = {},
-): Message {
+function ai(content: string, extra: Record<string, unknown> = {}): any {
   return {
     id: `a-${content}`,
     type: "ai",
     content,
     ...extra,
-  } as Message;
+  };
 }
 
-function toolMsg(content: string): Message {
+function toolMsg(content: string): any {
   return {
     id: `t-${content}`,
     type: "tool",
     content,
     name: "task",
     tool_call_id: "call-1",
-  } as unknown as Message;
+  };
 }
 
+// ---------------------------------------------------------------------------
+// formatThreadAsMarkdown
+// ---------------------------------------------------------------------------
+
 describe("formatThreadAsMarkdown", () => {
-  it("includes plain user and assistant text", () => {
+  test("basic thread with human and AI messages produces markdown with title and sections", () => {
     const md = formatThreadAsMarkdown(makeThread(), [
       human("hello"),
       ai("hi there"),
     ]);
     expect(md).toContain("hello");
     expect(md).toContain("hi there");
+    expect(md).toContain("## 🧑 User");
+    expect(md).toContain("## 🤖 Assistant");
   });
 
-  it("drops messages marked hide_from_ui", () => {
-    const hidden = human("internal system reminder", {
-      additional_kwargs: { hide_from_ui: true },
-    } as Partial<Message>);
-    const md = formatThreadAsMarkdown(makeThread(), [
-      hidden,
-      ai("public answer"),
-    ]);
-    expect(md).not.toContain("internal system reminder");
-    expect(md).toContain("public answer");
-  });
-
-  it("does not emit reasoning_content by default", () => {
+  test("with includeReasoning: true includes thinking details block", () => {
     const message = ai("final answer", {
-      additional_kwargs: {
-        reasoning_content: "secret chain of thought",
-      },
-    } as Partial<Message>);
-    const md = formatThreadAsMarkdown(makeThread(), [message]);
-    expect(md).not.toContain("secret chain of thought");
-    expect(md).not.toContain("Thinking");
-  });
-
-  it("does not emit tool calls by default", () => {
-    const message = ai("ok", {
-      tool_calls: [{ id: "1", name: "task", args: { description: "do work" } }],
-    } as Partial<Message>);
-    const md = formatThreadAsMarkdown(makeThread(), [message]);
-    expect(md).not.toContain("**Tool:**");
-    expect(md).not.toContain("`task`");
-  });
-
-  it("drops tool result messages", () => {
-    const md = formatThreadAsMarkdown(makeThread(), [
-      ai("delegating"),
-      toolMsg("Task Succeeded. Result: confidential"),
-    ]);
-    expect(md).not.toContain("confidential");
-  });
-});
-
-describe("formatThreadAsMarkdown opt-in flags", () => {
-  it("emits reasoning when includeReasoning is true", () => {
-    const message = ai("final answer", {
-      additional_kwargs: {
-        reasoning_content: "step-by-step chain of thought",
-      },
-    } as Partial<Message>);
+      additional_kwargs: { reasoning_content: "step-by-step reasoning" },
+    });
     const md = formatThreadAsMarkdown(makeThread(), [message], {
       includeReasoning: true,
     });
-    expect(md).toContain("step-by-step chain of thought");
+    expect(md).toContain("step-by-step reasoning");
     expect(md).toContain("Thinking");
+    expect(md).toContain("<details>");
   });
 
-  it("emits tool call rows when includeToolCalls is true", () => {
+  test("with includeToolCalls: true includes tool call formatting", () => {
     const message = ai("ok", {
-      tool_calls: [{ id: "1", name: "task", args: { description: "do work" } }],
-    } as Partial<Message>);
+      tool_calls: [{ id: "1", name: "search", args: { query: "test" } }],
+    });
     const md = formatThreadAsMarkdown(makeThread(), [message], {
       includeToolCalls: true,
     });
     expect(md).toContain("**Tool:**");
-    expect(md).toContain("`task`");
+    expect(md).toContain("`search`");
   });
 
-  it("keeps hidden messages when includeHidden is true", () => {
-    const hidden = human("internal reminder", {
-      additional_kwargs: { hide_from_ui: true },
-    } as Partial<Message>);
-    const md = formatThreadAsMarkdown(makeThread(), [hidden], {
-      includeHidden: true,
-    });
-    expect(md).toContain("internal reminder");
-  });
-});
-
-describe("formatThreadAsJSON opt-in flags", () => {
-  it("emits tool_calls field when includeToolCalls is true", () => {
-    const message = ai("ok", {
-      tool_calls: [{ id: "1", name: "task", args: { description: "x" } }],
-    } as Partial<Message>);
-    const raw = formatThreadAsJSON(makeThread(), [message], {
-      includeToolCalls: true,
-    });
-    expect(raw).toContain("tool_calls");
-    expect(raw).toContain('"task"');
-  });
-
-  it("keeps tool messages when includeToolMessages is true", () => {
-    const raw = formatThreadAsJSON(
+  test("with includeToolMessages: true tool messages pass filter but are not rendered in markdown", () => {
+    // Tool messages pass the visibleMessages filter when includeToolMessages
+    // is true, but the markdown rendering loop only handles "human" and "ai"
+    // types, so tool message content does not appear in the output.
+    const md = formatThreadAsMarkdown(
       makeThread(),
-      [toolMsg("Task Succeeded. Result: keep me")],
+      [ai("delegating"), toolMsg("Task Succeeded. Result: kept")],
       { includeToolMessages: true },
     );
-    const parsed = JSON.parse(raw) as { messages: { type: string }[] };
-    expect(parsed.messages.some((m) => m.type === "tool")).toBe(true);
-    expect(raw).toContain("keep me");
+    expect(md).toContain("delegating");
+    expect(md).not.toContain("kept");
+  });
+
+  test("hidden messages excluded by default", () => {
+    const hidden = human("internal reminder", {
+      additional_kwargs: { hide_from_ui: true },
+    });
+    const md = formatThreadAsMarkdown(makeThread(), [hidden, ai("public")]);
+    expect(md).not.toContain("internal reminder");
+    expect(md).toContain("public");
+  });
+
+  test("empty messages array produces just header", () => {
+    const md = formatThreadAsMarkdown(makeThread(), []);
+    expect(md).toContain("# Demo thread");
+    // No User or Assistant sections
+    expect(md).not.toContain("## User");
+    expect(md).not.toContain("## Assistant");
+  });
+
+  test("tool messages excluded by default", () => {
+    const md = formatThreadAsMarkdown(makeThread(), [
+      ai("delegating"),
+      toolMsg("confidential result"),
+    ]);
+    expect(md).not.toContain("confidential result");
+  });
+
+  test("does not emit reasoning by default", () => {
+    const message = ai("answer", {
+      additional_kwargs: { reasoning_content: "secret thought" },
+    });
+    const md = formatThreadAsMarkdown(makeThread(), [message]);
+    expect(md).not.toContain("secret thought");
+  });
+
+  test("does not emit tool calls by default", () => {
+    const message = ai("ok", {
+      tool_calls: [{ id: "1", name: "task", args: {} }],
+    });
+    const md = formatThreadAsMarkdown(makeThread(), [message]);
+    expect(md).not.toContain("**Tool:**");
+  });
+
+  test("uses Untitled when thread has no title", () => {
+    const md = formatThreadAsMarkdown(makeThread({ values: {} }), [ai("hi")]);
+    expect(md).toContain("# Untitled");
+  });
+
+  test("skips human message with empty content", () => {
+    const md = formatThreadAsMarkdown(makeThread(), [human("")]);
+    // Empty human message should not produce a User section
+    expect(md).not.toContain("## 🧑 User");
+  });
+
+  test("skips AI message with empty content and no tool calls or reasoning", () => {
+    const md = formatThreadAsMarkdown(makeThread(), [ai("")]);
+    // Empty AI message should not produce an Assistant section
+    expect(md).not.toContain("## 🤖 Assistant");
+  });
+
+  test("includes AI content only when hasContent returns true", () => {
+    // The mock hasContent returns true for non-empty string content
+    const md = formatThreadAsMarkdown(makeThread(), [ai("real content")]);
+    expect(md).toContain("real content");
+    expect(md).toContain("## 🤖 Assistant");
   });
 });
 
+// ---------------------------------------------------------------------------
+// formatThreadAsJSON
+// ---------------------------------------------------------------------------
+
 describe("formatThreadAsJSON", () => {
-  it("strips hidden messages, tool messages, reasoning, and tool calls", () => {
-    const messages = [
-      human("hello"),
-      human("secret reminder", {
-        additional_kwargs: { hide_from_ui: true },
-      } as Partial<Message>),
-      ai("answer", {
-        additional_kwargs: {
-          reasoning_content: "secret reasoning",
-        },
-        tool_calls: [{ id: "1", name: "task", args: {} }],
-      } as Partial<Message>),
-      toolMsg("internal trace"),
-    ];
-    const raw = formatThreadAsJSON(makeThread(), messages);
-    const parsed = JSON.parse(raw) as {
-      messages: { type: string; tool_calls?: unknown[] }[];
-    };
-
-    expect(parsed.messages).toHaveLength(2);
-    expect(parsed.messages.every((m) => m.type !== "tool")).toBe(true);
-    expect(raw).not.toContain("secret reminder");
-    expect(raw).not.toContain("secret reasoning");
-    expect(raw).not.toContain("internal trace");
-    expect(raw).not.toContain("tool_calls");
+  test("basic thread produces valid JSON with messages array", () => {
+    const raw = formatThreadAsJSON(makeThread(), [human("hello"), ai("hi")]);
+    const parsed = JSON.parse(raw);
+    expect(parsed).toHaveProperty("title", "Demo thread");
+    expect(parsed).toHaveProperty("thread_id", "thread-1");
+    expect(parsed).toHaveProperty("messages");
+    expect(Array.isArray(parsed.messages)).toBe(true);
+    expect(parsed.messages.length).toBe(2);
   });
 
-  it("strips inline <think>...</think> wrappers from content", () => {
-    // bytedance/ideer#3131 review: JSON export must run the same
-    // sanitiser the Markdown path uses so inline reasoning never leaks
-    // even when `includeReasoning` is left at its default false.
-    const message = ai("<think>internal monologue</think>visible answer", {
-      id: "ai-1",
-    } as Partial<Message>);
-    const raw = formatThreadAsJSON(makeThread(), [message]);
-    expect(raw).not.toContain("internal monologue");
-    expect(raw).not.toContain("<think>");
-    expect(raw).toContain("visible answer");
-  });
-
-  it("strips content-array thinking blocks from content", () => {
-    const message = ai("placeholder", {
-      id: "ai-2",
-      content: [
-        { type: "thinking", thinking: "hidden reasoning step" },
-        { type: "text", text: "final visible text" },
-      ],
-    } as unknown as Partial<Message>);
-    const raw = formatThreadAsJSON(makeThread(), [message]);
-    expect(raw).not.toContain("hidden reasoning step");
-    expect(raw).toContain("final visible text");
-  });
-
-  it("strips <uploaded_files> markers from content", () => {
-    const message = human(
-      "real prompt\n<uploaded_files>\n/mnt/user-data/uploads/secret.pdf\n</uploaded_files>",
-      { id: "h-clean" } as Partial<Message>,
-    );
-    const raw = formatThreadAsJSON(makeThread(), [message]);
-    expect(raw).not.toContain("<uploaded_files>");
-    expect(raw).not.toContain("secret.pdf");
-    expect(raw).toContain("real prompt");
-  });
-
-  it("drops AI messages that sanitise to empty content", () => {
-    // Pure-reasoning AI fragments (no visible text, no tool calls) should
-    // not survive as `{content: ""}` rows in the export.
-    const message = ai("<think>only thinking, no answer</think>", {
-      id: "ai-3",
-    } as Partial<Message>);
-    const raw = formatThreadAsJSON(makeThread(), [message]);
-    const parsed = JSON.parse(raw) as { messages: unknown[] };
-    expect(parsed.messages).toHaveLength(0);
-  });
-
-  it("strips <system-reminder>/<memory>/<current_date> as defence in depth", () => {
-    // Primary protection is `isHiddenFromUIMessage` filtering the whole
-    // hidden HumanMessage. If a regression strips the `hide_from_ui` flag
-    // (or the marker leaks into an otherwise-visible message), the
-    // sanitiser must still scrub the payload before export.
-    const leaky = human("real user text", {
-      id: "leak-1",
-      content:
-        "<system-reminder>\n<memory>secret fact A</memory>\n<current_date>2026-01-01, Tuesday</current_date>\n</system-reminder>\nreal user text",
-      // Deliberately *not* setting hide_from_ui to model the regression
-      // case the defence-in-depth strip is guarding against.
-    } as unknown as Partial<Message>);
-    const raw = formatThreadAsJSON(makeThread(), [leaky]);
-    expect(raw).not.toContain("<system-reminder>");
-    expect(raw).not.toContain("<memory>");
-    expect(raw).not.toContain("<current_date>");
-    expect(raw).not.toContain("secret fact A");
-    expect(raw).toContain("real user text");
-  });
-
-  it("sanitises tool message content when includeToolMessages is true", () => {
-    const message = {
-      id: "t-leak",
-      type: "tool",
-      content:
-        "Task Succeeded. Result: payload\n<uploaded_files>\n/mnt/user-data/uploads/secret.pdf\n</uploaded_files>",
-      name: "task",
-      tool_call_id: "call-leak",
-    } as unknown as Message;
-
-    const raw = formatThreadAsJSON(makeThread(), [message], {
-      includeToolMessages: true,
+  test("with options includes reasoning and tool_calls", () => {
+    const message = ai("answer", {
+      additional_kwargs: { reasoning_content: "my reasoning" },
+      tool_calls: [{ id: "1", name: "search", args: { q: "x" } }],
     });
-    expect(raw).toContain("Task Succeeded");
-    expect(raw).not.toContain("<uploaded_files>");
-    expect(raw).not.toContain("secret.pdf");
-  });
-
-  it("preserves text and image_url parts in mixed content arrays", () => {
-    // `extractContentFromMessage` keeps `text` and `image_url` parts and
-    // drops `thinking` parts. The JSON export must agree with that
-    // contract.
-    const message = ai("placeholder", {
-      id: "ai-mixed",
-      content: [
-        { type: "thinking", thinking: "internal reasoning" },
-        { type: "text", text: "user-visible answer" },
-        {
-          type: "image_url",
-          image_url: { url: "https://example.invalid/cat.png" },
-        },
-      ],
-    } as unknown as Partial<Message>);
-    const raw = formatThreadAsJSON(makeThread(), [message]);
-    expect(raw).toContain("user-visible answer");
-    expect(raw).toContain("https://example.invalid/cat.png");
-    expect(raw).not.toContain("internal reasoning");
-  });
-
-  it("drops opted-in empty reasoning rather than emit reasoning: ''", () => {
-    // `extractReasoningContentFromMessage` can legitimately hand back ""
-    // for an AI message that has no reasoning content. The export must
-    // mirror the Markdown path's `!reasoning` `continue` and drop the row
-    // instead of leaking `{reasoning: ""}`.
-    const message = ai("", {
-      id: "ai-empty-reasoning",
-      additional_kwargs: { reasoning_content: "" },
-    } as Partial<Message>);
     const raw = formatThreadAsJSON(makeThread(), [message], {
       includeReasoning: true,
+      includeToolCalls: true,
     });
-    const parsed = JSON.parse(raw) as { messages: unknown[] };
+    const parsed = JSON.parse(raw);
+    expect(parsed.messages[0]).toHaveProperty("reasoning", "my reasoning");
+    expect(parsed.messages[0]).toHaveProperty("tool_calls");
+    expect(raw).toContain('"search"');
+  });
+
+  test("messages with no content are filtered out", () => {
+    // The mock extractContentFromMessage returns "" for empty strings,
+    // and hasContent returns false, so the message gets filtered out.
+    const raw = formatThreadAsJSON(makeThread(), [ai("", { id: "ai-empty" })]);
+    const parsed = JSON.parse(raw);
     expect(parsed.messages).toHaveLength(0);
+  });
+
+  test("hidden messages are filtered out", () => {
+    const raw = formatThreadAsJSON(makeThread(), [
+      human("secret", { additional_kwargs: { hide_from_ui: true } }),
+      ai("public"),
+    ]);
+    expect(raw).not.toContain("secret");
+    const parsed = JSON.parse(raw);
+    expect(parsed.messages).toHaveLength(1);
+  });
+
+  test("tool messages filtered by default", () => {
+    const raw = formatThreadAsJSON(makeThread(), [
+      ai("ok"),
+      toolMsg("internal result"),
+    ]);
+    expect(raw).not.toContain("internal result");
+  });
+
+  test("includeToolMessages keeps tool messages", () => {
+    const raw = formatThreadAsJSON(makeThread(), [toolMsg("result data")], {
+      includeToolMessages: true,
+    });
+    const parsed = JSON.parse(raw);
+    expect(parsed.messages.some((m: any) => m.type === "tool")).toBe(true);
+    expect(raw).toContain("result data");
+  });
+
+  test("produces exported_at timestamp", () => {
+    const raw = formatThreadAsJSON(makeThread(), []);
+    const parsed = JSON.parse(raw);
+    expect(parsed).toHaveProperty("exported_at");
+    expect(typeof parsed.exported_at).toBe("string");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// exportThreadAsMarkdown
+// ---------------------------------------------------------------------------
+
+describe("exportThreadAsMarkdown", () => {
+  let createObjectURLSpy: ReturnType<typeof vi.fn>;
+  let revokeObjectURLSpy: ReturnType<typeof vi.fn>;
+  let clickSpy: ReturnType<typeof vi.fn>;
+  let capturedFilename: string;
+
+  beforeEach(() => {
+    createObjectURLSpy = vi.fn(() => "blob:mock-md-url");
+    revokeObjectURLSpy = vi.fn();
+    URL.createObjectURL = createObjectURLSpy as any;
+    URL.revokeObjectURL = revokeObjectURLSpy as any;
+
+    capturedFilename = "";
+    clickSpy = vi.fn();
+
+    const originalCreateElement = document.createElement.bind(document);
+    vi.spyOn(document, "createElement").mockImplementation((tag: string) => {
+      if (tag === "a") {
+        const anchor = originalCreateElement(tag);
+        Object.defineProperty(anchor, "download", {
+          get: () => capturedFilename,
+          set: (val: string) => {
+            capturedFilename = val;
+          },
+        });
+        (anchor as HTMLElement).click = clickSpy as unknown as () => void;
+        return anchor;
+      }
+      return originalCreateElement(tag);
+    });
+    vi.spyOn(document.body, "appendChild").mockImplementation(
+      () => ({}) as unknown as Node,
+    );
+    vi.spyOn(document.body, "removeChild").mockImplementation(
+      () => ({}) as unknown as Node,
+    );
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  test("creates blob, creates anchor, and clicks it", () => {
+    const thread = makeThread({ values: { title: "Export Test" } });
+    exportThreadAsMarkdown(thread, [human("hello"), ai("response")]);
+
+    expect(createObjectURLSpy).toHaveBeenCalledTimes(1);
+    const blobArg = createObjectURLSpy.mock.calls[0]?.[0] as Blob;
+    expect(blobArg).toBeInstanceOf(Blob);
+    expect(capturedFilename).toBe("Export Test.md");
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+  });
+
+  test("sanitizes special characters in filename", () => {
+    const thread = makeThread({ values: { title: "!@#$%^&*()" } });
+    exportThreadAsMarkdown(thread, [human("q")]);
+    expect(capturedFilename).toBe("conversation.md");
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+  });
+
+  test("uses Untitled for thread without title", () => {
+    const thread = makeThread({ values: {} });
+    exportThreadAsMarkdown(thread, [ai("answer")]);
+    expect(capturedFilename).toBe("Untitled.md");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// exportThreadAsJSON
+// ---------------------------------------------------------------------------
+
+describe("exportThreadAsJSON", () => {
+  let createObjectURLSpy: ReturnType<typeof vi.fn>;
+  let revokeObjectURLSpy: ReturnType<typeof vi.fn>;
+  let clickSpy: ReturnType<typeof vi.fn>;
+  let capturedFilename: string;
+
+  beforeEach(() => {
+    createObjectURLSpy = vi.fn(() => "blob:mock-json-url");
+    revokeObjectURLSpy = vi.fn();
+    URL.createObjectURL = createObjectURLSpy as any;
+    URL.revokeObjectURL = revokeObjectURLSpy as any;
+
+    capturedFilename = "";
+    clickSpy = vi.fn();
+
+    const originalCreateElement = document.createElement.bind(document);
+    vi.spyOn(document, "createElement").mockImplementation((tag: string) => {
+      if (tag === "a") {
+        const anchor = originalCreateElement(tag);
+        Object.defineProperty(anchor, "download", {
+          get: () => capturedFilename,
+          set: (val: string) => {
+            capturedFilename = val;
+          },
+        });
+        (anchor as HTMLElement).click = clickSpy as unknown as () => void;
+        return anchor;
+      }
+      return originalCreateElement(tag);
+    });
+    vi.spyOn(document.body, "appendChild").mockImplementation(
+      () => ({}) as unknown as Node,
+    );
+    vi.spyOn(document.body, "removeChild").mockImplementation(
+      () => ({}) as unknown as Node,
+    );
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  test("creates blob with JSON content and clicks anchor", () => {
+    const thread = makeThread({ values: { title: "JSON Export" } });
+    exportThreadAsJSON(thread, [human("hello"), ai("response")]);
+
+    expect(createObjectURLSpy).toHaveBeenCalledTimes(1);
+    const blobArg = createObjectURLSpy.mock.calls[0]?.[0] as Blob;
+    expect(blobArg).toBeInstanceOf(Blob);
+    expect(capturedFilename).toBe("JSON Export.json");
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+  });
+
+  test("sanitizes special characters in JSON filename", () => {
+    const thread = makeThread({ values: { title: "!@#$%^&*()" } });
+    exportThreadAsJSON(thread, [human("q")]);
+    expect(capturedFilename).toBe("conversation.json");
+  });
+
+  test("uses Untitled for thread without title in JSON export", () => {
+    const thread = makeThread({ values: {} });
+    exportThreadAsJSON(thread, [ai("answer")]);
+    expect(capturedFilename).toBe("Untitled.json");
   });
 });

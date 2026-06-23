@@ -1,4 +1,12 @@
+import { dirname, resolve } from "path";
+import { fileURLToPath } from "url";
+
 import { defineConfig, devices } from "@playwright/test";
+import { config } from "dotenv";
+
+// Load root .env so test-runner process sees OPENAI_API_KEY, etc.
+const __dirname = dirname(fileURLToPath(import.meta.url));
+config({ path: resolve(__dirname, "../.env") });
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -17,6 +25,7 @@ export default defineConfig({
     toMatchSnapshot: {
       maxDiffPixelRatio: 0.01,
     },
+    timeout: 15_000,
   },
 
   use: {
@@ -49,12 +58,14 @@ export default defineConfig({
   webServer: {
     command: "pnpm exec next build --webpack && pnpm start",
     url: "http://localhost:3000",
-    reuseExistingServer: false,
+    reuseExistingServer: true,
     timeout: 120_000,
     env: {
       SKIP_ENV_VALIDATION: "1",
       IDEER_AUTH_DISABLED: "1",
       NEXT_PUBLIC_BACKEND_BASE_URL: "http://localhost:3000",
+      OPENAI_API_KEY: process.env.OPENAI_API_KEY ?? "",
+      OPENAI_BASE_URL: process.env.OPENAI_BASE_URL ?? "",
     },
   },
 });

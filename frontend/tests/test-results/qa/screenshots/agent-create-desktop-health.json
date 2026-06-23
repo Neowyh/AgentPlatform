@@ -1,0 +1,23 @@
+{
+  "page": "agent-create",
+  "route": "/workspace/agents/new",
+  "timestamp": "2026-06-19T04:06:58.794Z",
+  "viewport": "desktop",
+  "status": "fail",
+  "checks": {
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    ],
+    "failedRequests": [
+      "401 http://localhost:3000/api/v1/auth/login/local"
+    ],
+    "pageEmpty": false,
+    "horizontalOverflow": false,
+    "reactError": false,
+    "urlDrift": true,
+    "wrongPage": "被重定向到登录页",
+    "missingElements": [
+      "input[name=\"name\"], input[placeholder*=\"name\"], textarea"
+    ]
+  }
+}

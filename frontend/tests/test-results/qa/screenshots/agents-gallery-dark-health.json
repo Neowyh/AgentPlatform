@@ -1,0 +1,17 @@
+{
+  "page": "agents-gallery",
+  "route": "/workspace/agents",
+  "timestamp": "2026-06-19T02:06:35.706Z",
+  "viewport": "dark",
+  "status": "ok",
+  "checks": {
+    "consoleErrors": [],
+    "failedRequests": [],
+    "pageEmpty": false,
+    "horizontalOverflow": false,
+    "reactError": false,
+    "urlDrift": false,
+    "wrongPage": null,
+    "missingElements": []
+  }
+}

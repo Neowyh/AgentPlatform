@@ -21,6 +21,7 @@ export const ArtifactTrigger = () => {
         onClick={() => {
           setArtifactsOpen(true);
         }}
+        data-testid="artifact-trigger-button"
       >
         <FilesIcon />
         {t.common.artifacts}

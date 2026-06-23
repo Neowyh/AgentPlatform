@@ -1,0 +1,19 @@
+{
+  "page": "state-chat-with-artifacts",
+  "route": "/workspace/chats/new",
+  "timestamp": "2026-06-19T02:05:58.859Z",
+  "viewport": "desktop",
+  "status": "fail",
+  "checks": {
+    "consoleErrors": [],
+    "failedRequests": [],
+    "pageEmpty": false,
+    "horizontalOverflow": false,
+    "reactError": false,
+    "urlDrift": false,
+    "wrongPage": null,
+    "missingElements": [
+      "#artifacts, [data-testid=\"artifact-panel\"]"
+    ]
+  }
+}

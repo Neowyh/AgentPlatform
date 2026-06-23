@@ -1,0 +1,17 @@
+{
+  "page": "settings-account",
+  "route": "/workspace/chats/new",
+  "timestamp": "2026-06-19T02:06:24.878Z",
+  "viewport": "mobile",
+  "status": "ok",
+  "checks": {
+    "consoleErrors": [],
+    "failedRequests": [],
+    "pageEmpty": false,
+    "horizontalOverflow": false,
+    "reactError": false,
+    "urlDrift": false,
+    "wrongPage": null,
+    "missingElements": []
+  }
+}

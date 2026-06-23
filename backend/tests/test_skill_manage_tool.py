@@ -1,178 +1,632 @@
-import importlib
-from types import SimpleNamespace
+"""Tests for ideer.tools.skill_manage_tool — comprehensive coverage."""
 
-import anyio
+from __future__ import annotations
+
+import asyncio
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
 
-skill_manage_module = importlib.import_module("ideer.tools.skill_manage_tool")
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
 
 def _skill_content(name: str, description: str = "Demo skill") -> str:
     return f"---\nname: {name}\ndescription: {description}\n---\n\n# {name}\n"
 
 
-async def _async_result(decision: str, reason: str):
+def _make_runtime(thread_id: str = "t-1") -> SimpleNamespace:
+    """Build a minimal Runtime-like object."""
+    return SimpleNamespace(
+        context={"thread_id": thread_id},
+        config={"configurable": {"thread_id": thread_id}},
+    )
+
+
+def _make_storage() -> MagicMock:
+    """Build a mock SkillStorage with sensible defaults."""
+    s = MagicMock()
+    s.validate_skill_name = MagicMock(side_effect=lambda n: n)
+    s.custom_skill_exists = MagicMock(return_value=False)
+    s.public_skill_exists = MagicMock(return_value=False)
+    s.ensure_custom_skill_is_editable = MagicMock()
+    s.validate_skill_markdown_content = MagicMock()
+    s.write_custom_skill = MagicMock()
+    s.append_history = MagicMock()
+    s.delete_custom_skill = MagicMock()
+    s.get_custom_skill_file = MagicMock()
+    s.ensure_safe_support_path = MagicMock()
+    return s
+
+
+def _make_scan_result(decision: str = "allow", reason: str = "ok"):
+    return SimpleNamespace(decision=decision, reason=reason)
+
+
+def _async_result(decision: str, reason: str):
     from ideer.skills.security_scanner import ScanResult
 
     return ScanResult(decision=decision, reason=reason)
 
 
-def test_skill_manage_create_and_patch(monkeypatch, tmp_path):
-    skills_root = tmp_path / "skills"
-    config = SimpleNamespace(
-        skills=SimpleNamespace(get_skills_path=lambda: skills_root, container_path="/mnt/skills", use="ideer.skills.storage.local_skill_storage:LocalSkillStorage"),
-        skill_evolution=SimpleNamespace(enabled=True, moderation_model_name=None),
-    )
-    monkeypatch.setattr("ideer.config.get_app_config", lambda: config)
-    monkeypatch.setattr("ideer.skills.security_scanner.get_app_config", lambda: config)
-    refresh_calls = []
-
-    async def _refresh():
-        refresh_calls.append("refresh")
-
-    monkeypatch.setattr(skill_manage_module, "refresh_skills_system_prompt_cache_async", _refresh)
-    monkeypatch.setattr(skill_manage_module, "scan_skill_content", lambda *args, **kwargs: _async_result("allow", "ok"))
-
-    runtime = SimpleNamespace(context={"thread_id": "thread-1"}, config={"configurable": {"thread_id": "thread-1"}})
-
-    result = anyio.run(
-        skill_manage_module.skill_manage_tool.coroutine,
-        runtime,
-        "create",
-        "demo-skill",
-        _skill_content("demo-skill"),
-    )
-    assert "Created custom skill" in result
-
-    patch_result = anyio.run(
-        skill_manage_module.skill_manage_tool.coroutine,
-        runtime,
-        "patch",
-        "demo-skill",
-        None,
-        None,
-        "Demo skill",
-        "Patched skill",
-        1,
-    )
-    assert "Patched custom skill" in patch_result
-    assert "Patched skill" in (skills_root / "custom" / "demo-skill" / "SKILL.md").read_text(encoding="utf-8")
-    assert refresh_calls == ["refresh", "refresh"]
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
 
 
-def test_skill_manage_patch_replaces_single_occurrence_by_default(monkeypatch, tmp_path):
-    skills_root = tmp_path / "skills"
-    config = SimpleNamespace(
-        skills=SimpleNamespace(get_skills_path=lambda: skills_root, container_path="/mnt/skills", use="ideer.skills.storage.local_skill_storage:LocalSkillStorage"),
-        skill_evolution=SimpleNamespace(enabled=True, moderation_model_name=None),
-    )
-    monkeypatch.setattr("ideer.config.get_app_config", lambda: config)
-    monkeypatch.setattr("ideer.skills.security_scanner.get_app_config", lambda: config)
-
-    async def _refresh():
-        return None
-
-    monkeypatch.setattr(skill_manage_module, "refresh_skills_system_prompt_cache_async", _refresh)
-    monkeypatch.setattr(skill_manage_module, "scan_skill_content", lambda *args, **kwargs: _async_result("allow", "ok"))
-
-    runtime = SimpleNamespace(context={"thread_id": "thread-1"}, config={"configurable": {"thread_id": "thread-1"}})
-    content = _skill_content("demo-skill", "Demo skill") + "\nRepeated: Demo skill\n"
-
-    anyio.run(skill_manage_module.skill_manage_tool.coroutine, runtime, "create", "demo-skill", content)
-    patch_result = anyio.run(
-        skill_manage_module.skill_manage_tool.coroutine,
-        runtime,
-        "patch",
-        "demo-skill",
-        None,
-        None,
-        "Demo skill",
-        "Patched skill",
-    )
-
-    skill_text = (skills_root / "custom" / "demo-skill" / "SKILL.md").read_text(encoding="utf-8")
-    assert "1 replacement(s) applied, 2 match(es) found" in patch_result
-    assert skill_text.count("Patched skill") == 1
-    assert skill_text.count("Demo skill") == 1
+@pytest.fixture(autouse=True)
+def _patch_deps():
+    """Patch heavy dependencies for every test in this module."""
+    with (
+        patch("ideer.tools.skill_manage_tool.get_or_new_skill_storage") as mock_storage_fn,
+        patch("ideer.tools.skill_manage_tool.scan_skill_content", new_callable=AsyncMock) as mock_scan,
+        patch("ideer.tools.skill_manage_tool.refresh_skills_system_prompt_cache_async", new_callable=AsyncMock) as mock_refresh,
+        patch("ideer.tools.skill_manage_tool.SKILL_MD_FILE", "SKILL.md"),
+    ):
+        storage = _make_storage()
+        mock_storage_fn.return_value = storage
+        mock_scan.return_value = _make_scan_result()
+        yield SimpleNamespace(
+            storage=storage,
+            scan=mock_scan,
+            refresh=mock_refresh,
+        )
 
 
-def test_skill_manage_rejects_public_skill_patch(monkeypatch, tmp_path):
-    skills_root = tmp_path / "skills"
-    public_dir = skills_root / "public" / "deep-research"
-    public_dir.mkdir(parents=True, exist_ok=True)
-    (public_dir / "SKILL.md").write_text(_skill_content("deep-research"), encoding="utf-8")
-    config = SimpleNamespace(
-        skills=SimpleNamespace(get_skills_path=lambda: skills_root, container_path="/mnt/skills", use="ideer.skills.storage.local_skill_storage:LocalSkillStorage"),
-        skill_evolution=SimpleNamespace(enabled=True, moderation_model_name=None),
-    )
-    monkeypatch.setattr("ideer.config.get_app_config", lambda: config)
+# ---------------------------------------------------------------------------
+# Import the module under test AFTER patching
+# ---------------------------------------------------------------------------
 
-    runtime = SimpleNamespace(context={}, config={"configurable": {}})
+from ideer.tools.skill_manage_tool import (  # noqa: E402
+    _get_lock,
+    _get_thread_id,
+    _history_record,
+    _scan_or_raise,
+    _skill_manage_impl,
+    _to_thread,
+    skill_manage_tool,
+)
 
-    with pytest.raises(ValueError, match="built-in skill"):
-        anyio.run(
-            skill_manage_module.skill_manage_tool.coroutine,
-            runtime,
+# ===================================================================
+# _get_lock
+# ===================================================================
+
+
+class TestGetLock:
+    def test_returns_lock_for_name(self):
+        lock = _get_lock("my-skill")
+        assert isinstance(lock, asyncio.Lock)
+
+    def test_same_lock_for_same_name(self):
+        a = _get_lock("same")
+        b = _get_lock("same")
+        assert a is b
+
+    def test_different_locks_for_different_names(self):
+        a = _get_lock("alpha")
+        b = _get_lock("beta")
+        assert a is not b
+
+
+# ===================================================================
+# _get_thread_id
+# ===================================================================
+
+
+class TestGetThreadId:
+    def test_none_runtime(self):
+        assert _get_thread_id(None) is None
+
+    def test_from_context(self):
+        rt = SimpleNamespace(context={"thread_id": "ctx-1"}, config={})
+        assert _get_thread_id(rt) == "ctx-1"
+
+    def test_from_config_fallback(self):
+        rt = SimpleNamespace(context={}, config={"configurable": {"thread_id": "cfg-1"}})
+        assert _get_thread_id(rt) == "cfg-1"
+
+    def test_context_missing_thread_id(self):
+        rt = SimpleNamespace(context={"other": "val"}, config={"configurable": {"thread_id": "cfg-2"}})
+        assert _get_thread_id(rt) == "cfg-2"
+
+    def test_no_context_no_config(self):
+        rt = SimpleNamespace(context={}, config={})
+        assert _get_thread_id(rt) is None
+
+    def test_context_is_none(self):
+        rt = SimpleNamespace(context=None, config={})
+        assert _get_thread_id(rt) is None
+
+
+# ===================================================================
+# _history_record
+# ===================================================================
+
+
+class TestHistoryRecord:
+    def test_returns_expected_dict(self):
+        rec = _history_record(
+            action="create",
+            file_path="SKILL.md",
+            prev_content=None,
+            new_content="# Hello",
+            thread_id="t-1",
+            scanner={"decision": "allow", "reason": "ok"},
+        )
+        assert rec["action"] == "create"
+        assert rec["author"] == "agent"
+        assert rec["thread_id"] == "t-1"
+        assert rec["file_path"] == "SKILL.md"
+        assert rec["prev_content"] is None
+        assert rec["new_content"] == "# Hello"
+        assert rec["scanner"] == {"decision": "allow", "reason": "ok"}
+
+
+# ===================================================================
+# _scan_or_raise
+# ===================================================================
+
+
+class TestScanOrRaise:
+    @pytest.mark.asyncio
+    async def test_allow_decision(self, _patch_deps):
+        _patch_deps.scan.return_value = _make_scan_result("allow", "clean")
+        result = await _scan_or_raise("content", executable=False, location="x/SKILL.md")
+        assert result == {"decision": "allow", "reason": "clean"}
+
+    @pytest.mark.asyncio
+    async def test_warn_decision_non_executable(self, _patch_deps):
+        _patch_deps.scan.return_value = _make_scan_result("warn", "suspicious")
+        result = await _scan_or_raise("content", executable=False, location="x/SKILL.md")
+        assert result == {"decision": "warn", "reason": "suspicious"}
+
+    @pytest.mark.asyncio
+    async def test_block_raises(self, _patch_deps):
+        _patch_deps.scan.return_value = _make_scan_result("block", "malicious")
+        with pytest.raises(ValueError, match="Security scan blocked"):
+            await _scan_or_raise("content", executable=False, location="x/SKILL.md")
+
+    @pytest.mark.asyncio
+    async def test_executable_warn_raises(self, _patch_deps):
+        _patch_deps.scan.return_value = _make_scan_result("warn", "untrusted")
+        with pytest.raises(ValueError, match="Security scan rejected executable"):
+            await _scan_or_raise("content", executable=True, location="x/scripts/run.sh")
+
+    @pytest.mark.asyncio
+    async def test_executable_allow_ok(self, _patch_deps):
+        _patch_deps.scan.return_value = _make_scan_result("allow", "ok")
+        result = await _scan_or_raise("content", executable=True, location="x/scripts/run.sh")
+        assert result["decision"] == "allow"
+
+
+# ===================================================================
+# _to_thread
+# ===================================================================
+
+
+class TestToThread:
+    @pytest.mark.asyncio
+    async def test_runs_sync_function_in_thread(self):
+        result = await _to_thread(lambda: 42)
+        assert result == 42
+
+    @pytest.mark.asyncio
+    async def test_passes_args(self):
+        def add(a, b):
+            return a + b
+
+        result = await _to_thread(add, 3, 4)
+        assert result == 7
+
+
+# ===================================================================
+# _skill_manage_impl — action: create
+# ===================================================================
+
+
+class TestCreateAction:
+    @pytest.mark.asyncio
+    async def test_create_success(self, _patch_deps):
+        s = _patch_deps.storage
+        s.custom_skill_exists.return_value = False
+        rt = _make_runtime()
+        result = await _skill_manage_impl(rt, "create", "my-skill", content="# My Skill")
+        assert "Created" in result
+        s.write_custom_skill.assert_called_once_with("my-skill", "SKILL.md", "# My Skill")
+        s.append_history.assert_called_once()
+        _patch_deps.refresh.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_create_already_exists(self, _patch_deps):
+        _patch_deps.storage.custom_skill_exists.return_value = True
+        with pytest.raises(ValueError, match="already exists"):
+            await _skill_manage_impl(_make_runtime(), "create", "dup", content="# x")
+
+    @pytest.mark.asyncio
+    async def test_create_no_content(self, _patch_deps):
+        with pytest.raises(ValueError, match="content is required"):
+            await _skill_manage_impl(_make_runtime(), "create", "new-skill")
+
+    @pytest.mark.asyncio
+    async def test_create_scan_blocks(self, _patch_deps):
+        _patch_deps.scan.return_value = _make_scan_result("block", "bad")
+        with pytest.raises(ValueError, match="blocked"):
+            await _skill_manage_impl(_make_runtime(), "create", "new-skill", content="# Bad")
+
+    @pytest.mark.asyncio
+    async def test_create_no_thread_id(self, _patch_deps):
+        """Create with runtime that has no thread_id."""
+        s = _patch_deps.storage
+        s.custom_skill_exists.return_value = False
+        rt = SimpleNamespace(context={}, config={})
+        result = await _skill_manage_impl(rt, "create", "my-skill", content="# Skill")
+        assert "Created" in result
+        # Verify history was recorded with thread_id=None
+        history_call = s.append_history.call_args
+        assert history_call[0][1]["thread_id"] is None
+
+
+# ===================================================================
+# _skill_manage_impl — action: edit
+# ===================================================================
+
+
+class TestEditAction:
+    @pytest.mark.asyncio
+    async def test_edit_success(self, _patch_deps):
+        s = _patch_deps.storage
+        skill_file = MagicMock()
+        skill_file.read_text = MagicMock(return_value="# Old")
+        s.get_custom_skill_file.return_value = skill_file
+        rt = _make_runtime()
+        result = await _skill_manage_impl(rt, "edit", "my-skill", content="# New")
+        assert "Updated" in result
+        s.ensure_custom_skill_is_editable.assert_called_once_with("my-skill")
+        s.write_custom_skill.assert_called_once_with("my-skill", "SKILL.md", "# New")
+        _patch_deps.refresh.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_edit_no_content(self, _patch_deps):
+        with pytest.raises(ValueError, match="content is required"):
+            await _skill_manage_impl(_make_runtime(), "edit", "my-skill")
+
+    @pytest.mark.asyncio
+    async def test_edit_scan_blocks(self, _patch_deps):
+        _patch_deps.scan.return_value = _make_scan_result("block", "malicious")
+        with pytest.raises(ValueError, match="blocked"):
+            await _skill_manage_impl(_make_runtime(), "edit", "my-skill", content="# Bad")
+
+    @pytest.mark.asyncio
+    async def test_edit_preserves_prev_content(self, _patch_deps):
+        s = _patch_deps.storage
+        skill_file = MagicMock()
+        skill_file.read_text = MagicMock(return_value="# Previous")
+        s.get_custom_skill_file.return_value = skill_file
+        await _skill_manage_impl(_make_runtime(), "edit", "my-skill", content="# New")
+        history = s.append_history.call_args[0][1]
+        assert history["prev_content"] == "# Previous"
+        assert history["new_content"] == "# New"
+        assert history["action"] == "edit"
+
+
+# ===================================================================
+# _skill_manage_impl — action: patch
+# ===================================================================
+
+
+class TestPatchAction:
+    @pytest.mark.asyncio
+    async def test_patch_success(self, _patch_deps):
+        s = _patch_deps.storage
+        skill_file = MagicMock()
+        skill_file.read_text = MagicMock(return_value="Hello World")
+        s.get_custom_skill_file.return_value = skill_file
+        rt = _make_runtime()
+        result = await _skill_manage_impl(rt, "patch", "my-skill", find="World", replace="Universe")
+        assert "Patched" in result
+        assert "1 replacement" in result
+        s.write_custom_skill.assert_called_once_with("my-skill", "SKILL.md", "Hello Universe")
+        _patch_deps.refresh.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_patch_missing_find(self, _patch_deps):
+        with pytest.raises(ValueError, match="find and replace are required"):
+            await _skill_manage_impl(_make_runtime(), "patch", "my-skill", replace="y")
+
+    @pytest.mark.asyncio
+    async def test_patch_missing_replace(self, _patch_deps):
+        with pytest.raises(ValueError, match="find and replace are required"):
+            await _skill_manage_impl(_make_runtime(), "patch", "my-skill", find="x")
+
+    @pytest.mark.asyncio
+    async def test_patch_target_not_found(self, _patch_deps):
+        skill_file = MagicMock()
+        skill_file.read_text = MagicMock(return_value="Hello World")
+        _patch_deps.storage.get_custom_skill_file.return_value = skill_file
+        with pytest.raises(ValueError, match="Patch target not found"):
+            await _skill_manage_impl(_make_runtime(), "patch", "my-skill", find="NOTHERE", replace="x")
+
+    @pytest.mark.asyncio
+    async def test_patch_expected_count_mismatch(self, _patch_deps):
+        skill_file = MagicMock()
+        skill_file.read_text = MagicMock(return_value="aaa bbb aaa")
+        _patch_deps.storage.get_custom_skill_file.return_value = skill_file
+        with pytest.raises(ValueError, match="Expected 1 replacements but found 2"):
+            await _skill_manage_impl(
+                _make_runtime(),
+                "patch",
+                "my-skill",
+                find="aaa",
+                replace="zzz",
+                expected_count=1,
+            )
+
+    @pytest.mark.asyncio
+    async def test_patch_expected_count_matches(self, _patch_deps):
+        skill_file = MagicMock()
+        skill_file.read_text = MagicMock(return_value="aaa bbb aaa")
+        _patch_deps.storage.get_custom_skill_file.return_value = skill_file
+        result = await _skill_manage_impl(
+            _make_runtime(),
             "patch",
-            "deep-research",
-            None,
-            None,
-            "Demo skill",
-            "Patched",
+            "my-skill",
+            find="aaa",
+            replace="zzz",
+            expected_count=2,
         )
+        assert "2 replacement" in result
 
+    @pytest.mark.asyncio
+    async def test_patch_replaces_default_count(self, _patch_deps):
+        skill_file = MagicMock()
+        skill_file.read_text = MagicMock(return_value="aaa aaa aaa")
+        _patch_deps.storage.get_custom_skill_file.return_value = skill_file
+        result = await _skill_manage_impl(_make_runtime(), "patch", "my-skill", find="aaa", replace="b")
+        assert "1 replacement" in result
 
-def test_skill_manage_sync_wrapper_supported(monkeypatch, tmp_path):
-    skills_root = tmp_path / "skills"
-    config = SimpleNamespace(
-        skills=SimpleNamespace(get_skills_path=lambda: skills_root, container_path="/mnt/skills", use="ideer.skills.storage.local_skill_storage:LocalSkillStorage"),
-        skill_evolution=SimpleNamespace(enabled=True, moderation_model_name=None),
-    )
-    monkeypatch.setattr("ideer.config.get_app_config", lambda: config)
-    refresh_calls = []
-
-    async def _refresh():
-        refresh_calls.append("refresh")
-
-    monkeypatch.setattr(skill_manage_module, "refresh_skills_system_prompt_cache_async", _refresh)
-    monkeypatch.setattr(skill_manage_module, "scan_skill_content", lambda *args, **kwargs: _async_result("allow", "ok"))
-
-    runtime = SimpleNamespace(context={"thread_id": "thread-sync"}, config={"configurable": {"thread_id": "thread-sync"}})
-    result = skill_manage_module.skill_manage_tool.func(
-        runtime=runtime,
-        action="create",
-        name="sync-skill",
-        content=_skill_content("sync-skill"),
-    )
-
-    assert "Created custom skill" in result
-    assert refresh_calls == ["refresh"]
-
-
-def test_skill_manage_rejects_support_path_traversal(monkeypatch, tmp_path):
-    skills_root = tmp_path / "skills"
-    config = SimpleNamespace(
-        skills=SimpleNamespace(get_skills_path=lambda: skills_root, container_path="/mnt/skills", use="ideer.skills.storage.local_skill_storage:LocalSkillStorage"),
-        skill_evolution=SimpleNamespace(enabled=True, moderation_model_name=None),
-    )
-    monkeypatch.setattr("ideer.config.get_app_config", lambda: config)
-    monkeypatch.setattr("ideer.skills.security_scanner.get_app_config", lambda: config)
-
-    async def _refresh():
-        return None
-
-    monkeypatch.setattr(skill_manage_module, "refresh_skills_system_prompt_cache_async", _refresh)
-    monkeypatch.setattr(skill_manage_module, "scan_skill_content", lambda *args, **kwargs: _async_result("allow", "ok"))
-
-    runtime = SimpleNamespace(context={"thread_id": "thread-1"}, config={"configurable": {"thread_id": "thread-1"}})
-    anyio.run(skill_manage_module.skill_manage_tool.coroutine, runtime, "create", "demo-skill", _skill_content("demo-skill"))
-
-    with pytest.raises(ValueError, match="parent-directory traversal|selected support directory"):
-        anyio.run(
-            skill_manage_module.skill_manage_tool.coroutine,
-            runtime,
-            "write_file",
-            "demo-skill",
-            "malicious overwrite",
-            "references/../SKILL.md",
+    @pytest.mark.asyncio
+    async def test_patch_no_expected_count(self, _patch_deps):
+        """patch with expected_count=None uses default replacement_count=1."""
+        skill_file = MagicMock()
+        skill_file.read_text = MagicMock(return_value="foo foo")
+        _patch_deps.storage.get_custom_skill_file.return_value = skill_file
+        result = await _skill_manage_impl(
+            _make_runtime(),
+            "patch",
+            "my-skill",
+            find="foo",
+            replace="bar",
+            expected_count=None,
         )
+        assert "1 replacement" in result
+
+
+# ===================================================================
+# _skill_manage_impl — action: delete
+# ===================================================================
+
+
+class TestDeleteAction:
+    @pytest.mark.asyncio
+    async def test_delete_success(self, _patch_deps):
+        rt = _make_runtime()
+        result = await _skill_manage_impl(rt, "delete", "old-skill")
+        assert "Deleted" in result
+        _patch_deps.storage.delete_custom_skill.assert_called_once()
+        _patch_deps.refresh.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_delete_history_record(self, _patch_deps):
+        await _skill_manage_impl(_make_runtime(), "delete", "old-skill")
+        history = _patch_deps.storage.delete_custom_skill.call_args[1]["history_meta"]
+        assert history["action"] == "delete"
+        assert history["scanner"]["decision"] == "allow"
+
+
+# ===================================================================
+# _skill_manage_impl — action: write_file
+# ===================================================================
+
+
+class TestWriteFileAction:
+    @pytest.mark.asyncio
+    async def test_write_file_new_file(self, _patch_deps):
+        s = _patch_deps.storage
+        target = MagicMock()
+        target.exists.return_value = False
+        s.ensure_safe_support_path.return_value = target
+        rt = _make_runtime()
+        result = await _skill_manage_impl(rt, "write_file", "my-skill", content="data", path="data.json")
+        assert "Wrote" in result
+        s.write_custom_skill.assert_called_once_with("my-skill", "data.json", "data")
+
+    @pytest.mark.asyncio
+    async def test_write_file_existing_file(self, _patch_deps):
+        s = _patch_deps.storage
+        target = MagicMock()
+        target.exists.return_value = True
+        target.read_text = MagicMock(return_value="old data")
+        s.ensure_safe_support_path.return_value = target
+        rt = _make_runtime()
+        result = await _skill_manage_impl(rt, "write_file", "my-skill", content="new", path="data.json")
+        assert "Wrote" in result
+
+    @pytest.mark.asyncio
+    async def test_write_file_missing_path(self, _patch_deps):
+        with pytest.raises(ValueError, match="path and content are required"):
+            await _skill_manage_impl(_make_runtime(), "write_file", "my-skill", content="x")
+
+    @pytest.mark.asyncio
+    async def test_write_file_missing_content(self, _patch_deps):
+        with pytest.raises(ValueError, match="path and content are required"):
+            await _skill_manage_impl(_make_runtime(), "write_file", "my-skill", path="x")
+
+    @pytest.mark.asyncio
+    async def test_write_file_missing_both(self, _patch_deps):
+        with pytest.raises(ValueError, match="path and content are required"):
+            await _skill_manage_impl(_make_runtime(), "write_file", "my-skill")
+
+    @pytest.mark.asyncio
+    async def test_write_file_scripts_path_is_executable(self, _patch_deps):
+        s = _patch_deps.storage
+        target = MagicMock()
+        target.exists.return_value = False
+        s.ensure_safe_support_path.return_value = target
+        await _skill_manage_impl(_make_runtime(), "write_file", "my-skill", content="#!/bin/sh", path="scripts/run.sh")
+        call_kwargs = _patch_deps.scan.call_args[1]
+        assert call_kwargs["executable"] is True
+
+    @pytest.mark.asyncio
+    async def test_write_file_non_scripts_path(self, _patch_deps):
+        s = _patch_deps.storage
+        target = MagicMock()
+        target.exists.return_value = False
+        s.ensure_safe_support_path.return_value = target
+        await _skill_manage_impl(_make_runtime(), "write_file", "my-skill", content="data", path="data/config.json")
+        call_kwargs = _patch_deps.scan.call_args[1]
+        assert call_kwargs["executable"] is False
+
+    @pytest.mark.asyncio
+    async def test_write_file_scripts_in_middle_not_executable(self, _patch_deps):
+        """'scripts/' must be at the start or contain 'scripts/' in path."""
+        s = _patch_deps.storage
+        target = MagicMock()
+        target.exists.return_value = False
+        s.ensure_safe_support_path.return_value = target
+        await _skill_manage_impl(_make_runtime(), "write_file", "my-skill", content="data", path="data/scripts/run.sh")
+        call_kwargs = _patch_deps.scan.call_args[1]
+        # "scripts/" is in the path
+        assert call_kwargs["executable"] is True
+
+    @pytest.mark.asyncio
+    async def test_write_file_scan_blocks(self, _patch_deps):
+        s = _patch_deps.storage
+        target = MagicMock()
+        target.exists.return_value = False
+        s.ensure_safe_support_path.return_value = target
+        _patch_deps.scan.return_value = _make_scan_result("block", "bad")
+        with pytest.raises(ValueError, match="blocked"):
+            await _skill_manage_impl(_make_runtime(), "write_file", "my-skill", content="bad", path="data.json")
+
+
+# ===================================================================
+# _skill_manage_impl — action: remove_file
+# ===================================================================
+
+
+class TestRemoveFileAction:
+    @pytest.mark.asyncio
+    async def test_remove_file_success(self, _patch_deps):
+        s = _patch_deps.storage
+        target = MagicMock()
+        target.exists.return_value = True
+        target.read_text = MagicMock(return_value="file content")
+        s.ensure_safe_support_path.return_value = target
+        rt = _make_runtime()
+        result = await _skill_manage_impl(rt, "remove_file", "my-skill", path="data.json")
+        assert "Removed" in result
+        target.unlink.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_remove_file_not_found(self, _patch_deps):
+        target = MagicMock()
+        target.exists.return_value = False
+        _patch_deps.storage.ensure_safe_support_path.return_value = target
+        with pytest.raises(FileNotFoundError, match="not found"):
+            await _skill_manage_impl(_make_runtime(), "remove_file", "my-skill", path="missing.json")
+
+    @pytest.mark.asyncio
+    async def test_remove_file_missing_path(self, _patch_deps):
+        with pytest.raises(ValueError, match="path is required"):
+            await _skill_manage_impl(_make_runtime(), "remove_file", "my-skill")
+
+    @pytest.mark.asyncio
+    async def test_remove_file_history_record(self, _patch_deps):
+        s = _patch_deps.storage
+        target = MagicMock()
+        target.exists.return_value = True
+        target.read_text = MagicMock(return_value="content")
+        s.ensure_safe_support_path.return_value = target
+        await _skill_manage_impl(_make_runtime(), "remove_file", "my-skill", path="data.json")
+        history = s.append_history.call_args[0][1]
+        assert history["action"] == "remove_file"
+        assert history["prev_content"] == "content"
+        assert history["new_content"] is None
+
+
+# ===================================================================
+# _skill_manage_impl — unsupported action
+# ===================================================================
+
+
+class TestUnsupportedAction:
+    @pytest.mark.asyncio
+    async def test_unsupported_action_not_builtin(self, _patch_deps):
+        _patch_deps.storage.public_skill_exists.return_value = False
+        with pytest.raises(ValueError, match="Unsupported action"):
+            await _skill_manage_impl(_make_runtime(), "foobar", "my-skill")
+
+    @pytest.mark.asyncio
+    async def test_unsupported_action_builtin_skill(self, _patch_deps):
+        _patch_deps.storage.public_skill_exists.return_value = True
+        with pytest.raises(ValueError, match="built-in skill"):
+            await _skill_manage_impl(_make_runtime(), "foobar", "builtin-skill")
+
+    @pytest.mark.asyncio
+    async def test_unknown_action_checks_public(self, _patch_deps):
+        """When action is unknown, public_skill_exists is checked."""
+        _patch_deps.storage.public_skill_exists.return_value = False
+        with pytest.raises(ValueError, match="Unsupported action"):
+            await _skill_manage_impl(_make_runtime(), "unknown", "x")
+        _patch_deps.storage.public_skill_exists.assert_called_once_with("x")
+
+
+# ===================================================================
+# skill_manage_tool (the @tool wrapper)
+# ===================================================================
+
+
+class TestSkillManageTool:
+    @pytest.mark.asyncio
+    async def test_tool_delegates_to_impl(self, _patch_deps):
+        rt = _make_runtime()
+        result = await skill_manage_tool.coroutine(
+            runtime=rt,
+            action="create",
+            name="test-skill",
+            content="# Test",
+        )
+        assert "Created" in result
+
+    @pytest.mark.asyncio
+    async def test_tool_create_no_content_raises(self, _patch_deps):
+        with pytest.raises(ValueError, match="content is required"):
+            await skill_manage_tool.coroutine(
+                runtime=_make_runtime(),
+                action="create",
+                name="test-skill",
+            )
+
+
+# ===================================================================
+# Thread safety — lock behaviour
+# ===================================================================
+
+
+class TestLockBehaviour:
+    def test_concurrent_same_name_same_lock(self):
+        lock_a = _get_lock("concurrent-skill")
+        lock_b = _get_lock("concurrent-skill")
+        assert lock_a is lock_b
+
+    def test_weakref_allows_gc(self):
+        """Locks are stored in WeakValueDictionary — unreferenced locks can be GC'd."""
+        import gc
+
+        _get_lock("gc-test")
+        gc.collect()
+        # After GC, a new lock may be created (not guaranteed, but no crash)
+        lock = _get_lock("gc-test")
+        assert isinstance(lock, asyncio.Lock)

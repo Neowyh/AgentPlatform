@@ -100,6 +100,72 @@ export type MockTool = {
   requires_network?: boolean;
 };
 
+export type MockMemory = {
+  version: string;
+  lastUpdated: string;
+  user: {
+    workContext: { summary: string; updatedAt: string };
+    personalContext: { summary: string; updatedAt: string };
+    topOfMind: { summary: string; updatedAt: string };
+  };
+  history: {
+    recentMonths: { summary: string; updatedAt: string };
+    earlierContext: { summary: string; updatedAt: string };
+    longTermBackground: { summary: string; updatedAt: string };
+  };
+  facts: {
+    id: string;
+    content: string;
+    category: string;
+    confidence: number;
+    createdAt: string;
+    source: string;
+  }[];
+};
+
+export const DEFAULT_MOCK_MEMORY: MockMemory = {
+  version: "1.0",
+  lastUpdated: "2025-06-15T00:00:00Z",
+  user: {
+    workContext: {
+      summary: "E2E test user context",
+      updatedAt: "2025-06-15T00:00:00Z",
+    },
+    personalContext: {
+      summary: "E2E test personal context",
+      updatedAt: "2025-06-15T00:00:00Z",
+    },
+    topOfMind: {
+      summary: "E2E test top of mind",
+      updatedAt: "2025-06-15T00:00:00Z",
+    },
+  },
+  history: {
+    recentMonths: {
+      summary: "Recent months context",
+      updatedAt: "2025-06-15T00:00:00Z",
+    },
+    earlierContext: {
+      summary: "Earlier context",
+      updatedAt: "2025-06-15T00:00:00Z",
+    },
+    longTermBackground: {
+      summary: "Long term background",
+      updatedAt: "2025-06-15T00:00:00Z",
+    },
+  },
+  facts: [
+    {
+      id: "fact-1",
+      content: "Test memory fact for E2E",
+      category: "context",
+      confidence: 0.9,
+      createdAt: "2025-06-15T00:00:00Z",
+      source: "manual",
+    },
+  ],
+};
+
 export type MockAPIOptions = {
   threads?: MockThread[];
   agents?: MockAgent[];
@@ -109,6 +175,7 @@ export type MockAPIOptions = {
   users?: MockUser[];
   departments?: MockDepartment[];
   tools?: MockTool[];
+  memory?: MockMemory;
 };
 
 function normalizeArtifactPath(filepath: string) {
@@ -158,6 +225,47 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
   const users = options?.users ?? [];
   const departments = options?.departments ?? [];
   const tools = options?.tools ?? [];
+  const memory = options?.memory ?? DEFAULT_MOCK_MEMORY;
+
+  // ── Auth endpoints (defense-in-depth for IDEER_AUTH_DISABLED mode) ──
+
+  void page.route("**/api/v1/auth/me", (route) => {
+    if (route.request().method() === "GET") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          id: "e2e-user",
+          email: "e2e@test.local",
+          system_role: "super_admin",
+          needs_setup: false,
+        }),
+      });
+    }
+    return route.fallback();
+  });
+
+  void page.route("**/api/v1/auth/setup-status", (route) => {
+    if (route.request().method() === "GET") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ needs_setup: false }),
+      });
+    }
+    return route.fallback();
+  });
+
+  void page.route("**/api/v1/auth/logout", (route) => {
+    if (route.request().method() === "POST") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ success: true }),
+      });
+    }
+    return route.fallback();
+  });
 
   // Thread search — sidebar thread list & chats list page
   void page.route(
@@ -822,6 +930,91 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({ tools, total: tools.length }),
+      });
+    }
+    return route.fallback();
+  });
+
+  // ── Memory ─────────────────────────────────────────────────────
+
+  void page.route("**/api/memory", (route) => {
+    const method = route.request().method();
+    if (method === "GET") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(memory),
+      });
+    }
+    if (method === "DELETE") {
+      // Clear memory — return empty memory
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ...memory,
+          facts: [],
+          user: {
+            ...memory.user,
+            workContext: {
+              summary: "",
+              updatedAt: memory.user.workContext.updatedAt,
+            },
+            personalContext: {
+              summary: "",
+              updatedAt: memory.user.personalContext.updatedAt,
+            },
+            topOfMind: {
+              summary: "",
+              updatedAt: memory.user.topOfMind.updatedAt,
+            },
+          },
+        }),
+      });
+    }
+    return route.fallback();
+  });
+
+  void page.route("**/api/memory/facts", (route) => {
+    if (route.request().method() === "POST") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(memory),
+      });
+    }
+    return route.fallback();
+  });
+
+  void page.route("**/api/memory/facts/*", (route) => {
+    const method = route.request().method();
+    if (method === "PATCH" || method === "DELETE") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(memory),
+      });
+    }
+    return route.fallback();
+  });
+
+  void page.route("**/api/memory/export", (route) => {
+    if (route.request().method() === "GET") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(memory),
+      });
+    }
+    return route.fallback();
+  });
+
+  void page.route("**/api/memory/import", (route) => {
+    if (route.request().method() === "POST") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(memory),
       });
     }
     return route.fallback();

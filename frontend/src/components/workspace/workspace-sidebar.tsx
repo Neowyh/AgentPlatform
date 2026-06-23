@@ -20,7 +20,12 @@ export function WorkspaceSidebar({
   const { open: isSidebarOpen } = useSidebar();
   return (
     <>
-      <Sidebar variant="sidebar" collapsible="icon" {...props}>
+      <Sidebar
+        variant="sidebar"
+        collapsible="icon"
+        {...props}
+        data-testid="sidebar"
+      >
         <SidebarHeader className="py-0">
           <WorkspaceHeader />
         </SidebarHeader>

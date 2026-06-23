@@ -1,0 +1,19 @@
+{
+  "page": "settings-notification",
+  "route": "/workspace/chats/new",
+  "timestamp": "2026-06-19T02:06:04.802Z",
+  "viewport": "desktop",
+  "status": "fail",
+  "checks": {
+    "consoleErrors": [],
+    "failedRequests": [],
+    "pageEmpty": false,
+    "horizontalOverflow": false,
+    "reactError": false,
+    "urlDrift": false,
+    "wrongPage": null,
+    "missingElements": [
+      "button:has-text(\"Request\"), [data-testid=\"notification\"]"
+    ]
+  }
+}

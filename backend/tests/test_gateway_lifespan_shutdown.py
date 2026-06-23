@@ -13,6 +13,7 @@ import asyncio
 from contextlib import asynccontextmanager
 from unittest.mock import MagicMock, patch
 
+import pytest
 from fastapi import FastAPI
 
 
@@ -56,6 +57,7 @@ async def _run_lifespan_with_hanging_stop() -> float:
     return elapsed
 
 
+@pytest.mark.serial
 def test_shutdown_is_bounded_when_channel_stop_hangs():
     """Lifespan exit must complete near the configured timeout, not hang."""
     from app.gateway.app import _SHUTDOWN_HOOK_TIMEOUT_SECONDS

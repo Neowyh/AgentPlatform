@@ -50,14 +50,14 @@ def _evaluate_expression(expression: str, context: dict[str, Any]) -> bool:
 
     rendered = rendered.strip()
 
-    # Handle logical operators first (low precedence)
-    # Split on " and " / " or " respecting simple precedence
-    if " and " in rendered:
-        parts = rendered.split(" and ", 1)
-        return _evaluate_expression(parts[0].strip(), context) and _evaluate_expression(parts[1].strip(), context)
+    # Handle logical operators — and/or use split-all (no recursion depth
+    # issue), not() is checked last (matches original precedence: and > or > not).
     if " or " in rendered:
-        parts = rendered.split(" or ", 1)
-        return _evaluate_expression(parts[0].strip(), context) or _evaluate_expression(parts[1].strip(), context)
+        or_groups = rendered.split(" or ")
+        return any(all(_evaluate_expression(term.strip(), context) for term in group.split(" and ")) if " and " in group else _evaluate_expression(group.strip(), context) for group in or_groups)
+    if " and " in rendered:
+        parts = rendered.split(" and ")
+        return all(_evaluate_expression(p.strip(), context) for p in parts)
     if rendered.startswith("not "):
         return not _evaluate_expression(rendered[4:].strip(), context)
 

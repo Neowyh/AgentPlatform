@@ -142,6 +142,7 @@ const ChatBox: React.FC<{ children: React.ReactNode; threadId: string }> = ({
                 <Button
                   size="icon-sm"
                   variant="ghost"
+                  aria-label="Close artifacts panel"
                   onClick={() => {
                     setArtifactsOpen(false);
                   }}

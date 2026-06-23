@@ -10,13 +10,26 @@
 
 import { test, expect } from "@playwright/test";
 
-import { mockLangGraphAPI } from "../utils/mock-api";
+import { mockLangGraphAPI, type MockAgent } from "../utils/mock-api";
 
 const BASE_URL = process.env.BASE_URL ?? "http://localhost:3000";
 
+const MOCK_AGENTS: MockAgent[] = [
+  {
+    name: "research-assistant",
+    description: "Helps with research tasks",
+    model: "gpt-4",
+  },
+  {
+    name: "code-reviewer",
+    description: "Reviews code for quality",
+    model: "gpt-4",
+  },
+];
+
 test.describe("Agent Management", () => {
   test.beforeEach(async ({ page }) => {
-    mockLangGraphAPI(page);
+    mockLangGraphAPI(page, { agents: MOCK_AGENTS });
   });
 
   test("should list agents", async ({ page }) => {
@@ -34,10 +47,10 @@ test.describe("Agent Management", () => {
   test("should navigate to create agent", async ({ page }) => {
     await page.goto(`${BASE_URL}/workspace/agents`);
 
-    // 查找创建按钮
+    // 查找创建按钮 - text is "New Agent" / "新建智能体"
     const createButton = page
       .locator(
-        'button:has-text("创建"), button:has-text("Create"), a:has-text("创建"), a:has-text("Create")',
+        'button:has-text("New Agent"), button:has-text("新建智能体"), button:has-text("Create"), button:has-text("创建")',
       )
       .first();
     await expect(createButton).toBeVisible({ timeout: 10000 });
@@ -51,19 +64,19 @@ test.describe("Agent Management", () => {
   test("should create agent with name", async ({ page }) => {
     await page.goto(`${BASE_URL}/workspace/agents/new`);
 
-    // 输入 Agent 名称
+    // 输入 Agent 名称 - placeholder is "e.g. code-reviewer" / "例如 code-reviewer"
     const nameInput = page
       .locator(
-        'input[data-testid="agent-name"], input[placeholder*="name" i], input[type="text"]',
+        'input[data-testid="agent-name"], input[placeholder*="e.g." i], input[placeholder*="例如" i], input[type="text"]',
       )
       .first();
     await expect(nameInput).toBeVisible({ timeout: 10000 });
     await nameInput.fill("test-agent-qa");
 
-    // 提交
+    // 提交 - button text is "Continue" / "继续"
     const nextButton = page
       .locator(
-        'button:has-text("下一步"), button:has-text("Next"), button[type="submit"]',
+        'button:has-text("Continue"), button:has-text("继续"), button:has-text("下一步"), button:has-text("Next"), button[type="submit"]',
       )
       .first();
     await nextButton.click();
@@ -80,20 +93,15 @@ test.describe("Agent Management", () => {
   });
 
   test("should view agent details", async ({ page }) => {
-    await page.goto(`${BASE_URL}/workspace/agents`);
+    // Navigate directly to the first agent's detail page
+    await page.goto(`${BASE_URL}/workspace/agents/research-assistant`);
 
-    // 点击第一个 Agent 卡片
-    const agentCard = page
-      .locator(
-        '[data-testid="agent-card"], [class*="agent-card"], [class*="card"]',
-      )
-      .first();
-    await expect(agentCard).toBeVisible({ timeout: 10000 });
-    await agentCard.click();
-
-    // 验证详情页加载
-    await page.waitForURL(/\/agents\/[^/]+$/, { timeout: 10000 });
-    const detailPage = page.locator("text=/详情|detail|配置|config/i").first();
-    await expect(detailPage).toBeVisible({ timeout: 10000 });
+    // 验证详情页加载 - the detail page shows the agent name heading and Configuration
+    await expect(
+      page.getByRole("heading", { name: "research-assistant" }),
+    ).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText("Configuration").first()).toBeVisible({
+      timeout: 10000,
+    });
   });
 });

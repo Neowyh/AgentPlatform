@@ -78,7 +78,7 @@ test.describe("Artifact visualization", () => {
   }) => {
     await page.goto(`/workspace/chats/${MOCK_THREAD_ID}?mock=true`);
 
-    await page.getByRole("button", { name: /artifacts/i }).click();
+    await page.getByTestId("artifact-trigger-button").click();
     await page.getByText("fault_tree.json").click();
 
     await expect(page.getByText("HF-07 heat flux exceeds limit")).toBeVisible();
@@ -96,7 +96,7 @@ test.describe("Artifact visualization", () => {
   }) => {
     await page.goto(`/workspace/chats/${MOCK_THREAD_ID}?mock=true`);
 
-    await page.getByRole("button", { name: /artifacts/i }).click();
+    await page.getByTestId("artifact-trigger-button").click();
     await page.getByText("fault_tree.svg").click();
 
     await expect(page.locator('img[alt="fault_tree.svg"]')).toBeVisible();

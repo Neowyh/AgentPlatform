@@ -70,7 +70,11 @@ export const ChainOfThought = memo(
 
     return (
       <ChainOfThoughtContext.Provider value={chainOfThoughtContext}>
-        <div className={cn("not-prose", className)} {...props}>
+        <div
+          className={cn("not-prose", className)}
+          data-testid="chain-of-thought"
+          {...props}
+        >
           {children}
         </div>
       </ChainOfThoughtContext.Provider>
@@ -95,6 +99,7 @@ export const ChainOfThoughtHeader = memo(
             "text-muted-foreground hover:text-foreground flex w-full items-center gap-2 text-sm transition-colors",
             className,
           )}
+          data-testid="chain-of-thought-trigger"
           {...props}
         >
           {icon ?? <BrainIcon className="size-4" />}
@@ -144,6 +149,7 @@ export const ChainOfThoughtStep = memo(
           "fade-in-0 slide-in-from-top-2 animate-in",
           className,
         )}
+        data-testid="chain-of-thought-step"
         {...props}
       >
         <div className="relative mt-0.5">

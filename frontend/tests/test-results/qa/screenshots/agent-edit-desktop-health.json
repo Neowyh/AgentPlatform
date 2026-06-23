@@ -1,0 +1,21 @@
+{
+  "page": "agent-edit",
+  "route": "/workspace/agents/research-assistant/edit",
+  "timestamp": "2026-06-19T04:07:47.176Z",
+  "viewport": "desktop",
+  "status": "fail",
+  "checks": {
+    "consoleErrors": [
+      "A tree hydrated but some attributes of the server rendered HTML didn't match the client properties. This won't be patched up. This can happen if a SSR-ed Client Component used:\n\n- A server/client branch `if (typeof window !== 'undefined')`.\n- Variable input such as `Date.now()` or `Math.random()` which changes each time it's called.\n- Date formatting in a user's locale which doesn't match the server.\n- External changing data without sending a snapshot of it along with the HTML.\n- Invalid HTML tag nesting.\n\nIt can also happen if the client has a browser extension installed which messes with the HTML before React loaded.\n\n%s%s https://react.dev/link/hydration-mismatch \n\n  ...\n    <LoadingBoundary name=\"login/\" loading={null}>\n      <HTTPAccessFallbackBoundary notFound={undefined} forbidden={undefined} unauthorized={undefined}>\n        <RedirectBoundary>\n          <RedirectErrorBoundary router={{...}}>\n            <InnerLayoutRouter url=\"/login\" tree={[...]} params={{}} cacheNode={{rsc:{...}, ...}} segmentPath={[...]} ...>\n              <SegmentViewNode type=\"page\" pagePath=\"(auth)/log...\">\n                <SegmentTrieNode>\n                <ClientPageRoot Component={function LoginPage} serverProvidedParams={{...}}>\n                  <LoginPage params={Promise} searchParams={Promise}>\n                    <div className=\"bg-backgro...\">\n                      <FlickeringGrid>\n                      <div className=\"border-bor...\">\n                        <div>\n                        <form onSubmit={function handleSubmit} className=\"space-y-2\">\n                          <div className=\"flex flex-...\">\n                            <label>\n                            <Input id=\"email\" type=\"email\" value=\"\" onChange={function onChange} ...>\n                              <input\n                                type=\"email\"\n                                data-slot=\"input\"\n                                className=\"file:text-foreground placeholder:text-muted-foreground selection:bg-primary...\"\n                                id=\"email\"\n                                value=\"\"\n                                onChange={function onChange}\n                                placeholder=\"you@example.com\"\n                                required={true}\n-                               style={{caret-color:\"transparent\"}}\n                              >\n                          <div className=\"flex flex-...\">\n                            <label>\n                            <Input id=\"password\" type=\"password\" value=\"\" onChange={function onChange} ...>\n                              <input\n                                type=\"password\"\n                                data-slot=\"input\"\n                                className=\"file:text-foreground placeholder:text-muted-foreground selection:bg-primary...\"\n                                id=\"password\"\n                                value=\"\"\n                                onChange={function onChange}\n                                placeholder=\"•••••••\"\n                                required={true}\n                                minLength={6}\n-                               style={{caret-color:\"transparent\"}}\n                              >\n                          ...\n                        ...\n              ...\n            ...\n"
+    ],
+    "failedRequests": [],
+    "pageEmpty": false,
+    "horizontalOverflow": false,
+    "reactError": false,
+    "urlDrift": true,
+    "wrongPage": "被重定向到登录页",
+    "missingElements": [
+      "input[name=\"name\"], input[name=\"description\"], textarea"
+    ]
+  }
+}

@@ -5,10 +5,11 @@ from __future__ import annotations
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import selectinload
 
 from app.gateway.authz import get_current_rbac_user, require_role
 from ideer.persistence.engine import get_session_factory
@@ -63,8 +64,8 @@ class UpdateDepartmentRequest(BaseModel):
 async def list_users(
     department_id: str | None = None,
     role: str | None = None,
-    limit: int = 50,
-    offset: int = 0,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     current_user: UserModel = Depends(get_current_rbac_user),
 ):
     """List all users with optional filters. Requires super_admin role."""
@@ -76,10 +77,6 @@ async def list_users(
     if role is not None and role not in tuple(UserRole):
         raise HTTPException(status_code=400, detail=f"Invalid role filter: '{role}'. Valid roles: {', '.join(r.value for r in UserRole)}")
 
-    # Clamp limit and offset to prevent abuse
-    limit = max(1, min(limit, 200))
-    offset = max(0, offset)
-
     async with sf() as session:
         # Count total matching users
         count_stmt = select(func.count()).select_from(UserModel)
@@ -89,8 +86,8 @@ async def list_users(
             count_stmt = count_stmt.where(UserModel.role == role)
         total = (await session.execute(count_stmt)).scalar() or 0
 
-        # Fetch paginated results
-        stmt = select(UserModel)
+        # Fetch paginated results (eagerly load department to avoid lazy-load after session close)
+        stmt = select(UserModel).options(selectinload(UserModel.department))
         if department_id:
             stmt = stmt.where(UserModel.department_id == department_id)
         if role:
@@ -99,23 +96,24 @@ async def list_users(
         result = await session.execute(stmt)
         users = result.scalars().all()
 
-    return {
-        "users": [
-            {
-                "id": u.id,
-                "username": u.username,
-                "role": u.role,
-                "department_id": u.department_id,
-                "disabled": u.disabled,
-                "created_at": str(u.created_at) if u.created_at else None,
-                "last_login": str(u.last_login) if u.last_login else None,
-            }
-            for u in users
-        ],
-        "total": total,
-        "limit": limit,
-        "offset": offset,
-    }
+        return {
+            "users": [
+                {
+                    "id": u.id,
+                    "username": u.username,
+                    "role": u.role,
+                    "department_id": u.department_id,
+                    "department_name": u.department.name if u.department else None,
+                    "disabled": u.disabled,
+                    "created_at": str(u.created_at) if u.created_at else None,
+                    "last_login": str(u.last_login) if u.last_login else None,
+                }
+                for u in users
+            ],
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+        }
 
 
 @router.put("/users/{user_id}/role")
@@ -213,9 +211,10 @@ async def disable_user(
 
 
 @router.get("/departments")
+@require_role(UserRole.SUPER_ADMIN)
 async def list_departments(
-    limit: int = 50,
-    offset: int = 0,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     current_user: UserModel = Depends(get_current_rbac_user),
 ):
     """List all departments. Any authenticated user can view.

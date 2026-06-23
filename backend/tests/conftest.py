@@ -7,16 +7,21 @@ issues when unit-testing lightweight config/registry code in isolation.
 from __future__ import annotations
 
 import importlib.util
+import os
 import sys
+import time
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 # Make 'app' and 'ideer' importable from any working directory
 sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+
+# Make test helpers (e.g. _router_auth_helpers) importable from test modules
+sys.path.insert(0, str(Path(__file__).parent))
 
 # Break the circular import chain that exists in production code:
 #   ideer.subagents.__init__
@@ -38,6 +43,84 @@ _executor_mock.MAX_CONCURRENT_SUBAGENTS = 3
 _executor_mock.get_background_task_result = MagicMock()
 
 sys.modules["ideer.subagents.executor"] = _executor_mock
+
+
+# ---------------------------------------------------------------------------
+# Shared test fixtures — reduce mock boilerplate across test files
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def mock_app_config():
+    """Unified application config mock for tests."""
+    config = MagicMock()
+    config.llm.provider = "openai"
+    config.llm.model = "gpt-4"
+    config.sandbox.enabled = True
+    return config
+
+
+@pytest.fixture()
+def mock_http_client():
+    """Unified HTTP client mock for tests."""
+    client = AsyncMock()
+    client.get = AsyncMock(return_value=MagicMock(status_code=200, json=MagicMock(return_value={})))
+    client.post = AsyncMock(return_value=MagicMock(status_code=200, json=MagicMock(return_value={})))
+    return client
+
+
+@pytest.fixture()
+def mock_db_session():
+    """Unified database session mock for tests."""
+    session = MagicMock()
+    session.execute = MagicMock()
+    session.commit = MagicMock()
+    session.rollback = MagicMock()
+    return session
+
+
+@pytest.fixture()
+def mock_db_session_factory():
+    """Factory fixture that returns a (mock_session, mock_session_factory) pair.
+
+    Usage in tests::
+
+        def test_something(mock_db_session_factory):
+            mock_session, mock_sf = mock_db_session_factory(scalar_result=some_user)
+            # mock_sf can be used as a session factory dependency
+    """
+
+    def _factory(scalar_result=None):
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = scalar_result
+        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=False)
+        mock_sf = MagicMock(return_value=mock_session)
+        return mock_session, mock_sf
+
+    return _factory
+
+
+@pytest.fixture()
+def mock_sse_bridge():
+    """Unified SSE bridge mock for run-worker tests."""
+    bridge = MagicMock()
+    bridge.publish = AsyncMock()
+    bridge.publish_end = AsyncMock()
+    bridge.cleanup = AsyncMock()
+    return bridge
+
+
+@pytest.fixture()
+def mock_run_manager():
+    """Unified run manager mock for run-worker tests."""
+    manager = MagicMock()
+    manager.set_status = AsyncMock()
+    manager.update_model_name = AsyncMock()
+    manager.update_run_completion = AsyncMock()
+    return manager
 
 
 @pytest.fixture()
@@ -83,6 +166,30 @@ def _reset_skill_storage_singleton():
         yield
     finally:
         reset_skill_storage()
+
+
+@pytest.fixture(autouse=True)
+def _reset_registration_attempts():
+    """Reset the in-process registration rate limit state between tests.
+
+    ``_registration_attempts`` is a module-level dict in
+    ``app.gateway.routers.auth`` that accumulates per-IP counters. Without
+    this cleanup, a test that triggers registration can leak state into
+    subsequent tests and cause spurious 429 errors.
+    """
+    try:
+        import app.gateway.routers.auth as auth_mod
+
+        auth_mod._registration_attempts.clear()
+    except ImportError:
+        pass
+    yield
+    try:
+        import app.gateway.routers.auth as auth_mod
+
+        auth_mod._registration_attempts.clear()
+    except ImportError:
+        pass
 
 
 @pytest.fixture(autouse=True)
@@ -137,3 +244,64 @@ def _auto_user_context(request):
         yield
     finally:
         reset_current_user(token)
+
+
+# ---------------------------------------------------------------------------
+# LLM test helpers — skip, serialise, and throttle
+# ---------------------------------------------------------------------------
+#
+# Tests marked ``@pytest.mark.requires_llm`` hit a real LLM API (Mimo by
+# default).  Three concerns:
+#
+# 1. **Skip when no key** — CI and local runs without OPENAI_API_KEY should
+#    skip, not fail.  The ``_skip_llm_if_no_key`` fixture handles this.
+#
+# 2. **Serialise** — LLM tests must not run in parallel (no pytest-xdist
+#    today, but future-proofing).  The ``_llm_rate_limit`` fixture enforces
+#    a minimum gap between consecutive LLM calls.
+#
+# 3. **Retry on transient failure** — API rate-limits and network blips
+#    cause occasional failures.  ``pytest_collection_modifyitems`` adds
+#    ``pytest.mark.flaky(reruns=2, reruns_delay=5)`` so pytest-rerunfailures
+#    retries them automatically.
+
+
+@pytest.fixture(autouse=True)
+def _skip_llm_if_no_key(request):
+    """Auto-skip ``requires_llm`` tests when no API key is available."""
+    if request.node.get_closest_marker("requires_llm"):
+        if os.getenv("CI", "").lower() in ("true", "1") or not os.getenv("OPENAI_API_KEY"):
+            pytest.skip("Requires LLM API key — skipped in CI or when OPENAI_API_KEY is unset")
+    yield
+
+
+_llm_test_last_run: list[float] = [0.0]
+
+
+@pytest.fixture(autouse=True)
+def _llm_rate_limit(request):
+    """Serialise ``requires_llm`` tests and enforce a minimum interval.
+
+    Prevents hitting Mimo API rate-limits when the full suite runs.
+    Non-LLM tests pass through with zero overhead.
+    """
+    if request.node.get_closest_marker("requires_llm"):
+        gap = 1.5  # seconds between LLM calls
+        elapsed = time.monotonic() - _llm_test_last_run[0]
+        if elapsed < gap:
+            time.sleep(gap - elapsed)
+        yield
+        _llm_test_last_run[0] = time.monotonic()
+    else:
+        yield
+
+
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    """Add flaky-rerun markers to ``requires_llm`` tests.
+
+    pytest-rerunfailures will retry up to 2 times with a 5-second delay,
+    absorbing transient rate-limit and network errors.
+    """
+    for item in items:
+        if item.get_closest_marker("requires_llm"):
+            item.add_marker(pytest.mark.flaky(reruns=2, reruns_delay=5))

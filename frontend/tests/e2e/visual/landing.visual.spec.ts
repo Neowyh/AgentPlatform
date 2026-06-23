@@ -11,7 +11,12 @@ test.describe("Landing — visual regression", () => {
   test("default viewport screenshot", async ({ page }) => {
     await page.goto("/");
     await page.waitForLoadState("networkidle");
-    await page.waitForTimeout(500);
+    // Wait for the hero section to render (rotating word component)
+    await page
+      .locator("h1")
+      .first()
+      .waitFor({ state: "visible", timeout: 10000 });
+    await page.waitForTimeout(1000); // let animations settle
 
     await expect(page).toHaveScreenshot("landing-default.png", {
       fullPage: true,
@@ -22,7 +27,11 @@ test.describe("Landing — visual regression", () => {
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto("/");
     await page.waitForLoadState("networkidle");
-    await page.waitForTimeout(500);
+    await page
+      .locator("h1")
+      .first()
+      .waitFor({ state: "visible", timeout: 10000 });
+    await page.waitForTimeout(1000);
 
     await expect(page).toHaveScreenshot("landing-mobile.png", {
       fullPage: true,
@@ -33,7 +42,11 @@ test.describe("Landing — visual regression", () => {
     await page.emulateMedia({ colorScheme: "dark" });
     await page.goto("/");
     await page.waitForLoadState("networkidle");
-    await page.waitForTimeout(500);
+    await page
+      .locator("h1")
+      .first()
+      .waitFor({ state: "visible", timeout: 10000 });
+    await page.waitForTimeout(1000);
 
     await expect(page).toHaveScreenshot("landing-dark.png", {
       fullPage: true,

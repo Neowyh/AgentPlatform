@@ -441,6 +441,7 @@ export function InputBox({
   return (
     <div
       ref={promptRootRef}
+      data-testid="input-box"
       className={cn(
         "relative flex flex-col",
         isWelcomeMode ? "gap-4" : "gap-2",
@@ -506,6 +507,7 @@ export function InputBox({
             placeholder={t.inputBox.placeholder}
             autoFocus={autoFocus}
             defaultValue={initialValue}
+            data-testid="chat-input"
           />
         </PromptInputBody>
         <PromptInputFooter className="flex">
@@ -531,7 +533,11 @@ export function InputBox({
                     : "flash"
                 }
               >
-                <PromptInputActionMenuTrigger className="gap-1! px-2!">
+                <PromptInputActionMenuTrigger
+                  className="gap-1! px-2!"
+                  data-testid="mode-selector-trigger"
+                  aria-label={t.inputBox.mode}
+                >
                   <div>
                     {context.mode === "flash" && <ZapIcon className="size-3" />}
                     {context.mode === "thinking" && (
@@ -814,7 +820,10 @@ export function InputBox({
               onOpenChange={setModelDialogOpen}
             >
               <ModelSelectorTrigger asChild>
-                <PromptInputButton>
+                <PromptInputButton
+                  data-testid="model-selector-trigger"
+                  aria-label="Select model"
+                >
                   <div className="flex min-w-0 flex-col items-start text-left">
                     <ModelSelectorName className="text-xs font-normal">
                       {selectedModel?.display_name}
@@ -852,6 +861,7 @@ export function InputBox({
               disabled={disabled}
               variant="outline"
               status={status}
+              data-testid="submit-button"
             />
           </PromptInputTools>
         </PromptInputFooter>
@@ -967,6 +977,7 @@ function AddAttachmentsButton({ className }: { className?: string }) {
     <Tooltip content={t.inputBox.addAttachments}>
       <PromptInputButton
         className={cn("px-2!", className)}
+        aria-label={t.inputBox.addAttachments}
         onClick={() => attachments.openFileDialog()}
       >
         <PaperclipIcon className="size-3" />

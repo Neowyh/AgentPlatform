@@ -79,6 +79,7 @@ def _real_subagent_executor() -> Iterator[type]:
                 sys.modules[name] = module
 
 
+@pytest.mark.serial
 async def test_load_skills_via_to_thread_does_not_block_event_loop(tmp_path: Path) -> None:
     from ideer.config.skills_config import SkillsConfig
     from ideer.subagents.config import SubagentConfig

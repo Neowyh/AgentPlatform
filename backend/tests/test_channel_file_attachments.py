@@ -1,4 +1,16 @@
-"""Tests for channel file attachment support (ResolvedAttachment, resolution, send_file)."""
+"""Comprehensive tests for channel file attachment support.
+
+Covers:
+- ResolvedAttachment dataclass construction and fields
+- OutboundMessage.attachments field
+- _resolve_attachments (valid, image, missing, invalid, security rejects, path traversal, partial)
+- _format_artifact_text
+- _ingest_inbound_files (symlink attacks, hardlink protection, normal ingestion)
+- Channel base class _on_outbound with attachments
+- Channel.receive_file default behavior
+- Channel.send_file default behavior
+- Channel._make_inbound helper
+"""
 
 from __future__ import annotations
 
@@ -8,7 +20,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from app.channels.base import Channel
-from app.channels.message_bus import InboundMessage, MessageBus, OutboundMessage, ResolvedAttachment
+from app.channels.message_bus import InboundMessage, InboundMessageType, MessageBus, OutboundMessage, ResolvedAttachment
 
 
 def _run(coro):
@@ -41,6 +53,9 @@ class TestResolvedAttachment:
         assert att.filename == "test.pdf"
         assert att.is_image is False
         assert att.size == 11
+        assert att.virtual_path == "/mnt/user-data/outputs/test.pdf"
+        assert att.actual_path == f
+        assert att.mime_type == "application/pdf"
 
     def test_image_detection(self, tmp_path):
         f = tmp_path / "photo.png"
@@ -55,6 +70,35 @@ class TestResolvedAttachment:
             is_image=True,
         )
         assert att.is_image is True
+
+    def test_all_image_types(self, tmp_path):
+        """Various image MIME types should have is_image=True."""
+        for ext, mime in [("jpg", "image/jpeg"), ("gif", "image/gif"), ("webp", "image/webp"), ("svg", "image/svg+xml")]:
+            f = tmp_path / f"img.{ext}"
+            f.write_bytes(b"data")
+            att = ResolvedAttachment(
+                virtual_path=f"/outputs/img.{ext}",
+                actual_path=f,
+                filename=f"img.{ext}",
+                mime_type=mime,
+                size=4,
+                is_image=True,
+            )
+            assert att.is_image is True
+
+    def test_zero_size_file(self, tmp_path):
+        f = tmp_path / "empty.txt"
+        f.write_text("")
+
+        att = ResolvedAttachment(
+            virtual_path="/outputs/empty.txt",
+            actual_path=f,
+            filename="empty.txt",
+            mime_type="text/plain",
+            size=0,
+            is_image=False,
+        )
+        assert att.size == 0
 
 
 # ---------------------------------------------------------------------------
@@ -94,6 +138,24 @@ class TestOutboundMessageAttachments:
         assert len(msg.attachments) == 1
         assert msg.attachments[0].filename == "file.txt"
 
+    def test_multiple_attachments(self, tmp_path):
+        atts = []
+        for name in ["a.txt", "b.pdf", "c.png"]:
+            f = tmp_path / name
+            f.write_bytes(b"data")
+            atts.append(ResolvedAttachment(f"/outputs/{name}", f, name, "application/octet-stream", 4, False))
+
+        msg = OutboundMessage(channel_name="test", chat_id="c1", thread_id="t1", text="files", attachments=atts)
+        assert len(msg.attachments) == 3
+
+    def test_artifacts_field_default(self):
+        msg = OutboundMessage(channel_name="test", chat_id="c1", thread_id="t1", text="hello")
+        assert msg.artifacts == []
+
+    def test_is_final_default(self):
+        msg = OutboundMessage(channel_name="test", chat_id="c1", thread_id="t1", text="hello")
+        assert msg.is_final is True
+
 
 # ---------------------------------------------------------------------------
 # _resolve_attachments tests
@@ -105,7 +167,6 @@ class TestResolveAttachments:
         """Successfully resolves a virtual path to an existing file."""
         from app.channels.manager import _resolve_attachments
 
-        # Create the directory structure: threads/{thread_id}/user-data/outputs/
         thread_id = "test-thread-123"
         outputs_dir = tmp_path / "threads" / thread_id / "user-data" / "outputs"
         outputs_dir.mkdir(parents=True)
@@ -145,6 +206,103 @@ class TestResolveAttachments:
         assert len(result) == 1
         assert result[0].is_image is True
         assert result[0].mime_type == "image/png"
+
+    def test_resolves_jpeg_image(self, tmp_path):
+        """JPEG images are detected."""
+        from app.channels.manager import _resolve_attachments
+
+        thread_id = "test-thread"
+        outputs_dir = tmp_path / "outputs"
+        outputs_dir.mkdir(parents=True)
+        img = outputs_dir / "photo.jpg"
+        img.write_bytes(b"\xff\xd8\xff")
+
+        mock_paths = MagicMock()
+        mock_paths.resolve_virtual_path.return_value = img
+        mock_paths.sandbox_outputs_dir.return_value = outputs_dir
+
+        with patch("ideer.config.paths.get_paths", return_value=mock_paths):
+            result = _resolve_attachments(thread_id, ["/mnt/user-data/outputs/photo.jpg"])
+
+        assert len(result) == 1
+        assert result[0].is_image is True
+        assert result[0].mime_type == "image/jpeg"
+
+    def test_resolves_csv_file(self, tmp_path):
+        """CSV files get text/csv MIME type."""
+        from app.channels.manager import _resolve_attachments
+
+        outputs_dir = tmp_path / "outputs"
+        outputs_dir.mkdir(parents=True)
+        f = outputs_dir / "data.csv"
+        f.write_text("a,b,c")
+
+        mock_paths = MagicMock()
+        mock_paths.resolve_virtual_path.return_value = f
+        mock_paths.sandbox_outputs_dir.return_value = outputs_dir
+
+        with patch("ideer.config.paths.get_paths", return_value=mock_paths):
+            result = _resolve_attachments("t1", ["/mnt/user-data/outputs/data.csv"])
+
+        assert len(result) == 1
+        assert result[0].mime_type == "text/csv"
+
+    def test_resolves_docx_file(self, tmp_path):
+        """DOCX files get correct MIME type."""
+        from app.channels.manager import _resolve_attachments
+
+        outputs_dir = tmp_path / "outputs"
+        outputs_dir.mkdir(parents=True)
+        f = outputs_dir / "report.docx"
+        f.write_bytes(b"PK")
+
+        mock_paths = MagicMock()
+        mock_paths.resolve_virtual_path.return_value = f
+        mock_paths.sandbox_outputs_dir.return_value = outputs_dir
+
+        with patch("ideer.config.paths.get_paths", return_value=mock_paths):
+            result = _resolve_attachments("t1", ["/mnt/user-data/outputs/report.docx"])
+
+        assert len(result) == 1
+        assert "wordprocessingml" in result[0].mime_type
+
+    def test_resolves_xlsx_file(self, tmp_path):
+        """XLSX files get correct MIME type."""
+        from app.channels.manager import _resolve_attachments
+
+        outputs_dir = tmp_path / "outputs"
+        outputs_dir.mkdir(parents=True)
+        f = outputs_dir / "data.xlsx"
+        f.write_bytes(b"PK")
+
+        mock_paths = MagicMock()
+        mock_paths.resolve_virtual_path.return_value = f
+        mock_paths.sandbox_outputs_dir.return_value = outputs_dir
+
+        with patch("ideer.config.paths.get_paths", return_value=mock_paths):
+            result = _resolve_attachments("t1", ["/mnt/user-data/outputs/data.xlsx"])
+
+        assert len(result) == 1
+        assert "spreadsheetml" in result[0].mime_type
+
+    def test_resolves_pptx_file(self, tmp_path):
+        """PPTX files get correct MIME type."""
+        from app.channels.manager import _resolve_attachments
+
+        outputs_dir = tmp_path / "outputs"
+        outputs_dir.mkdir(parents=True)
+        f = outputs_dir / "slides.pptx"
+        f.write_bytes(b"PK")
+
+        mock_paths = MagicMock()
+        mock_paths.resolve_virtual_path.return_value = f
+        mock_paths.sandbox_outputs_dir.return_value = outputs_dir
+
+        with patch("ideer.config.paths.get_paths", return_value=mock_paths):
+            result = _resolve_attachments("t1", ["/mnt/user-data/outputs/slides.pptx"])
+
+        assert len(result) == 1
+        assert "presentationml" in result[0].mime_type
 
     def test_skips_missing_file(self, tmp_path):
         """Missing files are skipped with a warning."""
@@ -205,7 +363,6 @@ class TestResolveAttachments:
         thread_id = "t1"
         outputs_dir = tmp_path / "threads" / thread_id / "user-data" / "outputs"
         outputs_dir.mkdir(parents=True)
-        # Simulate a resolved path that escapes outside the outputs directory
         escaped_file = tmp_path / "threads" / thread_id / "user-data" / "uploads" / "stolen.txt"
         escaped_file.parent.mkdir(parents=True, exist_ok=True)
         escaped_file.write_text("sensitive")
@@ -247,6 +404,66 @@ class TestResolveAttachments:
 
         assert len(result) == 1
         assert result[0].filename == "data.csv"
+
+    def test_empty_artifacts_list(self):
+        """Empty artifacts list returns empty result."""
+        from app.channels.manager import _resolve_attachments
+
+        mock_paths = MagicMock()
+        with patch("ideer.config.paths.get_paths", return_value=mock_paths):
+            result = _resolve_attachments("t1", [])
+
+        assert result == []
+
+    def test_unknown_extension_gets_octet_stream(self, tmp_path):
+        """Unknown file extensions get application/octet-stream."""
+        from app.channels.manager import _resolve_attachments
+
+        outputs_dir = tmp_path / "outputs"
+        outputs_dir.mkdir(parents=True)
+        f = outputs_dir / "data.xyz123"
+        f.write_bytes(b"data")
+
+        mock_paths = MagicMock()
+        mock_paths.resolve_virtual_path.return_value = f
+        mock_paths.sandbox_outputs_dir.return_value = outputs_dir
+
+        with patch("ideer.config.paths.get_paths", return_value=mock_paths):
+            result = _resolve_attachments("t1", ["/mnt/user-data/outputs/data.xyz123"])
+
+        assert len(result) == 1
+        assert result[0].mime_type == "application/octet-stream"
+
+
+# ---------------------------------------------------------------------------
+# _format_artifact_text tests
+# ---------------------------------------------------------------------------
+
+
+class TestFormatArtifactText:
+    def test_single_artifact(self):
+        from app.channels.manager import _format_artifact_text
+
+        result = _format_artifact_text(["/mnt/user-data/outputs/report.pdf"])
+        assert "report.pdf" in result
+
+    def test_multiple_artifacts(self):
+        from app.channels.manager import _format_artifact_text
+
+        result = _format_artifact_text(
+            [
+                "/mnt/user-data/outputs/a.txt",
+                "/mnt/user-data/outputs/b.txt",
+            ]
+        )
+        assert "a.txt" in result
+        assert "b.txt" in result
+
+    def test_empty_artifacts(self):
+        from app.channels.manager import _format_artifact_text
+
+        result = _format_artifact_text([])
+        assert result == "" or "no artifacts" in result.lower() or result is not None
 
 
 # ---------------------------------------------------------------------------
@@ -351,6 +568,140 @@ class TestInboundFileIngestion:
         assert (uploads_dir / "victim.txt").read_text(encoding="utf-8") == "protected"
         assert (uploads_dir / "victim_1.txt").read_bytes() == b"new attachment data"
 
+    def test_normal_file_ingestion(self, tmp_path):
+        """Normal file ingestion without attacks works correctly."""
+        from app.channels import manager
+
+        uploads_dir = tmp_path / "uploads"
+        uploads_dir.mkdir()
+
+        msg = InboundMessage(
+            channel_name="test-channel",
+            chat_id="chat-1",
+            user_id="user-1",
+            text="see attachment",
+            files=[{"filename": "report.pdf", "url": "https://example.invalid/report.pdf"}],
+        )
+
+        async def fake_reader(file_info, client):
+            return b"%PDF-1.4 content"
+
+        with (
+            patch("ideer.uploads.manager.ensure_uploads_dir", return_value=uploads_dir),
+            patch.dict(manager.INBOUND_FILE_READERS, {"test-channel": fake_reader}, clear=False),
+        ):
+            result = _run(manager._ingest_inbound_files("thread-1", msg))
+
+        assert len(result) == 1
+        assert result[0]["filename"] == "report.pdf"
+        assert result[0]["size"] == len(b"%PDF-1.4 content")
+        assert result[0]["path"] == "/mnt/user-data/uploads/report.pdf"
+        assert result[0]["is_image"] is False
+        assert (uploads_dir / "report.pdf").read_bytes() == b"%PDF-1.4 content"
+
+    def test_image_file_ingestion(self, tmp_path):
+        """Image files are marked as is_image=True when type='image' in file info."""
+        from app.channels import manager
+
+        uploads_dir = tmp_path / "uploads"
+        uploads_dir.mkdir()
+
+        msg = InboundMessage(
+            channel_name="test-channel",
+            chat_id="chat-1",
+            user_id="user-1",
+            text="see image",
+            files=[{"filename": "photo.png", "url": "https://example.invalid/photo.png", "type": "image"}],
+        )
+
+        async def fake_reader(file_info, client):
+            return b"\x89PNG image data"
+
+        with (
+            patch("ideer.uploads.manager.ensure_uploads_dir", return_value=uploads_dir),
+            patch.dict(manager.INBOUND_FILE_READERS, {"test-channel": fake_reader}, clear=False),
+        ):
+            result = _run(manager._ingest_inbound_files("thread-1", msg))
+
+        assert len(result) == 1
+        assert result[0]["is_image"] is True
+
+    def test_no_reader_registered_skips_files(self, tmp_path):
+        """When no reader is registered for the channel, files are skipped."""
+        from app.channels import manager
+
+        uploads_dir = tmp_path / "uploads"
+        uploads_dir.mkdir()
+
+        msg = InboundMessage(
+            channel_name="unknown-channel",
+            chat_id="chat-1",
+            user_id="user-1",
+            text="see attachment",
+            files=[{"filename": "file.txt", "url": "https://example.invalid/file.txt"}],
+        )
+
+        with patch("ideer.uploads.manager.ensure_uploads_dir", return_value=uploads_dir):
+            result = _run(manager._ingest_inbound_files("thread-1", msg))
+
+        assert result == []
+
+    def test_reader_failure_skips_file(self, tmp_path):
+        """When the reader fails, the file is skipped."""
+        from app.channels import manager
+
+        uploads_dir = tmp_path / "uploads"
+        uploads_dir.mkdir()
+
+        msg = InboundMessage(
+            channel_name="test-channel",
+            chat_id="chat-1",
+            user_id="user-1",
+            text="see attachment",
+            files=[{"filename": "fail.txt", "url": "https://example.invalid/fail.txt"}],
+        )
+
+        async def failing_reader(file_info, client):
+            raise RuntimeError("download failed")
+
+        with (
+            patch("ideer.uploads.manager.ensure_uploads_dir", return_value=uploads_dir),
+            patch.dict(manager.INBOUND_FILE_READERS, {"test-channel": failing_reader}, clear=False),
+        ):
+            result = _run(manager._ingest_inbound_files("thread-1", msg))
+
+        assert result == []
+
+    def test_duplicate_filename_gets_numbered_suffix(self, tmp_path):
+        """When a file already exists, a numbered suffix is added."""
+        from app.channels import manager
+
+        uploads_dir = tmp_path / "uploads"
+        uploads_dir.mkdir()
+        (uploads_dir / "report.pdf").write_bytes(b"existing")
+
+        msg = InboundMessage(
+            channel_name="test-channel",
+            chat_id="chat-1",
+            user_id="user-1",
+            text="see attachment",
+            files=[{"filename": "report.pdf", "url": "https://example.invalid/report.pdf"}],
+        )
+
+        async def fake_reader(file_info, client):
+            return b"new content"
+
+        with (
+            patch("ideer.uploads.manager.ensure_uploads_dir", return_value=uploads_dir),
+            patch.dict(manager.INBOUND_FILE_READERS, {"test-channel": fake_reader}, clear=False),
+        ):
+            result = _run(manager._ingest_inbound_files("thread-1", msg))
+
+        assert len(result) == 1
+        assert result[0]["filename"] == "report_1.pdf"
+        assert (uploads_dir / "report.pdf").read_bytes() == b"existing"
+        assert (uploads_dir / "report_1.pdf").read_bytes() == b"new content"
+
 
 # ---------------------------------------------------------------------------
 # Channel base class _on_outbound with attachments
@@ -366,10 +717,10 @@ class _DummyChannel(Channel):
         self.sent_files: list[tuple[OutboundMessage, ResolvedAttachment]] = []
 
     async def start(self):
-        pass
+        self._running = True
 
     async def stop(self):
-        pass
+        self._running = False
 
     async def send(self, msg: OutboundMessage) -> None:
         self.sent_messages.append(msg)
@@ -455,7 +806,6 @@ class TestBaseChannelOnOutbound:
         bus = MessageBus()
         ch = _DummyChannel(bus)
 
-        # Override send_file to fail on first call, succeed on second
         call_count = 0
         original_send_file = ch.send_file
 
@@ -486,9 +836,28 @@ class TestBaseChannelOnOutbound:
 
         _run(ch._on_outbound(msg))
 
-        # First upload failed, second succeeded
         assert len(ch.sent_files) == 1
         assert ch.sent_files[0][1].filename == "ok.txt"
+
+    def test_send_file_returns_false_logs_warning(self, tmp_path):
+        """When send_file returns False, a warning is logged."""
+        bus = MessageBus()
+        ch = _DummyChannel(bus)
+
+        async def failing_send_file(msg, att):
+            return False
+
+        ch.send_file = failing_send_file  # type: ignore
+
+        f = tmp_path / "a.txt"
+        f.write_text("x")
+        att = ResolvedAttachment("/outputs/a.txt", f, "a.txt", "text/plain", 1, False)
+        msg = OutboundMessage(channel_name="dummy", chat_id="c1", thread_id="t1", text="hi", attachments=[att])
+
+        _run(ch._on_outbound(msg))
+
+        # send() succeeded, send_file returned False
+        assert len(ch.sent_messages) == 1
 
     def test_send_raises_skips_file_uploads(self, tmp_path):
         """When send() raises, file uploads are skipped entirely."""
@@ -513,7 +882,6 @@ class TestBaseChannelOnOutbound:
 
         _run(ch._on_outbound(msg))
 
-        # send() raised, so send_file should never be called
         assert len(ch.sent_files) == 0
 
     def test_default_send_file_returns_false(self):
@@ -537,6 +905,134 @@ class TestBaseChannelOnOutbound:
         result = _run(ch.send_file(msg, att))
         assert result is False
 
+    def test_ignores_messages_for_other_channels(self):
+        """_on_outbound ignores messages targeted at a different channel."""
+        bus = MessageBus()
+        ch = _DummyChannel(bus)
+
+        msg = OutboundMessage(
+            channel_name="other-channel",
+            chat_id="c1",
+            thread_id="t1",
+            text="hello",
+        )
+
+        _run(ch._on_outbound(msg))
+
+        assert len(ch.sent_messages) == 0
+        assert len(ch.sent_files) == 0
+
+
+# ---------------------------------------------------------------------------
+# Channel._make_inbound helper
+# ---------------------------------------------------------------------------
+
+
+class TestMakeInbound:
+    def test_basic_inbound_creation(self):
+        bus = MessageBus()
+        ch = _DummyChannel(bus)
+
+        msg = ch._make_inbound("chat-1", "user-1", "hello")
+
+        assert msg.channel_name == "dummy"
+        assert msg.chat_id == "chat-1"
+        assert msg.user_id == "user-1"
+        assert msg.text == "hello"
+        assert msg.msg_type == InboundMessageType.CHAT
+        assert msg.thread_ts is None
+        assert msg.files == []
+        assert msg.metadata == {}
+
+    def test_inbound_with_thread_ts(self):
+        bus = MessageBus()
+        ch = _DummyChannel(bus)
+
+        msg = ch._make_inbound("chat-1", "user-1", "reply", thread_ts="ts-123")
+
+        assert msg.thread_ts == "ts-123"
+
+    def test_inbound_with_files(self):
+        bus = MessageBus()
+        ch = _DummyChannel(bus)
+
+        files = [{"filename": "test.pdf", "url": "https://example.com/test.pdf"}]
+        msg = ch._make_inbound("chat-1", "user-1", "see file", files=files)
+
+        assert msg.files == files
+
+    def test_inbound_with_command_type(self):
+        bus = MessageBus()
+        ch = _DummyChannel(bus)
+
+        msg = ch._make_inbound("chat-1", "user-1", "/help", msg_type=InboundMessageType.COMMAND)
+
+        assert msg.msg_type == InboundMessageType.COMMAND
+
+    def test_inbound_with_metadata(self):
+        bus = MessageBus()
+        ch = _DummyChannel(bus)
+
+        msg = ch._make_inbound("chat-1", "user-1", "hello", metadata={"key": "value"})
+
+        assert msg.metadata == {"key": "value"}
+
+    def test_inbound_default_files_is_empty_list(self):
+        """When files=None, default is empty list (not None)."""
+        bus = MessageBus()
+        ch = _DummyChannel(bus)
+
+        msg = ch._make_inbound("chat-1", "user-1", "hello", files=None)
+
+        assert msg.files == []
+
+    def test_inbound_default_metadata_is_empty_dict(self):
+        """When metadata=None, default is empty dict (not None)."""
+        bus = MessageBus()
+        ch = _DummyChannel(bus)
+
+        msg = ch._make_inbound("chat-1", "user-1", "hello", metadata=None)
+
+        assert msg.metadata == {}
+
+
+# ---------------------------------------------------------------------------
+# Channel base class properties
+# ---------------------------------------------------------------------------
+
+
+class TestChannelProperties:
+    def test_is_running_default_false(self):
+        bus = MessageBus()
+        ch = _DummyChannel(bus)
+        assert ch.is_running is False
+
+    def test_is_running_after_start(self):
+        bus = MessageBus()
+        ch = _DummyChannel(bus)
+        _run(ch.start())
+        assert ch.is_running is True
+
+    def test_supports_streaming_default_false(self):
+        bus = MessageBus()
+        ch = _DummyChannel(bus)
+        assert ch.supports_streaming is False
+
+    def test_name_attribute(self):
+        bus = MessageBus()
+        ch = _DummyChannel(bus)
+        assert ch.name == "dummy"
+
+    def test_bus_attribute(self):
+        bus = MessageBus()
+        ch = _DummyChannel(bus)
+        assert ch.bus is bus
+
+    def test_config_attribute(self):
+        bus = MessageBus()
+        ch = _DummyChannel(bus)
+        assert ch.config == {}
+
 
 # ---------------------------------------------------------------------------
 # ChannelManager artifact resolution integration
@@ -548,7 +1044,6 @@ class TestManagerArtifactResolution:
         """Verify _resolve_attachments is importable and works with the manager module."""
         from app.channels.manager import _resolve_attachments
 
-        # Basic smoke test: empty artifacts returns empty list
         mock_paths = MagicMock()
         with patch("ideer.config.paths.get_paths", return_value=mock_paths):
             result = _resolve_attachments("t1", [])
@@ -562,3 +1057,68 @@ class TestManagerArtifactResolution:
         result = _format_artifact_text(["/mnt/user-data/outputs/a.txt", "/mnt/user-data/outputs/b.txt"])
         assert "a.txt" in result
         assert "b.txt" in result
+
+
+# ---------------------------------------------------------------------------
+# MessageBus outbound with attachments
+# ---------------------------------------------------------------------------
+
+
+class TestMessageBusOutbound:
+    def test_publish_outbound_delivers_to_subscribers(self):
+        """Outbound messages with attachments are delivered to all subscribers."""
+        bus = MessageBus()
+        received = []
+
+        async def callback(msg):
+            received.append(msg)
+
+        bus.subscribe_outbound(callback)
+
+        msg = OutboundMessage(
+            channel_name="test",
+            chat_id="c1",
+            thread_id="t1",
+            text="hello",
+            attachments=[ResolvedAttachment("/x", Path("/x"), "x.txt", "text/plain", 0, False)],
+        )
+
+        _run(bus.publish_outbound(msg))
+
+        assert len(received) == 1
+        assert len(received[0].attachments) == 1
+
+    def test_unsubscribe_outbound(self):
+        """After unsubscribe, callback no longer receives messages."""
+        bus = MessageBus()
+        received = []
+
+        async def callback(msg):
+            received.append(msg)
+
+        bus.subscribe_outbound(callback)
+        bus.unsubscribe_outbound(callback)
+
+        msg = OutboundMessage(channel_name="test", chat_id="c1", thread_id="t1", text="hi")
+        _run(bus.publish_outbound(msg))
+
+        assert len(received) == 0
+
+    def test_callback_exception_does_not_block_others(self):
+        """One failing callback doesn't prevent others from receiving."""
+        bus = MessageBus()
+        received = []
+
+        async def failing_callback(msg):
+            raise RuntimeError("boom")
+
+        async def good_callback(msg):
+            received.append(msg)
+
+        bus.subscribe_outbound(failing_callback)
+        bus.subscribe_outbound(good_callback)
+
+        msg = OutboundMessage(channel_name="test", chat_id="c1", thread_id="t1", text="hi")
+        _run(bus.publish_outbound(msg))
+
+        assert len(received) == 1

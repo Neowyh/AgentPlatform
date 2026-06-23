@@ -1,0 +1,19 @@
+{
+  "page": "dialog-edit-department",
+  "route": "/workspace/admin/departments",
+  "timestamp": "2026-06-19T02:06:44.871Z",
+  "viewport": "dark",
+  "status": "fail",
+  "checks": {
+    "consoleErrors": [],
+    "failedRequests": [],
+    "pageEmpty": false,
+    "horizontalOverflow": false,
+    "reactError": false,
+    "urlDrift": false,
+    "wrongPage": null,
+    "missingElements": [
+      "input[name=\"name\"], input, [role=\"dialog\"]"
+    ]
+  }
+}

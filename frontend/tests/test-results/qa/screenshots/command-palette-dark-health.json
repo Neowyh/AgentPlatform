@@ -1,0 +1,17 @@
+{
+  "page": "command-palette",
+  "route": "/workspace/chats/new",
+  "timestamp": "2026-06-19T02:06:45.541Z",
+  "viewport": "dark",
+  "status": "ok",
+  "checks": {
+    "consoleErrors": [],
+    "failedRequests": [],
+    "pageEmpty": false,
+    "horizontalOverflow": false,
+    "reactError": false,
+    "urlDrift": false,
+    "wrongPage": null,
+    "missingElements": []
+  }
+}

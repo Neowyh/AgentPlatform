@@ -18,6 +18,10 @@ jobs:
     if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
 
     steps:
       - name: Checkout
@@ -35,6 +39,33 @@ jobs:
         working-directory: backend
         run: uv sync --group dev
 
-      - name: Run unit tests of backend
+      - name: Run tests (shard ${{ matrix.shard }}/4)
         working-directory: backend
-        run: make test
+        run: |
+          uv run pytest tests/ \
+            --splits 4 \
+            --group ${{ matrix.shard }} \
+            --splitting-algorithm least_duration \
+            -n auto \
+            --cov=app --cov=packages \
+            --cov-report=xml \
+            --cov-report=json:coverage.json \
+            --cov-report=term-missing
+
+      - name: Check backend coverage threshold
+        if: matrix.shard == 1
+        working-directory: backend
+        run: |
+          BACKEND_COV=$(python -c "import json; d=json.load(open('coverage.json')); print(d['totals']['percent_covered'])")
+          if (( $(echo "$BACKEND_COV < 98.0" | bc -l) )); then
+            echo "::error::Backend coverage ${BACKEND_COV}% is below 98% threshold"
+            exit 1
+          fi
+          echo "Backend coverage: ${BACKEND_COV}% ✓"
+
+      - name: Coverage Summary
+        if: always()
+        working-directory: backend
+        run: |
+          echo "## Backend Coverage Report (Shard ${{ matrix.shard }}/4)" >> $GITHUB_STEP_SUMMARY
+          PYTHONPATH=. uv run pytest tests/ --cov=app --cov=packages --cov-report=term-missing 2>&1 | grep -E "^(TOTAL|Name|---)" >> $GITHUB_STEP_SUMMARY || true

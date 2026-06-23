@@ -21,6 +21,7 @@ export const Suggestions = ({
     <div
       className={cn("flex w-full flex-wrap items-center gap-2", className)}
       data-slot="suggestions-list"
+      data-testid="suggestions-container"
     >
       {Children.map(children, (child, index) =>
         child != null ? (
@@ -71,6 +72,7 @@ export const Suggestion = ({
       size={size}
       type="button"
       variant={variant}
+      data-testid="suggestion-button"
       {...props}
     >
       {Icon && <Icon className="size-4" />}

@@ -1,0 +1,26 @@
+{
+  "page": "login",
+  "route": "/login",
+  "timestamp": "2026-06-19T02:06:32.702Z",
+  "viewport": "dark",
+  "status": "fail",
+  "checks": {
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    ],
+    "failedRequests": [
+      "404 http://localhost:3000/api/models",
+      "403 http://localhost:3000/api/langgraph/threads/search"
+    ],
+    "pageEmpty": false,
+    "horizontalOverflow": false,
+    "reactError": false,
+    "urlDrift": true,
+    "wrongPage": null,
+    "missingElements": [
+      "input[type=\"email\"], input[name=\"email\"]",
+      "input[type=\"password\"]"
+    ]
+  }
+}

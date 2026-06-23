@@ -141,7 +141,7 @@ def _set_session_cookie(response: Response, token: str, request: Request) -> Non
         value=token,
         httponly=True,
         secure=is_https,
-        samesite="lax",
+        samesite="strict",
         max_age=config.token_expiry_days * 24 * 3600 if is_https else None,
     )
 
@@ -270,6 +270,41 @@ def _record_login_success(ip: str) -> None:
     _login_attempts.pop(ip, None)
 
 
+# ── Registration Rate Limiting ───────────────────────────────────────────
+# Per-IP rate limit for account registration to prevent abuse.
+# 3 registrations per IP per hour.
+
+_MAX_REGISTRATIONS = 3
+_REGISTRATION_WINDOW = 3600  # 1 hour
+
+# ip → (count, window_start_timestamp)
+_registration_attempts: dict[str, tuple[int, float]] = {}
+
+
+def _check_registration_rate_limit(ip: str) -> None:
+    """Enforce per-IP registration rate limit. Raises HTTPException 429 if exceeded."""
+    now = time.time()
+    record = _registration_attempts.get(ip)
+    if record is None:
+        _registration_attempts[ip] = (1, now)
+        return
+
+    count, window_start = record
+    if now - window_start > _REGISTRATION_WINDOW:
+        # Window expired — reset
+        _registration_attempts[ip] = (1, now)
+        return
+
+    if count >= _MAX_REGISTRATIONS:
+        retry_after = int(window_start + _REGISTRATION_WINDOW - now)
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Too many registration attempts. Try again in {retry_after} seconds.",
+        )
+
+    _registration_attempts[ip] = (count + 1, window_start)
+
+
 # ── Endpoints ─────────────────────────────────────────────────────────────
 
 
@@ -309,6 +344,7 @@ async def register(request: Request, response: Response, body: RegisterRequest):
     The first admin is created explicitly through /initialize. This endpoint creates regular users.
     Auto-login by setting the session cookie.
     """
+    _check_registration_rate_limit(_get_client_ip(request))
     try:
         user = await get_local_provider().create_user(email=body.email, password=body.password, system_role="user")
     except ValueError:
@@ -326,7 +362,7 @@ async def register(request: Request, response: Response, body: RegisterRequest):
 @router.post("/logout", response_model=MessageResponse)
 async def logout(request: Request, response: Response):
     """Logout current user by clearing the cookie."""
-    response.delete_cookie(key="access_token", secure=is_secure_request(request), samesite="lax")
+    response.delete_cookie(key="access_token", secure=is_secure_request(request), samesite="strict")
     return MessageResponse(message="Successfully logged out")
 
 

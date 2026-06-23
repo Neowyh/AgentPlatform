@@ -1,0 +1,19 @@
+{
+  "page": "dialog-rename-thread",
+  "route": "/workspace/chats/new",
+  "timestamp": "2026-06-19T02:07:04.930Z",
+  "viewport": "dark",
+  "status": "fail",
+  "checks": {
+    "consoleErrors": [],
+    "failedRequests": [],
+    "pageEmpty": false,
+    "horizontalOverflow": false,
+    "reactError": false,
+    "urlDrift": false,
+    "wrongPage": null,
+    "missingElements": [
+      "input, [role=\"dialog\"]"
+    ]
+  }
+}
