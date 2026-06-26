@@ -548,11 +548,10 @@ def filter_visible_resources(items: list, user: UserModel) -> list:
 async def get_current_rbac_user(request: Request) -> UserModel:
     """FastAPI dependency: resolve the authenticated user to a ``UserModel``.
 
-    Bridges the JWT auth system (``AuthContext.user``) with the RBAC
-    persistence layer (``UserModel`` in ``users_ext``).  If the user has
-    no ``users_ext`` row yet, one is created automatically with the
-    default ``user`` role.  The very first user is promoted to
-    ``super_admin`` so the system always has at least one admin.
+    Reads the ``User`` object already stamped on ``request.state.user`` by
+    AuthMiddleware (JWT decoded once, no redundant work) and looks up the
+    corresponding RBAC ``UserModel``.  Auto-creates the RBAC profile on
+    first access — the very first user is promoted to ``super_admin``.
 
     Raises:
         HTTPException 401 if the request is not authenticated.
@@ -560,12 +559,11 @@ async def get_current_rbac_user(request: Request) -> UserModel:
     from ideer.persistence.engine import get_session_factory
     from ideer.persistence.models.user import UserModel, UserRole
 
-    auth: AuthContext | None = getattr(request.state, "auth", None)
-    if auth is None or not auth.is_authenticated:
+    user = getattr(request.state, "user", None)
+    if user is None:
         raise HTTPException(status_code=401, detail="Authentication required")
 
-    auth_user = auth.require_user()
-    user_id = str(auth_user.id)
+    user_id = str(user.id)
 
     sf = get_session_factory()
     if sf is None:
@@ -595,7 +593,7 @@ async def get_current_rbac_user(request: Request) -> UserModel:
 
             rbac_user = UserModel(
                 id=user_id,
-                username=getattr(auth_user, "email", user_id),
+                username=getattr(user, "email", user_id),
                 role=UserRole.SUPER_ADMIN if admin_count == 0 else UserRole.USER,
                 department_id=None,
             )
@@ -654,8 +652,8 @@ async def get_current_rbac_user(request: Request) -> UserModel:
 
 async def get_optional_rbac_user(request: Request) -> UserModel | None:
     """Like ``get_current_rbac_user`` but returns ``None`` for unauthenticated requests."""
-    auth: AuthContext | None = getattr(request.state, "auth", None)
-    if auth is None or not auth.is_authenticated:
+    user = getattr(request.state, "user", None)
+    if user is None:
         return None
     try:
         return await get_current_rbac_user(request)

@@ -211,7 +211,6 @@ async def disable_user(
 
 
 @router.get("/departments")
-@require_role(UserRole.SUPER_ADMIN)
 async def list_departments(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),

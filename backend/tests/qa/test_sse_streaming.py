@@ -13,6 +13,8 @@ SSE 流式端点集成测试
 
 环境变量:
     QA_BASE_URL: 后端服务地址（默认: http://localhost:8001）
+    QA_ADMIN_EMAIL: 管理员邮箱（默认: super_admin@test.com）
+    QA_ADMIN_PASSWORD: 管理员密码（默认: super_admin@test.com）
 """
 
 import os
@@ -21,6 +23,8 @@ import httpx
 import pytest
 
 BASE_URL = os.environ.get("QA_BASE_URL", "http://localhost:8001")
+TEST_EMAIL = os.environ.get("QA_ADMIN_EMAIL", "super_admin@test.com")
+TEST_PASSWORD = os.environ.get("QA_ADMIN_PASSWORD", "super_admin@test.com")
 
 
 class QAAuthHelper:
@@ -29,9 +33,10 @@ class QAAuthHelper:
     def __init__(self, base_url: str):
         self.base_url = base_url
         self.token: str | None = None
+        self.csrf_token: str | None = None
 
     async def ensure_admin(self) -> str:
-        """确保有管理员账户并获取 token"""
+        """确保有管理员账户并获取 cookie 认证信息"""
         async with httpx.AsyncClient() as client:
             setup_response = await client.get(f"{self.base_url}/api/v1/auth/setup-status")
             setup_data = setup_response.json()
@@ -39,51 +44,75 @@ class QAAuthHelper:
             if setup_data.get("needs_setup", False):
                 await client.post(
                     f"{self.base_url}/api/v1/auth/initialize",
-                    json={"email": "admin@test.com", "password": "Test1234!"},
+                    json={"email": TEST_EMAIL, "password": TEST_PASSWORD},
                 )
 
             response = await client.post(
                 f"{self.base_url}/api/v1/auth/login/local",
-                data={"username": "admin@test.com", "password": "Test1234!"},
+                data={"username": TEST_EMAIL, "password": TEST_PASSWORD},
             )
-            if response.status_code == 200:
-                self.token = response.json().get("access_token")
-                return self.token
-            pytest.skip(f"Auth failed: {response.status_code}")
+            if response.status_code != 200:
+                pytest.skip(f"Auth failed: {response.status_code}")
+
+            cookies = response.cookies
+            if "access_token" in cookies:
+                self.token = cookies["access_token"]
+            if "csrf_token" in cookies:
+                self.csrf_token = cookies["csrf_token"]
+            return self.token
+
+    def cookies(self) -> dict:
+        """获取认证 cookies"""
+        assert self.token, "Must call ensure_admin() first"
+        result = {"access_token": self.token}
+        if self.csrf_token:
+            result["csrf_token"] = self.csrf_token
+        return result
+
+    def csrf_headers(self) -> dict:
+        """获取 CSRF headers"""
+        if self.csrf_token:
+            return {"X-CSRF-Token": self.csrf_token}
+        return {}
 
 
 @pytest.fixture(scope="module")
 def auth():
     """模块级认证 fixture"""
+    import asyncio
+
     helper = QAAuthHelper(BASE_URL)
+    loop = asyncio.new_event_loop()
+    loop.run_until_complete(helper.ensure_admin())
+    loop.close()
     return helper
 
 
 @pytest.fixture(scope="module")
-def auth_headers(auth):
-    """认证 headers"""
-    import asyncio
+def auth_cookies(auth):
+    """认证 cookies"""
+    return auth.cookies()
 
-    loop = asyncio.new_event_loop()
-    loop.run_until_complete(auth.ensure_admin())
-    loop.close()
-    if auth.token:
-        return {"Authorization": f"Bearer {auth.token}"}
-    return {}
+
+@pytest.fixture(scope="module")
+def auth_csrf_headers(auth):
+    """CSRF headers"""
+    return auth.csrf_headers()
 
 
 class TestSSEResponseHeaders:
     """测试 SSE 响应头"""
 
     @pytest.mark.asyncio
-    async def test_stream_endpoint_returns_sse_headers(self, auth_headers):
+    async def test_stream_endpoint_returns_sse_headers(self, auth_cookies, auth_csrf_headers):
         """POST /api/runs/stream 应返回正确的 SSE 响应头"""
         async with httpx.AsyncClient(timeout=10.0) as client:
             async with client.stream(
                 "POST",
                 f"{BASE_URL}/api/runs/stream",
                 json={"assistant_id": "lead_agent", "input": {"messages": [{"role": "user", "content": "hi"}]}},
-                headers=auth_headers,
+                cookies=auth_cookies,
+                headers=auth_csrf_headers,
             ) as response:
                 assert response.status_code == 200
                 assert response.headers["content-type"] == "text/event-stream; charset=utf-8"
@@ -93,14 +122,15 @@ class TestSSEResponseHeaders:
                 assert "/api/threads/" in response.headers.get("content-location", "")
 
     @pytest.mark.asyncio
-    async def test_thread_run_stream_returns_sse_headers(self, auth_headers):
+    async def test_thread_run_stream_returns_sse_headers(self, auth_cookies, auth_csrf_headers):
         """POST /api/threads/{id}/runs/stream 应返回正确的 SSE 响应头"""
         async with httpx.AsyncClient(timeout=10.0) as client:
             # 先创建一个 thread
             thread_resp = await client.post(
                 f"{BASE_URL}/api/threads",
                 json={},
-                headers=auth_headers,
+                cookies=auth_cookies,
+                headers=auth_csrf_headers,
             )
             if thread_resp.status_code != 200:
                 pytest.skip(f"Cannot create thread: {thread_resp.status_code}")
@@ -110,7 +140,8 @@ class TestSSEResponseHeaders:
                 "POST",
                 f"{BASE_URL}/api/threads/{thread_id}/runs/stream",
                 json={"assistant_id": "lead_agent", "input": {"messages": [{"role": "user", "content": "hi"}]}},
-                headers=auth_headers,
+                cookies=auth_cookies,
+                headers=auth_csrf_headers,
             ) as response:
                 assert response.status_code == 200
                 assert response.headers["content-type"] == "text/event-stream; charset=utf-8"
@@ -121,7 +152,7 @@ class TestSSEEventFormat:
     """测试 SSE 事件帧格式"""
 
     @pytest.mark.asyncio
-    async def test_stream_emits_sse_frames(self, auth_headers):
+    async def test_stream_emits_sse_frames(self, auth_cookies, auth_csrf_headers):
         """SSE 流应包含标准的 event:/data: 帧格式"""
         async with httpx.AsyncClient(timeout=30.0) as client:
             frames = []
@@ -129,7 +160,8 @@ class TestSSEEventFormat:
                 "POST",
                 f"{BASE_URL}/api/runs/stream",
                 json={"assistant_id": "lead_agent", "input": {"messages": [{"role": "user", "content": "hi"}]}},
-                headers=auth_headers,
+                cookies=auth_cookies,
+                headers=auth_csrf_headers,
             ) as response:
                 buffer = ""
                 async for chunk in response.aiter_text():
@@ -157,7 +189,7 @@ class TestSSEEventFormat:
                     assert has_event or has_data, f"Frame missing event/data: {frame}"
 
     @pytest.mark.asyncio
-    async def test_stream_ends_with_end_event(self, auth_headers):
+    async def test_stream_ends_with_end_event(self, auth_cookies, auth_csrf_headers):
         """SSE 流应以 end 事件结束"""
         async with httpx.AsyncClient(timeout=30.0) as client:
             last_event = None
@@ -165,7 +197,8 @@ class TestSSEEventFormat:
                 "POST",
                 f"{BASE_URL}/api/runs/stream",
                 json={"assistant_id": "lead_agent", "input": {"messages": [{"role": "user", "content": "hi"}]}},
-                headers=auth_headers,
+                cookies=auth_cookies,
+                headers=auth_csrf_headers,
             ) as response:
                 buffer = ""
                 async for chunk in response.aiter_text():
@@ -187,7 +220,7 @@ class TestSSEErrorHandling:
     """测试 SSE 错误处理"""
 
     @pytest.mark.asyncio
-    async def test_invalid_assistant_returns_error(self, auth_headers):
+    async def test_invalid_assistant_returns_error(self, auth_cookies, auth_csrf_headers):
         """使用无效的 assistant_id 应返回错误事件"""
         async with httpx.AsyncClient(timeout=10.0) as client:
             frames = []
@@ -195,7 +228,8 @@ class TestSSEErrorHandling:
                 "POST",
                 f"{BASE_URL}/api/runs/stream",
                 json={"assistant_id": "nonexistent_agent_xyz", "input": {"messages": []}},
-                headers=auth_headers,
+                cookies=auth_cookies,
+                headers=auth_csrf_headers,
             ) as response:
                 buffer = ""
                 async for chunk in response.aiter_text():
@@ -228,7 +262,7 @@ class TestSSEHeartbeat:
     """测试 SSE 心跳机制"""
 
     @pytest.mark.asyncio
-    async def test_stream_may_emit_heartbeat_comments(self, auth_headers):
+    async def test_stream_may_emit_heartbeat_comments(self, auth_cookies, auth_csrf_headers):
         """长时间运行的流应发送心跳注释（SSE comment 以 : 开头）"""
         # 心跳通常在空闲时发送，这里验证流格式不被心跳破坏
         async with httpx.AsyncClient(timeout=30.0) as client:
@@ -237,7 +271,8 @@ class TestSSEHeartbeat:
                 "POST",
                 f"{BASE_URL}/api/runs/stream",
                 json={"assistant_id": "lead_agent", "input": {"messages": [{"role": "user", "content": "hi"}]}},
-                headers=auth_headers,
+                cookies=auth_cookies,
+                headers=auth_csrf_headers,
             ) as response:
                 async for chunk in response.aiter_text():
                     raw_text += chunk

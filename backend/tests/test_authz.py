@@ -1009,7 +1009,7 @@ class TestGetCurrentRbacUser:
     @pytest.mark.asyncio
     async def test_not_authenticated_raises_401(self):
         req = MagicMock(spec=Request)
-        req.state = SimpleNamespace(auth=AuthContext(user=None))
+        req.state = SimpleNamespace()  # no user set by middleware
         with pytest.raises(HTTPException) as exc_info:
             await get_current_rbac_user(req)
         assert exc_info.value.status_code == 401
@@ -1017,9 +1017,8 @@ class TestGetCurrentRbacUser:
     @pytest.mark.asyncio
     async def test_no_session_factory_raises_500(self):
         user = _make_user()
-        auth_ctx = AuthContext(user=user, permissions=[])
         req = MagicMock(spec=Request)
-        req.state = SimpleNamespace(auth=auth_ctx)
+        req.state = SimpleNamespace(user=user)
         with patch("ideer.persistence.engine.get_session_factory", return_value=None):
             with pytest.raises(HTTPException) as exc_info:
                 await get_current_rbac_user(req)
@@ -1028,9 +1027,8 @@ class TestGetCurrentRbacUser:
     @pytest.mark.asyncio
     async def test_existing_user_returned(self):
         user = _make_user()
-        auth_ctx = AuthContext(user=user, permissions=[])
         req = MagicMock(spec=Request)
-        req.state = SimpleNamespace(auth=auth_ctx)
+        req.state = SimpleNamespace(user=user)
 
         rbac_user = _make_user_model(role="user", disabled=False)
         mock_session = AsyncMock()
@@ -1049,9 +1047,8 @@ class TestGetCurrentRbacUser:
     @pytest.mark.asyncio
     async def test_disabled_user_raises_403(self):
         user = _make_user()
-        auth_ctx = AuthContext(user=user, permissions=[])
         req = MagicMock(spec=Request)
-        req.state = SimpleNamespace(auth=auth_ctx)
+        req.state = SimpleNamespace(user=user)
 
         rbac_user = _make_user_model(role="user", disabled=True)
         mock_session = AsyncMock()
@@ -1071,9 +1068,8 @@ class TestGetCurrentRbacUser:
     @pytest.mark.asyncio
     async def test_auto_create_first_user_as_super_admin(self):
         user = _make_user()
-        auth_ctx = AuthContext(user=user, permissions=[])
         req = MagicMock(spec=Request)
-        req.state = SimpleNamespace(auth=auth_ctx)
+        req.state = SimpleNamespace(user=user)
 
         # First query: no user found. Count query: 0 admins.
         _make_user_model(role="super_admin", disabled=False)
@@ -1108,9 +1104,8 @@ class TestGetCurrentRbacUser:
     @pytest.mark.asyncio
     async def test_auto_create_non_first_user_as_user(self):
         user = _make_user()
-        auth_ctx = AuthContext(user=user, permissions=[])
         req = MagicMock(spec=Request)
-        req.state = SimpleNamespace(auth=auth_ctx)
+        req.state = SimpleNamespace(user=user)
 
         _make_user_model(role="user", disabled=False)
         mock_session = AsyncMock()
@@ -1143,9 +1138,8 @@ class TestGetCurrentRbacUser:
         from sqlalchemy.exc import IntegrityError
 
         user = _make_user()
-        auth_ctx = AuthContext(user=user, permissions=[])
         req = MagicMock(spec=Request)
-        req.state = SimpleNamespace(auth=auth_ctx)
+        req.state = SimpleNamespace(user=user)
 
         existing_rbac_user = _make_user_model(role="user", disabled=False)
         mock_session = AsyncMock()
@@ -1195,9 +1189,9 @@ class TestGetCurrentRbacUser:
         from sqlalchemy.exc import IntegrityError
 
         user = _make_user()
-        auth_ctx = AuthContext(user=user, permissions=[])
+
         req = MagicMock(spec=Request)
-        req.state = SimpleNamespace(auth=auth_ctx)
+        req.state = SimpleNamespace(user=user)
 
         mock_session = AsyncMock()
 
@@ -1241,9 +1235,9 @@ class TestGetCurrentRbacUser:
         from sqlalchemy.exc import IntegrityError
 
         user = _make_user()
-        auth_ctx = AuthContext(user=user, permissions=[])
+
         req = MagicMock(spec=Request)
-        req.state = SimpleNamespace(auth=auth_ctx)
+        req.state = SimpleNamespace(user=user)
 
         disabled_user = _make_user_model(role="user", disabled=True)
         mock_session = AsyncMock()
@@ -1288,9 +1282,9 @@ class TestGetCurrentRbacUser:
         from sqlalchemy.exc import IntegrityError
 
         user = _make_user()
-        auth_ctx = AuthContext(user=user, permissions=[])
+
         req = MagicMock(spec=Request)
-        req.state = SimpleNamespace(auth=auth_ctx)
+        req.state = SimpleNamespace(user=user)
 
         # The user found after re-query has role=super_admin
         concurrent_user = _make_user_model(role="super_admin", disabled=False)
@@ -1369,9 +1363,9 @@ class TestGetCurrentRbacUser:
         from sqlalchemy.exc import OperationalError
 
         user = _make_user()
-        auth_ctx = AuthContext(user=user, permissions=[])
+
         req = MagicMock(spec=Request)
-        req.state = SimpleNamespace(auth=auth_ctx)
+        req.state = SimpleNamespace(user=user)
 
         mock_session = AsyncMock()
 
@@ -1414,9 +1408,9 @@ class TestGetCurrentRbacUser:
     async def test_invalid_role_defaults_to_viewer(self, caplog):
         """When role is an invalid enum value, default to VIEWER."""
         user = _make_user()
-        auth_ctx = AuthContext(user=user, permissions=[])
+
         req = MagicMock(spec=Request)
-        req.state = SimpleNamespace(auth=auth_ctx)
+        req.state = SimpleNamespace(user=user)
 
         rbac_user = _make_user_model(role="invalid_role", disabled=False)
         mock_session = AsyncMock()
@@ -1439,9 +1433,9 @@ class TestGetCurrentRbacUser:
     async def test_user_email_fallback_to_id(self):
         """When auth_user has no email attribute, use user_id as username."""
         user = _make_user()
-        auth_ctx = AuthContext(user=user, permissions=[])
+
         req = MagicMock(spec=Request)
-        req.state = SimpleNamespace(auth=auth_ctx)
+        req.state = SimpleNamespace(user=user)
 
         mock_session = AsyncMock()
 
@@ -1481,9 +1475,9 @@ class TestGetCurrentRbacUser:
         from sqlalchemy.exc import IntegrityError
 
         user = _make_user()
-        auth_ctx = AuthContext(user=user, permissions=[])
+
         req = MagicMock(spec=Request)
-        req.state = SimpleNamespace(auth=auth_ctx)
+        req.state = SimpleNamespace(user=user)
 
         concurrent_user = _make_user_model(role="super_admin", disabled=False)
         mock_session = AsyncMock()
@@ -1573,16 +1567,16 @@ class TestGetOptionalRbacUser:
     @pytest.mark.asyncio
     async def test_not_authenticated_returns_none(self):
         req = MagicMock(spec=Request)
-        req.state = SimpleNamespace(auth=AuthContext(user=None))
+        req.state = SimpleNamespace()
         result = await get_optional_rbac_user(req)
         assert result is None
 
     @pytest.mark.asyncio
     async def test_success_returns_user(self):
         user = _make_user()
-        auth_ctx = AuthContext(user=user, permissions=[])
+
         req = MagicMock(spec=Request)
-        req.state = SimpleNamespace(auth=auth_ctx)
+        req.state = SimpleNamespace(user=user)
 
         rbac_user = _make_user_model(role="user")
         mock_session = AsyncMock()
@@ -1602,9 +1596,9 @@ class TestGetOptionalRbacUser:
     async def test_401_from_inner_returns_none(self):
         """When inner raises 401, swallow and return None."""
         user = _make_user()
-        auth_ctx = AuthContext(user=user, permissions=[])
+
         req = MagicMock(spec=Request)
-        req.state = SimpleNamespace(auth=auth_ctx)
+        req.state = SimpleNamespace(user=user)
 
         with patch("app.gateway.authz.get_current_rbac_user", new_callable=AsyncMock, side_effect=HTTPException(status_code=401)):
             result = await get_optional_rbac_user(req)
@@ -1614,9 +1608,9 @@ class TestGetOptionalRbacUser:
     async def test_403_from_inner_is_reraised(self):
         """When inner raises 403 (disabled user), re-raise it."""
         user = _make_user()
-        auth_ctx = AuthContext(user=user, permissions=[])
+
         req = MagicMock(spec=Request)
-        req.state = SimpleNamespace(auth=auth_ctx)
+        req.state = SimpleNamespace(user=user)
 
         with patch("app.gateway.authz.get_current_rbac_user", new_callable=AsyncMock, side_effect=HTTPException(status_code=403, detail="disabled")):
             with pytest.raises(HTTPException) as exc_info:
@@ -1627,9 +1621,9 @@ class TestGetOptionalRbacUser:
     async def test_500_from_inner_is_reraised(self):
         """When inner raises 500 (DB error), re-raise it."""
         user = _make_user()
-        auth_ctx = AuthContext(user=user, permissions=[])
+
         req = MagicMock(spec=Request)
-        req.state = SimpleNamespace(auth=auth_ctx)
+        req.state = SimpleNamespace(user=user)
 
         with patch("app.gateway.authz.get_current_rbac_user", new_callable=AsyncMock, side_effect=HTTPException(status_code=500, detail="DB error")):
             with pytest.raises(HTTPException) as exc_info:
