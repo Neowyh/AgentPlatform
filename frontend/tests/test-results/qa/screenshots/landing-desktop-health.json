@@ -1,13 +1,11 @@
 {
   "page": "landing",
   "route": "/",
-  "timestamp": "2026-06-19T04:06:12.739Z",
+  "timestamp": "2026-06-25T10:29:41.658Z",
   "viewport": "desktop",
-  "status": "warn",
+  "status": "ok",
   "checks": {
-    "consoleErrors": [
-      "Can't perform a React state update on a component that hasn't mounted yet. This indicates that you have a side-effect in your render function that asynchronously tries to update the component. Move this work to useEffect instead."
-    ],
+    "consoleErrors": [],
     "failedRequests": [],
     "pageEmpty": false,
     "horizontalOverflow": false,

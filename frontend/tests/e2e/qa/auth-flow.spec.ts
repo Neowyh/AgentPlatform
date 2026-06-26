@@ -1,13 +1,13 @@
 /**
- * Auth Flow: 登录/登出完整流程
+ * Auth Flow: Login/Logout complete flow
  *
- * 测试:
- * 1. 访问受保护页面 → 重定向到登录
- * 2. 登录 → 进入 workspace
- * 3. 登出 → 返回登录页
+ * Tests:
+ * 1. Access protected page -> redirect to login
+ * 2. Login -> enter workspace
+ * 3. Logout -> return to login page
  *
- * NOTE: These tests require a real backend with auth enabled.
- * They are skipped when IDEER_AUTH_DISABLED=1 (E2E mock mode).
+ * These tests run with authentication ENABLED — they override storageState
+ * to start unauthenticated so the login flow can be exercised.
  */
 
 import { test, expect } from "@playwright/test";
@@ -16,25 +16,24 @@ const BASE_URL = process.env.BASE_URL ?? "http://localhost:3000";
 const TEST_EMAIL = "super_admin@test.com";
 const TEST_PASSWORD = "super_admin@test.com";
 
+// Start unauthenticated so login/logout flows work.
+const emptyStorageState = { cookies: [], origins: [] };
+
 test.describe("Auth Flow", () => {
-  // These tests require auth to be enabled (IDEER_AUTH_DISABLED != "1").
-  // They run via playwright.auth.config.ts which does NOT set IDEER_AUTH_DISABLED.
+  test.use({ storageState: emptyStorageState });
 
   test("should redirect to login when not authenticated", async ({ page }) => {
-    // 清除认证状态
     await page.context().clearCookies();
 
-    // 访问受保护页面
     await page.goto(`${BASE_URL}/workspace`);
 
-    // 应该重定向到登录页
+    // Should redirect to login page
     await expect(page).toHaveURL(/\/login/);
   });
 
   test("should login successfully", async ({ page }) => {
     await page.goto(`${BASE_URL}/login`);
 
-    // 填写登录表单
     const emailInput = page.locator('input[type="email"], input#email').first();
     const passwordInput = page
       .locator('input[type="password"], input#password')
@@ -49,13 +48,13 @@ test.describe("Auth Flow", () => {
     await passwordInput.fill(TEST_PASSWORD);
     await submitButton.click();
 
-    // 验证跳转到 workspace
+    // Should redirect to workspace after login
     await page.waitForURL(/\/workspace/, { timeout: 15000 });
     await expect(page).toHaveURL(/\/workspace/);
   });
 
   test("should logout successfully", async ({ page }) => {
-    // 先登录
+    // Login first
     await page.goto(`${BASE_URL}/login`);
 
     const emailInput = page.locator('input[type="email"], input#email').first();
@@ -73,7 +72,7 @@ test.describe("Auth Flow", () => {
     await submitButton.click();
     await page.waitForURL(/\/workspace/, { timeout: 15000 });
 
-    // 登出 — 直接调用登出 API
+    // Logout — call the logout API via the frontend proxy
     await page.evaluate(async () => {
       await fetch("/api/v1/auth/logout", {
         method: "POST",
@@ -81,7 +80,7 @@ test.describe("Auth Flow", () => {
       });
     });
 
-    // 刷新页面验证登出
+    // Navigate to login to verify logout took effect
     await page.goto(`${BASE_URL}/login`);
     await expect(page).toHaveURL(/\/login/);
   });

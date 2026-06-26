@@ -17,6 +17,10 @@ export default defineConfig({
   reporter: process.env.CI ? "github" : "html",
   timeout: 30_000,
 
+  // Authenticate once before all tests; authenticated cookies are saved
+  // to tests/e2e/.auth/storage-state.json and loaded by every project.
+  globalSetup: "./tests/e2e/global-setup.ts",
+
   expect: {
     toHaveScreenshot: {
       maxDiffPixelRatio: 0.01,
@@ -31,6 +35,9 @@ export default defineConfig({
   use: {
     baseURL: "http://localhost:3000",
     trace: "on-first-retry",
+    // All non-auth tests inherit authenticated storage state.
+    // Auth tests override this with { cookies: [], origins: [] }.
+    storageState: "./tests/e2e/.auth/storage-state.json",
   },
 
   projects: [
@@ -62,8 +69,11 @@ export default defineConfig({
     timeout: 120_000,
     env: {
       SKIP_ENV_VALIDATION: "1",
-      IDEER_AUTH_DISABLED: "1",
-      NEXT_PUBLIC_BACKEND_BASE_URL: "http://localhost:3000",
+      // Auth is ENABLED — IDEER_AUTH_DISABLED is intentionally NOT set.
+      // Non-auth tests carry authenticated cookies via storageState;
+      // auth tests override storageState to start unauthenticated.
+      // Do NOT set NEXT_PUBLIC_BACKEND_BASE_URL — the Next.js rewrite rules
+      // in next.config.js proxy /api/* to the gateway when this is unset.
       OPENAI_API_KEY: process.env.OPENAI_API_KEY ?? "",
       OPENAI_BASE_URL: process.env.OPENAI_BASE_URL ?? "",
     },

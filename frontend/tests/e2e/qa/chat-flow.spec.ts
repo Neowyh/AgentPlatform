@@ -10,7 +10,7 @@
 
 import { test, expect } from "@playwright/test";
 
-import { mockLangGraphAPI } from "../utils/mock-api";
+import { handleRunStream, mockLangGraphAPI } from "../utils/mock-api";
 
 const BASE_URL = process.env.BASE_URL ?? "http://localhost:3000";
 
@@ -29,30 +29,30 @@ test.describe("Chat Flow", () => {
   });
 
   test("should send message and receive response", async ({ page }) => {
+    // 追踪 run stream 是否被调用
+    let streamCalled = false;
+    await page.route("**/runs/stream", (route) => {
+      streamCalled = true;
+      return handleRunStream(route);
+    });
+
     await page.goto(`${BASE_URL}/workspace/chats/new`);
 
-    // 查找输入框
-    const chatInput = page
-      .locator('textarea, [data-testid="chat-input"], [contenteditable="true"]')
-      .first();
-    await expect(chatInput).toBeVisible({ timeout: 10000 });
+    // 查找输入框（使用 placeholder 匹配，与实际 UI 一致）
+    const chatInput = page.getByPlaceholder(/how can i assist you/i);
+    await expect(chatInput).toBeVisible({ timeout: 15000 });
 
-    // 输入消息
+    // 输入消息并通过 Enter 发送
     await chatInput.fill("Hello, this is a test message");
+    await chatInput.press("Enter");
 
-    // 发送
-    const sendButton = page
-      .locator(
-        'button[data-testid="send-button"], button[aria-label="Send"], button[type="submit"]',
-      )
-      .first();
-    await sendButton.click();
+    // 验证 stream 被调用
+    await expect.poll(() => streamCalled, { timeout: 10000 }).toBeTruthy();
 
-    // 验证消息显示
-    const userMessage = page
-      .locator("text=Hello, this is a test message")
-      .first();
-    await expect(userMessage).toBeVisible({ timeout: 10000 });
+    // 验证 AI 回复显示（mock 返回 "Hello from iDeer!"）
+    await expect(page.getByText("Hello from iDeer!")).toBeVisible({
+      timeout: 10000,
+    });
   });
 
   test("should have export option", async ({ page }) => {

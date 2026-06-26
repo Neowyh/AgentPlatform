@@ -144,14 +144,14 @@ export function validateYaml(content: string): string[] {
   }
 
   // 4. Basic bracket balance check (catches unclosed arrays / objects).
-  const opens = (trimmed.match(/\[/g) || []).length;
-  const closes = (trimmed.match(/\]/g) || []).length;
+  const opens = (trimmed.match(/\[/g) ?? []).length;
+  const closes = (trimmed.match(/\]/g) ?? []).length;
   if (opens !== closes) {
     errors.push("Unbalanced brackets: check for unclosed arrays");
   }
 
-  const braceOpens = (trimmed.match(/\{/g) || []).length;
-  const braceCloses = (trimmed.match(/\}/g) || []).length;
+  const braceOpens = (trimmed.match(/\{/g) ?? []).length;
+  const braceCloses = (trimmed.match(/\}/g) ?? []).length;
   if (braceOpens !== braceCloses) {
     errors.push("Unbalanced braces: check for unclosed inline mappings");
   }

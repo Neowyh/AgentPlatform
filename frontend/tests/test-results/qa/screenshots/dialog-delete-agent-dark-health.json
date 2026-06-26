@@ -1,7 +1,7 @@
 {
   "page": "dialog-delete-agent",
   "route": "/workspace/agents",
-  "timestamp": "2026-06-19T02:07:04.737Z",
+  "timestamp": "2026-06-25T10:30:35.517Z",
   "viewport": "dark",
   "status": "fail",
   "checks": {

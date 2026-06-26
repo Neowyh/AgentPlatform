@@ -20,7 +20,7 @@ class User(BaseModel):
     id: UUID = Field(default_factory=uuid4, description="Primary key")
     email: EmailStr = Field(..., description="Unique email address")
     password_hash: str | None = Field(None, description="bcrypt hash, nullable for OAuth users")
-    system_role: Literal["admin", "user"] = Field(default="user")
+    system_role: Literal["viewer", "user", "department_admin", "super_admin", "admin"] = Field(default="user")
     created_at: datetime = Field(default_factory=_utc_now)
 
     # OAuth linkage (optional)
@@ -33,9 +33,15 @@ class User(BaseModel):
 
 
 class UserResponse(BaseModel):
-    """Response model for user info endpoint."""
+    """Response model for user info endpoint.
+
+    ``system_role`` now returns the RBAC role from ``users_ext`` (viewer,
+    user, department_admin, super_admin) so the frontend permission checks
+    work correctly.  Falls back to the legacy ``users.system_role`` when
+    no ``users_ext`` row exists.
+    """
 
     id: str
     email: str
-    system_role: Literal["admin", "user"]
+    system_role: Literal["viewer", "user", "department_admin", "super_admin", "admin"]
     needs_setup: bool = False

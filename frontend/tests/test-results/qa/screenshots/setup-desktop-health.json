@@ -1,16 +1,16 @@
 {
   "page": "setup",
   "route": "/setup",
-  "timestamp": "2026-06-19T04:06:27.726Z",
+  "timestamp": "2026-06-25T10:29:38.027Z",
   "viewport": "desktop",
   "status": "fail",
   "checks": {
     "consoleErrors": [],
     "failedRequests": [],
-    "pageEmpty": true,
+    "pageEmpty": false,
     "horizontalOverflow": false,
     "reactError": false,
-    "urlDrift": false,
+    "urlDrift": true,
     "wrongPage": null,
     "missingElements": [
       "input[type=\"password\"]"

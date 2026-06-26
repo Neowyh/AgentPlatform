@@ -414,9 +414,39 @@ async def change_password(request: Request, response: Response, body: ChangePass
 
 @router.get("/me", response_model=UserResponse)
 async def get_me(request: Request):
-    """Get current authenticated user info."""
+    """Get current authenticated user info.
+
+    Returns the RBAC role from ``users_ext`` so the frontend permission
+    checks work correctly.  Falls back to the legacy ``users.system_role``
+    when no ``users_ext`` row exists.
+    """
     user = await get_current_user_from_request(request)
-    return UserResponse(id=str(user.id), email=user.email, system_role=user.system_role, needs_setup=user.needs_setup)
+
+    # Resolve RBAC role from users_ext
+    rbac_role = user.system_role  # fallback to legacy role
+    try:
+        from ideer.persistence.engine import get_session_factory
+        from ideer.persistence.models.user import UserModel
+
+        sf = get_session_factory()
+        if sf is not None:
+            async with sf() as session:
+                from sqlalchemy import select
+
+                stmt = select(UserModel).where(UserModel.id == str(user.id))
+                result = await session.execute(stmt)
+                rbac_user = result.scalar_one_or_none()
+                if rbac_user is not None:
+                    rbac_role = rbac_user.role.value
+    except Exception:
+        pass  # fall back to legacy role
+
+    return UserResponse(
+        id=str(user.id),
+        email=user.email,
+        system_role=rbac_role,
+        needs_setup=user.needs_setup,
+    )
 
 
 # Per-IP cache: ip → (timestamp, result_dict).

@@ -1,17 +1,20 @@
 {
   "page": "login",
   "route": "/login",
-  "timestamp": "2026-06-19T04:06:24.218Z",
+  "timestamp": "2026-06-25T10:29:36.772Z",
   "viewport": "desktop",
-  "status": "ok",
+  "status": "fail",
   "checks": {
     "consoleErrors": [],
     "failedRequests": [],
     "pageEmpty": false,
     "horizontalOverflow": false,
     "reactError": false,
-    "urlDrift": false,
+    "urlDrift": true,
     "wrongPage": null,
-    "missingElements": []
+    "missingElements": [
+      "input[type=\"email\"], input[name=\"email\"]",
+      "input[type=\"password\"]"
+    ]
   }
 }

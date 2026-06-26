@@ -1,28 +1,28 @@
 /**
  * Smoke Test: Login Page
  *
- * 验证登录页面能正常加载，表单元素可用。
- *
- * NOTE: These tests require a real backend with auth enabled.
- * They are skipped when IDEER_AUTH_DISABLED=1 (E2E mock mode)
- * because the auth layout redirects authenticated users away from /login.
+ * Verifies the login page renders correctly and form elements are interactive.
+ * These tests run with authentication ENABLED — they override storageState
+ * to start unauthenticated so the login page is reachable.
  */
 
 import { test, expect } from "@playwright/test";
 
 const BASE_URL = process.env.BASE_URL ?? "http://localhost:3000";
 
+// Start unauthenticated so the login page is accessible (not redirected).
+const emptyStorageState = { cookies: [], origins: [] };
+
 test.describe("Smoke: Login Page", () => {
-  // These tests require auth to be enabled (IDEER_AUTH_DISABLED != "1").
-  // They run via playwright.auth.config.ts which does NOT set IDEER_AUTH_DISABLED.
+  test.use({ storageState: emptyStorageState });
 
   test("should load login page", async ({ page }) => {
     await page.goto(`${BASE_URL}/login`);
 
-    // 验证页面加载
+    // Page should load
     await expect(page).toHaveTitle(/iDeer|Login|登录/);
 
-    // 验证表单元素 - actual DOM: <input id="email" type="email"> and <input id="password" type="password">
+    // Form elements: <input id="email" type="email"> and <input id="password" type="password">
     const emailInput = page.locator('input[type="email"], input#email').first();
     const passwordInput = page
       .locator('input[type="password"], input#password')
@@ -41,7 +41,6 @@ test.describe("Smoke: Login Page", () => {
   test("should show error for invalid credentials", async ({ page }) => {
     await page.goto(`${BASE_URL}/login`);
 
-    // 输入错误凭据
     const emailInput = page.locator('input[type="email"], input#email').first();
     const passwordInput = page
       .locator('input[type="password"], input#password')
@@ -56,10 +55,10 @@ test.describe("Smoke: Login Page", () => {
     await passwordInput.fill("wrongpassword");
     await submitButton.click();
 
-    // 验证错误提示
-    const errorMessage = page
-      .locator("text=/错误|error|invalid|失败|incorrect|wrong/i")
-      .first();
+    // Backend returns {"code":"invalid_credentials","message":"Incorrect email or password"}
+    // which is displayed as <p class="text-sm text-red-500">{error}</p>
+    const errorMessage = page.locator(".text-red-500, [class*='red']").first();
     await expect(errorMessage).toBeVisible({ timeout: 10000 });
+    await expect(errorMessage).toHaveText(/incorrect|invalid|error|失败/i);
   });
 });

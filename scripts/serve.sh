@@ -348,7 +348,7 @@ run_service() {
         sh -c "$cmd" &
     fi
 
-    ./scripts/wait-for-port.sh "$port" "$timeout" "$name" || {
+    "$REPO_ROOT/scripts/wait-for-port.sh" "$port" "$timeout" "$name" || {
         local logfile="logs/$(echo "$name" | tr '[:upper:]' '[:lower:]' | tr ' ' '-').log"
         echo "✗ $name failed to start."
         [ -f "$logfile" ] && tail -20 "$logfile"
@@ -364,7 +364,7 @@ mkdir -p temp/client_body_temp temp/proxy_temp temp/fastcgi_temp temp/uwsgi_temp
 
 # 0. Database migrations
 echo "Running database migrations..."
-cd "$REPO_ROOT/backend" && uv run alembic upgrade head && cd "$REPO_ROOT"
+cd "$REPO_ROOT/backend/packages/harness/ideer/persistence/migrations" && uv run alembic upgrade head && cd "$REPO_ROOT"
 echo "✓ Database migrations completed"
 
 # 1. Gateway API

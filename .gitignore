@@ -68,3 +68,9 @@ config.yaml.bak
 .gstack/
 .worktrees
 backend/data/
+
+# WSL browser profiles
+frontend/\\\\wsl.localhost\\*
+
+# WSL browser profiles
+frontend/\\\\wsl.localhost\\*

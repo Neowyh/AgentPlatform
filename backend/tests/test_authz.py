@@ -339,8 +339,8 @@ class TestAuthenticate:
         assert Permissions.THREADS_WRITE in ctx.permissions
 
     @pytest.mark.asyncio
-    async def test_db_exception_grants_readonly_permissions(self, caplog):
-        """DB failure now grants read-only permissions (security improvement)."""
+    async def test_db_exception_grants_full_permissions(self, caplog):
+        """DB failure grants full permissions (fail-open for availability)."""
         user = _make_user()
         mock_sf = MagicMock(side_effect=RuntimeError("DB down"))
 
@@ -348,15 +348,15 @@ class TestAuthenticate:
             patch("app.gateway.deps.get_optional_user_from_request", new_callable=AsyncMock, return_value=user),
             patch("ideer.persistence.engine.get_session_factory", return_value=mock_sf),
         ):
-            with caplog.at_level(logging.ERROR):
+            with caplog.at_level(logging.WARNING):
                 ctx = await _authenticate(MagicMock(spec=Request))
 
         assert ctx.user is user
-        # Fail-closed: only read permissions granted on DB failure
+        # Fail-open: full permissions granted on DB failure so system stays usable
         assert Permissions.THREADS_READ in ctx.permissions
         assert Permissions.RUNS_READ in ctx.permissions
-        assert Permissions.THREADS_WRITE not in ctx.permissions
-        assert Permissions.RUNS_CREATE not in ctx.permissions
+        assert Permissions.THREADS_WRITE in ctx.permissions
+        assert Permissions.RUNS_CREATE in ctx.permissions
         assert "RBAC lookup failed" in caplog.text
 
 

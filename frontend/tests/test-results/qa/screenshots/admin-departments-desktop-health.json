@@ -1,17 +1,17 @@
 {
   "page": "admin-departments",
   "route": "/workspace/admin/departments",
-  "timestamp": "2026-06-19T04:09:33.630Z",
+  "timestamp": "2026-06-25T10:29:44.063Z",
   "viewport": "desktop",
-  "status": "fail",
+  "status": "ok",
   "checks": {
     "consoleErrors": [],
     "failedRequests": [],
     "pageEmpty": false,
     "horizontalOverflow": false,
     "reactError": false,
-    "urlDrift": true,
-    "wrongPage": "被重定向到登录页",
+    "urlDrift": false,
+    "wrongPage": null,
     "missingElements": []
   }
 }
