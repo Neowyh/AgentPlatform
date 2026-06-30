@@ -1,4 +1,4 @@
-﻿import {
+import {
   CompassIcon,
   GraduationCapIcon,
   ImageIcon,
@@ -495,6 +495,24 @@ export const zhCN: Translations = {
     tools: {
       title: "工具",
       description: "管理 MCP 工具的配置和启用状态。",
+      addServer: "添加服务器",
+      editServer: "编辑服务器",
+      deleteConfirmTitle: "删除服务器？",
+      deleteConfirmDescription: "该服务器将从配置中移除，此操作无法撤销。",
+      serverName: "服务器名称",
+      serverType: "类型",
+      command: "命令",
+      args: "参数",
+      url: "URL",
+      env: "环境变量",
+      headers: "请求头",
+      emptyState:
+        "暂无 MCP 服务器，点击「添加服务器」来配置你的第一个 MCP 服务。",
+      validationNameRequired: "服务器名称不能为空。",
+      validationNameExists: "该名称的服务器已存在。",
+      addSuccess: "服务器已添加",
+      editSuccess: "服务器已更新",
+      deleteSuccess: "服务器已删除",
     },
     skills: {
       title: "技能",

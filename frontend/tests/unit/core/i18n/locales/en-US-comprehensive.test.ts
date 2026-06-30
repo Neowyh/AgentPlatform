@@ -1045,16 +1045,43 @@ describe("enUS locale comprehensive", () => {
     // settings.tools
     // -------------------------------------------------------------------
     describe("tools", () => {
-      it("settings.tools.title", () => {
-        expect(enUS.settings.tools.title).toBe("Tools");
-      });
-
       it("settings.tools.description mentions MCP", () => {
         expect(enUS.settings.tools.description).toContain("MCP");
       });
 
-      it("has 2 keys", () => {
-        expect(Object.keys(enUS.settings.tools)).toHaveLength(2);
+      const expected: Record<string, string> = {
+        title: "Tools",
+        description:
+          "Manage the configuration and enabled status of MCP tools.",
+        addServer: "Add Server",
+        editServer: "Edit Server",
+        deleteConfirmTitle: "Delete server?",
+        deleteConfirmDescription:
+          "This server will be removed from the configuration. This action cannot be undone.",
+        serverName: "Server Name",
+        serverType: "Type",
+        command: "Command",
+        args: "Arguments",
+        url: "URL",
+        env: "Environment Variables",
+        headers: "Headers",
+        emptyState:
+          'No MCP servers configured. Click "Add Server" to get started.',
+        validationNameRequired: "Server name cannot be empty.",
+        validationNameExists: "A server with this name already exists.",
+        addSuccess: "Server added",
+        editSuccess: "Server updated",
+        deleteSuccess: "Server deleted",
+      };
+
+      for (const [key, value] of Object.entries(expected)) {
+        it(`settings.tools.${key}`, () => {
+          expect(enUS.settings.tools).toHaveProperty(key, value);
+        });
+      }
+
+      it("has 19 keys", () => {
+        expect(Object.keys(enUS.settings.tools)).toHaveLength(19);
       });
     });
 

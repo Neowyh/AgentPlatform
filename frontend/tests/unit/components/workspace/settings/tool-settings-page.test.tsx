@@ -21,6 +21,9 @@ let mockConfig: {
 let mockIsLoading = false;
 let mockError: Error | null = null;
 const mockEnableMCPServer = vi.fn();
+const mockAddMCPServer = vi.fn();
+const mockUpdateMCPServer = vi.fn();
+const mockDeleteMCPServer = vi.fn();
 
 vi.mock("@/core/mcp/hooks", () => ({
   useMCPConfig: () => ({
@@ -30,6 +33,19 @@ vi.mock("@/core/mcp/hooks", () => ({
   }),
   useEnableMCPServer: () => ({
     mutate: mockEnableMCPServer,
+    isPending: false,
+  }),
+  useAddMCPServer: () => ({
+    mutateAsync: mockAddMCPServer,
+    isPending: false,
+  }),
+  useUpdateMCPServer: () => ({
+    mutateAsync: mockUpdateMCPServer,
+    isPending: false,
+  }),
+  useDeleteMCPServer: () => ({
+    mutateAsync: mockDeleteMCPServer,
+    isPending: false,
   }),
 }));
 
@@ -46,13 +62,38 @@ vi.mock("@/core/i18n/hooks", () => ({
         tools: {
           title: "Tools",
           description: "Manage MCP servers",
+          addServer: "Add Server",
+          editServer: "Edit Server",
+          deleteConfirmTitle: "Delete server?",
+          deleteConfirmDescription: "This server will be removed.",
+          serverName: "Server Name",
+          serverType: "Type",
+          command: "Command",
+          args: "Arguments",
+          url: "URL",
+          env: "Environment Variables",
+          headers: "Headers",
+          emptyState: "No MCP servers configured.",
+          validationNameRequired: "Server name cannot be empty.",
+          validationNameExists: "A server with this name already exists.",
+          addSuccess: "Server added",
+          editSuccess: "Server updated",
+          deleteSuccess: "Server deleted",
         },
       },
       common: {
         loading: "Loading...",
+        cancel: "Cancel",
+        save: "Save",
+        delete: "Delete",
+        edit: "Edit",
       },
     },
   }),
+}));
+
+vi.mock("sonner", () => ({
+  toast: { success: vi.fn(), error: vi.fn() },
 }));
 
 vi.mock("@/components/workspace/settings/settings-section", () => ({
@@ -123,6 +164,136 @@ vi.mock("@/components/ui/switch", () => ({
       Switch
     </button>
   ),
+}));
+
+vi.mock("@/components/ui/button", () => ({
+  Button: ({
+    children,
+    onClick,
+    variant,
+    size,
+    disabled,
+  }: {
+    children: React.ReactNode;
+    onClick?: () => void;
+    variant?: string;
+    size?: string;
+    disabled?: boolean;
+  }) => (
+    <button
+      onClick={onClick}
+      data-variant={variant}
+      data-size={size}
+      disabled={disabled}
+    >
+      {children}
+    </button>
+  ),
+}));
+
+vi.mock("@/components/ui/dialog", () => ({
+  Dialog: ({
+    children,
+    open,
+  }: {
+    children: React.ReactNode;
+    open?: boolean;
+  }) => (open ? <div data-testid="dialog">{children}</div> : null),
+  DialogContent: ({
+    children,
+    className,
+  }: {
+    children: React.ReactNode;
+    className?: string;
+  }) => <div className={className}>{children}</div>,
+  DialogHeader: ({ children }: { children: React.ReactNode }) => (
+    <div>{children}</div>
+  ),
+  DialogTitle: ({ children }: { children: React.ReactNode }) => (
+    <div>{children}</div>
+  ),
+  DialogDescription: ({ children }: { children: React.ReactNode }) => (
+    <div>{children}</div>
+  ),
+  DialogFooter: ({ children }: { children: React.ReactNode }) => (
+    <div>{children}</div>
+  ),
+}));
+
+vi.mock("@/components/ui/input", () => ({
+  Input: ({
+    value,
+    onChange,
+    disabled,
+    readOnly,
+    placeholder,
+    className,
+  }: {
+    value?: string;
+    onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void;
+    disabled?: boolean;
+    readOnly?: boolean;
+    placeholder?: string;
+    className?: string;
+  }) => (
+    <input
+      value={value}
+      onChange={onChange}
+      disabled={disabled}
+      readOnly={readOnly}
+      placeholder={placeholder}
+      className={className}
+    />
+  ),
+}));
+
+vi.mock("@/components/ui/textarea", () => ({
+  Textarea: ({
+    value,
+    onChange,
+    rows,
+    placeholder,
+  }: {
+    value?: string;
+    onChange?: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
+    rows?: number;
+    placeholder?: string;
+  }) => (
+    <textarea
+      value={value}
+      onChange={onChange}
+      rows={rows}
+      placeholder={placeholder}
+    />
+  ),
+}));
+
+vi.mock("@/components/ui/select", () => ({
+  Select: ({
+    children,
+    value,
+  }: {
+    children: React.ReactNode;
+    value?: string;
+  }) => (
+    <select data-testid="select" value={value}>
+      {children}
+    </select>
+  ),
+  SelectTrigger: ({ children }: { children: React.ReactNode }) => (
+    <div>{children}</div>
+  ),
+  SelectValue: () => <span />,
+  SelectContent: ({ children }: { children: React.ReactNode }) => (
+    <div>{children}</div>
+  ),
+  SelectItem: ({
+    children,
+    value,
+  }: {
+    children: React.ReactNode;
+    value: string;
+  }) => <option value={value}>{children}</option>,
 }));
 
 // ── Dynamic import ───────────────────────────────────────────────────────────
@@ -206,17 +377,22 @@ describe("ToolSettingsPage", () => {
     expect(screen.getByText("Error: Config error")).toBeInTheDocument();
   });
 
-  test("renders empty when config has no servers", () => {
+  test("renders empty state when config has no servers", () => {
     mockConfig = { mcp_servers: {} };
     render(<ToolSettingsPage />);
     expect(screen.queryAllByRole("switch")).toHaveLength(0);
+    expect(screen.getByText("No MCP servers configured.")).toBeInTheDocument();
+  });
+
+  test("renders add server button", () => {
+    render(<ToolSettingsPage />);
+    expect(screen.getByText("Add Server")).toBeInTheDocument();
   });
 
   test("clicking switch calls enableMCPServer with correct args", async () => {
     const user = userEvent.setup();
     render(<ToolSettingsPage />);
     const switches = screen.getAllByRole("switch");
-    // Click the first switch (code-runner, currently enabled=true) to disable it
     await user.click(switches[0]!);
     expect(mockEnableMCPServer).toHaveBeenCalledWith({
       serverName: "code-runner",
@@ -228,7 +404,6 @@ describe("ToolSettingsPage", () => {
     const user = userEvent.setup();
     render(<ToolSettingsPage />);
     const switches = screen.getAllByRole("switch");
-    // Click the second switch (web-search, currently enabled=false) to enable it
     await user.click(switches[1]!);
     expect(mockEnableMCPServer).toHaveBeenCalledWith({
       serverName: "web-search",

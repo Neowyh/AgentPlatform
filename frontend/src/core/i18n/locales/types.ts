@@ -433,6 +433,23 @@ export interface Translations {
     tools: {
       title: string;
       description: string;
+      addServer: string;
+      editServer: string;
+      deleteConfirmTitle: string;
+      deleteConfirmDescription: string;
+      serverName: string;
+      serverType: string;
+      command: string;
+      args: string;
+      url: string;
+      env: string;
+      headers: string;
+      emptyState: string;
+      validationNameRequired: string;
+      validationNameExists: string;
+      addSuccess: string;
+      editSuccess: string;
+      deleteSuccess: string;
     };
     skills: {
       title: string;

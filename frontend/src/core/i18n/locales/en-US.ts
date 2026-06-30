@@ -514,6 +514,25 @@ export const enUS: Translations = {
     tools: {
       title: "Tools",
       description: "Manage the configuration and enabled status of MCP tools.",
+      addServer: "Add Server",
+      editServer: "Edit Server",
+      deleteConfirmTitle: "Delete server?",
+      deleteConfirmDescription:
+        "This server will be removed from the configuration. This action cannot be undone.",
+      serverName: "Server Name",
+      serverType: "Type",
+      command: "Command",
+      args: "Arguments",
+      url: "URL",
+      env: "Environment Variables",
+      headers: "Headers",
+      emptyState:
+        'No MCP servers configured. Click "Add Server" to get started.',
+      validationNameRequired: "Server name cannot be empty.",
+      validationNameExists: "A server with this name already exists.",
+      addSuccess: "Server added",
+      editSuccess: "Server updated",
+      deleteSuccess: "Server deleted",
     },
     skills: {
       title: "Agent Skills",
