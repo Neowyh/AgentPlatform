@@ -60,7 +60,7 @@ class UpdateDepartmentRequest(BaseModel):
 
 
 @router.get("/users")
-@require_role(UserRole.SUPER_ADMIN)
+@require_role(UserRole.SUPER_ADMIN, UserRole.DEPARTMENT_ADMIN)
 async def list_users(
     department_id: str | None = None,
     role: str | None = None,
@@ -68,7 +68,10 @@ async def list_users(
     offset: int = Query(default=0, ge=0),
     current_user: UserModel = Depends(get_current_rbac_user),
 ):
-    """List all users with optional filters. Requires super_admin role."""
+    """List users with optional filters.
+
+    super_admin sees all users. department_admin sees only their own department.
+    """
     sf = get_session_factory()
     if sf is None:
         raise HTTPException(status_code=500, detail="Database not initialized")
@@ -76,6 +79,12 @@ async def list_users(
     # Validate role filter
     if role is not None and role not in tuple(UserRole):
         raise HTTPException(status_code=400, detail=f"Invalid role filter: '{role}'. Valid roles: {', '.join(r.value for r in UserRole)}")
+
+    # department_admin: force scope to own department, ignore query params
+    if current_user.role == UserRole.DEPARTMENT_ADMIN:
+        if not current_user.department_id:
+            return {"users": [], "total": 0, "limit": limit, "offset": offset}
+        department_id = current_user.department_id
 
     async with sf() as session:
         # Count total matching users
@@ -117,13 +126,17 @@ async def list_users(
 
 
 @router.put("/users/{user_id}/role")
-@require_role(UserRole.SUPER_ADMIN)
+@require_role(UserRole.SUPER_ADMIN, UserRole.DEPARTMENT_ADMIN)
 async def update_user_role(
     user_id: str,
     body: UpdateRoleRequest,
     current_user: UserModel = Depends(get_current_rbac_user),
 ):
-    """Update a user's role. Requires super_admin role."""
+    """Update a user's role.
+
+    super_admin can change any role. department_admin can only change
+    role within their own department and cannot promote to super_admin.
+    """
     if body.role not in tuple(UserRole):
         raise HTTPException(status_code=400, detail="Invalid role")
 
@@ -142,6 +155,21 @@ async def update_user_role(
         user = result.scalar_one_or_none()
         if user is None:
             raise HTTPException(status_code=404, detail="User not found")
+
+        # department_admin: restrict scope
+        if current_user.role == UserRole.DEPARTMENT_ADMIN:
+            if user_id == current_user.id:
+                raise HTTPException(status_code=400, detail="Cannot change your own role")
+            if user.role == UserRole.SUPER_ADMIN:
+                raise HTTPException(status_code=403, detail="Cannot modify super_admin")
+            if user.role == UserRole.DEPARTMENT_ADMIN:
+                raise HTTPException(status_code=403, detail="Cannot modify another department_admin")
+            if body.role == UserRole.SUPER_ADMIN:
+                raise HTTPException(status_code=403, detail="Cannot promote to super_admin")
+            if user.department_id != current_user.department_id:
+                raise HTTPException(status_code=403, detail="Cannot modify users outside your department")
+            if not user.department_id:
+                raise HTTPException(status_code=403, detail="Cannot modify users without a department")
 
         # Prevent removing the last active super_admin (including self-demotion)
         if user.role == UserRole.SUPER_ADMIN and body.role != UserRole.SUPER_ADMIN:
@@ -164,12 +192,16 @@ async def update_user_role(
 
 
 @router.delete("/users/{user_id}")
-@require_role(UserRole.SUPER_ADMIN)
+@require_role(UserRole.SUPER_ADMIN, UserRole.DEPARTMENT_ADMIN)
 async def disable_user(
     user_id: str,
     current_user: UserModel = Depends(get_current_rbac_user),
 ):
-    """Disable a user by removing their RBAC profile. Requires super_admin role."""
+    """Disable a user.
+
+    super_admin can disable anyone. department_admin can only disable
+    regular users within their own department.
+    """
     if user_id == current_user.id:
         raise HTTPException(status_code=400, detail="Cannot disable yourself")
 
@@ -188,6 +220,17 @@ async def disable_user(
         user = result.scalar_one_or_none()
         if user is None:
             raise HTTPException(status_code=404, detail="User not found")
+
+        # department_admin: restrict scope
+        if current_user.role == UserRole.DEPARTMENT_ADMIN:
+            if user.role == UserRole.SUPER_ADMIN:
+                raise HTTPException(status_code=403, detail="Cannot disable super_admin")
+            if user.role == UserRole.DEPARTMENT_ADMIN:
+                raise HTTPException(status_code=403, detail="Cannot disable another department_admin")
+            if user.department_id != current_user.department_id:
+                raise HTTPException(status_code=403, detail="Cannot disable users outside your department")
+            if not user.department_id:
+                raise HTTPException(status_code=403, detail="Cannot disable users without a department")
 
         # Prevent disabling the last active super_admin
         if user.role == UserRole.SUPER_ADMIN:
