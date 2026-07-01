@@ -149,7 +149,7 @@ async def update_workflow(
 
 
 @router.delete("/{workflow_name}")
-@require_role(UserRole.SUPER_ADMIN)
+@require_role(UserRole.SUPER_ADMIN, UserRole.DEPARTMENT_ADMIN)
 async def delete_workflow(
     workflow_name: str,
     current_user: UserModel = Depends(get_current_rbac_user),

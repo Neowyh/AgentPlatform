@@ -158,7 +158,7 @@ async def test_tool(
 
 
 @router.put("/{tool_name}/config")
-@require_role(UserRole.SUPER_ADMIN)
+@require_role(UserRole.SUPER_ADMIN, UserRole.DEPARTMENT_ADMIN)
 async def update_tool_config(
     tool_name: str,
     body: ToolConfigUpdate,

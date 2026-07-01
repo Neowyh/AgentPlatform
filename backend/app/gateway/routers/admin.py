@@ -21,7 +21,7 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 
 @router.get("/stats")
-@require_role(UserRole.SUPER_ADMIN)
+@require_role(UserRole.SUPER_ADMIN, UserRole.DEPARTMENT_ADMIN)
 async def get_admin_stats(
     current_user: UserModel = Depends(get_current_rbac_user),
 ):
@@ -311,7 +311,7 @@ async def list_departments(
 
 
 @router.post("/departments")
-@require_role(UserRole.SUPER_ADMIN)
+@require_role(UserRole.SUPER_ADMIN, UserRole.DEPARTMENT_ADMIN)
 async def create_department(
     body: CreateDepartmentRequest,
     current_user: UserModel = Depends(get_current_rbac_user),
@@ -346,7 +346,7 @@ async def create_department(
 
 
 @router.put("/departments/{dept_id}")
-@require_role(UserRole.SUPER_ADMIN)
+@require_role(UserRole.SUPER_ADMIN, UserRole.DEPARTMENT_ADMIN)
 async def update_department(
     dept_id: str,
     body: UpdateDepartmentRequest,
@@ -386,7 +386,7 @@ async def update_department(
 
 
 @router.delete("/departments/{dept_id}")
-@require_role(UserRole.SUPER_ADMIN)
+@require_role(UserRole.SUPER_ADMIN, UserRole.DEPARTMENT_ADMIN)
 async def delete_department(
     dept_id: str,
     current_user: UserModel = Depends(get_current_rbac_user),
