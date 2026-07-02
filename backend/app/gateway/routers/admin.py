@@ -68,7 +68,7 @@ class CreateUserRequest(BaseModel):
 # --- User Management ---
 
 
-@router.post("/users")
+@router.post("/users", status_code=201)
 @require_role(UserRole.SUPER_ADMIN, UserRole.DEPARTMENT_ADMIN)
 async def create_user(
     body: CreateUserRequest,
@@ -85,16 +85,15 @@ async def create_user(
     if not body.username.strip():
         raise HTTPException(status_code=400, detail="Username cannot be empty")
 
-    try:
-        role = UserRole(body.role)
-    except ValueError:
-        raise HTTPException(status_code=400, detail=f"Invalid role: '{body.role}'")
+    role = UserRole(body.role)
 
     department_id = body.department_id
 
     if current_user.role == UserRole.DEPARTMENT_ADMIN:
         if role in (UserRole.SUPER_ADMIN, UserRole.DEPARTMENT_ADMIN):
             raise HTTPException(status_code=403, detail="Cannot create super_admin or department_admin users")
+        if not current_user.department_id:
+            raise HTTPException(status_code=400, detail="No department assigned")
         role = UserRole.USER
         department_id = current_user.department_id
 
