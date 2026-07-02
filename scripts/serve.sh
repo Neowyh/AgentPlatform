@@ -364,7 +364,7 @@ mkdir -p temp/client_body_temp temp/proxy_temp temp/fastcgi_temp temp/uwsgi_temp
 
 # 0. Database migrations
 echo "Running database migrations..."
-cd "$REPO_ROOT/backend/packages/harness/ideer/persistence/migrations" && uv run alembic upgrade head && cd "$REPO_ROOT"
+(cd "$REPO_ROOT/backend/packages/harness/ideer/persistence/migrations" && uv run alembic upgrade head) || { echo "✗ Database migrations failed"; cleanup 1; }
 echo "✓ Database migrations completed"
 
 # 1. Gateway API

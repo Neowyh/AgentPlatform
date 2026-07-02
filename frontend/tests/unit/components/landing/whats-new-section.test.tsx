@@ -14,13 +14,11 @@ vi.mock("next/navigation", () => ({
 describe("WhatsNewSection", () => {
   test("renders the section title", () => {
     render(<WhatsNewSection />);
-    expect(screen.getByText("Whats New in iDeer 2.0")).toBeInTheDocument();
+    expect(screen.getByText("iDeer 2.0 新功能")).toBeInTheDocument();
   });
 
   test("renders the subtitle", () => {
     render(<WhatsNewSection />);
-    expect(
-      screen.getByText(/evolving from a Deep Research agent/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/从 Deep Research 智能体进化/)).toBeInTheDocument();
   });
 });

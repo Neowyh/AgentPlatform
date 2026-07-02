@@ -106,7 +106,7 @@ async def update_skill_preferences(
         storage = get_or_new_skill_storage(app_config=app_config)
         if hasattr(storage, "clear_cache"):
             await storage.clear_cache()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("Failed to invalidate skill cache after preference update: %s", e)
 
     return {"message": "Skill preferences updated successfully"}

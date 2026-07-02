@@ -458,6 +458,22 @@ export interface Translations {
       emptyTitle: string;
       emptyDescription: string;
       emptyButton: string;
+      applyOpen: string;
+      applyOpenTooltip: string;
+      locked: string;
+      lockedTooltip: string;
+      applicationSubmitted: string;
+      applicationSubmitFailed: string;
+      applyDialogTitle: string;
+      applyDialogDescription: string;
+      applyDialogCurrentStatus: string;
+      applyDialogScope: string;
+      applyDialogScopeDepartment: string;
+      applyDialogScopePublic: string;
+      applyDialogReason: string;
+      applyDialogReasonPlaceholder: string;
+      applyDialogCancel: string;
+      applyDialogSubmit: string;
     };
     notification: {
       title: string;

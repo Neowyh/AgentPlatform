@@ -175,11 +175,14 @@ async def review_application(
             # Update skill visibility when approved
             if request.action == SkillApplicationStatus.APPROVED:
                 await _update_skill_visibility(config, application.skill_id, application.request_level)
+
+            await session.commit()
+
+            # Invalidate cache after successful commit
+            if request.action == SkillApplicationStatus.APPROVED:
                 storage = get_or_new_skill_storage(app_config=config)
                 if hasattr(storage, "clear_cache"):
                     await storage.clear_cache()
-
-            await session.commit()
 
         return {"message": f"Application {request.action} successfully"}
     except HTTPException:
@@ -190,7 +193,14 @@ async def review_application(
 
 
 async def _update_skill_visibility(config: AppConfig, skill_id: str, new_visibility: str) -> None:
-    """Update skill's .meta.json visibility after approval."""
+    """Update skill's .meta.json visibility after approval.
+
+    Uses file locking to prevent race conditions when multiple admins
+    approve applications for the same skill concurrently.
+
+    Raises on failure so the caller can roll back the DB transaction.
+    """
+    import fcntl
     import json
     import os
     import tempfile
@@ -199,37 +209,40 @@ async def _update_skill_visibility(config: AppConfig, skill_id: str, new_visibil
     if not hasattr(storage, "get_custom_skill_dir"):
         return
 
-    try:
-        skill_dir = storage.get_custom_skill_dir(skill_id)
-        meta_file = skill_dir / ".meta.json"
+    skill_dir = storage.get_custom_skill_dir(skill_id)
+    meta_file = skill_dir / ".meta.json"
+    lock_file = skill_dir / ".meta.lock"
 
-        meta = {}
-        if meta_file.exists():
+    await asyncio.to_thread(skill_dir.mkdir, parents=True, exist_ok=True)
+
+    def _update_with_lock():
+        with open(lock_file, "w") as lock_fd:
+            fcntl.flock(lock_fd, fcntl.LOCK_EX)
             try:
-                content = await asyncio.to_thread(meta_file.read_text, encoding="utf-8")
-                meta = json.loads(content)
-            except json.JSONDecodeError:
                 meta = {}
+                if meta_file.exists():
+                    try:
+                        content = meta_file.read_text(encoding="utf-8")
+                        meta = json.loads(content)
+                    except json.JSONDecodeError:
+                        meta = {}
 
-        meta["visibility"] = new_visibility
+                meta["visibility"] = new_visibility
 
-        await asyncio.to_thread(skill_dir.mkdir, parents=True, exist_ok=True)
-
-        def _atomic_write_meta(path, data):
-            fd, tmp_path = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
-            try:
-                with os.fdopen(fd, "w", encoding="utf-8") as f:
-                    json.dump(data, f, indent=2)
-                os.replace(tmp_path, path)
-            except BaseException:
+                fd, tmp_path = tempfile.mkstemp(dir=skill_dir, suffix=".tmp")
                 try:
-                    os.unlink(tmp_path)
-                except OSError:
-                    pass
-                raise
+                    with os.fdopen(fd, "w", encoding="utf-8") as f:
+                        json.dump(meta, f, indent=2)
+                    os.replace(tmp_path, meta_file)
+                except BaseException:
+                    try:
+                        os.unlink(tmp_path)
+                    except OSError:
+                        pass
+                    raise
+            finally:
+                fcntl.flock(lock_fd, fcntl.LOCK_UN)
 
-        await asyncio.to_thread(_atomic_write_meta, meta_file, meta)
+    await asyncio.to_thread(_update_with_lock)
 
-        logger.info("Skill '%s' visibility updated to %s via approval", skill_id, new_visibility)
-    except Exception as e:
-        logger.error("Failed to update skill visibility for %s: %s", skill_id, e, exc_info=True)
+    logger.info("Skill '%s' visibility updated to %s via approval", skill_id, new_visibility)

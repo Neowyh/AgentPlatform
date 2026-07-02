@@ -1031,8 +1031,8 @@ describe("zhCN locale", () => {
         });
       }
 
-      it("has 6 keys", () => {
-        expect(Object.keys(zhCN.settings.skills)).toHaveLength(6);
+      it("has 22 keys", () => {
+        expect(Object.keys(zhCN.settings.skills)).toHaveLength(22);
       });
     });
 

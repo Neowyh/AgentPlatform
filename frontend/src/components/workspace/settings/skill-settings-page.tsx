@@ -1,8 +1,9 @@
 "use client";
 
-import { EditIcon, PlayIcon, SparklesIcon } from "lucide-react";
+import { EditIcon, PlayIcon, ShareIcon, SparklesIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
+import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -35,12 +36,15 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useAuth } from "@/core/auth/AuthProvider";
 import { useI18n } from "@/core/i18n/hooks";
+import { submitSkillApplication } from "@/core/skills/api";
 import { useEnableSkill, useSkills } from "@/core/skills/hooks";
 import type { Skill } from "@/core/skills/type";
 import { env } from "@/env";
 
 import { SettingsSection } from "./settings-section";
+import { SkillApplyDialog } from "./skill-apply-dialog";
 import { SkillEditor } from "./skill-editor";
 
 export function SkillSettingsPage({ onClose }: { onClose?: () => void } = {}) {
@@ -71,10 +75,12 @@ function SkillSettingsList({
 }) {
   const { t } = useI18n();
   const router = useRouter();
+  const { user } = useAuth();
   const [filter, setFilter] = useState<string>("public");
   const { mutate: enableSkill } = useEnableSkill();
   const [editingSkill, setEditingSkill] = useState<Skill | null>(null);
   const [testingSkill, setTestingSkill] = useState<Skill | null>(null);
+  const [applyingSkill, setApplyingSkill] = useState<Skill | null>(null);
 
   const filteredSkills = useMemo(
     () => skills.filter((skill) => skill.category === filter),
@@ -94,10 +100,41 @@ function SkillSettingsList({
     setTestingSkill(skill);
   };
 
+  const handleApplyOpen = (skill: Skill) => {
+    setApplyingSkill(skill);
+  };
+
+  const handleSubmitApplication = async (
+    requestLevel: string,
+    reason: string,
+  ) => {
+    if (!applyingSkill) return;
+    try {
+      await submitSkillApplication(applyingSkill.name, {
+        request_level: requestLevel as "department" | "public",
+        reason,
+      });
+      toast.success(t.settings.skills.applicationSubmitted);
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : t.settings.skills.applicationSubmitFailed,
+      );
+    }
+    setApplyingSkill(null);
+  };
+
   const handleSaveSkill = async (content: string) => {
     // TODO: Implement save skill content API
     console.log("Saving skill:", editingSkill?.name, content);
     setEditingSkill(null);
+  };
+
+  const isSkillOwner = (skill: Skill) => {
+    if (skill.category !== "custom") return false;
+    if (!skill.owner_id) return false;
+    return skill.owner_id === user?.id;
   };
 
   return (
@@ -172,13 +209,46 @@ function SkillSettingsList({
                 >
                   <PlayIcon className="h-4 w-4" />
                 </Button>
+                {/* Apply Open Button - only for custom skills owned by the user */}
+                {skill.category === "custom" && isSkillOwner(skill) && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => handleApplyOpen(skill)}
+                        title={t.settings.skills.applyOpen}
+                      >
+                        <ShareIcon className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      {t.settings.skills.applyOpenTooltip}
+                    </TooltipContent>
+                  </Tooltip>
+                )}
                 <Switch
                   checked={skill.enabled}
-                  disabled={env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true"}
+                  disabled={
+                    env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true" ||
+                    skill.category === "public"
+                  }
                   onCheckedChange={(checked) =>
                     enableSkill({ skillName: skill.name, enabled: checked })
                   }
                 />
+                {skill.category === "public" && (
+                  <Tooltip>
+                    <TooltipTrigger>
+                      <Badge variant="secondary" className="text-xs">
+                        {t.settings.skills.locked}
+                      </Badge>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      {t.settings.skills.lockedTooltip}
+                    </TooltipContent>
+                  </Tooltip>
+                )}
               </div>
             </ItemActions>
           </Item>
@@ -189,7 +259,7 @@ function SkillSettingsList({
         open={!!editingSkill}
         onOpenChange={(open) => !open && setEditingSkill(null)}
       >
-        <DialogContent className="max-h-[90vh] max-w-4xl p-0">
+        <DialogContent className="flex h-[75vh] max-w-[calc(100%-2rem)] flex-col p-0 sm:max-w-4xl">
           {editingSkill && (
             <SkillEditor
               skillName={editingSkill.name}
@@ -248,6 +318,14 @@ ${editingSkill.description}
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Skill Apply Dialog */}
+      <SkillApplyDialog
+        skill={applyingSkill}
+        open={!!applyingSkill}
+        onOpenChange={(open) => !open && setApplyingSkill(null)}
+        onSubmit={handleSubmitApplication}
+      />
     </div>
   );
 }

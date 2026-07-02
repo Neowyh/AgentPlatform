@@ -58,11 +58,11 @@ export interface SkillApplicationResponse {
 }
 
 export async function submitSkillApplication(
-  skillId: string,
+  skillName: string,
   request: SubmitApplicationRequest,
 ): Promise<SkillApplicationResponse> {
   const response = await fetch(
-    `${getBackendBaseURL()}/api/skills/${encodeURIComponent(skillId)}/apply`,
+    `${getBackendBaseURL()}/api/skills/${encodeURIComponent(skillName)}/apply`,
     {
       method: "POST",
       headers: {

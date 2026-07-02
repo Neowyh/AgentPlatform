@@ -543,6 +543,26 @@ export const enUS: Translations = {
       emptyDescription:
         "Put your agent skill folders under the `/skills/custom` folder under the root folder of iDeer.",
       emptyButton: "Create Your First Skill",
+      applyOpen: "Apply Open",
+      applyOpenTooltip: "Apply to open for department or everyone",
+      locked: "Locked",
+      lockedTooltip:
+        "Public skills are managed by admins and cannot be modified",
+      applicationSubmitted: "Application submitted",
+      applicationSubmitFailed: "Failed to submit application",
+      applyDialogTitle: "Apply to Open Skill: {name}",
+      applyDialogDescription:
+        "Select the scope and provide a reason. Department scope requires department admin approval, public scope requires super admin approval.",
+      applyDialogCurrentStatus: "Current status: private (visible only to you)",
+      applyDialogScope: "Application scope",
+      applyDialogScopeDepartment:
+        "Department (requires department admin approval)",
+      applyDialogScopePublic: "Public (requires super admin approval)",
+      applyDialogReason: "Reason",
+      applyDialogReasonPlaceholder:
+        "Please explain why you want to open this skill...",
+      applyDialogCancel: "Cancel",
+      applyDialogSubmit: "Submit Application",
     },
     notification: {
       title: "Notification",

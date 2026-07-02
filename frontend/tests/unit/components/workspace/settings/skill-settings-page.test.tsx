@@ -21,6 +21,10 @@ vi.mock("@/core/skills/hooks", () => ({
   }),
 }));
 
+vi.mock("@/core/skills/api", () => ({
+  submitSkillApplication: vi.fn().mockResolvedValue({}),
+}));
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
     push: mockPush,
@@ -31,6 +35,12 @@ vi.mock("@/env", () => ({
   env: {
     NEXT_PUBLIC_STATIC_WEBSITE_ONLY: "false",
   },
+}));
+
+vi.mock("@/core/auth/AuthProvider", () => ({
+  useAuth: () => ({
+    user: { id: "test-user", email: "test@test.com", system_role: "user" },
+  }),
 }));
 
 vi.mock("@/core/i18n/hooks", () => ({
@@ -205,6 +215,9 @@ vi.mock("@/components/ui/dialog", () => ({
   DialogDescription: ({ children }: { children: React.ReactNode }) => (
     <p>{children}</p>
   ),
+  DialogFooter: ({ children }: { children: React.ReactNode }) => (
+    <div>{children}</div>
+  ),
 }));
 
 vi.mock("@/components/ui/switch", () => ({
@@ -238,6 +251,13 @@ vi.mock("@/components/ui/tooltip", () => ({
   TooltipContent: ({ children }: { children: React.ReactNode }) => (
     <div>{children}</div>
   ),
+}));
+
+vi.mock("sonner", () => ({
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(),
+  },
 }));
 
 vi.mock("@/components/ui/badge", () => ({
@@ -276,6 +296,15 @@ beforeEach(async () => {
       category: "custom",
       enabled: false,
       license: "mit",
+      owner_id: "test-user",
+    },
+    {
+      name: "Other's Custom Skill",
+      description: "A skill owned by another user",
+      category: "custom",
+      enabled: true,
+      license: "mit",
+      owner_id: "other-user",
     },
     {
       name: "Web Skill",

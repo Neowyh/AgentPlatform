@@ -35,21 +35,19 @@ afterEach(() => {
 describe("WhatsNewSection", () => {
   test("renders section title", () => {
     render(<WhatsNewSection />);
-    expect(screen.getByText("Whats New in iDeer 2.0")).toBeInTheDocument();
+    expect(screen.getByText("iDeer 2.0 新功能")).toBeInTheDocument();
   });
 
   test("renders section subtitle", () => {
     render(<WhatsNewSection />);
-    expect(
-      screen.getByText(/evolving from a Deep Research agent/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/从 Deep Research 智能体进化/)).toBeInTheDocument();
   });
 
   test("renders MagicBento with feature cards", () => {
     render(<WhatsNewSection />);
     expect(screen.getByTestId("magic-bento")).toBeInTheDocument();
-    expect(screen.getByText("Long/Short-term Memory")).toBeInTheDocument();
-    expect(screen.getByText("Open Source")).toBeInTheDocument();
+    expect(screen.getByText("长期记忆")).toBeInTheDocument();
+    expect(screen.getByText("开源可控")).toBeInTheDocument();
   });
 
   test("applies custom className", () => {

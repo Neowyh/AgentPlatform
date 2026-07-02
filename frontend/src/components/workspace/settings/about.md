@@ -1,55 +1,54 @@
-# 🦌 [About iDeer 2.0](https://github.com/bytedance/ideer)
+# 🦌 [关于 iDeer 2.0](https://github.com/bytedance/ideer)
 
-> **From Open Source, Back to Open Source**
+> **源于开源，回馈开源**
 
-**iDeer** (**D**eep **E**xploration and **E**fficient **R**esearch **Flow**) is a community-driven SuperAgent harness that researches, codes, and creates.
-With the help of sandboxes, memories, tools and skills, it handles
-different levels of tasks that could take minutes to hours.
-
----
-
-## 🌟 GitHub Repository
-
-Explore iDeer on GitHub: [github.com/bytedance/ideer](https://github.com/bytedance/ideer)
-
-## 🌐 Official Website
-
-Visit the official website of iDeer: [ideer.tech](https://ideer.tech/)
-
-## 📧 Support
-
-If you have any questions or need help, please contact us at [support@ideer.tech](mailto:support@ideer.tech).
+**iDeer**（**D**eep **E**xploration and **E**fficient **R**esearch **Flow）** 是一个社区驱动的超级智能体框架，能够进行研究、编程和创造。
+借助沙箱、记忆、工具和技能，它可以处理从几分钟到数小时不等的各种复杂任务。
 
 ---
 
-## 📜 License
+## 🌟 GitHub 仓库
 
-iDeer is proudly open source and distributed under the **MIT License**.
+在 GitHub 上探索 iDeer：[github.com/bytedance/ideer](https://github.com/bytedance/ideer)
+
+## 🌐 官方网站
+
+访问 iDeer 官方网站：[ideer.tech](https://ideer.tech/)
+
+## 📧 支持
+
+如有任何问题或需要帮助，请发送邮件至 [support@ideer.tech](mailto:support@ideer.tech)。
 
 ---
 
-## 🙌 Acknowledgments
+## 📜 开源许可
 
-We extend our heartfelt gratitude to the open source projects and contributors who have made iDeer a reality. We truly stand on the shoulders of giants.
+iDeer 自豪地采用 **MIT 许可证** 开源发布。
 
-### Core Frameworks
+---
 
-- **[LangChain](https://github.com/langchain-ai/langchain)**: A phenomenal framework that powers our LLM interactions and chains.
-- **[LangGraph](https://github.com/langchain-ai/langgraph)**: Enabling sophisticated multi-agent orchestration.
-- **[Next.js](https://nextjs.org/)**: A cutting-edge framework for building web applications.
+## 🙌 致谢
 
-### UI Libraries
+我们衷心感谢所有让 iDeer 成为现实的开源项目和贡献者。我们真正站在巨人的肩膀上。
 
-- **[Shadcn](https://ui.shadcn.com/)**: Minimalistic components that power our UI.
-- **[SToneX](https://github.com/stonexer)**: For his invaluable contribution to token-by-token visual effects.
+### 核心框架
 
-These outstanding projects form the backbone of iDeer and exemplify the transformative power of open source collaboration.
+- **[LangChain](https://github.com/langchain-ai/langchain)**：卓越的 LLM 交互与链式调用框架，为 iDeer 提供 AI 能力底座。
+- **[LangGraph](https://github.com/langchain-ai/langgraph)**：实现复杂的多智能体编排与状态管理。
+- **[Next.js](https://nextjs.org/)**：先进的 Web 应用构建框架，驱动前端界面。
 
-### Special Thanks
+### UI 组件库
 
-Finally, we want to express our heartfelt gratitude to the core authors of iDeer 1.0 and 2.0:
+- **[Shadcn](https://ui.shadcn.com/)**：极简风格的 UI 组件库，构建优雅的用户界面。
+- **[SToneX](https://github.com/stonexer)**：感谢其对逐 token 可视化效果的卓越贡献。
+
+这些优秀的项目构成了 iDeer 的基石，也展现了开源协作的变革力量。
+
+### 特别感谢
+
+最后，我们衷心感谢 iDeer 1.0 和 2.0 的核心作者：
 
 - **[Daniel Walnut](https://github.com/hetaoBackend/)**
 - **[Henry Li](https://github.com/magiccube/)**
 
-Without their vision, passion and dedication, `iDeer` would not be what it is today.
+没有他们的远见、热情和奉献，就没有今天的 iDeer。

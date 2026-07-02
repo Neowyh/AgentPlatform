@@ -3,9 +3,12 @@ import json
 import logging
 import re
 import threading
+import uuid
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 
 from app.gateway.authz import check_resource_modify, get_current_rbac_user, get_optional_rbac_user, require_role
 from app.gateway.deps import get_config
@@ -13,6 +16,8 @@ from app.gateway.path_utils import resolve_thread_virtual_path
 from ideer.agents.lead_agent.prompt import refresh_skills_system_prompt_cache_async
 from ideer.config.app_config import AppConfig
 from ideer.config.extensions_config import ExtensionsConfig, SkillStateConfig, get_extensions_config, reload_extensions_config
+from ideer.persistence.engine import get_session_factory
+from ideer.persistence.models.skill_application import SkillApplication, SkillApplicationResponse, SkillApplicationStatus
 from ideer.persistence.models.user import UserModel, UserRole
 from ideer.skills import Skill
 from ideer.skills.installer import SkillAlreadyExistsError
@@ -35,7 +40,7 @@ def _validate_skill_name(name: str) -> None:
         raise HTTPException(status_code=422, detail=f"Invalid skill name '{name}'. Only alphanumeric, underscore, and hyphen characters are allowed.")
 
 
-router = APIRouter(prefix="/api", tags=["skills"])
+router = APIRouter(prefix="/api/skills", tags=["skills"])
 
 
 # ---------------------------------------------------------------------------
@@ -167,7 +172,7 @@ def _skill_to_response(skill: Skill) -> SkillResponse:
 
 
 @router.get(
-    "/skills",
+    "",
     response_model=SkillsListResponse,
     summary="List All Skills",
     description="Retrieve a list of all available skills from both public and custom directories.",
@@ -205,7 +210,7 @@ async def list_skills(
 
 
 @router.post(
-    "/skills/install",
+    "/install",
     response_model=SkillInstallResponse,
     summary="Install Skill",
     description="Install a skill from a .skill file (ZIP archive) located in the thread's user-data directory. Requires admin or department_admin role.",
@@ -239,7 +244,7 @@ async def install_skill(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get("/skills/custom", response_model=SkillsListResponse, summary="List Custom Skills")
+@router.get("/custom", response_model=SkillsListResponse, summary="List Custom Skills")
 async def list_custom_skills(
     config: AppConfig = Depends(get_config),
     current_user: UserModel | None = Depends(get_optional_rbac_user),
@@ -268,7 +273,7 @@ async def list_custom_skills(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get("/skills/custom/{skill_name}", response_model=CustomSkillContentResponse, summary="Get Custom Skill Content")
+@router.get("/custom/{skill_name}", response_model=CustomSkillContentResponse, summary="Get Custom Skill Content")
 async def get_custom_skill(
     skill_name: str,
     config: AppConfig = Depends(get_config),
@@ -302,7 +307,7 @@ async def get_custom_skill(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.put("/skills/custom/{skill_name}", response_model=CustomSkillContentResponse, summary="Edit Custom Skill")
+@router.put("/custom/{skill_name}", response_model=CustomSkillContentResponse, summary="Edit Custom Skill")
 async def update_custom_skill(
     skill_name: str,
     request: CustomSkillUpdateRequest,
@@ -351,7 +356,7 @@ async def update_custom_skill(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.delete("/skills/custom/{skill_name}", summary="Delete Custom Skill")
+@router.delete("/custom/{skill_name}", summary="Delete Custom Skill")
 async def delete_custom_skill(
     skill_name: str,
     config: AppConfig = Depends(get_config),
@@ -391,7 +396,7 @@ async def delete_custom_skill(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get("/skills/custom/{skill_name}/history", response_model=CustomSkillHistoryResponse, summary="Get Custom Skill History")
+@router.get("/custom/{skill_name}/history", response_model=CustomSkillHistoryResponse, summary="Get Custom Skill History")
 async def get_custom_skill_history(skill_name: str, config: AppConfig = Depends(get_config), current_user: UserModel | None = Depends(get_optional_rbac_user)) -> CustomSkillHistoryResponse:
     try:
         _validate_skill_name(skill_name)
@@ -419,7 +424,7 @@ async def get_custom_skill_history(skill_name: str, config: AppConfig = Depends(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.post("/skills/custom/{skill_name}/rollback", response_model=CustomSkillContentResponse, summary="Rollback Custom Skill")
+@router.post("/custom/{skill_name}/rollback", response_model=CustomSkillContentResponse, summary="Rollback Custom Skill")
 async def rollback_custom_skill(skill_name: str, request: SkillRollbackRequest, config: AppConfig = Depends(get_config), current_user: UserModel = Depends(get_current_rbac_user)) -> CustomSkillContentResponse:
     try:
         _validate_skill_name(skill_name)
@@ -473,7 +478,7 @@ async def rollback_custom_skill(skill_name: str, request: SkillRollbackRequest, 
 
 
 @router.get(
-    "/skills/{skill_name}",
+    "/{skill_name}",
     response_model=SkillResponse,
     summary="Get Skill Details",
     description="Retrieve detailed information about a specific skill by its name.",
@@ -509,7 +514,7 @@ async def get_skill(skill_name: str, config: AppConfig = Depends(get_config), cu
 
 
 @router.put(
-    "/skills/{skill_name}",
+    "/{skill_name}",
     response_model=SkillResponse,
     summary="Update Skill",
     description="Update a skill's enabled status by modifying the extensions_config.json file.",
@@ -568,7 +573,7 @@ class SkillVisibilityUpdateRequest(BaseModel):
 
 
 @router.put(
-    "/skills/{skill_name}/visibility",
+    "/{skill_name}/visibility",
     response_model=SkillResponse,
     summary="Update Skill Visibility",
     description="Update a skill's visibility level (private/department/public).",
@@ -649,4 +654,161 @@ async def update_skill_visibility(
         raise
     except Exception as e:
         logger.error(f"Failed to update skill visibility {skill_name}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+# ---------------------------------------------------------------------------
+# Skill Application routes
+# ---------------------------------------------------------------------------
+
+
+class SubmitApplicationRequest(BaseModel):
+    request_level: str = Field(..., pattern="^(department|public)$")
+    reason: str = ""
+
+
+@router.post("/{skill_name}/apply", response_model=SkillApplicationResponse)
+async def submit_application(
+    skill_name: str,
+    request: SubmitApplicationRequest,
+    current_user: UserModel = Depends(get_current_rbac_user),
+    config: AppConfig = Depends(get_config),
+) -> SkillApplicationResponse:
+    """Submit a skill open application."""
+    sf = get_session_factory()
+    if sf is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+
+    # Look up actual skill
+    storage = get_or_new_skill_storage(app_config=config)
+    skills = storage.load_skills(enabled_only=False)
+    matched_skill = next((s for s in skills if s.name == skill_name), None)
+    if not matched_skill:
+        raise HTTPException(status_code=404, detail=f"Skill '{skill_name}' not found")
+
+    # Only the skill owner can submit an application
+    if matched_skill.category == "custom" and matched_skill.owner_id and matched_skill.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only the skill owner can submit an application")
+
+    try:
+        async with sf() as session:
+            stmt = select(SkillApplication).where(
+                SkillApplication.skill_id == skill_name,
+                SkillApplication.applicant_id == current_user.id,
+                SkillApplication.status == SkillApplicationStatus.PENDING,
+            )
+            result = await session.execute(stmt)
+            existing = result.scalar_one_or_none()
+
+            if existing:
+                raise HTTPException(status_code=400, detail="You already have a pending application for this skill")
+
+            application = SkillApplication(
+                id=str(uuid.uuid4()),
+                skill_id=skill_name,
+                skill_name=skill_name,
+                applicant_id=current_user.id,
+                request_level=request.request_level,
+                department_id=current_user.department_id,
+                reason=request.reason,
+                status=SkillApplicationStatus.PENDING,
+            )
+            session.add(application)
+            await session.commit()
+            await session.refresh(application)
+
+            return SkillApplicationResponse(
+                id=application.id,
+                skill_id=application.skill_id,
+                skill_name=application.skill_name,
+                applicant_id=application.applicant_id,
+                request_level=application.request_level,
+                department_id=application.department_id,
+                reason=application.reason,
+                status=application.status,
+                submitted_at=str(application.submitted_at) if application.submitted_at else None,
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to submit skill application for %s: %s", skill_name, e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/{skill_name}/application", response_model=SkillApplicationResponse | None)
+async def get_application(
+    skill_name: str,
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> SkillApplicationResponse | None:
+    """Get the current user's application for a skill."""
+    sf = get_session_factory()
+    if sf is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+
+    try:
+        async with sf() as session:
+            stmt = (
+                select(SkillApplication)
+                .where(
+                    SkillApplication.skill_id == skill_name,
+                    SkillApplication.applicant_id == current_user.id,
+                )
+                .order_by(SkillApplication.submitted_at.desc())
+            )
+            result = await session.execute(stmt)
+            application = result.scalar_one_or_none()
+
+            if not application:
+                return None
+
+            return SkillApplicationResponse(
+                id=application.id,
+                skill_id=application.skill_id,
+                skill_name=application.skill_name,
+                applicant_id=application.applicant_id,
+                request_level=application.request_level,
+                department_id=application.department_id,
+                reason=application.reason,
+                status=application.status,
+                submitted_at=str(application.submitted_at) if application.submitted_at else None,
+                reviewed_by=application.reviewed_by,
+                reviewed_at=str(application.reviewed_at) if application.reviewed_at else None,
+                review_comment=application.review_comment,
+            )
+    except Exception as e:
+        logger.error("Failed to get skill application for %s: %s", skill_name, e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.delete("/{skill_name}/application")
+async def withdraw_application(
+    skill_name: str,
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> dict[str, Any]:
+    """Withdraw a pending application."""
+    sf = get_session_factory()
+    if sf is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+
+    try:
+        async with sf() as session:
+            stmt = select(SkillApplication).where(
+                SkillApplication.skill_id == skill_name,
+                SkillApplication.applicant_id == current_user.id,
+                SkillApplication.status == SkillApplicationStatus.PENDING,
+            )
+            result = await session.execute(stmt)
+            application = result.scalar_one_or_none()
+
+            if not application:
+                raise HTTPException(status_code=404, detail="No pending application found")
+
+            await session.delete(application)
+            await session.commit()
+
+        return {"message": "Application withdrawn successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to withdraw skill application for %s: %s", skill_name, e, exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")

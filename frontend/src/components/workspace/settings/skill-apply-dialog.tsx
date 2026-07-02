@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { useI18n } from "@/core/i18n/hooks";
 import type { Skill } from "@/core/skills/type";
 
 interface SkillApplyDialogProps {
@@ -35,14 +36,21 @@ export function SkillApplyDialog({
   onOpenChange,
   onSubmit,
 }: SkillApplyDialogProps) {
+  const { t } = useI18n();
   const [requestLevel, setRequestLevel] = useState<string>("department");
   const [reason, setReason] = useState<string>("");
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
   const handleSubmit = () => {
-    onSubmit(requestLevel, reason);
-    onOpenChange(false);
-    setReason("");
-    setRequestLevel("department");
+    setIsSubmitting(true);
+    try {
+      onSubmit(requestLevel, reason);
+    } finally {
+      setIsSubmitting(false);
+      onOpenChange(false);
+      setReason("");
+      setRequestLevel("department");
+    }
   };
 
   if (!skill) return null;
@@ -51,44 +59,54 @@ export function SkillApplyDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>申请开放 Skill: {skill.name}</DialogTitle>
+          <DialogTitle>
+            {t.settings.skills.applyDialogTitle.replace("{name}", skill.name)}
+          </DialogTitle>
           <DialogDescription>
-            选择开放范围并填写申请理由。部门开放需部门管理员审批，全员开放需超级管理员审批。
+            {t.settings.skills.applyDialogDescription}
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">
           <div className="grid gap-2">
-            <Label>当前状态: private (仅自己可见)</Label>
+            <Label>{t.settings.skills.applyDialogCurrentStatus}</Label>
           </div>
           <div className="grid gap-2">
-            <Label htmlFor="request-level">申请范围</Label>
+            <Label htmlFor="request-level">
+              {t.settings.skills.applyDialogScope}
+            </Label>
             <Select value={requestLevel} onValueChange={setRequestLevel}>
               <SelectTrigger id="request-level">
-                <SelectValue placeholder="选择申请范围" />
+                <SelectValue placeholder={t.settings.skills.applyDialogScope} />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="department">
-                  部门 (需部门管理员审批)
+                  {t.settings.skills.applyDialogScopeDepartment}
                 </SelectItem>
-                <SelectItem value="public">全员 (需超级管理员审批)</SelectItem>
+                <SelectItem value="public">
+                  {t.settings.skills.applyDialogScopePublic}
+                </SelectItem>
               </SelectContent>
             </Select>
           </div>
           <div className="grid gap-2">
-            <Label htmlFor="reason">申请理由</Label>
+            <Label htmlFor="reason">
+              {t.settings.skills.applyDialogReason}
+            </Label>
             <Textarea
               id="reason"
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              placeholder="请说明申请开放的原因..."
+              placeholder={t.settings.skills.applyDialogReasonPlaceholder}
             />
           </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            取消
+            {t.settings.skills.applyDialogCancel}
           </Button>
-          <Button onClick={handleSubmit}>提交申请</Button>
+          <Button onClick={handleSubmit} disabled={isSubmitting}>
+            {t.settings.skills.applyDialogSubmit}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
