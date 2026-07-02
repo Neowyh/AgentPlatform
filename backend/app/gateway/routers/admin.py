@@ -332,6 +332,11 @@ async def update_user(
                 raise HTTPException(status_code=403, detail="Cannot modify users outside your department")
             if not user.department_id:
                 raise HTTPException(status_code=403, detail="Cannot modify users without a department")
+            # Force department to own
+            department_id = current_user.department_id
+        else:
+            # super_admin: use provided department_id
+            department_id = body.department_id
 
         # Update username if provided
         if body.username is not None:
@@ -348,7 +353,7 @@ async def update_user(
             dept = await session.get(DepartmentModel, body.department_id)
             if dept is None:
                 raise HTTPException(status_code=404, detail="Department not found")
-            user.department_id = body.department_id
+            user.department_id = department_id or None
 
         try:
             await session.commit()
