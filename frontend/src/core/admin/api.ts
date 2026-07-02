@@ -62,6 +62,37 @@ export async function disableUser(userId: string): Promise<void> {
   if (!res.ok) return extractError(res, "Failed to disable user");
 }
 
+export async function createUser(data: {
+  email: string;
+  password: string;
+  username: string;
+  role: string;
+  department_id?: string;
+}): Promise<User> {
+  const baseURL = getBackendBaseURL();
+  const res = await fetch(`${baseURL}/api/admin/users`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) return extractError(res, "Failed to create user");
+  return res.json() as Promise<User>;
+}
+
+export async function updateUser(
+  userId: string,
+  data: { username?: string; department_id?: string },
+): Promise<User> {
+  const baseURL = getBackendBaseURL();
+  const res = await fetch(`${baseURL}/api/admin/users/${userId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) return extractError(res, "Failed to update user");
+  return res.json() as Promise<User>;
+}
+
 // ── Department management ────────────────────────────────────────
 
 export async function listDepartments(params?: {
