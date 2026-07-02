@@ -14,6 +14,18 @@ This project has been extended with enterprise intranet platform capabilities on
 - Auth bridge: `backend/app/gateway/authz.py` (`get_current_rbac_user`)
 - Admin API: `backend/app/gateway/routers/admin.py`
 
+### Test Accounts (密码 = 邮箱名)
+
+| 角色 | 邮箱 | 密码 | 数据库位置 |
+|------|------|------|------------|
+| 超级管理员 | `super_admin@test.com` | `super_admin@test.com` | `backend/.ideer/data/ideer.db` |
+| 部门管理员 | `department_admin@test.com` | `department_admin@test.com` | `backend/.ideer/data/ideer.db` |
+| 普通用户 | `user@test.com` | `user@test.com` | `backend/.ideer/data/ideer.db` |
+| 只读用户 | `viewer@test.com` | `viewer@test.com` | `backend/.ideer/data/ideer.db` |
+| 管理员 | `admin@test.com` | `admin@test.com` | `backend/.ideer/data/ideer.db` |
+
+**注意:** `department_admin@test.com` 在数据库中角色为 `user`，需要通过 admin 页面修改为 `department_admin` 才能测试部门管理员权限。
+
 ### Workflow Engine
 - YAML DSL with 6 step types: agent, tool, human_review, condition, parallel, loop
 - Core module: `backend/packages/harness/ideer/workflows/`

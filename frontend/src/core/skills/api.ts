@@ -37,6 +37,80 @@ export async function enableSkill(
   }
 }
 
+export interface SubmitApplicationRequest {
+  request_level: "department" | "public";
+  reason: string;
+}
+
+export interface SkillApplicationResponse {
+  id: string;
+  skill_id: string;
+  skill_name: string;
+  applicant_id: string;
+  request_level: string;
+  department_id: string | null;
+  reason: string;
+  status: string;
+  submitted_at: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  review_comment: string | null;
+}
+
+export async function submitSkillApplication(
+  skillId: string,
+  request: SubmitApplicationRequest,
+): Promise<SkillApplicationResponse> {
+  const response = await fetch(
+    `${getBackendBaseURL()}/api/skills/${encodeURIComponent(skillId)}/apply`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  if (!response.ok) {
+    await extractError(response, "Failed to submit skill application");
+  }
+  return response.json();
+}
+
+export async function listSkillApplications(
+  status?: string,
+): Promise<{ applications: SkillApplicationResponse[] }> {
+  const params = status ? `?status=${encodeURIComponent(status)}` : "";
+  const response = await fetch(
+    `${getBackendBaseURL()}/api/admin/skill-applications${params}`,
+  );
+  if (!response.ok) {
+    await extractError(response, "Failed to list skill applications");
+  }
+  return response.json();
+}
+
+export async function reviewSkillApplication(
+  applicationId: string,
+  action: "approved" | "rejected",
+  comment = "",
+): Promise<{ message: string }> {
+  const response = await fetch(
+    `${getBackendBaseURL()}/api/admin/skill-applications/${encodeURIComponent(applicationId)}`,
+    {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ action, comment }),
+    },
+  );
+  if (!response.ok) {
+    await extractError(response, "Failed to review skill application");
+  }
+  return response.json();
+}
+
 export interface InstallSkillRequest {
   thread_id: string;
   path: string;

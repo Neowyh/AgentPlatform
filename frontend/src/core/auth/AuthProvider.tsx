@@ -94,22 +94,19 @@ export function AuthProvider({ children, initialUser }: AuthProviderProps) {
     // Immediately clear local state to prevent UI flicker
     setUser(null);
 
+    // Redirect immediately - don't wait for server response
+    router.push("/");
+
     if (staticMode) {
-      router.push("/");
       return;
     }
 
-    try {
-      await fetch("/api/v1/auth/logout", {
-        method: "POST",
-      });
-    } catch (err) {
+    // Fire-and-forget logout request (don't await)
+    fetch("/api/v1/auth/logout", {
+      method: "POST",
+    }).catch((err) => {
       console.error("Logout request failed:", err);
-      // Still redirect even if logout request fails
-    }
-
-    // Redirect to home page
-    router.push("/");
+    });
   }, [staticMode, router]);
 
   /**

@@ -191,7 +191,9 @@ export default function SkillDefaultsPage() {
             <div className="flex items-center justify-between">
               <Tabs value={activeTab} onValueChange={setActiveTab}>
                 <TabsList>
-                  <TabsTrigger value="global">全局</TabsTrigger>
+                  {currentUser?.system_role === "super_admin" && (
+                    <TabsTrigger value="global">全局</TabsTrigger>
+                  )}
                   <TabsTrigger value="department">部门</TabsTrigger>
                 </TabsList>
               </Tabs>

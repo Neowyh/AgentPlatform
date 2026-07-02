@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import re
@@ -105,6 +106,8 @@ class SkillResponse(BaseModel):
     license: str | None = Field(None, description="License information")
     category: SkillCategory = Field(..., description="Category of the skill (public or custom)")
     enabled: bool = Field(default=True, description="Whether this skill is enabled")
+    owner_id: str | None = Field(None, description="Owner user ID (custom skills)")
+    department_id: str | None = Field(None, description="Department ID (custom skills)")
 
 
 class SkillsListResponse(BaseModel):
@@ -158,6 +161,8 @@ def _skill_to_response(skill: Skill) -> SkillResponse:
         license=skill.license,
         category=skill.category,
         enabled=skill.enabled,
+        owner_id=getattr(skill, "owner_id", None),
+        department_id=getattr(skill, "department_id", None),
     )
 
 
@@ -554,4 +559,94 @@ async def update_skill(skill_name: str, request: SkillUpdateRequest, config: App
         raise
     except Exception as e:
         logger.error(f"Failed to update skill {skill_name}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+class SkillVisibilityUpdateRequest(BaseModel):
+    visibility: str = Field(..., pattern="^(private|department|public)$")
+    reason: str = ""
+
+
+@router.put(
+    "/skills/{skill_name}/visibility",
+    response_model=SkillResponse,
+    summary="Update Skill Visibility",
+    description="Update a skill's visibility level (private/department/public).",
+)
+async def update_skill_visibility(
+    skill_name: str,
+    request: SkillVisibilityUpdateRequest,
+    config: AppConfig = Depends(get_config),
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> SkillResponse:
+    """Update skill visibility (revoke/reduce visibility)."""
+    try:
+        _validate_skill_name(skill_name)
+        skill_name = skill_name.replace("\r\n", "").replace("\n", "")
+        storage = get_or_new_skill_storage(app_config=config)
+        skills = storage.load_skills(enabled_only=False)
+        skill = next((s for s in skills if s.name == skill_name), None)
+
+        if skill is None:
+            raise HTTPException(status_code=404, detail=f"Skill '{skill_name}' not found")
+
+        # Check if user has permission to modify this skill
+        _check_resource_modify(
+            getattr(skill, "owner_id", None),
+            getattr(skill, "department_id", None),
+            current_user,
+        )
+
+        # Only custom skills can have visibility changed
+        if skill.category != SkillCategory.CUSTOM:
+            raise HTTPException(status_code=400, detail="Cannot modify visibility for built-in skills")
+
+        # Get skill metadata file path
+        skill_dir = storage.get_custom_skill_dir(skill_name)
+        meta_file = skill_dir / ".meta.json"
+
+        # Read existing metadata or create new one
+        meta = {}
+        if meta_file.exists():
+            try:
+                content = await asyncio.to_thread(meta_file.read_text, encoding="utf-8")
+                meta = json.loads(content)
+            except json.JSONDecodeError:
+                meta = {}
+
+        # Update visibility
+        current_visibility = meta.get("visibility", "private")
+        new_visibility = request.visibility
+
+        # Validate visibility change (can only reduce visibility)
+        visibility_order = {"private": 0, "department": 1, "public": 2}
+        if visibility_order.get(new_visibility, 0) > visibility_order.get(current_visibility, 0):
+            raise HTTPException(status_code=400, detail="Cannot increase visibility. Use the apply endpoint to request visibility increase.")
+
+        meta["visibility"] = new_visibility
+
+        # Write metadata
+        await asyncio.to_thread(skill_dir.mkdir, parents=True, exist_ok=True)
+
+        def _write_meta(path, data):
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+
+        await asyncio.to_thread(_write_meta, meta_file, meta)
+
+        logger.info(f"Skill '{skill_name}' visibility updated to {new_visibility}")
+
+        # Reload skills and return updated skill
+        skills = storage.load_skills(enabled_only=False)
+        updated_skill = next((s for s in skills if s.name == skill_name), None)
+
+        if updated_skill is None:
+            raise HTTPException(status_code=500, detail=f"Failed to reload skill '{skill_name}' after update")
+
+        return _skill_to_response(updated_skill)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update skill visibility {skill_name}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")

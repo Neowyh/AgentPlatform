@@ -1,6 +1,7 @@
 "use client";
 
-import { BotIcon, PlusIcon, UploadIcon } from "lucide-react";
+import { ArrowLeftIcon, BotIcon, PlusIcon, UploadIcon } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef } from "react";
 import { toast } from "sonner";
@@ -42,11 +43,18 @@ export function AgentGallery() {
     <div className="flex size-full flex-col">
       {/* Page header */}
       <div className="flex items-center justify-between border-b px-6 py-4">
-        <div>
-          <h1 className="text-xl font-semibold">{t.agents.title}</h1>
-          <p className="text-muted-foreground mt-0.5 text-sm">
-            {t.agents.description}
-          </p>
+        <div className="flex items-center gap-3">
+          <Link href="/workspace/admin">
+            <Button variant="ghost" size="icon-sm">
+              <ArrowLeftIcon className="h-4 w-4" />
+            </Button>
+          </Link>
+          <div>
+            <h1 className="text-xl font-semibold">{t.agents.title}</h1>
+            <p className="text-muted-foreground mt-0.5 text-sm">
+              {t.agents.description}
+            </p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <input

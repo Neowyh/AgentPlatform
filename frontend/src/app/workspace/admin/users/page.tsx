@@ -70,7 +70,11 @@ export default function UsersPage() {
 
   useEffect(() => {
     // Only fetch data for authorized users
-    if (currentUser?.system_role !== "super_admin") return;
+    if (
+      currentUser?.system_role !== "super_admin" &&
+      currentUser?.system_role !== "department_admin"
+    )
+      return;
 
     Promise.all([
       fetchUsers(),
@@ -82,8 +86,11 @@ export default function UsersPage() {
       .finally(() => setLoading(false));
   }, [fetchUsers, currentUser]);
 
-  // Role check: only super_admin can access admin pages
-  if (currentUser?.system_role !== "super_admin") {
+  // Role check: only super_admin and department_admin can access admin pages
+  if (
+    currentUser?.system_role !== "super_admin" &&
+    currentUser?.system_role !== "department_admin"
+  ) {
     router.replace("/workspace");
     return null;
   }
@@ -146,7 +153,9 @@ export default function UsersPage() {
           <div>
             <h1 className="text-xl font-semibold">用户管理</h1>
             <p className="text-muted-foreground mt-0.5 text-sm">
-              管理系统用户和角色权限
+              {currentUser?.system_role === "super_admin"
+                ? "管理系统用户和角色权限"
+                : "管理本部门用户和角色权限"}
             </p>
           </div>
         </div>
@@ -154,19 +163,21 @@ export default function UsersPage() {
 
       {/* Filters */}
       <div className="flex items-center gap-3 border-b px-6 py-3">
-        <Select value={filterDept} onValueChange={setFilterDept}>
-          <SelectTrigger className="w-48">
-            <SelectValue placeholder="筛选部门" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">全部部门</SelectItem>
-            {departments.map((dept) => (
-              <SelectItem key={dept.id} value={dept.id}>
-                {dept.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {currentUser?.system_role === "super_admin" && (
+          <Select value={filterDept} onValueChange={setFilterDept}>
+            <SelectTrigger className="w-48">
+              <SelectValue placeholder="筛选部门" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部部门</SelectItem>
+              {departments.map((dept) => (
+                <SelectItem key={dept.id} value={dept.id}>
+                  {dept.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
         <Select value={filterRole} onValueChange={setFilterRole}>
           <SelectTrigger className="w-40">
             <SelectValue placeholder="筛选角色" />
@@ -175,7 +186,9 @@ export default function UsersPage() {
             <SelectItem value="all">全部角色</SelectItem>
             <SelectItem value="user">普通用户</SelectItem>
             <SelectItem value="department_admin">部门管理员</SelectItem>
-            <SelectItem value="super_admin">超级管理员</SelectItem>
+            {currentUser?.system_role === "super_admin" && (
+              <SelectItem value="super_admin">超级管理员</SelectItem>
+            )}
           </SelectContent>
         </Select>
       </div>
@@ -260,9 +273,11 @@ export default function UsersPage() {
                             <SelectItem value="department_admin">
                               部门管理员
                             </SelectItem>
-                            <SelectItem value="super_admin">
-                              超级管理员
-                            </SelectItem>
+                            {currentUser?.system_role === "super_admin" && (
+                              <SelectItem value="super_admin">
+                                超级管理员
+                              </SelectItem>
+                            )}
                           </SelectContent>
                         </Select>
                         <Button

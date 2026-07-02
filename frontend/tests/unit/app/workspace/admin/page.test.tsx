@@ -107,11 +107,11 @@ describe("AdminDashboardPage", () => {
 
   // ── Success state ──────────────────────────────────────────────────
 
-  test("renders four stat cards after loading", async () => {
+  test("renders six stat cards after loading", async () => {
     render(<AdminDashboardPage />);
     await waitFor(() => {
       const cards = screen.getAllByTestId("admin-stat-card");
-      expect(cards).toHaveLength(4);
+      expect(cards).toHaveLength(6);
     });
   });
 
@@ -131,7 +131,7 @@ describe("AdminDashboardPage", () => {
       expect(screen.getByText("用户总数")).toBeInTheDocument();
       expect(screen.getByText("部门总数")).toBeInTheDocument();
       expect(screen.getByText("智能体总数")).toBeInTheDocument();
-      expect(screen.getByText("技能总数")).toBeInTheDocument();
+      expect(screen.getByText("工具总数")).toBeInTheDocument();
     });
   });
 
@@ -151,7 +151,7 @@ describe("AdminDashboardPage", () => {
     render(<AdminDashboardPage />);
     await waitFor(() => {
       const details = screen.getAllByText("点击查看详情");
-      expect(details).toHaveLength(4);
+      expect(details).toHaveLength(6);
     });
   });
 

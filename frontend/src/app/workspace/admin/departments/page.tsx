@@ -68,13 +68,20 @@ export default function DepartmentsPage() {
 
   useEffect(() => {
     // Only fetch data for authorized users
-    if (user?.system_role !== "super_admin") return;
+    if (
+      user?.system_role !== "super_admin" &&
+      user?.system_role !== "department_admin"
+    )
+      return;
 
     void fetchDepartments().finally(() => setLoading(false));
   }, [fetchDepartments, user]);
 
-  // Role check: only super_admin can access admin pages
-  if (user?.system_role !== "super_admin") {
+  // Role check: only super_admin and department_admin can access admin pages
+  if (
+    user?.system_role !== "super_admin" &&
+    user?.system_role !== "department_admin"
+  ) {
     router.replace("/workspace");
     return null;
   }
@@ -164,16 +171,18 @@ export default function DepartmentsPage() {
             </p>
           </div>
         </div>
-        <Button
-          onClick={() => {
-            setName("");
-            setDescription("");
-            setCreateOpen(true);
-          }}
-        >
-          <PlusIcon className="mr-1.5 h-4 w-4" />
-          新建部门
-        </Button>
+        {user?.system_role === "super_admin" && (
+          <Button
+            onClick={() => {
+              setName("");
+              setDescription("");
+              setCreateOpen(true);
+            }}
+          >
+            <PlusIcon className="mr-1.5 h-4 w-4" />
+            新建部门
+          </Button>
+        )}
       </div>
 
       {/* Content */}
@@ -227,25 +236,29 @@ export default function DepartmentsPage() {
                       </div>
                     </div>
                     <div className="flex gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={() => openEditDialog(dept)}
-                        title="编辑"
-                        data-testid="department-edit-button"
-                      >
-                        <EditIcon className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={() => handleDelete(dept.id)}
-                        disabled={deletingId === dept.id}
-                        title="删除"
-                        data-testid="department-delete-button"
-                      >
-                        <Trash2Icon className="text-destructive h-3.5 w-3.5" />
-                      </Button>
+                      {user?.system_role === "super_admin" && (
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() => openEditDialog(dept)}
+                          title="编辑"
+                          data-testid="department-edit-button"
+                        >
+                          <EditIcon className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                      {user?.system_role === "super_admin" && (
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() => handleDelete(dept.id)}
+                          disabled={deletingId === dept.id}
+                          title="删除"
+                          data-testid="department-delete-button"
+                        >
+                          <Trash2Icon className="text-destructive h-3.5 w-3.5" />
+                        </Button>
+                      )}
                     </div>
                   </div>
                 </CardHeader>

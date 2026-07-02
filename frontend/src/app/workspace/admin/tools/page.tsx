@@ -49,7 +49,11 @@ export default function ToolsPage() {
 
   useEffect(() => {
     // Only fetch data for authorized users
-    if (user?.system_role !== "super_admin") return;
+    if (
+      user?.system_role !== "super_admin" &&
+      user?.system_role !== "department_admin"
+    )
+      return;
 
     listTools()
       .then((data) => setTools(data.tools))
@@ -59,8 +63,11 @@ export default function ToolsPage() {
       .finally(() => setLoading(false));
   }, [user]);
 
-  // Role check: only super_admin can access admin pages
-  if (user?.system_role !== "super_admin") {
+  // Role check: only super_admin and department_admin can access admin pages
+  if (
+    user?.system_role !== "super_admin" &&
+    user?.system_role !== "department_admin"
+  ) {
     router.replace("/workspace");
     return null;
   }

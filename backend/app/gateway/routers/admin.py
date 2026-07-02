@@ -38,6 +38,7 @@ async def get_admin_stats(
         "total_users": user_count,
         "total_departments": dept_count,
         "total_agents": 0,  # Agents are file-based; counted via agents API
+        "total_tools": 0,  # Tools are file-based; counted via tools API
         "total_skills": 0,  # Skills are file-based; counted via skills API
     }
 
@@ -185,6 +186,14 @@ async def update_user_role(
 
         old_role = user.role
         user.role = UserRole(body.role)
+
+        # Also update the legacy users table to keep system_role in sync
+        from ideer.persistence.user.model import UserRow
+
+        user_row = await session.get(UserRow, user_id)
+        if user_row is not None:
+            user_row.system_role = body.role
+
         await session.commit()
 
     logger.warning("Role changed: user=%s, old_role=%s, new_role=%s, by=%s", user_id, old_role, body.role, current_user.id)

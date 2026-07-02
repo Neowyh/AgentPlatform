@@ -13,16 +13,20 @@ export async function listUsers(params?: {
   limit?: number;
   offset?: number;
 }): Promise<{ users: User[]; total: number; limit: number; offset: number }> {
-  const url = new URL(`${getBackendBaseURL()}/api/admin/users`);
+  const baseURL = getBackendBaseURL();
+  const searchParams = new URLSearchParams();
   if (params?.department_id)
-    url.searchParams.set("department_id", params.department_id);
-  if (params?.role) url.searchParams.set("role", params.role);
+    searchParams.set("department_id", params.department_id);
+  if (params?.role) searchParams.set("role", params.role);
   if (params?.limit !== undefined)
-    url.searchParams.set("limit", String(params.limit));
+    searchParams.set("limit", String(params.limit));
   if (params?.offset !== undefined)
-    url.searchParams.set("offset", String(params.offset));
+    searchParams.set("offset", String(params.offset));
 
-  const res = await fetch(url.toString());
+  const queryString = searchParams.toString();
+  const url = `${baseURL}/api/admin/users${queryString ? `?${queryString}` : ""}`;
+
+  const res = await fetch(url);
   if (!res.ok) return extractError(res, "Failed to list users");
   return res.json() as Promise<{
     users: User[];
@@ -36,14 +40,12 @@ export async function updateUserRole(
   userId: string,
   role: string,
 ): Promise<{ success: boolean; user_id: string; new_role: string }> {
-  const res = await fetch(
-    `${getBackendBaseURL()}/api/admin/users/${userId}/role`,
-    {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ role }),
-    },
-  );
+  const baseURL = getBackendBaseURL();
+  const res = await fetch(`${baseURL}/api/admin/users/${userId}/role`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ role }),
+  });
   if (!res.ok) return extractError(res, "Failed to update user role");
   return res.json() as Promise<{
     success: boolean;
@@ -53,7 +55,8 @@ export async function updateUserRole(
 }
 
 export async function disableUser(userId: string): Promise<void> {
-  const res = await fetch(`${getBackendBaseURL()}/api/admin/users/${userId}`, {
+  const baseURL = getBackendBaseURL();
+  const res = await fetch(`${baseURL}/api/admin/users/${userId}`, {
     method: "DELETE",
   });
   if (!res.ok) return extractError(res, "Failed to disable user");
@@ -70,12 +73,17 @@ export async function listDepartments(params?: {
   limit: number;
   offset: number;
 }> {
-  const url = new URL(`${getBackendBaseURL()}/api/admin/departments`);
+  const baseURL = getBackendBaseURL();
+  const searchParams = new URLSearchParams();
   if (params?.limit !== undefined)
-    url.searchParams.set("limit", String(params.limit));
+    searchParams.set("limit", String(params.limit));
   if (params?.offset !== undefined)
-    url.searchParams.set("offset", String(params.offset));
-  const res = await fetch(url.toString());
+    searchParams.set("offset", String(params.offset));
+
+  const queryString = searchParams.toString();
+  const url = `${baseURL}/api/admin/departments${queryString ? `?${queryString}` : ""}`;
+
+  const res = await fetch(url);
   if (!res.ok) return extractError(res, "Failed to list departments");
   return res.json() as Promise<{
     departments: Department[];
@@ -89,7 +97,8 @@ export async function createDepartment(data: {
   name: string;
   description?: string;
 }): Promise<Department> {
-  const res = await fetch(`${getBackendBaseURL()}/api/admin/departments`, {
+  const baseURL = getBackendBaseURL();
+  const res = await fetch(`${baseURL}/api/admin/departments`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -102,23 +111,21 @@ export async function updateDepartment(
   deptId: string,
   data: { name?: string; description?: string },
 ): Promise<{ success: boolean }> {
-  const res = await fetch(
-    `${getBackendBaseURL()}/api/admin/departments/${deptId}`,
-    {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
-    },
-  );
+  const baseURL = getBackendBaseURL();
+  const res = await fetch(`${baseURL}/api/admin/departments/${deptId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
   if (!res.ok) return extractError(res, "Failed to update department");
   return res.json() as Promise<{ success: boolean }>;
 }
 
 export async function deleteDepartment(deptId: string): Promise<void> {
-  const res = await fetch(
-    `${getBackendBaseURL()}/api/admin/departments/${deptId}`,
-    { method: "DELETE" },
-  );
+  const baseURL = getBackendBaseURL();
+  const res = await fetch(`${baseURL}/api/admin/departments/${deptId}`, {
+    method: "DELETE",
+  });
   if (!res.ok) return extractError(res, "Failed to delete department");
 }
 
@@ -128,11 +135,13 @@ export interface AdminStats {
   total_users: number;
   total_departments: number;
   total_agents: number;
+  total_tools: number;
   total_skills: number;
 }
 
 export async function getAdminStats(): Promise<AdminStats> {
-  const res = await fetch(`${getBackendBaseURL()}/api/admin/stats`);
+  const baseURL = getBackendBaseURL();
+  const res = await fetch(`${baseURL}/api/admin/stats`);
   if (!res.ok) return extractError(res, "Failed to get admin stats");
   return res.json() as Promise<AdminStats>;
 }
@@ -143,10 +152,15 @@ export async function listTools(params?: {
   group?: string;
   search?: string;
 }): Promise<{ tools: Tool[]; total: number }> {
-  const url = new URL(`${getBackendBaseURL()}/api/tools`);
-  if (params?.group) url.searchParams.set("group", params.group);
-  if (params?.search) url.searchParams.set("search", params.search);
-  const res = await fetch(url.toString());
+  const baseURL = getBackendBaseURL();
+  const searchParams = new URLSearchParams();
+  if (params?.group) searchParams.set("group", params.group);
+  if (params?.search) searchParams.set("search", params.search);
+
+  const queryString = searchParams.toString();
+  const url = `${baseURL}/api/tools${queryString ? `?${queryString}` : ""}`;
+
+  const res = await fetch(url);
   if (!res.ok) return extractError(res, "Failed to list tools");
   return res.json() as Promise<{ tools: Tool[]; total: number }>;
 }
@@ -160,8 +174,9 @@ export async function testTool(
   result?: string;
   error?: string;
 }> {
+  const baseURL = getBackendBaseURL();
   const res = await fetch(
-    `${getBackendBaseURL()}/api/tools/${encodeURIComponent(toolName)}/test`,
+    `${baseURL}/api/tools/${encodeURIComponent(toolName)}/test`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },

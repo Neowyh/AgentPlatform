@@ -4,4 +4,6 @@ export interface Skill {
   category: string;
   license: string;
   enabled: boolean;
+  owner_id?: string | null;
+  department_id?: string | null;
 }

@@ -1,6 +1,12 @@
 "use client";
 
-import { Building2Icon, ShieldIcon, UsersIcon, WrenchIcon } from "lucide-react";
+import {
+  Building2Icon,
+  ClipboardCheckIcon,
+  ShieldIcon,
+  UsersIcon,
+  WrenchIcon,
+} from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -38,11 +44,25 @@ const statCards = [
     color: "text-purple-500",
   },
   {
-    key: "total_skills" as const,
-    label: "技能总数",
+    key: "total_tools" as const,
+    label: "工具总数",
     icon: WrenchIcon,
     href: "/workspace/admin/tools",
     color: "text-orange-500",
+  },
+  {
+    key: "pending_applications" as const,
+    label: "待审批申请",
+    icon: ClipboardCheckIcon,
+    href: "/workspace/admin/skill-applications",
+    color: "text-yellow-500",
+  },
+  {
+    key: "total_skills" as const,
+    label: "Skill 总数",
+    icon: WrenchIcon,
+    href: "/workspace/admin/skill-defaults",
+    color: "text-indigo-500",
   },
 ];
 
@@ -55,7 +75,11 @@ export default function AdminDashboardPage() {
 
   useEffect(() => {
     // Only fetch stats for authorized users
-    if (user?.system_role !== "super_admin") return;
+    if (
+      user?.system_role !== "super_admin" &&
+      user?.system_role !== "department_admin"
+    )
+      return;
 
     getAdminStats()
       .then(setStats)
@@ -65,8 +89,11 @@ export default function AdminDashboardPage() {
       .finally(() => setLoading(false));
   }, [user]);
 
-  // Role check: only super_admin can access admin pages
-  if (user?.system_role !== "super_admin") {
+  // Role check: only super_admin and department_admin can access admin pages
+  if (
+    user?.system_role !== "super_admin" &&
+    user?.system_role !== "department_admin"
+  ) {
     router.replace("/workspace");
     return null;
   }
