@@ -65,6 +65,11 @@ class CreateUserRequest(BaseModel):
     department_id: str | None = Field(None)
 
 
+class UpdateUserRequest(BaseModel):
+    username: str | None = Field(None, max_length=100)
+    department_id: str | None = Field(None)
+
+
 # --- User Management ---
 
 
@@ -284,6 +289,75 @@ async def update_user_role(
 
     logger.warning("Role changed: user=%s, old_role=%s, new_role=%s, by=%s", user_id, old_role, body.role, current_user.id)
     return {"success": True, "user_id": user_id, "new_role": body.role}
+
+
+@router.put("/users/{user_id}")
+@require_role(UserRole.SUPER_ADMIN, UserRole.DEPARTMENT_ADMIN)
+async def update_user(
+    user_id: str,
+    body: UpdateUserRequest,
+    current_user: UserModel = Depends(get_current_rbac_user),
+):
+    """Update user details (username, department_id).
+
+    super_admin can update any user. department_admin can only update
+    regular users within their own department.
+    """
+    if body.username is not None and not body.username.strip():
+        raise HTTPException(status_code=400, detail="Username cannot be empty")
+
+    sf = get_session_factory()
+    if sf is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+
+    async with sf() as session:
+        # Lock the target user row to prevent concurrent modification
+        stmt = select(UserModel).where(UserModel.id == user_id)
+        try:
+            stmt = stmt.with_for_update()
+        except Exception:
+            pass  # SQLite doesn't support FOR UPDATE
+        result = await session.execute(stmt)
+        user = result.scalar_one_or_none()
+        if user is None:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        # department_admin: restrict scope
+        if current_user.role == UserRole.DEPARTMENT_ADMIN:
+            if user.role == UserRole.SUPER_ADMIN:
+                raise HTTPException(status_code=403, detail="Cannot modify super_admin")
+            if user.role == UserRole.DEPARTMENT_ADMIN:
+                raise HTTPException(status_code=403, detail="Cannot modify another department_admin")
+            if user.department_id != current_user.department_id:
+                raise HTTPException(status_code=403, detail="Cannot modify users outside your department")
+            if not user.department_id:
+                raise HTTPException(status_code=403, detail="Cannot modify users without a department")
+
+        # Update username if provided
+        if body.username is not None:
+            new_username = body.username.strip()
+            if new_username != user.username:
+                # Check uniqueness
+                dup = await session.execute(select(UserModel).where(UserModel.username == new_username, UserModel.id != user_id))
+                if dup.scalar_one_or_none() is not None:
+                    raise HTTPException(status_code=409, detail="Username already exists")
+                user.username = new_username
+
+        # Update department if provided
+        if body.department_id is not None:
+            dept = await session.get(DepartmentModel, body.department_id)
+            if dept is None:
+                raise HTTPException(status_code=404, detail="Department not found")
+            user.department_id = body.department_id
+
+        try:
+            await session.commit()
+        except IntegrityError:
+            await session.rollback()
+            raise HTTPException(status_code=409, detail="Update failed due to constraint violation")
+
+    logger.info("User updated: user_id=%s, by=%s", user_id, current_user.id)
+    return {"success": True, "user_id": user_id}
 
 
 @router.delete("/users/{user_id}")
