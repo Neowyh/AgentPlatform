@@ -57,7 +57,94 @@ class UpdateDepartmentRequest(BaseModel):
     description: str | None = Field(None, max_length=500)
 
 
+class CreateUserRequest(BaseModel):
+    email: str = Field(..., max_length=320)
+    password: str = Field(..., min_length=6, max_length=128)
+    username: str = Field(..., max_length=100)
+    role: str = Field(default=UserRole.USER)
+    department_id: str | None = Field(None)
+
+
 # --- User Management ---
+
+
+@router.post("/users")
+@require_role(UserRole.SUPER_ADMIN, UserRole.DEPARTMENT_ADMIN)
+async def create_user(
+    body: CreateUserRequest,
+    current_user: UserModel = Depends(get_current_rbac_user),
+):
+    """Create a new user.
+
+    super_admin can create any user in any department.
+    department_admin can only create regular users in their own department.
+    """
+    if body.role not in tuple(UserRole):
+        raise HTTPException(status_code=400, detail=f"Invalid role: '{body.role}'. Valid roles: {', '.join(r.value for r in UserRole)}")
+
+    if not body.username.strip():
+        raise HTTPException(status_code=400, detail="Username cannot be empty")
+
+    try:
+        role = UserRole(body.role)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid role: '{body.role}'")
+
+    department_id = body.department_id
+
+    if current_user.role == UserRole.DEPARTMENT_ADMIN:
+        if role in (UserRole.SUPER_ADMIN, UserRole.DEPARTMENT_ADMIN):
+            raise HTTPException(status_code=403, detail="Cannot create super_admin or department_admin users")
+        role = UserRole.USER
+        department_id = current_user.department_id
+
+    if department_id is not None:
+        sf = get_session_factory()
+        if sf is None:
+            raise HTTPException(status_code=500, detail="Database not initialized")
+        async with sf() as session:
+            dept = await session.get(DepartmentModel, department_id)
+            if dept is None:
+                raise HTTPException(status_code=404, detail="Department not found")
+
+    from app.gateway.deps import get_local_provider
+
+    try:
+        auth_user = await get_local_provider().create_user(
+            email=body.email,
+            password=body.password,
+            system_role=role.value,
+        )
+    except ValueError:
+        raise HTTPException(status_code=409, detail="Email already exists")
+
+    user_id = str(auth_user.id)
+
+    sf = get_session_factory()
+    if sf is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    async with sf() as session:
+        rbac_user = UserModel(
+            id=user_id,
+            username=body.username.strip(),
+            role=role.value,
+            department_id=department_id,
+        )
+        try:
+            session.add(rbac_user)
+            await session.commit()
+        except IntegrityError:
+            await session.rollback()
+            raise HTTPException(status_code=409, detail="Username already exists")
+
+    logger.info("User created: id=%s, email=%s, role=%s, by=%s", user_id, body.email, role.value, current_user.id)
+    return {
+        "id": user_id,
+        "email": body.email,
+        "username": body.username.strip(),
+        "role": role.value,
+        "department_id": department_id,
+    }
 
 
 @router.get("/users")
