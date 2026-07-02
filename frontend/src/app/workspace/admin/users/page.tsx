@@ -1,6 +1,12 @@
 "use client";
 
-import { ArrowLeftIcon, PlusIcon, ShieldOffIcon, UserIcon } from "lucide-react";
+import {
+  ArrowLeftIcon,
+  PencilIcon,
+  PlusIcon,
+  ShieldOffIcon,
+  UserIcon,
+} from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -37,6 +43,7 @@ import {
   disableUser,
   listDepartments,
   listUsers,
+  updateUser,
   updateUserRole,
 } from "@/core/admin/api";
 import type { Department, User, UserRole } from "@/core/admin/types";
@@ -74,6 +81,10 @@ export default function UsersPage() {
     role: "user" as UserRole,
     department_id: "",
   });
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [editForm, setEditForm] = useState({ username: "", department_id: "" });
+  const [saving, setSaving] = useState(false);
 
   const fetchUsers = useCallback(async () => {
     try {
@@ -195,6 +206,38 @@ export default function UsersPage() {
       toast.error(err instanceof Error ? err.message : String(err));
     } finally {
       setCreating(false);
+    }
+  };
+
+  const handleEdit = (user: User) => {
+    setEditingUser(user);
+    setEditForm({
+      username: user.username,
+      department_id: user.department_id ?? "",
+    });
+    setEditDialogOpen(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingUser) return;
+    if (!editForm.username.trim()) {
+      toast.error("用户名不能为空");
+      return;
+    }
+    setSaving(true);
+    try {
+      await updateUser(editingUser.id, {
+        username: editForm.username.trim(),
+        department_id: editForm.department_id || undefined,
+      });
+      toast.success("用户信息已更新");
+      setEditDialogOpen(false);
+      setEditingUser(null);
+      await fetchUsers();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -344,6 +387,17 @@ export default function UsersPage() {
                             )}
                           </SelectContent>
                         </Select>
+                        {!isSelf && (
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            onClick={() => handleEdit(user)}
+                            title="编辑用户"
+                            data-testid="user-edit-button"
+                          >
+                            <PencilIcon className="h-4 w-4" />
+                          </Button>
+                        )}
                         <Button
                           variant="ghost"
                           size="icon-sm"
@@ -476,6 +530,69 @@ export default function UsersPage() {
             </Button>
             <Button onClick={handleCreate} disabled={creating}>
               {creating ? "创建中..." : "创建"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit User Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>编辑用户</DialogTitle>
+            <DialogDescription>修改用户信息</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="edit-username">用户名 *</Label>
+              <Input
+                id="edit-username"
+                placeholder="用户显示名称"
+                value={editForm.username}
+                onChange={(e) =>
+                  setEditForm((prev) => ({
+                    ...prev,
+                    username: e.target.value,
+                  }))
+                }
+              />
+            </div>
+            {isSuperAdmin && (
+              <div className="grid gap-2">
+                <Label>部门</Label>
+                <Select
+                  value={editForm.department_id}
+                  onValueChange={(value) =>
+                    setEditForm((prev) => ({
+                      ...prev,
+                      department_id: value,
+                    }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="选择部门（可选）" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {departments.map((dept) => (
+                      <SelectItem key={dept.id} value={dept.id}>
+                        {dept.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setEditDialogOpen(false)}
+              disabled={saving}
+            >
+              取消
+            </Button>
+            <Button onClick={handleSaveEdit} disabled={saving}>
+              {saving ? "保存中..." : "保存"}
             </Button>
           </DialogFooter>
         </DialogContent>
