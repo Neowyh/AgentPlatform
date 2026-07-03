@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import CheckConstraint, Column, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 
 from ideer.persistence.base import Base
 
@@ -17,8 +17,8 @@ class ResourceMetadata(Base):
     id = Column(String(64), primary_key=True)
     resource_type = Column(String(32), nullable=False)  # 'tool' | 'skill' | 'workflow' | 'agent'
     resource_id = Column(String(255), nullable=False)  # 资源名/标识
-    owner_id = Column(String(64), nullable=False)  # 创建者用户 ID
-    department_id = Column(String(64), nullable=True)  # 创建者所属部门
+    owner_id = Column(String(64), ForeignKey("users_ext.id"), nullable=False)  # 创建者用户 ID
+    department_id = Column(String(64), ForeignKey("departments.id"), nullable=True)  # 创建者所属部门
     visibility = Column(String(32), nullable=False, default="private")  # private | department | public
     imported_from = Column(Text, nullable=True)  # 导入来源信息
     version = Column(Integer, nullable=False, default=1)  # 乐观锁版本号
@@ -28,6 +28,9 @@ class ResourceMetadata(Base):
 
     __table_args__ = (
         UniqueConstraint("resource_type", "resource_id", name="uq_resource_type_id"),
+        CheckConstraint("resource_type IN ('tool', 'skill', 'workflow', 'agent')", name="ck_resource_type"),
+        CheckConstraint("visibility IN ('private', 'department', 'public')", name="ck_visibility"),
+        CheckConstraint("version >= 1", name="ck_version_positive"),
         Index("ix_resource_metadata_type", "resource_type"),
         Index("ix_resource_metadata_owner", "owner_id"),
         Index("ix_resource_metadata_dept", "department_id"),
