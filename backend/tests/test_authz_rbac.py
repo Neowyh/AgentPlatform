@@ -97,11 +97,11 @@ class TestCheckResourceAccess:
         user = _make_user(user_id="admin-1", role="department_admin", department_id="dept-1")
         assert check_resource_access(user, "other-user", "dept-2", "department") is False
 
-    def test_department_admin_can_access_private_in_own_dept(self):
-        """department_admin can access private resources in own department (via dept_admin rule)."""
+    def test_department_admin_follows_visibility_rules(self):
+        """department_admin follows same visibility rules as regular users."""
         user = _make_user(user_id="admin-1", role="department_admin", department_id="dept-1")
-        # Private visibility, but department_admin rule applies for same dept
-        assert check_resource_access(user, "other-user", "dept-1", "private") is True
+        # Private visibility: only owner and super_admin can access
+        assert check_resource_access(user, "other-user", "dept-1", "private") is False
 
     def test_department_admin_cannot_access_private_in_other_dept(self):
         """department_admin cannot access private resources in different department."""
@@ -132,10 +132,10 @@ class TestCheckResourceAccess:
 class TestCheckResourceModify:
     """Tests for ownership/role-based write access."""
 
-    def test_super_admin_can_modify_any_resource(self):
-        """super_admin can modify any resource."""
+    def test_super_admin_cannot_modify_others(self):
+        """super_admin cannot modify resources owned by others."""
         user = _make_user(role="super_admin")
-        assert check_resource_modify(user, "other-user", "dept-1") is True
+        assert check_resource_modify(user, "other-user", "dept-1") is False
 
     def test_owner_can_modify_own_resource(self):
         """Owner can modify own resource."""
@@ -147,10 +147,10 @@ class TestCheckResourceModify:
         user = _make_user(user_id="user-1", role="user", department_id="dept-1")
         assert check_resource_modify(user, "other-user", "dept-1") is False
 
-    def test_department_admin_can_modify_department_resource(self):
-        """department_admin can modify resources in own department."""
+    def test_department_admin_cannot_modify_others(self):
+        """department_admin cannot modify resources owned by others."""
         user = _make_user(user_id="admin-1", role="department_admin", department_id="dept-1")
-        assert check_resource_modify(user, "other-user", "dept-1") is True
+        assert check_resource_modify(user, "other-user", "dept-1") is False
 
     def test_department_admin_cannot_modify_other_department_resource(self):
         """department_admin cannot modify resources in different department."""
