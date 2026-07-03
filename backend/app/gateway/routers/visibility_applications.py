@@ -23,6 +23,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.gateway.authz import get_current_rbac_user
 from ideer.persistence.engine import get_session_factory
+from ideer.persistence.models.resource_metadata import ResourceMetadata
 from ideer.persistence.models.user import ResourceVisibility, UserModel, UserRole
 from ideer.persistence.models.visibility_application import (
     VisibilityApplication,
@@ -71,6 +72,9 @@ class ApplicationResponse(BaseModel):
 
 class ApplicationsResponse(BaseModel):
     applications: list[ApplicationResponse]
+    total: int
+    page: int
+    page_size: int
 
 
 def _to_response(app: VisibilityApplication) -> ApplicationResponse:
@@ -121,14 +125,31 @@ async def create_application(
                     detail="A pending application already exists for this resource",
                 )
 
+            # Fetch current visibility from resource_metadata
+            resource_stmt = select(ResourceMetadata).where(
+                ResourceMetadata.resource_type == request.resource_type,
+                ResourceMetadata.resource_id == request.resource_id,
+                ResourceMetadata.deleted_at.is_(None),
+            )
+            resource = (await session.execute(resource_stmt)).scalar_one_or_none()
+            if not resource:
+                raise HTTPException(status_code=404, detail="Resource not found")
+
+            # Check target_visibility != current_visibility
+            if request.target_visibility.value == resource.visibility:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Target visibility cannot be the same as current visibility",
+                )
+
             application = VisibilityApplication(
                 id=str(uuid.uuid4()),
                 resource_type=request.resource_type,
                 resource_id=request.resource_id,
                 applicant_id=str(current_user.id),
-                current_visibility=ResourceVisibility.PRIVATE.value,
+                current_visibility=resource.visibility,
                 target_visibility=request.target_visibility.value,
-                department_id=current_user.department_id,
+                department_id=resource.department_id,
                 reason=request.reason,
                 status=VisibilityApplicationStatus.PENDING.value,
                 version=1,
@@ -155,11 +176,11 @@ async def create_application(
 # ---------------------------------------------------------------------------
 
 
-@router.put("/{application_id}/withdraw", response_model=ApplicationResponse)
+@router.put("/{application_id}/withdraw")
 async def withdraw_application(
     application_id: str,
     current_user: UserModel = Depends(get_current_rbac_user),
-) -> ApplicationResponse:
+) -> dict:
     sf = get_session_factory()
     if sf is None:
         raise HTTPException(status_code=500, detail="Database not initialized")
@@ -179,9 +200,8 @@ async def withdraw_application(
 
             application.status = VisibilityApplicationStatus.WITHDRAWN
             await session.commit()
-            await session.refresh(application)
 
-            return _to_response(application)
+            return {"success": True}
     except HTTPException:
         raise
     except Exception as e:
@@ -223,6 +243,11 @@ async def review_application(
                     detail=f"Version mismatch: expected {application.version}, got {request.version}",
                 )
 
+            # dept_admin cannot review own application
+            if current_user.role == UserRole.DEPARTMENT_ADMIN:
+                if application.applicant_id == str(current_user.id):
+                    raise HTTPException(status_code=403, detail="Cannot review your own application")
+
             application.status = request.action
             application.reviewed_by = str(current_user.id)
             application.reviewed_at = datetime.now(UTC)
@@ -249,6 +274,8 @@ async def review_application(
 async def list_applications(
     status: str | None = None,
     resource_type: str | None = None,
+    page: int = 1,
+    page_size: int = 20,
     current_user: UserModel = Depends(get_current_rbac_user),
 ) -> ApplicationsResponse:
     if current_user.role not in (UserRole.SUPER_ADMIN, UserRole.DEPARTMENT_ADMIN):
@@ -274,11 +301,24 @@ async def list_applications(
             if current_user.role == UserRole.DEPARTMENT_ADMIN:
                 stmt = stmt.where(VisibilityApplication.department_id == current_user.department_id)
 
-            stmt = stmt.order_by(VisibilityApplication.submitted_at.desc())
+            # Count total
+            from sqlalchemy import func
+
+            count_stmt = select(func.count()).select_from(stmt.subquery())
+            total = (await session.execute(count_stmt)).scalar() or 0
+
+            # Apply pagination
+            offset = (page - 1) * page_size
+            stmt = stmt.order_by(VisibilityApplication.submitted_at.desc()).offset(offset).limit(page_size)
             result = await session.execute(stmt)
             applications = result.scalars().all()
 
-            return ApplicationsResponse(applications=[_to_response(app) for app in applications])
+            return ApplicationsResponse(
+                applications=[_to_response(app) for app in applications],
+                total=total,
+                page=page,
+                page_size=page_size,
+            )
     except Exception as e:
         logger.error("Failed to list visibility applications: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
