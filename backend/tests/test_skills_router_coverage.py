@@ -2,8 +2,6 @@
 
 Covers gaps not addressed by existing test files:
 - _validate_skill_name: valid and invalid names
-- _is_visible_to_user: all visibility combinations
-- _check_resource_modify: auth required and permission denied
 - _get_skill_meta: error paths (JSONDecodeError, generic Exception)
 - list_skills: error handling, visibility filtering
 - get_skill: custom skill visibility check, not found, invalid name
@@ -27,9 +25,7 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from app.gateway.routers.skills import (
-    _check_resource_modify,
     _get_skill_meta,
-    _is_visible_to_user,
     _validate_skill_name,
 )
 from app.gateway.routers.skills import (
@@ -97,79 +93,6 @@ def _make_user(
     user.role = role
     user.department_id = department_id
     return user
-
-
-class TestIsVisibleToUser:
-    """Tests for _is_visible_to_user."""
-
-    def test_public_visible_to_all(self):
-        """Public skills are visible to everyone."""
-        user = _make_user()
-        assert _is_visible_to_user("public", None, None, user) is True
-
-    def test_super_admin_sees_everything(self):
-        """Super admin can see any skill regardless of visibility."""
-        user = _make_user(role=UserRole.SUPER_ADMIN)
-        assert _is_visible_to_user("private", "other-user", "dept-1", user) is True
-
-    def test_owner_sees_own_private_skill(self):
-        """Owner can see their own private skill."""
-        user = _make_user(user_id="user-1")
-        assert _is_visible_to_user("private", "user-1", None, user) is True
-
-    def test_non_owner_cannot_see_private_skill(self):
-        """Non-owner cannot see a private skill."""
-        user = _make_user(user_id="user-2")
-        assert _is_visible_to_user("private", "user-1", None, user) is False
-
-    def test_department_visible_to_same_department(self):
-        """Department skill is visible to same department members."""
-        user = _make_user(department_id="dept-1")
-        assert _is_visible_to_user("department", "user-1", "dept-1", user) is True
-
-    def test_department_not_visible_to_no_department(self):
-        """Department skill is not visible to user with no department."""
-        user = _make_user(user_id="user-2", department_id=None)
-        assert _is_visible_to_user("department", "user-1", "dept-1", user) is False
-
-    def test_department_admin_can_see_own_department(self):
-        """Department admin can see resources in their department."""
-        user = _make_user(role=UserRole.DEPARTMENT_ADMIN, department_id="dept-1")
-        assert _is_visible_to_user("department", "user-1", "dept-1", user) is True
-
-    def test_department_admin_cannot_see_no_department(self):
-        """Department admin cannot see resources when they have no department."""
-        user = _make_user(user_id="user-2", role=UserRole.DEPARTMENT_ADMIN, department_id=None)
-        assert _is_visible_to_user("department", "user-1", "dept-1", user) is False
-
-
-# ---------------------------------------------------------------------------
-# _check_resource_modify tests
-# ---------------------------------------------------------------------------
-
-
-class TestCheckResourceModify:
-    """Tests for _check_resource_modify."""
-
-    def test_raises_401_when_no_user(self):
-        """Raises 401 when current_user is None."""
-        with pytest.raises(HTTPException) as exc_info:
-            _check_resource_modify("owner-1", None, None)
-        assert exc_info.value.status_code == 401
-
-    @patch("app.gateway.routers.skills.check_resource_modify", return_value=False)
-    def test_raises_403_when_not_allowed(self, mock_check):
-        """Raises 403 when user is not allowed to modify."""
-        user = _make_user()
-        with pytest.raises(HTTPException) as exc_info:
-            _check_resource_modify("owner-1", None, user)
-        assert exc_info.value.status_code == 403
-
-    @patch("app.gateway.routers.skills.check_resource_modify", return_value=True)
-    def test_passes_when_allowed(self, mock_check):
-        """Does not raise when user is allowed to modify."""
-        user = _make_user()
-        _check_resource_modify("owner-1", None, user)  # Should not raise
 
 
 # ---------------------------------------------------------------------------

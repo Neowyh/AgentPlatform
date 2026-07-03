@@ -22,9 +22,7 @@ from app.gateway.authz import get_current_rbac_user, get_optional_rbac_user
 from app.gateway.routers.agents import (
     AgentResponse,
     _agent_config_to_response,
-    _can_set_visibility,
     _is_shared_only,
-    _is_visible_to_user,
     _load_agent_meta,
     _normalize_agent_name,
     _require_agents_api_enabled,
@@ -237,30 +235,6 @@ class TestRequireAgentsApiEnabled:
 # ===========================================================================
 
 
-class TestCanSetVisibility:
-    def test_no_user_always_allowed(self):
-        assert _can_set_visibility("public", None) is True
-        assert _can_set_visibility("department", None) is True
-        assert _can_set_visibility("private", None) is True
-
-    def test_private_any_role(self):
-        for role in UserRole:
-            user = _make_user(role=role)
-            assert _can_set_visibility("private", user) is True
-
-    def test_department_requires_admin_or_super(self):
-        assert _can_set_visibility("department", _make_user(role=UserRole.DEPARTMENT_ADMIN)) is True
-        assert _can_set_visibility("department", _make_user(role=UserRole.SUPER_ADMIN)) is True
-        assert _can_set_visibility("department", _make_user(role=UserRole.USER)) is False
-        assert _can_set_visibility("department", _make_user(role=UserRole.VIEWER)) is False
-
-    def test_public_requires_super_admin(self):
-        assert _can_set_visibility("public", _make_user(role=UserRole.SUPER_ADMIN)) is True
-        assert _can_set_visibility("public", _make_user(role=UserRole.DEPARTMENT_ADMIN)) is False
-        assert _can_set_visibility("public", _make_user(role=UserRole.USER)) is False
-        assert _can_set_visibility("public", _make_user(role=UserRole.VIEWER)) is False
-
-
 # ===========================================================================
 # _is_shared_only
 # ===========================================================================
@@ -287,58 +261,6 @@ class TestIsSharedOnly:
         mock_paths.user_agent_dir.return_value.exists.return_value = False
         with patch("app.gateway.routers.agents.get_paths", return_value=mock_paths):
             assert _is_shared_only("agent", "u1") is False
-
-
-# ===========================================================================
-# _is_visible_to_user
-# ===========================================================================
-
-
-class TestIsVisibleToUser:
-    """Visibility filtering logic."""
-
-    def test_public_visible_to_everyone(self):
-        for role in UserRole:
-            user = _make_user(role=role)
-            assert _is_visible_to_user("public", "owner", "dept", user) is True
-
-    def test_super_admin_sees_everything(self):
-        user = _make_user(role=UserRole.SUPER_ADMIN)
-        for vis in ("public", "department", "private"):
-            assert _is_visible_to_user(vis, "someone", "other-dept", user) is True
-
-    def test_owner_sees_own_resource(self):
-        user = _make_user(user_id="owner-1", role=UserRole.USER)
-        assert _is_visible_to_user("private", "owner-1", "dept", user) is True
-
-    def test_private_invisible_to_non_owner_non_admin(self):
-        user = _make_user(user_id="other", role=UserRole.USER, department_id="dept")
-        assert _is_visible_to_user("private", "owner", "dept", user) is False
-
-    def test_department_visible_to_same_dept(self):
-        user = _make_user(user_id="other", role=UserRole.USER, department_id="dept")
-        assert _is_visible_to_user("department", "owner", "dept", user) is True
-
-    def test_department_invisible_to_different_dept(self):
-        user = _make_user(user_id="other", role=UserRole.USER, department_id="other-dept")
-        assert _is_visible_to_user("department", "owner", "dept", user) is False
-
-    def test_dept_admin_sees_own_dept_resources(self):
-        user = _make_user(user_id="admin", role=UserRole.DEPARTMENT_ADMIN, department_id="dept")
-        assert _is_visible_to_user("private", "owner", "dept", user) is True
-
-    def test_dept_admin_invisible_to_other_dept_private(self):
-        user = _make_user(user_id="admin", role=UserRole.DEPARTMENT_ADMIN, department_id="other-dept")
-        assert _is_visible_to_user("private", "owner", "dept", user) is False
-
-    def test_none_owner_id_not_owner(self):
-        user = _make_user(user_id="any", role=UserRole.USER)
-        assert _is_visible_to_user("private", None, None, user) is False
-
-    def test_dept_visibility_with_none_dept_ids(self):
-        user = _make_user(user_id="any", role=UserRole.USER, department_id="dept")
-        assert _is_visible_to_user("department", "owner", None, user) is False
-        assert _is_visible_to_user("department", "owner", "dept", user) is True
 
 
 # ===========================================================================

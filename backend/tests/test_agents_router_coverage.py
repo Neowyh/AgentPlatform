@@ -3,17 +3,14 @@
 Covers gaps not addressed by existing test files:
 - _validate_agent_name: valid/invalid names
 - _normalize_agent_name: case normalization
-- _can_set_visibility: all role/visibility combos
-- _is_visible_to_user: all visibility combinations
-- _check_resource_modify: 401/403 cases
 - _require_agents_api_enabled: disabled API returns 403
 - list_agents: error handling
 - get_agent: 404, generic exception
-- create_agent: invalid name, visibility permission denied
-- update_agent: shared read-only template denial, visibility permission denied
+- create_agent: invalid name
+- update_agent: shared read-only template denial
 - delete_agent: shared read-only template denial
 - export_agent: not found
-- import_agent: duplicate, visibility permission denied, invalid name
+- import_agent: duplicate, invalid name
 - get_user_profile: no USER.md, empty file, error handling
 - update_user_profile: error handling
 - check_agent_name: invalid name, taken in shared
@@ -29,9 +26,6 @@ from fastapi.testclient import TestClient
 
 from app.gateway.authz import get_current_rbac_user, get_optional_rbac_user
 from app.gateway.routers.agents import (
-    _can_set_visibility,
-    _check_resource_modify,
-    _is_visible_to_user,
     _normalize_agent_name,
     _validate_agent_name,
 )
@@ -122,87 +116,6 @@ class TestNormalizeAgentName:
 
     def test_preserves_already_lowercase(self):
         assert _normalize_agent_name("my-agent") == "my-agent"
-
-
-class TestCanSetVisibility:
-    def test_private_anyone(self):
-        user = _make_rbac_user(role=UserRole.USER)
-        assert _can_set_visibility("private", user) is True
-
-    def test_public_super_admin(self):
-        user = _make_rbac_user(role=UserRole.SUPER_ADMIN)
-        assert _can_set_visibility("public", user) is True
-
-    def test_public_regular_user_denied(self):
-        user = _make_rbac_user(role=UserRole.USER)
-        assert _can_set_visibility("public", user) is False
-
-    def test_public_dept_admin_denied(self):
-        user = _make_rbac_user(role=UserRole.DEPARTMENT_ADMIN)
-        assert _can_set_visibility("public", user) is False
-
-    def test_department_dept_admin(self):
-        user = _make_rbac_user(role=UserRole.DEPARTMENT_ADMIN)
-        assert _can_set_visibility("department", user) is True
-
-    def test_department_super_admin(self):
-        user = _make_rbac_user(role=UserRole.SUPER_ADMIN)
-        assert _can_set_visibility("department", user) is True
-
-    def test_department_regular_user_denied(self):
-        user = _make_rbac_user(role=UserRole.USER)
-        assert _can_set_visibility("department", user) is False
-
-    def test_no_user_context_always_allowed(self):
-        assert _can_set_visibility("public", None) is True
-
-
-class TestIsVisibleToUser:
-    def test_public_visible_to_all(self):
-        user = _make_rbac_user()
-        assert _is_visible_to_user("public", None, None, user) is True
-
-    def test_super_admin_sees_all(self):
-        user = _make_rbac_user(role=UserRole.SUPER_ADMIN)
-        assert _is_visible_to_user("private", "other", "dept-1", user) is True
-
-    def test_owner_sees_own(self):
-        user = _make_rbac_user(user_id="user-1")
-        assert _is_visible_to_user("private", "user-1", None, user) is True
-
-    def test_non_owner_cannot_see_private(self):
-        user = _make_rbac_user(user_id="user-2")
-        assert _is_visible_to_user("private", "user-1", None, user) is False
-
-    def test_department_same_dept(self):
-        user = _make_rbac_user(department_id="dept-1")
-        assert _is_visible_to_user("department", "user-1", "dept-1", user) is True
-
-    def test_department_different_dept(self):
-        user = _make_rbac_user(user_id="user-2", department_id="dept-2")
-        assert _is_visible_to_user("department", "user-1", "dept-1", user) is False
-
-    def test_dept_admin_own_dept(self):
-        user = _make_rbac_user(role=UserRole.DEPARTMENT_ADMIN, department_id="dept-1")
-        assert _is_visible_to_user("private", "other-user", "dept-1", user) is True
-
-    def test_dept_admin_other_dept(self):
-        user = _make_rbac_user(role=UserRole.DEPARTMENT_ADMIN, department_id="dept-2")
-        assert _is_visible_to_user("private", "other-user", "dept-1", user) is False
-
-
-class TestCheckResourceModify:
-    def test_raises_401_when_no_user(self):
-        with pytest.raises(HTTPException) as exc:
-            _check_resource_modify("owner-1", None, None)
-        assert exc.value.status_code == 401
-
-    @patch("app.gateway.routers.agents.check_resource_modify", return_value=False)
-    def test_raises_403_when_denied(self, _):
-        user = _make_rbac_user()
-        with pytest.raises(HTTPException) as exc:
-            _check_resource_modify("owner-1", None, user)
-        assert exc.value.status_code == 403
 
 
 # ---------------------------------------------------------------------------

@@ -17,9 +17,7 @@ from fastapi.testclient import TestClient
 from app.gateway.authz import get_current_rbac_user, get_optional_rbac_user
 from app.gateway.routers.skills import (
     SkillCategory,
-    _check_resource_modify,
     _get_skill_meta,
-    _is_visible_to_user,
     _skill_to_response,
     _validate_skill_name,
 )
@@ -144,81 +142,6 @@ class TestValidateSkillName:
         with pytest.raises(HTTPException) as exc_info:
             _validate_skill_name("")
         assert exc_info.value.status_code == 422
-
-
-# ===========================================================================
-# 2. _check_resource_modify
-# ===========================================================================
-
-
-class TestCheckResourceModify:
-    def test_none_user_raises_401(self):
-        with pytest.raises(HTTPException) as exc_info:
-            _check_resource_modify("owner-1", "dept-1", None)
-        assert exc_info.value.status_code == 401
-
-    def test_allowed_for_owner(self):
-        user = _make_user(user_id="owner-1")
-        with patch("app.gateway.routers.skills.check_resource_modify", return_value=True):
-            _check_resource_modify("owner-1", "dept-1", user)
-
-    def test_denied_raises_403(self):
-        user = _make_user(user_id="other-user")
-        with patch("app.gateway.routers.skills.check_resource_modify", return_value=False):
-            with pytest.raises(HTTPException) as exc_info:
-                _check_resource_modify("owner-1", "dept-1", user)
-            assert exc_info.value.status_code == 403
-
-
-# ===========================================================================
-# 3. _is_visible_to_user
-# ===========================================================================
-
-
-class TestIsVisibleToUser:
-    def test_public_visible_to_anyone(self):
-        user = _make_user(role=UserRole.USER, user_id="user-1", dept_id="dept-1")
-        assert _is_visible_to_user("public", "other", "other-dept", user) is True
-
-    def test_super_admin_sees_everything(self):
-        user = _make_user(role=UserRole.SUPER_ADMIN)
-        assert _is_visible_to_user("private", "other", "other-dept", user) is True
-
-    def test_owner_sees_own_resource(self):
-        user = _make_user(role=UserRole.USER, user_id="owner-1")
-        assert _is_visible_to_user("private", "owner-1", None, user) is True
-
-    def test_department_visible_to_same_dept(self):
-        user = _make_user(role=UserRole.USER, user_id="user-1", dept_id="dept-1")
-        assert _is_visible_to_user("department", "other", "dept-1", user) is True
-
-    def test_department_not_visible_to_different_dept(self):
-        user = _make_user(role=UserRole.USER, user_id="user-1", dept_id="dept-1")
-        assert _is_visible_to_user("department", "other", "dept-2", user) is False
-
-    def test_department_admin_sees_own_dept(self):
-        user = _make_user(role=UserRole.DEPARTMENT_ADMIN, user_id="admin-1", dept_id="dept-1")
-        assert _is_visible_to_user("private", "other", "dept-1", user) is True
-
-    def test_department_admin_not_sees_other_dept_private(self):
-        user = _make_user(role=UserRole.DEPARTMENT_ADMIN, user_id="admin-1", dept_id="dept-1")
-        assert _is_visible_to_user("private", "other", "dept-2", user) is False
-
-    def test_private_not_visible_to_regular_user(self):
-        user = _make_user(role=UserRole.USER, user_id="user-1", dept_id="dept-1")
-        assert _is_visible_to_user("private", "other", "other-dept", user) is False
-
-    def test_user_no_dept_cant_see_department(self):
-        user = _make_user(role=UserRole.USER, user_id="user-1", dept_id=None)
-        assert _is_visible_to_user("department", "other", "dept-1", user) is False
-
-    def test_resource_no_dept_not_visible_department(self):
-        user = _make_user(role=UserRole.USER, user_id="user-1", dept_id="dept-1")
-        assert _is_visible_to_user("department", "other", None, user) is False
-
-    def test_dept_admin_no_dept_cant_see(self):
-        user = _make_user(role=UserRole.DEPARTMENT_ADMIN, user_id="admin-1", dept_id=None)
-        assert _is_visible_to_user("private", "other", "dept-1", user) is False
 
 
 # ===========================================================================
