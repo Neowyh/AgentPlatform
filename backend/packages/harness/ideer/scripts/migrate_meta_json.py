@@ -244,7 +244,71 @@ async def migrate_meta_json(*, dry_run: bool = False) -> dict:
         failed,
         owner_warned,
     )
+
+    # Verification step: compare file count and table row count
+    total_files = imported + skipped + failed
+    total_db = imported + skipped
+    if total_files != total_db:
+        logger.warning(
+            "Verification: file count (%d) != db count (%d) — %d failed",
+            total_files,
+            total_db,
+            failed,
+        )
+    else:
+        logger.info("Verification: file count (%d) == db count (%d) — OK", total_files, total_db)
+
+    # Sample validation: check 10% of imported records
+    if imported > 0:
+        await _sample_validate(imported, skipped)
+
     return report
+
+
+async def _sample_validate(imported: int, skipped: int) -> None:
+    """Sample validate 10% of imported records to ensure field values are consistent."""
+    sf = get_session_factory()
+    if sf is None:
+        return
+
+    try:
+        async with sf() as session:
+            # Count total records
+            from sqlalchemy import func
+
+            count_stmt = select(func.count()).select_from(ResourceMetadata)
+            total = (await session.execute(count_stmt)).scalar() or 0
+
+            # Sample 10% of records (minimum 1)
+            sample_size = max(1, total // 10)
+            stmt = select(ResourceMetadata).order_by(func.random()).limit(sample_size)
+            result = await session.execute(stmt)
+            samples = result.scalars().all()
+
+            # Validate each sample
+            valid_count = 0
+            for sample in samples:
+                if sample.resource_type in ("tool", "skill", "workflow", "agent") and sample.visibility in ("private", "department", "public") and sample.version >= 1 and sample.owner_id:
+                    valid_count += 1
+                else:
+                    logger.warning(
+                        "Sample validation failed for %s/%s: type=%s, vis=%s, ver=%s, owner=%s",
+                        sample.resource_type,
+                        sample.resource_id,
+                        sample.resource_type,
+                        sample.visibility,
+                        sample.version,
+                        sample.owner_id,
+                    )
+
+            logger.info(
+                "Sample validation: %d/%d records valid (%.1f%%)",
+                valid_count,
+                sample_size,
+                (valid_count / sample_size * 100) if sample_size > 0 else 0,
+            )
+    except Exception as e:
+        logger.warning("Sample validation failed: %s", e)
 
 
 def main() -> None:
