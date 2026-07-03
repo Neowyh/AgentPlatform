@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
-from app.gateway.authz import check_resource_modify, get_current_rbac_user, get_optional_rbac_user, require_role
+from app.gateway.authz import check_resource_access, check_resource_modify, get_current_rbac_user, get_optional_rbac_user, require_role
 from app.gateway.deps import get_config
 from app.gateway.path_utils import resolve_thread_virtual_path
 from ideer.agents.lead_agent.prompt import refresh_skills_system_prompt_cache_async
@@ -41,49 +41,6 @@ def _validate_skill_name(name: str) -> None:
 
 
 router = APIRouter(prefix="/api/skills", tags=["skills"])
-
-
-# ---------------------------------------------------------------------------
-# RBAC helpers — now backed by real UserModel from authz.py
-# ---------------------------------------------------------------------------
-
-
-def _check_resource_modify(resource_owner_id: str | None, resource_department_id: str | None, current_user: UserModel | None) -> None:
-    """Raise 403 if *current_user* is not allowed to modify the resource.
-
-    Delegates to authz.check_resource_modify for consistent RBAC rules.
-    """
-    if current_user is None:
-        raise HTTPException(status_code=401, detail="Authentication required")
-    if not check_resource_modify(current_user, resource_owner_id, resource_department_id):
-        raise HTTPException(status_code=403, detail="You do not have permission to modify this resource")
-
-
-def _is_visible_to_user(visibility: str, owner_id: str | None, department_id: str | None, current_user: UserModel) -> bool:
-    """Check whether a skill with the given visibility is visible to *current_user*.
-
-    Visibility rules (consistent with authz.check_resource_access):
-    - public: everyone can access
-    - super_admin: always allowed
-    - owner: always allowed for own resources
-    - department: same department members can access
-    - department_admin: can access resources in own department (regardless of visibility)
-    - private: only owner and super_admin
-    """
-    if visibility == "public":
-        return True
-    if current_user.role == UserRole.SUPER_ADMIN:
-        return True
-    if owner_id and owner_id == current_user.id:
-        return True
-    if visibility == "department":
-        if current_user.department_id and department_id and current_user.department_id == department_id:
-            return True
-    # department_admin: can access resources in their own department
-    if current_user.role == UserRole.DEPARTMENT_ADMIN:
-        if current_user.department_id and department_id and current_user.department_id == department_id:
-            return True
-    return False
 
 
 def _get_skill_meta(skill_name: str, config: AppConfig) -> dict:
@@ -198,7 +155,7 @@ async def list_skills(
             dept_id = meta.get("department_id")
 
             if current_user is not None:
-                if _is_visible_to_user(visibility, owner_id, dept_id, current_user):
+                if check_resource_access(current_user, owner_id, dept_id, visibility):
                     filtered.append(skill)
             elif visibility == "public":
                 filtered.append(skill)
@@ -262,7 +219,7 @@ async def list_custom_skills(
             dept_id = meta.get("department_id")
 
             if current_user is not None:
-                if _is_visible_to_user(visibility, owner_id, dept_id, current_user):
+                if check_resource_access(current_user, owner_id, dept_id, visibility):
                     filtered.append(skill)
             elif visibility == "public":
                 filtered.append(skill)
@@ -294,7 +251,7 @@ async def get_custom_skill(
         owner_id = meta.get("owner_id")
         dept_id = meta.get("department_id")
         if current_user is not None:
-            if not _is_visible_to_user(visibility, owner_id, dept_id, current_user):
+            if not check_resource_access(current_user, owner_id, dept_id, visibility):
                 raise HTTPException(status_code=404, detail=f"Custom skill '{skill_name}' not found")
         elif visibility != "public":
             raise HTTPException(status_code=404, detail=f"Custom skill '{skill_name}' not found")
@@ -322,7 +279,8 @@ async def update_custom_skill(
 
         # RBAC: check ownership before allowing edit
         meta = _get_skill_meta(skill_name, config)
-        _check_resource_modify(meta.get("owner_id"), meta.get("department_id"), current_user)
+        if not check_resource_modify(current_user, meta.get("owner_id"), meta.get("department_id")):
+            raise HTTPException(status_code=403, detail="You do not have permission to modify this resource")
         storage = get_or_new_skill_storage(app_config=config)
         storage.ensure_custom_skill_is_editable(skill_name)
         storage.validate_skill_markdown_content(skill_name, request.content)
@@ -370,7 +328,8 @@ async def delete_custom_skill(
 
         # RBAC: check ownership before allowing delete
         meta = _get_skill_meta(skill_name, config)
-        _check_resource_modify(meta.get("owner_id"), meta.get("department_id"), current_user)
+        if not check_resource_modify(current_user, meta.get("owner_id"), meta.get("department_id")):
+            raise HTTPException(status_code=403, detail="You do not have permission to modify this resource")
 
         storage = get_or_new_skill_storage(app_config=config)
         storage.delete_custom_skill(
@@ -411,7 +370,7 @@ async def get_custom_skill_history(skill_name: str, config: AppConfig = Depends(
         owner_id = meta.get("owner_id")
         dept_id = meta.get("department_id")
         if current_user is not None:
-            if not _is_visible_to_user(visibility, owner_id, dept_id, current_user):
+            if not check_resource_access(current_user, owner_id, dept_id, visibility):
                 raise HTTPException(status_code=404, detail=f"Custom skill '{skill_name}' not found")
         elif visibility != "public":
             raise HTTPException(status_code=404, detail=f"Custom skill '{skill_name}' not found")
@@ -435,7 +394,8 @@ async def rollback_custom_skill(skill_name: str, request: SkillRollbackRequest, 
 
         # RBAC: check ownership before allowing rollback
         meta = _get_skill_meta(skill_name, config)
-        _check_resource_modify(meta.get("owner_id"), meta.get("department_id"), current_user)
+        if not check_resource_modify(current_user, meta.get("owner_id"), meta.get("department_id")):
+            raise HTTPException(status_code=403, detail="You do not have permission to modify this resource")
         history = storage.read_history(skill_name)
         if not history:
             raise HTTPException(status_code=400, detail=f"Custom skill '{skill_name}' has no history")
@@ -500,7 +460,7 @@ async def get_skill(skill_name: str, config: AppConfig = Depends(get_config), cu
             owner_id = meta.get("owner_id")
             dept_id = meta.get("department_id")
             if current_user is not None:
-                if not _is_visible_to_user(visibility, owner_id, dept_id, current_user):
+                if not check_resource_access(current_user, owner_id, dept_id, visibility):
                     raise HTTPException(status_code=404, detail=f"Skill '{skill_name}' not found")
             elif visibility != "public":
                 raise HTTPException(status_code=404, detail=f"Skill '{skill_name}' not found")
@@ -596,11 +556,8 @@ async def update_skill_visibility(
             raise HTTPException(status_code=404, detail=f"Skill '{skill_name}' not found")
 
         # Check if user has permission to modify this skill
-        _check_resource_modify(
-            getattr(skill, "owner_id", None),
-            getattr(skill, "department_id", None),
-            current_user,
-        )
+        if not check_resource_modify(current_user, getattr(skill, "owner_id", None), getattr(skill, "department_id", None)):
+            raise HTTPException(status_code=403, detail="You do not have permission to modify this resource")
 
         # Only custom skills can have visibility changed
         if skill.category != SkillCategory.CUSTOM:
