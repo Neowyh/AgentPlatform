@@ -80,9 +80,11 @@ export async function submitSkillApplication(
 export async function listSkillApplications(
   status?: string,
 ): Promise<{ applications: SkillApplicationResponse[] }> {
-  const params = status ? `?status=${encodeURIComponent(status)}` : "";
+  const params = status
+    ? `?status=${encodeURIComponent(status)}&resource_type=skill`
+    : "?resource_type=skill";
   const response = await fetch(
-    `${getBackendBaseURL()}/api/admin/skill-applications${params}`,
+    `${getBackendBaseURL()}/api/visibility-applications${params}`,
   );
   if (!response.ok) {
     await extractError(response, "Failed to list skill applications");
@@ -96,13 +98,13 @@ export async function reviewSkillApplication(
   comment = "",
 ): Promise<{ message: string }> {
   const response = await fetch(
-    `${getBackendBaseURL()}/api/admin/skill-applications/${encodeURIComponent(applicationId)}`,
+    `${getBackendBaseURL()}/api/visibility-applications/${encodeURIComponent(applicationId)}`,
     {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ action, comment }),
+      body: JSON.stringify({ action, comment, version: 1 }),
     },
   );
   if (!response.ok) {
