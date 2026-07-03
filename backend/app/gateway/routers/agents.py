@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
-from app.gateway.authz import check_resource_modify, get_current_rbac_user, get_optional_rbac_user, require_role
+from app.gateway.authz import check_resource_access, check_resource_modify, get_current_rbac_user, get_optional_rbac_user, require_role
 from ideer.config.agents_api_config import get_agents_api_config
 from ideer.config.agents_config import AgentConfig, list_custom_agents, load_agent_config, load_agent_soul
 from ideer.config.paths import get_paths
@@ -28,35 +28,6 @@ router = APIRouter(prefix="/api", tags=["agents"])
 # ---------------------------------------------------------------------------
 
 VALID_ROLES = tuple(UserRole)
-
-
-def _check_resource_modify(resource_owner_id: str | None, resource_department_id: str | None, current_user: UserModel | None) -> None:
-    """Raise 403 if *current_user* is not allowed to modify the resource.
-
-    Delegates to authz.check_resource_modify for consistent RBAC rules.
-    """
-    if current_user is None:
-        raise HTTPException(status_code=401, detail="Authentication required")
-    if not check_resource_modify(current_user, resource_owner_id, resource_department_id):
-        raise HTTPException(status_code=403, detail="You do not have permission to modify this resource")
-
-
-def _can_set_visibility(visibility: str, current_user: UserModel | None) -> bool:
-    """Check whether the user is allowed to set the given visibility level.
-
-    - private: anyone
-    - department: department_admin or super_admin
-    - public: super_admin only
-    - No user context: always allowed
-    """
-    if current_user is None:
-        return True
-
-    if visibility == "public":
-        return current_user.role == UserRole.SUPER_ADMIN
-    if visibility == "department":
-        return current_user.role in (UserRole.DEPARTMENT_ADMIN, UserRole.SUPER_ADMIN)
-    return True  # private — anyone
 
 
 AGENT_NAME_PATTERN = re.compile(r"^[A-Za-z0-9-]+$")
@@ -169,33 +140,6 @@ def _save_agent_meta(agent_name: str, user_id: str, meta: dict) -> None:
     meta_file.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
-def _is_visible_to_user(visibility: str, owner_id: str | None, department_id: str | None, current_user: UserModel) -> bool:
-    """Check whether an agent with the given visibility is visible to *current_user*.
-
-    Visibility rules (consistent with authz.check_resource_access):
-    - public: everyone can access
-    - super_admin: always allowed
-    - owner: always allowed for own resources
-    - department: same department members can access
-    - department_admin: can access resources in own department (regardless of visibility)
-    - private: only owner and super_admin
-    """
-    if visibility == "public":
-        return True
-    if current_user.role == UserRole.SUPER_ADMIN:
-        return True
-    if owner_id and owner_id == current_user.id:
-        return True
-    if visibility == "department":
-        if current_user.department_id and department_id and current_user.department_id == department_id:
-            return True
-    # department_admin: can access resources in their own department
-    if current_user.role == UserRole.DEPARTMENT_ADMIN:
-        if current_user.department_id and department_id and current_user.department_id == department_id:
-            return True
-    return False
-
-
 def _agent_config_to_response(
     agent_cfg: AgentConfig,
     include_soul: bool = False,
@@ -267,7 +211,7 @@ async def list_agents(
 
             # Filter by visibility
             if current_user is not None:
-                if not _is_visible_to_user(visibility, owner_id, dept_id, current_user):
+                if not check_resource_access(current_user, owner_id, dept_id, visibility):
                     continue
             elif visibility != "public":
                 continue
@@ -362,7 +306,7 @@ async def get_agent(
 
         # Check visibility
         if current_user is not None:
-            if not _is_visible_to_user(visibility, owner_id, department_id, current_user):
+            if not check_resource_access(current_user, owner_id, department_id, visibility):
                 raise HTTPException(status_code=404, detail=f"Agent '{name}' not found")
         elif visibility != "public":
             raise HTTPException(status_code=404, detail=f"Agent '{name}' not found")
@@ -413,13 +357,6 @@ async def create_agent_endpoint(
     normalized_name = _normalize_agent_name(request.name)
     user_id = get_effective_user_id()
     paths = get_paths()
-
-    # Validate visibility permissions
-    if not _can_set_visibility(request.visibility, current_user):
-        raise HTTPException(
-            status_code=403,
-            detail=f"Your role does not have permission to set visibility to '{request.visibility}'",
-        )
 
     agent_dir = paths.user_agent_dir(user_id, normalized_name)
     legacy_dir = paths.agent_dir(normalized_name)
@@ -531,15 +468,8 @@ async def update_agent(
 
     # RBAC: check ownership before allowing edit
     meta = _load_agent_meta(name, user_id)
-    _check_resource_modify(meta.get("owner_id"), meta.get("department_id"), current_user)
-
-    # BUG-22: Validate visibility change permissions
-    if request.visibility is not None and request.visibility != meta.get("visibility", "private"):
-        if not _can_set_visibility(request.visibility, current_user):
-            raise HTTPException(
-                status_code=403,
-                detail=f"Your role does not have permission to set visibility to '{request.visibility}'",
-            )
+    if not check_resource_modify(current_user, meta.get("owner_id"), meta.get("department_id")):
+        raise HTTPException(status_code=403, detail="You do not have permission to modify this resource")
 
     try:
         # Ensure user directory exists before writing files
@@ -710,7 +640,8 @@ async def delete_agent(
 
     # RBAC: check ownership before allowing delete
     meta = _load_agent_meta(name, user_id)
-    _check_resource_modify(meta.get("owner_id"), meta.get("department_id"), current_user)
+    if not check_resource_modify(current_user, meta.get("owner_id"), meta.get("department_id")):
+        raise HTTPException(status_code=403, detail="You do not have permission to modify this resource")
 
     try:
         shutil.rmtree(agent_dir)
@@ -801,7 +732,7 @@ async def export_agent(
 
     # Check visibility
     if current_user is not None:
-        if not _is_visible_to_user(visibility, owner_id, department_id, current_user):
+        if not check_resource_access(current_user, owner_id, department_id, visibility):
             raise HTTPException(status_code=404, detail=f"Agent '{name}' not found")
     elif visibility != "public":
         raise HTTPException(status_code=404, detail=f"Agent '{name}' not found")
@@ -852,13 +783,6 @@ async def import_agent(
     normalized_name = _normalize_agent_name(request.name)
     user_id = get_effective_user_id()
     paths = get_paths()
-
-    # Validate visibility permissions
-    if not _can_set_visibility(request.visibility, current_user):
-        raise HTTPException(
-            status_code=403,
-            detail=f"Your role does not have permission to set visibility to '{request.visibility}'",
-        )
 
     agent_dir = paths.user_agent_dir(user_id, normalized_name)
     legacy_dir = paths.agent_dir(normalized_name)
@@ -964,7 +888,7 @@ async def get_agent_stats(
 
     # Check visibility
     if current_user is not None:
-        if not _is_visible_to_user(visibility, owner_id, department_id, current_user):
+        if not check_resource_access(current_user, owner_id, department_id, visibility):
             raise HTTPException(status_code=404, detail=f"Agent '{name}' not found")
     elif visibility != "public":
         raise HTTPException(status_code=404, detail=f"Agent '{name}' not found")
