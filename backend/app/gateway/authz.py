@@ -30,7 +30,7 @@ Inspired by LangGraph Auth system: https://github.com/langchain-ai/langgraph/blo
 
 - ``require_role(*roles)``: decorator requiring one of the given roles
 - ``check_resource_access(user, ...)``: visibility-based read access
-- ``check_resource_modify(user, ...)``: ownership/role-based write access
+- ``check_resource_modify(user, ...)``: ownership-based write access (owner only)
 - ``filter_visible_resources(items, user)``: bulk-filter a list of resources
 """
 
@@ -458,7 +458,7 @@ def check_resource_access(
     2. Owner -- always allowed for own resources.
     3. ``public`` visibility -- allowed for everyone.
     4. ``department`` visibility -- allowed if user belongs to the same department.
-    5. ``department_admin`` -- allowed for resources in own department.
+    5. ``private`` visibility -- only owner and super_admin.
 
     Returns ``True`` when access is granted, ``False`` otherwise.
     """
@@ -481,11 +481,6 @@ def check_resource_access(
         if user.department_id and resource_department_id and user.department_id == resource_department_id:
             return True
 
-    # department_admin: access own department resources
-    if user.role == UserRole.DEPARTMENT_ADMIN:
-        if user.department_id and resource_department_id and user.department_id == resource_department_id:
-            return True
-
     return False
 
 
@@ -496,27 +491,14 @@ def check_resource_modify(
 ) -> bool:
     """Check if *user* can modify (edit/delete) a resource.
 
-    Rules (in evaluation order):
-    1. ``super_admin`` -- can modify everything.
-    2. Owner -- can modify own resources.
-    3. ``department_admin`` -- can modify resources in own department.
+    Rules:
+    1. Owner -- can modify own resources.
 
     Returns ``True`` when modification is allowed, ``False`` otherwise.
     """
-    from ideer.persistence.models.user import UserRole
-
-    # super_admin: modify everything
-    if user.role == UserRole.SUPER_ADMIN:
-        return True
-
     # Owner: modify own resources
     if resource_owner_id and user.id == resource_owner_id:
         return True
-
-    # department_admin: modify department resources
-    if user.role == UserRole.DEPARTMENT_ADMIN:
-        if user.department_id and resource_department_id and user.department_id == resource_department_id:
-            return True
 
     return False
 

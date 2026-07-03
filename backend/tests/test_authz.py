@@ -862,9 +862,9 @@ class TestCheckResourceAccess:
         user = self._user(role="user", dept_id="dept-1")
         assert check_resource_access(user, "other-id", "dept-2", "department") is False
 
-    def test_department_admin_own_dept(self):
+    def test_department_admin_follows_visibility_rules(self):
         user = self._user(role="department_admin", dept_id="dept-1")
-        assert check_resource_access(user, "other-id", "dept-1", "private") is True
+        assert check_resource_access(user, "other-id", "dept-1", "private") is False
 
     def test_department_admin_other_dept_denied(self):
         user = self._user(role="department_admin", dept_id="dept-1")
@@ -907,18 +907,18 @@ class TestCheckResourceModify:
         m.id = uid or str(uuid4())
         return m
 
-    def test_super_admin_can_modify(self):
+    def test_super_admin_cannot_modify_others(self):
         user = self._user(role="super_admin")
-        assert check_resource_modify(user, "other-id", "other-dept") is True
+        assert check_resource_modify(user, "other-id", "other-dept") is False
 
     def test_owner_can_modify(self):
         uid = str(uuid4())
         user = self._user(uid=uid)
         assert check_resource_modify(user, uid, "any-dept") is True
 
-    def test_dept_admin_can_modify_own_dept(self):
+    def test_dept_admin_cannot_modify_others(self):
         user = self._user(role="department_admin", dept_id="dept-1")
-        assert check_resource_modify(user, "other-id", "dept-1") is True
+        assert check_resource_modify(user, "other-id", "dept-1") is False
 
     def test_dept_admin_cannot_modify_other_dept(self):
         user = self._user(role="department_admin", dept_id="dept-1")
