@@ -1,0 +1,284 @@
+"""Visibility applications API routes.
+
+Unified approval workflow for resource visibility changes across all
+resource types (tool, skill, workflow, agent).
+
+Endpoints:
+  POST   /api/visibility-applications          — submit a new application
+  PUT    /api/visibility-applications/{id}      — approve or reject (optimistic lock)
+  PUT    /api/visibility-applications/{id}/withdraw — withdraw own pending application
+  GET    /api/visibility-applications           — list pending applications (admin view)
+"""
+
+from __future__ import annotations
+
+import logging
+import uuid
+from datetime import UTC, datetime
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+
+from app.gateway.authz import get_current_rbac_user
+from ideer.persistence.engine import get_session_factory
+from ideer.persistence.models.user import ResourceVisibility, UserModel, UserRole
+from ideer.persistence.models.visibility_application import (
+    VisibilityApplication,
+    VisibilityApplicationStatus,
+)
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/api/visibility-applications", tags=["visibility-applications"])
+
+
+# ---------------------------------------------------------------------------
+# Request / response models
+# ---------------------------------------------------------------------------
+
+
+class CreateApplicationRequest(BaseModel):
+    resource_type: str = Field(..., pattern="^(tool|skill|workflow|agent)$")
+    resource_id: str
+    target_visibility: ResourceVisibility
+    reason: str = ""
+
+
+class ReviewApplicationRequest(BaseModel):
+    action: str = Field(..., pattern="^(approved|rejected)$")
+    comment: str = ""
+    version: int
+
+
+class ApplicationResponse(BaseModel):
+    id: str
+    resource_type: str
+    resource_id: str
+    applicant_id: str
+    current_visibility: str
+    target_visibility: str
+    department_id: str | None = None
+    reason: str
+    status: str
+    submitted_at: str | None = None
+    reviewed_by: str | None = None
+    reviewed_at: str | None = None
+    review_comment: str | None = None
+    version: int
+
+
+class ApplicationsResponse(BaseModel):
+    applications: list[ApplicationResponse]
+
+
+def _to_response(app: VisibilityApplication) -> ApplicationResponse:
+    return ApplicationResponse(
+        id=app.id,
+        resource_type=app.resource_type,
+        resource_id=app.resource_id,
+        applicant_id=app.applicant_id,
+        current_visibility=app.current_visibility,
+        target_visibility=app.target_visibility,
+        department_id=app.department_id,
+        reason=app.reason,
+        status=app.status,
+        submitted_at=str(app.submitted_at) if app.submitted_at else None,
+        reviewed_by=app.reviewed_by,
+        reviewed_at=str(app.reviewed_at) if app.reviewed_at else None,
+        review_comment=app.review_comment,
+        version=app.version,
+    )
+
+
+# ---------------------------------------------------------------------------
+# POST /api/visibility-applications — submit application
+# ---------------------------------------------------------------------------
+
+
+@router.post("", response_model=ApplicationResponse, status_code=201)
+async def create_application(
+    request: CreateApplicationRequest,
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> ApplicationResponse:
+    sf = get_session_factory()
+    if sf is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+
+    try:
+        async with sf() as session:
+            # Check for an existing pending application for the same resource
+            pending_check = select(VisibilityApplication).where(
+                VisibilityApplication.resource_type == request.resource_type,
+                VisibilityApplication.resource_id == request.resource_id,
+                VisibilityApplication.status == VisibilityApplicationStatus.PENDING,
+            )
+            existing = (await session.execute(pending_check)).scalar_one_or_none()
+            if existing is not None:
+                raise HTTPException(
+                    status_code=409,
+                    detail="A pending application already exists for this resource",
+                )
+
+            application = VisibilityApplication(
+                id=str(uuid.uuid4()),
+                resource_type=request.resource_type,
+                resource_id=request.resource_id,
+                applicant_id=str(current_user.id),
+                current_visibility=ResourceVisibility.PRIVATE.value,
+                target_visibility=request.target_visibility.value,
+                department_id=current_user.department_id,
+                reason=request.reason,
+                status=VisibilityApplicationStatus.PENDING.value,
+                version=1,
+            )
+            session.add(application)
+            await session.commit()
+            await session.refresh(application)
+
+            return _to_response(application)
+    except HTTPException:
+        raise
+    except IntegrityError:
+        raise HTTPException(
+            status_code=409,
+            detail="A pending application already exists for this resource",
+        )
+    except Exception as e:
+        logger.error("Failed to create visibility application: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+# ---------------------------------------------------------------------------
+# PUT /api/visibility-applications/{id}/withdraw — withdraw own application
+# ---------------------------------------------------------------------------
+
+
+@router.put("/{application_id}/withdraw", response_model=ApplicationResponse)
+async def withdraw_application(
+    application_id: str,
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> ApplicationResponse:
+    sf = get_session_factory()
+    if sf is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+
+    try:
+        async with sf() as session:
+            stmt = select(VisibilityApplication).where(VisibilityApplication.id == application_id)
+            application = (await session.execute(stmt)).scalar_one_or_none()
+            if not application:
+                raise HTTPException(status_code=404, detail="Application not found")
+
+            if application.applicant_id != str(current_user.id):
+                raise HTTPException(status_code=403, detail="You can only withdraw your own applications")
+
+            if application.status != VisibilityApplicationStatus.PENDING:
+                raise HTTPException(status_code=400, detail="Only pending applications can be withdrawn")
+
+            application.status = VisibilityApplicationStatus.WITHDRAWN
+            await session.commit()
+            await session.refresh(application)
+
+            return _to_response(application)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to withdraw visibility application %s: %s", application_id, e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+# ---------------------------------------------------------------------------
+# PUT /api/visibility-applications/{id} — approve or reject (optimistic lock)
+# ---------------------------------------------------------------------------
+
+
+@router.put("/{application_id}", response_model=ApplicationResponse)
+async def review_application(
+    application_id: str,
+    request: ReviewApplicationRequest,
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> ApplicationResponse:
+    if current_user.role not in (UserRole.SUPER_ADMIN, UserRole.DEPARTMENT_ADMIN):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+
+    sf = get_session_factory()
+    if sf is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+
+    try:
+        async with sf() as session:
+            stmt = select(VisibilityApplication).where(VisibilityApplication.id == application_id)
+            application = (await session.execute(stmt)).scalar_one_or_none()
+            if not application:
+                raise HTTPException(status_code=404, detail="Application not found")
+
+            if application.status != VisibilityApplicationStatus.PENDING:
+                raise HTTPException(status_code=400, detail="Application is not pending")
+
+            if application.version != request.version:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Version mismatch: expected {application.version}, got {request.version}",
+                )
+
+            application.status = request.action
+            application.reviewed_by = str(current_user.id)
+            application.reviewed_at = datetime.now(UTC)
+            application.review_comment = request.comment
+            application.version += 1
+
+            await session.commit()
+            await session.refresh(application)
+
+            return _to_response(application)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to review visibility application %s: %s", application_id, e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+# ---------------------------------------------------------------------------
+# GET /api/visibility-applications — list pending applications (admin view)
+# ---------------------------------------------------------------------------
+
+
+@router.get("", response_model=ApplicationsResponse)
+async def list_applications(
+    status: str | None = None,
+    resource_type: str | None = None,
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> ApplicationsResponse:
+    if current_user.role not in (UserRole.SUPER_ADMIN, UserRole.DEPARTMENT_ADMIN):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+
+    sf = get_session_factory()
+    if sf is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+
+    try:
+        async with sf() as session:
+            stmt = select(VisibilityApplication)
+
+            if status:
+                stmt = stmt.where(VisibilityApplication.status == status)
+            else:
+                stmt = stmt.where(VisibilityApplication.status == VisibilityApplicationStatus.PENDING)
+
+            if resource_type:
+                stmt = stmt.where(VisibilityApplication.resource_type == resource_type)
+
+            # Department admins see only applications in their own department
+            if current_user.role == UserRole.DEPARTMENT_ADMIN:
+                stmt = stmt.where(VisibilityApplication.department_id == current_user.department_id)
+
+            stmt = stmt.order_by(VisibilityApplication.submitted_at.desc())
+            result = await session.execute(stmt)
+            applications = result.scalars().all()
+
+            return ApplicationsResponse(applications=[_to_response(app) for app in applications])
+    except Exception as e:
+        logger.error("Failed to list visibility applications: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")

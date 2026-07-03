@@ -31,6 +31,7 @@ from app.gateway.routers import (
     tools,
     uploads,
     user_skill_preferences,
+    visibility_applications,
     workflows,
 )
 from ideer.config import app_config as ideer_app_config
@@ -325,6 +326,10 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
                 "name": "workflows",
                 "description": "Workflow management APIs for creating, running, and monitoring YAML-based workflows",
             },
+            {
+                "name": "visibility-applications",
+                "description": "Unified approval workflow for resource visibility changes across all resource types",
+            },
         ],
     )
 
@@ -410,6 +415,9 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
 
     # Workflows API is mounted at /api/workflows
     app.include_router(workflows.router)
+
+    # Visibility Applications API is mounted at /api/visibility-applications
+    app.include_router(visibility_applications.router)
 
     @app.get("/health", tags=["health"])
     async def health_check() -> dict[str, str]:
