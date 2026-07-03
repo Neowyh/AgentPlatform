@@ -36,6 +36,8 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("resource_type", "resource_id", name="uq_resource_type_id"),
+        sa.ForeignKeyConstraint(["owner_id"], ["users_ext.id"], name="fk_resource_metadata_owner", ondelete="RESTRICT"),
+        sa.ForeignKeyConstraint(["department_id"], ["departments.id"], name="fk_resource_metadata_department", ondelete="SET NULL"),
     )
     with op.batch_alter_table("resource_metadata", schema=None) as batch_op:
         batch_op.create_index("ix_resource_metadata_type", ["resource_type"], unique=False)
@@ -62,6 +64,9 @@ def upgrade() -> None:
         sa.Column("version", sa.Integer(), nullable=False, server_default=sa.text("1")),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
         sa.PrimaryKeyConstraint("id"),
+        sa.ForeignKeyConstraint(["applicant_id"], ["users_ext.id"], name="fk_visibility_app_applicant", ondelete="RESTRICT"),
+        sa.ForeignKeyConstraint(["department_id"], ["departments.id"], name="fk_visibility_app_department", ondelete="SET NULL"),
+        sa.ForeignKeyConstraint(["reviewed_by"], ["users_ext.id"], name="fk_visibility_app_reviewer", ondelete="SET NULL"),
     )
     with op.batch_alter_table("visibility_applications", schema=None) as batch_op:
         batch_op.create_index("ix_visibility_app_status", ["status"], unique=False)
