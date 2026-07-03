@@ -9,9 +9,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 from ideer.persistence.models.skill_application import SkillApplication, SkillApplicationStatus
-from ideer.persistence.models.skill_default_config import SkillDefaultConfig
 from ideer.persistence.models.user import UserRole
-from ideer.persistence.models.user_skill_preference import UserSkillPreference
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -49,34 +47,6 @@ def _make_skill_application(
     application.reviewed_at = None
     application.review_comment = None
     return application
-
-
-def _make_skill_default_config(
-    skill_name="test-skill",
-    scope="global",
-    scope_id=None,
-    enabled=True,
-    user_override_allowed=True,
-):
-    """Create a mock SkillDefaultConfig."""
-    config = MagicMock(spec=SkillDefaultConfig)
-    config.id = "config-123"
-    config.scope = scope
-    config.scope_id = scope_id
-    config.skill_name = skill_name
-    config.enabled = enabled
-    config.user_override_allowed = user_override_allowed
-    config.created_at = "2024-01-01T00:00:00"
-    config.updated_at = "2024-01-01T00:00:00"
-    return config
-
-
-def _make_user_skill_preference(skill_name="test-skill", enabled=True):
-    """Create a mock UserSkillPreference."""
-    preference = MagicMock(spec=UserSkillPreference)
-    preference.skill_name = skill_name
-    preference.enabled = enabled
-    return preference
 
 
 # ---------------------------------------------------------------------------
@@ -237,46 +207,3 @@ class TestSkillApplicationStatus:
         assert SkillApplicationStatus.PENDING == "pending"
         assert SkillApplicationStatus.APPROVED == "approved"
         assert SkillApplicationStatus.REJECTED == "rejected"
-
-
-# ---------------------------------------------------------------------------
-# Tests for Skill Default Config
-# ---------------------------------------------------------------------------
-
-
-class TestSkillDefaultConfig:
-    """Tests for skill default config."""
-
-    def test_config_creation(self):
-        """Test creating a skill default config."""
-        config = _make_skill_default_config()
-        assert config.skill_name == "test-skill"
-        assert config.scope == "global"
-        assert config.enabled is True
-        assert config.user_override_allowed is True
-
-    def test_config_with_department_scope(self):
-        """Test creating a skill default config with department scope."""
-        config = _make_skill_default_config(scope="department", scope_id="dept-1")
-        assert config.scope == "department"
-        assert config.scope_id == "dept-1"
-
-
-# ---------------------------------------------------------------------------
-# Tests for User Skill Preference
-# ---------------------------------------------------------------------------
-
-
-class TestUserSkillPreference:
-    """Tests for user skill preference."""
-
-    def test_preference_creation(self):
-        """Test creating a user skill preference."""
-        pref = _make_user_skill_preference()
-        assert pref.skill_name == "test-skill"
-        assert pref.enabled is True
-
-    def test_preference_disabled(self):
-        """Test creating a disabled user skill preference."""
-        pref = _make_user_skill_preference(enabled=False)
-        assert pref.enabled is False

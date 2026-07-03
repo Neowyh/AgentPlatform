@@ -8,9 +8,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 from ideer.persistence.models.skill_application import SkillApplication, SkillApplicationStatus
-from ideer.persistence.models.skill_default_config import SkillDefaultConfig
 from ideer.persistence.models.user import UserRole
-from ideer.persistence.models.user_skill_preference import UserSkillPreference
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -48,22 +46,6 @@ def _make_skill(name="test-skill", category="custom", enabled=True, visibility="
 class TestSkillRBACIntegration:
     """Integration tests for skill RBAC functionality."""
 
-    def test_user_skill_preference_workflow(self):
-        """Test complete user skill preference workflow."""
-        # 1. Create user preferences
-        user_id = "user-123"
-        skill_name = "test-skill"
-
-        # 2. Test preference creation
-        pref = UserSkillPreference(user_id=user_id, skill_name=skill_name, enabled=True)
-        assert pref.user_id == user_id
-        assert pref.skill_name == skill_name
-        assert pref.enabled is True
-
-        # 3. Test preference update
-        pref.enabled = False
-        assert pref.enabled is False
-
     def test_skill_application_workflow(self):
         """Test complete skill application workflow."""
         # 1. Create application
@@ -75,19 +57,6 @@ class TestSkillRBACIntegration:
         application.reviewed_by = "admin-456"
         assert application.status == SkillApplicationStatus.APPROVED
         assert application.reviewed_by == "admin-456"
-
-    def test_skill_default_config_workflow(self):
-        """Test complete skill default config workflow."""
-        # 1. Create global config
-        config = SkillDefaultConfig(id="config-123", scope="global", skill_name="test-skill", enabled=True, user_override_allowed=True)
-        assert config.scope == "global"
-        assert config.enabled is True
-
-        # 2. Update config
-        config.enabled = False
-        config.user_override_allowed = False
-        assert config.enabled is False
-        assert config.user_override_allowed is False
 
     def test_skill_visibility_workflow(self):
         """Test complete skill visibility workflow."""
@@ -191,23 +160,10 @@ class TestSkillRBACIntegration:
 class TestSkillRBACEdgeCases:
     """Edge case tests for skill RBAC functionality."""
 
-    def test_empty_user_preferences(self):
-        """Test handling of empty user preferences."""
-        pref = UserSkillPreference(user_id="user-123", skill_name="test-skill", enabled=True)
-        assert pref.user_id == "user-123"
-        assert pref.skill_name == "test-skill"
-        assert pref.enabled is True
-
     def test_empty_skill_application(self):
         """Test handling of empty skill application."""
         application = SkillApplication(id="app-123", skill_id="test-skill", skill_name="Test Skill", applicant_id="user-123", request_level="department", reason="", status=SkillApplicationStatus.PENDING)
         assert application.reason == ""
-
-    def test_empty_skill_default_config(self):
-        """Test handling of empty skill default config."""
-        config = SkillDefaultConfig(id="config-123", scope="global", skill_name="test-skill", enabled=True, user_override_allowed=True)
-        assert config.scope == "global"
-        assert config.enabled is True
 
     def test_null_department_id(self):
         """Test handling of null department ID."""

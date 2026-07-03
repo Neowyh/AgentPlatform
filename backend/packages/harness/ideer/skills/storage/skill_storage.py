@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import re
 from abc import ABC, abstractmethod
@@ -30,18 +29,8 @@ class SkillStorage(ABC):
         self._init_caches()
 
     def _init_caches(self) -> None:
-        """Initialize all cache state for skill defaults and user preferences."""
-        self._global_defaults_cache: dict[str, dict] | None = None
-        self._global_defaults_cache_lock = asyncio.Lock()
-        self._global_defaults_cache_time: float = 0
-
-        self._dept_defaults_cache: dict[str, dict[str, dict]] = {}
-        self._dept_defaults_cache_lock = asyncio.Lock()
-        self._dept_defaults_cache_time: dict[str, float] = {}
-
-        self._user_prefs_cache: dict[str, dict[str, bool]] = {}
-        self._user_prefs_cache_lock = asyncio.Lock()
-        self._user_prefs_cache_time: dict[str, float] = {}
+        """Initialize cache state."""
+        pass
 
     # ------------------------------------------------------------------
     # Static protocol helpers (not storage-specific)
@@ -283,10 +272,7 @@ class SkillStorage(ABC):
         raise FileNotFoundError(f"Custom skill '{name}' not found.")
 
     async def load_skills_for_user(self, user_id: str, department_id: str | None = None, role: str | None = None) -> list[Skill]:
-        """Load skills for a specific user, merging default configs and user preferences.
-
-        Priority order: user preferences > department defaults > global defaults
-        When user_override_allowed is False, user preferences are ignored.
+        """Load skills for a specific user based on RBAC access control.
 
         Args:
             user_id: The user ID to load skills for
@@ -294,33 +280,11 @@ class SkillStorage(ABC):
             role: The user's role (optional, e.g. "super_admin", "department_admin")
 
         Returns:
-            List of skills that are enabled for this user
+            List of skills that are enabled and accessible for this user
         """
-        # 1. Get all skills the user has access to
+        # Get all skills the user has access to, filtered by enabled state
         accessible_skills = self._get_accessible_skills(user_id, department_id, role)
-
-        # 2. Get global default configs
-        global_defaults = await self._get_global_skill_defaults()
-
-        # 3. Get department default configs
-        dept_defaults = await self._get_dept_skill_defaults(department_id) if department_id else {}
-
-        # 4. Get user personal preferences
-        user_prefs = await self._get_user_skill_preferences(user_id)
-
-        # 5. Merge configs (priority: user prefs > dept defaults > global defaults)
-        effective_skills = []
-        for skill in accessible_skills:
-            enabled = self._resolve_skill_enabled(
-                skill,
-                user_prefs=user_prefs,
-                dept_defaults=dept_defaults,
-                global_defaults=global_defaults,
-            )
-            if enabled:
-                effective_skills.append(skill)
-
-        return effective_skills
+        return [s for s in accessible_skills if s.enabled]
 
     def _get_accessible_skills(self, user_id: str, department_id: str | None, role: str | None = None) -> list[Skill]:
         """Get skills that the user has permission to access."""
@@ -368,123 +332,6 @@ class SkillStorage(ABC):
 
         return False
 
-    async def _get_global_skill_defaults(self) -> dict[str, dict]:
-        """Get global skill default configurations with caching."""
-        import time
-
-        async with self._global_defaults_cache_lock:
-            current_time = time.time()
-            if self._global_defaults_cache is not None and (current_time - self._global_defaults_cache_time) < 300:
-                return self._global_defaults_cache
-
-            try:
-                from sqlalchemy import select
-
-                from ideer.persistence.engine import get_session_factory
-                from ideer.persistence.models.skill_default_config import SkillDefaultConfig
-
-                sf = get_session_factory()
-                if sf is None:
-                    return {}
-
-                async with sf() as session:
-                    stmt = select(SkillDefaultConfig).where(SkillDefaultConfig.scope == "global")
-                    result = await session.execute(stmt)
-                    configs = result.scalars().all()
-                    defaults = {
-                        config.skill_name: {
-                            "enabled": config.enabled,
-                            "user_override_allowed": config.user_override_allowed,
-                        }
-                        for config in configs
-                    }
-
-                    self._global_defaults_cache = defaults
-                    self._global_defaults_cache_time = current_time
-
-                    return defaults
-
-            except Exception as e:
-                logger.warning("Failed to load global skill defaults: %s", e)
-                return {}
-
-    async def _get_dept_skill_defaults(self, department_id: str) -> dict[str, dict]:
-        """Get department skill default configurations with caching."""
-        import time
-
-        async with self._dept_defaults_cache_lock:
-            current_time = time.time()
-            if department_id in self._dept_defaults_cache and (current_time - self._dept_defaults_cache_time.get(department_id, 0)) < 300:
-                return self._dept_defaults_cache[department_id]
-
-            try:
-                from sqlalchemy import select
-
-                from ideer.persistence.engine import get_session_factory
-                from ideer.persistence.models.skill_default_config import SkillDefaultConfig
-
-                sf = get_session_factory()
-                if sf is None:
-                    return {}
-
-                async with sf() as session:
-                    stmt = select(SkillDefaultConfig).where(
-                        SkillDefaultConfig.scope == "department",
-                        SkillDefaultConfig.scope_id == department_id,
-                    )
-                    result = await session.execute(stmt)
-                    configs = result.scalars().all()
-                    defaults = {
-                        config.skill_name: {
-                            "enabled": config.enabled,
-                            "user_override_allowed": config.user_override_allowed,
-                        }
-                        for config in configs
-                    }
-
-                    self._dept_defaults_cache[department_id] = defaults
-                    self._dept_defaults_cache_time[department_id] = current_time
-
-                    return defaults
-
-            except Exception as e:
-                logger.warning("Failed to load department skill defaults: %s", e)
-                return {}
-
-    async def _get_user_skill_preferences(self, user_id: str) -> dict[str, bool]:
-        """Get user's personal skill preferences with caching."""
-        import time
-
-        async with self._user_prefs_cache_lock:
-            current_time = time.time()
-            if user_id in self._user_prefs_cache and (current_time - self._user_prefs_cache_time.get(user_id, 0)) < 120:
-                return self._user_prefs_cache[user_id]
-
-            try:
-                from sqlalchemy import select
-
-                from ideer.persistence.engine import get_session_factory
-                from ideer.persistence.models.user_skill_preference import UserSkillPreference
-
-                sf = get_session_factory()
-                if sf is None:
-                    return {}
-
-                async with sf() as session:
-                    stmt = select(UserSkillPreference).where(UserSkillPreference.user_id == user_id)
-                    result = await session.execute(stmt)
-                    prefs = result.scalars().all()
-                    preferences = {pref.skill_name: pref.enabled for pref in prefs}
-
-                    self._user_prefs_cache[user_id] = preferences
-                    self._user_prefs_cache_time[user_id] = current_time
-
-                    return preferences
-
-            except Exception as e:
-                logger.warning("Failed to load user skill preferences: %s", e)
-                return {}
-
     def _resolve_skill_enabled(
         self,
         skill: Skill,
@@ -520,17 +367,5 @@ class SkillStorage(ABC):
         return skill.enabled
 
     async def clear_cache(self) -> None:
-        """Clear all caches for skill defaults and user preferences."""
-        async with self._global_defaults_cache_lock:
-            self._global_defaults_cache = None
-            self._global_defaults_cache_time = 0
-
-        async with self._dept_defaults_cache_lock:
-            self._dept_defaults_cache = {}
-            self._dept_defaults_cache_time = {}
-
-        async with self._user_prefs_cache_lock:
-            self._user_prefs_cache = {}
-            self._user_prefs_cache_time = {}
-
+        """Clear all caches (no-op, caches removed with deprecated tables)."""
         logger.info("Skill storage cache cleared")

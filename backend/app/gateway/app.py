@@ -13,7 +13,6 @@ from app.gateway.deps import langgraph_runtime
 from app.gateway.routers import (
     admin,
     admin_skill_applications,
-    admin_skill_defaults,
     agents,
     artifacts,
     assistants_compat,
@@ -30,7 +29,6 @@ from app.gateway.routers import (
     threads,
     tools,
     uploads,
-    user_skill_preferences,
     visibility_applications,
     workflows,
 )
@@ -365,14 +363,8 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
     # Skills API is mounted at /api/skills
     app.include_router(skills.router)
 
-    # User Skill Preferences API is mounted at /api/user/skill-preferences
-    app.include_router(user_skill_preferences.router)
-
     # Admin Skill Applications API is mounted at /api/admin/skill-applications
     app.include_router(admin_skill_applications.router)
-
-    # Admin Skill Defaults API is mounted at /api/admin/skill-defaults
-    app.include_router(admin_skill_defaults.router)
 
     # Artifacts API is mounted at /api/threads/{thread_id}/artifacts
     app.include_router(artifacts.router)
