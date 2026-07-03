@@ -10,6 +10,7 @@ const mockListUsers = vi.fn();
 const mockListDepartments = vi.fn();
 const mockUpdateUserRole = vi.fn();
 const mockDisableUser = vi.fn();
+const mockToggleUserStatus = vi.fn();
 const mockToastSuccess = vi.fn();
 const mockToastError = vi.fn();
 
@@ -27,6 +28,9 @@ vi.mock("@/core/admin/api", () => ({
   listDepartments: (...args: unknown[]) => mockListDepartments(...args),
   updateUserRole: (...args: unknown[]) => mockUpdateUserRole(...args),
   disableUser: (...args: unknown[]) => mockDisableUser(...args),
+  toggleUserStatus: (...args: unknown[]) => mockToggleUserStatus(...args),
+  createUser: vi.fn(),
+  updateUser: vi.fn(),
 }));
 
 vi.mock("sonner", () => ({
@@ -55,8 +59,8 @@ vi.mock("next/link", () => ({
 // Import component after mocks
 // ---------------------------------------------------------------------------
 
-import { useAuth } from "@/core/auth/AuthProvider";
 import UsersPage from "@/app/workspace/admin/users/page";
+import { useAuth } from "@/core/auth/AuthProvider";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -376,11 +380,11 @@ describe("UsersPage", () => {
       expect(screen.getByTestId("user-list")).toBeInTheDocument();
     });
 
-    const disableButtons = screen.getAllByTestId("user-disable-button");
-    await user.click(disableButtons[0]!); // click disable for first user
+    const toggleButtons = screen.getAllByTestId("user-toggle-status-button");
+    await user.click(toggleButtons[0]!); // click toggle for first user
 
     await waitFor(() => {
-      expect(mockDisableUser).toHaveBeenCalledWith("user-1");
+      expect(mockToggleUserStatus).toHaveBeenCalledWith("user-1");
       expect(mockToastSuccess).toHaveBeenCalledWith("用户已禁用");
     });
 
@@ -396,29 +400,29 @@ describe("UsersPage", () => {
       expect(screen.getByTestId("user-list")).toBeInTheDocument();
     });
 
-    const disableButtons = screen.getAllByTestId("user-disable-button");
-    await user.click(disableButtons[0]!);
+    const toggleButtons = screen.getAllByTestId("user-toggle-status-button");
+    await user.click(toggleButtons[0]!);
 
-    expect(mockDisableUser).not.toHaveBeenCalled();
+    expect(mockToggleUserStatus).not.toHaveBeenCalled();
 
     vi.restoreAllMocks();
   });
 
-  test("shows toast error when disableUser fails", async () => {
+  test("shows toast error when toggleUserStatus fails", async () => {
     const user = userEvent.setup();
     vi.spyOn(window, "confirm").mockReturnValue(true);
-    mockDisableUser.mockRejectedValue(new Error("Cannot disable"));
+    mockToggleUserStatus.mockRejectedValue(new Error("Cannot toggle"));
 
     render(<UsersPage />);
     await waitFor(() => {
       expect(screen.getByTestId("user-list")).toBeInTheDocument();
     });
 
-    const disableButtons = screen.getAllByTestId("user-disable-button");
-    await user.click(disableButtons[0]!);
+    const toggleButtons = screen.getAllByTestId("user-toggle-status-button");
+    await user.click(toggleButtons[0]!);
 
     await waitFor(() => {
-      expect(mockToastError).toHaveBeenCalledWith("Cannot disable");
+      expect(mockToastError).toHaveBeenCalledWith("Cannot toggle");
     });
 
     vi.restoreAllMocks();
@@ -587,15 +591,15 @@ describe("UsersPage", () => {
   test("shows toast error for non-Error throw from disableUser", async () => {
     const user = userEvent.setup();
     vi.spyOn(window, "confirm").mockReturnValue(true);
-    mockDisableUser.mockRejectedValue("raw string error");
+    mockToggleUserStatus.mockRejectedValue("raw string error");
 
     render(<UsersPage />);
     await waitFor(() => {
       expect(screen.getByTestId("user-list")).toBeInTheDocument();
     });
 
-    const disableButtons = screen.getAllByTestId("user-disable-button");
-    await user.click(disableButtons[0]!);
+    const toggleButtons = screen.getAllByTestId("user-toggle-status-button");
+    await user.click(toggleButtons[0]!);
 
     await waitFor(() => {
       expect(mockToastError).toHaveBeenCalledWith("raw string error");
@@ -606,23 +610,23 @@ describe("UsersPage", () => {
 
   // ── Disable user: disabling state ──────────────────────────────────
 
-  test("disables button while disabling is in progress", async () => {
+  test("disables button while toggling is in progress", async () => {
     const user = userEvent.setup();
     vi.spyOn(window, "confirm").mockReturnValue(true);
-    // Make disableUser hang to observe disabled state
-    mockDisableUser.mockReturnValue(new Promise(() => {}));
+    // Make toggleUserStatus hang to observe disabled state
+    mockToggleUserStatus.mockReturnValue(new Promise(() => {}));
 
     render(<UsersPage />);
     await waitFor(() => {
       expect(screen.getByTestId("user-list")).toBeInTheDocument();
     });
 
-    const disableButtons = screen.getAllByTestId("user-disable-button");
-    await user.click(disableButtons[0]!);
+    const toggleButtons = screen.getAllByTestId("user-toggle-status-button");
+    await user.click(toggleButtons[0]!);
 
     await waitFor(() => {
       // The button should be disabled while the API call is in progress
-      expect(disableButtons[0]).toBeDisabled();
+      expect(toggleButtons[0]).toBeDisabled();
     });
 
     vi.restoreAllMocks();

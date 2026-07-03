@@ -87,26 +87,25 @@ export function AuthProvider({ children, initialUser }: AuthProviderProps) {
   }, [staticMode, pathname, router]);
 
   /**
-   * Logout - call FastAPI logout endpoint and clear local state
-   * Per RFC-001: Immediately clear local state, don't wait for server confirmation
+   * Logout - call FastAPI logout endpoint, clear local state, then redirect.
+   * We await the server response first so the session cookie is deleted before
+   * the login page loads — otherwise the auth guard still sees an active
+   * session and the redirect appears to "not respond" on the first click.
    */
   const logout = useCallback(async () => {
-    // Immediately clear local state to prevent UI flicker
-    setUser(null);
-
-    // Redirect immediately - don't wait for server response
-    router.push("/");
-
-    if (staticMode) {
-      return;
+    if (!staticMode) {
+      try {
+        await fetch("/api/v1/auth/logout", {
+          method: "POST",
+          redirectOn401: false,
+        });
+      } catch (err) {
+        console.error("Logout request failed:", err);
+      }
     }
 
-    // Fire-and-forget logout request (don't await)
-    fetch("/api/v1/auth/logout", {
-      method: "POST",
-    }).catch((err) => {
-      console.error("Logout request failed:", err);
-    });
+    setUser(null);
+    router.push("/");
   }, [staticMode, router]);
 
   /**

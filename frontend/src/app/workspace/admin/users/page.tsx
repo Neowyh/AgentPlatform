@@ -5,6 +5,7 @@ import {
   PencilIcon,
   PlusIcon,
   ShieldOffIcon,
+  ShieldCheckIcon,
   UserIcon,
 } from "lucide-react";
 import Link from "next/link";
@@ -43,6 +44,7 @@ import {
   disableUser,
   listDepartments,
   listUsers,
+  toggleUserStatus,
   updateUser,
   updateUserRole,
 } from "@/core/admin/api";
@@ -152,16 +154,20 @@ export default function UsersPage() {
     }
   };
 
-  const handleDisable = async (userId: string) => {
+  const handleToggleStatus = async (
+    userId: string,
+    currentlyDisabled: boolean,
+  ) => {
     if (userId === currentUser?.id) {
-      toast.error("不能禁用自己的账号");
+      toast.error("不能修改自己的状态");
       return;
     }
-    if (!confirm("确定要禁用该用户吗？")) return;
+    const action = currentlyDisabled ? "启用" : "禁用";
+    if (!confirm(`确定要${action}该用户吗？`)) return;
     setDisablingId(userId);
     try {
-      await disableUser(userId);
-      toast.success("用户已禁用");
+      await toggleUserStatus(userId);
+      toast.success(`用户已${action}`);
       await fetchUsers();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
@@ -401,12 +407,24 @@ export default function UsersPage() {
                         <Button
                           variant="ghost"
                           size="icon-sm"
-                          onClick={() => handleDisable(user.id)}
+                          onClick={() =>
+                            handleToggleStatus(user.id, user.disabled ?? false)
+                          }
                           disabled={isSelf || disablingId === user.id}
-                          title={isSelf ? "不能禁用自己的账号" : "禁用用户"}
-                          data-testid="user-disable-button"
+                          title={
+                            isSelf
+                              ? "不能修改自己的状态"
+                              : user.disabled
+                                ? "启用用户"
+                                : "禁用用户"
+                          }
+                          data-testid="user-toggle-status-button"
                         >
-                          <ShieldOffIcon className="text-destructive h-4 w-4" />
+                          {user.disabled ? (
+                            <ShieldCheckIcon className="h-4 w-4 text-green-600" />
+                          ) : (
+                            <ShieldOffIcon className="text-destructive h-4 w-4" />
+                          )}
                         </Button>
                       </div>
                     </div>

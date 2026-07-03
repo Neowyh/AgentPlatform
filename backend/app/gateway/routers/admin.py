@@ -424,21 +424,77 @@ async def disable_user(
     return {"success": True}
 
 
+@router.patch("/users/{user_id}/status")
+@require_role(UserRole.SUPER_ADMIN, UserRole.DEPARTMENT_ADMIN)
+async def toggle_user_status(
+    user_id: str,
+    current_user: UserModel = Depends(get_current_rbac_user),
+):
+    """Toggle a user's enabled/disabled status.
+
+    super_admin can toggle anyone. department_admin can only toggle
+    regular users within their own department.
+    """
+    if user_id == current_user.id:
+        raise HTTPException(status_code=400, detail="Cannot toggle your own status")
+
+    sf = get_session_factory()
+    if sf is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+
+    async with sf() as session:
+        stmt = select(UserModel).where(UserModel.id == user_id)
+        try:
+            stmt = stmt.with_for_update()
+        except Exception:
+            pass
+        result = await session.execute(stmt)
+        user = result.scalar_one_or_none()
+        if user is None:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        # department_admin: restrict scope
+        if current_user.role == UserRole.DEPARTMENT_ADMIN:
+            if user.role == UserRole.SUPER_ADMIN:
+                raise HTTPException(status_code=403, detail="Cannot modify super_admin")
+            if user.role == UserRole.DEPARTMENT_ADMIN:
+                raise HTTPException(status_code=403, detail="Cannot modify another department_admin")
+            if user.department_id != current_user.department_id:
+                raise HTTPException(status_code=403, detail="Cannot modify users outside your department")
+            if not user.department_id:
+                raise HTTPException(status_code=403, detail="Cannot modify users without a department")
+
+        # Prevent disabling the last active super_admin
+        if user.role == UserRole.SUPER_ADMIN and not user.disabled:
+            count_stmt = select(func.count()).select_from(UserModel).where(UserModel.role == UserRole.SUPER_ADMIN, UserModel.disabled.is_not(True))
+            try:
+                count_stmt = count_stmt.with_for_update()
+            except Exception:
+                pass
+            active_super_admin_count = (await session.execute(count_stmt)).scalar() or 0
+            if active_super_admin_count <= 1:
+                raise HTTPException(status_code=400, detail="Cannot disable the last active super_admin")
+
+        user.disabled = not user.disabled
+        await session.commit()
+
+        new_status = "disabled" if user.disabled else "enabled"
+
+    logger.warning("User status toggled: user_id=%s, new_status=%s, by=%s", user_id, new_status, current_user.id)
+    return {"success": True, "user_id": user_id, "disabled": user.disabled}
+
+
 # --- Department Management ---
 
 
 @router.get("/departments")
+@require_role(UserRole.SUPER_ADMIN)
 async def list_departments(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     current_user: UserModel = Depends(get_current_rbac_user),
 ):
-    """List all departments. Any authenticated user can view.
-
-    Design decision: member_count is redacted for non-admin users to avoid
-    leaking organizational structure details (e.g. team sizes) to regular
-    users who only need department names for assignment purposes.
-    """
+    """List all departments. Requires super_admin role."""
     sf = get_session_factory()
     if sf is None:
         raise HTTPException(status_code=500, detail="Database not initialized")
@@ -485,7 +541,7 @@ async def list_departments(
 
 
 @router.post("/departments")
-@require_role(UserRole.SUPER_ADMIN, UserRole.DEPARTMENT_ADMIN)
+@require_role(UserRole.SUPER_ADMIN)
 async def create_department(
     body: CreateDepartmentRequest,
     current_user: UserModel = Depends(get_current_rbac_user),
@@ -520,7 +576,7 @@ async def create_department(
 
 
 @router.put("/departments/{dept_id}")
-@require_role(UserRole.SUPER_ADMIN, UserRole.DEPARTMENT_ADMIN)
+@require_role(UserRole.SUPER_ADMIN)
 async def update_department(
     dept_id: str,
     body: UpdateDepartmentRequest,
@@ -560,7 +616,7 @@ async def update_department(
 
 
 @router.delete("/departments/{dept_id}")
-@require_role(UserRole.SUPER_ADMIN, UserRole.DEPARTMENT_ADMIN)
+@require_role(UserRole.SUPER_ADMIN)
 async def delete_department(
     dept_id: str,
     current_user: UserModel = Depends(get_current_rbac_user),

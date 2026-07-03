@@ -62,6 +62,21 @@ export async function disableUser(userId: string): Promise<void> {
   if (!res.ok) return extractError(res, "Failed to disable user");
 }
 
+export async function toggleUserStatus(
+  userId: string,
+): Promise<{ success: boolean; user_id: string; disabled: boolean }> {
+  const baseURL = getBackendBaseURL();
+  const res = await fetch(`${baseURL}/api/admin/users/${userId}/status`, {
+    method: "PATCH",
+  });
+  if (!res.ok) return extractError(res, "Failed to toggle user status");
+  return res.json() as Promise<{
+    success: boolean;
+    user_id: string;
+    disabled: boolean;
+  }>;
+}
+
 export async function createUser(data: {
   email: string;
   password: string;

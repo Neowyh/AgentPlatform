@@ -361,6 +361,7 @@ describe("AuthProvider.logout", () => {
 
     expect(mockFetch).toHaveBeenCalledWith("/api/v1/auth/logout", {
       method: "POST",
+      redirectOn401: false,
     });
   });
 
