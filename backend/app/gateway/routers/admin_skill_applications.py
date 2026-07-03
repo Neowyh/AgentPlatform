@@ -33,13 +33,13 @@ async def list_applications() -> None:
 async def get_application(application_id: str) -> None:
     """Get a specific skill application (DEPRECATED).
 
-    Use GET /api/visibility-applications?resource_id={resource_id} instead.
+    Use GET /api/visibility-applications with resource_type filter instead.
     """
     raise HTTPException(
         status_code=410,
         detail={
             "message": "This endpoint is deprecated.",
-            "replacement": "Use GET /api/visibility-applications?resource_id={resource_id} instead.",
+            "replacement": "Use GET /api/visibility-applications with resource_type filter instead.",
         },
     )
 
