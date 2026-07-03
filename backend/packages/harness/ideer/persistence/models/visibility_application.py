@@ -50,12 +50,16 @@ class VisibilityApplication(Base):
 
     @validates("target_visibility", "current_visibility")
     def validate_visibility(self, key, value):
-        if value not in ("private", "department", "public"):
+        from ideer.persistence.models.user import ResourceVisibility
+
+        valid_values = {v.value for v in ResourceVisibility}
+        if value not in valid_values:
             raise ValueError(f"Invalid visibility: {value}")
         return value
 
     @validates("status")
     def validate_status(self, key, value):
-        if value not in ("pending", "approved", "rejected", "withdrawn"):
+        valid_values = {v.value for v in VisibilityApplicationStatus}
+        if value not in valid_values:
             raise ValueError(f"Invalid status: {value}")
         return value
