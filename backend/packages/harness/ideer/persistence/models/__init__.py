@@ -15,6 +15,7 @@ there is no matching entity directory.
 """
 
 from ideer.persistence.feedback.model import FeedbackRow
+from ideer.persistence.models.resource_metadata import ResourceMetadata
 from ideer.persistence.models.run_event import RunEventRow
 from ideer.persistence.models.skill_application import SkillApplication, SkillApplicationStatus
 from ideer.persistence.models.skill_default_config import SkillDefaultConfig
@@ -28,6 +29,7 @@ from ideer.persistence.user.model import UserRow
 __all__ = [
     "DepartmentModel",
     "FeedbackRow",
+    "ResourceMetadata",
     "ResourceVisibility",
     "RunEventRow",
     "RunRow",
