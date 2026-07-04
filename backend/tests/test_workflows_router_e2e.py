@@ -20,7 +20,7 @@ import pytest
 from _router_auth_helpers import make_authed_test_app
 from fastapi.testclient import TestClient
 
-from app.gateway.authz import get_current_rbac_user
+from app.gateway.authz import get_current_rbac_user, get_optional_rbac_user
 from app.gateway.routers.workflows import router as workflows_router
 
 pytestmark = pytest.mark.no_auto_user
@@ -50,6 +50,7 @@ def _make_app(role: str = "user", workflow_store=None):
         return user
 
     app.dependency_overrides[get_current_rbac_user] = _stub
+    app.dependency_overrides[get_optional_rbac_user] = _stub
     return app, user
 
 
@@ -86,6 +87,22 @@ def _mock_get_workflow_store(store):
     return patch("app.gateway.routers.workflows.get_workflow_store", return_value=store)
 
 
+def _mock_workflow_meta(owner_id: str = "user-1", visibility: str = "private"):
+    """Return a contextmanager-style patch for _load_workflow_meta."""
+    meta = {"visibility": visibility, "owner_id": owner_id, "department_id": None, "version": 1}
+    return patch("app.gateway.routers.workflows._load_workflow_meta", new_callable=AsyncMock, return_value=meta)
+
+
+def _mock_save_workflow_meta():
+    """Return a contextmanager-style patch for _save_workflow_meta."""
+    return patch("app.gateway.routers.workflows._save_workflow_meta", new_callable=AsyncMock)
+
+
+def _mock_soft_delete_workflow_meta():
+    """Return a contextmanager-style patch for _soft_delete_workflow_meta."""
+    return patch("app.gateway.routers.workflows._soft_delete_workflow_meta", new_callable=AsyncMock)
+
+
 # ---------------------------------------------------------------------------
 # Tests — GET /api/workflows
 # ---------------------------------------------------------------------------
@@ -112,7 +129,7 @@ class TestListWorkflows:
         items = [{"name": WORKFLOW_NAME, "description": "Test", "version": "1.0", "steps_count": 1, "inputs": {}}]
         store = _make_workflow_store(list_result=(items, 1))
         app, _ = _make_app()
-        with _mock_get_workflow_store(store):
+        with _mock_get_workflow_store(store), _mock_workflow_meta():
             with TestClient(app) as client:
                 resp = client.get("/api/workflows")
         assert resp.status_code == 200
@@ -132,7 +149,7 @@ class TestGetWorkflow:
         """Get workflow returns workflow details."""
         store = _make_workflow_store(load_result=VALID_YAML)
         app, _ = _make_app()
-        with _mock_get_workflow_store(store):
+        with _mock_get_workflow_store(store), _mock_workflow_meta():
             with TestClient(app) as client:
                 resp = client.get(f"/api/workflows/{WORKFLOW_NAME}")
         assert resp.status_code == 200
@@ -200,8 +217,12 @@ class TestUpdateWorkflow:
         # load_workflow returns existing yaml (workflow exists)
         store.load_workflow = AsyncMock(return_value=VALID_YAML)
         store.save_workflow = AsyncMock(return_value=None)
-        app, _ = _make_app(role="department_admin")
-        with _mock_get_workflow_store(store):
+        app, _ = _make_app(role="user")
+        with (
+            _mock_get_workflow_store(store),
+            _mock_workflow_meta(owner_id="user-1"),
+            _mock_save_workflow_meta(),
+        ):
             with TestClient(app) as client:
                 resp = client.put(
                     f"/api/workflows/{WORKFLOW_NAME}",
@@ -235,8 +256,13 @@ class TestDeleteWorkflow:
     def test_delete_workflow_success(self):
         """Delete workflow succeeds."""
         store = _make_workflow_store(delete_result=True)
-        app, _ = _make_app(role="super_admin")
-        with _mock_get_workflow_store(store):
+        store.load_workflow = AsyncMock(return_value=VALID_YAML)
+        app, _ = _make_app(role="user")
+        with (
+            _mock_get_workflow_store(store),
+            _mock_workflow_meta(owner_id="user-1"),
+            _mock_soft_delete_workflow_meta(),
+        ):
             with TestClient(app) as client:
                 resp = client.delete(f"/api/workflows/{WORKFLOW_NAME}")
         assert resp.status_code in (200, 204)
@@ -265,7 +291,7 @@ class TestRunWorkflow:
         # load_workflow must return valid YAML so the router can parse it
         store.load_workflow = AsyncMock(return_value=VALID_YAML)
         app, _ = _make_app()
-        with _mock_get_workflow_store(store):
+        with _mock_get_workflow_store(store), _mock_workflow_meta(visibility="public"):
             with TestClient(app) as client:
                 resp = client.post(
                     f"/api/workflows/{WORKFLOW_NAME}/run",

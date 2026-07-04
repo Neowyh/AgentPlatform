@@ -80,6 +80,28 @@ steps:
 """
 
 
+def _owner_meta(owner_id: str = "test-user"):
+    """Return a metadata dict where the given user is owner."""
+    return {"visibility": "private", "owner_id": owner_id, "department_id": "dept-1", "version": 1}
+
+
+def _patch_meta(meta=None):
+    """Context manager that patches _load_workflow_meta."""
+    if meta is None:
+        meta = _owner_meta()
+    return patch("app.gateway.routers.workflows._load_workflow_meta", new_callable=AsyncMock, return_value=meta)
+
+
+def _patch_save_meta():
+    """Context manager that patches _save_workflow_meta (no-op)."""
+    return patch("app.gateway.routers.workflows._save_workflow_meta", new_callable=AsyncMock)
+
+
+def _patch_soft_delete():
+    """Context manager that patches _soft_delete_workflow_meta (no-op)."""
+    return patch("app.gateway.routers.workflows._soft_delete_workflow_meta", new_callable=AsyncMock)
+
+
 # ── Fixtures ─────────────────────────────────────────────────────────
 
 
@@ -91,7 +113,7 @@ def app():
 @pytest.fixture()
 def client(app):
     """TestClient with auth dependency override (super_admin by default)."""
-    from app.gateway.authz import get_current_rbac_user
+    from app.gateway.authz import get_current_rbac_user, get_optional_rbac_user
 
     user = _mock_user("super_admin")
 
@@ -99,6 +121,7 @@ def client(app):
         return user
 
     app.dependency_overrides[get_current_rbac_user] = _override
+    app.dependency_overrides[get_optional_rbac_user] = _override
     with TestClient(app, raise_server_exceptions=False) as c:
         yield c
     app.dependency_overrides.clear()
@@ -106,7 +129,7 @@ def client(app):
 
 def _set_user(app, role: str = "super_admin"):
     """Change the auth override to a user with the given role."""
-    from app.gateway.authz import get_current_rbac_user
+    from app.gateway.authz import get_current_rbac_user, get_optional_rbac_user
 
     user = _mock_user(role)
 
@@ -114,6 +137,7 @@ def _set_user(app, role: str = "super_admin"):
         return user
 
     app.dependency_overrides[get_current_rbac_user] = _override
+    app.dependency_overrides[get_optional_rbac_user] = _override
 
 
 # ── GET /api/workflows ───────────────────────────────────────────────
@@ -124,7 +148,7 @@ class TestListWorkflows:
         mock_store = AsyncMock()
         mock_store.list_workflows = AsyncMock(return_value=([{"name": "wf1", "description": "desc", "version": "1.0", "steps_count": 1, "inputs": {}}], 1))
 
-        with patch("app.gateway.routers.workflows.get_workflow_store", return_value=mock_store):
+        with patch("app.gateway.routers.workflows.get_workflow_store", return_value=mock_store), _patch_meta():
             resp = client.get("/api/workflows")
 
         assert resp.status_code == 200
@@ -151,7 +175,7 @@ class TestGetWorkflow:
         mock_store = AsyncMock()
         mock_store.load_workflow = AsyncMock(return_value=SAMPLE_YAML)
 
-        with patch("app.gateway.routers.workflows.get_workflow_store", return_value=mock_store):
+        with patch("app.gateway.routers.workflows.get_workflow_store", return_value=mock_store), _patch_meta():
             resp = client.get("/api/workflows/test-wf")
 
         assert resp.status_code == 200
@@ -173,7 +197,7 @@ class TestGetWorkflow:
         mock_store = AsyncMock()
         mock_store.load_workflow = AsyncMock(return_value="invalid: [yaml: broken")
 
-        with patch("app.gateway.routers.workflows.get_workflow_store", return_value=mock_store):
+        with patch("app.gateway.routers.workflows.get_workflow_store", return_value=mock_store), _patch_meta():
             resp = client.get("/api/workflows/bad-wf")
 
         assert resp.status_code == 400
@@ -217,7 +241,11 @@ class TestUpdateWorkflow:
         mock_store.load_workflow = AsyncMock(return_value=SAMPLE_YAML)
         mock_store.save_workflow = AsyncMock()
 
-        with patch("app.gateway.routers.workflows.get_workflow_store", return_value=mock_store):
+        with (
+            patch("app.gateway.routers.workflows.get_workflow_store", return_value=mock_store),
+            _patch_meta(),
+            _patch_save_meta(),
+        ):
             resp = client.put("/api/workflows/test-wf", json={"yaml_content": SAMPLE_YAML})
 
         assert resp.status_code == 200
@@ -235,7 +263,7 @@ class TestUpdateWorkflow:
         mock_store = AsyncMock()
         mock_store.load_workflow = AsyncMock(return_value=SAMPLE_YAML)
 
-        with patch("app.gateway.routers.workflows.get_workflow_store", return_value=mock_store):
+        with patch("app.gateway.routers.workflows.get_workflow_store", return_value=mock_store), _patch_meta():
             resp = client.put("/api/workflows/other-wf", json={"yaml_content": SAMPLE_YAML})
 
         assert resp.status_code == 400
@@ -245,7 +273,7 @@ class TestUpdateWorkflow:
         mock_store = AsyncMock()
         mock_store.load_workflow = AsyncMock(return_value=SAMPLE_YAML)
 
-        with patch("app.gateway.routers.workflows.get_workflow_store", return_value=mock_store):
+        with patch("app.gateway.routers.workflows.get_workflow_store", return_value=mock_store), _patch_meta():
             resp = client.put("/api/workflows/test-wf", json={"yaml_content": "bad: [yaml"})
 
         assert resp.status_code == 400
@@ -257,9 +285,14 @@ class TestUpdateWorkflow:
 class TestDeleteWorkflow:
     def test_delete_workflow_success(self, client):
         mock_store = AsyncMock()
+        mock_store.load_workflow = AsyncMock(return_value=SAMPLE_YAML)
         mock_store.delete_workflow = AsyncMock(return_value=True)
 
-        with patch("app.gateway.routers.workflows.get_workflow_store", return_value=mock_store):
+        with (
+            patch("app.gateway.routers.workflows.get_workflow_store", return_value=mock_store),
+            _patch_meta(),
+            _patch_soft_delete(),
+        ):
             resp = client.delete("/api/workflows/test-wf")
 
         assert resp.status_code == 200
@@ -267,7 +300,7 @@ class TestDeleteWorkflow:
 
     def test_delete_workflow_not_found(self, client):
         mock_store = AsyncMock()
-        mock_store.delete_workflow = AsyncMock(return_value=False)
+        mock_store.load_workflow = AsyncMock(return_value=None)
 
         with patch("app.gateway.routers.workflows.get_workflow_store", return_value=mock_store):
             resp = client.delete("/api/workflows/nonexistent")
@@ -286,6 +319,7 @@ class TestRunWorkflow:
 
         with (
             patch("app.gateway.routers.workflows.get_workflow_store", return_value=mock_store),
+            _patch_meta(),
             patch("app.gateway.routers.workflows.WorkflowExecutor") as mock_executor_cls,
         ):
             mock_executor = AsyncMock()
@@ -312,7 +346,7 @@ class TestRunWorkflow:
         mock_store = AsyncMock()
         mock_store.load_workflow = AsyncMock(return_value=SAMPLE_YAML)
 
-        with patch("app.gateway.routers.workflows.get_workflow_store", return_value=mock_store):
+        with patch("app.gateway.routers.workflows.get_workflow_store", return_value=mock_store), _patch_meta():
             resp = client.post("/api/workflows/test-wf/run", json={"inputs": {}})
 
         assert resp.status_code == 400
@@ -332,7 +366,7 @@ steps:
 """
         mock_store.load_workflow = AsyncMock(return_value=yaml_with_bool)
 
-        with patch("app.gateway.routers.workflows.get_workflow_store", return_value=mock_store):
+        with patch("app.gateway.routers.workflows.get_workflow_store", return_value=mock_store), _patch_meta():
             resp = client.post("/api/workflows/bool-wf/run", json={"inputs": {"flag": "not_bool"}})
 
         assert resp.status_code == 400
@@ -352,7 +386,7 @@ steps:
 """
         mock_store.load_workflow = AsyncMock(return_value=yaml_with_num)
 
-        with patch("app.gateway.routers.workflows.get_workflow_store", return_value=mock_store):
+        with patch("app.gateway.routers.workflows.get_workflow_store", return_value=mock_store), _patch_meta():
             resp = client.post("/api/workflows/num-wf/run", json={"inputs": {"count": "not_number"}})
 
         assert resp.status_code == 400
@@ -362,7 +396,7 @@ steps:
         mock_store = AsyncMock()
         mock_store.load_workflow = AsyncMock(return_value=SAMPLE_YAML)
 
-        with patch("app.gateway.routers.workflows.get_workflow_store", return_value=mock_store):
+        with patch("app.gateway.routers.workflows.get_workflow_store", return_value=mock_store), _patch_meta():
             resp = client.post("/api/workflows/test-wf/run", json={"inputs": {"query": 123}})
 
         assert resp.status_code == 400
@@ -386,6 +420,7 @@ steps:
 
         with (
             patch("app.gateway.routers.workflows.get_workflow_store", return_value=mock_store),
+            _patch_meta(),
             patch("app.gateway.routers.workflows.WorkflowExecutor") as mock_executor_cls,
         ):
             mock_executor = AsyncMock()
