@@ -59,7 +59,7 @@ def _make_app(current_user: MagicMock | None = None) -> FastAPI:
     return app
 
 
-def _mock_session(user_model_results=None, dept_model_results=None, count_results=None):
+def _mock_session(user_model_results=None, dept_model_results=None, count_results=None, resource_type_counts=None):
     """Create a mock SQLAlchemy session with configurable results."""
     session = AsyncMock()
 
@@ -67,6 +67,11 @@ def _mock_session(user_model_results=None, dept_model_results=None, count_result
     async def _execute(stmt):
         stmt_str = str(stmt)
         result = MagicMock()
+
+        # Resource metadata group query (must check before generic count)
+        if "resource_metadata" in stmt_str:
+            result.all = MagicMock(return_value=resource_type_counts or [])
+            return result
 
         # Count queries
         if "count" in stmt_str.lower():

@@ -13,6 +13,7 @@ from sqlalchemy.orm import selectinload
 
 from app.gateway.authz import get_current_rbac_user, require_role
 from ideer.persistence.engine import get_session_factory
+from ideer.persistence.models.resource_metadata import ResourceMetadata
 from ideer.persistence.models.user import DepartmentModel, UserModel, UserRole
 
 logger = logging.getLogger(__name__)
@@ -34,12 +35,16 @@ async def get_admin_stats(
         user_count = (await session.execute(select(func.count()).select_from(UserModel))).scalar() or 0
         dept_count = (await session.execute(select(func.count()).select_from(DepartmentModel))).scalar() or 0
 
+        resource_counts = (await session.execute(select(ResourceMetadata.resource_type, func.count()).where(ResourceMetadata.deleted_at.is_(None)).group_by(ResourceMetadata.resource_type))).all()
+        type_counts = {row[0]: row[1] for row in resource_counts}
+
     return {
         "total_users": user_count,
         "total_departments": dept_count,
-        "total_agents": 0,  # Agents are file-based; counted via agents API
-        "total_tools": 0,  # Tools are file-based; counted via tools API
-        "total_skills": 0,  # Skills are file-based; counted via skills API
+        "total_agents": type_counts.get("agent", 0),
+        "total_tools": type_counts.get("tool", 0),
+        "total_skills": type_counts.get("skill", 0),
+        "total_resources": sum(type_counts.values()),
     }
 
 

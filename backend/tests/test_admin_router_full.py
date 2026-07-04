@@ -116,7 +116,7 @@ class TestGetAdminStats:
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_stats_returns_user_and_dept_counts(self, mock_sf):
-        """Happy path: returns counts for users and departments."""
+        """Happy path: returns counts for users, departments, and resources."""
         session = AsyncMock()
 
         call_count = {"n": 0}
@@ -124,8 +124,12 @@ class TestGetAdminStats:
         async def _execute(stmt):
             call_count["n"] += 1
             result = MagicMock()
-            # First call: user count, second call: dept count
-            result.scalar = MagicMock(return_value=10 if call_count["n"] == 1 else 3)
+            if call_count["n"] <= 2:
+                # First call: user count, second call: dept count
+                result.scalar = MagicMock(return_value=10 if call_count["n"] == 1 else 3)
+            else:
+                # Third call: resource metadata group query
+                result.all = MagicMock(return_value=[("agent", 2), ("tool", 5), ("skill", 8)])
             return result
 
         session.execute = AsyncMock(side_effect=_execute)
@@ -138,17 +142,26 @@ class TestGetAdminStats:
         data = resp.json()
         assert data["total_users"] == 10
         assert data["total_departments"] == 3
-        assert data["total_agents"] == 0
-        assert data["total_skills"] == 0
+        assert data["total_agents"] == 2
+        assert data["total_tools"] == 5
+        assert data["total_skills"] == 8
+        assert data["total_resources"] == 15
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_stats_returns_zeros_when_counts_are_none(self, mock_sf):
         """When scalar() returns None, defaults to 0."""
         session = AsyncMock()
 
+        call_count = {"n": 0}
+
         async def _execute(stmt):
+            call_count["n"] += 1
             result = MagicMock()
-            result.scalar = MagicMock(return_value=None)
+            if call_count["n"] <= 2:
+                result.scalar = MagicMock(return_value=None)
+            else:
+                # Empty resource metadata
+                result.all = MagicMock(return_value=[])
             return result
 
         session.execute = AsyncMock(side_effect=_execute)
@@ -161,6 +174,10 @@ class TestGetAdminStats:
         data = resp.json()
         assert data["total_users"] == 0
         assert data["total_departments"] == 0
+        assert data["total_agents"] == 0
+        assert data["total_tools"] == 0
+        assert data["total_skills"] == 0
+        assert data["total_resources"] == 0
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_stats_database_not_initialized(self, mock_sf):

@@ -7,9 +7,11 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 
-from app.gateway.authz import get_current_rbac_user, require_role
+from app.gateway.authz import check_resource_access, check_resource_modify, get_current_rbac_user, get_optional_rbac_user, require_role
 from ideer.config.app_config import get_app_config
+from ideer.persistence.engine import get_session_factory
 from ideer.persistence.models.user import UserModel, UserRole
 from ideer.tools.registry import get_tool_registry
 
@@ -26,13 +28,39 @@ class ToolConfigUpdate(BaseModel):
     config: dict = Field(default_factory=dict)
 
 
+async def _load_tool_meta(tool_name: str) -> dict:
+    """Load tool RBAC metadata from resource_metadata table."""
+    sf = get_session_factory()
+    if sf is not None:
+        try:
+            async with sf() as session:
+                from ideer.persistence.models.resource_metadata import ResourceMetadata
+
+                stmt = select(ResourceMetadata).where(
+                    ResourceMetadata.resource_type == "tool",
+                    ResourceMetadata.resource_id == tool_name,
+                    ResourceMetadata.deleted_at.is_(None),
+                )
+                result = await session.execute(stmt)
+                resource = result.scalar_one_or_none()
+                if resource:
+                    return {
+                        "visibility": resource.visibility,
+                        "owner_id": resource.owner_id,
+                        "department_id": resource.department_id,
+                    }
+        except Exception:
+            pass
+    return {}
+
+
 @router.get("")
 async def list_tools(
     group: str | None = None,
     search: str | None = None,
-    current_user: UserModel = Depends(get_current_rbac_user),
+    current_user: UserModel | None = Depends(get_optional_rbac_user),
 ):
-    """List all registered tools with metadata. Any authenticated user can view."""
+    """List all registered tools with metadata. Filters by visibility when auth is active."""
     registry = get_tool_registry()
 
     if search:
@@ -41,6 +69,47 @@ async def list_tools(
         tools = registry.list_by_group(group)
     else:
         tools = registry.list_all()
+
+    # Batch-load tool metadata from resource_metadata table
+    tool_meta_map: dict[str, dict] = {}
+    tool_names = [t.name for t in tools]
+    sf = get_session_factory()
+    if sf is not None and tool_names:
+        try:
+            async with sf() as session:
+                from ideer.persistence.models.resource_metadata import ResourceMetadata
+
+                stmt = select(ResourceMetadata).where(
+                    ResourceMetadata.resource_type == "tool",
+                    ResourceMetadata.resource_id.in_(tool_names),
+                    ResourceMetadata.deleted_at.is_(None),
+                )
+                result = await session.execute(stmt)
+                for r in result.scalars().all():
+                    tool_meta_map[r.resource_id] = {
+                        "visibility": r.visibility,
+                        "owner_id": r.owner_id,
+                        "department_id": r.department_id,
+                    }
+        except Exception:
+            pass
+
+    # Filter by visibility
+    filtered = []
+    for t in tools:
+        meta = tool_meta_map.get(t.name, {})
+        # Default to 'public' when no metadata exists (tools are system-provided)
+        visibility = meta.get("visibility", "public")
+        owner_id = meta.get("owner_id")
+        dept_id = meta.get("department_id")
+
+        if current_user is not None:
+            if not check_resource_access(current_user, owner_id, dept_id, visibility):
+                continue
+        elif visibility != "public":
+            continue
+
+        filtered.append(t)
 
     return {
         "tools": [
@@ -54,21 +123,57 @@ async def list_tools(
                 "param_schema": t.param_schema,
                 "config": t.config,
             }
-            for t in tools
+            for t in filtered
         ],
-        "total": len(tools),
+        "total": len(filtered),
     }
 
 
 @router.get("/groups")
 async def list_tool_groups(
-    current_user: UserModel = Depends(get_current_rbac_user),
+    current_user: UserModel | None = Depends(get_optional_rbac_user),
 ):
-    """List all tool groups. Any authenticated user can view."""
+    """List all tool groups. Filters by visibility when auth is active."""
     registry = get_tool_registry()
     tools = registry.list_all()
+
+    # Batch-load tool metadata
+    tool_meta_map: dict[str, dict] = {}
+    tool_names = [t.name for t in tools]
+    sf = get_session_factory()
+    if sf is not None and tool_names:
+        try:
+            async with sf() as session:
+                from ideer.persistence.models.resource_metadata import ResourceMetadata
+
+                stmt = select(ResourceMetadata).where(
+                    ResourceMetadata.resource_type == "tool",
+                    ResourceMetadata.resource_id.in_(tool_names),
+                    ResourceMetadata.deleted_at.is_(None),
+                )
+                result = await session.execute(stmt)
+                for r in result.scalars().all():
+                    tool_meta_map[r.resource_id] = {
+                        "visibility": r.visibility,
+                        "owner_id": r.owner_id,
+                        "department_id": r.department_id,
+                    }
+        except Exception:
+            pass
+
     groups: dict[str, list[str]] = {}
     for t in tools:
+        meta = tool_meta_map.get(t.name, {})
+        visibility = meta.get("visibility", "public")
+        owner_id = meta.get("owner_id")
+        dept_id = meta.get("department_id")
+
+        if current_user is not None:
+            if not check_resource_access(current_user, owner_id, dept_id, visibility):
+                continue
+        elif visibility != "public":
+            continue
+
         groups.setdefault(t.group, []).append(t.name)
     return {"groups": groups}
 
@@ -76,12 +181,24 @@ async def list_tool_groups(
 @router.get("/{tool_name}")
 async def get_tool_detail(
     tool_name: str,
-    current_user: UserModel = Depends(get_current_rbac_user),
+    current_user: UserModel | None = Depends(get_optional_rbac_user),
 ):
     """Get tool detail including parameter schema."""
     registry = get_tool_registry()
     tool = registry.get(tool_name)
     if tool is None:
+        raise HTTPException(status_code=404, detail=f"Tool '{tool_name}' not found")
+
+    # Check visibility
+    meta = await _load_tool_meta(tool_name)
+    visibility = meta.get("visibility", "public")
+    owner_id = meta.get("owner_id")
+    dept_id = meta.get("department_id")
+
+    if current_user is not None:
+        if not check_resource_access(current_user, owner_id, dept_id, visibility):
+            raise HTTPException(status_code=404, detail=f"Tool '{tool_name}' not found")
+    elif visibility != "public":
         raise HTTPException(status_code=404, detail=f"Tool '{tool_name}' not found")
 
     return {
@@ -110,6 +227,14 @@ async def test_tool(
     registry = get_tool_registry()
     tool_info = registry.get(tool_name)
     if tool_info is None:
+        raise HTTPException(status_code=404, detail=f"Tool '{tool_name}' not found")
+
+    # Check visibility
+    meta = await _load_tool_meta(tool_name)
+    visibility = meta.get("visibility", "public")
+    owner_id = meta.get("owner_id")
+    dept_id = meta.get("department_id")
+    if not check_resource_access(current_user, owner_id, dept_id, visibility):
         raise HTTPException(status_code=404, detail=f"Tool '{tool_name}' not found")
 
     # Load the actual tool instance and invoke it
@@ -164,11 +289,18 @@ async def update_tool_config(
     body: ToolConfigUpdate,
     current_user: UserModel = Depends(get_current_rbac_user),
 ):
-    """Update tool configuration. Requires super_admin role."""
+    """Update tool configuration. Requires super_admin or owner role."""
     registry = get_tool_registry()
     tool_info = registry.get(tool_name)
     if tool_info is None:
         raise HTTPException(status_code=404, detail=f"Tool '{tool_name}' not found")
+
+    # Check ownership: if resource has an owner, only the owner can modify;
+    # if no metadata exists (legacy tool), allow admin roles (already gated by @require_role).
+    meta = await _load_tool_meta(tool_name)
+    owner_id = meta.get("owner_id")
+    if owner_id and not check_resource_modify(current_user, owner_id, meta.get("department_id")):
+        raise HTTPException(status_code=403, detail="You do not have permission to modify this resource")
 
     if not tool_info.configurable:
         raise HTTPException(status_code=400, detail=f"Tool '{tool_name}' is not configurable")

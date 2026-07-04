@@ -183,6 +183,7 @@ export interface AdminStats {
   total_agents: number;
   total_tools: number;
   total_skills: number;
+  total_resources: number;
 }
 
 export async function getAdminStats(): Promise<AdminStats> {

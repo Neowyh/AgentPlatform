@@ -68,9 +68,22 @@ class TestAdminStats:
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_get_stats_returns_counts(self, mock_get_session_factory):
-        """Stats endpoint returns user and department counts."""
+        """Stats endpoint returns user, department, and resource counts."""
+        call_count = {"n": 0}
         mock_session = AsyncMock()
-        mock_session.execute = AsyncMock(return_value=MagicMock(scalar=MagicMock(return_value=5)))
+
+        async def _execute(stmt):
+            call_count["n"] += 1
+            result = MagicMock()
+            if call_count["n"] <= 2:
+                # User and dept count queries
+                result.scalar = MagicMock(return_value=5)
+            else:
+                # Resource metadata group query
+                result.all = MagicMock(return_value=[("agent", 1), ("tool", 2)])
+            return result
+
+        mock_session.execute = AsyncMock(side_effect=_execute)
         mock_ctx = MagicMock()
         mock_ctx.__aenter__ = AsyncMock(return_value=mock_session)
         mock_ctx.__aexit__ = AsyncMock(return_value=False)
@@ -83,6 +96,9 @@ class TestAdminStats:
         data = resp.json()
         assert "total_users" in data
         assert "total_departments" in data
+        assert data["total_agents"] == 1
+        assert data["total_tools"] == 2
+        assert data["total_resources"] == 3
 
 
 # ---------------------------------------------------------------------------

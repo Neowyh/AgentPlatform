@@ -16,7 +16,7 @@ import pytest
 from _router_auth_helpers import make_authed_test_app
 from fastapi.testclient import TestClient
 
-from app.gateway.authz import get_current_rbac_user
+from app.gateway.authz import get_current_rbac_user, get_optional_rbac_user
 from app.gateway.routers.tools import router as tools_router
 
 pytestmark = pytest.mark.no_auto_user
@@ -40,6 +40,7 @@ def _make_app(role: str = "user", tool_registry=None):
         return user
 
     app.dependency_overrides[get_current_rbac_user] = _stub
+    app.dependency_overrides[get_optional_rbac_user] = _stub
     if tool_registry is not None:
         app.state.tool_registry = tool_registry
     return app, user
