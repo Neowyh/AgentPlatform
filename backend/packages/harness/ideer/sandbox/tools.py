@@ -1,9 +1,12 @@
 import asyncio
+import logging
 import posixpath
 import re
 import shlex
 from collections.abc import Callable
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from langchain.tools import tool
 
@@ -122,7 +125,7 @@ def _get_skills_host_path() -> str | None:
             _get_skills_host_path._cached = value  # type: ignore[attr-defined]
             return value
     except Exception:
-        pass
+        logger.warning("Failed to get skills host path", exc_info=True)
     return None
 
 
@@ -248,7 +251,7 @@ def _get_acp_workspace_host_path(thread_id: str | None = None) -> str | None:
             if host_path.exists():
                 return str(host_path)
         except Exception:
-            pass
+            logger.warning("Failed to get per-thread ACP workspace path", exc_info=True)
         return None
 
     cached = getattr(_get_acp_workspace_host_path, "_cached", None)
@@ -263,7 +266,7 @@ def _get_acp_workspace_host_path(thread_id: str | None = None) -> str | None:
             _get_acp_workspace_host_path._cached = value  # type: ignore[attr-defined]
             return value
     except Exception:
-        pass
+        logger.warning("Failed to get ACP workspace path", exc_info=True)
     return None
 
 
@@ -337,7 +340,7 @@ def _get_mcp_allowed_paths() -> list[str]:
                     allowed_paths.append(arg.rstrip("/") + "/")
 
     except Exception:
-        pass
+        logger.warning("Failed to get allowed filesystem paths", exc_info=True)
 
     return allowed_paths
 
@@ -350,7 +353,7 @@ def _get_tool_config_int(name: str, key: str, default: int) -> int:
             if isinstance(value, int):
                 return value
     except Exception:
-        pass
+        logger.warning("Failed to get tool config for %s", name, exc_info=True)
     return default
 
 

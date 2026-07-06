@@ -33,7 +33,7 @@ pytestmark = pytest.mark.no_auto_user
 # ---------------------------------------------------------------------------
 
 _STORAGE_PATCH = "app.gateway.routers.skills.get_or_new_skill_storage"
-_META_PATCH = "app.gateway.routers.skills._get_skill_meta"
+_META_PATCH = "app.gateway.routers.skills._load_skill_meta"
 
 
 def _make_user(role: str = "user") -> MagicMock:
@@ -274,7 +274,7 @@ class TestGetCustomSkill:
     """Tests for GET /api/skills/custom/{skill_name}."""
 
     @patch(_STORAGE_PATCH)
-    @patch(_META_PATCH, return_value={"visibility": "public"})
+    @patch(_META_PATCH, new_callable=AsyncMock, return_value={"visibility": "public"})
     def test_get_custom_skill_found(self, mock_meta, mock_storage_fn):
         """Get custom skill returns content."""
         skill = _make_skill(category=SkillCategory.CUSTOM)
@@ -303,7 +303,7 @@ class TestUpdateCustomSkill:
     """Tests for PUT /api/skills/custom/{skill_name}."""
 
     @patch(_STORAGE_PATCH)
-    @patch(_META_PATCH, return_value={"visibility": "public", "owner_id": "user-1"})
+    @patch(_META_PATCH, new_callable=AsyncMock, return_value={"visibility": "public", "owner_id": "user-1"})
     @patch("app.gateway.routers.skills.scan_skill_content")
     @patch("app.gateway.routers.skills.refresh_skills_system_prompt_cache_async")
     def test_update_custom_skill_success(self, mock_refresh, mock_scan, mock_meta, mock_storage_fn):
@@ -318,7 +318,7 @@ class TestUpdateCustomSkill:
         with TestClient(app) as client:
             resp = client.put(
                 "/api/skills/custom/test-skill",
-                json={"content": "# Updated Skill"},
+                json={"content": "# Updated Skill", "version": 1},
             )
         assert resp.status_code == 200
 
@@ -332,7 +332,7 @@ class TestDeleteCustomSkill:
     """Tests for DELETE /api/skills/custom/{skill_name}."""
 
     @patch(_STORAGE_PATCH)
-    @patch(_META_PATCH, return_value={"visibility": "public", "owner_id": "user-1"})
+    @patch(_META_PATCH, new_callable=AsyncMock, return_value={"visibility": "public", "owner_id": "user-1"})
     def test_delete_custom_skill_success(self, mock_meta, mock_storage_fn):
         """Delete custom skill succeeds."""
         storage = _make_mock_storage()
@@ -344,7 +344,7 @@ class TestDeleteCustomSkill:
         assert resp.status_code in (200, 204)
 
     @patch(_STORAGE_PATCH)
-    @patch(_META_PATCH, return_value={"visibility": "public", "owner_id": "user-1"})
+    @patch(_META_PATCH, new_callable=AsyncMock, return_value={"visibility": "public", "owner_id": "user-1"})
     def test_delete_custom_skill_not_found(self, mock_meta, mock_storage_fn):
         """Delete custom skill returns 404 when not found."""
         storage = _make_mock_storage()
@@ -365,7 +365,7 @@ class TestGetCustomSkillHistory:
     """Tests for GET /api/skills/custom/{skill_name}/history."""
 
     @patch(_STORAGE_PATCH)
-    @patch(_META_PATCH, return_value={"visibility": "public"})
+    @patch(_META_PATCH, new_callable=AsyncMock, return_value={"visibility": "public"})
     def test_get_history_returns_list(self, mock_meta, mock_storage_fn):
         """Get skill history returns list of versions."""
         storage = _make_mock_storage()
@@ -387,7 +387,7 @@ class TestRollbackCustomSkill:
     """Tests for POST /api/skills/custom/{skill_name}/rollback."""
 
     @patch(_STORAGE_PATCH)
-    @patch(_META_PATCH, return_value={"visibility": "public", "owner_id": "user-1"})
+    @patch(_META_PATCH, new_callable=AsyncMock, return_value={"visibility": "public", "owner_id": "user-1"})
     @patch("app.gateway.routers.skills.scan_skill_content")
     @patch("app.gateway.routers.skills.refresh_skills_system_prompt_cache_async")
     def test_rollback_success(self, mock_refresh, mock_scan, mock_meta, mock_storage_fn):
@@ -412,7 +412,7 @@ class TestRollbackCustomSkill:
         assert resp.status_code == 200
 
     @patch(_STORAGE_PATCH)
-    @patch(_META_PATCH, return_value={"visibility": "public"})
+    @patch(_META_PATCH, new_callable=AsyncMock, return_value={"visibility": "public"})
     def test_rollback_not_found(self, mock_meta, mock_storage_fn):
         """Rollback skill returns 404 when not found."""
         storage = _make_mock_storage()

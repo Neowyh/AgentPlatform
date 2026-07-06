@@ -16,12 +16,14 @@ import logging
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select
+from sqlalchemy import update as sql_update
 from sqlalchemy.exc import IntegrityError
 
-from app.gateway.authz import get_current_rbac_user
+from app.gateway.audit import record_audit
+from app.gateway.authz import get_current_rbac_user, require_role
 from ideer.persistence.engine import get_session_factory
 from ideer.persistence.models.resource_metadata import ResourceMetadata
 from ideer.persistence.models.user import ResourceVisibility, UserModel, UserRole
@@ -171,6 +173,10 @@ async def create_application(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+class WithdrawRequest(BaseModel):
+    version: int = Field(..., description="Current version for optimistic locking")
+
+
 # ---------------------------------------------------------------------------
 # PUT /api/visibility-applications/{id}/withdraw — withdraw own application
 # ---------------------------------------------------------------------------
@@ -179,6 +185,7 @@ async def create_application(
 @router.put("/{application_id}/withdraw")
 async def withdraw_application(
     application_id: str,
+    body: WithdrawRequest,
     current_user: UserModel = Depends(get_current_rbac_user),
 ) -> dict:
     sf = get_session_factory()
@@ -198,7 +205,15 @@ async def withdraw_application(
             if application.status != VisibilityApplicationStatus.PENDING:
                 raise HTTPException(status_code=400, detail="Only pending applications can be withdrawn")
 
+            # Optimistic lock
+            if application.version != body.version:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Version mismatch: expected {application.version}, got {body.version}",
+                )
+
             application.status = VisibilityApplicationStatus.WITHDRAWN
+            application.version += 1
             await session.commit()
 
             return {"success": True}
@@ -215,13 +230,13 @@ async def withdraw_application(
 
 
 @router.put("/{application_id}", response_model=ApplicationResponse)
+@require_role(UserRole.SUPER_ADMIN, UserRole.DEPARTMENT_ADMIN)
 async def review_application(
     application_id: str,
     request: ReviewApplicationRequest,
+    http_request: Request,
     current_user: UserModel = Depends(get_current_rbac_user),
 ) -> ApplicationResponse:
-    if current_user.role not in (UserRole.SUPER_ADMIN, UserRole.DEPARTMENT_ADMIN):
-        raise HTTPException(status_code=403, detail="Insufficient permissions")
 
     sf = get_session_factory()
     if sf is None:
@@ -254,8 +269,42 @@ async def review_application(
             application.review_comment = request.comment
             application.version += 1
 
+            # On approval, sync visibility to resource_metadata
+            if request.action == VisibilityApplicationStatus.APPROVED.value:
+                await session.execute(
+                    sql_update(ResourceMetadata)
+                    .where(
+                        ResourceMetadata.resource_type == application.resource_type,
+                        ResourceMetadata.resource_id == application.resource_id,
+                        ResourceMetadata.deleted_at.is_(None),
+                    )
+                    .values(
+                        visibility=application.target_visibility,
+                        version=ResourceMetadata.version + 1,
+                    )
+                )
+
             await session.commit()
             await session.refresh(application)
+
+            if request.action == VisibilityApplicationStatus.APPROVED.value:
+                await record_audit(
+                    actor_id=current_user.id,
+                    action="visibility_change",
+                    resource_type=application.resource_type,
+                    resource_id=application.resource_id,
+                    detail={"old_visibility": application.current_visibility, "new_visibility": application.target_visibility, "status": "approved"},
+                    ip_address=http_request.client.host if http_request.client else None,
+                )
+            else:
+                await record_audit(
+                    actor_id=current_user.id,
+                    action="visibility_change",
+                    resource_type=application.resource_type,
+                    resource_id=application.resource_id,
+                    detail={"old_visibility": application.current_visibility, "target_visibility": application.target_visibility, "status": "rejected"},
+                    ip_address=http_request.client.host if http_request.client else None,
+                )
 
             return _to_response(application)
     except HTTPException:
@@ -271,6 +320,7 @@ async def review_application(
 
 
 @router.get("", response_model=ApplicationsResponse)
+@require_role(UserRole.SUPER_ADMIN, UserRole.DEPARTMENT_ADMIN)
 async def list_applications(
     status: str | None = None,
     resource_type: str | None = None,
@@ -278,8 +328,6 @@ async def list_applications(
     page_size: int = 20,
     current_user: UserModel = Depends(get_current_rbac_user),
 ) -> ApplicationsResponse:
-    if current_user.role not in (UserRole.SUPER_ADMIN, UserRole.DEPARTMENT_ADMIN):
-        raise HTTPException(status_code=403, detail="Insufficient permissions")
 
     sf = get_session_factory()
     if sf is None:

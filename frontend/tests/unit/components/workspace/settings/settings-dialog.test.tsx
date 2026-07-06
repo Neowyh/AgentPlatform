@@ -365,27 +365,6 @@ describe("SettingsDialog", () => {
     });
   });
 
-  // ── Skills onClose callback ──────────────────────────────────────────────
-
-  test("passes onClose callback to SkillSettingsPage", async () => {
-    const user = userEvent.setup();
-    const onOpenChange = vi.fn();
-    render(
-      <SettingsDialog
-        open={true}
-        onOpenChange={onOpenChange}
-        defaultSection="skills"
-      />,
-    );
-
-    expect(screen.getByTestId("skills-page")).toBeInTheDocument();
-
-    // The skills page has a close button that calls onClose
-    await user.click(screen.getByTestId("skills-close"));
-
-    expect(onOpenChange).toHaveBeenCalledWith(false);
-  });
-
   // ── ScrollArea ───────────────────────────────────────────────────────────
 
   test("renders content inside a ScrollArea", () => {

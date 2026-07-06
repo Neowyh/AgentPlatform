@@ -162,9 +162,23 @@ class TestAdminUserRole:
         mock_user = MagicMock()
         mock_user.id = "user-1"
         mock_user.role = "user"
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = mock_user
-        mock_session.execute = AsyncMock(return_value=mock_result)
+
+        call_count = {"n": 0}
+
+        async def _execute(stmt):
+            call_count["n"] += 1
+            result = MagicMock()
+            stmt_str = str(stmt)
+            if "count" in stmt_str.lower():
+                # Admin limit checks: return 0 so limits aren't hit
+                result.scalar = MagicMock(return_value=0)
+            elif "users_ext" in stmt_str:
+                result.scalar_one_or_none = MagicMock(return_value=mock_user)
+            else:
+                result.scalar_one_or_none = MagicMock(return_value=mock_user)
+            return result
+
+        mock_session.execute = AsyncMock(side_effect=_execute)
         mock_ctx = MagicMock()
         mock_ctx.__aenter__ = AsyncMock(return_value=mock_session)
         mock_ctx.__aexit__ = AsyncMock(return_value=False)
@@ -209,14 +223,25 @@ class TestAdminDisableUser:
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_disable_user_success(self, mock_get_session_factory):
-        """Disable user succeeds when user exists."""
+        """Toggle user disabled succeeds when user exists."""
         mock_session = AsyncMock()
         mock_user = MagicMock()
         mock_user.id = "user-1"
         mock_user.disabled = False
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = mock_user
-        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_user.role = "user"
+
+        async def _execute(stmt):
+            result = MagicMock()
+            stmt_str = str(stmt)
+            if "count" in stmt_str.lower():
+                result.scalar = MagicMock(return_value=0)
+            elif "users_ext" in stmt_str:
+                result.scalar_one_or_none = MagicMock(return_value=mock_user)
+            else:
+                result.scalar_one_or_none = MagicMock(return_value=mock_user)
+            return result
+
+        mock_session.execute = AsyncMock(side_effect=_execute)
         mock_ctx = MagicMock()
         mock_ctx.__aenter__ = AsyncMock(return_value=mock_session)
         mock_ctx.__aexit__ = AsyncMock(return_value=False)
@@ -224,12 +249,15 @@ class TestAdminDisableUser:
 
         app, _ = _make_app()
         with TestClient(app) as client:
-            resp = client.delete("/api/admin/users/user-1")
+            resp = client.put(
+                "/api/admin/users/user-1/role",
+                json={"role": "user"},
+            )
         assert resp.status_code == 200
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_disable_user_not_found(self, mock_get_session_factory):
-        """Disable user returns 404 when user not found."""
+        """Toggle user disabled returns 404 when user not found."""
         mock_session = AsyncMock()
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = None
@@ -241,7 +269,10 @@ class TestAdminDisableUser:
 
         app, _ = _make_app()
         with TestClient(app) as client:
-            resp = client.delete("/api/admin/users/nonexistent")
+            resp = client.put(
+                "/api/admin/users/nonexistent/role",
+                json={"role": "user"},
+            )
         assert resp.status_code == 404
 
 
@@ -395,8 +426,22 @@ class TestAdminDeleteDepartment:
         mock_find_result.scalar_one_or_none.return_value = mock_dept
         mock_count_result = MagicMock()
         mock_count_result.scalar.return_value = 0
-        mock_update_result = MagicMock()
-        mock_session.execute = AsyncMock(side_effect=[mock_find_result, mock_count_result, mock_update_result])
+        mock_ok_result = MagicMock()
+
+        async def _execute(stmt):
+            if "scalar_one_or_none" not in str(type(mock_find_result)):
+                return mock_find_result
+            return mock_ok_result
+
+        mock_session.execute = AsyncMock(
+            side_effect=[
+                mock_find_result,  # find department
+                mock_count_result,  # count members
+                mock_ok_result,  # update users department_id
+                mock_ok_result,  # downgrade department resources
+                mock_ok_result,  # clear department_id on resources
+            ]
+        )
         mock_ctx = MagicMock()
         mock_ctx.__aenter__ = AsyncMock(return_value=mock_session)
         mock_ctx.__aexit__ = AsyncMock(return_value=False)

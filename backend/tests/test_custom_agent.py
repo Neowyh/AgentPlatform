@@ -511,19 +511,19 @@ class TestAgentsAPI:
     def test_update_agent_soul(self, agent_client):
         agent_client.post("/api/agents", json={"name": "update-me", "soul": "original"})
 
-        response = agent_client.put("/api/agents/update-me", json={"soul": "updated"})
+        response = agent_client.put("/api/agents/update-me", json={"soul": "updated", "version": 1})
         assert response.status_code == 200
         assert response.json()["soul"] == "updated"
 
     def test_update_agent_description(self, agent_client):
         agent_client.post("/api/agents", json={"name": "desc-agent", "description": "old desc", "soul": "p"})
 
-        response = agent_client.put("/api/agents/desc-agent", json={"description": "new desc"})
+        response = agent_client.put("/api/agents/desc-agent", json={"description": "new desc", "version": 1})
         assert response.status_code == 200
         assert response.json()["description"] == "new desc"
 
     def test_update_missing_agent_404(self, agent_client):
-        response = agent_client.put("/api/agents/ghost-agent", json={"soul": "new"})
+        response = agent_client.put("/api/agents/ghost-agent", json={"soul": "new", "version": 1})
         assert response.status_code == 404
 
     def test_delete_agent(self, agent_client):
@@ -642,7 +642,7 @@ class TestAgentsAPI:
         (shared_dir / "config.yaml").write_text("name: shared-bot\n", encoding="utf-8")
         (shared_dir / "SOUL.md").write_text("shared soul", encoding="utf-8")
 
-        response = agent_client.put("/api/agents/shared-bot", json={"description": "new"})
+        response = agent_client.put("/api/agents/shared-bot", json={"description": "new", "version": 1})
         assert response.status_code == 409
         assert "shared read-only template" in response.json()["detail"]
 
@@ -718,7 +718,7 @@ class TestAgentsApiDisabled:
         assert response.status_code == 403
 
     def test_agent_update_returns_403(self, disabled_agent_client):
-        response = disabled_agent_client.put("/api/agents/example-agent", json={"description": "blocked"})
+        response = disabled_agent_client.put("/api/agents/example-agent", json={"description": "blocked", "version": 1})
         assert response.status_code == 403
 
     def test_agent_delete_returns_403(self, disabled_agent_client):

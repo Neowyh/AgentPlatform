@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import uuid
 from typing import Any
 from weakref import WeakValueDictionary
 
 from langchain.tools import tool
+from sqlalchemy import select
 
 from ideer.agents.lead_agent.prompt import refresh_skills_system_prompt_cache_async
+from ideer.persistence.engine import get_session_factory
+from ideer.persistence.models.resource_metadata import ResourceMetadata
 from ideer.skills.security_scanner import scan_skill_content
 from ideer.skills.storage import get_or_new_skill_storage
 from ideer.skills.storage.skill_storage import SkillStorage
@@ -103,6 +107,31 @@ async def _skill_manage_impl(
                 name,
                 _history_record(action="create", file_path=SKILL_MD_FILE, prev_content=None, new_content=content, thread_id=thread_id, scanner=scan),
             )
+            # Persist RBAC metadata to resource_metadata table
+            try:
+                sf = get_session_factory()
+                if sf is not None:
+                    async with sf() as session:
+                        existing = await session.execute(
+                            select(ResourceMetadata).where(
+                                ResourceMetadata.resource_type == "skill",
+                                ResourceMetadata.resource_id == name,
+                                ResourceMetadata.deleted_at.is_(None),
+                            )
+                        )
+                        if not existing.scalar_one_or_none():
+                            session.add(
+                                ResourceMetadata(
+                                    id=str(uuid.uuid4()),
+                                    resource_type="skill",
+                                    resource_id=name,
+                                    owner_id="system",
+                                    visibility="private",
+                                )
+                            )
+                            await session.commit()
+            except Exception:
+                logger.warning("Failed to save resource metadata for skill '%s'", name)
             await refresh_skills_system_prompt_cache_async()
             return f"Created custom skill '{name}'."
 

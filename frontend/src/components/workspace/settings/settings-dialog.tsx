@@ -140,11 +140,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
               {activeSection === "appearance" && <AppearanceSettingsPage />}
               {activeSection === "memory" && <MemorySettingsPage />}
               {activeSection === "tools" && <ToolSettingsPage />}
-              {activeSection === "skills" && (
-                <SkillSettingsPage
-                  onClose={() => props.onOpenChange?.(false)}
-                />
-              )}
+              {activeSection === "skills" && <SkillSettingsPage />}
               {activeSection === "notification" && <NotificationSettingsPage />}
               {activeSection === "about" && <AboutSettingsPage />}
             </div>

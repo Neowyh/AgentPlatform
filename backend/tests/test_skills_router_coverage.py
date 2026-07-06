@@ -2,7 +2,7 @@
 
 Covers gaps not addressed by existing test files:
 - _validate_skill_name: valid and invalid names
-- _get_skill_meta: error paths (JSONDecodeError, generic Exception)
+- _load_skill_meta: error paths (JSONDecodeError, generic Exception)
 - list_skills: error handling, visibility filtering
 - get_skill: custom skill visibility check, not found, invalid name
 - install_skill: error paths (404, 409, 400, 500)
@@ -18,14 +18,14 @@ from __future__ import annotations
 
 import json
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from app.gateway.routers.skills import (
-    _get_skill_meta,
+    _load_skill_meta,
     _validate_skill_name,
 )
 from app.gateway.routers.skills import (
@@ -96,26 +96,27 @@ def _make_user(
 
 
 # ---------------------------------------------------------------------------
-# _get_skill_meta tests
+# _load_skill_meta tests
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.asyncio
 class TestGetSkillMeta:
-    """Tests for _get_skill_meta."""
+    """Tests for _load_skill_meta."""
 
     @patch("app.gateway.routers.skills.get_or_new_skill_storage")
-    def test_returns_empty_dict_on_file_not_found(self, mock_storage):
+    async def test_returns_empty_dict_on_file_not_found(self, mock_storage):
         """Returns {} when storage raises FileNotFoundError."""
         storage = MagicMock()
         storage.get_custom_skill_dir.side_effect = FileNotFoundError
         mock_storage.return_value = storage
 
         config = SimpleNamespace()
-        result = _get_skill_meta("my-skill", config)
+        result = await _load_skill_meta("my-skill", config)
         assert result == {}
 
     @patch("app.gateway.routers.skills.get_or_new_skill_storage")
-    def test_returns_empty_dict_on_json_decode_error(self, mock_storage):
+    async def test_returns_empty_dict_on_json_decode_error(self, mock_storage):
         """Returns {} when .meta.json is corrupted."""
         from pathlib import Path
 
@@ -129,18 +130,18 @@ class TestGetSkillMeta:
         mock_storage.return_value = storage
 
         config = SimpleNamespace()
-        result = _get_skill_meta("my-skill", config)
+        result = await _load_skill_meta("my-skill", config)
         assert result == {}
 
     @patch("app.gateway.routers.skills.get_or_new_skill_storage")
-    def test_returns_empty_dict_on_generic_exception(self, mock_storage):
+    async def test_returns_empty_dict_on_generic_exception(self, mock_storage):
         """Returns {} on unexpected exceptions."""
         storage = MagicMock()
         storage.get_custom_skill_dir.side_effect = RuntimeError("unexpected")
         mock_storage.return_value = storage
 
         config = SimpleNamespace()
-        result = _get_skill_meta("my-skill", config)
+        result = await _load_skill_meta("my-skill", config)
         assert result == {}
 
 
@@ -297,7 +298,7 @@ class TestUpdateCustomSkillErrors:
     """Tests for update_custom_skill error handling."""
 
     @patch("app.gateway.routers.skills.get_or_new_skill_storage")
-    @patch("app.gateway.routers.skills._get_skill_meta", return_value={})
+    @patch("app.gateway.routers.skills._load_skill_meta", new_callable=AsyncMock, return_value={"owner_id": "user-1"})
     def test_update_custom_skill_not_found(self, mock_meta, mock_storage):
         """Returns 404 when custom skill not found for edit."""
         storage = MagicMock()
@@ -309,7 +310,7 @@ class TestUpdateCustomSkillErrors:
         client = TestClient(app)
         response = client.put(
             "/api/skills/custom/nonexistent",
-            json={"content": "# new content"},
+            json={"content": "# new content", "version": 1},
         )
 
         assert response.status_code == 404
@@ -317,7 +318,7 @@ class TestUpdateCustomSkillErrors:
     @patch("app.gateway.routers.skills.refresh_skills_system_prompt_cache_async")
     @patch("app.gateway.routers.skills.scan_skill_content")
     @patch("app.gateway.routers.skills.get_or_new_skill_storage")
-    @patch("app.gateway.routers.skills._get_skill_meta", return_value={})
+    @patch("app.gateway.routers.skills._load_skill_meta", new_callable=AsyncMock, return_value={"owner_id": "user-1"})
     def test_update_custom_skill_file_not_found(self, mock_meta, mock_storage, mock_scan, mock_refresh):
         """Returns 404 when skill file doesn't exist."""
         from pathlib import Path
@@ -343,7 +344,7 @@ class TestUpdateCustomSkillErrors:
         client = TestClient(app)
         response = client.put(
             "/api/skills/custom/test-skill",
-            json={"content": "# new content"},
+            json={"content": "# new content", "version": 1},
         )
 
         assert response.status_code == 404
@@ -353,7 +354,7 @@ class TestDeleteCustomSkillErrors:
     """Tests for delete_custom_skill error handling."""
 
     @patch("app.gateway.routers.skills.get_or_new_skill_storage")
-    @patch("app.gateway.routers.skills._get_skill_meta", return_value={})
+    @patch("app.gateway.routers.skills._load_skill_meta", new_callable=AsyncMock, return_value={"owner_id": "user-1"})
     def test_delete_custom_skill_not_found(self, mock_meta, mock_storage):
         """Returns 404 when skill to delete doesn't exist."""
         storage = MagicMock()
@@ -389,7 +390,7 @@ class TestRollbackCustomSkillErrors:
     """Tests for rollback_custom_skill error handling."""
 
     @patch("app.gateway.routers.skills.get_or_new_skill_storage")
-    @patch("app.gateway.routers.skills._get_skill_meta", return_value={})
+    @patch("app.gateway.routers.skills._load_skill_meta", new_callable=AsyncMock, return_value={"owner_id": "user-1"})
     def test_rollback_no_history(self, mock_meta, mock_storage):
         """Returns 400 when skill has no history."""
         storage = MagicMock()
@@ -409,7 +410,7 @@ class TestRollbackCustomSkillErrors:
         assert "no history" in response.json()["detail"]
 
     @patch("app.gateway.routers.skills.get_or_new_skill_storage")
-    @patch("app.gateway.routers.skills._get_skill_meta", return_value={})
+    @patch("app.gateway.routers.skills._load_skill_meta", new_callable=AsyncMock, return_value={"owner_id": "user-1"})
     def test_rollback_index_out_of_range(self, mock_meta, mock_storage):
         """Returns 400 when history_index is out of range."""
         storage = MagicMock()
@@ -428,7 +429,7 @@ class TestRollbackCustomSkillErrors:
         assert response.status_code == 400
 
     @patch("app.gateway.routers.skills.get_or_new_skill_storage")
-    @patch("app.gateway.routers.skills._get_skill_meta", return_value={})
+    @patch("app.gateway.routers.skills._load_skill_meta", new_callable=AsyncMock, return_value={"owner_id": "user-1"})
     def test_rollback_no_prev_content(self, mock_meta, mock_storage):
         """Returns 400 when history entry has no prev_content."""
         storage = MagicMock()

@@ -191,11 +191,18 @@ async def _authenticate(request: Request) -> AuthContext:
                     if rbac_user.role is None:
                         logger.warning("User %s has NULL role in database, defaulting to USER permissions", user.id)
     except Exception as exc:
-        # Fail-open: if RBAC lookup fails (DB down, etc.), grant full
-        # permissions so the system remains usable.  Log at warning level
-        # so operators can detect the degraded state.
-        logger.warning("RBAC lookup failed for user %s, granting full permissions: %s", user.id, exc)
+        # Fail-closed: RBAC lookup failed (DB down, etc.) — deny access
+        # rather than granting full permissions.  A DB outage should not
+        # become a privilege-escalation vector.  Log at error level so
+        # operators are alerted to the degraded state.
+        logger.error("RBAC lookup failed for user %s, denying access: %s", user.id, exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authorization service temporarily unavailable",
+        )
 
+    # If we reach here, the DB query succeeded but no early return was hit
+    # (e.g., user has a valid role other than VIEWER). Grant full permissions.
     return AuthContext(user=user, permissions=_ALL_PERMISSIONS)
 
 
@@ -404,7 +411,7 @@ def _find_user_param(func: Callable) -> str:
             if hasattr(ann, "__name__") and ann.__name__ == "UserModel":
                 return name
     except (ValueError, TypeError):
-        pass
+        logger.debug("Failed to inspect function signature for UserModel parameter", exc_info=True)
     return "current_user"
 
 

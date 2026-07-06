@@ -5,6 +5,7 @@
 | v1.0 | 2025-07-03 | — | 初始版本，从 permission-matrix.md 拆分 |
 | v1.1 | 2025-07-03 | — | 审查修订：Tool 仅记录元数据不纳入统一 CRUD、移除审计日志引用 |
 | v1.2 | 2025-07-03 | — | 审阅修订：支持 visibility 升降级、Tool 创建/删除延至第二期、Tool 配置仅 owner、Agent 导出统一为 GET、安全扫描错误码移除 |
+| v1.3 | 2026-07-06 | — | 对抗式审查修订：Tool CRUD 提升至第一期、Workflow 运行历史权限修正、新增审计日志 API |
 
 > 本文档定义资源管理体系的所有 API 接口。权限模型与规则见《权限模型重构_主文档》，数据库设计见《权限模型重构_数据库设计》，数据迁移方案见《权限模型重构_迁移方案》。
 
@@ -142,7 +143,7 @@
 | 请求体 | `multipart/form-data`，字段 `file` |
 | 响应 | 资源完整信息 |
 
-> 导入等同于"创建"，visibility 默认 private，owner 为当前用户。需通过安全扫描。
+> 导入等同于"创建"，visibility 默认 private，owner 为当前用户。安全扫描在第二期实现。
 
 ---
 
@@ -162,11 +163,19 @@
 
 ## 4. Tool 专属接口
 
-> Tool 的 CRUD 保持现有 MCP 管理方式不变，创建/删除端点在第二期纳入统一管理。以下接口为现有 MCP 管理接口，仅做 visibility 权限校验增强。
+> Tool 的 CRUD 已纳入统一管理，废弃 MCP 配置直写通道。以下接口统一管理 Tool 的完整生命周期。
 
-### 4.1 创建（第二期）
+### 4.1 创建
 
-> 第一期不实现。Tool 创建通过 MCP 配置管理，创建时同步在 resource_metadata 表中插入 Tool 元数据记录（resource_type='tool'）。
+| 项目 | 值 |
+|------|-----|
+| 方法 | `POST` |
+| 路径 | `/api/tools` |
+| 权限 | 所有可写角色（user / dept_admin / super_admin） |
+| 请求体 | `{ name: string, description?: string, code?: string, config?: object, visibility?: "private" }` |
+| 响应 | `{ id: string, name: string, visibility: string, version: int, created_at: string }` |
+
+> name 在 tool 类型内全局唯一，visibility 默认 private。创建时自动同步插入 resource_metadata 记录。
 
 ### 4.2 编辑
 
@@ -180,9 +189,17 @@
 
 > 编辑时同步更新 resource_metadata 表中的 version 字段。
 
-### 4.3 删除（第二期）
+### 4.3 删除
 
-> 第一期不实现。Tool 删除通过 MCP 配置管理，删除时同步设置 resource_metadata.deleted_at。
+| 项目 | 值 |
+|------|-----|
+| 方法 | `DELETE` |
+| 路径 | `/api/tools/{name}` |
+| 权限 | 仅 owner |
+| 请求体 | 无 |
+| 响应 | `{ success: true }` |
+
+> soft delete，设置 resource_metadata.deleted_at。有 pending 申请时自动驳回。
 
 ### 4.4 测试
 
@@ -224,7 +241,7 @@
 |------|-----|
 | 方法 | `GET` |
 | 路径 | `/api/workflows/{name}/runs/{run_id}` |
-| 权限 | 所有认证用户 |
+| 权限 | 按 visibility 过滤 |
 | 请求体 | 无 |
 | 响应 | 运行状态详情（status、started_at、finished_at、output） |
 
@@ -234,7 +251,7 @@
 |------|-----|
 | 方法 | `GET` |
 | 路径 | `/api/workflows/{name}/runs` |
-| 权限 | 所有认证用户 |
+| 权限 | 按 visibility 过滤 |
 | 请求体 | 无（支持分页） |
 | 响应 | `{ runs: [...], total: int, page: int, page_size: int }` |
 
@@ -376,3 +393,31 @@
 | `TRANSFER_REQUIRED` | 400 | 用户删除前需完成资源重分配 |
 | `INVALID_REQUEST_BODY` | 400 | 请求体格式或字段不合法 |
 | `INTERNAL_ERROR` | 500 | 服务器内部错误 |
+
+---
+
+## 9. 审计日志接口
+
+> audit_logs 表记录所有关键资源操作的审计轨迹。详情页和第二期通知机制联动。
+
+### 9.1 审计日志列表
+
+| 项目 | 值 |
+|------|-----|
+| 方法 | `GET` |
+| 路径 | `/api/admin/audit-logs` |
+| 权限 | super_admin |
+| 查询参数 | `?actor_id=&action=&resource_type=&start_date=&end_date=&page=1&page_size=20` |
+| 响应 | `{ logs: [...], total: int, page: int, page_size: int }` |
+
+### 9.2 审计日志详情
+
+| 项目 | 值 |
+|------|-----|
+| 方法 | `GET` |
+| 路径 | `/api/admin/audit-logs/{id}` |
+| 权限 | super_admin |
+| 请求体 | 无 |
+| 响应 | `{ id, actor_id, action, resource_type, resource_id, detail, ip_address, created_at }` |
+
+> `detail` 字段为 JSON 格式，包含操作前后的状态快照（如 `{ "old_visibility": "private", "new_visibility": "public" }`）。

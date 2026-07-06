@@ -3,7 +3,9 @@
 import {
   Building2Icon,
   ChevronsUpDown,
+  ClipboardCheckIcon,
   InfoIcon,
+  ScrollTextIcon,
   Settings2Icon,
   SettingsIcon,
   ShieldIcon,
@@ -136,6 +138,20 @@ export function WorkspaceNavMenu() {
                           {t.workspace.toolManagement}
                         </Link>
                       </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link href="/workspace/admin/visibility-applications">
+                          <ClipboardCheckIcon />
+                          {t.workspace.applicationManagement}
+                        </Link>
+                      </DropdownMenuItem>
+                      {user?.system_role === "super_admin" && (
+                        <DropdownMenuItem asChild>
+                          <Link href="/workspace/admin/audit-logs">
+                            <ScrollTextIcon />
+                            {t.workspace.auditLogManagement}
+                          </Link>
+                        </DropdownMenuItem>
+                      )}
                     </DropdownMenuGroup>
                   </>
                 )}

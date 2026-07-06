@@ -109,3 +109,17 @@ export async function submitReview(
   if (!res.ok) return extractError(res, "Failed to submit review");
   return res.json() as Promise<{ success: boolean; run_id: string }>;
 }
+
+export async function toggleWorkflowFavorite(
+  name: string,
+): Promise<{ success: boolean; is_favorited: boolean }> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/workflows/${encodeURIComponent(name)}/favorite`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    },
+  );
+  if (!res.ok) return extractError(res, "Failed to toggle favorite");
+  return res.json() as Promise<{ success: boolean; is_favorited: boolean }>;
+}

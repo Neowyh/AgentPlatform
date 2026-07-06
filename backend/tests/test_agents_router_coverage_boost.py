@@ -62,21 +62,6 @@ def _write_agent_meta(base_dir: Path, user_id: str, name: str, meta: dict) -> No
 # ---------------------------------------------------------------------------
 
 
-class TestLoadAgentMetaError:
-    """Lines 161-162: _load_agent_meta with corrupt JSON."""
-
-    def test_corrupt_json_returns_empty(self, tmp_path):
-        from app.gateway.routers.agents import _load_agent_meta
-
-        meta_dir = tmp_path / "users" / "u1" / "agents" / "bad-meta"
-        meta_dir.mkdir(parents=True)
-        (meta_dir / ".meta.json").write_text("not valid json {{{", encoding="utf-8")
-
-        with patch("app.gateway.routers.agents.get_paths", return_value=_make_paths(tmp_path)):
-            result = _load_agent_meta("bad-meta", "u1")
-        assert result == {}
-
-
 class TestValidateAgentName:
     """Line 119: _validate_agent_name invalid name."""
 
@@ -221,7 +206,7 @@ class TestListAgentsWithPerUserAgents:
         assert "my-agent-1" in agents
         assert "my-agent-2" in agents
         assert agents["my-agent-1"]["visibility"] == "private"
-        assert agents["my-agent-2"]["visibility"] == "public"
+        assert agents["my-agent-2"]["visibility"] == "private"
         assert agents["my-agent-1"]["read_only"] is False
 
     def test_list_per_user_agents_filter_by_visibility(self, tmp_path):
@@ -432,7 +417,7 @@ class TestAgentsApiDisabled:
         assert response.status_code == 403
 
     def test_update_disabled(self, disabled_client):
-        response = disabled_client.put("/api/agents/test", json={"soul": "x"})
+        response = disabled_client.put("/api/agents/test", json={"soul": "x", "version": 1})
         assert response.status_code == 403
 
     def test_delete_disabled(self, disabled_client):
@@ -727,7 +712,7 @@ class TestGetAgentVisibility:
 
 class TestCreateAgentVisibility:
     def test_user_cannot_set_public_visibility(self, user_client):
-        """Line 419: non-super-admin can't set public visibility."""
+        """All agents are created private regardless of requested visibility."""
         response = user_client.post(
             "/api/agents",
             json={
@@ -736,8 +721,9 @@ class TestCreateAgentVisibility:
                 "visibility": "public",
             },
         )
-        assert response.status_code == 403
-        assert "visibility" in response.json()["detail"].lower()
+        assert response.status_code == 201
+        data = response.json()
+        assert data["visibility"] == "private"
 
     def test_user_can_set_department_visibility(self, tmp_path):
         """department_admin can set department visibility."""
@@ -845,7 +831,7 @@ class TestCreateAgentVisibility:
 
 class TestUpdateAgentPaths:
     def test_update_visibility_change(self, agent_client):
-        """Lines 538-539, 588-589: visibility change persists to metadata."""
+        """Visibility updates are ignored; changes require approval flow."""
         agent_client.post(
             "/api/agents",
             json={
@@ -859,10 +845,11 @@ class TestUpdateAgentPaths:
             "/api/agents/vis-agent",
             json={
                 "visibility": "public",
+                "version": 1,
             },
         )
         assert response.status_code == 200
-        assert response.json()["visibility"] == "public"
+        assert response.json()["visibility"] == "private"
 
     def test_update_skills_explicitly(self, agent_client):
         """Lines 569, 573: skills field update path."""
@@ -878,6 +865,7 @@ class TestUpdateAgentPaths:
             "/api/agents/skills-agent",
             json={
                 "skills": ["skill-a", "skill-b"],
+                "version": 1,
             },
         )
         assert response.status_code == 200
@@ -897,6 +885,7 @@ class TestUpdateAgentPaths:
             "/api/agents/no-skills-agent",
             json={
                 "skills": [],
+                "version": 1,
             },
         )
         assert response.status_code == 200
@@ -917,6 +906,7 @@ class TestUpdateAgentPaths:
             json={
                 "model": "gpt-4",
                 "tool_groups": ["bash", "file:read"],
+                "version": 1,
             },
         )
         assert response.status_code == 200
@@ -938,12 +928,12 @@ class TestUpdateAgentPaths:
             return original_load(*args, **kwargs)
 
         with patch("app.gateway.routers.agents.load_agent_config", side_effect=_fail_on_refresh):
-            response = agent_client.put("/api/agents/err-agent", json={"description": "new"})
+            response = agent_client.put("/api/agents/err-agent", json={"description": "new", "version": 1})
             assert response.status_code == 500
 
     def test_update_missing_agent_404(self, agent_client):
         """Lines 521-522: FileNotFoundError → 404 on update."""
-        response = agent_client.put("/api/agents/nonexistent", json={"description": "new"})
+        response = agent_client.put("/api/agents/nonexistent", json={"description": "new", "version": 1})
         assert response.status_code == 404
 
     def test_update_no_config_change(self, agent_client):
@@ -961,6 +951,7 @@ class TestUpdateAgentPaths:
             "/api/agents/soul-only-update",
             json={
                 "soul": "updated soul",
+                "version": 1,
             },
         )
         assert response.status_code == 200
@@ -979,21 +970,22 @@ class TestUpdateAgentPaths:
             mock_load.return_value = AgentConfig(name="re-raise-agent")
             mock_load.side_effect = [AgentConfig(name="re-raise-agent"), HTTPException(status_code=409, detail="conflict")]
 
-            response = agent_client.put("/api/agents/re-raise-agent", json={"description": "new"})
+            response = agent_client.put("/api/agents/re-raise-agent", json={"description": "new", "version": 1})
             assert response.status_code == 409
 
     def test_update_visibility_permission_denied(self, user_client):
-        """Line 539: USER role can't change visibility to department."""
+        """Visibility changes via PUT are silently ignored; approval flow is required."""
         user_client.post("/api/agents", json={"name": "vis-denied", "soul": "test", "visibility": "private"})
 
-        response = user_client.put("/api/agents/vis-denied", json={"visibility": "department"})
-        assert response.status_code == 403
+        response = user_client.put("/api/agents/vis-denied", json={"visibility": "department", "version": 1})
+        assert response.status_code == 200
+        assert response.json()["visibility"] == "private"
 
     def test_update_shared_read_only_agent(self, agent_client, tmp_path):
         """Line 527: update shared-only agent → 409."""
         _write_shared_agent(tmp_path, "shared-update", {"name": "shared-update"})
 
-        response = agent_client.put("/api/agents/shared-update", json={"description": "new"})
+        response = agent_client.put("/api/agents/shared-update", json={"description": "new", "version": 1})
         assert response.status_code == 409
         assert "shared read-only" in response.json()["detail"].lower()
 
@@ -1370,7 +1362,8 @@ class TestImportAgent:
                             "visibility": "public",
                         },
                     )
-                    assert response.status_code == 403
+                    assert response.status_code == 201
+                    assert response.json()["visibility"] == "private"
             finally:
                 set_agents_api_config(previous_config)
 

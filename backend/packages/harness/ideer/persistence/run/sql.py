@@ -8,8 +8,11 @@ minutes -- we don't hold connections across long execution.
 from __future__ import annotations
 
 import json
+import logging
 from datetime import UTC, datetime
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -51,12 +54,12 @@ class RunRepository(RunStore):
             try:
                 return obj.model_dump()
             except Exception:
-                pass
+                logger.warning("model_dump() failed for %s", type(obj).__name__, exc_info=True)
         if hasattr(obj, "dict"):
             try:
                 return obj.dict()
             except Exception:
-                pass
+                logger.warning("dict() failed for %s", type(obj).__name__, exc_info=True)
         try:
             json.dumps(obj)
             return obj

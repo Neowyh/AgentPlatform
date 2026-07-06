@@ -150,7 +150,10 @@ export default function VisibilityApplicationsPage() {
 
     try {
       setWithdrawingId(withdrawConfirm.id);
-      await withdrawVisibilityApplication(withdrawConfirm.id);
+      await withdrawVisibilityApplication(
+        withdrawConfirm.id,
+        withdrawConfirm.version,
+      );
       setWithdrawConfirm(null);
       void fetchApplications();
     } catch (err) {

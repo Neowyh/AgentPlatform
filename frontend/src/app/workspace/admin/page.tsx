@@ -3,6 +3,7 @@
 import {
   Building2Icon,
   ClipboardCheckIcon,
+  ScrollTextIcon,
   ShieldIcon,
   UsersIcon,
   WrenchIcon,
@@ -54,15 +55,22 @@ const statCards = [
     key: "pending_applications" as const,
     label: "待审批申请",
     icon: ClipboardCheckIcon,
-    href: "/workspace/admin/skill-applications",
+    href: "/workspace/admin/visibility-applications",
     color: "text-yellow-500",
   },
   {
-    key: "total_skills" as const,
-    label: "Skill 总数",
+    key: "total_resources" as const,
+    label: "资源总数",
     icon: WrenchIcon,
-    href: "/workspace/admin/skill-defaults",
+    href: "/workspace/admin/visibility-applications",
     color: "text-indigo-500",
+  },
+  {
+    key: "audit_logs" as const,
+    label: "审计日志",
+    icon: ScrollTextIcon,
+    href: "/workspace/admin/audit-logs",
+    color: "text-slate-500",
   },
 ];
 

@@ -1976,6 +1976,7 @@ class TestFeishuChannel:
         _run(go())
 
     def test_streaming_reuses_single_running_card(self):
+        pytest.importorskip("lark_oapi")
         from lark_oapi.api.im.v1 import (
             CreateMessageReactionRequest,
             CreateMessageReactionRequestBody,

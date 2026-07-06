@@ -143,7 +143,7 @@ class SlackChannel(Channel):
                     "x",
                 )
             except Exception:
-                pass
+                logger.warning("[Slack] Failed to add failure reaction", exc_info=True)
         if last_exc is None:
             raise RuntimeError("Slack send failed without an exception from any attempt")
         raise last_exc

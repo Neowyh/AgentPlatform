@@ -117,35 +117,54 @@ export function SkillEditor({
     }
   }, [content, onSave]);
 
-  // Simple markdown preview (basic rendering)
-  const renderPreview = useCallback((text: string) => {
-    // Extract content after frontmatter
-    const endIndex = text.indexOf("---", 3);
-    const bodyContent =
-      endIndex !== -1 ? text.slice(endIndex + 3).trim() : text;
-
-    // Basic markdown rendering
-    return bodyContent
-      .replace(
-        /^### (.+)$/gm,
-        '<h3 class="text-lg font-semibold mt-4 mb-2">$1</h3>',
-      )
-      .replace(
-        /^## (.+)$/gm,
-        '<h2 class="text-xl font-semibold mt-6 mb-3">$1</h2>',
-      )
-      .replace(/^# (.+)$/gm, '<h1 class="text-2xl font-bold mt-8 mb-4">$1</h1>')
-      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-      .replace(/\*(.+?)\*/g, "<em>$1</em>")
-      .replace(
-        /`(.+?)`/g,
-        '<code class="bg-muted rounded px-1 py-0.5 text-sm">$1</code>',
-      )
-      .replace(/^- (.+)$/gm, '<li class="ml-4">$1</li>')
-      .replace(/^\d+\. (.+)$/gm, '<li class="ml-4 list-decimal">$1</li>')
-      .replace(/\n\n/g, '</p><p class="mb-4">')
-      .replace(/\n/g, "<br />");
+  // Escape HTML entities to prevent XSS
+  const escapeHtml = useCallback((unsafe: string) => {
+    return unsafe
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
   }, []);
+
+  // Simple markdown preview (basic rendering with XSS protection)
+  const renderPreview = useCallback(
+    (text: string) => {
+      // Extract content after frontmatter
+      const endIndex = text.indexOf("---", 3);
+      const bodyContent =
+        endIndex !== -1 ? text.slice(endIndex + 3).trim() : text;
+
+      // First escape HTML to prevent XSS attacks
+      const escaped = escapeHtml(bodyContent);
+
+      // Basic markdown rendering on escaped content
+      return escaped
+        .replace(
+          /^### (.+)$/gm,
+          '<h3 class="text-lg font-semibold mt-4 mb-2">$1</h3>',
+        )
+        .replace(
+          /^## (.+)$/gm,
+          '<h2 class="text-xl font-semibold mt-6 mb-3">$1</h2>',
+        )
+        .replace(
+          /^# (.+)$/gm,
+          '<h1 class="text-2xl font-bold mt-8 mb-4">$1</h1>',
+        )
+        .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+        .replace(/\*(.+?)\*/g, "<em>$1</em>")
+        .replace(
+          /`(.+?)`/g,
+          '<code class="bg-muted rounded px-1 py-0.5 text-sm">$1</code>',
+        )
+        .replace(/^- (.+)$/gm, '<li class="ml-4">$1</li>')
+        .replace(/^\d+\. (.+)$/gm, '<li class="ml-4 list-decimal">$1</li>')
+        .replace(/\n\n/g, '</p><p class="mb-4">')
+        .replace(/\n/g, "<br />");
+    },
+    [escapeHtml],
+  );
 
   return (
     <div className="flex size-full flex-col">

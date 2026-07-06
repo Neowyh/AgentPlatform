@@ -3,19 +3,23 @@ import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.gateway.auth_middleware import AuthMiddleware
 from app.gateway.config import get_gateway_config
 from app.gateway.csrf_middleware import CSRFMiddleware, get_configured_cors_origins
 from app.gateway.deps import langgraph_runtime
+from app.gateway.error_codes import ApiException
 from app.gateway.routers import (
     admin,
     admin_skill_applications,
     agents,
     artifacts,
     assistants_compat,
+    audit_logs,
     auth,
     channels,
     feedback,
@@ -317,6 +321,10 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
                 "description": "Admin management APIs for users, departments, and system configuration",
             },
             {
+                "name": "audit",
+                "description": "Audit log query APIs for tracking key operations",
+            },
+            {
                 "name": "tools",
                 "description": "Tool management APIs for listing, testing, and configuring tools",
             },
@@ -330,6 +338,41 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
             },
         ],
     )
+
+    # --- Global exception handlers for structured error responses ---
+
+    @app.exception_handler(ApiException)
+    async def api_exception_handler(_request: Request, exc: ApiException) -> JSONResponse:
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={
+                "success": False,
+                "data": None,
+                "error": {"code": exc.code, "message": exc.message},
+            },
+        )
+
+    @app.exception_handler(HTTPException)
+    async def http_exception_handler(_request: Request, exc: HTTPException) -> JSONResponse:
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={
+                "success": False,
+                "data": None,
+                "error": {"code": "INTERNAL_ERROR", "message": str(exc.detail)},
+            },
+        )
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_exception_handler(_request: Request, exc: RequestValidationError) -> JSONResponse:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "success": False,
+                "data": None,
+                "error": {"code": "INVALID_REQUEST_BODY", "message": str(exc)},
+            },
+        )
 
     # Auth: reject unauthenticated requests to non-public paths (fail-closed safety net)
     app.add_middleware(AuthMiddleware)
@@ -401,6 +444,9 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
 
     # Admin API is mounted at /api/admin
     app.include_router(admin.router)
+
+    # Audit Logs API is mounted at /api/admin/audit-logs
+    app.include_router(audit_logs.router)
 
     # Tools API is mounted at /api/tools
     app.include_router(tools.router)

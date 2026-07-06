@@ -170,9 +170,8 @@ class TestCreateAgentSkillsCoverage:
         mock_paths.user_agent_dir.return_value.mkdir.side_effect = None
         cfg = _mock_cfg(skills=["search", "code"])
         with (
-            patch("app.gateway.routers.agents._can_set_visibility", return_value=True),
             patch("app.gateway.routers.agents.load_agent_config", return_value=cfg),
-            patch("app.gateway.routers.agents._save_agent_meta"),
+            patch("app.gateway.routers.agents._save_agent_meta", new=AsyncMock()),
             patch("app.gateway.routers.agents._agent_config_to_response") as mock_convert,
             patch("builtins.open", MagicMock()),
             patch("app.gateway.routers.agents.yaml") as mock_yaml,
@@ -202,12 +201,11 @@ class TestCreateAgentHTTPExceptionReraise:
         mock_paths.user_agent_dir.return_value.mkdir.side_effect = None
         # Make _save_agent_meta raise HTTPException inside the inner try block
         with (
-            patch("app.gateway.routers.agents._can_set_visibility", return_value=True),
             patch("builtins.open", MagicMock()),
             patch("app.gateway.routers.agents.yaml"),
             patch(
                 "app.gateway.routers.agents._save_agent_meta",
-                side_effect=HTTPException(status_code=422, detail="write failed"),
+                new=AsyncMock(side_effect=HTTPException(status_code=422, detail="write failed")),
             ),
         ):
             resp = super_admin_client.post(
@@ -233,8 +231,8 @@ class TestUpdateAgentFieldCoverage:
         cfg = _mock_cfg(model=None)
         with (
             patch("app.gateway.routers.agents.load_agent_config", return_value=cfg),
-            patch("app.gateway.routers.agents._load_agent_meta", return_value={"visibility": "private", "owner_id": USER_ID, "department_id": DEPT_ID}),
-            patch("app.gateway.routers.agents._save_agent_meta"),
+            patch("app.gateway.routers.agents._load_agent_meta", new=AsyncMock(return_value={"visibility": "private", "owner_id": USER_ID, "department_id": DEPT_ID})),
+            patch("app.gateway.routers.agents._save_agent_meta", new=AsyncMock()),
             patch("builtins.open", MagicMock()),
             patch("app.gateway.routers.agents.yaml"),
             patch("app.gateway.routers.agents._agent_config_to_response") as mock_convert,
@@ -242,7 +240,7 @@ class TestUpdateAgentFieldCoverage:
             mock_convert.return_value = _agent_resp(model="gpt-4", soul="s")
             resp = super_admin_client.put(
                 f"/api/agents/{AGENT_NAME}",
-                json={"model": "gpt-4"},
+                json={"model": "gpt-4", "version": 1},
             )
         assert resp.status_code == 200
 
@@ -253,8 +251,8 @@ class TestUpdateAgentFieldCoverage:
         cfg = _mock_cfg(tool_groups=None)
         with (
             patch("app.gateway.routers.agents.load_agent_config", return_value=cfg),
-            patch("app.gateway.routers.agents._load_agent_meta", return_value={"visibility": "private", "owner_id": USER_ID, "department_id": DEPT_ID}),
-            patch("app.gateway.routers.agents._save_agent_meta"),
+            patch("app.gateway.routers.agents._load_agent_meta", new=AsyncMock(return_value={"visibility": "private", "owner_id": USER_ID, "department_id": DEPT_ID})),
+            patch("app.gateway.routers.agents._save_agent_meta", new=AsyncMock()),
             patch("builtins.open", MagicMock()),
             patch("app.gateway.routers.agents.yaml"),
             patch("app.gateway.routers.agents._agent_config_to_response") as mock_convert,
@@ -262,7 +260,7 @@ class TestUpdateAgentFieldCoverage:
             mock_convert.return_value = _agent_resp(tool_groups=["bash"], soul="s")
             resp = super_admin_client.put(
                 f"/api/agents/{AGENT_NAME}",
-                json={"tool_groups": ["bash"]},
+                json={"tool_groups": ["bash"], "version": 1},
             )
         assert resp.status_code == 200
 
@@ -273,8 +271,8 @@ class TestUpdateAgentFieldCoverage:
         cfg = _mock_cfg(skills=None)
         with (
             patch("app.gateway.routers.agents.load_agent_config", return_value=cfg),
-            patch("app.gateway.routers.agents._load_agent_meta", return_value={"visibility": "private", "owner_id": USER_ID, "department_id": DEPT_ID}),
-            patch("app.gateway.routers.agents._save_agent_meta"),
+            patch("app.gateway.routers.agents._load_agent_meta", new=AsyncMock(return_value={"visibility": "private", "owner_id": USER_ID, "department_id": DEPT_ID})),
+            patch("app.gateway.routers.agents._save_agent_meta", new=AsyncMock()),
             patch("builtins.open", MagicMock()),
             patch("app.gateway.routers.agents.yaml"),
             patch("app.gateway.routers.agents._agent_config_to_response") as mock_convert,
@@ -282,7 +280,7 @@ class TestUpdateAgentFieldCoverage:
             mock_convert.return_value = _agent_resp(skills=["search"], soul="s")
             resp = super_admin_client.put(
                 f"/api/agents/{AGENT_NAME}",
-                json={"skills": ["search"]},
+                json={"skills": ["search"], "version": 1},
             )
         assert resp.status_code == 200
 
@@ -293,8 +291,8 @@ class TestUpdateAgentFieldCoverage:
         cfg = _mock_cfg(skills=["existing-skill"])
         with (
             patch("app.gateway.routers.agents.load_agent_config", return_value=cfg),
-            patch("app.gateway.routers.agents._load_agent_meta", return_value={"visibility": "private", "owner_id": USER_ID, "department_id": DEPT_ID}),
-            patch("app.gateway.routers.agents._save_agent_meta"),
+            patch("app.gateway.routers.agents._load_agent_meta", new=AsyncMock(return_value={"visibility": "private", "owner_id": USER_ID, "department_id": DEPT_ID})),
+            patch("app.gateway.routers.agents._save_agent_meta", new=AsyncMock()),
             patch("builtins.open", MagicMock()),
             patch("app.gateway.routers.agents.yaml"),
             patch("app.gateway.routers.agents._agent_config_to_response") as mock_convert,
@@ -302,7 +300,7 @@ class TestUpdateAgentFieldCoverage:
             mock_convert.return_value = _agent_resp(description="updated", skills=["existing-skill"], soul="s")
             resp = super_admin_client.put(
                 f"/api/agents/{AGENT_NAME}",
-                json={"description": "updated"},
+                json={"description": "updated", "version": 1},
             )
         assert resp.status_code == 200
 
@@ -313,8 +311,8 @@ class TestUpdateAgentFieldCoverage:
         cfg = _mock_cfg(skills=["old-skill"])
         with (
             patch("app.gateway.routers.agents.load_agent_config", return_value=cfg),
-            patch("app.gateway.routers.agents._load_agent_meta", return_value={"visibility": "private", "owner_id": USER_ID, "department_id": DEPT_ID}),
-            patch("app.gateway.routers.agents._save_agent_meta"),
+            patch("app.gateway.routers.agents._load_agent_meta", new=AsyncMock(return_value={"visibility": "private", "owner_id": USER_ID, "department_id": DEPT_ID})),
+            patch("app.gateway.routers.agents._save_agent_meta", new=AsyncMock()),
             patch("builtins.open", MagicMock()),
             patch("app.gateway.routers.agents.yaml"),
             patch("app.gateway.routers.agents._agent_config_to_response") as mock_convert,
@@ -322,7 +320,7 @@ class TestUpdateAgentFieldCoverage:
             mock_convert.return_value = _agent_resp(skills=[], soul="s")
             resp = super_admin_client.put(
                 f"/api/agents/{AGENT_NAME}",
-                json={"skills": []},
+                json={"skills": [], "version": 1},
             )
         assert resp.status_code == 200
 
@@ -330,33 +328,6 @@ class TestUpdateAgentFieldCoverage:
 # ===========================================================================
 # Lines 588-589: update_agent — visibility change persisted to metadata
 # ===========================================================================
-
-
-class TestUpdateAgentVisibilityPersist:
-    """Cover the visibility-change persistence branch in update_agent."""
-
-    def test_visibility_change_saved_to_meta(self, super_admin_client, mock_deps):
-        """Lines 587-589: visibility changed, meta updated and saved."""
-        mock_paths, _ = mock_deps
-        mock_paths.user_agent_dir.return_value.exists.return_value = True
-        cfg = _mock_cfg()
-        with (
-            patch("app.gateway.routers.agents.load_agent_config", return_value=cfg),
-            patch("app.gateway.routers.agents._load_agent_meta", return_value={"visibility": "private", "owner_id": USER_ID, "department_id": DEPT_ID}),
-            patch("app.gateway.routers.agents._can_set_visibility", return_value=True),
-            patch("app.gateway.routers.agents._save_agent_meta") as mock_save,
-            patch("builtins.open", MagicMock()),
-            patch("app.gateway.routers.agents.yaml"),
-            patch("app.gateway.routers.agents._agent_config_to_response") as mock_convert,
-        ):
-            mock_convert.return_value = _agent_resp(visibility="public", soul="s")
-            resp = super_admin_client.put(
-                f"/api/agents/{AGENT_NAME}",
-                json={"visibility": "public"},
-            )
-        assert resp.status_code == 200
-        # Verify _save_agent_meta was called (visibility persisted)
-        mock_save.assert_called()
 
 
 # ===========================================================================
@@ -375,13 +346,13 @@ class TestUpdateAgentHTTPExceptionReraise:
         # First call (initial load) returns cfg, second call (refresh) raises
         with (
             patch("app.gateway.routers.agents.load_agent_config", side_effect=[cfg, HTTPException(status_code=409, detail="conflict")]),
-            patch("app.gateway.routers.agents._load_agent_meta", return_value={"visibility": "private", "owner_id": USER_ID, "department_id": DEPT_ID}),
+            patch("app.gateway.routers.agents._load_agent_meta", new=AsyncMock(return_value={"visibility": "private", "owner_id": USER_ID, "department_id": DEPT_ID})),
             patch("builtins.open", MagicMock()),
             patch("app.gateway.routers.agents.yaml"),
         ):
             resp = super_admin_client.put(
                 f"/api/agents/{AGENT_NAME}",
-                json={"description": "new"},
+                json={"description": "new", "version": 1},
             )
         assert resp.status_code == 409
 
@@ -403,7 +374,7 @@ class TestExportAgentNoUserNonPublic:
             patch("app.gateway.routers.agents._validate_agent_name"),
             patch("app.gateway.routers.agents.load_agent_config", return_value=cfg),
             patch("app.gateway.routers.agents._is_shared_only", return_value=False),
-            patch("app.gateway.routers.agents._load_agent_meta", return_value={"visibility": "private", "owner_id": USER_ID}),
+            patch("app.gateway.routers.agents._load_agent_meta", new=AsyncMock(return_value={"visibility": "private", "owner_id": USER_ID})),
         ):
             app = _build_app(None)
 
@@ -430,8 +401,8 @@ class TestExportAgentConfigFields:
         with (
             patch("app.gateway.routers.agents.load_agent_config", return_value=cfg),
             patch("app.gateway.routers.agents._is_shared_only", return_value=False),
-            patch("app.gateway.routers.agents._load_agent_meta", return_value={"visibility": "private", "owner_id": USER_ID, "department_id": DEPT_ID}),
-            patch("app.gateway.routers.agents._is_visible_to_user", return_value=True),
+            patch("app.gateway.routers.agents._load_agent_meta", new=AsyncMock(return_value={"visibility": "private", "owner_id": USER_ID, "department_id": DEPT_ID})),
+            patch("app.gateway.authz.check_resource_access", return_value=True),
             patch("app.gateway.routers.agents.load_agent_soul", return_value="soul"),
         ):
             resp = super_admin_client.post(f"/api/agents/{AGENT_NAME}/export")
@@ -447,8 +418,8 @@ class TestExportAgentConfigFields:
         with (
             patch("app.gateway.routers.agents.load_agent_config", return_value=cfg),
             patch("app.gateway.routers.agents._is_shared_only", return_value=False),
-            patch("app.gateway.routers.agents._load_agent_meta", return_value={"visibility": "private", "owner_id": USER_ID, "department_id": DEPT_ID}),
-            patch("app.gateway.routers.agents._is_visible_to_user", return_value=True),
+            patch("app.gateway.routers.agents._load_agent_meta", new=AsyncMock(return_value={"visibility": "private", "owner_id": USER_ID, "department_id": DEPT_ID})),
+            patch("app.gateway.authz.check_resource_access", return_value=True),
             patch("app.gateway.routers.agents.load_agent_soul", return_value=""),
         ):
             resp = super_admin_client.post(f"/api/agents/{AGENT_NAME}/export")
@@ -474,9 +445,8 @@ class TestImportAgentConfigFields:
         mock_paths.user_agent_dir.return_value.mkdir.side_effect = None
         cfg = _mock_cfg(model="gpt-4", tool_groups=["bash"], skills=["search"])
         with (
-            patch("app.gateway.routers.agents._can_set_visibility", return_value=True),
             patch("app.gateway.routers.agents.load_agent_config", return_value=cfg),
-            patch("app.gateway.routers.agents._save_agent_meta"),
+            patch("app.gateway.routers.agents._save_agent_meta", new=AsyncMock()),
             patch("builtins.open", MagicMock()),
             patch("app.gateway.routers.agents.yaml"),
             patch("app.gateway.routers.agents._agent_config_to_response") as mock_convert,
@@ -520,12 +490,11 @@ class TestImportAgentHTTPExceptionReraise:
         mock_paths.user_agent_dir.return_value.mkdir.side_effect = None
         # Make _save_agent_meta raise HTTPException inside the inner try block
         with (
-            patch("app.gateway.routers.agents._can_set_visibility", return_value=True),
             patch("builtins.open", MagicMock()),
             patch("app.gateway.routers.agents.yaml"),
             patch(
                 "app.gateway.routers.agents._save_agent_meta",
-                side_effect=HTTPException(status_code=422, detail="bad data"),
+                new=AsyncMock(side_effect=HTTPException(status_code=422, detail="bad data")),
             ),
         ):
             resp = super_admin_client.post(
@@ -553,7 +522,7 @@ class TestStatsAgentNoUserNonPublic:
             patch("app.gateway.routers.agents._validate_agent_name"),
             patch("app.gateway.routers.agents.load_agent_config", return_value=cfg),
             patch("app.gateway.routers.agents._is_shared_only", return_value=False),
-            patch("app.gateway.routers.agents._load_agent_meta", return_value={"visibility": "private", "owner_id": USER_ID}),
+            patch("app.gateway.routers.agents._load_agent_meta", new=AsyncMock(return_value={"visibility": "private", "owner_id": USER_ID})),
         ):
             app = _build_app(None)
 
@@ -586,8 +555,8 @@ class TestStatsAgentDBQueries:
         with (
             patch("app.gateway.routers.agents.load_agent_config", return_value=cfg),
             patch("app.gateway.routers.agents._is_shared_only", return_value=False),
-            patch("app.gateway.routers.agents._load_agent_meta", return_value={"visibility": "private", "owner_id": USER_ID, "department_id": DEPT_ID, "created_at": "2024-06-01"}),
-            patch("app.gateway.routers.agents._is_visible_to_user", return_value=True),
+            patch("app.gateway.routers.agents._load_agent_meta", new=AsyncMock(return_value={"visibility": "private", "owner_id": USER_ID, "department_id": DEPT_ID, "created_at": "2024-06-01"})),
+            patch("app.gateway.authz.check_resource_access", return_value=True),
             patch("app.gateway.routers.agents.load_agent_soul", return_value="soul"),
             patch("app.gateway.routers.agents.get_session_factory", return_value=mock_sf),
         ):
@@ -607,8 +576,8 @@ class TestStatsAgentDBQueries:
         with (
             patch("app.gateway.routers.agents.load_agent_config", return_value=cfg),
             patch("app.gateway.routers.agents._is_shared_only", return_value=False),
-            patch("app.gateway.routers.agents._load_agent_meta", return_value={"visibility": "private", "owner_id": USER_ID}),
-            patch("app.gateway.routers.agents._is_visible_to_user", return_value=True),
+            patch("app.gateway.routers.agents._load_agent_meta", new=AsyncMock(return_value={"visibility": "private", "owner_id": USER_ID})),
+            patch("app.gateway.authz.check_resource_access", return_value=True),
             patch("app.gateway.routers.agents.load_agent_soul", return_value=None),
             patch("app.gateway.routers.agents.get_session_factory", return_value=mock_sf),
         ):
@@ -626,8 +595,8 @@ class TestStatsAgentDBQueries:
         with (
             patch("app.gateway.routers.agents.load_agent_config", return_value=cfg),
             patch("app.gateway.routers.agents._is_shared_only", return_value=False),
-            patch("app.gateway.routers.agents._load_agent_meta", return_value={"visibility": "private", "owner_id": USER_ID}),
-            patch("app.gateway.routers.agents._is_visible_to_user", return_value=True),
+            patch("app.gateway.routers.agents._load_agent_meta", new=AsyncMock(return_value={"visibility": "private", "owner_id": USER_ID})),
+            patch("app.gateway.authz.check_resource_access", return_value=True),
             patch("app.gateway.routers.agents.load_agent_soul", return_value=None),
             patch("app.gateway.routers.agents.get_session_factory", return_value=mock_sf),
         ):

@@ -78,6 +78,9 @@ function makeWorkflow(
         description: "Input prompt",
       },
     },
+    visibility: "private",
+    owner_id: null,
+    department_id: null,
     ...overrides,
   };
 }

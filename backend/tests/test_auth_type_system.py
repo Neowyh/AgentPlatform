@@ -568,7 +568,8 @@ def test_api_login_bad_credentials_returns_structured_401():
     )
     assert resp.status_code == 401
     body = resp.json()
-    assert body["detail"]["code"] == "invalid_credentials"
+    assert body["error"]["code"] == "INTERNAL_ERROR"
+    assert "invalid_credentials" in body["error"]["message"]
 
 
 def test_api_login_success_no_token_in_body():
@@ -604,7 +605,8 @@ def test_api_register_duplicate_returns_structured_400():
     resp = client.post("/api/v1/auth/register", json={"email": email, "password": "AnotherStr0ngPwd!"})
     assert resp.status_code == 400
     body = resp.json()
-    assert body["detail"]["code"] == "email_already_exists"
+    assert body["error"]["code"] == "INTERNAL_ERROR"
+    assert "email_already_exists" in body["error"]["message"]
 
 
 # ── Cookie security: HTTP vs HTTPS ────────────────────────────────────

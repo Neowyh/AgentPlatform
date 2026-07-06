@@ -51,6 +51,7 @@ const mockStats = {
   total_departments: 8,
   total_agents: 15,
   total_skills: 23,
+  total_resources: 38,
 };
 
 // ---------------------------------------------------------------------------
@@ -121,7 +122,7 @@ describe("AdminDashboardPage", () => {
       expect(screen.getByText("42")).toBeInTheDocument(); // total_users
       expect(screen.getByText("8")).toBeInTheDocument(); // total_departments
       expect(screen.getByText("15")).toBeInTheDocument(); // total_agents
-      expect(screen.getByText("23")).toBeInTheDocument(); // total_skills
+      expect(screen.getByText("38")).toBeInTheDocument(); // total_resources
     });
   });
 

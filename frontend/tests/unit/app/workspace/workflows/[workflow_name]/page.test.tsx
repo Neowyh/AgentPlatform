@@ -36,6 +36,9 @@ const defaultWorkflow: WorkflowDetail = {
     },
   },
   yaml_content: "name: test-workflow\nsteps: []",
+  visibility: "private",
+  owner_id: null,
+  department_id: null,
 };
 
 /* ------------------------------------------------------------------ */
@@ -73,6 +76,20 @@ vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
 
+vi.mock("@/core/auth/AuthProvider", () => ({
+  useAuth: () => ({
+    user: { id: "user-1", name: "Test User", email: "test@example.com" },
+    isAuthenticated: true,
+    isLoading: false,
+    logout: vi.fn(),
+    refreshUser: vi.fn(),
+  }),
+}));
+
+vi.mock("@/core/visibility-applications/api", () => ({
+  createVisibilityApplication: vi.fn(),
+}));
+
 vi.mock("@/core/i18n/hooks", () => ({
   useI18n: () => ({
     t: {
@@ -98,6 +115,25 @@ vi.mock("@/core/i18n/hooks", () => ({
         defaultPrefix: "Default: ",
         enterInput: (k: string) => `Enter ${k}`,
         requiredMissing: (k: string) => `${k} is required`,
+        visibility: "Visibility",
+        export: "Export",
+        exportSuccess: "Export successful",
+        exportFailed: "Export failed",
+        applyVisibility: "Apply Visibility Change",
+        applyVisibilityDescription:
+          "Submit an application to change the visibility level",
+        currentTargetVisibility: "Current Visibility",
+        targetVisibility: "Target Visibility",
+        private: "Private",
+        department: "Department",
+        public: "Public",
+        reason: "Reason",
+        reasonPlaceholder: "Enter your reason...",
+        reasonRequired: "Please enter a reason",
+        submitting: "Submitting...",
+        submit: "Submit Application",
+        applicationSubmitted: "Application submitted",
+        notOwner: "You are not the owner",
       },
       common: { loading: "Loading...", cancel: "Cancel" },
     },

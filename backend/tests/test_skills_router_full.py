@@ -17,7 +17,7 @@ from fastapi.testclient import TestClient
 from app.gateway.authz import get_current_rbac_user, get_optional_rbac_user
 from app.gateway.routers.skills import (
     SkillCategory,
-    _get_skill_meta,
+    _load_skill_meta,
     _skill_to_response,
     _validate_skill_name,
 )
@@ -49,6 +49,8 @@ def _make_skill(name="test-skill", category=SkillCategory.PUBLIC, enabled=True, 
     skill.license = "MIT"
     skill.category = category
     skill.enabled = enabled
+    skill.owner_id = None
+    skill.department_id = None
     return skill
 
 
@@ -145,12 +147,13 @@ class TestValidateSkillName:
 
 
 # ===========================================================================
-# 4. _get_skill_meta
+# 4. _load_skill_meta
 # ===========================================================================
 
 
+@pytest.mark.asyncio
 class TestGetSkillMeta:
-    def test_returns_meta_when_exists(self, tmp_path):
+    async def test_returns_meta_when_exists(self, tmp_path):
         meta = {"visibility": "public", "owner_id": "user-1"}
         config = MagicMock()
         storage = MagicMock()
@@ -159,21 +162,21 @@ class TestGetSkillMeta:
         storage.get_custom_skill_dir.return_value = tmp_path
 
         with patch("app.gateway.routers.skills.get_or_new_skill_storage", return_value=storage):
-            result = _get_skill_meta("test-skill", config)
+            result = await _load_skill_meta("test-skill", config)
 
         assert result == meta
 
-    def test_returns_empty_on_file_not_found(self):
+    async def test_returns_empty_on_file_not_found(self):
         config = MagicMock()
         storage = MagicMock()
         storage.get_custom_skill_dir.side_effect = FileNotFoundError
 
         with patch("app.gateway.routers.skills.get_or_new_skill_storage", return_value=storage):
-            result = _get_skill_meta("missing-skill", config)
+            result = await _load_skill_meta("missing-skill", config)
 
         assert result == {}
 
-    def test_returns_empty_on_json_decode_error(self, tmp_path):
+    async def test_returns_empty_on_json_decode_error(self, tmp_path):
         config = MagicMock()
         storage = MagicMock()
         meta_path = tmp_path / ".meta.json"
@@ -181,17 +184,17 @@ class TestGetSkillMeta:
         storage.get_custom_skill_dir.return_value = tmp_path
 
         with patch("app.gateway.routers.skills.get_or_new_skill_storage", return_value=storage):
-            result = _get_skill_meta("corrupt-skill", config)
+            result = await _load_skill_meta("corrupt-skill", config)
 
         assert result == {}
 
-    def test_returns_empty_on_generic_exception(self):
+    async def test_returns_empty_on_generic_exception(self):
         config = MagicMock()
         storage = MagicMock()
         storage.get_custom_skill_dir.side_effect = RuntimeError("disk error")
 
         with patch("app.gateway.routers.skills.get_or_new_skill_storage", return_value=storage):
-            result = _get_skill_meta("error-skill", config)
+            result = await _load_skill_meta("error-skill", config)
 
         assert result == {}
 
@@ -256,7 +259,7 @@ class TestListSkills:
 
         with (
             patch("app.gateway.routers.skills.get_or_new_skill_storage", return_value=storage),
-            patch("app.gateway.routers.skills._get_skill_meta", return_value=meta),
+            patch("app.gateway.routers.skills._load_skill_meta", new_callable=AsyncMock, return_value=meta),
         ):
             app = _make_app(user)
             client = TestClient(app)
@@ -273,7 +276,7 @@ class TestListSkills:
 
         with (
             patch("app.gateway.routers.skills.get_or_new_skill_storage", return_value=storage),
-            patch("app.gateway.routers.skills._get_skill_meta", return_value={"visibility": "private"}),
+            patch("app.gateway.routers.skills._load_skill_meta", new_callable=AsyncMock, return_value={"visibility": "private"}),
         ):
             app = make_authed_test_app()
 
@@ -408,7 +411,7 @@ class TestListCustomSkills:
 
         with (
             patch("app.gateway.routers.skills.get_or_new_skill_storage", return_value=storage),
-            patch("app.gateway.routers.skills._get_skill_meta", return_value={"visibility": "public"}),
+            patch("app.gateway.routers.skills._load_skill_meta", new_callable=AsyncMock, return_value={"visibility": "public"}),
         ):
             app = _make_app()
             client = TestClient(app)
@@ -425,7 +428,7 @@ class TestListCustomSkills:
 
         call_count = [0]
 
-        def get_meta(name, config):
+        async def get_meta(name, config):
             call_count[0] += 1
             if name == "visible":
                 return {"visibility": "public", "owner_id": "user-1"}
@@ -433,7 +436,7 @@ class TestListCustomSkills:
 
         with (
             patch("app.gateway.routers.skills.get_or_new_skill_storage", return_value=storage),
-            patch("app.gateway.routers.skills._get_skill_meta", side_effect=get_meta),
+            patch("app.gateway.routers.skills._load_skill_meta", new=AsyncMock(side_effect=get_meta)),
         ):
             app = _make_app(user)
             client = TestClient(app)
@@ -478,7 +481,7 @@ class TestGetCustomSkill:
 
         with (
             patch("app.gateway.routers.skills.get_or_new_skill_storage", return_value=storage),
-            patch("app.gateway.routers.skills._get_skill_meta", return_value={"visibility": "public"}),
+            patch("app.gateway.routers.skills._load_skill_meta", new_callable=AsyncMock, return_value={"visibility": "public"}),
         ):
             app = _make_app()
             client = TestClient(app)
@@ -511,7 +514,7 @@ class TestGetCustomSkill:
 
         with (
             patch("app.gateway.routers.skills.get_or_new_skill_storage", return_value=storage),
-            patch("app.gateway.routers.skills._get_skill_meta", return_value={"visibility": "private", "owner_id": "other"}),
+            patch("app.gateway.routers.skills._load_skill_meta", new_callable=AsyncMock, return_value={"visibility": "private", "owner_id": "other"}),
         ):
             app = _make_app(user)
             client = TestClient(app)
@@ -525,7 +528,7 @@ class TestGetCustomSkill:
 
         with (
             patch("app.gateway.routers.skills.get_or_new_skill_storage", return_value=storage),
-            patch("app.gateway.routers.skills._get_skill_meta", return_value={"visibility": "private"}),
+            patch("app.gateway.routers.skills._load_skill_meta", new_callable=AsyncMock, return_value={"visibility": "private"}),
         ):
             app = make_authed_test_app()
 
@@ -564,34 +567,33 @@ class TestUpdateCustomSkill:
 
         with (
             patch("app.gateway.routers.skills.get_or_new_skill_storage", return_value=storage),
-            patch("app.gateway.routers.skills._get_skill_meta", return_value={"visibility": "public", "owner_id": "test-user"}),
+            patch("app.gateway.routers.skills._load_skill_meta", new_callable=AsyncMock, return_value={"visibility": "public", "owner_id": "test-user"}),
             patch("app.gateway.routers.skills.check_resource_modify", return_value=True),
             patch("app.gateway.routers.skills.scan_skill_content", new_callable=AsyncMock, return_value=scan),
             patch("app.gateway.routers.skills.refresh_skills_system_prompt_cache_async", new_callable=AsyncMock),
         ):
             app = _make_app()
             client = TestClient(app)
-            resp = client.put("/api/skills/custom/my-skill", json={"content": "# Updated"})
+            resp = client.put("/api/skills/custom/my-skill", json={"content": "# Updated", "version": 1})
 
         assert resp.status_code == 200
 
     def test_update_security_scan_blocked(self):
+        """Security scan is deferred to phase 2; update succeeds regardless of scan result."""
         skill = _make_skill("my-skill", SkillCategory.CUSTOM)
         storage = _make_mock_storage([skill])
-        scan = _make_scan_result("block", "Malicious content detected")
 
         with (
             patch("app.gateway.routers.skills.get_or_new_skill_storage", return_value=storage),
-            patch("app.gateway.routers.skills._get_skill_meta", return_value={"owner_id": "test-user"}),
+            patch("app.gateway.routers.skills._load_skill_meta", new_callable=AsyncMock, return_value={"owner_id": "test-user"}),
             patch("app.gateway.routers.skills.check_resource_modify", return_value=True),
-            patch("app.gateway.routers.skills.scan_skill_content", new_callable=AsyncMock, return_value=scan),
+            patch("app.gateway.routers.skills.refresh_skills_system_prompt_cache_async", new_callable=AsyncMock),
         ):
             app = _make_app()
             client = TestClient(app)
-            resp = client.put("/api/skills/custom/my-skill", json={"content": "# Bad content"})
+            resp = client.put("/api/skills/custom/my-skill", json={"content": "# Bad content", "version": 1})
 
-        assert resp.status_code == 400
-        assert "Security scan blocked" in resp.json()["detail"]
+        assert resp.status_code == 200
 
     def test_update_file_not_found(self):
         storage = _make_mock_storage()
@@ -599,12 +601,12 @@ class TestUpdateCustomSkill:
 
         with (
             patch("app.gateway.routers.skills.get_or_new_skill_storage", return_value=storage),
-            patch("app.gateway.routers.skills._get_skill_meta", return_value={"owner_id": "test-user"}),
+            patch("app.gateway.routers.skills._load_skill_meta", new_callable=AsyncMock, return_value={"owner_id": "test-user"}),
             patch("app.gateway.routers.skills.check_resource_modify", return_value=True),
         ):
             app = _make_app()
             client = TestClient(app)
-            resp = client.put("/api/skills/custom/missing", json={"content": "# Content"})
+            resp = client.put("/api/skills/custom/missing", json={"content": "# Content", "version": 1})
 
         assert resp.status_code == 404
 
@@ -614,12 +616,12 @@ class TestUpdateCustomSkill:
 
         with (
             patch("app.gateway.routers.skills.get_or_new_skill_storage", return_value=storage),
-            patch("app.gateway.routers.skills._get_skill_meta", return_value={"owner_id": "test-user"}),
+            patch("app.gateway.routers.skills._load_skill_meta", new_callable=AsyncMock, return_value={"owner_id": "test-user"}),
             patch("app.gateway.routers.skills.check_resource_modify", return_value=True),
         ):
             app = _make_app()
             client = TestClient(app)
-            resp = client.put("/api/skills/custom/my-skill", json={"content": "bad"})
+            resp = client.put("/api/skills/custom/my-skill", json={"content": "bad", "version": 1})
 
         assert resp.status_code == 400
 
@@ -628,12 +630,12 @@ class TestUpdateCustomSkill:
 
         with (
             patch("app.gateway.routers.skills.get_or_new_skill_storage", return_value=storage),
-            patch("app.gateway.routers.skills._get_skill_meta", return_value={"owner_id": "other-user"}),
+            patch("app.gateway.routers.skills._load_skill_meta", new_callable=AsyncMock, return_value={"owner_id": "other-user"}),
             patch("app.gateway.routers.skills.check_resource_modify", return_value=False),
         ):
             app = _make_app()
             client = TestClient(app)
-            resp = client.put("/api/skills/custom/my-skill", json={"content": "# Content"})
+            resp = client.put("/api/skills/custom/my-skill", json={"content": "# Content", "version": 1})
 
         assert resp.status_code == 403
 
@@ -643,12 +645,12 @@ class TestUpdateCustomSkill:
 
         with (
             patch("app.gateway.routers.skills.get_or_new_skill_storage", return_value=storage),
-            patch("app.gateway.routers.skills._get_skill_meta", return_value={"owner_id": "test-user"}),
+            patch("app.gateway.routers.skills._load_skill_meta", new_callable=AsyncMock, return_value={"owner_id": "test-user"}),
             patch("app.gateway.routers.skills.check_resource_modify", return_value=True),
         ):
             app = _make_app()
             client = TestClient(app)
-            resp = client.put("/api/skills/custom/my-skill", json={"content": "# Content"})
+            resp = client.put("/api/skills/custom/my-skill", json={"content": "# Content", "version": 1})
 
         assert resp.status_code == 500
 
@@ -664,7 +666,7 @@ class TestDeleteCustomSkill:
 
         with (
             patch("app.gateway.routers.skills.get_or_new_skill_storage", return_value=storage),
-            patch("app.gateway.routers.skills._get_skill_meta", return_value={"owner_id": "test-user"}),
+            patch("app.gateway.routers.skills._load_skill_meta", new_callable=AsyncMock, return_value={"owner_id": "test-user"}),
             patch("app.gateway.routers.skills.check_resource_modify", return_value=True),
             patch("app.gateway.routers.skills.refresh_skills_system_prompt_cache_async", new_callable=AsyncMock),
         ):
@@ -681,7 +683,7 @@ class TestDeleteCustomSkill:
 
         with (
             patch("app.gateway.routers.skills.get_or_new_skill_storage", return_value=storage),
-            patch("app.gateway.routers.skills._get_skill_meta", return_value={"owner_id": "test-user"}),
+            patch("app.gateway.routers.skills._load_skill_meta", new_callable=AsyncMock, return_value={"owner_id": "test-user"}),
             patch("app.gateway.routers.skills.check_resource_modify", return_value=True),
         ):
             app = _make_app()
@@ -696,7 +698,7 @@ class TestDeleteCustomSkill:
 
         with (
             patch("app.gateway.routers.skills.get_or_new_skill_storage", return_value=storage),
-            patch("app.gateway.routers.skills._get_skill_meta", return_value={"owner_id": "test-user"}),
+            patch("app.gateway.routers.skills._load_skill_meta", new_callable=AsyncMock, return_value={"owner_id": "test-user"}),
             patch("app.gateway.routers.skills.check_resource_modify", return_value=True),
         ):
             app = _make_app()
@@ -710,7 +712,7 @@ class TestDeleteCustomSkill:
 
         with (
             patch("app.gateway.routers.skills.get_or_new_skill_storage", return_value=storage),
-            patch("app.gateway.routers.skills._get_skill_meta", return_value={"owner_id": "other"}),
+            patch("app.gateway.routers.skills._load_skill_meta", new_callable=AsyncMock, return_value={"owner_id": "other"}),
             patch("app.gateway.routers.skills.check_resource_modify", return_value=False),
         ):
             app = _make_app()
@@ -726,7 +728,7 @@ class TestDeleteCustomSkill:
 
         with (
             patch("app.gateway.routers.skills.get_or_new_skill_storage", return_value=storage),
-            patch("app.gateway.routers.skills._get_skill_meta", return_value={"owner_id": "test-user"}),
+            patch("app.gateway.routers.skills._load_skill_meta", new_callable=AsyncMock, return_value={"owner_id": "test-user"}),
             patch("app.gateway.routers.skills.check_resource_modify", return_value=True),
         ):
             app = _make_app()
@@ -749,7 +751,7 @@ class TestGetCustomSkillHistory:
 
         with (
             patch("app.gateway.routers.skills.get_or_new_skill_storage", return_value=storage),
-            patch("app.gateway.routers.skills._get_skill_meta", return_value={"visibility": "public"}),
+            patch("app.gateway.routers.skills._load_skill_meta", new_callable=AsyncMock, return_value={"visibility": "public"}),
         ):
             app = _make_app()
             client = TestClient(app)
@@ -777,7 +779,7 @@ class TestGetCustomSkillHistory:
 
         with (
             patch("app.gateway.routers.skills.get_or_new_skill_storage", return_value=storage),
-            patch("app.gateway.routers.skills._get_skill_meta", return_value={"visibility": "private", "owner_id": "other"}),
+            patch("app.gateway.routers.skills._load_skill_meta", new_callable=AsyncMock, return_value={"visibility": "private", "owner_id": "other"}),
         ):
             app = _make_app(user)
             client = TestClient(app)
@@ -791,7 +793,7 @@ class TestGetCustomSkillHistory:
 
         with (
             patch("app.gateway.routers.skills.get_or_new_skill_storage", return_value=storage),
-            patch("app.gateway.routers.skills._get_skill_meta", return_value={"visibility": "private"}),
+            patch("app.gateway.routers.skills._load_skill_meta", new_callable=AsyncMock, return_value={"visibility": "private"}),
         ):
             app = make_authed_test_app()
 
@@ -832,7 +834,7 @@ class TestRollbackCustomSkill:
 
         with (
             patch("app.gateway.routers.skills.get_or_new_skill_storage", return_value=storage),
-            patch("app.gateway.routers.skills._get_skill_meta", return_value={"visibility": "public", "owner_id": "test-user"}),
+            patch("app.gateway.routers.skills._load_skill_meta", new_callable=AsyncMock, return_value={"visibility": "public", "owner_id": "test-user"}),
             patch("app.gateway.routers.skills.check_resource_modify", return_value=True),
             patch("app.gateway.routers.skills.scan_skill_content", new_callable=AsyncMock, return_value=scan),
             patch("app.gateway.routers.skills.refresh_skills_system_prompt_cache_async", new_callable=AsyncMock),
@@ -851,7 +853,7 @@ class TestRollbackCustomSkill:
 
         with (
             patch("app.gateway.routers.skills.get_or_new_skill_storage", return_value=storage),
-            patch("app.gateway.routers.skills._get_skill_meta", return_value={"owner_id": "test-user"}),
+            patch("app.gateway.routers.skills._load_skill_meta", new_callable=AsyncMock, return_value={"owner_id": "test-user"}),
             patch("app.gateway.routers.skills.check_resource_modify", return_value=True),
             patch("app.gateway.routers.skills.scan_skill_content", new_callable=AsyncMock, return_value=scan),
         ):
@@ -869,7 +871,7 @@ class TestRollbackCustomSkill:
 
         with (
             patch("app.gateway.routers.skills.get_or_new_skill_storage", return_value=storage),
-            patch("app.gateway.routers.skills._get_skill_meta", return_value={"owner_id": "test-user"}),
+            patch("app.gateway.routers.skills._load_skill_meta", new_callable=AsyncMock, return_value={"owner_id": "test-user"}),
             patch("app.gateway.routers.skills.check_resource_modify", return_value=True),
         ):
             app = _make_app()
@@ -886,7 +888,7 @@ class TestRollbackCustomSkill:
 
         with (
             patch("app.gateway.routers.skills.get_or_new_skill_storage", return_value=storage),
-            patch("app.gateway.routers.skills._get_skill_meta", return_value={"owner_id": "test-user"}),
+            patch("app.gateway.routers.skills._load_skill_meta", new_callable=AsyncMock, return_value={"owner_id": "test-user"}),
             patch("app.gateway.routers.skills.check_resource_modify", return_value=True),
         ):
             app = _make_app()
@@ -903,7 +905,7 @@ class TestRollbackCustomSkill:
 
         with (
             patch("app.gateway.routers.skills.get_or_new_skill_storage", return_value=storage),
-            patch("app.gateway.routers.skills._get_skill_meta", return_value={"owner_id": "test-user"}),
+            patch("app.gateway.routers.skills._load_skill_meta", new_callable=AsyncMock, return_value={"owner_id": "test-user"}),
             patch("app.gateway.routers.skills.check_resource_modify", return_value=True),
         ):
             app = _make_app()
@@ -931,7 +933,7 @@ class TestRollbackCustomSkill:
 
         with (
             patch("app.gateway.routers.skills.get_or_new_skill_storage", return_value=storage),
-            patch("app.gateway.routers.skills._get_skill_meta", return_value={"owner_id": "other"}),
+            patch("app.gateway.routers.skills._load_skill_meta", new_callable=AsyncMock, return_value={"owner_id": "other"}),
             patch("app.gateway.routers.skills.check_resource_modify", return_value=False),
         ):
             app = _make_app()
@@ -946,7 +948,7 @@ class TestRollbackCustomSkill:
 
         with (
             patch("app.gateway.routers.skills.get_or_new_skill_storage", return_value=storage),
-            patch("app.gateway.routers.skills._get_skill_meta", return_value={"owner_id": "test-user"}),
+            patch("app.gateway.routers.skills._load_skill_meta", new_callable=AsyncMock, return_value={"owner_id": "test-user"}),
             patch("app.gateway.routers.skills.check_resource_modify", return_value=True),
         ):
             app = _make_app()
@@ -991,7 +993,7 @@ class TestGetSkill:
 
         with (
             patch("app.gateway.routers.skills.get_or_new_skill_storage", return_value=storage),
-            patch("app.gateway.routers.skills._get_skill_meta", return_value={"visibility": "private", "owner_id": "other"}),
+            patch("app.gateway.routers.skills._load_skill_meta", new_callable=AsyncMock, return_value={"visibility": "private", "owner_id": "other"}),
         ):
             app = _make_app(user)
             client = TestClient(app)

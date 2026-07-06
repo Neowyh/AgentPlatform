@@ -15,9 +15,9 @@ there is no matching entity directory.
 """
 
 from ideer.persistence.feedback.model import FeedbackRow
+from ideer.persistence.models.audit_log import AuditLog
 from ideer.persistence.models.resource_metadata import ResourceMetadata
 from ideer.persistence.models.run_event import RunEventRow
-from ideer.persistence.models.skill_application import SkillApplication, SkillApplicationStatus
 from ideer.persistence.models.user import DepartmentModel, ResourceVisibility, UserModel, UserRole
 from ideer.persistence.models.visibility_application import VisibilityApplication, VisibilityApplicationStatus
 from ideer.persistence.models.workflow import WorkflowRunRow
@@ -26,14 +26,13 @@ from ideer.persistence.thread_meta.model import ThreadMetaRow
 from ideer.persistence.user.model import UserRow
 
 __all__ = [
+    "AuditLog",
     "DepartmentModel",
     "FeedbackRow",
     "ResourceMetadata",
     "ResourceVisibility",
     "RunEventRow",
     "RunRow",
-    "SkillApplication",
-    "SkillApplicationStatus",
     "ThreadMetaRow",
     "UserModel",
     "UserRole",

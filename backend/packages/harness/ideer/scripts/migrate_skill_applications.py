@@ -13,14 +13,32 @@ import logging
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import Column, DateTime, String, Text, select
 
+from ideer.persistence.base import Base
 from ideer.persistence.engine import get_session_factory
 from ideer.persistence.models.resource_metadata import ResourceMetadata
-from ideer.persistence.models.skill_application import SkillApplication
 from ideer.persistence.models.visibility_application import VisibilityApplication
 
 logger = logging.getLogger(__name__)
+
+
+# Inline model for the old skill_applications table (kept for migration purposes)
+class SkillApplication(Base):
+    __tablename__ = "skill_applications"
+
+    id = Column(String, primary_key=True)
+    skill_id = Column(String, nullable=False)
+    skill_name = Column(String, nullable=False)
+    applicant_id = Column(String, nullable=False)
+    request_level = Column(String, nullable=False)
+    department_id = Column(String, nullable=True)
+    reason = Column(Text, default="")
+    status = Column(String, nullable=False, default="pending")
+    submitted_at = Column(DateTime, nullable=True)
+    reviewed_by = Column(String, nullable=True)
+    reviewed_at = Column(DateTime, nullable=True)
+    review_comment = Column(Text, nullable=True)
 
 
 def _resolve_current_visibility(skill_id: str, session) -> str:

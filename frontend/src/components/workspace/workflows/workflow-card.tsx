@@ -1,6 +1,6 @@
 "use client";
 
-import { PlayIcon, Trash2Icon, WorkflowIcon } from "lucide-react";
+import { PlayIcon, StarIcon, Trash2Icon, WorkflowIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -24,7 +24,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useI18n } from "@/core/i18n/hooks";
-import { useDeleteWorkflow } from "@/core/workflows";
+import { useDeleteWorkflow, useToggleWorkflowFavorite } from "@/core/workflows";
 import type { WorkflowSummary } from "@/core/workflows";
 
 interface WorkflowCardProps {
@@ -34,11 +34,25 @@ interface WorkflowCardProps {
 export function WorkflowCard({ workflow }: WorkflowCardProps) {
   const router = useRouter();
   const deleteWorkflow = useDeleteWorkflow();
+  const toggleFavorite = useToggleWorkflowFavorite();
   const [deleteOpen, setDeleteOpen] = useState(false);
   const { t } = useI18n();
 
   function handleClick() {
     router.push(`/workspace/workflows/${workflow.name}`);
+  }
+
+  async function handleToggleFavorite() {
+    try {
+      await toggleFavorite.mutateAsync(workflow.name);
+      toast.success(
+        workflow.is_favorited
+          ? t.workflows.favoriteRemoved
+          : t.workflows.favoriteAdded,
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    }
   }
 
   async function handleDelete() {
@@ -76,11 +90,42 @@ export function WorkflowCard({ workflow }: WorkflowCardProps) {
                 <CardTitle className="truncate text-base">
                   {workflow.name}
                 </CardTitle>
-                <Badge variant="secondary" className="mt-0.5 text-xs">
-                  v{workflow.version ?? t.workflows.unknown}
-                </Badge>
+                <div className="mt-0.5 flex items-center gap-1.5">
+                  <Badge variant="secondary" className="text-xs">
+                    v{workflow.version ?? t.workflows.unknown}
+                  </Badge>
+                  <span
+                    className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
+                      workflow.visibility === "public"
+                        ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                        : workflow.visibility === "department"
+                          ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
+                          : "bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    {workflow.visibility === "public"
+                      ? t.workflows.visibilityPublic
+                      : workflow.visibility === "department"
+                        ? t.workflows.visibilityDepartment
+                        : t.workflows.visibilityPrivate}
+                  </span>
+                </div>
               </div>
             </div>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-8 w-8 shrink-0"
+              onClick={(e) => {
+                e.stopPropagation();
+                void handleToggleFavorite();
+              }}
+              data-testid="workflow-favorite-button"
+            >
+              <StarIcon
+                className={`h-4 w-4 ${workflow.is_favorited ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground"}`}
+              />
+            </Button>
           </div>
           {workflow.description && (
             <CardDescription className="mt-2 line-clamp-2 text-sm">

@@ -29,6 +29,28 @@ export async function listVisibilityApplications(params?: {
   return res.json() as Promise<ApplicationsResponse>;
 }
 
+export interface CreateVisibilityApplicationRequest {
+  resource_type: string;
+  resource_id: string;
+  target_visibility: string;
+  reason: string;
+}
+
+export async function createVisibilityApplication(
+  request: CreateVisibilityApplicationRequest,
+): Promise<VisibilityApplication> {
+  const baseURL = getBackendBaseURL();
+  const res = await fetch(`${baseURL}/api/visibility-applications`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (!res.ok) {
+    await extractError(res, "Failed to submit visibility application");
+  }
+  return res.json() as Promise<VisibilityApplication>;
+}
+
 export async function reviewVisibilityApplication(
   applicationId: string,
   action: "approved" | "rejected",
@@ -52,11 +74,16 @@ export async function reviewVisibilityApplication(
 
 export async function withdrawVisibilityApplication(
   applicationId: string,
+  version: number,
 ): Promise<{ success: boolean }> {
   const baseURL = getBackendBaseURL();
   const res = await fetch(
     `${baseURL}/api/visibility-applications/${encodeURIComponent(applicationId)}/withdraw`,
-    { method: "PUT" },
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ version }),
+    },
   );
   if (!res.ok) {
     await extractError(res, "Failed to withdraw visibility application");

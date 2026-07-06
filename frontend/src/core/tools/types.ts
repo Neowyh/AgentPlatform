@@ -7,6 +7,7 @@ export interface Tool {
   param_schema: Record<string, unknown>;
   config_schema?: Record<string, unknown>;
   config: Record<string, unknown>;
+  visibility?: "private" | "department" | "public";
 }
 
 export interface ToolTestResult {

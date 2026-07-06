@@ -1,9 +1,11 @@
 "use client";
 
-import { PlusIcon, WorkflowIcon } from "lucide-react";
+import { PlusIcon, SearchIcon, StarIcon, WorkflowIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useI18n } from "@/core/i18n/hooks";
 import { useWorkflows } from "@/core/workflows";
 
@@ -13,6 +15,27 @@ export function WorkflowGallery() {
   const { workflows, isLoading, error } = useWorkflows();
   const { t } = useI18n();
   const router = useRouter();
+  const [search, setSearch] = useState("");
+  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
+
+  const filteredWorkflows = useMemo(() => {
+    let result = workflows;
+
+    if (showFavoritesOnly) {
+      result = result.filter((w) => w.is_favorited);
+    }
+
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      result = result.filter(
+        (w) =>
+          w.name.toLowerCase().includes(q) ||
+          w.description?.toLowerCase().includes(q),
+      );
+    }
+
+    return result;
+  }, [workflows, search, showFavoritesOnly]);
 
   return (
     <div className="flex size-full flex-col">
@@ -25,6 +48,23 @@ export function WorkflowGallery() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <div className="relative">
+            <SearchIcon className="text-muted-foreground absolute top-1/2 left-2.5 h-4 w-4 -translate-y-1/2" />
+            <Input
+              placeholder={`${t.workflows.title}...`}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="h-9 w-48 pl-8 text-sm"
+            />
+          </div>
+          <Button
+            variant={showFavoritesOnly ? "default" : "outline"}
+            size="sm"
+            onClick={() => setShowFavoritesOnly(!showFavoritesOnly)}
+          >
+            <StarIcon className="mr-1.5 h-4 w-4" />
+            {showFavoritesOnly ? t.common.showAll : t.common.favoritesOnly}
+          </Button>
           <Button onClick={() => router.push("/workspace/workflows/new")}>
             <PlusIcon className="mr-1.5 h-4 w-4" />
             {t.workflows.newWorkflow}
@@ -64,7 +104,7 @@ export function WorkflowGallery() {
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {workflows.map((workflow) => (
+            {filteredWorkflows.map((workflow) => (
               <WorkflowCard key={workflow.name} workflow={workflow} />
             ))}
           </div>

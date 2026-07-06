@@ -63,7 +63,7 @@ def _extract_host_port(inspect_entry: dict, container_port: int) -> int | None:
             if host_port:
                 return int(host_port)
     except (ValueError, TypeError, AttributeError):
-        pass
+        logger.debug("Failed to extract host port from container inspect", exc_info=True)
     return None
 
 
@@ -317,7 +317,7 @@ class LocalContainerBackend(SandboxBackend):
             if port:
                 release_port(port)
         except Exception:
-            pass
+            logger.debug("Failed to release port from sandbox URL", exc_info=True)
 
     def is_alive(self, info: SandboxInfo) -> bool:
         """Check if the container is still running (lightweight, no HTTP)."""
@@ -621,5 +621,5 @@ class LocalContainerBackend(SandboxBackend):
                 port_str = result.stdout.strip().split(":")[-1]
                 return int(port_str)
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired, ValueError):
-            pass
+            logger.debug("Failed to detect sandbox port", exc_info=True)
         return None
