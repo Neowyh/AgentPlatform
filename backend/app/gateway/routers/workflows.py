@@ -6,10 +6,10 @@ import asyncio
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
-from sqlalchemy import select
 
+from app.gateway.audit import record_audit
 from app.gateway.authz import (
     check_resource_access,
     check_resource_modify,
@@ -17,6 +17,7 @@ from app.gateway.authz import (
     get_optional_rbac_user,
     require_role,
 )
+from app.gateway.utils import ResourceMetadataStore
 from ideer.persistence.engine import get_session_factory
 from ideer.persistence.models.user import UserModel, UserRole
 from ideer.workflows.executor import WorkflowExecutor
@@ -27,101 +28,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/workflows", tags=["workflows"])
 
-
-# ---------------------------------------------------------------------------
-# RBAC helpers — backed by resource_metadata table
-# ---------------------------------------------------------------------------
-
-
-async def _load_workflow_meta(workflow_name: str) -> dict:
-    """Load workflow RBAC metadata from resource_metadata table."""
-    sf = get_session_factory()
-    if sf is not None:
-        try:
-            async with sf() as session:
-                from ideer.persistence.models.resource_metadata import ResourceMetadata
-
-                stmt = select(ResourceMetadata).where(
-                    ResourceMetadata.resource_type == "workflow",
-                    ResourceMetadata.resource_id == workflow_name,
-                    ResourceMetadata.deleted_at.is_(None),
-                )
-                result = await session.execute(stmt)
-                resource = result.scalar_one_or_none()
-                if resource:
-                    return {
-                        "visibility": resource.visibility,
-                        "owner_id": resource.owner_id,
-                        "department_id": resource.department_id,
-                        "version": resource.version,
-                        "created_at": str(resource.created_at) if resource.created_at else None,
-                    }
-        except Exception:
-            pass
-    return {}
-
-
-async def _save_workflow_meta(workflow_name: str, meta: dict) -> None:
-    """Persist workflow RBAC metadata to resource_metadata table.
-
-    If a record already exists, updates visibility/department/version.
-    Otherwise creates a new record.
-    """
-    sf = get_session_factory()
-    if sf is not None:
-        try:
-            async with sf() as session:
-                from ideer.persistence.models.resource_metadata import ResourceMetadata
-
-                stmt = select(ResourceMetadata).where(
-                    ResourceMetadata.resource_type == "workflow",
-                    ResourceMetadata.resource_id == workflow_name,
-                    ResourceMetadata.deleted_at.is_(None),
-                )
-                result = await session.execute(stmt)
-                resource = result.scalar_one_or_none()
-                if resource:
-                    resource.visibility = meta.get("visibility", "private")
-                    resource.department_id = meta.get("department_id")
-                    resource.version = ResourceMetadata.version + 1
-                else:
-                    resource = ResourceMetadata(
-                        id=str(uuid.uuid4()),
-                        resource_type="workflow",
-                        resource_id=workflow_name,
-                        owner_id=meta.get("owner_id", "system"),
-                        department_id=meta.get("department_id"),
-                        visibility=meta.get("visibility", "private"),
-                    )
-                    session.add(resource)
-                await session.commit()
-                return
-        except Exception:
-            pass
-
-
-async def _soft_delete_workflow_meta(workflow_name: str) -> None:
-    """Set deleted_at on the workflow's resource_metadata record (soft delete)."""
-    from datetime import UTC, datetime
-
-    sf = get_session_factory()
-    if sf is not None:
-        try:
-            async with sf() as session:
-                from ideer.persistence.models.resource_metadata import ResourceMetadata
-
-                stmt = select(ResourceMetadata).where(
-                    ResourceMetadata.resource_type == "workflow",
-                    ResourceMetadata.resource_id == workflow_name,
-                    ResourceMetadata.deleted_at.is_(None),
-                )
-                result = await session.execute(stmt)
-                resource = result.scalar_one_or_none()
-                if resource:
-                    resource.deleted_at = datetime.now(UTC)
-                    await session.commit()
-        except Exception:
-            pass
+_workflow_store = ResourceMetadataStore("workflow")
 
 
 # Keep strong references to background tasks to prevent GC before completion
@@ -135,10 +42,30 @@ class WorkflowCreateRequest(BaseModel):
 
 class WorkflowUpdateRequest(BaseModel):
     yaml_content: str
+    version: int = Field(..., description="Current resource version for optimistic locking")
 
 
 class WorkflowRunRequest(BaseModel):
     inputs: dict = Field(default_factory=dict)
+
+
+class WorkflowExportResponse(BaseModel):
+    """Response model for workflow export."""
+
+    name: str
+    yaml_content: str
+    description: str = ""
+    version: str = ""
+    visibility: str = "private"
+    owner_id: str | None = None
+    department_id: str | None = None
+
+
+class WorkflowImportRequest(BaseModel):
+    """Request body for workflow import."""
+
+    yaml_content: str = Field(..., description="Workflow YAML content")
+    visibility: str = Field(default="private", description="Visibility: private, department, or public")
 
 
 class HumanReviewRequest(BaseModel):
@@ -162,7 +89,7 @@ async def list_workflows(
     # Filter by visibility using resource_metadata
     filtered: list[dict] = []
     for wf in workflows:
-        meta = await _load_workflow_meta(wf["name"])
+        meta = await _workflow_store.load_meta(wf["name"])
         visibility = meta.get("visibility", "private")
         owner_id = meta.get("owner_id")
         dept_id = meta.get("department_id")
@@ -173,6 +100,10 @@ async def list_workflows(
         elif visibility != "public":
             continue
 
+        wf["visibility"] = visibility
+        wf["owner_id"] = owner_id
+        wf["department_id"] = dept_id
+        wf["is_favorited"] = meta.get("is_favorited", False)
         filtered.append(wf)
 
     return {"workflows": filtered, "total": len(filtered)}
@@ -190,7 +121,7 @@ async def get_workflow(
         raise HTTPException(404, f"Workflow '{workflow_name}' not found")
 
     # Check visibility
-    meta = await _load_workflow_meta(workflow_name)
+    meta = await _workflow_store.load_meta(workflow_name)
     visibility = meta.get("visibility", "private")
     owner_id = meta.get("owner_id")
     dept_id = meta.get("department_id")
@@ -220,10 +151,92 @@ async def get_workflow(
         raise HTTPException(400, f"Invalid workflow YAML: {e}")
 
 
+@router.get("/{workflow_name}/export")
+async def export_workflow(
+    workflow_name: str,
+    current_user: UserModel | None = Depends(get_optional_rbac_user),
+):
+    """Export a workflow's YAML content and metadata for sharing or backup."""
+    store = get_workflow_store()
+    yaml_content = await store.load_workflow(workflow_name)
+    if yaml_content is None:
+        raise HTTPException(404, f"Workflow '{workflow_name}' not found")
+
+    meta = await _workflow_store.load_meta(workflow_name)
+    visibility = meta.get("visibility", "private")
+    owner_id = meta.get("owner_id")
+    dept_id = meta.get("department_id")
+
+    if current_user is not None:
+        if not check_resource_access(current_user, owner_id, dept_id, visibility):
+            raise HTTPException(404, f"Workflow '{workflow_name}' not found")
+    elif visibility != "public":
+        raise HTTPException(404, f"Workflow '{workflow_name}' not found")
+
+    try:
+        wf = parse_workflow_string(yaml_content)
+        return {
+            "name": wf.name,
+            "yaml_content": yaml_content,
+            "description": wf.description,
+            "version": wf.version,
+            "visibility": visibility,
+            "owner_id": owner_id,
+            "department_id": dept_id,
+        }
+    except Exception as e:
+        raise HTTPException(400, f"Invalid workflow YAML: {e}")
+
+
+@router.post(
+    "/import",
+    status_code=201,
+)
+@require_role(UserRole.USER, UserRole.DEPARTMENT_ADMIN, UserRole.SUPER_ADMIN)
+async def import_workflow(
+    body: WorkflowImportRequest,
+    current_user: UserModel = Depends(get_current_rbac_user),
+):
+    """Import a workflow from exported YAML content."""
+    # Validate YAML
+    try:
+        wf = parse_workflow_string(body.yaml_content)
+    except Exception as e:
+        raise HTTPException(400, f"Invalid workflow YAML: {e}")
+
+    store = get_workflow_store()
+    existing = await store.load_workflow(wf.name)
+    if existing is not None:
+        raise HTTPException(409, f"Workflow '{wf.name}' already exists")
+
+    await store.save_workflow(wf.name, body.yaml_content)
+
+    owner_id = current_user.id if current_user else "system"
+    dept_id = current_user.department_id if current_user else None
+    meta = {
+        "visibility": body.visibility,
+        "owner_id": owner_id,
+        "department_id": dept_id,
+    }
+    if not await _workflow_store.save_meta(wf.name, meta):
+        logger.error("Failed to save workflow metadata for '%s' to database", wf.name)
+
+    return {
+        "name": wf.name,
+        "description": wf.description,
+        "version": wf.version,
+        "steps_count": len(wf.steps),
+        "inputs": {k: v.model_dump() for k, v in wf.inputs.items()},
+        "visibility": body.visibility,
+        "owner_id": owner_id,
+    }
+
+
 @router.post("")
 @require_role(UserRole.USER, UserRole.DEPARTMENT_ADMIN, UserRole.SUPER_ADMIN)
 async def create_workflow(
     body: WorkflowCreateRequest,
+    http_request: Request,
     current_user: UserModel = Depends(get_current_rbac_user),
 ):
     """Create a new workflow from YAML content."""
@@ -248,7 +261,16 @@ async def create_workflow(
         "owner_id": owner_id,
         "department_id": dept_id,
     }
-    await _save_workflow_meta(wf.name, meta)
+    if not await _workflow_store.save_meta(wf.name, meta):
+        logger.error("Failed to save workflow metadata for '%s' to database", wf.name)
+
+    await record_audit(
+        actor_id=current_user.id,
+        action="create",
+        resource_type="workflow",
+        resource_id=wf.name,
+        ip_address=http_request.client.host if http_request.client else None,
+    )
 
     return {
         "name": wf.name,
@@ -266,6 +288,7 @@ async def create_workflow(
 async def update_workflow(
     workflow_name: str,
     body: WorkflowUpdateRequest,
+    http_request: Request,
     current_user: UserModel = Depends(get_current_rbac_user),
 ):
     """Update an existing workflow."""
@@ -275,9 +298,16 @@ async def update_workflow(
         raise HTTPException(404, f"Workflow '{workflow_name}' not found")
 
     # RBAC: check ownership before allowing edit
-    meta = await _load_workflow_meta(workflow_name)
+    meta = await _workflow_store.load_meta(workflow_name)
     if not check_resource_modify(current_user, meta.get("owner_id"), meta.get("department_id")):
         raise HTTPException(403, "You do not have permission to modify this resource")
+
+    # Optimistic locking: verify version matches
+    from app.gateway.error_codes import ApiException
+
+    current_version = meta.get("version")
+    if current_version is not None and body.version != current_version:
+        raise ApiException("VERSION_CONFLICT")
 
     # Validate new YAML
     try:
@@ -295,13 +325,22 @@ async def update_workflow(
     await store.save_workflow(workflow_name, body.yaml_content)
 
     # Increment version in resource_metadata
-    await _save_workflow_meta(
+    if not await _workflow_store.save_meta(
         workflow_name,
         {
             "visibility": meta.get("visibility", "private"),
             "department_id": meta.get("department_id"),
             "owner_id": meta.get("owner_id"),
         },
+    ):
+        logger.error("Failed to save workflow metadata for '%s' — version not incremented", workflow_name)
+
+    await record_audit(
+        actor_id=current_user.id,
+        action="update",
+        resource_type="workflow",
+        resource_id=workflow_name,
+        ip_address=http_request.client.host if http_request.client else None,
     )
 
     return {
@@ -317,6 +356,7 @@ async def update_workflow(
 @require_role(UserRole.USER, UserRole.DEPARTMENT_ADMIN, UserRole.SUPER_ADMIN)
 async def delete_workflow(
     workflow_name: str,
+    http_request: Request,
     current_user: UserModel = Depends(get_current_rbac_user),
 ):
     """Delete a workflow."""
@@ -326,7 +366,7 @@ async def delete_workflow(
         raise HTTPException(404, f"Workflow '{workflow_name}' not found")
 
     # RBAC: check ownership before allowing delete
-    meta = await _load_workflow_meta(workflow_name)
+    meta = await _workflow_store.load_meta(workflow_name)
     if not check_resource_modify(current_user, meta.get("owner_id"), meta.get("department_id")):
         raise HTTPException(403, "You do not have permission to modify this resource")
 
@@ -334,13 +374,81 @@ async def delete_workflow(
     if not deleted:
         raise HTTPException(404, f"Workflow '{workflow_name}' not found")
 
+    # Auto-reject pending visibility applications for this resource
+    sf = get_session_factory()
+    if sf is not None:
+        try:
+            async with sf() as session:
+                from sqlalchemy import update as sql_update
+
+                from ideer.persistence.models.visibility_application import VisibilityApplication
+
+                await session.execute(
+                    sql_update(VisibilityApplication)
+                    .where(
+                        VisibilityApplication.resource_type == "workflow",
+                        VisibilityApplication.resource_id == workflow_name,
+                        VisibilityApplication.status == "pending",
+                    )
+                    .values(status="rejected", review_comment="资源已删除，申请自动关闭")
+                )
+                await session.commit()
+        except Exception:
+            logger.warning("Failed to auto-reject pending applications for deleted workflow %s", workflow_name)
+
     # Soft delete resource_metadata
-    await _soft_delete_workflow_meta(workflow_name)
+    if not await _workflow_store.soft_delete(workflow_name):
+        logger.warning("Failed to soft delete metadata for workflow '%s'", workflow_name)
+
+    await record_audit(
+        actor_id=current_user.id,
+        action="delete",
+        resource_type="workflow",
+        resource_id=workflow_name,
+        ip_address=http_request.client.host if http_request.client else None,
+    )
 
     return {"success": True}
 
 
 # --- Execution ---
+
+
+@router.post("/{workflow_name}/favorite")
+@require_role(UserRole.USER, UserRole.DEPARTMENT_ADMIN, UserRole.SUPER_ADMIN)
+async def toggle_workflow_favorite(
+    workflow_name: str,
+    current_user: UserModel = Depends(get_current_rbac_user),
+):
+    """Toggle favorite status for a workflow."""
+    sf = get_session_factory()
+    if sf is None:
+        raise HTTPException(500, "Database not available")
+
+    try:
+        async with sf() as session:
+            from ideer.persistence.models.resource_metadata import ResourceMetadata
+
+            stmt = select(ResourceMetadata).where(
+                ResourceMetadata.resource_type == "workflow",
+                ResourceMetadata.resource_id == workflow_name,
+                ResourceMetadata.deleted_at.is_(None),
+            )
+            result = await session.execute(stmt)
+            resource = result.scalar_one_or_none()
+            if resource:
+                resource.is_favorited = not resource.is_favorited
+                resource.version = ResourceMetadata.version + 1
+            else:
+                raise HTTPException(404, f"Workflow '{workflow_name}' not found")
+
+            await session.commit()
+            return {"success": True, "is_favorited": resource.is_favorited}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to toggle favorite for workflow '{workflow_name}': {e}", exc_info=True)
+        raise HTTPException(500, "Internal server error")
 
 
 @router.post("/{workflow_name}/run")
@@ -357,7 +465,7 @@ async def run_workflow(
         raise HTTPException(404, f"Workflow '{workflow_name}' not found")
 
     # Check visibility
-    meta = await _load_workflow_meta(workflow_name)
+    meta = await _workflow_store.load_meta(workflow_name)
     visibility = meta.get("visibility", "private")
     owner_id = meta.get("owner_id")
     dept_id = meta.get("department_id")
@@ -422,6 +530,10 @@ async def get_run_status(
     if state is None or state.workflow_name != workflow_name:
         raise HTTPException(404, f"Run '{run_id}' not found for workflow '{workflow_name}'")
 
+    meta = await _workflow_store.load_meta(workflow_name)
+    if not meta or not check_resource_access(current_user, meta.get("owner_id"), meta.get("department_id"), meta.get("visibility")):
+        raise HTTPException(404, f"Workflow '{workflow_name}' not found")
+
     return {
         "run_id": state.run_id,
         "workflow": state.workflow_name,
@@ -450,6 +562,10 @@ async def list_runs(
     current_user: UserModel = Depends(get_current_rbac_user),
 ):
     """List run history for a workflow."""
+    meta = await _workflow_store.load_meta(workflow_name)
+    if not meta or not check_resource_access(current_user, meta.get("owner_id"), meta.get("department_id"), meta.get("visibility")):
+        raise HTTPException(404, f"Workflow '{workflow_name}' not found")
+
     # Clamp limit and offset to match store behavior
     limit = max(1, min(limit, 200))
     offset = max(0, offset)

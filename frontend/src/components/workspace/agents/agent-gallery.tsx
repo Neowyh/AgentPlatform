@@ -1,12 +1,20 @@
 "use client";
 
-import { ArrowLeftIcon, BotIcon, PlusIcon, UploadIcon } from "lucide-react";
+import {
+  ArrowLeftIcon,
+  BotIcon,
+  PlusIcon,
+  SearchIcon,
+  StarIcon,
+  UploadIcon,
+} from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useRef } from "react";
+import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useAgents } from "@/core/agents";
 import { importAgent } from "@/core/agents/api";
 import { useI18n } from "@/core/i18n/hooks";
@@ -18,6 +26,27 @@ export function AgentGallery() {
   const { agents, isLoading, refetch } = useAgents();
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [search, setSearch] = useState("");
+  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
+
+  const filteredAgents = useMemo(() => {
+    let result = agents;
+
+    if (showFavoritesOnly) {
+      result = result.filter((a) => a.is_favorited);
+    }
+
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      result = result.filter(
+        (a) =>
+          a.name.toLowerCase().includes(q) ||
+          a.description?.toLowerCase().includes(q),
+      );
+    }
+
+    return result;
+  }, [agents, search, showFavoritesOnly]);
 
   const handleNewAgent = () => {
     router.push("/workspace/agents/new");
@@ -28,7 +57,7 @@ export function AgentGallery() {
     if (!file) return;
     try {
       await importAgent(file);
-      toast.success("智能体已导入");
+      toast.success(t.agents.importSuccess);
       await refetch();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
@@ -57,6 +86,23 @@ export function AgentGallery() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <div className="relative">
+            <SearchIcon className="text-muted-foreground absolute top-1/2 left-2.5 h-4 w-4 -translate-y-1/2" />
+            <Input
+              placeholder={`${t.agents.title}...`}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="h-9 w-48 pl-8 text-sm"
+            />
+          </div>
+          <Button
+            variant={showFavoritesOnly ? "default" : "outline"}
+            size="sm"
+            onClick={() => setShowFavoritesOnly(!showFavoritesOnly)}
+          >
+            <StarIcon className="mr-1.5 h-4 w-4" />
+            {showFavoritesOnly ? t.common.showAll : t.common.favoritesOnly}
+          </Button>
           <input
             ref={fileInputRef}
             type="file"
@@ -102,7 +148,7 @@ export function AgentGallery() {
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {agents.map((agent) => (
+            {filteredAgents.map((agent) => (
               <AgentCard key={agent.name} agent={agent} />
             ))}
           </div>

@@ -51,6 +51,10 @@ export interface WorkflowSummary {
   version: string;
   steps_count: number;
   inputs: Record<string, InputParam>;
+  visibility: string;
+  owner_id: string | null;
+  department_id: string | null;
+  is_favorited?: boolean;
   error?: string;
 }
 

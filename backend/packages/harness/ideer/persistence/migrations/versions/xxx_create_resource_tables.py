@@ -44,6 +44,7 @@ def upgrade() -> None:
         batch_op.create_index("ix_resource_metadata_owner", ["owner_id"], unique=False)
         batch_op.create_index("ix_resource_metadata_dept", ["department_id"], unique=False)
         batch_op.create_index("ix_resource_metadata_visibility", ["visibility"], unique=False)
+        batch_op.create_index("ix_resource_metadata_deleted", ["deleted_at"], unique=False)
 
     # visibility_applications table
     op.create_table(

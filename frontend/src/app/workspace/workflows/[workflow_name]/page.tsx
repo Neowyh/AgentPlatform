@@ -1,6 +1,12 @@
 "use client";
 
-import { ArrowLeftIcon, EditIcon, PlayIcon, WorkflowIcon } from "lucide-react";
+import {
+  ArrowLeftIcon,
+  DownloadIcon,
+  EditIcon,
+  PlayIcon,
+  WorkflowIcon,
+} from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
@@ -25,8 +31,17 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { WorkspaceBreadcrumb } from "@/components/workspace/workspace-breadcrumb";
 import { useI18n } from "@/core/i18n/hooks";
+import { createVisibilityApplication } from "@/core/visibility-applications/api";
 import { useRunStatus, useRunWorkflow, useWorkflow } from "@/core/workflows";
 import type { WorkflowRunResult } from "@/core/workflows";
 
@@ -38,8 +53,12 @@ export default function WorkflowDetailPage() {
   const { t } = useI18n();
 
   const [runDialogOpen, setRunDialogOpen] = useState(false);
+  const [visibilityDialogOpen, setVisibilityDialogOpen] = useState(false);
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
   const [activeRun, setActiveRun] = useState<WorkflowRunResult | null>(null);
+  const [targetVisibility, setTargetVisibility] = useState("department");
+  const [visibilityReason, setVisibilityReason] = useState("");
+  const [submittingApplication, setSubmittingApplication] = useState(false);
 
   const { runStatus } = useRunStatus(
     activeRun?.workflow ?? null,
@@ -113,6 +132,54 @@ export default function WorkflowDetailPage() {
           ? "text-blue-600"
           : "text-muted-foreground";
 
+  const visibilityColor =
+    workflow?.visibility === "public"
+      ? "bg-green-100 text-green-800"
+      : workflow?.visibility === "department"
+        ? "bg-blue-100 text-blue-800"
+        : "bg-gray-100 text-gray-800";
+
+  function handleExport() {
+    if (!workflow?.yaml_content) {
+      toast.error(t.workflows.exportFailed);
+      return;
+    }
+    const blob = new Blob([workflow.yaml_content], { type: "text/yaml" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${workflow.name}.yaml`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast.success(t.workflows.exportSuccess);
+  }
+
+  async function handleSubmitVisibility() {
+    if (!workflow || !visibilityReason.trim()) {
+      toast.error(t.workflows.reasonRequired);
+      return;
+    }
+
+    setSubmittingApplication(true);
+    try {
+      await createVisibilityApplication({
+        resource_type: "workflow",
+        resource_id: workflow.name,
+        target_visibility: targetVisibility,
+        reason: visibilityReason.trim(),
+      });
+      toast.success(t.workflows.applicationSubmitted);
+      setVisibilityDialogOpen(false);
+      setVisibilityReason("");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSubmittingApplication(false);
+    }
+  }
+
   return (
     <div className="flex size-full flex-col">
       <WorkspaceBreadcrumb />
@@ -142,6 +209,19 @@ export default function WorkflowDetailPage() {
         </div>
         <div className="flex items-center gap-2">
           <Badge variant="secondary">v{workflow.version}</Badge>
+          <Badge className={visibilityColor}>
+            {t.workflows.visibility}: {workflow.visibility}
+          </Badge>
+          <Button variant="outline" onClick={handleExport}>
+            <DownloadIcon className="mr-1.5 h-4 w-4" />
+            {t.workflows.export}
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => setVisibilityDialogOpen(true)}
+          >
+            {t.workflows.applyVisibility}
+          </Button>
           <Button variant="outline" asChild>
             <Link
               href={`/workspace/workflows/${encodeURIComponent(workflow_name)}/edit`}
@@ -321,6 +401,75 @@ export default function WorkflowDetailPage() {
           </Card>
         </div>
       </div>
+
+      {/* Visibility change dialog */}
+      <Dialog
+        open={visibilityDialogOpen}
+        onOpenChange={setVisibilityDialogOpen}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t.workflows.applyVisibility}</DialogTitle>
+            <DialogDescription>
+              {t.workflows.applyVisibilityDescription}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>{t.workflows.currentTargetVisibility}</Label>
+              <p className="text-muted-foreground text-sm">
+                {workflow.visibility}
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="target-visibility">
+                {t.workflows.targetVisibility}
+              </Label>
+              <Select
+                value={targetVisibility}
+                onValueChange={setTargetVisibility}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="private">{t.workflows.private}</SelectItem>
+                  <SelectItem value="department">
+                    {t.workflows.department}
+                  </SelectItem>
+                  <SelectItem value="public">{t.workflows.public}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="reason">{t.workflows.reason}</Label>
+              <Textarea
+                id="reason"
+                placeholder={t.workflows.reasonPlaceholder}
+                value={visibilityReason}
+                onChange={(e) => setVisibilityReason(e.target.value)}
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setVisibilityDialogOpen(false)}
+            >
+              {t.common.cancel}
+            </Button>
+            <Button
+              onClick={handleSubmitVisibility}
+              disabled={submittingApplication || !visibilityReason.trim()}
+            >
+              {submittingApplication
+                ? t.workflows.submitting
+                : t.workflows.submit}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Run dialog */}
       <Dialog open={runDialogOpen} onOpenChange={setRunDialogOpen}>

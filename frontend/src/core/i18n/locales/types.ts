@@ -39,6 +39,8 @@ export interface Translations {
     exportAsMarkdown: string;
     exportAsJSON: string;
     exportSuccess: string;
+    showAll: string;
+    favoritesOnly: string;
   };
 
   home: {
@@ -155,6 +157,13 @@ export interface Translations {
     agentCreated: string;
     startChatting: string;
     backToGallery: string;
+    visibilityPrivate: string;
+    visibilityDepartment: string;
+    visibilityPublic: string;
+    favoriteAdded: string;
+    favoriteRemoved: string;
+    exportSuccess: string;
+    importSuccess: string;
   };
 
   // Workflows
@@ -205,6 +214,30 @@ export interface Translations {
     requiredMissing: (key: string) => string;
     started: string;
     saveChanges: string;
+    // Visibility
+    visibility: string;
+    export: string;
+    exportSuccess: string;
+    exportFailed: string;
+    applyVisibility: string;
+    applyVisibilityDescription: string;
+    currentTargetVisibility: string;
+    targetVisibility: string;
+    private: string;
+    department: string;
+    public: string;
+    reason: string;
+    reasonPlaceholder: string;
+    reasonRequired: string;
+    submitting: string;
+    submit: string;
+    applicationSubmitted: string;
+    notOwner: string;
+    visibilityPrivate: string;
+    visibilityDepartment: string;
+    visibilityPublic: string;
+    favoriteAdded: string;
+    favoriteRemoved: string;
   };
 
   // Breadcrumb
@@ -230,6 +263,8 @@ export interface Translations {
     userManagement: string;
     departmentManagement: string;
     toolManagement: string;
+    applicationManagement: string;
+    auditLogManagement: string;
   };
 
   // Conversation

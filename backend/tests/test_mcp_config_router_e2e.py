@@ -19,7 +19,7 @@ from ideer.config.extensions_config import ExtensionsConfig, McpServerConfig
 pytestmark = pytest.mark.no_auto_user
 
 
-def _make_app():
+def _make_app(role: str = "user"):
 
     from app.gateway.authz import get_current_rbac_user
 
@@ -29,7 +29,7 @@ def _make_app():
     # Mock the RBAC user for @require_role decorators
     rbac_user = MagicMock()
     rbac_user.id = "test-user-id"
-    rbac_user.role = "user"
+    rbac_user.role = role
     rbac_user.department_id = None
     rbac_user.disabled = False
 
@@ -132,7 +132,7 @@ class TestUpdateMcpConfig:
         )
         mock_reload.return_value = updated_config
 
-        app = _make_app()
+        app = _make_app(role="super_admin")
         with TestClient(app) as client:
             resp = client.put(
                 "/api/mcp/config",
@@ -175,7 +175,7 @@ class TestUpdateMcpConfig:
         )
         mock_reload.return_value = updated_config
 
-        app = _make_app()
+        app = _make_app(role="super_admin")
         with TestClient(app) as client:
             resp = client.put(
                 "/api/mcp/config",

@@ -5,6 +5,7 @@ import {
   DownloadIcon,
   LockIcon,
   MessageSquareIcon,
+  StarIcon,
   Trash2Icon,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -29,7 +30,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useDeleteAgent } from "@/core/agents";
+import { useDeleteAgent, useToggleAgentFavorite } from "@/core/agents";
 import type { Agent } from "@/core/agents";
 import { exportAgent } from "@/core/agents/api";
 import { useI18n } from "@/core/i18n/hooks";
@@ -42,10 +43,22 @@ export function AgentCard({ agent }: AgentCardProps) {
   const { t } = useI18n();
   const router = useRouter();
   const deleteAgent = useDeleteAgent();
+  const toggleFavorite = useToggleAgentFavorite();
   const [deleteOpen, setDeleteOpen] = useState(false);
 
   function handleChat() {
     router.push(`/workspace/agents/${agent.name}/chats/new`);
+  }
+
+  async function handleToggleFavorite() {
+    try {
+      await toggleFavorite.mutateAsync(agent.name);
+      toast.success(
+        agent.is_favorited ? t.agents.favoriteRemoved : t.agents.favoriteAdded,
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    }
   }
 
   async function handleDelete() {
@@ -69,7 +82,7 @@ export function AgentCard({ agent }: AgentCardProps) {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      toast.success("智能体已导出");
+      toast.success(t.agents.exportSuccess);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     }
@@ -97,13 +110,41 @@ export function AgentCard({ agent }: AgentCardProps) {
                     </Badge>
                   )}
                 </CardTitle>
-                {agent.model && (
-                  <Badge variant="secondary" className="mt-0.5 text-xs">
-                    {agent.model}
-                  </Badge>
-                )}
+                <div className="mt-0.5 flex items-center gap-1.5">
+                  {agent.model && (
+                    <Badge variant="secondary" className="text-xs">
+                      {agent.model}
+                    </Badge>
+                  )}
+                  <span
+                    className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
+                      agent.visibility === "public"
+                        ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                        : agent.visibility === "department"
+                          ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
+                          : "bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    {agent.visibility === "public"
+                      ? t.agents.visibilityPublic
+                      : agent.visibility === "department"
+                        ? t.agents.visibilityDepartment
+                        : t.agents.visibilityPrivate}
+                  </span>
+                </div>
               </div>
             </div>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-8 w-8 shrink-0"
+              onClick={handleToggleFavorite}
+              data-testid="agent-favorite-button"
+            >
+              <StarIcon
+                className={`h-4 w-4 ${agent.is_favorited ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground"}`}
+              />
+            </Button>
           </div>
           {agent.description && (
             <CardDescription className="mt-2 line-clamp-2 text-sm">
@@ -153,7 +194,7 @@ export function AgentCard({ agent }: AgentCardProps) {
               variant="ghost"
               className="h-8 w-8 shrink-0"
               onClick={handleExport}
-              title="导出"
+              title={t.common.export}
               data-testid="agent-export-button"
             >
               <DownloadIcon className="h-3.5 w-3.5" />

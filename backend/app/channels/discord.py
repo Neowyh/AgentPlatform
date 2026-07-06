@@ -224,7 +224,7 @@ class DiscordChannel(Channel):
                     try:
                         await channel.trigger_typing()
                     except Exception:
-                        pass
+                        logger.debug("Failed to send typing indicator", exc_info=True)
                     await asyncio.sleep(10)
             except asyncio.CancelledError:
                 pass

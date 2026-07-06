@@ -127,4 +127,4 @@ def code_interpreter_tool(code: str, runtime: Runtime | None = None, language: s
         try:
             sandbox.execute_command(f"rm -f {tmp_path}")
         except Exception:
-            pass
+            logger.debug("Failed to clean up temp file in sandbox", exc_info=True)

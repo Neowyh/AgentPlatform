@@ -91,13 +91,13 @@ class WeComChannel(Channel):
             try:
                 self._ws_task.cancel()
             except Exception:
-                pass
+                logger.warning("Failed to cancel WeCom WS task", exc_info=True)
             self._ws_task = None
         if self._ws_client:
             try:
                 self._ws_client.disconnect()
             except Exception:
-                pass
+                logger.warning("Failed to disconnect WeCom WS client", exc_info=True)
         self._ws_client = None
         self._ws_frames.clear()
         self._ws_stream_ids.clear()
@@ -289,7 +289,7 @@ class WeComChannel(Channel):
         try:
             await self._ws_client.reply_stream(frame, stream_id, self._working_message, False)
         except Exception:
-            pass
+            logger.error("[WeCom] reply_stream failed for msg_id=%s", msg_id, exc_info=True)
 
         await self.bus.publish_inbound(inbound)
 

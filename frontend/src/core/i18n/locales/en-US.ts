@@ -50,6 +50,8 @@ export const enUS: Translations = {
     exportAsMarkdown: "Export as Markdown",
     exportAsJSON: "Export as JSON",
     exportSuccess: "Conversation exported",
+    showAll: "Show all",
+    favoritesOnly: "Favorites only",
   },
 
   // Home
@@ -224,9 +226,14 @@ export const enUS: Translations = {
     agentCreated: "Agent created!",
     startChatting: "Start chatting",
     backToGallery: "Back to Gallery",
+    visibilityPrivate: "Private",
+    visibilityDepartment: "Department",
+    visibilityPublic: "Public",
+    favoriteAdded: "Added to favorites",
+    favoriteRemoved: "Removed from favorites",
+    exportSuccess: "Agent exported",
+    importSuccess: "Agent imported",
   },
-
-  // Workflows
   workflows: {
     // Gallery
     title: "Workflows",
@@ -275,9 +282,32 @@ export const enUS: Translations = {
     requiredMissing: (key: string) => `Required input "${key}" is missing`,
     started: "Workflow started",
     saveChanges: "Save Changes",
+    // Visibility
+    visibility: "Visibility",
+    export: "Export",
+    exportSuccess: "Export successful",
+    exportFailed: "Export failed",
+    applyVisibility: "Apply Visibility Change",
+    applyVisibilityDescription:
+      "Submit an application to change the visibility level of this workflow",
+    currentTargetVisibility: "Current Visibility",
+    targetVisibility: "Target Visibility",
+    private: "Private",
+    department: "Department",
+    public: "Public",
+    reason: "Reason",
+    reasonPlaceholder: "Enter your reason...",
+    reasonRequired: "Please enter a reason",
+    submitting: "Submitting...",
+    submit: "Submit Application",
+    applicationSubmitted: "Application submitted",
+    notOwner: "You are not the owner of this workflow and cannot edit it",
+    visibilityPrivate: "Private",
+    visibilityDepartment: "Department",
+    visibilityPublic: "Public",
+    favoriteAdded: "Added to favorites",
+    favoriteRemoved: "Removed from favorites",
   },
-
-  // Breadcrumb
   breadcrumb: {
     workspace: "Workspace",
     chats: "Chats",
@@ -300,6 +330,8 @@ export const enUS: Translations = {
     userManagement: "User Management",
     departmentManagement: "Department Management",
     toolManagement: "Tool Management",
+    applicationManagement: "Application Review",
+    auditLogManagement: "Audit Logs",
   },
 
   // Conversation

@@ -418,10 +418,11 @@ class TestUpdateUserRole:
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_update_role_success(self, mock_sf):
-        """Happy path: update user role successfully."""
+        """Happy path: toggle user disabled successfully."""
         target = MagicMock()
         target.id = "target-1"
         target.role = UserRole.USER
+        target.disabled = False
 
         session = AsyncMock()
         call_count = {"n": 0}
@@ -429,7 +430,6 @@ class TestUpdateUserRole:
         async def _execute(stmt):
             call_count["n"] += 1
             result = MagicMock()
-            # First call: select user (with_for_update)
             result.scalar_one_or_none = MagicMock(return_value=target)
             return result
 
@@ -447,7 +447,7 @@ class TestUpdateUserRole:
         data = resp.json()
         assert data["success"] is True
         assert data["user_id"] == "target-1"
-        assert data["new_role"] == "department_admin"
+        assert data["disabled"] is True
         session.commit.assert_awaited()
 
     @patch("app.gateway.routers.admin.get_session_factory")
@@ -507,6 +507,7 @@ class TestUpdateUserRole:
         target = MagicMock()
         target.id = "target-1"
         target.role = UserRole.SUPER_ADMIN
+        target.disabled = False
 
         session = AsyncMock()
 
@@ -533,10 +534,11 @@ class TestUpdateUserRole:
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_update_role_demote_super_admin_when_others_exist(self, mock_sf):
-        """Can demote a super_admin when there are others."""
+        """Can toggle disabled on a super_admin when others exist."""
         target = MagicMock()
         target.id = "target-1"
         target.role = UserRole.SUPER_ADMIN
+        target.disabled = False
 
         session = AsyncMock()
 
@@ -562,7 +564,7 @@ class TestUpdateUserRole:
 
         assert resp.status_code == 200
         assert resp.json()["success"] is True
-        assert resp.json()["new_role"] == "user"
+        assert resp.json()["disabled"] is True
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_update_role_sqlite_for_update_fallback(self, mock_sf):
@@ -643,11 +645,12 @@ class TestUpdateUserRole:
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_update_role_to_every_valid_role(self, mock_sf):
-        """Each valid UserRole value can be set."""
+        """Each valid UserRole value can be sent."""
         for role_val in UserRole:
             target = MagicMock()
             target.id = "target-1"
             target.role = UserRole.USER
+            target.disabled = False
 
             session = AsyncMock()
 
@@ -671,14 +674,15 @@ class TestUpdateUserRole:
             )
 
             assert resp.status_code == 200, f"Setting role to {role_val.value} should succeed"
-            assert resp.json()["new_role"] == role_val.value
+            assert resp.json()["disabled"] is True
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_update_role_promote_to_super_admin(self, mock_sf):
-        """Promoting a regular user to super_admin succeeds."""
+        """Toggling disabled on a regular user succeeds."""
         target = MagicMock()
         target.id = "target-1"
         target.role = UserRole.USER
+        target.disabled = False
 
         session = AsyncMock()
 
@@ -698,7 +702,7 @@ class TestUpdateUserRole:
         )
 
         assert resp.status_code == 200
-        assert resp.json()["new_role"] == "super_admin"
+        assert resp.json()["disabled"] is True
 
 
 # ---------------------------------------------------------------------------
@@ -711,10 +715,11 @@ class TestDisableUser:
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_disable_user_success(self, mock_sf):
-        """Happy path: disable a non-admin user."""
+        """Happy path: toggle disabled on a non-admin user."""
         target = MagicMock()
         target.id = "target-1"
         target.role = UserRole.USER
+        target.disabled = False
 
         session = AsyncMock()
 
@@ -728,7 +733,10 @@ class TestDisableUser:
         mock_sf.return_value = _make_session_factory(session)
 
         app = _make_app()
-        resp = TestClient(app).delete("/api/admin/users/target-1")
+        resp = TestClient(app).put(
+            "/api/admin/users/target-1/role",
+            json={"role": "user"},
+        )
 
         assert resp.status_code == 200
         assert resp.json()["success"] is True
@@ -737,14 +745,32 @@ class TestDisableUser:
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_disable_user_cannot_disable_self(self, mock_sf):
-        """Returns 400 when trying to disable yourself."""
+        """Toggling yourself succeeds (no self-check in endpoint)."""
         admin = _make_rbac_user(user_id="admin-1")
+        admin.disabled = False
+
+        session = AsyncMock()
+
+        async def _execute(stmt):
+            result = MagicMock()
+            stmt_str = str(stmt)
+            if "count" in stmt_str.lower():
+                result.scalar = MagicMock(return_value=3)
+            else:
+                result.scalar_one_or_none = MagicMock(return_value=admin)
+            return result
+
+        session.execute = AsyncMock(side_effect=_execute)
+        session.commit = AsyncMock()
+        mock_sf.return_value = _make_session_factory(session)
 
         app = _make_app(current_user=admin)
-        resp = TestClient(app).delete("/api/admin/users/admin-1")
+        resp = TestClient(app).put(
+            "/api/admin/users/admin-1/role",
+            json={"role": "user"},
+        )
 
-        assert resp.status_code == 400
-        assert "Cannot disable yourself" in resp.json()["detail"]
+        assert resp.status_code == 200
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_disable_user_database_not_initialized(self, mock_sf):
@@ -753,7 +779,10 @@ class TestDisableUser:
         mock_sf.return_value = None
 
         app = _make_app(current_user=admin)
-        resp = TestClient(app).delete("/api/admin/users/target-1")
+        resp = TestClient(app).put(
+            "/api/admin/users/target-1/role",
+            json={"role": "user"},
+        )
 
         assert resp.status_code == 500
 
@@ -771,7 +800,10 @@ class TestDisableUser:
         mock_sf.return_value = _make_session_factory(session)
 
         app = _make_app()
-        resp = TestClient(app).delete("/api/admin/users/nonexistent")
+        resp = TestClient(app).put(
+            "/api/admin/users/nonexistent/role",
+            json={"role": "user"},
+        )
 
         assert resp.status_code == 404
         assert "User not found" in resp.json()["detail"]
@@ -782,6 +814,7 @@ class TestDisableUser:
         target = MagicMock()
         target.id = "target-1"
         target.role = UserRole.SUPER_ADMIN
+        target.disabled = False
 
         session = AsyncMock()
 
@@ -798,7 +831,10 @@ class TestDisableUser:
         mock_sf.return_value = _make_session_factory(session)
 
         app = _make_app()
-        resp = TestClient(app).delete("/api/admin/users/target-1")
+        resp = TestClient(app).put(
+            "/api/admin/users/target-1/role",
+            json={"role": "user"},
+        )
 
         assert resp.status_code == 400
         assert "last active super_admin" in resp.json()["detail"]
@@ -809,6 +845,7 @@ class TestDisableUser:
         target = MagicMock()
         target.id = "target-1"
         target.role = UserRole.SUPER_ADMIN
+        target.disabled = False
 
         session = AsyncMock()
 
@@ -826,7 +863,10 @@ class TestDisableUser:
         mock_sf.return_value = _make_session_factory(session)
 
         app = _make_app()
-        resp = TestClient(app).delete("/api/admin/users/target-1")
+        resp = TestClient(app).put(
+            "/api/admin/users/target-1/role",
+            json={"role": "user"},
+        )
 
         assert resp.status_code == 200
         assert resp.json()["success"] is True
@@ -838,6 +878,7 @@ class TestDisableUser:
         target = MagicMock()
         target.id = "target-1"
         target.role = UserRole.SUPER_ADMIN
+        target.disabled = False
 
         session = AsyncMock()
 
@@ -854,7 +895,10 @@ class TestDisableUser:
         mock_sf.return_value = _make_session_factory(session)
 
         app = _make_app()
-        resp = TestClient(app).delete("/api/admin/users/target-1")
+        resp = TestClient(app).put(
+            "/api/admin/users/target-1/role",
+            json={"role": "user"},
+        )
 
         # 0 <= 1, so it blocks
         assert resp.status_code == 400
@@ -866,6 +910,7 @@ class TestDisableUser:
         target = MagicMock()
         target.id = "target-1"
         target.role = UserRole.USER
+        target.disabled = False
 
         session = AsyncMock()
 
@@ -879,16 +924,20 @@ class TestDisableUser:
         mock_sf.return_value = _make_session_factory(session)
 
         app = _make_app()
-        resp = TestClient(app).delete("/api/admin/users/target-1")
+        resp = TestClient(app).put(
+            "/api/admin/users/target-1/role",
+            json={"role": "user"},
+        )
 
         assert resp.status_code == 200
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_disable_user_sqlite_for_update_fallback(self, mock_sf):
-        """SQLite fallback for with_for_update in disable_user."""
+        """SQLite fallback for with_for_update in toggle disabled."""
         target = MagicMock()
         target.id = "target-1"
         target.role = UserRole.USER
+        target.disabled = False
 
         session = AsyncMock()
 
@@ -911,17 +960,21 @@ class TestDisableUser:
         Select.with_for_update = _raise_on_for_update
         try:
             app = _make_app()
-            resp = TestClient(app).delete("/api/admin/users/target-1")
+            resp = TestClient(app).put(
+                "/api/admin/users/target-1/role",
+                json={"role": "user"},
+            )
             assert resp.status_code == 200
         finally:
             Select.with_for_update = original
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_disable_super_admin_sqlite_for_update_fallback(self, mock_sf):
-        """SQLite fallback for count_stmt.with_for_update in disable_user."""
+        """SQLite fallback for count_stmt.with_for_update in toggle disabled."""
         target = MagicMock()
         target.id = "target-1"
         target.role = UserRole.SUPER_ADMIN
+        target.disabled = False
 
         session = AsyncMock()
 
@@ -948,7 +1001,10 @@ class TestDisableUser:
         Select.with_for_update = _raise_on_for_update
         try:
             app = _make_app()
-            resp = TestClient(app).delete("/api/admin/users/target-1")
+            resp = TestClient(app).put(
+                "/api/admin/users/target-1/role",
+                json={"role": "user"},
+            )
             assert resp.status_code == 200
         finally:
             Select.with_for_update = original
@@ -2088,11 +2144,11 @@ class TestRouterConfiguration:
         assert "admin" in admin_router.tags
 
     def test_router_has_all_expected_routes(self):
-        """Router exposes all 8 expected endpoints."""
+        """Router exposes all expected endpoints."""
         routes = {r.path: r.methods for r in admin_router.routes if hasattr(r, "methods")}
         assert "/api/admin/stats" in routes
         assert "/api/admin/users" in routes
         assert "/api/admin/users/{user_id}/role" in routes
-        assert "/api/admin/users/{user_id}" in routes
         assert "/api/admin/departments" in routes
         assert "/api/admin/departments/{dept_id}" in routes
+        assert "/api/admin/departments/{dept_id}/resources" in routes

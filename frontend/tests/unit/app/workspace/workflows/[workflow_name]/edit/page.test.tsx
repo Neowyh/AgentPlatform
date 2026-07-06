@@ -39,6 +39,16 @@ vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
 
+vi.mock("@/core/auth/AuthProvider", () => ({
+  useAuth: () => ({
+    user: { id: "user-1", name: "Test User", email: "test@example.com" },
+    isAuthenticated: true,
+    isLoading: false,
+    logout: vi.fn(),
+    refreshUser: vi.fn(),
+  }),
+}));
+
 vi.mock("@/core/i18n/hooks", () => ({
   useI18n: () => ({
     t: {

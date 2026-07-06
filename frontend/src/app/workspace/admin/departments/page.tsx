@@ -36,6 +36,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   createDepartment,
   deleteDepartment,
+  getDepartmentResources,
   listDepartments,
   updateDepartment,
 } from "@/core/admin/api";
@@ -55,6 +56,21 @@ export default function DepartmentsPage() {
   const [description, setDescription] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // Resource reallocation dialog state
+  const [reallocDialogOpen, setReallocDialogOpen] = useState(false);
+  const [reallocDeptId, setReallocDeptId] = useState<string | null>(null);
+  const [reallocResources, setReallocResources] = useState<Array<{
+    id: string;
+    resource_type: string;
+    resource_id: string;
+    visibility: string;
+    owner_id: string;
+  }> | null>(null);
+  const [reallocDeptName, setReallocDeptName] = useState("");
+  const [reallocLoading, setReallocLoading] = useState(false);
+  const [reallocTargetDeptId, setReallocTargetDeptId] = useState<string>("");
+  const [reallocSubmitting, setReallocSubmitting] = useState(false);
 
   const fetchDepartments = useCallback(async () => {
     try {
@@ -134,16 +150,58 @@ export default function DepartmentsPage() {
   };
 
   const handleDelete = async (deptId: string) => {
-    if (!confirm("确定要删除该部门吗？此操作不可撤销。")) return;
-    setDeletingId(deptId);
+    setReallocLoading(true);
+    setReallocDeptId(deptId);
+    setReallocResources(null);
+    setReallocTargetDeptId("");
+
     try {
-      await deleteDepartment(deptId);
+      const data = await getDepartmentResources(deptId);
+      setReallocResources(data.resources);
+      setReallocDeptName(data.department_name);
+
+      if (data.resources.length === 0) {
+        // No resources, proceed with direct delete
+        if (!confirm("确定要删除该部门吗？此操作不可撤销。")) {
+          setReallocLoading(false);
+          return;
+        }
+        setDeletingId(deptId);
+        try {
+          await deleteDepartment(deptId);
+          toast.success("部门已删除");
+          await fetchDepartments();
+        } catch (err) {
+          toast.error(err instanceof Error ? err.message : String(err));
+        } finally {
+          setDeletingId(null);
+        }
+      } else {
+        // Has resources, show reallocation dialog
+        setReallocDialogOpen(true);
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setReallocLoading(false);
+    }
+  };
+
+  const handleReallocDelete = async () => {
+    if (!reallocDeptId) return;
+
+    setReallocSubmitting(true);
+    try {
+      await deleteDepartment(reallocDeptId, reallocTargetDeptId || undefined);
       toast.success("部门已删除");
+      setReallocDialogOpen(false);
+      setReallocDeptId(null);
+      setReallocResources(null);
       await fetchDepartments();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     } finally {
-      setDeletingId(null);
+      setReallocSubmitting(false);
     }
   };
 
@@ -354,6 +412,142 @@ export default function DepartmentsPage() {
             </Button>
             <Button onClick={handleEdit} disabled={submitting}>
               {submitting ? "保存中..." : "保存"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Resource Reallocation Dialog */}
+      <Dialog open={reallocDialogOpen} onOpenChange={setReallocDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>删除部门 - 资源重分配</DialogTitle>
+            <DialogDescription>
+              部门 &quot;{reallocDeptName}&quot; 包含{" "}
+              {reallocResources?.length ?? 0} 个资源，请选择如何处理这些资源。
+            </DialogDescription>
+          </DialogHeader>
+
+          {reallocLoading ? (
+            <div className="text-muted-foreground py-8 text-center text-sm">
+              加载资源列表中...
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {/* Resource List */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">受影响的资源</label>
+                <div className="max-h-60 overflow-y-auto rounded-md border p-2">
+                  {reallocResources && reallocResources.length > 0 ? (
+                    <div className="space-y-2">
+                      {reallocResources.map((resource) => (
+                        <div
+                          key={resource.id}
+                          className="bg-muted/50 flex items-center justify-between rounded-md px-3 py-2 text-sm"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">
+                              {resource.resource_id}
+                            </span>
+                            <span className="text-muted-foreground">
+                              ({resource.resource_type})
+                            </span>
+                          </div>
+                          <span className="text-muted-foreground text-xs">
+                            {resource.visibility === "department"
+                              ? "部门级"
+                              : "私有"}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-muted-foreground py-4 text-center text-sm">
+                      暂无资源
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Target Department Selection */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">资源处理方式</label>
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      id="realloc-dept"
+                      name="realloc-method"
+                      checked={reallocTargetDeptId !== ""}
+                      onChange={() => {
+                        if (departments.length > 0) {
+                          const firstOtherDept = departments.find(
+                            (d) => d.id !== reallocDeptId,
+                          );
+                          if (firstOtherDept) {
+                            setReallocTargetDeptId(firstOtherDept.id);
+                          }
+                        }
+                      }}
+                      className="h-4 w-4"
+                    />
+                    <label htmlFor="realloc-dept" className="text-sm">
+                      重分配到目标部门
+                    </label>
+                  </div>
+
+                  {reallocTargetDeptId && (
+                    <select
+                      value={reallocTargetDeptId}
+                      onChange={(e) => setReallocTargetDeptId(e.target.value)}
+                      className="ml-6 h-9 w-full max-w-xs rounded-md border bg-transparent px-3 text-sm"
+                    >
+                      <option value="">请选择目标部门</option>
+                      {departments
+                        .filter((d) => d.id !== reallocDeptId)
+                        .map((dept) => (
+                          <option key={dept.id} value={dept.id}>
+                            {dept.name}
+                          </option>
+                        ))}
+                    </select>
+                  )}
+
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      id="realloc-private"
+                      name="realloc-method"
+                      checked={reallocTargetDeptId === ""}
+                      onChange={() => setReallocTargetDeptId("")}
+                      className="h-4 w-4"
+                    />
+                    <label htmlFor="realloc-private" className="text-sm">
+                      降级为私有（资源变为私有，部门关联清除）
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setReallocDialogOpen(false);
+                setReallocDeptId(null);
+                setReallocResources(null);
+              }}
+            >
+              取消
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleReallocDelete}
+              disabled={reallocLoading || reallocSubmitting}
+            >
+              {reallocSubmitting ? "删除中..." : "确认删除"}
             </Button>
           </DialogFooter>
         </DialogContent>

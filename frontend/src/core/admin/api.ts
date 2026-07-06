@@ -167,10 +167,46 @@ export async function updateDepartment(
   return res.json() as Promise<{ success: boolean }>;
 }
 
-export async function deleteDepartment(deptId: string): Promise<void> {
+export async function getDepartmentResources(deptId: string): Promise<{
+  department_id: string;
+  department_name: string;
+  resources: Array<{
+    id: string;
+    resource_type: string;
+    resource_id: string;
+    visibility: string;
+    owner_id: string;
+  }>;
+  total_count: number;
+}> {
+  const baseURL = getBackendBaseURL();
+  const res = await fetch(
+    `${baseURL}/api/admin/departments/${deptId}/resources`,
+  );
+  if (!res.ok) return extractError(res, "Failed to get department resources");
+  return res.json() as Promise<{
+    department_id: string;
+    department_name: string;
+    resources: Array<{
+      id: string;
+      resource_type: string;
+      resource_id: string;
+      visibility: string;
+      owner_id: string;
+    }>;
+    total_count: number;
+  }>;
+}
+
+export async function deleteDepartment(
+  deptId: string,
+  targetDeptId?: string,
+): Promise<void> {
   const baseURL = getBackendBaseURL();
   const res = await fetch(`${baseURL}/api/admin/departments/${deptId}`, {
     method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ target_dept_id: targetDeptId ?? null }),
   });
   if (!res.ok) return extractError(res, "Failed to delete department");
 }
@@ -184,6 +220,7 @@ export interface AdminStats {
   total_tools: number;
   total_skills: number;
   total_resources: number;
+  audit_logs: number;
 }
 
 export async function getAdminStats(): Promise<AdminStats> {

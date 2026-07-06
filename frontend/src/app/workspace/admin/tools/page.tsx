@@ -22,13 +22,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { listTools, testTool } from "@/core/admin/api";
 import { useAuth } from "@/core/auth/AuthProvider";
@@ -40,7 +33,6 @@ export default function ToolsPage() {
   const [tools, setTools] = useState<Tool[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [filterGroup, setFilterGroup] = useState<string>("all");
   const [selectedTool, setSelectedTool] = useState<Tool | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [testInput, setTestInput] = useState("{}");
@@ -71,13 +63,6 @@ export default function ToolsPage() {
     router.replace("/workspace");
     return null;
   }
-
-  const groups = Array.from(new Set(tools.map((t) => t.group))).sort();
-
-  const filteredTools =
-    filterGroup === "all"
-      ? tools
-      : tools.filter((t) => t.group === filterGroup);
 
   const openDetail = (tool: Tool) => {
     setSelectedTool(tool);
@@ -128,23 +113,6 @@ export default function ToolsPage() {
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="flex items-center gap-3 border-b px-6 py-3">
-        <Select value={filterGroup} onValueChange={setFilterGroup}>
-          <SelectTrigger className="w-48">
-            <SelectValue placeholder="筛选工具组" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">全部工具组</SelectItem>
-            {groups.map((group) => (
-              <SelectItem key={group} value={group}>
-                {group}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-6">
         {loading ? (
@@ -155,7 +123,7 @@ export default function ToolsPage() {
           <div className="text-destructive flex h-40 items-center justify-center text-sm">
             {error}
           </div>
-        ) : filteredTools.length === 0 ? (
+        ) : tools.length === 0 ? (
           <div className="flex h-64 flex-col items-center justify-center gap-3 text-center">
             <WrenchIcon className="text-muted-foreground h-10 w-10" />
             <p className="text-muted-foreground text-sm">暂无工具</p>
@@ -165,7 +133,7 @@ export default function ToolsPage() {
             className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
             data-testid="tool-list"
           >
-            {filteredTools.map((tool) => (
+            {tools.map((tool) => (
               <Card
                 key={tool.name}
                 className="cursor-pointer transition-shadow hover:shadow-md"
@@ -180,9 +148,21 @@ export default function ToolsPage() {
                       </div>
                       <div>
                         <CardTitle className="text-base">{tool.name}</CardTitle>
-                        <Badge variant="outline" className="mt-0.5 text-xs">
-                          {tool.group}
-                        </Badge>
+                        <div className="mt-0.5 flex items-center gap-1">
+                          {tool.visibility && (
+                            <Badge
+                              className={
+                                tool.visibility === "public"
+                                  ? "bg-green-100 text-green-800"
+                                  : tool.visibility === "department"
+                                    ? "bg-blue-100 text-blue-800"
+                                    : "bg-gray-100 text-gray-800"
+                              }
+                            >
+                              {tool.visibility}
+                            </Badge>
+                          )}
+                        </div>
                       </div>
                     </div>
                     <Badge
@@ -212,7 +192,6 @@ export default function ToolsPage() {
           </DialogHeader>
           <div className="space-y-4">
             <div className="flex items-center gap-2">
-              <Badge variant="outline">{selectedTool?.group}</Badge>
               <Badge
                 variant={
                   selectedTool?.requires_network ? "secondary" : "default"
@@ -220,6 +199,19 @@ export default function ToolsPage() {
               >
                 {selectedTool?.requires_network ? "需联网" : "可用"}
               </Badge>
+              {selectedTool?.visibility && (
+                <Badge
+                  className={
+                    selectedTool.visibility === "public"
+                      ? "bg-green-100 text-green-800"
+                      : selectedTool.visibility === "department"
+                        ? "bg-blue-100 text-blue-800"
+                        : "bg-gray-100 text-gray-800"
+                  }
+                >
+                  {selectedTool.visibility}
+                </Badge>
+              )}
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">测试输入 (JSON)</label>

@@ -5,6 +5,7 @@ import {
   deleteAgent,
   getAgent,
   listAgents,
+  toggleAgentFavorite,
   updateAgent,
 } from "./api";
 import type { CreateAgentRequest, UpdateAgentRequest } from "./types";
@@ -57,6 +58,16 @@ export function useDeleteAgent() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (name: string) => deleteAgent(name),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["agents"] });
+    },
+  });
+}
+
+export function useToggleAgentFavorite() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (name: string) => toggleAgentFavorite(name),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["agents"] });
     },

@@ -561,7 +561,7 @@ class FeishuChannel(Channel):
             if exc:
                 logger.error("[Feishu] %s failed for msg_id=%s: %s", name, msg_id, exc)
         except Exception:
-            pass
+            logger.error("[Feishu] %s error callback failed for msg_id=%s", name, msg_id, exc_info=True)
 
     @staticmethod
     def _log_task_error(task: asyncio.Task, name: str, msg_id: str) -> None:
@@ -573,7 +573,7 @@ class FeishuChannel(Channel):
         except asyncio.CancelledError:
             logger.info("[Feishu] %s cancelled for msg_id=%s", name, msg_id)
         except Exception:
-            pass
+            logger.error("[Feishu] %s error callback failed for msg_id=%s", name, msg_id, exc_info=True)
 
     async def _prepare_inbound(self, msg_id: str, inbound) -> None:
         """Kick off Feishu side effects without delaying inbound dispatch."""

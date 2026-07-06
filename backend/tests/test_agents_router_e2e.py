@@ -16,7 +16,7 @@ Covers all 11 agent endpoints with real HTTP stack:
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from _router_auth_helpers import make_authed_test_app
@@ -110,14 +110,14 @@ class TestListAgents:
     @patch(_USER_ID_PATCH, return_value="user-1")
     @patch(_LIST_PATCH)
     @patch(_SHARED_PATCH, return_value=False)
-    @patch(_META_PATCH, return_value={"visibility": "private", "owner_id": "user-1"})
     @patch(_LOAD_SOUL_PATCH, return_value="# Test")
-    def test_list_agents_with_results(self, mock_soul, mock_meta, mock_shared, mock_list, mock_uid, mock_cfg):
+    def test_list_agents_with_results(self, mock_soul, mock_shared, mock_list, mock_uid, mock_cfg):
         """List agents returns agent data."""
         mock_list.return_value = [_mock_agent_config()]
         app, _ = _make_app()
         with TestClient(app) as client:
-            resp = client.get("/api/agents")
+            with patch(_META_PATCH, new=AsyncMock(return_value={"visibility": "private", "owner_id": "user-1"})):
+                resp = client.get("/api/agents")
         assert resp.status_code == 200
         assert len(resp.json().get("agents", [])) >= 1
 
@@ -175,14 +175,14 @@ class TestGetAgent:
     @patch(_USER_ID_PATCH, return_value="user-1")
     @patch(_LOAD_CONFIG_PATCH)
     @patch(_SHARED_PATCH, return_value=False)
-    @patch(_META_PATCH, return_value={"visibility": "private", "owner_id": "user-1"})
     @patch(_LOAD_SOUL_PATCH, return_value="# Test")
-    def test_get_agent_found(self, mock_soul, mock_meta, mock_shared, mock_load, mock_uid, mock_cfg):
+    def test_get_agent_found(self, mock_soul, mock_shared, mock_load, mock_uid, mock_cfg):
         """Get agent returns agent details."""
         mock_load.return_value = _mock_agent_config()
         app, _ = _make_app()
         with TestClient(app) as client:
-            resp = client.get("/api/agents/test-agent")
+            with patch(_META_PATCH, new=AsyncMock(return_value={"visibility": "private", "owner_id": "user-1"})):
+                resp = client.get("/api/agents/test-agent")
         assert resp.status_code == 200
         assert resp.json()["name"] == "test-agent"
 
@@ -265,9 +265,8 @@ class TestUpdateAgent:
     @patch(_PATHS_PATCH)
     @patch(_LOAD_CONFIG_PATCH)
     @patch(_SHARED_PATCH, return_value=False)
-    @patch(_META_PATCH, return_value={"visibility": "private", "owner_id": "user-1"})
     @patch(_LOAD_SOUL_PATCH, return_value="# Updated")
-    def test_update_agent_success(self, mock_soul, mock_meta, mock_shared, mock_load, mock_paths, mock_uid, mock_cfg, tmp_path):
+    def test_update_agent_success(self, mock_soul, mock_shared, mock_load, mock_paths, mock_uid, mock_cfg, tmp_path):
         """Update agent succeeds."""
         agent_dir = tmp_path / "user-1" / "agents" / "test-agent"
         agent_dir.mkdir(parents=True)
@@ -282,7 +281,8 @@ class TestUpdateAgent:
 
         app, _ = _make_app()
         with TestClient(app) as client:
-            resp = client.put("/api/agents/test-agent", json={"description": "Updated"})
+            with patch(_META_PATCH, new=AsyncMock(return_value={"visibility": "private", "owner_id": "user-1"})):
+                resp = client.put("/api/agents/test-agent", json={"description": "Updated", "version": 1})
         assert resp.status_code == 200
 
     @_patch_agents_api_enabled()
@@ -292,7 +292,7 @@ class TestUpdateAgent:
         """Update agent returns 404 when not found."""
         app, _ = _make_app()
         with TestClient(app) as client:
-            resp = client.put("/api/agents/nonexistent", json={"description": "X"})
+            resp = client.put("/api/agents/nonexistent", json={"description": "X", "version": 1})
         assert resp.status_code == 404
 
 
@@ -307,8 +307,7 @@ class TestDeleteAgent:
     @_patch_agents_api_enabled()
     @patch(_USER_ID_PATCH, return_value="user-1")
     @patch(_PATHS_PATCH)
-    @patch(_META_PATCH, return_value={"visibility": "private", "owner_id": "user-1"})
-    def test_delete_agent_success(self, mock_meta, mock_paths, mock_uid, mock_cfg, tmp_path):
+    def test_delete_agent_success(self, mock_paths, mock_uid, mock_cfg, tmp_path):
         """Delete agent succeeds."""
         agent_dir = tmp_path / "user-1" / "agents" / "test-agent"
         agent_dir.mkdir(parents=True)
@@ -320,7 +319,8 @@ class TestDeleteAgent:
 
         app, _ = _make_app()
         with TestClient(app) as client:
-            resp = client.delete("/api/agents/test-agent")
+            with patch(_META_PATCH, new=AsyncMock(return_value={"visibility": "private", "owner_id": "user-1"})):
+                resp = client.delete("/api/agents/test-agent")
         assert resp.status_code in (200, 204)
 
     @_patch_agents_api_enabled()
@@ -352,8 +352,7 @@ class TestExportAgent:
     @patch(_PATHS_PATCH)
     @patch(_LOAD_CONFIG_PATCH)
     @patch(_SHARED_PATCH, return_value=False)
-    @patch(_META_PATCH, return_value={"visibility": "private", "owner_id": "user-1"})
-    def test_export_agent_success(self, mock_meta, mock_shared, mock_load, mock_paths, mock_uid, mock_cfg, tmp_path):
+    def test_export_agent_success(self, mock_shared, mock_load, mock_paths, mock_uid, mock_cfg, tmp_path):
         """Export agent returns JSON bundle."""
         agent_dir = tmp_path / "user-1" / "agents" / "test-agent"
         agent_dir.mkdir(parents=True)
@@ -368,7 +367,8 @@ class TestExportAgent:
 
         app, _ = _make_app()
         with TestClient(app) as client:
-            resp = client.post("/api/agents/test-agent/export")
+            with patch(_META_PATCH, new=AsyncMock(return_value={"visibility": "private", "owner_id": "user-1"})):
+                resp = client.post("/api/agents/test-agent/export")
         assert resp.status_code == 200
         assert "name" in resp.json()
 
@@ -443,8 +443,7 @@ class TestGetAgentStats:
     @patch(_PATHS_PATCH)
     @patch(_LOAD_CONFIG_PATCH)
     @patch(_SHARED_PATCH, return_value=False)
-    @patch(_META_PATCH, return_value={"visibility": "private", "owner_id": "user-1"})
-    def test_get_agent_stats(self, mock_meta, mock_shared, mock_load, mock_paths, mock_uid, mock_cfg, tmp_path):
+    def test_get_agent_stats(self, mock_shared, mock_load, mock_paths, mock_uid, mock_cfg, tmp_path):
         """Get agent stats returns statistics."""
         agent_dir = tmp_path / "user-1" / "agents" / "test-agent"
         agent_dir.mkdir(parents=True)
@@ -459,7 +458,8 @@ class TestGetAgentStats:
 
         app, _ = _make_app()
         with TestClient(app) as client:
-            resp = client.get("/api/agents/test-agent/stats")
+            with patch(_META_PATCH, new=AsyncMock(return_value={"visibility": "private", "owner_id": "user-1"})):
+                resp = client.get("/api/agents/test-agent/stats")
         assert resp.status_code == 200
 
     @_patch_agents_api_enabled()

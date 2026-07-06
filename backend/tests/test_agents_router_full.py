@@ -9,7 +9,6 @@ handling.
 
 from __future__ import annotations
 
-import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -23,10 +22,8 @@ from app.gateway.routers.agents import (
     AgentResponse,
     _agent_config_to_response,
     _is_shared_only,
-    _load_agent_meta,
     _normalize_agent_name,
     _require_agents_api_enabled,
-    _save_agent_meta,
     _validate_agent_name,
     router,
 )
@@ -231,11 +228,6 @@ class TestRequireAgentsApiEnabled:
 
 
 # ===========================================================================
-# _can_set_visibility
-# ===========================================================================
-
-
-# ===========================================================================
 # _is_shared_only
 # ===========================================================================
 
@@ -326,53 +318,6 @@ class TestAgentConfigToResponse:
 
 
 # ===========================================================================
-# _load_agent_meta
-# ===========================================================================
-
-
-class TestLoadAgentMeta:
-    def test_returns_empty_when_file_missing(self):
-        mock_meta_file = MagicMock()
-        mock_meta_file.exists.return_value = False
-        mock_paths = MagicMock()
-        mock_paths.user_agent_dir.return_value.__truediv__ = MagicMock(return_value=mock_meta_file)
-        with patch("app.gateway.routers.agents._agent_meta_path", return_value=mock_meta_file):
-            assert _load_agent_meta("agent", "u1") == {}
-
-    def test_loads_valid_json(self):
-        meta = {"visibility": "public", "owner_id": "o1"}
-        mock_meta_file = MagicMock()
-        mock_meta_file.exists.return_value = True
-        mock_meta_file.read_text.return_value = json.dumps(meta)
-        with patch("app.gateway.routers.agents._agent_meta_path", return_value=mock_meta_file):
-            result = _load_agent_meta("agent", "u1")
-        assert result == meta
-
-    def test_returns_empty_on_corrupt_json(self):
-        mock_meta_file = MagicMock()
-        mock_meta_file.exists.return_value = True
-        mock_meta_file.read_text.return_value = "not-json"
-        with patch("app.gateway.routers.agents._agent_meta_path", return_value=mock_meta_file):
-            assert _load_agent_meta("agent", "u1") == {}
-
-
-# ===========================================================================
-# _save_agent_meta
-# ===========================================================================
-
-
-class TestSaveAgentMeta:
-    def test_creates_parent_dir_and_writes(self):
-        mock_meta_file = MagicMock()
-        meta = {"visibility": "private"}
-        with patch("app.gateway.routers.agents._agent_meta_path", return_value=mock_meta_file):
-            _save_agent_meta("agent", "u1", meta)
-        mock_meta_file.parent.mkdir.assert_called_once_with(parents=True, exist_ok=True)
-        written = mock_meta_file.write_text.call_args[0][0]
-        assert json.loads(written) == meta
-
-
-# ===========================================================================
 # GET /agents
 # ===========================================================================
 
@@ -406,8 +351,8 @@ class TestListAgentsEndpoint:
             patch("app.gateway.routers.agents.get_optional_rbac_user", return_value=user),
             patch("app.gateway.routers.agents.list_custom_agents", return_value=[mock_agent]),
             patch("app.gateway.routers.agents._is_shared_only", return_value=False),
-            patch("app.gateway.routers.agents._load_agent_meta", return_value={"visibility": "private", "owner_id": USER_ID, "department_id": DEPT_ID}),
-            patch("app.gateway.routers.agents._is_visible_to_user", return_value=False),
+            patch("app.gateway.routers.agents._load_agent_meta", new=AsyncMock(return_value={"visibility": "private", "owner_id": USER_ID, "department_id": DEPT_ID})),
+            patch("app.gateway.authz.check_resource_access", return_value=False),
         ):
             app = _build_app(user)
             with TestClient(app) as c:
@@ -459,7 +404,7 @@ class TestListAgentsEndpoint:
         with (
             patch("app.gateway.routers.agents.list_custom_agents", return_value=[mock_agent]),
             patch("app.gateway.routers.agents._is_shared_only", return_value=False),
-            patch("app.gateway.routers.agents._load_agent_meta", return_value={"visibility": "private", "owner_id": USER_ID}),
+            patch("app.gateway.routers.agents._load_agent_meta", new=AsyncMock(return_value={"visibility": "private", "owner_id": USER_ID})),
         ):
             app = _build_app(None)
             app.dependency_overrides[get_optional_rbac_user] = _anonymous_optional_user
@@ -537,8 +482,8 @@ class TestGetAgentEndpoint:
         with (
             patch("app.gateway.routers.agents.load_agent_config", return_value=self._mock_config()),
             patch("app.gateway.routers.agents._is_shared_only", return_value=False),
-            patch("app.gateway.routers.agents._load_agent_meta", return_value={"visibility": "private", "owner_id": USER_ID, "department_id": DEPT_ID}),
-            patch("app.gateway.routers.agents._is_visible_to_user", return_value=True),
+            patch("app.gateway.routers.agents._load_agent_meta", new=AsyncMock(return_value={"visibility": "private", "owner_id": USER_ID, "department_id": DEPT_ID})),
+            patch("app.gateway.authz.check_resource_access", return_value=True),
             patch("app.gateway.routers.agents._agent_config_to_response") as mock_convert,
         ):
             mock_convert.return_value = _agent_resp(soul="soul")
@@ -568,7 +513,7 @@ class TestGetAgentEndpoint:
         with (
             patch("app.gateway.routers.agents.load_agent_config", return_value=cfg),
             patch("app.gateway.routers.agents._is_shared_only", return_value=True),
-            patch("app.gateway.routers.agents._is_visible_to_user", return_value=True),
+            patch("app.gateway.authz.check_resource_access", return_value=True),
             patch("app.gateway.routers.agents._agent_config_to_response") as mock_convert,
         ):
             mock_convert.return_value = _agent_resp(
@@ -592,8 +537,8 @@ class TestGetAgentEndpoint:
             patch("app.gateway.routers.agents.get_optional_rbac_user", return_value=user),
             patch("app.gateway.routers.agents.load_agent_config", return_value=cfg),
             patch("app.gateway.routers.agents._is_shared_only", return_value=False),
-            patch("app.gateway.routers.agents._load_agent_meta", return_value={"visibility": "private", "owner_id": USER_ID, "department_id": DEPT_ID}),
-            patch("app.gateway.routers.agents._is_visible_to_user", return_value=False),
+            patch("app.gateway.routers.agents._load_agent_meta", new=AsyncMock(return_value={"visibility": "private", "owner_id": USER_ID, "department_id": DEPT_ID})),
+            patch("app.gateway.authz.check_resource_access", return_value=False),
         ):
             app = _build_app(user)
             with TestClient(app, raise_server_exceptions=False) as c:
@@ -610,7 +555,7 @@ class TestGetAgentEndpoint:
         with (
             patch("app.gateway.routers.agents.load_agent_config", return_value=cfg),
             patch("app.gateway.routers.agents._is_shared_only", return_value=False),
-            patch("app.gateway.routers.agents._load_agent_meta", return_value={"visibility": "private", "owner_id": USER_ID}),
+            patch("app.gateway.routers.agents._load_agent_meta", new=AsyncMock(return_value={"visibility": "private", "owner_id": USER_ID})),
         ):
             app = _build_app(None)
             app.dependency_overrides[get_optional_rbac_user] = _anonymous_optional_user
@@ -643,9 +588,8 @@ class TestCreateAgentEndpoint:
         cfg.tool_groups = None
         cfg.skills = None
         with (
-            patch("app.gateway.routers.agents._can_set_visibility", return_value=True),
             patch("app.gateway.routers.agents.load_agent_config", return_value=cfg),
-            patch("app.gateway.routers.agents._save_agent_meta"),
+            patch("app.gateway.routers.agents._save_agent_meta", new=AsyncMock()),
             patch("app.gateway.routers.agents._agent_config_to_response") as mock_convert,
             patch("builtins.open", MagicMock()),
             patch("app.gateway.routers.agents.yaml"),
@@ -680,11 +624,6 @@ class TestCreateAgentEndpoint:
         resp = super_admin_client.post("/api/agents", json=self.PAYLOAD)
         assert resp.status_code == 409
 
-    def test_visibility_forbidden_user_cannot_set_public(self, user_client, mock_deps):
-        with patch("app.gateway.routers.agents._can_set_visibility", return_value=False):
-            resp = user_client.post("/api/agents", json={"name": "agent", "soul": "s", "visibility": "public"})
-        assert resp.status_code == 403
-
     def test_visibility_dept_admin_can_set_department(self, dept_admin_client, mock_deps):
         mock_paths, _ = mock_deps
         mock_paths.agent_dir.return_value.exists.return_value = False
@@ -696,9 +635,8 @@ class TestCreateAgentEndpoint:
         cfg.tool_groups = None
         cfg.skills = None
         with (
-            patch("app.gateway.routers.agents._can_set_visibility", return_value=True),
             patch("app.gateway.routers.agents.load_agent_config", return_value=cfg),
-            patch("app.gateway.routers.agents._save_agent_meta"),
+            patch("app.gateway.routers.agents._save_agent_meta", new=AsyncMock()),
             patch("app.gateway.routers.agents._agent_config_to_response") as mock_convert,
             patch("builtins.open", MagicMock()),
             patch("app.gateway.routers.agents.yaml"),
@@ -724,7 +662,6 @@ class TestCreateAgentEndpoint:
         mock_paths.user_agent_dir.return_value.exists.return_value = True
         mock_shutil = MagicMock()
         with (
-            patch("app.gateway.routers.agents._can_set_visibility", return_value=True),
             patch("builtins.open", side_effect=RuntimeError("disk full")),
             patch("app.gateway.routers.agents.shutil", mock_shutil),
         ):
@@ -739,7 +676,7 @@ class TestCreateAgentEndpoint:
 
 
 class TestUpdateAgentEndpoint:
-    PAYLOAD = {"description": "updated"}
+    PAYLOAD = {"description": "updated", "version": 1}
 
     def _mock_cfg(self):
         cfg = MagicMock()
@@ -755,8 +692,8 @@ class TestUpdateAgentEndpoint:
         mock_paths.user_agent_dir.return_value.exists.return_value = True
         with (
             patch("app.gateway.routers.agents.load_agent_config", return_value=self._mock_cfg()),
-            patch("app.gateway.routers.agents._load_agent_meta", return_value={"visibility": "private", "owner_id": USER_ID, "department_id": DEPT_ID}),
-            patch("app.gateway.routers.agents._save_agent_meta"),
+            patch("app.gateway.routers.agents._load_agent_meta", new=AsyncMock(return_value={"visibility": "private", "owner_id": USER_ID, "department_id": DEPT_ID})),
+            patch("app.gateway.routers.agents._save_agent_meta", new=AsyncMock()),
             patch("builtins.open", MagicMock()),
             patch("app.gateway.routers.agents.yaml"),
             patch("app.gateway.routers.agents._agent_config_to_response") as mock_convert,
@@ -791,27 +728,13 @@ class TestUpdateAgentEndpoint:
         assert resp.status_code == 409
         assert "shared read-only" in resp.json()["detail"]
 
-    def test_visibility_change_forbidden(self, user_client, mock_deps):
-        mock_paths, _ = mock_deps
-        mock_paths.user_agent_dir.return_value.exists.return_value = True
-        with (
-            patch("app.gateway.routers.agents.load_agent_config", return_value=self._mock_cfg()),
-            patch("app.gateway.routers.agents._load_agent_meta", return_value={"visibility": "private", "owner_id": USER_ID, "department_id": DEPT_ID}),
-            patch("app.gateway.routers.agents._can_set_visibility", return_value=False),
-        ):
-            resp = user_client.put(
-                f"/api/agents/{AGENT_NAME}",
-                json={"visibility": "public"},
-            )
-        assert resp.status_code == 403
-
     def test_viewer_cannot_update(self, viewer_client, mock_deps):
         mock_paths, _ = mock_deps
         mock_paths.user_agent_dir.return_value.exists.return_value = True
 
         with (
             patch("app.gateway.routers.agents.load_agent_config", return_value=self._mock_cfg()),
-            patch("app.gateway.routers.agents._load_agent_meta", return_value={"visibility": "private", "owner_id": USER_ID, "department_id": DEPT_ID}),
+            patch("app.gateway.routers.agents._load_agent_meta", new=AsyncMock(return_value={"visibility": "private", "owner_id": USER_ID, "department_id": DEPT_ID})),
             patch("app.gateway.routers.agents.check_resource_modify", return_value=False),
         ):
             resp = viewer_client.put(f"/api/agents/{AGENT_NAME}", json=self.PAYLOAD)
@@ -822,7 +745,7 @@ class TestUpdateAgentEndpoint:
         mock_paths.user_agent_dir.return_value.exists.return_value = True
         with (
             patch("app.gateway.routers.agents.load_agent_config", return_value=self._mock_cfg()),
-            patch("app.gateway.routers.agents._load_agent_meta", return_value={"visibility": "private", "owner_id": USER_ID, "department_id": DEPT_ID}),
+            patch("app.gateway.routers.agents._load_agent_meta", new=AsyncMock(return_value={"visibility": "private", "owner_id": USER_ID, "department_id": DEPT_ID})),
             patch("builtins.open", side_effect=RuntimeError("disk")),
         ):
             resp = super_admin_client.put(f"/api/agents/{AGENT_NAME}", json=self.PAYLOAD)
@@ -839,7 +762,7 @@ class TestDeleteAgentEndpoint:
         mock_paths, _ = mock_deps
         mock_paths.user_agent_dir.return_value.exists.return_value = True
         with (
-            patch("app.gateway.routers.agents._load_agent_meta", return_value={"owner_id": USER_ID, "department_id": DEPT_ID}),
+            patch("app.gateway.routers.agents._load_agent_meta", new=AsyncMock(return_value={"owner_id": USER_ID, "department_id": DEPT_ID})),
             patch("app.gateway.routers.agents.shutil"),
         ):
             resp = super_admin_client.delete(f"/api/agents/{AGENT_NAME}")
@@ -875,7 +798,7 @@ class TestDeleteAgentEndpoint:
         mock_paths, _ = mock_deps
         mock_paths.user_agent_dir.return_value.exists.return_value = True
         with (
-            patch("app.gateway.routers.agents._load_agent_meta", return_value={"owner_id": USER_ID, "department_id": DEPT_ID}),
+            patch("app.gateway.routers.agents._load_agent_meta", new=AsyncMock(return_value={"owner_id": USER_ID, "department_id": DEPT_ID})),
             patch("app.gateway.routers.agents.check_resource_modify", return_value=False),
         ):
             resp = viewer_client.delete(f"/api/agents/{AGENT_NAME}")
@@ -885,7 +808,7 @@ class TestDeleteAgentEndpoint:
         mock_paths, _ = mock_deps
         mock_paths.user_agent_dir.return_value.exists.return_value = True
         with (
-            patch("app.gateway.routers.agents._load_agent_meta", return_value={"owner_id": USER_ID, "department_id": DEPT_ID}),
+            patch("app.gateway.routers.agents._load_agent_meta", new=AsyncMock(return_value={"owner_id": USER_ID, "department_id": DEPT_ID})),
             patch("app.gateway.routers.agents.shutil.rmtree", side_effect=OSError("perm")),
         ):
             resp = super_admin_client.delete(f"/api/agents/{AGENT_NAME}")
@@ -908,8 +831,8 @@ class TestExportAgentEndpoint:
         with (
             patch("app.gateway.routers.agents.load_agent_config", return_value=cfg),
             patch("app.gateway.routers.agents._is_shared_only", return_value=False),
-            patch("app.gateway.routers.agents._load_agent_meta", return_value={"visibility": "private", "owner_id": USER_ID, "department_id": DEPT_ID}),
-            patch("app.gateway.routers.agents._is_visible_to_user", return_value=True),
+            patch("app.gateway.routers.agents._load_agent_meta", new=AsyncMock(return_value={"visibility": "private", "owner_id": USER_ID, "department_id": DEPT_ID})),
+            patch("app.gateway.authz.check_resource_access", return_value=True),
             patch("app.gateway.routers.agents.load_agent_soul", return_value="soul"),
         ):
             resp = super_admin_client.post(f"/api/agents/{AGENT_NAME}/export")
@@ -939,8 +862,8 @@ class TestExportAgentEndpoint:
             patch("app.gateway.routers.agents.get_optional_rbac_user", return_value=user),
             patch("app.gateway.routers.agents.load_agent_config", return_value=cfg),
             patch("app.gateway.routers.agents._is_shared_only", return_value=False),
-            patch("app.gateway.routers.agents._load_agent_meta", return_value={"visibility": "private", "owner_id": USER_ID, "department_id": DEPT_ID}),
-            patch("app.gateway.routers.agents._is_visible_to_user", return_value=False),
+            patch("app.gateway.routers.agents._load_agent_meta", new=AsyncMock(return_value={"visibility": "private", "owner_id": USER_ID, "department_id": DEPT_ID})),
+            patch("app.gateway.authz.check_resource_access", return_value=False),
         ):
             app = _build_app(user)
             with TestClient(app, raise_server_exceptions=False) as c:
@@ -957,7 +880,7 @@ class TestExportAgentEndpoint:
         with (
             patch("app.gateway.routers.agents.load_agent_config", return_value=cfg),
             patch("app.gateway.routers.agents._is_shared_only", return_value=True),
-            patch("app.gateway.routers.agents._is_visible_to_user", return_value=True),
+            patch("app.gateway.authz.check_resource_access", return_value=True),
             patch("app.gateway.routers.agents.load_agent_soul", return_value="shared soul"),
         ):
             resp = super_admin_client.post(f"/api/agents/{AGENT_NAME}/export")
@@ -984,9 +907,8 @@ class TestImportAgentEndpoint:
         cfg.tool_groups = None
         cfg.skills = None
         with (
-            patch("app.gateway.routers.agents._can_set_visibility", return_value=True),
             patch("app.gateway.routers.agents.load_agent_config", return_value=cfg),
-            patch("app.gateway.routers.agents._save_agent_meta"),
+            patch("app.gateway.routers.agents._save_agent_meta", new=AsyncMock()),
             patch("builtins.open", MagicMock()),
             patch("app.gateway.routers.agents.yaml"),
             patch("app.gateway.routers.agents._agent_config_to_response") as mock_convert,
@@ -1021,14 +943,6 @@ class TestImportAgentEndpoint:
         resp = super_admin_client.post("/api/agents/import", json=self.PAYLOAD)
         assert resp.status_code == 409
 
-    def test_visibility_forbidden(self, user_client, mock_deps):
-        with patch("app.gateway.routers.agents._can_set_visibility", return_value=False):
-            resp = user_client.post(
-                "/api/agents/import",
-                json={"name": "agent", "soul": "", "visibility": "public"},
-            )
-        assert resp.status_code == 403
-
     def test_internal_error_cleanup(self, super_admin_client, mock_deps):
         mock_paths, _ = mock_deps
         mock_paths.agent_dir.return_value.exists.return_value = False
@@ -1036,7 +950,6 @@ class TestImportAgentEndpoint:
         mock_paths.user_agent_dir.return_value.exists.return_value = True
         mock_shutil = MagicMock()
         with (
-            patch("app.gateway.routers.agents._can_set_visibility", return_value=True),
             patch("builtins.open", side_effect=RuntimeError("fail")),
             patch("app.gateway.routers.agents.shutil", mock_shutil),
         ):
@@ -1062,8 +975,8 @@ class TestGetAgentStatsEndpoint:
         with (
             patch("app.gateway.routers.agents.load_agent_config", return_value=cfg),
             patch("app.gateway.routers.agents._is_shared_only", return_value=False),
-            patch("app.gateway.routers.agents._load_agent_meta", return_value={"visibility": "private", "owner_id": USER_ID, "department_id": DEPT_ID, "created_at": "2024-01-01"}),
-            patch("app.gateway.routers.agents._is_visible_to_user", return_value=True),
+            patch("app.gateway.routers.agents._load_agent_meta", new=AsyncMock(return_value={"visibility": "private", "owner_id": USER_ID, "department_id": DEPT_ID, "created_at": "2024-01-01"})),
+            patch("app.gateway.authz.check_resource_access", return_value=True),
             patch("app.gateway.routers.agents.load_agent_soul", return_value="soul"),
             patch("app.gateway.routers.agents.get_session_factory", return_value=mock_sf),
         ):
@@ -1097,7 +1010,7 @@ class TestGetAgentStatsEndpoint:
         with (
             patch("app.gateway.routers.agents.load_agent_config", return_value=cfg),
             patch("app.gateway.routers.agents._is_shared_only", return_value=True),
-            patch("app.gateway.routers.agents._is_visible_to_user", return_value=True),
+            patch("app.gateway.authz.check_resource_access", return_value=True),
             patch("app.gateway.routers.agents.load_agent_soul", return_value=""),
             patch("app.gateway.routers.agents.get_session_factory", return_value=None),
         ):
@@ -1120,8 +1033,8 @@ class TestGetAgentStatsEndpoint:
         with (
             patch("app.gateway.routers.agents.load_agent_config", return_value=cfg),
             patch("app.gateway.routers.agents._is_shared_only", return_value=False),
-            patch("app.gateway.routers.agents._load_agent_meta", return_value={"visibility": "private", "owner_id": USER_ID}),
-            patch("app.gateway.routers.agents._is_visible_to_user", return_value=True),
+            patch("app.gateway.routers.agents._load_agent_meta", new=AsyncMock(return_value={"visibility": "private", "owner_id": USER_ID})),
+            patch("app.gateway.authz.check_resource_access", return_value=True),
             patch("app.gateway.routers.agents.load_agent_soul", return_value=None),
             patch("app.gateway.routers.agents.get_session_factory", return_value=mock_sf),
         ):
@@ -1138,8 +1051,8 @@ class TestGetAgentStatsEndpoint:
         with (
             patch("app.gateway.routers.agents.load_agent_config", return_value=cfg),
             patch("app.gateway.routers.agents._is_shared_only", return_value=False),
-            patch("app.gateway.routers.agents._load_agent_meta", return_value={"visibility": "private", "owner_id": USER_ID}),
-            patch("app.gateway.routers.agents._is_visible_to_user", return_value=True),
+            patch("app.gateway.routers.agents._load_agent_meta", new=AsyncMock(return_value={"visibility": "private", "owner_id": USER_ID})),
+            patch("app.gateway.authz.check_resource_access", return_value=True),
             patch("app.gateway.routers.agents.load_agent_soul", return_value=None),
             patch("app.gateway.routers.agents.get_session_factory", return_value=None),
         ):
@@ -1155,8 +1068,8 @@ class TestGetAgentStatsEndpoint:
             patch("app.gateway.routers.agents.get_optional_rbac_user", return_value=user),
             patch("app.gateway.routers.agents.load_agent_config", return_value=cfg),
             patch("app.gateway.routers.agents._is_shared_only", return_value=False),
-            patch("app.gateway.routers.agents._load_agent_meta", return_value={"visibility": "private", "owner_id": USER_ID, "department_id": DEPT_ID}),
-            patch("app.gateway.routers.agents._is_visible_to_user", return_value=False),
+            patch("app.gateway.routers.agents._load_agent_meta", new=AsyncMock(return_value={"visibility": "private", "owner_id": USER_ID, "department_id": DEPT_ID})),
+            patch("app.gateway.authz.check_resource_access", return_value=False),
         ):
             app = _build_app(user)
             with TestClient(app, raise_server_exceptions=False) as c:
@@ -1253,7 +1166,7 @@ class TestViewerCannotWrite:
         assert resp.status_code == 403
 
     def test_update_forbidden(self, viewer_client, mock_deps):
-        resp = viewer_client.put("/api/agents/agent", json={"description": "new"})
+        resp = viewer_client.put("/api/agents/agent", json={"description": "new", "version": 1})
         assert resp.status_code == 403
 
     def test_delete_forbidden(self, viewer_client, mock_deps):

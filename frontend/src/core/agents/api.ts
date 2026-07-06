@@ -172,3 +172,17 @@ export async function importAgent(file: File): Promise<Agent> {
   }
   return res.json() as Promise<Agent>;
 }
+
+export async function toggleAgentFavorite(
+  name: string,
+): Promise<{ success: boolean; is_favorited: boolean }> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/agents/${encodeURIComponent(name)}/favorite`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    },
+  );
+  if (!res.ok) await extractError(res, "Failed to toggle favorite");
+  return res.json() as Promise<{ success: boolean; is_favorited: boolean }>;
+}

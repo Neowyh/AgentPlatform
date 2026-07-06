@@ -63,13 +63,13 @@ def _pymupdf_output_too_sparse(text: str, file_path: Path) -> bool:
         doc = pymupdf.open(str(file_path))
         pages = len(doc)
     except Exception:
-        pass
+        logger.warning("Failed to open PDF for page count", exc_info=True)
     finally:
         if doc is not None:
             try:
                 doc.close()
             except Exception:
-                pass
+                logger.warning("Failed to close PDF document", exc_info=True)
     if pages is not None and pages > 0:
         return (chars / pages) < _MIN_CHARS_PER_PAGE
     # Fallback: absolute threshold when page count is unavailable
@@ -311,5 +311,5 @@ def _get_pdf_converter() -> str:
             return "auto"
         return raw
     except Exception:
-        pass
+        logger.warning("Failed to get pdf_converter config, falling back to 'auto'", exc_info=True)
     return "auto"

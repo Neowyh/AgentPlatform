@@ -50,6 +50,9 @@ describe("useWorkflows", () => {
           version: "1",
           steps_count: 2,
           inputs: {},
+          visibility: "private",
+          owner_id: null,
+          department_id: null,
         },
         {
           name: "wf-2",
@@ -57,6 +60,9 @@ describe("useWorkflows", () => {
           version: "2",
           steps_count: 3,
           inputs: {},
+          visibility: "public",
+          owner_id: "user-1",
+          department_id: null,
         },
       ],
       total: 2,
@@ -137,6 +143,9 @@ describe("useWorkflow", () => {
       inputs: {},
       yaml_content: "name: my-wf",
       steps: [],
+      visibility: "private",
+      owner_id: null,
+      department_id: null,
     };
     vi.mocked(getWorkflow).mockResolvedValue(detail);
 
@@ -228,6 +237,9 @@ describe("useCreateWorkflow", () => {
       version: "1",
       steps_count: 1,
       inputs: {},
+      visibility: "private",
+      owner_id: null,
+      department_id: null,
     };
     vi.mocked(createWorkflow).mockResolvedValue(created);
 
@@ -281,6 +293,9 @@ describe("useUpdateWorkflow", () => {
       version: "2",
       steps_count: 1,
       inputs: {},
+      visibility: "private",
+      owner_id: null,
+      department_id: null,
     };
     vi.mocked(updateWorkflow).mockResolvedValue(updated);
 

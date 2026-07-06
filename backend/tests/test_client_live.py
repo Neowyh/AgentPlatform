@@ -7,7 +7,6 @@ They are skipped in CI and must be run explicitly:
 """
 
 import json
-import os
 from pathlib import Path
 
 import pytest
@@ -16,15 +15,12 @@ from ideer.client import IDeerClient, StreamEvent
 from ideer.sandbox.security import is_host_bash_allowed
 from ideer.uploads.manager import PathTraversalError
 
-# Skip entire module in CI or when no config.yaml exists
-_skip_reason = None
-if os.environ.get("CI"):
-    _skip_reason = "Live tests skipped in CI"
-elif not Path(__file__).resolve().parents[2].joinpath("config.yaml").exists():
-    _skip_reason = "No config.yaml found — live tests require valid API credentials"
+# Skip entire module when no config.yaml exists (the rest is handled by the
+# conftest _skip_llm_if_no_key fixture using the initial env state).
+if not Path(__file__).resolve().parents[2].joinpath("config.yaml").exists():
+    pytest.skip("No config.yaml found — live tests require valid API credentials", allow_module_level=True)
 
-if _skip_reason:
-    pytest.skip(_skip_reason, allow_module_level=True)
+pytestmark = pytest.mark.requires_llm
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -34,7 +30,7 @@ if _skip_reason:
 @pytest.fixture(scope="module")
 def client():
     """Create a real IDeerClient (no mocks)."""
-    return IDeerClient(model_name="mimo", thinking_enabled=False)
+    return IDeerClient(model_name="deepseek-v4-flash", thinking_enabled=False)
 
 
 @pytest.fixture

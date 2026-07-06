@@ -8,6 +8,7 @@ import {
   listWorkflows,
   runWorkflow,
   submitReview,
+  toggleWorkflowFavorite,
   updateWorkflow,
 } from "./api";
 import type { ReviewData } from "./types";
@@ -60,6 +61,16 @@ export function useDeleteWorkflow() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (name: string) => deleteWorkflow(name),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["workflows"] });
+    },
+  });
+}
+
+export function useToggleWorkflowFavorite() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (name: string) => toggleWorkflowFavorite(name),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["workflows"] });
     },

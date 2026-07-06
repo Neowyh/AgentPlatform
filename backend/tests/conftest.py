@@ -44,6 +44,11 @@ _executor_mock.get_background_task_result = MagicMock()
 
 sys.modules["ideer.subagents.executor"] = _executor_mock
 
+# Capture initial API key state BEFORE any test module imports ideer.client
+# (which sets OPENAI_API_KEY as a side effect from config.yaml/.env loading).
+# This lets _skip_llm_if_no_key reliably detect "no user-supplied key".
+_initial_openai_api_key = os.environ.get("OPENAI_API_KEY")
+
 
 # ---------------------------------------------------------------------------
 # Shared test fixtures — reduce mock boilerplate across test files
@@ -270,7 +275,7 @@ def _auto_user_context(request):
 def _skip_llm_if_no_key(request):
     """Auto-skip ``requires_llm`` tests when no API key is available."""
     if request.node.get_closest_marker("requires_llm"):
-        if os.getenv("CI", "").lower() in ("true", "1") or not os.getenv("OPENAI_API_KEY"):
+        if os.getenv("CI", "").lower() in ("true", "1") or not _initial_openai_api_key:
             pytest.skip("Requires LLM API key — skipped in CI or when OPENAI_API_KEY is unset")
     yield
 

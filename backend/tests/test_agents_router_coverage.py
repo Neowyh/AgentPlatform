@@ -18,7 +18,7 @@ Covers gaps not addressed by existing test files:
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
@@ -198,7 +198,7 @@ class TestGetAgent:
             patch(_UID_PATCH, return_value="user-2"),
             patch(_LOAD_PATCH, return_value=_mock_agent()),
             patch(_SHARED_PATCH, return_value=False),
-            patch(_META_PATCH, return_value={"visibility": "private", "owner_id": "user-1"}),
+            patch(_META_PATCH, new=AsyncMock(return_value={"visibility": "private", "owner_id": "user-1"})),
             patch(_LOAD_SOUL_PATCH, return_value=""),
         ):
             client = _make_app(current_user=other_user)
@@ -213,13 +213,23 @@ class TestCreateAgent:
             resp = client.post("/api/agents", json={"name": "invalid name!", "soul": ""})
             assert resp.status_code == 422
 
-    def test_visibility_permission_denied(self):
-        """Regular user cannot set public visibility."""
-        with patch(_API_PATCH, return_value=AgentsApiConfig(enabled=True)), patch(_UID_PATCH, return_value="user-1"):
+    def test_visibility_forced_to_private(self):
+        """Visibility is always forced to private on create."""
+        with (
+            patch(_API_PATCH, return_value=AgentsApiConfig(enabled=True)),
+            patch(_UID_PATCH, return_value="user-1"),
+            patch(_PATHS_PATCH) as mock_paths,
+        ):
+            paths_obj = MagicMock()
+            paths_obj.user_agent_dir.return_value = MagicMock(exists=MagicMock(return_value=False))
+            paths_obj.agent_dir.return_value = MagicMock(exists=MagicMock(return_value=False))
+            mock_paths.return_value = paths_obj
+
             client = _make_app(current_user=_make_rbac_user(role=UserRole.USER))
             resp = client.post("/api/agents", json={"name": "test-agent", "soul": "", "visibility": "public"})
-            assert resp.status_code == 403
-            assert "public" in resp.json()["detail"]
+            assert resp.status_code in (200, 201)
+            data = resp.json()
+            assert data.get("visibility") in (None, "private")
 
 
 class TestUpdateAgent:
@@ -232,18 +242,18 @@ class TestUpdateAgent:
             mock_paths.return_value = paths_obj
 
             client = _make_app()
-            resp = client.put("/api/agents/shared-agent", json={"description": "updated"})
+            resp = client.put("/api/agents/shared-agent", json={"description": "updated", "version": 1})
             assert resp.status_code == 409
             assert "read-only" in resp.json()["detail"]
 
-    def test_visibility_permission_denied(self):
-        """Regular user cannot change visibility to public."""
+    def test_visibility_ignored_in_update(self):
+        """Visibility field is ignored in update endpoint."""
         with (
             patch(_API_PATCH, return_value=AgentsApiConfig(enabled=True)),
             patch(_UID_PATCH, return_value="user-1"),
             patch(_LOAD_PATCH, return_value=_mock_agent()),
             patch(_PATHS_PATCH) as mock_paths,
-            patch(_META_PATCH, return_value={"visibility": "private", "owner_id": "user-1"}),
+            patch(_META_PATCH, new=AsyncMock(return_value={"visibility": "private", "owner_id": "user-1"})),
             patch(_SHARED_PATCH, return_value=False),
         ):
             paths_obj = MagicMock()
@@ -251,8 +261,9 @@ class TestUpdateAgent:
             mock_paths.return_value = paths_obj
 
             client = _make_app(current_user=_make_rbac_user(role=UserRole.USER))
-            resp = client.put("/api/agents/test-agent", json={"visibility": "public"})
-            assert resp.status_code == 403
+            resp = client.put("/api/agents/test-agent", json={"visibility": "public", "version": 1})
+            assert resp.status_code == 200
+            assert resp.json().get("visibility") in (None, "private")
 
 
 class TestDeleteAgent:
@@ -304,15 +315,25 @@ class TestImportAgent:
             )
             assert resp.status_code == 409
 
-    def test_visibility_permission_denied(self):
-        """Regular user cannot import with public visibility."""
-        with patch(_API_PATCH, return_value=AgentsApiConfig(enabled=True)), patch(_UID_PATCH, return_value="user-1"):
+    def test_visibility_ignored_in_import(self):
+        """Visibility field is ignored in import endpoint (always private)."""
+        with (
+            patch(_API_PATCH, return_value=AgentsApiConfig(enabled=True)),
+            patch(_UID_PATCH, return_value="user-1"),
+            patch(_PATHS_PATCH) as mock_paths,
+        ):
+            paths_obj = MagicMock()
+            paths_obj.user_agent_dir.return_value = MagicMock(exists=MagicMock(return_value=False))
+            paths_obj.agent_dir.return_value = MagicMock(exists=MagicMock(return_value=False))
+            mock_paths.return_value = paths_obj
+
             client = _make_app(current_user=_make_rbac_user(role=UserRole.USER))
             resp = client.post(
                 "/api/agents/import",
                 json={"name": "test-agent", "config": {}, "soul": "", "visibility": "public"},
             )
-            assert resp.status_code == 403
+            assert resp.status_code in (200, 201)
+            assert resp.json().get("visibility") in (None, "private")
 
     def test_invalid_name(self):
         with patch(_API_PATCH, return_value=AgentsApiConfig(enabled=True)), patch(_UID_PATCH, return_value="user-1"):

@@ -174,6 +174,7 @@ def test_custom_skills_router_lifecycle(monkeypatch, tmp_path):
     )
     monkeypatch.setattr("ideer.config.get_app_config", lambda: config)
     monkeypatch.setattr("app.gateway.routers.skills.scan_skill_content", lambda *args, **kwargs: _async_scan("allow", "ok"))
+    monkeypatch.setattr("app.gateway.routers.skills.check_resource_modify", lambda *a, **kw: True)
     refresh_calls = []
 
     async def _refresh():
@@ -194,7 +195,7 @@ def test_custom_skills_router_lifecycle(monkeypatch, tmp_path):
 
         update_response = client.put(
             "/api/skills/custom/demo-skill",
-            json={"content": _skill_content("demo-skill", "Edited skill")},
+            json={"content": _skill_content("demo-skill", "Edited skill"), "version": 1},
         )
         assert update_response.status_code == 200
         assert update_response.json()["description"] == "Edited skill"
@@ -232,6 +233,7 @@ def test_custom_skill_rollback_blocked_by_scanner(monkeypatch, tmp_path):
         return None
 
     monkeypatch.setattr("app.gateway.routers.skills.refresh_skills_system_prompt_cache_async", _refresh)
+    monkeypatch.setattr("app.gateway.routers.skills.check_resource_modify", lambda *a, **kw: True)
 
     async def _scan(*args, **kwargs):
         from ideer.skills.security_scanner import ScanResult
@@ -264,6 +266,7 @@ def test_custom_skill_delete_preserves_history_and_allows_restore(monkeypatch, t
     )
     monkeypatch.setattr("ideer.config.get_app_config", lambda: config)
     monkeypatch.setattr("app.gateway.routers.skills.scan_skill_content", lambda *args, **kwargs: _async_scan("allow", "ok"))
+    monkeypatch.setattr("app.gateway.routers.skills.check_resource_modify", lambda *a, **kw: True)
     refresh_calls = []
 
     async def _refresh():
@@ -299,6 +302,7 @@ def test_custom_skill_delete_continues_when_history_write_is_readonly(monkeypatc
         skill_evolution=SimpleNamespace(enabled=True, moderation_model_name=None),
     )
     monkeypatch.setattr("ideer.config.get_app_config", lambda: config)
+    monkeypatch.setattr("app.gateway.routers.skills.check_resource_modify", lambda *a, **kw: True)
     refresh_calls = []
 
     async def _refresh():

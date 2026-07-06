@@ -197,7 +197,7 @@ async def get_mcp_configuration() -> McpConfigResponse:
     summary="Update MCP Configuration",
     description="Update Model Context Protocol (MCP) server configurations and save to file.",
 )
-@require_role(UserRole.USER, UserRole.DEPARTMENT_ADMIN, UserRole.SUPER_ADMIN)
+@require_role(UserRole.SUPER_ADMIN)
 async def update_mcp_configuration(
     request: McpConfigUpdateRequest,
     current_user: UserModel = Depends(get_current_rbac_user),

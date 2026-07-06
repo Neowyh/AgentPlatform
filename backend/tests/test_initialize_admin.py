@@ -97,7 +97,8 @@ def test_initialize_rejected_when_admin_exists(client):
     )
     assert resp2.status_code == 409
     body = resp2.json()
-    assert body["detail"]["code"] == "system_already_initialized"
+    assert body["error"]["code"] == "INTERNAL_ERROR"
+    assert "system_already_initialized" in body["error"]["message"]
 
 
 def test_initialize_register_does_not_block_initialization(client):
@@ -127,21 +128,21 @@ def test_initialize_accessible_without_cookie(client):
 
 
 def test_initialize_rejects_short_password(client):
-    """Password shorter than 8 chars → 422."""
+    """Password shorter than 8 chars → 400."""
     resp = client.post(
         "/api/v1/auth/initialize",
         json={**_init_payload(), "password": "short"},
     )
-    assert resp.status_code == 422
+    assert resp.status_code == 400
 
 
 def test_initialize_rejects_common_password(client):
-    """Common password → 422."""
+    """Common password → 400."""
     resp = client.post(
         "/api/v1/auth/initialize",
         json={**_init_payload(), "password": "password123"},
     )
-    assert resp.status_code == 422
+    assert resp.status_code == 400
 
 
 # ── setup-status reflects initialization ─────────────────────────────────

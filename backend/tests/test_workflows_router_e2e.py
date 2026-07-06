@@ -88,19 +88,19 @@ def _mock_get_workflow_store(store):
 
 
 def _mock_workflow_meta(owner_id: str = "user-1", visibility: str = "private"):
-    """Return a contextmanager-style patch for _load_workflow_meta."""
+    """Return a contextmanager-style patch for _workflow_store.load_meta."""
     meta = {"visibility": visibility, "owner_id": owner_id, "department_id": None, "version": 1}
-    return patch("app.gateway.routers.workflows._load_workflow_meta", new_callable=AsyncMock, return_value=meta)
+    return patch("app.gateway.routers.workflows._workflow_store.load_meta", new_callable=AsyncMock, return_value=meta)
 
 
 def _mock_save_workflow_meta():
-    """Return a contextmanager-style patch for _save_workflow_meta."""
-    return patch("app.gateway.routers.workflows._save_workflow_meta", new_callable=AsyncMock)
+    """Return a contextmanager-style patch for _workflow_store.save_meta."""
+    return patch("app.gateway.routers.workflows._workflow_store.save_meta", new_callable=AsyncMock)
 
 
 def _mock_soft_delete_workflow_meta():
-    """Return a contextmanager-style patch for _soft_delete_workflow_meta."""
-    return patch("app.gateway.routers.workflows._soft_delete_workflow_meta", new_callable=AsyncMock)
+    """Return a contextmanager-style patch for _workflow_store.soft_delete."""
+    return patch("app.gateway.routers.workflows._workflow_store.soft_delete", new_callable=AsyncMock)
 
 
 # ---------------------------------------------------------------------------
@@ -226,7 +226,7 @@ class TestUpdateWorkflow:
             with TestClient(app) as client:
                 resp = client.put(
                     f"/api/workflows/{WORKFLOW_NAME}",
-                    json={"yaml_content": VALID_YAML},
+                    json={"yaml_content": VALID_YAML, "version": 1},
                 )
         assert resp.status_code == 200
 
@@ -240,7 +240,7 @@ class TestUpdateWorkflow:
             with TestClient(app) as client:
                 resp = client.put(
                     "/api/workflows/nonexistent",
-                    json={"yaml_content": VALID_YAML},
+                    json={"yaml_content": VALID_YAML, "version": 1},
                 )
         assert resp.status_code == 404
 
@@ -333,7 +333,7 @@ class TestGetWorkflowRunStatus:
         mock_state.steps = {}
         store = _make_workflow_store(load_run_result=mock_state)
         app, _ = _make_app()
-        with _mock_get_workflow_store(store):
+        with _mock_get_workflow_store(store), _mock_workflow_meta():
             with TestClient(app) as client:
                 resp = client.get(f"/api/workflows/{WORKFLOW_NAME}/runs/{RUN_ID}")
         assert resp.status_code == 200
@@ -362,7 +362,7 @@ class TestListWorkflowRuns:
         """List runs returns a dict with 'runs' key."""
         store = _make_workflow_store()
         app, _ = _make_app()
-        with _mock_get_workflow_store(store):
+        with _mock_get_workflow_store(store), _mock_workflow_meta():
             with TestClient(app) as client:
                 resp = client.get(f"/api/workflows/{WORKFLOW_NAME}/runs")
         assert resp.status_code == 200

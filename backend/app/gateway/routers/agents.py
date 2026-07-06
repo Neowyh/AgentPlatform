@@ -4,13 +4,15 @@ import json
 import logging
 import re
 import shutil
+import uuid
 from datetime import UTC, datetime
 
 import yaml
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
+from app.gateway.audit import record_audit
 from app.gateway.authz import check_resource_access, check_resource_modify, get_current_rbac_user, get_optional_rbac_user, require_role
 from ideer.config.agents_api_config import get_agents_api_config
 from ideer.config.agents_config import AgentConfig, list_custom_agents, load_agent_config, load_agent_soul
@@ -46,6 +48,7 @@ class AgentResponse(BaseModel):
     visibility: str = Field(default="private", description="Visibility: private, department, or public")
     owner_id: str | None = Field(default=None, description="Owner user ID")
     department_id: str | None = Field(default=None, description="Department ID for department-scoped visibility")
+    is_favorited: bool = Field(default=False, description="Whether this agent is favorited by the user")
 
 
 class AgentsListResponse(BaseModel):
@@ -74,7 +77,7 @@ class AgentUpdateRequest(BaseModel):
     tool_groups: list[str] | None = Field(default=None, description="Updated tool group whitelist")
     skills: list[str] | None = Field(default=None, description="Updated skill whitelist (None=all, []=none)")
     soul: str | None = Field(default=None, description="Updated SOUL.md content")
-    visibility: str | None = Field(default=None, description="Updated visibility: private, department, or public")
+    version: int = Field(..., description="Current resource version for optimistic locking")
 
 
 def _validate_agent_name(name: str) -> None:
@@ -122,19 +125,82 @@ def _agent_meta_path(agent_name: str, user_id: str):
     return paths.user_agent_dir(user_id, agent_name) / ".meta.json"
 
 
-def _load_agent_meta(agent_name: str, user_id: str) -> dict:
-    """Load agent RBAC metadata from disk. Returns empty dict if missing."""
+async def _load_agent_meta(agent_name: str, user_id: str) -> dict:
+    """Load agent RBAC metadata from resource_metadata table (fallback to .meta.json)."""
+    from ideer.persistence.engine import get_session_factory
+
+    sf = get_session_factory()
+    if sf is not None:
+        try:
+            async with sf() as session:
+                from sqlalchemy import select
+
+                from ideer.persistence.models.resource_metadata import ResourceMetadata
+
+                stmt = select(ResourceMetadata).where(
+                    ResourceMetadata.resource_type == "agent",
+                    ResourceMetadata.resource_id == agent_name,
+                    ResourceMetadata.deleted_at.is_(None),
+                )
+                result = await session.execute(stmt)
+                resource = result.scalar_one_or_none()
+                if resource:
+                    return {
+                        "visibility": resource.visibility,
+                        "owner_id": resource.owner_id,
+                        "department_id": resource.department_id,
+                        "version": resource.version,
+                        "is_favorited": resource.is_favorited,
+                        "created_at": str(resource.created_at) if resource.created_at else None,
+                    }
+        except Exception:
+            logger.error("Failed to load agent meta from DB for %s", agent_name, exc_info=True)
     meta_file = _agent_meta_path(agent_name, user_id)
-    if not meta_file.exists():
-        return {}
-    try:
-        return json.loads(meta_file.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
+    if meta_file.exists():
+        try:
+            return json.loads(meta_file.read_text(encoding="utf-8"))
+        except Exception:
+            logger.error("Failed to load agent meta from .meta.json for %s", agent_name, exc_info=True)
+    return {}
 
 
-def _save_agent_meta(agent_name: str, user_id: str, meta: dict) -> None:
-    """Persist agent RBAC metadata to disk."""
+async def _save_agent_meta(agent_name: str, user_id: str, meta: dict) -> None:
+    """Persist agent RBAC metadata to resource_metadata table (fallback to .meta.json)."""
+    from ideer.persistence.engine import get_session_factory
+
+    sf = get_session_factory()
+    if sf is not None:
+        try:
+            async with sf() as session:
+                from sqlalchemy import select
+
+                from ideer.persistence.models.resource_metadata import ResourceMetadata
+
+                stmt = select(ResourceMetadata).where(
+                    ResourceMetadata.resource_type == "agent",
+                    ResourceMetadata.resource_id == agent_name,
+                    ResourceMetadata.deleted_at.is_(None),
+                )
+                result = await session.execute(stmt)
+                resource = result.scalar_one_or_none()
+                if resource:
+                    resource.visibility = meta.get("visibility", "private")
+                    resource.department_id = meta.get("department_id")
+                    resource.version = ResourceMetadata.version + 1
+                else:
+                    resource = ResourceMetadata(
+                        id=str(uuid.uuid4()),
+                        resource_type="agent",
+                        resource_id=agent_name,
+                        owner_id=meta.get("owner_id", user_id),
+                        department_id=meta.get("department_id"),
+                        visibility=meta.get("visibility", "private"),
+                    )
+                    session.add(resource)
+                await session.commit()
+                return
+        except Exception:
+            logger.error("Failed to save agent meta to DB for %s", agent_name, exc_info=True)
     meta_file = _agent_meta_path(agent_name, user_id)
     meta_file.parent.mkdir(parents=True, exist_ok=True)
     meta_file.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -149,6 +215,7 @@ def _agent_config_to_response(
     visibility: str = "private",
     owner_id: str | None = None,
     department_id: str | None = None,
+    is_favorited: bool = False,
 ) -> AgentResponse:
     """Convert AgentConfig to AgentResponse."""
     soul: str | None = None
@@ -166,6 +233,7 @@ def _agent_config_to_response(
         visibility=visibility,
         owner_id=owner_id,
         department_id=department_id,
+        is_favorited=is_favorited,
     )
 
 
@@ -192,6 +260,38 @@ async def list_agents(
         agents = list_custom_agents(user_id=user_id)
 
         # Build response with RBAC metadata
+        # Batch-load agent metadata from resource_metadata table
+        agent_meta_map: dict[str, dict] = {}
+        sf = get_session_factory()
+        if sf is not None:
+            try:
+                agent_names = [a.name for a in agents]
+                async with sf() as session:
+                    from ideer.persistence.models.resource_metadata import ResourceMetadata
+
+                    stmt = select(ResourceMetadata).where(
+                        ResourceMetadata.resource_type == "agent",
+                        ResourceMetadata.resource_id.in_(agent_names),
+                        ResourceMetadata.deleted_at.is_(None),
+                    )
+                    result = await session.execute(stmt)
+                    for r in result.scalars().all():
+                        agent_meta_map[r.resource_id] = {
+                            "visibility": r.visibility,
+                            "owner_id": r.owner_id,
+                            "department_id": r.department_id,
+                            "is_favorited": r.is_favorited,
+                        }
+            except Exception:
+                logger.error("Failed to batch-load agent metadata", exc_info=True)
+
+        # Fallback for agents not in DB: load from .meta.json files
+        for a in agents:
+            if a.name not in agent_meta_map:
+                file_meta = await _load_agent_meta(a.name, user_id)
+                if file_meta:
+                    agent_meta_map[a.name] = file_meta
+
         responses: list[AgentResponse] = []
         for a in agents:
             # BUG-07: Check if agent is shared-only (exists in template dir but not user dir).
@@ -202,8 +302,7 @@ async def list_agents(
                 owner_id = None
                 dept_id = None
             else:
-                # Load agent metadata for visibility filtering
-                meta = _load_agent_meta(a.name, user_id)
+                meta = agent_meta_map.get(a.name, {})
                 # Default to 'private' when no metadata exists (secure-by-default for pre-RBAC agents)
                 visibility = meta.get("visibility", "private")
                 owner_id = meta.get("owner_id")
@@ -225,6 +324,7 @@ async def list_agents(
                     visibility=visibility,
                     owner_id=owner_id,
                     department_id=dept_id,
+                    is_favorited=agent_meta_map.get(a.name, {}).get("is_favorited", False),
                 )
             )
 
@@ -295,11 +395,12 @@ async def get_agent(
         # BUG-20: Shared agents are treated as public
         is_shared = _is_shared_only(name, user_id)
         if is_shared:
+            meta = {}
             visibility = "public"
             owner_id = None
             department_id = None
         else:
-            meta = _load_agent_meta(name, user_id)
+            meta = await _load_agent_meta(name, user_id)
             visibility = meta.get("visibility", "private")
             owner_id = meta.get("owner_id")
             department_id = meta.get("department_id")
@@ -319,6 +420,7 @@ async def get_agent(
             visibility=visibility,
             owner_id=owner_id,
             department_id=department_id,
+            is_favorited=meta.get("is_favorited", False),
         )
     except HTTPException:
         raise
@@ -326,6 +428,51 @@ async def get_agent(
         raise HTTPException(status_code=404, detail=f"Agent '{name}' not found")
     except Exception as e:
         logger.error(f"Failed to get agent '{name}': {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.post(
+    "/agents/{name}/favorite",
+    summary="Toggle Agent Favorite",
+    description="Toggle favorite status for a custom agent.",
+)
+@require_role(UserRole.USER, UserRole.DEPARTMENT_ADMIN, UserRole.SUPER_ADMIN)
+async def toggle_agent_favorite(
+    name: str,
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> dict:
+    """Toggle favorite status for a custom agent."""
+    _require_agents_api_enabled()
+    _validate_agent_name(name)
+    name = _normalize_agent_name(name)
+
+    sf = get_session_factory()
+    if sf is None:
+        raise HTTPException(status_code=500, detail="Database not available")
+
+    try:
+        async with sf() as session:
+            from ideer.persistence.models.resource_metadata import ResourceMetadata
+
+            stmt = select(ResourceMetadata).where(
+                ResourceMetadata.resource_type == "agent",
+                ResourceMetadata.resource_id == name,
+                ResourceMetadata.deleted_at.is_(None),
+            )
+            result = await session.execute(stmt)
+            resource = result.scalar_one_or_none()
+            if resource:
+                resource.is_favorited = not resource.is_favorited
+                resource.version = ResourceMetadata.version + 1
+            else:
+                raise HTTPException(status_code=404, detail=f"Agent '{name}' not found")
+
+            await session.commit()
+            return {"success": True, "is_favorited": resource.is_favorited}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to toggle favorite for agent '{name}': {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -394,12 +541,12 @@ async def create_agent_endpoint(
         owner_id = current_user.id if current_user else user_id
         dept_id = current_user.department_id if current_user else None
         meta = {
-            "visibility": request.visibility,
+            "visibility": "private",
             "owner_id": owner_id,
             "department_id": dept_id,
             "created_at": datetime.now(UTC).isoformat(),
         }
-        _save_agent_meta(normalized_name, user_id, meta)
+        await _save_agent_meta(normalized_name, user_id, meta)
 
         logger.info(f"Created agent '{normalized_name}' at {agent_dir}")
 
@@ -409,9 +556,10 @@ async def create_agent_endpoint(
             include_soul=True,
             user_id=user_id,
             read_only=False,
-            visibility=request.visibility,
+            visibility="private",
             owner_id=owner_id,
             department_id=dept_id,
+            is_favorited=False,
         )
 
     except HTTPException:
@@ -434,6 +582,7 @@ async def create_agent_endpoint(
 async def update_agent(
     name: str,
     request: AgentUpdateRequest,
+    http_request: Request,
     current_user: UserModel = Depends(get_current_rbac_user),
 ) -> AgentResponse:
     """Update an existing custom agent.
@@ -467,9 +616,16 @@ async def update_agent(
         )
 
     # RBAC: check ownership before allowing edit
-    meta = _load_agent_meta(name, user_id)
+    meta = await _load_agent_meta(name, user_id)
     if not check_resource_modify(current_user, meta.get("owner_id"), meta.get("department_id")):
         raise HTTPException(status_code=403, detail="You do not have permission to modify this resource")
+
+    # Optimistic locking: verify version matches
+    from app.gateway.error_codes import ApiException
+
+    current_version = meta.get("version")
+    if current_version is not None and request.version != current_version:
+        raise ApiException("VERSION_CONFLICT")
 
     try:
         # Ensure user directory exists before writing files
@@ -513,13 +669,16 @@ async def update_agent(
 
         logger.info(f"Updated agent '{name}'")
 
-        # BUG-22: Persist visibility change to metadata
-        if request.visibility is not None and request.visibility != meta.get("visibility", "private"):
-            meta["visibility"] = request.visibility
-            _save_agent_meta(name, user_id, meta)
+        await record_audit(
+            actor_id=current_user.id,
+            action="update",
+            resource_type="agent",
+            resource_id=name,
+            ip_address=http_request.client.host if http_request.client else None,
+        )
 
         refreshed_cfg = load_agent_config(name, user_id=user_id)
-        meta = _load_agent_meta(name, user_id)
+        meta = await _load_agent_meta(name, user_id)
         return _agent_config_to_response(
             refreshed_cfg,
             include_soul=True,
@@ -528,6 +687,7 @@ async def update_agent(
             visibility=meta.get("visibility", "private"),
             owner_id=meta.get("owner_id"),
             department_id=meta.get("department_id"),
+            is_favorited=meta.get("is_favorited", False),
         )
 
     except HTTPException:
@@ -612,6 +772,7 @@ async def update_user_profile(request: UserProfileUpdateRequest, current_user: U
 @require_role(UserRole.USER, UserRole.DEPARTMENT_ADMIN, UserRole.SUPER_ADMIN)
 async def delete_agent(
     name: str,
+    http_request: Request,
     current_user: UserModel = Depends(get_current_rbac_user),
 ) -> None:
     """Delete a custom agent.
@@ -639,13 +800,54 @@ async def delete_agent(
         raise HTTPException(status_code=404, detail=f"Agent '{name}' not found")
 
     # RBAC: check ownership before allowing delete
-    meta = _load_agent_meta(name, user_id)
+    meta = await _load_agent_meta(name, user_id)
     if not check_resource_modify(current_user, meta.get("owner_id"), meta.get("department_id")):
         raise HTTPException(status_code=403, detail="You do not have permission to modify this resource")
 
     try:
         shutil.rmtree(agent_dir)
+        # Auto-reject pending visibility applications and soft-delete resource_metadata
+        sf = get_session_factory()
+        if sf is not None:
+            try:
+                async with sf() as session:
+                    from datetime import UTC, datetime
+
+                    from sqlalchemy import update as sql_update
+
+                    from ideer.persistence.models.visibility_application import VisibilityApplication
+
+                    await session.execute(
+                        sql_update(VisibilityApplication)
+                        .where(
+                            VisibilityApplication.resource_type == "agent",
+                            VisibilityApplication.resource_id == name,
+                            VisibilityApplication.status == "pending",
+                        )
+                        .values(status="rejected", review_comment="资源已删除，申请自动关闭")
+                    )
+                    from ideer.persistence.models.resource_metadata import ResourceMetadata
+
+                    await session.execute(
+                        sql_update(ResourceMetadata)
+                        .where(
+                            ResourceMetadata.resource_type == "agent",
+                            ResourceMetadata.resource_id == name,
+                            ResourceMetadata.deleted_at.is_(None),
+                        )
+                        .values(deleted_at=datetime.now(UTC))
+                    )
+                    await session.commit()
+            except Exception:
+                logger.warning("Failed to auto-reject pending applications for deleted agent %s", name)
         logger.info(f"Deleted agent '{name}' from {agent_dir}")
+        await record_audit(
+            actor_id=current_user.id,
+            action="delete",
+            resource_type="agent",
+            resource_id=name,
+            ip_address=http_request.client.host if http_request.client else None,
+        )
     except Exception as e:
         logger.error(f"Failed to delete agent '{name}': {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -725,7 +927,7 @@ async def export_agent(
         department_id = None
         meta = {}
     else:
-        meta = _load_agent_meta(name, user_id)
+        meta = await _load_agent_meta(name, user_id)
         visibility = meta.get("visibility", "private")
         owner_id = meta.get("owner_id")
         department_id = meta.get("department_id")
@@ -815,13 +1017,13 @@ async def import_agent(
         owner_id = current_user.id if current_user else user_id
         dept_id = current_user.department_id if current_user else None
         meta = {
-            "visibility": request.visibility,
+            "visibility": "private",
             "owner_id": owner_id,
             "department_id": dept_id,
             "created_at": datetime.now(UTC).isoformat(),
             "imported": True,
         }
-        _save_agent_meta(normalized_name, user_id, meta)
+        await _save_agent_meta(normalized_name, user_id, meta)
 
         logger.info(f"Imported agent '{normalized_name}' to {agent_dir}")
 
@@ -831,9 +1033,10 @@ async def import_agent(
             include_soul=True,
             user_id=user_id,
             read_only=False,
-            visibility=request.visibility,
+            visibility="private",
             owner_id=owner_id,
             department_id=dept_id,
+            is_favorited=False,
         )
 
     except HTTPException:
@@ -881,7 +1084,7 @@ async def get_agent_stats(
         department_id = None
         meta = {}
     else:
-        meta = _load_agent_meta(name, user_id)
+        meta = await _load_agent_meta(name, user_id)
         visibility = meta.get("visibility", "private")
         owner_id = meta.get("owner_id")
         department_id = meta.get("department_id")

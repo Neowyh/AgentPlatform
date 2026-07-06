@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { WorkspaceBreadcrumb } from "@/components/workspace/workspace-breadcrumb";
+import { useAuth } from "@/core/auth/AuthProvider";
 import { useI18n } from "@/core/i18n/hooks";
 import { useUpdateWorkflow, useWorkflow } from "@/core/workflows";
 import { validateYaml } from "@/core/workflows/validate";
@@ -41,6 +42,9 @@ export default function WorkflowEditPage() {
   const updateWorkflow = useUpdateWorkflow();
   const { resolvedTheme } = useTheme();
   const { t } = useI18n();
+  const { user } = useAuth();
+
+  const isOwner = !workflow?.owner_id || workflow.owner_id === user?.id;
 
   const [content, setContent] = useState("");
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
@@ -90,6 +94,20 @@ export default function WorkflowEditPage() {
         <Button
           variant="outline"
           onClick={() => router.push("/workspace/workflows")}
+        >
+          {t.workflows.backToWorkflows}
+        </Button>
+      </div>
+    );
+  }
+
+  if (!isOwner) {
+    return (
+      <div className="flex size-full flex-col items-center justify-center gap-4">
+        <div className="text-destructive text-sm">{t.workflows.notOwner}</div>
+        <Button
+          variant="outline"
+          onClick={() => router.push(`/workspace/workflows/${workflow_name}`)}
         >
           {t.workflows.backToWorkflows}
         </Button>

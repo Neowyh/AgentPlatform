@@ -171,10 +171,9 @@ class TestResolveConfigPath:
     def test_no_config_returns_none(self, tmp_path):
         with patch.dict(os.environ, {}, clear=True):
             with patch("ideer.config.extensions_config.existing_project_file", return_value=None):
-                # Patch Path.parents to avoid finding real configs
-                result = ExtensionsConfig.resolve_config_path()
-                # Should return None since no files exist
-                assert result is None
+                with patch("ideer.config.extensions_config.Path.exists", return_value=False):
+                    result = ExtensionsConfig.resolve_config_path()
+                    assert result is None
 
 
 # ---------------------------------------------------------------------------

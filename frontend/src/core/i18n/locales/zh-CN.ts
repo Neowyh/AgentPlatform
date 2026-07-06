@@ -50,6 +50,8 @@ export const zhCN: Translations = {
     exportAsMarkdown: "导出为 Markdown",
     exportAsJSON: "导出为 JSON",
     exportSuccess: "对话已导出",
+    showAll: "显示全部",
+    favoritesOnly: "仅收藏",
   },
 
   // Home
@@ -212,9 +214,14 @@ export const zhCN: Translations = {
     agentCreated: "智能体已创建！",
     startChatting: "开始对话",
     backToGallery: "返回 Gallery",
+    visibilityPrivate: "私有",
+    visibilityDepartment: "部门",
+    visibilityPublic: "公开",
+    favoriteAdded: "已收藏",
+    favoriteRemoved: "已取消收藏",
+    exportSuccess: "智能体已导出",
+    importSuccess: "智能体已导入",
   },
-
-  // Workflows
   workflows: {
     // Gallery
     title: "工作流",
@@ -263,9 +270,31 @@ export const zhCN: Translations = {
     requiredMissing: (key: string) => `缺少必填输入「${key}」`,
     started: "工作流已启动",
     saveChanges: "保存更改",
+    // Visibility
+    visibility: "可见性",
+    export: "导出",
+    exportSuccess: "导出成功",
+    exportFailed: "导出失败",
+    applyVisibility: "申请变更可见性",
+    applyVisibilityDescription: "提交申请以变更此工作流的可见性级别",
+    currentTargetVisibility: "当前可见性",
+    targetVisibility: "目标可见性",
+    private: "私有",
+    department: "部门",
+    public: "公开",
+    reason: "申请理由",
+    reasonPlaceholder: "请输入申请理由...",
+    reasonRequired: "请输入申请理由",
+    submitting: "提交中...",
+    submit: "提交申请",
+    applicationSubmitted: "申请已提交",
+    notOwner: "您不是此工作流的所有者，无法编辑",
+    visibilityPrivate: "私有",
+    visibilityDepartment: "部门",
+    visibilityPublic: "公开",
+    favoriteAdded: "已收藏",
+    favoriteRemoved: "已取消收藏",
   },
-
-  // Breadcrumb
   breadcrumb: {
     workspace: "工作区",
     chats: "对话",
@@ -288,6 +317,8 @@ export const zhCN: Translations = {
     userManagement: "用户管理",
     departmentManagement: "部门管理",
     toolManagement: "工具管理",
+    applicationManagement: "审批管理",
+    auditLogManagement: "审计日志",
   },
 
   // Conversation

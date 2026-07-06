@@ -63,13 +63,30 @@ def _make_app(
 def _make_session_factory(scalar_result=None, scalars_result=None):
     """Create a mock session factory that works with `async with sf() as session:`."""
     mock_session = AsyncMock()
-    mock_result = MagicMock()
-    mock_result.scalar_one_or_none.return_value = scalar_result
-    if scalars_result is not None:
-        mock_scalars = MagicMock()
-        mock_scalars.all.return_value = scalars_result
-        mock_result.scalars.return_value = mock_scalars
-    mock_session.execute = AsyncMock(return_value=mock_result)
+    _call_count = {"n": 0}
+
+    async def _execute(stmt):
+        _call_count["n"] += 1
+        result = MagicMock()
+        stmt_str = str(stmt)
+        if _call_count["n"] == 1:
+            # First query: check for existing pending application
+            result.scalar_one_or_none.return_value = scalar_result
+        elif "resource_metadata" in stmt_str:
+            # Resource metadata query: return a mock resource
+            resource = MagicMock()
+            resource.visibility = "private"
+            resource.department_id = None
+            result.scalar_one_or_none.return_value = resource
+        else:
+            result.scalar_one_or_none.return_value = scalar_result
+        if scalars_result is not None:
+            mock_scalars = MagicMock()
+            mock_scalars.all.return_value = scalars_result
+            result.scalars.return_value = mock_scalars
+        return result
+
+    mock_session.execute = AsyncMock(side_effect=_execute)
     mock_session.add = MagicMock()
     mock_session.commit = AsyncMock()
     mock_session.refresh = AsyncMock(side_effect=lambda o: None)
@@ -184,10 +201,10 @@ class TestWithdrawApplication:
 
         with patch("app.gateway.routers.visibility_applications.get_session_factory", return_value=mock_sf):
             async with AsyncClient(transport=ASGITransport(app=app_obj), base_url="http://test") as client:
-                resp = await client.put(f"/api/visibility-applications/{existing.id}/withdraw")
+                resp = await client.put(f"/api/visibility-applications/{existing.id}/withdraw", json={"version": 1})
 
         assert resp.status_code == 200
-        assert resp.json()["status"] == "withdrawn"
+        assert resp.json()["success"] is True
 
     @pytest.mark.asyncio
     async def test_rejects_withdraw_of_others_application(self):
@@ -200,7 +217,7 @@ class TestWithdrawApplication:
 
         with patch("app.gateway.routers.visibility_applications.get_session_factory", return_value=mock_sf):
             async with AsyncClient(transport=ASGITransport(app=app_obj), base_url="http://test") as client:
-                resp = await client.put(f"/api/visibility-applications/{existing.id}/withdraw")
+                resp = await client.put(f"/api/visibility-applications/{existing.id}/withdraw", json={"version": 1})
 
         assert resp.status_code == 403
 
@@ -214,7 +231,7 @@ class TestWithdrawApplication:
 
         with patch("app.gateway.routers.visibility_applications.get_session_factory", return_value=mock_sf):
             async with AsyncClient(transport=ASGITransport(app=app_obj), base_url="http://test") as client:
-                resp = await client.put(f"/api/visibility-applications/{existing.id}/withdraw")
+                resp = await client.put(f"/api/visibility-applications/{existing.id}/withdraw", json={"version": 1})
 
         assert resp.status_code == 400
 
@@ -227,7 +244,7 @@ class TestWithdrawApplication:
 
         with patch("app.gateway.routers.visibility_applications.get_session_factory", return_value=mock_sf):
             async with AsyncClient(transport=ASGITransport(app=app_obj), base_url="http://test") as client:
-                resp = await client.put(f"/api/visibility-applications/{uuid4()}/withdraw")
+                resp = await client.put(f"/api/visibility-applications/{uuid4()}/withdraw", json={"version": 1})
 
         assert resp.status_code == 404
 
@@ -340,6 +357,23 @@ class TestReviewApplication:
 
         assert resp.status_code == 400
 
+    @pytest.mark.asyncio
+    async def test_dept_admin_cannot_review_own_application(self):
+        user = _make_user(role="department_admin")
+        app_obj = _build_app(user)
+
+        existing = _make_app(applicant_id=str(user.id), status="pending", version=1)
+        mock_sf = _make_session_factory(scalar_result=existing)
+
+        with patch("app.gateway.routers.visibility_applications.get_session_factory", return_value=mock_sf):
+            async with AsyncClient(transport=ASGITransport(app=app_obj), base_url="http://test") as client:
+                resp = await client.put(
+                    f"/api/visibility-applications/{existing.id}",
+                    json={"action": "approved", "comment": "", "version": 1},
+                )
+
+        assert resp.status_code == 403
+
 
 # ---------------------------------------------------------------------------
 # GET /api/visibility-applications
@@ -389,6 +423,23 @@ class TestListApplications:
         data = resp.json()
         assert len(data["applications"]) == 1
         assert data["applications"][0]["resource_type"] == "skill"
+
+    @pytest.mark.asyncio
+    async def test_dept_admin_sees_only_own_department(self):
+        user = _make_user(role="department_admin", dept_id="dept-1")
+        app_obj = _build_app(user)
+
+        apps = [_make_app(department_id="dept-1")]
+        mock_sf = _make_session_factory(scalars_result=apps)
+
+        with patch("app.gateway.routers.visibility_applications.get_session_factory", return_value=mock_sf):
+            async with AsyncClient(transport=ASGITransport(app=app_obj), base_url="http://test") as client:
+                resp = await client.get("/api/visibility-applications")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["applications"]) == 1
+        assert data["applications"][0]["department_id"] == "dept-1"
 
     @pytest.mark.asyncio
     async def test_lists_by_status(self):

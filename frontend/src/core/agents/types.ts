@@ -9,6 +9,7 @@ export interface Agent {
   visibility: string;
   owner_id: string | null;
   department_id: string | null;
+  is_favorited?: boolean;
 }
 
 export interface CreateAgentRequest {
