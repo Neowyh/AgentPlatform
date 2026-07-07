@@ -20,13 +20,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/tools", tags=["tools"])
 
 
-def _get_param_schema(tool) -> dict:
-    try:
-        return tool.get_input_schema().model_json_schema()
-    except Exception:
-        return {}
-
-
 class ToolTestRequest(BaseModel):
     params: dict = Field(default_factory=dict)
 
@@ -119,7 +112,7 @@ async def list_tools(
                 "requires_network": False,
                 "configurable": False,
                 "config_schema": {},
-                "param_schema": _get_param_schema(t) if hasattr(t, "get_input_schema") else {},
+                "param_schema": t.get_input_schema() if hasattr(t, "get_input_schema") else {},
                 "config": {},
             }
             for t in filtered
