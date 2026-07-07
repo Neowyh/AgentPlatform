@@ -26,6 +26,7 @@ vi.mock("sonner", () => ({
 }));
 
 const mockMutateAsync = vi.fn();
+const mockToggleMutateAsync = vi.fn();
 let mockDeletePending = false;
 vi.mock("@/core/workflows", () => ({
   useDeleteWorkflow: () => ({
@@ -33,6 +34,9 @@ vi.mock("@/core/workflows", () => ({
     get isPending() {
       return mockDeletePending;
     },
+  }),
+  useToggleWorkflowFavorite: () => ({
+    mutateAsync: mockToggleMutateAsync,
   }),
 }));
 
@@ -49,6 +53,11 @@ vi.mock("@/core/i18n/hooks", () => ({
         unknown: "unknown",
         steps: (count: number) => `${count} steps`,
         inputs: (count: number) => `${count} inputs`,
+        favoriteAdded: "Added to favorites",
+        favoriteRemoved: "Removed from favorites",
+        visibilityPublic: "Public",
+        visibilityDepartment: "Department",
+        visibilityPrivate: "Private",
       },
       common: {
         cancel: "Cancel",

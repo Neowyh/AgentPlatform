@@ -26,6 +26,7 @@ vi.mock("sonner", () => ({
 }));
 
 const mockMutateAsync = vi.fn();
+const mockToggleMutateAsync = vi.fn();
 let mockDeletePending = false;
 vi.mock("@/core/agents", () => ({
   useDeleteAgent: () => ({
@@ -33,6 +34,9 @@ vi.mock("@/core/agents", () => ({
     get isPending() {
       return mockDeletePending;
     },
+  }),
+  useToggleAgentFavorite: () => ({
+    mutateAsync: mockToggleMutateAsync,
   }),
 }));
 
@@ -51,11 +55,18 @@ vi.mock("@/core/i18n/hooks", () => ({
         deleteConfirm: "Are you sure?",
         deleteSuccess: "Agent deleted",
         template: "Template",
+        exportSuccess: "Agent exported",
+        favoriteAdded: "Added to favorites",
+        favoriteRemoved: "Removed from favorites",
+        visibilityPublic: "Public",
+        visibilityDepartment: "Department",
+        visibilityPrivate: "Private",
       },
       common: {
         cancel: "Cancel",
         delete: "Delete",
         loading: "Loading...",
+        export: "Export",
       },
     },
     changeLocale: vi.fn(),
@@ -222,7 +233,7 @@ describe("AgentCard", () => {
     render(<AgentCard agent={makeAgent()} />);
     expect(screen.getByTestId("agent-export-button")).toHaveAttribute(
       "title",
-      "导出",
+      "Export",
     );
   });
 
@@ -237,7 +248,7 @@ describe("AgentCard", () => {
       expect(mockExportAgent).toHaveBeenCalledWith("export-me");
     });
     await waitFor(() => {
-      expect(mockToastSuccess).toHaveBeenCalledWith("智能体已导出");
+      expect(mockToastSuccess).toHaveBeenCalledWith("Agent exported");
     });
   });
 

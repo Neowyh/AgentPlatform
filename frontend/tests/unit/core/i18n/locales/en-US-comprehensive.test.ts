@@ -117,6 +117,8 @@ describe("enUS locale comprehensive", () => {
       exportAsMarkdown: "Export as Markdown",
       exportAsJSON: "Export as JSON",
       exportSuccess: "Conversation exported",
+      showAll: "Show all",
+      favoritesOnly: "Favorites only",
     };
 
     for (const [key, value] of Object.entries(expected)) {
@@ -377,6 +379,13 @@ describe("enUS locale comprehensive", () => {
       agentCreated: "Agent created!",
       startChatting: "Start chatting",
       backToGallery: "Back to Gallery",
+      visibilityPrivate: "Private",
+      visibilityDepartment: "Department",
+      visibilityPublic: "Public",
+      favoriteAdded: "Added to favorites",
+      favoriteRemoved: "Removed from favorites",
+      exportSuccess: "Agent exported",
+      importSuccess: "Agent imported",
     };
 
     for (const [key, value] of Object.entries(expected)) {
@@ -533,6 +542,8 @@ describe("enUS locale comprehensive", () => {
       userManagement: "User Management",
       departmentManagement: "Department Management",
       toolManagement: "Tool Management",
+      applicationManagement: "Application Review",
+      auditLogManagement: "Audit Logs",
     };
 
     for (const [key, value] of Object.entries(expected)) {
@@ -541,8 +552,8 @@ describe("enUS locale comprehensive", () => {
       });
     }
 
-    it("has 13 keys", () => {
-      expect(Object.keys(enUS.workspace)).toHaveLength(13);
+    it("has 14 keys", () => {
+      expect(Object.keys(enUS.workspace)).toHaveLength(14);
     });
   });
 

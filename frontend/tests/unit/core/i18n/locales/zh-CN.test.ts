@@ -78,6 +78,8 @@ describe("zhCN locale", () => {
       exportAsMarkdown: "导出为 Markdown",
       exportAsJSON: "导出为 JSON",
       exportSuccess: "对话已导出",
+      showAll: "显示全部",
+      favoritesOnly: "仅收藏",
     };
 
     for (const [key, value] of Object.entries(expectedStrings)) {
@@ -320,6 +322,13 @@ describe("zhCN locale", () => {
       agentCreated: "智能体已创建！",
       startChatting: "开始对话",
       backToGallery: "返回 Gallery",
+      visibilityPrivate: "私有",
+      visibilityDepartment: "部门",
+      visibilityPublic: "公开",
+      favoriteAdded: "已收藏",
+      favoriteRemoved: "已取消收藏",
+      exportSuccess: "智能体已导出",
+      importSuccess: "智能体已导入",
     };
 
     for (const [key, value] of Object.entries(expected)) {
@@ -462,6 +471,8 @@ describe("zhCN locale", () => {
       userManagement: "用户管理",
       departmentManagement: "部门管理",
       toolManagement: "工具管理",
+      applicationManagement: "审批管理",
+      auditLogManagement: "审计日志",
     };
 
     for (const [key, value] of Object.entries(expected)) {
@@ -470,8 +481,8 @@ describe("zhCN locale", () => {
       });
     }
 
-    it("has 13 keys", () => {
-      expect(Object.keys(zhCN.workspace)).toHaveLength(13);
+    it("has 14 keys", () => {
+      expect(Object.keys(zhCN.workspace)).toHaveLength(14);
     });
   });
 

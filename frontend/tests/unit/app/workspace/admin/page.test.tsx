@@ -108,11 +108,11 @@ describe("AdminDashboardPage", () => {
 
   // ── Success state ──────────────────────────────────────────────────
 
-  test("renders six stat cards after loading", async () => {
+  test("renders seven stat cards after loading", async () => {
     render(<AdminDashboardPage />);
     await waitFor(() => {
       const cards = screen.getAllByTestId("admin-stat-card");
-      expect(cards).toHaveLength(6);
+      expect(cards).toHaveLength(7);
     });
   });
 
@@ -152,7 +152,7 @@ describe("AdminDashboardPage", () => {
     render(<AdminDashboardPage />);
     await waitFor(() => {
       const details = screen.getAllByText("点击查看详情");
-      expect(details).toHaveLength(6);
+      expect(details).toHaveLength(7);
     });
   });
 

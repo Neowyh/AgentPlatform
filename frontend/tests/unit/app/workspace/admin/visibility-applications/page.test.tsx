@@ -294,7 +294,7 @@ describe("VisibilityApplicationsPage", () => {
     await user.click(confirmButton);
 
     await waitFor(() => {
-      expect(mockWithdrawApplication).toHaveBeenCalledWith("app-3");
+      expect(mockWithdrawApplication).toHaveBeenCalledWith("app-3", 1);
     });
   });
 

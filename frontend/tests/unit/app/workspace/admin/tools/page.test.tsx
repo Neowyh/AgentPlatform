@@ -64,6 +64,7 @@ const mockTools = [
     configurable: true,
     param_schema: { file_path: { type: "string" } },
     config: {},
+    visibility: "public",
   },
   {
     name: "web_search",
@@ -73,6 +74,7 @@ const mockTools = [
     configurable: false,
     param_schema: { query: { type: "string" } },
     config: {},
+    visibility: "public",
   },
   {
     name: "code_interpreter",
@@ -82,6 +84,7 @@ const mockTools = [
     configurable: true,
     param_schema: { code: { type: "string" }, language: { type: "string" } },
     config: {},
+    visibility: "department",
   },
 ];
 
@@ -183,12 +186,12 @@ describe("ToolsPage", () => {
     });
   });
 
-  test("displays tool group badges", async () => {
+  test("displays tool visibility badges", async () => {
     render(<ToolsPage />);
     await waitFor(() => {
-      expect(screen.getByText("document")).toBeInTheDocument();
-      expect(screen.getByText("network")).toBeInTheDocument();
-      expect(screen.getByText("code")).toBeInTheDocument();
+      const publicBadges = screen.getAllByText("public");
+      expect(publicBadges).toHaveLength(2);
+      expect(screen.getByText("department")).toBeInTheDocument();
     });
   });
 
@@ -272,15 +275,6 @@ describe("ToolsPage", () => {
   test("calls listTools on mount", () => {
     render(<ToolsPage />);
     expect(mockListTools).toHaveBeenCalledTimes(1);
-  });
-
-  // ── Group filter ───────────────────────────────────────────────────
-
-  test("renders group filter select", async () => {
-    render(<ToolsPage />);
-    await waitFor(() => {
-      expect(screen.getByText("全部工具组")).toBeInTheDocument();
-    });
   });
 
   // ── Detail dialog ──────────────────────────────────────────────────
@@ -538,25 +532,6 @@ describe("ToolsPage", () => {
     expect(availableBadges.length).toBeGreaterThanOrEqual(2);
   });
 
-  // ── Empty filtered tools ───────────────────────────────────────────
-
-  test("shows empty state when filtered group has no tools", async () => {
-    const user = userEvent.setup();
-    // Tools with distinct groups
-    mockListTools.mockResolvedValue({
-      tools: [mockTools[0]], // only "document" group
-      total: 1,
-    });
-    render(<ToolsPage />);
-    await waitFor(() => {
-      expect(screen.getByTestId("tool-list")).toBeInTheDocument();
-    });
-
-    // Verify single tool rendered
-    const toolCards = screen.getAllByTestId("tool-card");
-    expect(toolCards).toHaveLength(1);
-  });
-
   // ── Test result label ──────────────────────────────────────────────
 
   test("does not show test result section before testing", async () => {
@@ -607,152 +582,6 @@ describe("ToolsPage", () => {
     });
   });
 
-  // ── Group filtering ────────────────────────────────────────────────
-
-  test("filters tools by group when a specific group is selected", async () => {
-    const user = userEvent.setup();
-    render(<ToolsPage />);
-    await waitFor(() => {
-      expect(screen.getByTestId("tool-list")).toBeInTheDocument();
-    });
-
-    // Initially all tools are shown
-    const toolCards = screen.getAllByTestId("tool-card");
-    expect(toolCards).toHaveLength(3);
-
-    // The group filter select exists with all groups
-    expect(screen.getByText("全部工具组")).toBeInTheDocument();
-  });
-
-  test("filters to specific group via Select interaction", async () => {
-    const user = userEvent.setup();
-    render(<ToolsPage />);
-    await waitFor(() => {
-      expect(screen.getByTestId("tool-list")).toBeInTheDocument();
-    });
-
-    // Initially all tools are shown
-    let toolCards = screen.getAllByTestId("tool-card");
-    expect(toolCards).toHaveLength(3);
-
-    // Find the filter select trigger (first combobox)
-    const comboboxes = screen.getAllByRole("combobox");
-    const filterSelect = comboboxes[0]!;
-
-    // Click to open the filter dropdown
-    await user.click(filterSelect);
-
-    // Wait for options to appear in the portal
-    await waitFor(() => {
-      const options = screen.getAllByRole("option");
-      expect(options.length).toBeGreaterThan(0);
-    });
-
-    // Click on "document" group option
-    const documentOption = screen.getByRole("option", { name: "document" });
-    await user.click(documentOption);
-
-    // After filtering, only the document tool should be shown
-    await waitFor(() => {
-      toolCards = screen.getAllByTestId("tool-card");
-      expect(toolCards).toHaveLength(1);
-      expect(screen.getByText("read_document")).toBeInTheDocument();
-      expect(screen.queryByText("web_search")).not.toBeInTheDocument();
-      expect(screen.queryByText("code_interpreter")).not.toBeInTheDocument();
-    });
-  });
-
-  test("filters to network group shows only network tools", async () => {
-    const user = userEvent.setup();
-    render(<ToolsPage />);
-    await waitFor(() => {
-      expect(screen.getByTestId("tool-list")).toBeInTheDocument();
-    });
-
-    const comboboxes = screen.getAllByRole("combobox");
-    const filterSelect = comboboxes[0]!;
-
-    await user.click(filterSelect);
-
-    await waitFor(() => {
-      const options = screen.getAllByRole("option");
-      expect(options.length).toBeGreaterThan(0);
-    });
-
-    const networkOption = screen.getByRole("option", { name: "network" });
-    await user.click(networkOption);
-
-    await waitFor(() => {
-      const toolCards = screen.getAllByTestId("tool-card");
-      expect(toolCards).toHaveLength(1);
-      expect(screen.getByText("web_search")).toBeInTheDocument();
-      expect(screen.queryByText("read_document")).not.toBeInTheDocument();
-    });
-  });
-
-  test("filters to code group shows only code tools", async () => {
-    const user = userEvent.setup();
-    render(<ToolsPage />);
-    await waitFor(() => {
-      expect(screen.getByTestId("tool-list")).toBeInTheDocument();
-    });
-
-    const comboboxes = screen.getAllByRole("combobox");
-    const filterSelect = comboboxes[0]!;
-
-    await user.click(filterSelect);
-
-    await waitFor(() => {
-      const options = screen.getAllByRole("option");
-      expect(options.length).toBeGreaterThan(0);
-    });
-
-    const codeOption = screen.getByRole("option", { name: "code" });
-    await user.click(codeOption);
-
-    await waitFor(() => {
-      const toolCards = screen.getAllByTestId("tool-card");
-      expect(toolCards).toHaveLength(1);
-      expect(screen.getByText("code_interpreter")).toBeInTheDocument();
-      expect(screen.queryByText("read_document")).not.toBeInTheDocument();
-    });
-  });
-
-  test("shows empty state when filtered group has no matching tools", async () => {
-    const user = userEvent.setup();
-    // All tools are in distinct groups
-    mockListTools.mockResolvedValue({
-      tools: [mockTools[0]], // only "document" group
-      total: 1,
-    });
-
-    render(<ToolsPage />);
-    await waitFor(() => {
-      expect(screen.getByTestId("tool-list")).toBeInTheDocument();
-    });
-
-    const comboboxes = screen.getAllByRole("combobox");
-    const filterSelect = comboboxes[0]!;
-
-    await user.click(filterSelect);
-
-    await waitFor(() => {
-      const options = screen.getAllByRole("option");
-      expect(options.length).toBeGreaterThan(0);
-    });
-
-    // Try to filter by "network" but no tools have that group
-    // Since only "document" group tool exists, "network" option won't be in the list
-    // But we can test filtering by the existing group
-    const documentOption = screen.getByRole("option", { name: "document" });
-    await user.click(documentOption);
-
-    await waitFor(() => {
-      const toolCards = screen.getAllByTestId("tool-card");
-      expect(toolCards).toHaveLength(1);
-    });
-  });
-
   // ── Detail dialog: param_schema null ───────────────────────────────
 
   test("handles tool with null param_schema", async () => {
@@ -792,21 +621,23 @@ describe("ToolsPage", () => {
 
   // ── Detail dialog: tool name badge ─────────────────────────────────
 
-  test("shows tool group and network badges in detail dialog", async () => {
+  test("shows tool visibility and network badges in detail dialog", async () => {
     const user = userEvent.setup();
     render(<ToolsPage />);
     await waitFor(() => {
       expect(screen.getByTestId("tool-list")).toBeInTheDocument();
     });
 
+    // Click tool card to open detail dialog
     const toolCards = screen.getAllByTestId("tool-card");
-    await user.click(toolCards[0]!); // read_document (document group, no network)
+    await user.click(toolCards[0]!);
 
     await waitFor(() => {
-      // The dialog shows badges for group and network status
-      const badges = screen.getAllByText("document");
-      expect(badges.length).toBeGreaterThanOrEqual(1);
-      // read_document is not network-required, should show "可用"
+      // Dialog showing test button confirms it is open
+      expect(screen.getByText("测试工具")).toBeInTheDocument();
+      const publicBadges = screen.getAllByText("public");
+      expect(publicBadges.length).toBeGreaterThanOrEqual(1);
+      // Mock tool does not require network, so "该工具无需联网即可使用" should be visible
       const availableBadges = screen.getAllByText("可用");
       expect(availableBadges.length).toBeGreaterThanOrEqual(1);
     });

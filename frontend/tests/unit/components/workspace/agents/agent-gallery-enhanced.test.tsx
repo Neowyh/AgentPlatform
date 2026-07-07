@@ -57,6 +57,7 @@ vi.mock("@/core/i18n/hooks", () => ({
         deleteConfirm: "Are you sure?",
         deleteSuccess: "Agent deleted",
         template: "Template",
+        importSuccess: "智能体已导入",
       },
       common: {
         cancel: "Cancel",

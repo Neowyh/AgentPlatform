@@ -10,6 +10,7 @@ const mockListDepartments = vi.fn();
 const mockCreateDepartment = vi.fn();
 const mockUpdateDepartment = vi.fn();
 const mockDeleteDepartment = vi.fn();
+const mockGetDepartmentResources = vi.fn();
 const mockToastSuccess = vi.fn();
 const mockToastError = vi.fn();
 
@@ -27,6 +28,8 @@ vi.mock("@/core/admin/api", () => ({
   createDepartment: (...args: unknown[]) => mockCreateDepartment(...args),
   updateDepartment: (...args: unknown[]) => mockUpdateDepartment(...args),
   deleteDepartment: (...args: unknown[]) => mockDeleteDepartment(...args),
+  getDepartmentResources: (...args: unknown[]) =>
+    mockGetDepartmentResources(...args),
 }));
 
 vi.mock("sonner", () => ({
@@ -128,6 +131,10 @@ describe("DepartmentsPage", () => {
     });
     mockUpdateDepartment.mockResolvedValue({ success: true });
     mockDeleteDepartment.mockResolvedValue(undefined);
+    mockGetDepartmentResources.mockResolvedValue({
+      resources: [],
+      department_name: "Engineering",
+    });
   });
 
   afterEach(() => {
