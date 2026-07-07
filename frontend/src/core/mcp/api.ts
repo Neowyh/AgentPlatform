@@ -9,7 +9,11 @@ export async function loadMCPConfig(): Promise<MCPConfig> {
   if (!response.ok) {
     await extractError(response, "Failed to load MCP config");
   }
-  return response.json() as Promise<MCPConfig>;
+  const data = (await response.json()) as MCPConfig | null;
+  if (!data) {
+    throw new Error("Invalid MCP config: server returned empty response");
+  }
+  return data;
 }
 
 export async function updateMCPConfig(config: MCPConfig): Promise<MCPConfig> {
@@ -23,5 +27,9 @@ export async function updateMCPConfig(config: MCPConfig): Promise<MCPConfig> {
   if (!response.ok) {
     await extractError(response, "Failed to update MCP config");
   }
-  return response.json() as Promise<MCPConfig>;
+  const data = (await response.json()) as MCPConfig | null;
+  if (!data) {
+    throw new Error("Invalid MCP config: server returned empty response");
+  }
+  return data;
 }

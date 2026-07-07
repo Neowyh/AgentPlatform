@@ -166,6 +166,33 @@ export const DEFAULT_MOCK_MEMORY: MockMemory = {
   ],
 };
 
+export type MockAuditLog = {
+  id: string;
+  actor_id: string | null;
+  action: string;
+  resource_type: string | null;
+  resource_id: string | null;
+  detail: string | null;
+  ip_address: string | null;
+  created_at: string;
+};
+
+export type MockMCPConfig = {
+  mcp_servers: Record<
+    string,
+    {
+      enabled: boolean;
+      type: "stdio" | "sse" | "http";
+      command?: string;
+      args?: string[];
+      env?: Record<string, string>;
+      url?: string;
+      headers?: Record<string, string>;
+      description: string;
+    }
+  >;
+};
+
 export type MockAPIOptions = {
   threads?: MockThread[];
   agents?: MockAgent[];
@@ -176,6 +203,8 @@ export type MockAPIOptions = {
   departments?: MockDepartment[];
   tools?: MockTool[];
   memory?: MockMemory;
+  auditLogs?: MockAuditLog[];
+  mcpConfig?: MockMCPConfig;
 };
 
 function normalizeArtifactPath(filepath: string) {
@@ -226,6 +255,8 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
   const departments = options?.departments ?? [];
   const tools = options?.tools ?? [];
   const memory = options?.memory ?? DEFAULT_MOCK_MEMORY;
+  const auditLogs = options?.auditLogs ?? [];
+  const mcpConfig = options?.mcpConfig ?? { mcp_servers: {} };
 
   // ── Auth endpoints (defense-in-depth for IDEER_AUTH_DISABLED mode) ──
 
@@ -1015,6 +1046,62 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
         status: 200,
         contentType: "application/json",
         body: JSON.stringify(memory),
+      });
+    }
+    return route.fallback();
+  });
+
+  // ── Audit Logs ──────────────────────────────────────────────
+
+  void page.route("**/api/admin/audit-logs", (route) => {
+    if (route.request().method() === "GET") {
+      const url = new URL(route.request().url());
+      const page_num = Number(url.searchParams.get("page") ?? "1");
+      const pageSize = Number(url.searchParams.get("page_size") ?? "20");
+      const actorId = url.searchParams.get("actor_id");
+      const action = url.searchParams.get("action");
+      const resourceType = url.searchParams.get("resource_type");
+
+      let filtered = auditLogs;
+      if (actorId) filtered = filtered.filter((l) => l.actor_id === actorId);
+      if (action && action !== "all")
+        filtered = filtered.filter((l) => l.action === action);
+      if (resourceType && resourceType !== "all")
+        filtered = filtered.filter((l) => l.resource_type === resourceType);
+
+      const start = (page_num - 1) * pageSize;
+      const items = filtered.slice(start, start + pageSize);
+
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          items,
+          total: filtered.length,
+          page: page_num,
+          page_size: pageSize,
+        }),
+      });
+    }
+    return route.fallback();
+  });
+
+  // ── MCP Config ──────────────────────────────────────────────
+
+  void page.route("**/api/mcp/config", (route) => {
+    const method = route.request().method();
+    if (method === "GET") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(mcpConfig),
+      });
+    }
+    if (method === "PUT") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: "{}",
       });
     }
     return route.fallback();
