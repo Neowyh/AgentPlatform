@@ -330,7 +330,7 @@ async def update_custom_skill(
 
         current_version = meta.get("version")
         if current_version is not None and request.version != current_version:
-            raise ApiException("VERSION_CONFLICT")
+            raise ApiException("VERSION_CONFLICT", "乐观锁冲突，需刷新重试")
         storage = get_or_new_skill_storage(app_config=config)
         storage.ensure_custom_skill_is_editable(skill_name)
         storage.validate_skill_markdown_content(skill_name, request.content)

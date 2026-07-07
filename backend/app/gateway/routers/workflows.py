@@ -8,6 +8,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 
 from app.gateway.audit import record_audit
 from app.gateway.authz import (
@@ -307,7 +308,7 @@ async def update_workflow(
 
     current_version = meta.get("version")
     if current_version is not None and body.version != current_version:
-        raise ApiException("VERSION_CONFLICT")
+        raise ApiException("VERSION_CONFLICT", "乐观锁冲突，需刷新重试")
 
     # Validate new YAML
     try:

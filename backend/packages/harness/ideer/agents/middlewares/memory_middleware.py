@@ -68,7 +68,7 @@ class MemoryMiddleware(AgentMiddleware[MemoryMiddlewareState]):
         thread_id = runtime.context.get("thread_id") if runtime.context else None
         if thread_id is None:
             config_data = get_config()
-            thread_id = config_data.get("configurable", {}).get("thread_id")
+            thread_id = (config_data or {}).get("configurable", {}).get("thread_id")
         if not thread_id:
             logger.debug("No thread_id in context, skipping memory update")
             return None

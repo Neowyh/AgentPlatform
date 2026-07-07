@@ -625,7 +625,7 @@ async def update_agent(
 
     current_version = meta.get("version")
     if current_version is not None and request.version != current_version:
-        raise ApiException("VERSION_CONFLICT")
+        raise ApiException("VERSION_CONFLICT", "乐观锁冲突，需刷新重试")
 
     try:
         # Ensure user directory exists before writing files
