@@ -9,22 +9,64 @@ Covers all 4 uploads endpoints:
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+import tempfile
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from _router_auth_helpers import make_authed_test_app
 from fastapi.testclient import TestClient
 
+import app.gateway.routers.uploads as uploads_module
+from app.gateway.deps import get_config
 from app.gateway.routers.uploads import router as uploads_router
 
 pytestmark = pytest.mark.no_auto_user
 
 THREAD_ID = "thread-1"
 
+# Shared temp dir used by the autouse fixture and delete tests.
+_UPLOADS_DIR: Path | None = None
+
+
+def _make_config():
+    """Build a minimal AppConfig-like object with safe upload defaults."""
+    cfg = SimpleNamespace()
+    cfg.uploads = SimpleNamespace()
+    cfg.uploads.max_files = 10
+    cfg.uploads.max_file_size = 50 * 1024 * 1024
+    cfg.uploads.max_total_size = 100 * 1024 * 1024
+    return cfg
+
+
+@pytest.fixture(autouse=True)
+def _mock_uploads_deps():
+    """Patch away modules that need config.yaml on disk.
+
+    ``get_sandbox_provider`` calls ``get_app_config()`` directly (not
+    through FastAPI DI), and ``get_uploads_dir`` / ``ensure_uploads_dir``
+    resolve real filesystem paths — neither works without a config.yaml.
+    """
+    global _UPLOADS_DIR
+    _UPLOADS_DIR = Path(tempfile.mkdtemp())
+    provider = MagicMock()
+    provider.uses_thread_data_mounts = True
+    sandbox = MagicMock()
+    provider.acquire.return_value = "sandbox-1"
+    provider.get.return_value = sandbox
+    with (
+        patch.object(uploads_module, "get_sandbox_provider", return_value=provider),
+        patch.object(uploads_module, "get_uploads_dir", return_value=_UPLOADS_DIR),
+        patch.object(uploads_module, "ensure_uploads_dir", return_value=_UPLOADS_DIR),
+    ):
+        yield
+
 
 def _make_app(uploads_store=None, upload_config=None):
     app = make_authed_test_app()
     app.include_router(uploads_router)
+    app.dependency_overrides[get_config] = _make_config
     if uploads_store is not None:
         app.state.uploads_store = uploads_store
     if upload_config is not None:
@@ -156,9 +198,11 @@ class TestDeleteUploadedFile:
         """Delete uploaded file succeeds."""
         store = _make_uploads_store()
         app = _make_app(uploads_store=store)
+        (_UPLOADS_DIR / "test.txt").touch()
         with TestClient(app) as client:
             resp = client.delete(f"/api/threads/{THREAD_ID}/uploads/test.txt")
         assert resp.status_code in (200, 204)
+        assert not (_UPLOADS_DIR / "test.txt").exists()
 
     def test_delete_upload_not_found(self):
         """Delete uploaded file returns 404 when not found."""
