@@ -16,6 +16,7 @@ Covers all 10 skills endpoints:
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -23,6 +24,7 @@ from _router_auth_helpers import make_authed_test_app
 from fastapi.testclient import TestClient
 
 from app.gateway.authz import get_current_rbac_user, get_optional_rbac_user
+from app.gateway.deps import get_config
 from app.gateway.routers.skills import router as skills_router
 from ideer.skills.types import Skill, SkillCategory
 
@@ -55,6 +57,7 @@ def _make_app(role: str = "user"):
 
     app.dependency_overrides[get_current_rbac_user] = _stub
     app.dependency_overrides[get_optional_rbac_user] = _stub
+    app.dependency_overrides[get_config] = lambda: SimpleNamespace()
     return app, user
 
 

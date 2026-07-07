@@ -155,10 +155,11 @@ def _make_test_app(config, current_user=None):
     from _router_auth_helpers import make_authed_test_app
 
     from app.gateway.authz import get_current_rbac_user, get_optional_rbac_user
+    from app.gateway.deps import get_config
 
     app = make_authed_test_app()
     app.state.config = config
-    app.dependency_overrides[lambda: config] = lambda: config
+    app.dependency_overrides[get_config] = lambda: config
 
     user = current_user or _make_user(role=UserRole.SUPER_ADMIN)
 

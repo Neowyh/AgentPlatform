@@ -7,6 +7,7 @@ and error handling paths for maximum coverage.
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -15,6 +16,7 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from app.gateway.authz import get_current_rbac_user, get_optional_rbac_user
+from app.gateway.deps import get_config
 from app.gateway.routers.skills import (
     SkillCategory,
     _load_skill_meta,
@@ -68,6 +70,7 @@ def _make_app(user=None):
 
     app.dependency_overrides[get_current_rbac_user] = _stub_current_user
     app.dependency_overrides[get_optional_rbac_user] = _stub_optional_user
+    app.dependency_overrides[get_config] = lambda: SimpleNamespace()
     app.include_router(skills_router)
     return app
 
@@ -284,6 +287,7 @@ class TestListSkills:
                 return None
 
             app.dependency_overrides[get_optional_rbac_user] = _none_optional
+            app.dependency_overrides[get_config] = lambda: SimpleNamespace()
             app.include_router(skills_router)
             client = TestClient(app)
             resp = client.get("/api/skills")
@@ -536,6 +540,7 @@ class TestGetCustomSkill:
                 return None
 
             app.dependency_overrides[get_optional_rbac_user] = _none_optional
+            app.dependency_overrides[get_config] = lambda: SimpleNamespace()
             app.include_router(skills_router)
             client = TestClient(app)
             resp = client.get("/api/skills/custom/private-skill")
@@ -801,6 +806,7 @@ class TestGetCustomSkillHistory:
                 return None
 
             app.dependency_overrides[get_optional_rbac_user] = _none_optional
+            app.dependency_overrides[get_config] = lambda: SimpleNamespace()
             app.include_router(skills_router)
             client = TestClient(app)
             resp = client.get("/api/skills/custom/priv/history")
