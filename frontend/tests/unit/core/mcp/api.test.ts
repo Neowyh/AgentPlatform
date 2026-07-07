@@ -50,8 +50,8 @@ describe("mcp api", () => {
       const result = await loadMCPConfig();
 
       expect(result.mcp_servers).toBeDefined();
-      expect(result.mcp_servers["test-server"]!.enabled).toBe(true);
-      expect(result.mcp_servers["test-server"]!.type).toBe("stdio");
+      expect(result.mcp_servers["test-server"]?.enabled).toBe(true);
+      expect(result.mcp_servers["test-server"]?.type).toBe("stdio");
       expect(fetcher).toHaveBeenCalledWith(
         "http://localhost:8000/api/mcp/config",
       );
@@ -96,7 +96,7 @@ describe("mcp api", () => {
           body: JSON.stringify(MOCK_MCP_CONFIG),
         }),
       );
-      expect(result.mcp_servers["test-server"]!.enabled).toBe(true);
+      expect(result.mcp_servers["test-server"]?.enabled).toBe(true);
     });
 
     test("calls extractError on failure", async () => {
