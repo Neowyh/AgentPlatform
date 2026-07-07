@@ -131,7 +131,7 @@ def auth():
     import asyncio
 
     helper = QAAuthHelper(BASE_URL)
-    asyncio.get_event_loop().run_until_complete(helper.ensure_admin())
+    asyncio.run(helper.ensure_admin())
     return helper
 
 
@@ -261,12 +261,12 @@ class TestAgentsQA:
             )
             assert response.status_code == 200
 
-            # 更新
+            # 更新 (fresh agent starts at version=1)
             response = await client.put(
                 f"{BASE_URL}/api/agents/{agent_name}",
                 cookies=auth_cookies,
                 headers=auth_headers,
-                json={"description": "Updated by QA"},
+                json={"description": "Updated by QA", "version": 1},
             )
             assert response.status_code == 200
 
@@ -313,7 +313,7 @@ class TestWorkflowsQA:
     async def test_workflow_crud(self, auth_headers_and_cookies):
         """Workflow 完整 CRUD 流程"""
         auth_headers, auth_cookies = auth_headers_and_cookies
-        wf_name = "qa-test-workflow"
+        wf_name = f"qa-test-wf-{uuid.uuid4().hex[:8]}"
         wf_yaml = f"name: {wf_name}\nsteps:\n  - id: step1\n    type: agent\n    agent: default"
 
         async with httpx.AsyncClient() as client:
@@ -333,13 +333,13 @@ class TestWorkflowsQA:
             )
             assert response.status_code == 200
 
-            # 更新
+            # 更新 (fresh workflow starts at version=1)
             updated_yaml = f"name: {wf_name}\nsteps:\n  - id: step1\n    type: agent\n    agent: default\n    prompt: updated"
             response = await client.put(
                 f"{BASE_URL}/api/workflows/{wf_name}",
                 cookies=auth_cookies,
                 headers=auth_headers,
-                json={"yaml_content": updated_yaml},
+                json={"yaml_content": updated_yaml, "version": 1},
             )
             assert response.status_code == 200
 

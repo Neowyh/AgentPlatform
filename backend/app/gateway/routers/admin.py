@@ -293,13 +293,13 @@ async def update_user_role(
 
 
 @router.get("/departments")
-@require_role(UserRole.SUPER_ADMIN)
+@require_role(UserRole.SUPER_ADMIN, UserRole.DEPARTMENT_ADMIN)
 async def list_departments(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     current_user: UserModel = Depends(get_current_rbac_user),
 ):
-    """List all departments. Requires super_admin role."""
+    """List all departments. Requires super_admin or department_admin role."""
     sf = get_session_factory()
     if sf is None:
         raise HTTPException(status_code=500, detail="Database not initialized")

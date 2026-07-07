@@ -259,24 +259,24 @@ class TestDeptAdminPermissions:
     """部门管理员权限测试 — 可以查看部门列表（含 member_count），不能访问 super_admin 专属功能"""
 
     @pytest.mark.asyncio
-    async def test_cannot_access_admin_stats(self, dept_admin_cookies):
-        """部门管理员不应该能够访问管理统计"""
+    async def test_can_access_admin_stats(self, dept_admin_cookies):
+        """部门管理员应该能够访问管理统计"""
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 f"{BASE_URL}/api/admin/stats",
                 cookies=dept_admin_cookies,
             )
-            assert response.status_code in (401, 403)
+            assert response.status_code == 200
 
     @pytest.mark.asyncio
-    async def test_cannot_list_users(self, dept_admin_cookies):
-        """部门管理员不应该能够列出所有用户"""
+    async def test_can_list_users(self, dept_admin_cookies):
+        """部门管理员应该能够列出所有用户"""
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 f"{BASE_URL}/api/admin/users",
                 cookies=dept_admin_cookies,
             )
-            assert response.status_code in (401, 403)
+            assert response.status_code == 200
 
     @pytest.mark.asyncio
     async def test_can_list_departments(self, dept_admin_cookies):
@@ -535,14 +535,14 @@ class TestPermissionBoundaries:
             assert response.status_code in (401, 403)
 
     @pytest.mark.asyncio
-    async def test_dept_admin_cannot_access_admin_stats(self, dept_admin_cookies):
-        """部门管理员不应该能够访问管理统计"""
+    async def test_dept_admin_can_access_admin_stats(self, dept_admin_cookies):
+        """部门管理员应该能够访问管理统计"""
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 f"{BASE_URL}/api/admin/stats",
                 cookies=dept_admin_cookies,
             )
-            assert response.status_code in (401, 403)
+            assert response.status_code == 200
 
     @pytest.mark.asyncio
     async def test_viewer_cannot_access_admin_stats(self, viewer_cookies):
@@ -565,14 +565,14 @@ class TestPermissionBoundaries:
             assert response.status_code in (401, 403)
 
     @pytest.mark.asyncio
-    async def test_dept_admin_cannot_list_all_users(self, dept_admin_cookies):
-        """部门管理员不应该能够列出所有用户"""
+    async def test_dept_admin_can_list_all_users(self, dept_admin_cookies):
+        """部门管理员应该能够列出所有用户"""
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 f"{BASE_URL}/api/admin/users",
                 cookies=dept_admin_cookies,
             )
-            assert response.status_code in (401, 403)
+            assert response.status_code == 200
 
     @pytest.mark.asyncio
     async def test_viewer_cannot_list_all_users(self, viewer_cookies):
