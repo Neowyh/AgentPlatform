@@ -128,11 +128,7 @@ export default function AuditLogsPage() {
       return;
     }
 
-    void fetchLogs()
-      .catch((err) =>
-        setError(err instanceof Error ? err.message : String(err)),
-      )
-      .finally(() => setLoading(false));
+    void fetchLogs().finally(() => setLoading(false));
   }, [currentUser, fetchLogs]);
 
   if (currentUser?.system_role !== "super_admin") {
