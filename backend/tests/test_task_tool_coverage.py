@@ -368,6 +368,11 @@ class TestTaskToolThreadIdFallback:
         monkeypatch.setattr(task_tool_module, "get_stream_writer", lambda: events.append)
         monkeypatch.setattr(task_tool_module.asyncio, "sleep", _no_sleep)
         monkeypatch.setattr("ideer.tools.get_available_tools", lambda **kwargs: [])
+        monkeypatch.setattr(
+            task_tool_module,
+            "get_app_config",
+            lambda: SimpleNamespace(models=[SimpleNamespace(name="test-model")]),
+        )
 
         output = _run_task_tool(
             runtime=runtime,
@@ -419,6 +424,11 @@ class TestTaskToolTaskDisappeared:
         monkeypatch.setattr(task_tool_module, "get_stream_writer", lambda: events.append)
         monkeypatch.setattr(task_tool_module.asyncio, "sleep", _no_sleep)
         monkeypatch.setattr("ideer.tools.get_available_tools", lambda **kwargs: [])
+        monkeypatch.setattr(
+            task_tool_module,
+            "get_app_config",
+            lambda: SimpleNamespace(models=[SimpleNamespace(name="test-model")]),
+        )
         monkeypatch.setattr(
             task_tool_module,
             "cleanup_background_task",

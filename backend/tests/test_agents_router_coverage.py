@@ -219,6 +219,7 @@ class TestCreateAgent:
             patch(_API_PATCH, return_value=AgentsApiConfig(enabled=True)),
             patch(_UID_PATCH, return_value="user-1"),
             patch(_PATHS_PATCH) as mock_paths,
+            patch(_LOAD_PATCH, return_value=_mock_agent()),
         ):
             paths_obj = MagicMock()
             paths_obj.user_agent_dir.return_value = MagicMock(exists=MagicMock(return_value=False))
@@ -321,6 +322,7 @@ class TestImportAgent:
             patch(_API_PATCH, return_value=AgentsApiConfig(enabled=True)),
             patch(_UID_PATCH, return_value="user-1"),
             patch(_PATHS_PATCH) as mock_paths,
+            patch(_LOAD_PATCH, return_value=_mock_agent()),
         ):
             paths_obj = MagicMock()
             paths_obj.user_agent_dir.return_value = MagicMock(exists=MagicMock(return_value=False))

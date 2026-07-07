@@ -233,7 +233,7 @@ def test_merge_subagents_refuses_conflict_without_partial_write(tmp_path: Path) 
 def test_validate_fault_zeroing_subagent_registry_finds_merged_subagents(tmp_path: Path) -> None:
     config_path = tmp_path / "config.yaml"
     subagents_file = install_script.default_subagents_file()
-    shutil.copy2(SCRIPT_PATH.parents[1] / "config.yaml", config_path)
+    shutil.copy2(SCRIPT_PATH.parents[1] / "config.example.yaml", config_path)
     install_script.merge_fault_zeroing_subagents(config_path, subagents_file)
 
     verified = install_script.validate_fault_zeroing_subagent_registry(config_path)

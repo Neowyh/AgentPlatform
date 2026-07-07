@@ -1056,7 +1056,7 @@ class TestListDepartments:
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_list_departments_as_department_admin_shows_member_count(self, mock_sf):
-        """Department admin gets 403 — only super_admin can list departments."""
+        """Department admin can list departments and sees member_count."""
         dept = _make_dept()
 
         session = AsyncMock()
@@ -1079,7 +1079,13 @@ class TestListDepartments:
         app = _make_app(current_user=admin)
         resp = TestClient(app).get("/api/admin/departments")
 
-        assert resp.status_code == 403
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 1
+        assert len(data["departments"]) == 1
+        assert data["departments"][0]["member_count"] == 3
+        assert data["departments"][0]["agent_count"] == 0
+        assert data["departments"][0]["skill_count"] == 0
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_list_departments_as_regular_user_redacts_member_count(self, mock_sf):
