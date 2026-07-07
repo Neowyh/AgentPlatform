@@ -792,22 +792,22 @@ B1(基础层) ──→ B2(核心层) ──→ B3(功能层) ──→ B4(补�
 
 - [x] **B4a** — 覆盖率补丁集（~35 个文件）
 - [x] **B4b** — 权限/隔离（~10 个文件）
-- [ ] **B4c** — 杂项（~30 个文件）
+- [x] **B4c** — 杂项（~30 个文件）
 
 ### B5: 后端子目录（2/2）— 可与 B4 并行
 
-- [ ] **B5a** — Blocking IO 回归（3 个文件）
-- [ ] **B5b** — QA 子目录（3 个文件）
+- [x] **B5a** — Blocking IO 回归（3 个文件）
+- [x] **B5b** — QA 子目录（3 个文件）
 
 ### B6: 前端单元测试（7/7）— 可与 B4/B5 并行
 
-- [ ] **B6a** — core/ 领域逻辑（118 个文件）
-- [ ] **B6b** — components/ai-elements（30 个文件）
-- [ ] **B6c** — components/ui（42 个文件）
-- [ ] **B6d** — components/workspace（74 个文件）
-- [ ] **B6e** — components/landing（17 个文件）
-- [ ] **B6f** — app/ 页面级（52 个文件）
-- [ ] **B6g** — 根级 hooks/lib/mdx（7 个文件）
+- [x] **B6a** — core/ 领域逻辑（118 个文件）
+- [x] **B6b** — components/ai-elements（30 个文件）
+- [x] **B6c** — components/ui（42 个文件）
+- [x] **B6d** — components/workspace（74 个文件）
+- [x] **B6e** — components/landing（17 个文件）
+- [x] **B6f** — app/ 页面级（52 个文件）
+- [x] **B6g** — 根级 hooks/lib/mdx（7 个文件）
 
 ### B7: 前端 E2E（4/4）— 最后执行
 
