@@ -1,9 +1,9 @@
 {
   "page": "role-viewer-workspace",
   "route": "/workspace/chats/new",
-  "timestamp": "2026-06-25T10:30:08.716Z",
+  "timestamp": "2026-07-07T14:31:31.086Z",
   "viewport": "desktop",
-  "status": "ok",
+  "status": "fail",
   "checks": {
     "consoleErrors": [],
     "failedRequests": [],
@@ -12,6 +12,8 @@
     "reactError": false,
     "urlDrift": false,
     "wrongPage": null,
-    "missingElements": []
+    "missingElements": [
+      "textarea, [data-testid=\"chat-input\"], [contenteditable=\"true\"]"
+    ]
   }
 }

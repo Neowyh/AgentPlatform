@@ -1,9 +1,9 @@
 {
   "page": "command-palette",
   "route": "/workspace/chats/new",
-  "timestamp": "2026-06-25T10:29:46.992Z",
+  "timestamp": "2026-07-07T14:31:10.706Z",
   "viewport": "desktop",
-  "status": "ok",
+  "status": "fail",
   "checks": {
     "consoleErrors": [],
     "failedRequests": [],
@@ -12,6 +12,8 @@
     "reactError": false,
     "urlDrift": false,
     "wrongPage": null,
-    "missingElements": []
+    "missingElements": [
+      "[cmdk-root], [role=\"dialog\"], [data-testid=\"command-palette\"]"
+    ]
   }
 }

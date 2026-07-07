@@ -1,23 +1,19 @@
 {
   "page": "agent-chat",
   "route": "/workspace/agents/research-assistant/chats/new",
-  "timestamp": "2026-06-25T10:29:41.844Z",
+  "timestamp": "2026-07-07T14:31:07.449Z",
   "viewport": "desktop",
-  "status": "warn",
+  "status": "fail",
   "checks": {
-    "consoleErrors": [
-      "Failed to load resource: the server responded with a status of 404 (Not Found)",
-      "Failed to load resource: the server responded with a status of 404 (Not Found)"
-    ],
-    "failedRequests": [
-      "404 http://localhost:3000/api/agents/research-assistant",
-      "404 http://localhost:3000/api/agents/research-assistant"
-    ],
+    "consoleErrors": [],
+    "failedRequests": [],
     "pageEmpty": false,
     "horizontalOverflow": false,
     "reactError": false,
     "urlDrift": false,
     "wrongPage": null,
-    "missingElements": []
+    "missingElements": [
+      "textarea, [data-testid=\"chat-input\"], [contenteditable=\"true\"]"
+    ]
   }
 }

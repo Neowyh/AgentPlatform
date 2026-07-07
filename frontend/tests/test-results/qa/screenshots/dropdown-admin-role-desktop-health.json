@@ -1,9 +1,9 @@
 {
   "page": "dropdown-admin-role",
   "route": "/workspace/admin/users",
-  "timestamp": "2026-06-25T10:29:55.538Z",
+  "timestamp": "2026-07-07T14:31:18.007Z",
   "viewport": "desktop",
-  "status": "ok",
+  "status": "fail",
   "checks": {
     "consoleErrors": [],
     "failedRequests": [],
@@ -12,6 +12,8 @@
     "reactError": false,
     "urlDrift": false,
     "wrongPage": null,
-    "missingElements": []
+    "missingElements": [
+      "[role=\"listbox\"], [role=\"option\"], option"
+    ]
   }
 }

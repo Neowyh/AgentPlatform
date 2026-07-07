@@ -1,9 +1,9 @@
 {
   "page": "workspace-new-chat",
   "route": "/workspace/chats/new",
-  "timestamp": "2026-06-25T10:30:10.986Z",
+  "timestamp": "2026-07-07T14:31:33.583Z",
   "viewport": "mobile",
-  "status": "ok",
+  "status": "fail",
   "checks": {
     "consoleErrors": [],
     "failedRequests": [],
@@ -12,6 +12,8 @@
     "reactError": false,
     "urlDrift": false,
     "wrongPage": null,
-    "missingElements": []
+    "missingElements": [
+      "textarea, [data-testid=\"chat-input\"], [contenteditable=\"true\"]"
+    ]
   }
 }

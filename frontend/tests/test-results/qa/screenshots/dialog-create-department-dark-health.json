@@ -1,9 +1,9 @@
 {
   "page": "dialog-create-department",
   "route": "/workspace/admin/departments",
-  "timestamp": "2026-06-25T10:30:36.575Z",
+  "timestamp": "2026-07-07T14:31:57.243Z",
   "viewport": "dark",
-  "status": "ok",
+  "status": "fail",
   "checks": {
     "consoleErrors": [],
     "failedRequests": [],
@@ -12,6 +12,8 @@
     "reactError": false,
     "urlDrift": false,
     "wrongPage": null,
-    "missingElements": []
+    "missingElements": [
+      "input[name=\"name\"], input, [role=\"dialog\"]"
+    ]
   }
 }

@@ -1,18 +1,19 @@
 {
   "page": "workflow-create",
   "route": "/workspace/workflows/new",
-  "timestamp": "2026-06-25T10:30:14.949Z",
+  "timestamp": "2026-07-07T14:31:36.770Z",
   "viewport": "mobile",
   "status": "fail",
   "checks": {
     "consoleErrors": [],
     "failedRequests": [],
     "pageEmpty": false,
-    "horizontalOverflow": true,
+    "horizontalOverflow": false,
     "reactError": false,
     "urlDrift": false,
     "wrongPage": null,
     "missingElements": [
+      ".cm-editor",
       "textarea"
     ]
   }

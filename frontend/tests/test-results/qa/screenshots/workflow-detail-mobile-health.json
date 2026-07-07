@@ -1,14 +1,14 @@
 {
   "page": "workflow-detail",
   "route": "/workspace/workflows/research-workflow",
-  "timestamp": "2026-06-25T10:30:15.123Z",
+  "timestamp": "2026-07-07T14:31:36.961Z",
   "viewport": "mobile",
-  "status": "warn",
+  "status": "ok",
   "checks": {
     "consoleErrors": [],
     "failedRequests": [],
     "pageEmpty": false,
-    "horizontalOverflow": true,
+    "horizontalOverflow": false,
     "reactError": false,
     "urlDrift": false,
     "wrongPage": null,
