@@ -783,7 +783,7 @@ B1(基础层) ──→ B2(核心层) ──→ B3(功能层) ──→ B4(补�
 
 - [x] **B3a** — Agents/Subagents（25 个文件）
 - [x] **B3b** — Tools/Skills（~35 个文件）
-- [ ] **B3c** — MCP（9 个文件）
+- [x] **B3c** — MCP（9 个文件）
 - [ ] **B3d** — 渠道集成（17 个文件）
 - [ ] **B3e** — Sandbox（25 个文件）
 - [ ] **B3f** — Artifacts/Uploads（10 个文件）
