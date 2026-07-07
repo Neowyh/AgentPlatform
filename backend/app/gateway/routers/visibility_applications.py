@@ -263,6 +263,10 @@ async def review_application(
                 if application.applicant_id == str(current_user.id):
                     raise HTTPException(status_code=403, detail="Cannot review your own application")
 
+                # dept_admin can only review applications from their own department
+                if application.department_id != current_user.department_id:
+                    raise HTTPException(status_code=403, detail="Cannot review applications from other departments")
+
             application.status = request.action
             application.reviewed_by = str(current_user.id)
             application.reviewed_at = datetime.now(UTC)
