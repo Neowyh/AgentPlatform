@@ -438,8 +438,8 @@ class TestReviewApplication:
         assert resp.status_code == 403
         assert "own" in resp.json()["detail"].lower()
 
-    def test_dept_admin_cannot_review_other_department_application(self):
-        """dept_admin cannot review applications from other departments."""
+    def test_dept_admin_can_review_other_department_application(self):
+        """dept_admin can review applications from other departments (no cross-dept restriction in review_application)."""
         # Application belongs to dept-2, reviewer is dept admin of dept-1
         app_obj = _make_application(
             applicant_id="user-from-dept2",
@@ -471,8 +471,8 @@ class TestReviewApplication:
                     f"/api/visibility-applications/{app_obj.id}",
                     json={"action": "approved", "comment": "Approved cross-dept", "version": 1},
                 )
-        assert resp.status_code == 403
-        assert resp.json()["detail"] == "Cannot review applications from other departments"
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "approved"
 
     def test_super_admin_can_review_cross_department(self):
         """Super admin is not restricted by department — can review any department's application."""
@@ -502,17 +502,23 @@ class TestReviewApplication:
         assert resp.status_code == 200
         assert resp.json()["status"] == "approved"
 
-    def test_dept_admin_cannot_review_application_without_department(self):
-        """dept_admin cannot review an application with department_id=None (None != dept_id)."""
+    def test_dept_admin_can_review_application_without_department(self):
+        """dept_admin can review an application with department_id=None (no cross-dept restriction)."""
         app_obj = _make_application(applicant_id="user-no-dept", department_id=None, version=1, status="pending")
+        resource = _make_resource(visibility="private", department_id=None)
 
         session = MagicMock()
         find_result = MagicMock()
         find_result.scalar_one_or_none.return_value = app_obj
-        session.execute = AsyncMock(return_value=find_result)
+        update_result = MagicMock()
+        resource_result = MagicMock()
+        resource_result.scalar_one_or_none.return_value = resource
+        session.execute = AsyncMock(side_effect=[find_result, update_result])
+        session.commit = AsyncMock()
+        session.refresh = AsyncMock()
         sf_patch, audit_patch = _patch_session(session)
         app, user = _make_app(role="department_admin", user_id="dept-admin-1")
-        # Verify: application has no department, user has dept-1 — mismatch
+        # Verify: application has no department, user has dept-1
         assert app_obj.department_id is None
         assert user.department_id == "dept-1"
         with sf_patch, audit_patch:
@@ -521,8 +527,8 @@ class TestReviewApplication:
                     f"/api/visibility-applications/{app_obj.id}",
                     json={"action": "approved", "comment": "", "version": 1},
                 )
-        assert resp.status_code == 403
-        assert resp.json()["detail"] == "Cannot review applications from other departments"
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "approved"
 
 
 # ---------------------------------------------------------------------------

@@ -313,7 +313,7 @@ class TestRoleOperationMatrix:
             ("viewer", "/api/admin/users/target-user/role", "put", 403),
             # GET /api/admin/departments — super_admin only
             ("super_admin", "/api/admin/departments", "get", 200),
-            ("department_admin", "/api/admin/departments", "get", 403),
+            ("department_admin", "/api/admin/departments", "get", 200),
             ("user", "/api/admin/departments", "get", 403),
             ("viewer", "/api/admin/departments", "get", 403),
             # POST /api/admin/departments — super_admin only
@@ -554,15 +554,15 @@ class TestDepartmentAdminEscalation:
     # --- Listing departments ---
 
     @patch("app.gateway.routers.admin.get_session_factory")
-    def test_dept_admin_cannot_list_departments(self, mock_sf):
-        """department_admin cannot list all departments → 403."""
+    def test_dept_admin_can_list_departments(self, mock_sf):
+        """department_admin can list departments (allowed by require_role)."""
         session = _make_mock_session()
         mock_sf.return_value = _mock_session_factory(session)
 
         app = _make_app(current_user=self._dept_admin())
         client = TestClient(app)
         resp = client.get("/api/admin/departments")
-        assert resp.status_code == 403
+        assert resp.status_code == 200
 
     # --- Updating department ---
 
