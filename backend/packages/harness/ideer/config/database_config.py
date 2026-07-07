@@ -58,6 +58,7 @@ class DatabaseConfig(BaseModel):
     )
     pool_size: int = Field(
         default=5,
+        ge=1,
         description="Connection pool size for the app ORM engine (postgres only).",
     )
 

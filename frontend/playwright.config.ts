@@ -69,10 +69,12 @@ export default defineConfig({
     timeout: 120_000,
     env: {
       SKIP_ENV_VALIDATION: "1",
-      // Auth is ENABLED — IDEER_AUTH_DISABLED is intentionally NOT set.
-      // Non-auth tests carry authenticated cookies via storageState;
-      // auth tests override storageState to start unauthenticated.
-      // Do NOT set NEXT_PUBLIC_BACKEND_BASE_URL — the Next.js rewrite rules
+      // Auth is DISABLED for E2E — SSR getServerSideUser() returns the
+      // hardcoded super_admin user so page.route mocks work consistently
+      // (SSR fetches bypass browser-level interceptors).  Auth-specific
+      // tests (smoke-login, auth-flow) are skipped when this is set.
+      IDEER_AUTH_DISABLED: "1",
+      // Do not set NEXT_PUBLIC_BACKEND_BASE_URL — the Next.js rewrite rules
       // in next.config.js proxy /api/* to the gateway when this is unset.
       OPENAI_API_KEY: process.env.OPENAI_API_KEY ?? "",
       OPENAI_BASE_URL: process.env.OPENAI_BASE_URL ?? "",

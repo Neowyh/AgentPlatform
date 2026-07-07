@@ -74,7 +74,7 @@ describe("useMCPConfig", () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     expect(result.current.config).toBeDefined();
-    expect(result.current.config!.mcp_servers["test-server"]!.enabled).toBe(
+    expect(result.current.config?.mcp_servers["test-server"]?.enabled).toBe(
       true,
     );
     expect(result.current.error).toBeNull();
