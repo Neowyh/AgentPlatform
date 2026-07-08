@@ -790,11 +790,11 @@ B1(基础层) ──→ B2(核心层) ──→ B3(功能层) ──→ B4(补�
 - [x] **B1b** — Config/Admin/启动（15 个文件）— ✅ 回归通过 (749 passed, 0 failed)
 - [x] **B1c** — Auth/用户权限（18 个文件）
 
-### B2: 后端核心层（3/4）
+### B2: 后端核心层（4/4 ✅）
 
 - [x] **B2a** — Threads/Runs/Workflows（30 个文件）
 - [x] **B2b** — Memory（22 个文件）
-- [ ] **B2c** — Middleware（25 个文件）⚠️ +test_tool_call_metadata.py，需回归
+- [x] **B2c** — Middleware（25 个文件）— ✅ 回归通过 (1139 passed, 0 failed)
 - [x] **B2d** — LLM/Providers（23 个文件）
 > B2d 补充: test_models_router_e2e.py E2E 测试 — ✅ 回归通过 (27 passed, 0 failed)
 
