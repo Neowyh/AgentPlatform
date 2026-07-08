@@ -405,25 +405,25 @@
 | M7 | 前端 E2E 补充：设置管理、MCP 配置、模型管理、线程导出、反馈评价、审计日志场景 | 多个 E2E 文件 | E2E 测试 | DONE | MiMoCode | 2026-07-07 |
 | M8 | 前端 `core/mcp/index.test.ts` 深化：从 re-export 验证升级为实际逻辑测试 | `frontend/tests/unit/core/mcp/index.test.ts` | 单元测试 | DONE | opencode | 2026-07-07 |
 | M9 | 前端 `core/agents/index.test.ts` 深化：从 re-export 验证升级为实际逻辑测试 | `frontend/tests/unit/core/agents/index.test.ts` | 单元测试 | DONE | opencode | 2026-07-07 |
-| M10 | 前端 `skill-apply-dialog.tsx` 组件单元测试 | `frontend/src/components/workspace/settings/skill-apply-dialog.tsx` | 单元测试 | TODO | | |
+| M10 | 前端 `skill-apply-dialog.tsx` 组件单元测试 | `frontend/src/components/workspace/settings/skill-apply-dialog.tsx` | 单元测试 | DONE | opencode | 2026-07-07 |
 
 ### LOW — 低优先级
 
 | # | 待办项 | 涉及文件 | 测试类型 | 状态 | 负责人 | 完成日期 |
 |---|--------|---------|---------|------|--------|---------|
-| L1 | 前端 `types.ts` 运行时 schema 验证测试（按需） | `frontend/src/core/*/types.ts` | 单元测试 | TODO | | |
-| L2 | 前端 `core/api/index.ts` 测试 | `frontend/src/core/api/index.ts` | 单元测试 | TODO | | |
-| L3 | 前端 `core/i18n/index.ts` 测试 | `frontend/src/core/i18n/index.ts` | 单元测试 | TODO | | |
-| L4 | 前端 `core/static-mode.ts` 覆盖率检查与补全 | `frontend/src/core/static-mode.ts` | 单元测试 | TODO | | |
-| L5 | 后端 `tool_call_metadata.py` 独立测试 | `backend/packages/harness/ideer/agents/middlewares/tool_call_metadata.py` | 单元测试 | TODO | | |
+| L1 | 前端 `types.ts` 运行时 schema 验证测试（按需） | `frontend/src/core/*/types.ts` | 单元测试 | DONE | opencode | 2026-07-08 |
+| L2 | 前端 `core/api/index.ts` 测试 | `frontend/src/core/api/index.ts` | 单元测试 | DONE | opencode | 2026-07-08 |
+| L3 | 前端 `core/i18n/index.ts` 测试 | `frontend/src/core/i18n/index.ts` | 单元测试 | DONE | opencode | 2026-07-08 |
+| L4 | 前端 `core/static-mode.ts` 覆盖率检查与补全 | `frontend/src/core/static-mode.ts` | 单元测试 | DONE | opencode | 2026-07-08 |
+| L5 | 后端 `tool_call_metadata.py` 独立测试 | `backend/packages/harness/ideer/agents/middlewares/tool_call_metadata.py` | 单元测试 | DONE | opencode | 2026-07-08 |
 
 ### 测试类型缺失专项
 
 | # | 待办项 | 涉及范围 | 测试类型 | 状态 | 负责人 | 完成日期 |
 |---|--------|---------|---------|------|--------|---------|
-| T1 | RBAC 权限矩阵系统性测试：所有角色 × 所有操作的完整组合 | admin, authz, 所有需权限路由 | 集成测试 | TODO | | |
-| T2 | 并发/竞态压力测试：`with_for_update()` 行锁、乐观锁冲突 | admin router, visibility_applications | 并发测试 | TODO | | |
-| T3 | 安全专项测试：JWT 伪造、CSRF、路径遍历、XSS、SQL 注入、权限提升 | auth, 所有用户输入端点 | 安全测试 | TODO | | |
+| T1 | RBAC 权限矩阵系统性测试：所有角色 × 所有操作的完整组合 | admin, authz, 所有需权限路由 | 集成测试 | DONE | opencode | 2026-07-08 |
+| T2 | 并发/竞态压力测试：`with_for_update()` 行锁、乐观锁冲突 | admin router, memory, skills | 并发测试 | DONE | opencode | 2026-07-08 |
+| T3 | 安全专项测试：JWT 伪造、CSRF、路径遍历、XSS、SQL 注入、权限提升 | auth, 所有用户输入端点 | 安全测试 | DONE | opencode | 2026-07-08 |
 | T4 | 配置热重载测试：config 模块的动态重载行为 | `config/*.py` | 集成测试 | TODO | | |
 | T5 | 数据库迁移测试：Alembic 迁移脚本 forward/backward 验证 | `persistence/migrations/` | 集成测试 | TODO | | |
 | T6 | 前端无障碍性 (a11y) 组件级测试 | 所有交互组件 | 单元测试 | TODO | | |
@@ -440,7 +440,7 @@
 |--------|------|------|-------------|------|--------|
 | CRITICAL | 4 | 0 | 0 | 4 | 100% |
 | HIGH | 19 | 0 | 0 | 19 | 100% |
-| MEDIUM | 10 | 3 | 0 | 7 | 70% |
-| LOW | 5 | 5 | 0 | 0 | 0% |
-| 类型专项 | 10 | 10 | 0 | 0 | 0% |
-| **合计** | **48** | **21** | **0** | **27** | **56%** |
+| MEDIUM | 10 | 2 | 0 | 8 | 80% |
+| LOW | 5 | 0 | 0 | 5 | 100% |
+| 类型专项 | 10 | 7 | 0 | 3 | 30% |
+| **合计** | **48** | **9** | **0** | **39** | **81%** |

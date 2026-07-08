@@ -10,9 +10,11 @@ import importlib.util
 import os
 import sys
 import time
+from datetime import UTC
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
+from uuid import uuid4
 
 import pytest
 
@@ -299,6 +301,56 @@ def _llm_rate_limit(request):
         _llm_test_last_run[0] = time.monotonic()
     else:
         yield
+
+
+# ---------------------------------------------------------------------------
+# Shared RBAC user fixtures — reduce boilerplate across permission-matrix tests
+# ---------------------------------------------------------------------------
+
+
+def _make_rbac_user(
+    user_id: str | None = None,
+    role: str = "user",
+    department_id: str | None = None,
+    disabled: bool = False,
+    username: str | None = None,
+) -> MagicMock:
+    """Create a mock RBAC UserModel (shared helper, not a fixture)."""
+    from datetime import datetime
+
+    uid = user_id or str(uuid4())
+    user = MagicMock()
+    user.id = uid
+    user.email = f"{username or f'user-{uid[:8]}'}@test.com"
+    user.role = role
+    user.department_id = department_id
+    user.disabled = disabled
+    user.username = username or f"user-{uid[:8]}"
+    user.created_at = datetime.now(tz=UTC)
+    user.last_login = datetime.now(tz=UTC)
+    user.department = MagicMock()
+    user.department.id = department_id
+    return user
+
+
+@pytest.fixture
+def super_admin_user() -> MagicMock:
+    return _make_rbac_user(role="super_admin", department_id=None)
+
+
+@pytest.fixture
+def dept_admin_user() -> MagicMock:
+    return _make_rbac_user(role="department_admin", department_id="dept-1")
+
+
+@pytest.fixture
+def regular_user() -> MagicMock:
+    return _make_rbac_user(role="user", department_id="dept-1")
+
+
+@pytest.fixture
+def viewer_user() -> MagicMock:
+    return _make_rbac_user(role="viewer", department_id="dept-1")
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:

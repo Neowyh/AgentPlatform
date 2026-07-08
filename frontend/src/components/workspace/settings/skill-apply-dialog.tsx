@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -27,7 +27,7 @@ interface SkillApplyDialogProps {
   skill: Skill | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (requestLevel: string, reason: string) => void;
+  onSubmit: (requestLevel: string, reason: string) => void | Promise<void>;
 }
 
 export function SkillApplyDialog({
@@ -40,16 +40,24 @@ export function SkillApplyDialog({
   const [requestLevel, setRequestLevel] = useState<string>("department");
   const [reason, setReason] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     setIsSubmitting(true);
     try {
-      onSubmit(requestLevel, reason);
+      await onSubmit(requestLevel, reason);
     } finally {
-      setIsSubmitting(false);
-      onOpenChange(false);
-      setReason("");
-      setRequestLevel("department");
+      if (mountedRef.current) {
+        setIsSubmitting(false);
+        onOpenChange(false);
+        setReason("");
+        setRequestLevel("department");
+      }
     }
   };
 
