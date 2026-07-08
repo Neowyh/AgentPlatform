@@ -9,13 +9,13 @@
 
 | 分类 | 数量 | 框架 | 位置 |
 |------|------|------|------|
-| 后端 pytest 单元测试 | 251 个 `.py` 文件 | pytest + pytest-asyncio | `backend/tests/test_*.py` |
+| 后端 pytest 单元测试 | 408 个 `.py` 文件 | pytest + pytest-asyncio | `backend/tests/test_*.py` |
 | 后端辅助/夹具 | 29 个文件 | conftest / factories / detectors | `backend/tests/{conftest,factories,support}/` |
-| 前端 Vitest 单元测试 | 237 个文件 (82 `.test.ts` + 155 `.test.tsx`) | Vitest + jsdom | `frontend/tests/unit/` |
+| 前端 Vitest 单元测试 | 307 个文件 | Vitest + jsdom | `frontend/tests/unit/` |
 | 前端 Playwright E2E | 33 个 `.spec.ts` 文件 | Playwright | `frontend/tests/e2e/` |
 | E2E helper | 4 个文件 | TypeScript | `frontend/tests/e2e/{global-setup,utils,visual}/` |
 | CI 工作流 (测试相关) | 10 个 `.yml` | GitHub Actions | `.github/workflows/` |
-| **总计测试文件** | **~565 个** | — | — |
+| **总计测试文件** | **~748 个** | — | — |
 
 ---
 
@@ -122,7 +122,7 @@ B1(基础层) ──→ B2(核心层) ──→ B3(功能层) ──→ B4(补�
 |------|------|--------|---------|
 | **B2a** | Threads / Runs / Workflows | 30 | `uv run pytest tests/ -v -k "thread or run or workflow"` |
 | **B2b** | Memory | 22 | `uv run pytest tests/test_memory_*.py -v` |
-| **B2c** | Middleware | 24 | `uv run pytest tests/ -v -k "middleware"` |
+| **B2c** | Middleware | 25 | `uv run pytest tests/ -v -k "middleware"` |
 | **B2d** | LLM / Providers | 23 | `uv run pytest tests/ -v -k "provider or model or tracing or converter or patched"` |
 
 <details>
@@ -188,7 +188,7 @@ B1(基础层) ──→ B2(核心层) ──→ B3(功能层) ──→ B4(补�
 </details>
 
 <details>
-<summary>B2c — Middleware（24 个文件）</summary>
+<summary>B2c — Middleware（25 个文件）</summary>
 
 - `test_clarification_middleware.py`
 - `test_coverage_dangling_middleware_2.py`
@@ -212,6 +212,7 @@ B1(基础层) ──→ B2(核心层) ──→ B3(功能层) ──→ B4(补�
 - `test_title_middleware_core_logic.py`
 - `test_todo_middleware.py`
 - `test_token_usage_middleware.py`
+- `test_tool_call_metadata.py`
 - `test_uploads_middleware_core_logic.py`
 - `test_loop_detection_middleware.py`
 </details>
@@ -250,7 +251,7 @@ B1(基础层) ──→ B2(核心层) ──→ B3(功能层) ──→ B4(补�
 | 批次 | 模块 | 文件数 | 运行命令 |
 |------|------|--------|---------|
 | **B3a** | Agents / Subagents | 25 | `uv run pytest tests/ -v -k "agent or subagent or lead_agent or custom_agent"` |
-| **B3b** | Tools（不含 MCP） | ~35 | `uv run pytest tests/ -v -k "tool or skill or credential or task_tool or code_interpreter or serper or firecrawl or exa or data_analyzer or image_search or doc_reader or present_file or view_image or local_bash or invoke_acp"` |
+| **B3b** | Tools（不含 MCP） | ~47 | `uv run pytest tests/ -v -k "tool or skill or credential or task_tool or code_interpreter or serper or firecrawl or exa or data_analyzer or image_search or doc_reader or present_file or view_image or local_bash or invoke_acp"` |
 | **B3c** | MCP | 9 | `uv run pytest tests/test_mcp_*.py -v` |
 | **B3d** | 渠道集成 | 17 | `uv run pytest tests/ -v -k "channel or dingtalk or discord or feishu or slack or telegram or wechat or wecom"` |
 | **B3e** | Sandbox | 25 | `uv run pytest tests/ -v -k "sandbox"` |
@@ -288,7 +289,7 @@ B1(基础层) ──→ B2(核心层) ──→ B3(功能层) ──→ B4(补�
 </details>
 
 <details>
-<summary>B3b — Tools/Skills（~35 个文件）</summary>
+<summary>B3b — Tools/Skills（~47 个文件）</summary>
 
 - `test_tool_args_schema_no_pydantic_warning.py`
 - `test_tool_deduplication.py`
@@ -316,6 +317,7 @@ B1(基础层) ──→ B2(核心层) ──→ B3(功能层) ──→ B4(补�
 - `test_image_search_tools.py`
 - `test_image_search_coverage_fix.py`
 - `test_code_interpreter.py`
+- `test_race_skill_import.py`
 - `test_skill_manage_tool.py`
 - `test_skill_storage.py`
 - `test_skills_archive_root.py`
@@ -432,8 +434,8 @@ B1(基础层) ──→ B2(核心层) ──→ B3(功能层) ──→ B4(补�
 | 批次 | 模块 | 文件数 | 运行命令 |
 |------|------|--------|---------|
 | **B4a** | 覆盖率补丁集 | ~35 | `uv run pytest tests/ -v -k "coverage or worker_cov or parser_cov or prompt_coverage or paths_coverage or resolvers_coverage or services_coverage or search_coverage"` |
-| **B4b** | 权限/隔离 | ~10 | `uv run pytest tests/ -v -k "isolation or rbac or visibility or permission or owner"` |
-| **B4c** | 杂项 (client/gateway/serial 等) | ~33 | `uv run pytest tests/ -v -k "client or gateway or serial or json or sse or stream or template or error_codes or stress or concurrent or property or doctor or detect or harness or fault_zeroing or install or readability or security_scanner or skill_storage or logging or infoquest or start_local or intranet or local_backend or docker_sandbox or step or guardrail or message_bus or path_utils or user_context or utils_time"` |
+| **B4b** | 权限/隔离 | ~12 | `uv run pytest tests/ -v -k "isolation or rbac or visibility or permission or owner"` |
+| **B4c** | 杂项 (client/gateway/serial/安全 等) | ~78 | `uv run pytest tests/ -v -k "client or gateway or serial or json or sse or stream or template or error_codes or stress or concurrent or property or doctor or detect or harness or fault_zeroing or install or readability or security_scanner or skill_storage or logging or infoquest or start_local or intranet or local_backend or docker_sandbox or step or guardrail or message_bus or path_utils or user_context or utils_time"` |
 
 <details>
 <summary>B4a — 覆盖率补丁集（~35 个文件）</summary>
@@ -474,11 +476,13 @@ B1(基础层) ──→ B2(核心层) ──→ B3(功能层) ──→ B4(补�
 </details>
 
 <details>
-<summary>B4b — 权限/隔离（~10 个文件）</summary>
+<summary>B4b — 权限/隔离（~12 个文件）</summary>
 
 - `test_owner_isolation.py`
 - `test_migration_user_isolation.py`
+- `test_race_admin_role.py`
 - `test_rbac_permission_matrix.py`
+- `test_rbac_permission_matrix_extended.py`
 - `test_rbac_security.py`
 - `test_permission_model_coverage.py`
 - `test_visibility_applications.py`
@@ -489,13 +493,14 @@ B1(基础层) ──→ B2(核心层) ──→ B3(功能层) ──→ B4(补�
 </details>
 
 <details>
-<summary>B4c — 杂项（~33 个文件）</summary>
+<summary>B4c — 杂项（~78 个文件）</summary>
 
 - `test_client.py`
 - `test_client_e2e.py`
 - `test_client_langfuse_metadata.py`
 - `test_client_live.py`
 - `test_client_message_serialization.py`
+- `test_csrf_extended.py`
 - `test_gateway_config_freshness.py`
 - `test_gateway_docs_toggle.py`
 - `test_gateway_lifespan_shutdown.py`
@@ -519,7 +524,9 @@ B1(基础层) ──→ B2(核心层) ──→ B3(功能层) ──→ B4(补�
 - `test_fault_zeroing_visual_outputs.py`
 - `test_validate_fault_zeroing_outputs.py`
 - `test_install_fault_zeroing_agent.py`
+- `test_security_fuzzing.py`
 - `test_security_scanner.py`
+- `test_sql_injection_safety.py`
 - `test_local_skill_storage_write.py`
 - `test_logging_level_from_config.py`
 - `test_infoquest_client.py`
@@ -563,6 +570,9 @@ B1(基础层) ──→ B2(核心层) ──→ B3(功能层) ──→ B4(补�
 - `test_audit.py`
 - `test_config_modules.py`
 - `test_migrate_skill_applications.py`
+- `test_race_memory_facts.py`
+- `test_race_password_change.py`
+- `test_xss_sanitization.py`
 </details>
 
 ---
@@ -596,34 +606,34 @@ B1(基础层) ──→ B2(核心层) ──→ B3(功能层) ──→ B4(补�
 
 | 批次 | 模块 | 文件数 | 运行命令 |
 |------|------|--------|---------|
-| **B6a** | `core/` — 领域逻辑 | 118 | `pnpm vitest run tests/unit/core` |
+| **B6a** | `core/` — 领域逻辑 | 129 | `pnpm vitest run tests/unit/core` |
 | **B6b** | `components/ai-elements/` | 30 | `pnpm vitest run tests/unit/components/ai-elements` |
 | **B6c** | `components/ui/` | 42 | `pnpm vitest run tests/unit/components/ui` |
-| **B6d** | `components/workspace/` | 74 | `pnpm vitest run tests/unit/components/workspace` |
+| **B6d** | `components/workspace/` | 75 | `pnpm vitest run tests/unit/components/workspace` |
 | **B6e** | `components/landing/` | 17 | `pnpm vitest run tests/unit/components/landing` |
 | **B6f** | `app/` — 页面级 | 54 | `pnpm vitest run tests/unit/app` |
 | **B6g** | 根级 (hooks/lib/mdx) | 7 | `pnpm vitest run tests/unit/hooks tests/unit/lib tests/unit/content tests/unit/mdx-components.test.tsx` |
 
 <details>
-<summary>B6a — core/（118 个文件）</summary>
+<summary>B6a — core/（129 个文件）</summary>
 
-- `core/admin/api.test.ts`
-- `core/agents/api.test.ts`, `core/agents/hooks.test.ts`, `core/agents/index.test.ts` ✅ index 已深化（122行→全符号+行为测试）
-- `core/api/api-client.test.ts`, `core/api/errors.test.ts`, `core/api/feedback.test.ts`, `core/api/fetcher.test.ts`, `core/api/stream-mode.test.ts`
+- `core/admin/api.test.ts`, `core/admin/types.test.ts`
+- `core/agents/api.test.ts`, `core/agents/hooks.test.ts`, `core/agents/index.test.ts` ✅ index 已深化（122行→全符号+行为测试）, `core/agents/types.test.ts`
+- `core/api/api-client.test.ts`, `core/api/errors.test.ts`, `core/api/feedback.test.ts`, `core/api/fetcher.test.ts`, `core/api/index.test.ts`, `core/api/stream-mode.test.ts`
 - `core/artifacts-utils.test.ts`
 - `core/artifacts/fault-tree.test.ts`, `core/artifacts/hooks.test.ts`, `core/artifacts/loader.test.ts`, `core/artifacts/preview.test.ts`, `core/artifacts/utils.test.ts`
-- `core/audit-logs/api.test.ts`
+- `core/audit-logs/api.test.ts`, `core/audit-logs/types.test.ts`
 - `core/auth/AuthProvider.test.tsx`, `core/auth/gateway-config.test.ts`, `core/auth/proxy-policy.test.ts`, `core/auth/server-extra.test.ts`, `core/auth/server.test.ts`, `core/auth/static-user.test.ts`, `core/auth/types.test.ts`
 - `core/blog/index.test.ts`
 - `core/clipboard.test.ts`
 - `core/config/index.test.ts`
 - `core/fault-tree-visualization.test.ts`
-- `core/i18n/context.test.tsx`, `core/i18n/cookies-extra.test.ts`, `core/i18n/cookies.test.ts`, `core/i18n/hooks.test.tsx`, `core/i18n/keys.test.ts`, `core/i18n/locale-extra.test.ts`, `core/i18n/locale.test.ts`, `core/i18n/server.test.ts`, `core/i18n/translations.test.ts`
+- `core/i18n/context.test.tsx`, `core/i18n/cookies-extra.test.ts`, `core/i18n/cookies.test.ts`, `core/i18n/hooks.test.tsx`, `core/i18n/index.test.ts`, `core/i18n/keys.test.ts`, `core/i18n/locale-extra.test.ts`, `core/i18n/locale.test.ts`, `core/i18n/server.test.ts`, `core/i18n/translations.test.ts`
 - `core/i18n/locales/en-US-comprehensive.test.ts`, `core/i18n/locales/en-US.test.ts`, `core/i18n/locales/zh-CN.test.ts`
-- `core/mcp/api.test.ts`, `core/mcp/hooks.test.ts`, `core/mcp/index.test.ts` ✅ 已深化（barrel+API+hooks 完整套件）
-- `core/memory/api.test.ts`, `core/memory/hooks.test.ts`, `core/memory/index.test.ts`
+- `core/mcp/api.test.ts`, `core/mcp/hooks.test.ts`, `core/mcp/index.test.ts` ✅ 已深化（barrel+API+hooks 完整套件）, `core/mcp/types.test.ts`
+- `core/memory/api.test.ts`, `core/memory/hooks.test.ts`, `core/memory/index.test.ts`, `core/memory/types.test.ts`
 - `core/messages/usage-model.test.ts`, `core/messages/usage.test.ts`, `core/messages/utils-extra.test.ts`, `core/messages/utils.test.ts`
-- `core/models/api.test.ts`, `core/models/hooks.test.ts`, `core/models/index.test.ts`
+- `core/models/api.test.ts`, `core/models/hooks.test.ts`, `core/models/index.test.ts`, `core/models/types.test.ts`
 - `core/notification/hooks-extra.test.ts`, `core/notification/hooks.test.ts`
 - `core/reasoning-trigger.test.ts`
 - `core/rehype/index.test.ts`
@@ -632,13 +642,13 @@ B1(基础层) ──→ B2(核心层) ──→ B3(功能层) ──→ B4(补�
 - `core/static-mode.test.ts`
 - `core/streamdown/plugins.test.ts`
 - `core/tasks/context.test.tsx`, `core/tasks/index.test.ts`, `core/tasks/subtask-result.test.ts`
-- `core/threads/api.test.ts`, `core/threads/export.test.ts`, `core/threads/hooks.test.ts`, `core/threads/message-merge.test.ts`, `core/threads/static-demo.test.ts`, `core/threads/token-usage.test.ts`, `core/threads/utils.test.ts`
+- `core/threads/api.test.ts`, `core/threads/export.test.ts`, `core/threads/hooks.test.ts`, `core/threads/message-merge.test.ts`, `core/threads/static-demo.test.ts`, `core/threads/token-usage.test.ts`, `core/threads/types.test.ts`, `core/threads/utils.test.ts`
 - `core/todos/index.test.ts`
 - `core/tools/api.test.ts`, `core/tools/index.test.ts`, `core/tools/utils.test.ts`
 - `core/uploads/api.test.ts`, `core/uploads/file-validation.test.ts`, `core/uploads/hooks.test.ts`, `core/uploads/index.test.ts`, `core/uploads/prompt-input-files.test.ts`
 - `core/utils/datetime.test.ts`, `core/utils/files.test.ts`, `core/utils/json-extra.test.ts`, `core/utils/json.test.ts`, `core/utils/markdown.test.ts`
-- `core/visibility-applications/api.test.ts`
-- `core/workflows/api.test.ts`, `core/workflows/hooks.test.ts`, `core/workflows/index.test.ts`, `core/workflows/validate.test.ts`
+- `core/visibility-applications/api.test.ts`, `core/visibility-applications/types.test.ts`
+- `core/workflows/api.test.ts`, `core/workflows/hooks.test.ts`, `core/workflows/index.test.ts`, `core/workflows/types.test.ts`, `core/workflows/validate.test.ts`
 </details>
 
 <details>
@@ -654,7 +664,7 @@ B1(基础层) ──→ B2(核心层) ──→ B3(功能层) ──→ B4(补�
 </details>
 
 <details>
-<summary>B6d — components/workspace/（74 个文件）</summary>
+<summary>B6d — components/workspace/（75 个文件）</summary>
 
 - `agent-welcome.test.tsx`
 - `agents/agent-card.test.tsx`, `agents/agent-gallery-enhanced.test.tsx`, `agents/agent-gallery.test.tsx`
@@ -664,7 +674,7 @@ B1(基础层) ──→ B2(核心层) ──→ B3(功能层) ──→ B4(补�
 - `code-editor.test.tsx`, `command-palette.test.tsx`, `copy-button.test.tsx`, `export-trigger.test.tsx`, `flip-display.test.tsx`, `github-icon.test.tsx`, `input-box.test.tsx`
 - `messages/context.test.ts`, `messages/markdown-content.test.tsx`, `messages/message-group.test.tsx`, `messages/message-helpers.test.ts`, `messages/message-list-item.test.tsx`, `messages/message-list.test.tsx`, `messages/message-token-usage.test.tsx`, `messages/skeleton.test.tsx`, `messages/subtask-card.test.tsx`
 - `mode-hover-guide.test.tsx`, `overscroll.test.tsx`, `recent-chat-list.test.tsx`
-- `settings/about-content.test.ts`, `settings/about-settings-page.test.tsx`, `settings/account-settings-page.test.tsx`, `settings/appearance-settings-page.test.tsx`, `settings/memory-settings-page.test.tsx`, `settings/notification-settings-page.test.tsx`, `settings/settings-dialog.test.tsx`, `settings/settings-section.test.tsx`, `settings/skill-editor.test.tsx`, `settings/skill-settings-page.test.tsx`, `settings/tool-settings-page.test.tsx`
+- `settings/about-content.test.ts`, `settings/about-settings-page.test.tsx`, `settings/account-settings-page.test.tsx`, `settings/appearance-settings-page.test.tsx`, `settings/memory-settings-page.test.tsx`, `settings/notification-settings-page.test.tsx`, `settings/settings-dialog.test.tsx`, `settings/settings-section.test.tsx`, `settings/skill-apply-dialog.test.tsx`, `settings/skill-editor.test.tsx`, `settings/skill-settings-page.test.tsx`, `settings/tool-settings-page.test.tsx`
 - `streaming-indicator.test.tsx`, `thread-title.test.tsx`, `todo-list.test.tsx`, `token-usage-indicator.test.tsx`, `tooltip.test.tsx`, `welcome.test.tsx`
 - `workflows/workflow-card.test.tsx`, `workflows/workflow-gallery.test.tsx`
 - `workspace-breadcrumb.test.tsx`, `workspace-container.test.tsx`, `workspace-header.test.tsx`, `workspace-nav-chat-list.test.tsx`, `workspace-nav-menu.test.tsx`, `workspace-sidebar.test.tsx`
@@ -774,60 +784,58 @@ B1(基础层) ──→ B2(核心层) ──→ B3(功能层) ──→ B4(补�
 
 ## 三、待办清单
 
-### B1: 后端基础层（3/3）
+### B1: 后端基础层（3/3 ✅）
 
 - [x] **B1a** — 存储/Persistence（15 个文件）
-- [x] **B1b** — Config/Admin/启动（15 个文件）
+- [x] **B1b** — Config/Admin/启动（15 个文件）— ✅ 回归通过 (749 passed, 0 failed)
 - [x] **B1c** — Auth/用户权限（18 个文件）
 
-### B2: 后端核心层（4/4）
+### B2: 后端核心层（3/4）
 
 - [x] **B2a** — Threads/Runs/Workflows（30 个文件）
 - [x] **B2b** — Memory（22 个文件）
-- [x] **B2c** — Middleware（24 个文件）
+- [ ] **B2c** — Middleware（25 个文件）⚠️ +test_tool_call_metadata.py，需回归
 - [x] **B2d** — LLM/Providers（23 个文件）
 > B2d 补充: test_models_router_e2e.py E2E 测试 — ✅ 回归通过 (27 passed, 0 failed)
 
-### B3: 后端功能层（6/6）
+### B3: 后端功能层（3/6）
 
-- [x] **B3a** — Agents/Subagents（25 个文件）
-- [x] **B3b** — Tools/Skills（~35 个文件）
+- [ ] **B3a** — Agents/Subagents（25 个文件）⚠️ test_agents_router_coverage.py 有修改，需回归
+- [ ] **B3b** — Tools/Skills（~47 个文件）⚠️ +test_race_skill_import.py，test_skills_router_coverage/e2e/full 和 test_task_tool_coverage 有修改，需回归
 - [x] **B3c** — MCP（9 个文件）
 - [x] **B3d** — 渠道集成（17 个文件）
 - [x] **B3e** — Sandbox（25 个文件）
-- [x] **B3f** — Artifacts/Uploads（10 个文件）
+- [ ] **B3f** — Artifacts/Uploads（10 个文件）⚠️ test_uploads_router_e2e.py 有修改，需回归
 
-### B4: 后端补丁 + 杂项（3/3）
+### B4: 后端补丁 + 杂项（1/3）
 
 - [x] **B4a** — 覆盖率补丁集（~35 个文件）
-- [x] **B4b** — 权限/隔离（~10 个文件）
-- [x] **B4c** — 杂项（~33 个文件）
-> B4c 补充: test_audit.py + test_config_modules.py + test_migrate_skill_applications.py — ✅ 回归通过 (215 passed, 0 failed)
+- [ ] **B4b** — 权限/隔离（~12 个文件）⚠️ +test_rbac_permission_matrix_extended.py + test_race_admin_role.py，test_rbac_security.py 大幅重写，test_rbac_permission_matrix 和 test_visibility_applications_e2e 有修改，需回归
+- [ ] **B4c** — 杂项（~78 个文件）⚠️ +test_csrf_extended.py + test_security_fuzzing.py + test_sql_injection_safety.py + test_xss_sanitization.py + test_race_memory_facts.py + test_race_password_change.py，test_install_fault_zeroing_agent.py 有修改，需回归
 
-### B5: 后端子目录（2/2）— 可与 B4 并行
+### B5: 后端子目录（1/2）— 可与 B4 并行
 
 - [x] **B5a** — Blocking IO 回归（3 个文件）
-- [x] **B5b** — QA 子目录（3 个文件）
+- [ ] **B5b** — QA 子目录（3 个文件）⚠️ test_api_qa.py + test_api_qa_multitole.py 有修改，需回归
 
-### B6: 前端单元测试（7/7）— 可与 B4/B5 并行
+### B6: 前端单元测试（3/7）— 可与 B4/B5 并行
 
-- [x] **B6a** — core/ 领域逻辑（118 个文件）
+- [ ] **B6a** — core/ 领域逻辑（129 个文件）⚠️ 新增 11 个测试文件（含 9 个 types 测试 + api/index.test.ts + i18n/index.test.ts），core/static-mode.test.ts 扩展，需回归
 > B6a 深化: core/agents/index.test.ts +122行、core/mcp/index.test.ts +327行（完整测试套件）、core/mcp/api.test.ts +6行、core/mcp/hooks.test.ts +2行 — ✅ 回归通过 (3426 passed, 0 failed)
 - [x] **B6b** — components/ai-elements（30 个文件）
 - [x] **B6c** — components/ui（42 个文件）
-- [x] **B6d** — components/workspace（74 个文件）
+- [ ] **B6d** — components/workspace（75 个文件）⚠️ +skill-apply-dialog.test.tsx，agent-card 等有修改，需回归
 - [x] **B6e** — components/landing（17 个文件）
-- [x] **B6f** — app/ 页面级（54 个文件）
+- [ ] **B6f** — app/ 页面级（54 个文件）⚠️ admin/tools/page.test.tsx 大幅扩展，其他页面有修改，需回归
 > B6f 补充: admin/audit-logs/page.test.tsx (审计日志页面 809行), admin/skill-applications/page.test.tsx (技能申请跳转页) — ✅ 回归通过 (936 passed, 0 failed)
 - [x] **B6g** — 根级 hooks/lib/mdx（7 个文件）
 
-### B7: 前端 E2E（4/4）— 最后执行
+### B7: 前端 E2E（3/4）— 最后执行
 
 - [x] **B7a** — 核心 E2E（15 个文件）— ✅ 回归通过 (291 passed / 17 failed / 14 skipped)
 > 修复: 在 playwright.config.ts webServer.env 中添加 IDEER_AUTH_DISABLED=1，解决 SSR auth 与 page.route mock 不兼容的问题（修复 100 个失败）。
 > 剩余 17 个失败已确认与 SSR auth 无关，为前端页面渲染与测试预期不匹配，需全栈环境人工分析。
-- [x] **B7b** — QA E2E（11 个文件）— ✅ 全部通过（5 个 auth 测试已跳过）
-> 修复: auth-flow.spec.ts + smoke-login.spec.ts 跳过（IDEER_AUTH_DISABLED 不兼容）。
+- [ ] **B7b** — QA E2E（11 个文件）⚠️ auth-flow.spec.ts + smoke-login.spec.ts 添加 .skip，其余有修改，需回归
 - [x] **B7c** — Stagehand（3 个文件）— ⏭️ 跳过（需 Stagehand 运行时）
 - [x] **B7d** — Visual + A11y（4 个文件）— ⚠️ 2 failed (visual screenshot baseline + a11y violations)
 > visual/landing.visual.spec.ts: 截图 baseline 过期（内容变更），需重新生成。
