@@ -424,8 +424,8 @@
 | T1 | RBAC 权限矩阵系统性测试：所有角色 × 所有操作的完整组合 | admin, authz, 所有需权限路由 | 集成测试 | DONE | opencode | 2026-07-08 |
 | T2 | 并发/竞态压力测试：`with_for_update()` 行锁、乐观锁冲突 | admin router, memory, skills | 并发测试 | DONE | opencode | 2026-07-08 |
 | T3 | 安全专项测试：JWT 伪造、CSRF、路径遍历、XSS、SQL 注入、权限提升 | auth, 所有用户输入端点 | 安全测试 | DONE | opencode | 2026-07-08 |
-| T4 | 配置热重载测试：config 模块的动态重载行为 | `config/*.py` | 集成测试 | TODO | | |
-| T5 | 数据库迁移测试：Alembic 迁移脚本 forward/backward 验证 | `persistence/migrations/` | 集成测试 | TODO | | |
+| T4 | 配置热重载测试：config 模块的动态重载行为 | `config/*.py` | 集成测试 | DONE | opencode | 2026-07-08 |
+| T5 | 数据库迁移测试：Alembic 迁移脚本 forward/backward 验证 | `persistence/migrations/` | 集成测试 | DONE | opencode | 2026-07-08 |
 | T6 | 前端无障碍性 (a11y) 组件级测试 | 所有交互组件 | 单元测试 | TODO | | |
 | T7 | 前端响应式/移动端布局测试 | workspace 组件 | 单元测试 | TODO | | |
 | T8 | 前端国际化 (i18n) 多语言切换 E2E 测试 | 全局 | E2E 测试 | TODO | | |
@@ -442,5 +442,5 @@
 | HIGH | 19 | 0 | 0 | 19 | 100% |
 | MEDIUM | 10 | 2 | 0 | 8 | 80% |
 | LOW | 5 | 0 | 0 | 5 | 100% |
-| 类型专项 | 10 | 7 | 0 | 3 | 30% |
-| **合计** | **48** | **9** | **0** | **39** | **81%** |
+| 类型专项 | 10 | 5 | 0 | 5 | 50% |
+| **合计** | **48** | **7** | **0** | **41** | **85%** |
