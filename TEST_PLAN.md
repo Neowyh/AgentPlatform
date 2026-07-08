@@ -798,10 +798,10 @@ B1(基础层) ──→ B2(核心层) ──→ B3(功能层) ──→ B4(补�
 - [x] **B2d** — LLM/Providers（23 个文件）
 > B2d 补充: test_models_router_e2e.py E2E 测试 — ✅ 回归通过 (27 passed, 0 failed)
 
-### B3: 后端功能层（4/6）
+### B3: 后端功能层（5/6）
 
 - [x] **B3a** — Agents/Subagents（25 个文件）— ✅ 回归通过 (1364 passed, 0 failed)
-- [ ] **B3b** — Tools/Skills（~47 个文件）⚠️ +test_race_skill_import.py，test_skills_router_coverage/e2e/full 和 test_task_tool_coverage 有修改，需回归
+- [x] **B3b** — Tools/Skills（~47 个文件）— ✅ 回归通过 (3075 passed, 0 failed)
 - [x] **B3c** — MCP（9 个文件）
 - [x] **B3d** — 渠道集成（17 个文件）
 - [x] **B3e** — Sandbox（25 个文件）
