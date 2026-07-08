@@ -413,7 +413,7 @@
 |---|--------|---------|---------|------|--------|---------|
 | L1 | 前端 `types.ts` 运行时 schema 验证测试（按需） | `frontend/src/core/*/types.ts` | 单元测试 | DONE | opencode | 2026-07-08 |
 | L2 | 前端 `core/api/index.ts` 测试 | `frontend/src/core/api/index.ts` | 单元测试 | DONE | opencode | 2026-07-08 |
-| L3 | 前端 `core/i18n/index.ts` 测试 | `frontend/src/core/i18n/index.ts` | 单元测试 | TODO | | |
+| L3 | 前端 `core/i18n/index.ts` 测试 | `frontend/src/core/i18n/index.ts` | 单元测试 | DONE | opencode | 2026-07-08 |
 | L4 | 前端 `core/static-mode.ts` 覆盖率检查与补全 | `frontend/src/core/static-mode.ts` | 单元测试 | TODO | | |
 | L5 | 后端 `tool_call_metadata.py` 独立测试 | `backend/packages/harness/ideer/agents/middlewares/tool_call_metadata.py` | 单元测试 | TODO | | |
 
@@ -441,6 +441,6 @@
 | CRITICAL | 4 | 0 | 0 | 4 | 100% |
 | HIGH | 19 | 0 | 0 | 19 | 100% |
 | MEDIUM | 10 | 2 | 0 | 8 | 80% |
-| LOW | 5 | 3 | 0 | 2 | 40% |
+| LOW | 5 | 2 | 0 | 3 | 60% |
 | 类型专项 | 10 | 10 | 0 | 0 | 0% |
 | **合计** | **48** | **19** | **0** | **29** | **60%** |
