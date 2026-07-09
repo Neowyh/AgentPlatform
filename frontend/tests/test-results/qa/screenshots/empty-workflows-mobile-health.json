@@ -1,14 +1,14 @@
 {
   "page": "empty-workflows",
   "route": "/workspace/workflows",
-  "timestamp": "2026-07-07T14:31:42.811Z",
+  "timestamp": "2026-07-08T06:44:53.996Z",
   "viewport": "mobile",
-  "status": "ok",
+  "status": "warn",
   "checks": {
     "consoleErrors": [],
     "failedRequests": [],
     "pageEmpty": false,
-    "horizontalOverflow": false,
+    "horizontalOverflow": true,
     "reactError": false,
     "urlDrift": false,
     "wrongPage": null,

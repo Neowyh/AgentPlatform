@@ -1,13 +1,13 @@
 {
   "page": "empty-chats",
   "route": "/workspace/chats",
-  "timestamp": "2026-07-07T14:31:42.873Z",
+  "timestamp": "2026-07-08T06:44:54.108Z",
   "viewport": "mobile",
-  "status": "ok",
+  "status": "fail",
   "checks": {
     "consoleErrors": [],
     "failedRequests": [],
-    "pageEmpty": false,
+    "pageEmpty": true,
     "horizontalOverflow": false,
     "reactError": false,
     "urlDrift": false,

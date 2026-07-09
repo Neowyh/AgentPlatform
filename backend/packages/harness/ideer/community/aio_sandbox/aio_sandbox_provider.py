@@ -19,7 +19,6 @@ import signal
 import threading
 import time
 import uuid
-from concurrent.futures import ThreadPoolExecutor
 
 try:
     import fcntl
@@ -48,9 +47,6 @@ DEFAULT_CONTAINER_PREFIX = "ideer-sandbox"
 DEFAULT_IDLE_TIMEOUT = 600  # 10 minutes in seconds
 DEFAULT_REPLICAS = 3  # Maximum concurrent sandbox containers
 IDLE_CHECK_INTERVAL = 60  # Check every 60 seconds
-THREAD_LOCK_EXECUTOR_WORKERS = min(32, (os.cpu_count() or 1) + 4)
-_THREAD_LOCK_EXECUTOR = ThreadPoolExecutor(max_workers=THREAD_LOCK_EXECUTOR_WORKERS, thread_name_prefix="sandbox-lock-wait")
-atexit.register(_THREAD_LOCK_EXECUTOR.shutdown, wait=False, cancel_futures=True)
 
 
 def _lock_file_exclusive(lock_file) -> None:
@@ -76,18 +72,18 @@ def _open_lock_file(lock_path):
 
 
 async def _acquire_thread_lock_async(lock: threading.Lock) -> None:
-    """Acquire a threading.Lock without polling or using the default executor."""
-    loop = asyncio.get_running_loop()
-    acquire_future = loop.run_in_executor(_THREAD_LOCK_EXECUTOR, lock.acquire, True)
+    """Acquire a threading.Lock using non-blocking polling with async sleep.
 
-    try:
-        acquired = await asyncio.shield(acquire_future)
-    except asyncio.CancelledError:
-        acquire_future.add_done_callback(lambda task: _release_cancelled_lock_acquire(lock, task))
-        raise
-
-    if not acquired:
-        raise RuntimeError("Failed to acquire sandbox thread lock")
+    This avoids the thread race where asyncio.shield prevents cancellation of
+    a blocking lock.acquire in the executor, leaving the executor thread stuck
+    forever. Instead, we poll with lock.acquire(blocking=False) — which is
+    non-blocking and safe to call in the event loop — and yield control via
+    asyncio.sleep, which allows CancelledError to propagate cleanly.
+    """
+    while True:
+        if lock.acquire(blocking=False):
+            return
+        await asyncio.sleep(0.01)
 
 
 def _release_cancelled_lock_acquire(lock: threading.Lock, task: asyncio.Future[bool]) -> None:

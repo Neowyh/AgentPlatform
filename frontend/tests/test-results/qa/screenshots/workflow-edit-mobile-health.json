@@ -1,7 +1,7 @@
 {
   "page": "workflow-edit",
   "route": "/workspace/workflows/research-workflow/edit",
-  "timestamp": "2026-07-07T14:31:37.659Z",
+  "timestamp": "2026-07-08T06:44:46.500Z",
   "viewport": "mobile",
   "status": "fail",
   "checks": {
@@ -13,7 +13,6 @@
     "urlDrift": false,
     "wrongPage": null,
     "missingElements": [
-      ".cm-editor",
       "textarea"
     ]
   }

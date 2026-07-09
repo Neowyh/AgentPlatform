@@ -17,6 +17,10 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
+from dotenv import load_dotenv
+
+# Load .env from project root (for OPENAI_API_KEY etc.)
+load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
 # Make 'app' and 'ideer' importable from any working directory
 sys.path.insert(0, str(Path(__file__).parent.parent))

@@ -185,7 +185,6 @@ class TestAcquireThreadLockAsync:
         assert not lock.acquire(blocking=False)
         lock.release()
 
-    @pytest.mark.skip(reason="Threading race: lock.acquire in executor blocks indefinitely while main thread holds the lock; asyncio.shield prevents cancellation of the underlying executor future, causing the test to hang.")
     @pytest.mark.anyio
     async def test_cancellation_releases_lock(self):
         aio_mod = _get_aio_mod()
@@ -194,8 +193,20 @@ class TestAcquireThreadLockAsync:
         async def _blocked():
             await aio_mod._acquire_thread_lock_async(lock)
 
-        # Hold the lock to block the async acquire
-        lock.acquire()
+        # Hold the lock in a background thread so the async acquire polls
+        held = threading.Event()
+        release_event = threading.Event()
+
+        def _holder():
+            lock.acquire()
+            held.set()
+            release_event.wait()
+            lock.release()
+
+        t = threading.Thread(target=_holder)
+        t.start()
+        held.wait()
+
         task = asyncio.create_task(_blocked())
         await asyncio.sleep(0.05)
         task.cancel()
@@ -204,7 +215,11 @@ class TestAcquireThreadLockAsync:
         except asyncio.CancelledError:
             pass
 
-        # Lock should be available now (cancelled waiter should not hold it)
+        # Release the lock from the background thread
+        release_event.set()
+        t.join()
+
+        # Lock should be available (cancelled waiter did not steal it)
         assert lock.acquire(blocking=False)
         lock.release()
 

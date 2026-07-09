@@ -51,6 +51,12 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
     },
     {
+      name: "auth",
+      testDir: "./tests/e2e/qa",
+      testMatch: /auth-flow|smoke-login/,
+      use: { ...devices["Desktop Chrome"] },
+    },
+    {
       name: "visual",
       testDir: "./tests/e2e/visual",
       use: { ...devices["Desktop Chrome"] },

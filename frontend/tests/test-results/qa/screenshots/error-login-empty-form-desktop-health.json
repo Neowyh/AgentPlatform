@@ -1,16 +1,16 @@
 {
   "page": "error-login-empty-form",
   "route": "/login",
-  "timestamp": "2026-07-07T14:31:27.848Z",
+  "timestamp": "2026-07-08T06:44:39.093Z",
   "viewport": "desktop",
-  "status": "ok",
+  "status": "warn",
   "checks": {
     "consoleErrors": [],
     "failedRequests": [],
     "pageEmpty": false,
     "horizontalOverflow": false,
     "reactError": false,
-    "urlDrift": false,
+    "urlDrift": true,
     "wrongPage": null,
     "missingElements": []
   }

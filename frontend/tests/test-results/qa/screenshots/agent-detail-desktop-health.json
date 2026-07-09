@@ -1,12 +1,18 @@
 {
   "page": "agent-detail",
   "route": "/workspace/agents/research-assistant",
-  "timestamp": "2026-07-07T14:31:06.678Z",
+  "timestamp": "2026-07-08T06:44:11.855Z",
   "viewport": "desktop",
-  "status": "ok",
+  "status": "warn",
   "checks": {
-    "consoleErrors": [],
-    "failedRequests": [],
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "failedRequests": [
+      "404 http://localhost:3000/api/agents/research-assistant",
+      "404 http://localhost:3000/api/agents/research-assistant"
+    ],
     "pageEmpty": false,
     "horizontalOverflow": false,
     "reactError": false,

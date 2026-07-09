@@ -1,14 +1,14 @@
 {
   "page": "empty-agents",
   "route": "/workspace/agents",
-  "timestamp": "2026-07-07T14:31:41.783Z",
+  "timestamp": "2026-07-08T06:44:53.066Z",
   "viewport": "mobile",
-  "status": "ok",
+  "status": "warn",
   "checks": {
     "consoleErrors": [],
     "failedRequests": [],
     "pageEmpty": false,
-    "horizontalOverflow": false,
+    "horizontalOverflow": true,
     "reactError": false,
     "urlDrift": false,
     "wrongPage": null,

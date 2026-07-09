@@ -209,24 +209,6 @@ def _info(sid="s1", url="http://localhost:8080"):
     return SandboxInfo(sandbox_id=sid, sandbox_url=url, container_name=f"c-{sid}", container_id=f"cid-{sid}", created_at=time.time())
 
 
-class TestAcquireThreadLockAsyncFailure:
-    """Line 90: RuntimeError when lock acquire fails."""
-
-    @pytest.mark.anyio
-    async def test_raises(self):
-        import importlib
-
-        mod = importlib.import_module("ideer.community.aio_sandbox.aio_sandbox_provider")
-        lock = threading.Lock()
-        lock.acquire()
-        f = asyncio.get_running_loop().create_future()
-        f.set_result(False)
-        with patch.object(mod._THREAD_LOCK_EXECUTOR, "submit", return_value=f):
-            with pytest.raises(RuntimeError, match="Failed to acquire"):
-                await mod._acquire_thread_lock_async(lock)
-        lock.release()
-
-
 class TestIdleCheckerError:
     """Lines 362-363: loop continues after cleanup error."""
 

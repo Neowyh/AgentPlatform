@@ -1,14 +1,14 @@
 {
   "page": "empty-admin-users",
   "route": "/workspace/admin/users",
-  "timestamp": "2026-07-07T14:31:43.546Z",
+  "timestamp": "2026-07-08T06:44:55.009Z",
   "viewport": "mobile",
-  "status": "ok",
+  "status": "warn",
   "checks": {
     "consoleErrors": [],
     "failedRequests": [],
     "pageEmpty": false,
-    "horizontalOverflow": false,
+    "horizontalOverflow": true,
     "reactError": false,
     "urlDrift": false,
     "wrongPage": null,

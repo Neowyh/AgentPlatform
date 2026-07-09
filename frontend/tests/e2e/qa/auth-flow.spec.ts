@@ -18,8 +18,9 @@ const TEST_PASSWORD = "super_admin@test.com";
 
 // Auth E2E tests need IDEER_AUTH_DISABLED off.  When it's on (required for
 // non-auth E2E tests to pass SSR mocks), these tests can't run.
-// TODO: split into separate CI job with IDEER_AUTH_DISABLED=0 to re-enable.
+// Run with: npx playwright test --project=auth
 test.skip(
+  process.env.IDEER_AUTH_DISABLED === "1",
   "IDEER_AUTH_DISABLED — SSR always returns authenticated, login flow unreachable",
 );
 

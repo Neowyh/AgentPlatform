@@ -1,9 +1,9 @@
 {
   "page": "dialog-skill-editor",
   "route": "/workspace/chats/new",
-  "timestamp": "2026-07-07T14:31:43.143Z",
+  "timestamp": "2026-07-08T06:44:54.426Z",
   "viewport": "mobile",
-  "status": "fail",
+  "status": "ok",
   "checks": {
     "consoleErrors": [],
     "failedRequests": [],
@@ -12,8 +12,6 @@
     "reactError": false,
     "urlDrift": false,
     "wrongPage": null,
-    "missingElements": [
-      "[role=\"dialog\"], textarea, .cm-editor"
-    ]
+    "missingElements": []
   }
 }

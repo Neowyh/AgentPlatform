@@ -1,14 +1,14 @@
 {
   "page": "dialog-delete-agent",
   "route": "/workspace/agents",
-  "timestamp": "2026-07-07T14:31:37.815Z",
+  "timestamp": "2026-07-08T06:44:49.298Z",
   "viewport": "mobile",
   "status": "fail",
   "checks": {
     "consoleErrors": [],
     "failedRequests": [],
     "pageEmpty": false,
-    "horizontalOverflow": false,
+    "horizontalOverflow": true,
     "reactError": false,
     "urlDrift": false,
     "wrongPage": null,
