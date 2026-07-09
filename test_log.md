@@ -88,3 +88,18 @@
 **命令:** `uv run pytest tests/ -v -k "sandbox"`
 
 **备注:** 1 个非关键警告（LangChainPendingDeprecationWarning）
+
+---
+
+## B3f: Artifacts/Uploads — ✅ 一次性通过
+
+| 阶段 | 状态 | 详情 |
+|------|------|------|
+| **测试** | ✅ 通过 | 477 passed, 0 failed, 1 skipped (19.47s) |
+| **修复** | ⏭️ 跳过 | 无失败用例，无需修复 |
+| **审查** | ⏭️ 跳过 | 无代码变更，无需审查 |
+| **回归** | ⏭️ 跳过 | 无代码变更，无需回归 |
+
+**命令:** `uv run pytest tests/ -v -k "artifact or upload or file_conversion"`
+
+**备注:** 1 个非关键警告（LangChainPendingDeprecationWarning）

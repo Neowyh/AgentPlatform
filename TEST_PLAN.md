@@ -823,7 +823,7 @@ B1(基础层) ──→ B2(核心层) ──→ B3(功能层) ──→ B4(补�
 - [x] **B3c** — MCP（9 个文件）
 - [x] **B3d** — 渠道集成（17 个文件）
 - [x] **B3e** — Sandbox（25 个文件）— ✅ 回归通过 (1597 passed, 0 failed)
-- [ ] **B3f** — Artifacts/Uploads（10 个文件）— 合并后需回归: `test_uploads_router_e2e.py` 修改（文件删除断言加强）
+- [x] **B3f** — Artifacts/Uploads（10 个文件）— ✅ 回归通过 (477 passed, 0 failed)
 
 ### B4: 后端补丁 + 杂项（0/3 ⚠️ 合并引入变更需回归）
 
