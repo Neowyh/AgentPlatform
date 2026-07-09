@@ -118,3 +118,33 @@
 **命令:** `uv run pytest tests/ -v -k "coverage or worker_cov or parser_cov or prompt_coverage or paths_coverage or resolvers_coverage or services_coverage or search_coverage"`
 
 **备注:** 8 个非关键警告（websockets/JsonPlusSerializer deprecation, unawaited coroutine）
+
+---
+
+## B4b: 权限/隔离 — ✅ 一次性通过
+
+| 阶段 | 状态 | 详情 |
+|------|------|------|
+| **测试** | ✅ 通过 | 709 passed, 0 failed, 1 skipped (20.52s) |
+| **修复** | ⏭️ 跳过 | 无失败用例，无需修复 |
+| **审查** | ⏭️ 跳过 | 无代码变更，无需审查 |
+| **回归** | ⏭️ 跳过 | 无代码变更，无需回归 |
+
+**命令:** `uv run pytest tests/ -v -k "isolation or rbac or visibility or permission or owner"`
+
+**备注:** 排除 B5b (QA) 测试后的结果
+
+---
+
+## B4c: 杂项 — ✅ 修复后通过
+
+| 阶段 | 状态 | 详情 |
+|------|------|------|
+| **测试** | ❌ 失败 | 2742 passed, 37 failed, 3 skipped (155.94s) |
+| **修复** | ✅ 完成 | 根因：alembic `fileConfig(disable_existing_loggers=True)` 在大批量运行中禁用所有 logger；修复：`backend/packages/harness/ideer/persistence/migrations/env.py:30` 改为 `disable_existing_loggers=False` |
+| **审查** | ✅ 完成 | 1 文件修改（`env.py`），低风险，这是已知的 Python logging 最佳实践 |
+| **回归** | ✅ 通过 | 2779 passed, 0 failed, 3 skipped (155.57s) |
+
+**命令:** `uv run pytest tests/ -v -k "client or gateway or serial or json or sse or stream or template or error_codes or stress or concurrent or property or doctor or detect or harness or fault_zeroing or install or readability or security_scanner or skill_storage or logging or infoquest or start_local or intranet or local_backend or docker_sandbox or step or guardrail or message_bus or path_utils or user_context or utils_time"`
+
+**备注:** Alembic `disable_existing_loggers` 是已知的 Python logging 陷阱。此修复解释了此前所有 B3b 和 B4c caplog 命名 logger 问题的根因——不是测试交互问题，而是 alembic 迁移测试（B1d）先运行后禁用所有 loggers。

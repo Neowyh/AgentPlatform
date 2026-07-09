@@ -828,8 +828,8 @@ B1(基础层) ──→ B2(核心层) ──→ B3(功能层) ──→ B4(补�
 ### B4: 后端补丁 + 杂项（0/3 ⚠️ 合并引入变更需回归）
 
 - [x] **B4a** — 覆盖率补丁集（~35 个文件）— ✅ 回归通过 (2649 passed, 0 failed)
-- [ ] **B4b** — 权限/隔离（~12 个文件）— 合并后需回归: `test_rbac_permission_matrix.py` + `test_visibility_applications_e2e.py` 修改（department_admin 权限 403→200）
-- [ ] **B4c** — 杂项（~78 个文件）— 合并后需回归: `test_install_fault_zeroing_agent.py` 修改（config.yaml → config.example.yaml）
+- [x] **B4b** — 权限/隔离（~12 个文件）— ✅ 回归通过 (709 passed, 0 failed)
+- [x] **B4c** — 杂项（~78 个文件）— ✅ 回归通过 (2779 passed, 0 failed)；修复: alembic `disable_existing_loggers`
 
 ### B5: 后端子目录（1/2 ⚠️ 合并引入变更需回归）— 可与 B4 并行
 
