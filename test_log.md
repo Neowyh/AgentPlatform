@@ -46,3 +46,30 @@
 **命令:** `uv run pytest tests/ -v -k "agent or subagent or lead_agent or custom_agent"`
 
 **备注:** 12 个非关键警告（LangChainPendingDeprecationWarning, httpx cookie deprecation）
+
+---
+
+## B3b: Tools/Skills — ✅ 测试→修复→审查→回归 全通过
+
+| 阶段 | 状态 | 详情 |
+|------|------|------|
+| **测试** | ❌ 17 failed | 全部为 `caplog.text` 为空问题（logger 命名不匹配） |
+| **修复** | ✅ 完成 | 移除 `caplog.at_level(..., logger="ideer")` 中的命名 logger，改用根级别捕获；修复 8 个文件共 19 处调用 |
+| **审查** | ✅ 通过 | 修复方式正确且一致：根级别 caplog 通过 logger 传播机制捕获所有`ideer.*`日志 |
+| **回归** | ✅ 通过 | 1319 passed, 0 failed (23.79s) |
+
+**测试命令:** `uv run pytest tests/ -v -k "tool or skill or credential or task_tool or code_interpreter or serper or firecrawl or exa or data_analyzer or image_search or doc_reader or present_file or view_image or local_bash or invoke_acp"`
+
+**修复的 8 个文件:**
+- `test_tools_coverage.py`（9 处）— `logger="ideer.tools.tools"` → 移除
+- `test_tool_deduplication.py`（1 处）— `logger="ideer"` → 移除
+- `test_tool_policy.py`（1 处）— `logger="ideer"` → 移除
+- `test_coverage_tools_2.py`（3 处）— `logger="ideer"` → 移除
+- `test_invoke_acp_agent_tool.py`（1 处）— `logger="ideer"` → 移除
+- `test_journal_coverage2.py`（4 处）— `logger="ideer"` → 移除
+- `test_lead_agent_prompt.py`（1 处）— `logger="ideer"` → 移除
+- `test_claude_provider.py`（1 处）— `logger="ideer"` → 移除
+
+**根因:** 使用命名 logger 的 `caplog.at_level(...)` 在大批量并行测试中因 Logger 全局状态竞争导致日志无法捕获。切换到根级别 caplog 后通过传播机制可靠工作。
+
+**备注:** 部分 `conftest.py` 诊断代码已清理。

@@ -86,7 +86,7 @@ class TestMCPToolSearchNewRegistry:
                     "ideer.tools.builtins.tool_search": mock_tool_search_module,
                 },
             ),
-            caplog.at_level(logging.INFO, logger="ideer.tools.tools"),
+            caplog.at_level(logging.INFO),
         ):
             get_available_tools(app_config=config, include_mcp=True)
 
@@ -145,7 +145,7 @@ class TestMCPToolSearchExistingRegistry:
                     "ideer.tools.builtins.tool_search": mock_tool_search_module,
                 },
             ),
-            caplog.at_level(logging.INFO, logger="ideer.tools.tools"),
+            caplog.at_level(logging.INFO),
         ):
             get_available_tools(app_config=config, include_mcp=True)
 
@@ -185,7 +185,7 @@ class TestMCPToolsWithoutToolSearch:
                     "ideer.mcp.cache": mock_mcp_cache_module,
                 },
             ),
-            caplog.at_level(logging.INFO, logger="ideer.tools.tools"),
+            caplog.at_level(logging.INFO),
         ):
             result = get_available_tools(app_config=config, include_mcp=True)
 

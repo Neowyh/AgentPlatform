@@ -1,5 +1,6 @@
 """Tests for the built-in ACP invocation tool."""
 
+import logging
 import sys
 from types import SimpleNamespace
 
@@ -744,7 +745,7 @@ async def test_invoke_acp_agent_skips_invalid_mcp_servers(monkeypatch, tmp_path,
     )
 
     tool = build_invoke_acp_agent_tool({"codex": ACPAgentConfig(command="codex-acp", description="Codex CLI")})
-    caplog.set_level("WARNING")
+    caplog.set_level(logging.WARNING)
 
     try:
         await tool.coroutine(agent="codex", prompt="Do something")

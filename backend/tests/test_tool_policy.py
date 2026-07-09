@@ -128,7 +128,7 @@ class TestAllowedToolNamesForSkills:
     def test_logging_on_empty_allowed_tools(self, caplog):
         """A skill with allowed_tools=[] emits an INFO log."""
         skills = [_make_skill("s1", allowed_tools=[])]
-        with caplog.at_level(logging.INFO, logger="ideer.skills.tool_policy"):
+        with caplog.at_level(logging.INFO):
             allowed_tool_names_for_skills(skills)
         assert "declared empty allowed-tools" in caplog.text
 

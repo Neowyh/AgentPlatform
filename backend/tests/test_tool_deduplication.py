@@ -194,7 +194,7 @@ def test_duplicate_triggers_warning(mock_bash, mock_cfg, caplog):
     mock_cfg.return_value = _make_minimal_config([])
 
     with patch("ideer.tools.tools.BUILTIN_TOOLS", [_tool_alpha, _tool_alpha_dup]):
-        with caplog.at_level(logging.WARNING, logger="ideer.tools.tools"):
+        with caplog.at_level(logging.WARNING):
             get_available_tools(include_mcp=False)
 
     assert any("Duplicate tool name" in r.message for r in caplog.records), "Expected a duplicate-tool warning in log output"

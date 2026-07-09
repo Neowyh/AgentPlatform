@@ -154,7 +154,7 @@ class TestOfflineModeFiltering:
 
         config = _make_config(tools=[net_tool])
 
-        with caplog.at_level(logging.INFO, logger="ideer.tools.tools"):
+        with caplog.at_level(logging.INFO):
             get_available_tools(app_config=config, include_mcp=False)
 
         assert "Offline mode" in caplog.text
@@ -200,7 +200,7 @@ class TestToolNameMismatch:
 
         config = _make_config(tools=[cfg])
 
-        with caplog.at_level(logging.WARNING, logger="ideer.tools.tools"):
+        with caplog.at_level(logging.WARNING):
             get_available_tools(app_config=config, include_mcp=False)
 
         assert "config name" in caplog.text
@@ -220,7 +220,7 @@ class TestToolNameMismatch:
 
         config = _make_config(tools=[cfg])
 
-        with caplog.at_level(logging.WARNING, logger="ideer.tools.tools"):
+        with caplog.at_level(logging.WARNING):
             get_available_tools(app_config=config, include_mcp=False)
 
         assert "Tool name mismatch" not in caplog.text
@@ -354,7 +354,7 @@ class TestMCPErrorHandling:
         config = _make_config(tools=[], tool_search_enabled=False)
 
         with patch.dict("sys.modules", {"ideer.config.extensions_config": None}):
-            with caplog.at_level(logging.WARNING, logger="ideer.tools.tools"):
+            with caplog.at_level(logging.WARNING):
                 get_available_tools(app_config=config, include_mcp=True)
 
         assert "MCP module not available" in caplog.text
@@ -384,7 +384,7 @@ class TestMCPErrorHandling:
                     "ideer.mcp.cache": mock_cache,
                 },
             ),
-            caplog.at_level(logging.ERROR, logger="ideer.tools.tools"),
+            caplog.at_level(logging.ERROR),
         ):
             get_available_tools(app_config=config, include_mcp=True)
 
@@ -406,7 +406,7 @@ class TestACPErrorHandling:
         config = _make_config(tools=[], acp_agents={"agent1": {"desc": "test"}})
 
         with patch.dict("sys.modules", {"ideer.tools.builtins.invoke_acp_agent_tool": None}):
-            with caplog.at_level(logging.WARNING, logger="ideer.tools.tools"):
+            with caplog.at_level(logging.WARNING):
                 get_available_tools(app_config=config, include_mcp=False)
 
         assert "Failed to load ACP tool" in caplog.text
@@ -421,7 +421,7 @@ class TestACPErrorHandling:
 
         # build_invoke_acp_agent_tool is imported locally; patch at source module
         with patch("ideer.tools.builtins.invoke_acp_agent_tool.build_invoke_acp_agent_tool", side_effect=ValueError("bad config")):
-            with caplog.at_level(logging.WARNING, logger="ideer.tools.tools"):
+            with caplog.at_level(logging.WARNING):
                 get_available_tools(app_config=config, include_mcp=False)
 
         assert "Failed to load ACP tool" in caplog.text
@@ -536,7 +536,7 @@ class TestACPWithNoAppConfig:
         mock_tool = MagicMock(spec=BaseTool)
         mock_tool.name = "invoke_acp_agent"
         with patch("ideer.tools.builtins.invoke_acp_agent_tool.build_invoke_acp_agent_tool", return_value=mock_tool):
-            with caplog.at_level(logging.INFO, logger="ideer.tools.tools"):
+            with caplog.at_level(logging.INFO):
                 get_available_tools(app_config=config, include_mcp=False)
 
         assert "invoke_acp_agent" in caplog.text
@@ -564,7 +564,7 @@ class TestDuplicateToolNames:
         mock_resolve.return_value = mock_tool
 
         config = _make_config(tools=[tool_cfg1, tool_cfg2])
-        with caplog.at_level(logging.WARNING, logger="ideer.tools.tools"):
+        with caplog.at_level(logging.WARNING):
             result = get_available_tools(app_config=config, include_mcp=False)
 
         # Only one instance of the tool should appear

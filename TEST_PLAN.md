@@ -818,7 +818,8 @@ B1(基础层) ──→ B2(核心层) ──→ B3(功能层) ──→ B4(补�
 ### B3: 后端功能层（2/6 ⚠️ 合并引入变更需回归）
 
 - [x] **B3a** — Agents/Subagents（25 个文件）— ✅ 回归通过 (1368 passed, 0 failed)
-- [ ] **B3b** — Tools/Skills（~47 个文件）— 合并后需回归: `test_skills_router_coverage.py/e2e/full` + `test_task_tool_coverage.py` 修改（DI 修复 + model config）
+- [x] **B3b** — Tools/Skills（~47 个文件）— ✅ 回归通过 (1319 passed, 0 failed)
+  - 修复: 8 个测试文件的 caplog 命名 logger → 根级别 logger
 - [x] **B3c** — MCP（9 个文件）
 - [x] **B3d** — 渠道集成（17 个文件）
 - [ ] **B3e** — Sandbox（25 个文件）— 合并后需回归: `test_aio_sandbox_provider.py` 修改（cancellation lock 重写）

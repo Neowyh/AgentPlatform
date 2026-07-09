@@ -1,3 +1,4 @@
+import logging
 import threading
 from types import SimpleNamespace
 from typing import cast
@@ -367,7 +368,7 @@ def test_warm_enabled_skills_cache_logs_on_timeout(monkeypatch, caplog):
     event = threading.Event()
     monkeypatch.setattr(prompt_module, "_ensure_enabled_skills_cache", lambda: event)
 
-    with caplog.at_level("WARNING"):
+    with caplog.at_level(logging.WARNING):
         warmed = prompt_module.warm_enabled_skills_cache(timeout_seconds=0.01)
 
     assert warmed is False
