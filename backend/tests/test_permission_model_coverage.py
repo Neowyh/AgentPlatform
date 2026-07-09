@@ -370,8 +370,8 @@ class TestDeptAdminDepartmentFilter:
         return app
 
     @pytest.mark.asyncio
-    async def test_dept_admin_sees_only_own_department(self):
-        """dept_admin's GET query includes department_id filter."""
+    async def test_dept_admin_sees_all_applications(self):
+        """dept_admin's GET query does NOT include department_id filter."""
         user = _make_rbac_user(role="department_admin", department_id="dept-1")
         app = self._build_app(user)
 
@@ -417,9 +417,10 @@ class TestDeptAdminDepartmentFilter:
                 resp = await client.get("/api/visibility-applications")
 
         assert resp.status_code == 200
-        # Verify the SQL contains a department_id filter
+        # Verify the SQL does NOT filter by department_id (the column name may
+        # appear in SELECT but not as a WHERE condition)
         combined = " ".join(captured_stmts)
-        assert "department_id" in combined
+        assert "department_id =" not in combined
 
     @pytest.mark.asyncio
     async def test_super_admin_no_department_filter(self):
@@ -867,7 +868,7 @@ class TestAgentConcurrentCreation:
             patch("app.gateway.routers.agents._require_agents_api_enabled"),
             patch("app.gateway.routers.agents.get_effective_user_id", return_value="user-1"),
             patch("app.gateway.routers.agents.get_paths") as mock_paths,
-            patch("app.gateway.routers.agents.load_agent_config") as mock_load,
+            patch("app.gateway.routers.agents.load_agent_config"),
             patch("app.gateway.routers.agents._load_agent_meta", new_callable=AsyncMock, return_value={}),
         ):
             # Agent directory exists (both user and legacy)

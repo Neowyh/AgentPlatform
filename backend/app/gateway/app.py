@@ -342,6 +342,7 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
                 "success": False,
                 "data": None,
                 "error": {"code": exc.code, "message": exc.message},
+                "detail": exc.message,
             },
         )
 
@@ -353,6 +354,7 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
                 "success": False,
                 "data": None,
                 "error": {"code": "INTERNAL_ERROR", "message": str(exc.detail)},
+                "detail": str(exc.detail),
             },
         )
 

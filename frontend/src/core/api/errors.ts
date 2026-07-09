@@ -61,6 +61,7 @@ export function formatDetail(
  * - FastAPI validation error arrays (`detail: [{msg, loc}]`)
  * - Simple `detail: string` responses
  * - Structured error objects (`detail: {code, message}`)
+ * - Custom `{success, error: {message}}` format (fallback)
  *
  * Returns the message string without throwing — useful for callers
  * that need the message for non-exception flows (e.g. returning
@@ -72,7 +73,12 @@ export async function formatErrorMessage(
 ): Promise<string> {
   const parsed = await parseErrorDetail(res);
   if (!parsed) return `${action}: ${res.statusText}`;
-  return formatDetail(parsed.detail, action, res.statusText);
+  if (parsed.detail !== undefined)
+    return formatDetail(parsed.detail, action, res.statusText);
+  // Fallback: read from custom `{success, error: {message}}` format
+  const body = parsed.body as { error?: { message?: string } };
+  if (body.error?.message) return body.error.message;
+  return `${action}: ${res.statusText}`;
 }
 
 /**

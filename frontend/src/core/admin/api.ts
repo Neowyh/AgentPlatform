@@ -54,14 +54,6 @@ export async function updateUserRole(
   }>;
 }
 
-export async function disableUser(userId: string): Promise<void> {
-  const baseURL = getBackendBaseURL();
-  const res = await fetch(`${baseURL}/api/admin/users/${userId}`, {
-    method: "DELETE",
-  });
-  if (!res.ok) return extractError(res, "Failed to disable user");
-}
-
 export async function toggleUserStatus(
   userId: string,
 ): Promise<{ success: boolean; user_id: string; disabled: boolean }> {
@@ -221,6 +213,7 @@ export interface AdminStats {
   total_skills: number;
   total_resources: number;
   audit_logs: number;
+  pending_applications: number;
 }
 
 export async function getAdminStats(): Promise<AdminStats> {

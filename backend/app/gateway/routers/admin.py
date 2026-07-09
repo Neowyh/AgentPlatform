@@ -6,17 +6,21 @@ import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 
 from app.gateway.authz import get_current_rbac_user, require_role
 from app.gateway.rbac_users import create_auth_user_with_rbac
+from ideer.config.app_config import get_app_config
 from ideer.persistence.engine import get_session_factory
 from ideer.persistence.models.audit_log import AuditLog
 from ideer.persistence.models.resource_metadata import ResourceMetadata
 from ideer.persistence.models.user import DepartmentModel, UserModel, UserRole
+from ideer.persistence.models.visibility_application import VisibilityApplication, VisibilityApplicationStatus
+from ideer.skills.storage import get_or_new_skill_storage
+from ideer.tools.tools import get_available_tools
 
 logger = logging.getLogger(__name__)
 
@@ -37,19 +41,40 @@ async def get_admin_stats(
         user_count = (await session.execute(select(func.count()).select_from(UserModel))).scalar() or 0
         dept_count = (await session.execute(select(func.count()).select_from(DepartmentModel))).scalar() or 0
 
+        # resource_metadata counts (accurate for agent and workflow)
         resource_counts = (await session.execute(select(ResourceMetadata.resource_type, func.count()).where(ResourceMetadata.deleted_at.is_(None)).group_by(ResourceMetadata.resource_type))).all()
         type_counts = {row[0]: row[1] for row in resource_counts}
+        type_counts.setdefault("agent", 0)
+        type_counts.setdefault("workflow", 0)
+
+        # Override tools and skills with canonical sources (resource_metadata is incomplete for these types)
+        config = get_app_config()
+        type_counts["tool"] = len(get_available_tools(app_config=config))
+        type_counts["skill"] = len(get_or_new_skill_storage(app_config=config).load_skills())
 
         audit_count = (await session.execute(select(func.count()).select_from(AuditLog))).scalar() or 0
+
+        # Pending visibility applications count (global, same for both roles)
+        pending_app_count = (
+            await session.execute(
+                select(func.count())
+                .select_from(VisibilityApplication)
+                .where(
+                    VisibilityApplication.status == VisibilityApplicationStatus.PENDING,
+                )
+            )
+        ).scalar() or 0
 
     return {
         "total_users": user_count,
         "total_departments": dept_count,
-        "total_agents": type_counts.get("agent", 0),
-        "total_tools": type_counts.get("tool", 0),
-        "total_skills": type_counts.get("skill", 0),
+        "total_agents": type_counts["agent"],
+        "total_tools": type_counts["tool"],
+        "total_skills": type_counts["skill"],
+        "total_workflows": type_counts["workflow"],
         "total_resources": sum(type_counts.values()),
         "audit_logs": audit_count,
+        "pending_applications": pending_app_count,
     }
 
 
@@ -68,7 +93,7 @@ class UpdateDepartmentRequest(BaseModel):
 
 
 class CreateUserRequest(BaseModel):
-    email: str = Field(..., max_length=320)
+    email: EmailStr = Field(..., max_length=320)
     password: str = Field(..., min_length=6, max_length=128)
     username: str = Field(..., max_length=100)
     role: str = Field(default=UserRole.USER)
@@ -161,7 +186,8 @@ async def list_users(
 ):
     """List users with optional filters.
 
-    super_admin sees all users. department_admin sees only their own department.
+    Both super_admin and department_admin see all users (知情权相同).
+    department_admin's write operations are scoped to their own department.
     """
     sf = get_session_factory()
     if sf is None:
@@ -170,12 +196,6 @@ async def list_users(
     # Validate role filter
     if role is not None and role not in tuple(UserRole):
         raise HTTPException(status_code=400, detail=f"Invalid role filter: '{role}'. Valid roles: {', '.join(r.value for r in UserRole)}")
-
-    # department_admin: force scope to own department, ignore query params
-    if current_user.role == UserRole.DEPARTMENT_ADMIN:
-        if not current_user.department_id:
-            return {"users": [], "total": 0, "limit": limit, "offset": offset}
-        department_id = current_user.department_id
 
     async with sf() as session:
         # Count total matching users
@@ -277,6 +297,110 @@ async def update_user_role(
 
     logger.warning("User status toggled: user_id=%s, new_status=%s, by=%s", user_id, new_status, current_user.id)
     return {"success": True, "user_id": user_id, "disabled": user.disabled}
+
+
+@router.patch("/users/{user_id}/status")
+@require_role(UserRole.SUPER_ADMIN, UserRole.DEPARTMENT_ADMIN)
+async def toggle_user_status(
+    user_id: str,
+    current_user: UserModel = Depends(get_current_rbac_user),
+):
+    """Toggle a user's disabled status (enable/disable).
+
+    super_admin can toggle any user. department_admin can only toggle
+    users within their own department.
+    """
+    sf = get_session_factory()
+    if sf is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+
+    async with sf() as session:
+        stmt = select(UserModel).where(UserModel.id == user_id)
+        try:
+            stmt = stmt.with_for_update()
+        except Exception:
+            logger.debug("with_for_update not supported, skipping row lock", exc_info=True)
+        result = await session.execute(stmt)
+        user = result.scalar_one_or_none()
+        if user is None:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        # department_admin: restrict scope
+        if current_user.role == UserRole.DEPARTMENT_ADMIN:
+            if user.role == UserRole.SUPER_ADMIN:
+                raise HTTPException(status_code=403, detail="Cannot modify super_admin")
+            if user.role == UserRole.DEPARTMENT_ADMIN:
+                raise HTTPException(status_code=403, detail="Cannot modify another department_admin")
+            if user.department_id != current_user.department_id:
+                raise HTTPException(status_code=403, detail="Cannot modify users outside your department")
+            if not user.department_id:
+                raise HTTPException(status_code=403, detail="Cannot modify users without a department")
+
+        # Prevent disabling the last active super_admin
+        if user.role == UserRole.SUPER_ADMIN and not user.disabled:
+            count_stmt = select(func.count()).select_from(UserModel).where(UserModel.role == UserRole.SUPER_ADMIN, UserModel.disabled.is_not(True))
+            try:
+                count_stmt = count_stmt.with_for_update()
+            except Exception:
+                logger.debug("with_for_update not supported, skipping row lock", exc_info=True)
+            active_super_admin_count = (await session.execute(count_stmt)).scalar() or 0
+            if active_super_admin_count <= 1:
+                raise HTTPException(status_code=400, detail="Cannot disable the last active super_admin")
+
+        user.disabled = not user.disabled
+        await session.commit()
+
+        new_status = "disabled" if user.disabled else "enabled"
+
+    logger.warning("User status toggled: user_id=%s, new_status=%s, by=%s", user_id, new_status, current_user.id)
+    return {"success": True, "user_id": user_id, "disabled": user.disabled}
+
+
+@router.put("/users/{user_id}")
+@require_role(UserRole.SUPER_ADMIN)
+async def update_user(
+    user_id: str,
+    body: UpdateUserRequest,
+    current_user: UserModel = Depends(get_current_rbac_user),
+):
+    """Update a user's username and/or department assignment. Requires super_admin role."""
+    sf = get_session_factory()
+    if sf is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+
+    async with sf() as session:
+        stmt = select(UserModel).where(UserModel.id == user_id)
+        result = await session.execute(stmt)
+        user = result.scalar_one_or_none()
+        if user is None:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        if body.username is not None:
+            if not body.username.strip():
+                raise HTTPException(status_code=400, detail="Username cannot be empty")
+            user.username = body.username.strip()
+
+        if body.department_id is not None:
+            if body.department_id == "":
+                user.department_id = None
+            else:
+                dept = await session.get(DepartmentModel, body.department_id)
+                if dept is None:
+                    raise HTTPException(status_code=404, detail="Department not found")
+                user.department_id = body.department_id
+
+        try:
+            await session.commit()
+        except IntegrityError:
+            await session.rollback()
+            raise HTTPException(status_code=409, detail="Username already exists")
+
+    logger.info("User updated: id=%s, by=%s", user_id, current_user.id)
+    return {
+        "id": user_id,
+        "username": user.username,
+        "department_id": user.department_id,
+    }
 
 
 # --- Department Management ---

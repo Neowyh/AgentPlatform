@@ -17,7 +17,6 @@ vi.mock("@/core/api/errors", () => ({
 import {
   listUsers,
   updateUserRole,
-  disableUser,
   listDepartments,
   createDepartment,
   updateDepartment,
@@ -105,23 +104,6 @@ describe("admin API", () => {
       const init = mockFetch.mock.calls[0]![1] as RequestInit;
       expect(init.method).toBe("PUT");
       expect(JSON.parse(init.body as string)).toEqual({ role: "admin" });
-    });
-  });
-
-  // ── disableUser ─────────────────────────────────────────────────
-
-  describe("disableUser", () => {
-    test("sends DELETE request", async () => {
-      mockFetch.mockResolvedValue(okJson(undefined));
-
-      await disableUser("u1");
-
-      expect(mockFetch).toHaveBeenCalledTimes(1);
-      const calledUrl = mockFetch.mock.calls[0]![0] as string;
-      expect(calledUrl).toBe("http://localhost:8000/api/admin/users/u1");
-
-      const init = mockFetch.mock.calls[0]![1] as RequestInit;
-      expect(init.method).toBe("DELETE");
     });
   });
 
@@ -322,17 +304,6 @@ describe("admin API", () => {
       expect(mockExtractError).toHaveBeenCalledWith(
         expect.anything(),
         "Failed to update user role",
-      );
-    });
-
-    test("calls extractError when disableUser returns non-ok", async () => {
-      mockFetch.mockResolvedValue(notOkJson());
-
-      await expect(disableUser("u1")).rejects.toThrow();
-
-      expect(mockExtractError).toHaveBeenCalledWith(
-        expect.anything(),
-        "Failed to disable user",
       );
     });
 

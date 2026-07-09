@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { type ReactNode } from "react";
+import { Toaster } from "sonner";
 
 import { AuthProvider } from "@/core/auth/AuthProvider";
 import { getServerSideUser } from "@/core/auth/server";
@@ -23,7 +24,12 @@ export default async function AuthLayout({
       return <AuthProvider initialUser={result.user}>{children}</AuthProvider>;
     case "system_setup_required":
     case "unauthenticated":
-      return <AuthProvider initialUser={null}>{children}</AuthProvider>;
+      return (
+        <AuthProvider initialUser={null}>
+          {children}
+          <Toaster position="top-center" />
+        </AuthProvider>
+      );
     case "gateway_unavailable":
       return (
         <div className="flex h-screen flex-col items-center justify-center gap-4">

@@ -4,12 +4,12 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { FlickeringGrid } from "@/components/ui/flickering-grid";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/core/auth/AuthProvider";
-import { parseAuthError } from "@/core/auth/types";
 
 /**
  * Validate next parameter
@@ -53,7 +53,6 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLogin, setIsLogin] = useState(true);
-  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   // Get next parameter for validated redirect
@@ -89,7 +88,6 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
     setLoading(true);
 
     try {
@@ -108,20 +106,23 @@ export default function LoginPage() {
         method: "POST",
         headers,
         body,
-        credentials: "include", // Important: include HttpOnly cookie
+        credentials: "include",
       });
 
       if (!res.ok) {
-        const data = await res.json();
-        const authError = parseAuthError(data);
-        setError(authError.message);
+        const message =
+          res.status === 403
+            ? "账户已被禁用"
+            : res.status === 429
+              ? "登录尝试次数过多，请稍后重试"
+              : "邮箱或密码错误";
+        toast.error(message);
         return;
       }
 
-      // Both login and register set a cookie — redirect to workspace
       router.push(redirectPath);
     } catch {
-      setError("Network error. Please try again.");
+      toast.error("网络错误，请稍后重试");
     } finally {
       setLoading(false);
     }
@@ -176,8 +177,6 @@ export default function LoginPage() {
             />
           </div>
 
-          {error && <p className="text-sm text-red-500">{error}</p>}
-
           <Button type="submit" className="w-full" disabled={loading}>
             {loading
               ? "Please wait..."
@@ -190,10 +189,7 @@ export default function LoginPage() {
         <div className="text-center text-sm">
           <button
             type="button"
-            onClick={() => {
-              setIsLogin(!isLogin);
-              setError("");
-            }}
+            onClick={() => setIsLogin(!isLogin)}
             className="text-blue-500 hover:underline"
           >
             {isLogin

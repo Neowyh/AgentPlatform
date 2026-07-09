@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from sqlalchemy import CheckConstraint, Column, DateTime, ForeignKey, Index, Integer, String, Text, func
+from sqlalchemy import DDL, CheckConstraint, Column, DateTime, ForeignKey, Index, Integer, String, Text, event, func
 from sqlalchemy.orm import validates
 
 from ideer.persistence.base import Base
@@ -41,7 +41,6 @@ class VisibilityApplication(Base):
     __table_args__ = (
         CheckConstraint("resource_type IN ('tool', 'skill', 'workflow', 'agent')", name="ck_visibility_app_resource_type"),
         CheckConstraint("version >= 1", name="ck_visibility_app_version_positive"),
-        Index("uq_visibility_app_pending", "resource_type", "resource_id", unique=True, postgresql_where="status = 'pending'"),
         Index("ix_visibility_app_status", "status"),
         Index("ix_visibility_app_resource", "resource_type", "resource_id"),
         Index("ix_visibility_app_applicant", "applicant_id"),
@@ -63,3 +62,14 @@ class VisibilityApplication(Base):
         if value not in valid_values:
             raise ValueError(f"Invalid status: {value}")
         return value
+
+
+# Cross-DB partial unique index: only one PENDING application per resource.
+# Uses raw SQL DDL instead of postgresql_where (which SQLite ignores).
+event.listen(
+    VisibilityApplication.__table__,
+    "after_create",
+    DDL(
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_visibility_app_pending ON visibility_applications(resource_type, resource_id) WHERE status = 'pending'",
+    ),
+)

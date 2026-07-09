@@ -214,16 +214,16 @@ class TestAdminUserRole:
 
 
 # ---------------------------------------------------------------------------
-# Tests — DELETE /api/admin/users/{user_id}
+# Tests — Toggle user status (PATCH /api/admin/users/{user_id}/status)
 # ---------------------------------------------------------------------------
 
 
-class TestAdminDisableUser:
-    """Tests for DELETE /api/admin/users/{user_id}."""
+class TestAdminToggleUserStatus:
+    """Tests for toggling user disabled status."""
 
     @patch("app.gateway.routers.admin.get_session_factory")
-    def test_disable_user_success(self, mock_get_session_factory):
-        """Toggle user disabled succeeds when user exists."""
+    def test_toggle_status_success(self, mock_get_session_factory):
+        """PATCH /status toggles disabled flag when user exists."""
         mock_session = AsyncMock()
         mock_user = MagicMock()
         mock_user.id = "user-1"
@@ -235,13 +235,12 @@ class TestAdminDisableUser:
             stmt_str = str(stmt)
             if "count" in stmt_str.lower():
                 result.scalar = MagicMock(return_value=0)
-            elif "users_ext" in stmt_str:
-                result.scalar_one_or_none = MagicMock(return_value=mock_user)
             else:
                 result.scalar_one_or_none = MagicMock(return_value=mock_user)
             return result
 
         mock_session.execute = AsyncMock(side_effect=_execute)
+        mock_session.commit = AsyncMock()
         mock_ctx = MagicMock()
         mock_ctx.__aenter__ = AsyncMock(return_value=mock_session)
         mock_ctx.__aexit__ = AsyncMock(return_value=False)
@@ -249,15 +248,16 @@ class TestAdminDisableUser:
 
         app, _ = _make_app()
         with TestClient(app) as client:
-            resp = client.put(
-                "/api/admin/users/user-1/role",
-                json={"role": "user"},
-            )
+            resp = client.patch("/api/admin/users/user-1/status")
         assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is True
+        assert data["disabled"] is True
+        assert data["user_id"] == "user-1"
 
     @patch("app.gateway.routers.admin.get_session_factory")
-    def test_disable_user_not_found(self, mock_get_session_factory):
-        """Toggle user disabled returns 404 when user not found."""
+    def test_toggle_status_not_found(self, mock_get_session_factory):
+        """PATCH /status returns 404 when user not found."""
         mock_session = AsyncMock()
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = None
@@ -269,11 +269,9 @@ class TestAdminDisableUser:
 
         app, _ = _make_app()
         with TestClient(app) as client:
-            resp = client.put(
-                "/api/admin/users/nonexistent/role",
-                json={"role": "user"},
-            )
+            resp = client.patch("/api/admin/users/nonexistent/status")
         assert resp.status_code == 404
+        assert "User not found" in resp.json()["detail"]
 
 
 # ---------------------------------------------------------------------------

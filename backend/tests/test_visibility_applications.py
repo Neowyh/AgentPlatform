@@ -425,11 +425,12 @@ class TestListApplications:
         assert data["applications"][0]["resource_type"] == "skill"
 
     @pytest.mark.asyncio
-    async def test_dept_admin_sees_only_own_department(self):
+    async def test_dept_admin_sees_all_applications(self):
+        """dept_admin sees all applications (same 知情权 as super_admin)."""
         user = _make_user(role="department_admin", dept_id="dept-1")
         app_obj = _build_app(user)
 
-        apps = [_make_app(department_id="dept-1")]
+        apps = [_make_app(department_id="dept-1"), _make_app(department_id="dept-2")]
         mock_sf = _make_session_factory(scalars_result=apps)
 
         with patch("app.gateway.routers.visibility_applications.get_session_factory", return_value=mock_sf):
@@ -438,8 +439,7 @@ class TestListApplications:
 
         assert resp.status_code == 200
         data = resp.json()
-        assert len(data["applications"]) == 1
-        assert data["applications"][0]["department_id"] == "dept-1"
+        assert len(data["applications"]) == 2
 
     @pytest.mark.asyncio
     async def test_lists_by_status(self):

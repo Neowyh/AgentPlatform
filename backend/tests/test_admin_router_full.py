@@ -706,12 +706,12 @@ class TestUpdateUserRole:
 
 
 # ---------------------------------------------------------------------------
-# DELETE /api/admin/users/{user_id}
+# Toggle user status (PATCH /api/admin/users/{user_id}/status)
 # ---------------------------------------------------------------------------
 
 
-class TestDisableUser:
-    """Tests for DELETE /api/admin/users/{user_id} endpoint."""
+class TestToggleUserStatus:
+    """Tests for PATCH /api/admin/users/{user_id}/status endpoint."""
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_disable_user_success(self, mock_sf):
@@ -1008,6 +1008,39 @@ class TestDisableUser:
             assert resp.status_code == 200
         finally:
             Select.with_for_update = original
+
+    @patch("app.gateway.routers.admin.get_session_factory")
+    def test_toggle_status_via_patch(self, mock_sf):
+        """PATCH /status toggles disabled flag."""
+        target = MagicMock()
+        target.id = "target-1"
+        target.role = UserRole.USER
+        target.disabled = False
+
+        session = AsyncMock()
+
+        async def _execute(stmt):
+            result = MagicMock()
+            stmt_str = str(stmt)
+            if "count" in stmt_str.lower():
+                result.scalar = MagicMock(return_value=0)
+            else:
+                result.scalar_one_or_none = MagicMock(return_value=target)
+            return result
+
+        session.execute = AsyncMock(side_effect=_execute)
+        session.commit = AsyncMock()
+        mock_sf.return_value = _make_session_factory(session)
+
+        app = _make_app()
+        resp = TestClient(app).patch("/api/admin/users/target-1/status")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is True
+        assert data["disabled"] is True
+        assert data["user_id"] == "target-1"
+        assert target.disabled is True
 
 
 # ---------------------------------------------------------------------------

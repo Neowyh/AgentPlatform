@@ -352,6 +352,20 @@ async def login_local(
         )
 
     _record_login_success(client_ip)
+
+    # Check if user is disabled — if so, refuse login
+    sf = get_session_factory()
+    if sf is not None:
+        async with sf() as session:
+            stmt = select(UserModel).where(UserModel.id == str(user.id))
+            result = await session.execute(stmt)
+            rbac_user = result.scalar_one_or_none()
+            if rbac_user is not None and rbac_user.disabled:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=AuthErrorResponse(code=AuthErrorCode.USER_DISABLED, message="User account is disabled").model_dump(),
+                )
+
     token = create_access_token(str(user.id), token_version=user.token_version)
     _set_session_cookie(response, token, request)
 

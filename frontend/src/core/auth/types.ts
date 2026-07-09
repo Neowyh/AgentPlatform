@@ -42,6 +42,7 @@ const AUTH_ERROR_CODES = [
   "email_already_exists",
   "provider_not_found",
   "not_authenticated",
+  "user_disabled",
   "system_already_initialized",
 ] as const;
 

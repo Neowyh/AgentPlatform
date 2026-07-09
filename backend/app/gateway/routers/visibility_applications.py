@@ -155,6 +155,7 @@ async def create_application(
                 reason=request.reason,
                 status=VisibilityApplicationStatus.PENDING.value,
                 version=1,
+                submitted_at=datetime.now(UTC),
             )
             session.add(application)
             await session.commit()
@@ -163,10 +164,29 @@ async def create_application(
             return _to_response(application)
     except HTTPException:
         raise
-    except IntegrityError:
+    except IntegrityError as e:
+        orig_msg = str(getattr(e, "orig", e)).lower()
+        if "unique constraint" in orig_msg:
+            raise HTTPException(
+                status_code=409,
+                detail="A pending application already exists for this resource",
+            )
+        if "foreign key" in orig_msg:
+            logger.warning("FK violation creating visibility application: %s", orig_msg)
+            raise HTTPException(
+                status_code=400,
+                detail="Referenced record not found. Please check the resource data.",
+            )
+        if "not null constraint" in orig_msg:
+            logger.error("NOT NULL constraint creating visibility application: %s", orig_msg)
+            raise HTTPException(
+                status_code=400,
+                detail="A required field is missing. Please try again or contact support.",
+            )
+        logger.error("Unexpected IntegrityError creating visibility application: %s", orig_msg)
         raise HTTPException(
-            status_code=409,
-            detail="A pending application already exists for this resource",
+            status_code=400,
+            detail="A data constraint was violated. Please try again or contact support.",
         )
     except Exception as e:
         logger.error("Failed to create visibility application: %s", e, exc_info=True)
@@ -262,6 +282,11 @@ async def review_application(
             if current_user.role == UserRole.DEPARTMENT_ADMIN:
                 if application.applicant_id == str(current_user.id):
                     raise HTTPException(status_code=403, detail="Cannot review your own application")
+                if current_user.department_id and application.department_id != current_user.department_id:
+                    raise HTTPException(
+                        status_code=403,
+                        detail="You can only review applications from your own department",
+                    )
 
             application.status = request.action
             application.reviewed_by = str(current_user.id)
@@ -344,10 +369,6 @@ async def list_applications(
 
             if resource_type:
                 stmt = stmt.where(VisibilityApplication.resource_type == resource_type)
-
-            # Department admins see only applications in their own department
-            if current_user.role == UserRole.DEPARTMENT_ADMIN:
-                stmt = stmt.where(VisibilityApplication.department_id == current_user.department_id)
 
             # Count total
             from sqlalchemy import func

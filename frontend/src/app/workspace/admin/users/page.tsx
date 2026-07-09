@@ -41,7 +41,6 @@ import {
 } from "@/components/ui/select";
 import {
   createUser,
-  disableUser,
   listDepartments,
   listUsers,
   toggleUserStatus,
