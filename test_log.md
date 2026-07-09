@@ -73,3 +73,18 @@
 **根因:** 使用命名 logger 的 `caplog.at_level(...)` 在大批量并行测试中因 Logger 全局状态竞争导致日志无法捕获。切换到根级别 caplog 后通过传播机制可靠工作。
 
 **备注:** 部分 `conftest.py` 诊断代码已清理。
+
+---
+
+## B3e: Sandbox — ✅ 一次性通过
+
+| 阶段 | 状态 | 详情 |
+|------|------|------|
+| **测试** | ✅ 通过 | 1597 passed, 0 failed, 1 skipped (100.16s) |
+| **修复** | ⏭️ 跳过 | 无失败用例，无需修复 |
+| **审查** | ⏭️ 跳过 | 无代码变更，无需审查 |
+| **回归** | ⏭️ 跳过 | 无代码变更，无需回归 |
+
+**命令:** `uv run pytest tests/ -v -k "sandbox"`
+
+**备注:** 1 个非关键警告（LangChainPendingDeprecationWarning）
