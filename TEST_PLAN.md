@@ -3,19 +3,22 @@
 > 本文档系统梳理了项目全部 ~565 个测试文件，按模块分批制定验证和修复计划。
 > 策略：**模块分批 → 每批运行+修复 → 标记通过 → 下一批**。每批独立，互不阻塞。
 
+> **最后更新:** `feat/improve-tests` → `fix/test-issues` 合并后 (2026-07-09)
+> **变更概要:** department_admin 权限扩展（可列出部门/用户/统计/跨部门审核申请）、API 版本号强制、前端工具页分组筛选移除、收藏功能新增、i18n 扩充、auth E2E 开关。涉及 14 个测试文件修改、1 个测试类删除（coverage_gaps）、6 个前端 API 源文件新增。受影响批次需回归验证。
+
 ---
 
 ## 一、测试全景总览
 
 | 分类 | 数量 | 框架 | 位置 |
 |------|------|------|------|
-| 后端 pytest 单元测试 | 408 个 `.py` 文件 | pytest + pytest-asyncio | `backend/tests/test_*.py` |
-| 后端辅助/夹具 | 29 个文件 | conftest / factories / detectors | `backend/tests/{conftest,factories,support}/` |
-| 前端 Vitest 单元测试 | 307 个文件 | Vitest + jsdom | `frontend/tests/unit/` |
-| 前端 Playwright E2E | 33 个 `.spec.ts` 文件 | Playwright | `frontend/tests/e2e/` |
+| 后端 pytest 单元测试 | 410 个 `.py` 文件 | pytest + pytest-asyncio | `backend/tests/test_*.py` |
+| 后端辅助/夹具 | 29 个文件 | conftest / factories / helpers / support | `backend/tests/{conftest,factories,helpers,support}/` |
+| 前端 Vitest 单元测试 | 329 个文件 | Vitest + jsdom | `frontend/tests/unit/` |
+| 前端 Playwright E2E | 34 个 `.spec.ts` 文件 | Playwright | `frontend/tests/e2e/` |
 | E2E helper | 4 个文件 | TypeScript | `frontend/tests/e2e/{global-setup,utils,visual}/` |
 | CI 工作流 (测试相关) | 10 个 `.yml` | GitHub Actions | `.github/workflows/` |
-| **总计测试文件** | **~748 个** | — | — |
+| **总计测试文件** | **~787 个** | — | — |
 
 ---
 
@@ -72,14 +75,15 @@ B1(基础层) ──→ B2(核心层) ──→ B3(功能层) ──→ B4(补�
 </details>
 
 <details>
-<summary>B1b — Config/Admin/启动（15 个文件）</summary>
+<summary>B1b — Config/Admin/启动（17 个文件）</summary>
 
 - `test_app_config_coverage.py`
+- `test_app_config_reload_dynamic.py` 🔺 合并新增: Config 热加载动态测试 (320 行)
 - `test_app_config_extra_coverage.py`
-- `test_app_config_reload.py`
+- `test_app_config_reload.py` ⚠️ 修改: 旧测试删除，提取到 `test_app_config_reload_dynamic.py`
 - `test_admin_router.py`
 - `test_admin_router_e2e.py`
-- `test_admin_router_full.py`
+- `test_admin_router_full.py` ⚠️ 修改: department_admin 可列出部门，期望值 403→200
 - `test_admin_skill_applications_deprecated.py`
 - `test_setup_wizard.py`
 - `test_ensure_admin.py`
@@ -252,17 +256,17 @@ B1(基础层) ──→ B2(核心层) ──→ B3(功能层) ──→ B4(补�
 |------|------|--------|---------|
 | **B3a** | Agents / Subagents | 25 | `uv run pytest tests/ -v -k "agent or subagent or lead_agent or custom_agent"` |
 | **B3b** | Tools（不含 MCP） | ~47 | `uv run pytest tests/ -v -k "tool or skill or credential or task_tool or code_interpreter or serper or firecrawl or exa or data_analyzer or image_search or doc_reader or present_file or view_image or local_bash or invoke_acp"` |
-| **B3c** | MCP | 9 | `uv run pytest tests/test_mcp_*.py -v` |
-| **B3d** | 渠道集成 | 17 | `uv run pytest tests/ -v -k "channel or dingtalk or discord or feishu or slack or telegram or wechat or wecom"` |
-| **B3e** | Sandbox | 25 | `uv run pytest tests/ -v -k "sandbox"` |
-| **B3f** | Artifacts / Uploads | 10 | `uv run pytest tests/ -v -k "artifact or upload or file_conversion"` |
+| **B3c** | MCP | 11 | `uv run pytest tests/test_mcp_*.py -v` |
+| **B3d** | 渠道集成 | 18 | `uv run pytest tests/ -v -k "channel or dingtalk or discord or feishu or slack or telegram or wechat or wecom"` |
+| **B3e** | Sandbox | 28 | `uv run pytest tests/ -v -k "sandbox"` |
+| **B3f** | Artifacts / Uploads | 9 | `uv run pytest tests/ -v -k "artifact or upload or file_conversion"` |
 
 <details>
 <summary>B3a — Agents/Subagents（25 个文件）</summary>
 
 - `test_agents_config_coverage.py`
 - `test_agents_router.py`
-- `test_agents_router_coverage.py`
+- `test_agents_router_coverage.py` ⚠️ 修改: 新增 `_LOAD_PATCH` mock 修复 DI 接线
 - `test_agents_router_coverage2.py`
 - `test_agents_router_coverage_boost.py`
 - `test_agents_router_e2e.py`
@@ -304,7 +308,7 @@ B1(基础层) ──→ B2(核心层) ──→ B3(功能层) ──→ B4(补�
 - `test_tools_router.py`
 - `test_tools_router_e2e.py`
 - `test_task_tool_core_logic.py`
-- `test_task_tool_coverage.py`
+- `test_task_tool_coverage.py` ⚠️ 修改: 新增 `get_app_config` monkeypatch 返回 model config
 - `test_task_tool_usage_recorder.py`
 - `test_serper_tools.py`
 - `test_sandbox_search_tools.py`
@@ -326,9 +330,9 @@ B1(基础层) ──→ B2(核心层) ──→ B3(功能层) ──→ B4(补�
 - `test_skills_installer.py`
 - `test_skills_loader.py`
 - `test_skills_parser.py`
-- `test_skills_router_coverage.py`
-- `test_skills_router_e2e.py`
-- `test_skills_router_full.py`
+- `test_skills_router_coverage.py` ⚠️ 修改: 新增 `get_config` dependency override
+- `test_skills_router_e2e.py` ⚠️ 修改: 新增 `get_config` dependency override
+- `test_skills_router_full.py` ⚠️ 修改: 新增 `get_config` dependency override
 - `test_skills_validation.py`
 - `test_present_file_tool_core_logic.py`
 - `test_view_image_middleware.py`
@@ -341,7 +345,7 @@ B1(基础层) ──→ B2(核心层) ──→ B3(功能层) ──→ B4(补�
 </details>
 
 <details>
-<summary>B3c — MCP（9 个文件）</summary>
+<summary>B3c — MCP（11 个文件）</summary>
 
 - `test_mcp_cache.py`
 - `test_mcp_cache_extra_coverage.py`
@@ -357,7 +361,7 @@ B1(基础层) ──→ B2(核心层) ──→ B3(功能层) ──→ B4(补�
 </details>
 
 <details>
-<summary>B3d — 渠道集成（17 个文件）</summary>
+<summary>B3d — 渠道集成（18 个文件）</summary>
 
 - `test_channel_base.py`
 - `test_channel_commands.py`
@@ -380,12 +384,12 @@ B1(基础层) ──→ B2(核心层) ──→ B3(功能层) ──→ B4(补�
 </details>
 
 <details>
-<summary>B3e — Sandbox（25 个文件）</summary>
+<summary>B3e — Sandbox（28 个文件）</summary>
 
 - `test_aio_sandbox.py`
 - `test_aio_sandbox_coverage.py`
 - `test_aio_sandbox_local_backend.py`
-- `test_aio_sandbox_provider.py`
+- `test_aio_sandbox_provider.py` ⚠️ 修改: 取消跳过 `test_cancellation_releases_lock`，重写为后台线程+事件驱动
 - `test_aio_sandbox_provider_coverage_boost.py`
 - `test_aio_sandbox_readiness.py`
 - `test_coverage_local_sandbox.py`
@@ -413,7 +417,7 @@ B1(基础层) ──→ B2(核心层) ──→ B3(功能层) ──→ B4(补�
 </details>
 
 <details>
-<summary>B3f — Artifacts/Uploads（10 个文件）</summary>
+<summary>B3f — Artifacts/Uploads（9 个文件）</summary>
 
 - `test_artifacts_router.py`
 - `test_artifacts_router_coverage.py`
@@ -421,10 +425,9 @@ B1(基础层) ──→ B2(核心层) ──→ B3(功能层) ──→ B4(补�
 - `test_uploads_manager.py`
 - `test_uploads_manager_coverage.py`
 - `test_uploads_router.py`
-- `test_uploads_router_e2e.py`
+- `test_uploads_router_e2e.py` ⚠️ 修改: 新增 `_UPLOADS_DIR` fixture + 文件删除后断言实际从磁盘移除
 - `test_file_conversion.py`
 - `test_file_conversion_coverage.py`
-- `test_uploads_middleware_core_logic.py`
 </details>
 
 ---
@@ -445,7 +448,7 @@ B1(基础层) ──→ B2(核心层) ──→ B3(功能层) ──→ B4(补�
 - `test_coverage_boost_3.py`
 - `test_coverage_code_interpreter.py`
 - `test_coverage_ddg_search.py`
-- `test_coverage_gaps.py`
+- `test_coverage_gaps.py` ⚠️ 修改: 删除 `TestAcquireThreadLockAsyncFailure` 类（对应代码已移除）
 - `test_coverage_list_dir.py`
 - `test_coverage_search.py`
 - `test_coverage_tools_2.py`
@@ -481,12 +484,12 @@ B1(基础层) ──→ B2(核心层) ──→ B3(功能层) ──→ B4(补�
 - `test_owner_isolation.py`
 - `test_migration_user_isolation.py`
 - `test_race_admin_role.py`
-- `test_rbac_permission_matrix.py`
+- `test_rbac_permission_matrix.py` ⚠️ 修改: department_admin 可列出部门，测试名从 `test_dept_admin_cannot_list_departments` → `test_dept_admin_can_list_departments`
 - `test_rbac_permission_matrix_extended.py`
 - `test_rbac_security.py`
 - `test_permission_model_coverage.py`
 - `test_visibility_applications.py`
-- `test_visibility_applications_e2e.py`
+- `test_visibility_applications_e2e.py` ⚠️ 修改: 3 个用例 403→200（dept_admin 可跨部门审核、无 department_id 审核）
 - `test_setup_agent_e2e_user_isolation.py`
 - `test_setup_agent_http_e2e_real_server.py`
 - `test_update_agent_e2e_user_isolation.py`
@@ -498,6 +501,7 @@ B1(基础层) ──→ B2(核心层) ──→ B3(功能层) ──→ B4(补�
 - `test_client.py`
 - `test_client_e2e.py`
 - `test_client_langfuse_metadata.py`
+- `test_jina_client.py`
 - `test_client_live.py`
 - `test_client_message_serialization.py`
 - `test_csrf_extended.py`
@@ -523,7 +527,7 @@ B1(基础层) ──→ B2(核心层) ──→ B3(功能层) ──→ B4(补�
 - `test_harness_boundary.py`
 - `test_fault_zeroing_visual_outputs.py`
 - `test_validate_fault_zeroing_outputs.py`
-- `test_install_fault_zeroing_agent.py`
+- `test_install_fault_zeroing_agent.py` ⚠️ 修改: `config.yaml` → `config.example.yaml`
 - `test_security_fuzzing.py`
 - `test_security_scanner.py`
 - `test_sql_injection_safety.py`
@@ -546,7 +550,6 @@ B1(基础层) ──→ B2(核心层) ──→ B3(功能层) ──→ B4(补�
 - `test_user_context.py`
 - `test_utils_time.py`
 - `test_utils_time_coverage.py`
-- `test_prompt_coverage.py`
 - `test_reflection_resolvers.py`
 - `test_timeout_mechanisms.py`
 - `test_title_generation.py`
@@ -595,8 +598,8 @@ B1(基础层) ──→ B2(核心层) ──→ B3(功能层) ──→ B4(补�
 <details>
 <summary>B5b — qa/（3 个文件）</summary>
 
-- `qa/test_api_qa.py`
-- `qa/test_api_qa_multitole.py`
+- `qa/test_api_qa.py` ⚠️ 修改: agent update 加 `"version":1`；workflow 名用 UUID 防冲突；workflow update 加 `"version":1`
+- `qa/test_api_qa_multitole.py` ⚠️ 修改: 4 个用例 `test_cannot_*` → `test_can_*`，期望值 403→200（dept_admin 权限扩展）
 - `qa/test_sse_streaming.py`
 </details>
 
@@ -608,10 +611,10 @@ B1(基础层) ──→ B2(核心层) ──→ B3(功能层) ──→ B4(补�
 |------|------|--------|---------|
 | **B6a** | `core/` — 领域逻辑 | 129 | `pnpm vitest run tests/unit/core` |
 | **B6b** | `components/ai-elements/` | 30 | `pnpm vitest run tests/unit/components/ai-elements` |
-| **B6c** | `components/ui/` | 42 | `pnpm vitest run tests/unit/components/ui` |
+| **B6c** | `components/ui/` | 64 | `pnpm vitest run tests/unit/components/ui` |
 | **B6d** | `components/workspace/` | 75 | `pnpm vitest run tests/unit/components/workspace` |
-| **B6e** | `components/landing/` | 17 | `pnpm vitest run tests/unit/components/landing` |
-| **B6f** | `app/` — 页面级 | 54 | `pnpm vitest run tests/unit/app` |
+| **B6e** | `components/landing/` | 16 | `pnpm vitest run tests/unit/components/landing` |
+| **B6f** | `app/` — 页面级 | 46 | `pnpm vitest run tests/unit/app` |
 | **B6g** | 根级 (hooks/lib/mdx) | 7 | `pnpm vitest run tests/unit/hooks tests/unit/lib tests/unit/content tests/unit/mdx-components.test.tsx` |
 
 <details>
@@ -629,7 +632,7 @@ B1(基础层) ──→ B2(核心层) ──→ B3(功能层) ──→ B4(补�
 - `core/config/index.test.ts`
 - `core/fault-tree-visualization.test.ts`
 - `core/i18n/context.test.tsx`, `core/i18n/cookies-extra.test.ts`, `core/i18n/cookies.test.ts`, `core/i18n/hooks.test.tsx`, `core/i18n/index.test.ts`, `core/i18n/keys.test.ts`, `core/i18n/locale-extra.test.ts`, `core/i18n/locale.test.ts`, `core/i18n/server.test.ts`, `core/i18n/translations.test.ts`
-- `core/i18n/locales/en-US-comprehensive.test.ts`, `core/i18n/locales/en-US.test.ts`, `core/i18n/locales/zh-CN.test.ts`
+- `core/i18n/locales/en-US-comprehensive.test.ts` ⚠️ 修改: 新增 favorites/visibility/export-import 等 6+ i18n key, `core/i18n/locales/en-US.test.ts`, `core/i18n/locales/zh-CN.test.ts` ⚠️ 修改: 同上新增 key
 - `core/mcp/api.test.ts`, `core/mcp/hooks.test.ts`, `core/mcp/index.test.ts` ✅ 已深化（barrel+API+hooks 完整套件）, `core/mcp/types.test.ts`
 - `core/memory/api.test.ts`, `core/memory/hooks.test.ts`, `core/memory/index.test.ts`, `core/memory/types.test.ts`
 - `core/messages/usage-model.test.ts`, `core/messages/usage.test.ts`, `core/messages/utils-extra.test.ts`, `core/messages/utils.test.ts`
@@ -658,16 +661,18 @@ B1(基础层) ──→ B2(核心层) ──→ B3(功能层) ──→ B4(补�
 </details>
 
 <details>
-<summary>B6c — components/ui/（42 个文件）</summary>
+<summary>B6c — components/ui/（64 个文件）</summary>
 
 - `alert.test.tsx`, `aurora-text.test.tsx`, `avatar.test.tsx`, `badge.test.tsx`, `breadcrumb.test.tsx`, `button-group.test.tsx`, `button.test.tsx`, `card.test.tsx`, `carousel.test.tsx`, `collapsible.test.tsx`, `command.test.tsx`, `confetti-button.test.tsx`, `dialog.test.tsx`, `dropdown-menu.test.tsx`, `empty.test.tsx`, `flickering-grid.test.tsx`, `hover-card.test.tsx`, `input-group.test.tsx`, `input.test.tsx`, `item.test.tsx`, `label.test.tsx`, `magic-bento.test.tsx`, `number-ticker.test.tsx`, `progress.test.tsx`, `resizable.test.tsx`, `scroll-area.test.tsx`, `select.test.tsx`, `separator.test.tsx`, `sheet.test.tsx`, `shine-border.test.tsx`, `sidebar.test.tsx`, `skeleton.test.tsx`, `sonner.test.tsx`, `spotlight-card.test.tsx`, `switch.test.tsx`, `tabs.test.tsx`, `terminal.test.tsx`, `textarea.test.tsx`, `toggle-group.test.tsx`, `toggle.test.tsx`, `tooltip.test.tsx`, `word-rotate.test.tsx`
+- 🔺 合并新增可访问性测试 (18 个): `alert.a11y.test.tsx`, `avatar.a11y.test.tsx`, `breadcrumb.a11y.test.tsx`, `button.a11y.test.tsx`, `collapsible.a11y.test.tsx`, `dialog.a11y.test.tsx`, `dropdown-menu.a11y.test.tsx`, `hover-card.a11y.test.tsx`, `input.a11y.test.tsx`, `label.a11y.test.tsx`, `progress.a11y.test.tsx`, `select.a11y.test.tsx`, `sheet.a11y.test.tsx`, `switch.a11y.test.tsx`, `tabs.a11y.test.tsx`, `textarea.a11y.test.tsx`, `toggle-group.a11y.test.tsx`, `toggle.a11y.test.tsx`, `tooltip.a11y.test.tsx`
+- 🔺 合并新增组件测试 (4 个): `error-boundary.test.tsx` (283 行), `sidebar-menu-skeleton.test.tsx` (82 行), `sidebar-responsive.test.tsx` (250 行)
 </details>
 
 <details>
 <summary>B6d — components/workspace/（75 个文件）</summary>
 
 - `agent-welcome.test.tsx`
-- `agents/agent-card.test.tsx`, `agents/agent-gallery-enhanced.test.tsx`, `agents/agent-gallery.test.tsx`
+- `agents/agent-card.test.tsx` ⚠️ 修改: 增加 `useToggleAgentFavorite` mock；导出按钮文案 "导出"→"Export", `agents/agent-gallery-enhanced.test.tsx` ⚠️ 修改: 增加 `importSuccess` i18n key, `agents/agent-gallery.test.tsx`
 - `artifacts/artifact-file-detail.test.tsx`, `artifacts/artifact-file-list.test.tsx`, `artifacts/artifact-trigger.test.tsx`, `artifacts/artifacts-context.test.tsx`, `artifacts/context.test.tsx`, `artifacts/fault-tree-viewer.test.tsx`
 - `chats/chat-box.test.tsx`, `chats/use-chat-mode.test.ts`, `chats/use-thread-chat.test.ts`
 - `citations/artifact-link.test.tsx`, `citations/citation-link.test.tsx`
@@ -676,12 +681,12 @@ B1(基础层) ──→ B2(核心层) ──→ B3(功能层) ──→ B4(补�
 - `mode-hover-guide.test.tsx`, `overscroll.test.tsx`, `recent-chat-list.test.tsx`
 - `settings/about-content.test.ts`, `settings/about-settings-page.test.tsx`, `settings/account-settings-page.test.tsx`, `settings/appearance-settings-page.test.tsx`, `settings/memory-settings-page.test.tsx`, `settings/notification-settings-page.test.tsx`, `settings/settings-dialog.test.tsx`, `settings/settings-section.test.tsx`, `settings/skill-apply-dialog.test.tsx`, `settings/skill-editor.test.tsx`, `settings/skill-settings-page.test.tsx`, `settings/tool-settings-page.test.tsx`
 - `streaming-indicator.test.tsx`, `thread-title.test.tsx`, `todo-list.test.tsx`, `token-usage-indicator.test.tsx`, `tooltip.test.tsx`, `welcome.test.tsx`
-- `workflows/workflow-card.test.tsx`, `workflows/workflow-gallery.test.tsx`
+- `workflows/workflow-card.test.tsx` ⚠️ 修改: 增加 `useToggleWorkflowFavorite` mock + i18n keys, `workflows/workflow-gallery.test.tsx`
 - `workspace-breadcrumb.test.tsx`, `workspace-container.test.tsx`, `workspace-header.test.tsx`, `workspace-nav-chat-list.test.tsx`, `workspace-nav-menu.test.tsx`, `workspace-sidebar.test.tsx`
 </details>
 
 <details>
-<summary>B6e — components/landing/（17 个文件）</summary>
+<summary>B6e — components/landing/（16 个文件）</summary>
 
 - `case-study-section.test.tsx`, `community-section.test.tsx`, `footer.test.tsx`, `header.test.tsx`, `hero.test.tsx`, `post-list.test.tsx`, `progressive-skills-animation.test.tsx`, `sandbox-section.test.tsx`, `section.test.tsx`, `skills-section.test.tsx`, `whats-new-section.test.tsx`
 - `sections/case-study-section.test.tsx`, `sections/community-section.test.tsx`, `sections/sandbox-section.test.tsx`, `sections/skills-section.test.tsx`, `sections/whats-new-section.test.tsx`
@@ -689,7 +694,7 @@ B1(基础层) ──→ B2(核心层) ──→ B3(功能层) ──→ B4(补�
 </details>
 
 <details>
-<summary>B6f — app/（54 个文件）</summary>
+<summary>B6f — app/（46 个文件）</summary>
 
 - `layout.test.tsx`, `page.test.tsx`
 - `(auth)/layout.test.tsx`, `(auth)/login/page.test.tsx`, `(auth)/setup/page.test.tsx`
@@ -698,7 +703,7 @@ B1(基础层) ──→ B2(核心层) ──→ B3(功能层) ──→ B4(补�
 - `blog/[[...mdxPath]]/page.test.tsx`, `blog/layout.test.tsx`, `blog/posts/page.test.tsx`, `blog/tags/[tag]/page.test.tsx`
 - `mock/api/route.test.ts`, `mock/api/threads/[thread_id]/artifacts/[[...artifact_path]]/route.test.ts`, `mock/api/threads/[thread_id]/history/route.test.ts`, `mock/api/threads/search/route.test.ts`
 - `workspace/page.test.tsx`, `workspace/layout.test.tsx`, `workspace/workspace-content.test.tsx`
-- `workspace/admin/departments/page.test.tsx`, `workspace/admin/page.test.tsx`, `workspace/admin/tools/page.test.tsx`, `workspace/admin/users/page.test.tsx`, `workspace/admin/visibility-applications/page.test.tsx`
+- `workspace/admin/departments/page.test.tsx` ⚠️ 修改: 增加 `mockGetDepartmentResources` mock, `workspace/admin/page.test.tsx` ⚠️ 修改: stat cards 6→7, `workspace/admin/tools/page.test.tsx` ⚠️ 修改: 删除 ~200 行分组筛选测试（badges/group filter），重命名 tool group → visibility, `workspace/admin/users/page.test.tsx`, `workspace/admin/visibility-applications/page.test.tsx` ⚠️ 修改: withdrawApplication 调用加 version 参数
 - `workspace/admin/audit-logs/page.test.tsx`
 - `workspace/admin/skill-applications/page.test.tsx`
 - `workspace/agents/page.test.tsx`, `workspace/agents/gallery-page.test.tsx`, `workspace/agents/new-page.test.tsx`, `workspace/agents/new/page.test.tsx`, `workspace/agents/[agent_name]/page.test.tsx`, `workspace/agents/[agent_name]/edit/page.test.tsx`
@@ -720,15 +725,17 @@ B1(基础层) ──→ B2(核心层) ──→ B3(功能层) ──→ B4(补�
 
 ### B7: 前端 E2E 测试
 
+> **B7 剩余失败追踪:** 详见 `B7_REMAINING_FAILURES.md`（合并新增，记录 B7a 17 个剩余失败及根因分析）
+
 | 批次 | 模块 | 文件数 | 运行命令 |
 |------|------|--------|---------|
-| **B7a** | 核心 E2E | 15 | `npx playwright test tests/e2e --project=chromium` |
+| **B7a** | 核心 E2E | 16 | `npx playwright test tests/e2e --project=chromium` |
 | **B7b** | QA E2E | 11 | `npx playwright test tests/e2e/qa --project=chromium` |
 | **B7c** | Stagehand | 3 | `npx playwright test tests/e2e/stagehand --project=chromium` |
 | **B7d** | Visual + A11y | 4 | `npx playwright test tests/e2e/visual --project=visual && npx playwright test tests/e2e/a11y --project=a11y` |
 
 <details>
-<summary>B7a — 核心 E2E（15 个文件）</summary>
+<summary>B7a — 核心 E2E（16 个文件）</summary>
 
 - `admin-management.spec.ts`
 - `agent-chat.spec.ts`
@@ -745,6 +752,7 @@ B1(基础层) ──→ B2(核心层) ──→ B3(功能层) ──→ B4(补�
 - `workflow-management.spec.ts`
 - `audit-logs.spec.ts`
 - `settings-management.spec.ts`
+- `i18n-language-switching.spec.ts` 🔺 合并新增: i18n 语言切换 E2E 测试 (497 行)
 </details>
 
 <details>
@@ -752,13 +760,13 @@ B1(基础层) ──→ B2(核心层) ──→ B3(功能层) ──→ B4(补�
 
 - `qa/admin-panel.spec.ts`
 - `qa/agent-management.spec.ts`
-- `qa/auth-flow.spec.ts`
+- `qa/auth-flow.spec.ts` ⚠️ 修改: 增加 `test.skip` guard（IDEER_AUTH_DISABLED=1 时跳过）
 - `qa/chat-flow.spec.ts`
 - `qa/file-upload.spec.ts`
 - `qa/memory-management.spec.ts`
 - `qa/sandbox-management.spec.ts`
 - `qa/smoke-landing.spec.ts`
-- `qa/smoke-login.spec.ts`
+- `qa/smoke-login.spec.ts` ⚠️ 修改: 增加 `test.skip` guard（IDEER_AUTH_DISABLED=1 时跳过）
 - `qa/visual-screenshot.spec.ts`
 - `qa/workflow-management.spec.ts`
 </details>
@@ -784,11 +792,18 @@ B1(基础层) ──→ B2(核心层) ──→ B3(功能层) ──→ B4(补�
 
 ## 三、待办清单
 
-### B1: 后端基础层（3/3 ✅）
+### B1: 后端基础层（2/4 ⚠️ 合并引入变更需回归）
 
 - [x] **B1a** — 存储/Persistence（15 个文件）
-- [x] **B1b** — Config/Admin/启动（15 个文件）— ✅ 回归通过 (749 passed, 0 failed)
+- [x] **B1b** — Config/Admin/启动（17 个文件）— ✅ 回归通过 (759 passed, 0 failed)
 - [x] **B1c** — Auth/用户权限（18 个文件）
+- [ ] **B1d** — 数据库迁移 (1 个文件) — 合并新增: `test_alembic_migrations.py` (387 行)
+
+<details>
+<summary>B1d — 数据库迁移（1 个文件）</summary>
+
+- `test_alembic_migrations.py` 🔺 合并新增: Alembic 迁移完整性测试 (387 行)
+</details>
 
 ### B2: 后端核心层（4/4 ✅）
 
@@ -797,45 +812,47 @@ B1(基础层) ──→ B2(核心层) ──→ B3(功能层) ──→ B4(补�
 - [x] **B2c** — Middleware（25 个文件）— ✅ 回归通过 (1139 passed, 0 failed)
 - [x] **B2d** — LLM/Providers（23 个文件）
 > B2d 补充: test_models_router_e2e.py E2E 测试 — ✅ 回归通过 (27 passed, 0 failed)
+>
+> **B2 无合并变更，无需回归。**
 
-### B3: 后端功能层（5/6）
+### B3: 后端功能层（2/6 ⚠️ 合并引入变更需回归）
 
-- [x] **B3a** — Agents/Subagents（25 个文件）— ✅ 回归通过 (1364 passed, 0 failed)
-- [x] **B3b** — Tools/Skills（~47 个文件）— ✅ 回归通过 (3075 passed, 0 failed)
+- [ ] **B3a** — Agents/Subagents（25 个文件）— 合并后需回归: `test_agents_router_coverage.py` 修改（DI 接线修复）
+- [ ] **B3b** — Tools/Skills（~47 个文件）— 合并后需回归: `test_skills_router_coverage.py/e2e/full` + `test_task_tool_coverage.py` 修改（DI 修复 + model config）
 - [x] **B3c** — MCP（9 个文件）
 - [x] **B3d** — 渠道集成（17 个文件）
-- [x] **B3e** — Sandbox（25 个文件）
-- [x] **B3f** — Artifacts/Uploads（10 个文件）— ✅ 回归通过 (476 passed, 0 failed)
+- [ ] **B3e** — Sandbox（25 个文件）— 合并后需回归: `test_aio_sandbox_provider.py` 修改（cancellation lock 重写）
+- [ ] **B3f** — Artifacts/Uploads（10 个文件）— 合并后需回归: `test_uploads_router_e2e.py` 修改（文件删除断言加强）
 
-### B4: 后端补丁 + 杂项（1/3）
+### B4: 后端补丁 + 杂项（0/3 ⚠️ 合并引入变更需回归）
 
-- [x] **B4a** — 覆盖率补丁集（~35 个文件）
-- [x] **B4b** — 权限/隔离（~12 个文件）— ✅ 回归通过 (748 passed, 0 failed)，修复 visibility_applications department-scoping 问题
-- [x] **B4c** — 杂项（~78 个文件）— ✅ 回归通过 (2740 passed, 0 failed)
+- [ ] **B4a** — 覆盖率补丁集（~35 个文件）— 合并后需回归: `test_coverage_gaps.py` 删除 `TestAcquireThreadLockAsyncFailure` 类
+- [ ] **B4b** — 权限/隔离（~12 个文件）— 合并后需回归: `test_rbac_permission_matrix.py` + `test_visibility_applications_e2e.py` 修改（department_admin 权限 403→200）
+- [ ] **B4c** — 杂项（~78 个文件）— 合并后需回归: `test_install_fault_zeroing_agent.py` 修改（config.yaml → config.example.yaml）
 
-### B5: 后端子目录（1/2）— 可与 B4 并行
+### B5: 后端子目录（1/2 ⚠️ 合并引入变更需回归）— 可与 B4 并行
 
 - [x] **B5a** — Blocking IO 回归（3 个文件）
-- [x] **B5b** — QA 子目录（3 个文件）— ✅ 回归通过 (72 passed, 0 failed)
+- [ ] **B5b** — QA 子目录（3 个文件）— 合并后需回归: `test_api_qa.py` + `test_api_qa_multitole.py` 修改（版本号强制 + dept_admin 权限扩展）
 
-### B6: 前端单元测试（3/7）— 可与 B4/B5 并行
+### B6: 前端单元测试（3/7 ⚠️ 合并引入变更需回归）— 可与 B4/B5 并行
 
-- [x] **B6a** — core/ 领域逻辑（129 个文件）— ✅ 回归通过 (3514 passed, 0 failed)
+- [ ] **B6a** — core/ 领域逻辑（129 个文件）— 合并后需回归: i18n locales 测试新增 6+ key
 > B6a 深化: core/agents/index.test.ts +122行、core/mcp/index.test.ts +327行（完整测试套件）、core/mcp/api.test.ts +6行、core/mcp/hooks.test.ts +2行 — ✅ 回归通过 (3426 passed, 0 failed)
 - [x] **B6b** — components/ai-elements（30 个文件）
-- [x] **B6c** — components/ui（42 个文件）
-- [x] **B6d** — components/workspace（75 个文件）— ✅ 回归通过 (1278 passed, 0 failed)
-- [x] **B6e** — components/landing（17 个文件）
-- [x] **B6f** — app/ 页面级（54 个文件）— ✅ 回归通过 (936 passed, 0 failed)
+- [ ] **B6c** — components/ui（64 个文件）— 合并后需验证: 新增 22 个 a11y/组件测试
+- [ ] **B6d** — components/workspace（75 个文件）— 合并后需回归: agent-card/agent-gallery-enhanced/workflow-card 测试修改（favorites + i18n）
+- [x] **B6e** — components/landing（16 个文件）
+- [ ] **B6f** — app/ 页面级（46 个文件）— 合并后需回归: admin 页面测试修改（tools 分组→visibility, departments mock, stat cards 6→7）
 > B6f 补充: admin/audit-logs/page.test.tsx (审计日志页面 809行), admin/skill-applications/page.test.tsx (技能申请跳转页) — ✅ 回归通过 (936 passed, 0 failed)
 - [x] **B6g** — 根级 hooks/lib/mdx（7 个文件）
 
-### B7: 前端 E2E（3/4）— 最后执行
+### B7: 前端 E2E（2/4 ⚠️ 合并引入变更需回归）— 最后执行
 
 - [x] **B7a** — 核心 E2E（15 个文件）— ✅ 回归通过 (291 passed / 17 failed / 14 skipped)
 > 修复: 在 playwright.config.ts webServer.env 中添加 IDEER_AUTH_DISABLED=1，解决 SSR auth 与 page.route mock 不兼容的问题（修复 100 个失败）。
-> 剩余 17 个失败已确认与 SSR auth 无关，为前端页面渲染与测试预期不匹配，需全栈环境人工分析。
-- [x] **B7b** — QA E2E（11 个文件）— ✅ 回归通过 (186 passed, 0 failed)
+> 剩余 17 个失败已确认与 SSR auth 无关，详细见 `B7_REMAINING_FAILURES.md`。
+- [ ] **B7b** — QA E2E（11 个文件）— 合并后需回归: `auth-flow.spec.ts` + `smoke-login.spec.ts` 增加 IDEER_AUTH_DISABLED guard
 - [x] **B7c** — Stagehand（3 个文件）— ⏭️ 跳过（需 Stagehand 运行时）
 - [x] **B7d** — Visual + A11y（4 个文件）— ⚠️ 2 failed (visual screenshot baseline + a11y violations)
 > visual/landing.visual.spec.ts: 截图 baseline 过期（内容变更），需重新生成。
