@@ -103,3 +103,18 @@
 **命令:** `uv run pytest tests/ -v -k "artifact or upload or file_conversion"`
 
 **备注:** 1 个非关键警告（LangChainPendingDeprecationWarning）
+
+---
+
+## B4a: 覆盖率补丁集 — ✅ 一次性通过
+
+| 阶段 | 状态 | 详情 |
+|------|------|------|
+| **测试** | ✅ 通过 | 2649 passed, 0 failed, 1 skipped (33.00s) |
+| **修复** | ⏭️ 跳过 | 无失败用例，无需修复 |
+| **审查** | ⏭️ 跳过 | 无代码变更，无需审查 |
+| **回归** | ⏭️ 跳过 | 无代码变更，无需回归 |
+
+**命令:** `uv run pytest tests/ -v -k "coverage or worker_cov or parser_cov or prompt_coverage or paths_coverage or resolvers_coverage or services_coverage or search_coverage"`
+
+**备注:** 8 个非关键警告（websockets/JsonPlusSerializer deprecation, unawaited coroutine）

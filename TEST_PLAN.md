@@ -827,7 +827,7 @@ B1(基础层) ──→ B2(核心层) ──→ B3(功能层) ──→ B4(补�
 
 ### B4: 后端补丁 + 杂项（0/3 ⚠️ 合并引入变更需回归）
 
-- [ ] **B4a** — 覆盖率补丁集（~35 个文件）— 合并后需回归: `test_coverage_gaps.py` 删除 `TestAcquireThreadLockAsyncFailure` 类
+- [x] **B4a** — 覆盖率补丁集（~35 个文件）— ✅ 回归通过 (2649 passed, 0 failed)
 - [ ] **B4b** — 权限/隔离（~12 个文件）— 合并后需回归: `test_rbac_permission_matrix.py` + `test_visibility_applications_e2e.py` 修改（department_admin 权限 403→200）
 - [ ] **B4c** — 杂项（~78 个文件）— 合并后需回归: `test_install_fault_zeroing_agent.py` 修改（config.yaml → config.example.yaml）
 
