@@ -797,7 +797,7 @@ B1(基础层) ──→ B2(核心层) ──→ B3(功能层) ──→ B4(补�
 - [x] **B1a** — 存储/Persistence（15 个文件）
 - [x] **B1b** — Config/Admin/启动（17 个文件）— ✅ 回归通过 (759 passed, 0 failed)
 - [x] **B1c** — Auth/用户权限（18 个文件）
-- [ ] **B1d** — 数据库迁移 (1 个文件) — 合并新增: `test_alembic_migrations.py` (387 行)
+- [x] **B1d** — 数据库迁移 (1 个文件) — ✅ 回归通过 (19 passed, 0 failed)
 
 <details>
 <summary>B1d — 数据库迁移（1 个文件）</summary>
