@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import logging
 import uuid
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, EmailStr, Field
@@ -14,17 +17,130 @@ from sqlalchemy.orm import selectinload
 from app.gateway.authz import get_current_rbac_user, require_role
 from app.gateway.rbac_users import create_auth_user_with_rbac
 from ideer.config.app_config import get_app_config
+from ideer.config.paths import get_paths
 from ideer.persistence.engine import get_session_factory
 from ideer.persistence.models.audit_log import AuditLog
 from ideer.persistence.models.resource_metadata import ResourceMetadata
 from ideer.persistence.models.user import DepartmentModel, UserModel, UserRole
 from ideer.persistence.models.visibility_application import VisibilityApplication, VisibilityApplicationStatus
 from ideer.skills.storage import get_or_new_skill_storage
+from ideer.skills.types import SkillCategory
 from ideer.tools.tools import get_available_tools
+from ideer.workflows.store import get_workflow_store
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
+
+
+RESOURCE_TYPE_LABELS = {
+    "agent": "智能体",
+    "tool": "工具",
+    "skill": "Skill",
+    "workflow": "工作流",
+}
+
+
+@dataclass(frozen=True)
+class AdminResourceInventoryItem:
+    resource_type: str
+    resource_id: str
+    default_visibility: str
+    source_key: str
+
+
+def _valid_agent_dirs(root: Path) -> list[Path]:
+    if not root.exists():
+        return []
+    return sorted(entry for entry in root.iterdir() if entry.is_dir() and (entry / "config.yaml").exists())
+
+
+def _collect_agent_inventory() -> list[AdminResourceInventoryItem]:
+    paths = get_paths()
+    items = [
+        AdminResourceInventoryItem(
+            resource_type="agent",
+            resource_id=entry.name,
+            default_visibility="public",
+            source_key=f"agent:shared:{entry.name}",
+        )
+        for entry in _valid_agent_dirs(paths.agents_dir)
+    ]
+
+    users_root = paths.base_dir / "users"
+    if users_root.exists():
+        for user_dir in sorted(entry for entry in users_root.iterdir() if entry.is_dir()):
+            for agent_dir in _valid_agent_dirs(user_dir / "agents"):
+                items.append(
+                    AdminResourceInventoryItem(
+                        resource_type="agent",
+                        resource_id=agent_dir.name,
+                        default_visibility="private",
+                        source_key=f"agent:user:{user_dir.name}:{agent_dir.name}",
+                    )
+                )
+    return items
+
+
+async def _collect_admin_resource_inventory(
+    session,
+) -> list[dict[str, str | None]]:
+    config = get_app_config()
+    metadata_rows = (await session.execute(select(ResourceMetadata).where(ResourceMetadata.deleted_at.is_(None)))).scalars().all()
+    metadata = {(row.resource_type, row.resource_id): row for row in metadata_rows}
+
+    inventory: list[AdminResourceInventoryItem] = _collect_agent_inventory()
+    inventory.extend(AdminResourceInventoryItem("tool", tool.name, "public", f"tool:{tool.name}") for tool in get_available_tools(app_config=config) if getattr(tool, "name", None))
+    inventory.extend(
+        AdminResourceInventoryItem(
+            "skill",
+            skill.name,
+            "public" if getattr(skill, "category", None) == SkillCategory.PUBLIC else "private",
+            f"skill:{skill.name}",
+        )
+        for skill in get_or_new_skill_storage(app_config=config).load_skills(enabled_only=False)
+        if getattr(skill, "name", None)
+    )
+
+    workflows, _ = await get_workflow_store().list_workflows(limit=10000, offset=0)
+    inventory.extend(AdminResourceInventoryItem("workflow", workflow["name"], "private", f"workflow:{workflow['name']}") for workflow in workflows if workflow.get("name"))
+
+    resources: list[dict[str, str | None]] = []
+    for item in inventory:
+        meta = metadata.get((item.resource_type, item.resource_id))
+        created_at = getattr(meta, "created_at", None)
+        resources.append(
+            {
+                "id": meta.id if meta else item.source_key,
+                "resource_type": item.resource_type,
+                "resource_type_label": RESOURCE_TYPE_LABELS.get(item.resource_type, item.resource_type),
+                "resource_id": item.resource_id,
+                "visibility": meta.visibility if meta else item.default_visibility,
+                "owner_id": meta.owner_id if meta else None,
+                "department_id": meta.department_id if meta else None,
+                "created_at": str(created_at) if created_at else None,
+            }
+        )
+
+    # Batch resolve owner usernames
+    owner_ids = {r["owner_id"] for r in resources if r.get("owner_id")}
+    owner_map: dict[str, str | None] = {}
+    if owner_ids:
+        owners = (await session.execute(select(UserModel.id, UserModel.username).where(UserModel.id.in_(owner_ids)))).all()
+        owner_map = {row.id: row.username for row in owners}
+
+    for r in resources:
+        r["owner_username"] = owner_map.get(r["owner_id"]) if r.get("owner_id") else None
+
+    def _sort_key(resource: dict[str, str | None]) -> tuple[datetime, str, str]:
+        created = resource["created_at"]
+        try:
+            parsed_created = datetime.fromisoformat(created) if created else datetime.min
+        except ValueError:
+            parsed_created = datetime.min
+        return (parsed_created, resource["resource_type"] or "", resource["resource_id"] or "")
+
+    return sorted(resources, key=_sort_key, reverse=True)
 
 
 @router.get("/stats")
@@ -41,16 +157,10 @@ async def get_admin_stats(
         user_count = (await session.execute(select(func.count()).select_from(UserModel))).scalar() or 0
         dept_count = (await session.execute(select(func.count()).select_from(DepartmentModel))).scalar() or 0
 
-        # resource_metadata counts (accurate for agent and workflow)
-        resource_counts = (await session.execute(select(ResourceMetadata.resource_type, func.count()).where(ResourceMetadata.deleted_at.is_(None)).group_by(ResourceMetadata.resource_type))).all()
-        type_counts = {row[0]: row[1] for row in resource_counts}
-        type_counts.setdefault("agent", 0)
-        type_counts.setdefault("workflow", 0)
-
-        # Override tools and skills with canonical sources (resource_metadata is incomplete for these types)
-        config = get_app_config()
-        type_counts["tool"] = len(get_available_tools(app_config=config))
-        type_counts["skill"] = len(get_or_new_skill_storage(app_config=config).load_skills())
+        resources = await _collect_admin_resource_inventory(session)
+        type_counts = {resource_type: 0 for resource_type in RESOURCE_TYPE_LABELS}
+        for resource in resources:
+            type_counts[resource["resource_type"]] += 1
 
         audit_count = (await session.execute(select(func.count()).select_from(AuditLog))).scalar() or 0
 
@@ -76,6 +186,28 @@ async def get_admin_stats(
         "audit_logs": audit_count,
         "pending_applications": pending_app_count,
     }
+
+
+@router.get("/resources")
+@require_role(UserRole.SUPER_ADMIN, UserRole.DEPARTMENT_ADMIN)
+async def list_resources(
+    resource_type: str | None = Query(default=None, description="Filter by type: agent|tool|skill|workflow"),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    current_user: UserModel = Depends(get_current_rbac_user),
+):
+    """List all resources with metadata, sorted by creation time."""
+    sf = get_session_factory()
+    if sf is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+
+    async with sf() as session:
+        resources = await _collect_admin_resource_inventory(session)
+        if resource_type:
+            resources = [resource for resource in resources if resource["resource_type"] == resource_type]
+
+        total = len(resources)
+        return {"resources": resources[offset : offset + limit], "total": total, "limit": limit, "offset": offset}
 
 
 class UpdateRoleRequest(BaseModel):

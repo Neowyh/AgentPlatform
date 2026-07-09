@@ -22,6 +22,7 @@ import {
   updateDepartment,
   deleteDepartment,
   getAdminStats,
+  listResources,
   listTools,
   testTool,
 } from "@/core/admin/api";
@@ -202,6 +203,36 @@ describe("admin API", () => {
 
       const init = mockFetch.mock.calls[0]![1] as RequestInit;
       expect(init.method).toBe("DELETE");
+    });
+  });
+
+  // ── listResources ───────────────────────────────────────────────
+
+  describe("listResources", () => {
+    test("sends GET request with clean URL when no params", async () => {
+      const payload = { resources: [], total: 0, limit: 50, offset: 0 };
+      mockFetch.mockResolvedValue(okJson(payload));
+
+      const result = await listResources();
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      const calledUrl = mockFetch.mock.calls[0]![0] as string;
+      expect(calledUrl).toBe("http://localhost:8000/api/admin/resources");
+      expect(result).toEqual(payload);
+    });
+
+    test("includes filter and pagination params when provided", async () => {
+      mockFetch.mockResolvedValue(
+        okJson({ resources: [], total: 1, limit: 10, offset: 20 }),
+      );
+
+      await listResources({ resource_type: "workflow", limit: 10, offset: 20 });
+
+      const calledUrl = mockFetch.mock.calls[0]![0] as string;
+      const url = new URL(calledUrl);
+      expect(url.searchParams.get("resource_type")).toBe("workflow");
+      expect(url.searchParams.get("limit")).toBe("10");
+      expect(url.searchParams.get("offset")).toBe("20");
     });
   });
 

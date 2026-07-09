@@ -3,7 +3,7 @@ import { fetch } from "@/core/api/fetcher";
 import { getBackendBaseURL } from "@/core/config";
 import type { Tool } from "@/core/tools/types";
 
-import type { Department, User } from "./types";
+import type { AdminResource, Department, User } from "./types";
 
 // ── User management ──────────────────────────────────────────────
 
@@ -203,6 +203,40 @@ export async function deleteDepartment(
   if (!res.ok) return extractError(res, "Failed to delete department");
 }
 
+// ── Resource management ─────────────────────────────────────────
+
+export async function listResources(params?: {
+  resource_type?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<{
+  resources: AdminResource[];
+  total: number;
+  limit: number;
+  offset: number;
+}> {
+  const baseURL = getBackendBaseURL();
+  const searchParams = new URLSearchParams();
+  if (params?.resource_type)
+    searchParams.set("resource_type", params.resource_type);
+  if (params?.limit !== undefined)
+    searchParams.set("limit", String(params.limit));
+  if (params?.offset !== undefined)
+    searchParams.set("offset", String(params.offset));
+
+  const queryString = searchParams.toString();
+  const url = `${baseURL}/api/admin/resources${queryString ? `?${queryString}` : ""}`;
+
+  const res = await fetch(url);
+  if (!res.ok) return extractError(res, "Failed to list resources");
+  return res.json() as Promise<{
+    resources: AdminResource[];
+    total: number;
+    limit: number;
+    offset: number;
+  }>;
+}
+
 // ── Admin stats ──────────────────────────────────────────────────
 
 export interface AdminStats {
@@ -211,6 +245,7 @@ export interface AdminStats {
   total_agents: number;
   total_tools: number;
   total_skills: number;
+  total_workflows: number;
   total_resources: number;
   audit_logs: number;
   pending_applications: number;

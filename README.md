@@ -740,6 +740,7 @@ iDeer has key high-privilege capabilities including **system command execution, 
 - **IP allowlist**: Use `iptables`, or deploy hardware firewalls / switches with Access Control Lists (ACL), to **configure IP allowlist rules** and deny access from all other IP addresses.
 - **Authentication gateway**: Configure a reverse proxy (e.g., nginx) and **enable strong pre-authentication**, blocking any unauthenticated access.
 - **Initial RBAC setup**: Complete `/setup` on first boot to create the first `super_admin`; subsequent permissions are stored in RBAC user profiles rather than the legacy authentication compatibility field.
+- **Admin visibility**: Super admins and department admins can read management dashboards and audit logs. Resource totals are computed from the live inventory of agents, tools, skills, and workflows, with resource metadata used as visibility enrichment.
 - **Network isolation**: Where possible, place the agent and trusted devices in the **same dedicated VLAN**, isolated from other network devices.
 - **Stay updated**: Continue to follow iDeer's security feature updates.
 

@@ -9,6 +9,7 @@ Target: 98%+ line/branch coverage.
 from __future__ import annotations
 
 from datetime import datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import FastAPI
@@ -114,10 +115,17 @@ def _make_session_with_execute(execute_fn) -> AsyncMock:
 class TestGetAdminStats:
     """Tests for GET /api/admin/stats endpoint."""
 
+    @patch("app.gateway.routers.admin._collect_admin_resource_inventory", new_callable=AsyncMock)
     @patch("app.gateway.routers.admin.get_session_factory")
-    def test_stats_returns_user_and_dept_counts(self, mock_sf):
+    def test_stats_returns_user_and_dept_counts(self, mock_sf, mock_inventory):
         """Happy path: returns counts for users, departments, and resources."""
         session = AsyncMock()
+        mock_inventory.return_value = [
+            {"resource_type": "agent"},
+            {"resource_type": "agent"},
+            *({"resource_type": "tool"} for _ in range(5)),
+            *({"resource_type": "skill"} for _ in range(8)),
+        ]
 
         call_count = {"n": 0}
 
@@ -128,8 +136,7 @@ class TestGetAdminStats:
                 # First call: user count, second call: dept count
                 result.scalar = MagicMock(return_value=10 if call_count["n"] == 1 else 3)
             else:
-                # Third call: resource metadata group query
-                result.all = MagicMock(return_value=[("agent", 2), ("tool", 5), ("skill", 8)])
+                result.scalar = MagicMock(return_value=0)
             return result
 
         session.execute = AsyncMock(side_effect=_execute)
@@ -147,21 +154,80 @@ class TestGetAdminStats:
         assert data["total_skills"] == 8
         assert data["total_resources"] == 15
 
+    @patch("app.gateway.routers.admin.get_workflow_store", create=True)
+    @patch("app.gateway.routers.admin.get_or_new_skill_storage")
+    @patch("app.gateway.routers.admin.get_available_tools")
+    @patch("app.gateway.routers.admin.get_paths", create=True)
     @patch("app.gateway.routers.admin.get_session_factory")
-    def test_stats_returns_zeros_when_counts_are_none(self, mock_sf):
+    def test_stats_uses_canonical_inventory_when_metadata_undercounts(
+        self,
+        mock_sf,
+        mock_get_paths,
+        mock_get_tools,
+        mock_get_skill_storage,
+        mock_get_workflow_store,
+        tmp_path,
+    ):
+        """Stats count live inventory, not only resource_metadata rows."""
+        shared_agents = tmp_path / "agents"
+        shared_agents.mkdir()
+        (shared_agents / "shared-a").mkdir()
+        (shared_agents / "shared-a" / "config.yaml").write_text("name: shared-a\n")
+        (shared_agents / "broken").mkdir()
+
+        user_agents = tmp_path / "users" / "u1" / "agents"
+        user_agents.mkdir(parents=True)
+        (user_agents / "custom-a").mkdir()
+        (user_agents / "custom-a" / "config.yaml").write_text("name: custom-a\n")
+
+        mock_get_paths.return_value = SimpleNamespace(base_dir=tmp_path, agents_dir=shared_agents)
+        mock_get_tools.return_value = [SimpleNamespace(name="tool-a"), SimpleNamespace(name="tool-b")]
+        mock_get_skill_storage.return_value.load_skills.return_value = [SimpleNamespace(name="skill-a")]
+        mock_get_workflow_store.return_value.list_workflows = AsyncMock(return_value=([{"name": "wf-a"}, {"name": "wf-b"}], 2))
+
+        session = AsyncMock()
+        call_count = {"n": 0}
+
+        async def _execute(stmt):
+            call_count["n"] += 1
+            result = MagicMock()
+            if call_count["n"] == 1:
+                result.scalar = MagicMock(return_value=10)
+            elif call_count["n"] == 2:
+                result.scalar = MagicMock(return_value=3)
+            elif call_count["n"] == 3:
+                result.scalars.return_value.all.return_value = []
+            else:
+                result.scalar = MagicMock(return_value=0)
+            return result
+
+        session.execute = AsyncMock(side_effect=_execute)
+        mock_sf.return_value = _make_session_factory(session)
+
+        app = _make_app()
+        resp = TestClient(app).get("/api/admin/stats")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total_agents"] == 2
+        assert data["total_tools"] == 2
+        assert data["total_skills"] == 1
+        assert data["total_workflows"] == 2
+        assert data["total_resources"] == 7
+
+    @patch("app.gateway.routers.admin._collect_admin_resource_inventory", new_callable=AsyncMock)
+    @patch("app.gateway.routers.admin.get_session_factory")
+    def test_stats_returns_zeros_when_counts_are_none(self, mock_sf, mock_inventory):
         """When scalar() returns None, defaults to 0."""
         session = AsyncMock()
+        mock_inventory.return_value = []
 
         call_count = {"n": 0}
 
         async def _execute(stmt):
             call_count["n"] += 1
             result = MagicMock()
-            if call_count["n"] <= 2:
-                result.scalar = MagicMock(return_value=None)
-            else:
-                # Empty resource metadata
-                result.all = MagicMock(return_value=[])
+            result.scalar = MagicMock(return_value=None)
             return result
 
         session.execute = AsyncMock(side_effect=_execute)
@@ -189,6 +255,119 @@ class TestGetAdminStats:
 
         assert resp.status_code == 500
         assert "Database not initialized" in resp.json()["detail"]
+
+
+# ---------------------------------------------------------------------------
+# GET /api/admin/resources
+# ---------------------------------------------------------------------------
+
+
+class TestListResources:
+    """Tests for GET /api/admin/resources endpoint."""
+
+    @patch("app.gateway.routers.admin.get_workflow_store", create=True)
+    @patch("app.gateway.routers.admin.get_or_new_skill_storage")
+    @patch("app.gateway.routers.admin.get_available_tools")
+    @patch("app.gateway.routers.admin.get_paths", create=True)
+    @patch("app.gateway.routers.admin.get_session_factory")
+    def test_resources_returns_canonical_inventory_with_metadata_defaults(
+        self,
+        mock_sf,
+        mock_get_paths,
+        mock_get_tools,
+        mock_get_skill_storage,
+        mock_get_workflow_store,
+        tmp_path,
+    ):
+        shared_agents = tmp_path / "agents"
+        shared_agents.mkdir()
+        (shared_agents / "shared-a").mkdir()
+        (shared_agents / "shared-a" / "config.yaml").write_text("name: shared-a\n")
+        user_agents = tmp_path / "users" / "u1" / "agents"
+        user_agents.mkdir(parents=True)
+        (user_agents / "custom-a").mkdir()
+        (user_agents / "custom-a" / "config.yaml").write_text("name: custom-a\n")
+
+        mock_get_paths.return_value = SimpleNamespace(base_dir=tmp_path, agents_dir=shared_agents)
+        mock_get_tools.return_value = [SimpleNamespace(name="tool-a")]
+        mock_get_skill_storage.return_value.load_skills.return_value = [
+            SimpleNamespace(name="public-skill", category="public"),
+            SimpleNamespace(name="custom-skill", category="custom"),
+        ]
+        mock_get_workflow_store.return_value.list_workflows = AsyncMock(return_value=([{"name": "wf-a"}], 1))
+
+        meta = MagicMock()
+        meta.id = "meta-tool-a"
+        meta.resource_type = "tool"
+        meta.resource_id = "tool-a"
+        meta.visibility = "department"
+        meta.owner_id = "owner-1"
+        meta.department_id = "dept-1"
+        meta.created_at = datetime(2024, 1, 1)
+
+        session = AsyncMock()
+
+        async def _execute(stmt):
+            result = MagicMock()
+            result.scalars.return_value.all.return_value = [meta]
+            return result
+
+        session.execute = AsyncMock(side_effect=_execute)
+        mock_sf.return_value = _make_session_factory(session)
+
+        app = _make_app()
+        resp = TestClient(app).get("/api/admin/resources?limit=20&offset=0")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 6
+        by_id = {item["resource_id"]: item for item in data["resources"]}
+        assert by_id["shared-a"]["visibility"] == "public"
+        assert by_id["tool-a"]["visibility"] == "department"
+        assert by_id["custom-a"]["visibility"] == "private"
+        assert by_id["public-skill"]["visibility"] == "public"
+        assert by_id["custom-skill"]["visibility"] == "private"
+        assert by_id["wf-a"]["visibility"] == "private"
+
+    @patch("app.gateway.routers.admin.get_workflow_store", create=True)
+    @patch("app.gateway.routers.admin.get_or_new_skill_storage")
+    @patch("app.gateway.routers.admin.get_available_tools")
+    @patch("app.gateway.routers.admin.get_paths", create=True)
+    @patch("app.gateway.routers.admin.get_session_factory")
+    def test_resources_applies_type_filter_before_total_and_pagination(
+        self,
+        mock_sf,
+        mock_get_paths,
+        mock_get_tools,
+        mock_get_skill_storage,
+        mock_get_workflow_store,
+        tmp_path,
+    ):
+        shared_agents = tmp_path / "agents"
+        shared_agents.mkdir()
+        for name in ("agent-a", "agent-b"):
+            (shared_agents / name).mkdir()
+            (shared_agents / name / "config.yaml").write_text(f"name: {name}\n")
+
+        mock_get_paths.return_value = SimpleNamespace(base_dir=tmp_path, agents_dir=shared_agents)
+        mock_get_tools.return_value = [SimpleNamespace(name="tool-a")]
+        mock_get_skill_storage.return_value.load_skills.return_value = []
+        mock_get_workflow_store.return_value.list_workflows = AsyncMock(return_value=([], 0))
+
+        session = AsyncMock()
+        result = MagicMock()
+        result.scalars.return_value.all.return_value = []
+        session.execute = AsyncMock(return_value=result)
+        mock_sf.return_value = _make_session_factory(session)
+
+        app = _make_app()
+        resp = TestClient(app).get("/api/admin/resources?resource_type=agent&limit=1&offset=1")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 2
+        assert len(data["resources"]) == 1
+        assert data["resources"][0]["resource_type"] == "agent"
 
 
 # ---------------------------------------------------------------------------

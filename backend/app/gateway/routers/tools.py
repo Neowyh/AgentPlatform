@@ -112,13 +112,21 @@ async def list_tools(
                 "requires_network": False,
                 "configurable": False,
                 "config_schema": {},
-                "param_schema": t.get_input_schema() if hasattr(t, "get_input_schema") else {},
+                "param_schema": _safe_schema_json(t.get_input_schema()) if hasattr(t, "get_input_schema") else {},
                 "config": {},
             }
             for t in filtered
         ],
         "total": len(filtered),
     }
+
+
+def _safe_schema_json(schema_cls: type) -> dict:
+    """Return a JSON schema dict from a Pydantic model class, falling back to {} on failure."""
+    try:
+        return schema_cls.model_json_schema()
+    except Exception:
+        return {}
 
 
 @router.get("/{tool_name}")
@@ -152,7 +160,7 @@ async def get_tool_detail(
         "requires_network": False,
         "configurable": False,
         "config_schema": {},
-        "param_schema": tool.get_input_schema() if hasattr(tool, "get_input_schema") else {},
+        "param_schema": _safe_schema_json(tool.get_input_schema()) if hasattr(tool, "get_input_schema") else {},
         "config": {},
     }
 

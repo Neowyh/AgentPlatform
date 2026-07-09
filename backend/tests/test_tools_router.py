@@ -13,9 +13,15 @@ from unittest.mock import MagicMock, patch
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from pydantic import BaseModel
 
 from app.gateway.authz import get_current_rbac_user
 from app.gateway.routers.tools import router as tools_router
+
+
+class _MockToolSchema(BaseModel):
+    pass
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -62,8 +68,8 @@ class TestListTools:
         """List tools returns all registered tools."""
         mock_config.return_value = MagicMock()
         mock_get_tools.return_value = [
-            SimpleNamespace(name="tool_a", description="Tool A", get_input_schema=lambda: {"type": "object"}),
-            SimpleNamespace(name="tool_b", description="Tool B", get_input_schema=lambda: {"type": "object"}),
+            SimpleNamespace(name="tool_a", description="Tool A", get_input_schema=lambda: _MockToolSchema),
+            SimpleNamespace(name="tool_b", description="Tool B", get_input_schema=lambda: _MockToolSchema),
         ]
 
         app = _make_app()
@@ -81,8 +87,8 @@ class TestListTools:
         """List tools with search parameter filters results inline."""
         mock_config.return_value = MagicMock()
         mock_get_tools.return_value = [
-            SimpleNamespace(name="matching_tool", description="A matching tool", get_input_schema=lambda: {"type": "object"}),
-            SimpleNamespace(name="other_tool", description="Something else", get_input_schema=lambda: {"type": "object"}),
+            SimpleNamespace(name="matching_tool", description="A matching tool", get_input_schema=lambda: _MockToolSchema),
+            SimpleNamespace(name="other_tool", description="Something else", get_input_schema=lambda: _MockToolSchema),
         ]
 
         app = _make_app()
@@ -109,7 +115,7 @@ class TestGetToolDetail:
         """Get tool detail returns tool info."""
         mock_config.return_value = MagicMock()
         mock_get_tools.return_value = [
-            SimpleNamespace(name="my_tool", description="desc", get_input_schema=lambda: {"type": "object"}),
+            SimpleNamespace(name="my_tool", description="desc", get_input_schema=lambda: _MockToolSchema),
         ]
 
         app = _make_app()

@@ -1,4 +1,4 @@
-"""Audit log query API — super_admin only."""
+"""Audit log query API for admin roles."""
 
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ class AuditLogListResponse(BaseModel):
 
 
 @router.get("", response_model=AuditLogListResponse)
-@require_role(UserRole.SUPER_ADMIN)
+@require_role(UserRole.SUPER_ADMIN, UserRole.DEPARTMENT_ADMIN)
 async def list_audit_logs(
     request: Request,
     actor_id: str | None = Query(None, description="Filter by actor user ID"),
@@ -110,7 +110,7 @@ async def list_audit_logs(
 
 
 @router.get("/{log_id}", response_model=AuditLogResponse)
-@require_role(UserRole.SUPER_ADMIN)
+@require_role(UserRole.SUPER_ADMIN, UserRole.DEPARTMENT_ADMIN)
 async def get_audit_log_detail(
     log_id: str,
     request: Request,

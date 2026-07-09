@@ -66,21 +66,22 @@ def _make_app(role: str = "super_admin") -> tuple:
 class TestAdminStats:
     """Tests for GET /api/admin/stats."""
 
+    @patch("app.gateway.routers.admin._collect_admin_resource_inventory", new_callable=AsyncMock)
     @patch("app.gateway.routers.admin.get_session_factory")
-    def test_get_stats_returns_counts(self, mock_get_session_factory):
+    def test_get_stats_returns_counts(self, mock_get_session_factory, mock_inventory):
         """Stats endpoint returns user, department, and resource counts."""
         call_count = {"n": 0}
         mock_session = AsyncMock()
+        mock_inventory.return_value = [
+            {"resource_type": "agent"},
+            {"resource_type": "tool"},
+            {"resource_type": "tool"},
+        ]
 
         async def _execute(stmt):
             call_count["n"] += 1
             result = MagicMock()
-            if call_count["n"] <= 2:
-                # User and dept count queries
-                result.scalar = MagicMock(return_value=5)
-            else:
-                # Resource metadata group query
-                result.all = MagicMock(return_value=[("agent", 1), ("tool", 2)])
+            result.scalar = MagicMock(return_value=5 if call_count["n"] <= 2 else 0)
             return result
 
         mock_session.execute = AsyncMock(side_effect=_execute)

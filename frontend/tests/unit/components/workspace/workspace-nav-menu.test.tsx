@@ -48,6 +48,7 @@ const mockT = {
     userManagement: "User Management",
     departmentManagement: "Department Management",
     toolManagement: "Tool Management",
+    auditLogManagement: "Audit Logs",
     about: "About iDeer",
   },
   common: {
@@ -310,6 +311,7 @@ describe("WorkspaceNavMenu", () => {
       expect(screen.getByText("User Management")).toBeInTheDocument();
       expect(screen.getByText("Department Management")).toBeInTheDocument();
       expect(screen.getByText("Tool Management")).toBeInTheDocument();
+      expect(screen.getByText("Audit Logs")).toBeInTheDocument();
     });
   });
 

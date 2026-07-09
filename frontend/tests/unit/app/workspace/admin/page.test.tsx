@@ -50,8 +50,12 @@ const mockStats = {
   total_users: 42,
   total_departments: 8,
   total_agents: 15,
+  total_tools: 7,
   total_skills: 23,
+  total_workflows: 4,
   total_resources: 38,
+  audit_logs: 12,
+  pending_applications: 3,
 };
 
 // ---------------------------------------------------------------------------
@@ -108,11 +112,11 @@ describe("AdminDashboardPage", () => {
 
   // ── Success state ──────────────────────────────────────────────────
 
-  test("renders six stat cards after loading", async () => {
+  test("renders seven stat cards after loading", async () => {
     render(<AdminDashboardPage />);
     await waitFor(() => {
       const cards = screen.getAllByTestId("admin-stat-card");
-      expect(cards).toHaveLength(6);
+      expect(cards).toHaveLength(7);
     });
   });
 
@@ -145,6 +149,7 @@ describe("AdminDashboardPage", () => {
       expect(hrefs).toContain("/workspace/admin/departments");
       expect(hrefs).toContain("/workspace/agents");
       expect(hrefs).toContain("/workspace/admin/tools");
+      expect(hrefs).toContain("/workspace/admin/resources");
     });
   });
 
@@ -152,7 +157,7 @@ describe("AdminDashboardPage", () => {
     render(<AdminDashboardPage />);
     await waitFor(() => {
       const details = screen.getAllByText("点击查看详情");
-      expect(details).toHaveLength(6);
+      expect(details).toHaveLength(7);
     });
   });
 

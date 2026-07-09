@@ -144,14 +144,12 @@ export function WorkspaceNavMenu() {
                           {t.workspace.applicationManagement}
                         </Link>
                       </DropdownMenuItem>
-                      {user?.system_role === "super_admin" && (
-                        <DropdownMenuItem asChild>
-                          <Link href="/workspace/admin/audit-logs">
-                            <ScrollTextIcon />
-                            {t.workspace.auditLogManagement}
-                          </Link>
-                        </DropdownMenuItem>
-                      )}
+                      <DropdownMenuItem asChild>
+                        <Link href="/workspace/admin/audit-logs">
+                          <ScrollTextIcon />
+                          {t.workspace.auditLogManagement}
+                        </Link>
+                      </DropdownMenuItem>
                     </DropdownMenuGroup>
                   </>
                 )}

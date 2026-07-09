@@ -62,7 +62,7 @@ const statCards = [
     key: "total_resources" as const,
     label: "资源总数",
     icon: WrenchIcon,
-    href: "/workspace/admin/visibility-applications",
+    href: "/workspace/admin/resources",
     color: "text-indigo-500",
   },
   {

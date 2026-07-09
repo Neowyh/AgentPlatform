@@ -13,9 +13,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from _router_auth_helpers import make_authed_test_app
 from fastapi.testclient import TestClient
+from pydantic import BaseModel
 
 from app.gateway.authz import get_current_rbac_user, get_optional_rbac_user
 from app.gateway.routers.tools import router as tools_router
+
+
+class _MockE2EToolSchema(BaseModel):
+    pass
+
 
 pytestmark = pytest.mark.no_auto_user
 
@@ -95,7 +101,7 @@ class TestGetToolDetail:
         mock_tool = MagicMock()
         mock_tool.name = "web_search"
         mock_tool.description = "Search the web"
-        mock_tool.get_input_schema.return_value = {"type": "object", "properties": {}}
+        mock_tool.get_input_schema.return_value = _MockE2EToolSchema
         mock_get_tools.return_value = [mock_tool]
         app, _ = _make_app()
         with TestClient(app) as client:
