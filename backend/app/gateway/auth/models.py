@@ -35,13 +35,12 @@ class User(BaseModel):
 class UserResponse(BaseModel):
     """Response model for user info endpoint.
 
-    ``system_role`` now returns the RBAC role from ``users_ext`` (viewer,
-    user, department_admin, super_admin) so the frontend permission checks
-    work correctly.  Falls back to the legacy ``users.system_role`` when
-    no ``users_ext`` row exists.
+    ``system_role`` returns the RBAC role from ``users_ext`` (viewer,
+    user, department_admin, super_admin). The legacy ``users.system_role``
+    field is not exposed as an authorization role.
     """
 
     id: str
     email: str
-    system_role: Literal["viewer", "user", "department_admin", "super_admin", "admin"]
+    system_role: Literal["viewer", "user", "department_admin", "super_admin"]
     needs_setup: bool = False

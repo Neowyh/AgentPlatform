@@ -80,41 +80,34 @@ async def _ensure_admin_user(app: FastAPI) -> None:
     """
     from sqlalchemy import select
 
-    from app.gateway.deps import get_local_provider
     from ideer.persistence.engine import get_session_factory
-    from ideer.persistence.user.model import UserRow
-
-    try:
-        provider = get_local_provider()
-    except RuntimeError:
-        # Auth persistence may not be initialized in some test/boot paths.
-        # Skip admin migration work rather than failing gateway startup.
-        logger.warning("Auth persistence not ready; skipping admin bootstrap check")
-        return
+    from ideer.persistence.models.user import UserModel, UserRole
 
     sf = get_session_factory()
     if sf is None:
         return
 
-    admin_count = await provider.count_admin_users()
+    async with sf() as session:
+        stmt = (
+            select(UserModel)
+            .where(
+                UserModel.role == UserRole.SUPER_ADMIN,
+                UserModel.disabled.is_not(True),
+            )
+            .limit(1)
+        )
+        admin_user = (await session.execute(stmt)).scalar_one_or_none()
 
-    if admin_count == 0:
+    if admin_user is None:
         logger.info("=" * 60)
-        logger.info("  First boot detected — no admin account exists.")
+        logger.info("  First boot detected — no active super_admin account exists.")
         logger.info("  Visit /setup to complete admin account creation.")
         logger.info("=" * 60)
         return
 
     # Admin already exists — run orphan thread migration for any
     # LangGraph thread metadata that pre-dates the auth module.
-    async with sf() as session:
-        stmt = select(UserRow).where(UserRow.system_role == "admin").limit(1)
-        row = (await session.execute(stmt)).scalar_one_or_none()
-
-    if row is None:
-        return  # Should not happen (admin_count > 0 above), but be safe.
-
-    admin_id = str(row.id)
+    admin_id = str(admin_user.id)
 
     # LangGraph store orphan migration — non-fatal.
     # This covers the "no-auth → with-auth" upgrade path for users

@@ -1,3 +1,4 @@
+import json
 import logging
 
 import yaml
@@ -60,6 +61,21 @@ def setup_agent(
 
         soul_file = agent_dir / "SOUL.md"
         soul_file.write_text(soul, encoding="utf-8")
+
+        meta_file = agent_dir / ".meta.json"
+        if not meta_file.exists():
+            meta_file.write_text(
+                json.dumps(
+                    {
+                        "owner_id": user_id,
+                        "department_id": None,
+                        "visibility": "private",
+                    },
+                    indent=2,
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
 
         logger.info(f"[agent_creator] Created agent '{agent_name}' at {agent_dir}")
         return Command(

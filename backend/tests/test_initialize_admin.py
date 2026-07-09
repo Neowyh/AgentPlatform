@@ -64,6 +64,21 @@ def _init_payload(**extra):
     }
 
 
+async def _get_roles_by_email(email: str) -> tuple[str, str]:
+    from sqlalchemy import select
+
+    from ideer.persistence.engine import get_session_factory
+    from ideer.persistence.models.user import UserModel
+    from ideer.persistence.user.model import UserRow
+
+    sf = get_session_factory()
+    assert sf is not None
+    async with sf() as session:
+        user_row = (await session.execute(select(UserRow).where(UserRow.email == email))).scalar_one()
+        rbac_user = (await session.execute(select(UserModel).where(UserModel.id == user_row.id))).scalar_one()
+    return user_row.system_role, rbac_user.role
+
+
 # ── Happy path ────────────────────────────────────────────────────────────
 
 
@@ -73,8 +88,12 @@ def test_initialize_creates_admin_and_sets_cookie(client):
     assert resp.status_code == 201
     data = resp.json()
     assert data["email"] == "admin@example.com"
-    assert data["system_role"] == "admin"
+    assert data["system_role"] == "super_admin"
     assert "access_token" in resp.cookies
+
+    auth_role, rbac_role = asyncio.run(_get_roles_by_email("admin@example.com"))
+    assert auth_role == "user"
+    assert rbac_role == "super_admin"
 
 
 def test_initialize_needs_setup_false(client):
@@ -83,6 +102,7 @@ def test_initialize_needs_setup_false(client):
     me = client.get("/api/v1/auth/me")
     assert me.status_code == 200
     assert me.json()["needs_setup"] is False
+    assert me.json()["system_role"] == "super_admin"
 
 
 # ── Rejection when already initialized ───────────────────────────────────
@@ -108,7 +128,7 @@ def test_initialize_register_does_not_block_initialization(client):
     # /initialize should still succeed (checks admin_count, not total user_count)
     resp = client.post("/api/v1/auth/initialize", json=_init_payload())
     assert resp.status_code == 201
-    assert resp.json()["system_role"] == "admin"
+    assert resp.json()["system_role"] == "super_admin"
 
 
 # ── Endpoint is public (no cookie required) ───────────────────────────────
@@ -170,6 +190,10 @@ def test_setup_status_false_when_only_regular_user_exists(client):
     assert resp.status_code == 200
     assert resp.json()["needs_setup"] is True
 
+    auth_role, rbac_role = asyncio.run(_get_roles_by_email("regular@example.com"))
+    assert auth_role == "user"
+    assert rbac_role == "user"
+
 
 def test_setup_status_returns_cached_result_on_rapid_calls(client):
     """Rapid /setup-status calls return the cached result (200) instead of 429."""
@@ -211,17 +235,17 @@ async def test_setup_status_single_flight_per_ip(monkeypatch):
         setup_status,
     )
 
-    class _Provider:
+    class _Counter:
         def __init__(self):
             self.calls = 0
 
-        async def count_admin_users(self):
+        async def count_active_super_admin_users(self):
             self.calls += 1
             await asyncio.sleep(0.05)
             return 0
 
-    provider = _Provider()
-    monkeypatch.setattr("app.gateway.routers.auth.get_local_provider", lambda: provider)
+    counter = _Counter()
+    monkeypatch.setattr("app.gateway.routers.auth._count_active_super_admin_users", counter.count_active_super_admin_users)
     _SETUP_STATUS_CACHE.clear()
     _SETUP_STATUS_INFLIGHT.clear()
 
@@ -243,4 +267,4 @@ async def test_setup_status_single_flight_per_ip(monkeypatch):
     )
 
     assert all(result["needs_setup"] is True for result in results)
-    assert provider.calls == 1
+    assert counter.calls == 1

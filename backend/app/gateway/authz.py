@@ -44,8 +44,7 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar
 
 from fastapi import HTTPException, Request, status
-from sqlalchemy import func
-from sqlalchemy.exc import IntegrityError, OperationalError, ProgrammingError
+from sqlalchemy.exc import IntegrityError
 
 if TYPE_CHECKING:
     from app.gateway.auth.models import User
@@ -172,7 +171,6 @@ async def _authenticate(request: Request) -> AuthContext:
         Permissions.RUNS_READ,
     ]
 
-    # Check if user has an RBAC profile to determine role-based permissions
     try:
         from sqlalchemy import select
 
@@ -180,17 +178,35 @@ async def _authenticate(request: Request) -> AuthContext:
         from ideer.persistence.models.user import UserModel
 
         sf = get_session_factory()
-        if sf is not None:
-            async with sf() as session:
-                stmt = select(UserModel).where(UserModel.id == str(user.id))
-                result = await session.execute(stmt)
-                rbac_user = result.scalar_one_or_none()
-                if rbac_user is not None:
-                    if rbac_user.role == UserRole.VIEWER:
-                        return AuthContext(user=user, permissions=_VIEWER_PERMISSIONS)
-                    if rbac_user.role is None:
-                        logger.warning("User %s has NULL role in database, defaulting to USER permissions", user.id)
+        if sf is None:
+            raise RuntimeError("Database not initialized")
+        async with sf() as session:
+            stmt = select(UserModel).where(UserModel.id == str(user.id))
+            result = await session.execute(stmt)
+            rbac_user = result.scalar_one_or_none()
+            if rbac_user is None:
+                rbac_user = UserModel(
+                    id=str(user.id),
+                    username=getattr(user, "email", str(user.id)),
+                    role=UserRole.USER.value,
+                    department_id=None,
+                )
+                session.add(rbac_user)
+                await session.commit()
+                await session.refresh(rbac_user)
+                logger.info("Auto-created RBAC user %s with role %s", user.id, rbac_user.role)
+            if rbac_user.disabled:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User account is disabled")
+            try:
+                role = UserRole(rbac_user.role)
+            except (TypeError, ValueError):
+                logger.error("Invalid role '%s' for user %s, defaulting to viewer permissions", rbac_user.role, user.id)
+                role = UserRole.VIEWER
+            if role == UserRole.VIEWER:
+                return AuthContext(user=user, permissions=_VIEWER_PERMISSIONS)
     except Exception as exc:
+        if isinstance(exc, HTTPException):
+            raise
         # Fail-closed: RBAC lookup failed (DB down, etc.) — deny access
         # rather than granting full permissions.  A DB outage should not
         # become a privilege-escalation vector.  Log at error level so
@@ -201,8 +217,7 @@ async def _authenticate(request: Request) -> AuthContext:
             detail="Authorization service temporarily unavailable",
         )
 
-    # If we reach here, the DB query succeeded but no early return was hit
-    # (e.g., user has a valid role other than VIEWER). Grant full permissions.
+    # Authenticated non-viewer RBAC roles get the normal write-capable set.
     return AuthContext(user=user, permissions=_ALL_PERMISSIONS)
 
 
@@ -539,8 +554,9 @@ async def get_current_rbac_user(request: Request) -> UserModel:
 
     Reads the ``User`` object already stamped on ``request.state.user`` by
     AuthMiddleware (JWT decoded once, no redundant work) and looks up the
-    corresponding RBAC ``UserModel``.  Auto-creates the RBAC profile on
-    first access — the very first user is promoted to ``super_admin``.
+    corresponding RBAC ``UserModel``. Missing RBAC profiles are created as
+    regular ``user`` records; first super_admin creation is only done by
+    the explicit ``/initialize`` flow.
 
     Raises:
         HTTPException 401 if the request is not authenticated.
@@ -569,21 +585,10 @@ async def get_current_rbac_user(request: Request) -> UserModel:
             raise HTTPException(status_code=403, detail="User account is disabled")
 
         if rbac_user is None:
-            # Auto-create RBAC profile for first-time users.
-            # Use SELECT FOR UPDATE to prevent two concurrent first users
-            # from both being promoted to super_admin.
-            try:
-                count_stmt = select(func.count()).select_from(UserModel).where(UserModel.role == UserRole.SUPER_ADMIN, UserModel.disabled.is_not(True)).with_for_update(nowait=False)
-                admin_count = (await session.execute(count_stmt)).scalar() or 0
-            except (OperationalError, ProgrammingError):
-                # If FOR UPDATE is not supported (e.g., SQLite), fall back to plain count
-                count_stmt = select(func.count()).select_from(UserModel).where(UserModel.role == UserRole.SUPER_ADMIN, UserModel.disabled.is_not(True))
-                admin_count = (await session.execute(count_stmt)).scalar() or 0
-
             rbac_user = UserModel(
                 id=user_id,
                 username=getattr(user, "email", user_id),
-                role=UserRole.SUPER_ADMIN if admin_count == 0 else UserRole.USER,
+                role=UserRole.USER.value,
                 department_id=None,
             )
             try:
@@ -603,31 +608,6 @@ async def get_current_rbac_user(request: Request) -> UserModel:
                     raise HTTPException(status_code=500, detail="Failed to create user profile")
                 if rbac_user.disabled:
                     raise HTTPException(status_code=403, detail="User account is disabled")
-
-                # P2-AUTH-01: Re-check admin_count — if the concurrent request
-                # also promoted this user to super_admin, downgrade to USER
-                # when more than one super_admin now exists.
-                if rbac_user.role == UserRole.SUPER_ADMIN:
-                    async with sf() as recheck_session:
-                        recheck_count_stmt = (
-                            select(func.count())
-                            .select_from(UserModel)
-                            .where(
-                                UserModel.role == UserRole.SUPER_ADMIN,
-                                UserModel.disabled.is_not(True),
-                            )
-                        )
-                        admin_count = (await recheck_session.execute(recheck_count_stmt)).scalar() or 0
-                        if admin_count > 1:
-                            # Re-query user in new session to modify
-                            recheck_user_stmt = select(UserModel).where(UserModel.id == user_id)
-                            recheck_result = await recheck_session.execute(recheck_user_stmt)
-                            recheck_user = recheck_result.scalar_one_or_none()
-                            if recheck_user is not None:
-                                recheck_user.role = UserRole.USER
-                                rbac_user.role = UserRole.USER
-                                await recheck_session.commit()
-                                logger.info("Downgraded concurrent first-user %s from super_admin to USER (admin_count=%d)", user_id, admin_count)
 
     # P2-AUTH-05: Validate role is a valid enum value
     try:

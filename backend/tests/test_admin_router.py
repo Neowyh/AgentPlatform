@@ -13,6 +13,7 @@ Covers:
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import FastAPI
@@ -170,6 +171,43 @@ class TestAdminStats:
 
 class TestAdminUserManagement:
     """Tests for user management endpoints."""
+
+    def test_create_user_writes_auth_user_role_as_user_and_rbac_role(self, tmp_path):
+        """Admin-created super_admin stores permission only in users_ext."""
+        from ideer.persistence.engine import close_engine, get_session_factory, init_engine
+        from ideer.persistence.models.user import UserModel
+        from ideer.persistence.user.model import UserRow
+
+        asyncio.run(init_engine("sqlite", url=f"sqlite+aiosqlite:///{tmp_path}/admin_create.db", sqlite_dir=str(tmp_path)))
+        try:
+            app = _make_app()
+            client = TestClient(app)
+            resp = client.post(
+                "/api/admin/users",
+                json={
+                    "email": "new-super@example.com",
+                    "password": "Str0ng!Pass99",
+                    "username": "new-super",
+                    "role": "super_admin",
+                },
+            )
+
+            assert resp.status_code == 201
+            user_id = resp.json()["id"]
+
+            async def _fetch_roles():
+                sf = get_session_factory()
+                assert sf is not None
+                async with sf() as session:
+                    auth_row = await session.get(UserRow, user_id)
+                    rbac_user = await session.get(UserModel, user_id)
+                return auth_row.system_role, rbac_user.role
+
+            auth_role, rbac_role = asyncio.run(_fetch_roles())
+            assert auth_role == "user"
+            assert rbac_role == "super_admin"
+        finally:
+            asyncio.run(close_engine())
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_list_users_returns_paginated(self, mock_sf):

@@ -12,6 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 
 from app.gateway.authz import get_current_rbac_user, require_role
+from app.gateway.rbac_users import create_auth_user_with_rbac
 from ideer.persistence.engine import get_session_factory
 from ideer.persistence.models.audit_log import AuditLog
 from ideer.persistence.models.resource_metadata import ResourceMetadata
@@ -120,35 +121,24 @@ async def create_user(
             if dept is None:
                 raise HTTPException(status_code=404, detail="Department not found")
 
-    from app.gateway.deps import get_local_provider
-
-    try:
-        auth_user = await get_local_provider().create_user(
-            email=body.email,
-            password=body.password,
-            system_role=role.value,
-        )
-    except ValueError:
-        raise HTTPException(status_code=409, detail="Email already exists")
-
-    user_id = str(auth_user.id)
-
     sf = get_session_factory()
     if sf is None:
         raise HTTPException(status_code=500, detail="Database not initialized")
     async with sf() as session:
-        rbac_user = UserModel(
-            id=user_id,
-            username=body.username.strip(),
-            role=role.value,
-            department_id=department_id,
-        )
         try:
-            session.add(rbac_user)
-            await session.commit()
+            auth_user = await create_auth_user_with_rbac(
+                session,
+                email=body.email,
+                password=body.password,
+                username=body.username.strip(),
+                role=role,
+                department_id=department_id,
+            )
         except IntegrityError:
             await session.rollback()
-            raise HTTPException(status_code=409, detail="Username already exists")
+            raise HTTPException(status_code=409, detail="Email or username already exists")
+
+    user_id = str(auth_user.id)
 
     logger.info("User created: id=%s, email=%s, role=%s, by=%s", user_id, body.email, role.value, current_user.id)
     return {
