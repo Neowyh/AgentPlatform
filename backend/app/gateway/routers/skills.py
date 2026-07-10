@@ -163,7 +163,17 @@ async def list_skills(
                 continue
 
             meta = await _load_skill_meta(skill.name, config)
-            # Default to 'public' when no metadata exists (pre-RBAC skills)
+
+            # Lazy registration: auto-create ResourceMetadata for custom skills
+            # found on disk but missing from DB.
+            if not meta and current_user is not None:
+                meta = {
+                    "visibility": "private",
+                    "owner_id": str(current_user.id),
+                    "department_id": str(current_user.department_id) if current_user.department_id else None,
+                }
+                await _save_skill_meta(skill.name, config, meta)
+
             visibility = meta.get("visibility", "private")
             owner_id = meta.get("owner_id")
             dept_id = meta.get("department_id")
@@ -234,7 +244,17 @@ async def list_custom_skills(
         filtered: list[Skill] = []
         for skill in skills:
             meta = await _load_skill_meta(skill.name, config)
-            # Default to 'public' when no metadata exists (pre-RBAC skills)
+
+            # Lazy registration: auto-create ResourceMetadata for custom skills
+            # found on disk but missing from DB.
+            if not meta and current_user is not None:
+                meta = {
+                    "visibility": "private",
+                    "owner_id": str(current_user.id),
+                    "department_id": str(current_user.department_id) if current_user.department_id else None,
+                }
+                await _save_skill_meta(skill.name, config, meta)
+
             visibility = meta.get("visibility", "private")
             owner_id = meta.get("owner_id")
             dept_id = meta.get("department_id")

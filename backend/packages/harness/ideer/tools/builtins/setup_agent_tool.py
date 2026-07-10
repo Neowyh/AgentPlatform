@@ -54,6 +54,56 @@ def _upsert_agent_metadata(agent_name: str, user_id: str) -> None:
         logger.exception("Failed to write agent metadata to ResourceMetadata table")
 
 
+def _upsert_skill_metadata_if_missing(skill_names: list[str], user_id: str) -> None:
+    """Ensure referenced custom skills have ResourceMetadata records.
+
+    For each skill name that exists on disk but has no DB record, creates one
+    with the given user as owner. Silently skips skills that already have
+    metadata or don't exist on disk.
+    """
+    from ideer.skills.storage import get_or_new_skill_storage
+
+    storage = get_or_new_skill_storage()
+
+    sf = get_session_factory()
+    if sf is None:
+        return
+
+    async def _upsert_one(name: str):
+        if not await asyncio.to_thread(storage.custom_skill_exists, name):
+            return
+        async with sf() as session:
+            stmt = select(ResourceMetadata).where(
+                ResourceMetadata.resource_type == "skill",
+                ResourceMetadata.resource_id == name,
+            )
+            existing = (await session.execute(stmt)).scalar_one_or_none()
+            if existing:
+                return
+            session.add(
+                ResourceMetadata(
+                    id=str(uuid.uuid4()),
+                    resource_type="skill",
+                    resource_id=name,
+                    owner_id=user_id,
+                    visibility="private",
+                )
+            )
+            await session.commit()
+
+    async def _upsert_all():
+        for name in skill_names:
+            try:
+                await _upsert_one(name)
+            except Exception:
+                logger.warning("Failed to upsert metadata for skill '%s'", name)
+
+    try:
+        asyncio.run(_upsert_all())
+    except Exception:
+        logger.exception("Failed to cascade skill metadata registration")
+
+
 @tool(parse_docstring=True)
 def setup_agent(
     soul: str,
@@ -104,6 +154,9 @@ def setup_agent(
 
         if agent_name:
             _upsert_agent_metadata(agent_name, user_id)
+            # Cascade: ensure referenced custom skills also have resource_metadata
+            if skills:
+                _upsert_skill_metadata_if_missing(skills, user_id)
 
         logger.info(f"[agent_creator] Created agent '{agent_name}' at {agent_dir}")
         return Command(

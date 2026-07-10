@@ -159,6 +159,68 @@ async def _migrate_orphaned_threads(store, admin_user_id: str) -> int:
     return migrated
 
 
+async def _reconcile_resource_metadata(startup_config: AppConfig) -> None:
+    """Startup hook: ensure all custom skills on disk have a resource_metadata record.
+
+    Scans the ``skills/custom/`` directory and auto-creates metadata for any
+    skill directory that is missing one. Uses the first active super_admin as
+    the owner so these skills are discoverable by admins and manageable via
+    the visibility UI.
+
+    This function is idempotent — existing metadata records are never touched.
+    """
+    from pathlib import Path
+
+    from sqlalchemy import select
+
+    from app.gateway.utils import ResourceMetadataStore
+    from ideer.persistence.engine import get_session_factory
+    from ideer.persistence.models.user import UserModel, UserRole
+
+    sf = get_session_factory()
+    if sf is None:
+        return
+
+    # Find first active super_admin
+    async with sf() as session:
+        stmt = (
+            select(UserModel)
+            .where(
+                UserModel.role == UserRole.SUPER_ADMIN,
+                UserModel.disabled.is_not(True),
+            )
+            .limit(1)
+        )
+        admin_user = (await session.execute(stmt)).scalar_one_or_none()
+
+    if admin_user is None:
+        logger.info("No active super_admin found; skipping skill resource_metadata reconciliation")
+        return
+
+    admin_id = str(admin_user.id)
+
+    # Scan skills/custom/ directory for skill directories that exist on disk
+    skills_path = startup_config.skills.get_skills_path()
+    custom_dir: Path = skills_path / "custom"
+    if not custom_dir.is_dir():
+        return
+
+    store = ResourceMetadataStore("skill")
+    reconciled = 0
+    for entry in sorted(custom_dir.iterdir()):
+        if not entry.is_dir() or entry.name.startswith("."):
+            continue
+        skill_name = entry.name
+        existing = await store.load_meta(skill_name)
+        if existing:
+            continue
+        if await store.save_meta(skill_name, {"owner_id": admin_id, "visibility": "private"}):
+            reconciled += 1
+
+    if reconciled:
+        logger.info("Reconciled %d custom skill(s) — created missing resource_metadata records", reconciled)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan handler."""
@@ -188,6 +250,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         # Check admin bootstrap state and migrate orphan threads after admin exists.
         # Must run AFTER langgraph_runtime so app.state.store is available for thread migration
         await _ensure_admin_user(app)
+
+        # Reconcile skill resource_metadata for any custom skills on disk
+        # that lack a DB record. Must run AFTER _ensure_admin_user so
+        # the super_admin ID is available as the fallback owner.
+        try:
+            await _reconcile_resource_metadata(startup_config)
+        except Exception:
+            logger.exception("Skill metadata reconciliation failed (non-fatal)")
 
         # Start IM channel service if any channels are configured
         try:
