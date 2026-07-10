@@ -21,9 +21,7 @@ P2 (robustness):
 
 from __future__ import annotations
 
-import json
 from datetime import UTC, datetime
-from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -902,92 +900,35 @@ class TestAgentConcurrentCreation:
 
 
 # ===========================================================================
-# P2-10: Metadata File Fallback Path
+# P2-10: Metadata returns empty dict when DB is unavailable
 # ===========================================================================
 
 
-class TestMetadataFallbackPath:
-    """Verify metadata loading falls back to .meta.json when DB is unavailable."""
+class TestMetadataWhenDbUnavailable:
+    """Verify metadata loading returns empty dict when DB is unavailable (no fallback)."""
 
     @pytest.mark.asyncio
-    async def test_skill_meta_falls_back_to_file(self):
-        """When session_factory is None, skill meta falls back to .meta.json."""
+    async def test_skill_meta_returns_empty_when_db_unavailable(self):
+        """When session_factory is None, skill meta returns empty dict."""
         from app.gateway.routers.skills import _load_skill_meta
 
         config = MagicMock()
         mock_storage = MagicMock()
-        meta_dir = Path("/tmp/test-skill-meta")
-        mock_storage.get_custom_skill_dir.return_value = meta_dir
 
         with (
             patch("ideer.persistence.engine.get_session_factory", return_value=None),
             patch("app.gateway.routers.skills.get_or_new_skill_storage", return_value=mock_storage),
         ):
-            # Create a temporary meta file
-            import tempfile
-
-            with tempfile.TemporaryDirectory() as tmpdir:
-                meta_file = Path(tmpdir) / ".meta.json"
-                meta_file.write_text(json.dumps({"visibility": "public", "owner_id": "test"}))
-                mock_storage.get_custom_skill_dir.return_value = Path(tmpdir)
-
-                result = await _load_skill_meta("test-skill", config)
-
-        assert result["visibility"] == "public"
-        assert result["owner_id"] == "test"
-
-    @pytest.mark.asyncio
-    async def test_skill_meta_returns_empty_when_no_file(self):
-        """When no .meta.json exists and DB is unavailable, returns empty dict."""
-        from app.gateway.routers.skills import _load_skill_meta
-
-        config = MagicMock()
-        mock_storage = MagicMock()
-        mock_storage.get_custom_skill_dir.return_value = Path("/nonexistent/path")
-
-        with (
-            patch("ideer.persistence.engine.get_session_factory", return_value=None),
-            patch("app.gateway.routers.skills.get_or_new_skill_storage", return_value=mock_storage),
-        ):
-            result = await _load_skill_meta("nonexistent-skill", config)
+            result = await _load_skill_meta("test-skill", config)
 
         assert result == {}
 
     @pytest.mark.asyncio
-    async def test_agent_meta_falls_back_to_file(self):
-        """When DB is unavailable, agent meta falls back to .meta.json."""
+    async def test_agent_meta_returns_empty_when_db_unavailable(self):
+        """When DB is unavailable, agent meta returns empty dict."""
         from app.gateway.routers.agents import _load_agent_meta
 
-        with (
-            patch("ideer.persistence.engine.get_session_factory", return_value=None),
-            patch("app.gateway.routers.agents.get_paths") as mock_paths,
-        ):
-            import tempfile
-
-            with tempfile.TemporaryDirectory() as tmpdir:
-                agent_dir = Path(tmpdir) / "agent-name"
-                agent_dir.mkdir()
-                meta_file = agent_dir / ".meta.json"
-                meta_file.write_text(json.dumps({"visibility": "department", "owner_id": "u1"}))
-
-                mock_paths.return_value.user_agent_dir.return_value = agent_dir
-
-                result = await _load_agent_meta("agent-name", "user-1")
-
-        assert result["visibility"] == "department"
-        assert result["owner_id"] == "u1"
-
-    @pytest.mark.asyncio
-    async def test_agent_meta_returns_empty_when_no_file(self):
-        """When no .meta.json exists and DB is unavailable, returns empty dict."""
-        from app.gateway.routers.agents import _load_agent_meta
-
-        with (
-            patch("ideer.persistence.engine.get_session_factory", return_value=None),
-            patch("app.gateway.routers.agents.get_paths") as mock_paths,
-        ):
-            mock_paths.return_value.user_agent_dir.return_value = Path("/nonexistent")
-
+        with patch("ideer.persistence.engine.get_session_factory", return_value=None):
             result = await _load_agent_meta("agent-name", "user-1")
 
         assert result == {}

@@ -16,6 +16,7 @@ from sqlalchemy.orm import selectinload
 
 from app.gateway.authz import get_current_rbac_user, require_role
 from app.gateway.rbac_users import create_auth_user_with_rbac
+from app.gateway.user_deletion import delete_user as service_delete_user
 from ideer.config.app_config import get_app_config
 from ideer.config.paths import get_paths
 from ideer.persistence.engine import get_session_factory
@@ -533,6 +534,96 @@ async def update_user(
         "username": user.username,
         "department_id": user.department_id,
     }
+
+
+@router.delete("/users/{user_id}", status_code=200)
+@require_role(UserRole.SUPER_ADMIN)
+async def delete_user(
+    user_id: str,
+    resource_strategy: str = Query(
+        ...,
+        description="Resource handling strategy: 'transfer', 'delete', or 'soft_delete'",
+    ),
+    target_user_id: str | None = Query(
+        None,
+        description="Target user ID for resource transfer (required when strategy='transfer')",
+    ),
+    current_user: UserModel = Depends(get_current_rbac_user),
+    request: Request = None,
+):
+    """Permanently delete a user and handle all owned resources.
+
+    Requires super_admin role. Supports three strategies for handling
+    the user's resources (agents, skills, workflows, tools):
+
+    - **transfer**: reassign all resources to *target_user_id*
+    - **delete**: soft-delete resource metadata and remove disk files
+    - **soft_delete**: soft-delete resource metadata only, keep disk files
+
+    Historical data (threads, runs, events, feedback) is always hard-
+    deleted regardless of strategy. Audit log references are set to NULL.
+    """
+    if not resource_strategy:
+        raise HTTPException(status_code=400, detail="resource_strategy is required")
+
+    if resource_strategy not in ("transfer", "delete", "soft_delete"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid resource_strategy: '{resource_strategy}'. Must be one of: transfer, delete, soft_delete",
+        )
+
+    if resource_strategy == "transfer" and not target_user_id:
+        raise HTTPException(
+            status_code=400,
+            detail="target_user_id is required when resource_strategy is 'transfer'",
+        )
+
+    sf = get_session_factory()
+    if sf is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+
+    try:
+        async with sf() as session:
+            await service_delete_user(
+                session=session,
+                paths=get_paths(),
+                user_id=user_id,
+                current_user_id=current_user.id,
+                resource_strategy=resource_strategy,
+                target_user_id=target_user_id,
+            )
+            await session.commit()
+
+        from app.gateway.audit import record_audit
+
+        await record_audit(
+            actor_id=current_user.id,
+            action="delete_user",
+            resource_type="user",
+            resource_id=user_id,
+            detail={
+                "resource_strategy": resource_strategy,
+                "target_user_id": target_user_id,
+            },
+            ip_address=request.client.host if request and request.client else None,
+        )
+
+        logger.warning(
+            "User deleted: user_id=%s, strategy=%s, target=%s, by=%s",
+            user_id,
+            resource_strategy,
+            target_user_id,
+            current_user.id,
+        )
+        return {"success": True, "user_id": user_id, "resource_strategy": resource_strategy}
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to delete user %s: %s", user_id, e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error") from e
 
 
 # --- Department Management ---

@@ -1,6 +1,5 @@
 """CRUD API for custom agents."""
 
-import json
 import logging
 import re
 import shutil
@@ -119,14 +118,8 @@ def _is_shared_only(agent_name: str, user_id: str) -> bool:
     return paths.agent_dir(agent_name).exists() and not paths.user_agent_dir(user_id, agent_name).exists()
 
 
-def _agent_meta_path(agent_name: str, user_id: str):
-    """Return the path to the agent's RBAC metadata JSON file."""
-    paths = get_paths()
-    return paths.user_agent_dir(user_id, agent_name) / ".meta.json"
-
-
 async def _load_agent_meta(agent_name: str, user_id: str) -> dict:
-    """Load agent RBAC metadata from resource_metadata table (fallback to .meta.json)."""
+    """Load agent RBAC metadata from resource_metadata table."""
     from ideer.persistence.engine import get_session_factory
 
     sf = get_session_factory()
@@ -155,55 +148,47 @@ async def _load_agent_meta(agent_name: str, user_id: str) -> dict:
                     }
         except Exception:
             logger.error("Failed to load agent meta from DB for %s", agent_name, exc_info=True)
-    meta_file = _agent_meta_path(agent_name, user_id)
-    if meta_file.exists():
-        try:
-            return json.loads(meta_file.read_text(encoding="utf-8"))
-        except Exception:
-            logger.error("Failed to load agent meta from .meta.json for %s", agent_name, exc_info=True)
     return {}
 
 
 async def _save_agent_meta(agent_name: str, user_id: str, meta: dict) -> None:
-    """Persist agent RBAC metadata to resource_metadata table (fallback to .meta.json)."""
+    """Persist agent RBAC metadata to resource_metadata table."""
     from ideer.persistence.engine import get_session_factory
 
     sf = get_session_factory()
-    if sf is not None:
-        try:
-            async with sf() as session:
-                from sqlalchemy import select
+    if sf is None:
+        return
 
-                from ideer.persistence.models.resource_metadata import ResourceMetadata
+    try:
+        async with sf() as session:
+            from sqlalchemy import select
 
-                stmt = select(ResourceMetadata).where(
-                    ResourceMetadata.resource_type == "agent",
-                    ResourceMetadata.resource_id == agent_name,
-                    ResourceMetadata.deleted_at.is_(None),
+            from ideer.persistence.models.resource_metadata import ResourceMetadata
+
+            stmt = select(ResourceMetadata).where(
+                ResourceMetadata.resource_type == "agent",
+                ResourceMetadata.resource_id == agent_name,
+                ResourceMetadata.deleted_at.is_(None),
+            )
+            result = await session.execute(stmt)
+            resource = result.scalar_one_or_none()
+            if resource:
+                resource.visibility = meta.get("visibility", "private")
+                resource.department_id = meta.get("department_id")
+                resource.version = ResourceMetadata.version + 1
+            else:
+                resource = ResourceMetadata(
+                    id=str(uuid.uuid4()),
+                    resource_type="agent",
+                    resource_id=agent_name,
+                    owner_id=meta.get("owner_id", user_id),
+                    department_id=meta.get("department_id"),
+                    visibility=meta.get("visibility", "private"),
                 )
-                result = await session.execute(stmt)
-                resource = result.scalar_one_or_none()
-                if resource:
-                    resource.visibility = meta.get("visibility", "private")
-                    resource.department_id = meta.get("department_id")
-                    resource.version = ResourceMetadata.version + 1
-                else:
-                    resource = ResourceMetadata(
-                        id=str(uuid.uuid4()),
-                        resource_type="agent",
-                        resource_id=agent_name,
-                        owner_id=meta.get("owner_id", user_id),
-                        department_id=meta.get("department_id"),
-                        visibility=meta.get("visibility", "private"),
-                    )
-                    session.add(resource)
-                await session.commit()
-                return
-        except Exception:
-            logger.error("Failed to save agent meta to DB for %s", agent_name, exc_info=True)
-    meta_file = _agent_meta_path(agent_name, user_id)
-    meta_file.parent.mkdir(parents=True, exist_ok=True)
-    meta_file.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
+                session.add(resource)
+            await session.commit()
+    except Exception:
+        logger.error("Failed to save agent meta to DB for %s", agent_name, exc_info=True)
 
 
 def _agent_config_to_response(
@@ -285,12 +270,13 @@ async def list_agents(
             except Exception:
                 logger.error("Failed to batch-load agent metadata", exc_info=True)
 
-        # Fallback for agents not in DB: load from .meta.json files
+        # Lazy migration: auto-create ResourceMetadata for agents found on disk
+        # but missing from DB. Only for per-user agents (not legacy shared).
         for a in agents:
-            if a.name not in agent_meta_map:
-                file_meta = await _load_agent_meta(a.name, user_id)
-                if file_meta:
-                    agent_meta_map[a.name] = file_meta
+            if a.name not in agent_meta_map and get_paths().user_agent_dir(user_id, a.name).exists():
+                meta = {"visibility": "private", "owner_id": user_id, "department_id": None}
+                await _save_agent_meta(a.name, user_id, meta)
+                agent_meta_map[a.name] = meta
 
         responses: list[AgentResponse] = []
         for a in agents:
@@ -401,6 +387,10 @@ async def get_agent(
             department_id = None
         else:
             meta = await _load_agent_meta(name, user_id)
+            # Lazy migration: auto-create DB record for per-user agents without one
+            if not meta and get_paths().user_agent_dir(user_id, name).exists():
+                meta = {"visibility": "private", "owner_id": user_id, "department_id": None}
+                await _save_agent_meta(name, user_id, meta)
             visibility = meta.get("visibility", "private")
             owner_id = meta.get("owner_id")
             department_id = meta.get("department_id")

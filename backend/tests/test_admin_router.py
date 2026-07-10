@@ -962,3 +962,234 @@ class TestDepartmentAdminPermissions:
 
         assert resp.status_code == 403
         assert "department" in resp.json()["detail"].lower()
+
+
+# ---------------------------------------------------------------------------
+# User deletion endpoint
+# ---------------------------------------------------------------------------
+
+
+class TestDeleteUser:
+    """Tests for DELETE /api/admin/users/{user_id}."""
+
+    # -- Parameter validation (no DB needed) ---------------------------------
+
+    @patch("app.gateway.routers.admin.get_session_factory")
+    def test_delete_user_missing_strategy(self, mock_sf):
+        """Returns 422 when resource_strategy is missing (FastAPI validation)."""
+        app = _make_app()
+        client = TestClient(app)
+        resp = client.delete("/api/admin/users/target-1")
+        assert resp.status_code == 422
+
+    @patch("app.gateway.routers.admin.get_session_factory")
+    def test_delete_user_invalid_strategy(self, mock_sf):
+        """Returns 400 for invalid resource_strategy value."""
+        app = _make_app()
+        client = TestClient(app)
+        resp = client.delete("/api/admin/users/target-1?resource_strategy=invalid")
+        assert resp.status_code == 400
+        assert "Invalid resource_strategy" in resp.json()["detail"]
+
+    @patch("app.gateway.routers.admin.get_session_factory")
+    def test_delete_user_transfer_missing_target(self, mock_sf):
+        """Returns 400 when transfer strategy without target_user_id."""
+        app = _make_app()
+        client = TestClient(app)
+        resp = client.delete("/api/admin/users/target-1?resource_strategy=transfer")
+        assert resp.status_code == 400
+        assert "target_user_id is required" in resp.json()["detail"]
+
+    @patch("app.gateway.routers.admin.get_session_factory")
+    def test_delete_user_no_database(self, mock_sf):
+        """Returns 500 when DB not initialized."""
+        mock_sf.return_value = None
+        app = _make_app()
+        client = TestClient(app)
+        resp = client.delete("/api/admin/users/target-1?resource_strategy=delete")
+        assert resp.status_code == 500
+        assert "Database not initialized" in resp.json()["detail"]
+
+    # -- Permission checks ---------------------------------------------------
+
+    @patch("app.gateway.routers.admin.get_session_factory")
+    def test_delete_user_requires_super_admin(self, mock_sf):
+        """department_admin cannot delete users."""
+        dept_admin = _make_rbac_user(role="department_admin")
+        app = _make_app(current_user=dept_admin)
+        client = TestClient(app)
+        resp = client.delete("/api/admin/users/target-1?resource_strategy=delete")
+        assert resp.status_code == 403
+
+    @patch("app.gateway.routers.admin.get_session_factory")
+    def test_delete_user_require_super_admin_user(self, mock_sf):
+        """Regular user cannot delete users."""
+        regular_user = _make_rbac_user(role="user")
+        app = _make_app(current_user=regular_user)
+        client = TestClient(app)
+        resp = client.delete("/api/admin/users/target-1?resource_strategy=delete")
+        assert resp.status_code == 403
+
+    # -- Service error handling ----------------------------------------------
+
+    @patch("app.gateway.routers.admin.get_session_factory")
+    def test_delete_user_not_found(self, mock_sf):
+        """Nonexistent user returns 400."""
+        session = _mock_session(user_model_results=None, count_results=0)
+        sf_mock = MagicMock()
+        sf_mock.return_value.__aenter__ = AsyncMock(return_value=session)
+        sf_mock.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_sf.return_value = sf_mock
+
+        app = _make_app()
+        client = TestClient(app)
+        resp = client.delete("/api/admin/users/nonexistent?resource_strategy=delete")
+        assert resp.status_code == 400
+
+    # -- Real SQLite integration tests ---------------------------------------
+
+    def _setup_user_db(self, tmp_path):
+        """Initialize a real SQLite engine and insert test user data.
+
+        Returns (user_id, target_user_id) for use in tests.
+        """
+        from ideer.persistence.engine import get_session_factory, init_engine
+        from ideer.persistence.models.user import UserModel, UserRole
+        from ideer.persistence.user.model import UserRow
+
+        db_url = f"sqlite+aiosqlite:///{tmp_path}/test_delete_user.db"
+
+        async def _init():
+            await init_engine("sqlite", url=db_url, sqlite_dir=str(tmp_path))
+
+        asyncio.run(_init())
+
+        user_id = "user-to-delete"
+        target_user_id = "target-user"
+
+        async def _insert():
+            sf = get_session_factory()
+            assert sf is not None
+            async with sf() as session:
+                session.add(UserRow(id=user_id, email="delete@test.com", system_role="user"))
+                session.add(UserModel(id=user_id, username="delete-me", role=UserRole.USER, disabled=True))
+                session.add(UserRow(id=target_user_id, email="target@test.com", system_role="user"))
+                session.add(UserModel(id=target_user_id, username="target", role=UserRole.USER, disabled=False))
+                await session.commit()
+
+        asyncio.run(_insert())
+        return user_id, target_user_id
+
+    def _teardown_db(self):
+        """Close the engine and clean up."""
+        from ideer.persistence.engine import close_engine
+
+        try:
+            asyncio.run(close_engine())
+        except Exception:
+            pass
+
+    def _make_admin_app(self):
+        admin = _make_rbac_user(user_id="admin-1", role="super_admin")
+        return _make_app(current_user=admin)
+
+    def test_delete_user_soft_delete_integration(self, tmp_path, monkeypatch):
+        """soft_delete strategy: metadata soft-deleted, user rows gone."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("IDEER_HOME", str(tmp_path))
+
+        user_id, _ = self._setup_user_db(tmp_path)
+
+        try:
+            client = TestClient(self._make_admin_app())
+            resp = client.delete(f"/api/admin/users/{user_id}?resource_strategy=soft_delete")
+
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["success"] is True
+            assert data["user_id"] == user_id
+
+            async def _verify():
+                from ideer.persistence.engine import get_session_factory
+                from ideer.persistence.models.user import UserModel
+                from ideer.persistence.user.model import UserRow
+
+                sf = get_session_factory()
+                assert sf is not None
+                async with sf() as session:
+                    rbac = await session.get(UserModel, user_id)
+                    auth = await session.get(UserRow, user_id)
+                return rbac, auth
+
+            rbac, auth = asyncio.run(_verify())
+            assert rbac is None, "RBAC user row should be deleted"
+            assert auth is None, "Auth user row should be deleted"
+        finally:
+            self._teardown_db()
+
+    def test_delete_user_delete_integration(self, tmp_path, monkeypatch):
+        """delete strategy: user rows gone, disk cleanup performed."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("IDEER_HOME", str(tmp_path))
+
+        user_id, _ = self._setup_user_db(tmp_path)
+
+        try:
+            client = TestClient(self._make_admin_app())
+            resp = client.delete(f"/api/admin/users/{user_id}?resource_strategy=delete")
+
+            assert resp.status_code == 200
+            assert resp.json()["success"] is True
+
+            async def _verify():
+                from ideer.persistence.engine import get_session_factory
+                from ideer.persistence.models.user import UserModel
+                from ideer.persistence.user.model import UserRow
+
+                sf = get_session_factory()
+                assert sf is not None
+                async with sf() as session:
+                    rbac = await session.get(UserModel, user_id)
+                    auth = await session.get(UserRow, user_id)
+                return rbac, auth
+
+            rbac, auth = asyncio.run(_verify())
+            assert rbac is None
+            assert auth is None
+        finally:
+            self._teardown_db()
+
+    def test_delete_user_transfer_integration(self, tmp_path, monkeypatch):
+        """transfer strategy: resources reassigned, user rows gone."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("IDEER_HOME", str(tmp_path))
+
+        user_id, target_id = self._setup_user_db(tmp_path)
+
+        try:
+            client = TestClient(self._make_admin_app())
+            resp = client.delete(
+                f"/api/admin/users/{user_id}?resource_strategy=transfer&target_user_id={target_id}",
+            )
+
+            assert resp.status_code == 200
+            assert resp.json()["success"] is True
+        finally:
+            self._teardown_db()
+
+    @patch("app.gateway.routers.admin.get_session_factory")
+    def test_delete_user_self_delete_blocked(self, mock_sf):
+        """Cannot delete your own account."""
+        admin = _make_rbac_user(user_id="admin-1", role="super_admin")
+
+        session = _mock_session(user_model_results=admin, count_results=2)
+        sf_mock = MagicMock()
+        sf_mock.return_value.__aenter__ = AsyncMock(return_value=session)
+        sf_mock.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_sf.return_value = sf_mock
+
+        app = _make_app(current_user=admin)
+        client = TestClient(app)
+        resp = client.delete("/api/admin/users/admin-1?resource_strategy=delete")
+        assert resp.status_code == 400
+        assert "Cannot delete your own account" in resp.json()["detail"]

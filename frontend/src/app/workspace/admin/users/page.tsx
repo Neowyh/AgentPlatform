@@ -6,6 +6,7 @@ import {
   PlusIcon,
   ShieldOffIcon,
   ShieldCheckIcon,
+  Trash2Icon,
   UserIcon,
 } from "lucide-react";
 import Link from "next/link";
@@ -41,6 +42,7 @@ import {
 } from "@/components/ui/select";
 import {
   createUser,
+  deleteUser,
   listDepartments,
   listUsers,
   toggleUserStatus,
@@ -86,6 +88,13 @@ export default function UsersPage() {
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [editForm, setEditForm] = useState({ username: "", department_id: "" });
   const [saving, setSaving] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deletingUser, setDeletingUser] = useState<User | null>(null);
+  const [deleteStrategy, setDeleteStrategy] = useState<
+    "transfer" | "delete" | "soft_delete"
+  >("soft_delete");
+  const [deleteTargetUserId, setDeleteTargetUserId] = useState("");
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
 
   const fetchUsers = useCallback(async () => {
     try {
@@ -246,6 +255,35 @@ export default function UsersPage() {
     }
   };
 
+  const handleDeleteClick = (user: User) => {
+    setDeletingUser(user);
+    setDeleteStrategy("soft_delete");
+    setDeleteTargetUserId("");
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deletingUser) return;
+    setDeleteSubmitting(true);
+    try {
+      await deleteUser(
+        deletingUser.id,
+        deleteStrategy,
+        deleteStrategy === "transfer"
+          ? deleteTargetUserId || undefined
+          : undefined,
+      );
+      toast.success("用户已删除");
+      setDeleteDialogOpen(false);
+      setDeletingUser(null);
+      await fetchUsers();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDeleteSubmitting(false);
+    }
+  };
+
   return (
     <div className="flex size-full flex-col">
       {/* Page header */}
@@ -401,6 +439,18 @@ export default function UsersPage() {
                             data-testid="user-edit-button"
                           >
                             <PencilIcon className="h-4 w-4" />
+                          </Button>
+                        )}
+                        {isSuperAdmin && !isSelf && (
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            onClick={() => handleDeleteClick(user)}
+                            disabled={!user.disabled}
+                            title={user.disabled ? "删除用户" : "请先禁用用户"}
+                            data-testid="user-delete-button"
+                          >
+                            <Trash2Icon className="text-destructive h-4 w-4" />
                           </Button>
                         )}
                         <Button
@@ -610,6 +660,104 @@ export default function UsersPage() {
             </Button>
             <Button onClick={handleSaveEdit} disabled={saving}>
               {saving ? "保存中..." : "保存"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete User Dialog */}
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent className="sm:max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle>删除用户</DialogTitle>
+            <DialogDescription>
+              确定要删除用户「{deletingUser?.username}」吗？此操作不可撤销。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-sm font-medium">资源处理方式</p>
+
+            <label className="flex cursor-pointer items-start gap-3 rounded-md border p-3">
+              <input
+                type="radio"
+                name="resource-strategy"
+                checked={deleteStrategy === "soft_delete"}
+                onChange={() => setDeleteStrategy("soft_delete")}
+                className="mt-0.5"
+              />
+              <div className="space-y-0.5">
+                <p className="text-sm font-medium">仅标记删除</p>
+                <p className="text-muted-foreground text-xs">
+                  保留磁盘文件，可恢复
+                </p>
+              </div>
+            </label>
+
+            <label className="flex cursor-pointer items-start gap-3 rounded-md border p-3">
+              <input
+                type="radio"
+                name="resource-strategy"
+                checked={deleteStrategy === "delete"}
+                onChange={() => setDeleteStrategy("delete")}
+                className="mt-0.5"
+              />
+              <div className="space-y-0.5">
+                <p className="text-sm font-medium">彻底删除</p>
+                <p className="text-muted-foreground text-xs">
+                  清除所有磁盘文件，不可恢复
+                </p>
+              </div>
+            </label>
+
+            <label className="flex cursor-pointer items-start gap-3 rounded-md border p-3">
+              <input
+                type="radio"
+                name="resource-strategy"
+                checked={deleteStrategy === "transfer"}
+                onChange={() => {
+                  setDeleteStrategy("transfer");
+                  setDeleteTargetUserId("");
+                }}
+                className="mt-0.5"
+              />
+              <div className="flex-1 space-y-0.5">
+                <p className="text-sm font-medium">转移资源</p>
+                <p className="text-muted-foreground text-xs">
+                  将所有资源转给其他用户
+                </p>
+                {deleteStrategy === "transfer" && (
+                  <select
+                    value={deleteTargetUserId}
+                    onChange={(e) => setDeleteTargetUserId(e.target.value)}
+                    className="mt-2 h-9 w-full max-w-xs rounded-md border bg-transparent px-3 text-sm"
+                  >
+                    <option value="">请选择目标用户</option>
+                    {users
+                      .filter((u) => u.id !== deletingUser?.id)
+                      .map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.username}
+                        </option>
+                      ))}
+                  </select>
+                )}
+              </div>
+            </label>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDeleteDialogOpen(false)}
+              disabled={deleteSubmitting}
+            >
+              取消
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteConfirm}
+              disabled={deleteSubmitting}
+            >
+              {deleteSubmitting ? "删除中..." : "确认删除"}
             </Button>
           </DialogFooter>
         </DialogContent>

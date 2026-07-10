@@ -43,40 +43,18 @@ router = APIRouter(prefix="/api/skills", tags=["skills"])
 
 
 async def _load_skill_meta(skill_name: str, config: AppConfig) -> dict:
-    """Load skill RBAC metadata from resource_metadata table (fallback to .meta.json)."""
+    """Load skill RBAC metadata from resource_metadata table."""
     meta = await _skill_store.load_meta(skill_name)
     if meta:
         return meta
-    # Fallback to .meta.json file
-    try:
-        storage = get_or_new_skill_storage(app_config=config)
-        meta_file = storage.get_custom_skill_dir(skill_name) / ".meta.json" if hasattr(storage, "get_custom_skill_dir") else None
-        if meta_file and meta_file.exists():
-            return json.loads(meta_file.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        pass  # Expected when no metadata file exists
-    except json.JSONDecodeError as e:
-        logger.warning("Corrupted .meta.json for skill '%s': %s", skill_name, e)
-    except Exception as e:
-        logger.warning("Failed to load metadata for skill '%s': %s", skill_name, e)
     return {}
 
 
 async def _save_skill_meta(skill_name: str, config: AppConfig, meta: dict) -> None:
-    """Persist skill RBAC metadata to resource_metadata table (fallback to .meta.json)."""
+    """Persist skill RBAC metadata to resource_metadata table."""
     saved = await _skill_store.save_meta(skill_name, meta)
     if not saved:
         logger.error("Failed to save skill metadata for '%s' to database", skill_name)
-    # If DB is unavailable or save failed, fallback to .meta.json
-    sf = get_session_factory()
-    if sf is None or not saved:
-        try:
-            storage = get_or_new_skill_storage(app_config=config)
-            meta_file = storage.get_custom_skill_dir(skill_name) / ".meta.json"
-            meta_file.parent.mkdir(parents=True, exist_ok=True)
-            meta_file.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
-        except Exception as e:
-            logger.warning("Failed to save metadata for skill '%s': %s", skill_name, e)
 
 
 class SkillResponse(BaseModel):

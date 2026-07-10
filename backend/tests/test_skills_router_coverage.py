@@ -16,7 +16,6 @@ Covers gaps not addressed by existing test files:
 
 from __future__ import annotations
 
-import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -115,31 +114,9 @@ class TestGetSkillMeta:
         result = await _load_skill_meta("my-skill", config)
         assert result == {}
 
-    @patch("app.gateway.routers.skills.get_or_new_skill_storage")
-    async def test_returns_empty_dict_on_json_decode_error(self, mock_storage):
-        """Returns {} when .meta.json is corrupted."""
-        from pathlib import Path
-
-        meta_file = MagicMock(spec=Path)
-        meta_file.exists.return_value = True
-        meta_file.read_text.side_effect = json.JSONDecodeError("err", "", 0)
-
-        storage = MagicMock()
-        storage.get_custom_skill_dir.return_value = MagicMock()
-        storage.get_custom_skill_dir.return_value.__truediv__ = lambda self, x: meta_file
-        mock_storage.return_value = storage
-
-        config = SimpleNamespace()
-        result = await _load_skill_meta("my-skill", config)
-        assert result == {}
-
-    @patch("app.gateway.routers.skills.get_or_new_skill_storage")
-    async def test_returns_empty_dict_on_generic_exception(self, mock_storage):
-        """Returns {} on unexpected exceptions."""
-        storage = MagicMock()
-        storage.get_custom_skill_dir.side_effect = RuntimeError("unexpected")
-        mock_storage.return_value = storage
-
+    @patch("app.gateway.routers.skills._skill_store.load_meta", return_value=None)
+    async def test_returns_empty_dict_when_not_found(self, mock_load):
+        """Returns {} when no metadata exists."""
         config = SimpleNamespace()
         result = await _load_skill_meta("my-skill", config)
         assert result == {}

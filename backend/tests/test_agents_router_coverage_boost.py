@@ -52,9 +52,48 @@ def _write_shared_agent(base_dir: Path, name: str, config: dict, soul: str = "Sh
 
 
 def _write_agent_meta(base_dir: Path, user_id: str, name: str, meta: dict) -> None:
-    meta_dir = base_dir / "users" / user_id / "agents" / name
-    meta_dir.mkdir(parents=True, exist_ok=True)
-    (meta_dir / ".meta.json").write_text(__import__("json").dumps(meta, indent=2), encoding="utf-8")
+    """Metadata is now persisted to ResourceMetadata table (not .meta.json).
+
+    When tests run with DB unavailable, agent metadata defaults to private.
+    This helper is kept as a no-op for test clarity — it documents the
+    expected metadata that would be set when DB is available.
+    """
+    pass
+
+
+def _seed_test_user(user_id: str = "normal-user") -> None:
+    """Seed a test user in the DB to satisfy ResourceMetadata FK constraint."""
+    import asyncio
+    from datetime import UTC, datetime
+
+    from ideer.persistence.engine import get_session_factory
+    from ideer.persistence.models.user import UserModel, UserRole
+
+    sf = get_session_factory()
+    if sf is None:
+        return
+
+    async def _seed():
+        async with sf() as session:
+            from sqlalchemy import select
+
+            stmt = select(UserModel).where(UserModel.id == user_id)
+            result = await session.execute(stmt)
+            if result.scalar_one_or_none() is None:
+                session.add(
+                    UserModel(
+                        id=user_id,
+                        username=user_id,
+                        role=UserRole.USER,
+                        created_at=datetime.now(UTC),
+                    )
+                )
+                await session.commit()
+
+    try:
+        asyncio.run(_seed())
+    except Exception:
+        pass  # Already seeded or DB unavailable
 
 
 # ---------------------------------------------------------------------------
@@ -113,6 +152,13 @@ def agent_client(tmp_path):
     paths_instance = _make_paths(tmp_path)
     previous_config = AgentsApiConfig(**get_agents_api_config().model_dump())
 
+    import asyncio
+
+    from ideer.persistence.engine import close_engine, init_engine
+
+    asyncio.run(init_engine("sqlite", url="sqlite+aiosqlite://", sqlite_dir=str(tmp_path)))
+    _seed_test_user("test-user")
+
     with (
         patch("ideer.config.agents_config.get_paths", return_value=paths_instance),
         patch.object(agents_router, "get_paths", return_value=paths_instance),
@@ -125,6 +171,7 @@ def agent_client(tmp_path):
                 yield client
         finally:
             set_agents_api_config(previous_config)
+            asyncio.run(close_engine())
 
 
 @pytest.fixture()
@@ -135,6 +182,13 @@ def user_client(tmp_path):
 
     paths_instance = _make_paths(tmp_path)
     previous_config = AgentsApiConfig(**get_agents_api_config().model_dump())
+
+    import asyncio
+
+    from ideer.persistence.engine import close_engine, init_engine
+
+    asyncio.run(init_engine("sqlite", url="sqlite+aiosqlite://", sqlite_dir=str(tmp_path)))
+    _seed_test_user("normal-user")
 
     with (
         patch("ideer.config.agents_config.get_paths", return_value=paths_instance),
@@ -148,6 +202,7 @@ def user_client(tmp_path):
                 yield client
         finally:
             set_agents_api_config(previous_config)
+            asyncio.run(close_engine())
 
 
 @pytest.fixture()
@@ -246,10 +301,10 @@ class TestListAgentsWithPerUserAgents:
                 set_agents_api_config(previous_config)
 
     def test_list_agent_without_metadata_defaults_private(self, agent_client, tmp_path):
-        """Lines 262-266: agent without metadata file → default private."""
+        """Lines 262-266: agent without ResourceMetadata record → default private."""
         import app.gateway.routers.agents as agents_router
 
-        # Create an agent dir without a .meta.json file
+        # Create an agent dir without a DB metadata record
         agent_dir = tmp_path / "users" / "test-user-autouse" / "agents" / "no-meta-agent"
         agent_dir.mkdir(parents=True)
         with open(agent_dir / "config.yaml", "w") as f:

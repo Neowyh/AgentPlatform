@@ -301,6 +301,27 @@ def _llm_rate_limit(request):
         yield
 
 
+@pytest.fixture(autouse=True)
+def _close_engine():
+    """Close the global DB engine after each test to prevent state leaking.
+
+    Tests in ``test_agents_router_coverage_boost.py`` (and similar) call
+    ``init_engine()`` which writes to a module-level ``_session_factory``.
+    Without cleanup, later tests see a stale engine with a missing user and
+    get FK constraint errors → 403 because ``_save_agent_meta`` silently
+    drops the write and ``_load_agent_meta`` returns an empty dict.
+
+    ``yield`` runs *before* the test, and cleanup (``close_engine``) runs
+    *after*, so the engine is available during the test for tests that need
+    it.
+    """
+    from ideer.persistence import engine as _pengine
+
+    yield
+    _pengine._engine = None
+    _pengine._session_factory = None
+
+
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
     """Add flaky-rerun markers to ``requires_llm`` tests.
 

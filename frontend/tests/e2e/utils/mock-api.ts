@@ -844,6 +844,17 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
         }),
       });
     }
+    if (method === "DELETE") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          success: true,
+          user_id: "user-1",
+          resource_strategy: "soft_delete",
+        }),
+      });
+    }
     return route.fallback();
   });
 

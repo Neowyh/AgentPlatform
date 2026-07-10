@@ -1,17 +1,58 @@
-import json
+import asyncio
 import logging
+import uuid
 
 import yaml
 from langchain_core.messages import ToolMessage
 from langchain_core.tools import tool
 from langgraph.types import Command
+from sqlalchemy import select
 
 from ideer.config.agents_config import validate_agent_name
 from ideer.config.paths import get_paths
+from ideer.persistence.engine import get_session_factory
+from ideer.persistence.models.resource_metadata import ResourceMetadata
 from ideer.runtime.user_context import resolve_runtime_user_id
 from ideer.tools.types import Runtime
 
 logger = logging.getLogger(__name__)
+
+
+def _upsert_agent_metadata(agent_name: str, user_id: str) -> None:
+    """Persist agent metadata to ResourceMetadata table.
+
+    This is a sync wrapper (for use in @tool) that runs the async DB operation
+    via asyncio.run(). When DB is unavailable (memory mode), silently skips.
+    """
+    sf = get_session_factory()
+    if sf is None:
+        return
+
+    async def _upsert():
+        async with sf() as session:
+            stmt = select(ResourceMetadata).where(
+                ResourceMetadata.resource_type == "agent",
+                ResourceMetadata.resource_id == agent_name,
+                ResourceMetadata.deleted_at.is_(None),
+            )
+            result = await session.execute(stmt)
+            resource = result.scalar_one_or_none()
+            if not resource:
+                resource = ResourceMetadata(
+                    id=str(uuid.uuid4()),
+                    resource_type="agent",
+                    resource_id=agent_name,
+                    owner_id=user_id,
+                    department_id=None,
+                    visibility="private",
+                )
+                session.add(resource)
+                await session.commit()
+
+    try:
+        asyncio.run(_upsert())
+    except Exception:
+        logger.exception("Failed to write agent metadata to ResourceMetadata table")
 
 
 @tool(parse_docstring=True)
@@ -62,20 +103,8 @@ def setup_agent(
         soul_file = agent_dir / "SOUL.md"
         soul_file.write_text(soul, encoding="utf-8")
 
-        meta_file = agent_dir / ".meta.json"
-        if not meta_file.exists():
-            meta_file.write_text(
-                json.dumps(
-                    {
-                        "owner_id": user_id,
-                        "department_id": None,
-                        "visibility": "private",
-                    },
-                    indent=2,
-                    ensure_ascii=False,
-                ),
-                encoding="utf-8",
-            )
+        if agent_name:
+            _upsert_agent_metadata(agent_name, user_id)
 
         logger.info(f"[agent_creator] Created agent '{agent_name}' at {agent_dir}")
         return Command(

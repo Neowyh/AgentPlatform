@@ -100,6 +100,26 @@ export async function updateUser(
   return res.json() as Promise<User>;
 }
 
+export async function deleteUser(
+  userId: string,
+  resourceStrategy: "transfer" | "delete" | "soft_delete",
+  targetUserId?: string,
+): Promise<{ success: boolean; user_id: string; resource_strategy: string }> {
+  const baseURL = getBackendBaseURL();
+  const params = new URLSearchParams({ resource_strategy: resourceStrategy });
+  if (targetUserId) params.set("target_user_id", targetUserId);
+  const res = await fetch(
+    `${baseURL}/api/admin/users/${userId}?${params.toString()}`,
+    { method: "DELETE" },
+  );
+  if (!res.ok) return extractError(res, "Failed to delete user");
+  return res.json() as Promise<{
+    success: boolean;
+    user_id: string;
+    resource_strategy: string;
+  }>;
+}
+
 // ── Department management ────────────────────────────────────────
 
 export async function listDepartments(params?: {

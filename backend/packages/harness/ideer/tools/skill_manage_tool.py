@@ -14,6 +14,7 @@ from sqlalchemy import select
 from ideer.agents.lead_agent.prompt import refresh_skills_system_prompt_cache_async
 from ideer.persistence.engine import get_session_factory
 from ideer.persistence.models.resource_metadata import ResourceMetadata
+from ideer.runtime.user_context import resolve_runtime_user_id
 from ideer.skills.security_scanner import scan_skill_content
 from ideer.skills.storage import get_or_new_skill_storage
 from ideer.skills.storage.skill_storage import SkillStorage
@@ -120,12 +121,13 @@ async def _skill_manage_impl(
                             )
                         )
                         if not existing.scalar_one_or_none():
+                            owner_id = resolve_runtime_user_id(runtime)
                             session.add(
                                 ResourceMetadata(
                                     id=str(uuid.uuid4()),
                                     resource_type="skill",
                                     resource_id=name,
-                                    owner_id="system",
+                                    owner_id=owner_id,
                                     visibility="private",
                                 )
                             )
