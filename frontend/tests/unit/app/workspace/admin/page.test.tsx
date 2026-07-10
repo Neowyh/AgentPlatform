@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 // Mocks -- must be declared before the component import
 // ---------------------------------------------------------------------------
 
-const mockGetAdminStats = vi.fn();
+const mockUseAdminStats = vi.fn();
 
 vi.mock("@/core/auth/AuthProvider", () => ({
   useAuth: vi.fn(),
@@ -16,8 +16,8 @@ vi.mock("next/navigation", () => ({
   usePathname: () => "/workspace/admin",
 }));
 
-vi.mock("@/core/admin/api", () => ({
-  getAdminStats: (...args: unknown[]) => mockGetAdminStats(...args),
+vi.mock("@/core/admin/hooks", () => ({
+  useAdminStats: (...args: unknown[]) => mockUseAdminStats(...args),
 }));
 
 vi.mock("next/link", () => ({
@@ -65,7 +65,12 @@ const mockStats = {
 describe("AdminDashboardPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockGetAdminStats.mockResolvedValue(mockStats);
+    mockUseAdminStats.mockReturnValue({
+      data: mockStats,
+      isLoading: false,
+      error: null,
+      isFetched: true,
+    });
     vi.mocked(useAuth).mockReturnValue({
       user: {
         id: "test-admin-id",
@@ -104,8 +109,11 @@ describe("AdminDashboardPage", () => {
   // ── Loading state ──────────────────────────────────────────────────
 
   test("shows loading indicator while fetching stats", () => {
-    // Make the promise never resolve during this test
-    mockGetAdminStats.mockReturnValue(new Promise(() => {}));
+    mockUseAdminStats.mockReturnValue({
+      data: null,
+      isLoading: true,
+      error: null,
+    });
     render(<AdminDashboardPage />);
     expect(screen.getByText("加载中...")).toBeInTheDocument();
   });
@@ -116,7 +124,7 @@ describe("AdminDashboardPage", () => {
     render(<AdminDashboardPage />);
     await waitFor(() => {
       const cards = screen.getAllByTestId("admin-stat-card");
-      expect(cards).toHaveLength(7);
+      expect(cards).toHaveLength(6);
     });
   });
 
@@ -125,7 +133,6 @@ describe("AdminDashboardPage", () => {
     await waitFor(() => {
       expect(screen.getByText("42")).toBeInTheDocument(); // total_users
       expect(screen.getByText("8")).toBeInTheDocument(); // total_departments
-      expect(screen.getByText("15")).toBeInTheDocument(); // total_agents
       expect(screen.getByText("38")).toBeInTheDocument(); // total_resources
     });
   });
@@ -135,7 +142,6 @@ describe("AdminDashboardPage", () => {
     await waitFor(() => {
       expect(screen.getByText("用户总数")).toBeInTheDocument();
       expect(screen.getByText("部门总数")).toBeInTheDocument();
-      expect(screen.getByText("智能体总数")).toBeInTheDocument();
       expect(screen.getByText("工具总数")).toBeInTheDocument();
     });
   });
@@ -147,7 +153,6 @@ describe("AdminDashboardPage", () => {
       const hrefs = links.map((link) => link.getAttribute("href"));
       expect(hrefs).toContain("/workspace/admin/users");
       expect(hrefs).toContain("/workspace/admin/departments");
-      expect(hrefs).toContain("/workspace/agents");
       expect(hrefs).toContain("/workspace/admin/tools");
       expect(hrefs).toContain("/workspace/admin/resources");
     });
@@ -157,18 +162,22 @@ describe("AdminDashboardPage", () => {
     render(<AdminDashboardPage />);
     await waitFor(() => {
       const details = screen.getAllByText("点击查看详情");
-      expect(details).toHaveLength(7);
+      expect(details).toHaveLength(6);
     });
   });
 
   // ── Default values when stats are null ─────────────────────────────
 
   test("shows 0 for stat values when API returns zero counts", async () => {
-    mockGetAdminStats.mockResolvedValue({
-      total_users: 0,
-      total_departments: 0,
-      total_agents: 0,
-      total_skills: 0,
+    mockUseAdminStats.mockReturnValue({
+      data: {
+        total_users: 0,
+        total_departments: 0,
+        total_agents: 0,
+        total_skills: 0,
+      } as unknown,
+      isLoading: false,
+      error: null,
     });
     render(<AdminDashboardPage />);
     await waitFor(() => {
@@ -180,7 +189,11 @@ describe("AdminDashboardPage", () => {
   // ── Error state ────────────────────────────────────────────────────
 
   test("shows error message when API call fails", async () => {
-    mockGetAdminStats.mockRejectedValue(new Error("Network failure"));
+    mockUseAdminStats.mockReturnValue({
+      data: null,
+      isLoading: false,
+      error: new Error("Network failure"),
+    });
     render(<AdminDashboardPage />);
     await waitFor(() => {
       expect(screen.getByText("Network failure")).toBeInTheDocument();
@@ -188,7 +201,11 @@ describe("AdminDashboardPage", () => {
   });
 
   test("shows stringified error when non-Error is thrown", async () => {
-    mockGetAdminStats.mockRejectedValue("raw string error");
+    mockUseAdminStats.mockReturnValue({
+      data: null,
+      isLoading: false,
+      error: "raw string error",
+    });
     render(<AdminDashboardPage />);
     await waitFor(() => {
       expect(screen.getByText("raw string error")).toBeInTheDocument();
@@ -196,7 +213,11 @@ describe("AdminDashboardPage", () => {
   });
 
   test("does not render stat cards in error state", async () => {
-    mockGetAdminStats.mockRejectedValue(new Error("fail"));
+    mockUseAdminStats.mockReturnValue({
+      data: null,
+      isLoading: false,
+      error: new Error("fail"),
+    });
     render(<AdminDashboardPage />);
     await waitFor(() => {
       expect(screen.queryAllByTestId("admin-stat-card")).toHaveLength(0);
@@ -205,16 +226,20 @@ describe("AdminDashboardPage", () => {
 
   // ── API call ───────────────────────────────────────────────────────
 
-  test("calls getAdminStats once on mount", () => {
+  test("calls useAdminStats with enabled=true for super_admin", () => {
     render(<AdminDashboardPage />);
-    expect(mockGetAdminStats).toHaveBeenCalledTimes(1);
-    expect(mockGetAdminStats).toHaveBeenCalledWith();
+    expect(mockUseAdminStats).toHaveBeenCalledTimes(1);
+    expect(mockUseAdminStats).toHaveBeenCalledWith(true);
   });
 
   // ── Transition from loading to error ───────────────────────────────
 
   test("hides loading indicator after error", async () => {
-    mockGetAdminStats.mockRejectedValue(new Error("timeout"));
+    mockUseAdminStats.mockReturnValue({
+      data: null,
+      isLoading: false,
+      error: new Error("timeout"),
+    });
     render(<AdminDashboardPage />);
     await waitFor(() => {
       expect(screen.queryByText("加载中...")).not.toBeInTheDocument();

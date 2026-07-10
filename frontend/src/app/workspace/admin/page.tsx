@@ -4,13 +4,11 @@ import {
   Building2Icon,
   ClipboardCheckIcon,
   ScrollTextIcon,
-  ShieldIcon,
   UsersIcon,
   WrenchIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
 
 import {
   Card,
@@ -19,7 +17,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { getAdminStats, type AdminStats } from "@/core/admin/api";
+import { useAdminStats } from "@/core/admin/hooks";
 import { useAuth } from "@/core/auth/AuthProvider";
 
 const statCards = [
@@ -36,13 +34,6 @@ const statCards = [
     icon: Building2Icon,
     href: "/workspace/admin/departments",
     color: "text-green-500",
-  },
-  {
-    key: "total_agents" as const,
-    label: "智能体总数",
-    icon: ShieldIcon,
-    href: "/workspace/agents",
-    color: "text-purple-500",
   },
   {
     key: "total_tools" as const,
@@ -77,25 +68,10 @@ const statCards = [
 export default function AdminDashboardPage() {
   const { user } = useAuth();
   const router = useRouter();
-  const [stats, setStats] = useState<AdminStats | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    // Only fetch stats for authorized users
-    if (
-      user?.system_role !== "super_admin" &&
-      user?.system_role !== "department_admin"
-    )
-      return;
-
-    getAdminStats()
-      .then(setStats)
-      .catch((err) =>
-        setError(err instanceof Error ? err.message : String(err)),
-      )
-      .finally(() => setLoading(false));
-  }, [user]);
+  const isAdmin =
+    user?.system_role === "super_admin" ||
+    user?.system_role === "department_admin";
+  const { data: stats, isLoading, error } = useAdminStats(isAdmin);
 
   // Role check: only super_admin and department_admin can access admin pages
   if (
@@ -120,13 +96,13 @@ export default function AdminDashboardPage() {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-6">
-        {loading ? (
+        {isLoading ? (
           <div className="text-muted-foreground flex h-40 items-center justify-center text-sm">
             加载中...
           </div>
         ) : error ? (
           <div className="text-destructive flex h-40 items-center justify-center text-sm">
-            {error}
+            {error instanceof Error ? error.message : String(error)}
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
