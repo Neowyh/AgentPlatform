@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime
 
 from sqlalchemy import select
 
@@ -34,7 +33,6 @@ class ResourceMetadataStore:
                     stmt = select(ResourceMetadata).where(
                         ResourceMetadata.resource_type == self.resource_type,
                         ResourceMetadata.resource_id == resource_id,
-                        ResourceMetadata.deleted_at.is_(None),
                     )
                     result = await session.execute(stmt)
                     resource = result.scalar_one_or_none()
@@ -67,7 +65,6 @@ class ResourceMetadataStore:
                 stmt = select(ResourceMetadata).where(
                     ResourceMetadata.resource_type == self.resource_type,
                     ResourceMetadata.resource_id == resource_id,
-                    ResourceMetadata.deleted_at.is_(None),
                 )
                 result = await session.execute(stmt)
                 resource = result.scalar_one_or_none()
@@ -91,27 +88,26 @@ class ResourceMetadataStore:
             logger.warning("Failed to save meta: %s", e)
             return False
 
-    async def soft_delete(self, resource_id: str) -> bool:
-        """Set deleted_at on a resource's metadata record (soft delete).
+    async def delete(self, resource_id: str) -> bool:
+        """Hard-delete a resource's metadata record.
 
         Returns True on success, False on failure.
         """
+        from sqlalchemy import delete as sql_delete
+
         sf = get_session_factory()
         if sf is None:
             return False
         try:
             async with sf() as session:
-                stmt = select(ResourceMetadata).where(
-                    ResourceMetadata.resource_type == self.resource_type,
-                    ResourceMetadata.resource_id == resource_id,
-                    ResourceMetadata.deleted_at.is_(None),
+                await session.execute(
+                    sql_delete(ResourceMetadata).where(
+                        ResourceMetadata.resource_type == self.resource_type,
+                        ResourceMetadata.resource_id == resource_id,
+                    )
                 )
-                result = await session.execute(stmt)
-                resource = result.scalar_one_or_none()
-                if resource:
-                    resource.deleted_at = datetime.utcnow()
-                    await session.commit()
+                await session.commit()
                 return True
         except Exception as e:
-            logger.warning("Failed to soft delete meta: %s", e)
+            logger.warning("Failed to hard-delete meta: %s", e)
             return False

@@ -399,9 +399,9 @@ async def delete_custom_skill(
                         )
                         .values(status="rejected", review_comment="资源已删除，申请自动关闭")
                     )
-                    # Soft delete resource_metadata via store
-                    if not await _skill_store.soft_delete(skill_name):
-                        logger.warning("Failed to soft delete metadata for skill '%s'", skill_name)
+                    # Hard-delete resource_metadata via store
+                    if not await _skill_store.delete(skill_name):
+                        logger.warning("Failed to delete metadata for skill '%s'", skill_name)
                     await session.commit()
             except Exception:
                 logger.warning("Failed to auto-reject pending applications for deleted skill %s", skill_name)
@@ -411,6 +411,7 @@ async def delete_custom_skill(
             action="delete",
             resource_type="skill",
             resource_id=skill_name,
+            detail=meta if meta else None,
             ip_address=http_request.client.host if http_request.client else None,
         )
         return {"success": True}

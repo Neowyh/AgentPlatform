@@ -131,7 +131,6 @@ async def create_application(
             resource_stmt = select(ResourceMetadata).where(
                 ResourceMetadata.resource_type == request.resource_type,
                 ResourceMetadata.resource_id == request.resource_id,
-                ResourceMetadata.deleted_at.is_(None),
             )
             resource = (await session.execute(resource_stmt)).scalar_one_or_none()
             if not resource:
@@ -301,7 +300,6 @@ async def review_application(
                     .where(
                         ResourceMetadata.resource_type == application.resource_type,
                         ResourceMetadata.resource_id == application.resource_id,
-                        ResourceMetadata.deleted_at.is_(None),
                     )
                     .values(
                         visibility=application.target_visibility,

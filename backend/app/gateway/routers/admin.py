@@ -87,7 +87,7 @@ async def _collect_admin_resource_inventory(
     session,
 ) -> list[dict[str, str | None]]:
     config = get_app_config()
-    metadata_rows = (await session.execute(select(ResourceMetadata).where(ResourceMetadata.deleted_at.is_(None)))).scalars().all()
+    metadata_rows = (await session.execute(select(ResourceMetadata))).scalars().all()
     metadata = {(row.resource_type, row.resource_id): row for row in metadata_rows}
 
     inventory: list[AdminResourceInventoryItem] = _collect_agent_inventory()
@@ -779,7 +779,6 @@ async def get_department_resources(
         # Get all active resources in this department
         resources_stmt = select(ResourceMetadata).where(
             ResourceMetadata.department_id == dept_id,
-            ResourceMetadata.deleted_at.is_(None),
         )
         resources_result = await session.execute(resources_stmt)
         resources = resources_result.scalars().all()
@@ -863,12 +862,11 @@ async def delete_department(
                 .where(
                     ResourceMetadata.department_id == dept_id,
                     ResourceMetadata.visibility == "department",
-                    ResourceMetadata.deleted_at.is_(None),
                 )
                 .values(department_id=target_dept_id)
             )
             # Also reassign private resources to target department
-            await session.execute(sql_update(ResourceMetadata).where(ResourceMetadata.department_id == dept_id, ResourceMetadata.deleted_at.is_(None)).values(department_id=target_dept_id))
+            await session.execute(sql_update(ResourceMetadata).where(ResourceMetadata.department_id == dept_id).values(department_id=target_dept_id))
         else:
             # Lifecycle: downgrade department-level resources to private before deleting department
             await session.execute(
@@ -876,12 +874,11 @@ async def delete_department(
                 .where(
                     ResourceMetadata.department_id == dept_id,
                     ResourceMetadata.visibility == "department",
-                    ResourceMetadata.deleted_at.is_(None),
                 )
                 .values(visibility="private", department_id=None)
             )
             # Also clear department_id on all resources in this department
-            await session.execute(sql_update(ResourceMetadata).where(ResourceMetadata.department_id == dept_id, ResourceMetadata.deleted_at.is_(None)).values(department_id=None))
+            await session.execute(sql_update(ResourceMetadata).where(ResourceMetadata.department_id == dept_id).values(department_id=None))
 
         try:
             await session.delete(dept)

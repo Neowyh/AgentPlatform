@@ -35,7 +35,6 @@ async def _load_tool_meta(tool_name: str) -> dict:
                 stmt = select(ResourceMetadata).where(
                     ResourceMetadata.resource_type == "tool",
                     ResourceMetadata.resource_id == tool_name,
-                    ResourceMetadata.deleted_at.is_(None),
                 )
                 result = await session.execute(stmt)
                 resource = result.scalar_one_or_none()
@@ -75,7 +74,6 @@ async def list_tools(
                 stmt = select(ResourceMetadata).where(
                     ResourceMetadata.resource_type == "tool",
                     ResourceMetadata.resource_id.in_(tool_names),
-                    ResourceMetadata.deleted_at.is_(None),
                 )
                 result = await session.execute(stmt)
                 for r in result.scalars().all():

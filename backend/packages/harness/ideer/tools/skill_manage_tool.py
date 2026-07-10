@@ -117,7 +117,6 @@ async def _skill_manage_impl(
                             select(ResourceMetadata).where(
                                 ResourceMetadata.resource_type == "skill",
                                 ResourceMetadata.resource_id == name,
-                                ResourceMetadata.deleted_at.is_(None),
                             )
                         )
                         if not existing.scalar_one_or_none():

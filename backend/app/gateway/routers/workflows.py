@@ -396,15 +396,16 @@ async def delete_workflow(
         except Exception:
             logger.warning("Failed to auto-reject pending applications for deleted workflow %s", workflow_name)
 
-    # Soft delete resource_metadata
-    if not await _workflow_store.soft_delete(workflow_name):
-        logger.warning("Failed to soft delete metadata for workflow '%s'", workflow_name)
+    # Hard-delete resource_metadata
+    if not await _workflow_store.delete(workflow_name):
+        logger.warning("Failed to delete metadata for workflow '%s'", workflow_name)
 
     await record_audit(
         actor_id=current_user.id,
         action="delete",
         resource_type="workflow",
         resource_id=workflow_name,
+        detail=meta if meta else None,
         ip_address=http_request.client.host if http_request.client else None,
     )
 
@@ -427,12 +428,13 @@ async def toggle_workflow_favorite(
 
     try:
         async with sf() as session:
+            from sqlalchemy import select
+
             from ideer.persistence.models.resource_metadata import ResourceMetadata
 
             stmt = select(ResourceMetadata).where(
                 ResourceMetadata.resource_type == "workflow",
                 ResourceMetadata.resource_id == workflow_name,
-                ResourceMetadata.deleted_at.is_(None),
             )
             result = await session.execute(stmt)
             resource = result.scalar_one_or_none()

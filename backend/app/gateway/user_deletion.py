@@ -4,8 +4,8 @@ Coordinates the multi-step process of permanently removing a user and all
 associated data from the system.  Supports three resource-handling strategies:
 
 * **transfer** — reassign agents/skills/workflows/tools to another user
-* **delete** — soft-delete metadata + remove disk files
-* **soft_delete** — soft-delete metadata only, keep disk files
+* **delete** — hard-delete metadata + remove disk files
+* **soft_delete** — hard-delete metadata only, keep disk files
 
 Usage::
 
@@ -82,6 +82,7 @@ async def delete_user(
     await _handle_historical_data(session=session, paths=paths, user_id=user_id)
     _handle_disk_cleanup(paths=paths, user_id=user_id)
     await _handle_audit_logs(session=session, user_id=user_id)
+    await _record_user_deletion_audit(session=session, user_id=user_id, current_user_id=current_user_id, strategy=resource_strategy)
     await _delete_user_rows(session=session, user_id=user_id)
 
     logger.info(
@@ -189,35 +190,21 @@ async def _handle_resource_metadata(
         _move_agent_directories(paths, user_id, target_user_id)
 
     elif strategy == "delete":
-        await _bulk_soft_delete_resources(session, user_id, now)
+        await _bulk_hard_delete_resources(session, user_id)
         _remove_user_agents_dir(paths, user_id)
 
     else:
-        await _bulk_soft_delete_resources(session, user_id, now)
+        await _bulk_hard_delete_resources(session, user_id)
 
 
 async def _bulk_transfer_resources(session: AsyncSession, user_id: str, target_user_id: str, now: datetime) -> None:
     """Reassign all non-deleted resources to *target_user_id*."""
-    await session.execute(
-        sql_update(ResourceMetadata)
-        .where(
-            ResourceMetadata.owner_id == user_id,
-            ResourceMetadata.deleted_at.is_(None),
-        )
-        .values(owner_id=target_user_id, updated_at=now)
-    )
+    await session.execute(sql_update(ResourceMetadata).where(ResourceMetadata.owner_id == user_id).values(owner_id=target_user_id, updated_at=now))
 
 
-async def _bulk_soft_delete_resources(session: AsyncSession, user_id: str, now: datetime) -> None:
-    """Soft-delete all non-deleted resources owned by *user_id*."""
-    await session.execute(
-        sql_update(ResourceMetadata)
-        .where(
-            ResourceMetadata.owner_id == user_id,
-            ResourceMetadata.deleted_at.is_(None),
-        )
-        .values(deleted_at=now, updated_at=now)
-    )
+async def _bulk_hard_delete_resources(session: AsyncSession, user_id: str) -> None:
+    """Hard-delete all resource metadata owned by *user_id*."""
+    await session.execute(sql_delete(ResourceMetadata).where(ResourceMetadata.owner_id == user_id))
 
 
 def _move_agent_directories(paths: Paths, user_id: str, target_user_id: str) -> None:
@@ -311,6 +298,19 @@ def _handle_disk_cleanup(paths: Paths, user_id: str) -> None:
 # ---------------------------------------------------------------------------
 # Audit logs
 # ---------------------------------------------------------------------------
+
+
+async def _record_user_deletion_audit(session: AsyncSession, user_id: str, current_user_id: str, strategy: str) -> None:
+    """Record an audit event for user deletion."""
+    from app.gateway.audit import record_audit
+
+    await record_audit(
+        actor_id=current_user_id,
+        action="delete",
+        resource_type="user",
+        resource_id=user_id,
+        detail={"strategy": strategy},
+    )
 
 
 async def _handle_audit_logs(session: AsyncSession, user_id: str) -> None:

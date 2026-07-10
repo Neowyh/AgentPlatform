@@ -33,7 +33,6 @@ def _upsert_agent_metadata(agent_name: str, user_id: str) -> None:
             stmt = select(ResourceMetadata).where(
                 ResourceMetadata.resource_type == "agent",
                 ResourceMetadata.resource_id == agent_name,
-                ResourceMetadata.deleted_at.is_(None),
             )
             result = await session.execute(stmt)
             resource = result.scalar_one_or_none()
