@@ -1068,7 +1068,7 @@ class TestGetCurrentRbacUser:
         assert "disabled" in exc_info.value.detail.lower()
 
     @pytest.mark.asyncio
-    async def test_auto_create_missing_user_as_user(self):
+    async def test_missing_rbac_user_is_rejected_without_database_write(self):
         user = _make_user()
         req = MagicMock(spec=Request)
         req.state = SimpleNamespace(user=user)
@@ -1085,18 +1085,17 @@ class TestGetCurrentRbacUser:
         mock_session.__aexit__ = AsyncMock(return_value=False)
         mock_sf = MagicMock(return_value=mock_session)
 
-        def set_role_on_refresh(user_obj):
-            user_obj.role = "user"
-
-        mock_session.refresh = AsyncMock(side_effect=lambda u: set_role_on_refresh(u))
-
         with patch("ideer.persistence.engine.get_session_factory", return_value=mock_sf):
-            result = await get_current_rbac_user(req)
+            with pytest.raises(HTTPException) as exc_info:
+                await get_current_rbac_user(req)
 
-        assert result.role == "user"
-        mock_session.add.assert_called_once()
+        assert exc_info.value.status_code == 403
+        assert "RBAC" in exc_info.value.detail
+        mock_session.add.assert_not_called()
+        mock_session.commit.assert_not_awaited()
 
     @pytest.mark.asyncio
+    @pytest.mark.skip(reason="RBAC profiles are no longer auto-created during requests")
     async def test_auto_create_non_first_user_as_user(self):
         user = _make_user()
         req = MagicMock(spec=Request)
@@ -1125,6 +1124,7 @@ class TestGetCurrentRbacUser:
         assert result.role == "user"
 
     @pytest.mark.asyncio
+    @pytest.mark.skip(reason="RBAC profiles are no longer auto-created during requests")
     async def test_integrity_error_race_condition_re_query(self):
         """When IntegrityError on insert, re-query and return existing user."""
         from sqlalchemy.exc import IntegrityError
@@ -1169,6 +1169,7 @@ class TestGetCurrentRbacUser:
         mock_session.rollback.assert_awaited()
 
     @pytest.mark.asyncio
+    @pytest.mark.skip(reason="RBAC profiles are no longer auto-created during requests")
     async def test_integrity_error_user_not_found_raises_500(self):
         """When IntegrityError and re-query still returns None, raise 500."""
         from sqlalchemy.exc import IntegrityError
@@ -1209,6 +1210,7 @@ class TestGetCurrentRbacUser:
         assert exc_info.value.status_code == 500
 
     @pytest.mark.asyncio
+    @pytest.mark.skip(reason="RBAC profiles are no longer auto-created during requests")
     async def test_integrity_error_disabled_user_raises_403(self):
         """When IntegrityError and re-query returns a disabled user, raise 403."""
         from sqlalchemy.exc import IntegrityError
@@ -1250,6 +1252,7 @@ class TestGetCurrentRbacUser:
         assert exc_info.value.status_code == 403
 
     @pytest.mark.asyncio
+    @pytest.mark.skip(reason="RBAC profiles are no longer auto-created during requests")
     async def test_integrity_error_concurrent_create_re_query(self):
         """When IntegrityError on insert, re-query and return the concurrent user."""
         from sqlalchemy.exc import IntegrityError
@@ -1292,6 +1295,7 @@ class TestGetCurrentRbacUser:
         assert result is concurrent_user
 
     @pytest.mark.asyncio
+    @pytest.mark.skip(reason="RBAC profiles are no longer auto-created during requests")
     async def test_auto_create_does_not_query_super_admin_count(self):
         """Missing RBAC profiles are created as regular users without first-user promotion."""
         user = _make_user()
@@ -1347,6 +1351,7 @@ class TestGetCurrentRbacUser:
         assert "Invalid role" in caplog.text
 
     @pytest.mark.asyncio
+    @pytest.mark.skip(reason="RBAC profiles are no longer auto-created during requests")
     async def test_user_email_fallback_to_id(self):
         """When auth_user has no email attribute, use user_id as username."""
         user = _make_user()
@@ -1383,6 +1388,7 @@ class TestGetCurrentRbacUser:
         assert added_user.username == str(user.id)
 
     @pytest.mark.asyncio
+    @pytest.mark.skip(reason="RBAC profiles are no longer auto-created during requests")
     async def test_concurrent_create_can_return_existing_super_admin(self):
         """IntegrityError recovery returns the concurrently created RBAC row as-is."""
         from sqlalchemy.exc import IntegrityError

@@ -44,7 +44,6 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar
 
 from fastapi import HTTPException, Request, status
-from sqlalchemy.exc import IntegrityError
 
 if TYPE_CHECKING:
     from app.gateway.auth.models import User
@@ -554,9 +553,8 @@ async def get_current_rbac_user(request: Request) -> UserModel:
 
     Reads the ``User`` object already stamped on ``request.state.user`` by
     AuthMiddleware (JWT decoded once, no redundant work) and looks up the
-    corresponding RBAC ``UserModel``. Missing RBAC profiles are created as
-    regular ``user`` records; first super_admin creation is only done by
-    the explicit ``/initialize`` flow.
+    corresponding RBAC ``UserModel``. A valid request subject must already
+    exist in both the authentication and RBAC user tables.
 
     Raises:
         HTTPException 401 if the request is not authenticated.
@@ -585,29 +583,8 @@ async def get_current_rbac_user(request: Request) -> UserModel:
             raise HTTPException(status_code=403, detail="User account is disabled")
 
         if rbac_user is None:
-            rbac_user = UserModel(
-                id=user_id,
-                username=getattr(user, "email", user_id),
-                role=UserRole.USER.value,
-                department_id=None,
-            )
-            try:
-                session.add(rbac_user)
-                await session.commit()
-                await session.refresh(rbac_user)
-                logger.info("Auto-created RBAC user %s with role %s", user_id, rbac_user.role)
-            except IntegrityError:
-                # Concurrent request created the user first — re-query
-                await session.rollback()
-                stmt = select(UserModel).where(UserModel.id == user_id)
-                result = await session.execute(stmt)
-                rbac_user = result.scalar_one_or_none()
-                if rbac_user is None:
-                    # IntegrityError was not from a race condition (e.g., FK violation)
-                    logger.error("Failed to create RBAC user %s: IntegrityError but user not found after rollback", user_id)
-                    raise HTTPException(status_code=500, detail="Failed to create user profile")
-                if rbac_user.disabled:
-                    raise HTTPException(status_code=403, detail="User account is disabled")
+            logger.error("Authenticated user %s has no RBAC profile", user_id)
+            raise HTTPException(status_code=403, detail="Authenticated user has no RBAC profile")
 
     # P2-AUTH-05: Validate role is a valid enum value
     try:

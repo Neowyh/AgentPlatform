@@ -584,7 +584,7 @@ async def delete_user(
 
     try:
         async with sf() as session:
-            await service_delete_user(
+            deletion_result = await service_delete_user(
                 session=session,
                 paths=get_paths(),
                 user_id=user_id,
@@ -592,7 +592,6 @@ async def delete_user(
                 resource_strategy=resource_strategy,
                 target_user_id=target_user_id,
             )
-            await session.commit()
 
         from app.gateway.audit import record_audit
 
@@ -615,7 +614,12 @@ async def delete_user(
             target_user_id,
             current_user.id,
         )
-        return {"success": True, "user_id": user_id, "resource_strategy": resource_strategy}
+        return {
+            "success": True,
+            "user_id": user_id,
+            "resource_strategy": resource_strategy,
+            "filesystem_cleanup": deletion_result["filesystem_cleanup"],
+        }
 
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e

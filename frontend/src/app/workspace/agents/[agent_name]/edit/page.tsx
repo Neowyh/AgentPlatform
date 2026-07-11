@@ -333,9 +333,7 @@ export default function AgentEditPage() {
             >
               Stay on Edit Page
             </Button>
-            <Button onClick={handleNavigateToDetail}>
-              Go to Detail Page
-            </Button>
+            <Button onClick={handleNavigateToDetail}>Go to Detail Page</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

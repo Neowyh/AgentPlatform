@@ -325,7 +325,7 @@ export default function NewAgentPage() {
               ) : null}
 
               <div className="space-y-2">
-                <Label htmlFor="visibility">可见性</Label>
+                <Label htmlFor="visibility">{t.agents.visibility}</Label>
                 <Select
                   value={visibility}
                   onValueChange={(v) => setVisibility(v as Visibility)}
@@ -334,18 +334,20 @@ export default function NewAgentPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="private">私有</SelectItem>
+                    <SelectItem value="private">
+                      {t.agents.visibilityPrivate}
+                    </SelectItem>
                     <SelectItem value="department" disabled={!isAdmin}>
-                      部门共享
+                      {t.agents.visibilityDepartment}
                     </SelectItem>
                     <SelectItem value="public" disabled={!isAdmin}>
-                      公开
+                      {t.agents.visibilityPublic}
                     </SelectItem>
                   </SelectContent>
                 </Select>
                 {!isAdmin && (
                   <p className="text-muted-foreground text-xs">
-                    部门共享和公开选项仅管理员可用
+                    {t.agents.visibilityAdminOnly}
                   </p>
                 )}
               </div>

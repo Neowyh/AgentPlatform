@@ -6,15 +6,40 @@ issues when unit-testing lightweight config/registry code in isolation.
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import os
+import shutil
 import sys
+import tempfile
 import time
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+
+
+def _state_snapshot(root: Path) -> str:
+    digest = hashlib.sha256()
+    if not root.exists():
+        return digest.hexdigest()
+    for path in sorted(root.rglob("*"), key=lambda item: item.relative_to(root).as_posix()):
+        relative = path.relative_to(root).as_posix()
+        if path.is_symlink():
+            digest.update(f"symlink\0{relative}\0{os.readlink(path)}".encode())
+        elif path.is_file():
+            digest.update(f"file\0{relative}\0".encode())
+            digest.update(path.read_bytes())
+        elif path.is_dir():
+            digest.update(f"directory\0{relative}".encode())
+    return digest.hexdigest()
+
+
+_PRODUCTION_USERS_ROOT = Path(__file__).resolve().parents[1] / ".ideer" / "users"
+_PRODUCTION_USERS_BEFORE = _state_snapshot(_PRODUCTION_USERS_ROOT)
+_TEST_IDEER_HOME = Path(tempfile.mkdtemp(prefix=f"ideer-pytest-{os.getenv('PYTEST_XDIST_WORKER', 'main')}-"))
+os.environ["IDEER_HOME"] = str(_TEST_IDEER_HOME)
 
 # Make 'app' and 'ideer' importable from any working directory
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -331,3 +356,16 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
     for item in items:
         if item.get_closest_marker("requires_llm"):
             item.add_marker(pytest.mark.flaky(reruns=2, reruns_delay=5))
+
+
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    """Remove test state and fail if the production user tree changed."""
+    try:
+        if _state_snapshot(_PRODUCTION_USERS_ROOT) != _PRODUCTION_USERS_BEFORE:
+            session.exitstatus = pytest.ExitCode.TESTS_FAILED
+            session.config.issue_config_time_warning(
+                pytest.PytestWarning("backend/.ideer/users changed during the test session"),
+                stacklevel=2,
+            )
+    finally:
+        shutil.rmtree(_TEST_IDEER_HOME, ignore_errors=True)

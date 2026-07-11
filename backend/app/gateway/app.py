@@ -251,6 +251,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         # Must run AFTER langgraph_runtime so app.state.store is available for thread migration
         await _ensure_admin_user(app)
 
+        # Detection only: startup must never remove user state automatically.
+        try:
+            from app.gateway.user_deletion import report_user_state_anomalies
+            from ideer.config.paths import get_paths
+
+            await report_user_state_anomalies(get_paths())
+        except Exception:
+            logger.exception("User-state anomaly audit failed (non-fatal)")
+
         # Reconcile skill resource_metadata for any custom skills on disk
         # that lack a DB record. Must run AFTER _ensure_admin_user so
         # the super_admin ID is available as the fallback owner.

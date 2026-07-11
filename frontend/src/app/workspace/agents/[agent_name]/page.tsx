@@ -135,7 +135,10 @@ export default function AgentDetailPage() {
         <div className="flex items-center gap-2">
           {agent.model && <Badge variant="secondary">{agent.model}</Badge>}
           {agent.read_only && <Badge variant="outline">Template</Badge>}
-          <Button variant="outline" onClick={() => setVisibilityDialogOpen(true)}>
+          <Button
+            variant="outline"
+            onClick={() => setVisibilityDialogOpen(true)}
+          >
             {t.agents.applyVisibility}
           </Button>
           <Button asChild>
@@ -279,7 +282,10 @@ export default function AgentDetailPage() {
       </div>
 
       {/* Visibility Application Dialog */}
-      <Dialog open={visibilityDialogOpen} onOpenChange={setVisibilityDialogOpen}>
+      <Dialog
+        open={visibilityDialogOpen}
+        onOpenChange={setVisibilityDialogOpen}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{t.agents.applyVisibility}</DialogTitle>
@@ -338,13 +344,9 @@ export default function AgentDetailPage() {
             </Button>
             <Button
               onClick={handleSubmitVisibility}
-              disabled={
-                submittingApplication || !visibilityReason.trim()
-              }
+              disabled={submittingApplication || !visibilityReason.trim()}
             >
-              {submittingApplication
-                ? t.agents.submitting
-                : t.agents.submit}
+              {submittingApplication ? t.agents.submitting : t.agents.submit}
             </Button>
           </DialogFooter>
         </DialogContent>

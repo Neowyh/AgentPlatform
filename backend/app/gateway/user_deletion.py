@@ -49,6 +49,32 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
+async def report_user_state_anomalies(paths: Paths) -> dict[str, list[str]]:
+    """Report inconsistent user directories at startup without modifying them."""
+    from ideer.persistence.engine import get_session_factory
+
+    sf = get_session_factory()
+    if sf is None:
+        return {"unexpected_directories": [], "auth_only_users": [], "rbac_only_users": []}
+
+    async with sf() as session:
+        auth_ids = {str(value) for value in (await session.execute(select(UserRow.id))).scalars()}
+        rbac_ids = {str(value) for value in (await session.execute(select(UserModel.id))).scalars()}
+
+    users_root = paths.base_dir / "users"
+    disk_ids = {path.name for path in users_root.iterdir() if path.is_dir()} if users_root.exists() else set()
+    report = {
+        "unexpected_directories": sorted(disk_ids - (auth_ids & rbac_ids) - {"default"}),
+        "auth_only_users": sorted(auth_ids - rbac_ids),
+        "rbac_only_users": sorted(rbac_ids - auth_ids),
+    }
+    if "default" in disk_ids:
+        logger.info("Reserved system user-state directory present: default")
+    if any(report.values()):
+        logger.warning("User-state anomalies detected; run reconcile_user_state.py audit: %s", report)
+    return report
+
+
 async def delete_user(
     session: AsyncSession,
     paths: Paths,
@@ -57,7 +83,7 @@ async def delete_user(
     current_user_id: str,
     resource_strategy: str,
     target_user_id: str | None = None,
-) -> None:
+) -> dict[str, str]:
     """Permanently delete *user_id* and handle all owned resources.
 
     Raises:
@@ -80,10 +106,20 @@ async def delete_user(
     )
     await _handle_visibility_applications(session=session, user_id=user_id)
     await _handle_historical_data(session=session, paths=paths, user_id=user_id)
-    _handle_disk_cleanup(paths=paths, user_id=user_id)
     await _handle_audit_logs(session=session, user_id=user_id)
     await _record_user_deletion_audit(session=session, user_id=user_id, current_user_id=current_user_id, strategy=resource_strategy)
     await _delete_user_rows(session=session, user_id=user_id)
+    await session.commit()
+
+    try:
+        filesystem_cleanup = cleanup_user_state(paths, user_id)
+    except OSError as exc:
+        filesystem_cleanup = "failed"
+        await _record_cleanup_failure_audit(
+            user_id=user_id,
+            current_user_id=current_user_id,
+            error=str(exc),
+        )
 
     logger.info(
         "User deleted: user_id=%s, strategy=%s, target=%s, by=%s",
@@ -92,6 +128,7 @@ async def delete_user(
         target_user_id,
         current_user_id,
     )
+    return {"filesystem_cleanup": filesystem_cleanup}
 
 
 # ---------------------------------------------------------------------------
@@ -187,11 +224,10 @@ async def _handle_resource_metadata(
         if not target_user_id:
             raise ValueError("target_user_id required for transfer strategy")
         await _bulk_transfer_resources(session, user_id, target_user_id, now)
-        _move_agent_directories(paths, user_id, target_user_id)
+        _copy_agent_directories(paths, user_id, target_user_id)
 
     elif strategy == "delete":
         await _bulk_hard_delete_resources(session, user_id)
-        _remove_user_agents_dir(paths, user_id)
 
     else:
         await _bulk_hard_delete_resources(session, user_id)
@@ -207,8 +243,8 @@ async def _bulk_hard_delete_resources(session: AsyncSession, user_id: str) -> No
     await session.execute(sql_delete(ResourceMetadata).where(ResourceMetadata.owner_id == user_id))
 
 
-def _move_agent_directories(paths: Paths, user_id: str, target_user_id: str) -> None:
-    """Move per-user agent directories from *user_id* to *target_user_id*."""
+def _copy_agent_directories(paths: Paths, user_id: str, target_user_id: str) -> None:
+    """Copy agents before commit; source state is removed only after commit."""
     src_dir = paths.user_agents_dir(user_id)
     if not src_dir.exists():
         return
@@ -216,15 +252,9 @@ def _move_agent_directories(paths: Paths, user_id: str, target_user_id: str) -> 
     for agent_dir in src_dir.iterdir():
         if agent_dir.is_dir():
             dst = paths.user_agent_dir(target_user_id, agent_dir.name)
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            shutil.move(str(agent_dir), str(dst))
-
-
-def _remove_user_agents_dir(paths: Paths, user_id: str) -> None:
-    """Remove all per-user agent directories on disk."""
-    agents_dir = paths.user_agents_dir(user_id)
-    if agents_dir.exists():
-        shutil.rmtree(agents_dir)
+            if dst.exists():
+                raise ValueError(f"Target user already has agent '{agent_dir.name}'")
+            shutil.copytree(agent_dir, dst)
 
 
 # ---------------------------------------------------------------------------
@@ -269,12 +299,7 @@ async def _handle_historical_data(session: AsyncSession, paths: Paths, user_id: 
 
 
 async def _delete_threads(session: AsyncSession, paths: Paths, user_id: str) -> None:
-    """Delete thread directories and corresponding DB rows."""
-    stmt = select(ThreadMetaRow).where(ThreadMetaRow.user_id == user_id)
-    result = await session.execute(stmt)
-    for thread in result.scalars():
-        paths.delete_thread_dir(thread.thread_id, user_id=user_id)
-
+    """Delete thread rows; the user directory is removed after commit."""
     await session.execute(sql_delete(ThreadMetaRow).where(ThreadMetaRow.user_id == user_id))
 
 
@@ -288,11 +313,13 @@ async def _delete_rows(session: AsyncSession, model, column, user_id: str) -> No
 # ---------------------------------------------------------------------------
 
 
-def _handle_disk_cleanup(paths: Paths, user_id: str) -> None:
-    """Remove the entire user disk directory and all contents."""
+def cleanup_user_state(paths: Paths, user_id: str) -> str:
+    """Idempotently remove a deleted user's state directory."""
     user_dir = paths.user_dir(user_id)
-    if user_dir.exists():
-        shutil.rmtree(user_dir)
+    if not user_dir.exists():
+        return "already_absent"
+    shutil.rmtree(user_dir)
+    return "deleted"
 
 
 # ---------------------------------------------------------------------------
@@ -310,6 +337,19 @@ async def _record_user_deletion_audit(session: AsyncSession, user_id: str, curre
         resource_type="user",
         resource_id=user_id,
         detail={"strategy": strategy},
+    )
+
+
+async def _record_cleanup_failure_audit(user_id: str, current_user_id: str, error: str) -> None:
+    """Record post-commit filesystem cleanup failure for operator retry."""
+    from app.gateway.audit import record_audit
+
+    await record_audit(
+        actor_id=current_user_id,
+        action="user_state_cleanup_failed",
+        resource_type="user",
+        resource_id=user_id,
+        detail={"error": error},
     )
 
 

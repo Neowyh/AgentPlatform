@@ -510,7 +510,9 @@ describe("AgentEditPage", () => {
     test("renders visibility application hint", () => {
       render(<AgentEditPage />);
       expect(
-        screen.getByText("Visibility changes require an application submission"),
+        screen.getByText(
+          "Visibility changes require an application submission",
+        ),
       ).toBeInTheDocument();
     });
   });

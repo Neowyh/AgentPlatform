@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { FlickeringGrid } from "@/components/ui/flickering-grid";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/core/auth/AuthProvider";
+import { useI18n } from "@/core/i18n/hooks";
 
 /**
  * Validate next parameter
@@ -50,6 +51,7 @@ export default function LoginPage() {
   const { isAuthenticated } = useAuth();
   const { theme, resolvedTheme } = useTheme();
 
+  const { t } = useI18n();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLogin, setIsLogin] = useState(true);
@@ -112,17 +114,17 @@ export default function LoginPage() {
       if (!res.ok) {
         const message =
           res.status === 403
-            ? "账户已被禁用"
+            ? t.auth.errorAccountDisabled
             : res.status === 429
-              ? "登录尝试次数过多，请稍后重试"
-              : "邮箱或密码错误";
+              ? t.auth.errorTooManyAttempts
+              : t.auth.errorInvalidCredentials;
         toast.error(message);
         return;
       }
 
       router.push(redirectPath);
     } catch {
-      toast.error("网络错误，请稍后重试");
+      toast.error(t.auth.errorNetwork);
     } finally {
       setLoading(false);
     }
@@ -144,14 +146,14 @@ export default function LoginPage() {
         <div className="text-center">
           <h1 className="text-foreground font-serif text-3xl">iDeer</h1>
           <p className="text-muted-foreground mt-2">
-            {isLogin ? "Sign in to your account" : "Create a new account"}
+            {isLogin ? t.auth.signInTitle : t.auth.createAccountTitle}
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-2">
           <div className="flex flex-col space-y-1">
             <label htmlFor="email" className="text-sm font-medium">
-              Email
+              {t.auth.email}
             </label>
             <Input
               id="email"
@@ -164,7 +166,7 @@ export default function LoginPage() {
           </div>
           <div className="flex flex-col space-y-1">
             <label htmlFor="password" className="text-sm font-medium">
-              Password
+              {t.auth.password}
             </label>
             <Input
               id="password"
@@ -179,10 +181,10 @@ export default function LoginPage() {
 
           <Button type="submit" className="w-full" disabled={loading}>
             {loading
-              ? "Please wait..."
+              ? t.auth.pleaseWait
               : isLogin
-                ? "Sign In"
-                : "Create Account"}
+                ? t.auth.signIn
+                : t.auth.createAccount}
           </Button>
         </form>
 
@@ -192,15 +194,13 @@ export default function LoginPage() {
             onClick={() => setIsLogin(!isLogin)}
             className="text-blue-500 hover:underline"
           >
-            {isLogin
-              ? "Don't have an account? Sign up"
-              : "Already have an account? Sign in"}
+            {isLogin ? t.auth.noAccount : t.auth.hasAccount}
           </button>
         </div>
 
         <div className="text-muted-foreground text-center text-xs">
           <Link href="/" className="hover:underline">
-            ← Back to home
+            {t.auth.backToHome}
           </Link>
         </div>
       </div>
