@@ -99,6 +99,32 @@ The residual static gate may still match
 contains the substring `cov`. That is a false positive: the file name describes
 gateway run recovery behavior and is not a patch-name exception.
 
+## Batch 2026-07-11: `feat/improve-tests` Content Audit
+
+`feat/improve-tests` was not merged directly. Its `auth/`, `routers/`,
+`sandbox/`, and similar top-level directories conflict with the final
+`unit/`, `integration/`, and `contracts/` hierarchy used by this branch.
+
+| Source | Decision | Evidence | Validation |
+| --- | --- | --- | --- |
+| Backend test-directory reorganization in `9c9956e2` | Not copied | The source test node names are already represented in the final layered suite; copying its aggregated files would duplicate collection under a second taxonomy. | `cd backend && PYTHONPATH=. PYTHONIOENCODING=utf-8 PYTHONUTF8=1 uv run pytest tests/unit tests/integration tests/contracts --collect-only -q` |
+| RBAC-only source nodes absent by name | Not copied | They encode superseded department-admin expectations, including denial of department listing. `tests/contracts/test_rbac_matrix.py` is the current contract: department admins can read departments but cannot mutate them. | `cd backend && PYTHONPATH=. PYTHONIOENCODING=utf-8 PYTHONUTF8=1 uv run pytest tests/contracts/test_rbac_matrix.py -v` |
+| Sandbox async-lock exception node | Not copied | It targets the removed executor-based lock acquisition and expects a `RuntimeError`. The current polling implementation is covered by lock-acquisition and cancellation tests in `tests/integration/sandbox/test_aio_sandbox_provider.py`. | `cd backend && PYTHONPATH=. PYTHONIOENCODING=utf-8 PYTHONUTF8=1 uv run pytest tests/integration/sandbox/test_aio_sandbox_provider.py -v` |
+| `error_codes.py` change and five frontend test deletions | Excluded | They are non-test changes or deletions without an equal-or-stronger replacement proof. | `git diff --check` and targeted test collection |
+
+The source branch itself has collection errors in its aggregated agents,
+workflows, and local-sandbox modules. Those files are audit inputs only; they
+are not a valid replacement suite for the current branch.
+
+Final verification collected 12,817 current-suite tests and the default backend
+run passed with 12,717 passed, 3 skipped, and 97 deselected. The coverage run
+reached 98% but had one order-sensitive failure in
+`test_stream_run_executes_real_lead_agent_setup_agent_business_path`: its run
+completed, then the status poll received `token_invalid` with a malformed
+token. The same test passed alone under coverage and with its immediately
+preceding module, so this remains a separate full-suite isolation issue rather
+than a reason to import the source branch.
+
 ## Batch 2026-07-10: Frontend E2E Duplicate QA Merge
 
 The initial E2E directory split preserved some `qa/` filenames as `*-qa.spec.ts`

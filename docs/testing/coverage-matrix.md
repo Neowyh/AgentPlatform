@@ -26,3 +26,4 @@ This matrix is the manual guardrail for the test-suite reorganization. Update it
 - `frontend/tests/e2e/stagehand/` is experimental and excluded from the default Playwright config.
 - Generated artifacts belong under `frontend/playwright-artifacts/`, not under `frontend/tests/`.
 - Backend patch-test filenames no longer use `coverage`, `boost`, `gaps`, `full`, `extra`, `cov*`, or `fix`; retained assertions were mechanically renamed into behavior-specific files.
+- `feat/improve-tests` is an audited source branch, not an additional collection root. Its retained behavior is represented only through the final `unit/`, `integration/`, and `contracts/` paths recorded in the migration ledger.
