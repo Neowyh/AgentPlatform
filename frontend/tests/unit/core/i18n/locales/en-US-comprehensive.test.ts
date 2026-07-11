@@ -377,6 +377,17 @@ describe("enUS locale comprehensive", () => {
       agentCreated: "Agent created!",
       startChatting: "Start chatting",
       backToGallery: "Back to Gallery",
+      applyVisibility: "Apply Visibility Change",
+      applyVisibilityDescription:
+        "Submit an application to change the visibility level of this agent",
+      currentVisibility: "Current Visibility",
+      targetVisibility: "Target Visibility",
+      reason: "Reason",
+      reasonPlaceholder: "Enter your reason...",
+      visibilityReasonRequired: "Please provide a reason",
+      submitting: "Submitting...",
+      submit: "Submit Application",
+      applicationSubmitted: "Application submitted",
     };
 
     for (const [key, value] of Object.entries(expected)) {

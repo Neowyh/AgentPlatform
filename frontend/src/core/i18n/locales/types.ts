@@ -157,13 +157,43 @@ export interface Translations {
     agentCreated: string;
     startChatting: string;
     backToGallery: string;
+    visibility: string;
     visibilityPrivate: string;
     visibilityDepartment: string;
     visibilityPublic: string;
+    visibilityAdminOnly: string;
+    applyVisibility: string;
+    applyVisibilityDescription: string;
+    currentVisibility: string;
+    targetVisibility: string;
+    reason: string;
+    reasonPlaceholder: string;
+    visibilityReasonRequired: string;
+    submitting: string;
+    submit: string;
+    applicationSubmitted: string;
     favoriteAdded: string;
     favoriteRemoved: string;
     exportSuccess: string;
     importSuccess: string;
+  };
+
+  // Auth
+  auth: {
+    signInTitle: string;
+    createAccountTitle: string;
+    email: string;
+    password: string;
+    signIn: string;
+    createAccount: string;
+    pleaseWait: string;
+    noAccount: string;
+    hasAccount: string;
+    backToHome: string;
+    errorAccountDisabled: string;
+    errorTooManyAttempts: string;
+    errorInvalidCredentials: string;
+    errorNetwork: string;
   };
 
   // Workflows

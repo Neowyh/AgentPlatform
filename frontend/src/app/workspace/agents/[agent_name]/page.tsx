@@ -12,6 +12,8 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
+import { useState } from "react";
+import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,15 +24,62 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { WorkspaceBreadcrumb } from "@/components/workspace/workspace-breadcrumb";
 import { useAgent } from "@/core/agents";
 import { useI18n } from "@/core/i18n/hooks";
+import { createVisibilityApplication } from "@/core/visibility-applications/api";
 
 export default function AgentDetailPage() {
   const { t } = useI18n();
   const router = useRouter();
   const { agent_name } = useParams<{ agent_name: string }>();
   const { agent, isLoading, error } = useAgent(agent_name);
+
+  const [visibilityDialogOpen, setVisibilityDialogOpen] = useState(false);
+  const [targetVisibility, setTargetVisibility] = useState("department");
+  const [visibilityReason, setVisibilityReason] = useState("");
+  const [submittingApplication, setSubmittingApplication] = useState(false);
+
+  async function handleSubmitVisibility() {
+    if (!agent || !visibilityReason.trim()) {
+      toast.error(t.agents.visibilityReasonRequired);
+      return;
+    }
+
+    setSubmittingApplication(true);
+    try {
+      await createVisibilityApplication({
+        resource_type: "agent",
+        resource_id: agent.name,
+        target_visibility: targetVisibility,
+        reason: visibilityReason.trim(),
+      });
+      toast.success(t.agents.applicationSubmitted);
+      setVisibilityDialogOpen(false);
+      setVisibilityReason("");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSubmittingApplication(false);
+    }
+  }
 
   if (isLoading) {
     return (
@@ -86,6 +135,9 @@ export default function AgentDetailPage() {
         <div className="flex items-center gap-2">
           {agent.model && <Badge variant="secondary">{agent.model}</Badge>}
           {agent.read_only && <Badge variant="outline">Template</Badge>}
+          <Button variant="outline" onClick={() => setVisibilityDialogOpen(true)}>
+            {t.agents.applyVisibility}
+          </Button>
           <Button asChild>
             <Link href={`/workspace/agents/${agent_name}/edit`}>
               <EditIcon className="mr-1.5 h-4 w-4" />
@@ -225,6 +277,78 @@ export default function AgentDetailPage() {
           </Card>
         </div>
       </div>
+
+      {/* Visibility Application Dialog */}
+      <Dialog open={visibilityDialogOpen} onOpenChange={setVisibilityDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t.agents.applyVisibility}</DialogTitle>
+            <DialogDescription>
+              {t.agents.applyVisibilityDescription}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>{t.agents.currentVisibility}</Label>
+              <p className="text-muted-foreground text-sm">
+                {agent.visibility}
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="target-visibility">
+                {t.agents.targetVisibility}
+              </Label>
+              <Select
+                value={targetVisibility}
+                onValueChange={setTargetVisibility}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="private">
+                    {t.agents.visibilityPrivate}
+                  </SelectItem>
+                  <SelectItem value="department">
+                    {t.agents.visibilityDepartment}
+                  </SelectItem>
+                  <SelectItem value="public">
+                    {t.agents.visibilityPublic}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="reason">{t.agents.reason}</Label>
+              <Textarea
+                id="reason"
+                placeholder={t.agents.reasonPlaceholder}
+                value={visibilityReason}
+                onChange={(e) => setVisibilityReason(e.target.value)}
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setVisibilityDialogOpen(false)}
+            >
+              {t.common.cancel}
+            </Button>
+            <Button
+              onClick={handleSubmitVisibility}
+              disabled={
+                submittingApplication || !visibilityReason.trim()
+              }
+            >
+              {submittingApplication
+                ? t.agents.submitting
+                : t.agents.submit}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

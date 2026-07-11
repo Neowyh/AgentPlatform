@@ -2,8 +2,10 @@
 
 import { SparklesIcon } from "lucide-react";
 import { useMemo, useState } from "react";
+import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Empty,
   EmptyDescription,
@@ -19,10 +21,12 @@ import {
 } from "@/components/ui/item";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useI18n } from "@/core/i18n/hooks";
+import { submitSkillApplication } from "@/core/skills/api";
 import { useSkills } from "@/core/skills/hooks";
 import type { Skill } from "@/core/skills/type";
 
 import { SettingsSection } from "./settings-section";
+import { SkillApplyDialog } from "./skill-apply-dialog";
 
 export function SkillSettingsPage() {
   const { t } = useI18n();
@@ -46,11 +50,28 @@ export function SkillSettingsPage() {
 function SkillSettingsList({ skills }: { skills: Skill[] }) {
   const { t } = useI18n();
   const [filter, setFilter] = useState<string>("public");
+  const [applySkill, setApplySkill] = useState<Skill | null>(null);
 
   const filteredSkills = useMemo(
     () => skills.filter((skill) => skill.category === filter),
     [skills, filter],
   );
+
+  const handleApplySubmit = async (requestLevel: string, reason: string) => {
+    if (!applySkill) return;
+    try {
+      await submitSkillApplication(applySkill.name, {
+        request_level: requestLevel as "department" | "public",
+        reason,
+      });
+      toast.success(t.settings.skills.applicationSubmitted);
+      setApplySkill(null);
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to submit application",
+      );
+    }
+  };
 
   return (
     <div className="flex w-full flex-col gap-4">
@@ -81,8 +102,21 @@ function SkillSettingsList({ skills }: { skills: Skill[] }) {
                 {skill.description}
               </ItemDescription>
             </ItemContent>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setApplySkill(skill)}
+            >
+              {t.settings.skills.applyOpen}
+            </Button>
           </Item>
         ))}
+      <SkillApplyDialog
+        skill={applySkill}
+        open={applySkill !== null}
+        onOpenChange={(open) => !open && setApplySkill(null)}
+        onSubmit={handleApplySubmit}
+      />
     </div>
   );
 }

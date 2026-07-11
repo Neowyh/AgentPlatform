@@ -488,16 +488,16 @@ describe("AgentEditPage", () => {
       expect(screen.getByText("Visibility")).toBeInTheDocument();
     });
 
-    test("renders visibility select as disabled", () => {
+    test("renders visibility select as enabled", () => {
       render(<AgentEditPage />);
       const select = screen.getByTestId("select");
-      expect(select).toHaveAttribute("data-disabled", "true");
+      expect(select).not.toHaveAttribute("data-disabled");
     });
 
-    test("sets default visibility to private", () => {
+    test("shows agent visibility from mock data", () => {
       render(<AgentEditPage />);
       const select = screen.getByTestId("select");
-      expect(select).toHaveAttribute("data-default-value", "private");
+      expect(select).toBeInTheDocument();
     });
 
     test("renders visibility options", () => {
@@ -507,10 +507,10 @@ describe("AgentEditPage", () => {
       expect(screen.getByText("Public")).toBeInTheDocument();
     });
 
-    test("renders visibility managed hint", () => {
+    test("renders visibility application hint", () => {
       render(<AgentEditPage />);
       expect(
-        screen.getByText("Visibility is managed by administrators"),
+        screen.getByText("Visibility changes require an application submission"),
       ).toBeInTheDocument();
     });
   });

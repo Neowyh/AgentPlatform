@@ -6,6 +6,14 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -47,6 +55,9 @@ export default function AgentEditPage() {
     skills: [],
     soul: "",
   });
+  const [originalVisibility, setOriginalVisibility] = useState("private");
+  const [visibilityChangeDialogOpen, setVisibilityChangeDialogOpen] =
+    useState(false);
 
   useEffect(() => {
     if (agent) {
@@ -57,10 +68,18 @@ export default function AgentEditPage() {
         skills: agent.skills ?? [],
         soul: agent.soul ?? "",
       });
+      setOriginalVisibility(agent.visibility ?? "private");
     }
   }, [agent]);
 
   const handleSave = useCallback(async () => {
+    if (
+      formData.visibility !== undefined &&
+      formData.visibility !== originalVisibility
+    ) {
+      setVisibilityChangeDialogOpen(true);
+      return;
+    }
     try {
       await updateAgent.mutateAsync({ name: agent_name, request: formData });
       toast.success("Agent updated successfully");
@@ -68,7 +87,12 @@ export default function AgentEditPage() {
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     }
-  }, [agent_name, formData, router, updateAgent]);
+  }, [agent_name, formData, originalVisibility, router, updateAgent]);
+
+  const handleNavigateToDetail = () => {
+    setVisibilityChangeDialogOpen(false);
+    router.push(`/workspace/agents/${agent_name}`);
+  };
 
   const toggleToolGroup = (groupId: string) => {
     setFormData((prev) => ({
@@ -197,7 +221,12 @@ export default function AgentEditPage() {
           {/* Visibility */}
           <div className="space-y-2">
             <Label>Visibility</Label>
-            <Select defaultValue="private" disabled>
+            <Select
+              value={formData.visibility ?? originalVisibility}
+              onValueChange={(value) =>
+                setFormData((prev) => ({ ...prev, visibility: value }))
+              }
+            >
               <SelectTrigger>
                 <SelectValue placeholder="Select visibility" />
               </SelectTrigger>
@@ -208,7 +237,7 @@ export default function AgentEditPage() {
               </SelectContent>
             </Select>
             <p className="text-muted-foreground text-xs">
-              Visibility is managed by administrators
+              Visibility changes require an application submission
             </p>
           </div>
 
@@ -283,6 +312,33 @@ export default function AgentEditPage() {
           </div>
         </div>
       </div>
+
+      {/* Visibility Change Dialog */}
+      <Dialog
+        open={visibilityChangeDialogOpen}
+        onOpenChange={setVisibilityChangeDialogOpen}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Visibility Change Requires Application</DialogTitle>
+            <DialogDescription>
+              Visibility changes cannot be saved directly. You need to submit a
+              visibility change application on the agent detail page.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setVisibilityChangeDialogOpen(false)}
+            >
+              Stay on Edit Page
+            </Button>
+            <Button onClick={handleNavigateToDetail}>
+              Go to Detail Page
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
