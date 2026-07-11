@@ -1,6 +1,9 @@
 import { render, screen, cleanup } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+
+import { importAgent } from "@/core/agents/api";
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
@@ -31,10 +34,13 @@ vi.mock("@/core/i18n/hooks", () => ({
         newAgent: "New Agent",
         emptyTitle: "No agents yet",
         emptyDescription: "Create your first agent",
+        importSuccess: "Agent imported",
       },
       common: {
         loading: "Loading...",
         import: "Import",
+        favoritesOnly: "Favorites",
+        showAll: "Show All",
       },
     },
   }),
@@ -136,5 +142,70 @@ describe("AgentGallery", () => {
     const fileInput = document.querySelector('input[type="file"]');
     expect(fileInput).toBeInTheDocument();
     expect(fileInput).toHaveAttribute("accept", ".zip");
+  });
+
+  test("filters agents by search text", async () => {
+    const user = userEvent.setup();
+    mockAgents = [
+      { name: "Writer", description: "Draft documents" },
+      { name: "Researcher", description: "Find references" },
+    ];
+    render(<AgentGallery />);
+
+    await user.type(screen.getByPlaceholderText("Agents..."), "references");
+
+    expect(screen.queryByText("Writer")).not.toBeInTheDocument();
+    expect(screen.getByText("Researcher")).toBeInTheDocument();
+  });
+
+  test("filters agents to favorites and toggles back to all", async () => {
+    const user = userEvent.setup();
+    mockAgents = [
+      { name: "Favorite Agent", description: "", is_favorited: true },
+      { name: "Regular Agent", description: "", is_favorited: false },
+    ];
+    render(<AgentGallery />);
+
+    await user.click(screen.getByRole("button", { name: /Favorites/ }));
+    expect(screen.getByText("Favorite Agent")).toBeInTheDocument();
+    expect(screen.queryByText("Regular Agent")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /Show All/ }));
+    expect(screen.getByText("Regular Agent")).toBeInTheDocument();
+  });
+
+  test("imports an agent file and refreshes the list", async () => {
+    vi.mocked(importAgent).mockResolvedValue({ success: true } as never);
+    const user = userEvent.setup();
+    render(<AgentGallery />);
+    const file = new File(["zip"], "agent.zip", { type: "application/zip" });
+
+    await user.upload(document.querySelector('input[type="file"]')!, file);
+
+    expect(importAgent).toHaveBeenCalledWith(file);
+    expect(toast.success).toHaveBeenCalledWith("Agent imported");
+    expect(mockRefetch).toHaveBeenCalled();
+  });
+
+  test("shows import errors and clears the input", async () => {
+    vi.mocked(importAgent).mockRejectedValue(new Error("Import failed"));
+    const user = userEvent.setup();
+    render(<AgentGallery />);
+    const input = document.querySelector('input[type="file"]')!;
+    const file = new File(["zip"], "agent.zip", { type: "application/zip" });
+
+    await user.upload(input, file);
+
+    expect(toast.error).toHaveBeenCalledWith("Import failed");
+    expect((input as HTMLInputElement).value).toBe("");
+  });
+
+  test("ignores import change without a selected file", async () => {
+    render(<AgentGallery />);
+    const input = document.querySelector('input[type="file"]')!;
+
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+
+    expect(importAgent).not.toHaveBeenCalled();
   });
 });

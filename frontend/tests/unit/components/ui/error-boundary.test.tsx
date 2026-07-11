@@ -1,9 +1,14 @@
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 
-function BuggyComponent({ message = "Test error" }: { message?: string }) {
+function BuggyComponent({
+  message = "Test error",
+}: {
+  message?: string;
+}): ReactNode {
   throw new Error(message);
 }
 
@@ -154,7 +159,7 @@ describe("ErrorBoundary", () => {
   test("retry re-catches error if child still throws", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
 
-    function AlwaysBuggy() {
+    function AlwaysBuggy(): ReactNode {
       throw new Error("Always throws");
     }
 

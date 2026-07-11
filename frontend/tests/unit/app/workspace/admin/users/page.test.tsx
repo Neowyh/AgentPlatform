@@ -1,4 +1,10 @@
-import { render, screen, cleanup, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  cleanup,
+  waitFor,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
@@ -11,15 +17,22 @@ const mockListDepartments = vi.fn();
 const mockUpdateUserRole = vi.fn();
 const mockDisableUser = vi.fn();
 const mockToggleUserStatus = vi.fn();
+const mockCreateUser = vi.fn();
+const mockUpdateUser = vi.fn();
 const mockToastSuccess = vi.fn();
 const mockToastError = vi.fn();
+const mockRouterReplace = vi.fn();
 
 vi.mock("@/core/auth/AuthProvider", () => ({
   useAuth: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), prefetch: vi.fn() }),
+  useRouter: () => ({
+    push: vi.fn(),
+    replace: mockRouterReplace,
+    prefetch: vi.fn(),
+  }),
   usePathname: () => "/workspace/admin/users",
 }));
 
@@ -29,8 +42,8 @@ vi.mock("@/core/admin/api", () => ({
   updateUserRole: (...args: unknown[]) => mockUpdateUserRole(...args),
   disableUser: (...args: unknown[]) => mockDisableUser(...args),
   toggleUserStatus: (...args: unknown[]) => mockToggleUserStatus(...args),
-  createUser: vi.fn(),
-  updateUser: vi.fn(),
+  createUser: (...args: unknown[]) => mockCreateUser(...args),
+  updateUser: (...args: unknown[]) => mockUpdateUser(...args),
 }));
 
 vi.mock("sonner", () => ({
@@ -154,6 +167,24 @@ describe("UsersPage", () => {
       new_role: "department_admin",
     });
     mockDisableUser.mockResolvedValue(undefined);
+    mockToggleUserStatus.mockResolvedValue({
+      success: true,
+      user_id: "user-2",
+      disabled: true,
+    });
+    mockCreateUser.mockResolvedValue({
+      id: "user-new",
+      username: "new user",
+      role: "user",
+      department_id: null,
+      disabled: false,
+      created_at: "2025-07-01T00:00:00Z",
+      last_login: null,
+    });
+    mockUpdateUser.mockResolvedValue({
+      ...mockUsers[1],
+      username: "bob updated",
+    });
   });
 
   afterEach(() => {
@@ -1004,5 +1035,250 @@ describe("UsersPage", () => {
         expect.objectContaining({ role: "super_admin" }),
       );
     });
+  });
+
+  // ── Create and edit dialogs ────────────────────────────────────────
+
+  test("creates a user from the dialog form", async () => {
+    render(<UsersPage />);
+    await waitFor(() => {
+      expect(screen.getByTestId("user-list")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /新增用户/ }));
+    fireEvent.change(screen.getByLabelText("邮箱 *"), {
+      target: { value: "new@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText("密码 *"), {
+      target: { value: "secret12" },
+    });
+    fireEvent.change(screen.getByLabelText("用户名 *"), {
+      target: { value: "New User" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "创建" }));
+
+    await waitFor(() => {
+      expect(mockCreateUser).toHaveBeenCalledWith({
+        email: "new@example.com",
+        password: "secret12",
+        username: "New User",
+        role: "user",
+        department_id: undefined,
+      });
+      expect(mockToastSuccess).toHaveBeenCalledWith("用户创建成功");
+    });
+  });
+
+  test("validates required create form fields and password length", async () => {
+    render(<UsersPage />);
+    await waitFor(() => {
+      expect(screen.getByTestId("user-list")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /新增用户/ }));
+    fireEvent.click(screen.getByRole("button", { name: "创建" }));
+    expect(mockToastError).toHaveBeenCalledWith("请填写所有必填字段");
+
+    fireEvent.change(screen.getByLabelText("邮箱 *"), {
+      target: { value: "new@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText("密码 *"), {
+      target: { value: "123" },
+    });
+    fireEvent.change(screen.getByLabelText("用户名 *"), {
+      target: { value: "New User" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "创建" }));
+    expect(mockToastError).toHaveBeenCalledWith("密码至少需要6个字符");
+    expect(mockCreateUser).not.toHaveBeenCalled();
+  });
+
+  test("shows create API errors", async () => {
+    mockCreateUser.mockRejectedValue("create raw error");
+    render(<UsersPage />);
+    await waitFor(() => {
+      expect(screen.getByTestId("user-list")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /新增用户/ }));
+    fireEvent.change(screen.getByLabelText("邮箱 *"), {
+      target: { value: "new@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText("密码 *"), {
+      target: { value: "secret12" },
+    });
+    fireEvent.change(screen.getByLabelText("用户名 *"), {
+      target: { value: "New User" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "创建" }));
+
+    await waitFor(() => {
+      expect(mockToastError).toHaveBeenCalledWith("create raw error");
+    });
+  });
+
+  test("creates a user with selected role and department", async () => {
+    const user = userEvent.setup();
+    render(<UsersPage />);
+    await waitFor(() => {
+      expect(screen.getByTestId("user-list")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /新增用户/ }));
+    fireEvent.change(screen.getByLabelText("邮箱 *"), {
+      target: { value: "lead@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText("密码 *"), {
+      target: { value: "secret12" },
+    });
+    fireEvent.change(screen.getByLabelText("用户名 *"), {
+      target: { value: "Lead User" },
+    });
+
+    const comboboxes = screen.getAllByRole("combobox");
+    await user.click(comboboxes.at(-2)!);
+    await user.click(screen.getByRole("option", { name: "部门管理员" }));
+    await user.click(comboboxes.at(-1)!);
+    await user.click(screen.getByRole("option", { name: "Marketing" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "创建" }));
+
+    await waitFor(() => {
+      expect(mockCreateUser).toHaveBeenCalledWith({
+        email: "lead@example.com",
+        password: "secret12",
+        username: "Lead User",
+        role: "department_admin",
+        department_id: "dept-2",
+      });
+    });
+  });
+
+  test("closes create dialog when cancel is clicked", async () => {
+    render(<UsersPage />);
+    await waitFor(() => {
+      expect(screen.getByTestId("user-list")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /新增用户/ }));
+    expect(
+      screen.getByRole("heading", { name: "新增用户" }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("heading", { name: "新增用户" }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  test("edits a user from the dialog form", async () => {
+    render(<UsersPage />);
+    await waitFor(() => {
+      expect(screen.getByTestId("user-list")).toBeInTheDocument();
+    });
+
+    const editButtons = screen.getAllByTestId("user-edit-button");
+    fireEvent.click(editButtons[0]!);
+    const username = screen.getByLabelText("用户名 *");
+    fireEvent.change(username, { target: { value: "Alice Updated" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => {
+      expect(mockUpdateUser).toHaveBeenCalledWith("user-1", {
+        username: "Alice Updated",
+        department_id: "dept-1",
+      });
+      expect(mockToastSuccess).toHaveBeenCalledWith("用户信息已更新");
+    });
+  });
+
+  test("validates empty edit username", async () => {
+    const user = userEvent.setup();
+    render(<UsersPage />);
+    await waitFor(() => {
+      expect(screen.getByTestId("user-list")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getAllByTestId("user-edit-button")[0]!);
+    const username = screen.getByLabelText("用户名 *");
+    await user.clear(username);
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    expect(mockToastError).toHaveBeenCalledWith("用户名不能为空");
+    expect(mockUpdateUser).not.toHaveBeenCalled();
+  });
+
+  test("shows edit API errors", async () => {
+    mockUpdateUser.mockRejectedValue(new Error("edit failed"));
+    render(<UsersPage />);
+    await waitFor(() => {
+      expect(screen.getByTestId("user-list")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getAllByTestId("user-edit-button")[0]!);
+    const username = screen.getByLabelText("用户名 *");
+    fireEvent.change(username, { target: { value: "Alice Updated" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => {
+      expect(mockToastError).toHaveBeenCalledWith("edit failed");
+    });
+  });
+
+  test("edits a user's department from the dialog form", async () => {
+    const user = userEvent.setup();
+    render(<UsersPage />);
+    await waitFor(() => {
+      expect(screen.getByTestId("user-list")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getAllByTestId("user-edit-button")[0]!);
+    await user.click(screen.getAllByRole("combobox").at(-1)!);
+    await user.click(screen.getByRole("option", { name: "Marketing" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => {
+      expect(mockUpdateUser).toHaveBeenCalledWith("user-1", {
+        username: "alice",
+        department_id: "dept-2",
+      });
+    });
+  });
+
+  test("closes edit dialog when cancel is clicked", async () => {
+    render(<UsersPage />);
+    await waitFor(() => {
+      expect(screen.getByTestId("user-list")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getAllByTestId("user-edit-button")[0]!);
+    expect(screen.getByText("编辑用户")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+
+    await waitFor(() => {
+      expect(screen.queryByText("编辑用户")).not.toBeInTheDocument();
+    });
+  });
+
+  test("redirects non-admin users away from user management", () => {
+    vi.mocked(useAuth).mockReturnValue({
+      user: {
+        id: "regular-user",
+        email: "user@example.com",
+        system_role: "user",
+        needs_setup: false,
+      },
+      isAuthenticated: true,
+      isLoading: false,
+      logout: vi.fn(),
+      refreshUser: vi.fn(),
+    });
+
+    render(<UsersPage />);
+
+    expect(mockRouterReplace).toHaveBeenCalledWith("/workspace");
+    expect(mockListUsers).not.toHaveBeenCalled();
   });
 });

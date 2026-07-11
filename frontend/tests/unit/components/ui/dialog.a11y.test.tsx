@@ -96,6 +96,8 @@ describe("Dialog accessibility", () => {
     await user.click(screen.getByRole("button", { name: /open dialog/i }));
     // Focus should be inside the dialog
     const dialog = screen.getByRole("dialog");
-    expect(dialog).toContainElement(document.activeElement);
+    expect(dialog).toContainElement(
+      document.activeElement as HTMLElement | SVGElement | null,
+    );
   });
 });

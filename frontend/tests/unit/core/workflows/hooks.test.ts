@@ -9,6 +9,7 @@ vi.mock("@/core/workflows/api", () => ({
   createWorkflow: vi.fn(),
   updateWorkflow: vi.fn(),
   deleteWorkflow: vi.fn(),
+  toggleWorkflowFavorite: vi.fn(),
   runWorkflow: vi.fn(),
   getRunStatus: vi.fn(),
   submitReview: vi.fn(),
@@ -363,6 +364,56 @@ describe("useDeleteWorkflow", () => {
 
     const { useDeleteWorkflow } = await import("@/core/workflows/hooks");
     const { result } = renderHook(() => useDeleteWorkflow(), {
+      wrapper: createWrapper(),
+    });
+
+    result.current.mutate("wf");
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+
+    expect(result.current.error).toBeDefined();
+  });
+});
+
+// ---------------------------------------------------------------
+// useToggleWorkflowFavorite
+// ---------------------------------------------------------------
+describe("useToggleWorkflowFavorite", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+    vi.restoreAllMocks();
+    vi.resetModules();
+  });
+
+  test("calls toggleWorkflowFavorite API with workflow name", async () => {
+    const { toggleWorkflowFavorite } = await import("@/core/workflows/api");
+    vi.mocked(toggleWorkflowFavorite).mockResolvedValue({
+      name: "wf",
+      is_favorite: true,
+    });
+
+    const { useToggleWorkflowFavorite } =
+      await import("@/core/workflows/hooks");
+    const { result } = renderHook(() => useToggleWorkflowFavorite(), {
+      wrapper: createWrapper(),
+    });
+
+    result.current.mutate("wf");
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(toggleWorkflowFavorite).toHaveBeenCalledWith("wf");
+  });
+
+  test("sets error on favorite toggle failure", async () => {
+    const { toggleWorkflowFavorite } = await import("@/core/workflows/api");
+    vi.mocked(toggleWorkflowFavorite).mockRejectedValue(
+      new Error("Favorite failed"),
+    );
+
+    const { useToggleWorkflowFavorite } =
+      await import("@/core/workflows/hooks");
+    const { result } = renderHook(() => useToggleWorkflowFavorite(), {
       wrapper: createWrapper(),
     });
 

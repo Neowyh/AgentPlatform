@@ -10,6 +10,12 @@ config({ path: resolve(__dirname, "../.env") });
 
 export default defineConfig({
   testDir: "./tests/e2e",
+  testIgnore: [
+    "**/stagehand/**",
+    "**/test-results/**",
+    "**/playwright-artifacts/**",
+    "**/playwright-report/**",
+  ],
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
@@ -43,17 +49,7 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
-      use: { ...devices["Desktop Chrome"] },
-    },
-    {
-      name: "qa",
-      testDir: "./tests/e2e/qa",
-      use: { ...devices["Desktop Chrome"] },
-    },
-    {
-      name: "auth",
-      testDir: "./tests/e2e/qa",
-      testMatch: /auth-flow|smoke-login/,
+      testMatch: [/smoke\/.*\.spec\.ts/, /workflows\/.*\.spec\.ts/],
       use: { ...devices["Desktop Chrome"] },
     },
     {

@@ -1,20 +1,42 @@
-import { render, screen, cleanup } from "@testing-library/react";
+import { fireEvent, render, screen, cleanup } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
 let mockConfig: {
-  mcp_servers: Record<string, { description: string; enabled: boolean }>;
+  mcp_servers: Record<
+    string,
+    {
+      description: string;
+      enabled: boolean;
+      type: "stdio" | "sse" | "http";
+      command?: string;
+      args: string[];
+      env: Record<string, string>;
+      url?: string;
+      headers: Record<string, string>;
+    }
+  >;
 } | null = {
   mcp_servers: {
     "code-runner": {
       description: "Run code snippets",
       enabled: true,
+      type: "stdio",
+      command: "node",
+      args: ["server.js"],
+      env: { TOKEN: "abc" },
+      headers: {},
     },
     "web-search": {
       description: "Search the web",
       enabled: false,
+      type: "http",
+      args: [],
+      env: {},
+      url: "http://localhost:3000/mcp",
+      headers: { Authorization: "Bearer token" },
     },
   },
 };
@@ -24,6 +46,9 @@ const mockEnableMCPServer = vi.fn();
 const mockAddMCPServer = vi.fn();
 const mockUpdateMCPServer = vi.fn();
 const mockDeleteMCPServer = vi.fn();
+let mockAddPending = false;
+let mockUpdatePending = false;
+let mockDeletePending = false;
 
 vi.mock("@/core/mcp/hooks", () => ({
   useMCPConfig: () => ({
@@ -37,15 +62,21 @@ vi.mock("@/core/mcp/hooks", () => ({
   }),
   useAddMCPServer: () => ({
     mutateAsync: mockAddMCPServer,
-    isPending: false,
+    get isPending() {
+      return mockAddPending;
+    },
   }),
   useUpdateMCPServer: () => ({
     mutateAsync: mockUpdateMCPServer,
-    isPending: false,
+    get isPending() {
+      return mockUpdatePending;
+    },
   }),
   useDeleteMCPServer: () => ({
     mutateAsync: mockDeleteMCPServer,
-    isPending: false,
+    get isPending() {
+      return mockDeletePending;
+    },
   }),
 }));
 
@@ -173,18 +204,21 @@ vi.mock("@/components/ui/button", () => ({
     variant,
     size,
     disabled,
+    ...props
   }: {
     children: React.ReactNode;
     onClick?: () => void;
     variant?: string;
     size?: string;
     disabled?: boolean;
+    [key: string]: unknown;
   }) => (
     <button
       onClick={onClick}
       data-variant={variant}
       data-size={size}
       disabled={disabled}
+      {...props}
     >
       {children}
     </button>
@@ -272,20 +306,26 @@ vi.mock("@/components/ui/select", () => ({
   Select: ({
     children,
     value,
+    onValueChange,
   }: {
     children: React.ReactNode;
     value?: string;
+    onValueChange?: (value: string) => void;
   }) => (
-    <select data-testid="select" value={value}>
+    <select
+      data-testid="select"
+      value={value}
+      onChange={(event) => onValueChange?.(event.target.value)}
+    >
       {children}
     </select>
   ),
   SelectTrigger: ({ children }: { children: React.ReactNode }) => (
-    <div>{children}</div>
+    <>{children}</>
   ),
   SelectValue: () => <span />,
   SelectContent: ({ children }: { children: React.ReactNode }) => (
-    <div>{children}</div>
+    <>{children}</>
   ),
   SelectItem: ({
     children,
@@ -307,15 +347,28 @@ beforeEach(async () => {
       "code-runner": {
         description: "Run code snippets",
         enabled: true,
+        type: "stdio",
+        command: "node",
+        args: ["server.js"],
+        env: { TOKEN: "abc" },
+        headers: {},
       },
       "web-search": {
         description: "Search the web",
         enabled: false,
+        type: "http",
+        args: [],
+        env: {},
+        url: "http://localhost:3000/mcp",
+        headers: { Authorization: "Bearer token" },
       },
     },
   };
   mockIsLoading = false;
   mockError = null;
+  mockAddPending = false;
+  mockUpdatePending = false;
+  mockDeletePending = false;
   const mod =
     await import("@/components/workspace/settings/tool-settings-page");
   ToolSettingsPage = mod.ToolSettingsPage;
@@ -409,5 +462,244 @@ describe("ToolSettingsPage", () => {
       serverName: "web-search",
       enabled: true,
     });
+  });
+
+  test("validates add form requires a server name", async () => {
+    const user = userEvent.setup();
+    const { toast } = await import("sonner");
+    render(<ToolSettingsPage />);
+
+    await user.click(screen.getByText("Add Server"));
+    await user.click(screen.getByText("Save"));
+
+    expect(toast.error).toHaveBeenCalledWith("Server name cannot be empty.");
+    expect(mockAddMCPServer).not.toHaveBeenCalled();
+  });
+
+  test("adds a stdio server from form values", async () => {
+    const user = userEvent.setup();
+    const { toast } = await import("sonner");
+    render(<ToolSettingsPage />);
+
+    await user.click(screen.getByText("Add Server"));
+    await user.type(screen.getByPlaceholderText("e.g. github"), "github");
+    await user.type(screen.getByPlaceholderText("e.g. npx"), "npx");
+    await user.type(
+      screen.getByPlaceholderText(/One argument per line/),
+      "-y\n@modelcontextprotocol/server-github",
+    );
+    await user.type(screen.getByDisplayValue(""), "GitHub tools");
+    await user.click(screen.getByText("Save"));
+
+    expect(mockAddMCPServer).toHaveBeenCalledWith({
+      name: "github",
+      serverConfig: expect.objectContaining({
+        enabled: true,
+        type: "stdio",
+        command: "npx",
+        args: ["-y", "@modelcontextprotocol/server-github"],
+        description: "GitHub tools",
+      }),
+    });
+    expect(toast.success).toHaveBeenCalledWith("Server added");
+  });
+
+  test("shows add errors without closing the form", async () => {
+    const user = userEvent.setup();
+    const { toast } = await import("sonner");
+    mockAddMCPServer.mockRejectedValue(new Error("duplicate"));
+    render(<ToolSettingsPage />);
+
+    await user.click(screen.getByText("Add Server"));
+    await user.type(screen.getByPlaceholderText("e.g. github"), "github");
+    await user.click(screen.getByText("Save"));
+
+    expect(toast.error).toHaveBeenCalledWith("duplicate");
+    expect(screen.getByTestId("dialog")).toBeInTheDocument();
+  });
+
+  test("opens edit form and saves updated server config", async () => {
+    const user = userEvent.setup();
+    const { toast } = await import("sonner");
+    render(<ToolSettingsPage />);
+
+    const editButtons = screen.getAllByLabelText("Edit");
+    await user.click(editButtons[0]!);
+    expect(screen.getByDisplayValue("code-runner")).toBeDisabled();
+    await user.clear(screen.getByDisplayValue("Run code snippets"));
+    await user.type(screen.getByDisplayValue(""), "Run snippets safely");
+    await user.click(screen.getByText("Save"));
+
+    expect(mockUpdateMCPServer).toHaveBeenCalledWith({
+      name: "code-runner",
+      serverConfig: expect.objectContaining({
+        type: "stdio",
+        command: "node",
+        args: ["server.js"],
+        env: { TOKEN: "abc" },
+        description: "Run snippets safely",
+      }),
+    });
+    expect(toast.success).toHaveBeenCalledWith("Server updated");
+  });
+
+  test("shows edit errors", async () => {
+    const user = userEvent.setup();
+    const { toast } = await import("sonner");
+    mockUpdateMCPServer.mockRejectedValue("failed");
+    render(<ToolSettingsPage />);
+
+    await user.click(screen.getAllByLabelText("Edit")[0]!);
+    await user.click(screen.getByText("Save"));
+
+    expect(toast.error).toHaveBeenCalledWith("failed");
+  });
+
+  test("adds and removes environment entries", async () => {
+    const user = userEvent.setup();
+    render(<ToolSettingsPage />);
+
+    await user.click(screen.getByText("Add Server"));
+    await user.click(screen.getAllByText("Add")[0]!);
+    expect(screen.getByDisplayValue("key")).toBeInTheDocument();
+    await user.click(
+      screen
+        .getAllByRole("button")
+        .find((button) => button.textContent === "")!,
+    );
+    expect(screen.queryByDisplayValue("key")).not.toBeInTheDocument();
+  });
+
+  test("updates environment entry values", async () => {
+    const user = userEvent.setup();
+    render(<ToolSettingsPage />);
+
+    await user.click(screen.getAllByLabelText("Edit")[0]!);
+    const tokenInput = screen.getByDisplayValue("abc");
+    await user.clear(tokenInput);
+    await user.type(tokenInput, "updated");
+    await user.click(screen.getByText("Save"));
+
+    expect(mockUpdateMCPServer).toHaveBeenCalledWith({
+      name: "code-runner",
+      serverConfig: expect.objectContaining({
+        env: { TOKEN: "updated" },
+      }),
+    });
+  });
+
+  test("adds unique environment keys when key already exists", async () => {
+    const user = userEvent.setup();
+    mockConfig = {
+      mcp_servers: {
+        existing: {
+          description: "Has env",
+          enabled: true,
+          type: "stdio",
+          command: "node",
+          args: [],
+          env: { key: "first" },
+          headers: {},
+        },
+      },
+    };
+    render(<ToolSettingsPage />);
+
+    await user.click(screen.getByLabelText("Edit"));
+    await user.click(screen.getAllByText("Add")[0]!);
+
+    expect(screen.getByDisplayValue("key_1")).toBeInTheDocument();
+  });
+
+  test("adds an http server with url and headers", async () => {
+    const user = userEvent.setup();
+    render(<ToolSettingsPage />);
+
+    await user.click(screen.getByText("Add Server"));
+    await user.type(screen.getByPlaceholderText("e.g. github"), "remote");
+    fireEvent.change(screen.getByTestId("select"), {
+      target: { value: "http" },
+    });
+    await user.type(
+      screen.getByPlaceholderText("e.g. http://localhost:3000/sse"),
+      "https://mcp.example/http",
+    );
+    await user.click(screen.getAllByText("Add")[1]!);
+    const headerValueInput = screen
+      .getAllByDisplayValue("")
+      .find((element) => element.tagName === "INPUT");
+    await user.type(headerValueInput!, "Bearer abc");
+    await user.click(screen.getByText("Save"));
+
+    expect(mockAddMCPServer).toHaveBeenCalledWith({
+      name: "remote",
+      serverConfig: expect.objectContaining({
+        type: "http",
+        command: undefined,
+        args: [],
+        url: "https://mcp.example/http",
+        headers: { key: "Bearer abc" },
+      }),
+    });
+  });
+
+  test("does not submit add form while add mutation is pending", async () => {
+    const user = userEvent.setup();
+    mockAddPending = true;
+    render(<ToolSettingsPage />);
+
+    await user.click(screen.getByText("Add Server"));
+    await user.type(screen.getByPlaceholderText("e.g. github"), "blocked");
+    await user.click(screen.getByText("Loading..."));
+
+    expect(mockAddMCPServer).not.toHaveBeenCalled();
+  });
+
+  test("does not submit edit form while update mutation is pending", async () => {
+    const user = userEvent.setup();
+    mockUpdatePending = true;
+    render(<ToolSettingsPage />);
+
+    await user.click(screen.getAllByLabelText("Edit")[0]!);
+    await user.click(screen.getByText("Loading..."));
+
+    expect(mockUpdateMCPServer).not.toHaveBeenCalled();
+  });
+
+  test("does not delete while delete mutation is pending", async () => {
+    const user = userEvent.setup();
+    mockDeletePending = true;
+    render(<ToolSettingsPage />);
+
+    await user.click(screen.getAllByLabelText("Delete")[0]!);
+    await user.click(screen.getByText("Loading..."));
+
+    expect(mockDeleteMCPServer).not.toHaveBeenCalled();
+  });
+
+  test("deletes a selected server", async () => {
+    const user = userEvent.setup();
+    const { toast } = await import("sonner");
+    render(<ToolSettingsPage />);
+
+    await user.click(screen.getAllByLabelText("Delete")[0]!);
+    expect(screen.getByText("Delete server?")).toBeInTheDocument();
+    expect(screen.getAllByText("code-runner").length).toBeGreaterThanOrEqual(2);
+    await user.click(screen.getAllByText("Delete").at(-1)!);
+
+    expect(mockDeleteMCPServer).toHaveBeenCalledWith({ name: "code-runner" });
+    expect(toast.success).toHaveBeenCalledWith("Server deleted");
+  });
+
+  test("shows delete errors", async () => {
+    const user = userEvent.setup();
+    const { toast } = await import("sonner");
+    mockDeleteMCPServer.mockRejectedValue(new Error("delete failed"));
+    render(<ToolSettingsPage />);
+
+    await user.click(screen.getAllByLabelText("Delete")[0]!);
+    await user.click(screen.getAllByText("Delete").at(-1)!);
+
+    expect(toast.error).toHaveBeenCalledWith("delete failed");
   });
 });

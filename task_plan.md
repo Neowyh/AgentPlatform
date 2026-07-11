@@ -1,120 +1,82 @@
-# Task Plan: 离线 Docker 部署整改执行
+# Task Plan: 测试体系完整化重构收口
 
 ## Goal
 
-按 `docs/deployment/离线Docker部署整改方案.md` 实施离线 Docker 部署修复，并用回归测试验证 runtime 配置、compose 合同、打包排除和文档一致性。
+按照当前测试体系重构计划继续执行，直到结构、覆盖率、完整验证、artifact 清理和 review 视角全部满足验收条件。
 
 ## Current Phase
 
-Complete
+Phase 2: Frontend coverage gap closure
+
+## Acceptance Criteria
+
+- 后端根目录没有 `backend/tests/test_*.py`。
+- 前端根目录没有 `frontend/tests/*.spec.ts(x)`。
+- 后端默认、QA、blocking IO、lint、coverage、migration schema 验证全部通过。
+- 前端 unit、coverage、typecheck/lint、Chromium/auth/visual/a11y E2E 全部通过。
+- 后端和前端 coverage 均 `>= 98%`。
+- CI workflow 不再包含 `tests/*.py` 过渡入口。
+- `docs/testing/coverage-matrix.md` 无大面积 `Planned/Partial`。
+- `docs/testing/test-migration-ledger.md` 能解释删除、迁移、重命名和例外。
+- `git diff --cached --name-status --find-renames=50%` 对主要迁移可审查。
+- 没有未预期 generated artifacts 或快照进入 diff。
 
 ## Phases
 
-### Phase 1: Requirements & Discovery
+### Phase 1: Current-State Audit
 
-- [x] 读取用户请求，确认目标是生成修改方案而非直接改代码
-- [x] 读取审查报告，提取问题清单和优先级
-- [x] 初始化 `task_plan.md`、`findings.md`、`progress.md`
+- [x] 核对后端根目录测试残留。
+- [x] 核对前端根目录 E2E spec 残留。
+- [x] 核对当前前后端 coverage 结果。
+- [x] 核对 artifacts 残留。
 - **Status:** complete
 
-### Phase 2: Planning & Structure
+### Phase 2: Frontend Coverage Gap Closure
 
-- [x] 将审查问题映射为可执行修改项
-- [x] 明确 P0/P1/P2 修复顺序
-- [x] 明确每项修改涉及文件、验收标准和回归测试
-- **Status:** complete
+- [ ] 针对 `tool-settings-page.tsx`、admin pages、card/API/hooks 等高收益缺口补行为测试。
+- [ ] 运行 targeted Vitest，确认新增测试通过。
+- [ ] 运行 `pnpm vitest run --coverage`，确认 statements `>= 98%`。
+- **Status:** in_progress
 
-### Phase 3: Plan Artifact Creation
+### Phase 3: Backend Coverage Gap Closure
 
-- [x] 在 `docs/deployment/` 下创建正式修改方案 Markdown
-- [x] 保持方案聚焦离线 Docker 部署，不展开无关重构
-- **Status:** complete
+- [ ] 重新跑 `make test-coverage`，获取包含最新测试的真实缺口。
+- [ ] 针对 routers/client/storage 等高收益缺口补行为测试。
+- [ ] 再次运行 `make test-coverage`，确认 coverage `>= 98%`。
+- **Status:** pending
 
-### Phase 4: Verification
+### Phase 4: Full Verification
 
-- [x] 检查方案文件存在
-- [x] 检查方案包含问题、修改项、验收标准和执行顺序
-- [x] 更新 `progress.md`
-- **Status:** complete
+- [ ] 后端默认 suite：`tests/unit tests/integration tests/contracts -m "not serial and not requires_llm"`。
+- [ ] 后端 `tests/qa`。
+- [ ] 后端 `tests/blocking_io`。
+- [ ] 后端 `tests/integration/persistence/test_migration_schema.py`。
+- [ ] 后端 `make lint`。
+- [ ] 前端 `pnpm test`。
+- [ ] 前端 `pnpm check`。
+- [ ] Playwright Chromium/auth/visual/a11y 全项目执行。
+- **Status:** pending
 
-### Phase 5: Delivery
+### Phase 5: Cleanup, Review View, and Impact Check
 
-- [x] 汇总交付文件路径
-- [x] 说明未执行代码修改
-- **Status:** complete
+- [ ] 清理 generated artifacts：coverage、htmlcov、playwright-report、playwright-artifacts、test-results 等。
+- [ ] 运行静态门禁：`git diff --check`、根测试查找、坏命名查找、E2E 反模式查找。
+- [ ] `git add -A` 后检查 `git diff --cached --name-status --find-renames=50%`。
+- [ ] 跑 GitNexus `detect_changes`，确认影响范围符合预期。
+- **Status:** pending
 
-### Phase 6: Failing Regression Tests
+## Current Evidence
 
-- [x] 新增离线部署脚本回归测试
-- [x] 运行测试并确认当前实现失败
-- **Status:** complete
+- Backend root test files: cleared.
+- Frontend root E2E specs: cleared.
+- Frontend statements coverage: `7289/7522 = 96.90%`, below 98%.
+- Backend coverage: `97%`, below 98%.
+- Generated artifacts still exist under `frontend/coverage`, `frontend/playwright-report`, and `frontend/playwright-artifacts`.
+- `git diff --check` currently passes.
 
-### Phase 7: Implement Fixes
+## Stop Conditions
 
-- [x] 修复 `deploy-intranet.sh`
-- [x] 修复 `package-intranet-offline.sh`
-- [x] 修复 `docker-compose.intranet.yaml`
-- [x] 更新离线部署作业指导书
-- **Status:** complete
-
-### Phase 8: Verification
-
-- [x] 运行新增 pytest
-- [x] 运行 shell 语法检查
-- [x] 运行 compose config 静态校验
-- [x] 更新 progress
-- **Status:** complete
-
-### Phase 9: Deployment Docs Refresh
-
-- [x] 按当前脚本和 compose 行为重写离线部署方案
-- [x] 按电脑小白操作需求重写作业指导书
-- [x] 将示例部署目录统一为 `/home/deploy/ideer`
-- [x] 补充每一步操作的原理说明和常见故障排查
-- [x] 运行文档关键字核对、脚本语法检查和离线部署回归测试
-- **Status:** complete
-
-### Phase 10: Existing Env Upgrade Backfill
-
-- [x] 核实 review 提出的旧 `env.intranet` 升级路径问题
-- [x] 新增失败回归测试覆盖已有 env 缺失内部 token
-- [x] 修改 `deploy-intranet.sh`，对已有 env 追加缺失认证变量
-- [x] 验证重复 `prepare` 不重复追加 key，且不覆盖已有配置
-- [x] 运行相关 pytest 和 shell 语法检查
-- **Status:** complete
-
-### Phase 11: Frontend Health Review Loop
-
-- [x] 核实 review 提出的“只检查 gateway 会误报部署健康”问题
-- [x] 新增失败回归测试覆盖 frontend 路由不可用但 gateway 可用的场景
-- [x] 修改 `deploy-intranet.sh`，启动后额外检查 nginx 首页 `/`
-- [x] 同步更新部署方案和作业指导书的健康检查说明
-- [x] 运行相关 pytest、shell 语法检查、compose config 和未提交变更审查
-- **Status:** complete
-
-## Key Questions
-
-1. 哪些问题必须作为 P0 阻断离线部署成功？
-2. 哪些问题属于稳定性、可维护性或安全加固，可放入 P1/P2？
-3. 每个修改项的最小验证命令是什么？
-
-## Decisions Made
-
-| Decision | Rationale |
-|----------|-----------|
-| 本次只生成修改方案，不直接改部署代码 | 用户明确要求“生成修改方案”，不是“按方案修复” |
-| 方案放在 `docs/deployment/` 下 | 与审查报告和离线部署文档同目录，便于后续执行 |
-| 按 P0/P1/P2 分阶段 | 离线部署问题有启动阻断、运行稳定性和清理加固之分 |
-| 用户已批准执行整改方案 | “按该方案执行”明确进入实施阶段 |
-| 采用 TDD | 新增回归测试先失败，再改脚本实现 |
-
-## Errors Encountered
-
-| Error | Attempt | Resolution |
-|-------|---------|------------|
-| 无 | 1 | 无需处理 |
-
-## Notes
-
-- 已按用户要求完成脚本、compose、测试和部署文档更新。
-- 离线部署文档示例目录统一为 `/home/deploy/ideer`，实际路径仍可通过脚本参数或环境变量配置。
+- 不降低 98% coverage threshold。
+- 不删除测试，除非 ledger 记录等价或更强替代断言和验证命令。
+- 不把真实 LLM、真实三方 channel、真实 Docker/remote sandbox 放入默认 PR 必跑。
+- 若某个完整门禁三次同类失败，先记录 root cause，再调整计划。

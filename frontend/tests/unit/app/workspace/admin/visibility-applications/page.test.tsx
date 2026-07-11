@@ -4,7 +4,11 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
-const mockUser = {
+let mockUser: {
+  id: string;
+  system_role: string;
+  email: string;
+} | null = {
   id: "user-1",
   system_role: "super_admin",
   email: "admin@test.com",
@@ -71,6 +75,7 @@ const mockListResponse = {
 const mockFetchApplications = vi.fn();
 const mockReviewApplication = vi.fn();
 const mockWithdrawApplication = vi.fn();
+const mockRouterReplace = vi.fn();
 
 vi.mock("@/core/auth/AuthProvider", () => ({
   useAuth: () => ({ user: mockUser }),
@@ -86,7 +91,7 @@ vi.mock("@/core/visibility-applications/api", () => ({
 }));
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ replace: vi.fn() }),
+  useRouter: () => ({ replace: mockRouterReplace }),
 }));
 
 vi.mock("next/link", () => ({
@@ -111,6 +116,11 @@ let VisibilityApplicationsPage: typeof import("@/app/workspace/admin/visibility-
 
 beforeEach(async () => {
   vi.clearAllMocks();
+  mockUser = {
+    id: "user-1",
+    system_role: "super_admin",
+    email: "admin@test.com",
+  };
   mockFetchApplications.mockResolvedValue(mockListResponse);
   mockReviewApplication.mockResolvedValue({ id: "app-1", version: 2 });
   mockWithdrawApplication.mockResolvedValue({ success: true });
@@ -326,6 +336,218 @@ describe("VisibilityApplicationsPage", () => {
     expect(screen.getByText("下一页")).toBeInTheDocument();
   });
 
+  test("uses status and resource filters when fetching", async () => {
+    const user = userEvent.setup();
+    render(<VisibilityApplicationsPage />);
+    await waitFor(() => {
+      expect(screen.getByText("web-search")).toBeInTheDocument();
+    });
+    mockFetchApplications.mockClear();
+
+    await user.click(screen.getByRole("button", { name: "已批准" }));
+    await waitFor(() => {
+      expect(mockFetchApplications).toHaveBeenCalledWith({
+        page: 1,
+        page_size: 20,
+        status: "approved",
+      });
+    });
+
+    mockFetchApplications.mockClear();
+    await user.click(screen.getByRole("combobox"));
+    await user.click(screen.getByRole("option", { name: "工作流" }));
+    await waitFor(() => {
+      expect(mockFetchApplications).toHaveBeenCalledWith({
+        page: 1,
+        page_size: 20,
+        status: "approved",
+        resource_type: "workflow",
+      });
+    });
+  });
+
+  test("requests next and previous pages", async () => {
+    const user = userEvent.setup();
+    mockFetchApplications.mockResolvedValue({
+      applications: mockApplications,
+      total: 41,
+      page: 1,
+      page_size: 20,
+    });
+    render(<VisibilityApplicationsPage />);
+    await waitFor(() => {
+      expect(screen.getByText("1 / 3")).toBeInTheDocument();
+    });
+    mockFetchApplications.mockClear();
+
+    await user.click(screen.getByRole("button", { name: "下一页" }));
+    await waitFor(() => {
+      expect(mockFetchApplications).toHaveBeenCalledWith({
+        page: 2,
+        page_size: 20,
+        status: "pending",
+      });
+    });
+
+    mockFetchApplications.mockClear();
+    await user.click(screen.getByRole("button", { name: "上一页" }));
+    await waitFor(() => {
+      expect(mockFetchApplications).toHaveBeenCalledWith({
+        page: 1,
+        page_size: 20,
+        status: "pending",
+      });
+    });
+  });
+
+  test("shows non-pending empty state", async () => {
+    const user = userEvent.setup();
+    mockFetchApplications.mockResolvedValue({
+      applications: [],
+      total: 0,
+      page: 1,
+      page_size: 20,
+    });
+    render(<VisibilityApplicationsPage />);
+    await waitFor(() => {
+      expect(screen.getByText("没有待审批的申请")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "全部" }));
+    await waitFor(() => {
+      expect(screen.getByText("没有找到申请记录")).toBeInTheDocument();
+    });
+  });
+
+  test("shows stringified fetch errors", async () => {
+    mockFetchApplications.mockRejectedValue("fetch failed");
+    render(<VisibilityApplicationsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("fetch failed")).toBeInTheDocument();
+    });
+  });
+
+  test("shows review errors without closing dialog", async () => {
+    const user = userEvent.setup();
+    mockReviewApplication.mockRejectedValue(new Error("review failed"));
+    render(<VisibilityApplicationsPage />);
+    await waitFor(() => {
+      expect(screen.getByText("web-search")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getAllByText("审核")[0]!);
+    await user.click(screen.getByRole("button", { name: "通过" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("review failed")).toBeInTheDocument();
+    });
+  });
+
+  test("closes review dialog when cancel is clicked", async () => {
+    const user = userEvent.setup();
+    render(<VisibilityApplicationsPage />);
+    await waitFor(() => {
+      expect(screen.getByText("web-search")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getAllByText("审核")[0]!);
+    expect(screen.getByText("审核可见性变更申请")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "取消" }));
+
+    await waitFor(() => {
+      expect(screen.queryByText("审核可见性变更申请")).not.toBeInTheDocument();
+    });
+  });
+
+  test("closes review dialog from dialog open change", async () => {
+    const user = userEvent.setup();
+    render(<VisibilityApplicationsPage />);
+    await waitFor(() => {
+      expect(screen.getByText("web-search")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getAllByText("审核")[0]!);
+    expect(screen.getByText("审核可见性变更申请")).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+
+    await waitFor(() => {
+      expect(screen.queryByText("审核可见性变更申请")).not.toBeInTheDocument();
+    });
+  });
+
+  test("shows withdraw errors and resets pending state", async () => {
+    const user = userEvent.setup();
+    mockWithdrawApplication.mockRejectedValue("withdraw failed");
+    render(<VisibilityApplicationsPage />);
+    await waitFor(() => {
+      expect(screen.getByText("data-pipeline")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByText("撤回"));
+    await user.click(screen.getByRole("button", { name: "确认撤回" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("withdraw failed")).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "确认撤回" }),
+      ).not.toBeDisabled();
+    });
+  });
+
+  test("closes withdraw confirm dialog when cancel is clicked", async () => {
+    const user = userEvent.setup();
+    render(<VisibilityApplicationsPage />);
+    await waitFor(() => {
+      expect(screen.getByText("data-pipeline")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByText("撤回"));
+    expect(
+      screen.getByRole("heading", { name: "确认撤回" }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "取消" }));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("heading", { name: "确认撤回" }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  test("closes withdraw confirm dialog from dialog open change", async () => {
+    const user = userEvent.setup();
+    render(<VisibilityApplicationsPage />);
+    await waitFor(() => {
+      expect(screen.getByText("data-pipeline")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByText("撤回"));
+    expect(
+      screen.getByRole("heading", { name: "确认撤回" }),
+    ).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("heading", { name: "确认撤回" }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  test("redirects users without admin role", () => {
+    mockUser = {
+      id: "viewer",
+      system_role: "user",
+      email: "viewer@test.com",
+    };
+
+    const { container } = render(<VisibilityApplicationsPage />);
+
+    expect(mockRouterReplace).toHaveBeenCalledWith("/workspace");
+    expect(container).toBeEmptyDOMElement();
+  });
+
   test("shows resource type badges", async () => {
     render(<VisibilityApplicationsPage />);
     await waitFor(() => {
@@ -350,5 +572,88 @@ describe("VisibilityApplicationsPage", () => {
       expect(screen.getByText("code-review")).toBeInTheDocument();
     });
     expect(screen.getByText("Approved")).toBeInTheDocument();
+  });
+
+  test("fetches rejected and withdrawn status filters", async () => {
+    const user = userEvent.setup();
+    render(<VisibilityApplicationsPage />);
+    await waitFor(() => {
+      expect(screen.getByText("web-search")).toBeInTheDocument();
+    });
+
+    mockFetchApplications.mockClear();
+    await user.click(screen.getByRole("button", { name: "已拒绝" }));
+    await waitFor(() => {
+      expect(mockFetchApplications).toHaveBeenCalledWith({
+        page: 1,
+        page_size: 20,
+        status: "rejected",
+      });
+    });
+
+    mockFetchApplications.mockClear();
+    await user.click(screen.getByRole("button", { name: "已撤回" }));
+    await waitFor(() => {
+      expect(mockFetchApplications).toHaveBeenCalledWith({
+        page: 1,
+        page_size: 20,
+        status: "withdrawn",
+      });
+    });
+  });
+
+  test("fetches pending status after changing away from it", async () => {
+    const user = userEvent.setup();
+    render(<VisibilityApplicationsPage />);
+    await waitFor(() => {
+      expect(screen.getByText("web-search")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "已批准" }));
+    await waitFor(() => {
+      expect(mockFetchApplications).toHaveBeenCalledWith({
+        page: 1,
+        page_size: 20,
+        status: "approved",
+      });
+    });
+
+    mockFetchApplications.mockClear();
+    await user.click(screen.getByRole("button", { name: "待审批" }));
+    await waitFor(() => {
+      expect(mockFetchApplications).toHaveBeenCalledWith({
+        page: 1,
+        page_size: 20,
+        status: "pending",
+      });
+    });
+  });
+
+  test("falls back to raw resource and visibility labels", async () => {
+    const user = userEvent.setup();
+    mockFetchApplications.mockResolvedValue({
+      applications: [
+        {
+          ...mockApplications[0],
+          id: "app-custom",
+          resource_type: "dataset",
+          current_visibility: "team",
+          target_visibility: "enterprise",
+        },
+      ],
+      total: 1,
+      page: 1,
+      page_size: 20,
+    });
+    render(<VisibilityApplicationsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("dataset")).toBeInTheDocument();
+    });
+    await user.click(screen.getByText("审核"));
+    expect(screen.getByText("资源类型: dataset")).toBeInTheDocument();
+    expect(
+      screen.getByText(/可见性变更: team\s+→\s+enterprise/),
+    ).toBeInTheDocument();
   });
 });

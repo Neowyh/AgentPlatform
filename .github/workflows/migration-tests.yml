@@ -5,11 +5,13 @@ on:
     branches: [ 'main' ]
     paths:
       - 'backend/packages/harness/ideer/persistence/**'
+      - 'backend/tests/integration/persistence/**'
       - '.github/workflows/migration-tests.yml'
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - 'backend/packages/harness/ideer/persistence/**'
+      - 'backend/tests/integration/persistence/**'
       - '.github/workflows/migration-tests.yml'
 
 concurrency:
@@ -71,6 +73,12 @@ jobs:
           PYTHONPATH=. uv run alembic \
             -c packages/harness/ideer/persistence/migrations/alembic.ini \
             upgrade head
+
+      - name: Run migration schema tests
+        working-directory: backend
+        run: |
+          PYTHONPATH=. PYTHONIOENCODING=utf-8 PYTHONUTF8=1 \
+            uv run pytest tests/integration/persistence/test_migration_schema.py -v
 
       - name: Cleanup
         if: always()

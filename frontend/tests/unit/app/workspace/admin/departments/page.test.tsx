@@ -1,4 +1,10 @@
-import { render, screen, cleanup, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  cleanup,
+  waitFor,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
@@ -13,13 +19,18 @@ const mockDeleteDepartment = vi.fn();
 const mockGetDepartmentResources = vi.fn();
 const mockToastSuccess = vi.fn();
 const mockToastError = vi.fn();
+const mockRouterReplace = vi.fn();
 
 vi.mock("@/core/auth/AuthProvider", () => ({
   useAuth: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), prefetch: vi.fn() }),
+  useRouter: () => ({
+    push: vi.fn(),
+    replace: mockRouterReplace,
+    prefetch: vi.fn(),
+  }),
   usePathname: () => "/workspace/admin/departments",
 }));
 
@@ -457,7 +468,7 @@ describe("DepartmentsPage", () => {
     });
 
     const editButtons = screen.getAllByTestId("department-edit-button");
-    await user.click(editButtons[0]!); // Edit "Engineering"
+    fireEvent.click(editButtons[0]!); // Edit "Engineering"
 
     await waitFor(() => {
       const nameInput = screen.getByPlaceholderText("请输入部门名称");
@@ -937,15 +948,16 @@ describe("DepartmentsPage", () => {
 
     // Clear and type new description
     const descInput = screen.getByPlaceholderText("请输入部门描述（可选）");
-    await user.clear(descInput);
-    await user.type(descInput, "Updated description text");
+    fireEvent.change(descInput, {
+      target: { value: "Updated description text" },
+    });
 
     expect((descInput as HTMLInputElement).value).toBe(
       "Updated description text",
     );
 
     // Save and verify the updated description is sent
-    await user.click(screen.getByText("保存"));
+    fireEvent.click(screen.getByText("保存"));
 
     await waitFor(() => {
       expect(mockUpdateDepartment).toHaveBeenCalledWith("dept-1", {
@@ -958,22 +970,20 @@ describe("DepartmentsPage", () => {
   // ── Edit dialog: name onChange ──────────────────────────────────────
 
   test("edit dialog name input updates on change", async () => {
-    const user = userEvent.setup();
     render(<DepartmentsPage />);
     await waitFor(() => {
       expect(screen.getByTestId("department-list")).toBeInTheDocument();
     });
 
     const editButtons = screen.getAllByTestId("department-edit-button");
-    await user.click(editButtons[0]!); // Edit "Engineering"
+    fireEvent.click(editButtons[0]!); // Edit "Engineering"
 
     await waitFor(() => {
       expect(screen.getByPlaceholderText("请输入部门名称")).toBeInTheDocument();
     });
 
     const nameInput = screen.getByPlaceholderText("请输入部门名称");
-    await user.clear(nameInput);
-    await user.type(nameInput, "New Name");
+    fireEvent.change(nameInput, { target: { value: "New Name" } });
 
     expect((nameInput as HTMLInputElement).value).toBe("New Name");
   });
@@ -1422,5 +1432,219 @@ describe("DepartmentsPage", () => {
       // React renders null as nothing, so the text becomes " 成员" (with leading space)
       expect(screen.getByText(/成员/)).toBeInTheDocument();
     });
+  });
+
+  // ── Resource reallocation delete flow ─────────────────────────────
+
+  test("opens reallocation dialog when department has resources", async () => {
+    const user = userEvent.setup();
+    mockGetDepartmentResources.mockResolvedValue({
+      resources: [
+        {
+          id: "res-1",
+          resource_type: "agent",
+          resource_id: "agent-alpha",
+          visibility: "department",
+          owner_id: "user-1",
+        },
+        {
+          id: "res-2",
+          resource_type: "skill",
+          resource_id: "skill-beta",
+          visibility: "private",
+          owner_id: "user-2",
+        },
+      ],
+      department_name: "Engineering",
+    });
+
+    render(<DepartmentsPage />);
+    await waitFor(() => {
+      expect(screen.getByTestId("department-list")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getAllByTestId("department-delete-button")[0]!);
+
+    await waitFor(() => {
+      expect(screen.getByText("删除部门 - 资源重分配")).toBeInTheDocument();
+      expect(screen.getByText("agent-alpha")).toBeInTheDocument();
+      expect(screen.getByText("skill-beta")).toBeInTheDocument();
+      expect(screen.getByText("部门级")).toBeInTheDocument();
+      expect(screen.getByText("私有")).toBeInTheDocument();
+    });
+  });
+
+  test("deletes department with resources as private by default", async () => {
+    const user = userEvent.setup();
+    mockGetDepartmentResources.mockResolvedValue({
+      resources: [
+        {
+          id: "res-1",
+          resource_type: "agent",
+          resource_id: "agent-alpha",
+          visibility: "department",
+          owner_id: "user-1",
+        },
+      ],
+      department_name: "Engineering",
+    });
+
+    render(<DepartmentsPage />);
+    await waitFor(() => {
+      expect(screen.getByTestId("department-list")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getAllByTestId("department-delete-button")[0]!);
+    await waitFor(() => {
+      expect(screen.getByText("确认删除")).toBeInTheDocument();
+    });
+    await user.click(screen.getByText("确认删除"));
+
+    await waitFor(() => {
+      expect(mockDeleteDepartment).toHaveBeenCalledWith("dept-1", undefined);
+      expect(mockToastSuccess).toHaveBeenCalledWith("部门已删除");
+    });
+  });
+
+  test("deletes department with resources reassigned to another department", async () => {
+    const user = userEvent.setup();
+    mockGetDepartmentResources.mockResolvedValue({
+      resources: [
+        {
+          id: "res-1",
+          resource_type: "agent",
+          resource_id: "agent-alpha",
+          visibility: "department",
+          owner_id: "user-1",
+        },
+      ],
+      department_name: "Engineering",
+    });
+
+    render(<DepartmentsPage />);
+    await waitFor(() => {
+      expect(screen.getByTestId("department-list")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getAllByTestId("department-delete-button")[0]!);
+    await waitFor(() => {
+      expect(screen.getByLabelText("重分配到目标部门")).toBeInTheDocument();
+    });
+    await user.click(screen.getByLabelText("重分配到目标部门"));
+    await user.click(screen.getByText("确认删除"));
+
+    await waitFor(() => {
+      expect(mockDeleteDepartment).toHaveBeenCalledWith("dept-1", "dept-2");
+    });
+  });
+
+  test("changes and clears reallocation target before canceling", async () => {
+    const user = userEvent.setup();
+    mockGetDepartmentResources.mockResolvedValue({
+      resources: [
+        {
+          id: "res-1",
+          resource_type: "agent",
+          resource_id: "agent-alpha",
+          visibility: "department",
+          owner_id: "user-1",
+        },
+      ],
+      department_name: "Engineering",
+    });
+
+    render(<DepartmentsPage />);
+    await waitFor(() => {
+      expect(screen.getByTestId("department-list")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getAllByTestId("department-delete-button")[0]!);
+    await waitFor(() => {
+      expect(screen.getByLabelText("重分配到目标部门")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByLabelText("重分配到目标部门"));
+    const targetSelect = screen.getByDisplayValue("Marketing");
+    fireEvent.change(targetSelect, { target: { value: "dept-3" } });
+    expect(targetSelect).toHaveValue("dept-3");
+
+    await user.click(
+      screen.getByLabelText("降级为私有（资源变为私有，部门关联清除）"),
+    );
+    expect(screen.queryByDisplayValue("Marketing")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "取消" }));
+    await waitFor(() => {
+      expect(
+        screen.queryByText("删除部门 - 资源重分配"),
+      ).not.toBeInTheDocument();
+    });
+    expect(mockDeleteDepartment).not.toHaveBeenCalled();
+  });
+
+  test("shows error when loading resources for delete fails", async () => {
+    const user = userEvent.setup();
+    mockGetDepartmentResources.mockRejectedValue(
+      new Error("Resource lookup failed"),
+    );
+
+    render(<DepartmentsPage />);
+    await waitFor(() => {
+      expect(screen.getByTestId("department-list")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getAllByTestId("department-delete-button")[0]!);
+
+    await waitFor(() => {
+      expect(mockToastError).toHaveBeenCalledWith("Resource lookup failed");
+    });
+  });
+
+  test("redirects non-admin users without fetching departments", () => {
+    vi.mocked(useAuth).mockReturnValue({
+      user: {
+        id: "regular-user",
+        email: "user@example.com",
+        system_role: "user",
+        needs_setup: false,
+      },
+      isAuthenticated: true,
+      isLoading: false,
+      logout: vi.fn(),
+      refreshUser: vi.fn(),
+    });
+
+    render(<DepartmentsPage />);
+
+    expect(mockRouterReplace).toHaveBeenCalledWith("/workspace");
+    expect(mockListDepartments).not.toHaveBeenCalled();
+  });
+
+  test("department admins can view departments but cannot mutate them", async () => {
+    vi.mocked(useAuth).mockReturnValue({
+      user: {
+        id: "dept-admin",
+        email: "dept-admin@example.com",
+        system_role: "department_admin",
+        needs_setup: false,
+      },
+      isAuthenticated: true,
+      isLoading: false,
+      logout: vi.fn(),
+      refreshUser: vi.fn(),
+    });
+
+    render(<DepartmentsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("department-list")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("新建部门")).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("department-edit-button"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("department-delete-button"),
+    ).not.toBeInTheDocument();
   });
 });

@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   backend-unit-tests:
-    if: github.event.pull_request.draft == false
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
@@ -41,21 +41,67 @@ jobs:
 
       - name: Run tests (shard ${{ matrix.shard }}/4)
         working-directory: backend
+        env:
+          COVERAGE_FILE: coverage-shard-${{ matrix.shard }}.dat
         run: |
-          uv run pytest tests/ \
+          uv run pytest tests/unit tests/integration tests/contracts \
             --splits 4 \
             --group ${{ matrix.shard }} \
             --splitting-algorithm least_duration \
             -n auto \
+            -m "not serial and not requires_llm" \
             --cov=app --cov=packages \
-            --cov-report=xml \
-            --cov-report=json:coverage.json \
             --cov-report=term-missing
 
-      - name: Check backend coverage threshold
-        if: matrix.shard == 1
+      - name: Upload backend coverage data
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage-shard-${{ matrix.shard }}
+          path: backend/coverage-shard-${{ matrix.shard }}.dat
+          if-no-files-found: error
+
+      - name: Coverage Summary
+        if: always()
         working-directory: backend
         run: |
+          echo "## Backend Coverage Report (Shard ${{ matrix.shard }}/4)" >> $GITHUB_STEP_SUMMARY
+          echo "Coverage data uploaded as backend-coverage-shard-${{ matrix.shard }}." >> $GITHUB_STEP_SUMMARY
+
+  backend-coverage:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
+    runs-on: ubuntu-latest
+    needs: backend-unit-tests
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: uv sync --group dev
+
+      - name: Download backend coverage data
+        uses: actions/download-artifact@v4
+        with:
+          pattern: backend-coverage-shard-*
+          path: backend/.coverage-data
+          merge-multiple: true
+
+      - name: Combine backend coverage and check threshold
+        working-directory: backend
+        run: |
+          uv run coverage combine .coverage-data
+          uv run coverage json -o coverage.json
+          uv run coverage report --show-missing
           BACKEND_COV=$(python -c "import json; d=json.load(open('coverage.json')); print(d['totals']['percent_covered'])")
           if (( $(echo "$BACKEND_COV < 98.0" | bc -l) )); then
             echo "::error::Backend coverage ${BACKEND_COV}% is below 98% threshold"
@@ -67,5 +113,5 @@ jobs:
         if: always()
         working-directory: backend
         run: |
-          echo "## Backend Coverage Report (Shard ${{ matrix.shard }}/4)" >> $GITHUB_STEP_SUMMARY
-          PYTHONPATH=. uv run pytest tests/ --cov=app --cov=packages --cov-report=term-missing 2>&1 | grep -E "^(TOTAL|Name|---)" >> $GITHUB_STEP_SUMMARY || true
+          echo "## Backend Combined Coverage Report" >> $GITHUB_STEP_SUMMARY
+          uv run coverage report --show-missing 2>&1 | grep -E "^(TOTAL|Name|---)" >> $GITHUB_STEP_SUMMARY || true

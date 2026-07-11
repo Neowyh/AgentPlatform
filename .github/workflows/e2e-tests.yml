@@ -50,7 +50,7 @@ jobs:
 
       - name: Run E2E tests
         working-directory: frontend
-        run: pnpm exec playwright test --project=chromium --project=qa
+        run: pnpm exec playwright test --project=chromium
         env:
           SKIP_ENV_VALIDATION: '1'
 
@@ -101,5 +101,89 @@ jobs:
         if: failure()
         with:
           name: visual-regression-report
-          path: frontend/test-results/
+          path: frontend/playwright-artifacts/
+          retention-days: 7
+
+  auth-e2e:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Use pinned pnpm version
+        run: corepack prepare pnpm@10.26.2 --activate
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        working-directory: frontend
+        run: npx playwright install chromium --with-deps
+
+      - name: Run auth E2E tests
+        working-directory: frontend
+        run: pnpm exec playwright test --config=playwright.auth.config.ts
+        env:
+          SKIP_ENV_VALIDATION: '1'
+
+      - name: Upload auth E2E report
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: auth-e2e-report
+          path: frontend/playwright-report/
+          retention-days: 7
+
+  a11y-e2e:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Use pinned pnpm version
+        run: corepack prepare pnpm@10.26.2 --activate
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        working-directory: frontend
+        run: npx playwright install chromium --with-deps
+
+      - name: Run accessibility E2E tests
+        working-directory: frontend
+        run: pnpm exec playwright test --project=a11y
+        env:
+          SKIP_ENV_VALIDATION: '1'
+
+      - name: Upload accessibility report
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: a11y-e2e-report
+          path: frontend/playwright-report/
           retention-days: 7

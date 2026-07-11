@@ -13,6 +13,10 @@ vi.mock("@/core/config", () => ({
   getBackendBaseURL: vi.fn(() => "http://localhost:8000"),
 }));
 
+vi.mock("@/core/visibility-applications/api", () => ({
+  createVisibilityApplication: vi.fn(),
+}));
+
 vi.mock("@/env", () => ({
   env: {
     NEXT_PUBLIC_BACKEND_BASE_URL: "http://localhost:8000",
@@ -109,6 +113,150 @@ describe("skills api", () => {
       expect(extractError).toHaveBeenCalledWith(
         errorResponse,
         "Failed to disable skill",
+      );
+    });
+  });
+
+  describe("submitSkillApplication", () => {
+    test("maps visibility application response to legacy skill response", async () => {
+      const { createVisibilityApplication } =
+        await import("@/core/visibility-applications/api");
+      vi.mocked(createVisibilityApplication).mockResolvedValue({
+        id: "app-1",
+        resource_type: "skill",
+        resource_id: "my-skill",
+        applicant_id: "user-1",
+        target_visibility: "department",
+        department_id: "dept-1",
+        reason: "share",
+        status: "pending",
+        submitted_at: "2024-01-01T00:00:00Z",
+        reviewed_by: null,
+        reviewed_at: null,
+        review_comment: null,
+        version: 1,
+      });
+
+      const { submitSkillApplication } = await import("@/core/skills/api");
+
+      await expect(
+        submitSkillApplication("my-skill", {
+          request_level: "department",
+          reason: "share",
+        }),
+      ).resolves.toEqual({
+        id: "app-1",
+        skill_id: "my-skill",
+        skill_name: "my-skill",
+        applicant_id: "user-1",
+        request_level: "department",
+        department_id: "dept-1",
+        reason: "share",
+        status: "pending",
+        submitted_at: "2024-01-01T00:00:00Z",
+        reviewed_by: null,
+        reviewed_at: null,
+        review_comment: null,
+      });
+      expect(createVisibilityApplication).toHaveBeenCalledWith({
+        resource_type: "skill",
+        resource_id: "my-skill",
+        target_visibility: "department",
+        reason: "share",
+      });
+    });
+  });
+
+  describe("listSkillApplications", () => {
+    test("lists skill applications with optional status", async () => {
+      const { fetch: fetcher } = await import("@/core/api/fetcher");
+      vi.mocked(fetcher).mockResolvedValue(
+        new Response(JSON.stringify({ applications: [] }), { status: 200 }),
+      );
+
+      const { listSkillApplications } = await import("@/core/skills/api");
+      const result = await listSkillApplications("pending");
+
+      expect(result).toEqual({ applications: [] });
+      expect(fetcher).toHaveBeenCalledWith(
+        "http://localhost:8000/api/visibility-applications?status=pending&resource_type=skill",
+      );
+    });
+
+    test("lists skill applications without status", async () => {
+      const { fetch: fetcher } = await import("@/core/api/fetcher");
+      vi.mocked(fetcher).mockResolvedValue(
+        new Response(JSON.stringify({ applications: [] }), { status: 200 }),
+      );
+
+      const { listSkillApplications } = await import("@/core/skills/api");
+      await listSkillApplications();
+
+      expect(fetcher).toHaveBeenCalledWith(
+        "http://localhost:8000/api/visibility-applications?resource_type=skill",
+      );
+    });
+
+    test("delegates list failures to extractError", async () => {
+      const { fetch: fetcher } = await import("@/core/api/fetcher");
+      const response = new Response("{}", { status: 500 });
+      vi.mocked(fetcher).mockResolvedValue(response);
+      const { extractError } = await import("@/core/api/errors");
+      vi.mocked(extractError).mockRejectedValue(new Error("list failed"));
+
+      const { listSkillApplications } = await import("@/core/skills/api");
+
+      await expect(listSkillApplications()).rejects.toThrow("list failed");
+      expect(extractError).toHaveBeenCalledWith(
+        response,
+        "Failed to list skill applications",
+      );
+    });
+  });
+
+  describe("reviewSkillApplication", () => {
+    test("reviews an application with encoded id", async () => {
+      const { fetch: fetcher } = await import("@/core/api/fetcher");
+      vi.mocked(fetcher).mockResolvedValue(
+        new Response(JSON.stringify({ message: "ok" }), { status: 200 }),
+      );
+
+      const { reviewSkillApplication } = await import("@/core/skills/api");
+      const result = await reviewSkillApplication(
+        "app/1",
+        "approved",
+        "looks good",
+      );
+
+      expect(result).toEqual({ message: "ok" });
+      expect(fetcher).toHaveBeenCalledWith(
+        "http://localhost:8000/api/visibility-applications/app%2F1",
+        expect.objectContaining({
+          method: "PUT",
+          body: JSON.stringify({
+            action: "approved",
+            comment: "looks good",
+            version: 1,
+          }),
+        }),
+      );
+    });
+
+    test("delegates review failures to extractError", async () => {
+      const { fetch: fetcher } = await import("@/core/api/fetcher");
+      const response = new Response("{}", { status: 400 });
+      vi.mocked(fetcher).mockResolvedValue(response);
+      const { extractError } = await import("@/core/api/errors");
+      vi.mocked(extractError).mockRejectedValue(new Error("review failed"));
+
+      const { reviewSkillApplication } = await import("@/core/skills/api");
+
+      await expect(reviewSkillApplication("app-1", "rejected")).rejects.toThrow(
+        "review failed",
+      );
+      expect(extractError).toHaveBeenCalledWith(
+        response,
+        "Failed to review skill application",
       );
     });
   });

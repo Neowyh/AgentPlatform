@@ -448,4 +448,50 @@ describe("workflows API", () => {
       ).rejects.toThrow();
     });
   });
+
+  // ---------------------------------------------------------------
+  // toggleWorkflowFavorite
+  // ---------------------------------------------------------------
+  describe("toggleWorkflowFavorite", () => {
+    it("sends POST to favorite endpoint", async () => {
+      const mockFetch = await getMockFetch();
+      const payload = { success: true, is_favorited: true };
+      mockFetch.mockResolvedValue(okResponse(payload));
+
+      const { toggleWorkflowFavorite } = await import("@/core/workflows/api");
+      const result = await toggleWorkflowFavorite("wf");
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        "http://localhost:8000/api/workflows/wf/favorite",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+      expect(result).toEqual(payload);
+    });
+
+    it("encodes special characters in workflow name", async () => {
+      const mockFetch = await getMockFetch();
+      mockFetch.mockResolvedValue(
+        okResponse({ success: true, is_favorited: false }),
+      );
+
+      const { toggleWorkflowFavorite } = await import("@/core/workflows/api");
+      await toggleWorkflowFavorite("a/b");
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        "http://localhost:8000/api/workflows/a%2Fb/favorite",
+        expect.any(Object),
+      );
+    });
+
+    it("throws on non-ok response", async () => {
+      const mockFetch = await getMockFetch();
+      mockFetch.mockResolvedValue(errorResponse("Forbidden"));
+
+      const { toggleWorkflowFavorite } = await import("@/core/workflows/api");
+      await expect(toggleWorkflowFavorite("wf")).rejects.toThrow();
+    });
+  });
 });

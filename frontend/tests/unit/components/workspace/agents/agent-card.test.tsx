@@ -222,6 +222,40 @@ describe("AgentCard", () => {
     );
   });
 
+  test("favorite button adds agent to favorites", async () => {
+    mockToggleMutateAsync.mockResolvedValue(undefined);
+    render(<AgentCard agent={makeAgent({ is_favorited: false })} />);
+
+    fireEvent.click(screen.getByTestId("agent-favorite-button"));
+
+    await waitFor(() => {
+      expect(mockToggleMutateAsync).toHaveBeenCalledWith("test-agent");
+    });
+    expect(mockToastSuccess).toHaveBeenCalledWith("Added to favorites");
+  });
+
+  test("favorite button removes agent from favorites", async () => {
+    mockToggleMutateAsync.mockResolvedValue(undefined);
+    render(<AgentCard agent={makeAgent({ is_favorited: true })} />);
+
+    fireEvent.click(screen.getByTestId("agent-favorite-button"));
+
+    await waitFor(() => {
+      expect(mockToastSuccess).toHaveBeenCalledWith("Removed from favorites");
+    });
+  });
+
+  test("favorite failure shows error toast", async () => {
+    mockToggleMutateAsync.mockRejectedValue("favorite failed");
+    render(<AgentCard agent={makeAgent()} />);
+
+    fireEvent.click(screen.getByTestId("agent-favorite-button"));
+
+    await waitFor(() => {
+      expect(mockToastError).toHaveBeenCalledWith("favorite failed");
+    });
+  });
+
   // ── Export button ────────────────────────────────────────────────────────
 
   test("renders export button", () => {

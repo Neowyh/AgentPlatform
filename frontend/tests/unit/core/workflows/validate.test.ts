@@ -52,4 +52,44 @@ steps:
     const errors = validateYaml(yaml);
     expect(errors).toHaveLength(0);
   });
+
+  it("reports top-level lines without key-value syntax", () => {
+    const errors = validateYaml("name: wf\nnot-a-pair\nsteps:\n  - id: s1");
+
+    expect(errors).toContain(
+      'Line 2: expected a key-value pair (missing ":"): "not-a-pair"',
+    );
+  });
+
+  it("reports empty name and explicit empty steps list", () => {
+    const errors = validateYaml("name:\nsteps: []");
+
+    expect(errors).toContain('Required field "name" must have a value');
+    expect(errors).toContain(
+      'Required field "steps" must contain at least one step',
+    );
+  });
+
+  it("reports block steps without items", () => {
+    const errors = validateYaml("name: wf\nsteps:\ndescription: done");
+
+    expect(errors).toContain(
+      'Required field "steps" must contain at least one step',
+    );
+  });
+
+  it("accepts quoted names and inline non-empty steps", () => {
+    const errors = validateYaml('name: "quoted-wf"\nsteps: [first]');
+
+    expect(errors).toHaveLength(0);
+  });
+
+  it("reports unbalanced brackets and braces", () => {
+    const errors = validateYaml("name: wf\nsteps: [first\nconfig: {a: 1");
+
+    expect(errors).toContain("Unbalanced brackets: check for unclosed arrays");
+    expect(errors).toContain(
+      "Unbalanced braces: check for unclosed inline mappings",
+    );
+  });
 });

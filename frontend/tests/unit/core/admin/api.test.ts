@@ -18,9 +18,13 @@ import {
   listUsers,
   updateUserRole,
   disableUser,
+  toggleUserStatus,
+  createUser,
+  updateUser,
   listDepartments,
   createDepartment,
   updateDepartment,
+  getDepartmentResources,
   deleteDepartment,
   getAdminStats,
   listTools,
@@ -125,6 +129,80 @@ describe("admin API", () => {
     });
   });
 
+  describe("toggleUserStatus", () => {
+    test("sends PATCH request and returns status", async () => {
+      const payload = { success: true, user_id: "u1", disabled: true };
+      mockFetch.mockResolvedValue(okJson(payload));
+
+      const result = await toggleUserStatus("u1");
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        "http://localhost:8000/api/admin/users/u1/status",
+        { method: "PATCH" },
+      );
+      expect(result).toEqual(payload);
+    });
+  });
+
+  describe("createUser", () => {
+    test("sends POST request with new user body", async () => {
+      const payload = {
+        id: "u1",
+        email: "user@example.com",
+        username: "User",
+        role: "user",
+        department_id: "dept-1",
+        disabled: false,
+        created_at: "2024-01-01T00:00:00Z",
+      };
+      mockFetch.mockResolvedValue(okJson(payload));
+
+      const request = {
+        email: "user@example.com",
+        password: "secret12",
+        username: "User",
+        role: "user",
+        department_id: "dept-1",
+      };
+      const result = await createUser(request);
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        "http://localhost:8000/api/admin/users",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify(request),
+        }),
+      );
+      expect(result).toEqual(payload);
+    });
+  });
+
+  describe("updateUser", () => {
+    test("sends PUT request with partial user body", async () => {
+      const payload = {
+        id: "u1",
+        email: "user@example.com",
+        username: "Updated",
+        role: "user",
+        department_id: null,
+        disabled: false,
+        created_at: "2024-01-01T00:00:00Z",
+      };
+      mockFetch.mockResolvedValue(okJson(payload));
+
+      const result = await updateUser("u1", { username: "Updated" });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        "http://localhost:8000/api/admin/users/u1",
+        expect.objectContaining({
+          method: "PUT",
+          body: JSON.stringify({ username: "Updated" }),
+        }),
+      );
+      expect(result).toEqual(payload);
+    });
+  });
+
   // ── listDepartments ─────────────────────────────────────────────
 
   describe("listDepartments", () => {
@@ -220,6 +298,36 @@ describe("admin API", () => {
 
       const init = mockFetch.mock.calls[0]![1] as RequestInit;
       expect(init.method).toBe("DELETE");
+    });
+
+    test("includes target department when provided", async () => {
+      mockFetch.mockResolvedValue(okJson(undefined));
+
+      await deleteDepartment("dept-1", "dept-2");
+
+      const init = mockFetch.mock.calls[0]![1] as RequestInit;
+      expect(JSON.parse(init.body as string)).toEqual({
+        target_dept_id: "dept-2",
+      });
+    });
+  });
+
+  describe("getDepartmentResources", () => {
+    test("sends GET request for department resources", async () => {
+      const payload = {
+        department_id: "dept-1",
+        department_name: "Engineering",
+        resources: [],
+        total_count: 0,
+      };
+      mockFetch.mockResolvedValue(okJson(payload));
+
+      const result = await getDepartmentResources("dept-1");
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        "http://localhost:8000/api/admin/departments/dept-1/resources",
+      );
+      expect(result).toEqual(payload);
     });
   });
 
@@ -336,6 +444,46 @@ describe("admin API", () => {
       );
     });
 
+    test("calls extractError when toggleUserStatus returns non-ok", async () => {
+      mockFetch.mockResolvedValue(notOkJson());
+
+      await expect(toggleUserStatus("u1")).rejects.toThrow();
+
+      expect(mockExtractError).toHaveBeenCalledWith(
+        expect.anything(),
+        "Failed to toggle user status",
+      );
+    });
+
+    test("calls extractError when createUser returns non-ok", async () => {
+      mockFetch.mockResolvedValue(notOkJson());
+
+      await expect(
+        createUser({
+          email: "user@example.com",
+          password: "secret12",
+          username: "User",
+          role: "user",
+        }),
+      ).rejects.toThrow();
+
+      expect(mockExtractError).toHaveBeenCalledWith(
+        expect.anything(),
+        "Failed to create user",
+      );
+    });
+
+    test("calls extractError when updateUser returns non-ok", async () => {
+      mockFetch.mockResolvedValue(notOkJson());
+
+      await expect(updateUser("u1", { username: "User" })).rejects.toThrow();
+
+      expect(mockExtractError).toHaveBeenCalledWith(
+        expect.anything(),
+        "Failed to update user",
+      );
+    });
+
     test("calls extractError when listDepartments returns non-ok", async () => {
       mockFetch.mockResolvedValue(notOkJson());
 
@@ -366,6 +514,17 @@ describe("admin API", () => {
       expect(mockExtractError).toHaveBeenCalledWith(
         expect.anything(),
         "Failed to update department",
+      );
+    });
+
+    test("calls extractError when getDepartmentResources returns non-ok", async () => {
+      mockFetch.mockResolvedValue(notOkJson());
+
+      await expect(getDepartmentResources("d1")).rejects.toThrow();
+
+      expect(mockExtractError).toHaveBeenCalledWith(
+        expect.anything(),
+        "Failed to get department resources",
       );
     });
 

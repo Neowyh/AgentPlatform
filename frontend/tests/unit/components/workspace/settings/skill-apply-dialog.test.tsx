@@ -256,8 +256,8 @@ describe("SkillApplyDialog", () => {
   test("disables submit button while submitting", async () => {
     const user = userEvent.setup();
 
-    let resolveSubmit: (value: void) => void;
-    const submitPromise = new Promise((resolve) => {
+    let resolveSubmit!: (value: void) => void;
+    const submitPromise = new Promise<void>((resolve) => {
       resolveSubmit = resolve;
     });
     const asyncOnSubmit = vi.fn().mockReturnValue(submitPromise);
@@ -301,7 +301,7 @@ describe("SkillApplyDialog", () => {
 
   test("does not call onOpenChange after unmount during async submission", async () => {
     const user = userEvent.setup();
-    let resolveSubmit: (value: void) => void;
+    let resolveSubmit!: (value: void) => void;
     const submitPromise = new Promise<void>((resolve) => {
       resolveSubmit = resolve;
     });

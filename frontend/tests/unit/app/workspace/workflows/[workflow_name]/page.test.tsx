@@ -52,6 +52,7 @@ let mockMutateAsync: ReturnType<typeof vi.fn>;
 let mockIsPending = false;
 let mockRunStatus: RunStatus | null = null;
 let mockPush: ReturnType<typeof vi.fn>;
+let mockCreateVisibilityApplication: ReturnType<typeof vi.fn>;
 
 /* ------------------------------------------------------------------ */
 /*  Module mocks                                                       */
@@ -87,7 +88,8 @@ vi.mock("@/core/auth/AuthProvider", () => ({
 }));
 
 vi.mock("@/core/visibility-applications/api", () => ({
-  createVisibilityApplication: vi.fn(),
+  createVisibilityApplication: (...args: any[]) =>
+    mockCreateVisibilityApplication(...args),
 }));
 
 vi.mock("@/core/i18n/hooks", () => ({
@@ -309,10 +311,16 @@ beforeEach(() => {
   mockIsPending = false;
   mockRunStatus = null;
   mockPush = vi.fn();
+  mockCreateVisibilityApplication = vi.fn().mockResolvedValue({
+    id: "application-1",
+  });
+  vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:workflow");
+  vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
 });
 
 afterEach(() => {
   vi.clearAllMocks();
+  vi.restoreAllMocks();
 });
 
 /* ================================================================== */
@@ -434,6 +442,124 @@ describe("WorkflowDetailPage", () => {
     test("renders run button", () => {
       render(<WorkflowDetailPage />);
       expect(screen.getByText("Run")).toBeInTheDocument();
+    });
+
+    test("renders visibility badge styles for public and department", () => {
+      mockWorkflow = { ...defaultWorkflow, visibility: "public" };
+      const { rerender } = render(<WorkflowDetailPage />);
+      expect(screen.getByText("Visibility: public")).toHaveClass(
+        "bg-green-100",
+      );
+
+      mockWorkflow = { ...defaultWorkflow, visibility: "department" };
+      rerender(<WorkflowDetailPage />);
+      expect(screen.getByText("Visibility: department")).toHaveClass(
+        "bg-blue-100",
+      );
+    });
+  });
+
+  /* ---------- Export ---------- */
+  describe("export", () => {
+    test("downloads yaml content and shows success toast", () => {
+      const appendChild = vi.spyOn(document.body, "appendChild");
+      const removeChild = vi.spyOn(document.body, "removeChild");
+      const click = vi
+        .spyOn(HTMLAnchorElement.prototype, "click")
+        .mockImplementation(() => {});
+
+      render(<WorkflowDetailPage />);
+      fireEvent.click(screen.getByText("Export"));
+
+      expect(URL.createObjectURL).toHaveBeenCalledWith(expect.any(Blob));
+      expect(appendChild).toHaveBeenCalled();
+      expect(click).toHaveBeenCalled();
+      expect(removeChild).toHaveBeenCalled();
+      expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:workflow");
+      expect(toast.success).toHaveBeenCalledWith("Export successful");
+    });
+
+    test("shows error when yaml content is missing", () => {
+      mockWorkflow = { ...defaultWorkflow, yaml_content: "" };
+
+      render(<WorkflowDetailPage />);
+      fireEvent.click(screen.getByText("Export"));
+
+      expect(URL.createObjectURL).not.toHaveBeenCalled();
+      expect(toast.error).toHaveBeenCalledWith("Export failed");
+    });
+  });
+
+  /* ---------- Visibility application ---------- */
+  describe("visibility application", () => {
+    test("validates required reason", async () => {
+      const user = userEvent.setup();
+      render(<WorkflowDetailPage />);
+
+      await user.click(screen.getByText("Apply Visibility Change"));
+
+      expect(screen.getByText("Submit Application")).toBeDisabled();
+      expect(mockCreateVisibilityApplication).not.toHaveBeenCalled();
+    });
+
+    test("submits visibility application with trimmed reason", async () => {
+      const user = userEvent.setup();
+      render(<WorkflowDetailPage />);
+
+      await user.click(screen.getByText("Apply Visibility Change"));
+      await user.click(screen.getByRole("combobox"));
+      await user.click(screen.getByRole("option", { name: "Public" }));
+      fireEvent.change(screen.getByPlaceholderText("Enter your reason..."), {
+        target: { value: "  Share this workflow  " },
+      });
+      await user.click(screen.getByText("Submit Application"));
+
+      await waitFor(() => {
+        expect(mockCreateVisibilityApplication).toHaveBeenCalledWith({
+          resource_type: "workflow",
+          resource_id: "test-workflow",
+          target_visibility: "public",
+          reason: "Share this workflow",
+        });
+        expect(toast.success).toHaveBeenCalledWith("Application submitted");
+      });
+      expect(screen.queryByText("Submit Application")).not.toBeInTheDocument();
+    });
+
+    test("shows visibility application errors", async () => {
+      const user = userEvent.setup();
+      mockCreateVisibilityApplication.mockRejectedValue(
+        new Error("application failed"),
+      );
+      render(<WorkflowDetailPage />);
+
+      await user.click(screen.getByText("Apply Visibility Change"));
+      fireEvent.change(screen.getByPlaceholderText("Enter your reason..."), {
+        target: { value: "Need wider access" },
+      });
+      await user.click(screen.getByText("Submit Application"));
+
+      await waitFor(() => {
+        expect(toast.error).toHaveBeenCalledWith("application failed");
+      });
+    });
+
+    test("shows non-Error visibility application errors", async () => {
+      const user = userEvent.setup();
+      mockCreateVisibilityApplication.mockRejectedValue(
+        "raw application error",
+      );
+      render(<WorkflowDetailPage />);
+
+      await user.click(screen.getByText("Apply Visibility Change"));
+      fireEvent.change(screen.getByPlaceholderText("Enter your reason..."), {
+        target: { value: "Need wider access" },
+      });
+      await user.click(screen.getByText("Submit Application"));
+
+      await waitFor(() => {
+        expect(toast.error).toHaveBeenCalledWith("raw application error");
+      });
     });
   });
 

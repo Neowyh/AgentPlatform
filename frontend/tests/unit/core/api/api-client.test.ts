@@ -29,20 +29,30 @@ vi.mock("@/core/threads/static-demo", () => ({
   staticDemoThreadState: vi.fn(),
 }));
 
-const mockClientInstance = {
-  runs: {
-    stream: vi.fn(),
-    joinStream: vi.fn(),
-  },
-  threads: {},
-};
-
-const MockClientConstructor = vi.fn().mockImplementation(function () {
-  return mockClientInstance;
+const langGraphClientMock = vi.hoisted(() => {
+  const state: {
+    capturedOnRequest?: (url: URL, init: RequestInit) => RequestInit;
+    Constructor: ReturnType<typeof vi.fn>;
+  } = {
+    Constructor: vi.fn(),
+  };
+  state.Constructor = vi.fn().mockImplementation(function (config?: {
+    onRequest?: (url: URL, init: RequestInit) => RequestInit;
+  }) {
+    state.capturedOnRequest = config?.onRequest;
+    return {
+      runs: {
+        stream: vi.fn(),
+        joinStream: vi.fn(),
+      },
+      threads: {},
+    };
+  });
+  return state;
 });
 
-vi.mock("@langgraph/langgraph-sdk/client", () => ({
-  Client: MockClientConstructor,
+vi.mock("@langchain/langgraph-sdk/client", () => ({
+  Client: langGraphClientMock.Constructor,
 }));
 
 import { getAPIClient } from "@/core/api/api-client";
@@ -111,27 +121,63 @@ describe("injectCsrfHeader (via getAPIClient)", () => {
 
 describe("CSRF header injection in onRequest", () => {
   test("injectCsrfHeader skips non-state-changing methods", () => {
-    // We test the injectCsrfHeader indirectly through the onRequest hook
-    // The hook is set on the client during creation
-    mockReadCsrfCookie.mockReturnValue("test-token");
+    getAPIClient();
+    const init = { method: "GET" };
 
-    const client = getAPIClient();
-    expect(client).toBeDefined();
-    // The onRequest hook is configured but we can't directly invoke it
-    // without going through the SDK. We verify the mock is set up.
-    expect(readCsrfCookie).toBeDefined();
+    const result = langGraphClientMock.capturedOnRequest?.(
+      new URL("https://example.test"),
+      init,
+    );
+
+    expect(result).toBe(init);
+    expect(mockReadCsrfCookie).not.toHaveBeenCalled();
   });
 
   test("injectCsrfHeader adds token for state-changing methods when cookie present", () => {
     mockReadCsrfCookie.mockReturnValue("csrf-token-value");
-    const client = getAPIClient();
-    expect(client).toBeDefined();
+    getAPIClient();
+
+    const result = langGraphClientMock.capturedOnRequest?.(
+      new URL("https://example.test"),
+      {
+        method: "POST",
+      },
+    );
+
+    expect(result?.headers).toBeInstanceOf(Headers);
+    expect((result?.headers as Headers).get("X-CSRF-Token")).toBe(
+      "csrf-token-value",
+    );
   });
 
   test("injectCsrfHeader skips when no cookie present", () => {
     mockReadCsrfCookie.mockReturnValue(null);
-    const client = getAPIClient();
-    expect(client).toBeDefined();
+    getAPIClient();
+    const init = { method: "DELETE" };
+
+    const result = langGraphClientMock.capturedOnRequest?.(
+      new URL("https://example.test"),
+      init,
+    );
+
+    expect(result).toBe(init);
+  });
+
+  test("injectCsrfHeader preserves existing token header", () => {
+    mockReadCsrfCookie.mockReturnValue("csrf-token-value");
+    getAPIClient();
+
+    const result = langGraphClientMock.capturedOnRequest?.(
+      new URL("https://example.test"),
+      {
+        method: "PATCH",
+        headers: { "X-CSRF-Token": "existing-token" },
+      },
+    );
+
+    expect((result?.headers as Headers).get("X-CSRF-Token")).toBe(
+      "existing-token",
+    );
   });
 });
 
@@ -201,7 +247,7 @@ describe("static client (isStaticWebsiteOnly = true)", () => {
       loadStaticDemoThread: vi.fn(),
       staticDemoThreadState: vi.fn(),
     }));
-    vi.doMock("@langgraph/langgraph-sdk/client", () => ({
+    vi.doMock("@langchain/langgraph-sdk/client", () => ({
       Client: vi.fn().mockImplementation(function () {
         return {
           runs: {
@@ -475,7 +521,7 @@ describe("injectCsrfHeader", () => {
 describe("injectCsrfHeader integration with LangGraphClient", () => {
   test("LangGraphClient constructor receives onRequest callback", () => {
     // Verify the constructor was called with an onRequest function
-    const calls = MockClientConstructor.mock.calls;
+    const calls = langGraphClientMock.Constructor.mock.calls;
     // Check all constructor calls for onRequest
     for (const call of calls) {
       const opts = call[0];

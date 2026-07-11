@@ -4,7 +4,12 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 vi.mock("gsap", () => ({
   gsap: {
-    to: vi.fn(),
+    to: vi.fn((_el: unknown, to: Record<string, unknown>) => {
+      if (to && typeof to.onComplete === "function") {
+        to.onComplete();
+      }
+      return { kill: vi.fn() };
+    }),
     fromTo: vi.fn(
       (_el: unknown, _from: unknown, to: Record<string, unknown>) => {
         // Call onComplete if provided, to simulate animation completion
@@ -23,6 +28,7 @@ import MagicBento from "@/components/ui/magic-bento";
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  vi.useRealTimers();
 });
 
 const cardData = [
@@ -454,6 +460,30 @@ describe("MagicBento", () => {
       fireEvent.mouseEnter(card);
       // No gsap.to because the useEffect returned early
       expect(gsap.to).not.toHaveBeenCalled();
+    });
+
+    test("mouseenter schedules particles and mouseleave clears them", () => {
+      vi.useFakeTimers();
+      const { container } = render(
+        <MagicBento
+          data={singleCard}
+          enableStars={true}
+          particleCount={1}
+          disableAnimations={false}
+        />,
+      );
+      const card = container.querySelector(".particle-container")!;
+
+      fireEvent.mouseEnter(card);
+      vi.runOnlyPendingTimers();
+
+      expect(gsap.fromTo).toHaveBeenCalled();
+      expect(card.querySelectorAll(".particle").length).toBe(1);
+
+      fireEvent.mouseLeave(card);
+
+      expect(gsap.to).toHaveBeenCalled();
+      expect(card.querySelectorAll(".particle").length).toBe(0);
     });
   });
 

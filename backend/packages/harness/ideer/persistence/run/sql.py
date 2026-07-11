@@ -12,8 +12,6 @@ import logging
 from datetime import UTC, datetime
 from typing import Any
 
-logger = logging.getLogger(__name__)
-
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -21,6 +19,8 @@ from ideer.persistence.run.model import RunRow
 from ideer.runtime.runs.store.base import RunStore
 from ideer.runtime.user_context import AUTO, _AutoSentinel, resolve_user_id
 from ideer.utils.time import coerce_iso
+
+logger = logging.getLogger(__name__)
 
 
 class RunRepository(RunStore):

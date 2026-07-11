@@ -9,6 +9,7 @@ vi.mock("@/core/agents/api", () => ({
   createAgent: vi.fn(),
   updateAgent: vi.fn(),
   deleteAgent: vi.fn(),
+  toggleAgentFavorite: vi.fn(),
 }));
 
 import {
@@ -17,6 +18,7 @@ import {
   createAgent,
   updateAgent,
   deleteAgent,
+  toggleAgentFavorite,
 } from "@/core/agents/api";
 import {
   useAgents,
@@ -24,6 +26,7 @@ import {
   useCreateAgent,
   useUpdateAgent,
   useDeleteAgent,
+  useToggleAgentFavorite,
 } from "@/core/agents/hooks";
 
 const mockListAgents = listAgents as ReturnType<typeof vi.fn>;
@@ -31,6 +34,7 @@ const mockGetAgent = getAgent as ReturnType<typeof vi.fn>;
 const mockCreateAgent = createAgent as ReturnType<typeof vi.fn>;
 const mockUpdateAgent = updateAgent as ReturnType<typeof vi.fn>;
 const mockDeleteAgent = deleteAgent as ReturnType<typeof vi.fn>;
+const mockToggleAgentFavorite = toggleAgentFavorite as ReturnType<typeof vi.fn>;
 
 function createWrapper() {
   const queryClient = new QueryClient({
@@ -284,5 +288,44 @@ describe("useDeleteAgent", () => {
 
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(result.current.error?.message).toBe("Delete failed");
+  });
+});
+
+describe("useToggleAgentFavorite", () => {
+  test("toggles favorite and invalidates agents query", async () => {
+    mockToggleAgentFavorite.mockResolvedValue({
+      name: "agent1",
+      is_favorite: true,
+    });
+
+    const { result } = renderHook(() => useToggleAgentFavorite(), {
+      wrapper: createWrapper(),
+    });
+
+    await act(async () => {
+      await result.current.mutateAsync("agent1");
+    });
+
+    expect(mockToggleAgentFavorite).toHaveBeenCalledWith("agent1");
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+  });
+
+  test("reports favorite toggle errors", async () => {
+    mockToggleAgentFavorite.mockRejectedValue(new Error("Favorite failed"));
+
+    const { result } = renderHook(() => useToggleAgentFavorite(), {
+      wrapper: createWrapper(),
+    });
+
+    await act(async () => {
+      try {
+        await result.current.mutateAsync("agent1");
+      } catch {
+        // expected
+      }
+    });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(result.current.error?.message).toBe("Favorite failed");
   });
 });

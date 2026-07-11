@@ -27,6 +27,8 @@ vi.mock("@/core/i18n/hooks", () => ({
       },
       common: {
         loading: "Loading...",
+        favoritesOnly: "Favorites",
+        showAll: "Show All",
       },
     },
   }),
@@ -128,5 +130,35 @@ describe("WorkflowGallery", () => {
     // Click the empty state button (second one)
     await user.click(newButtons[1]!);
     expect(mockPush).toHaveBeenCalledWith("/workspace/workflows/new");
+  });
+
+  test("filters workflows by search text", async () => {
+    const user = userEvent.setup();
+    mockWorkflows = [
+      { name: "Deploy", description: "Production release" },
+      { name: "Research", description: "Find source material" },
+    ];
+    render(<WorkflowGallery />);
+
+    await user.type(screen.getByPlaceholderText("Workflows..."), "source");
+
+    expect(screen.queryByText("Deploy")).not.toBeInTheDocument();
+    expect(screen.getByText("Research")).toBeInTheDocument();
+  });
+
+  test("filters workflows to favorites and toggles back to all", async () => {
+    const user = userEvent.setup();
+    mockWorkflows = [
+      { name: "Favorite Flow", description: "", is_favorited: true },
+      { name: "Regular Flow", description: "", is_favorited: false },
+    ];
+    render(<WorkflowGallery />);
+
+    await user.click(screen.getByRole("button", { name: /Favorites/ }));
+    expect(screen.getByText("Favorite Flow")).toBeInTheDocument();
+    expect(screen.queryByText("Regular Flow")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /Show All/ }));
+    expect(screen.getByText("Regular Flow")).toBeInTheDocument();
   });
 });

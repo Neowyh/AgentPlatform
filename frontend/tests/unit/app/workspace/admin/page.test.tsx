@@ -6,13 +6,18 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 // ---------------------------------------------------------------------------
 
 const mockGetAdminStats = vi.fn();
+const mockRouterReplace = vi.fn();
 
 vi.mock("@/core/auth/AuthProvider", () => ({
   useAuth: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), prefetch: vi.fn() }),
+  useRouter: () => ({
+    push: vi.fn(),
+    replace: mockRouterReplace,
+    prefetch: vi.fn(),
+  }),
   usePathname: () => "/workspace/admin",
 }));
 
@@ -204,6 +209,27 @@ describe("AdminDashboardPage", () => {
     render(<AdminDashboardPage />);
     expect(mockGetAdminStats).toHaveBeenCalledTimes(1);
     expect(mockGetAdminStats).toHaveBeenCalledWith();
+  });
+
+  test("redirects non-admin users without fetching stats", () => {
+    vi.mocked(useAuth).mockReturnValue({
+      user: {
+        id: "regular-user",
+        email: "user@example.com",
+        system_role: "user",
+        needs_setup: false,
+      },
+      isAuthenticated: true,
+      isLoading: false,
+      logout: vi.fn(),
+      refreshUser: vi.fn(),
+    });
+
+    const { container } = render(<AdminDashboardPage />);
+
+    expect(mockRouterReplace).toHaveBeenCalledWith("/workspace");
+    expect(mockGetAdminStats).not.toHaveBeenCalled();
+    expect(container).toBeEmptyDOMElement();
   });
 
   // ── Transition from loading to error ───────────────────────────────

@@ -15,7 +15,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 config({ path: resolve(__dirname, "../.env") });
 
 export default defineConfig({
-  testDir: "./tests/e2e/qa",
+  testDir: "./tests/e2e/auth",
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: 0,
@@ -35,7 +35,6 @@ export default defineConfig({
   projects: [
     {
       name: "auth",
-      testMatch: /auth-flow|smoke-login/,
       use: { ...devices["Desktop Chrome"] },
     },
   ],

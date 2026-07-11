@@ -14,13 +14,18 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 const mockListTools = vi.fn();
 const mockTestTool = vi.fn();
+const mockRouterReplace = vi.fn();
 
 vi.mock("@/core/auth/AuthProvider", () => ({
   useAuth: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), prefetch: vi.fn() }),
+  useRouter: () => ({
+    push: vi.fn(),
+    replace: mockRouterReplace,
+    prefetch: vi.fn(),
+  }),
   usePathname: () => "/workspace/admin/tools",
 }));
 
@@ -195,6 +200,25 @@ describe("ToolsPage", () => {
     });
   });
 
+  test("displays private visibility badge styling branch", async () => {
+    mockListTools.mockResolvedValue({
+      tools: [
+        {
+          ...mockTools[0],
+          name: "private_tool",
+          visibility: "private",
+        },
+      ],
+      total: 1,
+    });
+
+    render(<ToolsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("private")).toBeInTheDocument();
+    });
+  });
+
   test("displays 'available' badge for tools without network requirement", async () => {
     render(<ToolsPage />);
     await waitFor(() => {
@@ -275,6 +299,27 @@ describe("ToolsPage", () => {
   test("calls listTools on mount", () => {
     render(<ToolsPage />);
     expect(mockListTools).toHaveBeenCalledTimes(1);
+  });
+
+  test("redirects non-admin users without fetching tools", () => {
+    vi.mocked(useAuth).mockReturnValue({
+      user: {
+        id: "regular-user",
+        email: "user@example.com",
+        system_role: "user",
+        needs_setup: false,
+      },
+      isAuthenticated: true,
+      isLoading: false,
+      logout: vi.fn(),
+      refreshUser: vi.fn(),
+    });
+
+    const { container } = render(<ToolsPage />);
+
+    expect(mockRouterReplace).toHaveBeenCalledWith("/workspace");
+    expect(mockListTools).not.toHaveBeenCalled();
+    expect(container).toBeEmptyDOMElement();
   });
 
   // ── Detail dialog ──────────────────────────────────────────────────

@@ -6,8 +6,6 @@ import shlex
 from collections.abc import Callable
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
-
 from langchain.tools import tool
 
 from ideer.agents.thread_state import ThreadDataState
@@ -24,6 +22,8 @@ from ideer.sandbox.sandbox_provider import get_sandbox_provider
 from ideer.sandbox.search import GrepMatch
 from ideer.sandbox.security import LOCAL_HOST_BASH_DISABLED_MESSAGE, is_host_bash_allowed
 from ideer.tools.types import Runtime
+
+logger = logging.getLogger(__name__)
 
 _ABSOLUTE_PATH_PATTERN = re.compile(r"(?<![:\w])(?<!:/)/(?:[^\s\"'`;&|<>()]+)")
 _FILE_URL_PATTERN = re.compile(r"\bfile://\S+", re.IGNORECASE)

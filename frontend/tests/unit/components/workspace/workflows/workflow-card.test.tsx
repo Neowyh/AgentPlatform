@@ -305,6 +305,52 @@ describe("WorkflowCard", () => {
     expect(mockPush).toHaveBeenCalledTimes(1);
   });
 
+  test("favorite button adds workflow to favorites", async () => {
+    mockToggleMutateAsync.mockResolvedValue(undefined);
+    render(<WorkflowCard workflow={makeWorkflow({ is_favorited: false })} />);
+
+    fireEvent.click(screen.getByTestId("workflow-favorite-button"));
+
+    await waitFor(() => {
+      expect(mockToggleMutateAsync).toHaveBeenCalledWith("test-workflow");
+    });
+    expect(mockToastSuccess).toHaveBeenCalledWith("Added to favorites");
+  });
+
+  test("favorite button removes workflow from favorites", async () => {
+    mockToggleMutateAsync.mockResolvedValue(undefined);
+    render(<WorkflowCard workflow={makeWorkflow({ is_favorited: true })} />);
+
+    fireEvent.click(screen.getByTestId("workflow-favorite-button"));
+
+    await waitFor(() => {
+      expect(mockToastSuccess).toHaveBeenCalledWith("Removed from favorites");
+    });
+  });
+
+  test("favorite failure shows error toast", async () => {
+    mockToggleMutateAsync.mockRejectedValue("favorite failed");
+    render(<WorkflowCard workflow={makeWorkflow()} />);
+
+    fireEvent.click(screen.getByTestId("workflow-favorite-button"));
+
+    await waitFor(() => {
+      expect(mockToastError).toHaveBeenCalledWith("favorite failed");
+    });
+  });
+
+  test("renders public and department visibility labels", () => {
+    const { rerender } = render(
+      <WorkflowCard workflow={makeWorkflow({ visibility: "public" })} />,
+    );
+    expect(screen.getByText("Public")).toBeInTheDocument();
+
+    rerender(
+      <WorkflowCard workflow={makeWorkflow({ visibility: "department" })} />,
+    );
+    expect(screen.getByText("Department")).toBeInTheDocument();
+  });
+
   // ── Delete button ────────────────────────────────────────────────────────
 
   test("renders the delete button", () => {
