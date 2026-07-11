@@ -65,6 +65,7 @@ class SkillResponse(BaseModel):
     license: str | None = Field(None, description="License information")
     category: SkillCategory = Field(..., description="Category of the skill (public or custom)")
     enabled: bool = Field(default=True, description="Whether this skill is enabled")
+    visibility: str | None = Field(None, description="Current visibility level")
     owner_id: str | None = Field(None, description="Owner user ID (custom skills)")
     department_id: str | None = Field(None, description="Department ID (custom skills)")
 
@@ -137,6 +138,7 @@ def _skill_to_response(skill: Skill) -> SkillResponse:
         license=skill.license,
         category=skill.category,
         enabled=skill.enabled,
+        visibility=getattr(skill, "visibility", None),
         owner_id=getattr(skill, "owner_id", None),
         department_id=getattr(skill, "department_id", None),
     )

@@ -604,24 +604,24 @@ export const enUS: Translations = {
       emptyDescription:
         "Put your agent skill folders under the `/skills/custom` folder under the root folder of iDeer.",
       emptyButton: "Create Your First Skill",
-      applyOpen: "Apply Open",
-      applyOpenTooltip: "Apply to open for department or everyone",
+      applyVisibility: "Apply Visibility Change",
+      applyVisibilityDescription:
+        "Submit an application to change the visibility level of this skill",
       locked: "Locked",
       lockedTooltip:
         "Public skills are managed by admins and cannot be modified",
       applicationSubmitted: "Application submitted",
       applicationSubmitFailed: "Failed to submit application",
-      applyDialogTitle: "Apply to Open Skill: {name}",
+      applyDialogTitle: "Apply Visibility Change: {name}",
       applyDialogDescription:
-        "Select the scope and provide a reason. Department scope requires department admin approval, public scope requires super admin approval.",
-      applyDialogCurrentStatus: "Current status: private (visible only to you)",
-      applyDialogScope: "Application scope",
-      applyDialogScopeDepartment:
-        "Department (requires department admin approval)",
-      applyDialogScopePublic: "Public (requires super admin approval)",
+        "Submit an application to change the visibility level of this skill. Admin approval is required.",
+      applyDialogCurrentVisibility: "Current visibility: {visibility}",
+      applyDialogTargetVisibility: "Target Visibility",
+      applyDialogVisibilityPrivate: "Private",
+      applyDialogVisibilityDepartment: "Department",
+      applyDialogVisibilityPublic: "Public",
       applyDialogReason: "Reason",
-      applyDialogReasonPlaceholder:
-        "Please explain why you want to open this skill...",
+      applyDialogReasonPlaceholder: "Please describe the reason for change...",
       applyDialogCancel: "Cancel",
       applyDialogSubmit: "Submit Application",
     },

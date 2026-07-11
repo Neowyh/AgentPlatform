@@ -1,7 +1,6 @@
 import { extractError, formatErrorMessage } from "@/core/api/errors";
 import { fetch } from "@/core/api/fetcher";
 import { getBackendBaseURL } from "@/core/config";
-import { createVisibilityApplication } from "@/core/visibility-applications/api";
 
 import type { Skill } from "./type";
 
@@ -38,11 +37,6 @@ export async function enableSkill(
   }
 }
 
-export interface SubmitApplicationRequest {
-  request_level: "department" | "public";
-  reason: string;
-}
-
 export interface SkillApplicationResponse {
   id: string;
   skill_id: string;
@@ -56,32 +50,6 @@ export interface SkillApplicationResponse {
   reviewed_by: string | null;
   reviewed_at: string | null;
   review_comment: string | null;
-}
-
-export async function submitSkillApplication(
-  skillName: string,
-  request: SubmitApplicationRequest,
-): Promise<SkillApplicationResponse> {
-  const result = await createVisibilityApplication({
-    resource_type: "skill",
-    resource_id: skillName,
-    target_visibility: request.request_level,
-    reason: request.reason,
-  });
-  return {
-    id: result.id,
-    skill_id: result.resource_id,
-    skill_name: result.resource_id,
-    applicant_id: result.applicant_id,
-    request_level: result.target_visibility,
-    department_id: result.department_id,
-    reason: result.reason,
-    status: result.status,
-    submitted_at: result.submitted_at,
-    reviewed_by: result.reviewed_by,
-    reviewed_at: result.reviewed_at,
-    review_comment: result.review_comment,
-  };
 }
 
 export async function listSkillApplications(

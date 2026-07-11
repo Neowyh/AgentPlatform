@@ -21,9 +21,9 @@ import {
 } from "@/components/ui/item";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useI18n } from "@/core/i18n/hooks";
-import { submitSkillApplication } from "@/core/skills/api";
 import { useSkills } from "@/core/skills/hooks";
 import type { Skill } from "@/core/skills/type";
+import { createVisibilityApplication } from "@/core/visibility-applications/api";
 
 import { SettingsSection } from "./settings-section";
 import { SkillApplyDialog } from "./skill-apply-dialog";
@@ -57,11 +57,16 @@ function SkillSettingsList({ skills }: { skills: Skill[] }) {
     [skills, filter],
   );
 
-  const handleApplySubmit = async (requestLevel: string, reason: string) => {
+  const handleApplySubmit = async (
+    targetVisibility: string,
+    reason: string,
+  ) => {
     if (!applySkill) return;
     try {
-      await submitSkillApplication(applySkill.name, {
-        request_level: requestLevel as "department" | "public",
+      await createVisibilityApplication({
+        resource_type: "skill",
+        resource_id: applySkill.name,
+        target_visibility: targetVisibility,
         reason,
       });
       toast.success(t.settings.skills.applicationSubmitted);
@@ -107,7 +112,7 @@ function SkillSettingsList({ skills }: { skills: Skill[] }) {
               size="sm"
               onClick={() => setApplySkill(skill)}
             >
-              {t.settings.skills.applyOpen}
+              {t.settings.skills.applyVisibility}
             </Button>
           </Item>
         ))}
