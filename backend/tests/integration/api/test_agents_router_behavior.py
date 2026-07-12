@@ -201,6 +201,7 @@ def agent_client(tmp_path):
     asyncio.run(init_engine("sqlite", url="sqlite+aiosqlite://", sqlite_dir=str(tmp_path)))
     _seed_test_user("test-user")
     from ideer.runtime.user_context import reset_current_user, set_current_user
+
     user_token = set_current_user(SimpleNamespace(id="test-user", email="test-user@test.local"))
 
     with (
@@ -235,6 +236,7 @@ def user_client(tmp_path):
     asyncio.run(init_engine("sqlite", url="sqlite+aiosqlite://", sqlite_dir=str(tmp_path)))
     _seed_test_user("normal-user")
     from ideer.runtime.user_context import reset_current_user, set_current_user
+
     user_token = set_current_user(SimpleNamespace(id="normal-user", email="normal-user@test.local"))
 
     with (
@@ -811,6 +813,7 @@ class TestGetAgentVisibility:
         # User can see their own private agent
         response = user_client.get("/api/agents/own-private")
         assert response.status_code == 200
+        assert response.json()["name"] == "own-private"
 
 
 # ---------------------------------------------------------------------------

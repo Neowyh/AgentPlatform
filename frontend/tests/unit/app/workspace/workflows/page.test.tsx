@@ -208,7 +208,8 @@ describe("WorkflowDetailPage", () => {
     render(<WorkflowDetailPage />);
     const badges = screen.getAllByTestId("badge");
     const versionBadge = badges.find((b) => b.textContent === "v1.0");
-    expect(versionBadge).toBeTruthy();
+    expect(versionBadge).toBeDefined();
+    expect(versionBadge!.textContent).toBe("v1.0");
   });
 
   test("renders steps section", () => {
@@ -251,7 +252,8 @@ describe("WorkflowDetailPage", () => {
     render(<WorkflowDetailPage />);
     const buttons = screen.getAllByTestId("button");
     const runButton = buttons.find((b) => b.textContent?.includes("Run"));
-    expect(runButton).toBeTruthy();
+    expect(runButton).toBeDefined();
+    expect(runButton!.textContent).toMatch(/Run/i);
   });
 
   test("renders edit button with correct link", () => {
@@ -260,7 +262,8 @@ describe("WorkflowDetailPage", () => {
     const editLink = links.find((l) =>
       l.getAttribute("href")?.includes("/edit"),
     );
-    expect(editLink).toBeTruthy();
+    expect(editLink).toBeDefined();
+    expect(editLink!.getAttribute("href")).toMatch(/\/edit$/);
   });
 });
 

@@ -229,6 +229,8 @@ class TestUpdateWorkflow:
                     json={"yaml_content": VALID_YAML, "version": 1},
                 )
         assert resp.status_code == 200
+        data = resp.json()
+        assert data["name"] == WORKFLOW_NAME
 
     def test_update_workflow_not_found(self):
         """Update workflow returns 404 when not found."""
@@ -405,6 +407,7 @@ class TestSubmitWorkflowReview:
                     json={"approved": True},
                 )
         assert resp.status_code == 200
+        assert resp.json()["success"] is True
 
     def test_submit_review_reject(self):
         """Submit review with reject succeeds."""
@@ -420,3 +423,4 @@ class TestSubmitWorkflowReview:
                     json={"approved": False, "reason": "Needs changes"},
                 )
         assert resp.status_code == 200
+        assert resp.json()["success"] is True

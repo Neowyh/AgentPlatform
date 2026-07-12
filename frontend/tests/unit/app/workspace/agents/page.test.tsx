@@ -126,7 +126,9 @@ describe("AgentDetailPage", () => {
         b.textContent === "gpt-4" &&
         b.getAttribute("data-variant") === "secondary",
     );
-    expect(modelBadge).toBeTruthy();
+    expect(modelBadge).toBeDefined();
+    expect(modelBadge!.textContent).toBe("gpt-4");
+    expect(modelBadge!.getAttribute("data-variant")).toBe("secondary");
   });
 
   test("renders stat cards", () => {
@@ -141,7 +143,8 @@ describe("AgentDetailPage", () => {
     const editLink = links.find((l) =>
       l.getAttribute("href")?.includes("/edit"),
     );
-    expect(editLink).toBeTruthy();
+    expect(editLink).toBeDefined();
+    expect(editLink!.getAttribute("href")).toMatch(/\/edit$/);
   });
 
   test("renders configuration section with tool groups", () => {

@@ -797,6 +797,8 @@ class TestCreateAgentEndpoint:
                 json={"name": AGENT_NAME, "soul": "", "visibility": "department"},
             )
         assert resp.status_code == 201
+        assert resp.json()["name"] == AGENT_NAME
+        assert resp.json()["visibility"] == "department"
 
     def test_internal_error_cleanup(self, super_admin_client, mock_deps):
         """On failure the agent dir should be cleaned up."""
@@ -846,6 +848,7 @@ class TestUpdateAgentEndpoint:
             mock_convert.return_value = _agent_resp(description="updated", soul="soul")
             resp = super_admin_client.put(f"/api/agents/{AGENT_NAME}", json=self.PAYLOAD)
         assert resp.status_code == 200
+        assert resp.json()["description"] == "updated"
 
     def test_disabled_403(self, mock_deps):
         user = _make_user(role=UserRole.SUPER_ADMIN)

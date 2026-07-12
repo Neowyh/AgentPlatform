@@ -379,6 +379,8 @@ class TestUpdateWorkflow:
                     json={"yaml_content": VALID_YAML, "version": 1},
                 )
         assert resp.status_code == 200
+        data = resp.json()
+        assert data["name"] == WORKFLOW_NAME
 
     def test_update_not_owner(self):
         """Update workflow returns 403 when user is not owner."""
@@ -594,6 +596,10 @@ class TestGetRunStatus:
             with TestClient(app) as client:
                 resp = client.get(f"/api/workflows/{WORKFLOW_NAME}/runs/{RUN_ID}")
         assert resp.status_code == 200
+        data = resp.json()
+        assert data["run_id"] == RUN_ID
+        assert data["workflow"] == WORKFLOW_NAME
+        assert data["status"] == "completed"
 
 
 # ---------------------------------------------------------------------------
@@ -652,6 +658,7 @@ class TestSubmitReview:
                     json={"approved": True},
                 )
         assert resp.status_code == 200
+        assert resp.json()["success"] is True
 
     def test_submit_review_reject(self):
         """Submit review with reject succeeds."""
@@ -667,3 +674,4 @@ class TestSubmitReview:
                     json={"approved": False, "reason": "Needs changes"},
                 )
         assert resp.status_code == 200
+        assert resp.json()["success"] is True

@@ -85,7 +85,7 @@ describe("useMemory", () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     expect(result.current.memory).toBeNull();
-    expect(result.current.error).toBeDefined();
+    expect(result.current.error?.message).toContain("Network error");
   });
 });
 
@@ -218,6 +218,6 @@ describe("useImportMemory", () => {
 
     await waitFor(() => expect(result.current.isError).toBe(true));
 
-    expect(result.current.error).toBeDefined();
+    expect(result.current.error?.message).toContain("Import invalid");
   });
 });

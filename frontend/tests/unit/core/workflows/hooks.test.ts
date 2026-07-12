@@ -106,7 +106,7 @@ describe("useWorkflows", () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     expect(result.current.workflows).toEqual([]);
-    expect(result.current.error).toBeDefined();
+    expect(result.current.error).toBeInstanceOf(Error);
   });
 
   test("exposes refetch function", async () => {
@@ -216,7 +216,7 @@ describe("useWorkflow", () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     expect(result.current.workflow).toBeNull();
-    expect(result.current.error).toBeDefined();
+    expect(result.current.error).toBeInstanceOf(Error);
   });
 });
 
@@ -272,7 +272,7 @@ describe("useCreateWorkflow", () => {
 
     await waitFor(() => expect(result.current.isError).toBe(true));
 
-    expect(result.current.error).toBeDefined();
+    expect(result.current.error).toBeInstanceOf(Error);
   });
 });
 
@@ -328,7 +328,7 @@ describe("useUpdateWorkflow", () => {
 
     await waitFor(() => expect(result.current.isError).toBe(true));
 
-    expect(result.current.error).toBeDefined();
+    expect(result.current.error).toBeInstanceOf(Error);
   });
 });
 
@@ -371,7 +371,7 @@ describe("useDeleteWorkflow", () => {
 
     await waitFor(() => expect(result.current.isError).toBe(true));
 
-    expect(result.current.error).toBeDefined();
+    expect(result.current.error).toBeInstanceOf(Error);
   });
 });
 
@@ -421,7 +421,7 @@ describe("useToggleWorkflowFavorite", () => {
 
     await waitFor(() => expect(result.current.isError).toBe(true));
 
-    expect(result.current.error).toBeDefined();
+    expect(result.current.error).toBeInstanceOf(Error);
   });
 });
 
@@ -466,7 +466,7 @@ describe("useRunWorkflow", () => {
 
     await waitFor(() => expect(result.current.isError).toBe(true));
 
-    expect(result.current.error).toBeDefined();
+    expect(result.current.error).toBeInstanceOf(Error);
   });
 });
 
@@ -557,7 +557,7 @@ describe("useRunStatus", () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     expect(result.current.runStatus).toBeNull();
-    expect(result.current.error).toBeDefined();
+    expect(result.current.error).toBeInstanceOf(Error);
   });
 
   test("exposes refetch function", async () => {
@@ -662,6 +662,6 @@ describe("useSubmitReview", () => {
 
     await waitFor(() => expect(result.current.isError).toBe(true));
 
-    expect(result.current.error).toBeDefined();
+    expect(result.current.error).toBeInstanceOf(Error);
   });
 });

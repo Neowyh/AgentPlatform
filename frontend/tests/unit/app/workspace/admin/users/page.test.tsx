@@ -216,6 +216,7 @@ describe("UsersPage", () => {
     mockListDepartments.mockReturnValue(new Promise(() => {}));
     render(<UsersPage />);
     expect(screen.getByText("加载中...")).toBeInTheDocument();
+    expect(screen.queryByTestId("user-list")).not.toBeInTheDocument();
   });
 
   // ── Success state ──────────────────────────────────────────────────
@@ -242,7 +243,7 @@ describe("UsersPage", () => {
     render(<UsersPage />);
     await waitFor(() => {
       const engineering = screen.getAllByText("Engineering");
-      expect(engineering.length).toBeGreaterThanOrEqual(1);
+      expect(engineering).toHaveLength(2);
       expect(screen.getByText("Marketing")).toBeInTheDocument();
     });
   });
@@ -263,13 +264,12 @@ describe("UsersPage", () => {
   test("displays role badges with correct labels", async () => {
     render(<UsersPage />);
     await waitFor(() => {
-      // Each role label appears at least once (in badges; also in select options)
       const superAdmin = screen.getAllByText("超级管理员");
-      expect(superAdmin.length).toBeGreaterThanOrEqual(1);
+      expect(superAdmin).toHaveLength(2);
       const normalUser = screen.getAllByText("普通用户");
-      expect(normalUser.length).toBeGreaterThanOrEqual(1);
+      expect(normalUser).toHaveLength(2);
       const deptAdmin = screen.getAllByText("部门管理员");
-      expect(deptAdmin.length).toBeGreaterThanOrEqual(1);
+      expect(deptAdmin).toHaveLength(2);
     });
   });
 
@@ -297,7 +297,7 @@ describe("UsersPage", () => {
     render(<UsersPage />);
     await waitFor(() => {
       const createdTexts = screen.getAllByText(/创建于/);
-      expect(createdTexts.length).toBeGreaterThanOrEqual(1);
+      expect(createdTexts).toHaveLength(3);
     });
   });
 
@@ -305,7 +305,7 @@ describe("UsersPage", () => {
     render(<UsersPage />);
     await waitFor(() => {
       const lastLoginTexts = screen.getAllByText(/最后登录/);
-      expect(lastLoginTexts.length).toBeGreaterThanOrEqual(1);
+      expect(lastLoginTexts).toHaveLength(2);
     });
   });
 
@@ -475,10 +475,9 @@ describe("UsersPage", () => {
       expect(screen.getByTestId("user-list")).toBeInTheDocument();
     });
 
-    // Radix Select renders combobox role buttons; each user card has one
     const comboboxes = screen.getAllByRole("combobox");
-    // 1 filter select for department + 1 filter select for role + 1 user role select
-    expect(comboboxes.length).toBeGreaterThanOrEqual(3);
+    // 2 filter selects (department + role) + 1 user role select
+    expect(comboboxes).toHaveLength(3);
   });
 
   test("shows confirm dialog when promoting to super_admin", async () => {
@@ -517,9 +516,8 @@ describe("UsersPage", () => {
 
     // Verify the user card is rendered with the correct role
     expect(screen.getByText("bob")).toBeInTheDocument();
-    // "普通用户" appears in both badge and select, so use getAllByText
     const roleLabels = screen.getAllByText("普通用户");
-    expect(roleLabels.length).toBeGreaterThanOrEqual(1);
+    expect(roleLabels).toHaveLength(2);
 
     vi.restoreAllMocks();
   });
@@ -542,9 +540,8 @@ describe("UsersPage", () => {
 
     // Verify super_admin user is rendered with role badge
     expect(screen.getByText("alice")).toBeInTheDocument();
-    // "超级管理员" appears in both badge and filter select, so use getAllByText
     const superAdminLabels = screen.getAllByText("超级管理员");
-    expect(superAdminLabels.length).toBeGreaterThanOrEqual(1);
+    expect(superAdminLabels).toHaveLength(2);
 
     vi.restoreAllMocks();
   });
@@ -567,8 +564,6 @@ describe("UsersPage", () => {
       expect(screen.getByTestId("user-list")).toBeInTheDocument();
     });
 
-    // Verify the API mock is set up for failure
-    expect(mockUpdateUserRole).toBeDefined();
     vi.restoreAllMocks();
   });
 
@@ -590,7 +585,6 @@ describe("UsersPage", () => {
       expect(screen.getByTestId("user-list")).toBeInTheDocument();
     });
 
-    expect(mockUpdateUserRole).toBeDefined();
     vi.restoreAllMocks();
   });
 
@@ -612,9 +606,8 @@ describe("UsersPage", () => {
       expect(screen.getByTestId("user-list")).toBeInTheDocument();
     });
 
-    // Initial call count
     const initialCallCount = mockListUsers.mock.calls.length;
-    expect(initialCallCount).toBeGreaterThanOrEqual(1);
+    expect(initialCallCount).toBe(1);
   });
 
   // ── Disable user: non-Error throw ──────────────────────────────────
@@ -729,15 +722,14 @@ describe("UsersPage", () => {
     // Filter selects: 2 (department + role), then user role select(s)
     // The user role select is the 3rd combobox
     const userRoleSelect = comboboxes[2]!;
-    expect(userRoleSelect).toBeDefined();
+    expect(userRoleSelect).toBeInTheDocument();
 
     // Click to open the select
     await user.click(userRoleSelect);
 
-    // Wait for the portal to render options
     await waitFor(() => {
       const options = screen.getAllByRole("option");
-      expect(options.length).toBeGreaterThan(0);
+      expect(options).toHaveLength(3);
     });
 
     // Click on "部门管理员" option
@@ -777,7 +769,7 @@ describe("UsersPage", () => {
 
     await waitFor(() => {
       const options = screen.getAllByRole("option");
-      expect(options.length).toBeGreaterThan(0);
+      expect(options).toHaveLength(3);
     });
 
     // Click on "超级管理员" option
@@ -817,7 +809,7 @@ describe("UsersPage", () => {
 
     await waitFor(() => {
       const options = screen.getAllByRole("option");
-      expect(options.length).toBeGreaterThan(0);
+      expect(options).toHaveLength(3);
     });
 
     // Click on "普通用户" option (demoting from super_admin)
@@ -856,7 +848,7 @@ describe("UsersPage", () => {
 
     await waitFor(() => {
       const options = screen.getAllByRole("option");
-      expect(options.length).toBeGreaterThan(0);
+      expect(options).toHaveLength(3);
     });
 
     const superAdminOption = screen.getByRole("option", { name: "超级管理员" });
@@ -894,7 +886,7 @@ describe("UsersPage", () => {
 
     await waitFor(() => {
       const options = screen.getAllByRole("option");
-      expect(options.length).toBeGreaterThan(0);
+      expect(options).toHaveLength(3);
     });
 
     const deptAdminOption = screen.getByRole("option", { name: "部门管理员" });
@@ -928,7 +920,7 @@ describe("UsersPage", () => {
 
     await waitFor(() => {
       const options = screen.getAllByRole("option");
-      expect(options.length).toBeGreaterThan(0);
+      expect(options).toHaveLength(3);
     });
 
     const deptAdminOption = screen.getByRole("option", { name: "部门管理员" });
@@ -987,7 +979,7 @@ describe("UsersPage", () => {
 
     await user.click(deptFilter);
     await waitFor(() => {
-      expect(screen.getAllByRole("option").length).toBeGreaterThan(0);
+      expect(screen.getAllByRole("option")).toHaveLength(3);
     });
 
     // Click on "Engineering" department option
@@ -1023,7 +1015,7 @@ describe("UsersPage", () => {
 
     await user.click(roleFilter);
     await waitFor(() => {
-      expect(screen.getAllByRole("option").length).toBeGreaterThan(0);
+      expect(screen.getAllByRole("option")).toHaveLength(4);
     });
 
     // Click on "超级管理员" role option

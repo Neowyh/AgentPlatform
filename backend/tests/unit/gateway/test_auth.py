@@ -748,4 +748,6 @@ def test_authenticate_skips_rehash_for_v2_hash():
 
     result = asyncio.run(provider.authenticate({"email": "v2@test.com", "password": password}))
     assert result is not None
+    assert result.email == "v2@test.com"
+    assert result.password_hash.startswith("$dfv2$")
     mock_repo.update_user.assert_not_called()

@@ -244,8 +244,10 @@ class TestRowToState:
     def test_none_created_at(self):
         row = _make_row(created_at=None)
         state = _row_to_state(row)
-        # Should not crash; created_at stays as default
-        assert state.created_at is not None
+        # Should not crash; created_at stays as default (current timestamp)
+        from datetime import datetime
+
+        datetime.fromisoformat(state.created_at)
 
     def test_review_result_preserved(self):
         row = _make_row(review_result={"approved": True})

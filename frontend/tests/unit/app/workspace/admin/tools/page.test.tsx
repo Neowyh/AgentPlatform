@@ -154,6 +154,7 @@ describe("ToolsPage", () => {
     mockListTools.mockReturnValue(new Promise(() => {}));
     render(<ToolsPage />);
     expect(screen.getByText("加载中...")).toBeInTheDocument();
+    expect(screen.queryByTestId("tool-list")).not.toBeInTheDocument();
   });
 
   // ── Success state ──────────────────────────────────────────────────
@@ -161,10 +162,9 @@ describe("ToolsPage", () => {
   test("renders tool list after loading", async () => {
     render(<ToolsPage />);
     await waitFor(() => {
-      expect(screen.getByTestId("tool-list")).toBeInTheDocument();
+      const toolCards = screen.getAllByTestId("tool-card");
+      expect(toolCards).toHaveLength(3);
     });
-    const toolCards = screen.getAllByTestId("tool-card");
-    expect(toolCards).toHaveLength(3);
   });
 
   test("displays tool names", async () => {

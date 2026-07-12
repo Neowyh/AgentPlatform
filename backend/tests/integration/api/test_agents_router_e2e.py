@@ -246,6 +246,7 @@ class TestCreateAgent:
                 json={"name": "new-agent", "description": "New", "soul": "# New"},
             )
         assert resp.status_code in (200, 201)
+        assert resp.json()["name"] == "new-agent"
 
     @_patch_agents_api_enabled()
     @patch(_USER_ID_PATCH, return_value="user-1")
@@ -267,6 +268,7 @@ class TestCreateAgent:
                 json={"name": "existing", "description": "Dup", "soul": "# Dup"},
             )
         assert resp.status_code in (400, 409)
+        assert "detail" in resp.json()
 
 
 # ---------------------------------------------------------------------------
@@ -301,6 +303,7 @@ class TestUpdateAgent:
             with patch(_META_PATCH, new=AsyncMock(return_value={"visibility": "private", "owner_id": "user-1"})):
                 resp = client.put("/api/agents/test-agent", json={"description": "Updated", "version": 1})
         assert resp.status_code == 200
+        assert resp.json()["name"] == "test-agent"
 
     @_patch_agents_api_enabled()
     @patch(_USER_ID_PATCH, return_value="user-1")
@@ -339,6 +342,8 @@ class TestDeleteAgent:
             with patch(_META_PATCH, new=AsyncMock(return_value={"visibility": "private", "owner_id": "user-1"})):
                 resp = client.delete("/api/agents/test-agent")
         assert resp.status_code in (200, 204)
+        if resp.status_code == 200:
+            assert resp.json().get("ok") is True
 
     @_patch_agents_api_enabled()
     @patch(_USER_ID_PATCH, return_value="user-1")
@@ -387,7 +392,7 @@ class TestExportAgent:
             with patch(_META_PATCH, new=AsyncMock(return_value={"visibility": "private", "owner_id": "user-1"})):
                 resp = client.post("/api/agents/test-agent/export")
         assert resp.status_code == 200
-        assert "name" in resp.json()
+        assert resp.json()["name"] == "test-agent"
 
     @_patch_agents_api_enabled()
     @patch(_USER_ID_PATCH, return_value="user-1")
@@ -431,6 +436,7 @@ class TestImportAgent:
                 json={"name": "imported", "config": {"name": "imported"}, "soul_md": "# Import"},
             )
         assert resp.status_code in (200, 201)
+        assert resp.json()["name"] == "imported"
 
     @_patch_agents_api_enabled()
     @patch(_USER_ID_PATCH, return_value="user-1")
@@ -445,6 +451,7 @@ class TestImportAgent:
         with TestClient(app) as client:
             resp = client.post("/api/agents/import", json={"invalid": "data"})
         assert resp.status_code in (400, 422)
+        assert "detail" in resp.json()
 
 
 # ---------------------------------------------------------------------------
@@ -478,6 +485,8 @@ class TestGetAgentStats:
             with patch(_META_PATCH, new=AsyncMock(return_value={"visibility": "private", "owner_id": "user-1"})):
                 resp = client.get("/api/agents/test-agent/stats")
         assert resp.status_code == 200
+        data = resp.json()
+        assert "total_runs" in data or "name" in data
 
     @_patch_agents_api_enabled()
     @patch(_USER_ID_PATCH, return_value="user-1")
@@ -513,6 +522,7 @@ class TestUserProfile:
         with TestClient(app) as client:
             resp = client.get("/api/user-profile")
         assert resp.status_code == 200
+        assert resp.json().get("content") == "# Profile"
 
     @_patch_agents_api_enabled()
     @patch(_PATHS_PATCH)
@@ -529,3 +539,4 @@ class TestUserProfile:
         with TestClient(app) as client:
             resp = client.put("/api/user-profile", json={"content": "# Updated"})
         assert resp.status_code == 200
+        assert resp.json().get("ok") is True or "content" in resp.json()

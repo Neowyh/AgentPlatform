@@ -461,6 +461,8 @@ class TestChangePassword:
                 )
 
         assert resp.status_code == 200
+        data = resp.json()
+        assert data["message"] == "Password changed successfully"
         provider.update_user.assert_awaited_once()
 
     def test_email_same_user_no_conflict(self):
@@ -489,6 +491,8 @@ class TestChangePassword:
                 )
 
         assert resp.status_code == 200
+        data = resp.json()
+        assert data["message"] == "Password changed successfully"
 
 
 # ---------------------------------------------------------------------------

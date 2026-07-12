@@ -268,6 +268,8 @@ class TestSetupStatusCacheEviction:
                 resp = client.get("/api/v1/auth/setup-status")
 
         assert resp.status_code == 200
+        data = resp.json()
+        assert data["needs_setup"] is True
 
     def test_eviction_half_by_time(self):
         """Cache eviction removes half by time when still full after stale removal."""
@@ -295,6 +297,8 @@ class TestSetupStatusCacheEviction:
                 resp = client.get("/api/v1/auth/setup-status")
 
         assert resp.status_code == 200
+        data = resp.json()
+        assert data["needs_setup"] is True
         # After eviction, cache should be at most half full + the new entry
         assert len(cache) < auth_mod._MAX_TRACKED_SETUP_STATUS_IPS
 

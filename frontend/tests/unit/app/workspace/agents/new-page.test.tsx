@@ -257,7 +257,8 @@ describe("NewAgentPage", () => {
     const continueBtn = buttons.find((b) =>
       b.textContent?.includes("Continue"),
     );
-    expect(continueBtn).toBeTruthy();
+    expect(continueBtn).toBeDefined();
+    expect(continueBtn!.textContent).toMatch(/Continue/i);
   });
 
   test("renders visibility select", () => {

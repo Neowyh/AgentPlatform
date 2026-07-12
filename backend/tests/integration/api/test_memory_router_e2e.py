@@ -33,6 +33,18 @@ _EMPTY_MEMORY = {
     "facts": [],
 }
 
+_MEMORY_WITH_FACT = {
+    "version": "1.0",
+    "lastUpdated": "2026-01-01",
+    "facts": [{"id": "f1", "content": "Test fact", "category": "general"}],
+}
+
+_MEMORY_WITH_UPDATED_FACT = {
+    "version": "1.0",
+    "lastUpdated": "2026-01-01",
+    "facts": [{"id": "f1", "content": "Updated fact", "category": "general"}],
+}
+
 # Default memory config values matching MemoryConfigResponse shape.
 _DEFAULT_CONFIG = {
     "enabled": True,
@@ -137,7 +149,8 @@ class TestGetMemory:
             resp = client.get("/api/memory")
         assert resp.status_code == 200
         data = resp.json()
-        assert "facts" in data
+        assert data["version"] == "1.0"
+        assert data["facts"] == []
 
 
 # ---------------------------------------------------------------------------
@@ -155,6 +168,8 @@ class TestReloadMemory:
         with TestClient(app) as client, stack:
             resp = client.post("/api/memory/reload")
         assert resp.status_code == 200
+        data = resp.json()
+        assert data["version"] == "1.0"
 
 
 # ---------------------------------------------------------------------------
@@ -172,6 +187,9 @@ class TestClearMemory:
         with TestClient(app) as client, stack:
             resp = client.delete("/api/memory")
         assert resp.status_code in (200, 204)
+        if resp.status_code == 200:
+            data = resp.json()
+            assert data["facts"] == []
 
 
 # ---------------------------------------------------------------------------
@@ -185,21 +203,33 @@ class TestCreateMemoryFact:
     def test_create_fact_success(self):
         """Create memory fact succeeds."""
         app = _make_app()
-        stack, _ = _apply_patches()
+        stack, _ = _apply_patches(overrides={"create_memory_fact": _MEMORY_WITH_FACT})
         with TestClient(app) as client, stack:
             resp = client.post("/api/memory/facts", json={"content": "Test fact"})
         assert resp.status_code in (200, 201)
+        data = resp.json()
+        assert len(data["facts"]) == 1
+        fact = data["facts"][0]
+        assert "id" in fact
+        assert "content" in fact
+        assert "category" in fact
 
     def test_create_fact_with_category(self):
         """Create memory fact with category succeeds."""
         app = _make_app()
-        stack, _ = _apply_patches()
+        stack, _ = _apply_patches(overrides={"create_memory_fact": _MEMORY_WITH_FACT})
         with TestClient(app) as client, stack:
             resp = client.post(
                 "/api/memory/facts",
                 json={"content": "Test fact", "category": "preference"},
             )
         assert resp.status_code in (200, 201)
+        data = resp.json()
+        assert len(data["facts"]) == 1
+        fact = data["facts"][0]
+        assert "id" in fact
+        assert "content" in fact
+        assert "category" in fact
 
 
 # ---------------------------------------------------------------------------
@@ -217,6 +247,9 @@ class TestDeleteMemoryFact:
         with TestClient(app) as client, stack:
             resp = client.delete("/api/memory/facts/fact-1")
         assert resp.status_code in (200, 204)
+        if resp.status_code == 200:
+            data = resp.json()
+            assert "version" in data
 
     def test_delete_fact_not_found(self):
         """Delete memory fact returns 404 when not found."""
@@ -242,13 +275,16 @@ class TestUpdateMemoryFact:
     def test_update_fact_success(self):
         """Update memory fact succeeds."""
         app = _make_app()
-        stack, _ = _apply_patches()
+        stack, _ = _apply_patches(overrides={"update_memory_fact": _MEMORY_WITH_UPDATED_FACT})
         with TestClient(app) as client, stack:
             resp = client.patch(
                 "/api/memory/facts/fact-1",
                 json={"content": "Updated fact"},
             )
         assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["facts"]) == 1
+        assert data["facts"][0]["content"] == "Updated fact"
 
     def test_update_fact_not_found(self):
         """Update memory fact returns 404 when not found."""
@@ -282,7 +318,8 @@ class TestExportMemory:
             resp = client.get("/api/memory/export")
         assert resp.status_code == 200
         data = resp.json()
-        assert isinstance(data, dict)
+        assert "version" in data
+        assert "facts" in data
 
 
 # ---------------------------------------------------------------------------
@@ -303,6 +340,8 @@ class TestImportMemory:
                 json={"facts": [{"id": "f1", "content": "Imported fact"}]},
             )
         assert resp.status_code == 200
+        data = resp.json()
+        assert data["version"] == "1.0"
 
 
 # ---------------------------------------------------------------------------

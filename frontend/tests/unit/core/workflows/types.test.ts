@@ -104,8 +104,8 @@ describe("StepDef", () => {
       else: "else-step",
     };
     expect(step.type).toBe("condition");
-    expect(step.then).toBeDefined();
-    expect(typeof step.else).toBe("string");
+    expect(step.then).toEqual({ id: "then-1", type: "tool", tool: "log" });
+    expect(step.else).toBe("else-step");
   });
 
   it("can be constructed for parallel step with nested steps", () => {
@@ -269,6 +269,8 @@ describe("RunStatus", () => {
     const step1 = status.steps["step-1"];
     expect(step1).toBeDefined();
     expect(step1!.status).toBe("completed");
+    expect(step1!.output).toBeNull();
+    expect(step1!.retries).toBe(0);
   });
 });
 

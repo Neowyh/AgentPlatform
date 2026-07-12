@@ -144,10 +144,12 @@ describe("AuditLogsPage", () => {
     });
   });
 
-  test("renders the page container with correct data-testid", async () => {
+  test("renders audit log items after loading", async () => {
     render(<AuditLogsPage />);
     await waitFor(() => {
-      expect(screen.getByTestId("audit-logs-page")).toBeInTheDocument();
+      expect(screen.getByText("log-0001...")).toBeInTheDocument();
+      expect(screen.getByText("log-0002...")).toBeInTheDocument();
+      expect(screen.getByText("log-0003...")).toBeInTheDocument();
     });
   });
 
@@ -196,6 +198,7 @@ describe("AuditLogsPage", () => {
     mockListAuditLogs.mockReturnValue(new Promise(() => {}));
     render(<AuditLogsPage />);
     expect(screen.getByText("加载中...")).toBeInTheDocument();
+    expect(screen.queryByText("log-0001...")).not.toBeInTheDocument();
   });
 
   // ── Error state ────────────────────────────────────────────────────

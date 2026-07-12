@@ -72,6 +72,7 @@ async def test_concurrent_toggle_user_disabled_race():
         result = await session.execute(select(UserModel).where(UserModel.id == "target-1"))
         user = result.scalar_one_or_none()
         assert user is not None
-        assert isinstance(user.disabled, bool)
+        assert user.disabled is False
+        assert user.role == UserRole.USER
 
     await engine.dispose()

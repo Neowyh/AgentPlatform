@@ -96,10 +96,10 @@ describe("AdminDashboardPage", () => {
 
   // ── Rendering ──────────────────────────────────────────────────────
 
-  test("renders the dashboard container with testid", async () => {
+  test("renders the dashboard page heading", async () => {
     render(<AdminDashboardPage />);
     await waitFor(() => {
-      expect(screen.getByTestId("admin-dashboard")).toBeInTheDocument();
+      expect(screen.getByText("管理后台")).toBeInTheDocument();
     });
   });
 
@@ -121,6 +121,7 @@ describe("AdminDashboardPage", () => {
     });
     render(<AdminDashboardPage />);
     expect(screen.getByText("加载中...")).toBeInTheDocument();
+    expect(screen.queryAllByTestId("admin-stat-card")).toHaveLength(0);
   });
 
   // ── Success state ──────────────────────────────────────────────────
@@ -187,7 +188,7 @@ describe("AdminDashboardPage", () => {
     render(<AdminDashboardPage />);
     await waitFor(() => {
       const zeros = screen.getAllByText("0");
-      expect(zeros.length).toBeGreaterThanOrEqual(4);
+      expect(zeros).toHaveLength(6);
     });
   });
 

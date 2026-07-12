@@ -148,8 +148,8 @@ class TestAdminStats:
 
         assert resp.status_code == 200
         data = resp.json()
-        assert "total_users" in data
-        assert "total_departments" in data
+        assert data["total_users"] == 5
+        assert data["total_departments"] == 5
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_get_stats_no_database(self, mock_sf):
@@ -227,10 +227,8 @@ class TestAdminUserManagement:
 
         assert resp.status_code == 200
         data = resp.json()
-        assert "users" in data
-        assert "total" in data
-        assert "limit" in data
-        assert "offset" in data
+        assert data["total"] == 2
+        assert len(data["users"]) == 2
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_list_users_invalid_role_filter(self, mock_sf):
@@ -316,6 +314,7 @@ class TestAdminUserManagement:
         )
 
         assert resp.status_code == 400
+        assert "Invalid role" in resp.json()["detail"]
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_update_user_role_user_not_found(self, mock_sf):
@@ -334,6 +333,7 @@ class TestAdminUserManagement:
         )
 
         assert resp.status_code == 404
+        assert "User not found" in resp.json()["detail"]
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_update_user_role_cannot_demote_last_super_admin(self, mock_sf):
@@ -415,6 +415,7 @@ class TestAdminUserManagement:
         resp = client.patch("/api/admin/users/admin-1/status")
 
         assert resp.status_code == 200
+        assert resp.json()["success"] is True
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_toggle_user_status_not_found(self, mock_sf):
@@ -430,6 +431,7 @@ class TestAdminUserManagement:
         resp = client.patch("/api/admin/users/nonexistent/status")
 
         assert resp.status_code == 404
+        assert "User not found" in resp.json()["detail"]
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_disable_last_super_admin_blocked(self, mock_sf):
@@ -483,6 +485,7 @@ class TestAdminUserManagement:
         resp = TestClient(app).put("/api/admin/users/target-1/role", json={"role": "department_admin"})
 
         assert resp.status_code == 403
+        assert "Department admins can only assign the regular user role" in resp.json()["detail"]
         assert target_user.role == UserRole.USER
 
     @patch("app.gateway.routers.admin.get_session_factory")
@@ -499,6 +502,7 @@ class TestAdminUserManagement:
         resp = TestClient(app).put("/api/admin/users/target-1/role", json={"role": "user"})
 
         assert resp.status_code == 403
+        assert "Department admins can only modify regular users" in resp.json()["detail"]
         assert target_user.role == UserRole.VIEWER
 
     @patch("app.gateway.routers.admin.get_session_factory")
@@ -515,6 +519,7 @@ class TestAdminUserManagement:
         resp = TestClient(app).put("/api/admin/users/target-1/role", json={"role": "user"})
 
         assert resp.status_code == 403
+        assert "Cannot modify users outside your department" in resp.json()["detail"]
         assert target_user.role == UserRole.USER
 
     @patch("app.gateway.routers.admin.get_session_factory")
@@ -531,6 +536,7 @@ class TestAdminUserManagement:
         resp = TestClient(app).put("/api/admin/users/target-1/role", json={"role": "user"})
 
         assert resp.status_code == 403
+        assert "Cannot modify users outside your department" in resp.json()["detail"]
         assert target_user.role == UserRole.USER
 
     @patch("app.gateway.routers.admin.get_session_factory")
@@ -547,6 +553,7 @@ class TestAdminUserManagement:
         resp = TestClient(app).put("/api/admin/users/target-1/role", json={"role": "user"})
 
         assert resp.status_code == 403
+        assert "Cannot modify users without an assigned department" in resp.json()["detail"]
         assert target_user.role == UserRole.USER
 
 
@@ -581,8 +588,9 @@ class TestAdminDepartmentManagement:
 
         assert resp.status_code == 200
         data = resp.json()
-        assert "departments" in data
-        assert "total" in data
+        assert data["total"] == 1
+        assert len(data["departments"]) == 1
+        assert data["departments"][0]["name"] == "Engineering"
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_create_department_success(self, mock_sf):
@@ -683,6 +691,7 @@ class TestAdminDepartmentManagement:
         )
 
         assert resp.status_code == 404
+        assert "Department not found" in resp.json()["detail"]
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_delete_department_success(self, mock_sf):
@@ -931,6 +940,7 @@ class TestDepartmentAdminPermissions:
         resp = client.put("/api/admin/users/other-user/role", json={"role": "viewer"})
 
         assert resp.status_code == 403
+        assert "Department admins can only assign the regular user role" in resp.json()["detail"]
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_update_role_cannot_modify_super_admin(self, mock_sf):
@@ -988,6 +998,7 @@ class TestDepartmentAdminPermissions:
         resp = client.put("/api/admin/users/target-1/role", json={"role": "super_admin"})
 
         assert resp.status_code == 403
+        assert "Department admins can only assign the regular user role" in resp.json()["detail"]
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_update_role_cannot_modify_cross_department(self, mock_sf):
@@ -1144,6 +1155,7 @@ class TestDeleteUser:
         client = TestClient(app)
         resp = client.delete("/api/admin/users/target-1?resource_strategy=delete")
         assert resp.status_code == 403
+        assert "Requires role: super_admin" in resp.json()["detail"]
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_delete_user_require_super_admin_user(self, mock_sf):
@@ -1153,6 +1165,7 @@ class TestDeleteUser:
         client = TestClient(app)
         resp = client.delete("/api/admin/users/target-1?resource_strategy=delete")
         assert resp.status_code == 403
+        assert "Requires role: super_admin" in resp.json()["detail"]
 
     # -- Service error handling ----------------------------------------------
 
@@ -1169,6 +1182,7 @@ class TestDeleteUser:
         client = TestClient(app)
         resp = client.delete("/api/admin/users/nonexistent?resource_strategy=delete")
         assert resp.status_code == 400
+        assert "User not found" in resp.json()["detail"]
 
     # -- Real SQLite integration tests ---------------------------------------
 

@@ -95,8 +95,8 @@ class TestAdminStats:
             resp = client.get("/api/admin/stats")
         assert resp.status_code == 200
         data = resp.json()
-        assert "total_users" in data
-        assert "total_departments" in data
+        assert data["total_users"] == 5
+        assert data["total_departments"] == 5
         assert data["total_agents"] == 1
         assert data["total_tools"] == 2
         assert data["total_resources"] == 3
@@ -116,6 +116,7 @@ class TestAdminUsers:
         mock_session = AsyncMock()
         mock_result = MagicMock()
         mock_result.scalars.return_value.all.return_value = []
+        mock_result.scalar.return_value = 0
         mock_session.execute = AsyncMock(return_value=mock_result)
         mock_ctx = MagicMock()
         mock_ctx.__aenter__ = AsyncMock(return_value=mock_session)
@@ -127,8 +128,9 @@ class TestAdminUsers:
             resp = client.get("/api/admin/users")
         assert resp.status_code == 200
         data = resp.json()
-        assert "users" in data
+        assert data["total"] == 0
         assert isinstance(data["users"], list)
+        assert len(data["users"]) == 0
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_list_users_with_filters(self, mock_get_session_factory):
@@ -136,6 +138,7 @@ class TestAdminUsers:
         mock_session = AsyncMock()
         mock_result = MagicMock()
         mock_result.scalars.return_value.all.return_value = []
+        mock_result.scalar.return_value = 0
         mock_session.execute = AsyncMock(return_value=mock_result)
         mock_ctx = MagicMock()
         mock_ctx.__aenter__ = AsyncMock(return_value=mock_session)
@@ -146,6 +149,9 @@ class TestAdminUsers:
         with TestClient(app) as client:
             resp = client.get("/api/admin/users?department_id=dept-1&role=user&limit=10&offset=0")
         assert resp.status_code == 200
+        data = resp.json()
+        assert data["limit"] == 10
+        assert data["offset"] == 0
 
 
 # ---------------------------------------------------------------------------
@@ -192,6 +198,8 @@ class TestAdminUserRole:
                 json={"role": "department_admin"},
             )
         assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is True
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_update_user_role_not_found(self, mock_get_session_factory):
@@ -212,6 +220,7 @@ class TestAdminUserRole:
                 json={"role": "department_admin"},
             )
         assert resp.status_code == 404
+        assert "User not found" in resp.json()["detail"]
 
 
 # ---------------------------------------------------------------------------
@@ -328,7 +337,7 @@ class TestAdminCreateDepartment:
                 "/api/admin/departments",
                 json={"name": "Engineering", "description": "Engineering team"},
             )
-        assert resp.status_code in (200, 201)
+        assert resp.status_code == 200
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_create_department_duplicate(self, mock_get_session_factory):
@@ -350,7 +359,8 @@ class TestAdminCreateDepartment:
                 "/api/admin/departments",
                 json={"name": "Engineering"},
             )
-        assert resp.status_code in (400, 409)
+        assert resp.status_code == 409
+        assert "already exists" in resp.json()["detail"]
 
 
 # ---------------------------------------------------------------------------
@@ -449,7 +459,8 @@ class TestAdminDeleteDepartment:
         app, _ = _make_app()
         with TestClient(app) as client:
             resp = client.delete("/api/admin/departments/dept-1")
-        assert resp.status_code in (200, 204)
+        assert resp.status_code == 200
+        assert resp.json()["success"] is True
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_delete_department_not_found(self, mock_get_session_factory):
@@ -467,6 +478,7 @@ class TestAdminDeleteDepartment:
         with TestClient(app) as client:
             resp = client.delete("/api/admin/departments/nonexistent")
         assert resp.status_code == 404
+        assert "Department not found" in resp.json()["detail"]
 
 
 # ---------------------------------------------------------------------------
@@ -491,7 +503,7 @@ class TestAdminRBAC:
         with TestClient(app) as client:
             resp = client.get("/api/admin/stats")
         # Should be forbidden for non-admin
-        assert resp.status_code in (403, 401)
+        assert resp.status_code == 403
 
     def test_department_admin_cannot_delete_department(self):
         """Department admin cannot delete departments."""
@@ -507,4 +519,4 @@ class TestAdminRBAC:
         with TestClient(app) as client:
             resp = client.delete("/api/admin/departments/dept-1")
         # Should be forbidden for department_admin
-        assert resp.status_code in (403, 401)
+        assert resp.status_code == 403

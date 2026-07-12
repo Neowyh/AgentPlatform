@@ -169,7 +169,7 @@ describe("DepartmentsPage", () => {
       const backLink = links.find(
         (l) => l.getAttribute("href") === "/workspace/admin",
       );
-      expect(backLink).toBeDefined();
+      expect(backLink).toBeTruthy();
     });
   });
 
@@ -177,7 +177,7 @@ describe("DepartmentsPage", () => {
     render(<DepartmentsPage />);
     await waitFor(() => {
       const createButtons = screen.getAllByText("新建部门");
-      expect(createButtons.length).toBeGreaterThanOrEqual(1);
+      expect(createButtons).toHaveLength(1);
     });
   });
 
@@ -187,6 +187,7 @@ describe("DepartmentsPage", () => {
     mockListDepartments.mockReturnValue(new Promise(() => {}));
     render(<DepartmentsPage />);
     expect(screen.getByText("加载中...")).toBeInTheDocument();
+    expect(screen.queryByTestId("department-list")).not.toBeInTheDocument();
   });
 
   // ── Success state ──────────────────────────────────────────────────
@@ -194,10 +195,9 @@ describe("DepartmentsPage", () => {
   test("renders department list after loading", async () => {
     render(<DepartmentsPage />);
     await waitFor(() => {
-      expect(screen.getByTestId("department-list")).toBeInTheDocument();
+      const deptCards = screen.getAllByTestId("department-card");
+      expect(deptCards).toHaveLength(3);
     });
-    const deptCards = screen.getAllByTestId("department-card");
-    expect(deptCards).toHaveLength(3);
   });
 
   test("displays department names", async () => {

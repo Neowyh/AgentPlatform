@@ -243,6 +243,7 @@ class TestUpdateAgentFieldCoverage:
                 json={"model": "gpt-4", "version": 1},
             )
         assert resp.status_code == 200
+        assert resp.json()["model"] == "gpt-4"
 
     def test_update_sets_tool_groups(self, super_admin_client, mock_deps):
         """Lines 564-565: new_tool_groups is not None, written to updated dict."""
@@ -263,6 +264,7 @@ class TestUpdateAgentFieldCoverage:
                 json={"tool_groups": ["bash"], "version": 1},
             )
         assert resp.status_code == 200
+        assert resp.json()["tool_groups"] == ["bash"]
 
     def test_update_sets_skills_from_request(self, super_admin_client, mock_deps):
         """Lines 568-569: 'skills' in fields_set, takes request.skills."""
@@ -283,6 +285,7 @@ class TestUpdateAgentFieldCoverage:
                 json={"skills": ["search"], "version": 1},
             )
         assert resp.status_code == 200
+        assert resp.json()["skills"] == ["search"]
 
     def test_update_skills_not_in_fields_set_uses_existing(self, super_admin_client, mock_deps):
         """Line 570-571: 'skills' NOT in fields_set, falls through to agent_cfg.skills."""
@@ -303,6 +306,7 @@ class TestUpdateAgentFieldCoverage:
                 json={"description": "updated", "version": 1},
             )
         assert resp.status_code == 200
+        assert resp.json()["skills"] == ["existing-skill"]
 
     def test_update_skills_empty_list(self, super_admin_client, mock_deps):
         """Line 573: new_skills is [] (not None), written to updated dict."""
@@ -323,6 +327,7 @@ class TestUpdateAgentFieldCoverage:
                 json={"skills": [], "version": 1},
             )
         assert resp.status_code == 200
+        assert resp.json()["skills"] == []
 
 
 # ===========================================================================
@@ -473,6 +478,7 @@ class TestImportAgentConfigFields:
                 },
             )
         assert resp.status_code == 201
+        assert resp.json()["name"] == AGENT_NAME
 
 
 # ===========================================================================

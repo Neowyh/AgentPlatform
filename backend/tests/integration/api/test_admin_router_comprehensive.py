@@ -468,6 +468,9 @@ class TestListUsers:
         resp = TestClient(app).get("/api/admin/users?role=super_admin")
 
         assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 0
+        assert len(data["users"]) == 0
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_list_users_with_department_id_filter(self, mock_sf):
@@ -487,6 +490,9 @@ class TestListUsers:
         resp = TestClient(app).get("/api/admin/users?department_id=dept-1")
 
         assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 0
+        assert len(data["users"]) == 0
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_list_users_limit_clamped_to_200(self, mock_sf):
@@ -585,6 +591,9 @@ class TestListUsers:
         for role_val in UserRole:
             resp = TestClient(app).get(f"/api/admin/users?role={role_val.value}")
             assert resp.status_code == 200, f"Role {role_val.value} should be valid"
+            data = resp.json()
+            assert data["total"] == 0
+            assert len(data["users"]) == 0
 
 
 # ---------------------------------------------------------------------------
@@ -657,6 +666,7 @@ class TestUpdateUserRole:
         resp = TestClient(app).put("/api/admin/users/target-1/role", json={"role": "user"})
 
         assert resp.status_code == 500
+        assert "Database not initialized" in resp.json()["detail"]
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_update_role_user_not_found(self, mock_sf):
@@ -945,6 +955,7 @@ class TestToggleUserStatus:
         resp = TestClient(app).patch("/api/admin/users/admin-1/status")
 
         assert resp.status_code == 200
+        assert resp.json()["success"] is True
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_disable_user_database_not_initialized(self, mock_sf):
@@ -956,6 +967,7 @@ class TestToggleUserStatus:
         resp = TestClient(app).patch("/api/admin/users/target-1/status")
 
         assert resp.status_code == 500
+        assert "Database not initialized" in resp.json()["detail"]
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_disable_user_not_found(self, mock_sf):
@@ -1086,6 +1098,7 @@ class TestToggleUserStatus:
         resp = TestClient(app).patch("/api/admin/users/target-1/status")
 
         assert resp.status_code == 200
+        assert resp.json()["success"] is True
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_disable_user_sqlite_for_update_fallback(self, mock_sf):
@@ -1118,6 +1131,7 @@ class TestToggleUserStatus:
             app = _make_app()
             resp = TestClient(app).patch("/api/admin/users/target-1/status")
             assert resp.status_code == 200
+            assert resp.json()["success"] is True
         finally:
             Select.with_for_update = original
 
@@ -1156,6 +1170,7 @@ class TestToggleUserStatus:
             app = _make_app()
             resp = TestClient(app).patch("/api/admin/users/target-1/status")
             assert resp.status_code == 200
+            assert resp.json()["success"] is True
         finally:
             Select.with_for_update = original
 
@@ -1607,6 +1622,7 @@ class TestCreateDepartment:
         )
 
         assert resp.status_code == 500
+        assert "Database not initialized" in resp.json()["detail"]
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_create_department_duplicate_name_detected(self, mock_sf):
@@ -1777,6 +1793,7 @@ class TestUpdateDepartment:
         )
 
         assert resp.status_code == 200
+        assert resp.json()["success"] is True
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_update_department_no_fields_changes_nothing(self, mock_sf):
@@ -1801,6 +1818,7 @@ class TestUpdateDepartment:
         )
 
         assert resp.status_code == 200
+        assert resp.json()["success"] is True
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_update_department_not_found(self, mock_sf):
@@ -1836,6 +1854,7 @@ class TestUpdateDepartment:
         )
 
         assert resp.status_code == 500
+        assert "Database not initialized" in resp.json()["detail"]
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_update_department_empty_name_rejected(self, mock_sf):
@@ -1883,6 +1902,7 @@ class TestUpdateDepartment:
         )
 
         assert resp.status_code == 400
+        assert "empty" in resp.json()["detail"].lower()
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_update_department_duplicate_name_rejected(self, mock_sf):
@@ -1986,6 +2006,7 @@ class TestUpdateDepartment:
         )
 
         assert resp.status_code == 200
+        assert resp.json()["success"] is True
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_update_department_name_none_skips_name_update(self, mock_sf):
@@ -2086,6 +2107,7 @@ class TestDeleteDepartment:
         resp = TestClient(app).delete("/api/admin/departments/dept-1")
 
         assert resp.status_code == 500
+        assert "Database not initialized" in resp.json()["detail"]
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_delete_department_with_active_members_blocked(self, mock_sf):
@@ -2137,6 +2159,7 @@ class TestDeleteDepartment:
         resp = TestClient(app).delete("/api/admin/departments/dept-1")
 
         assert resp.status_code == 200
+        assert resp.json()["success"] is True
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_delete_department_integrity_error_on_commit(self, mock_sf):
@@ -2314,6 +2337,7 @@ class TestRequestModels:
         )
 
         assert resp.status_code == 200
+        assert resp.json()["success"] is True
 
 
 # ---------------------------------------------------------------------------
