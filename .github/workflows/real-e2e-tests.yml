@@ -1,0 +1,83 @@
+name: Real E2E Tests
+
+on:
+  push:
+    branches: ['main']
+    paths:
+      - 'frontend/**'
+      - 'backend/**'
+      - '.github/workflows/real-e2e-tests.yml'
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'frontend/**'
+      - 'backend/**'
+      - '.github/workflows/real-e2e-tests.yml'
+
+concurrency:
+  group: real-e2e-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  real-e2e-tests:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      CI: 'true'
+      QA_ISOLATED: '1'
+      SKIP_ENV_VALIDATION: '1'
+      REAL_E2E_ARTIFACTS_DIR: ${{ github.workspace }}/real-e2e-artifacts
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Use pinned pnpm version
+        run: corepack prepare pnpm@10.26.2 --activate
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: uv sync --group dev
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        working-directory: frontend
+        run: pnpm exec playwright install chromium --with-deps
+
+      - name: Run isolated real E2E lane
+        run: QA_ISOLATED=1 bash backend/scripts/run-real-e2e.sh
+
+      - name: Upload real E2E diagnostics
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: real-e2e-diagnostics
+          path: |
+            real-e2e-artifacts/
+            frontend/playwright-report/
+            frontend/test-results/
+          if-no-files-found: warn
+          retention-days: 7

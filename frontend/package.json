@@ -18,6 +18,7 @@
     "test:e2e": "playwright test --project=chromium",
     "test:e2e:a11y": "playwright test --project=a11y",
     "test:e2e:auth": "playwright test --config=playwright.auth.config.ts",
+    "test:e2e:real": "bash ${REAL_E2E_RUNNER:-../backend/scripts/run-real-e2e.sh}",
     "test:e2e:smoke": "playwright test --project=chromium tests/e2e/smoke",
     "test:e2e:visual": "playwright test --project=visual",
     "test:e2e:workflows": "playwright test --project=chromium tests/e2e/workflows",

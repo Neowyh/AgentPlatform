@@ -1,0 +1,83 @@
+import { expect, test, type Page } from "@playwright/test";
+
+import {
+  expectVisibilityState,
+  requireRealE2EEnvironment,
+  runScopedName,
+  seedAgentName,
+} from "./real-e2e";
+
+const emptyStorageState = { cookies: [], origins: [] };
+
+async function loginAs(page: Page, email: string) {
+  await page.goto("/login");
+  await page.getByLabel(/email/i).fill(email);
+  await page.getByLabel(/password/i).fill(email);
+  await page.getByRole("button", { name: /sign in|登录/i }).click();
+  await page.waitForURL(/\/workspace/, { timeout: 15_000 });
+}
+
+async function submitApplication(
+  page: Page,
+  agentName: string,
+  reason: string,
+) {
+  await page.goto(`/workspace/agents/${encodeURIComponent(agentName)}`);
+  await page
+    .getByRole("button", { name: /apply.*visibility|申请.*可见性/i })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel(/reason|理由/i).fill(reason);
+  await dialog.getByRole("button", { name: /submit|提交/i }).click();
+  await expect(
+    page.getByText(/application submitted|申请已提交/i),
+  ).toBeVisible();
+}
+
+async function reviewApplication(
+  page: Page,
+  reason: string,
+  action: "approved" | "rejected",
+) {
+  await page.goto("/workspace/admin/visibility-applications");
+  await expect(page.getByTestId("visibility-applications-page")).toBeVisible();
+  const application = page
+    .getByText(reason, { exact: true })
+    .locator(
+      "xpath=ancestor::div[contains(@class, 'rounded') and .//button[normalize-space()='审核']]",
+    );
+  await expect(application).toBeVisible();
+  await application.getByRole("button", { name: "审核" }).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: action === "approved" ? "通过" : "驳回" })
+    .click();
+  await page
+    .getByRole("button", { name: action === "approved" ? "已批准" : "已拒绝" })
+    .click();
+  await expect(page.getByText(reason, { exact: true })).toBeVisible();
+}
+
+test.describe.serial("real visibility applications", () => {
+  test.use({ storageState: emptyStorageState });
+  test.beforeAll(requireRealE2EEnvironment);
+
+  for (const [suffix, action, visibility] of [
+    ["approve-agent", "approved", "department"],
+    ["reject-agent", "rejected", "private"],
+  ] as const) {
+    test(`user ${action === "approved" ? "approves" : "rejects"} ${suffix}`, async ({
+      page,
+    }) => {
+      const agentName = seedAgentName(suffix);
+      const reason = runScopedName(`${action}-reason`);
+      await loginAs(page, "user@test.com");
+      await submitApplication(page, agentName, reason);
+
+      await page.context().clearCookies();
+      await loginAs(page, "super_admin@test.com");
+      await reviewApplication(page, reason, action);
+      expectVisibilityState({ agentName, reason, status: action, visibility });
+    });
+  }
+});

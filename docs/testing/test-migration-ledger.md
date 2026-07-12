@@ -4,6 +4,23 @@ This ledger is the deletion and move gate for the test-suite reorganization.
 Do not delete an old test file unless this file records an equal or stronger
 replacement assertion and the validation command for that batch.
 
+## Batch 2026-07-12: Isolated Real E2E Lane
+
+This is additive coverage; no existing mock, auth, visual, or a11y test was
+deleted or moved. The lane uses its own Playwright config and an ephemeral
+backend state managed by `backend/scripts/run-real-e2e.sh`.
+
+| New path | Primary responsibility | Persistent-state proof | Validation |
+| --- | --- | --- | --- |
+| `frontend/tests/e2e/real/role-access-boundaries.spec.ts` | Seeded super-admin, user, viewer, and department-admin access boundaries | Isolated SQLite rows agree with the browser-observed role result. | `cd frontend && pnpm exec playwright test --config=playwright.real.config.ts --list`; `QA_ISOLATED=1 bash backend/scripts/run-real-e2e.sh` |
+| `frontend/tests/e2e/real/memory-persistence.spec.ts` | Create, reload, and delete a user memory fact | The isolated user's memory files agree with the UI. This behavior is deliberately not represented as a SQLite assertion. | `cd frontend && pnpm exec playwright test --config=playwright.real.config.ts --list`; `QA_ISOLATED=1 bash backend/scripts/run-real-e2e.sh` |
+| `frontend/tests/e2e/real/visibility-application-flow.spec.ts` | Owner submission plus independent approval and rejection by a super-admin | UI status, `visibility_applications.status`, and affected resource metadata agree in the isolated SQLite database. | `cd frontend && pnpm exec playwright test --config=playwright.real.config.ts --list`; `QA_ISOLATED=1 bash backend/scripts/run-real-e2e.sh` |
+
+The separate `Real E2E Tests` workflow runs this lane on pull requests that
+change `frontend/**`, `backend/**`, or its own workflow file. It installs the
+backend and frontend dependencies plus Chromium, and uploads the isolated-run
+logs, report, and traces when the lane fails.
+
 ## Batch 2026-07-09: Frontend E2E Directory Split
 
 | Old path | New path | Core assertions retained | Stronger replacement | Delete old path | Validation |
