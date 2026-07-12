@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
+from pydantic import BaseModel
 
 from app.gateway.authz import get_current_rbac_user
 from app.gateway.routers import tools as tools_module
@@ -23,6 +24,11 @@ _load_tool_meta = tools_module._load_tool_meta
 get_tool_detail = tools_module.get_tool_detail
 list_tools = tools_module.list_tools
 tools_router = tools_module.router
+
+
+class _MockToolSchema(BaseModel):
+    pass
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -96,8 +102,8 @@ class TestListTools:
         """List tools returns all registered tools."""
         mock_config.return_value = MagicMock()
         mock_get_tools.return_value = [
-            SimpleNamespace(name="tool_a", description="Tool A", get_input_schema=lambda: {"type": "object"}),
-            SimpleNamespace(name="tool_b", description="Tool B", get_input_schema=lambda: {"type": "object"}),
+            SimpleNamespace(name="tool_a", description="Tool A", get_input_schema=lambda: _MockToolSchema),
+            SimpleNamespace(name="tool_b", description="Tool B", get_input_schema=lambda: _MockToolSchema),
         ]
 
         app = _make_app()
@@ -115,8 +121,8 @@ class TestListTools:
         """List tools with search parameter filters results inline."""
         mock_config.return_value = MagicMock()
         mock_get_tools.return_value = [
-            SimpleNamespace(name="matching_tool", description="A matching tool", get_input_schema=lambda: {"type": "object"}),
-            SimpleNamespace(name="other_tool", description="Something else", get_input_schema=lambda: {"type": "object"}),
+            SimpleNamespace(name="matching_tool", description="A matching tool", get_input_schema=lambda: _MockToolSchema),
+            SimpleNamespace(name="other_tool", description="Something else", get_input_schema=lambda: _MockToolSchema),
         ]
 
         app = _make_app()
@@ -182,7 +188,7 @@ class TestGetToolDetail:
         """Get tool detail returns tool info."""
         mock_config.return_value = MagicMock()
         mock_get_tools.return_value = [
-            SimpleNamespace(name="my_tool", description="desc", get_input_schema=lambda: {"type": "object"}),
+            SimpleNamespace(name="my_tool", description="desc", get_input_schema=lambda: _MockToolSchema),
         ]
 
         app = _make_app()

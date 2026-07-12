@@ -4,12 +4,13 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { FlickeringGrid } from "@/components/ui/flickering-grid";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/core/auth/AuthProvider";
-import { parseAuthError } from "@/core/auth/types";
+import { useI18n } from "@/core/i18n/hooks";
 
 /**
  * Validate next parameter
@@ -50,10 +51,10 @@ export default function LoginPage() {
   const { isAuthenticated } = useAuth();
   const { theme, resolvedTheme } = useTheme();
 
+  const { t } = useI18n();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLogin, setIsLogin] = useState(true);
-  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   // Get next parameter for validated redirect
@@ -89,7 +90,6 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
     setLoading(true);
 
     try {
@@ -108,20 +108,23 @@ export default function LoginPage() {
         method: "POST",
         headers,
         body,
-        credentials: "include", // Important: include HttpOnly cookie
+        credentials: "include",
       });
 
       if (!res.ok) {
-        const data = await res.json();
-        const authError = parseAuthError(data);
-        setError(authError.message);
+        const message =
+          res.status === 403
+            ? t.auth.errorAccountDisabled
+            : res.status === 429
+              ? t.auth.errorTooManyAttempts
+              : t.auth.errorInvalidCredentials;
+        toast.error(message);
         return;
       }
 
-      // Both login and register set a cookie — redirect to workspace
       router.push(redirectPath);
     } catch {
-      setError("Network error. Please try again.");
+      toast.error(t.auth.errorNetwork);
     } finally {
       setLoading(false);
     }
@@ -143,14 +146,14 @@ export default function LoginPage() {
         <div className="text-center">
           <h1 className="text-foreground font-serif text-3xl">iDeer</h1>
           <p className="text-muted-foreground mt-2">
-            {isLogin ? "Sign in to your account" : "Create a new account"}
+            {isLogin ? t.auth.signInTitle : t.auth.createAccountTitle}
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-2">
           <div className="flex flex-col space-y-1">
             <label htmlFor="email" className="text-sm font-medium">
-              Email
+              {t.auth.email}
             </label>
             <Input
               id="email"
@@ -163,7 +166,7 @@ export default function LoginPage() {
           </div>
           <div className="flex flex-col space-y-1">
             <label htmlFor="password" className="text-sm font-medium">
-              Password
+              {t.auth.password}
             </label>
             <Input
               id="password"
@@ -176,35 +179,28 @@ export default function LoginPage() {
             />
           </div>
 
-          {error && <p className="text-sm text-red-500">{error}</p>}
-
           <Button type="submit" className="w-full" disabled={loading}>
             {loading
-              ? "Please wait..."
+              ? t.auth.pleaseWait
               : isLogin
-                ? "Sign In"
-                : "Create Account"}
+                ? t.auth.signIn
+                : t.auth.createAccount}
           </Button>
         </form>
 
         <div className="text-center text-sm">
           <button
             type="button"
-            onClick={() => {
-              setIsLogin(!isLogin);
-              setError("");
-            }}
+            onClick={() => setIsLogin(!isLogin)}
             className="text-blue-500 hover:underline"
           >
-            {isLogin
-              ? "Don't have an account? Sign up"
-              : "Already have an account? Sign in"}
+            {isLogin ? t.auth.noAccount : t.auth.hasAccount}
           </button>
         </div>
 
         <div className="text-muted-foreground text-center text-xs">
           <Link href="/" className="hover:underline">
-            ← Back to home
+            {t.auth.backToHome}
           </Link>
         </div>
       </div>

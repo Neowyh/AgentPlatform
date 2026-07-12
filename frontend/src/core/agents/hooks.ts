@@ -60,6 +60,7 @@ export function useDeleteAgent() {
     mutationFn: (name: string) => deleteAgent(name),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["agents"] });
+      void queryClient.invalidateQueries({ queryKey: ["adminStats"] });
     },
   });
 }

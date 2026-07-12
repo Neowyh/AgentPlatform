@@ -406,13 +406,51 @@ def _make_test_app(tmp_path: Path):
     return app
 
 
+def _seed_test_user_custom(user_id: str = "test-user-autouse") -> None:
+    """Seed a test user in the DB to satisfy ResourceMetadata FK constraint."""
+    import asyncio
+    from datetime import UTC, datetime
+
+    from ideer.persistence.engine import get_session_factory
+    from ideer.persistence.models.user import UserModel, UserRole
+
+    sf = get_session_factory()
+    if sf is None:
+        return
+
+    async def _seed():
+        async with sf() as session:
+            from sqlalchemy import select
+
+            stmt = select(UserModel).where(UserModel.id == user_id)
+            result = await session.execute(stmt)
+            if result.scalar_one_or_none() is None:
+                session.add(
+                    UserModel(
+                        id=user_id,
+                        username=user_id,
+                        role=UserRole.USER,
+                        created_at=datetime.now(UTC),
+                    )
+                )
+                await session.commit()
+
+    asyncio.run(_seed())
+
+
 @pytest.fixture()
 def agent_client(tmp_path):
     """TestClient with agents router, using tmp_path as base_dir."""
+    import asyncio
+
     import app.gateway.routers.agents as agents_router
+    from ideer.persistence.engine import close_engine, init_engine
 
     paths_instance = _make_paths(tmp_path)
     previous_config = AgentsApiConfig(**get_agents_api_config().model_dump())
+
+    asyncio.run(init_engine("sqlite", url="sqlite+aiosqlite://", sqlite_dir=str(tmp_path)))
+    _seed_test_user_custom("test-user-autouse")
 
     with patch("ideer.config.agents_config.get_paths", return_value=paths_instance), patch.object(agents_router, "get_paths", return_value=paths_instance):
         set_agents_api_config(AgentsApiConfig(enabled=True))
@@ -423,6 +461,7 @@ def agent_client(tmp_path):
                 yield client
         finally:
             set_agents_api_config(previous_config)
+            asyncio.run(close_engine())
 
 
 @pytest.fixture()

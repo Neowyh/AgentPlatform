@@ -25,9 +25,6 @@ from ideer.persistence.models.workflow import WorkflowRunRow
 
 logger = logging.getLogger(__name__)
 
-# Default owner for records without explicit owner_id
-_DEFAULT_OWNER_ID = "super_admin"
-
 
 def _scan_skill_meta_files(skills_path: Path) -> list[tuple[Path, dict]]:
     """Scan skill directories for .meta.json files.
@@ -129,7 +126,7 @@ async def migrate_meta_json(*, dry_run: bool = False) -> dict:
         dry_run: If True, only log what would happen without making changes.
 
     Returns:
-        Migration report with counts of imported, skipped, failed, and owner-warned records.
+        Migration report with counts of imported, skipped, and failed records.
     """
     paths = get_paths()
     skills_config = SkillsConfig()
@@ -147,12 +144,12 @@ async def migrate_meta_json(*, dry_run: bool = False) -> dict:
 
     if not all_metas:
         logger.info("No .meta.json files found — nothing to migrate")
-        return {"imported": 0, "skipped": 0, "failed": 0, "owner_warned": 0}
+        return {"imported": 0, "skipped": 0, "failed": 0}
 
     sf = get_session_factory()
     if sf is None:
         logger.error("Database not initialized — cannot migrate")
-        return {"imported": 0, "skipped": 0, "failed": 0, "owner_warned": 0}
+        return {"imported": 0, "skipped": 0, "failed": 0}
 
     logger.info("Found %d .meta.json files to migrate", len(all_metas))
 
@@ -163,29 +160,35 @@ async def migrate_meta_json(*, dry_run: bool = False) -> dict:
     imported = 0
     skipped = 0
     failed = 0
-    owner_warned = 0
     now = datetime.now(UTC)
 
     async with sf() as session:
         for resource_type, meta_file, meta in all_metas:
             try:
                 resource_id = meta.get("name", meta_file.parent.name)
-                owner_id = meta.get("owner_id", _DEFAULT_OWNER_ID)
+                owner_id = meta.get("owner_id")
                 department_id = meta.get("department_id")
                 visibility = meta.get("visibility", "private")
 
-                # Validate owner_id
-                owner_valid = _validate_owner_exists(owner_id, existing_owner_ids)
-                if not owner_valid:
-                    logger.warning(
-                        "owner_id '%s' not found in users_ext for %s '%s' — defaulting to '%s'",
-                        owner_id,
+                # Validate owner_id — skip if missing or invalid
+                if not owner_id:
+                    logger.error(
+                        "Skipping %s '%s': no owner_id in meta file — add owner_id and re-run",
                         resource_type,
                         resource_id,
-                        _DEFAULT_OWNER_ID,
                     )
-                    owner_id = _DEFAULT_OWNER_ID
-                    owner_warned += 1
+                    skipped += 1
+                    continue
+                if not _validate_owner_exists(owner_id, existing_owner_ids):
+                    logger.error(
+                        "Skipping %s '%s': owner_id '%s' not found in users_ext — fix the owner_id in %s and re-run",
+                        resource_type,
+                        resource_id,
+                        owner_id,
+                        meta_file,
+                    )
+                    skipped += 1
+                    continue
 
                 # Idempotency check
                 stmt = select(ResourceMetadata).where(
@@ -237,14 +240,12 @@ async def migrate_meta_json(*, dry_run: bool = False) -> dict:
         "imported": imported,
         "skipped": skipped,
         "failed": failed,
-        "owner_warned": owner_warned,
     }
     logger.info(
-        "Migration complete: %d imported, %d skipped, %d failed, %d owner warnings",
+        "Migration complete: %d imported, %d skipped, %d failed",
         imported,
         skipped,
         failed,
-        owner_warned,
     )
 
     # Verification step: compare file count and table row count
@@ -313,7 +314,7 @@ async def _sample_validate(imported: int, skipped: int) -> None:
         logger.warning("Sample validation failed: %s", e)
 
 
-async def backfill_tools(*, dry_run: bool = False) -> dict:
+async def backfill_tools(*, dry_run: bool = False, default_owner: str | None = None) -> dict:
     """Backfill MCP server tool entries into resource_metadata table.
 
     Tools defined in MCP configuration (extensions_config.json) don't have
@@ -337,6 +338,10 @@ async def backfill_tools(*, dry_run: bool = False) -> dict:
 
     if not tool_names:
         logger.info("No MCP tools found in configuration — nothing to backfill")
+        return {"imported": 0, "skipped": 0, "failed": 0}
+
+    if not default_owner:
+        logger.error("Cannot backfill tools: --default-owner is required")
         return {"imported": 0, "skipped": 0, "failed": 0}
 
     sf = get_session_factory()
@@ -371,7 +376,7 @@ async def backfill_tools(*, dry_run: bool = False) -> dict:
                     id=str(uuid.uuid4()),
                     resource_type="tool",
                     resource_id=tool_name,
-                    owner_id=_DEFAULT_OWNER_ID,
+                    owner_id=default_owner,
                     department_id=None,
                     visibility="public",
                     version=1,
@@ -386,7 +391,7 @@ async def backfill_tools(*, dry_run: bool = False) -> dict:
                 logger.info(
                     "Backfilled tool '%s' (owner=%s, visibility=public)",
                     tool_name,
-                    _DEFAULT_OWNER_ID,
+                    default_owner,
                 )
 
             except Exception as e:
@@ -411,7 +416,7 @@ async def backfill_tools(*, dry_run: bool = False) -> dict:
     return report
 
 
-async def backfill_workflows(*, dry_run: bool = False) -> dict:
+async def backfill_workflows(*, dry_run: bool = False, default_owner: str | None = None) -> dict:
     """Backfill workflow definition entries into resource_metadata table.
 
     Workflow definitions stored in the workflow_runs table (with run_ids
@@ -437,6 +442,10 @@ async def backfill_workflows(*, dry_run: bool = False) -> dict:
 
     if not rows:
         logger.info("No workflow definitions found — nothing to backfill")
+        return {"imported": 0, "skipped": 0, "failed": 0}
+
+    if not default_owner:
+        logger.error("Cannot backfill workflows: --default-owner is required")
         return {"imported": 0, "skipped": 0, "failed": 0}
 
     logger.info("Found %d workflow definitions to backfill", len(rows))
@@ -468,7 +477,7 @@ async def backfill_workflows(*, dry_run: bool = False) -> dict:
                     id=str(uuid.uuid4()),
                     resource_type="workflow",
                     resource_id=workflow_name,
-                    owner_id=_DEFAULT_OWNER_ID,
+                    owner_id=default_owner,
                     department_id=None,
                     visibility="private",
                     version=1,
@@ -483,7 +492,7 @@ async def backfill_workflows(*, dry_run: bool = False) -> dict:
                 logger.info(
                     "Backfilled workflow '%s' (owner=%s, visibility=private)",
                     workflow_name,
-                    _DEFAULT_OWNER_ID,
+                    default_owner,
                 )
 
             except Exception as e:
@@ -509,17 +518,30 @@ async def backfill_workflows(*, dry_run: bool = False) -> dict:
 
 
 def main() -> None:
+    import uuid as uuid_validator
+
     parser = argparse.ArgumentParser(description="Migrate .meta.json files to resource_metadata table")
     parser.add_argument("--dry-run", action="store_true", help="Log actions without making changes")
+    parser.add_argument(
+        "--default-owner",
+        help="UUID of the default owner for backfilled tools and workflows (required for tool/workflow backfill)",
+    )
     args = parser.parse_args()
+
+    default_owner = args.default_owner
+    if default_owner is not None:
+        try:
+            uuid_validator.UUID(default_owner)
+        except ValueError:
+            parser.error(f"--default-owner must be a valid UUID, got: {default_owner}")
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
     import asyncio
 
     skill_agent_report = asyncio.run(migrate_meta_json(dry_run=args.dry_run))
-    tool_report = asyncio.run(backfill_tools(dry_run=args.dry_run))
-    workflow_report = asyncio.run(backfill_workflows(dry_run=args.dry_run))
+    tool_report = asyncio.run(backfill_tools(dry_run=args.dry_run, default_owner=default_owner))
+    workflow_report = asyncio.run(backfill_workflows(dry_run=args.dry_run, default_owner=default_owner))
     report = {
         "skill_agent": skill_agent_report,
         "tool_backfill": tool_report,

@@ -9,6 +9,8 @@ from ipaddress import ip_address, ip_network
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr, Field, field_validator
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.gateway.auth import (
     UserResponse,
@@ -18,6 +20,9 @@ from app.gateway.auth.config import get_auth_config
 from app.gateway.auth.errors import AuthErrorCode, AuthErrorResponse
 from app.gateway.csrf_middleware import is_secure_request
 from app.gateway.deps import get_current_user_from_request, get_local_provider
+from app.gateway.rbac_users import create_auth_user_with_rbac
+from ideer.persistence.engine import get_session_factory
+from ideer.persistence.models.user import UserModel, UserRole
 
 logger = logging.getLogger(__name__)
 
@@ -270,6 +275,25 @@ def _record_login_success(ip: str) -> None:
     _login_attempts.pop(ip, None)
 
 
+async def _count_active_super_admin_users() -> int:
+    """Return active RBAC super_admin count."""
+    from sqlalchemy import func
+
+    sf = get_session_factory()
+    if sf is None:
+        return 0
+    async with sf() as session:
+        stmt = (
+            select(func.count())
+            .select_from(UserModel)
+            .where(
+                UserModel.role == UserRole.SUPER_ADMIN,
+                UserModel.disabled.is_not(True),
+            )
+        )
+        return (await session.execute(stmt)).scalar() or 0
+
+
 # ── Registration Rate Limiting ───────────────────────────────────────────
 # Per-IP rate limit for account registration to prevent abuse.
 # 3 registrations per IP per hour.
@@ -328,6 +352,20 @@ async def login_local(
         )
 
     _record_login_success(client_ip)
+
+    # Check if user is disabled — if so, refuse login
+    sf = get_session_factory()
+    if sf is not None:
+        async with sf() as session:
+            stmt = select(UserModel).where(UserModel.id == str(user.id))
+            result = await session.execute(stmt)
+            rbac_user = result.scalar_one_or_none()
+            if rbac_user is not None and rbac_user.disabled:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=AuthErrorResponse(code=AuthErrorCode.USER_DISABLED, message="User account is disabled").model_dump(),
+                )
+
     token = create_access_token(str(user.id), token_version=user.token_version)
     _set_session_cookie(response, token, request)
 
@@ -345,9 +383,20 @@ async def register(request: Request, response: Response, body: RegisterRequest):
     Auto-login by setting the session cookie.
     """
     _check_registration_rate_limit(_get_client_ip(request))
+    sf = get_session_factory()
+    if sf is None:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database not initialized")
+
     try:
-        user = await get_local_provider().create_user(email=body.email, password=body.password, system_role="user")
-    except ValueError:
+        async with sf() as session:
+            user = await create_auth_user_with_rbac(
+                session,
+                email=body.email,
+                password=body.password,
+                username=body.email,
+                role=UserRole.USER,
+            )
+    except IntegrityError:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=AuthErrorResponse(code=AuthErrorCode.EMAIL_ALREADY_EXISTS, message="Email already registered").model_dump(),
@@ -356,7 +405,7 @@ async def register(request: Request, response: Response, body: RegisterRequest):
     token = create_access_token(str(user.id), token_version=user.token_version)
     _set_session_cookie(response, token, request)
 
-    return UserResponse(id=str(user.id), email=user.email, system_role=user.system_role)
+    return UserResponse(id=str(user.id), email=user.email, system_role=UserRole.USER.value)
 
 
 @router.post("/logout", response_model=MessageResponse)
@@ -417,34 +466,43 @@ async def get_me(request: Request):
     """Get current authenticated user info.
 
     Returns the RBAC role from ``users_ext`` so the frontend permission
-    checks work correctly.  Falls back to the legacy ``users.system_role``
-    when no ``users_ext`` row exists.
+    checks work correctly. Missing RBAC profiles are created as regular
+    users and are never promoted from the legacy ``users.system_role``.
     """
     user = await get_current_user_from_request(request)
 
-    # Resolve RBAC role from users_ext
-    rbac_role = user.system_role  # fallback to legacy role
-    try:
-        from ideer.persistence.engine import get_session_factory
-        from ideer.persistence.models.user import UserModel
+    sf = get_session_factory()
+    if sf is None:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database not initialized")
 
-        sf = get_session_factory()
-        if sf is not None:
-            async with sf() as session:
-                from sqlalchemy import select
-
-                stmt = select(UserModel).where(UserModel.id == str(user.id))
+    async with sf() as session:
+        stmt = select(UserModel).where(UserModel.id == str(user.id))
+        result = await session.execute(stmt)
+        rbac_user = result.scalar_one_or_none()
+        if rbac_user is None:
+            rbac_user = UserModel(
+                id=str(user.id),
+                username=getattr(user, "email", str(user.id)),
+                role=UserRole.USER.value,
+                department_id=None,
+            )
+            try:
+                session.add(rbac_user)
+                await session.commit()
+                await session.refresh(rbac_user)
+            except IntegrityError:
+                await session.rollback()
                 result = await session.execute(stmt)
                 rbac_user = result.scalar_one_or_none()
-                if rbac_user is not None:
-                    rbac_role = rbac_user.role.value
-    except Exception:
-        pass  # fall back to legacy role
+                if rbac_user is None:
+                    raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create user profile")
+        if rbac_user.disabled:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User account is disabled")
 
     return UserResponse(
         id=str(user.id),
         email=user.email,
-        system_role=rbac_role,
+        system_role=UserRole(rbac_user.role).value,
         needs_setup=user.needs_setup,
     )
 
@@ -496,7 +554,7 @@ async def setup_status(request: Request):
                         del _SETUP_STATUS_CACHE[k]
 
             async def _compute_setup_status() -> dict:
-                admin_count = await get_local_provider().count_admin_users()
+                admin_count = await _count_active_super_admin_users()
                 return {"needs_setup": admin_count == 0}
 
             task = asyncio.create_task(_compute_setup_status())
@@ -536,16 +594,28 @@ async def initialize_admin(request: Request, response: Response, body: Initializ
     On success, the admin account is created with ``needs_setup=False`` and
     the session cookie is set.
     """
-    admin_count = await get_local_provider().count_admin_users()
+    admin_count = await _count_active_super_admin_users()
     if admin_count > 0:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=AuthErrorResponse(code=AuthErrorCode.SYSTEM_ALREADY_INITIALIZED, message="System already initialized").model_dump(),
         )
 
+    sf = get_session_factory()
+    if sf is None:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database not initialized")
+
     try:
-        user = await get_local_provider().create_user(email=body.email, password=body.password, system_role="admin", needs_setup=False)
-    except ValueError:
+        async with sf() as session:
+            user = await create_auth_user_with_rbac(
+                session,
+                email=body.email,
+                password=body.password,
+                username=body.email,
+                role=UserRole.SUPER_ADMIN,
+                needs_setup=False,
+            )
+    except IntegrityError:
         # DB unique-constraint race: another concurrent request beat us.
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -555,7 +625,7 @@ async def initialize_admin(request: Request, response: Response, body: Initializ
     token = create_access_token(str(user.id), token_version=user.token_version)
     _set_session_cookie(response, token, request)
 
-    return UserResponse(id=str(user.id), email=user.email, system_role=user.system_role)
+    return UserResponse(id=str(user.id), email=user.email, system_role=UserRole.SUPER_ADMIN.value)
 
 
 # ── OAuth Endpoints (Future/Placeholder) ─────────────────────────────────

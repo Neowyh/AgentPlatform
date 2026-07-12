@@ -6,7 +6,7 @@ import {
   parseAuthError,
   userSchema,
 } from "@/core/auth/types";
-import type { AuthErrorCode, AuthErrorResponse, User } from "@/core/auth/types";
+import type { AuthErrorCode } from "@/core/auth/types";
 
 // ── userSchema ──────────────────────────────────────────────────────
 
@@ -55,11 +55,23 @@ describe("userSchema", () => {
     }
   });
 
-  test("rejects an invalid system_role", () => {
+  test("normalizes legacy admin system_role to super_admin", () => {
     const result = userSchema.safeParse({
       id: "u-1",
       email: "test@example.com",
       system_role: "admin",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.system_role).toBe("super_admin");
+    }
+  });
+
+  test("rejects an invalid system_role", () => {
+    const result = userSchema.safeParse({
+      id: "u-1",
+      email: "test@example.com",
+      system_role: "root",
     });
     expect(result.success).toBe(false);
   });

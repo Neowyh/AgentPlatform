@@ -6,8 +6,6 @@ and error handling paths for maximum coverage.
 
 from __future__ import annotations
 
-import json
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -168,48 +166,20 @@ class TestValidateSkillName:
 
 @pytest.mark.asyncio
 class TestGetSkillMeta:
-    async def test_returns_meta_when_exists(self, tmp_path):
+    async def test_returns_meta_when_exists(self):
         meta = {"visibility": "public", "owner_id": "user-1"}
         config = MagicMock()
-        storage = MagicMock()
-        meta_path = tmp_path / ".meta.json"
-        meta_path.write_text(json.dumps(meta))
-        storage.get_custom_skill_dir.return_value = tmp_path
 
-        with patch("app.gateway.routers.skills.get_or_new_skill_storage", return_value=storage):
+        with patch("app.gateway.routers.skills._skill_store.load_meta", return_value=meta):
             result = await _load_skill_meta("test-skill", config)
 
         assert result == meta
 
-    async def test_returns_empty_on_file_not_found(self):
+    async def test_returns_empty_when_not_found(self):
         config = MagicMock()
-        storage = MagicMock()
-        storage.get_custom_skill_dir.side_effect = FileNotFoundError
 
-        with patch("app.gateway.routers.skills.get_or_new_skill_storage", return_value=storage):
+        with patch("app.gateway.routers.skills._skill_store.load_meta", return_value=None):
             result = await _load_skill_meta("missing-skill", config)
-
-        assert result == {}
-
-    async def test_returns_empty_on_json_decode_error(self, tmp_path):
-        config = MagicMock()
-        storage = MagicMock()
-        meta_path = tmp_path / ".meta.json"
-        meta_path.write_text("not valid json{{{")
-        storage.get_custom_skill_dir.return_value = tmp_path
-
-        with patch("app.gateway.routers.skills.get_or_new_skill_storage", return_value=storage):
-            result = await _load_skill_meta("corrupt-skill", config)
-
-        assert result == {}
-
-    async def test_returns_empty_on_generic_exception(self):
-        config = MagicMock()
-        storage = MagicMock()
-        storage.get_custom_skill_dir.side_effect = RuntimeError("disk error")
-
-        with patch("app.gateway.routers.skills.get_or_new_skill_storage", return_value=storage):
-            result = await _load_skill_meta("error-skill", config)
 
         assert result == {}
 

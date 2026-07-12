@@ -21,7 +21,7 @@ from sqlalchemy import select
 from app.gateway.auth.credential_file import write_initial_credentials
 from app.gateway.auth.password import hash_password
 from app.gateway.auth.repositories.sqlite import SQLiteUserRepository
-from ideer.persistence.user.model import UserRow
+from ideer.persistence.models.user import UserModel, UserRole
 
 
 async def _run(email: str | None) -> int:
@@ -44,12 +44,26 @@ async def _run(email: str | None) -> int:
 
         if email:
             user = await repo.get_user_by_email(email)
+            if user is not None:
+                async with sf() as session:
+                    stmt = select(UserModel).where(
+                        UserModel.id == str(user.id),
+                        UserModel.role == UserRole.SUPER_ADMIN,
+                        UserModel.disabled.is_not(True),
+                    )
+                    if (await session.execute(stmt)).scalar_one_or_none() is None:
+                        user = None
         else:
-            # Find first admin via direct SELECT — repository does not
-            # expose a "first admin" helper and we do not want to add
-            # one just for this CLI.
+            # Find first active RBAC super_admin.
             async with sf() as session:
-                stmt = select(UserRow).where(UserRow.system_role == "admin").limit(1)
+                stmt = (
+                    select(UserModel)
+                    .where(
+                        UserModel.role == UserRole.SUPER_ADMIN,
+                        UserModel.disabled.is_not(True),
+                    )
+                    .limit(1)
+                )
                 row = (await session.execute(stmt)).scalar_one_or_none()
             if row is None:
                 user = None
@@ -58,9 +72,9 @@ async def _run(email: str | None) -> int:
 
         if user is None:
             if email:
-                print(f"Error: user '{email}' not found.", file=sys.stderr)
+                print(f"Error: active super_admin user '{email}' not found.", file=sys.stderr)
             else:
-                print("Error: no admin user found.", file=sys.stderr)
+                print("Error: no active super_admin user found. Initialize the system first.", file=sys.stderr)
             return 1
 
         new_password = secrets.token_urlsafe(16)

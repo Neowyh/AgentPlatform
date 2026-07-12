@@ -80,41 +80,34 @@ async def _ensure_admin_user(app: FastAPI) -> None:
     """
     from sqlalchemy import select
 
-    from app.gateway.deps import get_local_provider
     from ideer.persistence.engine import get_session_factory
-    from ideer.persistence.user.model import UserRow
-
-    try:
-        provider = get_local_provider()
-    except RuntimeError:
-        # Auth persistence may not be initialized in some test/boot paths.
-        # Skip admin migration work rather than failing gateway startup.
-        logger.warning("Auth persistence not ready; skipping admin bootstrap check")
-        return
+    from ideer.persistence.models.user import UserModel, UserRole
 
     sf = get_session_factory()
     if sf is None:
         return
 
-    admin_count = await provider.count_admin_users()
+    async with sf() as session:
+        stmt = (
+            select(UserModel)
+            .where(
+                UserModel.role == UserRole.SUPER_ADMIN,
+                UserModel.disabled.is_not(True),
+            )
+            .limit(1)
+        )
+        admin_user = (await session.execute(stmt)).scalar_one_or_none()
 
-    if admin_count == 0:
+    if admin_user is None:
         logger.info("=" * 60)
-        logger.info("  First boot detected — no admin account exists.")
+        logger.info("  First boot detected — no active super_admin account exists.")
         logger.info("  Visit /setup to complete admin account creation.")
         logger.info("=" * 60)
         return
 
     # Admin already exists — run orphan thread migration for any
     # LangGraph thread metadata that pre-dates the auth module.
-    async with sf() as session:
-        stmt = select(UserRow).where(UserRow.system_role == "admin").limit(1)
-        row = (await session.execute(stmt)).scalar_one_or_none()
-
-    if row is None:
-        return  # Should not happen (admin_count > 0 above), but be safe.
-
-    admin_id = str(row.id)
+    admin_id = str(admin_user.id)
 
     # LangGraph store orphan migration — non-fatal.
     # This covers the "no-auth → with-auth" upgrade path for users
@@ -166,6 +159,68 @@ async def _migrate_orphaned_threads(store, admin_user_id: str) -> int:
     return migrated
 
 
+async def _reconcile_resource_metadata(startup_config: AppConfig) -> None:
+    """Startup hook: ensure all custom skills on disk have a resource_metadata record.
+
+    Scans the ``skills/custom/`` directory and auto-creates metadata for any
+    skill directory that is missing one. Uses the first active super_admin as
+    the owner so these skills are discoverable by admins and manageable via
+    the visibility UI.
+
+    This function is idempotent — existing metadata records are never touched.
+    """
+    from pathlib import Path
+
+    from sqlalchemy import select
+
+    from app.gateway.utils import ResourceMetadataStore
+    from ideer.persistence.engine import get_session_factory
+    from ideer.persistence.models.user import UserModel, UserRole
+
+    sf = get_session_factory()
+    if sf is None:
+        return
+
+    # Find first active super_admin
+    async with sf() as session:
+        stmt = (
+            select(UserModel)
+            .where(
+                UserModel.role == UserRole.SUPER_ADMIN,
+                UserModel.disabled.is_not(True),
+            )
+            .limit(1)
+        )
+        admin_user = (await session.execute(stmt)).scalar_one_or_none()
+
+    if admin_user is None:
+        logger.info("No active super_admin found; skipping skill resource_metadata reconciliation")
+        return
+
+    admin_id = str(admin_user.id)
+
+    # Scan skills/custom/ directory for skill directories that exist on disk
+    skills_path = startup_config.skills.get_skills_path()
+    custom_dir: Path = skills_path / "custom"
+    if not custom_dir.is_dir():
+        return
+
+    store = ResourceMetadataStore("skill")
+    reconciled = 0
+    for entry in sorted(custom_dir.iterdir()):
+        if not entry.is_dir() or entry.name.startswith("."):
+            continue
+        skill_name = entry.name
+        existing = await store.load_meta(skill_name)
+        if existing:
+            continue
+        if await store.save_meta(skill_name, {"owner_id": admin_id, "visibility": "private"}):
+            reconciled += 1
+
+    if reconciled:
+        logger.info("Reconciled %d custom skill(s) — created missing resource_metadata records", reconciled)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan handler."""
@@ -195,6 +250,23 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         # Check admin bootstrap state and migrate orphan threads after admin exists.
         # Must run AFTER langgraph_runtime so app.state.store is available for thread migration
         await _ensure_admin_user(app)
+
+        # Detection only: startup must never remove user state automatically.
+        try:
+            from app.gateway.user_deletion import report_user_state_anomalies
+            from ideer.config.paths import get_paths
+
+            await report_user_state_anomalies(get_paths())
+        except Exception:
+            logger.exception("User-state anomaly audit failed (non-fatal)")
+
+        # Reconcile skill resource_metadata for any custom skills on disk
+        # that lack a DB record. Must run AFTER _ensure_admin_user so
+        # the super_admin ID is available as the fallback owner.
+        try:
+            await _reconcile_resource_metadata(startup_config)
+        except Exception:
+            logger.exception("Skill metadata reconciliation failed (non-fatal)")
 
         # Start IM channel service if any channels are configured
         try:
@@ -349,6 +421,7 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
                 "success": False,
                 "data": None,
                 "error": {"code": exc.code, "message": exc.message},
+                "detail": exc.message,
             },
         )
 
@@ -360,6 +433,7 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
                 "success": False,
                 "data": None,
                 "error": {"code": "INTERNAL_ERROR", "message": str(exc.detail)},
+                "detail": str(exc.detail),
             },
         )
 

@@ -20,6 +20,7 @@ class AuthErrorCode(StrEnum):
     EMAIL_ALREADY_EXISTS = "email_already_exists"
     PROVIDER_NOT_FOUND = "provider_not_found"
     NOT_AUTHENTICATED = "not_authenticated"
+    USER_DISABLED = "user_disabled"
     SYSTEM_ALREADY_INITIALIZED = "system_already_initialized"
 
 

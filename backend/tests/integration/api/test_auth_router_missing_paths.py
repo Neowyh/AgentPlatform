@@ -37,6 +37,22 @@ pytestmark = pytest.mark.no_auto_user
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def _auth_db(tmp_path):
+    from app.gateway import deps
+    from ideer.persistence.engine import close_engine, init_engine
+
+    asyncio.run(init_engine("sqlite", url=f"sqlite+aiosqlite:///{tmp_path}/auth_router_gaps.db", sqlite_dir=str(tmp_path)))
+    deps._cached_local_provider = None
+    deps._cached_repo = None
+    try:
+        yield
+    finally:
+        deps._cached_local_provider = None
+        deps._cached_repo = None
+        asyncio.run(close_engine())
+
+
 def _make_app():
     app = FastAPI()
     app.include_router(auth_router)
@@ -304,18 +320,16 @@ class TestRegister:
         assert resp.json()["email"] == "new@example.com"
 
     def test_register_email_exists(self):
-        provider = MagicMock()
-        provider.create_user = AsyncMock(side_effect=ValueError("dup"))
-
-        with (
-            patch("app.gateway.routers.auth.get_local_provider", return_value=provider),
-        ):
-            app = _make_app()
-            with TestClient(app) as client:
-                resp = client.post(
-                    "/api/v1/auth/register",
-                    json={"email": "existing@example.com", "password": "StrongPass123!"},
-                )
+        app = _make_app()
+        with TestClient(app) as client:
+            client.post(
+                "/api/v1/auth/register",
+                json={"email": "existing@example.com", "password": "StrongPass123!"},
+            )
+            resp = client.post(
+                "/api/v1/auth/register",
+                json={"email": "existing@example.com", "password": "StrongPass123!"},
+            )
 
         assert resp.status_code == 400
 
@@ -496,7 +510,7 @@ class TestGetMe:
         assert resp.status_code == 200
         body = resp.json()
         assert body["email"] == "me@example.com"
-        assert body["system_role"] == "admin"
+        assert body["system_role"] == "user"
         assert body["needs_setup"] is True
 
 
@@ -641,11 +655,8 @@ class TestSetupStatus:
 
 class TestInitializeAdmin:
     def test_admin_exists_returns_409(self):
-        provider = MagicMock()
-        provider.count_admin_users = AsyncMock(return_value=1)
-
         with (
-            patch("app.gateway.routers.auth.get_local_provider", return_value=provider),
+            patch("app.gateway.routers.auth._count_active_super_admin_users", new_callable=AsyncMock, return_value=1),
         ):
             app = _make_app()
             with TestClient(app) as client:
@@ -657,13 +668,8 @@ class TestInitializeAdmin:
         assert resp.status_code == 409
 
     def test_success(self):
-        user = _fake_user(email="admin@example.com", system_role="admin", needs_setup=False)
-        provider = MagicMock()
-        provider.count_admin_users = AsyncMock(return_value=0)
-        provider.create_user = AsyncMock(return_value=user)
-
         with (
-            patch("app.gateway.routers.auth.get_local_provider", return_value=provider),
+            patch("app.gateway.routers.auth._count_active_super_admin_users", new_callable=AsyncMock, return_value=0),
             patch("app.gateway.routers.auth.create_access_token", return_value="admin-jwt"),
         ):
             app = _make_app()
@@ -675,22 +681,20 @@ class TestInitializeAdmin:
 
         assert resp.status_code == 201
         assert resp.json()["email"] == "admin@example.com"
+        assert resp.json()["system_role"] == "super_admin"
 
     def test_race_condition(self):
-        """Concurrent create_user ValueError triggers 409."""
-        provider = MagicMock()
-        provider.count_admin_users = AsyncMock(return_value=0)
-        provider.create_user = AsyncMock(side_effect=ValueError("unique constraint"))
-
-        with (
-            patch("app.gateway.routers.auth.get_local_provider", return_value=provider),
-        ):
-            app = _make_app()
-            with TestClient(app) as client:
-                resp = client.post(
-                    "/api/v1/auth/initialize",
-                    json={"email": "admin@example.com", "password": "AdminPass123!"},
-                )
+        """Concurrent duplicate auth user creation triggers 409."""
+        app = _make_app()
+        with TestClient(app) as client:
+            client.post(
+                "/api/v1/auth/register",
+                json={"email": "admin@example.com", "password": "StrongPass123!"},
+            )
+            resp = client.post(
+                "/api/v1/auth/initialize",
+                json={"email": "admin@example.com", "password": "AdminPass123!"},
+            )
 
         assert resp.status_code == 409
 

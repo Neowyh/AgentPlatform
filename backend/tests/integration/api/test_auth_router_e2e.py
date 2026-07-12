@@ -23,6 +23,7 @@ helper functions.  We mock at the *internal dependency* level:
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
@@ -39,6 +40,22 @@ pytestmark = pytest.mark.no_auto_user
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _auth_db(tmp_path):
+    from app.gateway import deps
+    from ideer.persistence.engine import close_engine, init_engine
+
+    asyncio.run(init_engine("sqlite", url=f"sqlite+aiosqlite:///{tmp_path}/auth_router_e2e.db", sqlite_dir=str(tmp_path)))
+    deps._cached_local_provider = None
+    deps._cached_repo = None
+    try:
+        yield
+    finally:
+        deps._cached_local_provider = None
+        deps._cached_repo = None
+        asyncio.run(close_engine())
 
 
 def _make_app():
@@ -173,18 +190,16 @@ class TestRegister:
 
     def test_register_duplicate_email(self):
         """Register fails with duplicate email."""
-        provider = _patch_provider()
-        provider.create_user = AsyncMock(side_effect=ValueError("Email already registered"))
-
-        with (
-            patch("app.gateway.routers.auth.get_local_provider", return_value=provider),
-        ):
-            app = _make_app()
-            with TestClient(app) as client:
-                resp = client.post(
-                    "/api/v1/auth/register",
-                    json={"email": "existing@example.com", "password": "ValidPass123!"},
-                )
+        app = _make_app()
+        with TestClient(app) as client:
+            client.post(
+                "/api/v1/auth/register",
+                json={"email": "existing@example.com", "password": "ValidPass123!"},
+            )
+            resp = client.post(
+                "/api/v1/auth/register",
+                json={"email": "existing@example.com", "password": "ValidPass123!"},
+            )
 
         assert resp.status_code == 400
 
@@ -327,10 +342,8 @@ class TestSetupStatus:
 
     def test_setup_status_already_setup(self):
         """Setup status returns needs_setup=False when admin exists."""
-        provider = _patch_provider(count_admin=1)
-
         with (
-            patch("app.gateway.routers.auth.get_local_provider", return_value=provider),
+            patch("app.gateway.routers.auth._count_active_super_admin_users", new_callable=AsyncMock, return_value=1),
             patch("app.gateway.routers.auth._get_client_ip", return_value="10.0.0.2"),
             patch("app.gateway.routers.auth._SETUP_STATUS_CACHE", {}),
         ):
@@ -354,11 +367,8 @@ class TestInitializeAdmin:
     @patch("app.gateway.routers.auth.create_access_token", return_value="admin-jwt")
     def test_initialize_success(self, _mock_token, _mock_cookie):
         """Initialize admin succeeds on first call."""
-        user = _fake_user(email="admin@example.com", system_role="admin")
-        provider = _patch_provider(create_user_return=user, count_admin=0)
-
         with (
-            patch("app.gateway.routers.auth.get_local_provider", return_value=provider),
+            patch("app.gateway.routers.auth._count_active_super_admin_users", new_callable=AsyncMock, return_value=0),
         ):
             app = _make_app()
             with TestClient(app) as client:
@@ -370,14 +380,12 @@ class TestInitializeAdmin:
         assert resp.status_code == 201
         data = resp.json()
         assert data["email"] == "admin@example.com"
-        assert data["system_role"] == "admin"
+        assert data["system_role"] == "super_admin"
 
     def test_initialize_already_done(self):
         """Initialize admin fails when already initialized."""
-        provider = _patch_provider(count_admin=1)
-
         with (
-            patch("app.gateway.routers.auth.get_local_provider", return_value=provider),
+            patch("app.gateway.routers.auth._count_active_super_admin_users", new_callable=AsyncMock, return_value=1),
         ):
             app = _make_app()
             with TestClient(app) as client:

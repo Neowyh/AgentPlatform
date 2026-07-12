@@ -256,6 +256,10 @@ FastAPI application on port 8001 with health check at `GET /health`. Set `GATEWA
 
 CORS is same-origin by default when requests enter through nginx on port 2026. Split-origin or port-forwarded browser clients must opt in with `GATEWAY_CORS_ORIGINS` (comma-separated exact origins); Gateway `CORSMiddleware` and `CSRFMiddleware` both read that variable so browser CORS and auth-origin checks stay aligned.
 
+Auth/RBAC contract: `users` stores authentication identity and compatibility fields only; new code writes `users.system_role="user"` for every locally created account. `users_ext.role` is the only permission source (`viewer`, `user`, `department_admin`, `super_admin`). `/api/v1/auth/initialize` creates the first RBAC `super_admin`, `setup-status` checks active RBAC `super_admin` rows, and missing RBAC profiles are auto-created as regular `user` records.
+
+Admin dashboard/resource totals are global management information for both `super_admin` and `department_admin`. `/api/admin/stats` and `/api/admin/resources` share the same canonical inventory: valid shared and per-user agent directories with `config.yaml`, `get_available_tools()`, all loaded skills, and workflow definitions from the workflow store. `ResourceMetadata` enriches visibility/ownership but is not the source of truth for inventory counts. Audit-log list/detail routes are read-only and visible to both admin roles.
+
 **Routers**:
 
 | Router | Endpoints |

@@ -1107,6 +1107,21 @@ cp .ideer/data/ideer.db .ideer/data/ideer.db.backup
 cp .ideer/data/ideer.db.backup .ideer/data/ideer.db
 ```
 
+恢复或替换数据库后，必须先审计数据库主体与磁盘用户目录是否一致。应用启动时只记录异常，绝不会自动删除目录：
+
+```bash
+uv run python scripts/reconcile_user_state.py audit --output /tmp/user-state-audit.json
+```
+
+确认清单中的目录确实无数据库引用后再永久删除。命令会在删除前重新检查数据库引用、运行记录、目录摘要、符号链接和根目录边界；交互环境需要确认，自动化环境必须显式传入 `--yes`：
+
+```bash
+uv run python scripts/reconcile_user_state.py delete --manifest /tmp/user-state-audit.json
+uv run python scripts/reconcile_user_state.py delete --manifest /tmp/user-state-audit.json --include-reserved default
+```
+
+删除不可恢复，不提供 quarantine、restore 或延迟 purge。
+
 **PostgreSQL**:
 
 ```bash

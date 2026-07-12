@@ -43,40 +43,18 @@ router = APIRouter(prefix="/api/skills", tags=["skills"])
 
 
 async def _load_skill_meta(skill_name: str, config: AppConfig) -> dict:
-    """Load skill RBAC metadata from resource_metadata table (fallback to .meta.json)."""
+    """Load skill RBAC metadata from resource_metadata table."""
     meta = await _skill_store.load_meta(skill_name)
     if meta:
         return meta
-    # Fallback to .meta.json file
-    try:
-        storage = get_or_new_skill_storage(app_config=config)
-        meta_file = storage.get_custom_skill_dir(skill_name) / ".meta.json" if hasattr(storage, "get_custom_skill_dir") else None
-        if meta_file and meta_file.exists():
-            return json.loads(meta_file.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        pass  # Expected when no metadata file exists
-    except json.JSONDecodeError as e:
-        logger.warning("Corrupted .meta.json for skill '%s': %s", skill_name, e)
-    except Exception as e:
-        logger.warning("Failed to load metadata for skill '%s': %s", skill_name, e)
     return {}
 
 
 async def _save_skill_meta(skill_name: str, config: AppConfig, meta: dict) -> None:
-    """Persist skill RBAC metadata to resource_metadata table (fallback to .meta.json)."""
+    """Persist skill RBAC metadata to resource_metadata table."""
     saved = await _skill_store.save_meta(skill_name, meta)
     if not saved:
         logger.error("Failed to save skill metadata for '%s' to database", skill_name)
-    # If DB is unavailable or save failed, fallback to .meta.json
-    sf = get_session_factory()
-    if sf is None or not saved:
-        try:
-            storage = get_or_new_skill_storage(app_config=config)
-            meta_file = storage.get_custom_skill_dir(skill_name) / ".meta.json"
-            meta_file.parent.mkdir(parents=True, exist_ok=True)
-            meta_file.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
-        except Exception as e:
-            logger.warning("Failed to save metadata for skill '%s': %s", skill_name, e)
 
 
 class SkillResponse(BaseModel):
@@ -87,6 +65,7 @@ class SkillResponse(BaseModel):
     license: str | None = Field(None, description="License information")
     category: SkillCategory = Field(..., description="Category of the skill (public or custom)")
     enabled: bool = Field(default=True, description="Whether this skill is enabled")
+    visibility: str | None = Field(None, description="Current visibility level")
     owner_id: str | None = Field(None, description="Owner user ID (custom skills)")
     department_id: str | None = Field(None, description="Department ID (custom skills)")
 
@@ -159,6 +138,7 @@ def _skill_to_response(skill: Skill) -> SkillResponse:
         license=skill.license,
         category=skill.category,
         enabled=skill.enabled,
+        visibility=getattr(skill, "visibility", None),
         owner_id=getattr(skill, "owner_id", None),
         department_id=getattr(skill, "department_id", None),
     )
@@ -185,7 +165,17 @@ async def list_skills(
                 continue
 
             meta = await _load_skill_meta(skill.name, config)
-            # Default to 'public' when no metadata exists (pre-RBAC skills)
+
+            # Lazy registration: auto-create ResourceMetadata for custom skills
+            # found on disk but missing from DB.
+            if not meta and current_user is not None:
+                meta = {
+                    "visibility": "private",
+                    "owner_id": str(current_user.id),
+                    "department_id": str(current_user.department_id) if current_user.department_id else None,
+                }
+                await _save_skill_meta(skill.name, config, meta)
+
             visibility = meta.get("visibility", "private")
             owner_id = meta.get("owner_id")
             dept_id = meta.get("department_id")
@@ -256,7 +246,17 @@ async def list_custom_skills(
         filtered: list[Skill] = []
         for skill in skills:
             meta = await _load_skill_meta(skill.name, config)
-            # Default to 'public' when no metadata exists (pre-RBAC skills)
+
+            # Lazy registration: auto-create ResourceMetadata for custom skills
+            # found on disk but missing from DB.
+            if not meta and current_user is not None:
+                meta = {
+                    "visibility": "private",
+                    "owner_id": str(current_user.id),
+                    "department_id": str(current_user.department_id) if current_user.department_id else None,
+                }
+                await _save_skill_meta(skill.name, config, meta)
+
             visibility = meta.get("visibility", "private")
             owner_id = meta.get("owner_id")
             dept_id = meta.get("department_id")
@@ -421,9 +421,9 @@ async def delete_custom_skill(
                         )
                         .values(status="rejected", review_comment="资源已删除，申请自动关闭")
                     )
-                    # Soft delete resource_metadata via store
-                    if not await _skill_store.soft_delete(skill_name):
-                        logger.warning("Failed to soft delete metadata for skill '%s'", skill_name)
+                    # Hard-delete resource_metadata via store
+                    if not await _skill_store.delete(skill_name):
+                        logger.warning("Failed to delete metadata for skill '%s'", skill_name)
                     await session.commit()
             except Exception:
                 logger.warning("Failed to auto-reject pending applications for deleted skill %s", skill_name)
@@ -433,6 +433,7 @@ async def delete_custom_skill(
             action="delete",
             resource_type="skill",
             resource_id=skill_name,
+            detail=meta if meta else None,
             ip_address=http_request.client.host if http_request.client else None,
         )
         return {"success": True}

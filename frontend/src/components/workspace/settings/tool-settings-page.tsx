@@ -151,6 +151,14 @@ function KeyValueEditor({
   );
 }
 
+function getMCPErrorMessage(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (msg.toLowerCase().includes("forbidden") || msg.includes("403")) {
+    return "MCP configuration is managed by super administrators. Please contact your admin.";
+  }
+  return msg;
+}
+
 export function ToolSettingsPage() {
   const { t } = useI18n();
   const { config, isLoading, error } = useMCPConfig();
@@ -199,7 +207,7 @@ export function ToolSettingsPage() {
         toast.success(t.settings.tools.addSuccess);
         closeForm();
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : String(err));
+        toast.error(getMCPErrorMessage(err));
       }
     } else {
       if (updateServer.isPending) return;
@@ -211,7 +219,7 @@ export function ToolSettingsPage() {
         toast.success(t.settings.tools.editSuccess);
         closeForm();
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : String(err));
+        toast.error(getMCPErrorMessage(err));
       }
     }
   }
@@ -223,7 +231,7 @@ export function ToolSettingsPage() {
       toast.success(t.settings.tools.deleteSuccess);
       setDeleteTarget(null);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err));
+      toast.error(getMCPErrorMessage(err));
     }
   }
 
@@ -293,10 +301,14 @@ export function ToolSettingsPage() {
                       checked={serverConfig.enabled}
                       disabled={env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true"}
                       onCheckedChange={(checked) =>
-                        enableServer.mutate({
-                          serverName: name,
-                          enabled: checked,
-                        })
+                        enableServer.mutate(
+                          { serverName: name, enabled: checked },
+                          {
+                            onError: (err) => {
+                              toast.error(getMCPErrorMessage(err));
+                            },
+                          },
+                        )
                       }
                     />
                   </ItemActions>

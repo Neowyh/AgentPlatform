@@ -8,6 +8,7 @@ import {
   StarIcon,
   Trash2Icon,
 } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -102,7 +103,12 @@ export function AgentCard({ agent }: AgentCardProps) {
               </div>
               <div className="min-w-0">
                 <CardTitle className="truncate text-base">
-                  {agent.name}
+                  <Link
+                    href={`/workspace/agents/${agent.name}`}
+                    className="hover:underline"
+                  >
+                    {agent.name}
+                  </Link>
                   {agent.read_only && (
                     <Badge variant="outline" className="ml-1.5 text-xs">
                       <LockIcon className="mr-0.5 h-2.5 w-2.5" />

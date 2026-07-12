@@ -4,22 +4,144 @@ from __future__ import annotations
 
 import logging
 import uuid
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 
 from app.gateway.authz import get_current_rbac_user, require_role
+from app.gateway.rbac_users import create_auth_user_with_rbac
+from app.gateway.user_deletion import delete_user as service_delete_user
+from ideer.config.app_config import get_app_config
+from ideer.config.paths import get_paths
 from ideer.persistence.engine import get_session_factory
 from ideer.persistence.models.audit_log import AuditLog
 from ideer.persistence.models.resource_metadata import ResourceMetadata
 from ideer.persistence.models.user import DepartmentModel, UserModel, UserRole
+from ideer.persistence.models.visibility_application import VisibilityApplication, VisibilityApplicationStatus
+from ideer.skills.storage import get_or_new_skill_storage
+from ideer.skills.types import SkillCategory
+from ideer.tools.tools import get_available_tools
+from ideer.workflows.store import get_workflow_store
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
+
+
+RESOURCE_TYPE_LABELS = {
+    "agent": "智能体",
+    "tool": "工具",
+    "skill": "Skill",
+    "workflow": "工作流",
+}
+
+
+@dataclass(frozen=True)
+class AdminResourceInventoryItem:
+    resource_type: str
+    resource_id: str
+    default_visibility: str
+    source_key: str
+
+
+def _valid_agent_dirs(root: Path) -> list[Path]:
+    if not root.exists():
+        return []
+    return sorted(entry for entry in root.iterdir() if entry.is_dir() and (entry / "config.yaml").exists())
+
+
+def _collect_agent_inventory() -> list[AdminResourceInventoryItem]:
+    paths = get_paths()
+    items = [
+        AdminResourceInventoryItem(
+            resource_type="agent",
+            resource_id=entry.name,
+            default_visibility="public",
+            source_key=f"agent:shared:{entry.name}",
+        )
+        for entry in _valid_agent_dirs(paths.agents_dir)
+    ]
+
+    users_root = paths.base_dir / "users"
+    if users_root.exists():
+        for user_dir in sorted(entry for entry in users_root.iterdir() if entry.is_dir()):
+            for agent_dir in _valid_agent_dirs(user_dir / "agents"):
+                items.append(
+                    AdminResourceInventoryItem(
+                        resource_type="agent",
+                        resource_id=agent_dir.name,
+                        default_visibility="private",
+                        source_key=f"agent:user:{user_dir.name}:{agent_dir.name}",
+                    )
+                )
+    return items
+
+
+async def _collect_admin_resource_inventory(
+    session,
+) -> list[dict[str, str | None]]:
+    config = get_app_config()
+    metadata_rows = (await session.execute(select(ResourceMetadata))).scalars().all()
+    metadata = {(row.resource_type, row.resource_id): row for row in metadata_rows}
+
+    inventory: list[AdminResourceInventoryItem] = _collect_agent_inventory()
+    inventory.extend(AdminResourceInventoryItem("tool", tool.name, "public", f"tool:{tool.name}") for tool in get_available_tools(app_config=config) if getattr(tool, "name", None))
+    inventory.extend(
+        AdminResourceInventoryItem(
+            "skill",
+            skill.name,
+            "public" if getattr(skill, "category", None) == SkillCategory.PUBLIC else "private",
+            f"skill:{skill.name}",
+        )
+        for skill in get_or_new_skill_storage(app_config=config).load_skills(enabled_only=False)
+        if getattr(skill, "name", None)
+    )
+
+    workflows, _ = await get_workflow_store().list_workflows(limit=10000, offset=0)
+    inventory.extend(AdminResourceInventoryItem("workflow", workflow["name"], "private", f"workflow:{workflow['name']}") for workflow in workflows if workflow.get("name"))
+
+    resources: list[dict[str, str | None]] = []
+    for item in inventory:
+        meta = metadata.get((item.resource_type, item.resource_id))
+        created_at = getattr(meta, "created_at", None)
+        resources.append(
+            {
+                "id": meta.id if meta else item.source_key,
+                "resource_type": item.resource_type,
+                "resource_type_label": RESOURCE_TYPE_LABELS.get(item.resource_type, item.resource_type),
+                "resource_id": item.resource_id,
+                "visibility": meta.visibility if meta else item.default_visibility,
+                "owner_id": meta.owner_id if meta else None,
+                "department_id": meta.department_id if meta else None,
+                "created_at": str(created_at) if created_at else None,
+            }
+        )
+
+    # Batch resolve owner usernames
+    owner_ids = {r["owner_id"] for r in resources if r.get("owner_id")}
+    owner_map: dict[str, str | None] = {}
+    if owner_ids:
+        owners = (await session.execute(select(UserModel.id, UserModel.username).where(UserModel.id.in_(owner_ids)))).all()
+        owner_map = {row.id: row.username for row in owners}
+
+    for r in resources:
+        r["owner_username"] = owner_map.get(r["owner_id"]) if r.get("owner_id") else None
+
+    def _sort_key(resource: dict[str, str | None]) -> tuple[datetime, str, str]:
+        created = resource["created_at"]
+        try:
+            parsed_created = datetime.fromisoformat(created) if created else datetime.min
+        except ValueError:
+            parsed_created = datetime.min
+        return (parsed_created, resource["resource_type"] or "", resource["resource_id"] or "")
+
+    return sorted(resources, key=_sort_key, reverse=True)
 
 
 @router.get("/stats")
@@ -36,20 +158,57 @@ async def get_admin_stats(
         user_count = (await session.execute(select(func.count()).select_from(UserModel))).scalar() or 0
         dept_count = (await session.execute(select(func.count()).select_from(DepartmentModel))).scalar() or 0
 
-        resource_counts = (await session.execute(select(ResourceMetadata.resource_type, func.count()).where(ResourceMetadata.deleted_at.is_(None)).group_by(ResourceMetadata.resource_type))).all()
-        type_counts = {row[0]: row[1] for row in resource_counts}
+        resources = await _collect_admin_resource_inventory(session)
+        type_counts = {resource_type: 0 for resource_type in RESOURCE_TYPE_LABELS}
+        for resource in resources:
+            type_counts[resource["resource_type"]] += 1
 
         audit_count = (await session.execute(select(func.count()).select_from(AuditLog))).scalar() or 0
+
+        # Pending visibility applications count (global, same for both roles)
+        pending_app_count = (
+            await session.execute(
+                select(func.count())
+                .select_from(VisibilityApplication)
+                .where(
+                    VisibilityApplication.status == VisibilityApplicationStatus.PENDING,
+                )
+            )
+        ).scalar() or 0
 
     return {
         "total_users": user_count,
         "total_departments": dept_count,
-        "total_agents": type_counts.get("agent", 0),
-        "total_tools": type_counts.get("tool", 0),
-        "total_skills": type_counts.get("skill", 0),
+        "total_agents": type_counts["agent"],
+        "total_tools": type_counts["tool"],
+        "total_skills": type_counts["skill"],
+        "total_workflows": type_counts["workflow"],
         "total_resources": sum(type_counts.values()),
         "audit_logs": audit_count,
+        "pending_applications": pending_app_count,
     }
+
+
+@router.get("/resources")
+@require_role(UserRole.SUPER_ADMIN, UserRole.DEPARTMENT_ADMIN)
+async def list_resources(
+    resource_type: str | None = Query(default=None, description="Filter by type: agent|tool|skill|workflow"),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    current_user: UserModel = Depends(get_current_rbac_user),
+):
+    """List all resources with metadata, sorted by creation time."""
+    sf = get_session_factory()
+    if sf is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+
+    async with sf() as session:
+        resources = await _collect_admin_resource_inventory(session)
+        if resource_type:
+            resources = [resource for resource in resources if resource["resource_type"] == resource_type]
+
+        total = len(resources)
+        return {"resources": resources[offset : offset + limit], "total": total, "limit": limit, "offset": offset}
 
 
 class UpdateRoleRequest(BaseModel):
@@ -67,7 +226,7 @@ class UpdateDepartmentRequest(BaseModel):
 
 
 class CreateUserRequest(BaseModel):
-    email: str = Field(..., max_length=320)
+    email: EmailStr = Field(..., max_length=320)
     password: str = Field(..., min_length=6, max_length=128)
     username: str = Field(..., max_length=100)
     role: str = Field(default=UserRole.USER)
@@ -120,35 +279,24 @@ async def create_user(
             if dept is None:
                 raise HTTPException(status_code=404, detail="Department not found")
 
-    from app.gateway.deps import get_local_provider
-
-    try:
-        auth_user = await get_local_provider().create_user(
-            email=body.email,
-            password=body.password,
-            system_role=role.value,
-        )
-    except ValueError:
-        raise HTTPException(status_code=409, detail="Email already exists")
-
-    user_id = str(auth_user.id)
-
     sf = get_session_factory()
     if sf is None:
         raise HTTPException(status_code=500, detail="Database not initialized")
     async with sf() as session:
-        rbac_user = UserModel(
-            id=user_id,
-            username=body.username.strip(),
-            role=role.value,
-            department_id=department_id,
-        )
         try:
-            session.add(rbac_user)
-            await session.commit()
+            auth_user = await create_auth_user_with_rbac(
+                session,
+                email=body.email,
+                password=body.password,
+                username=body.username.strip(),
+                role=role,
+                department_id=department_id,
+            )
         except IntegrityError:
             await session.rollback()
-            raise HTTPException(status_code=409, detail="Username already exists")
+            raise HTTPException(status_code=409, detail="Email or username already exists")
+
+    user_id = str(auth_user.id)
 
     logger.info("User created: id=%s, email=%s, role=%s, by=%s", user_id, body.email, role.value, current_user.id)
     return {
@@ -171,7 +319,8 @@ async def list_users(
 ):
     """List users with optional filters.
 
-    super_admin sees all users. department_admin sees only their own department.
+    Both super_admin and department_admin see all users (知情权相同).
+    department_admin's write operations are scoped to their own department.
     """
     sf = get_session_factory()
     if sf is None:
@@ -180,12 +329,6 @@ async def list_users(
     # Validate role filter
     if role is not None and role not in tuple(UserRole):
         raise HTTPException(status_code=400, detail=f"Invalid role filter: '{role}'. Valid roles: {', '.join(r.value for r in UserRole)}")
-
-    # department_admin: force scope to own department, ignore query params
-    if current_user.role == UserRole.DEPARTMENT_ADMIN:
-        if not current_user.department_id:
-            return {"users": [], "total": 0, "limit": limit, "offset": offset}
-        department_id = current_user.department_id
 
     async with sf() as session:
         # Count total matching users
@@ -287,6 +430,204 @@ async def update_user_role(
 
     logger.warning("User status toggled: user_id=%s, new_status=%s, by=%s", user_id, new_status, current_user.id)
     return {"success": True, "user_id": user_id, "disabled": user.disabled}
+
+
+@router.patch("/users/{user_id}/status")
+@require_role(UserRole.SUPER_ADMIN, UserRole.DEPARTMENT_ADMIN)
+async def toggle_user_status(
+    user_id: str,
+    current_user: UserModel = Depends(get_current_rbac_user),
+):
+    """Toggle a user's disabled status (enable/disable).
+
+    super_admin can toggle any user. department_admin can only toggle
+    users within their own department.
+    """
+    sf = get_session_factory()
+    if sf is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+
+    async with sf() as session:
+        stmt = select(UserModel).where(UserModel.id == user_id)
+        try:
+            stmt = stmt.with_for_update()
+        except Exception:
+            logger.debug("with_for_update not supported, skipping row lock", exc_info=True)
+        result = await session.execute(stmt)
+        user = result.scalar_one_or_none()
+        if user is None:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        # department_admin: restrict scope
+        if current_user.role == UserRole.DEPARTMENT_ADMIN:
+            if user.role == UserRole.SUPER_ADMIN:
+                raise HTTPException(status_code=403, detail="Cannot modify super_admin")
+            if user.role == UserRole.DEPARTMENT_ADMIN:
+                raise HTTPException(status_code=403, detail="Cannot modify another department_admin")
+            if user.department_id != current_user.department_id:
+                raise HTTPException(status_code=403, detail="Cannot modify users outside your department")
+            if not user.department_id:
+                raise HTTPException(status_code=403, detail="Cannot modify users without a department")
+
+        # Prevent disabling the last active super_admin
+        if user.role == UserRole.SUPER_ADMIN and not user.disabled:
+            count_stmt = select(func.count()).select_from(UserModel).where(UserModel.role == UserRole.SUPER_ADMIN, UserModel.disabled.is_not(True))
+            try:
+                count_stmt = count_stmt.with_for_update()
+            except Exception:
+                logger.debug("with_for_update not supported, skipping row lock", exc_info=True)
+            active_super_admin_count = (await session.execute(count_stmt)).scalar() or 0
+            if active_super_admin_count <= 1:
+                raise HTTPException(status_code=400, detail="Cannot disable the last active super_admin")
+
+        user.disabled = not user.disabled
+        await session.commit()
+
+        new_status = "disabled" if user.disabled else "enabled"
+
+    logger.warning("User status toggled: user_id=%s, new_status=%s, by=%s", user_id, new_status, current_user.id)
+    return {"success": True, "user_id": user_id, "disabled": user.disabled}
+
+
+@router.put("/users/{user_id}")
+@require_role(UserRole.SUPER_ADMIN)
+async def update_user(
+    user_id: str,
+    body: UpdateUserRequest,
+    current_user: UserModel = Depends(get_current_rbac_user),
+):
+    """Update a user's username and/or department assignment. Requires super_admin role."""
+    sf = get_session_factory()
+    if sf is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+
+    async with sf() as session:
+        stmt = select(UserModel).where(UserModel.id == user_id)
+        result = await session.execute(stmt)
+        user = result.scalar_one_or_none()
+        if user is None:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        if body.username is not None:
+            if not body.username.strip():
+                raise HTTPException(status_code=400, detail="Username cannot be empty")
+            user.username = body.username.strip()
+
+        if body.department_id is not None:
+            if body.department_id == "":
+                user.department_id = None
+            else:
+                dept = await session.get(DepartmentModel, body.department_id)
+                if dept is None:
+                    raise HTTPException(status_code=404, detail="Department not found")
+                user.department_id = body.department_id
+
+        try:
+            await session.commit()
+        except IntegrityError:
+            await session.rollback()
+            raise HTTPException(status_code=409, detail="Username already exists")
+
+    logger.info("User updated: id=%s, by=%s", user_id, current_user.id)
+    return {
+        "id": user_id,
+        "username": user.username,
+        "department_id": user.department_id,
+    }
+
+
+@router.delete("/users/{user_id}", status_code=200)
+@require_role(UserRole.SUPER_ADMIN)
+async def delete_user(
+    user_id: str,
+    resource_strategy: str = Query(
+        ...,
+        description="Resource handling strategy: 'transfer', 'delete', or 'soft_delete'",
+    ),
+    target_user_id: str | None = Query(
+        None,
+        description="Target user ID for resource transfer (required when strategy='transfer')",
+    ),
+    current_user: UserModel = Depends(get_current_rbac_user),
+    request: Request = None,
+):
+    """Permanently delete a user and handle all owned resources.
+
+    Requires super_admin role. Supports three strategies for handling
+    the user's resources (agents, skills, workflows, tools):
+
+    - **transfer**: reassign all resources to *target_user_id*
+    - **delete**: soft-delete resource metadata and remove disk files
+    - **soft_delete**: soft-delete resource metadata only, keep disk files
+
+    Historical data (threads, runs, events, feedback) is always hard-
+    deleted regardless of strategy. Audit log references are set to NULL.
+    """
+    if not resource_strategy:
+        raise HTTPException(status_code=400, detail="resource_strategy is required")
+
+    if resource_strategy not in ("transfer", "delete", "soft_delete"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid resource_strategy: '{resource_strategy}'. Must be one of: transfer, delete, soft_delete",
+        )
+
+    if resource_strategy == "transfer" and not target_user_id:
+        raise HTTPException(
+            status_code=400,
+            detail="target_user_id is required when resource_strategy is 'transfer'",
+        )
+
+    sf = get_session_factory()
+    if sf is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+
+    try:
+        async with sf() as session:
+            deletion_result = await service_delete_user(
+                session=session,
+                paths=get_paths(),
+                user_id=user_id,
+                current_user_id=current_user.id,
+                resource_strategy=resource_strategy,
+                target_user_id=target_user_id,
+            )
+
+        from app.gateway.audit import record_audit
+
+        await record_audit(
+            actor_id=current_user.id,
+            action="delete_user",
+            resource_type="user",
+            resource_id=user_id,
+            detail={
+                "resource_strategy": resource_strategy,
+                "target_user_id": target_user_id,
+            },
+            ip_address=request.client.host if request and request.client else None,
+        )
+
+        logger.warning(
+            "User deleted: user_id=%s, strategy=%s, target=%s, by=%s",
+            user_id,
+            resource_strategy,
+            target_user_id,
+            current_user.id,
+        )
+        return {
+            "success": True,
+            "user_id": user_id,
+            "resource_strategy": resource_strategy,
+            "filesystem_cleanup": deletion_result["filesystem_cleanup"],
+        }
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to delete user %s: %s", user_id, e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error") from e
 
 
 # --- Department Management ---
@@ -442,7 +783,6 @@ async def get_department_resources(
         # Get all active resources in this department
         resources_stmt = select(ResourceMetadata).where(
             ResourceMetadata.department_id == dept_id,
-            ResourceMetadata.deleted_at.is_(None),
         )
         resources_result = await session.execute(resources_stmt)
         resources = resources_result.scalars().all()
@@ -526,12 +866,11 @@ async def delete_department(
                 .where(
                     ResourceMetadata.department_id == dept_id,
                     ResourceMetadata.visibility == "department",
-                    ResourceMetadata.deleted_at.is_(None),
                 )
                 .values(department_id=target_dept_id)
             )
             # Also reassign private resources to target department
-            await session.execute(sql_update(ResourceMetadata).where(ResourceMetadata.department_id == dept_id, ResourceMetadata.deleted_at.is_(None)).values(department_id=target_dept_id))
+            await session.execute(sql_update(ResourceMetadata).where(ResourceMetadata.department_id == dept_id).values(department_id=target_dept_id))
         else:
             # Lifecycle: downgrade department-level resources to private before deleting department
             await session.execute(
@@ -539,12 +878,11 @@ async def delete_department(
                 .where(
                     ResourceMetadata.department_id == dept_id,
                     ResourceMetadata.visibility == "department",
-                    ResourceMetadata.deleted_at.is_(None),
                 )
                 .values(visibility="private", department_id=None)
             )
             # Also clear department_id on all resources in this department
-            await session.execute(sql_update(ResourceMetadata).where(ResourceMetadata.department_id == dept_id, ResourceMetadata.deleted_at.is_(None)).values(department_id=None))
+            await session.execute(sql_update(ResourceMetadata).where(ResourceMetadata.department_id == dept_id).values(department_id=None))
 
         try:
             await session.delete(dept)

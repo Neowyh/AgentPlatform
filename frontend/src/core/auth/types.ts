@@ -5,7 +5,10 @@ import { z } from "zod";
 export const userSchema = z.object({
   id: z.string(),
   email: z.string().email(),
-  system_role: z.enum(["viewer", "user", "department_admin", "super_admin"]),
+  system_role: z.preprocess(
+    (value) => (value === "admin" ? "super_admin" : value),
+    z.enum(["viewer", "user", "department_admin", "super_admin"]),
+  ),
   needs_setup: z.boolean().optional().default(false),
 });
 
@@ -39,6 +42,7 @@ const AUTH_ERROR_CODES = [
   "email_already_exists",
   "provider_not_found",
   "not_authenticated",
+  "user_disabled",
   "system_already_initialized",
 ] as const;
 

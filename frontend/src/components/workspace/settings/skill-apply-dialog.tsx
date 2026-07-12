@@ -27,7 +27,7 @@ interface SkillApplyDialogProps {
   skill: Skill | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (requestLevel: string, reason: string) => void | Promise<void>;
+  onSubmit: (targetVisibility: string, reason: string) => void;
 }
 
 export function SkillApplyDialog({
@@ -37,7 +37,8 @@ export function SkillApplyDialog({
   onSubmit,
 }: SkillApplyDialogProps) {
   const { t } = useI18n();
-  const [requestLevel, setRequestLevel] = useState<string>("department");
+  const [targetVisibility, setTargetVisibility] =
+    useState<string>("department");
   const [reason, setReason] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const mountedRef = useRef(true);
@@ -50,14 +51,12 @@ export function SkillApplyDialog({
   const handleSubmit = async () => {
     setIsSubmitting(true);
     try {
-      await onSubmit(requestLevel, reason);
+      onSubmit(targetVisibility, reason);
     } finally {
-      if (mountedRef.current) {
-        setIsSubmitting(false);
-        onOpenChange(false);
-        setReason("");
-        setRequestLevel("department");
-      }
+      setIsSubmitting(false);
+      onOpenChange(false);
+      setReason("");
+      setTargetVisibility("department");
     }
   };
 
@@ -76,22 +75,35 @@ export function SkillApplyDialog({
         </DialogHeader>
         <div className="grid gap-4 py-4">
           <div className="grid gap-2">
-            <Label>{t.settings.skills.applyDialogCurrentStatus}</Label>
+            <Label>
+              {t.settings.skills.applyDialogCurrentVisibility.replace(
+                "{visibility}",
+                skill.visibility ?? "private",
+              )}
+            </Label>
           </div>
           <div className="grid gap-2">
-            <Label htmlFor="request-level">
-              {t.settings.skills.applyDialogScope}
+            <Label htmlFor="target-visibility">
+              {t.settings.skills.applyDialogTargetVisibility}
             </Label>
-            <Select value={requestLevel} onValueChange={setRequestLevel}>
-              <SelectTrigger id="request-level">
-                <SelectValue placeholder={t.settings.skills.applyDialogScope} />
+            <Select
+              value={targetVisibility}
+              onValueChange={setTargetVisibility}
+            >
+              <SelectTrigger id="target-visibility">
+                <SelectValue
+                  placeholder={t.settings.skills.applyDialogTargetVisibility}
+                />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="private">
+                  {t.settings.skills.applyDialogVisibilityPrivate}
+                </SelectItem>
                 <SelectItem value="department">
-                  {t.settings.skills.applyDialogScopeDepartment}
+                  {t.settings.skills.applyDialogVisibilityDepartment}
                 </SelectItem>
                 <SelectItem value="public">
-                  {t.settings.skills.applyDialogScopePublic}
+                  {t.settings.skills.applyDialogVisibilityPublic}
                 </SelectItem>
               </SelectContent>
             </Select>

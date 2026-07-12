@@ -24,6 +24,25 @@ def _make_user(**overrides) -> User:
     return User(**defaults)
 
 
+def _make_session_factory(admin_row=None):
+    """Build a mock async session factory that returns an RBAC row from execute()."""
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = admin_row
+    mock_session = AsyncMock()
+    mock_session.execute = AsyncMock(return_value=mock_result)
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=False)
+    return MagicMock(return_value=mock_session)
+
+
+def _close_coro_and_return(value):
+    def _side_effect(coro):
+        coro.close()
+        return value
+
+    return _side_effect
+
+
 class TestRunFunction:
     """Test the async _run() helper that powers the CLI."""
 
@@ -35,7 +54,7 @@ class TestRunFunction:
         mock_repo.get_user_by_email = AsyncMock(return_value=user)
         mock_repo.update_user = AsyncMock(return_value=user)
 
-        mock_sf = MagicMock()
+        mock_sf = _make_session_factory(admin_row=SimpleNamespace(id=str(user.id)))
         cred_path = tmp_path / "admin_initial_credentials.txt"
 
         with (
@@ -66,7 +85,7 @@ class TestRunFunction:
         mock_repo = MagicMock()
         mock_repo.get_user_by_email = AsyncMock(return_value=None)
 
-        mock_sf = MagicMock()
+        mock_sf = _make_session_factory(admin_row=None)
 
         with (
             patch("ideer.config.get_app_config"),
@@ -167,7 +186,7 @@ class TestRunFunction:
         mock_repo.get_user_by_email = AsyncMock(return_value=user)
         mock_repo.update_user = AsyncMock(return_value=user)
 
-        mock_sf = MagicMock()
+        mock_sf = _make_session_factory(admin_row=SimpleNamespace(id=str(user.id)))
         cred_path = tmp_path / "creds.txt"
 
         with (
@@ -208,7 +227,7 @@ class TestRunFunction:
         mock_repo.get_user_by_email = AsyncMock(return_value=user)
         mock_repo.update_user = AsyncMock(return_value=user)
 
-        mock_sf = MagicMock()
+        mock_sf = _make_session_factory(admin_row=SimpleNamespace(id=str(user.id)))
         cred_path = tmp_path / "creds.txt"
 
         with (
@@ -235,7 +254,7 @@ class TestRunFunction:
         mock_repo.get_user_by_email = AsyncMock(return_value=user)
         mock_repo.update_user = AsyncMock(return_value=user)
 
-        mock_sf = MagicMock()
+        mock_sf = _make_session_factory(admin_row=SimpleNamespace(id=str(user.id)))
         cred_path = tmp_path / "creds.txt"
 
         with (
@@ -263,7 +282,7 @@ class TestMainFunction:
             patch("sys.argv", ["reset_admin", "--email", "admin@test.com"]),
             patch("app.gateway.auth.reset_admin.asyncio") as mock_asyncio,
         ):
-            mock_asyncio.run.return_value = 0
+            mock_asyncio.run.side_effect = _close_coro_and_return(0)
             from app.gateway.auth.reset_admin import main
 
             with pytest.raises(SystemExit) as exc_info:
@@ -278,7 +297,7 @@ class TestMainFunction:
             patch("sys.argv", ["reset_admin"]),
             patch("app.gateway.auth.reset_admin.asyncio") as mock_asyncio,
         ):
-            mock_asyncio.run.return_value = 1
+            mock_asyncio.run.side_effect = _close_coro_and_return(1)
             from app.gateway.auth.reset_admin import main
 
             with pytest.raises(SystemExit) as exc_info:
@@ -292,7 +311,7 @@ class TestMainFunction:
             patch("sys.argv", ["reset_admin", "--email", "x@y.com"]),
             patch("app.gateway.auth.reset_admin.asyncio") as mock_asyncio,
         ):
-            mock_asyncio.run.return_value = 42
+            mock_asyncio.run.side_effect = _close_coro_and_return(42)
             from app.gateway.auth.reset_admin import main
 
             with pytest.raises(SystemExit) as exc_info:

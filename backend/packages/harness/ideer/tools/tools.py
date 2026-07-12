@@ -82,7 +82,20 @@ def get_available_tools(
     if not is_host_bash_allowed(config):
         tool_configs = [tool for tool in tool_configs if not _is_host_bash_tool(tool)]
 
-    loaded_tools_raw = [(cfg, resolve_variable(cfg.use, BaseTool)) for cfg in tool_configs]
+    loaded_tools_raw: list[tuple] = []
+    for cfg in tool_configs:
+        try:
+            tool = resolve_variable(cfg.use, BaseTool)
+            loaded_tools_raw.append((cfg, tool))
+        except Exception as e:
+            logger.error(
+                "Failed to load tool %r (use: %s): %s",
+                cfg.name,
+                cfg.use,
+                e,
+                exc_info=True,
+            )
+            continue
 
     # Warn when the config ``name`` field and the tool object's ``.name``
     # attribute diverge — this mismatch is the root cause of issue #1803 where

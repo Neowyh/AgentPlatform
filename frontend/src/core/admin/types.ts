@@ -20,3 +20,15 @@ export interface Department {
   skill_count: number;
   created_at: string;
 }
+
+export interface AdminResource {
+  id: string;
+  resource_type: string;
+  resource_type_label: string;
+  resource_id: string;
+  visibility: string;
+  owner_id: string;
+  owner_username?: string;
+  department_id: string | null;
+  created_at: string | null;
+}

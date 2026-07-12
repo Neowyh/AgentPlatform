@@ -1,16 +1,107 @@
+import asyncio
 import logging
+import uuid
 
 import yaml
 from langchain_core.messages import ToolMessage
 from langchain_core.tools import tool
 from langgraph.types import Command
+from sqlalchemy import select
 
 from ideer.config.agents_config import validate_agent_name
 from ideer.config.paths import get_paths
+from ideer.persistence.engine import get_session_factory
+from ideer.persistence.models.resource_metadata import ResourceMetadata
 from ideer.runtime.user_context import resolve_runtime_user_id
 from ideer.tools.types import Runtime
 
 logger = logging.getLogger(__name__)
+
+
+def _upsert_agent_metadata(agent_name: str, user_id: str) -> None:
+    """Persist agent metadata to ResourceMetadata table.
+
+    This is a sync wrapper (for use in @tool) that runs the async DB operation
+    via asyncio.run(). When DB is unavailable (memory mode), silently skips.
+    """
+    sf = get_session_factory()
+    if sf is None:
+        return
+
+    async def _upsert():
+        async with sf() as session:
+            stmt = select(ResourceMetadata).where(
+                ResourceMetadata.resource_type == "agent",
+                ResourceMetadata.resource_id == agent_name,
+            )
+            result = await session.execute(stmt)
+            resource = result.scalar_one_or_none()
+            if not resource:
+                resource = ResourceMetadata(
+                    id=str(uuid.uuid4()),
+                    resource_type="agent",
+                    resource_id=agent_name,
+                    owner_id=user_id,
+                    department_id=None,
+                    visibility="private",
+                )
+                session.add(resource)
+                await session.commit()
+
+    try:
+        asyncio.run(_upsert())
+    except Exception:
+        logger.exception("Failed to write agent metadata to ResourceMetadata table")
+
+
+def _upsert_skill_metadata_if_missing(skill_names: list[str], user_id: str) -> None:
+    """Ensure referenced custom skills have ResourceMetadata records.
+
+    For each skill name that exists on disk but has no DB record, creates one
+    with the given user as owner. Silently skips skills that already have
+    metadata or don't exist on disk.
+    """
+    from ideer.skills.storage import get_or_new_skill_storage
+
+    storage = get_or_new_skill_storage()
+
+    sf = get_session_factory()
+    if sf is None:
+        return
+
+    async def _upsert_one(name: str):
+        if not await asyncio.to_thread(storage.custom_skill_exists, name):
+            return
+        async with sf() as session:
+            stmt = select(ResourceMetadata).where(
+                ResourceMetadata.resource_type == "skill",
+                ResourceMetadata.resource_id == name,
+            )
+            existing = (await session.execute(stmt)).scalar_one_or_none()
+            if existing:
+                return
+            session.add(
+                ResourceMetadata(
+                    id=str(uuid.uuid4()),
+                    resource_type="skill",
+                    resource_id=name,
+                    owner_id=user_id,
+                    visibility="private",
+                )
+            )
+            await session.commit()
+
+    async def _upsert_all():
+        for name in skill_names:
+            try:
+                await _upsert_one(name)
+            except Exception:
+                logger.warning("Failed to upsert metadata for skill '%s'", name)
+
+    try:
+        asyncio.run(_upsert_all())
+    except Exception:
+        logger.exception("Failed to cascade skill metadata registration")
 
 
 @tool(parse_docstring=True)
@@ -60,6 +151,12 @@ def setup_agent(
 
         soul_file = agent_dir / "SOUL.md"
         soul_file.write_text(soul, encoding="utf-8")
+
+        if agent_name:
+            _upsert_agent_metadata(agent_name, user_id)
+            # Cascade: ensure referenced custom skills also have resource_metadata
+            if skills:
+                _upsert_skill_metadata_if_missing(skills, user_id)
 
         logger.info(f"[agent_creator] Created agent '{agent_name}' at {agent_dir}")
         return Command(

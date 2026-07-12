@@ -230,20 +230,20 @@ def test_auth_config_token_expiry_used_in_login_response():
 
 
 def test_user_response_system_role_literal():
-    """UserResponse.system_role should only accept 'admin' or 'user'."""
+    """UserResponse.system_role should only accept RBAC roles."""
     from app.gateway.auth.models import UserResponse
 
-    # Valid roles
-    resp = UserResponse(id="1", email="a@b.com", system_role="admin")
-    assert resp.system_role == "admin"
-
-    resp = UserResponse(id="1", email="a@b.com", system_role="user")
-    assert resp.system_role == "user"
+    for role in ("viewer", "user", "department_admin", "super_admin"):
+        resp = UserResponse(id="1", email="a@b.com", system_role=role)
+        assert resp.system_role == role
 
 
 def test_user_response_rejects_invalid_role():
     """UserResponse should reject invalid system_role values."""
     from app.gateway.auth.models import UserResponse
+
+    with pytest.raises(ValidationError):
+        UserResponse(id="1", email="a@b.com", system_role="admin")
 
     with pytest.raises(ValidationError):
         UserResponse(id="1", email="a@b.com", system_role="superadmin")

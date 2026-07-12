@@ -285,7 +285,7 @@ class TestAuthenticate:
         assert Permissions.THREADS_WRITE in ctx.permissions
 
     @pytest.mark.asyncio
-    async def test_null_role_logs_warning_and_gets_all_permissions(self, caplog):
+    async def test_null_role_logs_error_and_gets_viewer_permissions(self, caplog):
         user = _make_user()
         mock_rbac_user = _make_user_model(role=None)
         mock_session = AsyncMock()
@@ -300,19 +300,22 @@ class TestAuthenticate:
             patch("app.gateway.deps.get_optional_user_from_request", new_callable=AsyncMock, return_value=user),
             patch("ideer.persistence.engine.get_session_factory", return_value=mock_sf),
         ):
-            with caplog.at_level(logging.WARNING):
+            with caplog.at_level(logging.ERROR):
                 ctx = await _authenticate(MagicMock(spec=Request))
 
         assert ctx.user is user
-        assert "NULL role" in caplog.text or Permissions.THREADS_WRITE in ctx.permissions
+        assert Permissions.THREADS_READ in ctx.permissions
+        assert Permissions.THREADS_WRITE not in ctx.permissions
+        assert "Invalid role" in caplog.text
 
     @pytest.mark.asyncio
-    async def test_no_rbac_user_found_gets_all_permissions(self):
+    async def test_no_rbac_user_found_creates_user_permissions(self):
         user = _make_user()
         mock_session = AsyncMock()
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = None
         mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_session.add = MagicMock()
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session.__aexit__ = AsyncMock(return_value=False)
         mock_sf = MagicMock(return_value=mock_session)
@@ -323,20 +326,22 @@ class TestAuthenticate:
         ):
             ctx = await _authenticate(MagicMock(spec=Request))
 
+        added_user = mock_session.add.call_args[0][0]
+        assert added_user.role == "user"
         assert ctx.user is user
         assert Permissions.THREADS_WRITE in ctx.permissions
 
     @pytest.mark.asyncio
-    async def test_session_factory_none_grants_all_permissions(self):
+    async def test_session_factory_none_raises_503(self):
         user = _make_user()
         with (
             patch("app.gateway.deps.get_optional_user_from_request", new_callable=AsyncMock, return_value=user),
             patch("ideer.persistence.engine.get_session_factory", return_value=None),
         ):
-            ctx = await _authenticate(MagicMock(spec=Request))
+            with pytest.raises(HTTPException) as exc_info:
+                await _authenticate(MagicMock(spec=Request))
 
-        assert ctx.user is user
-        assert Permissions.THREADS_WRITE in ctx.permissions
+        assert exc_info.value.status_code == 503
 
     @pytest.mark.asyncio
     async def test_db_exception_raises_503(self, caplog):
@@ -1063,22 +1068,16 @@ class TestGetCurrentRbacUser:
         assert "disabled" in exc_info.value.detail.lower()
 
     @pytest.mark.asyncio
-    async def test_auto_create_first_user_as_super_admin(self):
+    async def test_missing_rbac_user_is_rejected_without_database_write(self):
         user = _make_user()
         req = MagicMock(spec=Request)
         req.state = SimpleNamespace(user=user)
 
-        # First query: no user found. Count query: 0 admins.
-        _make_user_model(role="super_admin", disabled=False)
         mock_session = AsyncMock()
         query_result = MagicMock()
         query_result.scalar_one_or_none.return_value = None
 
-        count_result = MagicMock()
-        count_result.scalar.return_value = 0
-
-        # execute is called multiple times: first for user query, then for count
-        mock_session.execute = AsyncMock(side_effect=[query_result, count_result])
+        mock_session.execute = AsyncMock(return_value=query_result)
         mock_session.add = MagicMock()
         mock_session.commit = AsyncMock()
         mock_session.refresh = AsyncMock()
@@ -1086,19 +1085,17 @@ class TestGetCurrentRbacUser:
         mock_session.__aexit__ = AsyncMock(return_value=False)
         mock_sf = MagicMock(return_value=mock_session)
 
-        # After commit+refresh, rbac_user gets role set
-        def set_role_on_refresh(user_obj):
-            user_obj.role = "super_admin"
-
-        mock_session.refresh = AsyncMock(side_effect=lambda u: set_role_on_refresh(u))
-
         with patch("ideer.persistence.engine.get_session_factory", return_value=mock_sf):
-            result = await get_current_rbac_user(req)
+            with pytest.raises(HTTPException) as exc_info:
+                await get_current_rbac_user(req)
 
-        assert result.role == "super_admin"
-        mock_session.add.assert_called_once()
+        assert exc_info.value.status_code == 403
+        assert "RBAC" in exc_info.value.detail
+        mock_session.add.assert_not_called()
+        mock_session.commit.assert_not_awaited()
 
     @pytest.mark.asyncio
+    @pytest.mark.skip(reason="RBAC profiles are no longer auto-created during requests")
     async def test_auto_create_non_first_user_as_user(self):
         user = _make_user()
         req = MagicMock(spec=Request)
@@ -1109,10 +1106,7 @@ class TestGetCurrentRbacUser:
         query_result = MagicMock()
         query_result.scalar_one_or_none.return_value = None
 
-        count_result = MagicMock()
-        count_result.scalar.return_value = 1  # already has admin
-
-        mock_session.execute = AsyncMock(side_effect=[query_result, count_result])
+        mock_session.execute = AsyncMock(return_value=query_result)
         mock_session.add = MagicMock()
         mock_session.commit = AsyncMock()
 
@@ -1130,6 +1124,7 @@ class TestGetCurrentRbacUser:
         assert result.role == "user"
 
     @pytest.mark.asyncio
+    @pytest.mark.skip(reason="RBAC profiles are no longer auto-created during requests")
     async def test_integrity_error_race_condition_re_query(self):
         """When IntegrityError on insert, re-query and return existing user."""
         from sqlalchemy.exc import IntegrityError
@@ -1145,11 +1140,7 @@ class TestGetCurrentRbacUser:
         query_result = MagicMock()
         query_result.scalar_one_or_none.return_value = None
 
-        # 2nd execute: count -> 0 (first user)
-        count_result = MagicMock()
-        count_result.scalar.return_value = 0
-
-        # 3rd execute (after rollback): re-query -> found
+        # 2nd execute (after rollback): re-query -> found
         requery_result = MagicMock()
         requery_result.scalar_one_or_none.return_value = existing_rbac_user
 
@@ -1160,10 +1151,7 @@ class TestGetCurrentRbacUser:
             call_count += 1
             if call_count == 1:
                 return query_result
-            elif call_count == 2:
-                return count_result
-            else:
-                return requery_result
+            return requery_result
 
         mock_session.execute = AsyncMock(side_effect=execute_side_effect)
         mock_session.add = MagicMock(side_effect=IntegrityError("dup", "dup", Exception()))
@@ -1181,6 +1169,7 @@ class TestGetCurrentRbacUser:
         mock_session.rollback.assert_awaited()
 
     @pytest.mark.asyncio
+    @pytest.mark.skip(reason="RBAC profiles are no longer auto-created during requests")
     async def test_integrity_error_user_not_found_raises_500(self):
         """When IntegrityError and re-query still returns None, raise 500."""
         from sqlalchemy.exc import IntegrityError
@@ -1195,9 +1184,6 @@ class TestGetCurrentRbacUser:
         query_result = MagicMock()
         query_result.scalar_one_or_none.return_value = None
 
-        count_result = MagicMock()
-        count_result.scalar.return_value = 0
-
         requery_result = MagicMock()
         requery_result.scalar_one_or_none.return_value = None  # still not found
 
@@ -1208,10 +1194,7 @@ class TestGetCurrentRbacUser:
             call_count += 1
             if call_count == 1:
                 return query_result
-            elif call_count == 2:
-                return count_result
-            else:
-                return requery_result
+            return requery_result
 
         mock_session.execute = AsyncMock(side_effect=execute_side_effect)
         mock_session.add = MagicMock(side_effect=IntegrityError("dup", "dup", Exception()))
@@ -1227,6 +1210,7 @@ class TestGetCurrentRbacUser:
         assert exc_info.value.status_code == 500
 
     @pytest.mark.asyncio
+    @pytest.mark.skip(reason="RBAC profiles are no longer auto-created during requests")
     async def test_integrity_error_disabled_user_raises_403(self):
         """When IntegrityError and re-query returns a disabled user, raise 403."""
         from sqlalchemy.exc import IntegrityError
@@ -1242,9 +1226,6 @@ class TestGetCurrentRbacUser:
         query_result = MagicMock()
         query_result.scalar_one_or_none.return_value = None
 
-        count_result = MagicMock()
-        count_result.scalar.return_value = 0
-
         requery_result = MagicMock()
         requery_result.scalar_one_or_none.return_value = disabled_user
 
@@ -1255,10 +1236,7 @@ class TestGetCurrentRbacUser:
             call_count += 1
             if call_count == 1:
                 return query_result
-            elif call_count == 2:
-                return count_result
-            else:
-                return requery_result
+            return requery_result
 
         mock_session.execute = AsyncMock(side_effect=execute_side_effect)
         mock_session.add = MagicMock(side_effect=IntegrityError("dup", "dup", Exception()))
@@ -1274,8 +1252,9 @@ class TestGetCurrentRbacUser:
         assert exc_info.value.status_code == 403
 
     @pytest.mark.asyncio
-    async def test_integrity_error_concurrent_super_admin_downgrade(self):
-        """When IntegrityError, user is super_admin, and admin_count > 1, downgrade to USER."""
+    @pytest.mark.skip(reason="RBAC profiles are no longer auto-created during requests")
+    async def test_integrity_error_concurrent_create_re_query(self):
+        """When IntegrityError on insert, re-query and return the concurrent user."""
         from sqlalchemy.exc import IntegrityError
 
         user = _make_user()
@@ -1283,15 +1262,11 @@ class TestGetCurrentRbacUser:
         req = MagicMock(spec=Request)
         req.state = SimpleNamespace(user=user)
 
-        # The user found after re-query has role=super_admin
-        concurrent_user = _make_user_model(role="super_admin", disabled=False)
+        concurrent_user = _make_user_model(role="user", disabled=False)
         mock_session = AsyncMock()
 
         query_result = MagicMock()
         query_result.scalar_one_or_none.return_value = None
-
-        count_result = MagicMock()
-        count_result.scalar.return_value = 0
 
         requery_result = MagicMock()
         requery_result.scalar_one_or_none.return_value = concurrent_user
@@ -1303,10 +1278,7 @@ class TestGetCurrentRbacUser:
             call_count_primary += 1
             if call_count_primary == 1:
                 return query_result
-            elif call_count_primary == 2:
-                return count_result
-            else:
-                return requery_result
+            return requery_result
 
         mock_session.execute = AsyncMock(side_effect=execute_primary)
         mock_session.add = MagicMock(side_effect=IntegrityError("dup", "dup", Exception()))
@@ -1315,50 +1287,17 @@ class TestGetCurrentRbacUser:
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session.__aexit__ = AsyncMock(return_value=False)
 
-        # Recheck session: admin_count > 1, user found with super_admin role
-        recheck_user = _make_user_model(role="super_admin", disabled=False)
-        recheck_session = AsyncMock()
-        recheck_count_result = MagicMock()
-        recheck_count_result.scalar.return_value = 2
-        recheck_user_result = MagicMock()
-        recheck_user_result.scalar_one_or_none.return_value = recheck_user
-
-        recheck_call_count = 0
-
-        async def execute_recheck(stmt):
-            nonlocal recheck_call_count
-            recheck_call_count += 1
-            if recheck_call_count == 1:
-                return recheck_count_result
-            return recheck_user_result
-
-        recheck_session.execute = AsyncMock(side_effect=execute_recheck)
-        recheck_session.commit = AsyncMock()
-        recheck_session.__aenter__ = AsyncMock(return_value=recheck_session)
-        recheck_session.__aexit__ = AsyncMock(return_value=False)
-
-        call_count = 0
-
-        def sf_factory():
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                return mock_session
-            return recheck_session
-
-        mock_sf = MagicMock(side_effect=sf_factory)
+        mock_sf = MagicMock(return_value=mock_session)
 
         with patch("ideer.persistence.engine.get_session_factory", return_value=mock_sf):
             result = await get_current_rbac_user(req)
 
-        assert result.role == "user"
-        recheck_session.commit.assert_awaited()
+        assert result is concurrent_user
 
     @pytest.mark.asyncio
-    async def test_operational_error_fallback_to_plain_count(self):
-        """When SELECT FOR UPDATE raises OperationalError, fall back to plain count."""
-        from sqlalchemy.exc import OperationalError
-
+    @pytest.mark.skip(reason="RBAC profiles are no longer auto-created during requests")
+    async def test_auto_create_does_not_query_super_admin_count(self):
+        """Missing RBAC profiles are created as regular users without first-user promotion."""
         user = _make_user()
 
         req = MagicMock(spec=Request)
@@ -1369,22 +1308,7 @@ class TestGetCurrentRbacUser:
         query_result = MagicMock()
         query_result.scalar_one_or_none.return_value = None
 
-        count_result_ok = MagicMock()
-        count_result_ok.scalar.return_value = 1
-
-        call_count = 0
-
-        async def execute_side_effect(stmt):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                return query_result
-            elif call_count == 2:
-                raise OperationalError("lock", "lock", Exception())
-            else:
-                return count_result_ok
-
-        mock_session.execute = AsyncMock(side_effect=execute_side_effect)
+        mock_session.execute = AsyncMock(return_value=query_result)
         mock_session.add = MagicMock()
 
         def set_role_on_refresh(user_obj):
@@ -1427,6 +1351,7 @@ class TestGetCurrentRbacUser:
         assert "Invalid role" in caplog.text
 
     @pytest.mark.asyncio
+    @pytest.mark.skip(reason="RBAC profiles are no longer auto-created during requests")
     async def test_user_email_fallback_to_id(self):
         """When auth_user has no email attribute, use user_id as username."""
         user = _make_user()
@@ -1439,17 +1364,13 @@ class TestGetCurrentRbacUser:
         query_result = MagicMock()
         query_result.scalar_one_or_none.return_value = None
 
-        count_result = MagicMock()
-        count_result.scalar.return_value = 0
-
-        mock_session.execute = AsyncMock(side_effect=[query_result, count_result])
+        mock_session.execute = AsyncMock(return_value=query_result)
         mock_session.add = MagicMock()
 
-        _make_user_model(role="super_admin")
         mock_session.commit = AsyncMock()
 
         def refresh_fn(u):
-            u.role = "super_admin"
+            u.role = "user"
 
         mock_session.refresh = AsyncMock(side_effect=refresh_fn)
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
@@ -1467,8 +1388,9 @@ class TestGetCurrentRbacUser:
         assert added_user.username == str(user.id)
 
     @pytest.mark.asyncio
-    async def test_concurrent_downgrade_no_recheck_user(self):
-        """When recheck query returns no user, no downgrade happens."""
+    @pytest.mark.skip(reason="RBAC profiles are no longer auto-created during requests")
+    async def test_concurrent_create_can_return_existing_super_admin(self):
+        """IntegrityError recovery returns the concurrently created RBAC row as-is."""
         from sqlalchemy.exc import IntegrityError
 
         user = _make_user()
@@ -1482,9 +1404,6 @@ class TestGetCurrentRbacUser:
         query_result = MagicMock()
         query_result.scalar_one_or_none.return_value = None
 
-        count_result = MagicMock()
-        count_result.scalar.return_value = 0
-
         requery_result = MagicMock()
         requery_result.scalar_one_or_none.return_value = concurrent_user
 
@@ -1495,10 +1414,7 @@ class TestGetCurrentRbacUser:
             call_count_primary += 1
             if call_count_primary == 1:
                 return query_result
-            elif call_count_primary == 2:
-                return count_result
-            else:
-                return requery_result
+            return requery_result
 
         mock_session.execute = AsyncMock(side_effect=execute_primary)
         mock_session.add = MagicMock(side_effect=IntegrityError("dup", "dup", Exception()))
@@ -1507,42 +1423,11 @@ class TestGetCurrentRbacUser:
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session.__aexit__ = AsyncMock(return_value=False)
 
-        # Recheck session: admin_count > 1, but user not found
-        recheck_session = AsyncMock()
-        recheck_count_result = MagicMock()
-        recheck_count_result.scalar.return_value = 2
-        recheck_user_result = MagicMock()
-        recheck_user_result.scalar_one_or_none.return_value = None  # not found
-
-        recheck_call_count = 0
-
-        async def execute_recheck(stmt):
-            nonlocal recheck_call_count
-            recheck_call_count += 1
-            if recheck_call_count == 1:
-                return recheck_count_result
-            return recheck_user_result
-
-        recheck_session.execute = AsyncMock(side_effect=execute_recheck)
-        recheck_session.commit = AsyncMock()
-        recheck_session.__aenter__ = AsyncMock(return_value=recheck_session)
-        recheck_session.__aexit__ = AsyncMock(return_value=False)
-
-        call_count = 0
-
-        def sf_factory():
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                return mock_session
-            return recheck_session
-
-        mock_sf = MagicMock(side_effect=sf_factory)
+        mock_sf = MagicMock(return_value=mock_session)
 
         with patch("ideer.persistence.engine.get_session_factory", return_value=mock_sf):
             result = await get_current_rbac_user(req)
 
-        # User stays super_admin since recheck_user was None
         assert result is concurrent_user
 
 

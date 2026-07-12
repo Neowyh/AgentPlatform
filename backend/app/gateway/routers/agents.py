@@ -1,10 +1,10 @@
 """CRUD API for custom agents."""
 
-import json
 import logging
 import re
 import shutil
 import uuid
+from collections import defaultdict
 from datetime import UTC, datetime
 
 import yaml
@@ -119,14 +119,8 @@ def _is_shared_only(agent_name: str, user_id: str) -> bool:
     return paths.agent_dir(agent_name).exists() and not paths.user_agent_dir(user_id, agent_name).exists()
 
 
-def _agent_meta_path(agent_name: str, user_id: str):
-    """Return the path to the agent's RBAC metadata JSON file."""
-    paths = get_paths()
-    return paths.user_agent_dir(user_id, agent_name) / ".meta.json"
-
-
-async def _load_agent_meta(agent_name: str, user_id: str) -> dict:
-    """Load agent RBAC metadata from resource_metadata table (fallback to .meta.json)."""
+async def _load_agent_meta(agent_name: str, user_id: str, for_owner: str | None = None) -> dict:
+    """Load agent RBAC metadata from resource_metadata table."""
     from ideer.persistence.engine import get_session_factory
 
     sf = get_session_factory()
@@ -140,10 +134,15 @@ async def _load_agent_meta(agent_name: str, user_id: str) -> dict:
                 stmt = select(ResourceMetadata).where(
                     ResourceMetadata.resource_type == "agent",
                     ResourceMetadata.resource_id == agent_name,
-                    ResourceMetadata.deleted_at.is_(None),
                 )
-                result = await session.execute(stmt)
-                resource = result.scalar_one_or_none()
+                if for_owner is not None:
+                    stmt = stmt.where(ResourceMetadata.owner_id == for_owner)
+                    result = await session.execute(stmt)
+                    resource = result.scalar_one_or_none()
+                else:
+                    result = await session.execute(stmt)
+                    resources = result.scalars().all()
+                    resource = resources[0] if resources else None
                 if resource:
                     return {
                         "visibility": resource.visibility,
@@ -155,55 +154,61 @@ async def _load_agent_meta(agent_name: str, user_id: str) -> dict:
                     }
         except Exception:
             logger.error("Failed to load agent meta from DB for %s", agent_name, exc_info=True)
-    meta_file = _agent_meta_path(agent_name, user_id)
-    if meta_file.exists():
-        try:
-            return json.loads(meta_file.read_text(encoding="utf-8"))
-        except Exception:
-            logger.error("Failed to load agent meta from .meta.json for %s", agent_name, exc_info=True)
     return {}
 
 
 async def _save_agent_meta(agent_name: str, user_id: str, meta: dict) -> None:
-    """Persist agent RBAC metadata to resource_metadata table (fallback to .meta.json)."""
+    """Persist agent RBAC metadata to resource_metadata table."""
     from ideer.persistence.engine import get_session_factory
 
     sf = get_session_factory()
-    if sf is not None:
-        try:
-            async with sf() as session:
-                from sqlalchemy import select
+    if sf is None:
+        return
 
-                from ideer.persistence.models.resource_metadata import ResourceMetadata
+    try:
+        async with sf() as session:
+            from sqlalchemy import select
 
-                stmt = select(ResourceMetadata).where(
-                    ResourceMetadata.resource_type == "agent",
-                    ResourceMetadata.resource_id == agent_name,
-                    ResourceMetadata.deleted_at.is_(None),
+            from ideer.persistence.models.resource_metadata import ResourceMetadata
+
+            stmt = select(ResourceMetadata).where(
+                ResourceMetadata.resource_type == "agent",
+                ResourceMetadata.resource_id == agent_name,
+                ResourceMetadata.owner_id == user_id,
+            )
+            result = await session.execute(stmt)
+            resource = result.scalar_one_or_none()
+            if resource:
+                resource.visibility = meta.get("visibility", "private")
+                resource.department_id = meta.get("department_id")
+                resource.version = ResourceMetadata.version + 1
+            else:
+                resource = ResourceMetadata(
+                    id=str(uuid.uuid4()),
+                    resource_type="agent",
+                    resource_id=agent_name,
+                    owner_id=meta.get("owner_id", user_id),
+                    department_id=meta.get("department_id"),
+                    visibility=meta.get("visibility", "private"),
                 )
-                result = await session.execute(stmt)
-                resource = result.scalar_one_or_none()
-                if resource:
-                    resource.visibility = meta.get("visibility", "private")
-                    resource.department_id = meta.get("department_id")
-                    resource.version = ResourceMetadata.version + 1
-                else:
-                    resource = ResourceMetadata(
-                        id=str(uuid.uuid4()),
-                        resource_type="agent",
-                        resource_id=agent_name,
-                        owner_id=meta.get("owner_id", user_id),
-                        department_id=meta.get("department_id"),
-                        visibility=meta.get("visibility", "private"),
-                    )
-                    session.add(resource)
-                await session.commit()
-                return
-        except Exception:
-            logger.error("Failed to save agent meta to DB for %s", agent_name, exc_info=True)
-    meta_file = _agent_meta_path(agent_name, user_id)
-    meta_file.parent.mkdir(parents=True, exist_ok=True)
-    meta_file.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
+                session.add(resource)
+            await session.commit()
+    except Exception:
+        logger.error("Failed to save agent meta to DB for %s", agent_name, exc_info=True)
+
+
+async def _ensure_agent_meta(agent_name: str, user_id: str) -> None:
+    """Lazy-migration: create ResourceMetadata for agents found on disk but missing from DB.
+
+    Idempotent -- _save_agent_meta will update in-place if a non-deleted record
+    already exists for (agent_name, owner_id).  Safe to call on every write path.
+    """
+    if get_paths().user_agent_dir(user_id, agent_name).exists():
+        await _save_agent_meta(
+            agent_name,
+            user_id,
+            {"visibility": "private", "owner_id": user_id, "department_id": None},
+        )
 
 
 def _agent_config_to_response(
@@ -261,7 +266,7 @@ async def list_agents(
 
         # Build response with RBAC metadata
         # Batch-load agent metadata from resource_metadata table
-        agent_meta_map: dict[str, dict] = {}
+        agent_meta_map: dict[str, list[dict]] = defaultdict(list)
         sf = get_session_factory()
         if sf is not None:
             try:
@@ -272,25 +277,29 @@ async def list_agents(
                     stmt = select(ResourceMetadata).where(
                         ResourceMetadata.resource_type == "agent",
                         ResourceMetadata.resource_id.in_(agent_names),
-                        ResourceMetadata.deleted_at.is_(None),
                     )
                     result = await session.execute(stmt)
                     for r in result.scalars().all():
-                        agent_meta_map[r.resource_id] = {
-                            "visibility": r.visibility,
-                            "owner_id": r.owner_id,
-                            "department_id": r.department_id,
-                            "is_favorited": r.is_favorited,
-                        }
+                        agent_meta_map[r.resource_id].append(
+                            {
+                                "visibility": r.visibility,
+                                "owner_id": r.owner_id,
+                                "department_id": r.department_id,
+                                "is_favorited": r.is_favorited,
+                            }
+                        )
             except Exception:
                 logger.error("Failed to batch-load agent metadata", exc_info=True)
 
-        # Fallback for agents not in DB: load from .meta.json files
+        # Lazy migration: auto-create ResourceMetadata for agents found on disk
+        # but missing from DB. Only for per-user agents (not legacy shared).
         for a in agents:
-            if a.name not in agent_meta_map:
-                file_meta = await _load_agent_meta(a.name, user_id)
-                if file_meta:
-                    agent_meta_map[a.name] = file_meta
+            records = agent_meta_map.get(a.name, [])
+            has_own_record = any(r.get("owner_id") == user_id for r in records)
+            if not has_own_record and get_paths().user_agent_dir(user_id, a.name).exists():
+                meta = {"visibility": "private", "owner_id": user_id, "department_id": None}
+                await _save_agent_meta(a.name, user_id, meta)
+                agent_meta_map[a.name].append(meta)
 
         responses: list[AgentResponse] = []
         for a in agents:
@@ -301,8 +310,10 @@ async def list_agents(
                 visibility = "public"
                 owner_id = None
                 dept_id = None
+                meta = {}
             else:
-                meta = agent_meta_map.get(a.name, {})
+                records = agent_meta_map.get(a.name, [])
+                meta = next((r for r in records if r.get("owner_id") == user_id), records[0] if records else {})
                 # Default to 'private' when no metadata exists (secure-by-default for pre-RBAC agents)
                 visibility = meta.get("visibility", "private")
                 owner_id = meta.get("owner_id")
@@ -324,7 +335,7 @@ async def list_agents(
                     visibility=visibility,
                     owner_id=owner_id,
                     department_id=dept_id,
-                    is_favorited=agent_meta_map.get(a.name, {}).get("is_favorited", False),
+                    is_favorited=meta.get("is_favorited", False),
                 )
             )
 
@@ -401,6 +412,10 @@ async def get_agent(
             department_id = None
         else:
             meta = await _load_agent_meta(name, user_id)
+            # Lazy migration: auto-create DB record for per-user agents without one
+            if not meta and get_paths().user_agent_dir(user_id, name).exists():
+                meta = {"visibility": "private", "owner_id": user_id, "department_id": None}
+                await _save_agent_meta(name, user_id, meta)
             visibility = meta.get("visibility", "private")
             owner_id = meta.get("owner_id")
             department_id = meta.get("department_id")
@@ -457,7 +472,7 @@ async def toggle_agent_favorite(
             stmt = select(ResourceMetadata).where(
                 ResourceMetadata.resource_type == "agent",
                 ResourceMetadata.resource_id == name,
-                ResourceMetadata.deleted_at.is_(None),
+                ResourceMetadata.owner_id == current_user.id,
             )
             result = await session.execute(stmt)
             resource = result.scalar_one_or_none()
@@ -615,8 +630,11 @@ async def update_agent(
             detail=f"Agent '{name}' is a shared read-only template and cannot be modified.",
         )
 
+    # Lazy-migration: ensure metadata exists before ownership check
+    await _ensure_agent_meta(name, user_id)
+
     # RBAC: check ownership before allowing edit
-    meta = await _load_agent_meta(name, user_id)
+    meta = await _load_agent_meta(name, user_id, for_owner=user_id)
     if not check_resource_modify(current_user, meta.get("owner_id"), meta.get("department_id")):
         raise HTTPException(status_code=403, detail="You do not have permission to modify this resource")
 
@@ -678,7 +696,7 @@ async def update_agent(
         )
 
         refreshed_cfg = load_agent_config(name, user_id=user_id)
-        meta = await _load_agent_meta(name, user_id)
+        meta = await _load_agent_meta(name, user_id, for_owner=user_id)
         return _agent_config_to_response(
             refreshed_cfg,
             include_soul=True,
@@ -799,22 +817,28 @@ async def delete_agent(
             )
         raise HTTPException(status_code=404, detail=f"Agent '{name}' not found")
 
+    # Lazy-migration: ensure metadata exists before ownership check
+    await _ensure_agent_meta(name, user_id)
+
     # RBAC: check ownership before allowing delete
-    meta = await _load_agent_meta(name, user_id)
+    meta = await _load_agent_meta(name, user_id, for_owner=user_id)
     if not check_resource_modify(current_user, meta.get("owner_id"), meta.get("department_id")):
         raise HTTPException(status_code=403, detail="You do not have permission to modify this resource")
 
     try:
         shutil.rmtree(agent_dir)
-        # Auto-reject pending visibility applications and soft-delete resource_metadata
+
+        # Capture metadata before deletion for audit trail
+        meta = await _load_agent_meta(name, user_id, for_owner=user_id)
+
         sf = get_session_factory()
         if sf is not None:
             try:
                 async with sf() as session:
-                    from datetime import UTC, datetime
-
+                    from sqlalchemy import delete as sql_delete
                     from sqlalchemy import update as sql_update
 
+                    from ideer.persistence.models.resource_metadata import ResourceMetadata
                     from ideer.persistence.models.visibility_application import VisibilityApplication
 
                     await session.execute(
@@ -826,16 +850,13 @@ async def delete_agent(
                         )
                         .values(status="rejected", review_comment="资源已删除，申请自动关闭")
                     )
-                    from ideer.persistence.models.resource_metadata import ResourceMetadata
 
                     await session.execute(
-                        sql_update(ResourceMetadata)
-                        .where(
+                        sql_delete(ResourceMetadata).where(
                             ResourceMetadata.resource_type == "agent",
                             ResourceMetadata.resource_id == name,
-                            ResourceMetadata.deleted_at.is_(None),
+                            ResourceMetadata.owner_id == user_id,
                         )
-                        .values(deleted_at=datetime.now(UTC))
                     )
                     await session.commit()
             except Exception:
@@ -846,6 +867,7 @@ async def delete_agent(
             action="delete",
             resource_type="agent",
             resource_id=name,
+            detail=meta if meta else None,
             ip_address=http_request.client.host if http_request.client else None,
         )
     except Exception as e:
@@ -927,7 +949,8 @@ async def export_agent(
         department_id = None
         meta = {}
     else:
-        meta = await _load_agent_meta(name, user_id)
+        await _ensure_agent_meta(name, user_id)
+        meta = await _load_agent_meta(name, user_id, for_owner=user_id)
         visibility = meta.get("visibility", "private")
         owner_id = meta.get("owner_id")
         department_id = meta.get("department_id")
