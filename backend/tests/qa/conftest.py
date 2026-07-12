@@ -11,6 +11,19 @@ import pytest
 
 BASE_URL = os.environ.get("QA_BASE_URL", "http://localhost:8001")
 
+try:
+    resp = httpx.get(f"{BASE_URL}/api/v1/auth/setup-status", timeout=2)
+    _SERVER_AVAILABLE = resp.status_code < 500
+except (httpx.ConnectError, httpx.TimeoutException):
+    _SERVER_AVAILABLE = False
+
+
+def pytest_collection_modifyitems(config, items):
+    if not _SERVER_AVAILABLE:
+        skip = pytest.mark.skip(reason=f"QA server not available at {BASE_URL}")
+        for item in items:
+            item.add_marker(skip)
+
 
 @pytest.fixture(scope="session")
 def base_url():

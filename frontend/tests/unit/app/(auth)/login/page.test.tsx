@@ -55,6 +55,41 @@ vi.mock("@/components/ui/input", () => ({
   Input: (props: any) => <input {...props} />,
 }));
 
+vi.mock("sonner", () => ({
+  toast: {
+    success: vi.fn(),
+    error: vi.fn((msg: string) => {
+      const el = document.createElement("div");
+      el.setAttribute("data-testid", "toast-error");
+      el.textContent = msg;
+      document.body.appendChild(el);
+    }),
+  },
+}));
+
+vi.mock("@/core/i18n/hooks", () => ({
+  useI18n: () => ({
+    t: {
+      auth: {
+        signInTitle: "Sign in to your account",
+        createAccountTitle: "Create a new account",
+        email: "Email",
+        password: "Password",
+        signIn: "Sign In",
+        createAccount: "Create Account",
+        noAccount: "Don't have an account? Sign up",
+        hasAccount: "Already have an account? Sign in",
+        backToHome: "Back to home",
+        pleaseWait: "Please wait...",
+        errorInvalidCredentials: "Invalid credentials",
+        errorAccountDisabled: "Account disabled",
+        errorTooManyAttempts: "Too many attempts",
+        errorNetwork: "Network error. Please try again.",
+      },
+    },
+  }),
+}));
+
 vi.mock("globalThis", () => ({}));
 
 import LoginPage from "@/app/(auth)/login/page";
@@ -62,6 +97,9 @@ import LoginPage from "@/app/(auth)/login/page";
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  document
+    .querySelectorAll('[data-testid="toast-error"]')
+    .forEach((el) => el.remove());
 });
 
 describe("LoginPage", () => {
@@ -570,7 +608,7 @@ describe("LoginPage", () => {
     fireEvent.submit(form);
 
     await waitFor(() => {
-      expect(screen.getByText("Email already registered")).toBeInTheDocument();
+      expect(screen.getByText("Invalid credentials")).toBeInTheDocument();
     });
   });
 

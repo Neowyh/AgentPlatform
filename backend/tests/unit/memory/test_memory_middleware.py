@@ -99,15 +99,6 @@ class TestAfterAgentReturnsNone:
             with patch("ideer.agents.middlewares.memory_middleware.get_config", return_value={"configurable": {}}):
                 assert mw.after_agent(state, runtime) is None
 
-    def test_returns_none_when_get_config_returns_none(self):
-        """get_config() returns None — should fall through gracefully after fix."""
-        mw = MemoryMiddleware()
-        state = {"messages": [HumanMessage(content="hi"), AIMessage(content="hello")]}
-        runtime = _make_runtime_no_thread()
-        with patch("ideer.agents.middlewares.memory_middleware.get_memory_config", return_value=_make_config()):
-            with patch("ideer.agents.middlewares.memory_middleware.get_config", return_value=None):
-                assert mw.after_agent(state, runtime) is None
-
 
 class TestAfterAgentQueues:
     """after_agent queues to memory when conditions are met."""

@@ -35,6 +35,11 @@ vi.mock("@/core/i18n/hooks", () => ({
         nameStepNetworkError: "Network error",
         nameStepCheckError: "Check failed",
         nameStepBootstrapMessage: "Create agent {name}",
+        visibility: "可见性",
+        visibilityPrivate: "私有",
+        visibilityDepartment: "部门共享",
+        visibilityPublic: "公开",
+        visibilityAdminOnly: "部门共享和公开选项仅管理员可用",
         saveHint: "Save hint message",
         saveCommandMessage: "save",
         saveRequested: "Save requested",
@@ -185,9 +190,9 @@ vi.mock("@/components/ui/select", () => ({
   ),
   SelectContent: ({ children }: any) => <div>{children}</div>,
   SelectItem: ({ children, value, disabled }: any) => (
-    <option value={value} disabled={disabled}>
+    <div data-value={value} data-disabled={disabled ? "true" : "false"}>
       {children}
-    </option>
+    </div>
   ),
   SelectTrigger: ({ children, id }: any) => (
     <div data-testid="select-trigger">{children}</div>

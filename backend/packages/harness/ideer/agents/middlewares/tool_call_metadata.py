@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from typing import Any
 
 from langchain_core.messages import AIMessage
@@ -24,7 +25,7 @@ def clone_ai_message_with_tool_calls(
     """Clone an AIMessage while keeping raw provider tool-call metadata in sync."""
     kept_ids = {tc["id"] for tc in tool_calls if isinstance(tc.get("id"), str) and tc["id"]}
 
-    update: dict[str, Any] = {"tool_calls": list(tool_calls)}
+    update: dict[str, Any] = {"tool_calls": copy.deepcopy(tool_calls)}
     if content is not None:
         update["content"] = content
 

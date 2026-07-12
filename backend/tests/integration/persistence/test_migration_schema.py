@@ -164,6 +164,10 @@ class TestAlembicMigrations:
         The column-level schema after the round-trip must be identical
         to the original.
         """
+        head = get_head_revision()
+        if head in MERGE_REVISIONS:
+            pytest.skip("Head is a merge revision; downgrade -1 is ambiguous")
+
         db_path = tmp_path / "test.db"
         db_url = f"sqlite+aiosqlite:///{db_path}"
         cfg = make_alembic_config(db_url)

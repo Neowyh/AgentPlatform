@@ -447,10 +447,13 @@ describe("ToolSettingsPage", () => {
     render(<ToolSettingsPage />);
     const switches = screen.getAllByRole("switch");
     await user.click(switches[0]!);
-    expect(mockEnableMCPServer).toHaveBeenCalledWith({
-      serverName: "code-runner",
-      enabled: false,
-    });
+    expect(mockEnableMCPServer).toHaveBeenCalledWith(
+      {
+        serverName: "code-runner",
+        enabled: false,
+      },
+      expect.objectContaining({ onError: expect.any(Function) }),
+    );
   });
 
   test("clicking disabled switch enables the server", async () => {
@@ -458,10 +461,13 @@ describe("ToolSettingsPage", () => {
     render(<ToolSettingsPage />);
     const switches = screen.getAllByRole("switch");
     await user.click(switches[1]!);
-    expect(mockEnableMCPServer).toHaveBeenCalledWith({
-      serverName: "web-search",
-      enabled: true,
-    });
+    expect(mockEnableMCPServer).toHaveBeenCalledWith(
+      {
+        serverName: "web-search",
+        enabled: true,
+      },
+      expect.objectContaining({ onError: expect.any(Function) }),
+    );
   });
 
   test("validates add form requires a server name", async () => {
