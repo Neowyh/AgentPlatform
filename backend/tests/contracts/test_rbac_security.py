@@ -264,12 +264,9 @@ class TestDisabledUserEdgeCases:
         ):
             req = MagicMock()
             req.state = type("S", (), {})()
-            # Note: _authenticate does not check disabled — it only checks role == VIEWER.
-            # This test documents the current behavior: disabled is checked in
-            # get_current_rbac_user, not in _authenticate.
-            ctx = await _authenticate(req)
-            # Current behavior: disabled user still gets permissions via _authenticate
-            assert ctx.has_permission("threads", "read") is True
+            with pytest.raises(HTTPException) as exc_info:
+                await _authenticate(req)
+        assert exc_info.value.status_code == 403
 
 
 # =====================================================================
@@ -514,13 +511,14 @@ class TestGetCurrentRbacUserEdgeCases:
         assert exc_info.value.status_code == 503
 
     @pytest.mark.asyncio
-    async def test_none_role_in_db_defaults_to_user_permissions(self):
-        """User with NULL role in DB gets full permissions (current documented behavior)."""
+    async def test_none_role_in_db_defaults_to_viewer_permissions(self):
+        """A NULL role has only the viewer read permission set."""
         auth_user = MagicMock()
         auth_user.id = str(uuid4())
 
         null_role_user = MagicMock()
         null_role_user.role = None
+        null_role_user.disabled = False
 
         query_result = MagicMock()
         query_result.scalar_one_or_none.return_value = null_role_user
@@ -539,8 +537,8 @@ class TestGetCurrentRbacUserEdgeCases:
             req = MagicMock()
             req.state = type("S", (), {})()
             ctx = await _authenticate(req)
-            # Current behavior: NULL role logs warning and grants full permissions
-            assert ctx.has_permission("threads", "write") is True
+        assert ctx.has_permission("threads", "read") is True
+        assert ctx.has_permission("threads", "write") is False
 
 
 # =====================================================================

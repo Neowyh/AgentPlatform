@@ -17,10 +17,10 @@ vi.mock("@/core/api/errors", () => ({
 import {
   listUsers,
   updateUserRole,
-  disableUser,
   toggleUserStatus,
   createUser,
   updateUser,
+  deleteUser,
   listDepartments,
   createDepartment,
   updateDepartment,
@@ -113,18 +113,19 @@ describe("admin API", () => {
     });
   });
 
+  // ── deleteUser ─────────────────────────────────────────────────
 
-  // ── disableUser ─────────────────────────────────────────────────
-
-  describe("disableUser", () => {
-    test("sends DELETE request", async () => {
+  describe("deleteUser", () => {
+    test("sends DELETE request with the required resource strategy", async () => {
       mockFetch.mockResolvedValue(okJson(undefined));
 
-      await disableUser("u1");
+      await deleteUser("u1", "delete");
 
       expect(mockFetch).toHaveBeenCalledTimes(1);
       const calledUrl = mockFetch.mock.calls[0]![0] as string;
-      expect(calledUrl).toBe("http://localhost:8000/api/admin/users/u1");
+      expect(calledUrl).toBe(
+        "http://localhost:8000/api/admin/users/u1?resource_strategy=delete",
+      );
 
       const init = mockFetch.mock.calls[0]![1] as RequestInit;
       expect(init.method).toBe("DELETE");
@@ -465,15 +466,14 @@ describe("admin API", () => {
       );
     });
 
-
-    test("calls extractError when disableUser returns non-ok", async () => {
+    test("calls extractError when deleteUser returns non-ok", async () => {
       mockFetch.mockResolvedValue(notOkJson());
 
-      await expect(disableUser("u1")).rejects.toThrow();
+      await expect(deleteUser("u1", "delete")).rejects.toThrow();
 
       expect(mockExtractError).toHaveBeenCalledWith(
         expect.anything(),
-        "Failed to disable user",
+        "Failed to delete user",
       );
     });
 
@@ -517,6 +517,7 @@ describe("admin API", () => {
       );
     });
 
+    test("calls extractError when listDepartments returns non-ok", async () => {
       mockFetch.mockResolvedValue(notOkJson());
 
       await expect(listDepartments()).rejects.toThrow();

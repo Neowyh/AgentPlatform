@@ -52,7 +52,7 @@ let mockMutateAsync: ReturnType<typeof vi.fn>;
 let mockIsPending = false;
 let mockRunStatus: RunStatus | null = null;
 let mockPush: ReturnType<typeof vi.fn>;
-let mockCreateVisibilityApplication: ReturnType<typeof vi.fn>;
+const mockCreateVisibilityApplication = vi.fn();
 
 /* ------------------------------------------------------------------ */
 /*  Module mocks                                                       */
@@ -311,7 +311,7 @@ beforeEach(() => {
   mockIsPending = false;
   mockRunStatus = null;
   mockPush = vi.fn();
-  mockCreateVisibilityApplication = vi.fn().mockResolvedValue({
+  mockCreateVisibilityApplication.mockReset().mockResolvedValue({
     id: "application-1",
   });
   vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:workflow");

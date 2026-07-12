@@ -98,9 +98,9 @@ def _mock_save_workflow_meta():
     return patch("app.gateway.routers.workflows._workflow_store.save_meta", new_callable=AsyncMock)
 
 
-def _mock_soft_delete_workflow_meta():
-    """Return a contextmanager-style patch for _workflow_store.soft_delete."""
-    return patch("app.gateway.routers.workflows._workflow_store.soft_delete", new_callable=AsyncMock)
+def _mock_delete_workflow_meta():
+    """Return a contextmanager-style patch for hard metadata deletion."""
+    return patch("app.gateway.routers.workflows._workflow_store.delete", new_callable=AsyncMock)
 
 
 # ---------------------------------------------------------------------------
@@ -261,7 +261,7 @@ class TestDeleteWorkflow:
         with (
             _mock_get_workflow_store(store),
             _mock_workflow_meta(owner_id="user-1"),
-            _mock_soft_delete_workflow_meta(),
+            _mock_delete_workflow_meta(),
         ):
             with TestClient(app) as client:
                 resp = client.delete(f"/api/workflows/{WORKFLOW_NAME}")

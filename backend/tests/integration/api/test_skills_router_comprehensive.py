@@ -6,6 +6,7 @@ and error handling paths for maximum coverage.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -49,6 +50,7 @@ def _make_skill(name="test-skill", category=SkillCategory.PUBLIC, enabled=True, 
     skill.license = "MIT"
     skill.category = category
     skill.enabled = enabled
+    skill.visibility = "public" if category == SkillCategory.PUBLIC else "private"
     skill.owner_id = None
     skill.department_id = None
     return skill

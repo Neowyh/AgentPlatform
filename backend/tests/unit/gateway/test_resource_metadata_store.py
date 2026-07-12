@@ -115,36 +115,35 @@ class TestResourceMetadataStore:
         with patch("app.gateway.utils.get_session_factory", return_value=_session_factory(session)):
             assert await store.save_meta("agent-a", {}) is False
 
-    async def test_soft_delete_sets_timestamp_when_resource_exists(self):
+    async def test_delete_removes_metadata_and_commits(self):
         from app.gateway.utils import ResourceMetadataStore
 
-        resource = MagicMock(deleted_at=None)
         session = MagicMock()
-        session.execute = AsyncMock(return_value=_Result(resource))
+        session.execute = AsyncMock()
         session.commit = AsyncMock()
 
         with patch("app.gateway.utils.get_session_factory", return_value=_session_factory(session)):
-            deleted = await ResourceMetadataStore("skill").soft_delete("skill-a")
+            deleted = await ResourceMetadataStore("skill").delete("skill-a")
 
         assert deleted is True
-        assert resource.deleted_at is not None
+        session.execute.assert_awaited_once()
         session.commit.assert_awaited_once()
 
-    async def test_soft_delete_succeeds_without_resource_and_handles_failures(self):
+    async def test_delete_handles_unavailable_database_and_query_failure(self):
         from app.gateway.utils import ResourceMetadataStore
 
         store = ResourceMetadataStore("skill")
 
         session = MagicMock()
-        session.execute = AsyncMock(return_value=_Result(None))
+        session.execute = AsyncMock()
         session.commit = AsyncMock()
         with patch("app.gateway.utils.get_session_factory", return_value=_session_factory(session)):
-            assert await store.soft_delete("missing") is True
-        session.commit.assert_not_called()
+            assert await store.delete("missing") is True
+        session.commit.assert_awaited_once()
 
         with patch("app.gateway.utils.get_session_factory", return_value=None):
-            assert await store.soft_delete("missing") is False
+            assert await store.delete("missing") is False
 
         session.execute = AsyncMock(side_effect=RuntimeError("database error"))
         with patch("app.gateway.utils.get_session_factory", return_value=_session_factory(session)):
-            assert await store.soft_delete("missing") is False
+            assert await store.delete("missing") is False

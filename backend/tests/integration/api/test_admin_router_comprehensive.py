@@ -597,7 +597,7 @@ class TestUpdateUserRole:
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_update_role_success(self, mock_sf):
-        """Happy path: toggle user disabled successfully."""
+        """Happy path: update a user's role without changing status."""
         target = MagicMock()
         target.id = "target-1"
         target.role = UserRole.USER
@@ -626,7 +626,10 @@ class TestUpdateUserRole:
         data = resp.json()
         assert data["success"] is True
         assert data["user_id"] == "target-1"
-        assert data["disabled"] is True
+        assert data["new_role"] == UserRole.DEPARTMENT_ADMIN
+        assert data["role"] == UserRole.DEPARTMENT_ADMIN
+        assert data["disabled"] is False
+        assert target.role == UserRole.DEPARTMENT_ADMIN
         session.commit.assert_awaited()
 
     @patch("app.gateway.routers.admin.get_session_factory")
@@ -651,10 +654,7 @@ class TestUpdateUserRole:
         mock_sf.return_value = None
 
         app = _make_app()
-        resp = TestClient(app).put(
-            "/api/admin/users/target-1/role",
-            json={"role": "user"},
-        )
+        resp = TestClient(app).put("/api/admin/users/target-1/role", json={"role": "user"})
 
         assert resp.status_code == 500
 
@@ -703,17 +703,14 @@ class TestUpdateUserRole:
         mock_sf.return_value = _make_session_factory(session)
 
         app = _make_app()
-        resp = TestClient(app).put(
-            "/api/admin/users/target-1/role",
-            json={"role": "user"},
-        )
+        resp = TestClient(app).put("/api/admin/users/target-1/role", json={"role": "user"})
 
         assert resp.status_code == 400
         assert "last active super_admin" in resp.json()["detail"]
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_update_role_demote_super_admin_when_others_exist(self, mock_sf):
-        """Can toggle disabled on a super_admin when others exist."""
+        """Can demote a super_admin when another active one exists."""
         target = MagicMock()
         target.id = "target-1"
         target.role = UserRole.SUPER_ADMIN
@@ -743,7 +740,9 @@ class TestUpdateUserRole:
 
         assert resp.status_code == 200
         assert resp.json()["success"] is True
-        assert resp.json()["disabled"] is True
+        assert resp.json()["new_role"] == UserRole.USER
+        assert resp.json()["disabled"] is False
+        assert target.role == UserRole.USER
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_update_role_sqlite_for_update_fallback(self, mock_sf):
@@ -853,11 +852,12 @@ class TestUpdateUserRole:
             )
 
             assert resp.status_code == 200, f"Setting role to {role_val.value} should succeed"
-            assert resp.json()["disabled"] is True
+            assert resp.json()["new_role"] == role_val
+            assert resp.json()["disabled"] is False
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_update_role_promote_to_super_admin(self, mock_sf):
-        """Toggling disabled on a regular user succeeds."""
+        """Promoting a regular user to super_admin preserves status."""
         target = MagicMock()
         target.id = "target-1"
         target.role = UserRole.USER
@@ -881,7 +881,8 @@ class TestUpdateUserRole:
         )
 
         assert resp.status_code == 200
-        assert resp.json()["disabled"] is True
+        assert resp.json()["new_role"] == UserRole.SUPER_ADMIN
+        assert resp.json()["disabled"] is False
 
 
 # ---------------------------------------------------------------------------
@@ -912,10 +913,7 @@ class TestToggleUserStatus:
         mock_sf.return_value = _make_session_factory(session)
 
         app = _make_app()
-        resp = TestClient(app).put(
-            "/api/admin/users/target-1/role",
-            json={"role": "user"},
-        )
+        resp = TestClient(app).patch("/api/admin/users/target-1/status")
 
         assert resp.status_code == 200
         assert resp.json()["success"] is True
@@ -944,10 +942,7 @@ class TestToggleUserStatus:
         mock_sf.return_value = _make_session_factory(session)
 
         app = _make_app(current_user=admin)
-        resp = TestClient(app).put(
-            "/api/admin/users/admin-1/role",
-            json={"role": "user"},
-        )
+        resp = TestClient(app).patch("/api/admin/users/admin-1/status")
 
         assert resp.status_code == 200
 
@@ -958,10 +953,7 @@ class TestToggleUserStatus:
         mock_sf.return_value = None
 
         app = _make_app(current_user=admin)
-        resp = TestClient(app).put(
-            "/api/admin/users/target-1/role",
-            json={"role": "user"},
-        )
+        resp = TestClient(app).patch("/api/admin/users/target-1/status")
 
         assert resp.status_code == 500
 
@@ -979,10 +971,7 @@ class TestToggleUserStatus:
         mock_sf.return_value = _make_session_factory(session)
 
         app = _make_app()
-        resp = TestClient(app).put(
-            "/api/admin/users/nonexistent/role",
-            json={"role": "user"},
-        )
+        resp = TestClient(app).patch("/api/admin/users/nonexistent/status")
 
         assert resp.status_code == 404
         assert "User not found" in resp.json()["detail"]
@@ -1010,10 +999,7 @@ class TestToggleUserStatus:
         mock_sf.return_value = _make_session_factory(session)
 
         app = _make_app()
-        resp = TestClient(app).put(
-            "/api/admin/users/target-1/role",
-            json={"role": "user"},
-        )
+        resp = TestClient(app).patch("/api/admin/users/target-1/status")
 
         assert resp.status_code == 400
         assert "last active super_admin" in resp.json()["detail"]
@@ -1042,10 +1028,7 @@ class TestToggleUserStatus:
         mock_sf.return_value = _make_session_factory(session)
 
         app = _make_app()
-        resp = TestClient(app).put(
-            "/api/admin/users/target-1/role",
-            json={"role": "user"},
-        )
+        resp = TestClient(app).patch("/api/admin/users/target-1/status")
 
         assert resp.status_code == 200
         assert resp.json()["success"] is True
@@ -1074,10 +1057,7 @@ class TestToggleUserStatus:
         mock_sf.return_value = _make_session_factory(session)
 
         app = _make_app()
-        resp = TestClient(app).put(
-            "/api/admin/users/target-1/role",
-            json={"role": "user"},
-        )
+        resp = TestClient(app).patch("/api/admin/users/target-1/status")
 
         # 0 <= 1, so it blocks
         assert resp.status_code == 400
@@ -1103,10 +1083,7 @@ class TestToggleUserStatus:
         mock_sf.return_value = _make_session_factory(session)
 
         app = _make_app()
-        resp = TestClient(app).put(
-            "/api/admin/users/target-1/role",
-            json={"role": "user"},
-        )
+        resp = TestClient(app).patch("/api/admin/users/target-1/status")
 
         assert resp.status_code == 200
 
@@ -1139,10 +1116,7 @@ class TestToggleUserStatus:
         Select.with_for_update = _raise_on_for_update
         try:
             app = _make_app()
-            resp = TestClient(app).put(
-                "/api/admin/users/target-1/role",
-                json={"role": "user"},
-            )
+            resp = TestClient(app).patch("/api/admin/users/target-1/status")
             assert resp.status_code == 200
         finally:
             Select.with_for_update = original
@@ -1180,10 +1154,7 @@ class TestToggleUserStatus:
         Select.with_for_update = _raise_on_for_update
         try:
             app = _make_app()
-            resp = TestClient(app).put(
-                "/api/admin/users/target-1/role",
-                json={"role": "user"},
-            )
+            resp = TestClient(app).patch("/api/admin/users/target-1/status")
             assert resp.status_code == 200
         finally:
             Select.with_for_update = original

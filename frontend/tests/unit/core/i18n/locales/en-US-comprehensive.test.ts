@@ -379,9 +379,12 @@ describe("enUS locale comprehensive", () => {
       agentCreated: "Agent created!",
       startChatting: "Start chatting",
       backToGallery: "Back to Gallery",
+      visibility: "Visibility",
       visibilityPrivate: "Private",
       visibilityDepartment: "Department",
       visibilityPublic: "Public",
+      visibilityAdminOnly:
+        "Department and Public options are only available to admins",
       favoriteAdded: "Added to favorites",
       favoriteRemoved: "Removed from favorites",
       exportSuccess: "Agent exported",
@@ -1128,8 +1131,8 @@ describe("enUS locale comprehensive", () => {
         });
       }
 
-      it("has 22 keys", () => {
-        expect(Object.keys(enUS.settings.skills)).toHaveLength(22);
+      it("has 23 keys", () => {
+        expect(Object.keys(enUS.settings.skills)).toHaveLength(23);
       });
     });
 

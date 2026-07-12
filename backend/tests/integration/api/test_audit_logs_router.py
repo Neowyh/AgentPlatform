@@ -484,21 +484,35 @@ class TestAuditLogsPermissions:
 
         assert resp.status_code == 403
 
-    def test_department_admin_denied_on_list(self):
-        """Department admin role is denied access to list endpoint."""
-        app = _make_app(current_user=self._user_with_role(UserRole.DEPARTMENT_ADMIN))
-        client = TestClient(app)
-        resp = client.get("/api/admin/audit-logs")
+    def test_department_admin_allowed_on_list(self):
+        """Department admin has global read access to audit logs."""
+        session, sf = _make_session(list_results=[], total=0)
+        with patch("app.gateway.routers.audit_logs.get_session_factory", return_value=sf):
+            app = _make_app(current_user=self._user_with_role(UserRole.DEPARTMENT_ADMIN))
+            client = TestClient(app)
+            resp = client.get("/api/admin/audit-logs")
 
-        assert resp.status_code == 403
+        assert resp.status_code == 200
+        assert resp.json()["total"] == 0
 
-    def test_department_admin_denied_on_detail(self):
-        """Department admin role is denied access to detail endpoint."""
-        app = _make_app(current_user=self._user_with_role(UserRole.DEPARTMENT_ADMIN))
-        client = TestClient(app)
-        resp = client.get("/api/admin/audit-logs/log-1")
+    def test_department_admin_allowed_on_detail(self):
+        """Department admin has global read access to audit log details."""
+        log = _make_audit_log(log_id="log-1")
 
-        assert resp.status_code == 403
+        async def _execute(_stmt):
+            result = MagicMock()
+            result.scalar_one_or_none.return_value = log
+            return result
+
+        session = AsyncMock()
+        session.execute = AsyncMock(side_effect=_execute)
+        with patch("app.gateway.routers.audit_logs.get_session_factory", return_value=_mock_session_factory(session)):
+            app = _make_app(current_user=self._user_with_role(UserRole.DEPARTMENT_ADMIN))
+            client = TestClient(app)
+            resp = client.get("/api/admin/audit-logs/log-1")
+
+        assert resp.status_code == 200
+        assert resp.json()["id"] == "log-1"
 
     def test_viewer_denied_on_detail(self):
         """Viewer role is denied access to detail endpoint."""

@@ -13,10 +13,6 @@ vi.mock("@/core/config", () => ({
   getBackendBaseURL: vi.fn(() => "http://localhost:8000"),
 }));
 
-vi.mock("@/core/visibility-applications/api", () => ({
-  createVisibilityApplication: vi.fn(),
-}));
-
 vi.mock("@/env", () => ({
   env: {
     NEXT_PUBLIC_BACKEND_BASE_URL: "http://localhost:8000",
@@ -87,7 +83,7 @@ describe("skills api", () => {
       const { enableSkill } = await import("@/core/skills/api");
       await enableSkill("my-skill", true);
 
-      expect(fetcher).toHaveBeenCalledWith(
+      expect(fetcher).toHaveBeenLastCalledWith(
         "http://localhost:8000/api/skills/my-skill",
         expect.objectContaining({
           method: "PUT",
@@ -117,15 +113,46 @@ describe("skills api", () => {
     });
   });
 
-  describe("submitSkillApplication", () => {
-    test("maps visibility application response to legacy skill response", async () => {
+  describe("visibility application requests", () => {
+    test("submits a skill visibility application using the current API contract", async () => {
+      const { fetch: fetcher } = await import("@/core/api/fetcher");
+      vi.mocked(fetcher).mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            id: "app-1",
+            resource_type: "skill",
+            resource_id: "my-skill",
+            applicant_id: "user-1",
+            current_visibility: "private",
+            target_visibility: "department",
+            department_id: "dept-1",
+            reason: "share",
+            status: "pending",
+            submitted_at: "2024-01-01T00:00:00Z",
+            reviewed_by: null,
+            reviewed_at: null,
+            review_comment: null,
+            version: 1,
+          }),
+          { status: 200 },
+        ),
+      );
       const { createVisibilityApplication } =
         await import("@/core/visibility-applications/api");
-      vi.mocked(createVisibilityApplication).mockResolvedValue({
+
+      await expect(
+        createVisibilityApplication({
+          resource_type: "skill",
+          resource_id: "my-skill",
+          target_visibility: "department",
+          reason: "share",
+        }),
+      ).resolves.toEqual({
         id: "app-1",
         resource_type: "skill",
         resource_id: "my-skill",
         applicant_id: "user-1",
+        current_visibility: "private",
         target_visibility: "department",
         department_id: "dept-1",
         reason: "share",
@@ -136,34 +163,19 @@ describe("skills api", () => {
         review_comment: null,
         version: 1,
       });
-
-      const { submitSkillApplication } = await import("@/core/skills/api");
-
-      await expect(
-        submitSkillApplication("my-skill", {
-          request_level: "department",
-          reason: "share",
-        }),
-      ).resolves.toEqual({
-        id: "app-1",
-        skill_id: "my-skill",
-        skill_name: "my-skill",
-        applicant_id: "user-1",
-        request_level: "department",
-        department_id: "dept-1",
-        reason: "share",
-        status: "pending",
-        submitted_at: "2024-01-01T00:00:00Z",
-        reviewed_by: null,
-        reviewed_at: null,
-        review_comment: null,
-      });
-      expect(createVisibilityApplication).toHaveBeenCalledWith({
-        resource_type: "skill",
-        resource_id: "my-skill",
-        target_visibility: "department",
-        reason: "share",
-      });
+      expect(fetcher).toHaveBeenCalledWith(
+        "http://localhost:8000/api/visibility-applications",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            resource_type: "skill",
+            resource_id: "my-skill",
+            target_visibility: "department",
+            reason: "share",
+          }),
+        },
+      );
     });
   });
 

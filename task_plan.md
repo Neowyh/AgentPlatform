@@ -6,7 +6,7 @@
 
 ## Current Phase
 
-Phase 2: Frontend coverage gap closure
+Phase 1: Test-fixture and obsolete-contract reconciliation
 
 ## Acceptance Criteria
 
@@ -73,6 +73,29 @@ Phase 2: Frontend coverage gap closure
 - Backend coverage: `97%`, below 98%.
 - Generated artifacts still exist under `frontend/coverage`, `frontend/playwright-report`, and `frontend/playwright-artifacts`.
 - `git diff --check` currently passes.
+
+## 2026-07-11 Execution Overlay
+
+The approved staged plan supersedes the previous coverage-first ordering for this
+merge state. Before adding coverage or real-browser lanes, re-establish a
+trustworthy baseline by reconciling RBAC, hard-delete, and resource-metadata
+test contracts with the merged product behavior. Do not weaken assertions or
+turn failures into skips. Record confirmed external/environment blockers
+separately from product-contract failures.
+
+### Phase 0 Result
+
+- [x] `frontend/pnpm check` passed.
+- [x] Default/auth Playwright collection passed: 325 and 5 tests.
+- [x] Backend default collection passed: 12,745 selected, 100 deselected.
+- [ ] Backend default execution: 12,681 passed, 53 failed, 11 skipped.
+
+The failures are not a single product regression. The main root causes are
+obsolete soft-delete and first-user-auto-promotion assertions, integration
+fixtures whose context user has no matching `users_ext` row (causing metadata
+foreign-key failures), and mocks that no longer match hard-delete/RBAC-first
+router contracts. Product route behavior must be retained while these tests
+are upgraded.
 
 ## Stop Conditions
 

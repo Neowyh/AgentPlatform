@@ -438,8 +438,8 @@ class TestReviewApplication:
         assert resp.status_code == 403
         assert "own" in resp.json()["detail"].lower()
 
-    def test_dept_admin_can_review_other_department_application(self):
-        """dept_admin can review applications from other departments (no cross-dept restriction in review_application)."""
+    def test_dept_admin_cannot_review_other_department_application(self):
+        """A department admin is restricted to applications from their own department."""
         # Application belongs to dept-2, reviewer is dept admin of dept-1
         app_obj = _make_application(
             applicant_id="user-from-dept2",
@@ -471,8 +471,8 @@ class TestReviewApplication:
                     f"/api/visibility-applications/{app_obj.id}",
                     json={"action": "approved", "comment": "Approved cross-dept", "version": 1},
                 )
-        assert resp.status_code == 200
-        assert resp.json()["status"] == "approved"
+        assert resp.status_code == 403
+        assert "own department" in resp.json()["detail"].lower()
 
     def test_super_admin_can_review_cross_department(self):
         """Super admin is not restricted by department — can review any department's application."""
@@ -502,8 +502,8 @@ class TestReviewApplication:
         assert resp.status_code == 200
         assert resp.json()["status"] == "approved"
 
-    def test_dept_admin_can_review_application_without_department(self):
-        """dept_admin can review an application with department_id=None (no cross-dept restriction)."""
+    def test_dept_admin_cannot_review_application_without_department(self):
+        """An unscoped application is not in a department admin's review scope."""
         app_obj = _make_application(applicant_id="user-no-dept", department_id=None, version=1, status="pending")
         resource = _make_resource(visibility="private", department_id=None)
 
@@ -527,8 +527,8 @@ class TestReviewApplication:
                     f"/api/visibility-applications/{app_obj.id}",
                     json={"action": "approved", "comment": "", "version": 1},
                 )
-        assert resp.status_code == 200
-        assert resp.json()["status"] == "approved"
+        assert resp.status_code == 403
+        assert "own department" in resp.json()["detail"].lower()
 
 
 # ---------------------------------------------------------------------------

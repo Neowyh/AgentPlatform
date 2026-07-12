@@ -93,9 +93,9 @@ def _mock_save_workflow_meta():
     return patch("app.gateway.routers.workflows._workflow_store.save_meta", new_callable=AsyncMock)
 
 
-def _mock_soft_delete_workflow_meta():
-    """Return a patch for _workflow_store.soft_delete (no-op)."""
-    return patch("app.gateway.routers.workflows._workflow_store.soft_delete", new_callable=AsyncMock)
+def _mock_delete_workflow_meta():
+    """Return a patch for hard workflow metadata deletion."""
+    return patch("app.gateway.routers.workflows._workflow_store.delete", new_callable=AsyncMock)
 
 
 class _ScalarResult:
@@ -425,7 +425,7 @@ class TestDeleteWorkflow:
         with (
             _mock_get_workflow_store(store),
             _mock_workflow_meta(meta),
-            _mock_soft_delete_workflow_meta(),
+            _mock_delete_workflow_meta(),
         ):
             with TestClient(app) as client:
                 resp = client.delete(f"/api/workflows/{WORKFLOW_NAME}")
@@ -452,24 +452,24 @@ class TestDeleteWorkflow:
                 resp = client.delete("/api/workflows/nonexistent")
         assert resp.status_code == 404
 
-    def test_delete_auto_rejects_pending_applications_and_soft_delete_failure_is_non_fatal(self):
+    def test_delete_auto_rejects_pending_applications_and_metadata_delete_failure_is_non_fatal(self):
         store = _make_workflow_store(delete_result=True)
         store.load_workflow = AsyncMock(return_value=VALID_YAML)
         app, _ = _make_app(role="user")
         meta = {"visibility": "private", "owner_id": "user-1", "department_id": None, "version": 1}
         session = _AsyncSession()
-        soft_delete = AsyncMock(return_value=False)
+        metadata_delete = AsyncMock(return_value=False)
         with (
             _mock_get_workflow_store(store),
             _mock_workflow_meta(meta),
             patch("app.gateway.routers.workflows.get_session_factory", return_value=_session_factory(session)),
-            patch("app.gateway.routers.workflows._workflow_store.soft_delete", soft_delete),
+            patch("app.gateway.routers.workflows._workflow_store.delete", metadata_delete),
         ):
             with TestClient(app) as client:
                 resp = client.delete(f"/api/workflows/{WORKFLOW_NAME}")
         assert resp.status_code == 200
         assert session.committed is True
-        soft_delete.assert_awaited_once_with(WORKFLOW_NAME)
+        metadata_delete.assert_awaited_once_with(WORKFLOW_NAME)
 
     def test_delete_auto_reject_failure_is_non_fatal(self):
         store = _make_workflow_store(delete_result=True)
@@ -480,7 +480,7 @@ class TestDeleteWorkflow:
         with (
             _mock_get_workflow_store(store),
             _mock_workflow_meta(meta),
-            _mock_soft_delete_workflow_meta(),
+            _mock_delete_workflow_meta(),
             patch("app.gateway.routers.workflows.get_session_factory", return_value=_session_factory(session)),
         ):
             with TestClient(app) as client:

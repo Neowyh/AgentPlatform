@@ -9,7 +9,9 @@ Lines 39, 41, 53, 56, 58, 161-162, 187-196, 271-273, 288-290, 311-319,
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
+from uuid import uuid4
 
 import pytest
 import yaml
@@ -52,13 +54,56 @@ def _write_shared_agent(base_dir: Path, name: str, config: dict, soul: str = "Sh
 
 
 def _write_agent_meta(base_dir: Path, user_id: str, name: str, meta: dict) -> None:
-    """Metadata is now persisted to ResourceMetadata table (not .meta.json).
+    """Persist agent metadata in the isolated test database."""
+    import asyncio
 
-    When tests run with DB unavailable, agent metadata defaults to private.
-    This helper is kept as a no-op for test clarity — it documents the
-    expected metadata that would be set when DB is available.
-    """
-    pass
+    from ideer.persistence.engine import get_session_factory, init_engine
+    from ideer.persistence.models.resource_metadata import ResourceMetadata
+
+    if get_session_factory() is None:
+        asyncio.run(
+            init_engine(
+                "sqlite",
+                url=f"sqlite+aiosqlite:///{base_dir / 'agent_metadata.db'}",
+                sqlite_dir=str(base_dir),
+            )
+        )
+
+    owner_id = meta.get("owner_id", user_id)
+    _seed_test_user(owner_id)
+
+    async def _write() -> None:
+        from sqlalchemy import select
+
+        session_factory = get_session_factory()
+        if session_factory is None:
+            raise RuntimeError("agent metadata test database was not initialized")
+
+        async with session_factory() as session:
+            result = await session.execute(
+                select(ResourceMetadata).where(
+                    ResourceMetadata.resource_type == "agent",
+                    ResourceMetadata.resource_id == name,
+                    ResourceMetadata.owner_id == owner_id,
+                )
+            )
+            resource = result.scalar_one_or_none()
+            if resource is None:
+                resource = ResourceMetadata(
+                    id=str(uuid4()),
+                    resource_type="agent",
+                    resource_id=name,
+                    owner_id=owner_id,
+                )
+                session.add(resource)
+
+            resource.visibility = meta.get("visibility", "private")
+            resource.department_id = meta.get("department_id")
+            resource.version = meta.get("version", 1)
+            resource.is_favorited = meta.get("is_favorited", False)
+            await session.commit()
+
+    asyncio.run(_write())
 
 
 def _seed_test_user(user_id: str = "normal-user") -> None:
@@ -71,7 +116,7 @@ def _seed_test_user(user_id: str = "normal-user") -> None:
 
     sf = get_session_factory()
     if sf is None:
-        return
+        raise RuntimeError("agent metadata test database was not initialized")
 
     async def _seed():
         async with sf() as session:
@@ -90,10 +135,7 @@ def _seed_test_user(user_id: str = "normal-user") -> None:
                 )
                 await session.commit()
 
-    try:
-        asyncio.run(_seed())
-    except Exception:
-        pass  # Already seeded or DB unavailable
+    asyncio.run(_seed())
 
 
 # ---------------------------------------------------------------------------
@@ -158,6 +200,8 @@ def agent_client(tmp_path):
 
     asyncio.run(init_engine("sqlite", url="sqlite+aiosqlite://", sqlite_dir=str(tmp_path)))
     _seed_test_user("test-user")
+    from ideer.runtime.user_context import reset_current_user, set_current_user
+    user_token = set_current_user(SimpleNamespace(id="test-user", email="test-user@test.local"))
 
     with (
         patch("ideer.config.agents_config.get_paths", return_value=paths_instance),
@@ -170,6 +214,7 @@ def agent_client(tmp_path):
                 client._tmp_path = tmp_path
                 yield client
         finally:
+            reset_current_user(user_token)
             set_agents_api_config(previous_config)
             asyncio.run(close_engine())
 
@@ -189,6 +234,8 @@ def user_client(tmp_path):
 
     asyncio.run(init_engine("sqlite", url="sqlite+aiosqlite://", sqlite_dir=str(tmp_path)))
     _seed_test_user("normal-user")
+    from ideer.runtime.user_context import reset_current_user, set_current_user
+    user_token = set_current_user(SimpleNamespace(id="normal-user", email="normal-user@test.local"))
 
     with (
         patch("ideer.config.agents_config.get_paths", return_value=paths_instance),
@@ -201,6 +248,7 @@ def user_client(tmp_path):
                 client._tmp_path = tmp_path
                 yield client
         finally:
+            reset_current_user(user_token)
             set_agents_api_config(previous_config)
             asyncio.run(close_engine())
 
@@ -264,19 +312,19 @@ class TestListAgentsWithPerUserAgents:
         assert agents["my-agent-2"]["visibility"] == "private"
         assert agents["my-agent-1"]["read_only"] is False
 
-    def test_list_per_user_agents_filter_by_visibility(self, tmp_path):
-        """Lines 271, 273: visibility filter for per-user agents."""
+    def test_list_per_user_agents_uses_persisted_public_visibility(self, tmp_path):
+        """A per-user agent is visible to another user only when its DB metadata is public."""
         import app.gateway.routers.agents as agents_router
         from ideer.persistence.models.user import UserRole
 
         # Create an agent for the test user via the filesystem
-        _write_agent(tmp_path, "normal-user", "user-private", {"name": "user-private"}, "Soul.")
+        _write_agent(tmp_path, "normal-user", "user-public", {"name": "user-public"}, "Soul.")
         _write_agent_meta(
             tmp_path,
             "normal-user",
-            "user-private",
+            "user-public",
             {
-                "visibility": "private",
+                "visibility": "public",
                 "owner_id": "normal-user",
                 "department_id": None,
             },
@@ -284,6 +332,9 @@ class TestListAgentsWithPerUserAgents:
 
         paths_instance = _make_paths(tmp_path)
         previous_config = AgentsApiConfig(**get_agents_api_config().model_dump())
+        from ideer.runtime.user_context import reset_current_user, set_current_user
+
+        user_token = set_current_user(SimpleNamespace(id="normal-user", email="normal-user@test.local"))
 
         with (
             patch("ideer.config.agents_config.get_paths", return_value=paths_instance),
@@ -295,17 +346,19 @@ class TestListAgentsWithPerUserAgents:
                 with TestClient(app) as client:
                     response = client.get("/api/agents")
                     assert response.status_code == 200
-                    names = [a["name"] for a in response.json()["agents"]]
-                    assert "user-private" not in names
+                    agents = {agent["name"]: agent for agent in response.json()["agents"]}
+                    assert agents["user-public"]["visibility"] == "public"
+                    assert agents["user-public"]["owner_id"] == "normal-user"
             finally:
                 set_agents_api_config(previous_config)
+                reset_current_user(user_token)
 
     def test_list_agent_without_metadata_defaults_private(self, agent_client, tmp_path):
         """Lines 262-266: agent without ResourceMetadata record → default private."""
         import app.gateway.routers.agents as agents_router
 
         # Create an agent dir without a DB metadata record
-        agent_dir = tmp_path / "users" / "test-user-autouse" / "agents" / "no-meta-agent"
+        agent_dir = tmp_path / "users" / "test-user" / "agents" / "no-meta-agent"
         agent_dir.mkdir(parents=True)
         with open(agent_dir / "config.yaml", "w") as f:
             yaml.dump({"name": "no-meta-agent"}, f)
@@ -853,7 +906,7 @@ class TestCreateAgentVisibility:
     def test_create_agent_file_exists_race(self, agent_client, tmp_path):
         """Lines 433-434: FileExistsError on mkdir → 409 (TOCTOU race)."""
         # Pre-create the directory to simulate a race condition
-        agent_dir = tmp_path / "users" / "test-user-autouse" / "agents" / "race-agent"
+        agent_dir = tmp_path / "users" / "test-user" / "agents" / "race-agent"
         agent_dir.mkdir(parents=True, exist_ok=True)
 
         response = agent_client.post(

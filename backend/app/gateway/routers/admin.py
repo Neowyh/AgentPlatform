@@ -374,13 +374,13 @@ async def list_users(
 async def update_user_role(
     user_id: str,
     body: UpdateRoleRequest,
-    http_request: Request,
+    http_request: Request = None,
     current_user: UserModel = Depends(get_current_rbac_user),
 ):
     """Update a user's role.
 
-    super_admin can change any role. department_admin can only change
-    role within their own department and cannot promote to super_admin.
+    super_admin can assign any legal role. department_admin can only retain
+    the regular role for a user in their own department.
     """
     if body.role not in tuple(UserRole):
         raise HTTPException(status_code=400, detail="Invalid role")
@@ -401,19 +401,26 @@ async def update_user_role(
         if user is None:
             raise HTTPException(status_code=404, detail="User not found")
 
-        # department_admin: restrict scope
+        requested_role = UserRole(body.role)
+
+        # department_admins cannot grant, revoke, or manage privileged roles.
         if current_user.role == UserRole.DEPARTMENT_ADMIN:
+            if not current_user.department_id:
+                raise HTTPException(status_code=403, detail="Cannot modify users without an assigned department")
             if user.role == UserRole.SUPER_ADMIN:
                 raise HTTPException(status_code=403, detail="Cannot modify super_admin")
             if user.role == UserRole.DEPARTMENT_ADMIN:
                 raise HTTPException(status_code=403, detail="Cannot modify another department_admin")
+            if user.role != UserRole.USER:
+                raise HTTPException(status_code=403, detail="Department admins can only modify regular users")
             if user.department_id != current_user.department_id:
                 raise HTTPException(status_code=403, detail="Cannot modify users outside your department")
             if not user.department_id:
                 raise HTTPException(status_code=403, detail="Cannot modify users without a department")
+            if requested_role != UserRole.USER:
+                raise HTTPException(status_code=403, detail="Department admins can only assign the regular user role")
 
-        # Prevent disabling the last active super_admin
-        if user.role == UserRole.SUPER_ADMIN and not user.disabled:
+        if user.role == UserRole.SUPER_ADMIN and requested_role != UserRole.SUPER_ADMIN and not user.disabled:
             count_stmt = select(func.count()).select_from(UserModel).where(UserModel.role == UserRole.SUPER_ADMIN, UserModel.disabled.is_not(True))
             try:
                 count_stmt = count_stmt.with_for_update()
@@ -421,15 +428,13 @@ async def update_user_role(
                 logger.debug("with_for_update not supported, skipping row lock", exc_info=True)
             active_super_admin_count = (await session.execute(count_stmt)).scalar() or 0
             if active_super_admin_count <= 1:
-                raise HTTPException(status_code=400, detail="Cannot disable the last active super_admin")
+                raise HTTPException(status_code=400, detail="Cannot demote the last active super_admin")
 
-        user.disabled = not user.disabled
+        user.role = requested_role
         await session.commit()
 
-        new_status = "disabled" if user.disabled else "enabled"
-
-    logger.warning("User status toggled: user_id=%s, new_status=%s, by=%s", user_id, new_status, current_user.id)
-    return {"success": True, "user_id": user_id, "disabled": user.disabled}
+    logger.info("User role updated: user_id=%s, role=%s, by=%s", user_id, requested_role.value, current_user.id)
+    return {"success": True, "user_id": user_id, "new_role": user.role, "role": user.role, "disabled": user.disabled}
 
 
 @router.patch("/users/{user_id}/status")

@@ -203,7 +203,9 @@ async def _ensure_agent_meta(agent_name: str, user_id: str) -> None:
     Idempotent -- _save_agent_meta will update in-place if a non-deleted record
     already exists for (agent_name, owner_id).  Safe to call on every write path.
     """
-    if get_paths().user_agent_dir(user_id, agent_name).exists():
+    if get_paths().user_agent_dir(user_id, agent_name).exists() and not await _load_agent_meta(
+        agent_name, user_id, for_owner=user_id
+    ):
         await _save_agent_meta(
             agent_name,
             user_id,

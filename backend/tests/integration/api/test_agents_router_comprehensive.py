@@ -299,15 +299,10 @@ class TestAgentMetadataDbHelpers:
         }
 
     @pytest.mark.asyncio
-    async def test_load_agent_meta_falls_back_after_db_error(self):
-        meta_file = MagicMock()
-        meta_file.exists.return_value = False
+    async def test_load_agent_meta_returns_empty_after_db_error(self):
         session = _AsyncSession(execute_error=RuntimeError("db down"))
 
-        with (
-            patch("ideer.persistence.engine.get_session_factory", return_value=_session_factory(session)),
-            patch("app.gateway.routers.agents._agent_meta_path", return_value=meta_file),
-        ):
+        with patch("ideer.persistence.engine.get_session_factory", return_value=_session_factory(session)):
             meta = await _load_agent_meta(AGENT_NAME, USER_ID)
 
         assert meta == {}

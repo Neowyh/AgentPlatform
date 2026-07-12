@@ -39,7 +39,14 @@ describe("core api client", () => {
 
     await clientFetch("/api/items", { method: "POST" });
 
-    const [, init] = fetchMock.mock.calls[0];
+    const request = fetchMock.mock.calls[0];
+    if (!request) {
+      throw new Error("Expected clientFetch to call fetch");
+    }
+    const [, init] = request;
+    if (!init) {
+      throw new Error("Expected clientFetch to pass request options");
+    }
     expect(init.credentials).toBe("include");
     expect(init.headers.get("X-CSRF-Token")).toBe("csrf-123");
   });
@@ -60,7 +67,16 @@ describe("core api client", () => {
     });
 
     expect(response.status).toBe(401);
-    expect(fetchMock.mock.calls[0][1].headers.get("X-CSRF-Token")).toBe(
+    const request = fetchMock.mock.calls[0];
+    if (!request) {
+      throw new Error("Expected clientFetch to call fetch");
+    }
+    const [, init] = request;
+    if (!init) {
+      throw new Error("Expected clientFetch to pass request options");
+    }
+
+    expect(init.headers.get("X-CSRF-Token")).toBe(
       "already-set",
     );
   });

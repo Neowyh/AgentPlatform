@@ -307,9 +307,9 @@ class TestMigrateMetaJson:
     async def test_dry_run_does_not_commit(self, base_dir: Path, skills_path: Path):
         from ideer.scripts.migrate_meta_json import migrate_meta_json
 
-        _write_skill_meta(skills_path, "dry-skill", {"name": "dry-skill", "visibility": "private"})
+        _write_skill_meta(skills_path, "dry-skill", {"name": "dry-skill", "owner_id": "u1", "visibility": "private"})
 
-        mock_session = _make_mock_session()
+        mock_session = _make_mock_session(owner_rows=[("u1",)])
         mock_sf = _make_mock_sf(mock_session)
 
         with (
@@ -335,7 +335,7 @@ class TestMigrateMetaJson:
         assert report["imported"] == 0
         assert report["failed"] == 0
 
-    async def test_defaults_owner_to_super_admin_when_not_found(self, base_dir: Path, skills_path: Path):
+    async def test_skips_missing_owner_instead_of_defaulting_to_super_admin(self, base_dir: Path, skills_path: Path):
         from ideer.scripts.migrate_meta_json import migrate_meta_json
 
         _write_skill_meta(
@@ -361,10 +361,8 @@ class TestMigrateMetaJson:
 
             report = await migrate_meta_json(dry_run=False)
 
-        assert report["imported"] == 1
-        assert report["owner_warned"] == 1
-        added_resource = mock_session.add.call_args[0][0]
-        assert added_resource.owner_id == "super_admin"
+        assert report == {"imported": 0, "skipped": 1, "failed": 0}
+        mock_session.add.assert_not_called()
 
     async def test_migrates_agent_meta_files(self, base_dir: Path, skills_path: Path):
         from ideer.scripts.migrate_meta_json import migrate_meta_json
@@ -412,15 +410,15 @@ class TestMigrateMetaJson:
 
             report = await migrate_meta_json()
 
-        assert report == {"imported": 0, "skipped": 0, "failed": 0, "owner_warned": 0}
+        assert report == {"imported": 0, "skipped": 0, "failed": 0}
         mock_sf.assert_not_called()
 
     async def test_imported_from_field_contains_file_path(self, base_dir: Path, skills_path: Path):
         from ideer.scripts.migrate_meta_json import migrate_meta_json
 
-        meta_file = _write_skill_meta(skills_path, "trace-skill", {"name": "trace-skill", "visibility": "private"})
+        meta_file = _write_skill_meta(skills_path, "trace-skill", {"name": "trace-skill", "owner_id": "u1", "visibility": "private"})
 
-        mock_session = _make_mock_session()
+        mock_session = _make_mock_session(owner_rows=[("u1",)])
         mock_sf = _make_mock_sf(mock_session)
 
         with (
@@ -439,11 +437,11 @@ class TestMigrateMetaJson:
     async def test_counts_failed_records_when_idempotency_check_raises(self, base_dir: Path, skills_path: Path):
         from ideer.scripts.migrate_meta_json import migrate_meta_json
 
-        _write_skill_meta(skills_path, "broken-skill", {"name": "broken-skill", "visibility": "private"})
+        _write_skill_meta(skills_path, "broken-skill", {"name": "broken-skill", "owner_id": "u1", "visibility": "private"})
         mock_session = MagicMock()
         mock_session.add = MagicMock()
         mock_session.commit = AsyncMock()
-        mock_session.execute = AsyncMock(side_effect=[_Result(all_rows=[]), RuntimeError("database error")])
+        mock_session.execute = AsyncMock(side_effect=[_Result(all_rows=[("u1",)]), RuntimeError("database error")])
 
         with (
             patch("ideer.scripts.migrate_meta_json.get_session_factory", return_value=_make_mock_sf(mock_session)),
@@ -455,7 +453,7 @@ class TestMigrateMetaJson:
 
             report = await migrate_meta_json()
 
-        assert report == {"imported": 0, "skipped": 0, "failed": 1, "owner_warned": 1}
+        assert report == {"imported": 0, "skipped": 0, "failed": 1}
         mock_session.add.assert_not_called()
         mock_session.commit.assert_not_called()
 
@@ -545,13 +543,13 @@ class TestBackfillTools:
             patch("ideer.scripts.migrate_meta_json.ExtensionsConfig.from_file", return_value=config),
             patch("ideer.scripts.migrate_meta_json.get_session_factory", return_value=_make_mock_sf(mock_session)),
         ):
-            report = await backfill_tools()
+            report = await backfill_tools(default_owner="u1")
 
         assert report == {"imported": 1, "skipped": 1, "failed": 0}
         added_resource = mock_session.add.call_args[0][0]
         assert added_resource.resource_type == "tool"
         assert added_resource.resource_id == "search"
-        assert added_resource.owner_id == "super_admin"
+        assert added_resource.owner_id == "u1"
         assert added_resource.visibility == "public"
         mock_session.commit.assert_awaited_once()
 
@@ -569,7 +567,7 @@ class TestBackfillTools:
             patch("ideer.scripts.migrate_meta_json.ExtensionsConfig.from_file", return_value=config),
             patch("ideer.scripts.migrate_meta_json.get_session_factory", return_value=_make_mock_sf(mock_session)),
         ):
-            report = await backfill_tools(dry_run=True)
+            report = await backfill_tools(dry_run=True, default_owner="u1")
 
         assert report == {"imported": 1, "skipped": 0, "failed": 0}
         mock_session.add.assert_not_called()
@@ -589,7 +587,7 @@ class TestBackfillTools:
             patch("ideer.scripts.migrate_meta_json.ExtensionsConfig.from_file", return_value=config),
             patch("ideer.scripts.migrate_meta_json.get_session_factory", return_value=_make_mock_sf(mock_session)),
         ):
-            report = await backfill_tools()
+            report = await backfill_tools(default_owner="u1")
 
         assert report == {"imported": 0, "skipped": 0, "failed": 1}
         mock_session.add.assert_not_called()
@@ -631,13 +629,13 @@ class TestBackfillWorkflows:
         )
 
         with patch("ideer.scripts.migrate_meta_json.get_session_factory", return_value=_make_mock_sf(mock_session)):
-            report = await backfill_workflows()
+            report = await backfill_workflows(default_owner="u1")
 
         assert report == {"imported": 1, "skipped": 1, "failed": 0}
         added_resource = mock_session.add.call_args[0][0]
         assert added_resource.resource_type == "workflow"
         assert added_resource.resource_id == "daily-report"
-        assert added_resource.owner_id == "super_admin"
+        assert added_resource.owner_id == "u1"
         assert added_resource.visibility == "private"
         assert added_resource.created_at == created_at
         mock_session.commit.assert_awaited_once()
@@ -652,7 +650,7 @@ class TestBackfillWorkflows:
         mock_session.execute = AsyncMock(side_effect=[_Result(scalar_rows=[broken_row])])
 
         with patch("ideer.scripts.migrate_meta_json.get_session_factory", return_value=_make_mock_sf(mock_session)):
-            report = await backfill_workflows()
+            report = await backfill_workflows(default_owner="u1")
 
         assert report == {"imported": 0, "skipped": 0, "failed": 1}
         mock_session.add.assert_not_called()

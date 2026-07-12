@@ -250,7 +250,7 @@ class TestAdminUserManagement:
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_update_user_role_success(self, mock_sf):
-        """Update user role succeeds for valid request."""
+        """PUT /role persists a legal role without changing disabled status."""
         target_user = MagicMock()
         target_user.id = "target-1"
         target_user.role = UserRole.USER
@@ -271,7 +271,11 @@ class TestAdminUserManagement:
 
         assert resp.status_code == 200
         assert resp.json()["success"] is True
-        assert resp.json()["disabled"] is True
+        assert resp.json()["new_role"] == UserRole.DEPARTMENT_ADMIN
+        assert resp.json()["role"] == UserRole.DEPARTMENT_ADMIN
+        assert resp.json()["disabled"] is False
+        assert target_user.role == UserRole.DEPARTMENT_ADMIN
+        assert target_user.disabled is False
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_toggle_user_disabled_toggle(self, mock_sf):
@@ -289,10 +293,7 @@ class TestAdminUserManagement:
 
         app = _make_app()
         client = TestClient(app)
-        resp = client.put(
-            "/api/admin/users/target-1/role",
-            json={"role": "user"},
-        )
+        resp = client.patch("/api/admin/users/target-1/status")
 
         assert resp.status_code == 200
         assert resp.json()["success"] is True
@@ -335,14 +336,13 @@ class TestAdminUserManagement:
         assert resp.status_code == 404
 
     @patch("app.gateway.routers.admin.get_session_factory")
-    def test_prevent_demoting_last_super_admin(self, mock_sf):
-        """Cannot demote the last active super_admin."""
+    def test_update_user_role_cannot_demote_last_super_admin(self, mock_sf):
+        """PUT /role preserves the last active super_admin."""
         target_user = MagicMock()
         target_user.id = "target-1"
         target_user.role = UserRole.SUPER_ADMIN
         target_user.disabled = False
 
-        # Only 1 super_admin exists
         session = _mock_session(user_model_results=target_user, count_results=1)
         sf_mock = MagicMock()
         sf_mock.return_value.__aenter__ = AsyncMock(return_value=session)
@@ -358,10 +358,28 @@ class TestAdminUserManagement:
 
         assert resp.status_code == 400
         assert "last active super_admin" in resp.json()["detail"]
+        assert target_user.role == UserRole.SUPER_ADMIN
 
     @patch("app.gateway.routers.admin.get_session_factory")
-    def test_disable_user_success(self, mock_sf):
-        """Disable user succeeds for valid request."""
+    def test_update_user_role_can_demote_super_admin_when_another_is_active(self, mock_sf):
+        """PUT /role permits a demotion when another active super_admin remains."""
+        target_user = _make_rbac_user(user_id="target-1", role=UserRole.SUPER_ADMIN)
+        session = _mock_session(user_model_results=target_user, count_results=2)
+        sf_mock = MagicMock()
+        sf_mock.return_value.__aenter__ = AsyncMock(return_value=session)
+        sf_mock.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_sf.return_value = sf_mock
+
+        app = _make_app()
+        resp = TestClient(app).put("/api/admin/users/target-1/role", json={"role": "user"})
+
+        assert resp.status_code == 200
+        assert resp.json()["new_role"] == UserRole.USER
+        assert target_user.role == UserRole.USER
+
+    @patch("app.gateway.routers.admin.get_session_factory")
+    def test_toggle_user_status_success(self, mock_sf):
+        """PATCH /status is the endpoint that changes disabled status."""
         target_user = MagicMock()
         target_user.id = "target-1"
         target_user.role = UserRole.USER
@@ -375,16 +393,13 @@ class TestAdminUserManagement:
 
         app = _make_app()
         client = TestClient(app)
-        resp = client.put(
-            "/api/admin/users/target-1/role",
-            json={"role": "user"},
-        )
+        resp = client.patch("/api/admin/users/target-1/status")
 
         assert resp.status_code == 200
         assert resp.json()["success"] is True
 
     @patch("app.gateway.routers.admin.get_session_factory")
-    def test_disable_user_cannot_disable_self(self, mock_sf):
+    def test_toggle_user_status_can_toggle_self(self, mock_sf):
         """Toggling yourself succeeds (no self-check in endpoint)."""
         admin_user = _make_rbac_user(user_id="admin-1")
         admin_user.disabled = False
@@ -397,16 +412,13 @@ class TestAdminUserManagement:
 
         app = _make_app(current_user=admin_user)
         client = TestClient(app)
-        resp = client.put(
-            "/api/admin/users/admin-1/role",
-            json={"role": "user"},
-        )
+        resp = client.patch("/api/admin/users/admin-1/status")
 
         assert resp.status_code == 200
 
     @patch("app.gateway.routers.admin.get_session_factory")
-    def test_disable_user_not_found(self, mock_sf):
-        """Disable user returns 404 for nonexistent user."""
+    def test_toggle_user_status_not_found(self, mock_sf):
+        """PATCH /status returns 404 for nonexistent user."""
         session = _mock_session(user_model_results=None)
         sf_mock = MagicMock()
         sf_mock.return_value.__aenter__ = AsyncMock(return_value=session)
@@ -415,10 +427,7 @@ class TestAdminUserManagement:
 
         app = _make_app()
         client = TestClient(app)
-        resp = client.put(
-            "/api/admin/users/nonexistent/role",
-            json={"role": "user"},
-        )
+        resp = client.patch("/api/admin/users/nonexistent/status")
 
         assert resp.status_code == 404
 
@@ -438,13 +447,107 @@ class TestAdminUserManagement:
 
         app = _make_app()
         client = TestClient(app)
-        resp = client.put(
-            "/api/admin/users/target-1/role",
-            json={"role": "user"},
-        )
+        resp = client.patch("/api/admin/users/target-1/status")
 
         assert resp.status_code == 400
         assert "last active super_admin" in resp.json()["detail"]
+
+    @patch("app.gateway.routers.admin.get_session_factory")
+    def test_department_admin_can_keep_own_department_regular_user(self, mock_sf):
+        """Department admins may only write the regular role inside their department."""
+        target_user = _make_rbac_user(user_id="target-1", role=UserRole.USER, department_id="dept-1")
+        session = _mock_session(user_model_results=target_user)
+        sf_mock = MagicMock()
+        sf_mock.return_value.__aenter__ = AsyncMock(return_value=session)
+        sf_mock.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_sf.return_value = sf_mock
+
+        app = _make_app(_make_rbac_user(role=UserRole.DEPARTMENT_ADMIN, department_id="dept-1"))
+        resp = TestClient(app).put("/api/admin/users/target-1/role", json={"role": "user"})
+
+        assert resp.status_code == 200
+        assert resp.json()["role"] == UserRole.USER
+        assert target_user.disabled is False
+
+    @patch("app.gateway.routers.admin.get_session_factory")
+    def test_department_admin_cannot_assign_privileged_role(self, mock_sf):
+        """Department admins cannot promote a regular user."""
+        target_user = _make_rbac_user(user_id="target-1", role=UserRole.USER, department_id="dept-1")
+        session = _mock_session(user_model_results=target_user)
+        sf_mock = MagicMock()
+        sf_mock.return_value.__aenter__ = AsyncMock(return_value=session)
+        sf_mock.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_sf.return_value = sf_mock
+
+        app = _make_app(_make_rbac_user(role=UserRole.DEPARTMENT_ADMIN, department_id="dept-1"))
+        resp = TestClient(app).put("/api/admin/users/target-1/role", json={"role": "department_admin"})
+
+        assert resp.status_code == 403
+        assert target_user.role == UserRole.USER
+
+    @patch("app.gateway.routers.admin.get_session_factory")
+    def test_department_admin_cannot_change_viewer_role(self, mock_sf):
+        """Department admins cannot change a viewer, even to the regular role."""
+        target_user = _make_rbac_user(user_id="target-1", role=UserRole.VIEWER, department_id="dept-1")
+        session = _mock_session(user_model_results=target_user)
+        sf_mock = MagicMock()
+        sf_mock.return_value.__aenter__ = AsyncMock(return_value=session)
+        sf_mock.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_sf.return_value = sf_mock
+
+        app = _make_app(_make_rbac_user(role=UserRole.DEPARTMENT_ADMIN, department_id="dept-1"))
+        resp = TestClient(app).put("/api/admin/users/target-1/role", json={"role": "user"})
+
+        assert resp.status_code == 403
+        assert target_user.role == UserRole.VIEWER
+
+    @patch("app.gateway.routers.admin.get_session_factory")
+    def test_department_admin_cannot_change_cross_department_user(self, mock_sf):
+        """Department admins cannot update users outside their department."""
+        target_user = _make_rbac_user(user_id="target-1", role=UserRole.USER, department_id="dept-2")
+        session = _mock_session(user_model_results=target_user)
+        sf_mock = MagicMock()
+        sf_mock.return_value.__aenter__ = AsyncMock(return_value=session)
+        sf_mock.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_sf.return_value = sf_mock
+
+        app = _make_app(_make_rbac_user(role=UserRole.DEPARTMENT_ADMIN, department_id="dept-1"))
+        resp = TestClient(app).put("/api/admin/users/target-1/role", json={"role": "user"})
+
+        assert resp.status_code == 403
+        assert target_user.role == UserRole.USER
+
+    @patch("app.gateway.routers.admin.get_session_factory")
+    def test_department_admin_cannot_change_user_without_department(self, mock_sf):
+        """Department admins cannot update unassigned users."""
+        target_user = _make_rbac_user(user_id="target-1", role=UserRole.USER, department_id=None)
+        session = _mock_session(user_model_results=target_user)
+        sf_mock = MagicMock()
+        sf_mock.return_value.__aenter__ = AsyncMock(return_value=session)
+        sf_mock.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_sf.return_value = sf_mock
+
+        app = _make_app(_make_rbac_user(role=UserRole.DEPARTMENT_ADMIN, department_id="dept-1"))
+        resp = TestClient(app).put("/api/admin/users/target-1/role", json={"role": "user"})
+
+        assert resp.status_code == 403
+        assert target_user.role == UserRole.USER
+
+    @patch("app.gateway.routers.admin.get_session_factory")
+    def test_department_admin_without_department_cannot_change_user(self, mock_sf):
+        """An unassigned department admin has no writable user scope."""
+        target_user = _make_rbac_user(user_id="target-1", role=UserRole.USER, department_id="dept-1")
+        session = _mock_session(user_model_results=target_user)
+        sf_mock = MagicMock()
+        sf_mock.return_value.__aenter__ = AsyncMock(return_value=session)
+        sf_mock.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_sf.return_value = sf_mock
+
+        app = _make_app(_make_rbac_user(role=UserRole.DEPARTMENT_ADMIN, department_id=None))
+        resp = TestClient(app).put("/api/admin/users/target-1/role", json={"role": "user"})
+
+        assert resp.status_code == 403
+        assert target_user.role == UserRole.USER
 
 
 # ---------------------------------------------------------------------------
@@ -696,25 +799,43 @@ class TestDepartmentAdminPermissions:
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_list_users_no_department(self, mock_sf):
-        """department_admin without department_id sees empty list."""
+        """department_admin without a department retains global read access."""
         admin = _make_rbac_user(user_id="dept-admin-no-dept", role="department_admin", department_id=None)
+        user = self._user_in_dept("global-user", dept_id="other-department")
+
+        async def _execute(stmt):
+            result = MagicMock()
+            if "count" in str(stmt).lower():
+                result.scalar.return_value = 1
+            else:
+                result.scalars.return_value.all.return_value = [user]
+            return result
+
+        session = MagicMock()
+        session.execute = AsyncMock(side_effect=_execute)
+        sf = MagicMock()
+        sf.return_value.__aenter__ = AsyncMock(return_value=session)
+        sf.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_sf.return_value = sf
 
         app = _make_app(current_user=admin)
         client = TestClient(app)
         resp = client.get("/api/admin/users")
 
         assert resp.status_code == 200
-        assert resp.json()["total"] == 0
-        assert resp.json()["users"] == []
+        assert resp.json()["total"] == 1
+        assert resp.json()["users"][0]["id"] == "global-user"
 
     @patch("app.gateway.routers.admin.get_session_factory")
-    def test_list_users_ignores_department_id_param(self, mock_sf):
-        """department_admin's department_id param is overridden."""
+    def test_list_users_applies_department_id_param(self, mock_sf):
+        """department_admin global reads still honor an explicit department filter."""
         admin = self._dept_admin(dept_id="dept-A")
-        u1 = self._user_in_dept("u1", dept_id="dept-A")
+        u1 = self._user_in_dept("u1", dept_id="dept-B")
+        queried_department_ids = []
 
         async def _execute(stmt):
             result = MagicMock()
+            queried_department_ids.extend(value for value in stmt.compile().params.values() if value == "dept-B")
             stmt_str = str(stmt)
             if "count" in stmt_str.lower():
                 result.scalar = MagicMock(return_value=1)
@@ -737,6 +858,8 @@ class TestDepartmentAdminPermissions:
 
         assert resp.status_code == 200
         assert resp.json()["total"] == 1
+        assert resp.json()["users"][0]["department_id"] == "dept-B"
+        assert queried_department_ids == ["dept-B", "dept-B"]
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_list_users_role_super_admin_returns_empty(self, mock_sf):
@@ -772,11 +895,11 @@ class TestDepartmentAdminPermissions:
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_update_role_own_department_user(self, mock_sf):
-        """department_admin can change role of own department user."""
+        """department_admin can retain the regular role of an own-department user."""
         admin = self._dept_admin()
         target = self._user_in_dept("target-1", dept_id="dept-1", role="user")
 
-        session = _mock_session(user_model_results=target, count_results=3)
+        session = _mock_session(user_model_results=target)
         sf_mock = MagicMock()
         sf_mock.return_value.__aenter__ = AsyncMock(return_value=session)
         sf_mock.return_value.__aexit__ = AsyncMock(return_value=False)
@@ -784,14 +907,15 @@ class TestDepartmentAdminPermissions:
 
         app = _make_app(current_user=admin)
         client = TestClient(app)
-        resp = client.put("/api/admin/users/target-1/role", json={"role": "viewer"})
+        resp = client.put("/api/admin/users/target-1/role", json={"role": "user"})
 
         assert resp.status_code == 200
         assert resp.json()["success"] is True
+        assert resp.json()["role"] == UserRole.USER
 
     @patch("app.gateway.routers.admin.get_session_factory")
-    def test_update_role_can_toggle_own_dept_user(self, mock_sf):
-        """department_admin can toggle a regular user in own department."""
+    def test_update_role_cannot_assign_viewer(self, mock_sf):
+        """department_admin cannot assign a non-regular role."""
         admin = self._dept_admin(user_id="self-admin")
         target = self._user_in_dept("other-user", dept_id="dept-1", role="user")
         target.disabled = False
@@ -804,9 +928,9 @@ class TestDepartmentAdminPermissions:
 
         app = _make_app(current_user=admin)
         client = TestClient(app)
-        resp = client.put("/api/admin/users/other-user/role", json={"role": "user"})
+        resp = client.put("/api/admin/users/other-user/role", json={"role": "viewer"})
 
-        assert resp.status_code == 200
+        assert resp.status_code == 403
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_update_role_cannot_modify_super_admin(self, mock_sf):
@@ -847,8 +971,8 @@ class TestDepartmentAdminPermissions:
         assert "department_admin" in resp.json()["detail"]
 
     @patch("app.gateway.routers.admin.get_session_factory")
-    def test_update_role_can_promote_to_super_admin(self, mock_sf):
-        """department_admin can promote to super_admin (endpoint checks current role, not requested)."""
+    def test_update_role_cannot_promote_to_super_admin(self, mock_sf):
+        """department_admin cannot promote a regular user to super_admin."""
         admin = self._dept_admin()
         target = self._user_in_dept("target-1", dept_id="dept-1", role="user")
         target.disabled = False
@@ -863,7 +987,7 @@ class TestDepartmentAdminPermissions:
         client = TestClient(app)
         resp = client.put("/api/admin/users/target-1/role", json={"role": "super_admin"})
 
-        assert resp.status_code == 200
+        assert resp.status_code == 403
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_update_role_cannot_modify_cross_department(self, mock_sf):
@@ -879,7 +1003,7 @@ class TestDepartmentAdminPermissions:
 
         app = _make_app(current_user=admin)
         client = TestClient(app)
-        resp = client.put("/api/admin/users/target-1/role", json={"role": "viewer"})
+        resp = client.put("/api/admin/users/target-1/role", json={"role": "user"})
 
         assert resp.status_code == 403
         assert "department" in resp.json()["detail"].lower()
@@ -901,7 +1025,7 @@ class TestDepartmentAdminPermissions:
 
         app = _make_app(current_user=admin)
         client = TestClient(app)
-        resp = client.put("/api/admin/users/target-1/role", json={"role": "user"})
+        resp = client.patch("/api/admin/users/target-1/status")
 
         assert resp.status_code == 200
         assert resp.json()["success"] is True
@@ -920,7 +1044,7 @@ class TestDepartmentAdminPermissions:
 
         app = _make_app(current_user=admin)
         client = TestClient(app)
-        resp = client.put("/api/admin/users/sa-1/role", json={"role": "user"})
+        resp = client.patch("/api/admin/users/sa-1/status")
 
         assert resp.status_code == 403
         assert "super_admin" in resp.json()["detail"]
@@ -939,7 +1063,7 @@ class TestDepartmentAdminPermissions:
 
         app = _make_app(current_user=admin)
         client = TestClient(app)
-        resp = client.put("/api/admin/users/other-admin/role", json={"role": "user"})
+        resp = client.patch("/api/admin/users/other-admin/status")
 
         assert resp.status_code == 403
         assert "department_admin" in resp.json()["detail"]
@@ -958,7 +1082,7 @@ class TestDepartmentAdminPermissions:
 
         app = _make_app(current_user=admin)
         client = TestClient(app)
-        resp = client.put("/api/admin/users/target-1/role", json={"role": "user"})
+        resp = client.patch("/api/admin/users/target-1/status")
 
         assert resp.status_code == 403
         assert "department" in resp.json()["detail"].lower()

@@ -191,13 +191,19 @@ describe("AgentGallery", () => {
     vi.mocked(importAgent).mockRejectedValue(new Error("Import failed"));
     const user = userEvent.setup();
     render(<AgentGallery />);
-    const input = document.querySelector('input[type="file"]')!;
+    const input = document.querySelector<HTMLInputElement>(
+      'input[type="file"]',
+    );
     const file = new File(["zip"], "agent.zip", { type: "application/zip" });
+
+    if (!input) {
+      throw new Error("Expected agent import input");
+    }
 
     await user.upload(input, file);
 
     expect(toast.error).toHaveBeenCalledWith("Import failed");
-    expect((input as HTMLInputElement).value).toBe("");
+    expect(input.value).toBe("");
   });
 
   test("ignores import change without a selected file", async () => {

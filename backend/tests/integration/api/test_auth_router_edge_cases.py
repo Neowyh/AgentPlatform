@@ -10,6 +10,7 @@ from uuid import uuid4
 import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import IntegrityError
 
 from app.gateway.auth.errors import AuthErrorCode
 from app.gateway.auth.models import User
@@ -309,10 +310,16 @@ class TestInitializeAdminRace:
     def test_initialize_race_condition(self):
         """Concurrent create_user raising ValueError triggers 409."""
         provider = _patch_provider(count_admin=0)
-        provider.create_user = AsyncMock(side_effect=ValueError("unique constraint"))
+        session = AsyncMock()
+        context = AsyncMock()
+        context.__aenter__ = AsyncMock(return_value=session)
+        context.__aexit__ = AsyncMock(return_value=False)
 
         with (
             patch("app.gateway.routers.auth.get_local_provider", return_value=provider),
+            patch("app.gateway.routers.auth._count_active_super_admin_users", new_callable=AsyncMock, return_value=0),
+            patch("app.gateway.routers.auth.get_session_factory", return_value=MagicMock(return_value=context)),
+            patch("app.gateway.routers.auth.create_auth_user_with_rbac", new_callable=AsyncMock, side_effect=IntegrityError("insert", {}, Exception())),
         ):
             app = _make_app()
             with TestClient(app) as client:

@@ -8,7 +8,6 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
-from sqlalchemy import select
 
 from app.gateway.audit import record_audit
 from app.gateway.authz import (

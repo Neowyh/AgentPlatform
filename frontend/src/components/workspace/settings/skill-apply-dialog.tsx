@@ -27,7 +27,7 @@ interface SkillApplyDialogProps {
   skill: Skill | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (targetVisibility: string, reason: string) => void;
+  onSubmit: (targetVisibility: string, reason: string) => void | Promise<void>;
 }
 
 export function SkillApplyDialog({
@@ -51,12 +51,14 @@ export function SkillApplyDialog({
   const handleSubmit = async () => {
     setIsSubmitting(true);
     try {
-      onSubmit(targetVisibility, reason);
+      await onSubmit(targetVisibility, reason);
     } finally {
-      setIsSubmitting(false);
-      onOpenChange(false);
-      setReason("");
-      setTargetVisibility("department");
+      if (mountedRef.current) {
+        setIsSubmitting(false);
+        onOpenChange(false);
+        setReason("");
+        setTargetVisibility("department");
+      }
     }
   };
 

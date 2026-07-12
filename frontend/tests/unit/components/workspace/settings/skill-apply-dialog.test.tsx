@@ -11,10 +11,11 @@ vi.mock("@/core/i18n/hooks", () => ({
         skills: {
           applyDialogTitle: "Apply for {name}",
           applyDialogDescription: "Submit your application for this skill",
-          applyDialogCurrentStatus: "Current status: Not applied",
-          applyDialogScope: "Scope",
-          applyDialogScopeDepartment: "Department",
-          applyDialogScopePublic: "Public",
+          applyDialogCurrentVisibility: "Current visibility: {visibility}",
+          applyDialogTargetVisibility: "Target Visibility",
+          applyDialogVisibilityPrivate: "Private",
+          applyDialogVisibilityDepartment: "Department",
+          applyDialogVisibilityPublic: "Public",
           applyDialogReason: "Reason",
           applyDialogReasonPlaceholder: "Enter your reason",
           applyDialogCancel: "Cancel",
@@ -109,6 +110,7 @@ const mockSkill = {
   category: "public",
   license: "mit",
   enabled: false,
+  visibility: "private",
 };
 
 const mockOnOpenChange = vi.fn();

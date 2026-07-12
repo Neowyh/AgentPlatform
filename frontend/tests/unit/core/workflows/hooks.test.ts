@@ -388,8 +388,8 @@ describe("useToggleWorkflowFavorite", () => {
   test("calls toggleWorkflowFavorite API with workflow name", async () => {
     const { toggleWorkflowFavorite } = await import("@/core/workflows/api");
     vi.mocked(toggleWorkflowFavorite).mockResolvedValue({
-      name: "wf",
-      is_favorite: true,
+      success: true,
+      is_favorited: true,
     });
 
     const { useToggleWorkflowFavorite } =

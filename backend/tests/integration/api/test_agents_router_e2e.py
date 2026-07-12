@@ -114,12 +114,29 @@ class TestListAgents:
     def test_list_agents_with_results(self, mock_soul, mock_shared, mock_list, mock_uid, mock_cfg):
         """List agents returns agent data."""
         mock_list.return_value = [_mock_agent_config()]
+        resource = MagicMock(
+            resource_id="test-agent",
+            visibility="public",
+            owner_id="owner-X",
+            department_id=None,
+            is_favorited=False,
+        )
+        result = MagicMock()
+        result.scalars.return_value.all.return_value = [resource]
+        session = MagicMock()
+        session.execute = AsyncMock(return_value=result)
+        session_factory = MagicMock()
+        session_factory.return_value.__aenter__ = AsyncMock(return_value=session)
+        session_factory.return_value.__aexit__ = AsyncMock(return_value=False)
         app, _ = _make_app()
         with TestClient(app) as client:
-            with patch(_META_PATCH, new=AsyncMock(return_value={"visibility": "private", "owner_id": "user-1"})):
+            with patch("app.gateway.routers.agents.get_session_factory", return_value=session_factory):
                 resp = client.get("/api/agents")
         assert resp.status_code == 200
-        assert len(resp.json().get("agents", [])) >= 1
+        assert resp.json()["agents"][0]["name"] == "test-agent"
+        assert resp.json()["agents"][0]["visibility"] == "public"
+        assert resp.json()["agents"][0]["owner_id"] == "owner-X"
+        result.scalars.assert_called_once()
 
 
 # ---------------------------------------------------------------------------

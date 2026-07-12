@@ -125,11 +125,11 @@ describe("AdminDashboardPage", () => {
 
   // ── Success state ──────────────────────────────────────────────────
 
-  test("renders seven stat cards after loading", async () => {
+  test("renders six stat cards after loading", async () => {
     render(<AdminDashboardPage />);
     await waitFor(() => {
       const cards = screen.getAllByTestId("admin-stat-card");
-      expect(cards).toHaveLength(7);
+      expect(cards).toHaveLength(6);
     });
   });
 
@@ -167,7 +167,7 @@ describe("AdminDashboardPage", () => {
     render(<AdminDashboardPage />);
     await waitFor(() => {
       const details = screen.getAllByText("点击查看详情");
-      expect(details).toHaveLength(7);
+      expect(details).toHaveLength(6);
     });
   });
 
@@ -254,7 +254,7 @@ describe("AdminDashboardPage", () => {
     const { container } = render(<AdminDashboardPage />);
 
     expect(mockRouterReplace).toHaveBeenCalledWith("/workspace");
-    expect(mockGetAdminStats).not.toHaveBeenCalled();
+    expect(mockUseAdminStats).toHaveBeenCalledWith(false);
     expect(container).toBeEmptyDOMElement();
   });
 

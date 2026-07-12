@@ -861,9 +861,8 @@ class TestFailClosedBehavior:
             assert "temporarily unavailable" in exc_info.value.detail.lower()
 
     @pytest.mark.asyncio
-    async def test_session_factory_none_does_not_grant_full_permissions(self):
-        """When session factory is None, _authenticate falls through to full permissions.
-        This is the current behavior — a known gap where None SF means no RBAC check."""
+    async def test_session_factory_none_denies_access(self):
+        """An unavailable RBAC store fails closed instead of granting permissions."""
         from app.gateway.authz import _authenticate
 
         user = MagicMock()
@@ -879,9 +878,9 @@ class TestFailClosedBehavior:
         ):
             req = MagicMock()
             req.state = type("S", (), {})()
-            ctx = await _authenticate(req)
-            # Current behavior: falls through to full permissions
-            assert ctx.has_permission("threads", "write")
+            with pytest.raises(HTTPException) as exc_info:
+                await _authenticate(req)
+        assert exc_info.value.status_code == 503
 
     @pytest.mark.asyncio
     async def test_operational_error_raises_503(self):
@@ -937,12 +936,12 @@ class TestFailClosedBehavior:
 # =====================================================================
 
 
-class TestFirstUserAutoPromotion:
-    """Validate that the first registered user automatically becomes super_admin."""
+class TestUnprovisionedAuthenticatedUser:
+    """Authenticated users need an explicit RBAC profile before authorization."""
 
     @pytest.mark.asyncio
-    async def test_first_user_becomes_super_admin(self):
-        """First user (admin_count=0) should be promoted to super_admin."""
+    async def test_first_authenticated_user_without_profile_is_rejected(self):
+        """Bootstrap is explicit; a request never creates a super-admin profile."""
         user = MagicMock()
         user.id = str(uuid4())
         user.email = "first@test.com"
@@ -950,34 +949,25 @@ class TestFirstUserAutoPromotion:
         req = MagicMock()
         req.state = type("S", (), {"user": user})()
 
-        # Mock session: user not found, then count=0
+        # No users_ext record exists for this authenticated subject.
         query_result = MagicMock()
         query_result.scalar_one_or_none.return_value = None
-        count_result = MagicMock()
-        count_result.scalar.return_value = 0
 
         mock_session = AsyncMock()
-        mock_session.execute = AsyncMock(side_effect=[query_result, count_result])
-        mock_session.add = MagicMock()
-        mock_session.commit = AsyncMock()
-
-        def refresh_side_effect(u):
-            u.role = "super_admin"
-
-        mock_session.refresh = AsyncMock(side_effect=refresh_side_effect)
+        mock_session.execute = AsyncMock(return_value=query_result)
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session.__aexit__ = AsyncMock(return_value=False)
 
         mock_sf = MagicMock(return_value=mock_session)
 
         with patch("ideer.persistence.engine.get_session_factory", return_value=mock_sf):
-            result = await get_current_rbac_user(req)
-
-        assert result.role == "super_admin"
+            with pytest.raises(HTTPException) as exc_info:
+                await get_current_rbac_user(req)
+        assert exc_info.value.status_code == 403
 
     @pytest.mark.asyncio
-    async def test_second_user_becomes_regular_user(self):
-        """Second user (admin_count>0) should become regular user."""
+    async def test_unprovisioned_user_is_not_auto_created(self):
+        """Authorization does not create a regular RBAC profile either."""
         user = MagicMock()
         user.id = str(uuid4())
         user.email = "second@test.com"
@@ -987,27 +977,18 @@ class TestFirstUserAutoPromotion:
 
         query_result = MagicMock()
         query_result.scalar_one_or_none.return_value = None
-        count_result = MagicMock()
-        count_result.scalar.return_value = 1  # already has an admin
 
         mock_session = AsyncMock()
-        mock_session.execute = AsyncMock(side_effect=[query_result, count_result])
-        mock_session.add = MagicMock()
-        mock_session.commit = AsyncMock()
-
-        def refresh_side_effect(u):
-            u.role = "user"
-
-        mock_session.refresh = AsyncMock(side_effect=refresh_side_effect)
+        mock_session.execute = AsyncMock(return_value=query_result)
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session.__aexit__ = AsyncMock(return_value=False)
 
         mock_sf = MagicMock(return_value=mock_session)
 
         with patch("ideer.persistence.engine.get_session_factory", return_value=mock_sf):
-            result = await get_current_rbac_user(req)
-
-        assert result.role == "user"
+            with pytest.raises(HTTPException) as exc_info:
+                await get_current_rbac_user(req)
+        assert exc_info.value.status_code == 403
 
     @pytest.mark.asyncio
     async def test_existing_user_returned_directly(self):
@@ -1113,8 +1094,8 @@ class TestOwnerChecks:
 # =====================================================================
 
 
-class TestConcurrentFirstUserCreation:
-    """Validate race condition handling when multiple users register simultaneously."""
+class TestUnprovisionedUserRaceSafety:
+    """Concurrent authenticated requests never create RBAC profiles implicitly."""
 
     @pytest.mark.asyncio
     async def test_integrity_error_on_first_user_requery(self):
@@ -1157,10 +1138,9 @@ class TestConcurrentFirstUserCreation:
         mock_sf = MagicMock(return_value=mock_session)
 
         with patch("ideer.persistence.engine.get_session_factory", return_value=mock_sf):
-            result = await get_current_rbac_user(req)
-
-        assert result is existing
-        mock_session.rollback.assert_awaited()
+            with pytest.raises(HTTPException) as exc_info:
+                await get_current_rbac_user(req)
+        assert exc_info.value.status_code == 403
 
     @pytest.mark.asyncio
     async def test_integrity_error_user_not_found_after_requery(self):
@@ -1201,7 +1181,7 @@ class TestConcurrentFirstUserCreation:
         with patch("ideer.persistence.engine.get_session_factory", return_value=mock_sf):
             with pytest.raises(HTTPException) as exc_info:
                 await get_current_rbac_user(req)
-        assert exc_info.value.status_code == 500
+        assert exc_info.value.status_code == 403
 
     @pytest.mark.asyncio
     async def test_concurrent_super_admin_downgrade(self):
@@ -1272,10 +1252,9 @@ class TestConcurrentFirstUserCreation:
         mock_sf = MagicMock(side_effect=sf_factory)
 
         with patch("ideer.persistence.engine.get_session_factory", return_value=mock_sf):
-            result = await get_current_rbac_user(req)
-
-        assert result.role == "user"
-        recheck_session.commit.assert_awaited()
+            with pytest.raises(HTTPException) as exc_info:
+                await get_current_rbac_user(req)
+        assert exc_info.value.status_code == 403
 
     @pytest.mark.asyncio
     async def test_integrity_error_disabled_user_after_requery(self):
@@ -1364,9 +1343,9 @@ class TestConcurrentFirstUserCreation:
         mock_sf = MagicMock(return_value=mock_session)
 
         with patch("ideer.persistence.engine.get_session_factory", return_value=mock_sf):
-            result = await get_current_rbac_user(req)
-
-        assert result.role == "user"
+            with pytest.raises(HTTPException) as exc_info:
+                await get_current_rbac_user(req)
+        assert exc_info.value.status_code == 403
 
     @pytest.mark.asyncio
     async def test_programming_error_fallback_to_plain_count(self):
@@ -1411,9 +1390,9 @@ class TestConcurrentFirstUserCreation:
         mock_sf = MagicMock(return_value=mock_session)
 
         with patch("ideer.persistence.engine.get_session_factory", return_value=mock_sf):
-            result = await get_current_rbac_user(req)
-
-        assert result.role == "super_admin"
+            with pytest.raises(HTTPException) as exc_info:
+                await get_current_rbac_user(req)
+        assert exc_info.value.status_code == 403
 
 
 # =====================================================================
@@ -1450,14 +1429,8 @@ class TestInvalidRoleHandling:
         assert result.role == UserRole.VIEWER
 
     @pytest.mark.asyncio
-    async def test_null_role_gets_full_permissions(self):
-        """User with NULL role in DB gets full permissions (current behavior).
-
-        KNOWN SECURITY GAP: A NULL role bypasses the viewer check in
-        ``_authenticate`` and falls through to full permissions.  This is
-        the current production behaviour — the test documents it so we can
-        track a future fix (e.g. default NULL → viewer or reject).
-        """
+    async def test_null_role_gets_viewer_permissions(self):
+        """A NULL role fails closed to the read-only viewer permission set."""
         from app.gateway.authz import _authenticate
 
         user = MagicMock()
@@ -1465,6 +1438,7 @@ class TestInvalidRoleHandling:
 
         null_user = MagicMock()
         null_user.role = None
+        null_user.disabled = False
 
         query_result = MagicMock()
         query_result.scalar_one_or_none.return_value = null_user
@@ -1487,8 +1461,8 @@ class TestInvalidRoleHandling:
             req = MagicMock()
             req.state = type("S", (), {})()
             ctx = await _authenticate(req)
-            # Current behavior: NULL role logs warning and gets full permissions
-            assert ctx.has_permission("threads", "write")
+        assert ctx.has_permission("threads", "read")
+        assert not ctx.has_permission("threads", "write")
 
     @pytest.mark.asyncio
     async def test_require_role_with_invalid_role_value(self):
