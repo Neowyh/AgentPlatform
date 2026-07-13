@@ -17,16 +17,6 @@ const MOCK_MCP_CONFIG = {
   },
 };
 
-const MOCK_SKILLS = [
-  {
-    name: "deep-research",
-    description: "Multi-angle web research methodology",
-    category: "public" as const,
-    license: "requires_internet",
-    enabled: true,
-  },
-];
-
 /** Helper: open the settings dialog via sidebar dropdown menu */
 async function openSettings(page: Page) {
   const trigger = page
@@ -253,34 +243,6 @@ test.describe("Settings management", () => {
       await expect(
         page.getByText(/no.*server|empty|没有/i).first(),
       ).toBeVisible({ timeout: 15_000 });
-    });
-  });
-
-  test.describe("Skills settings", () => {
-    test("skills page loads with skill tabs", async ({ page }) => {
-      mockLangGraphAPI(page, { skills: MOCK_SKILLS });
-      await page.goto("/workspace/chats/new");
-
-      await openSettings(page);
-      await page.getByTestId("settings-tab-skills").click();
-
-      // Should show Public and Custom tabs
-      await expect(page.getByRole("tab", { name: /public/i })).toBeVisible({
-        timeout: 15_000,
-      });
-      await expect(page.getByRole("tab", { name: /custom/i })).toBeVisible();
-    });
-
-    test("skills page shows public skills", async ({ page }) => {
-      mockLangGraphAPI(page, { skills: MOCK_SKILLS });
-      await page.goto("/workspace/chats/new");
-
-      await openSettings(page);
-      await page.getByTestId("settings-tab-skills").click();
-
-      await expect(page.getByText("deep-research")).toBeVisible({
-        timeout: 15_000,
-      });
     });
   });
 

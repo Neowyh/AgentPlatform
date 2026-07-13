@@ -4,6 +4,24 @@ This ledger is the deletion and move gate for the test-suite reorganization.
 Do not delete an old test file unless this file records an equal or stronger
 replacement assertion and the validation command for that batch.
 
+## Batch 2026-07-13: Phase 3 evidence-backed duplicate consolidation
+
+Only test cases with an equal-or-stronger retained owner were deleted. No
+production code, skip rule, coverage threshold, or public API changed.
+
+| Deleted source | Retained primary owner | Contract retained | Validation |
+| --- | --- | --- | --- |
+| `frontend/tests/e2e/workflows/admin-panel.spec.ts`: dashboard access, statistics cards, user navigation, department navigation | `admin-management.spec.ts`: Dashboard plus click-based navigation access control | Dashboard route, exactly six `admin-stat-card` elements, and user/department navigation | Affected workflow collection: 58 tests / 7 files; `pnpm exec playwright test --project=chromium tests/e2e/workflows/admin-management.spec.ts` (12 passed) |
+| `agent-chat.spec.ts`: agent gallery load | `agent-management.spec.ts`: gallery agent cards | Gallery load; keeper additionally checks normal and template cards | Same frontend collection |
+| `chat-flow.spec.ts`: new-chat load and send/receive | `chat.spec.ts`: input-page and streamed reply contracts | New-chat input and mocked stream response; chat export remains in `chat-flow.spec.ts` | Same frontend collection |
+| `settings-management.spec.ts`: Skills tabs and public Skills list | `skill-management.spec.ts`: Settings Page cases | Public/custom tabs and public skill content; non-Skills settings remain in source | Same frontend collection |
+| `backend/tests/unit/channels/test_channel_file_attachments.py`: base receive/send/default/outbound checks, all `_make_inbound` cases, and base channel properties | `test_channel_base.py::{TestReceiveFile,TestSendFileDefault,TestOnOutbound,TestMakeInbound,TestInit,TestProperties}` | Base-channel behavior; attachment file retains upload ordering, failure continuation, false return, and send-failure behavior | `UV_CACHE_DIR=/tmp/uv-cache uv run pytest tests/unit/channels/test_channel_base.py tests/unit/channels/test_channel_file_attachments.py -q` (78 passed; exactly 17 fewer than the 95-test baseline) |
+| `backend/tests/contracts/test_visibility_applications_e2e.py`: invalid type, unknown/terminal/stale/self review, unknown/foreign/terminal withdraw, non-admin list, super-admin and regular-user review duplicates | `test_visibility_applications.py` matching router tests | Mock-router error/RBAC boundary; e2e file retains resource-metadata approval, rejection, cross-department rules, withdraw mutation/conflict, and submit-to-approve/withdraw/reject workflows | `PYTHONPATH=. uv run pytest tests/contracts/test_visibility_applications.py tests/contracts/test_visibility_applications_e2e.py -v` (41 passed) |
+
+The isolated real-browser visibility lane remains the primary SQLite-backed UI
+proof for approval and rejection. The similarly named backend `*_e2e.py` file
+uses mocked sessions; it is not presented as SQLite coverage.
+
 ## Batch 2026-07-12: Isolated Real E2E Lane
 
 This is additive coverage; no existing mock, auth, visual, or a11y test was

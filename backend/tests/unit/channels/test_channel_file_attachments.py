@@ -20,7 +20,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from app.channels.base import Channel
-from app.channels.message_bus import InboundMessage, InboundMessageType, MessageBus, OutboundMessage, ResolvedAttachment
+from app.channels.message_bus import InboundMessage, MessageBus, OutboundMessage, ResolvedAttachment
 
 
 def _run(coro):
@@ -731,31 +731,6 @@ class _DummyChannel(Channel):
 
 
 class TestBaseChannelOnOutbound:
-    def test_default_receive_file_returns_original_message(self):
-        """The base Channel.receive_file returns the original message unchanged."""
-
-        class MinimalChannel(Channel):
-            async def start(self):
-                pass
-
-            async def stop(self):
-                pass
-
-            async def send(self, msg):
-                pass
-
-        from app.channels.message_bus import InboundMessage
-
-        bus = MessageBus()
-        ch = MinimalChannel(name="minimal", bus=bus, config={})
-        msg = InboundMessage(channel_name="minimal", chat_id="c1", user_id="u1", text="hello", files=[{"file_key": "k1"}])
-
-        result = _run(ch.receive_file(msg, "thread-1"))
-
-        assert result is msg
-        assert result.text == "hello"
-        assert result.files == [{"file_key": "k1"}]
-
     def test_send_file_called_for_each_attachment(self, tmp_path):
         """_on_outbound sends text first, then uploads each attachment."""
         bus = MessageBus()
@@ -783,23 +758,6 @@ class TestBaseChannelOnOutbound:
         assert len(ch.sent_files) == 2
         assert ch.sent_files[0][1].filename == "a.txt"
         assert ch.sent_files[1][1].filename == "b.png"
-
-    def test_no_attachments_no_send_file(self):
-        """When there are no attachments, send_file is not called."""
-        bus = MessageBus()
-        ch = _DummyChannel(bus)
-
-        msg = OutboundMessage(
-            channel_name="dummy",
-            chat_id="c1",
-            thread_id="t1",
-            text="No files here",
-        )
-
-        _run(ch._on_outbound(msg))
-
-        assert len(ch.sent_messages) == 1
-        assert len(ch.sent_files) == 0
 
     def test_send_file_failure_does_not_block_others(self, tmp_path):
         """If one attachment upload fails, remaining attachments still get sent."""
@@ -883,155 +841,6 @@ class TestBaseChannelOnOutbound:
         _run(ch._on_outbound(msg))
 
         assert len(ch.sent_files) == 0
-
-    def test_default_send_file_returns_false(self):
-        """The base Channel.send_file returns False by default."""
-
-        class MinimalChannel(Channel):
-            async def start(self):
-                pass
-
-            async def stop(self):
-                pass
-
-            async def send(self, msg):
-                pass
-
-        bus = MessageBus()
-        ch = MinimalChannel(name="minimal", bus=bus, config={})
-        att = ResolvedAttachment("/x", Path("/x"), "x", "text/plain", 0, False)
-        msg = OutboundMessage(channel_name="minimal", chat_id="c", thread_id="t", text="t")
-
-        result = _run(ch.send_file(msg, att))
-        assert result is False
-
-    def test_ignores_messages_for_other_channels(self):
-        """_on_outbound ignores messages targeted at a different channel."""
-        bus = MessageBus()
-        ch = _DummyChannel(bus)
-
-        msg = OutboundMessage(
-            channel_name="other-channel",
-            chat_id="c1",
-            thread_id="t1",
-            text="hello",
-        )
-
-        _run(ch._on_outbound(msg))
-
-        assert len(ch.sent_messages) == 0
-        assert len(ch.sent_files) == 0
-
-
-# ---------------------------------------------------------------------------
-# Channel._make_inbound helper
-# ---------------------------------------------------------------------------
-
-
-class TestMakeInbound:
-    def test_basic_inbound_creation(self):
-        bus = MessageBus()
-        ch = _DummyChannel(bus)
-
-        msg = ch._make_inbound("chat-1", "user-1", "hello")
-
-        assert msg.channel_name == "dummy"
-        assert msg.chat_id == "chat-1"
-        assert msg.user_id == "user-1"
-        assert msg.text == "hello"
-        assert msg.msg_type == InboundMessageType.CHAT
-        assert msg.thread_ts is None
-        assert msg.files == []
-        assert msg.metadata == {}
-
-    def test_inbound_with_thread_ts(self):
-        bus = MessageBus()
-        ch = _DummyChannel(bus)
-
-        msg = ch._make_inbound("chat-1", "user-1", "reply", thread_ts="ts-123")
-
-        assert msg.thread_ts == "ts-123"
-
-    def test_inbound_with_files(self):
-        bus = MessageBus()
-        ch = _DummyChannel(bus)
-
-        files = [{"filename": "test.pdf", "url": "https://example.com/test.pdf"}]
-        msg = ch._make_inbound("chat-1", "user-1", "see file", files=files)
-
-        assert msg.files == files
-
-    def test_inbound_with_command_type(self):
-        bus = MessageBus()
-        ch = _DummyChannel(bus)
-
-        msg = ch._make_inbound("chat-1", "user-1", "/help", msg_type=InboundMessageType.COMMAND)
-
-        assert msg.msg_type == InboundMessageType.COMMAND
-
-    def test_inbound_with_metadata(self):
-        bus = MessageBus()
-        ch = _DummyChannel(bus)
-
-        msg = ch._make_inbound("chat-1", "user-1", "hello", metadata={"key": "value"})
-
-        assert msg.metadata == {"key": "value"}
-
-    def test_inbound_default_files_is_empty_list(self):
-        """When files=None, default is empty list (not None)."""
-        bus = MessageBus()
-        ch = _DummyChannel(bus)
-
-        msg = ch._make_inbound("chat-1", "user-1", "hello", files=None)
-
-        assert msg.files == []
-
-    def test_inbound_default_metadata_is_empty_dict(self):
-        """When metadata=None, default is empty dict (not None)."""
-        bus = MessageBus()
-        ch = _DummyChannel(bus)
-
-        msg = ch._make_inbound("chat-1", "user-1", "hello", metadata=None)
-
-        assert msg.metadata == {}
-
-
-# ---------------------------------------------------------------------------
-# Channel base class properties
-# ---------------------------------------------------------------------------
-
-
-class TestChannelProperties:
-    def test_is_running_default_false(self):
-        bus = MessageBus()
-        ch = _DummyChannel(bus)
-        assert ch.is_running is False
-
-    def test_is_running_after_start(self):
-        bus = MessageBus()
-        ch = _DummyChannel(bus)
-        _run(ch.start())
-        assert ch.is_running is True
-
-    def test_supports_streaming_default_false(self):
-        bus = MessageBus()
-        ch = _DummyChannel(bus)
-        assert ch.supports_streaming is False
-
-    def test_name_attribute(self):
-        bus = MessageBus()
-        ch = _DummyChannel(bus)
-        assert ch.name == "dummy"
-
-    def test_bus_attribute(self):
-        bus = MessageBus()
-        ch = _DummyChannel(bus)
-        assert ch.bus is bus
-
-    def test_config_attribute(self):
-        bus = MessageBus()
-        ch = _DummyChannel(bus)
-        assert ch.config == {}
 
 
 # ---------------------------------------------------------------------------

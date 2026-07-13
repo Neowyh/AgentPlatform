@@ -83,12 +83,11 @@ test.describe("Admin management", () => {
       });
       await page.goto("/workspace/admin");
 
-      // Should show stat cards with Chinese labels
-      await expect(page.getByText(/用户/i).first()).toBeVisible({
-        timeout: 15_000,
-      });
-      await expect(page.getByText(/部门/i).first()).toBeVisible();
-      await expect(page.getByText(/智能体/i).first()).toBeVisible();
+      // The dashboard owns six current product statistics.
+      await expect(page.getByText("用户总数")).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByText("部门总数")).toBeVisible();
+      await expect(page.getByText("资源总数")).toBeVisible();
+      await expect(page.getByTestId("admin-stat-card")).toHaveCount(6);
     });
   });
 
@@ -142,6 +141,9 @@ test.describe("Admin management", () => {
     test("new department dialog opens", async ({ page }) => {
       mockLangGraphAPI(page, { departments: MOCK_DEPARTMENTS });
       await page.goto("/workspace/admin/departments");
+      await expect(page.getByTestId("department-list")).toBeVisible({
+        timeout: 15_000,
+      });
 
       // Click new department button
       const newBtn = page.getByRole("button", {
@@ -157,6 +159,21 @@ test.describe("Admin management", () => {
 
     test("delete department shows native confirm dialog", async ({ page }) => {
       mockLangGraphAPI(page, { departments: MOCK_DEPARTMENTS });
+      await page.route("**/api/admin/departments/*/resources", (route) => {
+        if (route.request().method() === "GET") {
+          return route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+              department_id: "dept-1",
+              department_name: "Engineering",
+              resources: [],
+              total_count: 0,
+            }),
+          });
+        }
+        return route.fallback();
+      });
       await page.goto("/workspace/admin/departments");
 
       // Delete uses browser native confirm(), handle it with page.on('dialog')
@@ -217,6 +234,30 @@ test.describe("Admin management", () => {
       await expect(page.getByText(/admin panel|管理后台/i).first()).toBeVisible(
         { timeout: 10_000 },
       );
+    });
+  });
+
+  test.describe("Navigation Access Control (click-based)", () => {
+    test("should navigate to user management page", async ({ page }) => {
+      mockLangGraphAPI(page);
+      await page.goto("/workspace/admin");
+
+      const userLink = page.locator('a[href="/workspace/admin/users"]');
+      await expect(userLink).toBeVisible({ timeout: 10000 });
+      await userLink.click();
+
+      await expect(page).toHaveURL(/\/admin\/users/);
+    });
+
+    test("should navigate to department management page", async ({ page }) => {
+      mockLangGraphAPI(page);
+      await page.goto("/workspace/admin");
+
+      const deptLink = page.locator('a[href="/workspace/admin/departments"]');
+      await expect(deptLink).toBeVisible({ timeout: 10000 });
+      await deptLink.click();
+
+      await expect(page).toHaveURL(/\/admin\/departments/);
     });
   });
 });

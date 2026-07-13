@@ -11,17 +11,6 @@ const MOCK_AGENTS = [
 ];
 
 test.describe("Agent chat", () => {
-  test("agent gallery page loads and shows agents", async ({ page }) => {
-    mockLangGraphAPI(page, { agents: MOCK_AGENTS });
-
-    await page.goto("/workspace/agents");
-
-    // The agent card should appear with the agent name
-    await expect(page.getByText("test-agent")).toBeVisible({
-      timeout: 15_000,
-    });
-  });
-
   test("agent chat page loads with input box", async ({ page }) => {
     mockLangGraphAPI(page, { agents: MOCK_AGENTS });
 
