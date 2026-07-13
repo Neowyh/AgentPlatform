@@ -12,14 +12,44 @@ backend state managed by `backend/scripts/run-real-e2e.sh`.
 
 | New path | Primary responsibility | Persistent-state proof | Validation |
 | --- | --- | --- | --- |
-| `frontend/tests/e2e/real/role-access-boundaries.spec.ts` | Seeded super-admin, user, viewer, and department-admin access boundaries | Isolated SQLite rows agree with the browser-observed role result. | `cd frontend && pnpm exec playwright test --config=playwright.real.config.ts --list`; `QA_ISOLATED=1 bash backend/scripts/run-real-e2e.sh` |
-| `frontend/tests/e2e/real/memory-persistence.spec.ts` | Create, reload, and delete a user memory fact | The isolated user's memory files agree with the UI. This behavior is deliberately not represented as a SQLite assertion. | `cd frontend && pnpm exec playwright test --config=playwright.real.config.ts --list`; `QA_ISOLATED=1 bash backend/scripts/run-real-e2e.sh` |
-| `frontend/tests/e2e/real/visibility-application-flow.spec.ts` | Owner submission plus independent approval and rejection by a super-admin | UI status, `visibility_applications.status`, and affected resource metadata agree in the isolated SQLite database. | `cd frontend && pnpm exec playwright test --config=playwright.real.config.ts --list`; `QA_ISOLATED=1 bash backend/scripts/run-real-e2e.sh` |
+| `frontend/tests/e2e/real/role-access-boundaries.spec.ts` | Seeded super-admin, user, viewer, and department-admin access boundaries | Isolated SQLite rows agree with the browser-observed role result. | `cd frontend && E2E_STATE_DIR=/tmp E2E_RUN_ID=collect-only IDEER_INTERNAL_GATEWAY_BASE_URL=http://127.0.0.1:8001 pnpm exec playwright test --config=playwright.real.config.ts --list`; `QA_ISOLATED=1 bash backend/scripts/run-real-e2e.sh` |
+| `frontend/tests/e2e/real/memory-persistence.spec.ts` | Create, reload, and delete a user memory fact | The isolated user's memory files agree with the UI. This behavior is deliberately not represented as a SQLite assertion. | `cd frontend && E2E_STATE_DIR=/tmp E2E_RUN_ID=collect-only IDEER_INTERNAL_GATEWAY_BASE_URL=http://127.0.0.1:8001 pnpm exec playwright test --config=playwright.real.config.ts --list`; `QA_ISOLATED=1 bash backend/scripts/run-real-e2e.sh` |
+| `frontend/tests/e2e/real/visibility-application-flow.spec.ts` | Owner submission plus independent approval and rejection by a super-admin | UI status, `visibility_applications.status`, and affected resource metadata agree in the isolated SQLite database. | `cd frontend && E2E_STATE_DIR=/tmp E2E_RUN_ID=collect-only IDEER_INTERNAL_GATEWAY_BASE_URL=http://127.0.0.1:8001 pnpm exec playwright test --config=playwright.real.config.ts --list`; `QA_ISOLATED=1 bash backend/scripts/run-real-e2e.sh` |
 
 The separate `Real E2E Tests` workflow runs this lane on pull requests that
 change `frontend/**`, `backend/**`, or its own workflow file. It installs the
 backend and frontend dependencies plus Chromium, and uploads the isolated-run
 logs, report, and traces when the lane fails.
+
+### Phase 2 execution evidence and necessary product repairs
+
+The isolated lane exposed three product-path defects. These repairs are part of
+the Phase 2 commit because without them the required browser-to-persistence
+contracts cannot be exercised. No public endpoint shape changed.
+
+| Defect | Repair and boundary | Failure and regression evidence |
+| --- | --- | --- |
+| A successful login wrote the cookie but App Router navigation could race the subsequent SSR request. | `login/page.tsx` uses a full-document navigation after login/register; the admin route is guarded server-side by `workspace/admin/layout.tsx`, with the super-admin-only audit-log subroute guarded separately. Client pages no longer navigate during render. | The real lane previously timed out at login despite successful `/auth/me`; login unit tests cover valid/invalid next paths and `location.assign`, admin-layout unit tests cover allow/deny roles, and the final isolated run passed all seven scenarios. |
+| A viewer could not discover a public custom agent owned by another user because `/api/agents` scanned only the requester directory. | `list_agents` discovers metadata-backed accessible agents, loads them from the owner directory, and returns them read-only with the owner's SOUL content. Access remains fail-closed through `check_resource_access`. | The corrected integration test switches the effective user to a distinct viewer and asserts visibility, owner, read-only status, and SOUL. The real viewer scenario failed before this repair and passes in the final lane. GitNexus impact was attempted for `list_agents`; the current index did not contain the symbol, so direct API regression and full real-lane evidence are authoritative. |
+| The approval scenario selected reviewed items using CSS/text assumptions instead of the approval page state machine. | It identifies the component card by run-scoped reason, switches to the resulting approved/rejected filter, and asserts the status within that card. | The runner first showed the application correctly moved out of the pending filter; the revised scenario and SQLite terminal-state assertions pass for both approval and rejection. |
+
+Final Phase 2 verification used:
+
+```bash
+cd backend
+UV_CACHE_DIR=/tmp/uv-cache PYTHONPATH=. uv run pytest tests/scripts/test_real_e2e_scripts.py -q
+UV_CACHE_DIR=/tmp/uv-cache PYTHONPATH=. uv run pytest tests/integration/api/test_agents_router_behavior.py -q
+
+cd ../frontend
+pnpm exec vitest run tests/unit/app/workspace/admin
+pnpm exec vitest run 'tests/unit/app/(auth)/login/page.test.tsx'
+pnpm exec tsc --noEmit
+
+cd ..
+UV_CACHE_DIR=/tmp/uv-cache QA_ISOLATED=1 REAL_E2E_ARTIFACTS_DIR=/tmp/real-e2e-artifacts-phase2-final-2 bash backend/scripts/run-real-e2e.sh
+```
+
+The final isolated execution passed 7/7 and cleaned its temporary run state.
 
 ## Batch 2026-07-09: Frontend E2E Directory Split
 

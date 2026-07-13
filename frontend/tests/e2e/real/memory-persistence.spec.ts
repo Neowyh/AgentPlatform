@@ -13,7 +13,15 @@ async function loginAsAdmin(page: Page) {
   await page.getByLabel(/email/i).fill("super_admin@test.com");
   await page.getByLabel(/password/i).fill("super_admin@test.com");
   await page.getByRole("button", { name: /sign in|登录/i }).click();
-  await page.waitForURL(/\/workspace/, { timeout: 15_000 });
+  await expect
+    .poll(async () =>
+      (await page.context().cookies()).some(
+        (cookie) => cookie.name === "access_token",
+      ),
+    )
+    .toBe(true);
+  await page.goto("/workspace");
+  await expect(page).toHaveURL(/\/workspace/, { timeout: 15_000 });
 }
 
 async function openMemory(page: Page) {

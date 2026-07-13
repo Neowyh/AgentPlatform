@@ -8,7 +8,6 @@ import {
   WrenchIcon,
 } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 
 import {
   Card,
@@ -67,20 +66,10 @@ const statCards = [
 
 export default function AdminDashboardPage() {
   const { user } = useAuth();
-  const router = useRouter();
   const isAdmin =
     user?.system_role === "super_admin" ||
     user?.system_role === "department_admin";
   const { data: stats, isLoading, error } = useAdminStats(isAdmin);
-
-  // Role check: only super_admin and department_admin can access admin pages
-  if (
-    user?.system_role !== "super_admin" &&
-    user?.system_role !== "department_admin"
-  ) {
-    router.replace("/workspace");
-    return null;
-  }
 
   return (
     <div className="flex size-full flex-col" data-testid="admin-dashboard">

@@ -64,7 +64,7 @@ export default function LoginPage() {
   // Redirect if already authenticated (client-side, post-login)
   useEffect(() => {
     if (isAuthenticated) {
-      router.push(redirectPath);
+      window.location.assign(redirectPath);
     }
   }, [isAuthenticated, redirectPath, router]);
 
@@ -122,7 +122,7 @@ export default function LoginPage() {
         return;
       }
 
-      router.push(redirectPath);
+      window.location.assign(redirectPath);
     } catch {
       toast.error(t.auth.errorNetwork);
     } finally {

@@ -14,7 +14,7 @@ async function loginAs(page: Page, email: string) {
   await page.getByLabel(/email/i).fill(email);
   await page.getByLabel(/password/i).fill(email);
   await page.getByRole("button", { name: /sign in|登录/i }).click();
-  await page.waitForURL(/\/workspace/, { timeout: 15_000 });
+  await expect(page).toHaveURL(/\/workspace/, { timeout: 15_000 });
 }
 
 async function submitApplication(
@@ -42,10 +42,8 @@ async function reviewApplication(
   await page.goto("/workspace/admin/visibility-applications");
   await expect(page.getByTestId("visibility-applications-page")).toBeVisible();
   const application = page
-    .getByText(reason, { exact: true })
-    .locator(
-      "xpath=ancestor::div[contains(@class, 'rounded') and .//button[normalize-space()='审核']]",
-    );
+    .locator('[data-slot="card"]')
+    .filter({ hasText: reason });
   await expect(application).toBeVisible();
   await application.getByRole("button", { name: "审核" }).click();
   await page
@@ -55,7 +53,15 @@ async function reviewApplication(
   await page
     .getByRole("button", { name: action === "approved" ? "已批准" : "已拒绝" })
     .click();
-  await expect(page.getByText(reason, { exact: true })).toBeVisible();
+  const reviewedApplication = page
+    .locator('[data-slot="card"]')
+    .filter({ hasText: reason });
+  await expect(reviewedApplication).toBeVisible();
+  await expect(
+    reviewedApplication.getByText(action === "approved" ? "已批准" : "已拒绝", {
+      exact: true,
+    }),
+  ).toBeVisible();
 }
 
 test.describe.serial("real visibility applications", () => {

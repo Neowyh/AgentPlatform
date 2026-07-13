@@ -301,7 +301,7 @@ describe("ToolsPage", () => {
     expect(mockListTools).toHaveBeenCalledTimes(1);
   });
 
-  test("redirects non-admin users without fetching tools", () => {
+  test("does not fetch tools outside the admin route boundary", () => {
     vi.mocked(useAuth).mockReturnValue({
       user: {
         id: "regular-user",
@@ -315,11 +315,9 @@ describe("ToolsPage", () => {
       refreshUser: vi.fn(),
     });
 
-    const { container } = render(<ToolsPage />);
+    render(<ToolsPage />);
 
-    expect(mockRouterReplace).toHaveBeenCalledWith("/workspace");
     expect(mockListTools).not.toHaveBeenCalled();
-    expect(container).toBeEmptyDOMElement();
   });
 
   // ── Detail dialog ──────────────────────────────────────────────────

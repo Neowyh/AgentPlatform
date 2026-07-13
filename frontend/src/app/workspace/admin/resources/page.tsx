@@ -2,7 +2,6 @@
 
 import { ArrowLeftIcon, BoxIcon } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -42,7 +41,6 @@ const PAGE_SIZE = 50;
 
 export default function ResourcesPage() {
   const { user } = useAuth();
-  const router = useRouter();
   const [resources, setResources] = useState<AdminResource[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -73,14 +71,6 @@ export default function ResourcesPage() {
       )
       .finally(() => setLoading(false));
   }, [user, filterType, page]);
-
-  if (
-    user?.system_role !== "super_admin" &&
-    user?.system_role !== "department_admin"
-  ) {
-    router.replace("/workspace");
-    return null;
-  }
 
   const totalPages = Math.ceil(total / PAGE_SIZE);
 

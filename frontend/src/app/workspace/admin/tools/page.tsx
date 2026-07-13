@@ -2,7 +2,6 @@
 
 import { ArrowLeftIcon, PlayIcon, WrenchIcon } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -29,7 +28,6 @@ import type { Tool } from "@/core/tools/types";
 
 export default function ToolsPage() {
   const { user } = useAuth();
-  const router = useRouter();
   const [tools, setTools] = useState<Tool[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -54,15 +52,6 @@ export default function ToolsPage() {
       )
       .finally(() => setLoading(false));
   }, [user]);
-
-  // Role check: only super_admin and department_admin can access admin pages
-  if (
-    user?.system_role !== "super_admin" &&
-    user?.system_role !== "department_admin"
-  ) {
-    router.replace("/workspace");
-    return null;
-  }
 
   const openDetail = (tool: Tool) => {
     setSelectedTool(tool);

@@ -7,12 +7,14 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-const { mockPush, mockGetParam, mockUseAuth, mockFetch } = vi.hoisted(() => ({
-  mockPush: vi.fn(),
-  mockGetParam: vi.fn().mockReturnValue(null),
-  mockUseAuth: vi.fn().mockReturnValue({ isAuthenticated: false }),
-  mockFetch: vi.fn(),
-}));
+const { mockAssign, mockPush, mockGetParam, mockUseAuth, mockFetch } =
+  vi.hoisted(() => ({
+    mockAssign: vi.fn(),
+    mockPush: vi.fn(),
+    mockGetParam: vi.fn().mockReturnValue(null),
+    mockUseAuth: vi.fn().mockReturnValue({ isAuthenticated: false }),
+    mockFetch: vi.fn(),
+  }));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: mockPush }),
@@ -97,6 +99,7 @@ import LoginPage from "@/app/(auth)/login/page";
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  vi.unstubAllGlobals();
   document
     .querySelectorAll('[data-testid="toast-error"]')
     .forEach((el) => el.remove());
@@ -107,6 +110,8 @@ describe("LoginPage", () => {
     mockUseAuth.mockReturnValue({ isAuthenticated: false });
     mockGetParam.mockReturnValue(null);
     mockPush.mockReset();
+    mockAssign.mockReset();
+    vi.stubGlobal("location", { assign: mockAssign });
     mockFetch.mockReset();
     globalThis.fetch = mockFetch;
     // Default: setup-status returns no setup needed
@@ -188,7 +193,7 @@ describe("LoginPage", () => {
 
     render(<LoginPage />);
 
-    expect(mockPush).toHaveBeenCalledWith("/workspace");
+    expect(mockAssign).toHaveBeenCalledWith("/workspace");
   });
 
   test("redirects to validated next param when authenticated", () => {
@@ -197,7 +202,7 @@ describe("LoginPage", () => {
 
     render(<LoginPage />);
 
-    expect(mockPush).toHaveBeenCalledWith("/dashboard");
+    expect(mockAssign).toHaveBeenCalledWith("/dashboard");
   });
 
   test("does not redirect to invalid next param (https)", () => {
@@ -206,7 +211,7 @@ describe("LoginPage", () => {
 
     render(<LoginPage />);
 
-    expect(mockPush).toHaveBeenCalledWith("/workspace");
+    expect(mockAssign).toHaveBeenCalledWith("/workspace");
   });
 
   test("does not redirect to protocol-relative URL", () => {
@@ -215,7 +220,7 @@ describe("LoginPage", () => {
 
     render(<LoginPage />);
 
-    expect(mockPush).toHaveBeenCalledWith("/workspace");
+    expect(mockAssign).toHaveBeenCalledWith("/workspace");
   });
 
   test("does not redirect to javascript: URL", () => {
@@ -224,7 +229,7 @@ describe("LoginPage", () => {
 
     render(<LoginPage />);
 
-    expect(mockPush).toHaveBeenCalledWith("/workspace");
+    expect(mockAssign).toHaveBeenCalledWith("/workspace");
   });
 
   test("password input has minLength 8 in register mode", () => {
@@ -283,7 +288,7 @@ describe("LoginPage", () => {
 
     render(<LoginPage />);
 
-    expect(mockPush).toHaveBeenCalledWith("/workspace");
+    expect(mockAssign).toHaveBeenCalledWith("/workspace");
   });
 
   test("validateNextParam returns null for non-slash start", () => {
@@ -292,7 +297,7 @@ describe("LoginPage", () => {
 
     render(<LoginPage />);
 
-    expect(mockPush).toHaveBeenCalledWith("/workspace");
+    expect(mockAssign).toHaveBeenCalledWith("/workspace");
   });
 
   test("validateNextParam returns null for http:// URL", () => {
@@ -301,7 +306,7 @@ describe("LoginPage", () => {
 
     render(<LoginPage />);
 
-    expect(mockPush).toHaveBeenCalledWith("/workspace");
+    expect(mockAssign).toHaveBeenCalledWith("/workspace");
   });
 
   test("validateNextParam accepts valid path with colon", () => {
@@ -310,7 +315,7 @@ describe("LoginPage", () => {
 
     render(<LoginPage />);
 
-    expect(mockPush).toHaveBeenCalledWith("/path:data");
+    expect(mockAssign).toHaveBeenCalledWith("/path:data");
   });
 
   // --- setup-status fetch ---
@@ -382,7 +387,7 @@ describe("LoginPage", () => {
     fireEvent.submit(form);
 
     await waitFor(() => {
-      expect(mockPush).toHaveBeenCalledWith("/workspace");
+      expect(mockAssign).toHaveBeenCalledWith("/workspace");
     });
   });
 
@@ -537,7 +542,7 @@ describe("LoginPage", () => {
     fireEvent.submit(form);
 
     await waitFor(() => {
-      expect(mockPush).toHaveBeenCalledWith("/workspace");
+      expect(mockAssign).toHaveBeenCalledWith("/workspace");
     });
   });
 
@@ -671,7 +676,7 @@ describe("LoginPage", () => {
     fireEvent.submit(form);
 
     await waitFor(() => {
-      expect(mockPush).toHaveBeenCalledWith("/settings");
+      expect(mockAssign).toHaveBeenCalledWith("/settings");
     });
   });
 
@@ -700,7 +705,7 @@ describe("LoginPage", () => {
     fireEvent.submit(form);
 
     await waitFor(() => {
-      expect(mockPush).toHaveBeenCalledWith("/workspace");
+      expect(mockAssign).toHaveBeenCalledWith("/workspace");
     });
   });
 });

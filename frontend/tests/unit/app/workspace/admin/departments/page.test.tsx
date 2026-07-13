@@ -1600,7 +1600,7 @@ describe("DepartmentsPage", () => {
     });
   });
 
-  test("redirects non-admin users without fetching departments", () => {
+  test("does not fetch departments outside the admin route boundary", () => {
     vi.mocked(useAuth).mockReturnValue({
       user: {
         id: "regular-user",
@@ -1616,7 +1616,6 @@ describe("DepartmentsPage", () => {
 
     render(<DepartmentsPage />);
 
-    expect(mockRouterReplace).toHaveBeenCalledWith("/workspace");
     expect(mockListDepartments).not.toHaveBeenCalled();
   });
 

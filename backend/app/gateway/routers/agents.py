@@ -203,9 +203,7 @@ async def _ensure_agent_meta(agent_name: str, user_id: str) -> None:
     Idempotent -- _save_agent_meta will update in-place if a non-deleted record
     already exists for (agent_name, owner_id).  Safe to call on every write path.
     """
-    if get_paths().user_agent_dir(user_id, agent_name).exists() and not await _load_agent_meta(
-        agent_name, user_id, for_owner=user_id
-    ):
+    if get_paths().user_agent_dir(user_id, agent_name).exists() and not await _load_agent_meta(agent_name, user_id, for_owner=user_id):
         await _save_agent_meta(
             agent_name,
             user_id,
@@ -272,18 +270,17 @@ async def list_agents(
         sf = get_session_factory()
         if sf is not None:
             try:
-                agent_names = [a.name for a in agents]
                 async with sf() as session:
                     from ideer.persistence.models.resource_metadata import ResourceMetadata
 
                     stmt = select(ResourceMetadata).where(
                         ResourceMetadata.resource_type == "agent",
-                        ResourceMetadata.resource_id.in_(agent_names),
                     )
                     result = await session.execute(stmt)
                     for r in result.scalars().all():
                         agent_meta_map[r.resource_id].append(
                             {
+                                "resource_id": r.resource_id,
                                 "visibility": r.visibility,
                                 "owner_id": r.owner_id,
                                 "department_id": r.department_id,
@@ -292,6 +289,39 @@ async def list_agents(
                         )
             except Exception:
                 logger.error("Failed to batch-load agent metadata", exc_info=True)
+
+        # Public and department-scoped agents live in their owners' directories,
+        # so they are not returned by list_custom_agents(user_id=user_id).
+        # Discover only metadata-backed, accessible entries and load each config
+        # from its owner directory.
+        agent_owner_map = {agent.name: None if _is_shared_only(agent.name, user_id) else user_id for agent in agents}
+        local_agent_names = set(agent_owner_map)
+        for records in agent_meta_map.values():
+            for meta in records:
+                owner_id = meta.get("owner_id")
+                if not owner_id or owner_id == user_id:
+                    continue
+                visibility = meta.get("visibility", "private")
+                department_id = meta.get("department_id")
+                if current_user is not None:
+                    accessible = check_resource_access(current_user, owner_id, department_id, visibility)
+                else:
+                    accessible = visibility == "public"
+                if not accessible:
+                    continue
+
+                agent_name = meta["resource_id"]
+                if agent_name in local_agent_names or not get_paths().user_agent_dir(owner_id, agent_name).exists():
+                    continue
+                try:
+                    agent_cfg = load_agent_config(agent_name, user_id=owner_id)
+                except Exception:
+                    logger.warning("Skipping inaccessible agent '%s' for owner '%s'", agent_name, owner_id, exc_info=True)
+                    continue
+                if agent_cfg is not None:
+                    agents.append(agent_cfg)
+                    local_agent_names.add(agent_name)
+                    agent_owner_map[agent_name] = owner_id
 
         # Lazy migration: auto-create ResourceMetadata for agents found on disk
         # but missing from DB. Only for per-user agents (not legacy shared).
@@ -307,7 +337,8 @@ async def list_agents(
         for a in agents:
             # BUG-07: Check if agent is shared-only (exists in template dir but not user dir).
             # Shared agents are treated as public visibility regardless of metadata.
-            is_shared = _is_shared_only(a.name, user_id)
+            agent_owner_id = agent_owner_map[a.name]
+            is_shared = agent_owner_id is None
             if is_shared:
                 visibility = "public"
                 owner_id = None
@@ -315,7 +346,10 @@ async def list_agents(
                 meta = {}
             else:
                 records = agent_meta_map.get(a.name, [])
-                meta = next((r for r in records if r.get("owner_id") == user_id), records[0] if records else {})
+                meta = next(
+                    (r for r in records if r.get("owner_id") == agent_owner_id),
+                    records[0] if records else {},
+                )
                 # Default to 'private' when no metadata exists (secure-by-default for pre-RBAC agents)
                 visibility = meta.get("visibility", "private")
                 owner_id = meta.get("owner_id")
@@ -332,8 +366,8 @@ async def list_agents(
                 _agent_config_to_response(
                     a,
                     include_soul=True,
-                    user_id=user_id,
-                    read_only=_is_shared_only(a.name, user_id),
+                    user_id=agent_owner_id or user_id,
+                    read_only=is_shared or agent_owner_id != user_id,
                     visibility=visibility,
                     owner_id=owner_id,
                     department_id=dept_id,

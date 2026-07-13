@@ -2,7 +2,6 @@
 
 import { ArrowLeftIcon, CheckIcon, XIcon } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -69,7 +68,6 @@ const VISIBILITY_LABELS: Record<string, string> = {
 
 export default function VisibilityApplicationsPage() {
   const { user: currentUser } = useAuth();
-  const router = useRouter();
 
   const [applications, setApplications] = useState<VisibilityApplication[]>([]);
   const [loading, setLoading] = useState(true);
@@ -118,14 +116,6 @@ export default function VisibilityApplicationsPage() {
       )
       .finally(() => setLoading(false));
   }, [currentUser, fetchApplications]);
-
-  if (
-    currentUser?.system_role !== "super_admin" &&
-    currentUser?.system_role !== "department_admin"
-  ) {
-    router.replace("/workspace");
-    return null;
-  }
 
   const handleReview = async (action: "approved" | "rejected") => {
     if (!reviewingApplication) return;

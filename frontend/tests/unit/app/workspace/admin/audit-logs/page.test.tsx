@@ -155,7 +155,7 @@ describe("AuditLogsPage", () => {
 
   // ── Access control ─────────────────────────────────────────────────
 
-  test("redirects non-super_admin users to /workspace", () => {
+  test("does not fetch audit logs outside the audit route boundary", () => {
     vi.mocked(useAuth).mockReturnValue({
       user: {
         id: "current-user",
@@ -170,25 +170,7 @@ describe("AuditLogsPage", () => {
     });
 
     render(<AuditLogsPage />);
-    expect(mockReplace).toHaveBeenCalledWith("/workspace");
-  });
-
-  test("does not render page content for non-admin users", () => {
-    vi.mocked(useAuth).mockReturnValue({
-      user: {
-        id: "current-user",
-        email: "user@example.com",
-        system_role: "user",
-        needs_setup: false,
-      } as never,
-      isAuthenticated: true,
-      isLoading: false,
-      logout: vi.fn(),
-      refreshUser: vi.fn(),
-    });
-
-    render(<AuditLogsPage />);
-    expect(screen.queryByTestId("audit-logs-page")).not.toBeInTheDocument();
+    expect(mockListAuditLogs).not.toHaveBeenCalled();
   });
 
   // ── Loading state ──────────────────────────────────────────────────

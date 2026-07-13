@@ -2,7 +2,6 @@
 
 import { ArrowLeftIcon } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -75,7 +74,6 @@ const RESOURCE_TYPE_LABELS: Record<string, string> = {
 
 export default function AuditLogsPage() {
   const { user: currentUser } = useAuth();
-  const router = useRouter();
 
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
@@ -130,11 +128,6 @@ export default function AuditLogsPage() {
 
     void fetchLogs().finally(() => setLoading(false));
   }, [currentUser, fetchLogs]);
-
-  if (currentUser?.system_role !== "super_admin") {
-    router.replace("/workspace");
-    return null;
-  }
 
   const handleViewDetail = (log: AuditLog) => {
     setDetailLog(log);

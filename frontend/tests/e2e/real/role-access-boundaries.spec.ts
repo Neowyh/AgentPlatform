@@ -15,7 +15,7 @@ async function loginAs(page: Page, email: string) {
   await page.getByLabel(/email/i).fill(email);
   await page.getByLabel(/password/i).fill(email);
   await page.getByRole("button", { name: /sign in|登录/i }).click();
-  await page.waitForURL(/\/workspace/, { timeout: 15_000 });
+  await expect(page).toHaveURL(/\/workspace/, { timeout: 15_000 });
 }
 
 test.describe("real RBAC boundaries", () => {

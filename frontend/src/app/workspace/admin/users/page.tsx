@@ -10,7 +10,6 @@ import {
   UserIcon,
 } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -67,7 +66,6 @@ const ROLE_VARIANTS: Record<UserRole, "default" | "secondary" | "destructive"> =
 
 export default function UsersPage() {
   const { user: currentUser } = useAuth();
-  const router = useRouter();
   const [users, setUsers] = useState<User[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [loading, setLoading] = useState(true);
@@ -125,14 +123,6 @@ export default function UsersPage() {
       )
       .finally(() => setLoading(false));
   }, [fetchUsers, currentUser]);
-
-  if (
-    currentUser?.system_role !== "super_admin" &&
-    currentUser?.system_role !== "department_admin"
-  ) {
-    router.replace("/workspace");
-    return null;
-  }
 
   const isSuperAdmin = currentUser?.system_role === "super_admin";
 

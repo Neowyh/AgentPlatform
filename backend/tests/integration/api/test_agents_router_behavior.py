@@ -336,7 +336,7 @@ class TestListAgentsWithPerUserAgents:
         previous_config = AgentsApiConfig(**get_agents_api_config().model_dump())
         from ideer.runtime.user_context import reset_current_user, set_current_user
 
-        user_token = set_current_user(SimpleNamespace(id="normal-user", email="normal-user@test.local"))
+        user_token = set_current_user(SimpleNamespace(id="other-user", email="other-user@test.local"))
 
         with (
             patch("ideer.config.agents_config.get_paths", return_value=paths_instance),
@@ -351,6 +351,8 @@ class TestListAgentsWithPerUserAgents:
                     agents = {agent["name"]: agent for agent in response.json()["agents"]}
                     assert agents["user-public"]["visibility"] == "public"
                     assert agents["user-public"]["owner_id"] == "normal-user"
+                    assert agents["user-public"]["read_only"] is True
+                    assert agents["user-public"]["soul"] == "Soul."
             finally:
                 set_agents_api_config(previous_config)
                 reset_current_user(user_token)

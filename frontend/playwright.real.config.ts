@@ -17,7 +17,7 @@ const artifactsDir = resolve(
   process.env.REAL_E2E_ARTIFACTS_DIR ??
     resolve(stateDir, "playwright-artifacts"),
 );
-const baseURL = `http://127.0.0.1:${frontendPort}`;
+const baseURL = `http://localhost:${frontendPort}`;
 
 export default defineConfig({
   testDir: "./tests/e2e/real",

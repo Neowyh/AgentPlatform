@@ -24,6 +24,8 @@ def test_start_requires_isolation_and_writes_a_manifest() -> None:
     assert '"config_path"' in script
     assert '"log_path"' in script
     assert '"run_id"' in script
+    assert 'FRONTEND_PORT="${E2E_FRONTEND_PORT:-3101}"' in script
+    assert 'GATEWAY_CORS_ORIGINS="http://127.0.0.1:$FRONTEND_PORT,http://localhost:$FRONTEND_PORT"' in script
 
 
 def test_stop_requires_an_explicit_manifest_and_never_discovers_tmp_runs() -> None:

@@ -25,7 +25,7 @@ This matrix is the manual guardrail for the test-suite reorganization. Update it
 - Auth, visual, and a11y Playwright projects are isolated by directory.
 - Frontend `qa/` E2E files were merged into primary smoke/workflow specs; retained QA assertions should use behavior-specific test names, not `*-qa.spec.ts` filenames.
 - `frontend/tests/e2e/stagehand/` is experimental and excluded from the default Playwright config.
-- `frontend/tests/e2e/real/` is excluded from default, auth, visual, and a11y collection. It is collected with `cd frontend && pnpm exec playwright test --config=playwright.real.config.ts --list` and executed from an isolated backend with `QA_ISOLATED=1 bash backend/scripts/run-real-e2e.sh`.
+- `frontend/tests/e2e/real/` is excluded from default, auth, visual, and a11y collection. Its config requires isolated-run variables even for collection: `cd frontend && E2E_STATE_DIR=/tmp E2E_RUN_ID=collect-only IDEER_INTERNAL_GATEWAY_BASE_URL=http://127.0.0.1:8001 pnpm exec playwright test --config=playwright.real.config.ts --list`. Execute it from an isolated backend with `QA_ISOLATED=1 bash backend/scripts/run-real-e2e.sh`.
 - The real E2E workflow is a separate PR-required job for changes under `frontend/**`, `backend/**`, or `.github/workflows/real-e2e-tests.yml`; it does not alter existing mock, auth, visual, or a11y jobs.
 - Generated artifacts belong under `frontend/playwright-artifacts/`, not under `frontend/tests/`.
 - Backend patch-test filenames no longer use `coverage`, `boost`, `gaps`, `full`, `extra`, `cov*`, or `fix`; retained assertions were mechanically renamed into behavior-specific files.

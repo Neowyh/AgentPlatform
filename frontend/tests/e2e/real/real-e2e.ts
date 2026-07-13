@@ -88,10 +88,10 @@ export function assertRbacSeed() {
   }
 
   for (const [agentSuffix, ownerEmail] of [
-    ["viewer-agent", "viewer@test.com"],
+    ["viewer-agent", "user@test.com"],
     ["approve-agent", "user@test.com"],
     ["reject-agent", "user@test.com"],
-  ]) {
+  ] as const) {
     requiredDatabaseValue(
       "SELECT resource_metadata.owner_id FROM resource_metadata JOIN users ON resource_metadata.owner_id = users.id WHERE resource_metadata.resource_type = 'agent' AND resource_metadata.resource_id = ? AND users.email = ?",
       [seedAgentName(agentSuffix), ownerEmail],

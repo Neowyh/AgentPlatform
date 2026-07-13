@@ -238,7 +238,7 @@ describe("AdminDashboardPage", () => {
     expect(mockUseAdminStats).toHaveBeenCalledWith(true);
   });
 
-  test("redirects non-admin users without fetching stats", () => {
+  test("does not enable the stats query outside the admin route boundary", () => {
     vi.mocked(useAuth).mockReturnValue({
       user: {
         id: "regular-user",
@@ -252,11 +252,9 @@ describe("AdminDashboardPage", () => {
       refreshUser: vi.fn(),
     });
 
-    const { container } = render(<AdminDashboardPage />);
+    render(<AdminDashboardPage />);
 
-    expect(mockRouterReplace).toHaveBeenCalledWith("/workspace");
     expect(mockUseAdminStats).toHaveBeenCalledWith(false);
-    expect(container).toBeEmptyDOMElement();
   });
 
   // ── Transition from loading to error ───────────────────────────────

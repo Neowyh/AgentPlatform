@@ -1254,7 +1254,7 @@ describe("UsersPage", () => {
     });
   });
 
-  test("redirects non-admin users away from user management", () => {
+  test("does not fetch users outside the admin route boundary", () => {
     vi.mocked(useAuth).mockReturnValue({
       user: {
         id: "regular-user",
@@ -1270,7 +1270,6 @@ describe("UsersPage", () => {
 
     render(<UsersPage />);
 
-    expect(mockRouterReplace).toHaveBeenCalledWith("/workspace");
     expect(mockListUsers).not.toHaveBeenCalled();
   });
 });

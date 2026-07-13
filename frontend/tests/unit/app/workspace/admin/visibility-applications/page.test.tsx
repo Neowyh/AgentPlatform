@@ -535,17 +535,16 @@ describe("VisibilityApplicationsPage", () => {
     });
   });
 
-  test("redirects users without admin role", () => {
+  test("does not fetch applications outside the admin route boundary", () => {
     mockUser = {
       id: "viewer",
       system_role: "user",
       email: "viewer@test.com",
     };
 
-    const { container } = render(<VisibilityApplicationsPage />);
+    render(<VisibilityApplicationsPage />);
 
-    expect(mockRouterReplace).toHaveBeenCalledWith("/workspace");
-    expect(container).toBeEmptyDOMElement();
+    expect(mockFetchApplications).not.toHaveBeenCalled();
   });
 
   test("shows resource type badges", async () => {

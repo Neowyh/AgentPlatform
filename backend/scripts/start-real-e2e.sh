@@ -11,6 +11,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 PORT="${PORT:-8001}"
 RUN_ID="${E2E_RUN_ID:-real-e2e-$(date +%s)-$RANDOM}"
+FRONTEND_PORT="${E2E_FRONTEND_PORT:-3101}"
 
 if ! [[ "$PORT" =~ ^[0-9]+$ ]] || (( PORT < 1 || PORT > 65535 )); then
   echo "PORT must be an integer between 1 and 65535, got '$PORT'." >&2
@@ -68,6 +69,7 @@ YAML
   export IDEER_HOME="$STATE_DIR"
   export IDEER_CONFIG_PATH="$CONFIG_PATH"
   export AUTH_JWT_SECRET="real-e2e-only-secret"
+  export GATEWAY_CORS_ORIGINS="http://127.0.0.1:$FRONTEND_PORT,http://localhost:$FRONTEND_PORT"
   export OPENAI_API_KEY="real-e2e-placeholder-key"
   export OPENAI_API_BASE="https://example.invalid"
   export QA_ISOLATED=1

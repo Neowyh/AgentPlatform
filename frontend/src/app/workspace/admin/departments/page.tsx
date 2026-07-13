@@ -10,7 +10,6 @@ import {
   WrenchIcon,
 } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -45,7 +44,6 @@ import { useAuth } from "@/core/auth/AuthProvider";
 
 export default function DepartmentsPage() {
   const { user } = useAuth();
-  const router = useRouter();
   const [departments, setDepartments] = useState<Department[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -94,14 +92,6 @@ export default function DepartmentsPage() {
   }, [fetchDepartments, user]);
 
   // Role check: only super_admin and department_admin can access admin pages
-  if (
-    user?.system_role !== "super_admin" &&
-    user?.system_role !== "department_admin"
-  ) {
-    router.replace("/workspace");
-    return null;
-  }
-
   const handleCreate = async () => {
     if (!name.trim()) {
       toast.error("请输入部门名称");
