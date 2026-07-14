@@ -223,7 +223,7 @@ describe("ToolsPage", () => {
     render(<ToolsPage />);
     await waitFor(() => {
       const availableBadges = screen.getAllByText("可用");
-      expect(availableBadges.length).toBeGreaterThanOrEqual(1);
+      expect(availableBadges).toHaveLength(2);
     });
   });
 
@@ -572,7 +572,7 @@ describe("ToolsPage", () => {
     expect(screen.getByText("需联网")).toBeInTheDocument();
     // read_document and code_interpreter have requires_network: false, so show "可用"
     const availableBadges = screen.getAllByText("可用");
-    expect(availableBadges.length).toBeGreaterThanOrEqual(2);
+    expect(availableBadges).toHaveLength(2);
   });
 
   // ── Test result label ──────────────────────────────────────────────

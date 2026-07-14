@@ -338,6 +338,8 @@ class TestAdminCreateDepartment:
                 json={"name": "Engineering", "description": "Engineering team"},
             )
         assert resp.status_code == 200
+        data = resp.json()
+        assert data.get("name") == "Engineering"
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_create_department_duplicate(self, mock_get_session_factory):
@@ -395,6 +397,7 @@ class TestAdminUpdateDepartment:
                 json={"name": "New Name", "description": "Updated"},
             )
         assert resp.status_code == 200
+        assert resp.json()["success"] is True
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_update_department_not_found(self, mock_get_session_factory):
@@ -415,6 +418,7 @@ class TestAdminUpdateDepartment:
                 json={"name": "New Name"},
             )
         assert resp.status_code == 404
+        assert "Department not found" in resp.json()["detail"]
 
 
 # ---------------------------------------------------------------------------
@@ -504,6 +508,8 @@ class TestAdminRBAC:
             resp = client.get("/api/admin/stats")
         # Should be forbidden for non-admin
         assert resp.status_code == 403
+        data = resp.json()
+        assert "detail" in data
 
     def test_department_admin_cannot_delete_department(self):
         """Department admin cannot delete departments."""
@@ -520,3 +526,5 @@ class TestAdminRBAC:
             resp = client.delete("/api/admin/departments/dept-1")
         # Should be forbidden for department_admin
         assert resp.status_code == 403
+        data = resp.json()
+        assert "detail" in data

@@ -4,6 +4,45 @@ This ledger is the deletion and move gate for the test-suite reorganization.
 Do not delete an old test file unless this file records an equal or stronger
 replacement assertion and the validation command for that batch.
 
+## Batch 2026-07-14: Phase 1 weak assertion hardening
+
+Status-code-only assertions in Agent, Workflow, Auth, Memory, and Admin test
+files were strengthened to validate response body fields and error details.
+No test was deleted, moved, or renamed. No production code, skip rule, or
+coverage threshold changed. Three sub-agents worked in parallel on independent
+files, plus a lightweight frontend assertion clean-up.
+
+| File (backend) | Assertions strengthened | Pattern |
+| --- | --- | --- |
+| `test_agents_router_edge_cases.py` | 17 | Added `resp.json()["detail"]` / `{"code","message"}` body checks to disabled/error/not-found/validation/conflict cases |
+| `test_agents_router_comprehensive.py` | ~42 | Same pattern: 403 disabled, 500 error, 404 not-found, 422 validation, 409 conflict |
+| `test_workflows_router.py` | ~19 | Not-found, forbidden, conflict, delete-success body, run-accepted run_id/status checks |
+| `test_workflows_router_e2e.py` | ~9 | Create/delete/run success body, invalid-yaml detail check |
+| `test_auth_router_missing_paths.py` | 6 | Login-failure 401, register 400, admin-exists 409, OAuth 501 detail checks |
+| `test_memory_router_e2e.py` | 2 | Delete/update not-found detail checks |
+| `test_auth_router_edge_cases.py` | 1 | OAuth 501 detail check |
+| `test_admin_router_comprehensive.py` | 14 | 422 validation, 403 RBAC, 500 database body checks |
+| `test_admin_router_e2e.py` | 5 | Create/update department body, RBAC 403 detail checks |
+
+| File (frontend) | Assertions strengthened | Pattern |
+| --- | --- | --- |
+| `admin/departments/page.test.tsx` | 4 | Tightened count + `toHaveTextContent` content check |
+| `admin/tools/page.test.tsx` | 2 | Tightened `toBeGreaterThanOrEqual` → `toHaveLength` |
+| `agents/new/page.test.tsx` | 3 | Added `toHaveTextContent` content check |
+| `workflows/[workflow_name]/page.test.tsx` | 2 | Tightened count assertions |
+
+Validation:
+
+```bash
+cd backend
+PYTHONPATH=. uv run pytest tests/unit tests/integration tests/contracts -m "not serial and not requires_llm" -q
+# → 12741 passed, 12 skipped, 101 deselected
+
+cd ../frontend
+pnpm exec vitest run tests/unit/app/workspace/admin/departments tests/unit/app/workspace/admin/tools tests/unit/app/workspace/agents/new/page.test.tsx
+# → 5 test files, 324 passed
+```
+
 ## Batch 2026-07-13: Phase 3 evidence-backed duplicate consolidation
 
 Only test cases with an equal-or-stronger retained owner were deleted. No

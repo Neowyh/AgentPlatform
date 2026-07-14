@@ -25,6 +25,7 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from app.gateway.authz import get_current_rbac_user, get_optional_rbac_user
+from app.gateway.routers import agents as agents_module
 from app.gateway.routers.agents import (
     _normalize_agent_name,
     _validate_agent_name,
@@ -90,6 +91,34 @@ def _mock_agent(name="test-agent", desc="A test agent"):
     return agent
 
 
+@pytest.mark.asyncio
+async def test_agent_metadata_helpers_cover_missing_store_and_existing_owner(tmp_path):
+    """Metadata helpers fail closed and do not overwrite an existing row."""
+    resource = MagicMock(visibility="department", owner_id="u1", department_id="d1", version=2, is_favorited=False, created_at=None)
+    result = MagicMock()
+    result.scalars.return_value.all.return_value = [resource]
+    result.scalar_one_or_none.return_value = resource
+    session = AsyncMock()
+    session.execute.side_effect = [result, result]
+
+    class Factory:
+        def __call__(self):
+            return self
+
+        async def __aenter__(self):
+            return session
+
+        async def __aexit__(self, *_args):
+            return False
+
+    with patch("ideer.persistence.engine.get_session_factory", return_value=Factory()):
+        meta = await agents_module._load_agent_meta("a", "u1")
+        assert meta["visibility"] == "department"
+        await agents_module._save_agent_meta("a", "u1", {"visibility": "public"})
+    session.commit.assert_awaited_once()
+    assert resource.visibility == "public"
+
+
 # ---------------------------------------------------------------------------
 # Unit tests for helpers
 # ---------------------------------------------------------------------------
@@ -136,30 +165,35 @@ class TestRequireAgentsApiEnabled:
             client = _make_app()
             resp = client.get("/api/agents/some-agent")
             assert resp.status_code == 403
+            assert "AGENTS_API_DISABLED" in str(resp.json()["detail"])
 
     def test_check_name_disabled(self):
         with patch(_API_PATCH, return_value=AgentsApiConfig(enabled=False)):
             client = _make_app()
             resp = client.get("/api/agents/check?name=test")
             assert resp.status_code == 403
+            assert "AGENTS_API_DISABLED" in str(resp.json()["detail"])
 
     def test_create_agent_disabled(self):
         with patch(_API_PATCH, return_value=AgentsApiConfig(enabled=False)):
             client = _make_app()
             resp = client.post("/api/agents", json={"name": "test", "soul": ""})
             assert resp.status_code == 403
+            assert "AGENTS_API_DISABLED" in str(resp.json()["detail"])
 
     def test_delete_agent_disabled(self):
         with patch(_API_PATCH, return_value=AgentsApiConfig(enabled=False)):
             client = _make_app()
             resp = client.delete("/api/agents/test")
             assert resp.status_code == 403
+            assert "AGENTS_API_DISABLED" in str(resp.json()["detail"])
 
     def test_user_profile_disabled(self):
         with patch(_API_PATCH, return_value=AgentsApiConfig(enabled=False)):
             client = _make_app()
             resp = client.get("/api/user-profile")
             assert resp.status_code == 403
+            assert "AGENTS_API_DISABLED" in str(resp.json()["detail"])
 
 
 class TestListAgents:
@@ -175,6 +209,8 @@ class TestListAgents:
             client = _make_app()
             resp = client.get("/api/agents")
             assert resp.status_code == 500
+            data = resp.json()
+            assert "detail" in data
 
 
 class TestGetAgent:
@@ -183,12 +219,16 @@ class TestGetAgent:
             client = _make_app()
             resp = client.get("/api/agents/nonexistent")
             assert resp.status_code == 404
+            data = resp.json()
+            assert "detail" in data
 
     def test_generic_exception(self):
         with patch(_API_PATCH, return_value=AgentsApiConfig(enabled=True)), patch(_UID_PATCH, return_value="user-1"), patch(_LOAD_PATCH, side_effect=Exception("unexpected")):
             client = _make_app()
             resp = client.get("/api/agents/test-agent")
             assert resp.status_code == 500
+            data = resp.json()
+            assert "detail" in data
 
     def test_visibility_denied_for_private_agent(self):
         """Non-owner cannot see a private agent."""
@@ -204,6 +244,8 @@ class TestGetAgent:
             client = _make_app(current_user=other_user)
             resp = client.get("/api/agents/test-agent")
             assert resp.status_code == 404
+            data = resp.json()
+            assert "detail" in data
 
 
 class TestCreateAgent:
@@ -212,6 +254,8 @@ class TestCreateAgent:
             client = _make_app()
             resp = client.post("/api/agents", json={"name": "invalid name!", "soul": ""})
             assert resp.status_code == 422
+            data = resp.json()
+            assert "detail" in data
 
     def test_visibility_forced_to_private(self):
         """Visibility is always forced to private on create."""
@@ -291,6 +335,8 @@ class TestDeleteAgent:
             client = _make_app()
             resp = client.delete("/api/agents/nonexistent")
             assert resp.status_code == 404
+            data = resp.json()
+            assert "detail" in data
 
 
 class TestExportAgent:
@@ -299,6 +345,8 @@ class TestExportAgent:
             client = _make_app()
             resp = client.post("/api/agents/nonexistent/export")
             assert resp.status_code == 404
+            data = resp.json()
+            assert "detail" in data
 
 
 class TestImportAgent:
@@ -315,6 +363,8 @@ class TestImportAgent:
                 json={"name": "existing-agent", "config": {}, "soul": ""},
             )
             assert resp.status_code == 409
+            data = resp.json()
+            assert "detail" in data
 
     def test_visibility_ignored_in_import(self):
         """Visibility field is ignored in import endpoint (always private)."""
@@ -345,6 +395,8 @@ class TestImportAgent:
                 json={"name": "invalid name!", "config": {}, "soul": ""},
             )
             assert resp.status_code == 422
+            data = resp.json()
+            assert "detail" in data
 
 
 class TestUserProfile:
@@ -388,6 +440,8 @@ class TestUserProfile:
             client = _make_app()
             resp = client.get("/api/user-profile")
             assert resp.status_code == 500
+            data = resp.json()
+            assert "detail" in data
 
     def test_update_error_returns_500(self):
         """Returns 500 on write error."""
@@ -402,6 +456,8 @@ class TestUserProfile:
             client = _make_app()
             resp = client.put("/api/user-profile", json={"content": "test"})
             assert resp.status_code == 500
+            data = resp.json()
+            assert "detail" in data
 
 
 class TestCheckAgentName:
@@ -410,6 +466,8 @@ class TestCheckAgentName:
             client = _make_app()
             resp = client.get("/api/agents/check?name=invalid name")
             assert resp.status_code == 422
+            data = resp.json()
+            assert "detail" in data
 
     def test_taken_in_shared(self):
         """Name is taken if it exists in the shared directory."""

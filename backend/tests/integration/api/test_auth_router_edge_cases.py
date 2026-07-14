@@ -362,6 +362,8 @@ class TestOAuthUnsupportedProvider:
             resp = client.get("/api/v1/auth/oauth/github")
 
         assert resp.status_code == 501
+        data = resp.json()
+        assert "detail" in data
 
 
 # ---------------------------------------------------------------------------

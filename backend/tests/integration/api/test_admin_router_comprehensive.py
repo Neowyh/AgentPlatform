@@ -12,6 +12,8 @@ from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import IntegrityError
@@ -512,6 +514,8 @@ class TestListUsers:
         resp = TestClient(app).get("/api/admin/users?limit=9999")
 
         assert resp.status_code == 422
+        data = resp.json()
+        assert "detail" in data
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_list_users_limit_clamped_to_minimum_1(self, mock_sf):
@@ -531,6 +535,8 @@ class TestListUsers:
         resp = TestClient(app).get("/api/admin/users?limit=-5")
 
         assert resp.status_code == 422
+        data = resp.json()
+        assert "detail" in data
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_list_users_negative_offset_clamped_to_zero(self, mock_sf):
@@ -550,6 +556,8 @@ class TestListUsers:
         resp = TestClient(app).get("/api/admin/users?offset=-10")
 
         assert resp.status_code == 422
+        data = resp.json()
+        assert "detail" in data
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_list_users_with_both_filters(self, mock_sf):
@@ -594,6 +602,110 @@ class TestListUsers:
             data = resp.json()
             assert data["total"] == 0
             assert len(data["users"]) == 0
+
+
+# ---------------------------------------------------------------------------
+# POST/PUT /api/admin/users
+# ---------------------------------------------------------------------------
+
+
+class TestCreateAndUpdateUser:
+    """Tests for user creation and profile edits outside the role endpoint."""
+
+    @patch("app.gateway.routers.admin.get_session_factory")
+    def test_create_user_rejects_blank_username_before_opening_a_transaction(self, mock_sf):
+        response = TestClient(_make_app()).post(
+            "/api/admin/users",
+            json={"email": "new@example.com", "password": "password", "username": "   ", "role": "user"},
+        )
+
+        assert response.status_code == 400
+        assert response.json()["detail"] == "Username cannot be empty"
+        mock_sf.assert_not_called()
+
+    @patch("app.gateway.routers.admin.get_session_factory")
+    def test_create_user_rejects_nonexistent_department_without_writing(self, mock_sf):
+        session = AsyncMock()
+        session.get = AsyncMock(return_value=None)
+        mock_sf.return_value = _make_session_factory(session)
+
+        response = TestClient(_make_app()).post(
+            "/api/admin/users",
+            json={
+                "email": "new@example.com",
+                "password": "password",
+                "username": "new-user",
+                "role": "user",
+                "department_id": "missing",
+            },
+        )
+
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Department not found"
+        session.commit.assert_not_awaited()
+
+    @patch("app.gateway.routers.admin.create_auth_user_with_rbac", new_callable=AsyncMock)
+    @patch("app.gateway.routers.admin.get_session_factory")
+    def test_create_user_duplicate_identity_rolls_back(self, mock_sf, create_auth_user):
+        session = AsyncMock()
+        session.rollback = AsyncMock()
+        create_auth_user.side_effect = IntegrityError("duplicate", {}, Exception())
+        mock_sf.return_value = _make_session_factory(session)
+
+        response = TestClient(_make_app()).post(
+            "/api/admin/users",
+            json={"email": "taken@example.com", "password": "password", "username": "taken", "role": "user"},
+        )
+
+        assert response.status_code == 409
+        assert response.json()["detail"] == "Email or username already exists"
+        create_auth_user.assert_awaited_once()
+        session.rollback.assert_awaited_once()
+        session.commit.assert_not_awaited()
+
+    @patch("app.gateway.routers.admin.get_session_factory")
+    def test_update_user_rejects_blank_username_without_commit(self, mock_sf):
+        user = _make_rbac_user(user_id="target-1", username="existing")
+        session = AsyncMock()
+        session.execute = AsyncMock(return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=user)))
+        mock_sf.return_value = _make_session_factory(session)
+
+        response = TestClient(_make_app()).put("/api/admin/users/target-1", json={"username": "  "})
+
+        assert response.status_code == 400
+        assert response.json()["detail"] == "Username cannot be empty"
+        assert user.username == "existing"
+        session.commit.assert_not_awaited()
+
+    @patch("app.gateway.routers.admin.get_session_factory")
+    def test_update_user_rejects_nonexistent_department_without_commit(self, mock_sf):
+        user = _make_rbac_user(user_id="target-1", department_id="old-dept")
+        session = AsyncMock()
+        session.execute = AsyncMock(return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=user)))
+        session.get = AsyncMock(return_value=None)
+        mock_sf.return_value = _make_session_factory(session)
+
+        response = TestClient(_make_app()).put("/api/admin/users/target-1", json={"department_id": "missing"})
+
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Department not found"
+        assert user.department_id == "old-dept"
+        session.commit.assert_not_awaited()
+
+    @patch("app.gateway.routers.admin.get_session_factory")
+    def test_update_user_duplicate_username_rolls_back(self, mock_sf):
+        user = _make_rbac_user(user_id="target-1", username="old")
+        session = AsyncMock()
+        session.execute = AsyncMock(return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=user)))
+        session.commit = AsyncMock(side_effect=IntegrityError("duplicate", {}, Exception()))
+        session.rollback = AsyncMock()
+        mock_sf.return_value = _make_session_factory(session)
+
+        response = TestClient(_make_app()).put("/api/admin/users/target-1", json={"username": "taken"})
+
+        assert response.status_code == 409
+        assert response.json()["detail"] == "Username already exists"
+        session.rollback.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------
@@ -717,6 +829,7 @@ class TestUpdateUserRole:
 
         assert resp.status_code == 400
         assert "last active super_admin" in resp.json()["detail"]
+        session.commit.assert_not_awaited()
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_update_role_demote_super_admin_when_others_exist(self, mock_sf):
@@ -1015,6 +1128,7 @@ class TestToggleUserStatus:
 
         assert resp.status_code == 400
         assert "last active super_admin" in resp.json()["detail"]
+        session.commit.assert_not_awaited()
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_disable_super_admin_when_others_exist(self, mock_sf):
@@ -1311,6 +1425,8 @@ class TestListDepartments:
         resp = TestClient(app).get("/api/admin/departments")
 
         assert resp.status_code == 403
+        data = resp.json()
+        assert "detail" in data
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_list_departments_as_viewer_redacts_member_count(self, mock_sf):
@@ -1338,6 +1454,8 @@ class TestListDepartments:
         resp = TestClient(app).get("/api/admin/departments")
 
         assert resp.status_code == 403
+        data = resp.json()
+        assert "detail" in data
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_list_departments_database_not_initialized(self, mock_sf):
@@ -1348,6 +1466,8 @@ class TestListDepartments:
         resp = TestClient(app).get("/api/admin/departments")
 
         assert resp.status_code == 500
+        data = resp.json()
+        assert "detail" in data
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_list_departments_limit_clamped(self, mock_sf):
@@ -1366,9 +1486,13 @@ class TestListDepartments:
         app = _make_app()
         resp = TestClient(app).get("/api/admin/departments?limit=9999")
         assert resp.status_code == 422
+        data = resp.json()
+        assert "detail" in data
 
         resp = TestClient(app).get("/api/admin/departments?limit=-5")
         assert resp.status_code == 422
+        data = resp.json()
+        assert "detail" in data
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_list_departments_negative_offset_clamped(self, mock_sf):
@@ -1387,6 +1511,8 @@ class TestListDepartments:
         app = _make_app()
         resp = TestClient(app).get("/api/admin/departments?offset=-10")
         assert resp.status_code == 422
+        data = resp.json()
+        assert "detail" in data
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_list_departments_empty_result(self, mock_sf):
@@ -2133,6 +2259,8 @@ class TestDeleteDepartment:
 
         assert resp.status_code == 400
         assert "members" in resp.json()["detail"].lower()
+        session.delete.assert_not_awaited()
+        session.commit.assert_not_awaited()
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_delete_department_count_returns_none_treated_as_zero(self, mock_sf):
@@ -2224,6 +2352,111 @@ class TestDeleteDepartment:
         update_calls = [c for c in execute_calls if "update" in c.lower()]
         assert len(update_calls) > 0
 
+    @patch("app.gateway.routers.admin.get_session_factory")
+    @pytest.mark.asyncio
+    async def test_delete_department_reassigns_all_resources_to_target_department(self, mock_sf):
+        """A supplied target keeps both department and private resources associated."""
+        dept = _make_dept("dept-1")
+        target_dept = _make_dept("dept-2", name="Operations")
+        resources = [
+            SimpleNamespace(department_id="dept-1", visibility="department"),
+            SimpleNamespace(department_id="dept-1", visibility="private"),
+        ]
+        session = AsyncMock()
+        applied_resource_updates = []
+
+        async def _execute(stmt):
+            result = MagicMock()
+            if session.execute.await_count == 1:
+                result.scalar_one_or_none = MagicMock(return_value=dept)
+            elif "count" in str(stmt).lower():
+                result.scalar = MagicMock(return_value=0)
+            elif session.execute.await_count == 4:
+                result.scalar_one_or_none = MagicMock(return_value=target_dept)
+            elif getattr(stmt, "table", None) is not None and stmt.table.name == "resource_metadata":
+                filters = {criterion.left.name: criterion.right.value for criterion in stmt._where_criteria}
+                values = {column.name: value.value for column, value in stmt._values.items()}
+                applied_resource_updates.append((filters, values))
+                for resource in resources:
+                    if all(getattr(resource, field) == expected for field, expected in filters.items()):
+                        for field, value in values.items():
+                            setattr(resource, field, value)
+            return result
+
+        session.execute = AsyncMock(side_effect=_execute)
+        session.delete = AsyncMock()
+        session.commit = AsyncMock()
+        mock_sf.return_value = _make_session_factory(session)
+
+        app = _make_app()
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.request(
+                "DELETE",
+                "/api/admin/departments/dept-1",
+                json={"target_dept_id": "dept-2"},
+            )
+
+        assert response.status_code == 200
+        assert applied_resource_updates == [
+            ({"department_id": "dept-1", "visibility": "department"}, {"department_id": "dept-2"}),
+            ({"department_id": "dept-1"}, {"department_id": "dept-2"}),
+        ]
+        assert [(resource.department_id, resource.visibility) for resource in resources] == [
+            ("dept-2", "department"),
+            ("dept-2", "private"),
+        ]
+        session.delete.assert_awaited_once_with(dept)
+        session.commit.assert_awaited_once()
+
+    @patch("app.gateway.routers.admin.get_session_factory")
+    @pytest.mark.asyncio
+    async def test_delete_department_makes_department_resources_private_without_target(self, mock_sf):
+        """Without a target, department-visible resources become private and disassociated."""
+        dept = _make_dept("dept-1")
+        resources = [
+            SimpleNamespace(department_id="dept-1", visibility="department"),
+            SimpleNamespace(department_id="dept-1", visibility="private"),
+        ]
+        session = AsyncMock()
+        applied_resource_updates = []
+
+        async def _execute(stmt):
+            result = MagicMock()
+            if session.execute.await_count == 1:
+                result.scalar_one_or_none = MagicMock(return_value=dept)
+            elif "count" in str(stmt).lower():
+                result.scalar = MagicMock(return_value=0)
+            elif getattr(stmt, "table", None) is not None and stmt.table.name == "resource_metadata":
+                filters = {criterion.left.name: criterion.right.value for criterion in stmt._where_criteria}
+                values = {column.name: value.value for column, value in stmt._values.items()}
+                applied_resource_updates.append((filters, values))
+                for resource in resources:
+                    if all(getattr(resource, field) == expected for field, expected in filters.items()):
+                        for field, value in values.items():
+                            setattr(resource, field, value)
+            return result
+
+        session.execute = AsyncMock(side_effect=_execute)
+        session.delete = AsyncMock()
+        session.commit = AsyncMock()
+        mock_sf.return_value = _make_session_factory(session)
+
+        app = _make_app()
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.request("DELETE", "/api/admin/departments/dept-1")
+
+        assert response.status_code == 200
+        assert applied_resource_updates == [
+            ({"department_id": "dept-1", "visibility": "department"}, {"visibility": "private", "department_id": None}),
+            ({"department_id": "dept-1"}, {"department_id": None}),
+        ]
+        assert [(resource.department_id, resource.visibility) for resource in resources] == [
+            (None, "private"),
+            (None, "private"),
+        ]
+        session.delete.assert_awaited_once_with(dept)
+        session.commit.assert_awaited_once()
+
 
 # ---------------------------------------------------------------------------
 # Pydantic model validation
@@ -2246,6 +2479,8 @@ class TestRequestModels:
 
         # FastAPI returns 422 for validation errors
         assert resp.status_code == 422
+        data = resp.json()
+        assert "detail" in data
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_create_department_request_requires_name_field(self, mock_sf):
@@ -2259,6 +2494,8 @@ class TestRequestModels:
         )
 
         assert resp.status_code == 422
+        data = resp.json()
+        assert "detail" in data
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_create_department_name_max_length(self, mock_sf):
@@ -2273,6 +2510,8 @@ class TestRequestModels:
         )
 
         assert resp.status_code == 422
+        data = resp.json()
+        assert "detail" in data
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_create_department_description_max_length(self, mock_sf):
@@ -2287,6 +2526,8 @@ class TestRequestModels:
         )
 
         assert resp.status_code == 422
+        data = resp.json()
+        assert "detail" in data
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_update_department_name_max_length(self, mock_sf):
@@ -2300,6 +2541,8 @@ class TestRequestModels:
         )
 
         assert resp.status_code == 422
+        data = resp.json()
+        assert "detail" in data
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_update_department_description_max_length(self, mock_sf):
@@ -2313,6 +2556,8 @@ class TestRequestModels:
         )
 
         assert resp.status_code == 422
+        data = resp.json()
+        assert "detail" in data
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_update_department_accepts_null_name(self, mock_sf):

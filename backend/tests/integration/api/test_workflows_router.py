@@ -17,10 +17,12 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from _router_auth_helpers import make_authed_test_app
 from fastapi.testclient import TestClient
 
 from app.gateway.authz import get_current_rbac_user, get_optional_rbac_user
+from app.gateway.routers import workflows as workflows_module
 from app.gateway.routers.workflows import router as workflows_router
 
 WORKFLOW_NAME = "test-workflow"
@@ -28,6 +30,58 @@ RUN_ID = "run-1"
 
 # A minimal but valid YAML definition for tests that need to parse/load workflows.
 VALID_YAML = "name: test-workflow\ndescription: Test workflow\nversion: '1.0'\nsteps:\n  - id: step-1\n    type: agent\n    agent: planner\n    prompt: hello\n"
+
+
+def test_workflow_visibility_and_parse_error_contracts():
+    """The detail/export endpoints hide private workflows and reject bad YAML."""
+    import asyncio
+
+    user = _make_user()
+    store = _make_workflow_store(load_result="not: [valid")
+
+    async def run():
+        with (
+            patch.object(workflows_module, "get_workflow_store", return_value=store),
+            patch.object(
+                workflows_module._workflow_store,
+                "load_meta",
+                new_callable=AsyncMock,
+                return_value={"visibility": "private", "owner_id": "other", "department_id": None},
+            ),
+            patch.object(workflows_module, "check_resource_access", return_value=False),
+        ):
+            with pytest.raises(workflows_module.HTTPException) as hidden:
+                await workflows_module.get_workflow(WORKFLOW_NAME, user)
+            assert hidden.value.status_code == 404
+
+        store.load_workflow.return_value = VALID_YAML
+        with (
+            patch.object(workflows_module, "get_workflow_store", return_value=store),
+            patch.object(
+                workflows_module._workflow_store,
+                "load_meta",
+                new_callable=AsyncMock,
+                return_value={"visibility": "public", "owner_id": None, "department_id": None},
+            ),
+        ):
+            result = await workflows_module.get_workflow(WORKFLOW_NAME, user)
+            assert result["name"] == WORKFLOW_NAME
+            assert "yaml_content" not in result
+
+        store.load_workflow.return_value = "bad: ["
+        with (
+            patch.object(workflows_module, "get_workflow_store", return_value=store),
+            patch.object(
+                workflows_module._workflow_store,
+                "load_meta",
+                new_callable=AsyncMock,
+                return_value={"visibility": "public"},
+            ),
+        ):
+            with pytest.raises(workflows_module.HTTPException, match="Invalid workflow YAML"):
+                await workflows_module.export_workflow(WORKFLOW_NAME, None)
+
+    asyncio.run(run())
 
 
 def _make_user(role: str = "user") -> MagicMock:
@@ -223,6 +277,8 @@ class TestGetWorkflow:
             with TestClient(app) as client:
                 resp = client.get("/api/workflows/nonexistent")
         assert resp.status_code == 404
+        data = resp.json()
+        assert "detail" in data
 
     def test_get_workflow_without_user_rejects_private(self):
         store = _make_workflow_store(load_result=VALID_YAML)
@@ -232,6 +288,8 @@ class TestGetWorkflow:
             with TestClient(app) as client:
                 resp = client.get(f"/api/workflows/{WORKFLOW_NAME}")
         assert resp.status_code == 404
+        data = resp.json()
+        assert "detail" in data
 
     def test_get_workflow_no_access(self):
         """Get workflow returns 404 when user lacks visibility."""
@@ -243,6 +301,8 @@ class TestGetWorkflow:
             with TestClient(app) as client:
                 resp = client.get(f"/api/workflows/{WORKFLOW_NAME}")
         assert resp.status_code == 404
+        data = resp.json()
+        assert "detail" in data
 
 
 # ---------------------------------------------------------------------------
@@ -282,6 +342,8 @@ class TestCreateWorkflow:
                     json={"yaml_content": VALID_YAML},
                 )
         assert resp.status_code == 409
+        data = resp.json()
+        assert "detail" in data
 
     def test_create_invalid_yaml(self):
         """Create workflow returns 400 for invalid YAML."""
@@ -295,6 +357,8 @@ class TestCreateWorkflow:
                     json={"yaml_content": "not: valid: yaml: [}"},
                 )
         assert resp.status_code == 400
+        data = resp.json()
+        assert "detail" in data
 
 
 class TestExportWorkflow:
@@ -319,6 +383,8 @@ class TestExportWorkflow:
             with TestClient(app) as client:
                 resp = client.get(f"/api/workflows/{WORKFLOW_NAME}/export")
         assert resp.status_code == 404
+        data = resp.json()
+        assert "detail" in data
 
     def test_export_invalid_yaml_returns_400(self):
         store = _make_workflow_store(load_result="name: [")
@@ -328,6 +394,8 @@ class TestExportWorkflow:
             with TestClient(app) as client:
                 resp = client.get(f"/api/workflows/{WORKFLOW_NAME}/export")
         assert resp.status_code == 400
+        data = resp.json()
+        assert "detail" in data
 
 
 class TestImportWorkflow:
@@ -395,6 +463,8 @@ class TestUpdateWorkflow:
                     json={"yaml_content": VALID_YAML, "version": 1},
                 )
         assert resp.status_code == 403
+        data = resp.json()
+        assert "detail" in data
 
     def test_update_not_found(self):
         """Update workflow returns 404 when workflow does not exist."""
@@ -408,6 +478,8 @@ class TestUpdateWorkflow:
                     json={"yaml_content": VALID_YAML, "version": 1},
                 )
         assert resp.status_code == 404
+        data = resp.json()
+        assert "detail" in data
 
 
 # ---------------------------------------------------------------------------
@@ -432,6 +504,8 @@ class TestDeleteWorkflow:
             with TestClient(app) as client:
                 resp = client.delete(f"/api/workflows/{WORKFLOW_NAME}")
         assert resp.status_code in (200, 204)
+        if resp.status_code == 200:
+            assert resp.json()["success"] is True
 
     def test_delete_not_owner(self):
         """Delete workflow returns 403 when user is not owner."""
@@ -443,6 +517,8 @@ class TestDeleteWorkflow:
             with TestClient(app) as client:
                 resp = client.delete(f"/api/workflows/{WORKFLOW_NAME}")
         assert resp.status_code == 403
+        data = resp.json()
+        assert "detail" in data
 
     def test_delete_not_found(self):
         """Delete workflow returns 404 when workflow does not exist."""
@@ -453,6 +529,8 @@ class TestDeleteWorkflow:
             with TestClient(app) as client:
                 resp = client.delete("/api/workflows/nonexistent")
         assert resp.status_code == 404
+        data = resp.json()
+        assert "detail" in data
 
     def test_delete_auto_rejects_pending_applications_and_metadata_delete_failure_is_non_fatal(self):
         store = _make_workflow_store(delete_result=True)
@@ -470,6 +548,7 @@ class TestDeleteWorkflow:
             with TestClient(app) as client:
                 resp = client.delete(f"/api/workflows/{WORKFLOW_NAME}")
         assert resp.status_code == 200
+        assert resp.json()["success"] is True
         assert session.committed is True
         metadata_delete.assert_awaited_once_with(WORKFLOW_NAME)
 
@@ -488,6 +567,7 @@ class TestDeleteWorkflow:
             with TestClient(app) as client:
                 resp = client.delete(f"/api/workflows/{WORKFLOW_NAME}")
         assert resp.status_code == 200
+        assert resp.json()["success"] is True
 
 
 # ---------------------------------------------------------------------------
@@ -511,6 +591,9 @@ class TestRunWorkflow:
                     json={"inputs": {}},
                 )
         assert resp.status_code in (200, 202)
+        data = resp.json()
+        assert "run_id" in data
+        assert data["status"] in ("running", "queued", "pending")
 
     def test_run_no_access(self):
         """Run workflow returns 404 when user lacks visibility."""
@@ -525,6 +608,8 @@ class TestRunWorkflow:
                     json={"inputs": {}},
                 )
         assert resp.status_code == 404
+        data = resp.json()
+        assert "detail" in data
 
 
 class TestToggleWorkflowFavorite:
@@ -551,6 +636,8 @@ class TestToggleWorkflowFavorite:
                 resp = client.post(f"/api/workflows/{WORKFLOW_NAME}/favorite")
 
         assert resp.status_code == 404
+        data = resp.json()
+        assert "detail" in data
 
     def test_returns_500_when_database_unavailable(self):
         app, _ = _make_app()
@@ -560,6 +647,8 @@ class TestToggleWorkflowFavorite:
                 resp = client.post(f"/api/workflows/{WORKFLOW_NAME}/favorite")
 
         assert resp.status_code == 500
+        data = resp.json()
+        assert "detail" in data
 
     def test_returns_500_on_database_error(self):
         app, _ = _make_app()
@@ -570,6 +659,8 @@ class TestToggleWorkflowFavorite:
                 resp = client.post(f"/api/workflows/{WORKFLOW_NAME}/favorite")
 
         assert resp.status_code == 500
+        data = resp.json()
+        assert "detail" in data
 
 
 # ---------------------------------------------------------------------------

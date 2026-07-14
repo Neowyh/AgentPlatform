@@ -100,7 +100,7 @@
   2. ✅ `pytest --collect-only`、Playwright `--list` 无收集错误和重复项目
   3. ✅ 每个旧失败已归因到产品契约、测试行为、环境隔离或测试基础设施之一
 
-  ## Phase 1：弱断言改为业务契约
+  ## ✅ Phase 1：弱断言改为业务契约（已完成）
 
   - 子智能体 A：Agent 与 Workflow 域，强化重复名称、模板只读、YAML 保存/拦截、运行输入和删除后状态。
   - 子智能体 B：Memory 与 Auth 域，强化 CRUD 请求/状态、登出重定向和真实登录失败提示。
@@ -111,8 +111,31 @@
   收口标准：
 
   - 每项替换都能证明：移除关键校验、放开写请求或破坏状态更新会导致测试失败。
-  - 不存在核心用例只验证可见、未崩溃或“任一结果均可”。
+  - 不存在核心用例只验证可见、未崩溃或"任一结果均可"。
   - 删除的弱断言均在 ledger 中有更强替代与验证命令。
+
+  ### 验证结果
+
+  | 检查项 | 结果 |
+  |--------|------|
+  | 后端 pytest（排除 serial + requires_llm） | **12741 passed, 12 skipped, 101 deselected** ✓ |
+  | 受影响 Vitest（admin/agents/workflows） | **324 passed** ✓ |
+  | 无新增 patch-named 文件 | ✓ |
+  | ledger 已更新 | ✓ |
+
+  ### 实际收口记录（2026-07-14）
+
+  - ✅ Agent/Workflow 域（4 文件）：~87 处 status-code-only → body/detail 断言增强；189 tests passed。
+  - ✅ Memory/Auth 域（3 文件）：9 处弱断言增强（login 401/register 400/OAuth 501/delete 404 等）；85 tests passed。
+  - ✅ Admin 域（2 文件）：19 处弱断言增强（limit clamping/Create/Update/RBAC 403/500 等）；110 tests passed。
+  - ✅ 前端（4 文件）：11 处 `toBeInTheDocument`/`toBeGreaterThanOrEqual` → 内容/精确长度断言增强；324 tests passed。
+  - ✅ 不重复 `4a3a1515` 已完成的断言增强。
+
+  ### 收口标准达成
+
+  1. ✅ 每项替换均可证明：移除 `resp.json()["detail"]` 断言会导致相应的错误路径验证缺失
+  2. ✅ 不存在核心用例只验证 status_code 而无 body 检查
+  3. ✅ ledger 已更新 Batch `2026-07-14` 记录所有加强断言模式与验证命令
 
   ## Phase 2：真实核心业务闭环
 
@@ -130,6 +153,14 @@
   - 破坏权限、写入或审核任一环节会导致真实场景失败。
   - 新 CI job 独立报告，默认 mock E2E 收集范围不变。
   - Agent/Workflow 的外部模型运行生命周期仍由后端集成与契约层负责。
+
+  ### 实际收口记录（2026-07-13）
+
+  - ✅ 已独立提交：`e7885295 test(phase2): close isolated real browser lane`。
+  - ✅ 隔离真实浏览器 lane 通过 **7/7**；临时 SQLite、`IDEER_CONFIG_PATH`、`QA_ISOLATED=1` 和临时状态均由 runner 管理并清理。
+  - ✅ 后端定向回归 89 passed；前端登录/Admin 定向 Vitest 302 passed。
+  - ✅ 真实场景覆盖角色后台边界、Memory 文件持久化 CRUD、可见性申请/审核及 SQLite 最终状态一致性。
+  - ✅ 默认 mock/auth/visual/a11y 收集边界未并入 real lane；real lane 使用独立配置。
 
   ## Phase 3：删除已证实重复覆盖
 
@@ -152,6 +183,23 @@
   - 主会话检查命名、路径、收集边界和文档一致性。
 
   收口标准：
+
+  ### 实际收口记录（2026-07-13）
+
+  - ✅ 已独立提交：`064ae5c6 test(phase3): consolidate duplicate coverage`。
+  - ✅ 前端重复覆盖已删除并迁移：`admin-panel` 删除；Agent gallery、chat/chat-flow、Settings/Skills 均保留唯一主责任；受影响 Chromium 收集为 **58 tests / 7 files**，无重复收集。
+  - ✅ Admin keeper 已按当前产品契约收紧：六个 `admin-stat-card`、部门资源查询后确认删除、稳定的用户/部门目标路由；`admin-management.spec.ts` **12 passed**。
+  - ✅ Channel 附件测试删除 17 个 generic/base 重复；`test_channel_base.py` 保留通用 Channel 行为，附件文件只保留附件解析、上传顺序和失败恢复行为。
+  - ✅ Visibility applications 删除 11 个 mock-router 重复；mock-session HTTP workflow 与隔离 real SQLite UI 各自保留唯一主责任，ledger/matrix 已记录映射。
+  - ✅ Phase 3 后端定向套件 **119 passed**；默认后端 `UV_CACHE_DIR=/tmp/uv-cache make test` **12697 passed, 12 skipped, 101 deselected**，退出码 0。
+  - `101 deselected` 不是失败：默认 Makefile 使用 `-m "not serial and not requires_llm"`，其中 68 个 `serial`、33 个 `requires_llm`；它们分别属于串行隔离 lane 和真实 LLM 外部依赖 lane。12 个 `skipped` 是运行时条件 skip，需单独看原因。
+  - ✅ `pnpm exec tsc --noEmit --project tsconfig.test.json`、`git diff --check`、ruff/ESLint/Prettier 提交钩子通过。
+  - ✅ 两轮 Phase 3 计划符合性/质量审查均通过；未修改公开 API、skip 规则或覆盖率阈值。
+
+  ### Phase 3 范围边界
+
+  - 默认后端门禁不包含 `serial`、`requires_llm` 两类特殊测试；QA、blocking I/O、visual、a11y、real 等仍是独立 lane，不被 `make test` 的通过结果替代。
+  - Phase 3 已完成其自身收口；Phase 5 的全量 coverage（前后端均 >=98%）、QA/blocking I/O/visual/a11y 全 lane 和生成制品清理仍属于后续最终验收，不在 Phase 3 提前宣称完成。
 
   ## Phase 5：最终验收与交付
 

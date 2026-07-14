@@ -292,6 +292,8 @@ class TestLoginLocal:
                 )
 
         assert resp.status_code == 401
+        data = resp.json()
+        assert "detail" in data
 
 
 # ---------------------------------------------------------------------------
@@ -332,6 +334,8 @@ class TestRegister:
             )
 
         assert resp.status_code == 400
+        data = resp.json()
+        assert "detail" in data
 
 
 # ---------------------------------------------------------------------------
@@ -670,6 +674,8 @@ class TestInitializeAdmin:
                 )
 
         assert resp.status_code == 409
+        data = resp.json()
+        assert "detail" in data
 
     def test_success(self):
         with (
@@ -701,6 +707,8 @@ class TestInitializeAdmin:
             )
 
         assert resp.status_code == 409
+        data = resp.json()
+        assert "detail" in data
 
 
 # ---------------------------------------------------------------------------
@@ -721,9 +729,13 @@ class TestOAuth:
         with TestClient(app) as client:
             resp = client.get("/api/v1/auth/oauth/github")
         assert resp.status_code == 501
+        data = resp.json()
+        assert "detail" in data
 
     def test_callback_501(self):
         app = _make_app()
         with TestClient(app) as client:
             resp = client.get("/api/v1/auth/callback/github?code=abc&state=xyz")
         assert resp.status_code == 501
+        data = resp.json()
+        assert "detail" in data

@@ -222,7 +222,7 @@ describe("DepartmentsPage", () => {
     await waitFor(() => {
       // Sales has empty description, should show "暂无描述"
       const noDesc = screen.getAllByText("暂无描述");
-      expect(noDesc.length).toBeGreaterThanOrEqual(1);
+      expect(noDesc).toHaveLength(1);
     });
   });
 
@@ -286,7 +286,7 @@ describe("DepartmentsPage", () => {
     render(<DepartmentsPage />);
     await waitFor(() => {
       const createButtons = screen.getAllByText("新建部门");
-      expect(createButtons.length).toBeGreaterThanOrEqual(1);
+      expect(createButtons).toHaveLength(2);
     });
   });
 
@@ -885,6 +885,9 @@ describe("DepartmentsPage", () => {
     render(<DepartmentsPage />);
     await waitFor(() => {
       expect(screen.getByTestId("department-list")).toBeInTheDocument();
+      expect(screen.getByTestId("department-list")).toHaveTextContent(
+        /Engineering/i,
+      );
     });
 
     const deptCards = screen.getAllByTestId("department-card");
@@ -1266,6 +1269,9 @@ describe("DepartmentsPage", () => {
     await waitFor(() => {
       expect(screen.queryByText("加载中...")).not.toBeInTheDocument();
       expect(screen.getByTestId("department-list")).toBeInTheDocument();
+      expect(screen.getByTestId("department-list")).toHaveTextContent(
+        /Engineering/i,
+      );
     });
   });
 

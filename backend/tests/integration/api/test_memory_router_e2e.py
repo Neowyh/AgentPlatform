@@ -262,6 +262,8 @@ class TestDeleteMemoryFact:
             ):
                 resp = client.delete("/api/memory/facts/nonexistent")
         assert resp.status_code == 404
+        data = resp.json()
+        assert "detail" in data
 
 
 # ---------------------------------------------------------------------------
@@ -300,6 +302,8 @@ class TestUpdateMemoryFact:
                     json={"content": "Updated"},
                 )
         assert resp.status_code == 404
+        data = resp.json()
+        assert "detail" in data
 
 
 # ---------------------------------------------------------------------------

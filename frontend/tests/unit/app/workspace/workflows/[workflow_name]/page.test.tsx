@@ -893,7 +893,7 @@ describe("WorkflowDetailPage", () => {
       const dialog = screen.getByTestId("dialog");
       // "Research topic" also appears in the inputs card, so scope to dialog
       const descriptions = within(dialog).getAllByText("Research topic");
-      expect(descriptions.length).toBeGreaterThanOrEqual(1);
+      expect(descriptions).toHaveLength(1);
     });
   });
 
@@ -1443,7 +1443,7 @@ describe("WorkflowDetailPage", () => {
       render(<WorkflowDetailPage />);
       const cards = screen.getAllByTestId("card");
       // Steps card, inputs card, yaml card
-      expect(cards.length).toBeGreaterThanOrEqual(3);
+      expect(cards).toHaveLength(3);
     });
   });
 

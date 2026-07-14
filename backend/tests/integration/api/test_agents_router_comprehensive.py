@@ -364,12 +364,16 @@ class TestToggleAgentFavoriteEndpoint:
             resp = user_client.post(f"/api/agents/{AGENT_NAME}/favorite")
 
         assert resp.status_code == 404
+        data = resp.json()
+        assert "detail" in data
 
     def test_returns_500_when_database_unavailable(self, user_client, mock_deps):
         with patch("app.gateway.routers.agents.get_session_factory", return_value=None):
             resp = user_client.post(f"/api/agents/{AGENT_NAME}/favorite")
 
         assert resp.status_code == 500
+        data = resp.json()
+        assert "detail" in data
 
 
 # ===========================================================================
@@ -486,6 +490,8 @@ class TestListAgentsEndpoint:
             with TestClient(app, raise_server_exceptions=False) as c:
                 resp = c.get("/api/agents")
         assert resp.status_code == 403
+        data = resp.json()
+        assert "detail" in data
 
     def test_filters_private_agents_for_viewer(self, mock_deps):
         user = _make_user(user_id=OTHER_USER_ID, role=UserRole.VIEWER)
@@ -536,6 +542,8 @@ class TestListAgentsEndpoint:
         with patch("app.gateway.routers.agents.list_custom_agents", side_effect=RuntimeError("boom")):
             resp = super_admin_client.get("/api/agents")
         assert resp.status_code == 500
+        data = resp.json()
+        assert "detail" in data
 
     def test_no_user_filters_public_only(self, mock_deps):
         """When no auth user, only public agents are returned."""
@@ -591,6 +599,8 @@ class TestCheckAgentNameEndpoint:
     def test_invalid_name_422(self, super_admin_client):
         resp = super_admin_client.get("/api/agents/check", params={"name": "bad name!"})
         assert resp.status_code == 422
+        data = resp.json()
+        assert "detail" in data
 
     def test_normalizes_case(self, super_admin_client, mock_deps):
         mock_paths, _ = mock_deps
@@ -606,6 +616,8 @@ class TestCheckAgentNameEndpoint:
             with TestClient(app, raise_server_exceptions=False) as c:
                 resp = c.get("/api/agents/check", params={"name": "ok"})
         assert resp.status_code == 403
+        data = resp.json()
+        assert "detail" in data
 
 
 # ===========================================================================
@@ -643,15 +655,21 @@ class TestGetAgentEndpoint:
             with TestClient(app, raise_server_exceptions=False) as c:
                 resp = c.get(f"/api/agents/{AGENT_NAME}")
         assert resp.status_code == 403
+        data = resp.json()
+        assert "detail" in data
 
     def test_not_found_404(self, super_admin_client, mock_deps):
         with patch("app.gateway.routers.agents.load_agent_config", side_effect=FileNotFoundError()):
             resp = super_admin_client.get(f"/api/agents/{AGENT_NAME}")
         assert resp.status_code == 404
+        data = resp.json()
+        assert "detail" in data
 
     def test_invalid_name_422(self, super_admin_client):
         resp = super_admin_client.get("/api/agents/bad name!")
         assert resp.status_code == 422
+        data = resp.json()
+        assert "detail" in data
 
     def test_shared_agent_public_visibility(self, super_admin_client, mock_deps):
         cfg = self._mock_config()
@@ -689,6 +707,8 @@ class TestGetAgentEndpoint:
             with TestClient(app, raise_server_exceptions=False) as c:
                 resp = c.get(f"/api/agents/{AGENT_NAME}")
         assert resp.status_code == 404
+        data = resp.json()
+        assert "detail" in data
 
     def test_no_user_private_returns_404(self, mock_deps):
         cfg = MagicMock()
@@ -707,11 +727,15 @@ class TestGetAgentEndpoint:
             with TestClient(app, raise_server_exceptions=False) as c:
                 resp = c.get(f"/api/agents/{AGENT_NAME}")
         assert resp.status_code == 404
+        data = resp.json()
+        assert "detail" in data
 
     def test_internal_error_500(self, super_admin_client, mock_deps):
         with patch("app.gateway.routers.agents.load_agent_config", side_effect=RuntimeError("boom")):
             resp = super_admin_client.get(f"/api/agents/{AGENT_NAME}")
         assert resp.status_code == 500
+        data = resp.json()
+        assert "detail" in data
 
 
 # ===========================================================================
@@ -751,16 +775,22 @@ class TestCreateAgentEndpoint:
             with TestClient(app, raise_server_exceptions=False) as c:
                 resp = c.post("/api/agents", json=self.PAYLOAD)
         assert resp.status_code == 403
+        data = resp.json()
+        assert "detail" in data
 
     def test_invalid_name_422(self, super_admin_client, mock_deps):
         resp = super_admin_client.post("/api/agents", json={"name": "bad name!", "soul": "x"})
         assert resp.status_code == 422
+        data = resp.json()
+        assert "detail" in data
 
     def test_legacy_collision_409(self, super_admin_client, mock_deps):
         mock_paths, _ = mock_deps
         mock_paths.agent_dir.return_value.exists.return_value = True
         resp = super_admin_client.post("/api/agents", json=self.PAYLOAD)
         assert resp.status_code == 409
+        data = resp.json()
+        assert "detail" in data
 
     def test_file_exists_collision_409(self, super_admin_client, mock_deps):
         mock_paths, _ = mock_deps
@@ -768,6 +798,8 @@ class TestCreateAgentEndpoint:
         mock_paths.user_agent_dir.return_value.mkdir.side_effect = FileExistsError
         resp = super_admin_client.post("/api/agents", json=self.PAYLOAD)
         assert resp.status_code == 409
+        data = resp.json()
+        assert "detail" in data
 
     def test_visibility_dept_admin_can_set_department(self, dept_admin_client, mock_deps):
         mock_paths, _ = mock_deps
@@ -814,6 +846,8 @@ class TestCreateAgentEndpoint:
         ):
             resp = super_admin_client.post("/api/agents", json=self.PAYLOAD)
         assert resp.status_code == 500
+        data = resp.json()
+        assert "detail" in data
         mock_shutil.rmtree.assert_called_once()
 
 
@@ -857,15 +891,21 @@ class TestUpdateAgentEndpoint:
             with TestClient(app, raise_server_exceptions=False) as c:
                 resp = c.put(f"/api/agents/{AGENT_NAME}", json=self.PAYLOAD)
         assert resp.status_code == 403
+        data = resp.json()
+        assert "detail" in data
 
     def test_not_found_404(self, super_admin_client, mock_deps):
         with patch("app.gateway.routers.agents.load_agent_config", side_effect=FileNotFoundError()):
             resp = super_admin_client.put(f"/api/agents/{AGENT_NAME}", json=self.PAYLOAD)
         assert resp.status_code == 404
+        data = resp.json()
+        assert "detail" in data
 
     def test_invalid_name_422(self, super_admin_client):
         resp = super_admin_client.put("/api/agents/bad name!", json=self.PAYLOAD)
         assert resp.status_code == 422
+        data = resp.json()
+        assert "detail" in data
 
     def test_shared_read_only_409(self, super_admin_client, mock_deps):
         mock_paths, _ = mock_deps
@@ -887,6 +927,8 @@ class TestUpdateAgentEndpoint:
         ):
             resp = viewer_client.put(f"/api/agents/{AGENT_NAME}", json=self.PAYLOAD)
         assert resp.status_code == 403
+        data = resp.json()
+        assert "detail" in data
 
     def test_internal_error_500(self, super_admin_client, mock_deps):
         mock_paths, _ = mock_deps
@@ -898,6 +940,8 @@ class TestUpdateAgentEndpoint:
         ):
             resp = super_admin_client.put(f"/api/agents/{AGENT_NAME}", json=self.PAYLOAD)
         assert resp.status_code == 500
+        data = resp.json()
+        assert "detail" in data
 
 
 # ===========================================================================
@@ -923,6 +967,8 @@ class TestDeleteAgentEndpoint:
             with TestClient(app, raise_server_exceptions=False) as c:
                 resp = c.delete(f"/api/agents/{AGENT_NAME}")
         assert resp.status_code == 403
+        data = resp.json()
+        assert "detail" in data
 
     def test_shared_read_only_409(self, super_admin_client, mock_deps):
         mock_paths, _ = mock_deps
@@ -930,6 +976,8 @@ class TestDeleteAgentEndpoint:
         mock_paths.agent_dir.return_value.exists.return_value = True
         resp = super_admin_client.delete(f"/api/agents/{AGENT_NAME}")
         assert resp.status_code == 409
+        data = resp.json()
+        assert "detail" in data
 
     def test_not_found_404(self, super_admin_client, mock_deps):
         mock_paths, _ = mock_deps
@@ -937,10 +985,14 @@ class TestDeleteAgentEndpoint:
         mock_paths.agent_dir.return_value.exists.return_value = False
         resp = super_admin_client.delete(f"/api/agents/{AGENT_NAME}")
         assert resp.status_code == 404
+        data = resp.json()
+        assert "detail" in data
 
     def test_invalid_name_422(self, super_admin_client):
         resp = super_admin_client.delete("/api/agents/bad name!")
         assert resp.status_code == 422
+        data = resp.json()
+        assert "detail" in data
 
     def test_viewer_cannot_delete(self, viewer_client, mock_deps):
         mock_paths, _ = mock_deps
@@ -951,6 +1003,8 @@ class TestDeleteAgentEndpoint:
         ):
             resp = viewer_client.delete(f"/api/agents/{AGENT_NAME}")
         assert resp.status_code == 403
+        data = resp.json()
+        assert "detail" in data
 
     def test_rmtree_error_500(self, super_admin_client, mock_deps):
         mock_paths, _ = mock_deps
@@ -961,6 +1015,8 @@ class TestDeleteAgentEndpoint:
         ):
             resp = super_admin_client.delete(f"/api/agents/{AGENT_NAME}")
         assert resp.status_code == 500
+        data = resp.json()
+        assert "detail" in data
 
 
 # ===========================================================================
@@ -996,11 +1052,15 @@ class TestExportAgentEndpoint:
             with TestClient(app, raise_server_exceptions=False) as c:
                 resp = c.post(f"/api/agents/{AGENT_NAME}/export")
         assert resp.status_code == 403
+        data = resp.json()
+        assert "detail" in data
 
     def test_not_found_404(self, super_admin_client, mock_deps):
         with patch("app.gateway.routers.agents.load_agent_config", side_effect=FileNotFoundError()):
             resp = super_admin_client.post(f"/api/agents/{AGENT_NAME}/export")
         assert resp.status_code == 404
+        data = resp.json()
+        assert "detail" in data
 
     def test_invisible_agent_404(self, mock_deps):
         user = _make_user(user_id=OTHER_USER_ID, role=UserRole.USER)
@@ -1017,6 +1077,8 @@ class TestExportAgentEndpoint:
             with TestClient(app, raise_server_exceptions=False) as c:
                 resp = c.post(f"/api/agents/{AGENT_NAME}/export")
         assert resp.status_code == 404
+        data = resp.json()
+        assert "detail" in data
 
     def test_shared_agent_export(self, super_admin_client, mock_deps):
         cfg = MagicMock()
@@ -1073,16 +1135,22 @@ class TestImportAgentEndpoint:
             with TestClient(app, raise_server_exceptions=False) as c:
                 resp = c.post("/api/agents/import", json=self.PAYLOAD)
         assert resp.status_code == 403
+        data = resp.json()
+        assert "detail" in data
 
     def test_invalid_name_422(self, super_admin_client, mock_deps):
         resp = super_admin_client.post("/api/agents/import", json={"name": "bad!", "soul": ""})
         assert resp.status_code == 422
+        data = resp.json()
+        assert "detail" in data
 
     def test_legacy_collision_409(self, super_admin_client, mock_deps):
         mock_paths, _ = mock_deps
         mock_paths.agent_dir.return_value.exists.return_value = True
         resp = super_admin_client.post("/api/agents/import", json=self.PAYLOAD)
         assert resp.status_code == 409
+        data = resp.json()
+        assert "detail" in data
 
     def test_file_exists_409(self, super_admin_client, mock_deps):
         mock_paths, _ = mock_deps
@@ -1090,6 +1158,8 @@ class TestImportAgentEndpoint:
         mock_paths.user_agent_dir.return_value.mkdir.side_effect = FileExistsError
         resp = super_admin_client.post("/api/agents/import", json=self.PAYLOAD)
         assert resp.status_code == 409
+        data = resp.json()
+        assert "detail" in data
 
     def test_internal_error_cleanup(self, super_admin_client, mock_deps):
         mock_paths, _ = mock_deps
@@ -1103,6 +1173,8 @@ class TestImportAgentEndpoint:
         ):
             resp = super_admin_client.post("/api/agents/import", json=self.PAYLOAD)
         assert resp.status_code == 500
+        data = resp.json()
+        assert "detail" in data
         mock_shutil.rmtree.assert_called_once()
 
 
@@ -1144,11 +1216,15 @@ class TestGetAgentStatsEndpoint:
             with TestClient(app, raise_server_exceptions=False) as c:
                 resp = c.get(f"/api/agents/{AGENT_NAME}/stats")
         assert resp.status_code == 403
+        data = resp.json()
+        assert "detail" in data
 
     def test_not_found_404(self, super_admin_client, mock_deps):
         with patch("app.gateway.routers.agents.load_agent_config", side_effect=FileNotFoundError()):
             resp = super_admin_client.get(f"/api/agents/{AGENT_NAME}/stats")
         assert resp.status_code == 404
+        data = resp.json()
+        assert "detail" in data
 
     def test_shared_agent_stats(self, super_admin_client, mock_deps):
         cfg = MagicMock()
@@ -1223,6 +1299,8 @@ class TestGetAgentStatsEndpoint:
             with TestClient(app, raise_server_exceptions=False) as c:
                 resp = c.get(f"/api/agents/{AGENT_NAME}/stats")
         assert resp.status_code == 404
+        data = resp.json()
+        assert "detail" in data
 
 
 # ===========================================================================
@@ -1246,6 +1324,8 @@ class TestGetUserProfileEndpoint:
             with TestClient(app, raise_server_exceptions=False) as c:
                 resp = c.get("/api/user-profile")
         assert resp.status_code == 403
+        data = resp.json()
+        assert "detail" in data
 
     def test_file_not_found_returns_none(self, super_admin_client, mock_deps):
         mock_paths, mock_user_md = mock_deps
@@ -1268,6 +1348,8 @@ class TestGetUserProfileEndpoint:
         mock_user_md.read_text.side_effect = OSError("perm")
         resp = super_admin_client.get("/api/user-profile")
         assert resp.status_code == 500
+        data = resp.json()
+        assert "detail" in data
 
 
 # ===========================================================================
@@ -1288,6 +1370,8 @@ class TestUpdateUserProfileEndpoint:
             with TestClient(app, raise_server_exceptions=False) as c:
                 resp = c.put("/api/user-profile", json={"content": "x"})
         assert resp.status_code == 403
+        data = resp.json()
+        assert "detail" in data
 
     def test_empty_content_returns_none(self, super_admin_client, mock_deps):
         resp = super_admin_client.put("/api/user-profile", json={"content": ""})
@@ -1299,6 +1383,8 @@ class TestUpdateUserProfileEndpoint:
         mock_user_md.write_text.side_effect = OSError("disk full")
         resp = super_admin_client.put("/api/user-profile", json={"content": "data"})
         assert resp.status_code == 500
+        data = resp.json()
+        assert "detail" in data
 
 
 # ===========================================================================
@@ -1312,22 +1398,32 @@ class TestViewerCannotWrite:
     def test_create_forbidden(self, viewer_client, mock_deps):
         resp = viewer_client.post("/api/agents", json={"name": "agent", "soul": ""})
         assert resp.status_code == 403
+        data = resp.json()
+        assert "detail" in data
 
     def test_update_forbidden(self, viewer_client, mock_deps):
         resp = viewer_client.put("/api/agents/agent", json={"description": "new", "version": 1})
         assert resp.status_code == 403
+        data = resp.json()
+        assert "detail" in data
 
     def test_delete_forbidden(self, viewer_client, mock_deps):
         resp = viewer_client.delete("/api/agents/agent")
         assert resp.status_code == 403
+        data = resp.json()
+        assert "detail" in data
 
     def test_import_forbidden(self, viewer_client, mock_deps):
         resp = viewer_client.post("/api/agents/import", json={"name": "agent", "soul": ""})
         assert resp.status_code == 403
+        data = resp.json()
+        assert "detail" in data
 
     def test_update_profile_forbidden(self, viewer_client, mock_deps):
         resp = viewer_client.put("/api/user-profile", json={"content": "x"})
         assert resp.status_code == 403
+        data = resp.json()
+        assert "detail" in data
 
 
 # ===========================================================================

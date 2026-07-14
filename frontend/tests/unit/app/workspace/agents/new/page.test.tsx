@@ -606,7 +606,9 @@ describe("NewAgentPage", () => {
       fireEvent.click(getContinueButton());
 
       await act(async () => {});
-      expect(screen.getByTestId("message-list")).toBeInTheDocument();
+      const msgList = screen.getByTestId("message-list");
+      expect(msgList).toBeInTheDocument();
+      expect(msgList).toHaveTextContent(/Messages/i);
       expect(screen.getByTestId("prompt-input")).toBeInTheDocument();
     });
 
@@ -683,7 +685,9 @@ describe("NewAgentPage", () => {
   describe("Chat step rendering", () => {
     test("renders message list", async () => {
       await goToChatStep();
-      expect(screen.getByTestId("message-list")).toBeInTheDocument();
+      const msgList = screen.getByTestId("message-list");
+      expect(msgList).toBeInTheDocument();
+      expect(msgList).toHaveTextContent(/Messages/i);
     });
 
     test("renders prompt input", async () => {
@@ -722,7 +726,9 @@ describe("NewAgentPage", () => {
 
     test("wraps content with ThreadContext.Provider", async () => {
       await goToChatStep();
-      expect(screen.getByTestId("thread-context")).toBeInTheDocument();
+      const ctx = screen.getByTestId("thread-context");
+      expect(ctx).toBeInTheDocument();
+      expect(ctx).toHaveTextContent(/Messages/i);
     });
   });
 

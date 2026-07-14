@@ -163,6 +163,8 @@ class TestGetWorkflow:
             with TestClient(app) as client:
                 resp = client.get("/api/workflows/nonexistent")
         assert resp.status_code == 404
+        data = resp.json()
+        assert "detail" in data
 
 
 # ---------------------------------------------------------------------------
@@ -187,6 +189,8 @@ class TestCreateWorkflow:
                     json={"yaml_content": VALID_YAML},
                 )
         assert resp.status_code in (200, 201)
+        data = resp.json()
+        assert data["name"] == WORKFLOW_NAME
 
     def test_create_workflow_invalid_yaml(self):
         """Create workflow fails with invalid YAML that fails parse."""
@@ -201,6 +205,8 @@ class TestCreateWorkflow:
                 )
         # Should fail because parse_workflow_string raises
         assert resp.status_code in (400, 422)
+        data = resp.json()
+        assert "detail" in data
 
 
 # ---------------------------------------------------------------------------
@@ -245,6 +251,8 @@ class TestUpdateWorkflow:
                     json={"yaml_content": VALID_YAML, "version": 1},
                 )
         assert resp.status_code == 404
+        data = resp.json()
+        assert "detail" in data
 
 
 # ---------------------------------------------------------------------------
@@ -268,6 +276,8 @@ class TestDeleteWorkflow:
             with TestClient(app) as client:
                 resp = client.delete(f"/api/workflows/{WORKFLOW_NAME}")
         assert resp.status_code in (200, 204)
+        if resp.status_code == 200:
+            assert resp.json()["success"] is True
 
     def test_delete_workflow_not_found(self):
         """Delete workflow returns 404 when not found."""
@@ -277,6 +287,12 @@ class TestDeleteWorkflow:
             with TestClient(app) as client:
                 resp = client.delete("/api/workflows/nonexistent")
         assert resp.status_code in (404, 200, 204)
+        if resp.status_code == 200:
+            data = resp.json()
+            assert "detail" in data
+        elif resp.status_code == 404:
+            data = resp.json()
+            assert "detail" in data
 
 
 # ---------------------------------------------------------------------------
@@ -300,6 +316,9 @@ class TestRunWorkflow:
                     json={"inputs": {"key": "value"}},
                 )
         assert resp.status_code in (200, 202)
+        data = resp.json()
+        assert "run_id" in data
+        assert data["status"] in ("running", "queued", "pending")
 
     def test_run_workflow_not_found(self):
         """Run workflow returns 404 when workflow not found."""
@@ -314,6 +333,8 @@ class TestRunWorkflow:
                     json={"inputs": {}},
                 )
         assert resp.status_code in (404, 400)
+        data = resp.json()
+        assert "detail" in data
 
 
 # ---------------------------------------------------------------------------
@@ -350,6 +371,8 @@ class TestGetWorkflowRunStatus:
             with TestClient(app) as client:
                 resp = client.get(f"/api/workflows/{WORKFLOW_NAME}/runs/nonexistent")
         assert resp.status_code == 404
+        data = resp.json()
+        assert "detail" in data
 
 
 # ---------------------------------------------------------------------------
