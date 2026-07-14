@@ -3309,6 +3309,7 @@ describe("PromptInputAttachment interactions", () => {
     const removeBtn = screen.getByRole("button", { name: /remove/i });
     expect(removeBtn).toHaveAttribute("type", "button");
     expect(removeBtn).toHaveAttribute("aria-label", "Remove attachment");
+    fireEvent.click(removeBtn);
   });
 
   test("file attachment renders with mediaType data", () => {

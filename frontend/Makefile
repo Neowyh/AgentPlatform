@@ -20,13 +20,13 @@ format:
 	pnpm format:write
 
 test-visual:
-	npx playwright test tests/e2e/visual/ --project=chromium --reporter=list
+	pnpm test:e2e:visual
 
 test-visual-update:
-	npx playwright test tests/e2e/visual/ --project=chromium --update-snapshots
+	pnpm test:e2e:visual -- --update-snapshots
 
 test-a11y:
-	npx playwright test tests/e2e/a11y/ --project=chromium --reporter=list
+	pnpm test:e2e:a11y
 
 test-coverage:
 	pnpm vitest run --coverage

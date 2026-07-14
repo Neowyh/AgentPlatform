@@ -19,6 +19,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.exc import IntegrityError
 
 from app.gateway.authz import get_current_rbac_user
+from app.gateway.routers import admin as admin_module
 from app.gateway.routers.admin import router as admin_router
 from ideer.persistence.models.user import UserRole
 
@@ -155,6 +156,108 @@ class TestGetAdminStats:
         assert data["total_tools"] == 5
         assert data["total_skills"] == 8
         assert data["total_resources"] == 15
+
+    @pytest.mark.asyncio
+    async def test_inventory_keeps_owner_mapping_when_metadata_date_is_invalid(self):
+        """Malformed persisted timestamps sort deterministically without losing owner attribution."""
+        metadata = SimpleNamespace(
+            id="meta-tool-1",
+            resource_type="tool",
+            resource_id="tool-1",
+            visibility="department",
+            owner_id="owner-1",
+            department_id="dept-1",
+            created_at="not-a-date",
+        )
+        metadata_result = MagicMock()
+        metadata_result.scalars.return_value.all.return_value = [metadata]
+        owner_result = MagicMock()
+        owner_result.all.return_value = [SimpleNamespace(id="owner-1", username="Ada")]
+        session = AsyncMock()
+        session.execute = AsyncMock(side_effect=[metadata_result, owner_result])
+        workflow_store = MagicMock()
+        workflow_store.list_workflows = AsyncMock(return_value=([], 0))
+
+        with (
+            patch("app.gateway.routers.admin.get_app_config", return_value=SimpleNamespace()),
+            patch("app.gateway.routers.admin._collect_agent_inventory", return_value=[]),
+            patch("app.gateway.routers.admin.get_available_tools", return_value=[SimpleNamespace(name="tool-1")]),
+            patch("app.gateway.routers.admin.get_or_new_skill_storage", return_value=MagicMock(load_skills=MagicMock(return_value=[]))),
+            patch("app.gateway.routers.admin.get_workflow_store", return_value=workflow_store),
+        ):
+            resources = await admin_module._collect_admin_resource_inventory(session)
+
+        assert resources == [
+            {
+                "id": "meta-tool-1",
+                "resource_type": "tool",
+                "resource_type_label": "工具",
+                "resource_id": "tool-1",
+                "visibility": "department",
+                "owner_id": "owner-1",
+                "department_id": "dept-1",
+                "created_at": "not-a-date",
+                "owner_username": "Ada",
+            }
+        ]
+
+
+class TestAdminRemainingGuards:
+    @patch("app.gateway.routers.admin.get_session_factory", return_value=None)
+    def test_resource_list_returns_500_when_database_is_uninitialized(self, _mock_sf):
+        response = TestClient(_make_app()).get("/api/admin/resources")
+
+        assert response.status_code == 500
+        assert response.json()["detail"] == "Database not initialized"
+
+    def test_create_user_rejects_invalid_role_before_database_access(self):
+        response = TestClient(_make_app()).post(
+            "/api/admin/users",
+            json={"email": "new@example.com", "password": "password", "username": "new-user", "role": "invalid"},
+        )
+
+        assert response.status_code == 400
+        assert "Invalid role" in response.json()["detail"]
+
+    @patch("app.gateway.routers.admin.get_session_factory", return_value=None)
+    def test_create_user_returns_500_when_department_validation_database_is_uninitialized(self, _mock_sf):
+        response = TestClient(_make_app()).post(
+            "/api/admin/users",
+            json={"email": "new@example.com", "password": "password", "username": "new-user", "role": "user", "department_id": "dept-1"},
+        )
+
+        assert response.status_code == 500
+        assert response.json()["detail"] == "Database not initialized"
+
+    @patch("app.gateway.routers.admin.get_session_factory")
+    def test_department_admin_cannot_change_user_without_department(self, mock_sf):
+        target = _make_rbac_user(user_id="target-1", role=UserRole.USER, department_id=None)
+        session = AsyncMock()
+        session.execute = AsyncMock(return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=target)))
+        mock_sf.return_value = _make_session_factory(session)
+        department_admin = _make_rbac_user(role=UserRole.DEPARTMENT_ADMIN, department_id="dept-1")
+
+        response = TestClient(_make_app(department_admin)).put(
+            "/api/admin/users/target-1/role",
+            json={"role": "user"},
+        )
+
+        assert response.status_code == 403
+        assert response.json()["detail"] == "Cannot modify users outside your department"
+        session.commit.assert_not_awaited()
+
+    @patch("app.gateway.routers.admin.service_delete_user", new_callable=AsyncMock)
+    @patch("app.gateway.routers.admin.get_session_factory")
+    def test_delete_user_hides_unexpected_service_error(self, mock_sf, service_delete_user):
+        session = AsyncMock()
+        mock_sf.return_value = _make_session_factory(session)
+        service_delete_user.side_effect = RuntimeError("filesystem failure")
+
+        response = TestClient(_make_app()).delete("/api/admin/users/target-1?resource_strategy=delete")
+
+        assert response.status_code == 500
+        assert response.json()["detail"] == "Internal server error"
+        service_delete_user.assert_awaited_once()
 
     @patch("app.gateway.routers.admin.get_workflow_store", create=True)
     @patch("app.gateway.routers.admin.get_or_new_skill_storage")
@@ -706,6 +809,47 @@ class TestCreateAndUpdateUser:
         assert response.status_code == 409
         assert response.json()["detail"] == "Username already exists"
         session.rollback.assert_awaited_once()
+
+    @patch("app.gateway.routers.admin.get_session_factory", return_value=None)
+    def test_update_user_returns_500_when_database_is_uninitialized(self, _mock_sf):
+        response = TestClient(_make_app()).put("/api/admin/users/target-1", json={"username": "new-name"})
+
+        assert response.status_code == 500
+        assert response.json()["detail"] == "Database not initialized"
+
+    @patch("app.gateway.routers.admin.get_session_factory")
+    def test_update_user_clears_department_and_returns_persisted_profile(self, mock_sf):
+        user = _make_rbac_user(user_id="target-1", department_id="dept-1", username="old-name")
+        session = AsyncMock()
+        session.execute = AsyncMock(return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=user)))
+        mock_sf.return_value = _make_session_factory(session)
+
+        response = TestClient(_make_app()).put("/api/admin/users/target-1", json={"department_id": ""})
+
+        assert response.status_code == 200
+        assert response.json() == {"id": "target-1", "username": "old-name", "department_id": None}
+        assert user.department_id is None
+        session.commit.assert_awaited_once()
+
+
+class TestDepartmentResourcePreview:
+    @patch("app.gateway.routers.admin.get_session_factory", return_value=None)
+    def test_resource_preview_returns_500_when_database_is_uninitialized(self, _mock_sf):
+        response = TestClient(_make_app()).get("/api/admin/departments/dept-1/resources")
+
+        assert response.status_code == 500
+        assert response.json()["detail"] == "Database not initialized"
+
+    @patch("app.gateway.routers.admin.get_session_factory")
+    def test_resource_preview_returns_404_for_missing_department(self, mock_sf):
+        session = AsyncMock()
+        session.execute = AsyncMock(return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=None)))
+        mock_sf.return_value = _make_session_factory(session)
+
+        response = TestClient(_make_app()).get("/api/admin/departments/missing/resources")
+
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Department not found"
 
 
 # ---------------------------------------------------------------------------

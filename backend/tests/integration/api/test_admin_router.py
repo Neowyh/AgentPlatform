@@ -487,6 +487,7 @@ class TestAdminUserManagement:
         assert resp.status_code == 403
         assert "Department admins can only assign the regular user role" in resp.json()["detail"]
         assert target_user.role == UserRole.USER
+        session.commit.assert_not_awaited()
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_department_admin_cannot_change_viewer_role(self, mock_sf):
@@ -504,6 +505,7 @@ class TestAdminUserManagement:
         assert resp.status_code == 403
         assert "Department admins can only modify regular users" in resp.json()["detail"]
         assert target_user.role == UserRole.VIEWER
+        session.commit.assert_not_awaited()
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_department_admin_cannot_change_cross_department_user(self, mock_sf):
@@ -521,6 +523,7 @@ class TestAdminUserManagement:
         assert resp.status_code == 403
         assert "Cannot modify users outside your department" in resp.json()["detail"]
         assert target_user.role == UserRole.USER
+        session.commit.assert_not_awaited()
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_department_admin_cannot_change_user_without_department(self, mock_sf):
@@ -538,6 +541,7 @@ class TestAdminUserManagement:
         assert resp.status_code == 403
         assert "Cannot modify users outside your department" in resp.json()["detail"]
         assert target_user.role == UserRole.USER
+        session.commit.assert_not_awaited()
 
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_department_admin_without_department_cannot_change_user(self, mock_sf):
@@ -555,6 +559,7 @@ class TestAdminUserManagement:
         assert resp.status_code == 403
         assert "Cannot modify users without an assigned department" in resp.json()["detail"]
         assert target_user.role == UserRole.USER
+        session.commit.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------

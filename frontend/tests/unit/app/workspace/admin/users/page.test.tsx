@@ -19,6 +19,7 @@ const mockDisableUser = vi.fn();
 const mockToggleUserStatus = vi.fn();
 const mockCreateUser = vi.fn();
 const mockUpdateUser = vi.fn();
+const mockDeleteUser = vi.fn();
 const mockToastSuccess = vi.fn();
 const mockToastError = vi.fn();
 const mockRouterReplace = vi.fn();
@@ -44,6 +45,7 @@ vi.mock("@/core/admin/api", () => ({
   toggleUserStatus: (...args: unknown[]) => mockToggleUserStatus(...args),
   createUser: (...args: unknown[]) => mockCreateUser(...args),
   updateUser: (...args: unknown[]) => mockUpdateUser(...args),
+  deleteUser: (...args: unknown[]) => mockDeleteUser(...args),
 }));
 
 vi.mock("sonner", () => ({
@@ -185,6 +187,7 @@ describe("UsersPage", () => {
       ...mockUsers[1],
       username: "bob updated",
     });
+    mockDeleteUser.mockResolvedValue({ success: true });
   });
 
   afterEach(() => {
@@ -1251,6 +1254,88 @@ describe("UsersPage", () => {
 
     await waitFor(() => {
       expect(screen.queryByText("编辑用户")).not.toBeInTheDocument();
+    });
+  });
+
+  test("deletes a disabled user with the selected resource strategy", async () => {
+    const user = userEvent.setup();
+    render(<UsersPage />);
+    await waitFor(() => {
+      expect(screen.getByTestId("user-list")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getAllByTestId("user-delete-button")[2]!);
+    expect(screen.getByText("删除用户")).toBeInTheDocument();
+    await user.click(screen.getByText("彻底删除"));
+    await user.click(screen.getByRole("button", { name: "确认删除" }));
+
+    await waitFor(() => {
+      expect(mockDeleteUser).toHaveBeenCalledWith(
+        "user-3",
+        "delete",
+        undefined,
+      );
+      expect(mockToastSuccess).toHaveBeenCalledWith("用户已删除");
+    });
+  });
+
+  test("switches back to soft delete and closes the delete dialog", async () => {
+    const user = userEvent.setup();
+    render(<UsersPage />);
+    await waitFor(() => {
+      expect(screen.getByTestId("user-list")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getAllByTestId("user-delete-button")[2]!);
+    await user.click(screen.getByText("彻底删除"));
+    await user.click(screen.getByText("仅标记删除"));
+    expect(
+      screen
+        .getAllByRole("radio")
+        .find((radio) => (radio as HTMLInputElement).checked),
+    ).toBe(screen.getAllByRole("radio")[0]);
+
+    await user.click(screen.getByRole("button", { name: "取消" }));
+    expect(screen.queryByText("删除用户")).not.toBeInTheDocument();
+  });
+
+  test("passes a transfer target when deleting with resource transfer", async () => {
+    const user = userEvent.setup();
+    render(<UsersPage />);
+    await waitFor(() => {
+      expect(screen.getByTestId("user-list")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getAllByTestId("user-delete-button")[2]!);
+    await user.click(screen.getByText("转移资源"));
+    await user.selectOptions(
+      screen.getByDisplayValue("请选择目标用户"),
+      "user-2",
+    );
+    await user.click(screen.getByRole("button", { name: "确认删除" }));
+
+    await waitFor(() => {
+      expect(mockDeleteUser).toHaveBeenCalledWith(
+        "user-3",
+        "transfer",
+        "user-2",
+      );
+    });
+  });
+
+  test("shows an error when deleting a user fails", async () => {
+    const user = userEvent.setup();
+    mockDeleteUser.mockRejectedValue(new Error("delete failed"));
+    render(<UsersPage />);
+    await waitFor(() => {
+      expect(screen.getByTestId("user-list")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getAllByTestId("user-delete-button")[2]!);
+    await user.click(screen.getByRole("button", { name: "确认删除" }));
+
+    await waitFor(() => {
+      expect(mockToastError).toHaveBeenCalledWith("delete failed");
     });
   });
 

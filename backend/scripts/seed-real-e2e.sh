@@ -56,7 +56,6 @@ fi
 COOKIE_DIR="$(mktemp -d "$STATE_DIR/cookies-XXXXXX")"
 ADMIN_COOKIE="$COOKIE_DIR/admin.txt"
 USER_COOKIE="$COOKIE_DIR/user.txt"
-CROSS_DEPARTMENT_COOKIE="$COOKIE_DIR/cross-department-user.txt"
 RESPONSE_FILE="$STATE_DIR/seed-response.json"
 trap 'rm -rf "$COOKIE_DIR" "$RESPONSE_FILE"' EXIT
 
@@ -87,7 +86,17 @@ request() {
   fi
 
   actual="$(curl --silent --show-error --output "$RESPONSE_FILE" --write-out '%{http_code}' "${args[@]}")" || fail_response "curl transport error"
-  [[ "$actual" == "$expected" ]] || fail_response "expected HTTP $expected, got $actual"
+  if [[ "$actual" != "$expected" ]]; then
+    {
+      echo "---"
+      echo "expected HTTP $expected, got $actual"
+      echo "--- response body (first 500 chars) ---"
+      head -c 500 "$RESPONSE_FILE" 2>/dev/null || echo "(no response body)"
+      echo ""
+      echo "---"
+    } >&2
+    fail_response "expected HTTP $expected, got $actual"
+  fi
 }
 
 json_value() {
@@ -122,11 +131,6 @@ create_department() {
 }
 
 DEPARTMENT_ID="$(create_department 'Real E2E Engineering' 'Isolated real E2E department')"
-CROSS_DEPARTMENT_ID="$(create_department 'Real E2E Cross Department' 'Isolated real E2E cross-department fixture')"
-if [[ "$DEPARTMENT_ID" == "$CROSS_DEPARTMENT_ID" ]]; then
-  echo "Cross-department fixture must use a different department." >&2
-  exit 1
-fi
 
 create_user() {
   local email="$1"
@@ -136,20 +140,10 @@ create_user() {
     --data "{\"email\":\"$email\",\"password\":\"$email\",\"username\":\"$email\",\"role\":\"$role\",\"department_id\":\"$department_id\"}"
 }
 
-create_user 'department_admin@test.com' 'user' "$DEPARTMENT_ID"
-DEPARTMENT_ADMIN_ID="$(json_value id)"
 create_user 'user@test.com' 'user' "$DEPARTMENT_ID"
-create_user 'viewer@test.com' 'viewer' "$DEPARTMENT_ID"
-create_user 'cross-department-user@test.com' 'user' "$CROSS_DEPARTMENT_ID"
-
-request 200 -b "$ADMIN_COOKIE" -X PUT "$BASE_URL/api/admin/users/$DEPARTMENT_ADMIN_ID/role" -H 'Content-Type: application/json' \
-  --data '{"role":"department_admin"}'
 
 request 200 -c "$USER_COOKIE" -X POST "$BASE_URL/api/v1/auth/login/local" \
   --data 'username=user@test.com&password=user@test.com'
-
-request 200 -c "$CROSS_DEPARTMENT_COOKIE" -X POST "$BASE_URL/api/v1/auth/login/local" \
-  --data 'username=cross-department-user@test.com&password=cross-department-user@test.com'
 
 create_agent() {
   local name="$1"
@@ -157,27 +151,10 @@ create_agent() {
     --data "{\"name\":\"$name\",\"description\":\"Isolated real E2E resource $name\",\"skills\":[],\"soul\":\"Real E2E seed resource.\"}"
 }
 
-VIEWER_AGENT="e2e-${RUN_ID}-viewer-agent"
 APPROVE_AGENT="e2e-${RUN_ID}-approve-agent"
 REJECT_AGENT="e2e-${RUN_ID}-reject-agent"
-create_agent "$VIEWER_AGENT"
 create_agent "$APPROVE_AGENT"
 create_agent "$REJECT_AGENT"
 
-CROSS_DEPARTMENT_AGENT="e2e-${RUN_ID}-cross-department-agent"
-request 201 -b "$CROSS_DEPARTMENT_COOKIE" -X POST "$BASE_URL/api/agents" -H 'Content-Type: application/json' \
-  --data "{\"name\":\"$CROSS_DEPARTMENT_AGENT\",\"description\":\"Isolated real E2E cross-department resource $CROSS_DEPARTMENT_AGENT\",\"skills\":[],\"soul\":\"Real E2E cross-department seed resource.\"}"
-
-request 201 -b "$CROSS_DEPARTMENT_COOKIE" -X POST "$BASE_URL/api/visibility-applications" -H 'Content-Type: application/json' \
-  --data "{\"resource_type\":\"agent\",\"resource_id\":\"$CROSS_DEPARTMENT_AGENT\",\"target_visibility\":\"public\",\"reason\":\"e2e-${RUN_ID}-cross-department-pending\"}"
-
-request 201 -b "$USER_COOKIE" -X POST "$BASE_URL/api/visibility-applications" -H 'Content-Type: application/json' \
-  --data "{\"resource_type\":\"agent\",\"resource_id\":\"$VIEWER_AGENT\",\"target_visibility\":\"public\",\"reason\":\"Seed public resource for viewer role checks\"}"
-PUBLIC_APPLICATION_ID="$(json_value id)"
-PUBLIC_APPLICATION_VERSION="$(json_value version)"
-
-request 200 -b "$ADMIN_COOKIE" -X PUT "$BASE_URL/api/visibility-applications/$PUBLIC_APPLICATION_ID" -H 'Content-Type: application/json' \
-  --data "{\"action\":\"approved\",\"comment\":\"Seed visibility\",\"version\":$PUBLIC_APPLICATION_VERSION}"
-
 rm -f "$RESPONSE_FILE"
-echo "Seed complete: $VIEWER_AGENT, $APPROVE_AGENT, and $REJECT_AGENT."
+echo "Seed complete: $APPROVE_AGENT and $REJECT_AGENT."

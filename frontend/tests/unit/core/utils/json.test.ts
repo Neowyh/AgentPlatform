@@ -1,5 +1,13 @@
 import { describe, expect, test, vi } from "vitest";
 
+vi.mock("best-effort-json-parser", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("best-effort-json-parser")>();
+  return { ...actual, parse: vi.fn(actual.parse) };
+});
+
+import { parse } from "best-effort-json-parser";
+
 import { tryParseJSON } from "@/core/utils/json";
 
 describe("tryParseJSON", () => {
@@ -100,5 +108,23 @@ describe("tryParseJSON", () => {
     const result = tryParseJSON("undefined");
     // best-effort parser may return something or undefined
     expect(result === undefined || result !== undefined).toBe(true);
+  });
+});
+describe("tryParseJSON - catch block coverage", () => {
+  test("returns undefined when parse throws", () => {
+    vi.mocked(parse).mockImplementationOnce(() => {
+      throw new SyntaxError("Unexpected token");
+    });
+    const result = tryParseJSON("<<FORCE_THROW>>");
+    expect(result).toBeUndefined();
+    expect(parse).toHaveBeenCalledWith("<<FORCE_THROW>>");
+  });
+
+  test("returns undefined for other throwing inputs", () => {
+    vi.mocked(parse).mockImplementationOnce(() => {
+      throw new Error("some other error");
+    });
+    const result = tryParseJSON("anything");
+    expect(result).toBeUndefined();
   });
 });

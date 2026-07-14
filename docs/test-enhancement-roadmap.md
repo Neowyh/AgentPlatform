@@ -11,7 +11,7 @@
 
 ---
 
-## 一、覆盖率收尾（剩余 ~2%）
+## 一、覆盖率诊断与盲区治理
 
 ### 1.1 后端不可测代码标注
 
@@ -28,7 +28,7 @@
 1. 运行 `pytest --cov-report=term-missing` 获取所有未覆盖行
 2. 逐行审查，将确实不可测的代码标注 `# pragma: no cover`
 3. 将可测但困难的代码归入后续增强计划
-4. 目标：覆盖率报告中的 "真实可测未覆盖" 降至 0
+4. 使用报告定位可观察的业务盲区；不以全局百分比作为合并门槛
 
 ### 1.2 前端 SSR 与死代码排除
 
@@ -366,20 +366,11 @@ async def test_sandbox_command_timeout():
 
 ## 五、CI/CD 集成优化
 
-### 5.1 覆盖率门禁
+### 5.1 覆盖率报告
 
-在 CI 中设置硬性覆盖率门槛，低于则阻断合并。
-
-```yaml
-# .github/workflows/coverage-gate.yml
-- name: Check coverage threshold
-  run: |
-    BACKEND_COV=$(python -c "import json; d=json.load(open('coverage.json')); print(d['totals']['percent_covered'])")
-    if (( $(echo "$BACKEND_COV < 98.0" | bc -l) )); then
-      echo "Backend coverage $BACKEND_COV% is below 98% threshold"
-      exit 1
-    fi
-```
+CI 发布后端与前端 coverage 报告，用于识别回归和测试盲区；报告本身不以全局
+statements 百分比阻断合并。合并判断依赖 capability matrix 中的唯一主责任测试，
+以及真实跨栈写操作的 isolated real E2E。
 
 ### 5.2 增量覆盖率
 
@@ -647,7 +638,7 @@ class TestSandboxSecurity:
 
 | 任务 | 预计工时 | 产出 |
 |------|---------|------|
-| 覆盖率门禁 CI 集成 | 2h | CI 阻断低于 98% 的合并 |
+| 覆盖率报告 CI 集成 | 2h | 发布诊断报告并关联 capability matrix |
 | 增量覆盖率检查 | 2h | diff-cover 集成到 PR 检查 |
 | 不可测代码 `pragma` 标注 | 3h | 覆盖率报告更准确 |
 | 公共 fixture 抽取 | 4h | 减少 50%+ 的 mock 样板代码 |

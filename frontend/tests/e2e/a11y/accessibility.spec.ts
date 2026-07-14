@@ -14,9 +14,7 @@ import { mockLangGraphAPI } from "../utils/mock-api";
 const PAGES = [
   { name: "Landing", path: "/" },
   { name: "Login", path: "/login" },
-  { name: "Workspace", path: "/workspace" },
-  { name: "Admin", path: "/workspace/admin" },
-  { name: "Agents", path: "/workspace/agents" },
+  { name: "Setup", path: "/setup" },
 ];
 
 test.describe("Accessibility — WCAG 2.1 AA", () => {

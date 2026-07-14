@@ -51,8 +51,12 @@ test.describe("Audit logs", () => {
       await expect(page.getByText("浏览和查询系统操作审计记录")).toBeVisible();
 
       // Should show log cards with truncated IDs
-      await expect(page.getByText("log-0000")).toBeVisible();
-      await expect(page.getByText("log-0000").nth(1)).toBeVisible();
+      const logCards = page.locator(
+        '[data-testid="audit-logs-page"] [data-slot="card"]',
+      );
+      await expect(logCards).toHaveCount(3);
+      await expect(logCards.first().getByText("log-0000")).toBeVisible();
+      await expect(logCards.nth(1).getByText("log-0000")).toBeVisible();
     });
 
     test("log cards display action badges", async ({ page }) => {
@@ -92,7 +96,7 @@ test.describe("Audit logs", () => {
 
       // Resource info: "资源:" followed by resource_id
       await expect(page.getByText("资源:").first()).toBeVisible();
-      await expect(page.getByText("agent-alpha")).toBeVisible();
+      await expect(page.getByText("agent-alpha").first()).toBeVisible();
     });
 
     test("log cards show IP address", async ({ page }) => {
@@ -102,7 +106,7 @@ test.describe("Audit logs", () => {
       await expect(page.getByText("IP:").first()).toBeVisible({
         timeout: 15_000,
       });
-      await expect(page.getByText("192.168.1.100")).toBeVisible();
+      await expect(page.getByText("192.168.1.100").first()).toBeVisible();
     });
 
     test("total count is displayed", async ({ page }) => {
@@ -193,7 +197,7 @@ test.describe("Audit logs", () => {
 
       // Click the first log card — Cards have cursor-pointer class
       const firstCard = page
-        .locator('[data-testid="audit-logs-page"] [class*="cursor-pointer"]')
+        .locator('[data-testid="audit-logs-page"] [data-slot="card"]')
         .first();
       await firstCard.click();
 
@@ -209,7 +213,7 @@ test.describe("Audit logs", () => {
 
       // Click the first log card
       const firstCard = page
-        .locator('[data-testid="audit-logs-page"] [class*="cursor-pointer"]')
+        .locator('[data-testid="audit-logs-page"] [data-slot="card"]')
         .first();
       await firstCard.click();
 
@@ -218,7 +222,9 @@ test.describe("Audit logs", () => {
         timeout: 10_000,
       });
       // The first log has detail: '{"name":"agent-alpha"}'
-      await expect(page.getByText("agent-alpha")).toBeVisible();
+      await expect(
+        page.getByRole("dialog").getByText(/"name": "agent-alpha"/),
+      ).toBeVisible();
     });
   });
 

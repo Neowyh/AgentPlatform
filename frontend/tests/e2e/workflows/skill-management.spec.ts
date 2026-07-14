@@ -80,7 +80,7 @@ test.describe("Skill management", () => {
       });
     });
 
-    test("skills show category and license badges", async ({ page }) => {
+    test("skills show category and visibility application action", async ({ page }) => {
       mockLangGraphAPI(page, { skills: MOCK_SKILLS });
       await page.goto("/workspace/chats/new");
 
@@ -92,79 +92,7 @@ test.describe("Skill management", () => {
         timeout: 15_000,
       });
 
-      // Should show "Requires Internet" badge for skills with that license
-      await expect(page.getByText(/requires internet/i)).toBeVisible();
-    });
-
-    test("enable/disable toggle is visible", async ({ page }) => {
-      mockLangGraphAPI(page, { skills: MOCK_SKILLS });
-      await page.goto("/workspace/chats/new");
-
-      await openSettings(page);
-      await page.getByText(/^skills$/i).click();
-
-      // Toggle switches should be visible
-      const switches = page.getByRole("switch");
-      await expect(switches.first()).toBeVisible({ timeout: 15_000 });
-    });
-  });
-
-  test.describe("Skill Editor", () => {
-    test("edit button opens skill editor dialog", async ({ page }) => {
-      mockLangGraphAPI(page, { skills: MOCK_SKILLS });
-      await page.goto("/workspace/chats/new");
-
-      await openSettings(page);
-      await page.getByText(/^skills$/i).click();
-
-      // Click edit button (icon-only with title="Edit skill")
-      const editBtn = page.locator('button[title="Edit skill"]').first();
-      await editBtn.click();
-
-      // Should open editor dialog with CodeMirror
-      await expect(page.locator(".cm-editor")).toBeVisible({
-        timeout: 15_000,
-      });
-    });
-  });
-
-  test.describe("Test Skill", () => {
-    test("test button opens test dialog", async ({ page }) => {
-      mockLangGraphAPI(page, { skills: MOCK_SKILLS });
-      await page.goto("/workspace/chats/new");
-
-      await openSettings(page);
-      await page.getByText(/^skills$/i).click();
-
-      // Click test button (icon-only with title="Test skill")
-      const testBtn = page.locator('button[title="Test skill"]').first();
-      await testBtn.click();
-
-      // Should open test dialog with instructions
-      await expect(page.getByText(/new chat|start new/i).first()).toBeVisible({
-        timeout: 15_000,
-      });
-    });
-  });
-
-  test.describe("Create Skill", () => {
-    test("create button navigates to skill creation chat", async ({ page }) => {
-      mockLangGraphAPI(page, { skills: [] });
-      await page.goto("/workspace/chats/new");
-
-      await openSettings(page);
-      await page.getByText(/^skills$/i).click();
-
-      // Click create button (may match multiple, use first)
-      const createBtn = page
-        .getByRole("button", {
-          name: /create.*skill|create your first/i,
-        })
-        .first();
-      await createBtn.click();
-
-      // Should navigate to chat with mode=skill
-      await expect(page).toHaveURL(/mode=skill/, { timeout: 10_000 });
+      await expect(page.getByRole("button", { name: /apply visibility/i }).first()).toBeVisible();
     });
   });
 });

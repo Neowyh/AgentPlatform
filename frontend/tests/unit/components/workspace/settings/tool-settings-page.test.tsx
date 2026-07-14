@@ -470,6 +470,21 @@ describe("ToolSettingsPage", () => {
     );
   });
 
+  test("shows a user-facing error when enabling a server is forbidden", async () => {
+    const user = userEvent.setup();
+    const { toast } = await import("sonner");
+    mockEnableMCPServer.mockImplementation((_args, options) => {
+      options.onError(new Error("403 Forbidden"));
+    });
+    render(<ToolSettingsPage />);
+
+    await user.click(screen.getAllByRole("switch")[0]!);
+
+    expect(toast.error).toHaveBeenCalledWith(
+      "MCP configuration is managed by super administrators. Please contact your admin.",
+    );
+  });
+
   test("validates add form requires a server name", async () => {
     const user = userEvent.setup();
     const { toast } = await import("sonner");

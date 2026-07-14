@@ -144,6 +144,33 @@ describe("errors", () => {
 
       expect(result).toContain("body.email: field required");
     });
+
+    test("uses the custom error message when detail is absent", async () => {
+      const { formatErrorMessage } = await import("@/core/api/errors");
+      const res = new Response(
+        JSON.stringify({
+          success: false,
+          error: { message: "Quota exceeded" },
+        }),
+        { status: 429, statusText: "Too Many Requests" },
+      );
+
+      await expect(formatErrorMessage(res, "Create run")).resolves.toBe(
+        "Quota exceeded",
+      );
+    });
+
+    test("uses the action and status when no detail or custom message exists", async () => {
+      const { formatErrorMessage } = await import("@/core/api/errors");
+      const res = new Response(JSON.stringify({ success: false }), {
+        status: 500,
+        statusText: "Internal Server Error",
+      });
+
+      await expect(formatErrorMessage(res, "Create run")).resolves.toBe(
+        "Create run: Internal Server Error",
+      );
+    });
   });
 
   describe("extractError", () => {

@@ -12,7 +12,6 @@
 
 import { test, expect } from "@playwright/test";
 
-const BASE_URL = process.env.BASE_URL ?? "http://localhost:3000";
 const TEST_EMAIL = "super_admin@test.com";
 const TEST_PASSWORD = "super_admin@test.com";
 
@@ -33,14 +32,14 @@ test.describe("Auth Flow", () => {
   test("should redirect to login when not authenticated", async ({ page }) => {
     await page.context().clearCookies();
 
-    await page.goto(`${BASE_URL}/workspace`);
+    await page.goto("/workspace");
 
     // Should redirect to login page
     await expect(page).toHaveURL(/\/login/);
   });
 
   test("should login successfully", async ({ page }) => {
-    await page.goto(`${BASE_URL}/login`);
+    await page.goto("/login");
 
     const emailInput = page.locator('input[type="email"], input#email').first();
     const passwordInput = page
@@ -63,7 +62,7 @@ test.describe("Auth Flow", () => {
 
   test("should logout successfully", async ({ page }) => {
     // Login first
-    await page.goto(`${BASE_URL}/login`);
+    await page.goto("/login");
 
     const emailInput = page.locator('input[type="email"], input#email').first();
     const passwordInput = page
@@ -89,7 +88,7 @@ test.describe("Auth Flow", () => {
     });
 
     // Navigate to login to verify logout took effect
-    await page.goto(`${BASE_URL}/login`);
+    await page.goto("/login");
     await expect(page).toHaveURL(/\/login/);
   });
 });

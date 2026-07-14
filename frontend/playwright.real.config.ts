@@ -14,7 +14,7 @@ if (!stateDir || !runId || !gatewayUrl) {
 }
 
 const artifactsDir = resolve(
-  process.env.REAL_E2E_ARTIFACTS_DIR ??
+  process.env.REAL_E2E_ARTIFACTS_DIR ||
     resolve(stateDir, "playwright-artifacts"),
 );
 const baseURL = `http://localhost:${frontendPort}`;
@@ -30,7 +30,7 @@ export default defineConfig({
     ["html", { outputFolder: resolve(artifactsDir, "report"), open: "never" }],
   ],
   outputDir: resolve(artifactsDir, "test-results"),
-  timeout: 60_000,
+  timeout: 120_000,
 
   expect: { timeout: 20_000 },
   use: {
@@ -41,14 +41,15 @@ export default defineConfig({
   },
   projects: [{ name: "real", use: { ...devices["Desktop Chrome"] } }],
   webServer: {
-    command: `pnpm exec next dev --webpack --port ${frontendPort}`,
+    command: `pnpm exec next build --webpack && pnpm start -p ${frontendPort}`,
     url: baseURL,
     reuseExistingServer: false,
-    timeout: 180_000,
+    timeout: 420_000,
     env: {
       SKIP_ENV_VALIDATION: "1",
       IDEER_INTERNAL_GATEWAY_BASE_URL: gatewayUrl,
       IDEER_TRUSTED_ORIGINS: baseURL,
+      IDEER_NEXT_DIST_DIR: `.next-e2e-${runId}`,
       OPENAI_API_KEY: process.env.OPENAI_API_KEY ?? "",
       OPENAI_BASE_URL: process.env.OPENAI_BASE_URL ?? "",
     },

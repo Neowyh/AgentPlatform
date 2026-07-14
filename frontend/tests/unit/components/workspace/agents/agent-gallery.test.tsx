@@ -191,9 +191,8 @@ describe("AgentGallery", () => {
     vi.mocked(importAgent).mockRejectedValue(new Error("Import failed"));
     const user = userEvent.setup();
     render(<AgentGallery />);
-    const input = document.querySelector<HTMLInputElement>(
-      'input[type="file"]',
-    );
+    const input =
+      document.querySelector<HTMLInputElement>('input[type="file"]');
     const file = new File(["zip"], "agent.zip", { type: "application/zip" });
 
     if (!input) {

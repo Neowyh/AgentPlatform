@@ -96,18 +96,14 @@ jobs:
           path: backend/.coverage-data
           merge-multiple: true
 
-      - name: Combine backend coverage and check threshold
+      - name: Combine backend coverage and publish summary
         working-directory: backend
         run: |
           uv run coverage combine .coverage-data
           uv run coverage json -o coverage.json
           uv run coverage report --show-missing
           BACKEND_COV=$(python -c "import json; d=json.load(open('coverage.json')); print(d['totals']['percent_covered'])")
-          if (( $(echo "$BACKEND_COV < 98.0" | bc -l) )); then
-            echo "::error::Backend coverage ${BACKEND_COV}% is below 98% threshold"
-            exit 1
-          fi
-          echo "Backend coverage: ${BACKEND_COV}% ✓"
+          echo "Backend coverage is diagnostic only."
 
       - name: Coverage Summary
         if: always()

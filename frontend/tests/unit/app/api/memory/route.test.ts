@@ -1,4 +1,12 @@
-import { describe, test, expect, vi, beforeEach } from "vitest";
+import { afterAll, beforeEach, describe, expect, test, vi } from "vitest";
+
+vi.hoisted(() => {
+  vi.stubEnv(
+    "IDEER_INTERNAL_GATEWAY_BASE_URL",
+    "http://internal-gateway.test:9123",
+  );
+  vi.stubEnv("NEXT_PUBLIC_BACKEND_BASE_URL", "http://public-gateway.test:8123");
+});
 
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
@@ -13,6 +21,10 @@ vi.mock("next/server", () => ({
 }));
 
 import { GET, DELETE } from "@/app/api/memory/route";
+
+afterAll(() => {
+  vi.unstubAllEnvs();
+});
 
 function createRequest(method = "GET") {
   const headers = new Headers({
@@ -44,7 +56,7 @@ describe("memory API route", () => {
 
     expect(mockFetch).toHaveBeenCalledOnce();
     const [url, options] = mockFetch.mock.calls[0]!;
-    expect(url.toString()).toContain("/api/memory");
+    expect(url.toString()).toBe("http://internal-gateway.test:9123/api/memory");
     expect(options.method).toBe("GET");
     expect(options.headers.get("host")).toBeNull();
     expect(options.headers.get("connection")).toBeNull();

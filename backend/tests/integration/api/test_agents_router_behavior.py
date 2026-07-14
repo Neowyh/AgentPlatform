@@ -357,6 +357,59 @@ class TestListAgentsWithPerUserAgents:
                 set_agents_api_config(previous_config)
                 reset_current_user(user_token)
 
+    def test_list_skips_visible_metadata_without_owner_config(self, agent_client):
+        """A stale cross-user metadata row must not create a phantom list entry."""
+        _write_agent_meta(
+            agent_client._tmp_path,
+            "missing-owner",
+            "missing-owner-agent",
+            {
+                "visibility": "public",
+                "owner_id": "missing-owner",
+                "department_id": None,
+            },
+        )
+
+        response = agent_client.get("/api/agents")
+
+        assert response.status_code == 200
+        assert "missing-owner-agent" not in {agent["name"] for agent in response.json()["agents"]}
+
+    def test_list_skips_visible_owner_agent_with_invalid_config(self, agent_client):
+        """A corrupt public owner config must not make the agents list unavailable."""
+        owner_dir = agent_client._tmp_path / "users" / "broken-owner" / "agents" / "broken-public"
+        owner_dir.mkdir(parents=True)
+        (owner_dir / "config.yaml").write_text("name: [", encoding="utf-8")
+        _write_agent_meta(
+            agent_client._tmp_path,
+            "broken-owner",
+            "broken-public",
+            {"visibility": "public", "owner_id": "broken-owner", "department_id": None},
+        )
+
+        response = agent_client.get("/api/agents")
+
+        assert response.status_code == 200
+        assert "broken-public" not in {agent["name"] for agent in response.json()["agents"]}
+
+    def test_list_survives_metadata_database_failure_for_local_agents(self, agent_client):
+        """Metadata read failure must not hide a readable local agent or fail the endpoint."""
+        assert agent_client.post("/api/agents", json={"name": "local-after-db-error", "soul": "test"}).status_code == 201
+
+        class FailingSession:
+            async def __aenter__(self):
+                raise RuntimeError("metadata database unavailable")
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+        with patch("app.gateway.routers.agents.get_session_factory", return_value=lambda: FailingSession()):
+            response = agent_client.get("/api/agents")
+
+        assert response.status_code == 200
+        agents = {agent["name"]: agent for agent in response.json()["agents"]}
+        assert agents["local-after-db-error"]["visibility"] == "private"
+
     def test_list_agent_without_metadata_defaults_private(self, agent_client, tmp_path):
         """Lines 262-266: agent without ResourceMetadata record → default private."""
         import app.gateway.routers.agents as agents_router
@@ -1102,6 +1155,28 @@ class TestUpdateAgentPaths:
         assert response.status_code == 409
         assert "shared read-only" in response.json()["detail"].lower()
 
+    def test_update_stale_version_preserves_existing_config(self, agent_client):
+        """A stale update must not overwrite the persisted agent configuration."""
+        assert (
+            agent_client.post(
+                "/api/agents",
+                json={"name": "versioned-agent", "description": "original", "soul": "original soul"},
+            ).status_code
+            == 201
+        )
+
+        response = agent_client.put(
+            "/api/agents/versioned-agent",
+            json={"description": "overwritten", "soul": "overwritten soul", "version": 999},
+        )
+
+        assert response.status_code == 409
+        assert response.json()["detail"] == "乐观锁冲突，需刷新重试"
+        persisted = agent_client.get("/api/agents/versioned-agent")
+        assert persisted.status_code == 200
+        assert persisted.json()["description"] == "original"
+        assert persisted.json()["soul"] == "original soul"
+
 
 class TestDeleteAgentPaths:
     def test_delete_exception_returns_500(self, agent_client):
@@ -1130,6 +1205,64 @@ class TestDeleteAgentPaths:
         agent_client.post("/api/agents", json={"name": "del-success", "soul": "test"})
         response = agent_client.delete("/api/agents/del-success")
         assert response.status_code == 204
+
+    def test_delete_removes_agent_files_and_metadata(self, agent_client):
+        """Deleting an agent removes both its user directory and RBAC record."""
+        import asyncio
+
+        from sqlalchemy import select
+
+        from ideer.persistence.engine import get_session_factory
+        from ideer.persistence.models.resource_metadata import ResourceMetadata
+
+        assert agent_client.post("/api/agents", json={"name": "delete-record", "soul": "test"}).status_code == 201
+        response = agent_client.delete("/api/agents/delete-record")
+
+        assert response.status_code == 204
+        assert not (agent_client._tmp_path / "users" / "test-user" / "agents" / "delete-record").exists()
+
+        async def _metadata_is_gone() -> bool:
+            session_factory = get_session_factory()
+            assert session_factory is not None
+            async with session_factory() as session:
+                result = await session.execute(
+                    select(ResourceMetadata).where(
+                        ResourceMetadata.resource_type == "agent",
+                        ResourceMetadata.resource_id == "delete-record",
+                        ResourceMetadata.owner_id == "test-user",
+                    )
+                )
+                return result.scalar_one_or_none() is None
+
+        assert asyncio.run(_metadata_is_gone())
+
+
+class TestAgentFavoriteAndStats:
+    def test_favorite_returns_500_when_metadata_query_fails(self, agent_client):
+        """The favorite API exposes a controlled error when its DB session fails."""
+
+        class FailingSession:
+            async def __aenter__(self):
+                raise RuntimeError("database unavailable")
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+        with patch("app.gateway.routers.agents.get_session_factory", return_value=lambda: FailingSession()):
+            response = agent_client.post("/api/agents/any-agent/favorite")
+
+        assert response.status_code == 500
+        assert response.json()["detail"] == "Internal server error"
+
+    def test_stats_queries_persisted_run_and_message_counts(self, agent_client):
+        """Stats read the persisted counters even when both counts are zero."""
+        assert agent_client.post("/api/agents", json={"name": "counted-agent", "soul": "test"}).status_code == 201
+
+        response = agent_client.get("/api/agents/counted-agent/stats")
+
+        assert response.status_code == 200
+        assert response.json()["total_runs"] == 0
+        assert response.json()["total_messages"] == 0
 
 
 # ---------------------------------------------------------------------------

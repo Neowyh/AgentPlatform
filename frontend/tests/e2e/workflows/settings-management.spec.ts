@@ -19,12 +19,8 @@ const MOCK_MCP_CONFIG = {
 
 /** Helper: open the settings dialog via sidebar dropdown menu */
 async function openSettings(page: Page) {
-  const trigger = page
-    .locator("button")
-    .filter({ hasText: /settings and more|settings/i })
-    .last();
-  await trigger.click({ timeout: 10_000 });
-  await page.getByRole("menuitem", { name: /settings/i }).click();
+  await page.getByTestId("nav-menu-trigger").click({ timeout: 10_000 });
+  await page.getByTestId("settings-menu-item").click();
 }
 
 test.describe("Settings management", () => {
@@ -36,7 +32,7 @@ test.describe("Settings management", () => {
       await openSettings(page);
 
       // Dialog should be visible with title
-      await expect(page.getByTestId("settings-dialog")).toBeVisible({
+      await expect(page.getByRole("dialog", { name: "Settings" })).toBeVisible({
         timeout: 15_000,
       });
     });
@@ -88,7 +84,7 @@ test.describe("Settings management", () => {
       await openSettings(page);
       await page.getByTestId("settings-tab-account").click();
 
-      // Should show the mocked user email
+      // The mock browser lane uses the mock API identity.
       await expect(page.getByText("e2e@test.local")).toBeVisible({
         timeout: 15_000,
       });

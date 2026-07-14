@@ -13,6 +13,8 @@ import { config } from "dotenv";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 config({ path: resolve(__dirname, "../.env") });
+const frontendPort = process.env.E2E_FRONTEND_PORT ?? "3003";
+const baseURL = `http://localhost:${frontendPort}`;
 
 export default defineConfig({
   testDir: "./tests/e2e/auth",
@@ -28,7 +30,7 @@ export default defineConfig({
   },
 
   use: {
-    baseURL: "http://localhost:3000",
+    baseURL,
     trace: "on-first-retry",
   },
 
@@ -40,9 +42,9 @@ export default defineConfig({
   ],
 
   webServer: {
-    command: "pnpm exec next build --webpack && pnpm start",
-    url: "http://localhost:3000",
-    reuseExistingServer: true,
+    command: `pnpm exec next build --webpack && pnpm start -p ${frontendPort}`,
+    url: baseURL,
+    reuseExistingServer: false,
     timeout: 120_000,
     env: {
       SKIP_ENV_VALIDATION: "1",

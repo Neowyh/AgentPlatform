@@ -28,6 +28,7 @@ import {
   checkAgentName,
   exportAgent,
   importAgent,
+  toggleAgentFavorite,
   AgentNameCheckError,
   AgentsApiDisabledError,
 } from "@/core/agents/api";
@@ -212,6 +213,33 @@ describe("deleteAgent", () => {
 
     await expect(deleteAgent("agent1")).rejects.toThrow(
       "Failed to delete agent",
+    );
+  });
+});
+
+describe("toggleAgentFavorite", () => {
+  test("posts the agent name and returns favorite state", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: true, is_favorited: true }),
+    });
+
+    await expect(toggleAgentFavorite("agent one")).resolves.toEqual({
+      success: true,
+      is_favorited: true,
+    });
+    expect(mockFetch).toHaveBeenCalledWith(
+      "http://localhost:8000/api/agents/agent%20one/favorite",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  test("uses extractError when toggling favorite fails", async () => {
+    mockFetch.mockResolvedValue({ ok: false });
+    mockExtractError.mockRejectedValue(new Error("favorite failed"));
+
+    await expect(toggleAgentFavorite("agent1")).rejects.toThrow(
+      "favorite failed",
     );
   });
 });

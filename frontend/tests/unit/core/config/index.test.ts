@@ -133,6 +133,14 @@ describe("getBackendBaseURL", () => {
     await importConfig();
     expect(getBackendBaseURL()).toBe("https://api.example.com/v1");
   });
+
+  test("uses the SSR origin fallback for a relative backend URL", async () => {
+    removeWindow();
+    envMock.NEXT_PUBLIC_BACKEND_BASE_URL = "/backend";
+    await importConfig();
+
+    expect(getBackendBaseURL()).toBe("http://localhost:2026/backend");
+  });
 });
 
 // ===========================================================================

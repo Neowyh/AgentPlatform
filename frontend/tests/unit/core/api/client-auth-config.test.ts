@@ -76,9 +76,7 @@ describe("core api client", () => {
       throw new Error("Expected clientFetch to pass request options");
     }
 
-    expect(init.headers.get("X-CSRF-Token")).toBe(
-      "already-set",
-    );
+    expect(init.headers.get("X-CSRF-Token")).toBe("already-set");
   });
 
   test("clientFetch redirects on 401 by default", async () => {
@@ -117,6 +115,7 @@ describe("auth provider api helpers", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
   });
 
   test("fetchCurrentUser returns user for ok responses and null otherwise", async () => {
@@ -171,6 +170,7 @@ describe("api config urls", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
   });
 
   test("builds backend and langgraph URLs from explicit env values", async () => {
@@ -240,14 +240,40 @@ describe("api config urls", () => {
     );
   });
 
-  test("isDevEnvironment returns false when process is unavailable", async () => {
+  test("isDevEnvironment reflects the development environment", async () => {
     vi.doMock("@/env", () => ({
       env: {
         NEXT_PUBLIC_BACKEND_BASE_URL: "",
         NEXT_PUBLIC_LANGGRAPH_BASE_URL: "",
       },
     }));
-    vi.stubGlobal("process", undefined);
+    vi.stubEnv("NODE_ENV", "development");
+    const { isDevEnvironment } = await import("@/core/api/config");
+
+    expect(isDevEnvironment()).toBe(true);
+  });
+
+  test("isDevEnvironment is false outside development", async () => {
+    vi.doMock("@/env", () => ({
+      env: {
+        NEXT_PUBLIC_BACKEND_BASE_URL: "",
+        NEXT_PUBLIC_LANGGRAPH_BASE_URL: "",
+      },
+    }));
+    vi.stubEnv("NODE_ENV", "production");
+    const { isDevEnvironment } = await import("@/core/api/config");
+
+    expect(isDevEnvironment()).toBe(false);
+  });
+
+  test("isDevEnvironment falls back to false without NODE_ENV", async () => {
+    vi.doMock("@/env", () => ({
+      env: {
+        NEXT_PUBLIC_BACKEND_BASE_URL: "",
+        NEXT_PUBLIC_LANGGRAPH_BASE_URL: "",
+      },
+    }));
+    vi.stubEnv("NODE_ENV", "");
     const { isDevEnvironment } = await import("@/core/api/config");
 
     expect(isDevEnvironment()).toBe(false);

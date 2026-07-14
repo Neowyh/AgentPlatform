@@ -202,6 +202,19 @@ class TestGetWorkflow:
 
         assert resp.status_code == 400
 
+    def test_get_workflow_hides_raw_yaml_from_regular_user(self, app):
+        _set_user(app, "user")
+        mock_store = AsyncMock()
+        mock_store.load_workflow = AsyncMock(return_value=SAMPLE_YAML)
+
+        with TestClient(app, raise_server_exceptions=False) as client:
+            with patch("app.gateway.routers.workflows.get_workflow_store", return_value=mock_store), _patch_meta():
+                response = client.get("/api/workflows/test-wf")
+
+        assert response.status_code == 200
+        assert response.json()["name"] == "test-wf"
+        assert "yaml_content" not in response.json()
+
 
 # ── POST /api/workflows ──────────────────────────────────────────────
 
@@ -230,6 +243,22 @@ class TestCreateWorkflow:
     def test_create_workflow_invalid_yaml_raises_400(self, client):
         resp = client.post("/api/workflows", json={"yaml_content": "invalid: [yaml: broken"})
         assert resp.status_code == 400
+
+
+class TestImportWorkflow:
+    def test_import_workflow_invalid_yaml_returns_400(self, client):
+        response = client.post("/api/workflows/import", json={"yaml_content": "invalid: [yaml: broken"})
+
+        assert response.status_code == 400
+
+    def test_import_workflow_existing_name_returns_409(self, client):
+        mock_store = AsyncMock()
+        mock_store.load_workflow = AsyncMock(return_value=SAMPLE_YAML)
+
+        with patch("app.gateway.routers.workflows.get_workflow_store", return_value=mock_store):
+            response = client.post("/api/workflows/import", json={"yaml_content": SAMPLE_YAML})
+
+        assert response.status_code == 409
 
 
 # ── PUT /api/workflows/{name} ────────────────────────────────────────
@@ -277,6 +306,21 @@ class TestUpdateWorkflow:
             resp = client.put("/api/workflows/test-wf", json={"yaml_content": "bad: [yaml", "version": 1})
 
         assert resp.status_code == 400
+
+    def test_update_succeeds_when_metadata_version_write_fails(self, client):
+        mock_store = AsyncMock()
+        mock_store.load_workflow = AsyncMock(return_value=SAMPLE_YAML)
+        mock_store.save_workflow = AsyncMock()
+
+        with (
+            patch("app.gateway.routers.workflows.get_workflow_store", return_value=mock_store),
+            _patch_meta(),
+            patch("app.gateway.routers.workflows._workflow_store.save_meta", new_callable=AsyncMock, return_value=False),
+        ):
+            response = client.put("/api/workflows/test-wf", json={"yaml_content": SAMPLE_YAML, "version": 1})
+
+        assert response.status_code == 200
+        mock_store.save_workflow.assert_awaited_once_with("test-wf", SAMPLE_YAML)
 
 
 # ── DELETE /api/workflows/{name} ─────────────────────────────────────
@@ -341,6 +385,15 @@ class TestRunWorkflow:
             resp = client.post("/api/workflows/nonexistent/run", json={"inputs": {}})
 
         assert resp.status_code == 404
+
+    def test_run_workflow_invalid_yaml_returns_400(self, client):
+        mock_store = AsyncMock()
+        mock_store.load_workflow = AsyncMock(return_value="invalid: [yaml: broken")
+
+        with patch("app.gateway.routers.workflows.get_workflow_store", return_value=mock_store), _patch_meta():
+            response = client.post("/api/workflows/test-wf/run", json={"inputs": {}})
+
+        assert response.status_code == 400
 
     def test_run_workflow_missing_required_input(self, client):
         mock_store = AsyncMock()
@@ -497,11 +550,61 @@ class TestListRuns:
         assert data["limit"] == 10
         assert data["offset"] == 5
 
+    def test_list_runs_clamps_out_of_range_pagination(self, client):
+        mock_store = AsyncMock()
+        mock_store.list_runs = AsyncMock(return_value=([], 0))
+
+        with patch("app.gateway.routers.workflows.get_workflow_store", return_value=mock_store), _patch_meta():
+            response = client.get("/api/workflows/test-wf/runs?limit=999&offset=-1")
+
+        assert response.status_code == 200
+        assert response.json()["limit"] == 200
+        assert response.json()["offset"] == 0
+        mock_store.list_runs.assert_awaited_once_with("test-wf", limit=200, offset=0)
+
 
 # ── POST /api/workflows/{name}/runs/{run_id}/review ──────────────────
 
 
 class TestSubmitReview:
+    def test_submit_review_rejects_non_approver_without_persisting(self, app):
+        from app.gateway.authz import get_current_rbac_user
+
+        user = _mock_user("user")
+        user.username = "test-user"
+
+        async def _override():
+            return user
+
+        app.dependency_overrides[get_current_rbac_user] = _override
+        state = _make_state(status=RunStatus.WAITING_HUMAN)
+        mock_store = AsyncMock()
+        mock_store.load_run_state = AsyncMock(return_value=state)
+        mock_store.load_workflow = AsyncMock(
+            return_value="""\
+name: test-wf
+description: Approval workflow
+version: \"1.0\"
+steps:
+  - id: review-1
+    type: human_review
+    message: Review this request
+    approvers: [approved-user]
+"""
+        )
+        mock_store.save_review_result = AsyncMock(return_value=True)
+
+        with TestClient(app, raise_server_exceptions=False) as client:
+            with patch("app.gateway.routers.workflows.get_workflow_store", return_value=mock_store):
+                response = client.post(
+                    "/api/workflows/test-wf/runs/run-001/review",
+                    json={"approved": True},
+                )
+
+        assert response.status_code == 403
+        assert response.json()["detail"] == "You are not an approver for this workflow step"
+        mock_store.save_review_result.assert_not_awaited()
+
     def test_submit_review_success(self, client):
         state = _make_state(status=RunStatus.WAITING_HUMAN)
         mock_store = AsyncMock()

@@ -15,7 +15,11 @@
     "noImplicitAny": false,
     "checkJs": false,
     /* Bundled projects */
-    "lib": ["dom", "dom.iterable", "ES2022"],
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "ES2022"
+    ],
     "noEmit": true,
     "module": "ESNext",
     "moduleResolution": "Bundler",
@@ -29,7 +33,9 @@
     /* Path Aliases */
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": [
+        "./src/*"
+      ]
     }
   },
   "include": [
@@ -39,7 +45,46 @@
     "**/*.cjs",
     "**/*.js",
     ".next/types/**/*.ts",
-    ".next/dev/types/**/*.ts"
+    ".next/dev/types/**/*.ts",
+    ".next-e2e-real-e2e-1784017347-21936/types/**/*.ts",
+    ".next-e2e-real-e2e-1784017347-21936/dev/types/**/*.ts",
+    ".next-e2e-real-e2e-1784017584-7085/types/**/*.ts",
+    ".next-e2e-real-e2e-1784017584-7085/dev/types/**/*.ts",
+    ".next-e2e-real-e2e-1784017756-21202/types/**/*.ts",
+    ".next-e2e-real-e2e-1784017756-21202/dev/types/**/*.ts",
+    ".next-e2e-real-e2e-1784018205-28893/types/**/*.ts",
+    ".next-e2e-real-e2e-1784018205-28893/dev/types/**/*.ts",
+    ".next-e2e-real-e2e-1784018516-7654/types/**/*.ts",
+    ".next-e2e-real-e2e-1784018516-7654/dev/types/**/*.ts",
+    ".next-e2e-real-e2e-1784019249-28090/types/**/*.ts",
+    ".next-e2e-real-e2e-1784019249-28090/dev/types/**/*.ts",
+    ".next-e2e-real-e2e-1784019838-27913/types/**/*.ts",
+    ".next-e2e-real-e2e-1784019838-27913/dev/types/**/*.ts",
+    ".next-e2e-test/types/**/*.ts",
+    ".next-e2e-test/dev/types/**/*.ts",
+    ".next-e2e-dbg/types/**/*.ts",
+    ".next-e2e-dbg/dev/types/**/*.ts",
+    ".next-e2e-dbg2/types/**/*.ts",
+    ".next-e2e-dbg2/dev/types/**/*.ts",
+    ".next-e2e-real-e2e-1784020642-19594/types/**/*.ts",
+    ".next-e2e-real-e2e-1784020642-19594/dev/types/**/*.ts",
+    ".next-e2e-real-e2e-1784020868-27979/types/**/*.ts",
+    ".next-e2e-real-e2e-1784020868-27979/dev/types/**/*.ts",
+    ".next-e2e-diagnose-first-1784021319/types/**/*.ts",
+    ".next-e2e-diagnose-first-1784021319/dev/types/**/*.ts",
+    ".next-e2e-diagnose-build/types/**/*.ts",
+    ".next-e2e-diagnose-build/dev/types/**/*.ts",
+    ".next-e2e-build-verification/types/**/*.ts",
+    ".next-e2e-build-verification/dev/types/**/*.ts",
+    ".next-e2e-diagnose-first-1784022745/types/**/*.ts",
+    ".next-e2e-diagnose-first-1784022745/dev/types/**/*.ts",
+    ".next-e2e-verify-first-1784023942/types/**/*.ts",
+    ".next-e2e-verify-first-1784023942/dev/types/**/*.ts",
+    ".next-e2e-real-e2e-1784024137-5259/types/**/*.ts",
+    ".next-e2e-real-e2e-1784024137-5259/dev/types/**/*.ts"
   ],
-  "exclude": ["node_modules", "generated"]
+  "exclude": [
+    "node_modules",
+    "generated"
+  ]
 }

@@ -63,6 +63,9 @@ export async function getServerSideUser(): Promise<AuthResult> {
         if (setupData.needs_setup) {
           return { tag: "system_setup_required" };
         }
+        if (setupData.needs_setup === false) {
+          console.debug("[SSR auth] System is already set up (needs_setup=false)");
+        }
       }
     } catch {
       clearTimeout(setupTimeout);

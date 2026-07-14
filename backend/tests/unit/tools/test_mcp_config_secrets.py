@@ -267,6 +267,19 @@ def test_merge_empty_string_clears_oauth_refresh_token():
 
 
 # ---------------------------------------------------------------------------
+# mcp.py:139 — non-masked header value path in merge
+# ---------------------------------------------------------------------------
+
+
+def test_merge_non_masked_header_values():
+    """Non-masked header values should pass through unchanged."""
+    incoming = McpServerConfigResponse(headers={"Authorization": "Bearer new_token"})
+    existing = McpServerConfigResponse(headers={"Authorization": "Bearer old_token"})
+    merged = _merge_preserving_secrets(incoming, existing)
+    assert merged.headers["Authorization"] == "Bearer new_token"
+
+
+# ---------------------------------------------------------------------------
 # Round-trip integration: mask → merge should preserve original secrets
 # ---------------------------------------------------------------------------
 

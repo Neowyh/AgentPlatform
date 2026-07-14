@@ -8,7 +8,6 @@
 
 import { test, expect } from "@playwright/test";
 
-const BASE_URL = process.env.BASE_URL ?? "http://localhost:3000";
 
 // Auth E2E tests need IDEER_AUTH_DISABLED off.  When it's on (required for
 // non-auth E2E tests to pass SSR mocks), these tests can't run.
@@ -25,7 +24,7 @@ test.describe("Smoke: Login Page", () => {
   test.use({ storageState: emptyStorageState });
 
   test("should load login page", async ({ page }) => {
-    await page.goto(`${BASE_URL}/login`);
+    await page.goto("/login");
 
     // Page should load
     await expect(page).toHaveTitle(/iDeer|Login|登录/);
@@ -47,7 +46,7 @@ test.describe("Smoke: Login Page", () => {
   });
 
   test("should show error for invalid credentials", async ({ page }) => {
-    await page.goto(`${BASE_URL}/login`);
+    await page.goto("/login");
 
     const emailInput = page.locator('input[type="email"], input#email').first();
     const passwordInput = page
@@ -63,9 +62,10 @@ test.describe("Smoke: Login Page", () => {
     await passwordInput.fill("wrongpassword");
     await submitButton.click();
 
-    // Backend returns {"code":"invalid_credentials","message":"Incorrect email or password"}
-    // which is displayed as <p class="text-sm text-red-500">{error}</p>
-    const errorMessage = page.locator(".text-red-500, [class*='red']").first();
+    // The login form reports authentication failures through a Sonner toast.
+    const errorMessage = page
+      .locator("[data-sonner-toast]")
+      .filter({ hasText: /invalid email or password|邮箱或密码错误/i });
     await expect(errorMessage).toBeVisible({ timeout: 10000 });
     await expect(errorMessage).toHaveText(/incorrect|invalid|error|失败/i);
   });

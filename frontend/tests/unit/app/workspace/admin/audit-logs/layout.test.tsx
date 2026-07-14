@@ -55,4 +55,30 @@ describe("AuditLogsLayout", () => {
     ).rejects.toThrow("NEXT_REDIRECT");
     expect(mockRedirect).toHaveBeenCalledWith("/workspace");
   });
+
+  test.each([
+    ["needs_setup", "/setup"],
+    ["system_setup_required", "/setup"],
+    ["gateway_unavailable", "/workspace"],
+    ["unauthenticated", "/login"],
+  ] as const)("redirects %s to %s", async (tag, destination) => {
+    mockGetServerSideUser.mockResolvedValue({ tag });
+
+    await expect(
+      AuditLogsLayout({ children: <p>audit content</p> }),
+    ).rejects.toThrow("NEXT_REDIRECT");
+    expect(mockRedirect).toHaveBeenCalledWith(destination);
+  });
+
+  test("throws the configured error for a config failure", async () => {
+    mockGetServerSideUser.mockResolvedValue({
+      tag: "config_error",
+      message: "invalid gateway config",
+    });
+
+    await expect(
+      AuditLogsLayout({ children: <p>audit content</p> }),
+    ).rejects.toThrow("invalid gateway config");
+    expect(mockRedirect).not.toHaveBeenCalled();
+  });
 });

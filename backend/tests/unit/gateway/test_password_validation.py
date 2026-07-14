@@ -403,6 +403,13 @@ class TestPasswordStorageSecurity:
 
         assert isinstance(verify_password("test", h.decode()), bool)
 
+    def test_malformed_hash_returns_false(self):
+        """verify_password raises ValueError for malformed hash and returns False."""
+        from app.gateway.auth.password import verify_password
+
+        result = verify_password("anypass", "invalid-hash-format!")
+        assert result is False
+
 
 class TestErrorMessages:
     """Verify error messages are consistent and informative."""
@@ -535,7 +542,6 @@ class TestRegisterEndpointPasswordPolicy:
     def test_register_accepts_strong_password_via_http(self):
         """Register endpoint accepts strong password (201)."""
         user = _fake_user()
-        provider = _mock_provider(create_user_return=user)
 
         with (
             patch("app.gateway.routers.auth.get_session_factory", return_value=_mock_session_factory()),
@@ -660,7 +666,6 @@ class TestInitializeEndpointPasswordPolicy:
     def test_initialize_accepts_strong_via_http(self):
         """Initialize endpoint accepts strong password."""
         user = _fake_user(email="admin@example.com", system_role="admin")
-        provider = _mock_provider(create_user_return=user)
 
         with (
             patch("app.gateway.routers.auth._count_active_super_admin_users", new_callable=AsyncMock, return_value=0),

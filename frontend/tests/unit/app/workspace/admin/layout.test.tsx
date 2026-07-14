@@ -68,4 +68,29 @@ describe("AdminLayout", () => {
     ).rejects.toThrow("NEXT_REDIRECT");
     expect(mockRedirect).toHaveBeenCalledWith("/login");
   });
+
+  test.each([
+    ["needs_setup", "/setup"],
+    ["system_setup_required", "/setup"],
+    ["gateway_unavailable", "/workspace"],
+  ] as const)("redirects %s to %s", async (tag, destination) => {
+    mockGetServerSideUser.mockResolvedValue({ tag });
+
+    await expect(
+      AdminLayout({ children: <p>admin content</p> }),
+    ).rejects.toThrow("NEXT_REDIRECT");
+    expect(mockRedirect).toHaveBeenCalledWith(destination);
+  });
+
+  test("throws the configured error for a config failure", async () => {
+    mockGetServerSideUser.mockResolvedValue({
+      tag: "config_error",
+      message: "invalid gateway config",
+    });
+
+    await expect(
+      AdminLayout({ children: <p>admin content</p> }),
+    ).rejects.toThrow("invalid gateway config");
+    expect(mockRedirect).not.toHaveBeenCalled();
+  });
 });

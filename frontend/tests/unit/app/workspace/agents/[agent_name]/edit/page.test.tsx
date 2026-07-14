@@ -125,13 +125,32 @@ vi.mock("@/components/ui/label", () => ({
 }));
 
 vi.mock("@/components/ui/select", () => ({
-  Select: ({ children, defaultValue, disabled, ...props }: any) => (
+  Select: ({
+    children,
+    defaultValue,
+    disabled,
+    onValueChange,
+    value,
+    ...props
+  }: any) => (
     <div
       data-testid="select"
       data-default-value={defaultValue}
       data-disabled={disabled}
+      {...props}
     >
-      {children}
+      <select
+        data-testid="select-input"
+        aria-hidden="true"
+        role="presentation"
+        value={value ?? defaultValue ?? ""}
+        disabled={disabled}
+        onChange={(event) => onValueChange?.(event.target.value)}
+      >
+        <option value="private">Private</option>
+        <option value="department">Department</option>
+        <option value="public">Public</option>
+      </select>
     </div>
   ),
   SelectContent: ({ children }: any) => <div>{children}</div>,
@@ -514,6 +533,38 @@ describe("AgentEditPage", () => {
           "Visibility changes require an application submission",
         ),
       ).toBeInTheDocument();
+    });
+
+    test("keeps the edit page open when the application prompt is dismissed", async () => {
+      const user = userEvent.setup();
+      render(<AgentEditPage />);
+
+      fireEvent.change(screen.getByTestId("select-input"), {
+        target: { value: "public" },
+      });
+      await user.click(screen.getByText("Save Changes"));
+      expect(
+        screen.getByText("Visibility Change Requires Application"),
+      ).toBeInTheDocument();
+
+      await user.click(screen.getByText("Stay on Edit Page"));
+      expect(
+        screen.queryByText("Visibility Change Requires Application"),
+      ).not.toBeInTheDocument();
+      expect(mocks.mutateAsync).not.toHaveBeenCalled();
+    });
+
+    test("navigates to the detail page from the application prompt", async () => {
+      const user = userEvent.setup();
+      render(<AgentEditPage />);
+
+      fireEvent.change(screen.getByTestId("select-input"), {
+        target: { value: "department" },
+      });
+      await user.click(screen.getByText("Save Changes"));
+      await user.click(screen.getByText("Go to Detail Page"));
+
+      expect(mocks.push).toHaveBeenCalledWith("/workspace/agents/test-agent");
     });
   });
 

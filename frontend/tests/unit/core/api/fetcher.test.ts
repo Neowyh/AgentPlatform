@@ -58,6 +58,14 @@ describe("fetcher", () => {
   });
 
   describe("readCsrfCookie", () => {
+    test("returns null when document is unavailable during SSR", async () => {
+      vi.stubGlobal("document", undefined);
+      const { readCsrfCookie } = await import("@/core/api/fetcher");
+
+      expect(readCsrfCookie()).toBeNull();
+      vi.unstubAllGlobals();
+    });
+
     test("returns null when no csrf_token cookie exists", async () => {
       Object.defineProperty(document, "cookie", {
         value: "other_cookie=value",
@@ -141,6 +149,18 @@ describe("fetcher", () => {
       const calledHeaders = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
         .calls[0]![1].headers as Headers;
       expect(calledHeaders.get("X-CSRF-Token")).toBe("testtoken");
+    });
+
+    test("does not add a CSRF header when a state-changing request has no cookie", async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue(new Response("ok"));
+
+      const { fetch: fetchWithAuth } = await import("@/core/api/fetcher");
+      await fetchWithAuth("/api/test", { method: "POST" });
+
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        "/api/test",
+        expect.objectContaining({ credentials: "include", method: "POST" }),
+      );
     });
 
     test("does not add CSRF header for GET requests", async () => {

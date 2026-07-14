@@ -22,10 +22,6 @@ test-integration:
 test-contracts:
 	PYTHONPATH=. PYTHONIOENCODING=utf-8 PYTHONUTF8=1 uv run pytest tests/contracts -v -m "$(DEFAULT_TEST_MARKERS)"
 
-test-qa:
-	@test "$${QA_ISOLATED:-}" = "1" || (echo "Refusing QA against an unconfirmed service. Start the gateway with temporary IDEER_HOME and IDEER_CONFIG_PATH, then set QA_ISOLATED=1 and QA_BASE_URL."; exit 2)
-	PYTHONPATH=. PYTHONIOENCODING=utf-8 PYTHONUTF8=1 uv run pytest tests/qa -v
-
 test-parallel:
 	PYTHONPATH=. PYTHONIOENCODING=utf-8 PYTHONUTF8=1 \
 		uv run pytest $(DEFAULT_TEST_PATHS) -v -n auto \

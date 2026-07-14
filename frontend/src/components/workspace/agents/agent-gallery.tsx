@@ -73,11 +73,11 @@ export function AgentGallery() {
       {/* Page header */}
       <div className="flex items-center justify-between border-b px-6 py-4">
         <div className="flex items-center gap-3">
-          <Link href="/workspace/admin">
-            <Button variant="ghost" size="icon-sm">
+          <Button asChild variant="ghost" size="icon-sm">
+            <Link href="/workspace/admin" aria-label={t.workspace.adminPanel}>
               <ArrowLeftIcon className="h-4 w-4" />
-            </Button>
-          </Link>
+            </Link>
+          </Button>
           <div>
             <h1 className="text-xl font-semibold">{t.agents.title}</h1>
             <p className="text-muted-foreground mt-0.5 text-sm">
@@ -107,6 +107,7 @@ export function AgentGallery() {
             ref={fileInputRef}
             type="file"
             accept=".zip"
+            aria-label={t.common.import}
             className="hidden"
             onChange={handleImport}
           />

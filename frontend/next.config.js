@@ -16,6 +16,7 @@ const withNextra = nextra({});
 
 /** @type {import("next").NextConfig} */
 const config = {
+  distDir: process.env.IDEER_NEXT_DIST_DIR || ".next",
   output:
     process.env.NEXT_CONFIG_BUILD_OUTPUT === "standalone"
       ? "standalone"

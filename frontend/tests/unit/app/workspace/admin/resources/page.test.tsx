@@ -4,6 +4,9 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 
 const mockListResources = vi.fn();
 const mockReplace = vi.fn();
+let mockUser: { system_role: string } | null = {
+  system_role: "department_admin",
+};
 
 vi.mock("next/link", () => ({
   default: ({
@@ -31,11 +34,7 @@ vi.mock("@/core/admin/api", () => ({
 
 vi.mock("@/core/auth/AuthProvider", () => ({
   useAuth: () => ({
-    user: {
-      id: "admin-1",
-      email: "admin@example.com",
-      system_role: "department_admin",
-    },
+    user: mockUser,
   }),
 }));
 
@@ -44,6 +43,7 @@ import ResourcesPage from "@/app/workspace/admin/resources/page";
 describe("ResourcesPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockUser = { system_role: "department_admin" };
     mockListResources.mockResolvedValue({
       resources: Array.from({ length: 60 }, (_, index) => ({
         id: `resource-${index}`,
@@ -104,5 +104,36 @@ describe("ResourcesPage", () => {
         offset: 0,
       });
     });
+  });
+
+  test("does not request resources for a regular user", async () => {
+    mockUser = { system_role: "user" };
+    render(<ResourcesPage />);
+
+    await waitFor(() =>
+      expect(screen.getByText("资源管理")).toBeInTheDocument(),
+    );
+    expect(mockListResources).not.toHaveBeenCalled();
+  });
+
+  test("shows a string error when resource loading fails", async () => {
+    mockListResources.mockRejectedValue("service unavailable");
+    render(<ResourcesPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("service unavailable")).toBeInTheDocument();
+    });
+  });
+
+  test("returns to the previous page from page two", async () => {
+    const user = userEvent.setup();
+    render(<ResourcesPage />);
+
+    await waitFor(() => expect(screen.getByText("1 / 2")).toBeInTheDocument());
+    await user.click(screen.getByText("下一页"));
+    await waitFor(() => expect(screen.getByText("2 / 2")).toBeInTheDocument());
+    await user.click(screen.getByText("上一页"));
+
+    await waitFor(() => expect(screen.getByText("1 / 2")).toBeInTheDocument());
   });
 });

@@ -456,6 +456,19 @@ class TestListCustomSkills:
         assert resp.status_code == 200
         assert resp.json()["skills"] == []
 
+    def test_list_custom_allows_anonymous_access_to_public_skill(self):
+        skill = _make_skill("public-custom", SkillCategory.CUSTOM)
+        storage = _make_mock_storage([skill])
+
+        with (
+            patch("app.gateway.routers.skills.get_or_new_skill_storage", return_value=storage),
+            patch("app.gateway.routers.skills._load_skill_meta", new_callable=AsyncMock, return_value={"visibility": "public"}),
+        ):
+            resp = TestClient(_make_no_user_app()).get("/api/skills/custom")
+
+        assert resp.status_code == 200
+        assert [item["name"] for item in resp.json()["skills"]] == ["public-custom"]
+
 
 # ===========================================================================
 # 9. GET /api/skills/custom/{skill_name}
@@ -628,6 +641,19 @@ class TestUpdateCustomSkill:
 
         assert resp.status_code == 403
 
+    def test_update_rejects_stale_metadata_version(self):
+        storage = _make_mock_storage()
+
+        with (
+            patch("app.gateway.routers.skills.get_or_new_skill_storage", return_value=storage),
+            patch("app.gateway.routers.skills._load_skill_meta", new_callable=AsyncMock, return_value={"owner_id": "test-user", "version": 2}),
+            patch("app.gateway.routers.skills.check_resource_modify", return_value=True),
+        ):
+            resp = TestClient(_make_app()).put("/api/skills/custom/my-skill", json={"content": "# Content", "version": 1})
+
+        assert resp.status_code == 409
+        storage.write_custom_skill.assert_not_called()
+
     def test_update_generic_exception(self):
         storage = _make_mock_storage()
         storage.ensure_custom_skill_is_editable.side_effect = RuntimeError("disk error")
@@ -665,6 +691,66 @@ class TestDeleteCustomSkill:
 
         assert resp.status_code == 200
         assert resp.json()["success"] is True
+
+    def test_delete_closes_pending_visibility_requests_before_returning_success(self):
+        """Deleting a skill closes its pending approval requests and commits metadata cleanup."""
+        storage = _make_mock_storage()
+        session = AsyncMock()
+        context = AsyncMock()
+        context.__aenter__ = AsyncMock(return_value=session)
+        context.__aexit__ = AsyncMock(return_value=False)
+        session_factory = MagicMock(return_value=context)
+
+        with (
+            patch("app.gateway.routers.skills.get_or_new_skill_storage", return_value=storage),
+            patch("app.gateway.routers.skills._load_skill_meta", new_callable=AsyncMock, return_value={"owner_id": "test-user"}),
+            patch("app.gateway.routers.skills.check_resource_modify", return_value=True),
+            patch("app.gateway.routers.skills.get_session_factory", return_value=session_factory),
+            patch("app.gateway.routers.skills._skill_store.delete", new_callable=AsyncMock, return_value=True) as delete_meta,
+            patch("app.gateway.routers.skills.refresh_skills_system_prompt_cache_async", new_callable=AsyncMock),
+            patch("app.gateway.routers.skills.record_audit", new_callable=AsyncMock),
+        ):
+            resp = TestClient(_make_app()).delete("/api/skills/custom/my-skill")
+
+        assert resp.status_code == 200
+        assert resp.json() == {"success": True}
+        session.execute.assert_awaited_once()
+        assert session.execute.await_args.args[0].compile().params == {
+            "resource_type_1": "skill",
+            "resource_id_1": "my-skill",
+            "status_1": "pending",
+            "status": "rejected",
+            "review_comment": "资源已删除，申请自动关闭",
+        }
+        session.commit.assert_awaited_once()
+        delete_meta.assert_awaited_once_with("my-skill")
+
+    def test_delete_succeeds_when_metadata_cleanup_reports_failure(self):
+        """A metadata-store failure does not undo a completed skill deletion."""
+        storage = _make_mock_storage()
+        session = AsyncMock()
+        context = AsyncMock()
+        context.__aenter__ = AsyncMock(return_value=session)
+        context.__aexit__ = AsyncMock(return_value=False)
+
+        with (
+            patch("app.gateway.routers.skills.get_or_new_skill_storage", return_value=storage),
+            patch("app.gateway.routers.skills._load_skill_meta", new_callable=AsyncMock, return_value={"owner_id": "test-user"}),
+            patch("app.gateway.routers.skills.check_resource_modify", return_value=True),
+            patch("app.gateway.routers.skills.get_session_factory", return_value=MagicMock(return_value=context)),
+            patch("app.gateway.routers.skills._skill_store.delete", new_callable=AsyncMock, return_value=False) as delete_meta,
+            patch("app.gateway.routers.skills.refresh_skills_system_prompt_cache_async", new_callable=AsyncMock),
+            patch("app.gateway.routers.skills.record_audit", new_callable=AsyncMock),
+        ):
+            resp = TestClient(_make_app()).delete("/api/skills/custom/my-skill")
+
+        assert resp.status_code == 200
+        assert resp.json() == {"success": True}
+        storage.delete_custom_skill.assert_called_once()
+        assert storage.delete_custom_skill.call_args.args == ("my-skill",)
+        assert storage.delete_custom_skill.call_args.kwargs["history_meta"]["action"] == "human_delete"
+        delete_meta.assert_awaited_once_with("my-skill")
+        session.commit.assert_awaited_once()
 
     def test_delete_file_not_found(self):
         storage = _make_mock_storage()
@@ -1056,6 +1142,37 @@ class TestImportCustomSkill:
             )
 
         assert resp.status_code == 409
+
+    def test_import_returns_500_when_storage_fails_before_write(self):
+        storage = _make_mock_storage()
+        storage.custom_skill_exists.return_value = False
+        storage.validate_skill_markdown_content.side_effect = RuntimeError("storage unavailable")
+
+        with patch("app.gateway.routers.skills.get_or_new_skill_storage", return_value=storage):
+            resp = TestClient(_make_app()).post(
+                "/api/skills/custom/import",
+                json={"name": "my-skill", "content": "# Imported skill"},
+            )
+
+        assert resp.status_code == 500
+        assert resp.json()["detail"] == "Internal server error"
+        storage.write_custom_skill.assert_not_called()
+
+
+class TestDeprecatedSkillApplicationRoutes:
+    @pytest.mark.parametrize(
+        ("method", "path", "replacement"),
+        [
+            ("post", "/api/skills/my-skill/apply", "POST /api/visibility-applications"),
+            ("get", "/api/skills/my-skill/application", "GET /api/visibility-applications"),
+            ("delete", "/api/skills/my-skill/application", "PUT /api/visibility-applications/{id}/withdraw"),
+        ],
+    )
+    def test_deprecated_skill_application_route_names_replacement(self, method, path, replacement):
+        response = getattr(TestClient(_make_app()), method)(path)
+
+        assert response.status_code == 410
+        assert response.json()["detail"]["replacement"] == replacement
 
     def test_import_custom_skill_scanner_blocked(self):
         storage = _make_mock_storage()

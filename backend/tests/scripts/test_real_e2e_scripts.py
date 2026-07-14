@@ -7,6 +7,7 @@ isolation guarantees that prevent a browser test from touching a developer DB.
 from pathlib import Path
 
 SCRIPTS = Path(__file__).parents[2] / "scripts"
+REAL_PLAYWRIGHT_CONFIG = Path(__file__).parents[3] / "frontend" / "playwright.real.config.ts"
 
 
 def _script(name: str) -> str:
@@ -47,13 +48,13 @@ def test_seed_uses_the_manifest_and_does_not_downgrade_setup_failures() -> None:
     assert "csrf_token" in script
 
 
-def test_seed_creates_a_cross_department_pending_application() -> None:
+def test_seed_does_not_create_unused_cross_department_fixtures() -> None:
     script = _script("seed-real-e2e.sh")
 
-    assert "Real E2E Cross Department" in script
-    assert "cross-department-user@test.com" in script
-    assert "e2e-${RUN_ID}-cross-department-agent" in script
-    assert "e2e-${RUN_ID}-cross-department-pending" in script
+    assert "Real E2E Cross Department" not in script
+    assert "cross-department-user@test.com" not in script
+    assert "e2e-${RUN_ID}-cross-department-agent" not in script
+    assert "e2e-${RUN_ID}-cross-department-pending" not in script
 
 
 def test_runner_passes_manifest_and_isolated_backend_url_to_playwright() -> None:
@@ -68,5 +69,18 @@ def test_runner_passes_manifest_and_isolated_backend_url_to_playwright() -> None
     assert "E2E_STATE_DIR" in script
     assert "E2E_RUN_ID" in script
     assert "REAL_E2E_ARTIFACTS_DIR" in script
-    assert 'REAL_E2E_ARTIFACTS_DIR="$ARTIFACTS_DIR"' in script
+    assert 'RUN_ARTIFACTS_DIR="$ARTIFACTS_DIR/$RUN_ID"' in script
+    assert 'REAL_E2E_ARTIFACTS_DIR="$RUN_ARTIFACTS_DIR"' in script
+    assert 'rm -rf "$REPO_DIR/frontend/.next-e2e-$RUN_ID"' in script
+    assert "setsid pnpm exec playwright test --config=playwright.real.config.ts" in script
+    assert 'kill -- -"$PLAYWRIGHT_PID"' in script
     assert "backend-logs" in script
+
+
+def test_real_playwright_uses_an_isolated_production_build() -> None:
+    config = REAL_PLAYWRIGHT_CONFIG.read_text()
+
+    assert "pnpm exec next build --webpack && pnpm start -p ${frontendPort}" in config
+    assert "next dev" not in config
+    assert "IDEER_NEXT_DIST_DIR: `.next-e2e-${runId}`" in config
+    assert "timeout: 420_000" in config

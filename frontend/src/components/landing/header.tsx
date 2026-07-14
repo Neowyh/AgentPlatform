@@ -27,19 +27,19 @@ export async function Header({ className, homeURL, locale }: HeaderProps) {
           target={isExternalHome ? "_blank" : "_self"}
           rel={isExternalHome ? "noopener noreferrer" : undefined}
         >
-          <h1 className="font-serif text-xl">iDeer</h1>
+          <h1 className="text-foreground font-serif text-xl">iDeer</h1>
         </a>
       </div>
       <nav className="mr-8 ml-auto flex items-center gap-8 text-sm font-medium">
         <Link
           href={`/${lang}/docs`}
-          className="text-secondary-foreground hover:text-foreground transition-colors"
+          className="text-foreground hover:text-foreground/80 transition-colors"
         >
           {t.home.docs}
         </Link>
         <Link
           href="/blog/posts"
-          className="text-secondary-foreground hover:text-foreground transition-colors"
+          className="text-foreground hover:text-foreground/80 transition-colors"
         >
           {t.home.blog}
         </Link>

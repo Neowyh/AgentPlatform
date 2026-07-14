@@ -1,4 +1,10 @@
-import { render, screen, cleanup, fireEvent } from "@testing-library/react";
+import {
+  render,
+  screen,
+  cleanup,
+  fireEvent,
+  waitFor,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
@@ -26,15 +32,35 @@ vi.mock("next/link", () => {
 vi.mock("@/core/i18n/hooks", () => ({
   useI18n: () => ({
     t: {
-      common: { loading: "Loading..." },
-      agents: { backToGallery: "Back" },
+      common: { loading: "Loading...", cancel: "Cancel" },
+      agents: {
+        backToGallery: "Back",
+        applyVisibility: "Apply visibility",
+        targetVisibility: "Target visibility",
+        visibilityPrivate: "Private",
+        visibilityDepartment: "Department",
+        visibilityPublic: "Public",
+        reason: "Reason",
+        reasonPlaceholder: "Explain why",
+        submit: "Submit",
+        submitting: "Submitting",
+        cancel: "Cancel",
+        visibilityReasonRequired: "Reason is required",
+        applicationSubmitted: "Application submitted",
+      },
     },
   }),
 }));
 
 const mockUseAgent = vi.fn();
+const mockCreateVisibilityApplication = vi.fn();
 vi.mock("@/core/agents", () => ({
   useAgent: (...args: unknown[]) => mockUseAgent(...args),
+}));
+
+vi.mock("@/core/visibility-applications/api", () => ({
+  createVisibilityApplication: (...args: unknown[]) =>
+    mockCreateVisibilityApplication(...args),
 }));
 
 vi.mock("@/components/workspace/workspace-breadcrumb", () => ({
@@ -447,6 +473,71 @@ describe("AgentDetailPage", () => {
     });
     render(<AgentDetailPage />);
     expect(screen.queryByText("Template")).not.toBeInTheDocument();
+  });
+
+  test("submits a visibility application with trimmed reason", async () => {
+    const user = userEvent.setup();
+    mockCreateVisibilityApplication.mockResolvedValue({ success: true });
+    mockUseAgent.mockReturnValue({
+      agent: fullAgent,
+      isLoading: false,
+      error: null,
+    });
+    render(<AgentDetailPage />);
+
+    await user.click(screen.getByRole("button", { name: "Apply visibility" }));
+    await user.type(
+      screen.getByPlaceholderText("Explain why"),
+      "  Need access  ",
+    );
+    await user.click(screen.getByRole("button", { name: "Submit" }));
+
+    await waitFor(() => {
+      expect(mockCreateVisibilityApplication).toHaveBeenCalledWith({
+        resource_type: "agent",
+        resource_id: "test-agent",
+        target_visibility: "department",
+        reason: "Need access",
+      });
+      expect(screen.queryByText("Submit")).not.toBeInTheDocument();
+    });
+  });
+
+  test("shows a visibility application error and keeps the dialog open", async () => {
+    const user = userEvent.setup();
+    mockCreateVisibilityApplication.mockRejectedValue(new Error("not allowed"));
+    mockUseAgent.mockReturnValue({
+      agent: fullAgent,
+      isLoading: false,
+      error: null,
+    });
+    render(<AgentDetailPage />);
+
+    await user.click(screen.getByRole("button", { name: "Apply visibility" }));
+    await user.type(screen.getByPlaceholderText("Explain why"), "Need access");
+    await user.click(screen.getByRole("button", { name: "Submit" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Submit")).toBeInTheDocument();
+    });
+  });
+
+  test("closes the visibility dialog when cancelled", async () => {
+    const user = userEvent.setup();
+    mockUseAgent.mockReturnValue({
+      agent: fullAgent,
+      isLoading: false,
+      error: null,
+    });
+    render(<AgentDetailPage />);
+
+    await user.click(screen.getByRole("button", { name: "Apply visibility" }));
+    expect(screen.getByPlaceholderText("Explain why")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(
+      screen.queryByPlaceholderText("Explain why"),
+    ).not.toBeInTheDocument();
   });
 
   // ── Description conditionally hidden ───────────────────────────────

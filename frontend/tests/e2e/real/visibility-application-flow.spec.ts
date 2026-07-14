@@ -2,20 +2,13 @@ import { expect, test, type Page } from "@playwright/test";
 
 import {
   expectVisibilityState,
+  loginAsRealUser,
   requireRealE2EEnvironment,
   runScopedName,
   seedAgentName,
 } from "./real-e2e";
 
 const emptyStorageState = { cookies: [], origins: [] };
-
-async function loginAs(page: Page, email: string) {
-  await page.goto("/login");
-  await page.getByLabel(/email/i).fill(email);
-  await page.getByLabel(/password/i).fill(email);
-  await page.getByRole("button", { name: /sign in|登录/i }).click();
-  await expect(page).toHaveURL(/\/workspace/, { timeout: 15_000 });
-}
 
 async function submitApplication(
   page: Page,
@@ -77,11 +70,11 @@ test.describe.serial("real visibility applications", () => {
     }) => {
       const agentName = seedAgentName(suffix);
       const reason = runScopedName(`${action}-reason`);
-      await loginAs(page, "user@test.com");
+      await loginAsRealUser(page, "user@test.com");
       await submitApplication(page, agentName, reason);
 
       await page.context().clearCookies();
-      await loginAs(page, "super_admin@test.com");
+      await loginAsRealUser(page, "super_admin@test.com");
       await reviewApplication(page, reason, action);
       expectVisibilityState({ agentName, reason, status: action, visibility });
     });

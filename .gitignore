@@ -18,7 +18,8 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .hypothesis/
-.coverage/
+.coverage
+coverage.json
 
 # Virtual environments
 .venv

@@ -52,6 +52,11 @@ markers = [
 ]
 addopts = "--tb=short"
 
+[tool.coverage.report]
+# Coverage is reported for regression analysis; business contracts, not a
+# global percentage, decide whether a change may merge.
+precision = 2
+
 [tool.uv]
 index-url = "https://pypi.org/simple"
 

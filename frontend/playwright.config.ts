@@ -7,6 +7,8 @@ import { config } from "dotenv";
 // Load root .env so test-runner process sees OPENAI_API_KEY, etc.
 const __dirname = dirname(fileURLToPath(import.meta.url));
 config({ path: resolve(__dirname, "../.env") });
+const frontendPort = process.env.E2E_FRONTEND_PORT ?? "3000";
+const baseURL = `http://localhost:${frontendPort}`;
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -23,10 +25,6 @@ export default defineConfig({
   reporter: process.env.CI ? "github" : "html",
   timeout: 30_000,
 
-  // Authenticate once before all tests; authenticated cookies are saved
-  // to tests/e2e/.auth/storage-state.json and loaded by every project.
-  globalSetup: "./tests/e2e/global-setup.ts",
-
   expect: {
     toHaveScreenshot: {
       maxDiffPixelRatio: 0.01,
@@ -39,11 +37,8 @@ export default defineConfig({
   },
 
   use: {
-    baseURL: "http://localhost:3000",
+    baseURL,
     trace: "on-first-retry",
-    // All non-auth tests inherit authenticated storage state.
-    // Auth tests override this with { cookies: [], origins: [] }.
-    storageState: "./tests/e2e/.auth/storage-state.json",
   },
 
   projects: [
@@ -54,20 +49,24 @@ export default defineConfig({
     },
     {
       name: "visual",
-      testDir: "./tests/e2e/visual",
+      testMatch: [
+        "visual/landing.visual.spec.ts",
+        "visual/workspace-layout.visual.spec.ts",
+        "visual/core.visual.spec.ts",
+      ],
       use: { ...devices["Desktop Chrome"] },
     },
     {
-      name: "a11y",
-      testDir: "./tests/e2e/a11y",
+      name: "visual-reference",
+      testMatch: "visual/visual-screenshot.spec.ts",
       use: { ...devices["Desktop Chrome"] },
     },
   ],
 
   webServer: {
-    command: "pnpm exec next build --webpack && pnpm start",
-    url: "http://localhost:3000",
-    reuseExistingServer: true,
+    command: `pnpm exec next build --webpack && pnpm start -p ${frontendPort}`,
+    url: baseURL,
+    reuseExistingServer: false,
     timeout: 120_000,
     env: {
       SKIP_ENV_VALIDATION: "1",

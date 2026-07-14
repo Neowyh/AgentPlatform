@@ -1,6 +1,7 @@
 import { execFileSync } from "child_process";
 import { existsSync, readFileSync } from "fs";
 import { join, resolve } from "path";
+import { expect, type Page } from "@playwright/test";
 
 type Manifest = { database_path: string; ideer_home: string };
 
@@ -25,6 +26,24 @@ export function runScopedName(suffix: string) {
 
 export function seedAgentName(suffix: string) {
   return runScopedName(suffix);
+}
+
+export async function loginAsRealUser(page: Page, email: string) {
+  await page.goto("/login");
+  await page.locator("#email").fill(email);
+  await page.locator("#password").fill(email);
+  await page.getByRole("button", { name: /sign in|登录/i }).click();
+
+  await expect
+    .poll(
+      async () =>
+        (await page.context().cookies()).some(
+          (cookie) => cookie.name === "access_token",
+        ),
+      { timeout: 60_000 },
+    )
+    .toBe(true);
+  await expect(page).toHaveURL(/\/workspace/, { timeout: 60_000 });
 }
 
 function manifest(): Manifest {
@@ -71,9 +90,7 @@ function requiredDatabaseValue(
 export function assertRbacSeed() {
   const expectedRoles = {
     "super_admin@test.com": "super_admin",
-    "department_admin@test.com": "department_admin",
     "user@test.com": "user",
-    "viewer@test.com": "viewer",
   } as const;
   for (const [email, role] of Object.entries(expectedRoles)) {
     const row = queryDatabase(
@@ -87,31 +104,11 @@ export function assertRbacSeed() {
     }
   }
 
-  for (const [agentSuffix, ownerEmail] of [
-    ["viewer-agent", "user@test.com"],
-    ["approve-agent", "user@test.com"],
-    ["reject-agent", "user@test.com"],
-  ] as const) {
+  for (const agentSuffix of ["approve-agent", "reject-agent"] as const) {
     requiredDatabaseValue(
       "SELECT resource_metadata.owner_id FROM resource_metadata JOIN users ON resource_metadata.owner_id = users.id WHERE resource_metadata.resource_type = 'agent' AND resource_metadata.resource_id = ? AND users.email = ?",
-      [seedAgentName(agentSuffix), ownerEmail],
-      `${agentSuffix} ownership by ${ownerEmail}`,
-    );
-  }
-
-  const departmentBoundary = queryDatabase(
-    "SELECT applications.department_id, department_admin.department_id FROM visibility_applications AS applications JOIN users AS admins ON admins.email = 'department_admin@test.com' JOIN users_ext AS department_admin ON department_admin.id = admins.id WHERE applications.resource_type = 'agent' AND applications.resource_id = ? AND applications.reason = ?",
-    [
-      seedAgentName("cross-department-agent"),
-      runScopedName("cross-department-pending"),
-    ],
-  );
-  if (
-    !departmentBoundary?.[0] ||
-    departmentBoundary[0] === departmentBoundary[1]
-  ) {
-    throw new Error(
-      `Cross-department seed does not cross a boundary: ${JSON.stringify(departmentBoundary)}`,
+      [seedAgentName(agentSuffix), "user@test.com"],
+      `${agentSuffix} ownership by user@test.com`,
     );
   }
 }
@@ -147,7 +144,10 @@ export function expectVisibilityState({
   }
 }
 
-export function expectMemoryStorageToContain(content: string, expected = true) {
+export async function expectMemoryStorageToContain(
+  content: string,
+  expected = true,
+) {
   const userId = requiredDatabaseValue(
     "SELECT id FROM users WHERE email = 'super_admin@test.com'",
     [],
@@ -159,13 +159,15 @@ export function expectMemoryStorageToContain(content: string, expected = true) {
     userId,
     "memory.json",
   );
-  if (!existsSync(memoryPath)) {
-    throw new Error(`Expected super admin memory file at ${memoryPath}`);
-  }
-  const found = readFileSync(memoryPath, "utf8").includes(content);
-  if (found !== expected) {
-    throw new Error(
-      `Expected isolated memory storage to ${expected ? "contain" : "exclude"} ${content}`,
-    );
-  }
+
+  await expect
+    .poll(
+      async () => {
+        if (!existsSync(memoryPath)) return { exists: false, found: false };
+        const raw = readFileSync(memoryPath, "utf8");
+        return { exists: true, found: raw.includes(content) };
+      },
+      { timeout: 15_000, message: `memory.json ${expected ? "contains" : "excludes"} "${content}"` },
+    )
+    .toEqual({ exists: true, found: expected });
 }

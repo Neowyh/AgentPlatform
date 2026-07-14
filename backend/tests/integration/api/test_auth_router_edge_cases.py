@@ -542,3 +542,180 @@ class TestPasswordIsCommon:
 
         assert _password_is_common("PASSWORD") is True
         assert _password_is_common("Password123") is True
+
+
+# ---------------------------------------------------------------------------
+# auth.py:362-364 — login with disabled user returns 403
+# ---------------------------------------------------------------------------
+
+
+class TestLoginDisabledUser:
+    """auth.py:362-364: disabled RBAC user is rejected at login."""
+
+    def test_disabled_user_login_returns_403(self):
+        user = _fake_user()
+        provider = _patch_provider(authenticate_return=user)
+
+        rbac_user = MagicMock()
+        rbac_user.disabled = True
+
+        session = AsyncMock()
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = rbac_user
+        session.execute = AsyncMock(return_value=result)
+        context = AsyncMock()
+        context.__aenter__ = AsyncMock(return_value=session)
+        context.__aexit__ = AsyncMock(return_value=False)
+
+        with (
+            patch("app.gateway.routers.auth.get_local_provider", return_value=provider),
+            patch("app.gateway.routers.auth.get_session_factory", return_value=MagicMock(return_value=context)),
+            patch("app.gateway.routers.auth._get_client_ip", return_value="127.0.0.1"),
+        ):
+            app = _make_app()
+            with TestClient(app) as client:
+                resp = client.post(
+                    "/api/v1/auth/login/local",
+                    data={"username": "disabled@example.com", "password": "AnyPass123!"},
+                )
+
+        assert resp.status_code == 403
+        detail = resp.json()["detail"]
+        assert detail["code"] == "user_disabled"
+        assert "disabled" in detail["message"]
+
+
+# ---------------------------------------------------------------------------
+# auth.py:319-324 — registration rate limiting
+# ---------------------------------------------------------------------------
+
+
+class TestRegistrationRateLimit:
+    """auth.py:319-324: _check_registration_rate_limit resets expired window and raises 429."""
+
+    def test_window_expired_resets_counter(self):
+        from app.gateway.routers.auth import _check_registration_rate_limit, _registration_attempts
+
+        _registration_attempts.clear()
+        ip = "10.0.0.99"
+        _registration_attempts[ip] = (3, time.time() - 7200)
+        _check_registration_rate_limit(ip)
+        count, window_start = _registration_attempts[ip]
+        assert count == 1
+        assert window_start > time.time() - 5
+
+    def test_rate_limit_raised_when_exceeded(self):
+        from app.gateway.routers.auth import _check_registration_rate_limit, _registration_attempts
+
+        _registration_attempts.clear()
+        ip = "10.0.0.100"
+        _registration_attempts[ip] = (3, time.time())
+        with pytest.raises(HTTPException) as exc_info:
+            _check_registration_rate_limit(ip)
+        assert exc_info.value.status_code == 429
+        assert "Too many registration" in str(exc_info.value.detail)
+
+
+# ---------------------------------------------------------------------------
+# auth.py:481-498 — GET /me auto-creates UserModel and handles IntegrityError
+# ---------------------------------------------------------------------------
+
+
+class TestMeAutoCreateProfile:
+    """auth.py:481-498: /me auto-creates UserModel when missing, with IntegrityError recovery."""
+
+    def test_me_auto_creates_rbac_user(self):
+        user = _fake_user(email="newuser@example.com")
+        rbac_user = MagicMock()
+        rbac_user.role = "user"
+        rbac_user.disabled = False
+
+        session = AsyncMock()
+        result1 = MagicMock()
+        result1.scalar_one_or_none.return_value = None
+        result2 = MagicMock()
+        result2.scalar_one_or_none.return_value = rbac_user
+        session.execute = AsyncMock(side_effect=[result1, result2])
+        session.add = MagicMock()
+        session.commit = AsyncMock()
+        session.refresh = AsyncMock()
+        context = AsyncMock()
+        context.__aenter__ = AsyncMock(return_value=session)
+        context.__aexit__ = AsyncMock(return_value=False)
+
+        with (
+            patch("app.gateway.routers.auth.get_current_user_from_request", new_callable=AsyncMock, return_value=user),
+            patch("app.gateway.routers.auth.get_session_factory", return_value=MagicMock(return_value=context)),
+        ):
+            app = _make_app()
+            with TestClient(app) as client:
+                resp = client.get("/api/v1/auth/me")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["email"] == "newuser@example.com"
+        assert data["system_role"] == "user"
+        created_profile = session.add.call_args.args[0]
+        assert created_profile.id == str(user.id)
+        assert created_profile.username == "newuser@example.com"
+        assert created_profile.role == "user"
+        session.commit.assert_awaited_once()
+        session.refresh.assert_awaited_once_with(created_profile)
+
+    def test_me_auto_create_integrity_error_then_found(self):
+        user = _fake_user(email="race@example.com")
+        rbac_user = MagicMock()
+        rbac_user.role = "user"
+        rbac_user.disabled = False
+
+        session = AsyncMock()
+        result1 = MagicMock()
+        result1.scalar_one_or_none.return_value = None
+        result2 = MagicMock()
+        result2.scalar_one_or_none.return_value = rbac_user
+        session.execute = AsyncMock(side_effect=[result1, result2])
+        session.add = MagicMock()
+        session.commit = AsyncMock(side_effect=[IntegrityError("insert", {}, Exception("dup")), None])
+        session.rollback = AsyncMock()
+        session.refresh = AsyncMock()
+        context = AsyncMock()
+        context.__aenter__ = AsyncMock(return_value=session)
+        context.__aexit__ = AsyncMock(return_value=False)
+
+        with (
+            patch("app.gateway.routers.auth.get_current_user_from_request", new_callable=AsyncMock, return_value=user),
+            patch("app.gateway.routers.auth.get_session_factory", return_value=MagicMock(return_value=context)),
+        ):
+            app = _make_app()
+            with TestClient(app) as client:
+                resp = client.get("/api/v1/auth/me")
+
+        assert resp.status_code == 200
+        assert resp.json()["email"] == "race@example.com"
+        session.add.assert_called_once()
+        session.rollback.assert_awaited_once()
+        assert session.execute.await_count == 2
+
+    def test_me_auto_create_integrity_error_all_raises_500(self):
+        user = _fake_user(email="lost@example.com")
+
+        session = AsyncMock()
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = None
+        session.execute = AsyncMock(return_value=result)
+        session.add = MagicMock()
+        session.commit = AsyncMock(side_effect=IntegrityError("insert", {}, Exception("dup")))
+        session.rollback = AsyncMock()
+        context = AsyncMock()
+        context.__aenter__ = AsyncMock(return_value=session)
+        context.__aexit__ = AsyncMock(return_value=False)
+
+        with (
+            patch("app.gateway.routers.auth.get_current_user_from_request", new_callable=AsyncMock, return_value=user),
+            patch("app.gateway.routers.auth.get_session_factory", return_value=MagicMock(return_value=context)),
+        ):
+            app = _make_app()
+            with TestClient(app) as client:
+                resp = client.get("/api/v1/auth/me")
+
+        assert resp.status_code == 500

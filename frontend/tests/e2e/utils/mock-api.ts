@@ -591,6 +591,10 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
     const method = route.request().method();
     const url = route.request().url();
 
+    if (url.includes("/api/agents/check")) {
+      return route.fallback();
+    }
+
     if (method === "GET") {
       // Export endpoint
       if (url.includes("/export")) {
@@ -1064,7 +1068,7 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
 
   // ── Audit Logs ──────────────────────────────────────────────
 
-  void page.route("**/api/admin/audit-logs", (route) => {
+  void page.route("**/api/admin/audit-logs*", (route) => {
     if (route.request().method() === "GET") {
       const url = new URL(route.request().url());
       const page_num = Number(url.searchParams.get("page") ?? "1");

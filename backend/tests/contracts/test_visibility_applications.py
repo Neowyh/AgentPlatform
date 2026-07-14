@@ -6,11 +6,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy.exc import IntegrityError
 
 from app.gateway.authz import get_current_rbac_user
-from app.gateway.routers.visibility_applications import router
+from app.gateway.routers import visibility_applications
+from app.gateway.routers.visibility_applications import CreateApplicationRequest, router
+from ideer.persistence.models.user import ResourceVisibility
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -117,6 +120,20 @@ def _build_app(user: MagicMock | None = None) -> FastAPI:
 
 class TestCreateApplication:
     @pytest.mark.asyncio
+    async def test_create_returns_stable_500_when_database_is_uninitialized(self, monkeypatch):
+        app_obj = _build_app(_make_user())
+        monkeypatch.setattr(visibility_applications, "get_session_factory", lambda: None)
+
+        async with AsyncClient(transport=ASGITransport(app=app_obj), base_url="http://test") as client:
+            response = await client.post(
+                "/api/visibility-applications",
+                json={"resource_type": "tool", "resource_id": "tool-1", "target_visibility": "public"},
+            )
+
+        assert response.status_code == 500
+        assert response.json()["detail"] == "Database not initialized"
+
+    @pytest.mark.asyncio
     async def test_creates_application(self):
         user = _make_user()
         app_obj = _build_app(user)
@@ -184,6 +201,57 @@ class TestCreateApplication:
 
         assert resp.status_code == 422
 
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("database_error", "status", "detail"),
+        [
+            ("unique constraint", 409, "pending application already exists"),
+            ("foreign key constraint", 400, "Referenced record not found"),
+            ("not null constraint", 400, "required field is missing"),
+            ("check constraint", 400, "data constraint was violated"),
+        ],
+    )
+    async def test_create_maps_integrity_errors_to_stable_contracts(self, monkeypatch, database_error, status, detail):
+        session = AsyncMock()
+        session.execute.side_effect = IntegrityError("insert", {}, Exception(database_error))
+        session.__aenter__ = AsyncMock(return_value=session)
+        session.__aexit__ = AsyncMock(return_value=False)
+        monkeypatch.setattr(visibility_applications, "get_session_factory", lambda: MagicMock(return_value=session))
+        request = CreateApplicationRequest(
+            resource_type="tool",
+            resource_id="tool-1",
+            target_visibility=ResourceVisibility.PUBLIC,
+        )
+
+        with pytest.raises(HTTPException) as error:
+            await visibility_applications.create_application(request, _make_user())
+
+        assert error.value.status_code == status
+        assert detail.lower() in error.value.detail.lower()
+        session.execute.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_create_rejects_target_visibility_equal_to_resource_visibility(self, monkeypatch):
+        session = AsyncMock()
+        no_pending = MagicMock()
+        no_pending.scalar_one_or_none.return_value = None
+        resource = MagicMock(visibility="private", department_id=None)
+        resource_result = MagicMock()
+        resource_result.scalar_one_or_none.return_value = resource
+        session.execute.side_effect = (no_pending, resource_result)
+        session.__aenter__ = AsyncMock(return_value=session)
+        session.__aexit__ = AsyncMock(return_value=False)
+        monkeypatch.setattr(visibility_applications, "get_session_factory", lambda: MagicMock(return_value=session))
+
+        with pytest.raises(HTTPException, match="cannot be the same") as error:
+            await visibility_applications.create_application(
+                CreateApplicationRequest(resource_type="tool", resource_id="tool-1", target_visibility=ResourceVisibility.PRIVATE),
+                _make_user(),
+            )
+
+        assert error.value.status_code == 400
+        session.commit.assert_not_awaited()
+
 
 # ---------------------------------------------------------------------------
 # PUT /api/visibility-applications/{id}/withdraw
@@ -191,6 +259,17 @@ class TestCreateApplication:
 
 
 class TestWithdrawApplication:
+    @pytest.mark.asyncio
+    async def test_withdraw_returns_stable_500_when_database_is_uninitialized(self, monkeypatch):
+        app_obj = _build_app(_make_user())
+        monkeypatch.setattr(visibility_applications, "get_session_factory", lambda: None)
+
+        async with AsyncClient(transport=ASGITransport(app=app_obj), base_url="http://test") as client:
+            response = await client.put(f"/api/visibility-applications/{uuid4()}/withdraw", json={"version": 1})
+
+        assert response.status_code == 500
+        assert response.json()["detail"] == "Database not initialized"
+
     @pytest.mark.asyncio
     async def test_withdraws_own_application(self):
         user = _make_user()
@@ -255,6 +334,20 @@ class TestWithdrawApplication:
 
 
 class TestReviewApplication:
+    @pytest.mark.asyncio
+    async def test_review_returns_stable_500_when_database_is_uninitialized(self, monkeypatch):
+        app_obj = _build_app(_make_user(role="super_admin"))
+        monkeypatch.setattr(visibility_applications, "get_session_factory", lambda: None)
+
+        async with AsyncClient(transport=ASGITransport(app=app_obj), base_url="http://test") as client:
+            response = await client.put(
+                f"/api/visibility-applications/{uuid4()}",
+                json={"action": "approved", "version": 1},
+            )
+
+        assert response.status_code == 500
+        assert response.json()["detail"] == "Database not initialized"
+
     @pytest.mark.asyncio
     async def test_approves_application(self):
         user = _make_user(role="super_admin")
@@ -381,6 +474,17 @@ class TestReviewApplication:
 
 
 class TestListApplications:
+    @pytest.mark.asyncio
+    async def test_list_returns_stable_500_when_database_is_uninitialized(self, monkeypatch):
+        app_obj = _build_app(_make_user(role="super_admin"))
+        monkeypatch.setattr(visibility_applications, "get_session_factory", lambda: None)
+
+        async with AsyncClient(transport=ASGITransport(app=app_obj), base_url="http://test") as client:
+            response = await client.get("/api/visibility-applications")
+
+        assert response.status_code == 500
+        assert response.json()["detail"] == "Database not initialized"
+
     @pytest.mark.asyncio
     async def test_lists_pending_for_admin(self):
         user = _make_user(role="super_admin")

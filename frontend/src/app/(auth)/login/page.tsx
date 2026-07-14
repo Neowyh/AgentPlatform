@@ -72,7 +72,9 @@ export default function LoginPage() {
   useEffect(() => {
     let cancelled = false;
 
-    void fetch("/api/v1/auth/setup-status")
+    const setupController = new AbortController();
+    setTimeout(() => setupController.abort(), 5_000);
+    void fetch("/api/v1/auth/setup-status", { signal: setupController.signal })
       .then((r) => r.json())
       .then((data: { needs_setup?: boolean }) => {
         if (!cancelled && data.needs_setup) {
@@ -93,6 +95,9 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15_000);
+
       const endpoint = isLogin
         ? "/api/v1/auth/login/local"
         : "/api/v1/auth/register";
@@ -109,7 +114,9 @@ export default function LoginPage() {
         headers,
         body,
         credentials: "include",
+        signal: controller.signal,
       });
+      clearTimeout(timeout);
 
       if (!res.ok) {
         const message =
@@ -123,8 +130,12 @@ export default function LoginPage() {
       }
 
       window.location.assign(redirectPath);
-    } catch {
-      toast.error(t.auth.errorNetwork);
+    } catch (err) {
+      toast.error(
+        err instanceof DOMException && err.name === "AbortError"
+          ? "Connection timed out. Please try again."
+          : t.auth.errorNetwork,
+      );
     } finally {
       setLoading(false);
     }

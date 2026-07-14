@@ -3,7 +3,7 @@
 Covers gaps not addressed by existing test files:
 - _validate_skill_name: valid and invalid names
 - _load_skill_meta: error paths (JSONDecodeError, generic Exception)
-- list_skills: error handling, visibility filtering
+- list_skills: error handling, visibility filtering, lazy registration
 - get_skill: custom skill visibility check, not found, invalid name
 - install_skill: error paths (404, 409, 400, 500)
 - update_skill: not found, config path missing, error handling
@@ -16,6 +16,7 @@ Covers gaps not addressed by existing test files:
 
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -31,6 +32,7 @@ from app.gateway.routers.skills import (
     router as skills_router,
 )
 from ideer.persistence.models.user import UserRole
+from ideer.skills.types import Skill, SkillCategory
 
 # ---------------------------------------------------------------------------
 # _validate_skill_name tests
@@ -425,3 +427,83 @@ class TestRollbackCustomSkillErrors:
 
         assert response.status_code == 400
         assert "no previous content" in response.json()["detail"]
+
+
+# ---------------------------------------------------------------------------
+# skills.py:172-177 — lazy registration auto-creates metadata for custom skills
+# ---------------------------------------------------------------------------
+
+
+class TestListSkillsLazyRegistration:
+    """skills.py:172-177: custom skills on disk without metadata get auto-registered."""
+
+    @patch("app.gateway.routers.skills.get_or_new_skill_storage")
+    @patch("app.gateway.routers.skills._load_skill_meta", new_callable=AsyncMock, return_value={})
+    @patch("app.gateway.routers.skills._save_skill_meta", new_callable=AsyncMock)
+    def test_lazy_registers_meta_for_custom_skill(self, mock_save, mock_load, mock_storage_get):
+        skill = Skill(
+            name="my-custom",
+            description="test",
+            license=None,
+            skill_dir=Path("/tmp/my-custom"),
+            skill_file=Path("/tmp/my-custom/SKILL.md"),
+            relative_path=Path("my-custom"),
+            category=SkillCategory.CUSTOM,
+            enabled=True,
+        )
+        storage = MagicMock()
+        storage.load_skills.return_value = [skill]
+        mock_storage_get.return_value = storage
+
+        user = _make_user(user_id="test-user-id", role=UserRole.USER)
+        app = _make_test_app(SimpleNamespace(), current_user=user)
+        client = TestClient(app)
+        resp = client.get("/api/skills")
+
+        assert resp.status_code == 200
+        mock_save.assert_awaited_once()
+        call_kwargs = mock_save.await_args
+        assert call_kwargs is not None
+        _, _, meta = call_kwargs.args
+        assert meta["visibility"] == "private"
+        assert meta["owner_id"] == "test-user-id"
+
+
+# ---------------------------------------------------------------------------
+# skills.py:560 — anonymous user cannot access private custom skill
+# ---------------------------------------------------------------------------
+
+
+class TestGetCustomSkillAnonymousAccess:
+    """skills.py:560: anonymous user gets 404 for private custom skill."""
+
+    @patch("app.gateway.routers.skills.get_or_new_skill_storage")
+    @patch("app.gateway.routers.skills._load_skill_meta", new_callable=AsyncMock, return_value={"visibility": "private"})
+    def test_anonymous_gets_404_for_private_skill(self, mock_load, mock_storage_get):
+        from app.gateway.authz import get_current_rbac_user, get_optional_rbac_user
+
+        skill = Skill(
+            name="secret-skill",
+            description="test",
+            license=None,
+            skill_dir=Path("/tmp/secret-skill"),
+            skill_file=Path("/tmp/secret-skill/SKILL.md"),
+            relative_path=Path("secret-skill"),
+            category=SkillCategory.CUSTOM,
+            enabled=True,
+        )
+        storage = MagicMock()
+        storage.load_skills.return_value = [skill]
+        mock_storage_get.return_value = storage
+
+        app = _make_test_app(SimpleNamespace(), current_user=None)
+
+        async def _stub_none():
+            return None
+
+        app.dependency_overrides[get_current_rbac_user] = _stub_none
+        app.dependency_overrides[get_optional_rbac_user] = _stub_none
+        client = TestClient(app)
+        resp = client.get("/api/skills/custom/secret-skill")
+
+        assert resp.status_code == 404

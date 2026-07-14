@@ -1,4 +1,4 @@
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
@@ -7,6 +7,9 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 let mockSkillsData: unknown[] = [];
 let mockIsLoading = false;
 let mockError: Error | null = null;
+const mockCreateVisibilityApplication = vi.fn();
+const mockToastSuccess = vi.fn();
+const mockToastError = vi.fn();
 
 vi.mock("@/core/skills/hooks", () => ({
   useSkills: () => ({
@@ -14,6 +17,38 @@ vi.mock("@/core/skills/hooks", () => ({
     isLoading: mockIsLoading,
     error: mockError,
   }),
+}));
+
+vi.mock("@/core/visibility-applications/api", () => ({
+  createVisibilityApplication: (...args: unknown[]) =>
+    mockCreateVisibilityApplication(...args),
+}));
+
+vi.mock("sonner", () => ({
+  toast: {
+    success: (...args: unknown[]) => mockToastSuccess(...args),
+    error: (...args: unknown[]) => mockToastError(...args),
+  },
+}));
+
+vi.mock("@/components/workspace/settings/skill-apply-dialog", () => ({
+  SkillApplyDialog: ({
+    skill,
+    open,
+    onSubmit,
+  }: {
+    skill: { name: string } | null;
+    open: boolean;
+    onSubmit: (targetVisibility: string, reason: string) => void;
+  }) =>
+    open && skill ? (
+      <div data-testid="skill-apply-dialog">
+        <span>{skill.name}</span>
+        <button onClick={() => onSubmit("department", "Need team access")}>
+          Submit application
+        </button>
+      </div>
+    ) : null,
 }));
 
 vi.mock("@/components/workspace/settings/settings-section", () => ({
@@ -135,6 +170,8 @@ vi.mock("@/core/i18n/hooks", () => ({
           description: "Manage your skills",
           emptyTitle: "No skills yet",
           emptyDescription: "No skills available",
+          applyVisibility: "Apply visibility",
+          applicationSubmitted: "Application submitted",
         },
       },
       common: {
@@ -178,6 +215,7 @@ beforeEach(async () => {
   ];
   mockIsLoading = false;
   mockError = null;
+  mockCreateVisibilityApplication.mockResolvedValue({ success: true });
   const mod =
     await import("@/components/workspace/settings/skill-settings-page");
   SkillSettingsPage = mod.SkillSettingsPage;
@@ -268,6 +306,56 @@ describe("SkillSettingsPage", () => {
     // EmptySkill should be shown
     expect(screen.getByText("No skills yet")).toBeInTheDocument();
     expect(screen.getByText("No skills available")).toBeInTheDocument();
+  });
+
+  test("shows the empty state when no skills are available", () => {
+    mockSkillsData = [];
+    render(<SkillSettingsPage />);
+
+    expect(screen.getByText("No skills yet")).toBeInTheDocument();
+    expect(screen.getByText("No skills available")).toBeInTheDocument();
+  });
+
+  test("submits a visibility application for a skill", async () => {
+    const user = userEvent.setup();
+    render(<SkillSettingsPage />);
+
+    await user.click(
+      screen.getAllByRole("button", { name: "Apply visibility" })[0]!,
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Submit application" }),
+    );
+
+    await waitFor(() => {
+      expect(mockCreateVisibilityApplication).toHaveBeenCalledWith({
+        resource_type: "skill",
+        resource_id: "Code Review",
+        target_visibility: "department",
+        reason: "Need team access",
+      });
+      expect(mockToastSuccess).toHaveBeenCalledWith("Application submitted");
+    });
+  });
+
+  test("shows an error when a visibility application fails", async () => {
+    const user = userEvent.setup();
+    mockCreateVisibilityApplication.mockRejectedValue(
+      new Error("application failed"),
+    );
+    render(<SkillSettingsPage />);
+
+    await user.click(
+      screen.getAllByRole("button", { name: "Apply visibility" })[0]!,
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Submit application" }),
+    );
+
+    await waitFor(() => {
+      expect(mockToastError).toHaveBeenCalledWith("application failed");
+    });
+    expect(screen.getByTestId("skill-apply-dialog")).toBeInTheDocument();
   });
 
   test("skill cards display name and description", () => {

@@ -10,7 +10,7 @@ export default defineConfig({
   timeout: 60_000,
 
   use: {
-    baseURL: "http://localhost:3000",
+    baseURL: "http://localhost:3005",
     trace: "off",
   },
 
@@ -22,9 +22,9 @@ export default defineConfig({
   ],
 
   webServer: {
-    command: "echo 'Using existing server'",
-    url: "http://localhost:3000",
-    reuseExistingServer: true,
-    timeout: 5_000,
+    command: "pnpm exec next build --webpack && pnpm start -p 3005",
+    url: "http://localhost:3005",
+    reuseExistingServer: false,
+    timeout: 120_000,
   },
 });
