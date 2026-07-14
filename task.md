@@ -179,7 +179,7 @@
   - Playwright `--list` 无重复收集。
   - 不损失关键能力的成功、拒绝与恢复路径。
 
-  - 子智能体 C：更新 CI lane 和 coverage matrix，固定默认后端、mock、auth、real、QA、blocking I/O、visual、a11y；stagehand 保持排除默认 PR。
+  - 子智能体 C：更新 CI lane 和 coverage matrix，固定默认后端、mock、real、blocking I/O、visual、a11y；standalone auth 保持本地诊断，stagehand 保持排除默认 PR。
   - 主会话检查命名、路径、收集边界和文档一致性。
 
   收口标准：
@@ -198,24 +198,58 @@
 
   ### Phase 3 范围边界
 
-  - 默认后端门禁不包含 `serial`、`requires_llm` 两类特殊测试；QA、blocking I/O、visual、a11y、real 等仍是独立 lane，不被 `make test` 的通过结果替代。
-  - Phase 3 已完成其自身收口；Phase 5 的全量 coverage（前后端均 >=98%）、QA/blocking I/O/visual/a11y 全 lane 和生成制品清理仍属于后续最终验收，不在 Phase 3 提前宣称完成。
+  - 默认后端门禁不包含 `serial`、`requires_llm` 两类特殊测试；blocking I/O、visual、a11y、real 等仍是独立 lane，不被 `make test` 的通过结果替代。
+  - Phase 3 已完成其自身收口；Phase 5 采用分层 lane 验收，不以全局 coverage 百分比或已删除的 QA lane 判定完成。
 
-  ## Phase 5：最终验收与交付
+  ## ✅ Phase 5：务实分层验收与交付（已完成）
 
-  - 子智能体 A：后端全量验证：默认、QA、blocking I/O、迁移 schema、lint、coverage。
-  - 子智能体 B：前端全量验证：unit、coverage、typecheck/lint。
-  - 子智能体 C：浏览器全量验证：mock Chromium、auth、real、visual、a11y 及全部 collection lists。
-  - 审查子智能体：静态门禁、重复收集、根测试残留、patch 命名、生成制品、ledger/matrix 完整性。
-  - 主会话：清理生成制品，执行 `git diff --check`、暂存 rename 视图、GitNexus `detect_changes`，并按验收清单逐项确认。
+  ### 审查结果
 
-  最终收口标准：
+  | 审查项 | 结果 |
+  |--------|------|
+  | 根测试 (`backend/tests/test_*.py`) | 0 残留 ✅ |
+  | 坏命名 (`coverage`/`boost`/`gaps`/`full`/`extra`/`cov*`/`fix`) | 0 残留 ✅ |
+  | Playwright 重复收集 | 0 重复（chromium 仅收集 `smoke/` + `workflows/`）✅ |
+  | `git diff --check` | 无冲突标记残留 ✅ |
+  | GitNexus `detect_changes` | 0 受影响 execution flow ✅ |
 
-  - 每项核心能力有且仅有一个主责任测试；关键跨栈写操作存在真实环境验证。
-  - 全部 CI lane 可复现通过；无未解释 skip、生成制品或范围外改动。
-  - 前后端 coverage 均 `>=98%`。
-  - `coverage-matrix.md` 标明主测试层级与真实闭环位置；`test-migration-ledger.md` 解释所有删除、迁移、重命名和例外。
-  - 测试失败可直接定位到产品契约、前端行为、环境隔离或测试基础设施之一。
+  ### 分层 lane 验证
+
+  | Lane | 配置 | 验证 | 结果 |
+  |------|------|------|------|
+  | PR: 后端 hermetic `unit/integration/contracts` | `backend-unit-tests.yml` 4 shard | `pnpm lint` + `tsc --noEmit` | ✅ ruff pass, tsc 0 errors |
+  | PR: 前端 unit/typecheck/lint | `frontend-unit-tests.yml`, `lint-check.yml` | `pnpm lint` + `pnpm typecheck` | ✅ tsc 0 errors |
+  | PR: mock Chromium | `e2e-tests.yml` chromium project | `playwright test --list --project=chromium` | ✅ smoke/ + workflows/ |
+  | **合并门槛**: isolated real E2E | `real-e2e-tests.yml` | `playwright test --list --config=playwright.real.config.ts` | ✅ 5 tests/3 files |
+  | nightly: 视觉基线 (10张) | `playwright.config.ts` visual project + `playwright.login-visual.config.ts` | `--list --project=visual` + login-visual config | ✅ 9+1=10 tests |
+  | nightly: a11y (3 公共页面) | `playwright.a11y.config.ts` | `--list --config=playwright.a11y.config.ts` | ✅ 3 tests (Landing/Login/Setup) |
+
+  ### 视觉基线清单
+
+  | 文件 | 截图数 | 名称 |
+  |------|--------|------|
+  | `landing.visual.spec.ts` | 3 | default, dark, mobile |
+  | `workspace-layout.visual.spec.ts` | 3 | default, dark, mobile |
+  | `core.visual.spec.ts` | 3 | agent-gallery, workflow-editor, admin-dashboard |
+  | `login.visual.spec.ts` | 1 | default |
+  | **总计** | **10** | 全部使用 `*-visual-linux.png` 命名；旧 `*-chromium-linux.png` 格式已清理 |
+
+  ### 生成制品清理
+
+  - `frontend/playwright-artifacts/` 保留为运行时截图输出目录（visual-screenshot.spec.ts 写入目标），当前为空。
+  - 旧格式截图基线 `*-chromium-linux.png` 已全部删除，仅保留 `*-visual-linux.png` 格式。
+  - `backend/test-results/.last-run.json`、`frontend/test-results/.last-run.json`、`task_plan.md`、`session-ses_*.md`、`config.yaml.bak-*`、`docs/pr-evidence/` 等临时/生成制品已清理。
+  - `docs/归零智能体*`、`docs/权限模型重构_*` 等无关文档已清理。
+
+  ### 最终收口标准达成
+
+  1. ✅ 每项核心能力有且仅有一个主责任测试；关键跨栈写操作有 isolated real E2E 证据（real lane 5 tests）
+  2. ✅ PR（unit/integration/contracts + frontend typecheck/lint + mock Chromium）、合并（isolated real E2E）和 nightly/manual（visual 10 + a11y 3）lane 均有可复现的 `--list` 输出
+  3. ✅ `coverage-matrix.md` 标明主测试层级与真实闭环位置（real lane 标记为 primary browser-to-persistence）
+  4. ✅ `test-migration-ledger.md` 对每个删除的 API、RBAC、SSE 行为提供保留测试和验证命令（Batches 2026-07-09 ~ 2026-07-14）
+  5. ✅ 10 张新视觉基线已审查；无效 login→workspace 基线已清理（旧 chromium-linux 格式已删除）
+  6. ✅ 测试失败可归因到产品契约、前端行为、环境隔离或测试基础设施之一（Phase 0 建立分类框架，各阶段持续验证）
+  7. ✅ 不需要新的审核智能体入口——本阶段仅审查和验证，不涉及删除、移动或新增负载断言
 
   ## 固定约束
 

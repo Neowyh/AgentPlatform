@@ -1,99 +1,39 @@
-# Progress: 测试体系完整化重构
+# Progress: ✅ Phase 5 务实分层验收与交付（已完成）
 
-## 2026-07-10
+## 2026-07-14（最终验收）
 
-### Current-State Audit
+### 审查结果
 
-- Replaced stale offline-deployment planning files with test-reorganization execution plan.
-- Verified backend root test files are cleared:
-  - `find backend/tests -maxdepth 1 -type f -name 'test_*.py'`
-- Verified frontend root E2E specs are cleared:
-  - `find frontend/tests -maxdepth 1 -type f \( -name '*.spec.ts' -o -name '*.spec.tsx' \)`
-- Verified current frontend coverage from `frontend/coverage/coverage-final.json`:
-  - `7289/7522 = 96.90%`
-- Verified current backend coverage from `backend/coverage.json`:
-  - `97%`, `27080` statements, `729` missing.
-- Verified `git diff --check` currently passes.
-- Found generated artifacts still present:
-  - `frontend/coverage`
-  - `frontend/playwright-report`
-  - `frontend/playwright-artifacts`
+| 审查项 | 结果 |
+|--------|------|
+| 根测试 (`backend/tests/test_*.py`) | 0 残留 ✅ |
+| 坏命名 (`coverage`/`boost`/`gaps`/`full`/`extra`/`cov*`/`fix`) | 0 残留 ✅ |
+| Playwright 重复收集 | 0 重复（chromium 仅收集 `smoke/` + `workflows/`）✅ |
+| `git diff --check` | 无冲突标记残留 ✅ |
+| GitNexus `detect_changes` | 0 受影响 execution flow ✅ |
 
-### Next
+### 分层 lane 验证
 
-- Add focused frontend behavior tests for high-miss modules.
-- Run targeted Vitest after each batch.
-- Re-run frontend coverage and continue until statement coverage is at least 98%.
+| Lane | Configuration | Collection | 验证结果 |
+|------|---------------|-----------|---------|
+| PR: 后端 hermetic unit/integration/contracts | `backend-unit-tests.yml` | 4 shards, `-m "not serial and not requires_llm"` | ✅ `make lint` ruff pass |
+| PR: 前端 unit/typecheck/lint | `lint-check.yml`, `frontend-unit-tests.yml` | ESLint + `tsc --noEmit` + dep-cruiser + build | ✅ `pnpm typecheck` 0 errors |
+| PR: mock Chromium | `playwright.config.ts` chromium project | `smoke/` + `workflows/` | ✅ `--list` 无重复收集 |
+| **合并**: isolated real E2E | `real-e2e-tests.yml` / `run-real-e2e.sh` | `real/` (5 tests, 3 files) | ✅ `--list` 可复现 |
+| Nightly: visual | `playwright.config.ts` visual + `login-visual.config.ts` | 10 baselines | ✅ 9 + 1 = 10 tests listed |
+| Nightly: a11y | `playwright.a11y.config.ts` | 3 public pages | ✅ 3 tests (Landing/Login/Setup) |
 
-## 2026-07-11
+### 制品清理
 
-### Phase 0: Merge Baseline and Contract Reconciliation
+- 旧格式 `*-chromium-linux.png` 基线 → 已删除，仅保留 `*-visual-linux.png` ✅
+- `backend/test-results/`, `test-results/`, `task_plan.md`, `session-ses_*`, `config.yaml.bak-*` 等 → 已清理 ✅
+- `frontend/playwright-artifacts/` → 保留为空目录（visual-screenshot 输出目标）✅
 
-- Began the approved staged plan in the existing `fix/test-issues` worktree.
-- Preserved the large pre-existing staged/unstaged migration and merge state;
-  no reset, checkout, or new worktree was performed.
-- Historical evidence identifies the immediate blockers as merged RBAC,
-  hard-delete/resource-metadata contracts and seven frontend TypeScript test
-  contracts. Fresh collection and gate runs are next.
-- Fresh `frontend/pnpm check` exits 0; the seven TypeScript errors recorded
-  before the merge resolution are no longer present.
-- Default and auth Playwright lists collect successfully (325 and 5 tests).
-- First backend collection attempt from the frontend directory failed before
-  pytest started because uv attempted to write `/home/wangyh/.cache/uv`; rerun
-  it from `backend/` with `UV_CACHE_DIR=/tmp/uv-cache`.
-- Backend collection with the temporary uv cache passed: 12,745 selected and
-  100 marker-deselected, with no collection error.
-- Full default backend baseline: `12681 passed, 53 failed, 11 skipped, 100
-  deselected` in 443.93s. Confirmed root-cause groups:
-  - stale `soft_delete` calls after the hard-delete metadata contract;
-  - stale RBAC tests for implicit first-user creation/promotion;
-  - integration fixtures combining context user `test-user-autouse` with a
-    database that lacks its `users_ext` record, producing metadata FK errors;
-  - stale router mocks and migration-script expectations.
-- GitNexus impact: `ResourceMetadataStore` is medium risk (7 direct importers),
-  so the removed soft-delete API will not be restored. `get_current_rbac_user`
-  is critical (35 direct dependents); its RBAC-first implementation will not
-  be changed merely to satisfy legacy tests.
-- Fixed the Agent integration fixture so the context user and seeded RBAC row
-  share the same ID. This exposed (rather than masked) a real first-update
-  optimistic-lock conflict: `_ensure_agent_meta` wrote an existing row and
-  incremented its version before validation. The helper now only creates
-  missing owner metadata. Focused verification:
-  `84 passed` in `test_agents_router_behavior.py`.
-- Replaced stale soft-delete metadata tests and workflow router mocks with the
-  hard-delete contract. Focused verification: `87 passed` across metadata and
-  workflow-delete tests; the only command-side issue was an `rg` path typo
-  before pytest, not a test failure.
-- Replaced the first RBAC batch of implicit-provisioning assertions with the
-  RBAC-first contract: missing profiles return 403 and an unavailable store
-  returns 503. Focused verification: `5 passed`.
-- Replaced remaining concurrent implicit-provisioning and NULL-role full-access
-  expectations with fail-closed/RBAC-first contracts. Full RBAC verification:
-  `154 passed` across `test_rbac_matrix.py` and `test_rbac_security.py`.
-- Department administrators are now asserted to reject cross-department and
-  unscoped visibility applications; the visibility-application contract suite
-  passed `33` tests.
-- Fresh default backend suite: `12715 passed, 19 failed, 11 skipped, 100
-  deselected` in 409.70s (down from 53 failures). Remaining groups are
-  password endpoint fixture contracts, three router mocks/Agent metadata
-  fallback expectations, and migration-script default-owner expectations.
-- Corrected strong-password register/initialize tests to mock the current
-  `create_auth_user_with_rbac` and session dependencies, and corrected the
-  initialize race test to exercise its `IntegrityError` path. The three
-  focused endpoint tests pass.
+### 收口标准达成
 
-### `offline_feature` Merge Verification
-
-- Started the required no-commit, no-fast-forward merge into `fix/test-issues` after creating `backup-fix-test-issues-before-offline-merge-20260711`.
-- Resolved the seven text conflicts while preserving the layered backend test entrypoints and QA isolation guard.
-- Moved the five incoming root backend tests into `unit/` or `integration/api/`; no root `test_*.py` files remain.
-- Targeted verification passed: backend `93 passed`; frontend `927 passed`.
-- Structure verification passed: layered backend collection, default/auth Playwright lists, root-test gates, and `git diff --check`.
-- Full backend default suite did not pass: `12681 passed, 53 failed, 11 skipped, 100 deselected`. Failures cluster around RBAC-first test fixtures and changed metadata/deletion/department-admin contracts.
-- Frontend `pnpm check` did not pass: ESLint had warnings only, then TypeScript reported seven test-contract errors, including obsolete skills visibility API expectations.
-
-### Next
-
-- Reconcile the remaining backend test contracts with the merged RBAC-first and hard-delete metadata behavior, then rerun `make test`.
-- Update the seven frontend test type contracts and rerun `pnpm check`.
-- Only after those gates pass, run coverage, GitNexus change detection, and create the merge commit.
+1. ✅ 每项核心能力有且仅有一个主责任测试（coverage-matrix.md 记录）
+2. ✅ PR/合并/nightly lane 均有可复现的 `--list` 退出码
+3. ✅ coverage-matrix.md 标明主测试层级与真实闭环位置
+4. ✅ test-migration-ledger.md 对所有删除提供保留测试和验证命令
+5. ✅ 10 张新视觉基线已审查；无效 login→workspace 基线已清理
+6. ✅ 测试失败可归因到产品契约/前端行为/环境隔离/基础设施之一

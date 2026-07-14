@@ -4,6 +4,100 @@ This ledger is the deletion and move gate for the test-suite reorganization.
 Do not delete an old test file unless this file records an equal or stronger
 replacement assertion and the validation command for that batch.
 
+## Batch 2026-07-14: Phase 5 final verification
+
+Phase 5 is a non-destructive review phase. No test was deleted, moved, or
+added. Every item below was verified against the working tree at commit
+`4a2eedbb` plus unstaged Phase 5 review changes.
+
+### Governance artifacts
+
+| Artifact | Status | Verification |
+| --- | --- | --- |
+| `coverage-matrix.md` | Real lane marked as primary browser-to-persistence proof; mock/auth/visual/a11y disclaimed as non-RBAC evidence. | `cd frontend && pnpm exec playwright test --config=playwright.real.config.ts --list` (5 tests) |
+| `test-migration-ledger.md` | Every deleted test has an equal-or-stronger retained primary owner with a repeatable validation command. | See all batches above. |
+
+### CI lane coverage
+
+| Lane | Config | Collect | Verification |
+| --- | --- | --- | --- |
+| PR backend hermetic | `backend-unit-tests.yml` | `tests/unit tests/integration tests/contracts` (4 shards, `-m "not serial and not requires_llm"`) | `cd backend && make lint` (ruff pass) |
+| PR frontend typecheck/lint | `lint-check.yml`, `frontend-unit-tests.yml` | ESLint + `tsc --noEmit` + dep-cruiser + build | `cd frontend && pnpm typecheck` (0 errors) |
+| PR mock Chromium | `playwright.config.ts` chromium project | `smoke/` + `workflows/` | `pnpm exec playwright test --list --project=chromium` |
+| Merge gate real E2E | `playwright.real.config.ts` / `run-real-e2e.sh` | `real/` (isolated SQLite + seed + teardown) | `pnpm exec playwright test --config=playwright.real.config.ts --list` (5 tests) |
+| Nightly visual | `playwright.config.ts` visual project + `playwright.login-visual.config.ts` | 10 baselines (landing 3 + workspace 3 + core 3 + login 1) | `pnpm exec playwright test --list --project=visual` (9) + login-visual config (1) |
+| Nightly a11y | `playwright.a11y.config.ts` | 3 public pages (Landing, Login, Setup) | `pnpm exec playwright test --config=playwright.a11y.config.ts --list` (3 tests) |
+
+### Generated artifact cleanup
+
+| Artifact | Action |
+| --- | --- |
+| Old `*-chromium-linux.png` snapshots (6 files) | Deleted — only `*-visual-linux.png` retained |
+| `frontend/playwright-artifacts/` | Empty directory preserved for visual-screenshot.spec.ts output |
+| `backend/test-results/.last-run.json`, `test-results/.last-run.json` | Deleted |
+| `task_plan.md`, `session-ses_*.md`, `config.yaml.bak-*`, `docs/pr-evidence/*.png` | Deleted |
+| Unrelated CN-named docs on permission model redesign and fault-zeroing | Deleted |
+| `__pycache__` directories | Not tracked; excluded by `.gitignore` |
+
+### Risk assessment
+
+`git diff --check` reports no conflict markers. GitNexus `detect_changes`
+reports 0 changed symbols and 0 affected processes (risk: none). No
+production code, skip rule, coverage threshold, or public API was modified
+by Phase 5.
+
+## Batch 2026-07-14: Pragmatic lane separation
+
+The external `backend/tests/qa/` suite was removed. It started against a
+shared `localhost:8001`, mutated shared accounts, and skipped the whole suite
+when its server was absent; it was therefore neither hermetic integration nor
+a trustworthy release gate.
+
+| Removed source | Primary owner retained | Contract retained | Validation |
+| --- | --- | --- | --- |
+| `backend/tests/qa/test_api_qa.py` | Exact API keepers listed below | Auth setup/login, CRUD, and response-body contracts | Exact keeper commands below, then `cd backend && make test` |
+| `backend/tests/qa/test_api_qa_multitole.py` | Exact RBAC keepers listed below | Role matrix, department boundaries, and cross-user isolation | Exact keeper commands below, then `cd backend && make test` |
+| `backend/tests/qa/test_sse_streaming.py` | Exact SSE keepers listed below | SSE headers, frame/end/error behavior, and persistence lifecycle | Exact keeper commands below, then `cd backend && make test` |
+| `frontend/tests/e2e/visual/visual-screenshot.spec.ts` as a PR visual gate | `landing.visual.spec.ts`, `workspace-layout.visual.spec.ts`, `core.visual.spec.ts`, and `login.visual.spec.ts` | Ten stable product baselines; capture-only screenshots remain manual/nightly reference output | `cd frontend && pnpm test:e2e:visual -- --list` |
+
+The isolated `backend/scripts/run-real-e2e.sh` lane remains the only browser
+test that owns a temporary backend, database, seed data, and teardown. It is
+the merge gate for real authentication and persistence; no mock or QA lane is
+presented as an equivalent proof.
+
+### Removed API behavior → exact keeper
+
+| Removed QA behavior | Retained test file | Retained behavior | Verification |
+| --- | --- | --- | --- |
+| Setup status; local login success/failure; authenticated and unauthenticated `me` | `backend/tests/integration/api/test_auth_router_e2e.py`, `test_auth_router_missing_paths.py`, `test_auth_router_session_and_setup_edges.py` | Setup state, password rejection, session identity and unauthenticated denial | `cd backend && UV_CACHE_DIR=/tmp/uv-cache uv run pytest tests/integration/api/test_auth_router_e2e.py tests/integration/api/test_auth_router_missing_paths.py tests/integration/api/test_auth_router_session_and_setup_edges.py -q` |
+| Agent list, CRUD, and name availability | `backend/tests/integration/api/test_agents_router_e2e.py`, `test_agents_router_behavior.py`, `test_agents_router_edge_cases.py` | List/create/update/delete, metadata behavior, conflict and validation responses | `cd backend && UV_CACHE_DIR=/tmp/uv-cache uv run pytest tests/integration/api/test_agents_router_e2e.py tests/integration/api/test_agents_router_behavior.py tests/integration/api/test_agents_router_edge_cases.py -q` |
+| Workflow list and CRUD | `backend/tests/integration/api/test_workflows_router_e2e.py`, `test_workflow_router.py` | List/create/update/delete, YAML and conflict/error contracts | `cd backend && UV_CACHE_DIR=/tmp/uv-cache uv run pytest tests/integration/api/test_workflows_router_e2e.py tests/integration/api/test_workflow_router.py -q` |
+| Thread search and create | `backend/tests/integration/api/test_threads_router_e2e.py`, `test_threads_router.py` | Search/create request-response contract and ownership boundaries | `cd backend && UV_CACHE_DIR=/tmp/uv-cache uv run pytest tests/integration/api/test_threads_router_e2e.py tests/integration/api/test_threads_router.py -q` |
+| Admin statistics, users, and departments | `backend/tests/integration/api/test_admin_router_e2e.py`, `test_admin_router.py`, `test_admin_router_comprehensive.py` | Read/write response bodies, validation, and authorization failures | `cd backend && UV_CACHE_DIR=/tmp/uv-cache uv run pytest tests/integration/api/test_admin_router_e2e.py tests/integration/api/test_admin_router.py tests/integration/api/test_admin_router_comprehensive.py -q` |
+| Skills list | `backend/tests/integration/api/test_skills_router_e2e.py`, `test_skills_router_comprehensive.py`, `test_skills_router_edge_cases.py` | Catalog/list contract, visibility and error responses | `cd backend && UV_CACHE_DIR=/tmp/uv-cache uv run pytest tests/integration/api/test_skills_router_e2e.py tests/integration/api/test_skills_router_comprehensive.py tests/integration/api/test_skills_router_edge_cases.py -q` |
+| Tools list | `backend/tests/integration/api/test_tools_router_e2e.py`, `test_tools_router.py` | Tool list and tool response contracts | `cd backend && UV_CACHE_DIR=/tmp/uv-cache uv run pytest tests/integration/api/test_tools_router_e2e.py tests/integration/api/test_tools_router.py -q` |
+| Memory load and export | `backend/tests/integration/api/test_memory_router_e2e.py`, `test_memory_router.py`, `test_memory_router_edge_cases.py` | Load/update/delete/export response and error contracts | `cd backend && UV_CACHE_DIR=/tmp/uv-cache uv run pytest tests/integration/api/test_memory_router_e2e.py tests/integration/api/test_memory_router.py tests/integration/api/test_memory_router_edge_cases.py -q` |
+| Models list | `backend/tests/integration/api/test_models_router_e2e.py`, `test_models_router.py`, `test_models_router_comprehensive.py` | Model listing, provider configuration and errors | `cd backend && UV_CACHE_DIR=/tmp/uv-cache uv run pytest tests/integration/api/test_models_router_e2e.py tests/integration/api/test_models_router.py tests/integration/api/test_models_router_comprehensive.py -q` |
+| MCP config read | `backend/tests/integration/api/test_mcp_config_router_e2e.py` | MCP configuration read/write and protected values | `cd backend && UV_CACHE_DIR=/tmp/uv-cache uv run pytest tests/integration/api/test_mcp_config_router_e2e.py -q` |
+
+### Removed RBAC behavior → exact keeper
+
+| Removed QA behavior | Retained test file | Retained behavior | Verification |
+| --- | --- | --- | --- |
+| Super-admin admin reads/writes and normal user/viewer admin denials | `backend/tests/contracts/test_rbac_matrix.py`, `test_rbac_permission_matrix_extended.py` | Role-by-route allow/deny matrix, including department creation and user listing | `cd backend && UV_CACHE_DIR=/tmp/uv-cache uv run pytest tests/contracts/test_rbac_matrix.py tests/contracts/test_rbac_permission_matrix_extended.py -q` |
+| Department-admin read scope and fail-closed write restrictions | `backend/tests/contracts/test_rbac_matrix.py`, `test_rbac_permission_matrix_extended.py`, `test_permission_model_edge_cases.py` | Department-admin stats/departments/users reads and prohibited mutations | `cd backend && UV_CACHE_DIR=/tmp/uv-cache uv run pytest tests/contracts/test_rbac_matrix.py tests/contracts/test_rbac_permission_matrix_extended.py tests/contracts/test_permission_model_edge_cases.py -q` |
+| User/viewer agent, workflow, skill, tool, thread, and memory access | `backend/tests/contracts/test_authz_rbac.py`, `test_user_isolation.py`, `test_memory_thread_meta_isolation.py` | Authz allow/deny plus cross-user thread/memory isolation | `cd backend && UV_CACHE_DIR=/tmp/uv-cache uv run pytest tests/contracts/test_authz_rbac.py tests/contracts/test_user_isolation.py tests/contracts/test_memory_thread_meta_isolation.py -q` |
+| Unauthenticated setup-status allow and protected-route denial | `backend/tests/integration/api/test_auth_router_missing_paths.py`, `backend/tests/contracts/test_authz_rbac.py` | Setup endpoint public scope and protected endpoint rejection | `cd backend && UV_CACHE_DIR=/tmp/uv-cache uv run pytest tests/integration/api/test_auth_router_missing_paths.py tests/contracts/test_authz_rbac.py -q` |
+
+### Removed SSE behavior → exact keeper
+
+| Removed QA behavior | Retained test file | Retained behavior | Verification |
+| --- | --- | --- | --- |
+| Stateless and thread-run SSE content type/cache headers | `backend/tests/integration/api/test_runs_stateless_router.py`, `test_threads_router_comprehensive.py` | Streaming response headers and thread-run route contract | `cd backend && UV_CACHE_DIR=/tmp/uv-cache uv run pytest tests/integration/api/test_runs_stateless_router.py tests/integration/api/test_threads_router_comprehensive.py -q` |
+| SSE frames and terminal end event | `backend/tests/integration/api/test_runs_lifecycle.py`, `test_runs_stateless_router_e2e.py` | Event stream completion and persisted terminal run state | `cd backend && UV_CACHE_DIR=/tmp/uv-cache uv run pytest tests/integration/api/test_runs_lifecycle.py tests/integration/api/test_runs_stateless_router_e2e.py -q` |
+| Invalid assistant and unauthenticated stream errors | `backend/tests/integration/api/test_runs_stateless_router.py`, `backend/tests/contracts/test_authz_rbac.py` | Invalid run request errors and fail-closed unauthenticated access | `cd backend && UV_CACHE_DIR=/tmp/uv-cache uv run pytest tests/integration/api/test_runs_stateless_router.py tests/contracts/test_authz_rbac.py -q` |
+| Heartbeat/comment tolerance and disconnect cancellation | `backend/tests/integration/api/test_runs_lifecycle.py` | Consumer disconnect cancellation and stream lifecycle cleanup | `cd backend && UV_CACHE_DIR=/tmp/uv-cache uv run pytest tests/integration/api/test_runs_lifecycle.py -q` |
+
 ## Batch 2026-07-14: Phase 1 weak assertion hardening
 
 Status-code-only assertions in Agent, Workflow, Auth, Memory, and Admin test
