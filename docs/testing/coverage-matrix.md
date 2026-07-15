@@ -37,8 +37,10 @@ This matrix is the manual guardrail for the test-suite reorganization. Update it
 - Frontend `qa/` E2E files were merged into primary smoke/workflow specs; retained QA assertions should use behavior-specific test names, not `*-qa.spec.ts` filenames.
 - `frontend/tests/e2e/stagehand/` is experimental and excluded from the default Playwright config.
 - `frontend/tests/e2e/real/` is excluded from default, auth, visual, and a11y collection. Its config requires isolated-run variables even for collection: `cd frontend && E2E_STATE_DIR=/tmp E2E_RUN_ID=collect-only IDEER_INTERNAL_GATEWAY_BASE_URL=http://127.0.0.1:8001 pnpm exec playwright test --config=playwright.real.config.ts --list`. Execute it from an isolated backend with `QA_ISOLATED=1 bash backend/scripts/run-real-e2e.sh`.
-- The real E2E workflow is the sole PR/merge browser gate for real auth and
-  persistence; standalone auth remains local diagnostic coverage only.
+- High-risk PR paths, `main`, and manual dispatch run the real E2E workflow;
+  its fixed `Real E2E Gate` reports success when the lane is not required and
+  requires a passing real run when selected. Standalone auth remains local
+  diagnostic coverage only.
 - Generated artifacts belong under `frontend/playwright-artifacts/`, not under `frontend/tests/`.
 - Backend patch-test filenames no longer use `coverage`, `boost`, `gaps`, `full`, `extra`, `cov*`, or `fix`; retained assertions were mechanically renamed into behavior-specific files.
 - `feat/improve-tests` is an audited source branch, not an additional collection root. Its retained behavior is represented only through the final `unit/`, `integration/`, and `contracts/` paths recorded in the migration ledger.
