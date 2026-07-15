@@ -30,8 +30,10 @@ This matrix is the manual guardrail for the test-suite reorganization. Update it
 - Backend CI shards test execution and publishes a combined coverage report;
   it does not enforce a global percentage gate.
 - Default frontend Chromium E2E collects only `e2e/smoke/**/*.spec.ts` and `e2e/workflows/**/*.spec.ts`.
-- Mock Chromium is the PR browser gate. Isolated real E2E is the PR/merge
-  browser-to-persistence gate. Visual and public-page a11y run nightly.
+- PR mock Chromium collects `e2e/smoke/**/*.spec.ts`; full mock
+  `smoke/` + `workflows/` runs on `main`, nightly, and manual dispatch.
+- Isolated real E2E remains the browser-to-persistence proof and is selected
+  for high-risk PR paths; visual and public-page a11y run nightly.
 - Frontend `qa/` E2E files were merged into primary smoke/workflow specs; retained QA assertions should use behavior-specific test names, not `*-qa.spec.ts` filenames.
 - `frontend/tests/e2e/stagehand/` is experimental and excluded from the default Playwright config.
 - `frontend/tests/e2e/real/` is excluded from default, auth, visual, and a11y collection. Its config requires isolated-run variables even for collection: `cd frontend && E2E_STATE_DIR=/tmp E2E_RUN_ID=collect-only IDEER_INTERNAL_GATEWAY_BASE_URL=http://127.0.0.1:8001 pnpm exec playwright test --config=playwright.real.config.ts --list`. Execute it from an isolated backend with `QA_ISOLATED=1 bash backend/scripts/run-real-e2e.sh`.
