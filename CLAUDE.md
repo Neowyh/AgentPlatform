@@ -10,7 +10,7 @@ This project has been extended with enterprise intranet platform capabilities on
 
 ### RBAC & Admin
 - RBAC model: 4 roles (super_admin > department_admin > user > viewer)
-- DB models: `backend/packages/harness/ideer/persistence/models/rbac.py`
+- DB models: `backend/packages/harness/ideer/persistence/models/user.py`
 - Auth bridge: `backend/app/gateway/authz.py` (`get_current_rbac_user`)
 - Admin API: `backend/app/gateway/routers/admin.py`
 
@@ -18,16 +18,16 @@ This project has been extended with enterprise intranet platform capabilities on
 
 | 角色 | 邮箱 | 密码 | 数据库位置 |
 |------|------|------|------------|
-| 超级管理员 | `super_admin@test.com` | `super_admin@test.com` | `backend/.ideer/data/ideer.db` |
-| 部门管理员 | `department_admin@test.com` | `department_admin@test.com` | `backend/.ideer/data/ideer.db` |
-| 普通用户 | `user@test.com` | `user@test.com` | `backend/.ideer/data/ideer.db` |
-| 只读用户 | `viewer@test.com` | `viewer@test.com` | `backend/.ideer/data/ideer.db` |
-| 管理员 | `admin@test.com` | `admin@test.com` | `backend/.ideer/data/ideer.db` |
+| 超级管理员 | `super_admin@test.com` | `super_admin@test.com` | `backend/.ideer/data/ideer.db`（运行时生成） |
+| 部门管理员 | `department_admin@test.com` | `department_admin@test.com` | `backend/.ideer/data/ideer.db`（运行时生成） |
+| 普通用户 | `user@test.com` | `user@test.com` | `backend/.ideer/data/ideer.db`（运行时生成） |
+| 只读用户 | `viewer@test.com` | `viewer@test.com` | `backend/.ideer/data/ideer.db`（运行时生成） |
+| 管理员 | `admin@test.com` | `admin@test.com` | `backend/.ideer/data/ideer.db`（运行时生成） |
 
-**注意:** `department_admin@test.com` 在数据库中角色为 `user`，需要通过 admin 页面修改为 `department_admin` 才能测试部门管理员权限。
+**注意:** 这些账号仅适用于已初始化或已 seed 的本地数据库；进行角色测试前请确认实际角色值。若 `department_admin@test.com` 仍为 `user`，需先通过 admin 页面修改为 `department_admin`。
 
 ### Workflow Engine
-- YAML DSL with 6 step types: agent, tool, human_review, condition, parallel, loop
+- YAML DSL with 7 step types: agent, tool, human_review, condition, parallel, loop, retry
 - Core module: `backend/packages/harness/ideer/workflows/`
 - API: `backend/app/gateway/routers/workflows.py`
 - Frontend: `frontend/src/app/workspace/workflows/`
@@ -39,45 +39,28 @@ This project has been extended with enterprise intranet platform capabilities on
 - Each tool has both Community Tool and MCP Server deployment modes
 
 ### Testing
-- Workflow tests: `backend/tests/test_schema_parser.py`, `test_template.py`
-- Tool tests: `backend/tests/test_doc_reader.py`, `test_code_interpreter.py`, `test_data_analyzer.py`
-- Run with venv: `.venv/bin/python -m pytest backend/tests/`
+- Workflow tests: `backend/tests/unit/workflows/test_schema_parser.py`, `backend/tests/unit/scripts/test_template.py`
+- Tool tests: `backend/tests/unit/tools/test_doc_reader.py`, `test_code_interpreter.py`, `test_data_analyzer.py`
+- Default backend suite: `cd backend && make test` (unit, integration, and contract tests; excludes `serial` and `requires_llm` markers)
 
 ### AI 测试工具
 
 - **Qodo Cover**: AI 自动生成单元测试（前端 Vitest + 后端 pytest），配置文件 `frontend/.qodo-cover.json` 和 `backend/.qodo-cover.json`
 - **Stagehand**: AI 驱动的自然语言 E2E 测试（基于 Playwright），测试目录 `frontend/tests/e2e/stagehand/`
-- **覆盖率**: 前端 `@vitest/coverage-v8`，后端 `pytest-cov`，运行 `make test-coverage` 查看
+- **覆盖率**: 前端 `@vitest/coverage-v8`，后端 `pytest-cov`；分别运行 `cd frontend && make test-coverage` 或 `cd backend && make test-coverage`
 
-### Validation Skills
+### AI 验证资产
 
-四个验证 skill 提供 AI 生成代码的全流程测试验证，集成 Qodo Cover（AI 测试生成）和 Stagehand（自然语言 E2E）：
-
-| Skill | 职责 | 触发命令 |
-|-------|------|----------|
-| **frontend-validator** | 前端代码质量验证 + AI 测试生成 | "check frontend", "前端验证", "generate tests" |
-| **backend-validator** | 后端 Python 代码验证 + AI 测试生成 | "check backend", "后端验证", "write tests" |
-| **qa-tester** | 整个应用功能验证（Playwright + Stagehand） | "qa test", "功能测试" |
-| **validation-orchestrator** | 统一编排三个 skill | "validate all", "全面验证" |
-
-**验证级别**:
-- **quick**: 快速反馈（1-2 min）— TypeCheck + Lint + 格式 + 受影响测试
-- **standard**: 标准验证（3-5 min）— Quick + 覆盖率报告 + AI 测试缺口分析 + E2E 关键流程
-- **full**: 完整验证（10+ min）— Standard + AI 自动生成测试 + 全量 E2E + Stagehand + PR 就绪评分
-
-**变更阶段覆盖**:
-- 未暂存更改：代码质量检查
-- 已暂存更改：构建验证、完整测试、覆盖率报告
-- 提交后更改：功能验证、集成验证、AI 测试生成
-
-**详细文档**: `docs/ai-code-validation-skill-analysis.md`
+- Qodo Cover 配置位于 `frontend/.qodo-cover.json` 和 `backend/.qodo-cover.json`。
+- Stagehand E2E 测试位于 `frontend/tests/e2e/stagehand/`；默认 Playwright 配置不包含该实验性目录。
+- 当前 `.claude/skills/` 仅包含 GitNexus 相关技能；`frontend-validator`、`backend-validator`、`qa-tester` 与 `validation-orchestrator` 是 `docs/ai-code-validation-skill-analysis.md` 中记录的设计/历史方案，不能作为本 worktree 可直接调用的技能。
 
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **deer-flow** (51504 symbols, 97474 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+GitNexus is configured with a **deer-flow** index. Before relying on it, verify that the index points to the current worktree and matches its HEAD; index statistics are environment-specific and are intentionally not recorded here.
 
-> If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
+> If the current worktree is absent or any GitNexus tool reports a stale index, run `npx gitnexus analyze` from this worktree first.
 
 ## Always Do
 

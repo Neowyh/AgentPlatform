@@ -23,7 +23,7 @@ Backend code targets Python 3.12 and is formatted with ruff. Use snake_case for 
 
 ## Testing Guidelines
 
-Place backend tests in `backend/tests/test_*.py`. Place frontend unit tests in `frontend/tests/unit/`, mirroring the relevant `src/` area, and E2E tests in `frontend/tests/e2e/`. Add focused tests for changed behavior and run the smallest relevant suite before broader checks.
+Place backend tests in the relevant `backend/tests/unit/`, `backend/tests/integration/`, or `backend/tests/contracts/` package, using `test_*.py` filenames. Place frontend unit tests in `frontend/tests/unit/`, mirroring the relevant `src/` area, and E2E tests in `frontend/tests/e2e/`. Add focused tests for changed behavior and run the smallest relevant suite before broader checks.
 
 ## Commit & Pull Request Guidelines
 
@@ -35,7 +35,7 @@ Do not commit local secrets. Start from `config.example.yaml`, `.env.example`, o
 
 ## Test Accounts (密码 = 邮箱名)
 
-数据库位置: `backend/.ideer/data/ideer.db`
+数据库位置: `backend/.ideer/data/ideer.db`（运行时生成，未初始化的 worktree 不包含该文件）。
 
 | 角色 | 邮箱 | 密码 |
 |------|------|------|
@@ -45,14 +45,14 @@ Do not commit local secrets. Start from `config.example.yaml`, `.env.example`, o
 | 只读用户 | `viewer@test.com` | `viewer@test.com` |
 | 管理员 | `admin@test.com` | `admin@test.com` |
 
-**注意:** `department_admin@test.com` 在数据库中角色为 `user`，需要通过 admin 页面修改为 `department_admin` 才能测试部门管理员权限。
+**注意:** 这些账号仅适用于已初始化或已 seed 的本地数据库；进行角色测试前请确认实际角色值。若 `department_admin@test.com` 仍为 `user`，需先通过 admin 页面修改为 `department_admin`。
 
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **deer-flow** (51504 symbols, 97474 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+GitNexus is configured with a **deer-flow** index. Before relying on it, verify that the index points to the current worktree and matches its HEAD; index statistics are environment-specific and are intentionally not recorded here.
 
-> If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
+> If the current worktree is absent or any GitNexus tool reports a stale index, run `npx gitnexus analyze` from this worktree first.
 
 ## Always Do
 
