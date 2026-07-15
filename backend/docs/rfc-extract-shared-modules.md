@@ -1,5 +1,7 @@
 # RFC: Extract Shared Skill Installer and Upload Manager into Harness
 
+> status: proposed; last-reviewed: 2026-07-15
+
 ## 1. Problem
 
 Gateway (`app/gateway/routers/skills.py`, `uploads.py`) and Client (`ideer/client.py`) each independently implement the same business logic:

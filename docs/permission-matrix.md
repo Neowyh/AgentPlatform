@@ -1,5 +1,11 @@
 # 资源管理体系需求文档
 
+> audience: developers, security reviewers, maintainers<br>
+> status: current<br>
+> owner: security and platform maintainers<br>
+> last-verified: 2026-07-15<br>
+> canonical-path: `docs/permission-matrix.md`
+
 ## 设计原则
 
 1. **管理员的定位**：系统治理者，职责是管理用户对资源的浏览和使用权限（visibility）。管理员不能主动变更任何资源的 visibility，只能在 owner 提交申请后通过审批流程变更。资源内容（YAML/JSON/SKILL.md/SOUL.md）的创建、编辑、删除始终归创作者所有。

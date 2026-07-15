@@ -53,7 +53,7 @@ This project has been extended with enterprise intranet platform capabilities on
 
 - Qodo Cover 配置位于 `frontend/.qodo-cover.json` 和 `backend/.qodo-cover.json`。
 - Stagehand E2E 测试位于 `frontend/tests/e2e/stagehand/`；默认 Playwright 配置不包含该实验性目录。
-- 当前 `.claude/skills/` 仅包含 GitNexus 相关技能；`frontend-validator`、`backend-validator`、`qa-tester` 与 `validation-orchestrator` 是 `docs/ai-code-validation-skill-analysis.md` 中记录的设计/历史方案，不能作为本 worktree 可直接调用的技能。
+- 当前 `.claude/skills/` 仅包含 GitNexus 相关技能；`frontend-validator`、`backend-validator`、`qa-tester` 与 `validation-orchestrator` 是 `docs/archive/2026/testing/ai-code-validation-skill-analysis.md` 中记录的设计/历史方案，不能作为本 worktree 可直接调用的技能。
 
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence

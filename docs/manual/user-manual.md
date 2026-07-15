@@ -81,7 +81,7 @@ iDeer 是一个企业级 AI 智能体平台，基于 LangGraph 构建，提供�
 
 ### 2.3 界面导览
 
-![工作空间欢迎页面](screenshots/03-workspace-chat.png)
+![工作空间欢迎页面](screenshots/03-workspace-welcome.png)
 
 登录后进入工作空间，界面主要分为以下区域：
 
@@ -98,7 +98,7 @@ iDeer 是一个企业级 AI 智能体平台，基于 LangGraph 构建，提供�
 
 ### 3.1 发送消息
 
-![对话界面](screenshots/03-workspace-chat.png)
+![对话界面](screenshots/04-workspace-chat.png)
 
 **基本操作**：
 
@@ -126,7 +126,7 @@ AI 响应支持以下内容的富文本渲染：
 
 ### 3.3 思维链展示
 
-![思维链展示](screenshots/04-sidebar-expanded.png)
+![思维链展示](screenshots/05-sidebar-expanded.png)
 
 使用 Pro 或 Ultra 模式时，AI 会展示推理过程：
 
@@ -138,7 +138,7 @@ AI 响应支持以下内容的富文本渲染：
 
 ### 3.4 后续建议
 
-![后续建议](screenshots/06-input-box.png)
+![后续建议](screenshots/20-followup-suggestions.png)
 
 AI 响应完成后，系统会自动生成 3-5 个后续问题建议：
 
@@ -159,7 +159,7 @@ AI 响应完成后，系统会自动生成 3-5 个后续问题建议：
 
 ### 4.1 选择模型
 
-![模型选择器](screenshots/06-input-box.png)
+![模型选择器](screenshots/07-model-selector.png)
 
 1. 点击顶部栏的模型名称打开模型选择器
 2. 搜索框支持按名称快速筛选
@@ -209,7 +209,7 @@ AI 响应完成后，系统会自动生成 3-5 个后续问题建议：
 
 ### 5.1 上传文件
 
-![文件上传](screenshots/12-chat-conversation.png)
+![文件上传](screenshots/12-file-upload.png)
 
 **两种上传方式**：
 
@@ -268,7 +268,7 @@ AI: 从数据中可以看到以下趋势：...
 
 ### 6.2 查看工件
 
-![工件面板](screenshots/12-chat-conversation.png)
+![工件面板](screenshots/14-artifacts-panel.png)
 
 - 当对话中生成了工件时，聊天头部出现工件按钮
 - 点击按钮打开右侧工件面板
@@ -345,7 +345,7 @@ Agent 是具有专属配置的 AI 助手，可以拥有独立的系统提示词�
 
 ### 8.2 浏览 Agent 画廊
 
-![Agent 画廊](screenshots/09-agents-gallery.png)
+![Agent 画廊](screenshots/21-agents-gallery.png)
 
 - 访问 `/workspace/agents` 查看所有可用 Agent
 - 以卡片网格形式展示，响应式布局（1-4 列）
@@ -353,7 +353,7 @@ Agent 是具有专属配置的 AI 助手，可以拥有独立的系统提示词�
 
 ### 8.3 创建 Agent
 
-![创建 Agent](screenshots/10-agent-create.png)
+![创建 Agent](screenshots/22-agent-create.png)
 
 **创建流程**：
 
@@ -388,14 +388,14 @@ Agent 是具有专属配置的 AI 助手，可以拥有独立的系统提示词�
 
 ### 9.2 浏览工作流
 
-![工作流画廊](screenshots/11-workflows-gallery.png)
+![工作流画廊](screenshots/25-workflows-gallery.png)
 
 - 访问 `/workspace/workflows` 查看所有工作流
 - 卡片展示名称、描述、版本和步骤数
 
 ### 9.3 创建工作流
 
-![创建工作流](screenshots/12-workflow-create.png)
+![创建工作流](screenshots/26-workflow-create.png)
 
 **两种创建方式**：
 
@@ -442,7 +442,7 @@ steps:
 
 ### 9.4 运行工作流
 
-![运行工作流](screenshots/12-workflow-create.png)
+![运行工作流](screenshots/28-workflow-run.png)
 
 1. 在工作流详情页点击「运行」按钮
 2. 在弹出的对话框中填写输入参数
@@ -451,7 +451,7 @@ steps:
 
 ### 9.5 人工审核
 
-![人工审核](screenshots/12-workflow-create.png)
+![人工审核](screenshots/29-workflow-human-review.png)
 
 工作流中可配置人工审核步骤：
 
@@ -524,7 +524,7 @@ steps:
 
 ### 11.1 管理后台概览
 
-![管理后台](screenshots/18-admin-dashboard.png)
+![管理后台](screenshots/36-admin-dashboard.png)
 
 访问 `/workspace/admin`，管理后台显示四项统计卡片：
 
@@ -537,7 +537,7 @@ steps:
 
 ### 11.2 用户管理
 
-![用户管理](screenshots/19-admin-users.png)
+![用户管理](screenshots/37-admin-users.png)
 
 - **筛选**: 按部门和角色筛选用户
 - **用户卡片**: 显示用户名、部门、角色标签、禁用状态、创建时间、最后登录时间
@@ -546,7 +546,7 @@ steps:
 
 ### 11.3 部门管理
 
-![部门管理](screenshots/20-admin-departments.png)
+![部门管理](screenshots/39-admin-departments.png)
 
 - 以卡片网格展示所有部门
 - 显示部门名称、描述、成员数、Agent 数、技能数
@@ -555,7 +555,7 @@ steps:
 
 ### 11.4 工具管理
 
-![工具管理](screenshots/21-admin-tools.png)
+![工具管理](screenshots/40-admin-tools.png)
 
 - 展示所有注册的工具
 - 显示工具名称、分组标签、网络需求标识、描述
@@ -595,7 +595,7 @@ steps:
 
 ### 12.2 命令面板
 
-![命令面板](screenshots/40-command-palette.png)
+![命令面板](screenshots/41-command-palette.png)
 
 按 `Cmd/Ctrl + K` 打开命令面板：
 
@@ -605,7 +605,7 @@ steps:
 
 ### 12.3 对话导出
 
-![导出](screenshots/40-command-palette.png)
+![导出](screenshots/42-export-json.png)
 
 在聊天头部点击导出按钮，支持两种格式：
 

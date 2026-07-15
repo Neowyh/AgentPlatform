@@ -1,5 +1,7 @@
 # RFC: `create_ideer_agent` — 纯参数的 SDK 工厂 API
 
+> status: proposed; last-reviewed: 2026-07-15
+
 ## 1. 问题
 
 当前 harness 的唯一公开入口是 `make_lead_agent(config: RunnableConfig)`。它内部：

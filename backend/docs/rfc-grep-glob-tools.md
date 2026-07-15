@@ -1,5 +1,7 @@
 # [RFC] 在 iDeer 中增加 `grep` 与 `glob` 文件搜索工具
 
+> status: proposed; last-reviewed: 2026-07-15
+
 ## Summary
 
 我认为这个方向是对的，而且值得做。

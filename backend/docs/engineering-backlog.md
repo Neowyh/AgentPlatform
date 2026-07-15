@@ -2,6 +2,8 @@
 
 > 从 `TODO.md` 迁移（2026-07-14）。原有的已完成项已清除，此处仅保留尚待实施的工程改进。
 
+历史 P2/P3 全量盘点见 [`backend-improvements-2026-06-09.md`](archive/2026/backend-improvements-2026-06-09.md)。该文件保留原始分析和已完成项，不作为当前 backlog 的第二份入口。
+
 ## Backend Infrastructure
 
 - [ ] Pooling the sandbox resources to reduce the number of sandbox containers

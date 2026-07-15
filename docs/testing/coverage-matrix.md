@@ -1,5 +1,11 @@
 # Test Coverage Matrix
 
+> audience: testers, developers, release maintainers<br>
+> status: current<br>
+> owner: test maintainers<br>
+> last-verified: 2026-07-15<br>
+> canonical-path: `docs/testing/coverage-matrix.md`
+
 This matrix is the manual guardrail for the test-suite reorganization. Update it when moving or deleting tests, and do not delete a file until the same or stronger behavior assertion is listed in the target bucket.
 
 ## Coverage Quality Policy
