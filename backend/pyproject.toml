@@ -49,6 +49,7 @@ markers = [
     "requires_llm: test requires a real LLM API key — skipped in CI or when OPENAI_API_KEY is unset",
     "stress: marks tests as stress/concurrency tests (deselect with '-m \"not stress\"')",
     "serial: marks tests that must run serially (not parallel-safe)",
+    "flaky: documents tests that may be rerun by an explicitly enabled rerun plugin",
 ]
 addopts = "--tb=short"
 

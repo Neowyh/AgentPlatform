@@ -176,14 +176,14 @@ class TestGetAdminStats:
         session = AsyncMock()
         session.execute = AsyncMock(side_effect=[metadata_result, owner_result])
         workflow_store = MagicMock()
-        workflow_store.list_workflows = AsyncMock(return_value=([], 0))
+        workflow_store.list_latest_definitions = AsyncMock(return_value=([], 0))
 
         with (
             patch("app.gateway.routers.admin.get_app_config", return_value=SimpleNamespace()),
             patch("app.gateway.routers.admin._collect_agent_inventory", return_value=[]),
             patch("app.gateway.routers.admin.get_available_tools", return_value=[SimpleNamespace(name="tool-1")]),
             patch("app.gateway.routers.admin.get_or_new_skill_storage", return_value=MagicMock(load_skills=MagicMock(return_value=[]))),
-            patch("app.gateway.routers.admin.get_workflow_store", return_value=workflow_store),
+            patch("app.gateway.routers.admin.WorkflowV2Store", return_value=workflow_store),
         ):
             resources = await admin_module._collect_admin_resource_inventory(session)
 
@@ -259,7 +259,7 @@ class TestAdminRemainingGuards:
         assert response.json()["detail"] == "Internal server error"
         service_delete_user.assert_awaited_once()
 
-    @patch("app.gateway.routers.admin.get_workflow_store", create=True)
+    @patch("app.gateway.routers.admin.WorkflowV2Store")
     @patch("app.gateway.routers.admin.get_or_new_skill_storage")
     @patch("app.gateway.routers.admin.get_available_tools")
     @patch("app.gateway.routers.admin.get_paths", create=True)
@@ -270,7 +270,7 @@ class TestAdminRemainingGuards:
         mock_get_paths,
         mock_get_tools,
         mock_get_skill_storage,
-        mock_get_workflow_store,
+        mock_workflow_store,
         tmp_path,
     ):
         """Stats count live inventory, not only resource_metadata rows."""
@@ -288,7 +288,7 @@ class TestAdminRemainingGuards:
         mock_get_paths.return_value = SimpleNamespace(base_dir=tmp_path, agents_dir=shared_agents)
         mock_get_tools.return_value = [SimpleNamespace(name="tool-a"), SimpleNamespace(name="tool-b")]
         mock_get_skill_storage.return_value.load_skills.return_value = [SimpleNamespace(name="skill-a")]
-        mock_get_workflow_store.return_value.list_workflows = AsyncMock(return_value=([{"name": "wf-a"}, {"name": "wf-b"}], 2))
+        mock_workflow_store.return_value.list_latest_definitions = AsyncMock(return_value=([], 0))
 
         session = AsyncMock()
         call_count = {"n": 0}
@@ -370,7 +370,7 @@ class TestAdminRemainingGuards:
 class TestListResources:
     """Tests for GET /api/admin/resources endpoint."""
 
-    @patch("app.gateway.routers.admin.get_workflow_store", create=True)
+    @patch("app.gateway.routers.admin.WorkflowV2Store")
     @patch("app.gateway.routers.admin.get_or_new_skill_storage")
     @patch("app.gateway.routers.admin.get_available_tools")
     @patch("app.gateway.routers.admin.get_paths", create=True)
@@ -381,7 +381,7 @@ class TestListResources:
         mock_get_paths,
         mock_get_tools,
         mock_get_skill_storage,
-        mock_get_workflow_store,
+        mock_workflow_store,
         tmp_path,
     ):
         shared_agents = tmp_path / "agents"
@@ -399,7 +399,7 @@ class TestListResources:
             SimpleNamespace(name="public-skill", category="public"),
             SimpleNamespace(name="custom-skill", category="custom"),
         ]
-        mock_get_workflow_store.return_value.list_workflows = AsyncMock(return_value=([{"name": "wf-a"}], 1))
+        mock_workflow_store.return_value.list_latest_definitions = AsyncMock(return_value=([], 0))
 
         meta = MagicMock()
         meta.id = "meta-tool-a"
@@ -434,7 +434,7 @@ class TestListResources:
         assert by_id["custom-skill"]["visibility"] == "private"
         assert by_id["wf-a"]["visibility"] == "private"
 
-    @patch("app.gateway.routers.admin.get_workflow_store", create=True)
+    @patch("app.gateway.routers.admin.WorkflowV2Store")
     @patch("app.gateway.routers.admin.get_or_new_skill_storage")
     @patch("app.gateway.routers.admin.get_available_tools")
     @patch("app.gateway.routers.admin.get_paths", create=True)
@@ -445,7 +445,7 @@ class TestListResources:
         mock_get_paths,
         mock_get_tools,
         mock_get_skill_storage,
-        mock_get_workflow_store,
+        mock_workflow_store,
         tmp_path,
     ):
         shared_agents = tmp_path / "agents"
@@ -457,7 +457,7 @@ class TestListResources:
         mock_get_paths.return_value = SimpleNamespace(base_dir=tmp_path, agents_dir=shared_agents)
         mock_get_tools.return_value = [SimpleNamespace(name="tool-a")]
         mock_get_skill_storage.return_value.load_skills.return_value = []
-        mock_get_workflow_store.return_value.list_workflows = AsyncMock(return_value=([], 0))
+        mock_workflow_store.return_value.list_latest_definitions = AsyncMock(return_value=([], 0))
 
         session = AsyncMock()
         result = MagicMock()
