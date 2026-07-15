@@ -15,11 +15,7 @@
     "noImplicitAny": false,
     "checkJs": false,
     /* Bundled projects */
-    "lib": [
-      "dom",
-      "dom.iterable",
-      "ES2022"
-    ],
+    "lib": ["dom", "dom.iterable", "ES2022"],
     "noEmit": true,
     "module": "ESNext",
     "moduleResolution": "Bundler",
@@ -33,9 +29,7 @@
     /* Path Aliases */
     "baseUrl": ".",
     "paths": {
-      "@/*": [
-        "./src/*"
-      ]
+      "@/*": ["./src/*"]
     }
   },
   "include": [
@@ -81,10 +75,9 @@
     ".next-e2e-verify-first-1784023942/types/**/*.ts",
     ".next-e2e-verify-first-1784023942/dev/types/**/*.ts",
     ".next-e2e-real-e2e-1784024137-5259/types/**/*.ts",
-    ".next-e2e-real-e2e-1784024137-5259/dev/types/**/*.ts"
+    ".next-e2e-real-e2e-1784024137-5259/dev/types/**/*.ts",
+    ".next-e2e-real-e2e-1784097582-4527/types/**/*.ts",
+    ".next-e2e-real-e2e-1784097582-4527/dev/types/**/*.ts"
   ],
-  "exclude": [
-    "node_modules",
-    "generated"
-  ]
+  "exclude": ["node_modules", "generated"]
 }
