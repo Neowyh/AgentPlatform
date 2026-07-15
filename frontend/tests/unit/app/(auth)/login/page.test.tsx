@@ -342,7 +342,10 @@ describe("LoginPage", () => {
     render(<LoginPage />);
 
     await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledWith("/api/v1/auth/setup-status");
+      expect(mockFetch).toHaveBeenCalledWith(
+        "/api/v1/auth/setup-status",
+        expect.anything(),
+      );
     });
 
     // Should not redirect to /setup
@@ -356,7 +359,10 @@ describe("LoginPage", () => {
 
     // Should not redirect to /setup
     await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledWith("/api/v1/auth/setup-status");
+      expect(mockFetch).toHaveBeenCalledWith(
+        "/api/v1/auth/setup-status",
+        expect.anything(),
+      );
     });
     expect(mockPush).not.toHaveBeenCalledWith("/setup");
   });
@@ -415,12 +421,15 @@ describe("LoginPage", () => {
     fireEvent.submit(form);
 
     await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledWith("/api/v1/auth/login/local", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: "username=user%40test.com&password=password123",
-        credentials: "include",
-      });
+      expect(mockFetch).toHaveBeenCalledWith(
+        "/api/v1/auth/login/local",
+        expect.objectContaining({
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: "username=user%40test.com&password=password123",
+          credentials: "include",
+        }),
+      );
     });
   });
 
@@ -572,15 +581,18 @@ describe("LoginPage", () => {
     fireEvent.submit(form);
 
     await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledWith("/api/v1/auth/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: "new@test.com",
-          password: "password123",
+      expect(mockFetch).toHaveBeenCalledWith(
+        "/api/v1/auth/register",
+        expect.objectContaining({
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: "new@test.com",
+            password: "password123",
+          }),
+          credentials: "include",
         }),
-        credentials: "include",
-      });
+      );
     });
   });
 
