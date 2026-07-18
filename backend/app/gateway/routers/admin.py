@@ -27,7 +27,7 @@ from ideer.persistence.models.visibility_application import VisibilityApplicatio
 from ideer.skills.storage import get_or_new_skill_storage
 from ideer.skills.types import SkillCategory
 from ideer.tools.tools import get_available_tools
-from ideer.workflows.store import get_workflow_store
+from ideer.workflows.v2.store import WorkflowV2Store
 
 logger = logging.getLogger(__name__)
 
@@ -103,8 +103,10 @@ async def _collect_admin_resource_inventory(
         if getattr(skill, "name", None)
     )
 
-    workflows, _ = await get_workflow_store().list_workflows(limit=10000, offset=0)
-    inventory.extend(AdminResourceInventoryItem("workflow", workflow["name"], "private", f"workflow:{workflow['name']}") for workflow in workflows if workflow.get("name"))
+    session_factory = get_session_factory()
+    if session_factory is not None:
+        workflows, _ = await WorkflowV2Store(session_factory).list_latest_definitions(limit=10000, offset=0)
+        inventory.extend(AdminResourceInventoryItem("workflow", workflow.workflow_name, "private", f"workflow:{workflow.workflow_name}") for workflow in workflows)
 
     resources: list[dict[str, str | None]] = []
     for item in inventory:

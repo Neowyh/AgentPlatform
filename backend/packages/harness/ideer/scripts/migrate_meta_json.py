@@ -21,7 +21,6 @@ from ideer.config.paths import get_paths
 from ideer.config.skills_config import SkillsConfig
 from ideer.persistence.engine import get_session_factory
 from ideer.persistence.models.resource_metadata import ResourceMetadata
-from ideer.persistence.models.workflow import WorkflowRunRow
 
 logger = logging.getLogger(__name__)
 
@@ -416,107 +415,6 @@ async def backfill_tools(*, dry_run: bool = False, default_owner: str | None = N
     return report
 
 
-async def backfill_workflows(*, dry_run: bool = False, default_owner: str | None = None) -> dict:
-    """Backfill workflow definition entries into resource_metadata table.
-
-    Workflow definitions stored in the workflow_runs table (with run_ids
-    prefixed by "def:") don't have .meta.json files, so they were never
-    migrated to resource_metadata. This function reads all such workflow
-    definitions and creates resource_metadata entries for them.
-
-    Args:
-        dry_run: If True, only log what would happen without making changes.
-
-    Returns:
-        Report with counts of imported, skipped, failed records.
-    """
-    sf = get_session_factory()
-    if sf is None:
-        logger.error("Database not initialized — cannot backfill")
-        return {"imported": 0, "skipped": 0, "failed": 0}
-
-    async with sf() as session:
-        stmt = select(WorkflowRunRow).where(WorkflowRunRow.run_id.startswith("def:"))
-        result = await session.execute(stmt)
-        rows = result.scalars().all()
-
-    if not rows:
-        logger.info("No workflow definitions found — nothing to backfill")
-        return {"imported": 0, "skipped": 0, "failed": 0}
-
-    if not default_owner:
-        logger.error("Cannot backfill workflows: --default-owner is required")
-        return {"imported": 0, "skipped": 0, "failed": 0}
-
-    logger.info("Found %d workflow definitions to backfill", len(rows))
-
-    imported = 0
-    skipped = 0
-    failed = 0
-    now = datetime.now(UTC)
-
-    async with sf() as session:
-        for row in rows:
-            try:
-                workflow_name = row.run_id[len("def:") :]
-
-                # Idempotency check
-                stmt = select(ResourceMetadata).where(
-                    ResourceMetadata.resource_type == "workflow",
-                    ResourceMetadata.resource_id == workflow_name,
-                )
-                result = await session.execute(stmt)
-                existing = result.scalar_one_or_none()
-
-                if existing:
-                    skipped += 1
-                    continue
-
-                # Insert new record
-                resource = ResourceMetadata(
-                    id=str(uuid.uuid4()),
-                    resource_type="workflow",
-                    resource_id=workflow_name,
-                    owner_id=default_owner,
-                    department_id=None,
-                    visibility="private",
-                    version=1,
-                    created_at=row.created_at,
-                    updated_at=now,
-                )
-
-                if not dry_run:
-                    session.add(resource)
-
-                imported += 1
-                logger.info(
-                    "Backfilled workflow '%s' (owner=%s, visibility=private)",
-                    workflow_name,
-                    default_owner,
-                )
-
-            except Exception as e:
-                failed += 1
-                logger.error("Failed to backfill workflow '%s': %s", row.run_id, e)
-
-        if not dry_run and imported > 0:
-            await session.commit()
-
-    report = {
-        "imported": imported,
-        "skipped": skipped,
-        "failed": failed,
-    }
-    logger.info(
-        "Workflow backfill complete: %d imported, %d skipped, %d failed",
-        imported,
-        skipped,
-        failed,
-    )
-
-    return report
-
-
 def main() -> None:
     import uuid as uuid_validator
 
@@ -541,11 +439,9 @@ def main() -> None:
 
     skill_agent_report = asyncio.run(migrate_meta_json(dry_run=args.dry_run))
     tool_report = asyncio.run(backfill_tools(dry_run=args.dry_run, default_owner=default_owner))
-    workflow_report = asyncio.run(backfill_workflows(dry_run=args.dry_run, default_owner=default_owner))
     report = {
         "skill_agent": skill_agent_report,
         "tool_backfill": tool_report,
-        "workflow_backfill": workflow_report,
     }
     print(json.dumps(report, indent=2))
 

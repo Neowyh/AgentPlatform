@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import WorkflowDetailPage from "@/app/workspace/workflows/[workflow_name]/page";
 import type {
   WorkflowDetail,
+  WorkflowNode,
   WorkflowRunResult,
   RunStatus,
 } from "@/core/workflows";
@@ -23,8 +24,21 @@ const defaultWorkflow: WorkflowDetail = {
   name: "test-workflow",
   description: "A test workflow",
   version: "1.0",
+  schema_version: 2,
+  state: {},
+  entrypoint: "step1",
+  nodes: [],
+  edges: [],
   steps: [
-    { id: "step1", type: "agent", agent: "test-agent", prompt: "Do something" },
+    {
+      id: "step1",
+      type: "action",
+      action: {
+        kind: "agent",
+        name: "test-agent",
+        params: { prompt: "Do something" },
+      },
+    },
   ],
   steps_count: 1,
   inputs: {
@@ -578,7 +592,7 @@ describe("WorkflowDetailPage", () => {
     test("renders step with id, type badge, agent badge, and prompt", () => {
       render(<WorkflowDetailPage />);
       expect(screen.getByText("step1")).toBeInTheDocument();
-      expect(screen.getByText("agent")).toBeInTheDocument();
+      expect(screen.getByText("action")).toBeInTheDocument();
       expect(screen.getByText("test-agent")).toBeInTheDocument();
       expect(screen.getByText("Do something")).toBeInTheDocument();
     });
@@ -604,9 +618,25 @@ describe("WorkflowDetailPage", () => {
       mockWorkflow = {
         ...defaultWorkflow,
         steps: [
-          { id: "s1", type: "agent", prompt: "first" },
-          { id: "s2", type: "tool", prompt: "second" },
-          { id: "s3", type: "condition" },
+          {
+            id: "s1",
+            type: "action",
+            action: {
+              kind: "agent",
+              name: "agent-one",
+              params: { prompt: "first" },
+            },
+          },
+          {
+            id: "s2",
+            type: "action",
+            action: {
+              kind: "tool",
+              name: "tool-two",
+              params: { prompt: "second" },
+            },
+          },
+          { id: "s3", type: "interrupt", roles: ["user"] },
         ],
         steps_count: 3,
       };
@@ -1469,10 +1499,14 @@ describe("WorkflowDetailPage", () => {
     });
 
     test("workflow with many steps renders all", () => {
-      const steps = Array.from({ length: 10 }, (_, i) => ({
+      const steps: WorkflowNode[] = Array.from({ length: 10 }, (_, i) => ({
         id: `step-${i}`,
-        type: "agent",
-        prompt: `Prompt ${i}`,
+        type: "action",
+        action: {
+          kind: "agent",
+          name: `agent-${i}`,
+          params: { prompt: `Prompt ${i}` },
+        },
       }));
       mockWorkflow = { ...defaultWorkflow, steps, steps_count: 10 };
       render(<WorkflowDetailPage />);
@@ -1486,12 +1520,18 @@ describe("WorkflowDetailPage", () => {
     test("step with tool instead of agent", () => {
       mockWorkflow = {
         ...defaultWorkflow,
-        steps: [{ id: "tool-step", type: "tool", tool: "search" }],
+        steps: [
+          {
+            id: "tool-step",
+            type: "action",
+            action: { kind: "tool", name: "search" },
+          },
+        ],
         steps_count: 1,
       };
       render(<WorkflowDetailPage />);
       expect(screen.getByText("tool-step")).toBeInTheDocument();
-      expect(screen.getByText("tool")).toBeInTheDocument();
+      expect(screen.getByText("action")).toBeInTheDocument();
     });
 
     test("input with no description in dialog", async () => {

@@ -9,10 +9,14 @@ describe("workflows index", () => {
     expect(workflowsIndex).toHaveProperty("createWorkflow");
     expect(workflowsIndex).toHaveProperty("updateWorkflow");
     expect(workflowsIndex).toHaveProperty("deleteWorkflow");
+    expect(workflowsIndex).toHaveProperty("runWorkflow");
+    expect(workflowsIndex).toHaveProperty("submitWorkflowCommand");
   });
 
   test("re-exports hooks", () => {
     expect(workflowsIndex).toHaveProperty("useWorkflows");
     expect(workflowsIndex).toHaveProperty("useWorkflow");
+    expect(workflowsIndex).toHaveProperty("useRunStatus");
+    expect(workflowsIndex).toHaveProperty("useSubmitWorkflowCommand");
   });
 });

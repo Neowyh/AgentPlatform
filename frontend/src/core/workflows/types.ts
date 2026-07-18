@@ -11,38 +11,21 @@ export interface RetryPolicy {
   on_errors: string[];
 }
 
-export interface StepDef {
+export interface WorkflowNode {
   id: string;
   type: string;
-
-  // agent step
-  agent?: string;
-  prompt?: string;
-
-  // tool step
-  tool?: string;
-  params?: Record<string, unknown>;
-
-  // human_review step
-  message?: string;
-  input_schema?: Record<string, unknown>;
-  approvers?: string[];
-
-  // condition step
   expression?: string;
-  then?: string | StepDef;
-  else?: string | StepDef;
-
-  // parallel / loop
-  steps?: StepDef[];
-  items?: string;
-  max_iterations?: number;
-
-  // common
-  condition?: string;
-  timeout?: number;
-  retry?: RetryPolicy;
-  on_error?: string;
+  action?: {
+    kind: "agent" | "tool";
+    name: string;
+    params?: Record<string, unknown>;
+  };
+  branches?: string[];
+  join?: string;
+  fork?: string;
+  roles?: string[];
+  writes?: string[];
+  retry?: { max_attempts: number; backoff_seconds: number };
 }
 
 export interface WorkflowSummary {
@@ -60,7 +43,12 @@ export interface WorkflowSummary {
 
 export interface WorkflowDetail extends WorkflowSummary {
   yaml_content: string;
-  steps: StepDef[];
+  schema_version: 2;
+  state: Record<string, InputParam>;
+  entrypoint: string;
+  nodes: WorkflowNode[];
+  steps: WorkflowNode[];
+  edges: Array<{ from: string; to: string; max_iterations?: number }>;
 }
 
 export interface WorkflowRunResult {
@@ -82,12 +70,9 @@ export interface RunStatus {
   run_id: string;
   workflow: string;
   status: string;
-  current_step: string | null;
+  definition_version?: number;
+  snapshot?: Record<string, unknown>;
   error: string | null;
-  steps: Record<string, StepStatus>;
-}
-
-export interface ReviewData {
-  approved: boolean;
-  comment?: string;
+  current_step?: string | null;
+  steps?: Record<string, StepStatus>;
 }

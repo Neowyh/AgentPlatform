@@ -2,7 +2,6 @@
 
 import json
 import sys
-from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -594,69 +593,6 @@ class TestBackfillTools:
         mock_session.commit.assert_not_called()
 
 
-@pytest.mark.asyncio
-class TestBackfillWorkflows:
-    async def test_backfill_workflows_returns_zero_when_database_unavailable(self):
-        from ideer.scripts.migrate_meta_json import backfill_workflows
-
-        with patch("ideer.scripts.migrate_meta_json.get_session_factory", return_value=None):
-            assert await backfill_workflows() == {"imported": 0, "skipped": 0, "failed": 0}
-
-    async def test_backfill_workflows_returns_zero_when_no_definitions_exist(self):
-        from ideer.scripts.migrate_meta_json import backfill_workflows
-
-        mock_session = MagicMock()
-        mock_session.execute = AsyncMock(return_value=_Result(scalar_rows=[]))
-
-        with patch("ideer.scripts.migrate_meta_json.get_session_factory", return_value=_make_mock_sf(mock_session)):
-            assert await backfill_workflows() == {"imported": 0, "skipped": 0, "failed": 0}
-
-    async def test_backfill_workflows_imports_missing_definitions_and_skips_existing(self):
-        from ideer.scripts.migrate_meta_json import backfill_workflows
-
-        created_at = datetime(2026, 1, 2, tzinfo=UTC)
-        row_a = MagicMock(run_id="def:daily-report", created_at=created_at)
-        row_b = MagicMock(run_id="def:existing-flow", created_at=created_at)
-        mock_session = MagicMock()
-        mock_session.add = MagicMock()
-        mock_session.commit = AsyncMock()
-        mock_session.execute = AsyncMock(
-            side_effect=[
-                _Result(scalar_rows=[row_a, row_b]),
-                _Result(scalar_one=None),
-                _Result(scalar_one=MagicMock()),
-            ]
-        )
-
-        with patch("ideer.scripts.migrate_meta_json.get_session_factory", return_value=_make_mock_sf(mock_session)):
-            report = await backfill_workflows(default_owner="u1")
-
-        assert report == {"imported": 1, "skipped": 1, "failed": 0}
-        added_resource = mock_session.add.call_args[0][0]
-        assert added_resource.resource_type == "workflow"
-        assert added_resource.resource_id == "daily-report"
-        assert added_resource.owner_id == "u1"
-        assert added_resource.visibility == "private"
-        assert added_resource.created_at == created_at
-        mock_session.commit.assert_awaited_once()
-
-    async def test_backfill_workflows_counts_row_failures(self):
-        from ideer.scripts.migrate_meta_json import backfill_workflows
-
-        broken_row = MagicMock(run_id=None)
-        mock_session = MagicMock()
-        mock_session.add = MagicMock()
-        mock_session.commit = AsyncMock()
-        mock_session.execute = AsyncMock(side_effect=[_Result(scalar_rows=[broken_row])])
-
-        with patch("ideer.scripts.migrate_meta_json.get_session_factory", return_value=_make_mock_sf(mock_session)):
-            report = await backfill_workflows(default_owner="u1")
-
-        assert report == {"imported": 0, "skipped": 0, "failed": 1}
-        mock_session.add.assert_not_called()
-        mock_session.commit.assert_not_called()
-
-
 class TestMain:
     def test_main_prints_combined_reports(self, capsys):
         from ideer.scripts import migrate_meta_json
@@ -665,7 +601,6 @@ class TestMain:
             patch.object(sys, "argv", ["migrate_meta_json", "--dry-run"]),
             patch.object(migrate_meta_json, "migrate_meta_json", new=AsyncMock(return_value={"imported": 1})),
             patch.object(migrate_meta_json, "backfill_tools", new=AsyncMock(return_value={"skipped": 2})),
-            patch.object(migrate_meta_json, "backfill_workflows", new=AsyncMock(return_value={"failed": 3})),
         ):
             migrate_meta_json.main()
 
@@ -673,5 +608,4 @@ class TestMain:
         assert report == {
             "skill_agent": {"imported": 1},
             "tool_backfill": {"skipped": 2},
-            "workflow_backfill": {"failed": 3},
         }

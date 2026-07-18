@@ -7,11 +7,10 @@ import {
   getWorkflow,
   listWorkflows,
   runWorkflow,
-  submitReview,
+  submitWorkflowCommand,
   toggleWorkflowFavorite,
   updateWorkflow,
 } from "./api";
-import type { ReviewData } from "./types";
 
 export function useWorkflows() {
   const { data, isLoading, error, refetch } = useQuery({
@@ -111,21 +110,24 @@ export function useRunStatus(
   return { runStatus: data ?? null, isLoading, error, refetch };
 }
 
-export function useSubmitReview() {
+export function useSubmitWorkflowCommand() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({
       name,
       runId,
-      data,
+      command,
     }: {
       name: string;
       runId: string;
-      data: ReviewData;
-    }) => submitReview(name, runId, data),
+      command: {
+        command_id: string;
+        type: "resume" | "cancel";
+        payload?: Record<string, unknown>;
+      };
+    }) => submitWorkflowCommand(name, runId, command),
     onSuccess: (_data, { name, runId }) => {
-      // Invalidate run status so the UI picks up the transition from
-      // waiting_human → running and resumes polling.
+      // Invalidate the snapshot after a durable command is accepted.
       void queryClient.invalidateQueries({
         queryKey: ["workflows", name, "runs", runId],
       });

@@ -3,11 +3,17 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import logging
 import uuid
+from collections.abc import AsyncIterator
 
+import yaml
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 
 from app.gateway.audit import record_audit
 from app.gateway.authz import (
@@ -20,9 +26,9 @@ from app.gateway.authz import (
 from app.gateway.utils import ResourceMetadataStore
 from ideer.persistence.engine import get_session_factory
 from ideer.persistence.models.user import UserModel, UserRole
-from ideer.workflows.executor import WorkflowExecutor
-from ideer.workflows.parser import parse_workflow_string
-from ideer.workflows.store import get_workflow_store
+from ideer.persistence.models.workflow_legacy import LegacyWorkflowRunRow
+from ideer.workflows.v2.parser import parse_workflow_v2 as parse_workflow_string
+from ideer.workflows.v2.store import WorkflowV2Store
 
 logger = logging.getLogger(__name__)
 
@@ -31,8 +37,72 @@ router = APIRouter(prefix="/api/workflows", tags=["workflows"])
 _workflow_store = ResourceMetadataStore("workflow")
 
 
-# Keep strong references to background tasks to prevent GC before completion
-_background_tasks: set[asyncio.Task] = set()
+async def _save_v2_definition(workflow, yaml_content: str, created_by: str):
+    sf = get_session_factory()
+    if sf is None:
+        raise HTTPException(503, "Workflow persistence is unavailable")
+    payload = workflow.model_dump(mode="json", by_alias=True)
+    return await WorkflowV2Store(sf).save_definition(workflow.name, payload, hashlib.sha256(yaml_content.encode()).hexdigest(), created_by)
+
+
+def _v2_store() -> WorkflowV2Store:
+    sf = get_session_factory()
+    if sf is None:
+        raise HTTPException(503, "Workflow persistence is unavailable")
+    return WorkflowV2Store(sf)
+
+
+def _definition_yaml(definition: dict) -> str:
+    return yaml.safe_dump(definition, sort_keys=False)
+
+
+def _legacy_run_payload(run: LegacyWorkflowRunRow) -> dict:
+    return {
+        "run_id": run.run_id,
+        "workflow": run.workflow_name,
+        "status": run.status,
+        "current_step": run.current_step,
+        "error": run.error,
+        "snapshot": {"steps": run.steps_state or {}, "loop_vars": run.loop_vars or {}},
+        "migration_required": True,
+    }
+
+
+async def _get_legacy_run(workflow_name: str, run_id: str) -> LegacyWorkflowRunRow | None:
+    sf = get_session_factory()
+    if sf is None:
+        raise HTTPException(503, "Workflow persistence is unavailable")
+    async with sf() as session:
+        return (
+            await session.execute(
+                select(LegacyWorkflowRunRow).where(
+                    LegacyWorkflowRunRow.workflow_name == workflow_name,
+                    LegacyWorkflowRunRow.run_id == run_id,
+                    ~LegacyWorkflowRunRow.run_id.like("def:%"),
+                )
+            )
+        ).scalar_one_or_none()
+
+
+async def workflow_event_stream(
+    store: WorkflowV2Store,
+    run_id: str,
+    after_seq: int,
+    *,
+    poll_seconds: float = 0.25,
+) -> AsyncIterator[str]:
+    """Replay and then tail the durable, run-local event sequence."""
+    cursor = after_seq
+    terminal = {"completed", "failed", "cancelled"}
+    while True:
+        events = await store.list_events(run_id, cursor)
+        for event in events:
+            cursor = event.seq
+            yield f"id: {event.seq}\nevent: {event.event_type}\ndata: {json.dumps(event.payload, ensure_ascii=False)}\n\n"
+        run = await store.get_run(run_id)
+        if run is None or run.status in terminal:
+            return
+        await asyncio.sleep(poll_seconds)
 
 
 class WorkflowCreateRequest(BaseModel):
@@ -68,12 +138,58 @@ class WorkflowImportRequest(BaseModel):
     visibility: str = Field(default="private", description="Visibility: private, department, or public")
 
 
-class HumanReviewRequest(BaseModel):
-    approved: bool
-    data: dict = Field(default_factory=dict)
+class WorkflowCommandRequest(BaseModel):
+    command_id: str = Field(min_length=1, max_length=64)
+    type: str = Field(pattern="^(resume|cancel)$")
+    payload: dict = Field(default_factory=dict)
 
 
 # --- CRUD ---
+
+
+@router.get("/{workflow_name}/legacy-runs/{run_id}")
+async def get_legacy_run(
+    workflow_name: str,
+    run_id: str,
+    current_user: UserModel = Depends(get_current_rbac_user),
+):
+    meta = await _workflow_store.load_meta(workflow_name)
+    if not meta or not check_resource_access(current_user, meta.get("owner_id"), meta.get("department_id"), meta.get("visibility")):
+        raise HTTPException(404, f"Workflow '{workflow_name}' not found")
+    run = await _get_legacy_run(workflow_name, run_id)
+    if run is None:
+        raise HTTPException(404, f"Legacy run '{run_id}' not found for workflow '{workflow_name}'")
+    return _legacy_run_payload(run)
+
+
+@router.get("/{workflow_name}/legacy-runs")
+async def list_legacy_runs(
+    workflow_name: str,
+    limit: int = 50,
+    offset: int = 0,
+    current_user: UserModel = Depends(get_current_rbac_user),
+):
+    meta = await _workflow_store.load_meta(workflow_name)
+    if not meta or not check_resource_access(current_user, meta.get("owner_id"), meta.get("department_id"), meta.get("visibility")):
+        raise HTTPException(404, f"Workflow '{workflow_name}' not found")
+    sf = get_session_factory()
+    if sf is None:
+        raise HTTPException(503, "Workflow persistence is unavailable")
+    async with sf() as session:
+        rows = list(
+            (
+                await session.execute(
+                    select(LegacyWorkflowRunRow)
+                    .where(LegacyWorkflowRunRow.workflow_name == workflow_name, ~LegacyWorkflowRunRow.run_id.like("def:%"))
+                    .order_by(LegacyWorkflowRunRow.created_at.desc())
+                    .offset(max(offset, 0))
+                    .limit(min(max(limit, 1), 200))
+                )
+            )
+            .scalars()
+            .all()
+        )
+    return {"runs": [_legacy_run_payload(run) for run in rows], "total": len(rows), "migration_required": True}
 
 
 @router.get("")
@@ -83,13 +199,12 @@ async def list_workflows(
     current_user: UserModel | None = Depends(get_optional_rbac_user),
 ):
     """List workflows visible to the current user."""
-    store = get_workflow_store()
-    workflows, total = await store.list_workflows(limit=min(limit, 500), offset=max(offset, 0))
+    definitions, total = await _v2_store().list_latest_definitions(limit=min(limit, 500), offset=max(offset, 0))
 
     # Filter by visibility using resource_metadata
     filtered: list[dict] = []
-    for wf in workflows:
-        meta = await _workflow_store.load_meta(wf["name"])
+    for definition in definitions:
+        meta = await _workflow_store.load_meta(definition.workflow_name)
         visibility = meta.get("visibility", "private")
         owner_id = meta.get("owner_id")
         dept_id = meta.get("department_id")
@@ -100,13 +215,21 @@ async def list_workflows(
         elif visibility != "public":
             continue
 
-        wf["visibility"] = visibility
-        wf["owner_id"] = owner_id
-        wf["department_id"] = dept_id
-        wf["is_favorited"] = meta.get("is_favorited", False)
-        filtered.append(wf)
+        filtered.append(
+            {
+                "name": definition.workflow_name,
+                "description": definition.definition.get("description", ""),
+                "version": str(definition.version),
+                "steps_count": len(definition.definition.get("nodes", [])),
+                "inputs": definition.definition.get("inputs", {}),
+                "visibility": visibility,
+                "owner_id": owner_id,
+                "department_id": dept_id,
+                "is_favorited": meta.get("is_favorited", False),
+            }
+        )
 
-    return {"workflows": filtered, "total": len(filtered)}
+    return {"workflows": filtered, "total": total}
 
 
 @router.get("/{workflow_name}")
@@ -115,9 +238,8 @@ async def get_workflow(
     current_user: UserModel | None = Depends(get_optional_rbac_user),
 ):
     """Get workflow details."""
-    store = get_workflow_store()
-    yaml_content = await store.load_workflow(workflow_name)
-    if yaml_content is None:
+    definition = await _v2_store().get_latest_definition(workflow_name)
+    if definition is None:
         raise HTTPException(404, f"Workflow '{workflow_name}' not found")
 
     # Check visibility
@@ -133,19 +255,23 @@ async def get_workflow(
         raise HTTPException(404, f"Workflow '{workflow_name}' not found")
 
     try:
-        wf = parse_workflow_string(yaml_content)
+        wf = parse_workflow_string(_definition_yaml(definition.definition))
         result = {
             "name": wf.name,
             "description": wf.description,
-            "version": wf.version,
+            "version": str(definition.version),
             "inputs": {k: v.model_dump() for k, v in wf.inputs.items()},
-            "steps": [s.model_dump(by_alias=True) for s in wf.steps],
+            "state": {k: v.model_dump() for k, v in wf.state.items()},
+            "entrypoint": wf.entrypoint,
+            "nodes": [s.model_dump(by_alias=True) for s in wf.nodes],
+            "edges": [e.model_dump(by_alias=True) for e in wf.edges],
+            "steps": [s.model_dump(by_alias=True) for s in wf.nodes],
             "visibility": visibility,
             "owner_id": owner_id,
         }
         # P2-API-05: Only expose raw YAML to admin users
         if current_user and current_user.role in (UserRole.DEPARTMENT_ADMIN, UserRole.SUPER_ADMIN):
-            result["yaml_content"] = yaml_content
+            result["yaml_content"] = _definition_yaml(definition.definition)
         return result
     except Exception as e:
         raise HTTPException(400, f"Invalid workflow YAML: {e}")
@@ -157,9 +283,8 @@ async def export_workflow(
     current_user: UserModel | None = Depends(get_optional_rbac_user),
 ):
     """Export a workflow's YAML content and metadata for sharing or backup."""
-    store = get_workflow_store()
-    yaml_content = await store.load_workflow(workflow_name)
-    if yaml_content is None:
+    definition = await _v2_store().get_latest_definition(workflow_name)
+    if definition is None:
         raise HTTPException(404, f"Workflow '{workflow_name}' not found")
 
     meta = await _workflow_store.load_meta(workflow_name)
@@ -174,12 +299,13 @@ async def export_workflow(
         raise HTTPException(404, f"Workflow '{workflow_name}' not found")
 
     try:
+        yaml_content = _definition_yaml(definition.definition)
         wf = parse_workflow_string(yaml_content)
         return {
             "name": wf.name,
             "yaml_content": yaml_content,
             "description": wf.description,
-            "version": wf.version,
+            "version": str(definition.version),
             "visibility": visibility,
             "owner_id": owner_id,
             "department_id": dept_id,
@@ -204,12 +330,12 @@ async def import_workflow(
     except Exception as e:
         raise HTTPException(400, f"Invalid workflow YAML: {e}")
 
-    store = get_workflow_store()
-    existing = await store.load_workflow(wf.name)
+    store = _v2_store()
+    existing = await store.get_latest_definition(wf.name)
     if existing is not None:
         raise HTTPException(409, f"Workflow '{wf.name}' already exists")
 
-    await store.save_workflow(wf.name, body.yaml_content)
+    version = await _save_v2_definition(wf, body.yaml_content, str(current_user.id))
 
     owner_id = current_user.id if current_user else "system"
     dept_id = current_user.department_id if current_user else None
@@ -224,7 +350,7 @@ async def import_workflow(
     return {
         "name": wf.name,
         "description": wf.description,
-        "version": wf.version,
+        "version": str(version.version),
         "steps_count": len(wf.steps),
         "inputs": {k: v.model_dump() for k, v in wf.inputs.items()},
         "visibility": body.visibility,
@@ -246,12 +372,12 @@ async def create_workflow(
     except Exception as e:
         raise HTTPException(400, f"Invalid workflow YAML: {e}")
 
-    store = get_workflow_store()
-    existing = await store.load_workflow(wf.name)
+    store = _v2_store()
+    existing = await store.get_latest_definition(wf.name)
     if existing is not None:
         raise HTTPException(409, f"Workflow '{wf.name}' already exists")
 
-    await store.save_workflow(wf.name, body.yaml_content)
+    version = await _save_v2_definition(wf, body.yaml_content, str(current_user.id))
 
     # Persist RBAC metadata — default to private
     owner_id = current_user.id if current_user else "system"
@@ -275,7 +401,7 @@ async def create_workflow(
     return {
         "name": wf.name,
         "description": wf.description,
-        "version": wf.version,
+        "version": str(version.version),
         "steps_count": len(wf.steps),
         "inputs": {k: v.model_dump() for k, v in wf.inputs.items()},
         "visibility": "private",
@@ -292,8 +418,8 @@ async def update_workflow(
     current_user: UserModel = Depends(get_current_rbac_user),
 ):
     """Update an existing workflow."""
-    store = get_workflow_store()
-    existing = await store.load_workflow(workflow_name)
+    store = _v2_store()
+    existing = await store.get_latest_definition(workflow_name)
     if existing is None:
         raise HTTPException(404, f"Workflow '{workflow_name}' not found")
 
@@ -322,7 +448,7 @@ async def update_workflow(
             f"Workflow name in YAML ('{wf.name}') does not match URL path ('{workflow_name}'). Either rename the YAML to match, or create a new workflow.",
         )
 
-    await store.save_workflow(workflow_name, body.yaml_content)
+    version = await _save_v2_definition(wf, body.yaml_content, str(current_user.id))
 
     # Increment version in resource_metadata
     if not await _workflow_store.save_meta(
@@ -346,7 +472,7 @@ async def update_workflow(
     return {
         "name": workflow_name,
         "description": wf.description,
-        "version": wf.version,
+        "version": str(version.version),
         "steps_count": len(wf.steps),
         "inputs": {k: v.model_dump() for k, v in wf.inputs.items()},
     }
@@ -360,8 +486,8 @@ async def delete_workflow(
     current_user: UserModel = Depends(get_current_rbac_user),
 ):
     """Delete a workflow."""
-    store = get_workflow_store()
-    existing = await store.load_workflow(workflow_name)
+    store = _v2_store()
+    existing = await store.get_latest_definition(workflow_name)
     if existing is None:
         raise HTTPException(404, f"Workflow '{workflow_name}' not found")
 
@@ -370,7 +496,7 @@ async def delete_workflow(
     if not check_resource_modify(current_user, meta.get("owner_id"), meta.get("department_id")):
         raise HTTPException(403, "You do not have permission to modify this resource")
 
-    deleted = await store.delete_workflow(workflow_name)
+    deleted = await _workflow_store.delete(workflow_name)
     if not deleted:
         raise HTTPException(404, f"Workflow '{workflow_name}' not found")
 
@@ -397,9 +523,6 @@ async def delete_workflow(
             logger.warning("Failed to auto-reject pending applications for deleted workflow %s", workflow_name)
 
     # Hard-delete resource_metadata
-    if not await _workflow_store.delete(workflow_name):
-        logger.warning("Failed to delete metadata for workflow '%s'", workflow_name)
-
     await record_audit(
         actor_id=current_user.id,
         action="delete",
@@ -461,9 +584,9 @@ async def run_workflow(
     current_user: UserModel = Depends(get_current_rbac_user),
 ):
     """Start a workflow execution."""
-    store = get_workflow_store()
-    yaml_content = await store.load_workflow(workflow_name)
-    if yaml_content is None:
+    store = _v2_store()
+    definition = await store.get_latest_definition(workflow_name)
+    if definition is None:
         raise HTTPException(404, f"Workflow '{workflow_name}' not found")
 
     # Check visibility
@@ -475,7 +598,7 @@ async def run_workflow(
         raise HTTPException(404, f"Workflow '{workflow_name}' not found")
 
     try:
-        wf = parse_workflow_string(yaml_content)
+        wf = parse_workflow_string(_definition_yaml(definition.definition))
     except Exception as e:
         raise HTTPException(400, f"Invalid workflow YAML: {e}")
 
@@ -503,21 +626,8 @@ async def run_workflow(
             inputs[name] = param.default
 
     run_id = str(uuid.uuid4())
-    executor = WorkflowExecutor(wf, store)
-
-    # Run in background with error logging
-    # Note: WorkflowExecutor.run() already handles state updates on failure
-    async def _run_workflow():
-        try:
-            await executor.run(inputs, run_id=run_id)
-        except Exception:
-            logger.exception("Workflow %s run %s failed", workflow_name, run_id)
-
-    task = asyncio.create_task(_run_workflow())
-    _background_tasks.add(task)
-    task.add_done_callback(_background_tasks.discard)
-
-    return {"run_id": run_id, "status": "running", "workflow": workflow_name}
+    await store.create_run(run_id, workflow_name, definition.version, inputs, str(current_user.id))
+    return {"run_id": run_id, "status": "queued", "workflow": workflow_name}
 
 
 @router.get("/{workflow_name}/runs/{run_id}")
@@ -527,8 +637,8 @@ async def get_run_status(
     current_user: UserModel = Depends(get_current_rbac_user),
 ):
     """Get workflow run status."""
-    store = get_workflow_store()
-    state = await store.load_run_state(run_id)
+    store = _v2_store()
+    state = await store.get_run(run_id)
     if state is None or state.workflow_name != workflow_name:
         raise HTTPException(404, f"Run '{run_id}' not found for workflow '{workflow_name}'")
 
@@ -536,24 +646,7 @@ async def get_run_status(
     if not meta or not check_resource_access(current_user, meta.get("owner_id"), meta.get("department_id"), meta.get("visibility")):
         raise HTTPException(404, f"Workflow '{workflow_name}' not found")
 
-    return {
-        "run_id": state.run_id,
-        "workflow": state.workflow_name,
-        "status": state.status,
-        "current_step": state.current_step,
-        "error": state.error,
-        "steps": {
-            sid: {
-                "status": sr.status,
-                "output": sr.output,
-                "error": sr.error,
-                "retries": sr.retries,
-                "started_at": sr.started_at,
-                "finished_at": sr.finished_at,
-            }
-            for sid, sr in state.steps.items()
-        },
-    }
+    return {"run_id": state.run_id, "workflow": state.workflow_name, "status": state.status, "definition_version": state.definition_version, "snapshot": state.snapshot, "error": state.error}
 
 
 @router.get("/{workflow_name}/runs")
@@ -572,52 +665,56 @@ async def list_runs(
     limit = max(1, min(limit, 200))
     offset = max(0, offset)
 
-    store = get_workflow_store()
-    runs, total = await store.list_runs(workflow_name, limit=limit, offset=offset)
-    return {"runs": runs, "total": total, "limit": limit, "offset": offset}
+    runs, total = await _v2_store().list_runs(workflow_name, limit=limit, offset=offset)
+    return {
+        "runs": [{"run_id": run.run_id, "workflow": run.workflow_name, "status": run.status, "definition_version": run.definition_version, "snapshot": run.snapshot, "error": run.error} for run in runs],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
 
 
-@router.post("/{workflow_name}/runs/{run_id}/review")
-async def submit_review(
+@router.get("/{workflow_name}/runs/{run_id}/events")
+async def stream_workflow_events(
     workflow_name: str,
     run_id: str,
-    body: HumanReviewRequest,
+    after_seq: int = 0,
     current_user: UserModel = Depends(get_current_rbac_user),
 ):
-    """Submit a human review result to resume a paused workflow."""
-    store = get_workflow_store()
-    # Verify the run belongs to this workflow
-    run_state = await store.load_run_state(run_id)
+    """Replay durable lifecycle events after ``after_seq`` as SSE."""
+    store = _v2_store()
+    run_state = await store.get_run(run_id)
     if run_state is None or run_state.workflow_name != workflow_name:
         raise HTTPException(404, f"Run '{run_id}' not found for workflow '{workflow_name}'")
 
-    # BUG-05: Validate approver permissions if the workflow defines approvers
-    yaml_content = await store.load_workflow(workflow_name)
-    if yaml_content:
-        try:
-            wf = parse_workflow_string(yaml_content)
-            # Find the human_review step that is currently waiting
-            for step in wf.steps:
-                if step.type.value == "human_review" and step.approvers:
-                    # Check if current user is in approvers list or is super_admin
-                    user_identifiers = {current_user.id, current_user.username}
-                    if not user_identifiers.intersection(set(step.approvers)) and current_user.role != UserRole.SUPER_ADMIN:
-                        raise HTTPException(403, "You are not an approver for this workflow step")
-                    break
-        except HTTPException:
-            raise
-        except Exception:
-            pass  # Don't block review if YAML parsing fails
+    meta = await _workflow_store.load_meta(workflow_name)
+    if not meta or not check_resource_access(current_user, meta.get("owner_id"), meta.get("department_id"), meta.get("visibility")):
+        raise HTTPException(404, f"Workflow '{workflow_name}' not found")
+    return StreamingResponse(
+        workflow_event_stream(store, run_id, max(0, after_seq)),
+        media_type="text/event-stream",
+    )
 
-    # Build review result — keep 'approved' at top level, merge extra data
-    # but strip any 'approved' key from body.data to prevent overwrite.
-    safe_data = {k: v for k, v in (body.data or {}).items() if k != "approved"}
-    review_payload = {"approved": body.approved, **safe_data}
-    ok = await store.save_review_result(run_id, review_payload)
-    if not ok:
-        # Re-check run status to provide a better error message
-        current = await store.load_run_state(run_id)
-        if current is None:
-            raise HTTPException(404, f"Run '{run_id}' not found")
-        raise HTTPException(409, f"Run '{run_id}' is in status '{current.status}', not waiting for review")
-    return {"success": True, "run_id": run_id}
+
+@router.post("/{workflow_name}/runs/{run_id}/commands")
+async def submit_workflow_command(
+    workflow_name: str,
+    run_id: str,
+    body: WorkflowCommandRequest,
+    current_user: UserModel = Depends(get_current_rbac_user),
+):
+    store = _v2_store()
+    run = await store.get_run(run_id)
+    if run is None or run.workflow_name != workflow_name:
+        raise HTTPException(404, f"Run '{run_id}' not found for workflow '{workflow_name}'")
+    meta = await _workflow_store.load_meta(workflow_name)
+    if not meta or not check_resource_access(current_user, meta.get("owner_id"), meta.get("department_id"), meta.get("visibility")):
+        raise HTTPException(404, f"Workflow '{workflow_name}' not found")
+    if body.type == "resume" and current_user.role != UserRole.SUPER_ADMIN:
+        definition = await store.get_definition(workflow_name, run.definition_version)
+        interrupt_node = run.snapshot.get("interrupt", {}).get("node_id") if isinstance(run.snapshot, dict) else None
+        required_roles = {role for node in (definition.definition.get("nodes", []) if definition else []) if node.get("id") == interrupt_node for role in node.get("roles", [])}
+        if required_roles and current_user.role.value not in required_roles:
+            raise HTTPException(403, "You do not have permission to resume this workflow")
+    command = await store.submit_command(body.command_id, run_id, body.type, body.payload, str(current_user.id))
+    return {"command_id": command.command_id, "run_id": command.run_id, "type": command.command_type, "accepted": True}

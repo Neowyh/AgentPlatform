@@ -3,7 +3,6 @@ import { fetch } from "@/core/api/fetcher";
 import { getBackendBaseURL } from "@/core/config";
 
 import type {
-  ReviewData,
   RunStatus,
   WorkflowDetail,
   WorkflowRunResult,
@@ -90,24 +89,29 @@ export async function getRunStatus(
   return res.json() as Promise<RunStatus>;
 }
 
-export async function submitReview(
+export async function submitWorkflowCommand(
   name: string,
   runId: string,
-  data: ReviewData,
-): Promise<{ success: boolean; run_id: string }> {
+  command: {
+    command_id: string;
+    type: "resume" | "cancel";
+    payload?: Record<string, unknown>;
+  },
+): Promise<{ command_id: string; run_id: string; accepted: boolean }> {
   const res = await fetch(
-    `${getBackendBaseURL()}/api/workflows/${encodeURIComponent(name)}/runs/${encodeURIComponent(runId)}/review`,
+    `${getBackendBaseURL()}/api/workflows/${encodeURIComponent(name)}/runs/${encodeURIComponent(runId)}/commands`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        approved: data.approved,
-        data: { comment: data.comment },
-      }),
+      body: JSON.stringify(command),
     },
   );
-  if (!res.ok) return extractError(res, "Failed to submit review");
-  return res.json() as Promise<{ success: boolean; run_id: string }>;
+  if (!res.ok) return extractError(res, "Failed to submit workflow command");
+  return res.json() as Promise<{
+    command_id: string;
+    run_id: string;
+    accepted: boolean;
+  }>;
 }
 
 export async function toggleWorkflowFavorite(

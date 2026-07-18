@@ -118,6 +118,32 @@ services:
       - ideer
     restart: unless-stopped
 
+  workflow-worker:
+    build:
+      context: ../
+      dockerfile: backend/Dockerfile
+      args:
+        APT_MIRROR: ${APT_MIRROR:-}
+        UV_IMAGE: ${UV_IMAGE:-ghcr.io/astral-sh/uv:0.7.20}
+        UV_INDEX_URL: ${UV_INDEX_URL:-https://pypi.org/simple}
+        UV_EXTRAS: ${UV_EXTRAS:-}
+    container_name: ideer-workflow-worker
+    command: sh -c "cd backend && PYTHONPATH=. uv run python -m app.workflow_worker"
+    volumes:
+      - ${IDEER_CONFIG_PATH}:/app/backend/config.yaml:ro
+      - ${IDEER_HOME}:/app/backend/.ideer
+    working_dir: /app
+    environment:
+      - IDEER_PROJECT_ROOT=/app
+      - IDEER_HOME=/app/backend/.ideer
+      - IDEER_CONFIG_PATH=/app/backend/config.yaml
+      - WORKFLOW_WORKER_ID=${WORKFLOW_WORKER_ID:-workflow-worker}
+    env_file:
+      - ../.env
+    networks:
+      - ideer
+    restart: unless-stopped
+
   # ── Sandbox Provisioner (optional, Kubernetes mode) ────────────────────────
   provisioner:
     build:

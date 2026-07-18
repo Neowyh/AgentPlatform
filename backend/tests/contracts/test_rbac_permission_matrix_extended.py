@@ -22,6 +22,7 @@ Section layout:
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
@@ -564,15 +565,79 @@ class TestWorkflowRoutesRequireRole:
         """user passes require_role for workflow creation (gets non-403 response)."""
         user = _make_rbac_user(role="user")
         app = _build_app_with_router(workflows_router, user)
-        with patch("app.gateway.routers.workflows.get_workflow_store") as mock_store:
-            store = MagicMock()
-            store.load_workflow = AsyncMock(return_value=None)
-            store.save_workflow = AsyncMock()
-            mock_store.return_value = store
-            with patch("app.gateway.routers.workflows._workflow_store.save_meta", new_callable=AsyncMock):
-                async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-                    resp = await client.post("/api/workflows", json={"name": "test-wf", "yaml_content": "name: test-wf\nversion: '1'\nsteps:\n  - id: s1\n    type: agent\n    agent: planner\n    prompt: hello\n"})
+        definition = "schema_version: 2\nname: test-wf\ninputs: {}\nstate: {}\nentrypoint: s1\nnodes:\n  - id: s1\n    type: interrupt\n    roles: [user]\nedges: []\n"
+        v2_store = MagicMock()
+        v2_store.get_latest_definition = AsyncMock(return_value=None)
+        v2_store.save_definition = AsyncMock(return_value=SimpleNamespace(version=1))
+        with (
+            patch("app.gateway.routers.workflows._v2_store", return_value=v2_store),
+            patch("app.gateway.routers.workflows._workflow_store.save_meta", new_callable=AsyncMock),
+        ):
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                resp = await client.post("/api/workflows", json={"name": "test-wf", "yaml_content": definition})
         assert resp.status_code != 403
+
+    @pytest.mark.asyncio
+    async def test_run_workflow_validates_required_input_and_creates_queued_run(self):
+        user = _make_rbac_user(role="user")
+        app = _build_app_with_router(workflows_router, user)
+        definition = SimpleNamespace(
+            version=3,
+            definition={
+                "schema_version": 2,
+                "name": "test-wf",
+                "inputs": {"request": {"type": "string", "required": True}},
+                "state": {},
+                "entrypoint": "start",
+                "nodes": [{"id": "start", "type": "interrupt", "roles": ["user"]}],
+                "edges": [],
+            },
+        )
+        v2_store = MagicMock()
+        v2_store.get_latest_definition = AsyncMock(return_value=definition)
+        v2_store.create_run = AsyncMock(return_value=None)
+        meta = {"visibility": "private", "owner_id": user.id, "department_id": None}
+        with (
+            patch("app.gateway.routers.workflows._v2_store", return_value=v2_store),
+            patch("app.gateway.routers.workflows._workflow_store.load_meta", new_callable=AsyncMock, return_value=meta),
+            patch("app.gateway.routers.workflows.check_resource_access", return_value=True),
+        ):
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                missing = await client.post("/api/workflows/test-wf/run", json={"inputs": {}})
+                accepted = await client.post("/api/workflows/test-wf/run", json={"inputs": {"request": "hello"}})
+
+        assert missing.status_code == 400
+        assert "Missing required input" in missing.json()["detail"]
+        assert accepted.status_code == 200
+        assert accepted.json()["status"] == "queued"
+        v2_store.create_run.assert_awaited_once()
+        assert v2_store.create_run.await_args.args[2:] == (3, {"request": "hello"}, str(user.id))
+
+    @pytest.mark.asyncio
+    async def test_workflow_events_replay_after_sequence_in_order(self):
+        user = _make_rbac_user(role="user")
+        app = _build_app_with_router(workflows_router, user)
+        run = SimpleNamespace(run_id="run-1", workflow_name="test-wf")
+        events = [
+            SimpleNamespace(seq=2, event_type="node_completed", payload={"node_id": "start"}),
+            SimpleNamespace(seq=3, event_type="run_completed", payload={}),
+        ]
+        v2_store = MagicMock()
+        v2_store.get_run = AsyncMock(return_value=run)
+        v2_store.list_events = AsyncMock(return_value=events)
+        meta = {"visibility": "private", "owner_id": user.id, "department_id": None}
+        with (
+            patch("app.gateway.routers.workflows._v2_store", return_value=v2_store),
+            patch("app.gateway.routers.workflows._workflow_store.load_meta", new_callable=AsyncMock, return_value=meta),
+            patch("app.gateway.routers.workflows.check_resource_access", return_value=True),
+        ):
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.get("/api/workflows/test-wf/runs/run-1/events?after_seq=1")
+
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("text/event-stream")
+        assert response.text.index("id: 2") < response.text.index("id: 3")
+        v2_store.list_events.assert_awaited_once_with("run-1", 1)
 
 
 # =====================================================================

@@ -39,6 +39,8 @@ class _OpRecorder:
         self.executed_sql: list[str] = []
         self.created_tables: list[tuple[str, tuple[object, ...]]] = []
         self.dropped_tables: list[str] = []
+        self.direct_created_indexes: list[tuple[str, str, tuple[str, ...]]] = []
+        self.direct_dropped_indexes: list[tuple[str, str | None]] = []
         self.added_columns: list[tuple[str, str]] = []
         self.dropped_columns: list[tuple[str, str]] = []
         self.batches: list[_BatchOpRecorder] = []
@@ -51,6 +53,12 @@ class _OpRecorder:
 
     def drop_table(self, table_name: str):
         self.dropped_tables.append(table_name)
+
+    def create_index(self, index_name: str, table_name: str, columns: list[str]):
+        self.direct_created_indexes.append((index_name, table_name, tuple(columns)))
+
+    def drop_index(self, index_name: str, *, table_name: str | None = None):
+        self.direct_dropped_indexes.append((index_name, table_name))
 
     def add_column(self, table_name: str, column):
         self.added_columns.append((table_name, column.name))
@@ -245,6 +253,48 @@ def test_users_ext_disabled_migration_adds_column_indexes_and_reverses(monkeypat
     batch = op.batches[0]
     assert batch.dropped_indexes == ["ix_users_ext_department_id", "ix_users_ext_role"]
     assert batch.dropped_columns == ["disabled"]
+
+
+def test_workflow_v2_migration_preserves_legacy_runs_and_marks_active_ones_failed(monkeypatch):
+    migration = _load("20260715_workflow_v2_runtime")
+    op = _OpRecorder()
+    monkeypatch.setattr(migration, "op", op)
+
+    migration.upgrade()
+
+    assert op.dropped_tables == []
+    assert op.executed_sql == ["UPDATE workflow_runs SET status = 'failed', error = 'workflow_runtime_replaced' WHERE run_id NOT LIKE 'def:%' AND status NOT IN ('completed', 'failed', 'cancelled')"]
+    assert [name for name, _columns in op.created_tables] == [
+        "workflow_definition_versions",
+        "workflow_v2_runs",
+        "workflow_tasks",
+        "workflow_v2_events",
+        "workflow_commands",
+    ]
+    assert op.direct_created_indexes == [
+        ("ix_workflow_definition_versions_name", "workflow_definition_versions", ("workflow_name",)),
+        ("ix_workflow_v2_runs_name", "workflow_v2_runs", ("workflow_name",)),
+        ("ix_workflow_v2_events_run_seq", "workflow_v2_events", ("run_id", "seq")),
+    ]
+    assert ("workflow_definition_versions", "uq_workflow_definition_version") in {(table_name, constraint.name) for table_name, columns in op.created_tables for constraint in columns if getattr(constraint, "name", None)}
+
+    op = _OpRecorder()
+    monkeypatch.setattr(migration, "op", op)
+
+    migration.downgrade()
+
+    assert op.dropped_tables == [
+        "workflow_commands",
+        "workflow_v2_events",
+        "workflow_tasks",
+        "workflow_v2_runs",
+        "workflow_definition_versions",
+    ]
+    assert op.direct_dropped_indexes == [
+        ("ix_workflow_v2_events_run_seq", "workflow_v2_events"),
+        ("ix_workflow_v2_runs_name", "workflow_v2_runs"),
+        ("ix_workflow_definition_versions_name", "workflow_definition_versions"),
+    ]
 
 
 def test_resource_metadata_indexes_migration_replaces_indexes(monkeypatch):

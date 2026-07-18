@@ -270,15 +270,15 @@ export default function WorkflowDetailPage() {
                           <Badge variant="outline" className="text-xs">
                             {step.type}
                           </Badge>
-                          {step.agent && (
+                          {step.action?.name && (
                             <Badge variant="secondary" className="text-xs">
-                              {step.agent}
+                              {step.action.name}
                             </Badge>
                           )}
                         </div>
-                        {step.prompt && (
+                        {typeof step.action?.params?.prompt === "string" && (
                           <p className="text-muted-foreground mt-1 line-clamp-2 text-sm">
-                            {step.prompt}
+                            {step.action.params.prompt}
                           </p>
                         )}
                       </div>
@@ -354,35 +354,37 @@ export default function WorkflowDetailPage() {
                   </div>
                 )}
                 <div className="space-y-2">
-                  {Object.entries(runStatus.steps).map(([stepId, step]) => (
-                    <div
-                      key={stepId}
-                      className="flex items-center justify-between rounded-md border p-3"
-                    >
-                      <div>
-                        <span className="font-medium">{stepId}</span>
-                        {step.error && (
-                          <p className="text-destructive mt-1 text-xs">
-                            {step.error}
-                          </p>
-                        )}
-                      </div>
-                      <Badge
-                        variant="outline"
-                        className={
-                          step.status === "completed"
-                            ? "text-green-600"
-                            : step.status === "failed"
-                              ? "text-destructive"
-                              : step.status === "running"
-                                ? "text-blue-600"
-                                : "text-muted-foreground"
-                        }
+                  {Object.entries(runStatus.steps ?? {}).map(
+                    ([stepId, step]) => (
+                      <div
+                        key={stepId}
+                        className="flex items-center justify-between rounded-md border p-3"
                       >
-                        {step.status}
-                      </Badge>
-                    </div>
-                  ))}
+                        <div>
+                          <span className="font-medium">{stepId}</span>
+                          {step.error && (
+                            <p className="text-destructive mt-1 text-xs">
+                              {step.error}
+                            </p>
+                          )}
+                        </div>
+                        <Badge
+                          variant="outline"
+                          className={
+                            step.status === "completed"
+                              ? "text-green-600"
+                              : step.status === "failed"
+                                ? "text-destructive"
+                                : step.status === "running"
+                                  ? "text-blue-600"
+                                  : "text-muted-foreground"
+                          }
+                        >
+                          {step.status}
+                        </Badge>
+                      </div>
+                    ),
+                  )}
                 </div>
               </CardContent>
             </Card>

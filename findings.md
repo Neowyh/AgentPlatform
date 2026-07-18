@@ -1,22 +1,12 @@
-# Findings: 新 Phase 5 务实分层验收
+# Findings
 
-## Confirmed design
-
-- PR 只运行 hermetic backend `unit/integration/contracts`、frontend typecheck/lint 与 mock Chromium。
-- isolated real E2E 是唯一真实浏览器认证、RBAC、持久化和可见性写操作证据。它要求临时 SQLite、专属后端、专属前端、seed 和 teardown。
-- visual、a11y 和参考截图只在 nightly/manual 运行；它们分别使用专用 Next 服务，不复用未知的 3000 或 8001 服务。
-- standalone auth 是本地诊断，不能替代 real E2E；mock、visual、a11y 也不能证明真实认证。
-- Coverage 是诊断数据。删除测试的安全性来自 matrix/ledger 的唯一主责任与可复现 keeper 命令，而不是全局 statements 百分比。
-
-## Existing implementation to verify
-
-- `backend/tests/qa/` 及其两个 shared-8001 workflow 已删除；`test-migration-ledger.md` 需要把原 API、RBAC、SSE 行为逐项映射到明确 keeper。
-- 默认 Playwright 配置只收集 mock `smoke/` 与 `workflows/`；real、a11y、login visual、reference capture 使用独立配置或端口。
-- 十张视觉基线的目标构成为：landing 3、workspace 3、core workspace 3、login 1。
-- 旧 coverage/QA/98% 结论仍分散在历史治理文档中，必须在交付前移除或改为明确的非阻断历史诊断。
-
-## Verification record
-
-| Command | Result | Exit code | Notes |
-| --- | --- | --- | --- |
-| Pending | Pending | Pending | This file records only commands executed in the current Phase 5 run. |
+- The current workflow router imports and launches the legacy `WorkflowExecutor` in an in-process `asyncio.create_task`; the Phase 1 plan requires replacing that execution path with a durable worker.
+- Legacy workflow code is located under `backend/packages/harness/ideer/workflows/`; it includes the parser, executor, store, schema, and step implementations.
+- The existing migration `d7e0060b1ebc_add_workflow_runs_table.py` and workflow persistence model are the legacy run-state boundary named in the Phase 1 plan.
+- GitNexus did not resolve `/api/workflows/{workflow_name}/run` through its API-route index, so route impact will be assessed from the handler symbol/file before any router edit.
+- The isolated branch is `refactor/workflow-module` at `/home/wangyh/workspace/code/deer-flow/.worktrees/refactor-workflow`; no new worktree is needed.
+- The harness-to-app import firewall means the compiler and durable runtime adapters must remain in `ideer.*` only if they have no gateway dependency; gateway-specific worker wiring belongs in `backend/app/`.
+- `backend/uv.lock` already includes `langgraph`, although `backend/pyproject.toml` directly lists only `langgraph-sdk`; dependency declaration needs confirmation before implementation.
+- GitNexus found the legacy `WorkflowStore` and `WorkflowExecutor` definitions but did not surface a reliable backend execution flow for the route, so code-level context and impact reports are required before changing those symbols.
+- Pre-change GitNexus impact: replacing `WorkflowExecutor` is LOW risk with four direct test importers. Replacing `WorkflowStore` is MEDIUM risk with five direct importers: the executor, human-review step, and three test modules. No indexed process flow was reported.
+- GitNexus could not resolve the `run_workflow` handler or route despite its source presence, so router impact must be verified by focused router tests and a post-change API impact/detect-changes review.

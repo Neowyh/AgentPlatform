@@ -20,7 +20,14 @@ from ideer.persistence.models.resource_metadata import ResourceMetadata
 from ideer.persistence.models.run_event import RunEventRow
 from ideer.persistence.models.user import DepartmentModel, ResourceVisibility, UserModel, UserRole
 from ideer.persistence.models.visibility_application import VisibilityApplication, VisibilityApplicationStatus
-from ideer.persistence.models.workflow import WorkflowRunRow
+from ideer.persistence.models.workflow_legacy import LegacyWorkflowRunRow
+from ideer.persistence.models.workflow_v2 import (
+    WorkflowCommandRow,
+    WorkflowDefinitionVersionRow,
+    WorkflowTaskRow,
+    WorkflowV2EventRow,
+    WorkflowV2RunRow,
+)
 from ideer.persistence.run.model import RunRow
 from ideer.persistence.thread_meta.model import ThreadMetaRow
 from ideer.persistence.user.model import UserRow
@@ -29,6 +36,7 @@ __all__ = [
     "AuditLog",
     "DepartmentModel",
     "FeedbackRow",
+    "LegacyWorkflowRunRow",
     "ResourceMetadata",
     "ResourceVisibility",
     "RunEventRow",
@@ -39,5 +47,9 @@ __all__ = [
     "UserRow",
     "VisibilityApplication",
     "VisibilityApplicationStatus",
-    "WorkflowRunRow",
+    "WorkflowCommandRow",
+    "WorkflowDefinitionVersionRow",
+    "WorkflowTaskRow",
+    "WorkflowV2EventRow",
+    "WorkflowV2RunRow",
 ]
