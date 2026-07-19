@@ -64,7 +64,7 @@ let mockIsLoading = false;
 let mockError: Error | null = null;
 let mockMutateAsync: ReturnType<typeof vi.fn>;
 let mockIsPending = false;
-let mockRunStatus: RunStatus | null = null;
+let mockRuns: RunStatus[] = [];
 let mockPush: ReturnType<typeof vi.fn>;
 const mockCreateVisibilityApplication = vi.fn();
 
@@ -127,6 +127,8 @@ vi.mock("@/core/i18n/hooks", () => ({
         starting: "Starting...",
         runStatus: "Run Status",
         runId: "Run ID: ",
+        runHistory: "Run History",
+        noRuns: "No runs yet",
         noInputs: "No inputs required",
         defaultPrefix: "Default: ",
         enterInput: (k: string) => `Enter ${k}`,
@@ -166,9 +168,7 @@ vi.mock("@/core/workflows", () => ({
     mutateAsync: mockMutateAsync,
     isPending: mockIsPending,
   }),
-  useRunStatus: () => ({
-    runStatus: mockRunStatus,
-  }),
+  useWorkflowRuns: () => ({ runs: mockRuns }),
 }));
 
 vi.mock("@/components/workspace/workspace-breadcrumb", () => ({
@@ -293,26 +293,6 @@ function findDialogSubmitButton(): HTMLElement {
   )!;
 }
 
-/**
- * Trigger a successful run through the UI to set `activeRun` state,
- * so the run status card becomes visible.
- */
-async function triggerSuccessfulRun(
-  runResult: WorkflowRunResult,
-  inputValue = "test-value",
-) {
-  mockMutateAsync = vi.fn().mockResolvedValue(runResult);
-  const user = userEvent.setup();
-  render(<WorkflowDetailPage />);
-  await user.click(findRunButton());
-  const input = screen.getByTestId("input");
-  await user.type(input, inputValue);
-  await user.click(findDialogSubmitButton());
-  await waitFor(() => {
-    expect(toast.success).toHaveBeenCalledWith("Workflow started");
-  });
-}
-
 /* ------------------------------------------------------------------ */
 /*  Test setup                                                         */
 /* ------------------------------------------------------------------ */
@@ -323,7 +303,7 @@ beforeEach(() => {
   mockError = null;
   mockMutateAsync = vi.fn();
   mockIsPending = false;
-  mockRunStatus = null;
+  mockRuns = [];
   mockPush = vi.fn();
   mockCreateVisibilityApplication.mockReset().mockResolvedValue({
     id: "application-1",
@@ -1041,6 +1021,9 @@ describe("WorkflowDetailPage", () => {
         expect(toast.success).toHaveBeenCalledWith("Workflow started");
       });
       expect(screen.queryByTestId("dialog")).not.toBeInTheDocument();
+      expect(mockPush).toHaveBeenCalledWith(
+        "/workspace/workflows/test-workflow/runs/run-abc",
+      );
     });
 
     test("on error: shows error toast with error message", async () => {
@@ -1077,345 +1060,26 @@ describe("WorkflowDetailPage", () => {
     });
   });
 
-  /* ---------- Run status card ---------- */
-  describe("run status card", () => {
-    test("does not show run status card when no active run", () => {
-      mockRunStatus = null;
+  describe("run history", () => {
+    test("links each historical run to its stable detail URL", () => {
+      mockRuns = [
+        {
+          run_id: "run-history",
+          workflow: "test-workflow",
+          status: "completed",
+          definition_version: 2,
+          error: null,
+        },
+      ];
       render(<WorkflowDetailPage />);
-      expect(screen.queryByText("Run Status")).not.toBeInTheDocument();
-    });
 
-    test("shows run status card after successful run", async () => {
-      mockRunStatus = {
-        run_id: "run-123",
-        workflow: "test-workflow",
-        status: "running",
-        current_step: "step1",
-        error: null,
-        steps: {},
-      };
-      await triggerSuccessfulRun({
-        run_id: "run-123",
-        status: "running",
-        workflow: "test-workflow",
-      });
-      expect(screen.getByText("Run Status")).toBeInTheDocument();
-    });
-
-    test("shows run id in status card", async () => {
-      mockRunStatus = {
-        run_id: "run-xyz",
-        workflow: "test-workflow",
-        status: "running",
-        current_step: null,
-        error: null,
-        steps: {},
-      };
-      await triggerSuccessfulRun({
-        run_id: "run-xyz",
-        status: "running",
-        workflow: "test-workflow",
-      });
-      expect(screen.getByText(/run-xyz/)).toBeInTheDocument();
-    });
-
-    test("renders status badge with correct color for completed", async () => {
-      mockRunStatus = {
-        run_id: "run-1",
-        workflow: "test-workflow",
-        status: "completed",
-        current_step: null,
-        error: null,
-        steps: {},
-      };
-      await triggerSuccessfulRun({
-        run_id: "run-1",
-        status: "running",
-        workflow: "test-workflow",
-      });
-      const badge = screen
-        .getAllByTestId("badge")
-        .find((b) => b.textContent === "completed");
-      expect(badge).toBeDefined();
-      expect(badge).toHaveClass("text-green-600");
-    });
-
-    test("renders status badge with correct color for failed", async () => {
-      mockRunStatus = {
-        run_id: "run-2",
-        workflow: "test-workflow",
-        status: "failed",
-        current_step: null,
-        error: null,
-        steps: {},
-      };
-      await triggerSuccessfulRun({
-        run_id: "run-2",
-        status: "running",
-        workflow: "test-workflow",
-      });
-      const badge = screen
-        .getAllByTestId("badge")
-        .find((b) => b.textContent === "failed");
-      expect(badge).toBeDefined();
-      expect(badge).toHaveClass("text-destructive");
-    });
-
-    test("renders status badge with correct color for running", async () => {
-      mockRunStatus = {
-        run_id: "run-3",
-        workflow: "test-workflow",
-        status: "running",
-        current_step: null,
-        error: null,
-        steps: {},
-      };
-      await triggerSuccessfulRun({
-        run_id: "run-3",
-        status: "running",
-        workflow: "test-workflow",
-      });
-      const badge = screen
-        .getAllByTestId("badge")
-        .find((b) => b.textContent === "running");
-      expect(badge).toBeDefined();
-      expect(badge).toHaveClass("text-blue-600");
-    });
-
-    test("renders status badge with muted color for unknown status", async () => {
-      mockRunStatus = {
-        run_id: "run-4",
-        workflow: "test-workflow",
-        status: "pending",
-        current_step: null,
-        error: null,
-        steps: {},
-      };
-      await triggerSuccessfulRun({
-        run_id: "run-4",
-        status: "running",
-        workflow: "test-workflow",
-      });
-      const badge = screen
-        .getAllByTestId("badge")
-        .find((b) => b.textContent === "pending");
-      expect(badge).toBeDefined();
-      expect(badge).toHaveClass("text-muted-foreground");
-    });
-
-    test("shows error message in run status card", async () => {
-      mockRunStatus = {
-        run_id: "run-5",
-        workflow: "test-workflow",
-        status: "failed",
-        current_step: null,
-        error: "Something went wrong during execution",
-        steps: {},
-      };
-      await triggerSuccessfulRun({
-        run_id: "run-5",
-        status: "running",
-        workflow: "test-workflow",
-      });
-      expect(
-        screen.getByText("Something went wrong during execution"),
-      ).toBeInTheDocument();
-    });
-
-    test("does not show error section when runStatus.error is null", async () => {
-      mockRunStatus = {
-        run_id: "run-6",
-        workflow: "test-workflow",
-        status: "completed",
-        current_step: null,
-        error: null,
-        steps: {},
-      };
-      await triggerSuccessfulRun({
-        run_id: "run-6",
-        status: "running",
-        workflow: "test-workflow",
-      });
-      const errorDiv = document.querySelector(".bg-red-50");
-      expect(errorDiv).toBeNull();
-    });
-
-    test("renders step statuses", async () => {
-      mockRunStatus = {
-        run_id: "run-7",
-        workflow: "test-workflow",
-        status: "running",
-        current_step: "step1",
-        error: null,
-        steps: {
-          runstep1: {
-            status: "completed",
-            output: null,
-            error: null,
-            retries: 0,
-            started_at: null,
-            finished_at: null,
-          },
-          runstep2: {
-            status: "running",
-            output: null,
-            error: null,
-            retries: 0,
-            started_at: null,
-            finished_at: null,
-          },
-        },
-      };
-      await triggerSuccessfulRun({
-        run_id: "run-7",
-        status: "running",
-        workflow: "test-workflow",
-      });
-      // Use getAllByText since step names also appear in the workflow steps card
-      expect(screen.getAllByText("runstep1").length).toBeGreaterThanOrEqual(1);
-      expect(screen.getAllByText("runstep2").length).toBeGreaterThanOrEqual(1);
-    });
-
-    test("renders step error when present", async () => {
-      mockRunStatus = {
-        run_id: "run-8",
-        workflow: "test-workflow",
-        status: "failed",
-        current_step: null,
-        error: null,
-        steps: {
-          step1: {
-            status: "failed",
-            output: null,
-            error: "Step execution failed",
-            retries: 0,
-            started_at: null,
-            finished_at: null,
-          },
-        },
-      };
-      await triggerSuccessfulRun({
-        run_id: "run-8",
-        status: "running",
-        workflow: "test-workflow",
-      });
-      expect(screen.getByText("Step execution failed")).toBeInTheDocument();
-    });
-
-    test("step status badge colors: completed", async () => {
-      mockRunStatus = {
-        run_id: "run-9",
-        workflow: "test-workflow",
-        status: "completed",
-        current_step: null,
-        error: null,
-        steps: {
-          step1: {
-            status: "completed",
-            output: null,
-            error: null,
-            retries: 0,
-            started_at: null,
-            finished_at: null,
-          },
-        },
-      };
-      await triggerSuccessfulRun({
-        run_id: "run-9",
-        status: "running",
-        workflow: "test-workflow",
-      });
-      const badges = screen.getAllByTestId("badge");
-      const stepBadge = badges.find((b) => b.textContent === "completed");
-      expect(stepBadge).toHaveClass("text-green-600");
-    });
-
-    test("step status badge colors: failed", async () => {
-      mockRunStatus = {
-        run_id: "run-10",
-        workflow: "test-workflow",
-        status: "failed",
-        current_step: null,
-        error: null,
-        steps: {
-          step1: {
-            status: "failed",
-            output: null,
-            error: null,
-            retries: 0,
-            started_at: null,
-            finished_at: null,
-          },
-        },
-      };
-      await triggerSuccessfulRun({
-        run_id: "run-10",
-        status: "running",
-        workflow: "test-workflow",
-      });
-      const badges = screen.getAllByTestId("badge");
-      const stepBadge = badges.find((b) => b.textContent === "failed");
-      expect(stepBadge).toHaveClass("text-destructive");
-    });
-
-    test("step status badge colors: running", async () => {
-      mockRunStatus = {
-        run_id: "run-11",
-        workflow: "test-workflow",
-        status: "running",
-        current_step: null,
-        error: null,
-        steps: {
-          step1: {
-            status: "running",
-            output: null,
-            error: null,
-            retries: 0,
-            started_at: null,
-            finished_at: null,
-          },
-        },
-      };
-      await triggerSuccessfulRun({
-        run_id: "run-11",
-        status: "running",
-        workflow: "test-workflow",
-      });
-      const badges = screen.getAllByTestId("badge");
-      const stepBadge = badges.find((b) => b.textContent === "running");
-      expect(stepBadge).toHaveClass("text-blue-600");
-    });
-
-    test("step status badge colors: unknown status", async () => {
-      mockRunStatus = {
-        run_id: "run-12",
-        workflow: "test-workflow",
-        status: "running",
-        current_step: null,
-        error: null,
-        steps: {
-          step1: {
-            status: "queued",
-            output: null,
-            error: null,
-            retries: 0,
-            started_at: null,
-            finished_at: null,
-          },
-        },
-      };
-      await triggerSuccessfulRun({
-        run_id: "run-12",
-        status: "running",
-        workflow: "test-workflow",
-      });
-      const badges = screen.getAllByTestId("badge");
-      const stepBadge = badges.find((b) => b.textContent === "queued");
-      expect(stepBadge).toHaveClass("text-muted-foreground");
+      expect(screen.getByText("run-history").closest("a")).toHaveAttribute(
+        "href",
+        "/workspace/workflows/test-workflow/runs/run-history",
+      );
     });
   });
 
-  /* ---------- Input typing ---------- */
   describe("input interaction", () => {
     test("typing in dialog input updates the input value", async () => {
       const user = userEvent.setup();
@@ -1469,11 +1133,11 @@ describe("WorkflowDetailPage", () => {
       expect(screen.getByText("YAML Definition")).toBeInTheDocument();
     });
 
-    test("renders three cards in main content area", () => {
+    test("renders four cards in main content area", () => {
       render(<WorkflowDetailPage />);
       const cards = screen.getAllByTestId("card");
-      // Steps card, inputs card, yaml card
-      expect(cards).toHaveLength(3);
+      // Steps card, inputs card, run history card, yaml card
+      expect(cards).toHaveLength(4);
     });
   });
 

@@ -47,8 +47,27 @@ async def run_worker() -> None:
         else:
             invocation = {"run_id": run_id, "inputs": run.inputs, "state": {}, "outputs": {}}
 
+        event_limit = config.workflow_runtime.max_events_per_run
+
         async def emit_event(event_type: str, payload: dict) -> None:
-            await store.append_event(run_id, event_type, payload)
+            event = await store.append_event(
+                run_id,
+                event_type,
+                payload,
+                worker_id=task.lease_owner,
+                max_events=event_limit - 1,
+            )
+            if event is None:
+                raise RuntimeError("workflow_event_limit_exceeded")
+
+        async def emit_terminal_event(event_type: str, payload: dict) -> None:
+            await store.append_event(
+                run_id,
+                event_type,
+                payload,
+                worker_id=task.lease_owner,
+                max_events=event_limit,
+            )
 
         async with make_checkpointer(config) as checkpointer:
             graph = WorkflowGraphCompiler(
@@ -56,26 +75,42 @@ async def run_worker() -> None:
                 adapters,
                 emit_event=emit_event,
                 is_cancelled=lambda: store.is_cancel_requested(run_id),
+                node_timeout_seconds=config.workflow_runtime.node_timeout_seconds,
             ).compile(checkpointer=checkpointer)
-            await store.append_event(run_id, "resumed" if task.resume_command_id is not None else "run_started", {"definition_version": run.definition_version})
             try:
-                result = await graph.ainvoke(invocation, config={"configurable": {"thread_id": run.checkpoint_thread_id}})
+                await emit_event("resumed" if task.resume_command_id is not None else "run_started", {"definition_version": run.definition_version})
+                result = await graph.ainvoke(
+                    invocation,
+                    config={
+                        "configurable": {"thread_id": run.checkpoint_thread_id},
+                        "max_concurrency": config.workflow_runtime.max_parallel_actions,
+                    },
+                )
             except WorkflowCancelled as exc:
-                await store.append_event(run_id, "run_cancelled", {"error": str(exc)})
+                await emit_terminal_event("run_cancelled", {"error": str(exc)})
                 raise
             except Exception as exc:
-                await store.append_event(run_id, "run_failed", {"error": str(exc)})
+                await emit_terminal_event("run_failed", {"error": str(exc)})
                 raise
         snapshot = workflow_snapshot(result)
-        await store.update_snapshot(run_id, snapshot)
+        if not await store.update_snapshot(run_id, snapshot, worker_id=task.lease_owner):
+            return
         if "__interrupt__" in result:
-            await store.append_event(run_id, "interrupted", {"value": snapshot["interrupt"]})
+            await emit_event("interrupted", {"value": snapshot["interrupt"]})
             raise WorkflowPaused
         else:
-            await store.append_event(run_id, "run_completed", {})
+            await emit_terminal_event("run_completed", {})
 
     try:
-        await WorkflowWorker(store, execute, os.getenv("WORKFLOW_WORKER_ID", "workflow-worker")).run_forever()
+        runtime = config.workflow_runtime
+        await WorkflowWorker(
+            store,
+            execute,
+            os.getenv("WORKFLOW_WORKER_ID", "workflow-worker"),
+            lease_seconds=runtime.lease_seconds,
+            heartbeat_seconds=runtime.heartbeat_seconds,
+            max_attempts=runtime.max_attempts,
+        ).run_forever()
     finally:
         await close_engine()
 

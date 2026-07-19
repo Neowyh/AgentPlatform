@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Any, Protocol
 
 
 class ActionAdapter(Protocol):
     async def run(self, context: ActionContext, params: dict[str, Any]) -> Any: ...
+
+    def astream(self, context: ActionContext, params: dict[str, Any]) -> AsyncIterator[dict[str, Any]]: ...
 
 
 class ActionResolutionError(RuntimeError):
@@ -52,6 +55,11 @@ class _ToolAdapter:
             return await self.tool.ainvoke(params)
         return await asyncio.to_thread(self.tool.invoke, params)
 
+    async def astream(self, context: ActionContext, params: dict[str, Any]) -> AsyncIterator[dict[str, Any]]:
+        yield {"type": "progress", "message": "started"}
+        result = await self.run(context, params)
+        yield {"type": "result", "value": result}
+
 
 class _AgentAdapter:
     def __init__(self, name: str, user_id: str) -> None:
@@ -82,6 +90,10 @@ class _AgentAdapter:
         if result.status == SubagentStatus.COMPLETED:
             return result.result
         raise RuntimeError(result.error or f"agent '{self.name}' failed with status {result.status}")
+
+    async def astream(self, context: ActionContext, params: dict[str, Any]) -> AsyncIterator[dict[str, Any]]:
+        yield {"type": "progress", "message": "started"}
+        yield {"type": "result", "value": await self.run(context, params)}
 
 
 def build_default_registry(app_config: Any, user_id: str) -> ActionAdapterRegistry:

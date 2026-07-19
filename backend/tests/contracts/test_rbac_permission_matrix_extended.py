@@ -601,6 +601,7 @@ class TestWorkflowRoutesRequireRole:
             patch("app.gateway.routers.workflows._v2_store", return_value=v2_store),
             patch("app.gateway.routers.workflows._workflow_store.load_meta", new_callable=AsyncMock, return_value=meta),
             patch("app.gateway.routers.workflows.check_resource_access", return_value=True),
+            patch("app.gateway.routers.workflows.get_app_config", return_value=SimpleNamespace(workflow_runtime=SimpleNamespace(user_concurrency=3, department_concurrency=10))),
         ):
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 missing = await client.post("/api/workflows/test-wf/run", json={"inputs": {}})
@@ -614,10 +615,49 @@ class TestWorkflowRoutesRequireRole:
         assert v2_store.create_run.await_args.args[2:] == (3, {"request": "hello"}, str(user.id))
 
     @pytest.mark.asyncio
+    async def test_run_concurrency_rejection_is_audited(self):
+        user = _make_rbac_user(user_id="user-1", role="user", department_id="dept-1")
+        app = _build_app_with_router(workflows_router, user)
+        definition = SimpleNamespace(
+            version=3,
+            definition={
+                "schema_version": 2,
+                "name": "test-wf",
+                "inputs": {},
+                "state": {},
+                "entrypoint": "start",
+                "nodes": [{"id": "start", "type": "interrupt", "roles": ["user"]}],
+                "edges": [],
+            },
+        )
+        v2_store = MagicMock()
+        v2_store.get_latest_definition = AsyncMock(return_value=definition)
+        v2_store.create_run = AsyncMock(side_effect=RuntimeError("workflow_user_concurrency_exceeded"))
+        audit = AsyncMock()
+        meta = {"visibility": "private", "owner_id": user.id, "department_id": "dept-1"}
+        with (
+            patch("app.gateway.routers.workflows._v2_store", return_value=v2_store),
+            patch("app.gateway.routers.workflows._workflow_store.load_meta", new_callable=AsyncMock, return_value=meta),
+            patch("app.gateway.routers.workflows.get_app_config", return_value=SimpleNamespace(workflow_runtime=SimpleNamespace(user_concurrency=3, department_concurrency=10))),
+            patch("app.gateway.routers.workflows.record_audit", audit),
+        ):
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.post("/api/workflows/test-wf/run", json={"inputs": {}})
+
+        assert response.status_code == 429
+        audit.assert_awaited_once_with(
+            "user-1",
+            "workflow_run_rejected",
+            "workflow_run",
+            None,
+            {"workflow": "test-wf", "department_id": "dept-1", "reason": "workflow_user_concurrency_exceeded"},
+        )
+
+    @pytest.mark.asyncio
     async def test_workflow_events_replay_after_sequence_in_order(self):
         user = _make_rbac_user(role="user")
         app = _build_app_with_router(workflows_router, user)
-        run = SimpleNamespace(run_id="run-1", workflow_name="test-wf")
+        run = SimpleNamespace(run_id="run-1", workflow_name="test-wf", created_by=user.id, status="completed")
         events = [
             SimpleNamespace(seq=2, event_type="node_completed", payload={"node_id": "start"}),
             SimpleNamespace(seq=3, event_type="run_completed", payload={}),
@@ -638,6 +678,46 @@ class TestWorkflowRoutesRequireRole:
         assert response.headers["content-type"].startswith("text/event-stream")
         assert response.text.index("id: 2") < response.text.index("id: 3")
         v2_store.list_events.assert_awaited_once_with("run-1", 1)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("method", "path", "payload"),
+        [
+            ("get", "/api/workflows/test-wf/runs/run-1", None),
+            ("get", "/api/workflows/test-wf/runs/run-1/events", None),
+            (
+                "post",
+                "/api/workflows/test-wf/runs/run-1/commands",
+                {"command_id": "cancel-other-run", "type": "cancel"},
+            ),
+        ],
+    )
+    async def test_non_owner_cannot_access_or_command_another_users_run(self, method, path, payload):
+        """A visible workflow does not make every creator's run visible."""
+        other_user = _make_rbac_user(user_id="other-user", role="user", department_id="dept-1")
+        app = _build_app_with_router(workflows_router, other_user)
+        run = SimpleNamespace(
+            run_id="run-1",
+            workflow_name="test-wf",
+            created_by="run-owner",
+            status="completed",
+            definition_version=1,
+            snapshot={},
+            error=None,
+        )
+        v2_store = MagicMock()
+        v2_store.get_run = AsyncMock(return_value=run)
+        v2_store.list_events = AsyncMock(return_value=[])
+        v2_store.submit_command = AsyncMock(return_value=SimpleNamespace(command_id="cancel-other-run", run_id="run-1", command_type="cancel"))
+        meta = {"visibility": "public", "owner_id": "workflow-owner", "department_id": "dept-1"}
+        with (
+            patch("app.gateway.routers.workflows._v2_store", return_value=v2_store),
+            patch("app.gateway.routers.workflows._workflow_store.load_meta", new_callable=AsyncMock, return_value=meta),
+        ):
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                response = await getattr(client, method)(path, json=payload) if payload else await getattr(client, method)(path)
+
+        assert response.status_code == 404
 
 
 # =====================================================================

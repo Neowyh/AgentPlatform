@@ -4,6 +4,7 @@ import { getBackendBaseURL } from "@/core/config";
 
 import type {
   RunStatus,
+  WorkflowRunHistory,
   WorkflowDetail,
   WorkflowRunResult,
   WorkflowSummary,
@@ -87,6 +88,25 @@ export async function getRunStatus(
   );
   if (!res.ok) return extractError(res, "Failed to get run status");
   return res.json() as Promise<RunStatus>;
+}
+
+export async function listWorkflowRuns(
+  name: string,
+): Promise<WorkflowRunHistory> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/workflows/${encodeURIComponent(name)}/runs`,
+  );
+  if (!res.ok) return extractError(res, "Failed to load workflow runs");
+  return res.json() as Promise<WorkflowRunHistory>;
+}
+
+export function workflowEventsUrl(
+  name: string,
+  runId: string,
+  afterSeq = 0,
+): string {
+  const params = new URLSearchParams({ after_seq: String(afterSeq) });
+  return `${getBackendBaseURL()}/api/workflows/${encodeURIComponent(name)}/runs/${encodeURIComponent(runId)}/events?${params}`;
 }
 
 export async function submitWorkflowCommand(

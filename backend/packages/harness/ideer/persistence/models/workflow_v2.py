@@ -35,8 +35,10 @@ class WorkflowV2RunRow(Base):
     status: Mapped[str] = mapped_column(String(24), nullable=False, default="queued")
     inputs: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     snapshot: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    event_seq: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by: Mapped[str] = mapped_column(String(64), nullable=False)
+    department_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now, nullable=False)
     __table_args__ = (Index("ix_workflow_v2_runs_name", "workflow_name"),)
@@ -54,6 +56,20 @@ class WorkflowTaskRow(Base):
     cancel_requested: Mapped[bool] = mapped_column(default=False, nullable=False)
     # A resume request is task intent, not inferred from the mutable run status.
     resume_command_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
+class WorkflowLeaseAuditRow(Base):
+    """Append-only ownership history for durable workflow task leases."""
+
+    __tablename__ = "workflow_lease_audit"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("workflow_v2_runs.run_id"), nullable=False)
+    task_id: Mapped[str] = mapped_column(ForeignKey("workflow_tasks.task_id"), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(24), nullable=False)
+    worker_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    attempt: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
+    __table_args__ = (Index("ix_workflow_lease_audit_run", "run_id", "created_at"),)
 
 
 class WorkflowV2EventRow(Base):

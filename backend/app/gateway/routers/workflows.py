@@ -24,6 +24,7 @@ from app.gateway.authz import (
     require_role,
 )
 from app.gateway.utils import ResourceMetadataStore
+from ideer.config import get_app_config
 from ideer.persistence.engine import get_session_factory
 from ideer.persistence.models.user import UserModel, UserRole
 from ideer.persistence.models.workflow_legacy import LegacyWorkflowRunRow
@@ -54,6 +55,11 @@ def _v2_store() -> WorkflowV2Store:
 
 def _definition_yaml(definition: dict) -> str:
     return yaml.safe_dump(definition, sort_keys=False)
+
+
+def _can_access_run(current_user: UserModel, run) -> bool:
+    """Runs stay private to their creator, except for platform audit access."""
+    return current_user.role == UserRole.SUPER_ADMIN or str(current_user.id) == str(run.created_by)
 
 
 def _legacy_run_payload(run: LegacyWorkflowRunRow) -> dict:
@@ -626,7 +632,34 @@ async def run_workflow(
             inputs[name] = param.default
 
     run_id = str(uuid.uuid4())
-    await store.create_run(run_id, workflow_name, definition.version, inputs, str(current_user.id))
+    runtime = get_app_config().workflow_runtime
+    try:
+        await store.create_run(
+            run_id,
+            workflow_name,
+            definition.version,
+            inputs,
+            str(current_user.id),
+            department_id=current_user.department_id,
+            user_concurrency=runtime.user_concurrency,
+            department_concurrency=runtime.department_concurrency,
+        )
+    except RuntimeError as exc:
+        if str(exc) in {"workflow_user_concurrency_exceeded", "workflow_department_concurrency_exceeded"}:
+            await record_audit(
+                str(current_user.id),
+                "workflow_run_rejected",
+                "workflow_run",
+                None,
+                {
+                    "workflow": workflow_name,
+                    "department_id": current_user.department_id,
+                    "reason": str(exc),
+                },
+            )
+            raise HTTPException(429, str(exc)) from exc
+        raise
+    await record_audit(str(current_user.id), "workflow_run_created", "workflow_run", run_id, {"workflow": workflow_name, "department_id": current_user.department_id})
     return {"run_id": run_id, "status": "queued", "workflow": workflow_name}
 
 
@@ -640,6 +673,8 @@ async def get_run_status(
     store = _v2_store()
     state = await store.get_run(run_id)
     if state is None or state.workflow_name != workflow_name:
+        raise HTTPException(404, f"Run '{run_id}' not found for workflow '{workflow_name}'")
+    if not _can_access_run(current_user, state):
         raise HTTPException(404, f"Run '{run_id}' not found for workflow '{workflow_name}'")
 
     meta = await _workflow_store.load_meta(workflow_name)
@@ -665,7 +700,8 @@ async def list_runs(
     limit = max(1, min(limit, 200))
     offset = max(0, offset)
 
-    runs, total = await _v2_store().list_runs(workflow_name, limit=limit, offset=offset)
+    owner_id = None if current_user.role == UserRole.SUPER_ADMIN else str(current_user.id)
+    runs, total = await _v2_store().list_runs(workflow_name, limit=limit, offset=offset, created_by=owner_id)
     return {
         "runs": [{"run_id": run.run_id, "workflow": run.workflow_name, "status": run.status, "definition_version": run.definition_version, "snapshot": run.snapshot, "error": run.error} for run in runs],
         "total": total,
@@ -685,6 +721,8 @@ async def stream_workflow_events(
     store = _v2_store()
     run_state = await store.get_run(run_id)
     if run_state is None or run_state.workflow_name != workflow_name:
+        raise HTTPException(404, f"Run '{run_id}' not found for workflow '{workflow_name}'")
+    if not _can_access_run(current_user, run_state):
         raise HTTPException(404, f"Run '{run_id}' not found for workflow '{workflow_name}'")
 
     meta = await _workflow_store.load_meta(workflow_name)
@@ -707,6 +745,8 @@ async def submit_workflow_command(
     run = await store.get_run(run_id)
     if run is None or run.workflow_name != workflow_name:
         raise HTTPException(404, f"Run '{run_id}' not found for workflow '{workflow_name}'")
+    if not _can_access_run(current_user, run):
+        raise HTTPException(404, f"Run '{run_id}' not found for workflow '{workflow_name}'")
     meta = await _workflow_store.load_meta(workflow_name)
     if not meta or not check_resource_access(current_user, meta.get("owner_id"), meta.get("department_id"), meta.get("visibility")):
         raise HTTPException(404, f"Workflow '{workflow_name}' not found")
@@ -717,4 +757,11 @@ async def submit_workflow_command(
         if required_roles and current_user.role.value not in required_roles:
             raise HTTPException(403, "You do not have permission to resume this workflow")
     command = await store.submit_command(body.command_id, run_id, body.type, body.payload, str(current_user.id))
+    await record_audit(
+        str(current_user.id),
+        f"workflow_run_{body.type}",
+        "workflow_run",
+        run_id,
+        {"command_id": command.command_id, "workflow": workflow_name},
+    )
     return {"command_id": command.command_id, "run_id": command.run_id, "type": command.command_type, "accepted": True}

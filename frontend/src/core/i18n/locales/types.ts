@@ -226,6 +226,16 @@ export interface Translations {
     required: string;
     runStatus: string;
     runId: string;
+    runHistory: string;
+    noRuns: string;
+    definitionVersion: string;
+    resume: string;
+    cancelRun: string;
+    commandSubmitted: string;
+    streamFallback: string;
+    eventTimeline: string;
+    actionOutput: string;
+    runNotFound: string;
     yamlDefinition: string;
     // Run Dialog
     runDialog: string;

@@ -23,6 +23,7 @@ def upgrade() -> None:
         sa.Column("definition", sa.JSON(), nullable=False),
         sa.Column("content_hash", sa.String(64), nullable=False),
         sa.Column("created_by", sa.String(64), nullable=False),
+        sa.Column("department_id", sa.String(64)),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.UniqueConstraint("workflow_name", "version", name="uq_workflow_definition_version"),
     )
@@ -36,6 +37,7 @@ def upgrade() -> None:
         sa.Column("status", sa.String(24), nullable=False),
         sa.Column("inputs", sa.JSON(), nullable=False),
         sa.Column("snapshot", sa.JSON(), nullable=False),
+        sa.Column("event_seq", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("error", sa.Text()),
         sa.Column("created_by", sa.String(64), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),

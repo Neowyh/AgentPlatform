@@ -31,6 +31,7 @@ from ideer.config.title_config import TitleConfig, load_title_config_from_dict
 from ideer.config.token_usage_config import TokenUsageConfig
 from ideer.config.tool_config import ToolConfig, ToolGroupConfig
 from ideer.config.tool_search_config import ToolSearchConfig, load_tool_search_config_from_dict
+from ideer.config.workflow_runtime_config import WorkflowRuntimeConfig
 
 load_dotenv()
 
@@ -120,6 +121,7 @@ class AppConfig(BaseModel):
     run_events: RunEventsConfig = Field(default_factory=RunEventsConfig, description="Run event storage configuration")
     checkpointer: CheckpointerConfig | None = Field(default=None, description="Checkpointer configuration")
     stream_bridge: StreamBridgeConfig | None = Field(default=None, description="Stream bridge configuration")
+    workflow_runtime: WorkflowRuntimeConfig = Field(default_factory=WorkflowRuntimeConfig, description="Durable workflow-v2 limits and lease settings")
 
     @classmethod
     def resolve_config_path(cls, config_path: str | None = None) -> Path:

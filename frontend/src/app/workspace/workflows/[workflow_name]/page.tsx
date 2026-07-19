@@ -42,8 +42,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { WorkspaceBreadcrumb } from "@/components/workspace/workspace-breadcrumb";
 import { useI18n } from "@/core/i18n/hooks";
 import { createVisibilityApplication } from "@/core/visibility-applications/api";
-import { useRunStatus, useRunWorkflow, useWorkflow } from "@/core/workflows";
-import type { WorkflowRunResult } from "@/core/workflows";
+import { useRunWorkflow, useWorkflow, useWorkflowRuns } from "@/core/workflows";
 
 export default function WorkflowDetailPage() {
   const router = useRouter();
@@ -55,15 +54,11 @@ export default function WorkflowDetailPage() {
   const [runDialogOpen, setRunDialogOpen] = useState(false);
   const [visibilityDialogOpen, setVisibilityDialogOpen] = useState(false);
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
-  const [activeRun, setActiveRun] = useState<WorkflowRunResult | null>(null);
   const [targetVisibility, setTargetVisibility] = useState("department");
   const [visibilityReason, setVisibilityReason] = useState("");
   const [submittingApplication, setSubmittingApplication] = useState(false);
 
-  const { runStatus } = useRunStatus(
-    activeRun?.workflow ?? null,
-    activeRun?.run_id ?? null,
-  );
+  const { runs } = useWorkflowRuns(workflow_name);
 
   if (isLoading) {
     return (
@@ -115,22 +110,15 @@ export default function WorkflowDetailPage() {
         name: workflow_name,
         inputs,
       });
-      setActiveRun(result);
       setRunDialogOpen(false);
       toast.success(t.workflows.started);
+      router.push(
+        `/workspace/workflows/${encodeURIComponent(workflow_name)}/runs/${encodeURIComponent(result.run_id)}`,
+      );
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     }
   }
-
-  const statusColor =
-    runStatus?.status === "completed"
-      ? "text-green-600"
-      : runStatus?.status === "failed"
-        ? "text-destructive"
-        : runStatus?.status === "running"
-          ? "text-blue-600"
-          : "text-muted-foreground";
 
   const visibilityColor =
     workflow?.visibility === "public"
@@ -332,63 +320,45 @@ export default function WorkflowDetailPage() {
             </Card>
           )}
 
-          {/* Run status */}
-          {activeRun && runStatus && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center justify-between">
-                  <span>{t.workflows.runStatus}</span>
-                  <Badge variant="outline" className={statusColor}>
-                    {runStatus.status}
-                  </Badge>
-                </CardTitle>
-                <CardDescription>
-                  {t.workflows.runId}
-                  {runStatus.run_id}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {runStatus.error && (
-                  <div className="text-destructive mb-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm">
-                    {runStatus.error}
-                  </div>
-                )}
+          <Card>
+            <CardHeader>
+              <CardTitle>{t.workflows.runHistory}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {runs.length === 0 ? (
+                <p className="text-muted-foreground text-sm">
+                  {t.workflows.noRuns}
+                </p>
+              ) : (
                 <div className="space-y-2">
-                  {Object.entries(runStatus.steps ?? {}).map(
-                    ([stepId, step]) => (
-                      <div
-                        key={stepId}
-                        className="flex items-center justify-between rounded-md border p-3"
-                      >
-                        <div>
-                          <span className="font-medium">{stepId}</span>
-                          {step.error && (
-                            <p className="text-destructive mt-1 text-xs">
-                              {step.error}
-                            </p>
-                          )}
-                        </div>
-                        <Badge
-                          variant="outline"
-                          className={
-                            step.status === "completed"
-                              ? "text-green-600"
-                              : step.status === "failed"
-                                ? "text-destructive"
-                                : step.status === "running"
-                                  ? "text-blue-600"
-                                  : "text-muted-foreground"
-                          }
-                        >
-                          {step.status}
-                        </Badge>
+                  {runs.map((run) => (
+                    <Link
+                      key={run.run_id}
+                      href={`/workspace/workflows/${encodeURIComponent(workflow_name)}/runs/${encodeURIComponent(run.run_id)}`}
+                      className="hover:bg-muted/50 flex items-center justify-between rounded-md border p-3"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate font-mono text-sm">
+                          {run.run_id}
+                        </p>
+                        {run.error && (
+                          <p className="text-destructive truncate text-xs">
+                            {run.error}
+                          </p>
+                        )}
                       </div>
-                    ),
-                  )}
+                      <div className="ml-3 flex shrink-0 items-center gap-2">
+                        <Badge variant="secondary">
+                          v{run.definition_version ?? "-"}
+                        </Badge>
+                        <Badge variant="outline">{run.status}</Badge>
+                      </div>
+                    </Link>
+                  ))}
                 </div>
-              </CardContent>
-            </Card>
-          )}
+              )}
+            </CardContent>
+          </Card>
 
           {/* YAML preview */}
           <Card>

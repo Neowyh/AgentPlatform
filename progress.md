@@ -1,8 +1,35 @@
 # Progress
 
-## 2026-07-15
+## 2026-07-18
 
-- Started Phase 1 review. Confirmed the working tree already contains user changes to `AGENTS.md`, `CLAUDE.md`, and the untracked Phase 1/2 implementation-plan document; these will be preserved.
-- Identified the legacy workflow runtime and its in-process router execution path. No implementation files have been modified.
-- Confirmed this is already an isolated worktree on `refactor/workflow-module`. Read the backend architecture constraints: `ideer.*` may not import `app.*`, which is material to the proposed v2 module boundary.
-- Ran required pre-change GitNexus impact analysis. `WorkflowStore` is MEDIUM risk because the legacy executor and human-review step import it; no implementation edit has been made.
+- Initialized persistent Phase 2 tracking from the user-provided acceptance plan.
+- Confirmed the worktree is clean and isolated on `refactor/workflow-module`.
+- Refreshed the GitNexus index for this worktree before inspecting/editing runtime symbols.
+- Added the first Phase 2 red test: a stale lease holder must not persist a snapshot.
+- Verified the stale-writer test red then green (10 focused store tests pass).
+- Added the next red test for database-allocated event sequence numbers.
+- Integration replay test exposed SQLite timezone-naive lease readback in `finish_task`; root cause recorded in findings before the targeted normalization fix.
+- Verified the SQLite lease normalization with the durable Phase 1 integration test (2 passed).
+- Added the streaming-action red test for normalized `action_token` and `action_progress` events.
+- Verified compiler action streaming (10 focused runtime tests pass); started the frontend SSE state reducer with a red unit test.
+- Verified the frontend event reducer (1 test passed) and replaced primary run-status polling with replayable SSE plus exponential reconnect/read-only polling fallback.
+- Added a red backend configuration test for the Phase 2 workflow-runtime safety defaults.
+- Added `workflow_runtime` configuration with validated Phase 2 defaults and wired it into `AppConfig`.
+- `pnpm check` completed successfully; backend focused ruff + 24 workflow tests + durable integration replay + `git diff --check` completed successfully.
+- Phase 2 remains unaccepted pending hook-level reconnect, private-run RBAC, and process-level dual-worker E2E coverage.
+- GitNexus reindex rewrote stats in AGENTS.md/CLAUDE.md; restored those unrelated doc changes.
+- Added a red worker test requiring a lease heartbeat during long execution.
+- Implemented configurable worker heartbeats; a lost heartbeat prevents that worker from writing the terminal task state.
+- Verification: focused backend workflow suite is 25 passed; frontend event reducer test and `pnpm check` pass; `git diff --check` passes. An initial combined command used the backend cwd for the frontend test and was corrected with a dedicated frontend run.
+- Restored Phase 2 from the three planning files and re-read the approved acceptance criteria. The remaining acceptance scope is broader than the prior note: per-run ownership/RBAC, auditable governance and lease-limit failures, SSE reconnect proof, and real two-worker takeover E2E still require evidence.
+- Added immutable per-run access enforcement: non-creators cannot query, subscribe to, or command a run even if the workflow itself is public; non-admin run history is filtered by creator while super-admin audit access remains. Red contract test became green: `uv run pytest tests/contracts/test_rbac_permission_matrix_extended.py -q -k 'non_owner_cannot_access_or_command_another_users_run'` (3 passed).
+- Added real SQLite dual-worker takeover coverage: worker A persists the durable recovery snapshot, loses its expired lease, and worker B completes only the remaining action; `uv run pytest tests/integration/workflows/test_v2_phase1_runtime.py -q -k 'second_worker_takes_over_a_dead_holder'` passed (1 passed).
+- Added frontend `useRunStatus` coverage for approval resume, stream cursor replay after reconnect, and read-only polling fallback after three stream failures; `pnpm exec vitest run tests/unit/core/workflows/hooks.test.tsx` passed (1 passed). A first `pnpm test -- hooks.test.tsx` attempt matched unrelated project test files and exposed pre-existing failures in login/workflow page/agent gallery tests, so it is not Phase 2 evidence.
+- Added a focused red/green governance audit test: user/department concurrency rejection now records `workflow_run_rejected` with workflow, department, and durable reason before returning 429. Verification: `uv run pytest tests/contracts/test_rbac_permission_matrix_extended.py -q -k 'run_concurrency_rejection_is_audited'` (1 passed).
+- Corrected two existing RBAC-contract mocks to provide the Phase 2 runtime config and immutable run fields. Required combined backend evidence now passes without assertion changes: `uv run pytest tests/unit/workflows tests/integration/workflows/test_v2_phase1_runtime.py tests/contracts/test_rbac_permission_matrix_extended.py -q` → 194 passed (one third-party LangGraph deprecation warning).
+- Added append-only `workflow_lease_audit` persistence and migration. SQLite acceptance now proves `claimed → taken_over → released`; `uv run pytest tests/integration/workflows/test_v2_phase1_runtime.py -q -k 'lease_claim_takeover_and_release_are_durably_audited'` passed. The test exposed a real SQLite ORM session-synchronization timezone comparison in `finish_task`; the CAS update now uses `synchronize_session=False`. Focused store suite passes after updating mocks for the intentional lease-audit pre-read.
+- Latest focused verification: `UV_CACHE_DIR=/tmp/deer-flow-uv-cache uv run pytest tests/unit/workflows tests/integration/workflows/test_v2_phase1_runtime.py tests/contracts/test_rbac_permission_matrix_extended.py -q` → 195 passed (one third-party LangGraph warning); `pnpm exec vitest run tests/unit/core/workflows/events.test.ts tests/unit/core/workflows/hooks.test.tsx` → 2 passed; `pnpm check` and `git diff --check` passed. The first sandboxed backend run could not create the socket required by pytest-rerunfailures, so the same read/write test command was rerun with approved local-process permission.
+- Added database-atomic event budget enforcement and a reserved terminal failure slot. `uv run pytest tests/integration/workflows/test_v2_phase1_runtime.py -q -k 'event_limit_reserves_a_durable_terminal_failure_event'` passed (1 passed): normal event 1 is persisted, normal overflow is rejected, terminal `run_failed` is persisted as event 2, and all later events are rejected.
+- Added an auditable attempt-exhaustion terminal path. `claim_next_task` now persists `run_failed: workflow_max_attempts_exceeded` in the same transaction that marks the task/run failed; `uv run pytest tests/integration/workflows/test_v2_phase1_runtime.py -q -k 'max_attempts_exhaustion_persists_a_failure_event'` passed (1 passed).
+- Closed the actual loop-bound gap: `max_iterations` now compiles into per-cycle-edge gates that count traversals in graph state, emit `node_failed: workflow_iteration_limit_exceeded`, and terminate at the declared bound. Added red/green runtime proof and preserved fork/join behavior; `uv run pytest tests/unit/workflows/test_v2_runtime.py -q` passed (12 passed).
+- Final Phase 2 audit: `UV_CACHE_DIR=/tmp/deer-flow-uv-cache uv run pytest tests/unit/workflows tests/integration/workflows/test_v2_phase1_runtime.py tests/contracts/test_rbac_permission_matrix_extended.py -q` → 198 passed; frontend workflow tests → 2 passed; `pnpm check`, `git diff --check`, and `uv run alembic ... heads` (single `20260718_workflow_v2_lease_audit` head) passed. GitNexus detected medium overall change risk but only five indexed config-resolution flows, with no high/critical affected runtime process.

@@ -10,6 +10,7 @@ from sqlalchemy import and_, func, or_, select, update
 from ideer.persistence.models.workflow_v2 import (
     WorkflowCommandRow,
     WorkflowDefinitionVersionRow,
+    WorkflowLeaseAuditRow,
     WorkflowTaskRow,
     WorkflowV2EventRow,
     WorkflowV2RunRow,
@@ -53,7 +54,18 @@ class WorkflowV2Store:
             values = list(latest.values())
             return values[offset : offset + limit], len(values)
 
-    async def create_run(self, run_id: str, workflow_name: str, definition_version: int, inputs: dict, created_by: str) -> WorkflowV2RunRow:
+    async def create_run(
+        self,
+        run_id: str,
+        workflow_name: str,
+        definition_version: int,
+        inputs: dict,
+        created_by: str,
+        *,
+        department_id: str | None = None,
+        user_concurrency: int | None = None,
+        department_concurrency: int | None = None,
+    ) -> WorkflowV2RunRow:
         run = WorkflowV2RunRow(
             run_id=run_id,
             workflow_name=workflow_name,
@@ -63,18 +75,76 @@ class WorkflowV2Store:
             inputs=inputs,
             snapshot={},
             created_by=created_by,
+            department_id=department_id,
         )
         task = WorkflowTaskRow(task_id=str(uuid4()), run_id=run_id, status="queued", attempts=0, cancel_requested=False)
         async with self.session_factory() as session:
+            active = ("queued", "running", "paused")
+            if user_concurrency is not None:
+                user_count = (
+                    await session.execute(
+                        select(func.count())
+                        .select_from(WorkflowV2RunRow)
+                        .where(
+                            WorkflowV2RunRow.created_by == created_by,
+                            WorkflowV2RunRow.status.in_(active),
+                        )
+                    )
+                ).scalar_one()
+                if user_count >= user_concurrency:
+                    raise RuntimeError("workflow_user_concurrency_exceeded")
+            if department_id is not None and department_concurrency is not None:
+                department_count = (
+                    await session.execute(
+                        select(func.count())
+                        .select_from(WorkflowV2RunRow)
+                        .where(
+                            WorkflowV2RunRow.department_id == department_id,
+                            WorkflowV2RunRow.status.in_(active),
+                        )
+                    )
+                ).scalar_one()
+                if department_count >= department_concurrency:
+                    raise RuntimeError("workflow_department_concurrency_exceeded")
             session.add(run)
             session.add(task)
             await session.commit()
         return run
 
-    async def append_event(self, run_id: str, event_type: str, payload: dict) -> WorkflowV2EventRow:
+    async def append_event(
+        self,
+        run_id: str,
+        event_type: str,
+        payload: dict,
+        *,
+        worker_id: str | None = None,
+        max_events: int | None = None,
+    ) -> WorkflowV2EventRow | None:
         async with self.session_factory() as session:
-            result = await session.execute(select(func.coalesce(func.max(WorkflowV2EventRow.seq), 0)).where(WorkflowV2EventRow.run_id == run_id))
-            event = WorkflowV2EventRow(id=str(uuid4()), run_id=run_id, seq=result.scalar_one() + 1, event_type=event_type, payload=payload)
+            ownership = ()
+            if worker_id is not None:
+                ownership = (
+                    select(WorkflowTaskRow.task_id)
+                    .where(
+                        WorkflowTaskRow.run_id == run_id,
+                        WorkflowTaskRow.status == "running",
+                        WorkflowTaskRow.lease_owner == worker_id,
+                        WorkflowTaskRow.lease_expires_at > datetime.now(UTC),
+                    )
+                    .exists(),
+                )
+            limits = () if max_events is None else (WorkflowV2RunRow.event_seq < max_events,)
+            result = await session.execute(update(WorkflowV2RunRow).where(WorkflowV2RunRow.run_id == run_id, *ownership, *limits).values(event_seq=WorkflowV2RunRow.event_seq + 1).returning(WorkflowV2RunRow.event_seq))
+            sequence = result.scalar_one_or_none()
+            if sequence is None:
+                return None
+            event = WorkflowV2EventRow(
+                id=str(uuid4()),
+                run_id=run_id,
+                seq=sequence,
+                event_type=event_type,
+                payload=payload,
+            )
             session.add(event)
             await session.commit()
             return event
@@ -83,18 +153,37 @@ class WorkflowV2Store:
         async with self.session_factory() as session:
             return (await session.execute(select(WorkflowV2RunRow).where(WorkflowV2RunRow.run_id == run_id))).scalar_one_or_none()
 
-    async def list_runs(self, workflow_name: str, limit: int = 50, offset: int = 0) -> tuple[list[WorkflowV2RunRow], int]:
+    async def list_runs(
+        self,
+        workflow_name: str,
+        limit: int = 50,
+        offset: int = 0,
+        *,
+        created_by: str | None = None,
+    ) -> tuple[list[WorkflowV2RunRow], int]:
         async with self.session_factory() as session:
-            query = select(WorkflowV2RunRow).where(WorkflowV2RunRow.workflow_name == workflow_name).order_by(WorkflowV2RunRow.created_at.desc())
+            query = select(WorkflowV2RunRow).where(WorkflowV2RunRow.workflow_name == workflow_name)
+            if created_by is not None:
+                query = query.where(WorkflowV2RunRow.created_by == created_by)
+            query = query.order_by(WorkflowV2RunRow.created_at.desc())
             rows = list((await session.execute(query)).scalars().all())
             return rows[offset : offset + limit], len(rows)
 
-    async def update_snapshot(self, run_id: str, snapshot: dict) -> None:
+    async def update_snapshot(self, run_id: str, snapshot: dict, *, worker_id: str) -> bool:
+        """Persist recovery state only while the caller still owns its lease."""
         async with self.session_factory() as session:
-            run = (await session.execute(select(WorkflowV2RunRow).where(WorkflowV2RunRow.run_id == run_id))).scalar_one_or_none()
-            if run is not None:
-                run.snapshot = snapshot
-                await session.commit()
+            now = datetime.now(UTC)
+            owned_task = select(WorkflowTaskRow.task_id).where(
+                WorkflowTaskRow.run_id == run_id,
+                WorkflowTaskRow.status == "running",
+                WorkflowTaskRow.lease_owner == worker_id,
+                WorkflowTaskRow.lease_expires_at > now,
+            )
+            result = await session.execute(update(WorkflowV2RunRow).where(WorkflowV2RunRow.run_id == run_id, owned_task.exists()).values(snapshot=snapshot))
+            if result.rowcount != 1:
+                return False
+            await session.commit()
+            return True
 
     async def consume_cancel_request(self, run_id: str) -> bool:
         async with self.session_factory() as session:
@@ -186,8 +275,19 @@ class WorkflowV2Store:
                 if run is not None:
                     run.status = "failed"
                     run.error = "workflow_max_attempts_exceeded"
+                    run.event_seq += 1
+                    session.add(
+                        WorkflowV2EventRow(
+                            id=str(uuid4()),
+                            run_id=run.run_id,
+                            seq=run.event_seq,
+                            event_type="run_failed",
+                            payload={"error": "workflow_max_attempts_exceeded"},
+                        )
+                    )
                 await session.commit()
                 return None
+            previous_owner = task.lease_owner
             task.status = "running"
             task.lease_owner = worker_id
             task.lease_expires_at = now + timedelta(seconds=lease_seconds)
@@ -196,6 +296,16 @@ class WorkflowV2Store:
             run = (await session.execute(select(WorkflowV2RunRow).where(WorkflowV2RunRow.run_id == task.run_id))).scalar_one_or_none()
             if run is not None:
                 run.status = "running"
+            session.add(
+                WorkflowLeaseAuditRow(
+                    id=str(uuid4()),
+                    run_id=task.run_id,
+                    task_id=task.task_id,
+                    event_type="taken_over" if previous_owner else "claimed",
+                    worker_id=worker_id,
+                    attempt=task.attempts,
+                )
+            )
             await session.commit()
             return task
 
@@ -224,19 +334,38 @@ class WorkflowV2Store:
             await session.commit()
             return True
 
-    async def finish_task(self, task_id: str, status: str, error: str | None, worker_id: str | None = None) -> bool:
+    async def finish_task(self, task_id: str, status: str, error: str | None, worker_id: str) -> bool:
+        """Atomically finalize only the task still leased to ``worker_id``."""
         async with self.session_factory() as session:
+            now = datetime.now(UTC)
             task = (await session.execute(select(WorkflowTaskRow).where(WorkflowTaskRow.task_id == task_id))).scalar_one_or_none()
-            if task is None or task.status in {"completed", "failed", "cancelled"}:
+            if task is None:
                 return False
-            if worker_id is not None and (task.lease_owner != worker_id or task.lease_expires_at is None or task.lease_expires_at <= datetime.now(UTC)):
+            result = await session.execute(
+                update(WorkflowTaskRow)
+                .where(
+                    WorkflowTaskRow.task_id == task_id,
+                    WorkflowTaskRow.status == "running",
+                    WorkflowTaskRow.lease_owner == worker_id,
+                    WorkflowTaskRow.lease_expires_at > now,
+                )
+                .values(status=status, lease_owner=None, lease_expires_at=None)
+                .returning(WorkflowTaskRow.run_id)
+                .execution_options(synchronize_session=False)
+            )
+            run_id = result.scalar_one_or_none()
+            if run_id is None:
                 return False
-            task.status = status
-            task.lease_owner = None
-            task.lease_expires_at = None
-            run = (await session.execute(select(WorkflowV2RunRow).where(WorkflowV2RunRow.run_id == task.run_id))).scalar_one_or_none()
-            if run is not None:
-                run.status = status
-                run.error = error
+            await session.execute(update(WorkflowV2RunRow).where(WorkflowV2RunRow.run_id == run_id).values(status=status, error=error))
+            session.add(
+                WorkflowLeaseAuditRow(
+                    id=str(uuid4()),
+                    run_id=run_id,
+                    task_id=task_id,
+                    event_type="released",
+                    worker_id=worker_id,
+                    attempt=task.attempts,
+                )
+            )
             await session.commit()
             return True

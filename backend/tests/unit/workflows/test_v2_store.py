@@ -25,7 +25,7 @@ async def test_append_event_uses_run_local_monotonic_sequence() -> None:
     session = AsyncMock()
     session.add = MagicMock()
     result = MagicMock()
-    result.scalar_one.return_value = 3
+    result.scalar_one_or_none.return_value = 4
     session.execute.return_value = result
     store = WorkflowV2Store(MagicMock(return_value=_Context(session)))
 
@@ -35,6 +35,22 @@ async def test_append_event_uses_run_local_monotonic_sequence() -> None:
     assert event.event_type == "node_started"
     session.add.assert_called_once()
     session.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_append_event_reserves_its_sequence_in_the_database() -> None:
+    """Concurrent workers must not derive the next sequence from a stale read."""
+    session = AsyncMock()
+    session.add = MagicMock()
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = 1
+    session.execute.return_value = result
+    store = WorkflowV2Store(MagicMock(return_value=_Context(session)))
+
+    await store.append_event("run-1", "node_started", {"node_id": "a"})
+
+    statement = session.execute.await_args_list[0].args[0]
+    assert "UPDATE workflow_v2_runs" in str(statement)
 
 
 @pytest.mark.asyncio
@@ -50,6 +66,28 @@ async def test_create_run_starts_queued_and_never_embeds_yaml() -> None:
     assert run.definition_version == 2
     assert not hasattr(run, "workflow_yaml")
     session.add.assert_called()
+
+
+@pytest.mark.asyncio
+async def test_create_run_rejects_user_concurrency_limit() -> None:
+    session = AsyncMock()
+    count = MagicMock()
+    count.scalar_one.return_value = 3
+    session.execute.return_value = count
+    session.add = MagicMock()
+    store = WorkflowV2Store(MagicMock(return_value=_Context(session)))
+
+    with pytest.raises(RuntimeError, match="workflow_user_concurrency_exceeded"):
+        await store.create_run(
+            "run-1",
+            "approval",
+            2,
+            {},
+            "user-1",
+            department_id="dept-1",
+            user_concurrency=3,
+            department_concurrency=10,
+        )
 
 
 @pytest.mark.asyncio
@@ -114,21 +152,18 @@ async def test_reusing_command_id_for_same_run_is_idempotent() -> None:
 @pytest.mark.asyncio
 async def test_finish_task_transitions_run_and_releases_lease() -> None:
     session = AsyncMock()
-    task = MagicMock(task_id="task-1", run_id="run-1", status="running", lease_owner="worker-1")
-    run = MagicMock(run_id="run-1", status="running", error=None)
+    session.add = MagicMock()
+    leased_task = MagicMock(attempts=2)
+    leased_task_result = MagicMock()
+    leased_task_result.scalar_one_or_none.return_value = leased_task
     task_result = MagicMock()
-    task_result.scalar_one_or_none.return_value = task
-    run_result = MagicMock()
-    run_result.scalar_one_or_none.return_value = run
-    session.execute.side_effect = [task_result, run_result]
+    task_result.scalar_one_or_none.return_value = "run-1"
+    session.execute.side_effect = [leased_task_result, task_result, MagicMock()]
     store = WorkflowV2Store(MagicMock(return_value=_Context(session)))
 
-    await store.finish_task("task-1", "failed", "adapter failed")
+    assert await store.finish_task("task-1", "failed", "adapter failed", "worker-1") is True
 
-    assert task.status == "failed"
-    assert task.lease_owner is None
-    assert run.status == "failed"
-    assert run.error == "adapter failed"
+    assert session.execute.await_count == 3
     session.commit.assert_awaited_once()
 
 
@@ -155,3 +190,40 @@ async def test_renew_lease_rejects_an_expired_or_foreign_holder() -> None:
 
     assert renewed is False
     session.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_stale_worker_cannot_persist_snapshot_after_lease_takeover() -> None:
+    """A worker that no longer owns the lease must not overwrite recovery state."""
+    session = AsyncMock()
+    result = MagicMock()
+    result.rowcount = 0
+    session.execute.return_value = result
+    store = WorkflowV2Store(MagicMock(return_value=_Context(session)))
+
+    persisted = await store.update_snapshot(
+        "run-1",
+        {"outputs": {"old": "value"}},
+        worker_id="worker-1",
+    )
+
+    assert persisted is False
+    session.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_finish_task_uses_compare_and_set_lease_ownership() -> None:
+    session = AsyncMock()
+    session.add = MagicMock()
+    leased_task = MagicMock(attempts=1)
+    leased_task_result = MagicMock()
+    leased_task_result.scalar_one_or_none.return_value = leased_task
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = "run-1"
+    session.execute.side_effect = [leased_task_result, result, MagicMock()]
+    store = WorkflowV2Store(MagicMock(return_value=_Context(session)))
+
+    await store.finish_task("task-1", "completed", None, "worker-1")
+
+    statement = session.execute.await_args_list[1].args[0]
+    assert "UPDATE workflow_tasks" in str(statement)

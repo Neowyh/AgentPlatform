@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.types import Command
 
 from ideer.workflows.v2.adapters import ActionAdapterRegistry, ActionResolutionError
-from ideer.workflows.v2.compiler import WorkflowCancelled, WorkflowGraphCompiler
+from ideer.workflows.v2.compiler import WorkflowCancelled, WorkflowGraphCompiler, WorkflowNodeTimeout
 from ideer.workflows.v2.parser import parse_workflow_v2
 
 
@@ -225,6 +227,56 @@ edges: []
 
 
 @pytest.mark.asyncio
+async def test_compiler_persists_platform_token_and_progress_events() -> None:
+    definition = parse_workflow_v2(
+        """
+schema_version: 2
+name: streaming
+inputs: {}
+state: {}
+entrypoint: task
+nodes:
+  - id: task
+    type: action
+    action: {kind: agent, name: stream}
+edges: []
+"""
+    )
+    events: list[tuple[str, dict]] = []
+
+    class Adapter:
+        async def run(self, context, params):
+            raise AssertionError("streaming adapters must use astream")
+
+        async def astream(self, context, params):
+            yield {"type": "token", "text": "hello"}
+            yield {"type": "progress", "message": "working"}
+            yield {"type": "result", "value": {"ok": True}}
+
+    async def emit(event_type: str, payload: dict) -> None:
+        events.append((event_type, payload))
+
+    graph = WorkflowGraphCompiler(
+        definition,
+        ActionAdapterRegistry({("agent", "stream"): Adapter()}),
+        emit_event=emit,
+    ).compile()
+    result = await graph.ainvoke(
+        {"run_id": "run-1", "inputs": {}, "state": {}, "outputs": {}},
+        config={"configurable": {"thread_id": "wf:streaming"}},
+    )
+
+    assert [event_type for event_type, _ in events] == [
+        "node_started",
+        "action_token",
+        "action_progress",
+        "node_completed",
+    ]
+    assert events[1][1]["text"] == "hello"
+    assert result["outputs"]["task"] == {"ok": True}
+
+
+@pytest.mark.asyncio
 async def test_compiler_stops_at_node_boundary_when_cancel_requested() -> None:
     definition = parse_workflow_v2(
         """
@@ -262,6 +314,84 @@ edges: [{from: first, to: second}]
     with pytest.raises(WorkflowCancelled, match="cancelled"):
         await graph.ainvoke({"run_id": "run-1", "inputs": {}, "state": {}, "outputs": {}}, config={"configurable": {"thread_id": "wf:cancel"}})
     assert calls == ["first"]
+
+
+@pytest.mark.asyncio
+async def test_compiler_fails_node_when_action_exceeds_configured_timeout() -> None:
+    definition = parse_workflow_v2(
+        """
+schema_version: 2
+name: timeout
+inputs: {}
+state: {}
+entrypoint: wait
+nodes:
+  - id: wait
+    type: action
+    action: {kind: tool, name: slow}
+edges: []
+"""
+    )
+
+    class Adapter:
+        async def run(self, context, params):
+            await asyncio.sleep(1)
+
+    graph = WorkflowGraphCompiler(
+        definition,
+        ActionAdapterRegistry({("tool", "slow"): Adapter()}),
+        node_timeout_seconds=0.01,
+    ).compile()
+
+    with pytest.raises(WorkflowNodeTimeout, match="workflow_node_timeout"):
+        await graph.ainvoke({"run_id": "run-1", "inputs": {}, "state": {}, "outputs": {}}, config={"configurable": {"thread_id": "wf:timeout"}})
+
+
+@pytest.mark.asyncio
+async def test_compiler_stops_a_declared_back_edge_at_its_iteration_limit() -> None:
+    definition = parse_workflow_v2(
+        """
+schema_version: 2
+name: bounded-loop
+inputs: {}
+state: {}
+entrypoint: first
+nodes:
+  - id: first
+    type: action
+    action: {kind: tool, name: record}
+  - id: second
+    type: action
+    action: {kind: tool, name: record}
+edges:
+  - {from: first, to: second, max_iterations: 10}
+  - {from: second, to: first, max_iterations: 1}
+"""
+    )
+    calls: list[str] = []
+    events: list[tuple[str, dict]] = []
+
+    class Adapter:
+        async def run(self, context, params):
+            calls.append(context.node_id)
+            return context.node_id
+
+    async def emit(event_type: str, payload: dict) -> None:
+        events.append((event_type, payload))
+
+    from ideer.workflows.v2.compiler import WorkflowIterationLimit
+
+    graph = WorkflowGraphCompiler(
+        definition,
+        ActionAdapterRegistry({("tool", "record"): Adapter()}),
+        emit_event=emit,
+    ).compile()
+
+    with pytest.raises(WorkflowIterationLimit, match="workflow_iteration_limit_exceeded"):
+        await graph.ainvoke({"run_id": "run-1", "inputs": {}, "state": {}, "outputs": {}}, config={"configurable": {"thread_id": "wf:bounded-loop"}})
+
+    assert calls == ["first", "second", "first", "second"]
+    assert events[-1] == ("node_failed", {"node_id": "second", "error": "workflow_iteration_limit_exceeded"})
 
 
 @pytest.mark.asyncio

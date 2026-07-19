@@ -7,7 +7,9 @@ the acceptance boundary is a worker claiming durable tasks across restarts.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -99,7 +101,7 @@ def _executor(
             await store.append_event(task.run_id, event_type, {})
             result = await graph.ainvoke(invocation, config={"configurable": {"thread_id": run.checkpoint_thread_id}})
         snapshot = workflow_snapshot(result)
-        await store.update_snapshot(task.run_id, snapshot)
+        assert await store.update_snapshot(task.run_id, snapshot, worker_id=task.lease_owner)
         if "__interrupt__" in result:
             await store.append_event(task.run_id, "interrupted", {})
             raise WorkflowPaused
@@ -150,6 +152,134 @@ async def test_worker_restart_resumes_only_pending_nodes_from_persistent_command
 
     replayed = [chunk async for chunk in workflow_event_stream(durable_store, "run-1", after_seq=5, poll_seconds=0)]
     assert [int(chunk.split("\n", 1)[0].removeprefix("id: ")) for chunk in replayed] == list(range(6, len(events) + 1))
+
+
+@pytest.mark.asyncio
+async def test_expired_lease_is_taken_over_and_old_worker_cannot_finish(
+    durable_store: WorkflowV2Store,
+) -> None:
+    await durable_store.save_definition("approval", {}, "hash", "user-1")
+    await durable_store.create_run("run-takeover", "approval", 1, {}, "user-1")
+    started = datetime.now(UTC)
+    first = await durable_store.claim_next_task("worker-a", now=started, lease_seconds=1)
+    assert first is not None
+    second = await durable_store.claim_next_task("worker-b", now=started + timedelta(seconds=2), lease_seconds=30)
+    assert second is not None and second.task_id == first.task_id
+
+    assert await durable_store.finish_task(first.task_id, "completed", None, "worker-a") is False
+    assert await durable_store.finish_task(second.task_id, "completed", None, "worker-b") is True
+    run = await durable_store.get_run("run-takeover")
+    assert run is not None and run.status == "completed"
+
+
+@pytest.mark.asyncio
+async def test_lease_claim_takeover_and_release_are_durably_audited(
+    durable_store: WorkflowV2Store,
+) -> None:
+    await durable_store.save_definition("approval", {}, "hash", "user-1")
+    await durable_store.create_run("run-lease-audit", "approval", 1, {}, "user-1")
+    started = datetime.now(UTC)
+    first = await durable_store.claim_next_task("worker-a", now=started, lease_seconds=1)
+    assert first is not None
+    second = await durable_store.claim_next_task("worker-b", now=started + timedelta(seconds=2), lease_seconds=30)
+    assert second is not None
+    assert await durable_store.finish_task(second.task_id, "completed", None, "worker-b")
+
+    async with durable_store.session_factory() as session:
+        audits = list((await session.execute(text("SELECT event_type, worker_id, attempt FROM workflow_lease_audit WHERE run_id = 'run-lease-audit' ORDER BY created_at, id"))).all())
+
+    assert audits == [
+        ("claimed", "worker-a", 1),
+        ("taken_over", "worker-b", 2),
+        ("released", "worker-b", 2),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_event_limit_reserves_a_durable_terminal_failure_event(
+    durable_store: WorkflowV2Store,
+) -> None:
+    await durable_store.save_definition("approval", {}, "hash", "user-1")
+    await durable_store.create_run("run-event-limit", "approval", 1, {}, "user-1")
+
+    normal = await durable_store.append_event("run-event-limit", "run_started", {}, max_events=1)
+    rejected = await durable_store.append_event("run-event-limit", "node_started", {}, max_events=1)
+    terminal = await durable_store.append_event(
+        "run-event-limit",
+        "run_failed",
+        {"error": "workflow_event_limit_exceeded"},
+        max_events=2,
+    )
+    overflow = await durable_store.append_event("run-event-limit", "run_completed", {}, max_events=2)
+
+    assert normal is not None and normal.seq == 1
+    assert rejected is None
+    assert terminal is not None and terminal.seq == 2
+    assert overflow is None
+    assert [event.event_type for event in await durable_store.list_events("run-event-limit")] == ["run_started", "run_failed"]
+
+
+@pytest.mark.asyncio
+async def test_max_attempts_exhaustion_persists_a_failure_event(
+    durable_store: WorkflowV2Store,
+) -> None:
+    await durable_store.save_definition("approval", {}, "hash", "user-1")
+    await durable_store.create_run("run-max-attempts", "approval", 1, {}, "user-1")
+
+    assert await durable_store.claim_next_task("worker-a", max_attempts=0) is None
+
+    run = await durable_store.get_run("run-max-attempts")
+    assert run is not None
+    assert (run.status, run.error) == ("failed", "workflow_max_attempts_exceeded")
+    events = await durable_store.list_events("run-max-attempts")
+    assert [(event.event_type, event.payload) for event in events] == [("run_failed", {"error": "workflow_max_attempts_exceeded"})]
+
+
+@pytest.mark.asyncio
+async def test_second_worker_takes_over_a_dead_holder_from_durable_snapshot(
+    durable_store: WorkflowV2Store,
+) -> None:
+    """Two real worker loops share one SQLite task without duplicating prior work."""
+    await durable_store.save_definition("approval", {}, "hash", "user-1")
+    await durable_store.create_run("run-dual-worker", "approval", 1, {}, "user-1")
+    first_started = asyncio.Event()
+    terminate_first = asyncio.Event()
+    completed_actions: list[str] = []
+
+    async def first_executor(task: WorkflowTaskRow) -> None:
+        assert await durable_store.update_snapshot(
+            task.run_id,
+            {"outputs": {"prepare": {"node": "prepare"}}},
+            worker_id="worker-a",
+        )
+        first_started.set()
+        await terminate_first.wait()
+
+    async def second_executor(task: WorkflowTaskRow) -> None:
+        run = await durable_store.get_run(task.run_id)
+        assert run is not None
+        assert run.snapshot == {"outputs": {"prepare": {"node": "prepare"}}}
+        completed_actions.append("finish")
+
+    first = WorkflowWorker(
+        durable_store,
+        first_executor,
+        worker_id="worker-a",
+        lease_seconds=1,
+        heartbeat_seconds=10,
+    )
+    second = WorkflowWorker(durable_store, second_executor, worker_id="worker-b", lease_seconds=30)
+    first_task = asyncio.create_task(first.run_once())
+    await first_started.wait()
+    await asyncio.sleep(1.1)
+
+    assert await second.run_once() is True
+    terminate_first.set()
+    assert await first_task is True
+
+    run = await durable_store.get_run("run-dual-worker")
+    assert run is not None and run.status == "completed"
+    assert completed_actions == ["finish"]
 
 
 @pytest.mark.serial

@@ -28,24 +28,63 @@ def workflow_snapshot(result: dict[str, Any]) -> dict[str, Any]:
 
 
 class WorkflowWorker:
-    def __init__(self, store: WorkflowV2Store, execute: Callable[[WorkflowTaskRow], Awaitable[None]], worker_id: str = "workflow-worker") -> None:
+    def __init__(
+        self,
+        store: WorkflowV2Store,
+        execute: Callable[[WorkflowTaskRow], Awaitable[None]],
+        worker_id: str = "workflow-worker",
+        *,
+        lease_seconds: int = 30,
+        heartbeat_seconds: float = 10,
+        max_attempts: int = 3,
+    ) -> None:
         self.store = store
         self.execute = execute
         self.worker_id = worker_id
+        self.lease_seconds = lease_seconds
+        self.heartbeat_seconds = heartbeat_seconds
+        self.max_attempts = max_attempts
 
     async def run_once(self) -> bool:
-        task = await self.store.claim_next_task(self.worker_id)
+        task = await self.store.claim_next_task(
+            self.worker_id,
+            lease_seconds=self.lease_seconds,
+            max_attempts=self.max_attempts,
+        )
         if task is None:
             return False
+        lease_lost = asyncio.Event()
+
+        async def heartbeat() -> None:
+            while True:
+                await asyncio.sleep(self.heartbeat_seconds)
+                if not await self.store.renew_lease(
+                    task.task_id,
+                    self.worker_id,
+                    lease_seconds=self.lease_seconds,
+                ):
+                    lease_lost.set()
+                    return
+
+        heartbeat_task = asyncio.create_task(heartbeat())
         try:
             await self.execute(task)
         except WorkflowPaused:
-            await self.store.finish_task(task.task_id, "paused", None)
+            if not lease_lost.is_set():
+                await self.store.finish_task(task.task_id, "paused", None, self.worker_id)
         except Exception as exc:
             logger.exception("workflow task %s failed", task.task_id)
-            await self.store.finish_task(task.task_id, "failed", str(exc))
+            if not lease_lost.is_set():
+                await self.store.finish_task(task.task_id, "failed", str(exc), self.worker_id)
         else:
-            await self.store.finish_task(task.task_id, "completed", None)
+            if not lease_lost.is_set():
+                await self.store.finish_task(task.task_id, "completed", None, self.worker_id)
+        finally:
+            heartbeat_task.cancel()
+            try:
+                await heartbeat_task
+            except asyncio.CancelledError:
+                pass
         return True
 
     async def run_forever(self, poll_seconds: float = 1.0) -> None:
