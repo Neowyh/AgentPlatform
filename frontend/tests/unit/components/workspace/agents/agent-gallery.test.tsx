@@ -42,6 +42,9 @@ vi.mock("@/core/i18n/hooks", () => ({
         favoritesOnly: "Favorites",
         showAll: "Show All",
       },
+      workspace: {
+        adminPanel: "Admin",
+      },
     },
   }),
 }));

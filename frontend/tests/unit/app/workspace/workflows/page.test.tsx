@@ -33,13 +33,30 @@ const mockUseWorkflow = vi.fn(() => ({
     version: "1.0",
     steps_count: 2,
     steps: [
-      { id: "step1", type: "agent", agent: "agent-a", prompt: "Do something" },
-      { id: "step2", type: "tool", prompt: "Run tool" },
+      {
+        id: "step1",
+        type: "action",
+        action: {
+          kind: "agent",
+          name: "agent-a",
+          params: { prompt: "Do something" },
+        },
+      },
+      {
+        id: "step2",
+        type: "action",
+        action: {
+          kind: "tool",
+          name: "tool-b",
+          params: { prompt: "Run tool" },
+        },
+      },
     ],
     inputs: {
       query: { type: "string", description: "Search query", required: true },
     },
-    yaml_content: "name: test-workflow\nsteps:\n  - id: step1\n    type: agent",
+    yaml_content:
+      "schema_version: 2\nname: test-workflow\nnodes:\n  - id: step1\n    type: action\n    action:\n      kind: agent\n      name: agent-a",
   },
   isLoading: false,
   error: null,
@@ -50,8 +67,8 @@ const mockUseRunWorkflow = vi.fn(() => ({
   isPending: false,
 }));
 
-const mockUseRunStatus = vi.fn(() => ({
-  runStatus: null,
+const mockUseWorkflowRuns = vi.fn(() => ({
+  runs: [] as unknown[],
 }));
 
 vi.mock("@/core/i18n/hooks", () => ({
@@ -89,7 +106,7 @@ vi.mock("@/core/i18n/hooks", () => ({
 vi.mock("@/core/workflows", () => ({
   useWorkflow: (...args: any[]) => (mockUseWorkflow as any)(...args),
   useRunWorkflow: (...args: any[]) => (mockUseRunWorkflow as any)(...args),
-  useRunStatus: (...args: any[]) => (mockUseRunStatus as any)(...args),
+  useWorkflowRuns: (...args: any[]) => (mockUseWorkflowRuns as any)(...args),
 }));
 
 vi.mock("@/components/ui/badge", () => ({
@@ -163,13 +180,26 @@ const defaultWorkflow = {
   version: "1.0",
   steps_count: 2,
   steps: [
-    { id: "step1", type: "agent", agent: "agent-a", prompt: "Do something" },
-    { id: "step2", type: "tool", prompt: "Run tool" },
+    {
+      id: "step1",
+      type: "action",
+      action: {
+        kind: "agent",
+        name: "agent-a",
+        params: { prompt: "Do something" },
+      },
+    },
+    {
+      id: "step2",
+      type: "action",
+      action: { kind: "tool", name: "tool-b", params: { prompt: "Run tool" } },
+    },
   ],
   inputs: {
     query: { type: "string", description: "Search query", required: true },
   },
-  yaml_content: "name: test-workflow\nsteps:\n  - id: step1\n    type: agent",
+  yaml_content:
+    "schema_version: 2\nname: test-workflow\nnodes:\n  - id: step1\n    type: action\n    action:\n      kind: agent\n      name: agent-a",
 };
 
 afterEach(() => {
@@ -183,8 +213,8 @@ afterEach(() => {
     mutateAsync: vi.fn(),
     isPending: false,
   });
-  mockUseRunStatus.mockReturnValue({
-    runStatus: null,
+  mockUseWorkflowRuns.mockReturnValue({
+    runs: [],
   });
 });
 
@@ -220,8 +250,8 @@ describe("WorkflowDetailPage", () => {
 
   test("renders step type badges", () => {
     render(<WorkflowDetailPage />);
-    expect(screen.getByText("agent")).toBeInTheDocument();
-    expect(screen.getByText("tool")).toBeInTheDocument();
+    const badges = screen.getAllByText("action");
+    expect(badges.length).toBeGreaterThanOrEqual(2);
   });
 
   test("renders step agent badge", () => {
@@ -299,9 +329,11 @@ describe("WorkflowDetailPage - No inputs", () => {
         description: "No inputs",
         version: "2.0",
         steps_count: 1,
-        steps: [{ id: "step1", type: "agent" }] as any,
+        steps: [
+          { id: "step1", type: "action", action: { kind: "agent", name: "" } },
+        ] as any,
         inputs: {} as any,
-        yaml_content: "name: no-input-wf",
+        yaml_content: "schema_version: 2\nname: no-input-wf",
       },
       isLoading: false,
       error: null,
@@ -319,19 +351,23 @@ describe("WorkflowDetailPage - Run status", () => {
         description: "Test",
         version: "1.0",
         steps_count: 1,
-        steps: [{ id: "step1", type: "agent" }] as any,
+        steps: [
+          { id: "step1", type: "action", action: { kind: "agent", name: "" } },
+        ] as any,
         inputs: {} as any,
-        yaml_content: "name: test-workflow",
+        yaml_content: "schema_version: 2\nname: test-workflow",
       },
       isLoading: false,
       error: null,
     });
-    mockUseRunStatus.mockReturnValue({
-      runStatus: {
-        status: "completed",
-        run_id: "run-123",
-        steps: { step1: { status: "completed" } },
-      } as any,
+    mockUseWorkflowRuns.mockReturnValue({
+      runs: [
+        {
+          status: "completed",
+          run_id: "run-123",
+          steps: { step1: { status: "completed" } },
+        },
+      ],
     });
     render(<WorkflowDetailPage />);
     expect(screen.getByText("test-workflow")).toBeInTheDocument();

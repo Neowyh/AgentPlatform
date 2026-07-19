@@ -65,6 +65,9 @@ vi.mock("@/core/i18n/hooks", () => ({
         loading: "Loading...",
         import: "Import",
       },
+      workspace: {
+        adminPanel: "Admin",
+      },
     },
     changeLocale: vi.fn(),
   }),

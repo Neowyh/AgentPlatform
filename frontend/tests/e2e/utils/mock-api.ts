@@ -51,7 +51,20 @@ export type MockWorkflow = {
   description?: string;
   version?: string;
   yaml_content?: string;
-  steps?: { id: string; type: string; agent?: string; prompt?: string }[];
+  steps?: {
+    id: string;
+    type: string;
+    action?: { kind: string; name: string; params?: Record<string, unknown> };
+    agent?: string;
+    prompt?: string;
+  }[];
+  nodes?: {
+    id: string;
+    type: string;
+    action?: { kind: string; name: string; params?: Record<string, unknown> };
+    agent?: string;
+    prompt?: string;
+  }[];
   inputs?: Record<
     string,
     {
@@ -739,11 +752,22 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
             version: wf.version ?? "1.0",
             yaml_content:
               wf.yaml_content ??
-              `name: ${wf.name}\ndescription: ""\nversion: "1.0"\ninputs: {}\nsteps:\n  - id: step1\n    type: agent\n    agent: ""\n    prompt: ""`,
-            steps: wf.steps ?? [
-              { id: "step1", type: "agent", agent: "", prompt: "" },
+              `schema_version: 2\nname: ${wf.name}\ndescription: ""\ninputs: {}\nstate: {}\nentrypoint: start\nnodes:\n  - id: start\n    type: action\n    action:\n      kind: agent\n      name: ""\n      params:\n        prompt: ""\nedges: []`,
+            nodes: wf.nodes ?? [
+              {
+                id: "start",
+                type: "action",
+                action: { kind: "agent", name: "", params: { prompt: "" } },
+              },
             ],
-            steps_count: (wf.steps ?? []).length || 1,
+            steps: wf.nodes ?? [
+              {
+                id: "start",
+                type: "action",
+                action: { kind: "agent", name: "", params: { prompt: "" } },
+              },
+            ],
+            steps_count: (wf.nodes ?? []).length || 1,
             inputs: wf.inputs ?? {},
           }),
         });
@@ -756,13 +780,27 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
           name: wfName ?? "workflow",
           description: "A workflow",
           version: "1.0",
-          yaml_content: `name: ${wfName ?? "workflow"}\ndescription: "A workflow"\nversion: "1.0"\ninputs: {}\nsteps:\n  - id: step1\n    type: agent\n    agent: test-agent\n    prompt: "Hello"`,
+          yaml_content: `schema_version: 2\nname: ${wfName ?? "workflow"}\ndescription: "A workflow"\ninputs: {}\nstate: {}\nentrypoint: start\nnodes:\n  - id: start\n    type: action\n    action:\n      kind: agent\n      name: test-agent\n      params:\n        prompt: "Hello"\nedges: []`,
+          nodes: [
+            {
+              id: "start",
+              type: "action",
+              action: {
+                kind: "agent",
+                name: "test-agent",
+                params: { prompt: "Hello" },
+              },
+            },
+          ],
           steps: [
             {
-              id: "step1",
-              type: "agent",
-              agent: "test-agent",
-              prompt: "Hello",
+              id: "start",
+              type: "action",
+              action: {
+                kind: "agent",
+                name: "test-agent",
+                params: { prompt: "Hello" },
+              },
             },
           ],
           steps_count: 1,

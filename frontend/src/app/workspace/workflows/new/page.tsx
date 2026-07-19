@@ -17,15 +17,21 @@ import { useI18n } from "@/core/i18n/hooks";
 import { useCreateWorkflow } from "@/core/workflows";
 import { validateYaml } from "@/core/workflows/validate";
 
-const DEFAULT_YAML = `name: my-workflow
+const DEFAULT_YAML = `schema_version: 2
+name: my-workflow
 description: ""
-version: "1.0"
 inputs: {}
-steps:
-  - id: step1
-    type: agent
-    agent: ""
-    prompt: ""
+state: {}
+entrypoint: start
+nodes:
+  - id: start
+    type: action
+    action:
+      kind: agent
+      name: ""
+      params:
+        prompt: ""
+edges: []
 `;
 
 const customDarkTheme = monokaiInit({

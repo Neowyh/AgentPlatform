@@ -14,7 +14,7 @@ if (!stateDir || !runId || !gatewayUrl) {
 }
 
 const artifactsDir = resolve(
-  process.env.REAL_E2E_ARTIFACTS_DIR ||
+  process.env.REAL_E2E_ARTIFACTS_DIR ??
     resolve(stateDir, "playwright-artifacts"),
 );
 const baseURL = `http://localhost:${frontendPort}`;

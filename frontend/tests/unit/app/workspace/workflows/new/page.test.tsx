@@ -213,7 +213,7 @@ describe("NewWorkflowPage", () => {
     render(<NewWorkflowPage />);
     const editor = screen.getByTestId("code-editor");
     expect((editor as HTMLInputElement).value).toContain("name: my-workflow");
-    expect((editor as HTMLInputElement).value).toContain("steps:");
+    expect((editor as HTMLInputElement).value).toContain("nodes:");
   });
 
   test("updates content when editor value changes", () => {
