@@ -95,6 +95,8 @@ class WorkflowGraphCompiler:
                         graph.add_edge(gated_branches, node.id)
                 else:
                     graph.add_edge(node.id, END)
+                for target in targets:
+                    graph.add_edge(node.id, target_for(node.id, target))
             elif node.type == "route":
                 graph.add_conditional_edges(
                     node.id,

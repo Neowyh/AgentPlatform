@@ -191,6 +191,54 @@ edges:
 
 
 @pytest.mark.asyncio
+async def test_compiler_routes_join_to_next_node() -> None:
+    definition = parse_workflow_v2(
+        """
+schema_version: 2
+name: parallel-next
+inputs: {}
+state: {}
+entrypoint: fork
+nodes:
+  - id: fork
+    type: fork
+    branches: [left, right]
+    join: join
+  - id: left
+    type: action
+    action: {kind: tool, name: branch}
+  - id: right
+    type: action
+    action: {kind: tool, name: branch}
+  - id: join
+    type: join
+    fork: fork
+  - id: next
+    type: action
+    action: {kind: tool, name: branch}
+edges:
+  - {from: fork, to: left}
+  - {from: fork, to: right}
+  - {from: left, to: join}
+  - {from: right, to: join}
+  - {from: join, to: next}
+"""
+    )
+    seen: list[str] = []
+
+    class Adapter:
+        async def run(self, context, params):
+            seen.append(context.node_id)
+            return context.node_id
+
+    graph = WorkflowGraphCompiler(definition, ActionAdapterRegistry({("tool", "branch"): Adapter()})).compile()
+    result = await graph.ainvoke({"inputs": {}, "state": {}, "outputs": {}}, config={"configurable": {"thread_id": "wf:parallel-next"}})
+
+    assert seen == ["left", "right", "next"]
+    assert set(result["outputs"]) == {"left", "right", "next"}
+
+
+@pytest.mark.asyncio
 async def test_compiler_emits_action_lifecycle_events_with_idempotency_key() -> None:
     definition = parse_workflow_v2(
         """
