@@ -1,3 +1,5 @@
+# (deprecated) 归零智能体已重构为 Workflow V2 DAG 工作流（workflows/fault-zeroing.yaml）。
+# 本文件仅保留作为历史参考，安装脚本和运行时不再引用。
 subagents:
   custom_agents:
     evidence-reader:

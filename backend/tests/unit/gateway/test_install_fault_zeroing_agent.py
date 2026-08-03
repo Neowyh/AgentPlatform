@@ -7,7 +7,6 @@ import sys
 from pathlib import Path
 
 import pytest
-import yaml
 
 SCRIPT_PATH = Path(__file__).resolve().parents[4] / "scripts" / "install_fault_zeroing_agent.py"
 SPEC = importlib.util.spec_from_file_location("install_fault_zeroing_agent", SCRIPT_PATH)
@@ -16,31 +15,13 @@ assert SPEC.loader is not None
 install_script = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(install_script)
 install_fault_zeroing_agent = install_script.install_fault_zeroing_agent
-REQUIRED_SUBAGENTS = install_script.REQUIRED_SUBAGENTS
+BUNDLED_WORKFLOW_FILES = install_script.BUNDLED_WORKFLOW_FILES
 
 
 def make_agent_source(source_dir: Path, *, soul: str = "# Soul\n") -> None:
     source_dir.mkdir()
     (source_dir / "config.yaml").write_text("name: fault-zeroing\n", encoding="utf-8")
     (source_dir / "SOUL.md").write_text(soul, encoding="utf-8")
-
-
-def make_subagents_file(path: Path) -> dict:
-    custom_agents = {
-        name: {
-            "description": f"{name} description",
-            "system_prompt": f"{name} prompt",
-            "tools": ["read_file"],
-            "skills": ["fault-zeroing"],
-            "model": "inherit",
-            "max_turns": 10,
-            "timeout_seconds": 60,
-        }
-        for name in REQUIRED_SUBAGENTS
-    }
-    data = {"subagents": {"custom_agents": custom_agents}}
-    path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
-    return data
 
 
 def test_installer_uses_only_standard_library_imports_for_offline_deploy_hosts() -> None:
@@ -152,93 +133,23 @@ def test_resolve_config_path_uses_deer_flow_config_path(monkeypatch: pytest.Monk
     assert install_script.resolve_config_path() == config_path.resolve()
 
 
-def test_merge_subagents_into_empty_config(tmp_path: Path) -> None:
-    config_path = tmp_path / "config.yaml"
-    subagents_file = tmp_path / "subagents.yaml"
-    config_path.write_text("{}\n", encoding="utf-8")
-    make_subagents_file(subagents_file)
-
-    summary = install_script.merge_fault_zeroing_subagents(config_path, subagents_file)
-
-    merged = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-    assert set(merged["subagents"]["custom_agents"]) == set(REQUIRED_SUBAGENTS)
-    assert summary["added"] == REQUIRED_SUBAGENTS
-    assert summary["skipped"] == []
-    assert summary["config_path"] == config_path
-    assert summary["backup_path"] == config_path.with_name("config.yaml.bak-fault-zeroing")
-    assert summary["backup_path"].read_text(encoding="utf-8") == "{}\n"
+def test_bundled_workflow_files_present_in_repo() -> None:
+    missing = [name for name in BUNDLED_WORKFLOW_FILES if not (install_script.repo_root() / name).is_file()]
+    assert missing == [], f"Bundled workflow files missing from repo: {missing}"
 
 
-def test_merge_subagents_skips_existing_matching_subagent(tmp_path: Path) -> None:
-    config_path = tmp_path / "config.yaml"
-    subagents_file = tmp_path / "subagents.yaml"
-    source_data = make_subagents_file(subagents_file)
-    existing_name = REQUIRED_SUBAGENTS[0]
-    config_path.write_text(
-        yaml.safe_dump(
-            {"subagents": {"custom_agents": {existing_name: source_data["subagents"]["custom_agents"][existing_name]}}},
-            sort_keys=False,
-        ),
-        encoding="utf-8",
-    )
-
-    summary = install_script.merge_fault_zeroing_subagents(config_path, subagents_file)
-
-    assert summary["skipped"] == [existing_name]
-    assert summary["added"] == REQUIRED_SUBAGENTS[1:]
+def test_bundled_workflow_file_check_reports_missing(tmp_path: Path) -> None:
+    with pytest.raises(FileNotFoundError, match="missing bundled workflow file"):
+        install_script._validate_bundled_workflow_files(tmp_path)
 
 
-def test_merge_subagents_inserts_inside_existing_custom_agents_block(tmp_path: Path) -> None:
-    config_path = tmp_path / "config.yaml"
-    subagents_file = tmp_path / "subagents.yaml"
-    config_path.write_text(
-        """subagents:
-  custom_agents:
-    existing-agent:
-      description: keep me
-  max_concurrency: 3
-safety_finish_reason:
-  enabled: true
-""",
-        encoding="utf-8",
-    )
-    make_subagents_file(subagents_file)
+def test_bundled_workflow_file_check_accepts_present_files(tmp_path: Path) -> None:
+    for name in BUNDLED_WORKFLOW_FILES:
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("test\n", encoding="utf-8")
 
-    install_script.merge_fault_zeroing_subagents(config_path, subagents_file)
-
-    merged = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-    assert "existing-agent" in merged["subagents"]["custom_agents"]
-    assert set(REQUIRED_SUBAGENTS).issubset(merged["subagents"]["custom_agents"])
-    assert merged["subagents"]["max_concurrency"] == 3
-    assert merged["safety_finish_reason"]["enabled"] is True
-
-
-def test_merge_subagents_refuses_conflict_without_partial_write(tmp_path: Path) -> None:
-    config_path = tmp_path / "config.yaml"
-    subagents_file = tmp_path / "subagents.yaml"
-    make_subagents_file(subagents_file)
-    original = yaml.safe_dump(
-        {"subagents": {"custom_agents": {"evidence-reader": {"description": "different"}}}},
-        sort_keys=False,
-    )
-    config_path.write_text(original, encoding="utf-8")
-
-    with pytest.raises(ValueError, match="Conflicting custom subagent"):
-        install_script.merge_fault_zeroing_subagents(config_path, subagents_file)
-
-    assert config_path.read_text(encoding="utf-8") == original
-    assert not config_path.with_name("config.yaml.bak-fault-zeroing").exists()
-
-
-def test_validate_fault_zeroing_subagent_registry_finds_merged_subagents(tmp_path: Path) -> None:
-    config_path = tmp_path / "config.yaml"
-    subagents_file = install_script.default_subagents_file()
-    shutil.copy2(SCRIPT_PATH.parents[1] / "config.example.yaml", config_path)
-    install_script.merge_fault_zeroing_subagents(config_path, subagents_file)
-
-    verified = install_script.validate_fault_zeroing_subagent_registry(config_path)
-
-    assert verified == REQUIRED_SUBAGENTS
+    install_script._validate_bundled_workflow_files(tmp_path)
 
 
 def test_registry_module_import_does_not_eagerly_import_executor() -> None:

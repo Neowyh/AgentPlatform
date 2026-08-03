@@ -224,7 +224,8 @@ tar \
     extensions_config.example.json \
     frontend \
     scripts \
-    skills
+    skills \
+    workflows
 
 log "[6/6] assembling bundle..."
 cp "$GUIDE_FILE" "$OUTPUT_DIR/$GUIDE_BASENAME"

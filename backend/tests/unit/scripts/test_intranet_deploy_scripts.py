@@ -131,20 +131,14 @@ sandbox:
         "# Fault Zeroing\n",
         encoding="utf-8",
     )
-    (root / "docs" / "fault-zeroing-agent" / "subagents.yaml").write_text(
-        """subagents:
-  custom_agents:
-    evidence-reader:
-      description: evidence-reader
-    fault-tree-builder:
-      description: fault-tree-builder
-    probability-assessor:
-      description: probability-assessor
-    root-cause-analyst:
-      description: root-cause-analyst
-    report-reviewer:
-      description: report-reviewer
-""",
+    (root / "workflows").mkdir()
+    (root / "workflows" / "fault-zeroing.yaml").write_text(
+        "name: fault-zeroing\nversion: 1\n",
+        encoding="utf-8",
+    )
+    (root / "skills" / "custom" / "fault-zeroing" / "templates").mkdir(parents=True)
+    (root / "skills" / "custom" / "fault-zeroing" / "templates" / "corrective_actions.schema.json").write_text(
+        "{}\n",
         encoding="utf-8",
     )
     _write_executable(root / "scripts" / "install_fault_zeroing_agent.py", INSTALL_SCRIPT.read_text(encoding="utf-8"))
@@ -257,16 +251,8 @@ def test_prepare_installs_fault_zeroing_agent_to_shared_runtime_dir(tmp_path: Pa
     agent_dir = runtime_dir / "data" / "agents" / "fault-zeroing"
     assert (agent_dir / "config.yaml").read_text(encoding="utf-8") == "name: fault-zeroing\n"
     assert (agent_dir / "SOUL.md").read_text(encoding="utf-8") == "# Fault Zeroing\n"
-    cfg = yaml.safe_load((runtime_dir / "config.yaml").read_text(encoding="utf-8"))
-    assert set(cfg["subagents"]["custom_agents"]) == {
-        "evidence-reader",
-        "fault-tree-builder",
-        "probability-assessor",
-        "root-cause-analyst",
-        "report-reviewer",
-    }
     assert "Agent directory:" in proc.stdout
-    assert "Registry check passed:" in proc.stdout
+    assert "Workflow files:" in proc.stdout
 
 
 def test_prepare_does_not_install_fault_zeroing_agent_to_user_dirs(tmp_path: Path):
@@ -407,6 +393,8 @@ def test_package_source_archive_includes_runtime_seed_templates(tmp_path: Path):
     assert "extensions_config.example.json" in names
     assert "frontend/.env.example" in names
     assert "frontend/.env" not in names
+    assert "workflows/fault-zeroing.yaml" in names
+    assert "skills/custom/fault-zeroing/templates/corrective_actions.schema.json" in names
     assert not (output_dir / "docker-compose.intranet.yaml").exists()
     assert not (output_dir / "env.intranet.example").exists()
 
