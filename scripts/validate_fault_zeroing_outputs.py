@@ -37,13 +37,12 @@ REQUIRED_REPORT_SECTIONS = (
     "证据引用",
 )
 REQUIRED_STAGE_MARKERS = (
-    "资料盘点",
-    "证据台账",
-    "故障树",
+    "证据提取",
+    "故障树构建",
     "底事件评估",
-    "归因",
-    "验证计划",
-    "审查",
+    "根因归因",
+    "纠正措施",
+    "文档生产",
 )
 STATUS_VALUES = {"confirmed", "rejected", "to_verify", "in_progress", "not_applicable"}
 CONFIDENCE_VALUES = {"high", "medium", "low", "unknown"}
@@ -83,6 +82,17 @@ def _default_schema_path() -> Path:
         / "fault-zeroing"
         / "templates"
         / "fault_tree.schema.json"
+    )
+
+
+def _default_corrective_schema_path() -> Path:
+    return (
+        _repo_root()
+        / "skills"
+        / "custom"
+        / "fault-zeroing"
+        / "templates"
+        / "corrective_actions.schema.json"
     )
 
 
@@ -564,15 +574,19 @@ def _validate_report(
         if marker not in report_text:
             result.add(f"zeroing_report.md missing stage marker {marker}")
     for phrase in (
-        "evidence-reader 不输出根因",
-        "fault-tree-builder 不给最终归因",
-        "report-reviewer 不新增技术结论",
+        "演绎建树阶段不依赖证据台账",
+        "证据检漏只做添加不做删除",
+        "文档阶段不修改分析数据",
     ):
         if phrase not in report_text:
             result.add(
                 f"zeroing_report.md missing subagent responsibility statement: {phrase}"
             )
-    forbidden_claims = ("evidence-reader 给出最终根因", "report-reviewer 新增技术结论")
+    forbidden_claims = (
+        "演绎建树阶段依赖证据台账",
+        "证据检漏删除已有证据",
+        "文档阶段修改分析数据",
+    )
     for claim in forbidden_claims:
         if claim in report_text:
             result.add(f"zeroing_report.md contains forbidden subagent claim: {claim}")
@@ -694,6 +708,48 @@ def _validate_svg(name: str, svg_text: str, result: ValidationResult) -> None:
         result.add(f"{name} contains external URL")
 
 
+def _validate_corrective_actions(
+    outputs_dir: Path,
+    tree: dict[str, Any],
+    result: ValidationResult,
+    schema_path: Path | None = None,
+) -> None:
+    actions_path = outputs_dir / "artifacts" / "corrective_actions.json"
+    if not actions_path.exists():
+        return
+    actions = _load_json(actions_path, result)
+    if actions is None:
+        return
+    if not isinstance(actions, dict):
+        result.add(f"{actions_path.name} root must be an object")
+        return
+
+    schema = Path(schema_path) if schema_path else _default_corrective_schema_path()
+    schema_doc = _load_json(schema, result)
+    if schema_doc is not None:
+        _validate_json_schema(
+            actions,
+            schema_doc,
+            result,
+            path="corrective_actions.json",
+        )
+
+    root_cause_ids = {
+        _string(cause.get("id"))
+        for cause in _list(tree.get("root_causes"))
+        if isinstance(cause, dict) and _string(cause.get("id"))
+    }
+    for item in _list(actions.get("corrective_actions")):
+        if not isinstance(item, dict):
+            continue
+        action_id = _string(item.get("id")) or "<missing>"
+        target = _string(item.get("target_root_cause_id"))
+        if target and target not in root_cause_ids:
+            result.add(
+                f"corrective action {action_id} references unknown root cause {target}"
+            )
+
+
 def validate_outputs(
     outputs_dir: str | Path, schema_path: str | Path | None = None
 ) -> ValidationResult:
@@ -727,6 +783,7 @@ def validate_outputs(
         "fault_tree.svg", _read_text(output_path / "fault_tree.svg", result), result
     )
     _validate_svg("analysis_process.svg", analysis_process, result)
+    _validate_corrective_actions(output_path, tree, result)
     return result
 
 

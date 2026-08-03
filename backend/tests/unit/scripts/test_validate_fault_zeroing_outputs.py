@@ -170,15 +170,37 @@ BE-01 confirmed；BE-02 to_verify。
 
 ### 阶段顺序痕迹
 
-资料盘点 -> 证据台账 -> 故障树 -> 底事件评估 -> 归因 -> 验证计划 -> 审查
+证据提取 -> 故障树构建 -> 底事件评估 -> 根因归因 -> 纠正措施 -> 文档生产
 
 ### 子智能体职责说明
 
-evidence-reader 不输出根因；fault-tree-builder 不给最终归因；report-reviewer 不新增技术结论。
+演绎建树阶段不依赖证据台账；证据检漏只做添加不做删除；文档阶段不修改分析数据。
 """
 
 
-def write_outputs(tmp_path: Path, fault_tree: dict | None = None, report: str | None = None) -> Path:
+def valid_corrective_actions() -> dict:
+    return {
+        "corrective_actions": [
+            {
+                "id": "CA-001",
+                "name": "更换采集链路",
+                "description": "替换 HF-07 采集链路并复测。",
+                "target_root_cause_id": "RC-01",
+                "owner": "计量部门",
+                "completion_criteria": "连续 3 次试验零位复测通过",
+                "priority": "high",
+                "status": "planned",
+            }
+        ]
+    }
+
+
+def write_outputs(
+    tmp_path: Path,
+    fault_tree: dict | None = None,
+    report: str | None = None,
+    corrective_actions: dict | None = None,
+) -> Path:
     import json
 
     output_dir = tmp_path / "outputs"
@@ -193,10 +215,17 @@ def write_outputs(tmp_path: Path, fault_tree: dict | None = None, report: str | 
         encoding="utf-8",
     )
     (output_dir / "analysis_process.svg").write_text(
-        "<svg><text>资料盘点 证据台账 故障树 底事件评估 归因 验证计划 审查</text></svg>",
+        "<svg><text>证据提取 故障树构建 底事件评估 根因归因 纠正措施 文档生产</text></svg>",
         encoding="utf-8",
     )
     (output_dir / "zeroing_report.md").write_text(report or valid_report(), encoding="utf-8")
+    if corrective_actions is not None:
+        artifacts_dir = output_dir / "artifacts"
+        artifacts_dir.mkdir(exist_ok=True)
+        (artifacts_dir / "corrective_actions.json").write_text(
+            json.dumps(corrective_actions, ensure_ascii=False),
+            encoding="utf-8",
+        )
     return output_dir
 
 
@@ -423,16 +452,16 @@ def test_expected_analysis_file_cannot_use_line_suffixes(tmp_path: Path, source:
 
 def test_old_evidence_grading_stage_marker_no_longer_satisfies_required_flow(tmp_path: Path) -> None:
     report = valid_report().replace(
-        "资料盘点 -> 证据台账 -> 故障树 -> 底事件评估 -> 归因 -> 验证计划 -> 审查",
-        "资料盘点 -> 证据分级 -> 故障树 -> 底事件评估 -> 归因 -> 验证计划 -> 审查",
+        "证据提取 -> 故障树构建 -> 底事件评估 -> 根因归因 -> 纠正措施 -> 文档生产",
+        "证据提取 -> 证据分级 -> 底事件评估 -> 根因归因 -> 纠正措施 -> 文档生产",
     )
     output_dir = write_outputs(tmp_path, report=report)
     (output_dir / "analysis_process.svg").write_text(
-        "<svg><text>资料盘点 证据分级 故障树 底事件评估 归因 验证计划 审查</text></svg>",
+        "<svg><text>证据提取 证据分级 底事件评估 根因归因 纠正措施 文档生产</text></svg>",
         encoding="utf-8",
     )
 
-    assert_invalid(output_dir, "missing stage marker 证据台账")
+    assert_invalid(output_dir, "missing stage marker 故障树构建")
 
 
 def test_expected_analysis_file_cannot_be_bottom_event_evidence(tmp_path: Path) -> None:
@@ -448,3 +477,69 @@ def test_numeric_probability_requires_basis(tmp_path: Path) -> None:
     fault_tree["bottom_events"][0]["probability_basis"] = None
 
     assert_invalid(write_outputs(tmp_path, fault_tree), "numeric probability for BE-01 lacks probability_basis")
+
+
+def test_valid_corrective_actions_pass(tmp_path: Path) -> None:
+    validator = load_validator()
+    result = validator.validate_outputs(write_outputs(tmp_path, corrective_actions=valid_corrective_actions()))
+
+    assert result.ok
+    assert result.errors == []
+
+
+def test_corrective_actions_missing_required_key_fails(tmp_path: Path) -> None:
+    corrective = valid_corrective_actions()
+    del corrective["corrective_actions"][0]["completion_criteria"]
+
+    assert_invalid(
+        write_outputs(tmp_path, corrective_actions=corrective),
+        "corrective_actions.json.corrective_actions[0]: missing required key completion_criteria",
+    )
+
+
+def test_corrective_actions_invalid_enum_fails(tmp_path: Path) -> None:
+    corrective = valid_corrective_actions()
+    corrective["corrective_actions"][0]["priority"] = "urgent"
+    corrective["corrective_actions"][0]["status"] = "done"
+
+    output_dir = write_outputs(tmp_path, corrective_actions=corrective)
+    assert_invalid(output_dir, "corrective_actions.json.corrective_actions[0].priority")
+    assert_invalid(output_dir, "corrective_actions.json.corrective_actions[0].status")
+
+
+def test_corrective_actions_empty_name_fails(tmp_path: Path) -> None:
+    corrective = valid_corrective_actions()
+    corrective["corrective_actions"][0]["name"] = ""
+
+    assert_invalid(
+        write_outputs(tmp_path, corrective_actions=corrective),
+        "corrective_actions.json.corrective_actions[0].name",
+    )
+
+
+def test_corrective_actions_target_root_cause_must_exist(tmp_path: Path) -> None:
+    corrective = valid_corrective_actions()
+    corrective["corrective_actions"][0]["target_root_cause_id"] = "RC-MISSING"
+
+    assert_invalid(
+        write_outputs(tmp_path, corrective_actions=corrective),
+        "corrective action CA-001 references unknown root cause RC-MISSING",
+    )
+
+
+def test_corrective_actions_invalid_json_fails(tmp_path: Path) -> None:
+    output_dir = write_outputs(tmp_path)
+    artifacts_dir = output_dir / "artifacts"
+    artifacts_dir.mkdir(exist_ok=True)
+    (artifacts_dir / "corrective_actions.json").write_text("{not json", encoding="utf-8")
+
+    assert_invalid(output_dir, "corrective_actions.json is invalid JSON")
+
+
+def test_corrective_actions_root_must_be_object(tmp_path: Path) -> None:
+    output_dir = write_outputs(tmp_path)
+    artifacts_dir = output_dir / "artifacts"
+    artifacts_dir.mkdir(exist_ok=True)
+    (artifacts_dir / "corrective_actions.json").write_text("[]", encoding="utf-8")
+
+    assert_invalid(output_dir, "corrective_actions.json root must be an object")
