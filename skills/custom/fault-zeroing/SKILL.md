@@ -1,6 +1,6 @@
 ---
 name: fault-zeroing
-description: 基于文件资料完成归零排故、故障树构建、底事件评估和归零报告生成
+description: 基于文件资料完成归零排故、故障树构建、底事件评估和生成归零报告
 allowed-tools:
   - glob
   - grep
@@ -15,7 +15,7 @@ allowed-tools:
 
 ## 工作目标
 
-基于用户上传的问题描述、日志、试验记录、设计资料、历史案例和报告模板，完成故障树构建、底事件评估、根因归因、验证计划和 Markdown 归零报告生成。
+基于用户上传的问题描述、日志、试验记录、设计资料、历史案例和报告模板，完成故障树构建、底事件评估、根因归因、验证计划和 Markdown 归零报告的生成。
 
 ## 输入资料读取规则
 
@@ -27,19 +27,6 @@ allowed-tools:
 6. 即使用户只给出一句“做归零排故分析”，也必须主动盘点上传目录并按本工作流执行，不要求用户补写详细 prompt。
 7. 资料覆盖矩阵必须逐项检查五类资料：问题描述、设计约束、试验记录或日志、总结报告、历史或复核记录。缺失项必须同时写入报告“输入资料”和“遗留风险”。
 8. `06_expected_analysis.md`、`*_expected_analysis.md` 等验收参考文件只可用于人工验收，不得作为底事件、根因或报告结论的证据来源。
-
-## 固定执行阶段
-
-必须按顺序完成以下阶段，不得跳步，不得先写根因再补证据：
-
-1. 资料盘点：输出已读取、未读取和缺失资料清单，形成资料覆盖矩阵。
-2. 证据台账：先生成 evidence table，字段必须包含 `id`、`source`、`grade`、`type`、`summary`、`supports`、`contradicts`。
-3. 故障树构建：基于证据台账构建顶事件、中间事件、底事件和逻辑关系。
-4. 底事件评估：逐项评估证据强度、机理一致性、反证、复现实验和验证状态。
-5. 根因归因：根因和报告关键结论只能引用已有 evidence id 或明确资料来源。
-6. 验证计划：为待验证项、冲突证据、低置信根因生成验证项。
-7. 报告生成：生成五件套输出并保证 JSON 与报告一致。
-8. 报告审查：检查结构、证据闭环、过度归因、SVG 安全性和遗留风险。
 
 ## 证据处理规则
 
@@ -58,18 +45,6 @@ allowed-tools:
 
 使用“证据强度 + 机理一致性 + 反证情况 + 复现实验情况”形成概率判断。没有行业统计、历史频次或专家打分表时，不得给出精确数值概率，只给出高/中/低倾向和置信度。
 
-## 子智能体协作规则
-
-复杂资料包必须优先委托子智能体，但最多只进行一轮核心委托。收到子智能体结果后，主智能体必须进入产物生成和自检，不得反复委托导致不产出。
-
-1. `evidence-reader`：抽取关键证据和来源；evidence-reader 不输出根因。
-2. `fault-tree-builder`：构建故障树草案；fault-tree-builder 不给最终归因。
-3. `probability-assessor`：评估底事件概率、置信度和验证状态。
-4. `root-cause-analyst`：形成根因归因和验证建议。
-5. `report-reviewer`：检查章节完整性、证据闭环和待验证项；report-reviewer 不新增技术结论。
-
-子智能体失败时，记录失败原因，再由主智能体直接读取资料完成降级分析。
-
 ## 输出规则
 
 输出文件写入 `/mnt/user-data/outputs/`：
@@ -80,7 +55,7 @@ allowed-tools:
 4. `/mnt/user-data/outputs/analysis_process.svg`
 5. `/mnt/user-data/outputs/zeroing_report.md`
 
-`fault_tree.svg` 必须是静态 SVG 框图，展示顶事件、中间事件、底事件、逻辑门和底事件状态。`analysis_process.svg` 必须展示证据读取、故障树构建、底事件评估、根因归因、报告审查这条分析链路。SVG 只使用内联 `<svg>`、`<rect>`、`<line>`、`<text>` 等静态元素，不写脚本和外链资源。
+`fault_tree.svg` 必须是静态 SVG 框图，展示顶事件、中间事件、底事件、逻辑门和底事件状态。`analysis_process.svg` 必须展示证据提取、故障树构建、底事件评估、根因归因、纠正措施、文档生产这条分析链路。SVG 只使用内联 `<svg>`、`<rect>`、`<line>`、`<text>` 等静态元素，不写脚本和外链资源。
 
 写完后调用 `present_files` 展示五份文件。输出前必须自检：
 
@@ -91,4 +66,5 @@ allowed-tools:
 5. `zeroing_report.md` 的顶事件、主根因和待验证项必须与 `fault_tree.json` 一致。
 6. 两个 SVG 均为静态内容，不包含脚本、外链、远程图片或动态交互代码。
 7. 报告必须显式包含资料覆盖矩阵、证据台账摘要、待验证项和遗留风险。
-8. 写完五件套后提示用户可运行离线 validator：`python scripts/validate_fault_zeroing_outputs.py --outputs-dir /mnt/user-data/outputs`。
+8. 报告必须包含各阶段职责说明：演绎建树阶段不依赖证据台账；证据检漏只做添加不做删除；文档阶段不修改分析数据。
+9. 写完五件套后提示用户可运行离线 validator：`python scripts/validate_fault_zeroing_outputs.py --outputs-dir /mnt/user-data/outputs`。
