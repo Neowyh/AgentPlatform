@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
-from ideer.workflows.v2.parser import parse_workflow_v2
+from ideer.workflows.v2.parser import parse_workflow_v2, parse_workflow_v2_file
+
+REPO_ROOT = Path(__file__).resolve().parents[4]
 
 
 def _workflow(**overrides: object) -> str:
@@ -34,7 +38,11 @@ def _workflow(**overrides: object) -> str:
 
 
 def test_v2_parser_accepts_declared_graph() -> None:
-    workflow = parse_workflow_v2(_workflow())
+    nodes = [
+        {"id": "prepare", "type": "action", "action": {"kind": "tool", "name": "prepare", "params": {"prompt": "处理：{{inputs.request}}"}}, "writes": ["$.state.attempt"]},
+        {"id": "review", "type": "interrupt", "roles": ["department_admin"]},
+    ]
+    workflow = parse_workflow_v2(_workflow(nodes=nodes))
 
     assert workflow.schema_version == 2
     assert workflow.entrypoint == "prepare"
@@ -48,6 +56,15 @@ def test_v2_parser_accepts_declared_graph() -> None:
         ({"entrypoint": "missing"}, "entrypoint 'missing' does not name a node"),
         ({"edges": [{"from": "prepare", "to": "missing"}]}, "edge target 'missing' does not name a node"),
         ({"nodes": [{"id": "prepare", "type": "action", "action": {"kind": "tool", "name": "prepare"}}, {"id": "prepare", "type": "interrupt", "roles": ["admin"]}]}, "duplicate node id 'prepare'"),
+        (
+            {
+                "nodes": [
+                    {"id": "prepare", "type": "action", "action": {"kind": "tool", "name": "prepare", "params": {"text": "{{broken"}}},
+                    {"id": "review", "type": "interrupt", "roles": ["admin"]},
+                ]
+            },
+            "invalid template syntax in action node 'prepare'",
+        ),
     ],
 )
 def test_v2_parser_rejects_invalid_graph(change: dict, message: str) -> None:
@@ -64,12 +81,13 @@ def test_v2_parser_rejects_unbounded_cycle() -> None:
         parse_workflow_v2(_workflow(entrypoint="a", nodes=nodes, edges=[{"from": "a", "to": "b"}, {"from": "b", "to": "a"}]))
 
 
-def test_v2_parser_rejects_undeclared_template_path() -> None:
+@pytest.mark.parametrize("template", ["{{ $.inputs.unknown }}", "{{inputs.unknown}}"])
+def test_v2_parser_rejects_undeclared_template_path(template: str) -> None:
     nodes = [
-        {"id": "prepare", "type": "action", "action": {"kind": "tool", "name": "prepare", "params": {"text": "{{ $.inputs.unknown }}"}}},
+        {"id": "prepare", "type": "action", "action": {"kind": "tool", "name": "prepare", "params": {"text": template}}},
         {"id": "review", "type": "interrupt", "roles": ["admin"]},
     ]
-    with pytest.raises(ValueError, match=r"template references undeclared path '\$\.inputs\.unknown'"):
+    with pytest.raises(ValueError, match=r"template references undeclared path"):
         parse_workflow_v2(_workflow(nodes=nodes))
 
 
@@ -135,3 +153,41 @@ def test_v2_parser_rejects_fork_join_mismatch() -> None:
 
     with pytest.raises(ValueError, match="fork 'fork' does not match its join"):
         parse_workflow_v2(_workflow(entrypoint="fork", nodes=nodes, edges=edges))
+
+
+def test_v2_parser_accepts_fault_zeroing_workflow() -> None:
+    workflow = parse_workflow_v2_file(REPO_ROOT / "workflows" / "fault-zeroing.yaml")
+
+    assert workflow.schema_version == 2
+    assert workflow.name == "fault-zeroing"
+    assert workflow.entrypoint == "fork_start"
+    assert {node.id for node in workflow.nodes} == {
+        "fork_start",
+        "evidence_collection",
+        "deductive_tree",
+        "join_review",
+        "review_and_crosscheck",
+        "integrate_tree",
+        "evidence_assessment",
+        "assessment_review",
+        "assessment_refine",
+        "corrective_actions",
+        "generate_outputs",
+    }
+
+    fork = next(node for node in workflow.nodes if node.id == "fork_start")
+    assert fork.type == "fork"
+    assert sorted(fork.branches) == ["deductive_tree", "evidence_collection"]
+    assert fork.join == "join_review"
+
+    written = {node.id: node.writes for node in workflow.nodes if node.writes}
+    assert written == {
+        "evidence_collection": ["$.state.evidence_summary"],
+        "deductive_tree": ["$.state.tree_structure"],
+        "review_and_crosscheck": ["$.state.all_findings"],
+        "integrate_tree": ["$.state.tree_structure"],
+        "evidence_assessment": ["$.state.assessment_summary"],
+        "assessment_review": ["$.state.assessment_review"],
+        "assessment_refine": ["$.state.assessment_summary"],
+        "corrective_actions": ["$.state.corrective_actions_summary"],
+    }
