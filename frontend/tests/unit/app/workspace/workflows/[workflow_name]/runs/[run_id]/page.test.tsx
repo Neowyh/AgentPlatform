@@ -54,7 +54,7 @@ vi.mock("@/core/i18n/hooks", () => ({
 }));
 vi.mock("@/core/workflows", () => ({
   useWorkflow: () => ({
-    workflow: { name: "approval" },
+    workflow: { name: "approval", version: "2", nodes: [], edges: [] },
     isLoading: false,
     error: null,
   }),
@@ -98,6 +98,17 @@ vi.mock("@/components/ui/card", () => ({
   CardHeader: ({ children }: any) => <div>{children}</div>,
   CardTitle: ({ children }: any) => <h2>{children}</h2>,
   CardDescription: ({ children }: any) => <p>{children}</p>,
+}));
+vi.mock("@/components/ui/collapsible", () => ({
+  Collapsible: ({ children }: any) => <div>{children}</div>,
+  CollapsibleTrigger: ({ children }: any) => <div>{children}</div>,
+  CollapsibleContent: ({ children }: any) => <div>{children}</div>,
+}));
+vi.mock("@/components/workspace/workflows/run-graph", () => ({
+  RunGraph: () => <div data-testid="run-graph" />,
+}));
+vi.mock("@/components/workspace/workflows/node-detail", () => ({
+  NodeDetailPanel: () => <div data-testid="node-detail" />,
 }));
 
 describe("WorkflowRunDetailPage", () => {

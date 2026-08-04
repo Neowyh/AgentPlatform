@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeftIcon, DownloadIcon } from "lucide-react";
+import { ArrowLeftIcon, ChevronDownIcon, DownloadIcon } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -8,6 +8,13 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { NodeDetailPanel } from "@/components/workspace/workflows/node-detail";
+import { RunGraph } from "@/components/workspace/workflows/run-graph";
 import { WorkspaceBreadcrumb } from "@/components/workspace/workspace-breadcrumb";
 import { fetch as apiFetch } from "@/core/api/fetcher";
 import { getBackendBaseURL } from "@/core/config";
@@ -20,6 +27,7 @@ import {
   useWorkflow,
 } from "@/core/workflows";
 import type { RunArtifact } from "@/core/workflows";
+import { cn } from "@/lib/utils";
 
 function statusClass(status: string) {
   if (status === "completed") return "text-green-600";
@@ -66,6 +74,8 @@ export default function WorkflowRunDetailPage() {
     refetch: refetchArtifacts,
   } = useRunArtifacts(workflow_name, run_id);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [eventsOpen, setEventsOpen] = useState(false);
   const { data: previewContent, isLoading: previewLoading } =
     useRunArtifactContent(workflow_name, run_id, selectedPath);
   const wasTerminal = useRef(false);
@@ -202,7 +212,7 @@ export default function WorkflowRunDetailPage() {
         </div>
       </div>
       <div className="flex-1 overflow-y-auto p-6">
-        <div className="mx-auto max-w-4xl space-y-6">
+        <div className="mx-auto max-w-6xl space-y-6">
           {fallbackPolling && (
             <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
               {t.workflows.streamFallback}
@@ -213,59 +223,108 @@ export default function WorkflowRunDetailPage() {
               {runStatus.error}
             </p>
           )}
-          <Card>
-            <CardHeader>
+          {workflow &&
+            runStatus.definition_version != null &&
+            workflow.version !== String(runStatus.definition_version) && (
+              <p className="text-muted-foreground bg-muted/40 rounded-md border p-3 text-xs">
+                {t.workflows.definitionMismatchHint}
+              </p>
+            )}
+          <Card className="overflow-hidden">
+            <CardHeader className="border-b">
               <CardTitle>{t.workflows.runStatus}</CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                {Object.entries(runStatus.steps ?? {}).map(([nodeId, step]) => (
-                  <div key={nodeId} className="rounded-md border p-3">
-                    <div className="flex items-center justify-between">
-                      <span className="font-medium">{nodeId}</span>
-                      <Badge
-                        variant="outline"
-                        className={statusClass(step.status)}
-                      >
-                        {step.status}
-                      </Badge>
-                    </div>
-                    {step.error && (
-                      <p className="text-destructive mt-1 text-xs">
-                        {step.error}
-                      </p>
-                    )}
-                    {runStatus.action_progress?.[nodeId] && (
-                      <p className="text-muted-foreground mt-1 text-sm">
-                        {runStatus.action_progress[nodeId]}
-                      </p>
-                    )}
-                    {runStatus.action_tokens?.[nodeId] && (
-                      <pre className="bg-muted mt-2 overflow-auto rounded p-2 text-xs whitespace-pre-wrap">
-                        {runStatus.action_tokens[nodeId]}
-                      </pre>
-                    )}
+            <CardContent className="p-0">
+              {workflow ? (
+                <div className="flex h-[480px]">
+                  <div className="min-w-0 flex-1">
+                    <RunGraph
+                      workflow={workflow}
+                      runStatus={runStatus}
+                      selectedNodeId={selectedNodeId}
+                      onSelect={setSelectedNodeId}
+                    />
                   </div>
-                ))}
-              </div>
+                  <div className="border-border bg-card/50 w-80 shrink-0 border-l">
+                    <NodeDetailPanel
+                      node={
+                        workflow.nodes.find(
+                          (node) => node.id === selectedNodeId,
+                        ) ?? null
+                      }
+                      step={
+                        selectedNodeId
+                          ? (runStatus.steps?.[selectedNodeId] ?? null)
+                          : null
+                      }
+                      progress={
+                        selectedNodeId
+                          ? runStatus.action_progress?.[selectedNodeId]
+                          : undefined
+                      }
+                      tokens={
+                        selectedNodeId
+                          ? runStatus.action_tokens?.[selectedNodeId]
+                          : undefined
+                      }
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="text-muted-foreground flex h-48 items-center justify-center text-sm">
+                  {t.common.loading}
+                </div>
+              )}
             </CardContent>
           </Card>
           <Card>
-            <CardHeader>
-              <CardTitle>{t.workflows.eventTimeline}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ol className="space-y-2">
-                {(runStatus.events ?? []).map((event) => (
-                  <li key={event.seq} className="rounded-md border p-2 text-sm">
-                    <span className="text-muted-foreground mr-2 font-mono">
-                      #{event.seq}
-                    </span>
-                    {event.type}
-                  </li>
-                ))}
-              </ol>
-            </CardContent>
+            <Collapsible open={eventsOpen} onOpenChange={setEventsOpen}>
+              <CardHeader className="p-0">
+                <CollapsibleTrigger asChild>
+                  <button
+                    type="button"
+                    className="flex w-full items-center justify-between px-6 py-4 text-left"
+                  >
+                    <CardTitle>{t.workflows.eventTimeline}</CardTitle>
+                    <ChevronDownIcon
+                      className={cn(
+                        "text-muted-foreground h-4 w-4 transition-transform",
+                        eventsOpen && "rotate-180",
+                      )}
+                    />
+                  </button>
+                </CollapsibleTrigger>
+              </CardHeader>
+              <CollapsibleContent>
+                <CardContent>
+                  <ol className="space-y-2">
+                    {(runStatus.events ?? []).map((event) => (
+                      <li
+                        key={event.seq}
+                        className="rounded-md border p-2 text-sm"
+                      >
+                        <span className="text-muted-foreground mr-2 font-mono">
+                          #{event.seq}
+                        </span>
+                        {event.type}
+                        {typeof event.payload.node_id === "string" && (
+                          <span className="text-muted-foreground ml-2 font-mono text-xs">
+                            {event.payload.node_id}
+                          </span>
+                        )}
+                        {event.type === "edge_selected" &&
+                          typeof event.payload.from === "string" &&
+                          typeof event.payload.to === "string" && (
+                            <span className="text-muted-foreground ml-2 font-mono text-xs">
+                              {event.payload.from} → {event.payload.to}
+                            </span>
+                          )}
+                      </li>
+                    ))}
+                  </ol>
+                </CardContent>
+              </CollapsibleContent>
+            </Collapsible>
           </Card>
           <Card>
             <CardHeader>

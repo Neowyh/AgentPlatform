@@ -330,7 +330,10 @@ edges: []
         await graph.ainvoke({"run_id": "run-1", "inputs": {}, "state": {}, "outputs": {}}, config={"configurable": {"thread_id": "wf:failed"}})
 
     assert attempts == 2
-    assert ("node_failed", {"node_id": "task", "idempotency_key": "wf:run-1:node:task", "error": "node 'task' reported failure: FAILED: 无法读取证据文件"}) in events
+    failed = [event for event in events if event[0] == "node_failed"]
+    assert failed and failed[0][1]["node_id"] == "task"
+    assert failed[0][1]["error"] == "node 'task' reported failure: FAILED: 无法读取证据文件"
+    assert failed[0][1]["finished_at"]
 
 
 @pytest.mark.asyncio
@@ -493,6 +496,54 @@ edges: []
 
     assert [event_type for event_type, _ in events] == ["node_started", "node_completed"]
     assert events[1][1]["idempotency_key"] == "wf:run-1:node:task"
+    assert events[0][1]["started_at"]
+    assert events[1][1]["finished_at"]
+
+
+@pytest.mark.asyncio
+async def test_compiler_emits_edge_selected_for_route_branch() -> None:
+    definition = parse_workflow_v2(
+        """
+schema_version: 2
+name: routing
+inputs: {}
+state: {flag: {type: boolean}}
+entrypoint: route
+nodes:
+  - id: route
+    type: route
+    expression: "$.state.flag"
+  - id: "yes"
+    type: action
+    action: {kind: tool, name: echo}
+  - id: "no"
+    type: action
+    action: {kind: tool, name: echo}
+edges: [{from: route, to: "yes"}, {from: route, to: "no"}]
+"""
+    )
+    events: list[tuple[str, dict]] = []
+
+    class Adapter:
+        async def run(self, context, params):
+            return "ok"
+
+    async def emit(event_type: str, payload: dict) -> None:
+        events.append((event_type, payload))
+
+    graph = WorkflowGraphCompiler(
+        definition,
+        ActionAdapterRegistry({("tool", "echo"): Adapter()}),
+        emit_event=emit,
+    ).compile()
+    result = await graph.ainvoke(
+        {"run_id": "run-1", "inputs": {}, "state": {"flag": True}, "outputs": {}},
+        config={"configurable": {"thread_id": "wf:routing"}},
+    )
+
+    assert result["outputs"]["yes"] == "ok"
+    selected = [event for event in events if event[0] == "edge_selected"]
+    assert selected and selected[0][1] == {"node_id": "route", "from": "route", "to": "yes"}
 
 
 @pytest.mark.asyncio

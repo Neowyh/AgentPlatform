@@ -7,6 +7,7 @@ import asyncio
 import operator
 import re
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from typing import Annotated, Any, TypedDict
 
 from langgraph.errors import GraphInterrupt
@@ -159,7 +160,7 @@ class WorkflowGraphCompiler:
             if self.is_cancelled is not None and await self.is_cancelled():
                 raise WorkflowCancelled(f"workflow cancelled before node '{node.id}'")
             if node.type == "interrupt":
-                await self._emit("node_started", {"node_id": node.id})
+                await self._emit("node_started", {"node_id": node.id, "started_at": _now_iso()})
                 return {"interrupt": interrupt({"node_id": node.id, "roles": node.roles})}
             if node.type != "action":
                 return state
@@ -182,7 +183,7 @@ class WorkflowGraphCompiler:
                 file_access=file_access,
             )
             params = render_template(node.action.params, render_state)  # type: ignore[union-attr]
-            await self._emit("node_started", {"node_id": node.id, "idempotency_key": context.idempotency_key})
+            await self._emit("node_started", {"node_id": node.id, "idempotency_key": context.idempotency_key, "started_at": _now_iso()})
             try:
                 adapter = self.adapters.resolve(node.action.kind, node.action.name)  # type: ignore[union-attr]
                 last_error: Exception | None = None
@@ -219,12 +220,12 @@ class WorkflowGraphCompiler:
             except Exception as exc:
                 await self._emit(
                     "node_failed",
-                    {"node_id": node.id, "idempotency_key": context.idempotency_key, "error": str(exc)},
+                    {"node_id": node.id, "idempotency_key": context.idempotency_key, "error": str(exc), "finished_at": _now_iso()},
                 )
                 raise
             await self._emit(
                 "node_completed",
-                {"node_id": node.id, "idempotency_key": context.idempotency_key, "result": result},
+                {"node_id": node.id, "idempotency_key": context.idempotency_key, "result": result, "finished_at": _now_iso()},
             )
             outputs = dict(state.get("outputs", {}))
             outputs[node.id] = result
@@ -271,21 +272,29 @@ class WorkflowGraphCompiler:
         return next(node for node in self.definition.nodes if node.id == node_id)
 
     def _route_selector(self, node: NodeV2, targets: list[str], edge_targets: dict[str, str]):
-        def select(state: dict[str, Any]) -> str:
+        async def select(state: dict[str, Any]) -> str:
             # Route expressions are statically constrained by parser; runtime
             # evaluation is intentionally limited to the declared expression.
             expression = node.expression or ""
             if node.routes:
                 for condition, target in node.routes.items():
                     if _evaluate_expression(condition, state):
+                        await self._emit("edge_selected", {"node_id": node.id, "from": node.id, "to": target})
                         return edge_targets[target]
-            return edge_targets[targets[0] if _evaluate_expression(expression, state) else targets[-1]]
+            selected = edge_targets[targets[0] if _evaluate_expression(expression, state) else targets[-1]]
+            target = next(t for t in targets if edge_targets[t] == selected)
+            await self._emit("edge_selected", {"node_id": node.id, "from": node.id, "to": target})
+            return selected
 
         return select
 
 
 def _run_id(state: dict[str, Any]) -> str:
     return str(state.get("run_id", "unknown"))
+
+
+def _now_iso() -> str:
+    return datetime.now(UTC).isoformat()
 
 
 def _write_key(path: str) -> str:

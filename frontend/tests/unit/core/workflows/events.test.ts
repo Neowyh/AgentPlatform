@@ -46,4 +46,73 @@ describe("applyWorkflowEvent", () => {
     });
     expect(malformed.action_tokens?.draft).toBe("");
   });
+
+  test("records started_at and finished_at from node lifecycle events", () => {
+    const started = applyWorkflowEvent(
+      { run_id: "run-1", workflow: "wf", status: "queued", error: null },
+      {
+        seq: 1,
+        type: "node_started",
+        payload: { node_id: "draft", started_at: "2026-08-04T07:00:00Z" },
+      },
+    );
+    const completed = applyWorkflowEvent(started, {
+      seq: 2,
+      type: "node_completed",
+      payload: {
+        node_id: "draft",
+        result: { ok: true },
+        finished_at: "2026-08-04T07:00:10Z",
+      },
+    });
+
+    expect(started.steps?.draft?.started_at).toBe("2026-08-04T07:00:00Z");
+    expect(completed.steps?.draft).toMatchObject({
+      status: "completed",
+      started_at: "2026-08-04T07:00:00Z",
+      finished_at: "2026-08-04T07:00:10Z",
+    });
+    expect(completed.steps?.draft?.output).toEqual({ ok: true });
+  });
+
+  test("collects unique edge_selected events", () => {
+    const first = applyWorkflowEvent(
+      { run_id: "run-1", workflow: "wf", status: "running", error: null },
+      {
+        seq: 5,
+        type: "edge_selected",
+        payload: { node_id: "route", from: "route", to: "yes" },
+      },
+    );
+    const duplicate = applyWorkflowEvent(first, {
+      seq: 6,
+      type: "edge_selected",
+      payload: { node_id: "route", from: "route", to: "yes" },
+    });
+    const other = applyWorkflowEvent(duplicate, {
+      seq: 7,
+      type: "edge_selected",
+      payload: { node_id: "route", from: "route", to: "no" },
+    });
+
+    expect(first.selected_edges).toEqual([{ from: "route", to: "yes" }]);
+    expect(duplicate.selected_edges).toEqual([{ from: "route", to: "yes" }]);
+    expect(other.selected_edges).toEqual([
+      { from: "route", to: "yes" },
+      { from: "route", to: "no" },
+    ]);
+  });
+
+  test("ignores run_started without disturbing status", () => {
+    const result = applyWorkflowEvent(
+      { run_id: "run-1", workflow: "wf", status: "queued", error: null },
+      {
+        seq: 0,
+        type: "run_started",
+        payload: { definition_version: 3 },
+      },
+    );
+    expect(result.status).toBe("queued");
+    expect(result.last_event_seq).toBe(0);
+  });
 });

@@ -82,6 +82,7 @@ export interface RunStatus {
   last_event_seq?: number;
   action_tokens?: Record<string, string>;
   action_progress?: Record<string, string>;
+  selected_edges?: Array<{ from: string; to: string }>;
   events?: WorkflowEvent[];
 }
 
@@ -101,11 +102,13 @@ export interface RunArtifact {
 export interface WorkflowEvent {
   seq: number;
   type:
+    | "run_started"
     | "node_started"
     | "action_token"
     | "action_progress"
     | "node_completed"
     | "node_failed"
+    | "edge_selected"
     | "interrupted"
     | "resumed"
     | "run_completed"

@@ -20,11 +20,13 @@ import { applyWorkflowEvent } from "./events";
 import type { RunArtifact, RunStatus, WorkflowEvent } from "./types";
 
 const workflowEventTypes = new Set<WorkflowEvent["type"]>([
+  "run_started",
   "node_started",
   "action_token",
   "action_progress",
   "node_completed",
   "node_failed",
+  "edge_selected",
   "interrupted",
   "resumed",
   "run_completed",
@@ -237,11 +239,13 @@ export function useRunStatus(
         });
       };
       for (const type of [
+        "run_started",
         "node_started",
         "action_token",
         "action_progress",
         "node_completed",
         "node_failed",
+        "edge_selected",
         "interrupted",
         "resumed",
         "run_completed",

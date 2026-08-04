@@ -288,6 +288,13 @@ export const zhCN: Translations = {
     commandSubmitted: "命令已提交",
     streamFallback: "实时更新不可用，正在刷新状态。",
     eventTimeline: "事件时间线",
+    selectNodeHint: "点击图中的节点以查看运行详情",
+    nodeDetailTitle: "节点详情",
+    nodeNotStarted: "该节点尚未开始执行。",
+    duration: "耗时",
+    tokenStream: "Token 流",
+    definitionMismatchHint:
+      "图为当前定义，可能与本次运行所使用的版本存在差异。",
     artifacts: "产物文件",
     noArtifacts: "暂无产物文件",
     artifactLoadError: "产物加载失败",

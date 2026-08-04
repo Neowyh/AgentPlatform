@@ -301,6 +301,13 @@ export const enUS: Translations = {
     commandSubmitted: "Command submitted",
     streamFallback: "Live updates unavailable; refreshing status.",
     eventTimeline: "Event timeline",
+    selectNodeHint: "Select a node in the graph to inspect its run details",
+    nodeDetailTitle: "Node details",
+    nodeNotStarted: "This node has not started yet.",
+    duration: "Duration",
+    tokenStream: "Token stream",
+    definitionMismatchHint:
+      "The graph reflects the current definition, which may differ from the version this run executed.",
     artifacts: "Artifacts",
     noArtifacts: "No artifacts yet",
     artifactLoadError: "Failed to load artifacts",

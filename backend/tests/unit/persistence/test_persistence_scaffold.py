@@ -181,16 +181,18 @@ class TestBaseToDictMixin:
             await conn.run_sync(Base.metadata.create_all)
 
         sf = async_sessionmaker(engine, expire_on_commit=False)
-        async with sf() as session:
-            session.add(_Tmp(id="1", name="hello"))
-            await session.commit()
-            obj = await session.get(_Tmp, "1")
+        try:
+            async with sf() as session:
+                session.add(_Tmp(id="1", name="hello"))
+                await session.commit()
+                obj = await session.get(_Tmp, "1")
 
-            assert obj.to_dict() == {"id": "1", "name": "hello"}
-            assert obj.to_dict(exclude={"name"}) == {"id": "1"}
-            assert "_Tmp" in repr(obj)
-
-        await engine.dispose()
+                assert obj.to_dict() == {"id": "1", "name": "hello"}
+                assert obj.to_dict(exclude={"name"}) == {"id": "1"}
+                assert "_Tmp" in repr(obj)
+        finally:
+            await engine.dispose()
+            Base.metadata.remove(_Tmp.__table__)
 
 
 # -- Engine lifecycle --

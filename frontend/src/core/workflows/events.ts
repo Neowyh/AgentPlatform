@@ -62,7 +62,10 @@ export function applyWorkflowEvent(
       ...next,
       status: "running",
       current_step: nodeId,
-      steps: updatedStep(next, nodeId, { status: "running" }),
+      steps: updatedStep(next, nodeId, {
+        status: "running",
+        started_at: textValue(event.payload.started_at) || null,
+      }),
     };
   }
   if (event.type === "node_completed" && nodeId) {
@@ -72,6 +75,7 @@ export function applyWorkflowEvent(
       steps: updatedStep(next, nodeId, {
         status: "completed",
         output: event.payload.result,
+        finished_at: textValue(event.payload.finished_at) || null,
       }),
     };
   }
@@ -83,7 +87,21 @@ export function applyWorkflowEvent(
       steps: updatedStep(next, nodeId, {
         status: "failed",
         error: textValue(event.payload.error) || null,
+        finished_at: textValue(event.payload.finished_at) || null,
       }),
+    };
+  }
+  if (event.type === "edge_selected") {
+    const from = textValue(event.payload.from);
+    const to = textValue(event.payload.to);
+    if (!from || !to) return next;
+    const alreadySelected = (next.selected_edges ?? []).some(
+      (edge) => edge.from === from && edge.to === to,
+    );
+    if (alreadySelected) return next;
+    return {
+      ...next,
+      selected_edges: [...(next.selected_edges ?? []), { from, to }],
     };
   }
   const terminal = terminalStatus[event.type];

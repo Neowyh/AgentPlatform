@@ -234,6 +234,12 @@ export interface Translations {
     commandSubmitted: string;
     streamFallback: string;
     eventTimeline: string;
+    selectNodeHint: string;
+    nodeDetailTitle: string;
+    nodeNotStarted: string;
+    duration: string;
+    tokenStream: string;
+    definitionMismatchHint: string;
     artifacts: string;
     noArtifacts: string;
     artifactLoadError: string;
