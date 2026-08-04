@@ -112,6 +112,102 @@ function parseTopLevelFields(yaml: string): {
   return { fields, errors };
 }
 
+/**
+ * Check that every action-type node has a non-empty action name.
+ */
+function checkEmptyActionNames(content: string): string[] {
+  const errors: string[] = [];
+  const lines = content.split("\n");
+
+  // Walk through nodes inside the "nodes:" block.  Node items start with "- "
+  // (indent >= nodesIndent).  Within each node we look for property "action:"
+  // and, once found, check for "name: \"\"" in its children.
+  let inNodes = false;
+  let nodesIndent = -1;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    const trimmed = line.trim();
+    const indent = line.length - trimmed.length;
+
+    if (trimmed === "" || trimmed.startsWith("#")) continue;
+
+    // Detect the start of the nodes block
+    if (!inNodes) {
+      if (trimmed === "nodes:" || trimmed.startsWith("nodes:")) {
+        inNodes = true;
+        nodesIndent = indent;
+      }
+      continue;
+    }
+
+    // Still in nodes: a line at or shallower than nodes: itself exits
+    if (indent <= nodesIndent) {
+      inNodes = false;
+      continue;
+    }
+
+    // Look for a node item "- ..." that has "type: action"
+    if (!trimmed.startsWith("- ")) continue;
+    const itemIndent = indent;
+
+    // Scan forward through the node properties to see if it's an action node
+    // with an empty name.
+    if (_scanNodeForEmptyAction(lines, i + 1, itemIndent)) {
+      errors.push(
+        'Action node has empty "name" — provide a valid agent or tool name',
+      );
+    }
+  }
+
+  return errors;
+}
+
+/** Starting at `start` in `lines`, look for `type: action` then `action: . name: ""`. */
+function _scanNodeForEmptyAction(
+  lines: string[],
+  start: number,
+  itemIndent: number,
+): boolean {
+  let isAction = false;
+
+  for (let j = start; j < lines.length; j++) {
+    const prop = lines[j]!;
+    const propTrimmed = prop.trim();
+    const propIndent = prop.length - propTrimmed.length;
+
+    if (propTrimmed === "" || propTrimmed.startsWith("#")) continue;
+    if (propIndent <= itemIndent) break;
+
+    if (/^type:\s*action/.test(propTrimmed)) {
+      isAction = true;
+    }
+
+    if (isAction && propTrimmed === "action:") {
+      const actionIndent = propIndent;
+
+      for (let k = j + 1; k < lines.length; k++) {
+        const child = lines[k]!;
+        const childTrimmed = child.trim();
+        const childIndent = child.length - childTrimmed.length;
+
+        if (childTrimmed === "" || childTrimmed.startsWith("#")) continue;
+        if (childIndent <= actionIndent) break;
+
+        if (
+          /^name:\s*""$/.test(childTrimmed) ||
+          /^name:\s*''$/.test(childTrimmed)
+        ) {
+          return true;
+        }
+      }
+      break;
+    }
+  }
+
+  return false;
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -151,7 +247,11 @@ export function validateYaml(content: string): string[] {
     errors.push('Required field "nodes" must contain at least one node');
   }
 
-  // 4. Basic bracket balance check (catches unclosed arrays / objects).
+  // 4. Check that action-type nodes have a non-empty action name.
+  const actionNameErrors = checkEmptyActionNames(trimmed);
+  errors.push(...actionNameErrors);
+
+  // 5. Basic bracket balance check (catches unclosed arrays / objects).
   const opens = (trimmed.match(/\[/g) ?? []).length;
   const closes = (trimmed.match(/\]/g) ?? []).length;
   if (opens !== closes) {

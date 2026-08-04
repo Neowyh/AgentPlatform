@@ -752,19 +752,27 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
             version: wf.version ?? "1.0",
             yaml_content:
               wf.yaml_content ??
-              `schema_version: 2\nname: ${wf.name}\ndescription: ""\ninputs: {}\nstate: {}\nentrypoint: start\nnodes:\n  - id: start\n    type: action\n    action:\n      kind: agent\n      name: ""\n      params:\n        prompt: ""\nedges: []`,
+              `schema_version: 2\nname: ${wf.name}\ndescription: ""\ninputs: {}\nstate: {}\nentrypoint: start\nnodes:\n  - id: start\n    type: action\n    action:\n      kind: agent\n      name: my-agent\n      params:\n        prompt: ""\nedges: []`,
             nodes: wf.nodes ?? [
               {
                 id: "start",
                 type: "action",
-                action: { kind: "agent", name: "", params: { prompt: "" } },
+                action: {
+                  kind: "agent",
+                  name: "my-agent",
+                  params: { prompt: "" },
+                },
               },
             ],
             steps: wf.nodes ?? [
               {
                 id: "start",
                 type: "action",
-                action: { kind: "agent", name: "", params: { prompt: "" } },
+                action: {
+                  kind: "agent",
+                  name: "my-agent",
+                  params: { prompt: "" },
+                },
               },
             ],
             steps_count: (wf.nodes ?? []).length || 1,

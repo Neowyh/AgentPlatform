@@ -35,6 +35,16 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/workflows", tags=["workflows"])
 
+
+def _friendly_validation_error(raw: str) -> str:
+    """Translate common Pydantic workflow YAML errors into actionable messages."""
+    if "nodes" in raw and "action.name" in raw and "string_too_short" in raw:
+        return 'action node \'name\' cannot be empty. Provide a valid agent name (e.g., "my-agent") or tool name (e.g., "web_search").'
+    if "nodes" in raw and "name" in raw and "string_too_short" in raw:
+        return "workflow 'name' cannot be empty. Provide a name (1-60 characters)."
+    return raw
+
+
 _workflow_store = ResourceMetadataStore("workflow")
 
 
@@ -376,7 +386,7 @@ async def create_workflow(
     try:
         wf = parse_workflow_string(body.yaml_content)
     except Exception as e:
-        raise HTTPException(400, f"Invalid workflow YAML: {e}")
+        raise HTTPException(400, f"Invalid workflow YAML: {_friendly_validation_error(str(e))}")
 
     store = _v2_store()
     existing = await store.get_latest_definition(wf.name)

@@ -32,6 +32,23 @@ describe("validateYaml", () => {
     );
   });
 
+  it("rejects action node with empty name", () => {
+    const errors = validateYaml(
+      'schema_version: 2\nname: workflow\ninputs: {}\nstate: {}\nentrypoint: start\nnodes:\n  - id: start\n    type: action\n    action:\n      kind: agent\n      name: ""\n      params:\n        prompt: ""\nedges: []',
+    );
+    expect(errors).toContain(
+      'Action node has empty "name" — provide a valid agent or tool name',
+    );
+  });
+
+  it("accepts action node with non-empty name", () => {
+    expect(
+      validateYaml(
+        'schema_version: 2\nname: workflow\ninputs: {}\nstate: {}\nentrypoint: start\nnodes:\n  - id: start\n    type: action\n    action:\n      kind: agent\n      name: my-agent\n      params:\n        prompt: ""\nedges: []',
+      ),
+    ).toEqual([]);
+  });
+
   it("reports malformed top-level YAML and unbalanced delimiters", () => {
     const errors = validateYaml(
       "schema_version: 2\nname: workflow\nbad-line\nnodes: [{",

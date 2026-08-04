@@ -18,6 +18,10 @@ export interface WorkflowNode {
   action?: {
     kind: "agent" | "tool";
     name: string;
+    file_access?: {
+      read?: string[];
+      write?: string[];
+    };
     params?: Record<string, unknown>;
   };
   branches?: string[];

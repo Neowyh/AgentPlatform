@@ -18,19 +18,30 @@ import { useCreateWorkflow } from "@/core/workflows";
 import { validateYaml } from "@/core/workflows/validate";
 
 const DEFAULT_YAML = `schema_version: 2
+# 工作流名称（必填，1-60 字符，需唯一）
 name: my-workflow
-description: ""
-inputs: {}
+# 可选描述
+description: "请修改此模板以适配你的场景"
+# 输入参数——运行时会弹窗让用户填写
+inputs:
+  topic:
+    type: string
+    required: true
+    description: "需要处理的任务或问题"
 state: {}
+# 起始节点 ID（必须匹配下方某个节点的 id）
 entrypoint: start
 nodes:
   - id: start
     type: action
     action:
+      # kind: "agent" 使用 AI agent；"tool" 直接调用工具
       kind: agent
-      name: ""
+      # 在"设置 → Agents"中创建 agent 后，将名称填写在此处
+      name: my-agent
       params:
-        prompt: ""
+        # prompt 支持 {{inputs.*}} / {{state.*}} 引用
+        prompt: "请处理以下任务：{{inputs.topic}}"
 edges: []
 `;
 
