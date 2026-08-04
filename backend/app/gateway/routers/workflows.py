@@ -641,6 +641,19 @@ async def run_workflow(
         if name not in inputs and param.default is not None:
             inputs[name] = param.default
 
+    # Reject host paths before a run is created: the sandbox only allows
+    # virtual paths (/mnt/user-data, /mnt/skills, /mnt/acp-workspace and
+    # configured mount container paths), so an invalid root would otherwise
+    # surface only later as a soft-failed node.
+    from ideer.workflows.v2.file_roots import validate_workflow_roots
+
+    invalid_roots = validate_workflow_roots(wf.nodes, inputs)
+    if invalid_roots:
+        raise HTTPException(
+            400,
+            "Invalid file_access paths: " + "; ".join(invalid_roots) + ". Use virtual paths under /mnt/user-data, /mnt/skills, /mnt/acp-workspace, or a configured mount path.",
+        )
+
     run_id = str(uuid.uuid4())
     runtime = get_app_config().workflow_runtime
     try:

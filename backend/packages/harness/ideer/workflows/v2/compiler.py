@@ -9,10 +9,12 @@ import re
 from collections.abc import Awaitable, Callable
 from typing import Annotated, Any, TypedDict
 
+from langgraph.errors import GraphInterrupt
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
 
 from .adapters import ActionAdapterRegistry, ActionContext
+from .file_roots import lookup_path, missing_written_artifacts, render_template
 from .schema import EdgeV2, NodeV2, WorkflowV2
 
 
@@ -26,6 +28,14 @@ class WorkflowNodeTimeout(RuntimeError):
 
 class WorkflowIterationLimit(RuntimeError):
     """Raised when a declared workflow back-edge exceeds its bound."""
+
+
+class ArtifactsMissing(RuntimeError):
+    """Raised when a node's declared write roots produced no usable data."""
+
+    def __init__(self, missing: list[str]) -> None:
+        self.missing = missing
+        super().__init__(f"artifacts_missing: {', '.join(missing)}")
 
 
 def _merge_maps(left: dict[str, Any] | None, right: dict[str, Any] | None) -> dict[str, Any]:
@@ -50,12 +60,14 @@ class WorkflowGraphCompiler:
         emit_event: Callable[[str, dict[str, Any]], Awaitable[None]] | None = None,
         is_cancelled: Callable[[], Awaitable[bool]] | None = None,
         node_timeout_seconds: float | None = None,
+        artifact_resolver: Callable[[str], str | None] | None = None,
     ) -> None:
         self.definition = definition
         self.adapters = adapters
         self.emit_event = emit_event
         self.is_cancelled = is_cancelled
         self.node_timeout_seconds = node_timeout_seconds
+        self.artifact_resolver = artifact_resolver
 
     def compile(self, *, checkpointer: Any = None) -> Any:
         graph = StateGraph(_GraphState)
@@ -154,9 +166,9 @@ class WorkflowGraphCompiler:
                 inputs=dict(state.get("inputs", {})),
                 state=dict(state.get("state", {})),
                 outputs=dict(state.get("outputs", {})),
-                file_access=(_render_params(node.action.file_access.model_dump(), state) if node.action is not None and node.action.file_access is not None else None),
+                file_access=(render_template(node.action.file_access.model_dump(), state) if node.action is not None and node.action.file_access is not None else None),
             )
-            params = _render_params(node.action.params, state)  # type: ignore[union-attr]
+            params = render_template(node.action.params, state)  # type: ignore[union-attr]
             await self._emit("node_started", {"node_id": node.id, "idempotency_key": context.idempotency_key})
             try:
                 adapter = self.adapters.resolve(node.action.kind, node.action.name)  # type: ignore[union-attr]
@@ -168,13 +180,27 @@ class WorkflowGraphCompiler:
                             result = await asyncio.wait_for(action, timeout=self.node_timeout_seconds) if self.node_timeout_seconds is not None else await action
                         except TimeoutError as exc:
                             raise WorkflowNodeTimeout("workflow_node_timeout") from exc
+                        if self.artifact_resolver is not None and context.file_access is not None:
+                            missing = missing_written_artifacts(context.file_access.get("write", []), self.artifact_resolver)
+                            if missing:
+                                raise ArtifactsMissing(missing)
                         break
                     except Exception as exc:  # retry policy is deliberately node-local
                         last_error = exc
                         if attempt + 1 < node.retry.max_attempts and node.retry.backoff_seconds:
                             await asyncio.sleep(node.retry.backoff_seconds)
                 else:
+                    if isinstance(last_error, ArtifactsMissing):
+                        # Two-phase interrupt so every resume re-verifies the
+                        # gate: on resume the node re-runs and the first
+                        # interrupt() consumes the resume value without raising,
+                        # then the second interrupt() has no resume value left
+                        # and raises a fresh GraphInterrupt — pausing again.
+                        interrupt({"type": "artifacts_missing", "node_id": node.id, "missing": last_error.missing})
+                        return {"interrupt": interrupt({"type": "artifacts_missing", "node_id": node.id, "missing": last_error.missing})}
                     raise last_error or RuntimeError(f"node '{node.id}' failed")
+            except GraphInterrupt:
+                raise
             except Exception as exc:
                 await self._emit(
                     "node_failed",
@@ -244,30 +270,6 @@ def _run_id(state: dict[str, Any]) -> str:
     return str(state.get("run_id", "unknown"))
 
 
-def _render_params(value: Any, state: dict[str, Any]) -> Any:
-    if isinstance(value, dict):
-        return {key: _render_params(item, state) for key, item in value.items()}
-    if isinstance(value, list):
-        return [_render_params(item, state) for item in value]
-    if not isinstance(value, str) or "{{" not in value:
-        return value
-    result = value
-    while "{{" in result:
-        start = result.index("{{")
-        end = result.index("}}", start)
-        path = result[start + 2 : end].strip()
-        replacement = _lookup_path(path, state)
-        result = result[:start] + str(replacement) + result[end + 2 :]
-    return result
-
-
-def _lookup_path(path: str, state: dict[str, Any]) -> Any:
-    current: Any = state
-    for part in path.removeprefix("$.").split("."):
-        current = current[part]
-    return current
-
-
 def _write_key(path: str) -> str:
     parts = path.removeprefix("$.state.").split(".")
     if len(parts) != 1:
@@ -277,7 +279,7 @@ def _write_key(path: str) -> str:
 
 def _evaluate_expression(expression: str, state: dict[str, Any]) -> bool:
     def replace(match: re.Match[str]) -> str:
-        value = _lookup_path(match.group(0), state)
+        value = lookup_path(match.group(0), state)
         return repr(value)
 
     translated = re.sub(r"\$\.(?:inputs|state|outputs)(?:\.[A-Za-z_][A-Za-z0-9_]*)+", replace, expression)
