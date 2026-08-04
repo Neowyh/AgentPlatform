@@ -3,6 +3,7 @@ import { fetch } from "@/core/api/fetcher";
 import { getBackendBaseURL } from "@/core/config";
 
 import type {
+  RunArtifact,
   RunStatus,
   WorkflowRunHistory,
   WorkflowDetail,
@@ -98,6 +99,33 @@ export async function listWorkflowRuns(
   );
   if (!res.ok) return extractError(res, "Failed to load workflow runs");
   return res.json() as Promise<WorkflowRunHistory>;
+}
+
+export async function listRunArtifacts(
+  name: string,
+  runId: string,
+): Promise<{ run_id: string; workflow: string; artifacts: RunArtifact[] }> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/workflows/${encodeURIComponent(name)}/runs/${encodeURIComponent(runId)}/artifacts`,
+  );
+  if (!res.ok) return extractError(res, "Failed to load run artifacts");
+  return res.json() as Promise<{
+    run_id: string;
+    workflow: string;
+    artifacts: RunArtifact[];
+  }>;
+}
+
+export async function getRunArtifactContent(
+  name: string,
+  runId: string,
+  path: string,
+): Promise<string> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/workflows/${encodeURIComponent(name)}/runs/${encodeURIComponent(runId)}/artifacts/content?path=${encodeURIComponent(path)}`,
+  );
+  if (!res.ok) return extractError(res, "Failed to load artifact content");
+  return res.text();
 }
 
 export function workflowEventsUrl(

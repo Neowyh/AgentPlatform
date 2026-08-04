@@ -92,6 +92,12 @@ export interface WorkflowRunHistory {
   offset: number;
 }
 
+export interface RunArtifact {
+  path: string;
+  size: number;
+  modified: number;
+}
+
 export interface WorkflowEvent {
   seq: number;
   type:

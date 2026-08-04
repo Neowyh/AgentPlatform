@@ -4,8 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import {
   createWorkflow,
   deleteWorkflow,
+  getRunArtifactContent,
   getRunStatus,
   getWorkflow,
+  listRunArtifacts,
   listWorkflowRuns,
   listWorkflows,
   runWorkflow,
@@ -15,7 +17,7 @@ import {
   workflowEventsUrl,
 } from "./api";
 import { applyWorkflowEvent } from "./events";
-import type { RunStatus, WorkflowEvent } from "./types";
+import type { RunArtifact, RunStatus, WorkflowEvent } from "./types";
 
 const workflowEventTypes = new Set<WorkflowEvent["type"]>([
   "node_started",
@@ -142,6 +144,35 @@ export function useWorkflowRuns(name: string | null | undefined) {
     error,
     refetch,
   };
+}
+
+export function useRunArtifacts(
+  name: string | null | undefined,
+  runId: string | null | undefined,
+) {
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ["workflows", name, "runs", runId, "artifacts"],
+    queryFn: () => listRunArtifacts(name!, runId!),
+    enabled: !!name && !!runId,
+  });
+  return {
+    artifacts: data?.artifacts ?? [],
+    isLoading,
+    error,
+    refetch,
+  };
+}
+
+export function useRunArtifactContent(
+  name: string | null | undefined,
+  runId: string | null | undefined,
+  path: string | null,
+) {
+  return useQuery({
+    queryKey: ["workflows", name, "runs", runId, "artifacts", path],
+    queryFn: () => getRunArtifactContent(name!, runId!, path!),
+    enabled: !!name && !!runId && !!path,
+  });
 }
 
 export function useRunStatus(

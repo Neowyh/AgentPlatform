@@ -64,6 +64,16 @@ vi.mock("@/core/workflows", () => ({
     error: null,
     fallbackPolling: false,
   }),
+  useRunArtifacts: () => ({
+    artifacts: [],
+    isLoading: false,
+    error: null,
+    refetch: () => {},
+  }),
+  useRunArtifactContent: () => ({
+    data: undefined,
+    isLoading: false,
+  }),
   useSubmitWorkflowCommand: () => ({
     mutateAsync: mockMutateAsync,
     isPending: false,
@@ -115,6 +125,18 @@ describe("WorkflowRunDetailPage", () => {
     expect(
       screen.queryByRole("button", { name: "Resume execution" }),
     ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Cancel run" }),
+    ).toBeInTheDocument();
+  });
+
+  test("paused runs offer both resume and cancel", () => {
+    runStatus = { ...runStatus, status: "paused" };
+    render(<WorkflowRunDetailPage />);
+
+    expect(
+      screen.getByRole("button", { name: "Resume execution" }),
+    ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Cancel run" }),
     ).toBeInTheDocument();

@@ -8,10 +8,11 @@ import json
 import logging
 import uuid
 from collections.abc import AsyncIterator
+from pathlib import Path
 
 import yaml
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
@@ -28,6 +29,7 @@ from ideer.config import get_app_config
 from ideer.persistence.engine import get_session_factory
 from ideer.persistence.models.user import UserModel, UserRole
 from ideer.persistence.models.workflow_legacy import LegacyWorkflowRunRow
+from ideer.workflows.v2.file_roots import collect_artifacts, make_host_resolver, render_roots, validate_workflow_roots
 from ideer.workflows.v2.parser import parse_workflow_v2 as parse_workflow_string
 from ideer.workflows.v2.store import WorkflowV2Store
 
@@ -70,6 +72,47 @@ def _definition_yaml(definition: dict) -> str:
 def _can_access_run(current_user: UserModel, run) -> bool:
     """Runs stay private to their creator, except for platform audit access."""
     return current_user.role == UserRole.SUPER_ADMIN or str(current_user.id) == str(run.created_by)
+
+
+def _run_write_roots(nodes: list[dict]) -> list[str]:
+    """Collect every declared write root across a definition's nodes."""
+    roots: list[str] = []
+    for node in nodes:
+        if not isinstance(node, dict):
+            continue
+        action = node.get("action") or {}
+        if not isinstance(action, dict):
+            continue
+        file_access = action.get("file_access") or {}
+        if not isinstance(file_access, dict):
+            continue
+        roots.extend(file_access.get("write") or [])
+    return roots
+
+
+async def _run_artifacts(store: WorkflowV2Store, run) -> list[dict]:
+    """List the files a run produced under its declared write roots.
+
+    Roots are rendered against the persisted snapshot state so a run's
+    artifacts can be browsed after completion; virtual paths are returned so
+    host paths never leak to the client.
+    """
+    definition = await store.get_definition(run.workflow_name, run.definition_version)
+    if definition is None:
+        return []
+    nodes = definition.definition.get("nodes", []) if isinstance(definition.definition, dict) else []
+    write_roots = _run_write_roots(nodes)
+    if not write_roots:
+        return []
+    snapshot = run.snapshot if isinstance(run.snapshot, dict) else {}
+    state = {
+        "inputs": run.inputs or {},
+        "state": snapshot.get("state", {}),
+        "outputs": snapshot.get("outputs", {}),
+    }
+    rendered = render_roots({"write": write_roots}, state)
+    resolver = make_host_resolver(run.run_id, str(run.created_by))
+    return collect_artifacts(rendered.get("write", []), resolver)
 
 
 def _legacy_run_payload(run: LegacyWorkflowRunRow) -> dict:
@@ -645,8 +688,6 @@ async def run_workflow(
     # virtual paths (/mnt/user-data, /mnt/skills, /mnt/acp-workspace and
     # configured mount container paths), so an invalid root would otherwise
     # surface only later as a soft-failed node.
-    from ideer.workflows.v2.file_roots import validate_workflow_roots
-
     invalid_roots = validate_workflow_roots(wf.nodes, inputs)
     if invalid_roots:
         raise HTTPException(
@@ -705,6 +746,52 @@ async def get_run_status(
         raise HTTPException(404, f"Workflow '{workflow_name}' not found")
 
     return {"run_id": state.run_id, "workflow": state.workflow_name, "status": state.status, "definition_version": state.definition_version, "snapshot": state.snapshot, "error": state.error}
+
+
+@router.get("/{workflow_name}/runs/{run_id}/artifacts")
+async def list_run_artifacts(
+    workflow_name: str,
+    run_id: str,
+    current_user: UserModel = Depends(get_current_rbac_user),
+):
+    """List the files a run produced under its declared write roots."""
+    store = _v2_store()
+    run = await store.get_run(run_id)
+    if run is None or run.workflow_name != workflow_name:
+        raise HTTPException(404, f"Run '{run_id}' not found for workflow '{workflow_name}'")
+    if not _can_access_run(current_user, run):
+        raise HTTPException(404, f"Run '{run_id}' not found for workflow '{workflow_name}'")
+    meta = await _workflow_store.load_meta(workflow_name)
+    if not meta or not check_resource_access(current_user, meta.get("owner_id"), meta.get("department_id"), meta.get("visibility")):
+        raise HTTPException(404, f"Workflow '{workflow_name}' not found")
+    artifacts = await _run_artifacts(store, run)
+    return {"run_id": run_id, "workflow": workflow_name, "artifacts": artifacts}
+
+
+@router.get("/{workflow_name}/runs/{run_id}/artifacts/content")
+async def get_run_artifact_content(
+    workflow_name: str,
+    run_id: str,
+    path: str,
+    current_user: UserModel = Depends(get_current_rbac_user),
+):
+    """Return one artifact's file content, addressed by its virtual path."""
+    store = _v2_store()
+    run = await store.get_run(run_id)
+    if run is None or run.workflow_name != workflow_name:
+        raise HTTPException(404, f"Run '{run_id}' not found for workflow '{workflow_name}'")
+    if not _can_access_run(current_user, run):
+        raise HTTPException(404, f"Run '{run_id}' not found for workflow '{workflow_name}'")
+    meta = await _workflow_store.load_meta(workflow_name)
+    if not meta or not check_resource_access(current_user, meta.get("owner_id"), meta.get("department_id"), meta.get("visibility")):
+        raise HTTPException(404, f"Workflow '{workflow_name}' not found")
+    artifacts = await _run_artifacts(store, run)
+    if not any(item["path"] == path for item in artifacts):
+        raise HTTPException(404, f"Artifact '{path}' not found for run '{run_id}'")
+    host = make_host_resolver(run.run_id, str(run.created_by))(path)
+    if host is None or not Path(host).is_file():
+        raise HTTPException(404, f"Artifact '{path}' not found for run '{run_id}'")
+    return FileResponse(host, media_type="application/octet-stream", filename=Path(host).name)
 
 
 @router.get("/{workflow_name}/runs")

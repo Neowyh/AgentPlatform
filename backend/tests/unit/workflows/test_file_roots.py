@@ -7,6 +7,7 @@ import pytest
 from ideer.config.paths import Paths
 from ideer.workflows.v2 import file_roots
 from ideer.workflows.v2.file_roots import (
+    collect_artifacts,
     make_host_resolver,
     missing_written_artifacts,
     render_roots,
@@ -144,3 +145,65 @@ class TestMissingWrittenArtifacts:
 
     def test_unresolvable_root_is_reported_missing(self, custom_mounts) -> None:
         assert missing_written_artifacts(["/mnt/unknown/x.json"], lambda p: None) == ["/mnt/unknown/x.json"]
+
+
+class TestCollectArtifacts:
+    def _write(self, path: Path, content: str = "data") -> Path:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+        return path
+
+    def test_directory_root_expands_recursively(self, tmp_path: Path) -> None:
+        self._write(tmp_path / "out" / "a.json")
+        self._write(tmp_path / "out" / "sub" / "b.md")
+
+        def resolver(p: str) -> str | None:
+            return str(tmp_path / "out") if p.rstrip("/") == "/mnt/user-data/outputs/artifacts" else None
+
+        artifacts = collect_artifacts(["/mnt/user-data/outputs/artifacts/"], resolver)
+        assert [item["path"] for item in artifacts] == [
+            "/mnt/user-data/outputs/artifacts/a.json",
+            "/mnt/user-data/outputs/artifacts/sub/b.md",
+        ]
+        assert all(item["size"] == 4 for item in artifacts)
+
+    def test_file_root_lists_single_file(self, tmp_path: Path) -> None:
+        self._write(tmp_path / "out" / "a.json")
+
+        def resolver(p: str) -> str | None:
+            return str(tmp_path / "out" / "a.json")
+
+        artifacts = collect_artifacts(["/mnt/user-data/outputs/a.json"], resolver)
+        assert [item["path"] for item in artifacts] == ["/mnt/user-data/outputs/a.json"]
+        assert artifacts[0]["size"] == 4
+
+    def test_unresolvable_root_is_skipped(self, tmp_path: Path) -> None:
+        self._write(tmp_path / "out" / "a.json")
+
+        def resolver(p: str) -> str | None:
+            return str(tmp_path / "out" / "a.json") if p.endswith("a.json") else None
+
+        artifacts = collect_artifacts(["/mnt/unknown/x.json", "/mnt/user-data/outputs/a.json"], resolver)
+        assert [item["path"] for item in artifacts] == ["/mnt/user-data/outputs/a.json"]
+
+    def test_overlapping_roots_are_deduplicated(self, tmp_path: Path) -> None:
+        self._write(tmp_path / "out" / "a.json")
+
+        def resolver(p: str) -> str | None:
+            return str(tmp_path / "out" / "a.json")
+
+        artifacts = collect_artifacts(["/mnt/user-data/outputs/a.json", "/mnt/user-data/outputs/a.json"], resolver)
+        assert len(artifacts) == 1
+
+    def test_sorted_by_virtual_path(self, tmp_path: Path) -> None:
+        self._write(tmp_path / "out" / "b.md")
+        self._write(tmp_path / "out" / "a.json")
+
+        def resolver(p: str) -> str | None:
+            return str(tmp_path / "out") if p.rstrip("/") == "/mnt/user-data/outputs" else None
+
+        artifacts = collect_artifacts(["/mnt/user-data/outputs/"], resolver)
+        assert [item["path"] for item in artifacts] == [
+            "/mnt/user-data/outputs/a.json",
+            "/mnt/user-data/outputs/b.md",
+        ]

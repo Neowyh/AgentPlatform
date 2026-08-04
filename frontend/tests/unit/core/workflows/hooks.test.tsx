@@ -6,8 +6,10 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 vi.mock("@/core/workflows/api", () => ({
   createWorkflow: vi.fn(),
   deleteWorkflow: vi.fn(),
+  getRunArtifactContent: vi.fn(),
   getRunStatus: vi.fn(),
   getWorkflow: vi.fn(),
+  listRunArtifacts: vi.fn(),
   listWorkflows: vi.fn(),
   runWorkflow: vi.fn(),
   submitWorkflowCommand: vi.fn(),
@@ -137,5 +139,90 @@ describe("useRunStatus", () => {
       ).toEqual([1, 2]),
     );
     expect(result.current.runStatus?.action_tokens?.draft).toBe("one");
+  });
+});
+
+describe("useRunArtifacts", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  test("lists run artifacts from the api", async () => {
+    const api = await import("@/core/workflows/api");
+    vi.mocked(api.listRunArtifacts).mockResolvedValue({
+      run_id: "run-1",
+      workflow: "fault-zeroing",
+      artifacts: [
+        { path: "/mnt/user-data/outputs/a.json", size: 4, modified: 1 },
+      ],
+    });
+    const { useRunArtifacts } = await import("@/core/workflows/hooks");
+    const { result } = renderHook(
+      () => useRunArtifacts("fault-zeroing", "run-1"),
+      { wrapper },
+    );
+
+    await waitFor(() =>
+      expect(result.current.artifacts).toEqual([
+        { path: "/mnt/user-data/outputs/a.json", size: 4, modified: 1 },
+      ]),
+    );
+    expect(api.listRunArtifacts).toHaveBeenCalledWith("fault-zeroing", "run-1");
+  });
+
+  test("stays disabled without a run id", async () => {
+    const api = await import("@/core/workflows/api");
+    const { useRunArtifacts } = await import("@/core/workflows/hooks");
+    const { result } = renderHook(
+      () => useRunArtifacts("fault-zeroing", null),
+      {
+        wrapper,
+      },
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(result.current.artifacts).toEqual([]);
+    expect(api.listRunArtifacts).not.toHaveBeenCalled();
+  });
+});
+
+describe("useRunArtifactContent", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  test("fetches content for a selected artifact path", async () => {
+    const api = await import("@/core/workflows/api");
+    vi.mocked(api.getRunArtifactContent).mockResolvedValue('{"fault": "x"}');
+    const { useRunArtifactContent } = await import("@/core/workflows/hooks");
+    const { result } = renderHook(
+      () =>
+        useRunArtifactContent(
+          "fault-zeroing",
+          "run-1",
+          "/mnt/user-data/outputs/a.json",
+        ),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(result.current.data).toBe('{"fault": "x"}'));
+    expect(api.getRunArtifactContent).toHaveBeenCalledWith(
+      "fault-zeroing",
+      "run-1",
+      "/mnt/user-data/outputs/a.json",
+    );
+  });
+
+  test("stays disabled without a path", async () => {
+    const api = await import("@/core/workflows/api");
+    const { useRunArtifactContent } = await import("@/core/workflows/hooks");
+    const { result } = renderHook(
+      () => useRunArtifactContent("fault-zeroing", "run-1", null),
+      { wrapper },
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(result.current.data).toBeUndefined();
+    expect(api.getRunArtifactContent).not.toHaveBeenCalled();
   });
 });

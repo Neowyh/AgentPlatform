@@ -182,3 +182,40 @@ def missing_written_artifacts(write_roots: list[str], resolver: Callable[[str], 
         if not path.is_file() or path.stat().st_size == 0:
             missing.append(root)
     return missing
+
+
+def collect_artifacts(write_roots: list[str], resolver: Callable[[str], str | None]) -> list[dict[str, Any]]:
+    """List the files produced under the declared write roots.
+
+    Returns ``{"path", "size", "modified"}`` entries whose ``path`` is the
+    virtual (sandbox) path, so callers never see host paths.  Directory roots
+    are expanded recursively; unresolvable roots are skipped.
+    """
+    artifacts: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    def append(file_path: Path, virtual: str) -> None:
+        key = str(file_path)
+        if key in seen:
+            return
+        seen.add(key)
+        stat = file_path.stat()
+        artifacts.append({"path": virtual, "size": stat.st_size, "modified": int(stat.st_mtime)})
+
+    for root in write_roots:
+        host = resolver(root)
+        if host is None:
+            continue
+        path = Path(host)
+        root_base = Path(host).resolve()
+        virtual_base = root.rstrip("/")
+        if path.is_dir():
+            for file_path in sorted(path.rglob("*")):
+                if not file_path.is_file():
+                    continue
+                relative = file_path.resolve().relative_to(root_base).as_posix()
+                append(file_path, f"{virtual_base}/{relative}")
+        elif path.is_file():
+            append(path, virtual_base)
+    artifacts.sort(key=lambda item: item["path"])
+    return artifacts

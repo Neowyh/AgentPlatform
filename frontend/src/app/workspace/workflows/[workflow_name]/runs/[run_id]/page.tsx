@@ -1,25 +1,50 @@
 "use client";
 
-import { ArrowLeftIcon } from "lucide-react";
+import { ArrowLeftIcon, DownloadIcon } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { WorkspaceBreadcrumb } from "@/components/workspace/workspace-breadcrumb";
+import { fetch as apiFetch } from "@/core/api/fetcher";
+import { getBackendBaseURL } from "@/core/config";
 import { useI18n } from "@/core/i18n/hooks";
 import {
+  useRunArtifacts,
+  useRunArtifactContent,
   useRunStatus,
   useSubmitWorkflowCommand,
   useWorkflow,
 } from "@/core/workflows";
+import type { RunArtifact } from "@/core/workflows";
 
 function statusClass(status: string) {
   if (status === "completed") return "text-green-600";
   if (status === "failed" || status === "cancelled") return "text-destructive";
   if (status === "running") return "text-blue-600";
   return "text-muted-foreground";
+}
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+const PREVIEWABLE = /\.(md|json|svg|txt|yaml|yml|log|xml|html)$/i;
+
+function prettyContent(path: string, content: string): string {
+  if (path.toLowerCase().endsWith(".json")) {
+    try {
+      return JSON.stringify(JSON.parse(content), null, 2);
+    } catch {
+      return content;
+    }
+  }
+  return content;
 }
 
 export default function WorkflowRunDetailPage() {
@@ -35,6 +60,23 @@ export default function WorkflowRunDetailPage() {
   );
   const commandMutation = useSubmitWorkflowCommand();
   const { t } = useI18n();
+  const {
+    artifacts,
+    error: artifactsError,
+    refetch: refetchArtifacts,
+  } = useRunArtifacts(workflow_name, run_id);
+  const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const { data: previewContent, isLoading: previewLoading } =
+    useRunArtifactContent(workflow_name, run_id, selectedPath);
+  const wasTerminal = useRef(false);
+
+  const terminal = ["completed", "failed", "cancelled"].includes(
+    runStatus?.status ?? "",
+  );
+  useEffect(() => {
+    if (terminal && !wasTerminal.current) void refetchArtifacts();
+    wasTerminal.current = terminal;
+  }, [refetchArtifacts, terminal]);
 
   async function submitCommand(type: "resume" | "cancel") {
     try {
@@ -49,6 +91,28 @@ export default function WorkflowRunDetailPage() {
         commandError instanceof Error
           ? commandError.message
           : String(commandError),
+      );
+    }
+  }
+
+  async function downloadArtifact(artifact: RunArtifact) {
+    try {
+      const res = await apiFetch(
+        `${getBackendBaseURL()}/api/workflows/${encodeURIComponent(workflow_name)}/runs/${encodeURIComponent(run_id)}/artifacts/content?path=${encodeURIComponent(artifact.path)}`,
+      );
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = artifact.path.split("/").pop() ?? "artifact";
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (downloadError) {
+      toast.error(
+        downloadError instanceof Error
+          ? downloadError.message
+          : String(downloadError),
       );
     }
   }
@@ -80,7 +144,9 @@ export default function WorkflowRunDetailPage() {
 
   const mayResume = runStatus.status === "paused";
   const mayCancel =
-    runStatus.status === "queued" || runStatus.status === "running";
+    runStatus.status === "queued" ||
+    runStatus.status === "running" ||
+    runStatus.status === "paused";
 
   return (
     <div className="flex size-full flex-col">
@@ -199,6 +265,77 @@ export default function WorkflowRunDetailPage() {
                   </li>
                 ))}
               </ol>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>{t.workflows.artifacts}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {artifactsError ? (
+                <p className="text-destructive text-sm">
+                  {t.workflows.artifactLoadError}
+                </p>
+              ) : artifacts.length === 0 ? (
+                <p className="text-muted-foreground text-sm">
+                  {t.workflows.noArtifacts}
+                </p>
+              ) : (
+                <ul className="space-y-2">
+                  {artifacts.map((artifact) => {
+                    const name =
+                      artifact.path.split("/").pop() ?? artifact.path;
+                    const previewable = PREVIEWABLE.test(name);
+                    return (
+                      <li key={artifact.path} className="rounded-md border p-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="truncate font-mono text-sm">{name}</p>
+                            <p className="text-muted-foreground text-xs">
+                              {t.workflows.artifactSize}:{" "}
+                              {formatSize(artifact.size)}
+                            </p>
+                          </div>
+                          <div className="flex shrink-0 gap-2">
+                            {previewable && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                  setSelectedPath(
+                                    selectedPath === artifact.path
+                                      ? null
+                                      : artifact.path,
+                                  )
+                                }
+                              >
+                                {t.common.preview}
+                              </Button>
+                            )}
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              onClick={() => void downloadArtifact(artifact)}
+                            >
+                              <DownloadIcon className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                        {selectedPath === artifact.path && (
+                          <pre className="bg-muted mt-2 max-h-96 overflow-auto rounded p-2 text-xs whitespace-pre-wrap">
+                            {previewLoading
+                              ? t.common.loading
+                              : prettyContent(
+                                  artifact.path,
+                                  previewContent ?? "",
+                                )}
+                          </pre>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
             </CardContent>
           </Card>
         </div>

@@ -234,6 +234,10 @@ export interface Translations {
     commandSubmitted: string;
     streamFallback: string;
     eventTimeline: string;
+    artifacts: string;
+    noArtifacts: string;
+    artifactLoadError: string;
+    artifactSize: string;
     actionOutput: string;
     runNotFound: string;
     yamlDefinition: string;
