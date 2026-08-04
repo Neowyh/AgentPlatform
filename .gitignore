@@ -86,5 +86,5 @@ backend/data/
 # WSL browser profiles
 frontend/\\\\wsl.localhost\\*
 
-# WSL browser profiles
-frontend/\\\\wsl.localhost\\*
+# Fault-zeroing workflow runtime outputs
+docs/zero_agent_eval_cases/outputs/
