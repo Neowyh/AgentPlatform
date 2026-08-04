@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
@@ -21,10 +22,33 @@ class RetrySpec(BaseModel):
     backoff_seconds: float = Field(0, ge=0)
 
 
+class FileAccessSpec(BaseModel):
+    read: list[str] = Field(default_factory=list)
+    write: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_roots(self) -> FileAccessSpec:
+        for root in [*self.read, *self.write]:
+            if "\\" in root or ".." in root.split("/"):
+                raise ValueError(f"unsafe file_access root '{root}'")
+            if root.startswith("/"):
+                continue
+            if not re.fullmatch(r"{{\s*(?:\$\.)?(?:inputs|state|outputs)(?:\.[A-Za-z_][A-Za-z0-9_]*)+\s*}}(?:/[^{}]*)?", root):
+                raise ValueError(f"file_access root must be absolute or a templated absolute root: '{root}'")
+        return self
+
+
 class ActionSpec(BaseModel):
     kind: Literal["agent", "tool"]
     name: str = Field(min_length=1)
+    file_access: FileAccessSpec | None = None
     params: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_file_access(self) -> ActionSpec:
+        if self.file_access is not None and self.kind != "agent":
+            raise ValueError("file_access is only valid for agent actions")
+        return self
 
 
 class NodeV2(BaseModel):

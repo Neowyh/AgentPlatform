@@ -57,6 +57,56 @@ edges: []
 
 
 @pytest.mark.asyncio
+async def test_compiler_renders_agent_file_access_into_action_context() -> None:
+    definition = parse_workflow_v2(
+        """
+schema_version: 2
+name: scoped
+inputs:
+  upload_dir: {type: string}
+  output_base_dir: {type: string}
+state: {}
+entrypoint: collect
+nodes:
+  - id: collect
+    type: action
+    action:
+      kind: agent
+      name: scoped-agent
+      file_access:
+        read: ["{{inputs.upload_dir}}"]
+        write: ["{{inputs.output_base_dir}}/artifacts/evidence"]
+edges: []
+"""
+    )
+    captured = None
+
+    class Adapter:
+        async def run(self, context, params):
+            nonlocal captured
+            captured = context.file_access
+            return "ok"
+
+    graph = WorkflowGraphCompiler(
+        definition,
+        ActionAdapterRegistry({("agent", "scoped-agent"): Adapter()}),
+    ).compile()
+    await graph.ainvoke(
+        {
+            "inputs": {"upload_dir": "/inputs/case", "output_base_dir": "/outputs/run"},
+            "state": {},
+            "outputs": {},
+        },
+        config={"configurable": {"thread_id": "wf:scoped"}},
+    )
+
+    assert captured == {
+        "read": ["/inputs/case"],
+        "write": ["/outputs/run/artifacts/evidence"],
+    }
+
+
+@pytest.mark.asyncio
 async def test_compiler_retries_only_when_explicitly_configured() -> None:
     definition = parse_workflow_v2(
         """

@@ -13,7 +13,7 @@ import yaml
 from .schema import WorkflowV2
 
 _PATH = re.compile(r"\$\.(?:inputs|state|outputs)(?:\.[A-Za-z_][A-Za-z0-9_]*)+")
-_TEMPLATE = re.compile(r"{{\s*(\$\.(?:inputs|state|outputs)(?:\.[A-Za-z_][A-Za-z0-9_]*)+)\s*}}")
+_TEMPLATE = re.compile(r"{{\s*((?:\$\.)?(?:inputs|state|outputs)(?:\.[A-Za-z_][A-Za-z0-9_]*)+)\s*}}")
 
 
 def parse_workflow_v2(content: str) -> WorkflowV2:
@@ -155,11 +155,16 @@ def _validate_templates(workflow: WorkflowV2) -> None:
     declared |= {f"$.outputs.{key}" for key in output_nodes}
     for node in workflow.nodes:
         if node.action:
-            for value in _walk_values(node.action.params):
+            templated_values: list[Any] = [node.action.params]
+            if node.action.file_access is not None:
+                templated_values.append(node.action.file_access.model_dump())
+            for value in _walk_values(templated_values):
                 if isinstance(value, str):
                     if ("{{" in value or "}}" in value) and (value.count("{{") != value.count("}}") or not _TEMPLATE.search(value)):
                         raise ValueError(f"invalid template syntax in action node '{node.id}'")
                     for path in _TEMPLATE.findall(value):
+                        if not path.startswith("$."):
+                            path = "$." + path
                         if path not in declared and not any(path.startswith(f"$.outputs.{key}.") for key in output_nodes):
                             raise ValueError(f"template references undeclared path '{path}'")
 

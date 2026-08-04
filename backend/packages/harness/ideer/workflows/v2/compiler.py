@@ -154,6 +154,7 @@ class WorkflowGraphCompiler:
                 inputs=dict(state.get("inputs", {})),
                 state=dict(state.get("state", {})),
                 outputs=dict(state.get("outputs", {})),
+                file_access=(_render_params(node.action.file_access.model_dump(), state) if node.action is not None and node.action.file_access is not None else None),
             )
             params = _render_params(node.action.params, state)  # type: ignore[union-attr]
             await self._emit("node_started", {"node_id": node.id, "idempotency_key": context.idempotency_key})

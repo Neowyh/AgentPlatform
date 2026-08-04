@@ -52,7 +52,15 @@ nodes:
     action:
       kind: agent
       name: fault-zeroing
+      file_access:
+        read:
+          - "{{inputs.upload_dir}}"
+          - "/mnt/skills/custom/fault-zeroing"
+        write:
+          - "{{inputs.output_base_dir}}/artifacts/evidence/evidence_table.json"
+          - "{{inputs.output_base_dir}}/artifacts/evidence/coverage_matrix.md"
       params:
+        max_turns: 150
         system_prompt: |
           你是证据分析师。只负责读取资料、抽取证据、标注来源，不做根因结论。
         prompt: |
@@ -80,7 +88,13 @@ nodes:
     action:
       kind: agent
       name: fault-zeroing
+      file_access:
+        read:
+          - "/mnt/skills/custom/fault-zeroing"
+        write:
+          - "{{inputs.output_base_dir}}/artifacts/tree/fault_tree_structure.json"
       params:
+        max_turns: 150
         system_prompt: |
           你是系统安全分析师（演绎模式）。基于工程机理做纯演绎推导。
           不看任何证据台账。列出所有理论上可能的故障原因。
@@ -118,7 +132,14 @@ nodes:
     action:
       kind: agent
       name: fault-zeroing
+      file_access:
+        read:
+          - "/mnt/skills/custom/fault-zeroing"
+          - "{{inputs.output_base_dir}}/artifacts/tree/fault_tree_structure.json"
+          - "{{inputs.output_base_dir}}/artifacts/evidence/evidence_table.json"
+        write: []
       params:
+        max_turns: 150
         system_prompt: |
           你是故障树审查与证据检漏分析师。做两遍独立扫描：
           第一遍从机理检查结构完整性；第二遍从证据反向检查遗漏。
@@ -162,7 +183,15 @@ nodes:
     action:
       kind: agent
       name: fault-zeroing
+      file_access:
+        read:
+          - "/mnt/skills/custom/fault-zeroing"
+          - "{{inputs.output_base_dir}}/artifacts/tree/"
+          - "{{inputs.output_base_dir}}/artifacts/evidence/"
+        write:
+          - "{{inputs.output_base_dir}}/artifacts/tree/fault_tree_structure.json"
       params:
+        max_turns: 150
         system_prompt: |
           你是故障树整合分析师。使用四象限裁决矩阵规则对发现问题做最终决策。
         prompt: |
@@ -184,6 +213,8 @@ nodes:
             第2层：证据可信度——证据场景与故障是否匹配？
             第3层：决定添加（to_verify）或不添加（记录遗留风险）
 
+          可选：如需核验证据内容，可读取 c) {{inputs.output_base_dir}}/artifacts/evidence/evidence_table.json
+
           输出：覆盖写入 {{inputs.output_base_dir}}/artifacts/tree/fault_tree_structure.json
     writes:
       - "$.state.tree_structure"
@@ -194,7 +225,16 @@ nodes:
     action:
       kind: agent
       name: fault-zeroing
+      file_access:
+        read:
+          - "/mnt/skills/custom/fault-zeroing"
+          - "{{inputs.output_base_dir}}/artifacts/tree/fault_tree_structure.json"
+          - "{{inputs.output_base_dir}}/artifacts/evidence/evidence_table.json"
+          - "{{inputs.output_base_dir}}/artifacts/evidence/coverage_matrix.md"
+        write:
+          - "{{inputs.output_base_dir}}/fault_tree.json"
       params:
+        max_turns: 150
         system_prompt: |
           你是证据评估分析师。对照证据逐底事件评估，同时完成根因归因和验证计划。
         prompt: |
@@ -232,7 +272,13 @@ nodes:
     action:
       kind: agent
       name: fault-zeroing
+      file_access:
+        read:
+          - "/mnt/skills/custom/fault-zeroing"
+          - "{{inputs.output_base_dir}}/fault_tree.json"
+        write: []
       params:
+        max_turns: 150
         system_prompt: |
           你是证据审核专家。标准比评估分析师更严格。只输出问题清单，不做修正。
         prompt: |
@@ -265,7 +311,14 @@ nodes:
     action:
       kind: agent
       name: fault-zeroing
+      file_access:
+        read:
+          - "/mnt/skills/custom/fault-zeroing"
+          - "{{inputs.output_base_dir}}/fault_tree.json"
+        write:
+          - "{{inputs.output_base_dir}}/fault_tree.json"
       params:
+        max_turns: 150
         system_prompt: |
           你是评估分析师（优化模式）。逐条回应审查意见：同意则修正，不同意则说明理由。
         prompt: |
@@ -288,7 +341,14 @@ nodes:
     action:
       kind: agent
       name: fault-zeroing
+      file_access:
+        read:
+          - "/mnt/skills/custom/fault-zeroing"
+          - "{{inputs.output_base_dir}}/fault_tree.json"
+        write:
+          - "{{inputs.output_base_dir}}/artifacts/corrective_actions.json"
       params:
+        max_turns: 150
         system_prompt: |
           你是纠正措施分析师。基于根因归因生成纠正措施。
           纠正措施 ≠ 验证计划：纠正措施修复问题，验证计划确认问题。
@@ -323,7 +383,20 @@ nodes:
     action:
       kind: agent
       name: fault-zeroing
+      file_access:
+        read:
+          - "/mnt/skills/custom/fault-zeroing"
+          - "{{inputs.output_base_dir}}/fault_tree.json"
+          - "{{inputs.output_base_dir}}/artifacts/evidence/evidence_table.json"
+          - "{{inputs.output_base_dir}}/artifacts/evidence/coverage_matrix.md"
+          - "{{inputs.output_base_dir}}/artifacts/corrective_actions.json"
+        write:
+          - "{{inputs.output_base_dir}}/fault_tree.svg"
+          - "{{inputs.output_base_dir}}/bottom_event_assessment.md"
+          - "{{inputs.output_base_dir}}/analysis_process.svg"
+          - "{{inputs.output_base_dir}}/zeroing_report.md"
       params:
+        max_turns: 200
         system_prompt: |
           你是文档工程师。基于所有分析产物生成标准输出文件。
           ⚠️ 不修改 fault_tree.json——它已是最终版。

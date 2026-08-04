@@ -49,6 +49,56 @@ def test_v2_parser_accepts_declared_graph() -> None:
     assert workflow.nodes[0].action.name == "prepare"
 
 
+def test_v2_parser_accepts_file_access_only_for_agent_actions() -> None:
+    nodes = [
+        {
+            "id": "prepare",
+            "type": "action",
+            "action": {
+                "kind": "agent",
+                "name": "fault-zeroing",
+                "file_access": {
+                    "read": ["{{inputs.request}}"],
+                    "write": ["/outputs/evidence"],
+                },
+                "params": {"prompt": "collect"},
+            },
+        },
+        {"id": "review", "type": "interrupt", "roles": ["department_admin"]},
+    ]
+
+    workflow = parse_workflow_v2(_workflow(nodes=nodes))
+
+    assert workflow.nodes[0].action.file_access.read == ["{{inputs.request}}"]
+    assert workflow.nodes[0].action.file_access.write == ["/outputs/evidence"]
+
+    nodes[0]["action"]["kind"] = "tool"
+    with pytest.raises(ValueError, match="file_access is only valid for agent actions"):
+        parse_workflow_v2(_workflow(nodes=nodes))
+
+
+@pytest.mark.parametrize(
+    "root",
+    ["relative/path", "/safe/../secret", "/safe\\..\\secret"],
+)
+def test_v2_parser_rejects_unsafe_file_access_roots(root: str) -> None:
+    nodes = [
+        {
+            "id": "prepare",
+            "type": "action",
+            "action": {
+                "kind": "agent",
+                "name": "fault-zeroing",
+                "file_access": {"read": [root]},
+            },
+        },
+        {"id": "review", "type": "interrupt", "roles": ["department_admin"]},
+    ]
+
+    with pytest.raises(ValueError, match="file_access root"):
+        parse_workflow_v2(_workflow(nodes=nodes))
+
+
 @pytest.mark.parametrize(
     ("change", "message"),
     [
@@ -191,3 +241,43 @@ def test_v2_parser_accepts_fault_zeroing_workflow() -> None:
         "assessment_refine": ["$.state.assessment_summary"],
         "corrective_actions": ["$.state.corrective_actions_summary"],
     }
+
+    policies = {node.id: node.action.file_access.model_dump() for node in workflow.nodes if node.action is not None}
+    assert set(policies) == {
+        "evidence_collection",
+        "deductive_tree",
+        "review_and_crosscheck",
+        "integrate_tree",
+        "evidence_assessment",
+        "assessment_review",
+        "assessment_refine",
+        "corrective_actions",
+        "generate_outputs",
+    }
+    assert policies["deductive_tree"] == {
+        "read": ["/mnt/skills/custom/fault-zeroing"],
+        "write": ["{{inputs.output_base_dir}}/artifacts/tree/fault_tree_structure.json"],
+    }
+    assert all("artifacts/evidence" not in root for root in policies["deductive_tree"]["read"])
+
+    integrate_tree = next(node for node in workflow.nodes if node.id == "integrate_tree")
+    assert integrate_tree.action.file_access.model_dump()["read"] == [
+        "/mnt/skills/custom/fault-zeroing",
+        "{{inputs.output_base_dir}}/artifacts/tree/",
+        "{{inputs.output_base_dir}}/artifacts/evidence/",
+    ]
+    assert integrate_tree.action.params.get("max_turns") == 150
+
+    expected_max_turns = {
+        "evidence_collection": 150,
+        "deductive_tree": 150,
+        "review_and_crosscheck": 150,
+        "integrate_tree": 150,
+        "evidence_assessment": 150,
+        "assessment_review": 150,
+        "assessment_refine": 150,
+        "corrective_actions": 150,
+        "generate_outputs": 200,
+    }
+    agent_nodes = {node.id: node.action.params.get("max_turns") for node in workflow.nodes if node.action is not None}
+    assert agent_nodes == expected_max_turns
