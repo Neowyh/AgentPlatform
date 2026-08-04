@@ -739,6 +739,53 @@ class TestCreateAgent:
         executor._create_agent(tools=custom_tools)
         assert captured["tools"] == custom_tools
 
+    def test_adds_filesystem_scope_only_when_configured(self, classes, monkeypatch):
+        SubagentConfig = classes["SubagentConfig"]
+        SubagentExecutor = classes["SubagentExecutor"]
+        from ideer.subagents import executor as executor_mod
+
+        captured = {}
+        middleware_builder = sys.modules["ideer.agents.middlewares.tool_error_handling_middleware"]
+        middleware_builder.build_subagent_runtime_middlewares = lambda **_kw: ["base"]
+
+        scope_module = ModuleType("ideer.agents.middlewares.filesystem_scope_middleware")
+
+        class Scope:
+            def __init__(self, *, read_roots, write_roots):
+                self.read_roots = read_roots
+                self.write_roots = write_roots
+
+        scope_module.FilesystemScopeMiddleware = Scope
+        monkeypatch.setitem(
+            sys.modules,
+            "ideer.agents.middlewares.filesystem_scope_middleware",
+            scope_module,
+        )
+        monkeypatch.setattr(
+            executor_mod,
+            "create_chat_model",
+            lambda **kw: SimpleNamespace(name=kw["name"]),
+        )
+        monkeypatch.setattr(
+            executor_mod,
+            "create_agent",
+            lambda **kw: captured.update(kw) or kw,
+        )
+        app_cfg = SimpleNamespace(models=[SimpleNamespace(name="m")])
+        config = SubagentConfig(
+            name="scoped",
+            description="scoped",
+            model="m",
+            file_access={"read": ["/inputs"], "write": ["/outputs"]},
+        )
+
+        SubagentExecutor(config=config, tools=[], app_config=app_cfg)._create_agent()
+
+        assert captured["middleware"][0] == "base"
+        assert isinstance(captured["middleware"][1], Scope)
+        assert captured["middleware"][1].read_roots == ["/inputs"]
+        assert captured["middleware"][1].write_roots == ["/outputs"]
+
 
 # =========================================================================
 # _load_skills

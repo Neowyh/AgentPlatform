@@ -22,6 +22,7 @@ class SubagentConfig:
         model: Model to use - 'inherit' uses parent's model.
         max_turns: Maximum number of agent turns before stopping.
         timeout_seconds: Maximum execution time in seconds (default: 900 = 15 minutes).
+        file_access: Optional workflow-node read/write root policy.
     """
 
     name: str
@@ -33,6 +34,7 @@ class SubagentConfig:
     model: str = "inherit"
     max_turns: int = 50
     timeout_seconds: int = 900
+    file_access: dict[str, list[str]] | None = None
 
 
 def _default_model_name(app_config: "AppConfig") -> str:

@@ -345,6 +345,15 @@ class SubagentExecutor:
 
         # Reuse shared middleware composition with lead agent.
         middlewares = build_subagent_runtime_middlewares(app_config=app_config, model_name=self.model_name, lazy_init=True)
+        if self.config.file_access is not None:
+            from ideer.agents.middlewares.filesystem_scope_middleware import FilesystemScopeMiddleware
+
+            middlewares.append(
+                FilesystemScopeMiddleware(
+                    read_roots=self.config.file_access.get("read", []),
+                    write_roots=self.config.file_access.get("write", []),
+                )
+            )
 
         # system_prompt is included in initial state messages (see _build_initial_state)
         # to avoid multiple SystemMessages which some LLM APIs don't support.
