@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import posixpath
 from collections.abc import Awaitable, Callable
 from typing import override
@@ -11,6 +12,8 @@ from langchain.agents.middleware import AgentMiddleware
 from langchain_core.messages import ToolMessage
 from langgraph.prebuilt.tool_node import ToolCallRequest
 from langgraph.types import Command
+
+logger = logging.getLogger(__name__)
 
 _READ_TOOLS = {"read_file", "ls", "glob", "grep", "view_image"}
 _WRITE_TOOLS = {"write_file", "str_replace"}
@@ -30,10 +33,12 @@ class FilesystemScopeMiddleware(AgentMiddleware[AgentState]):
         args = request.tool_call.get("args") or {}
         path_key = "image_path" if name == "view_image" else "path"
         raw_path = args.get(path_key) if isinstance(args, dict) else None
+        logger.debug("[scope] tool=%s args=%s", name, str(args)[:300])
         try:
             path = _validate_absolute_path(raw_path)
             roots = self.read_roots if name in _READ_TOOLS else self.write_roots
             if not any(_is_within(path, root) for root in roots):
+                logger.debug("[scope] DENIED %s %s (roots=%s)", name, path, list(roots))
                 raise ValueError(f"path '{path}' is outside declared {('read' if name in _READ_TOOLS else 'write')} roots")
         except (TypeError, ValueError) as exc:
             return ToolMessage(

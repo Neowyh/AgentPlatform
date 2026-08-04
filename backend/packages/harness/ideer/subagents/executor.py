@@ -571,6 +571,9 @@ class SubagentExecutor:
                         if not is_duplicate:
                             ai_messages.append(message_dict)
                             logger.info(f"[trace={self.trace_id}] Subagent {self.config.name} captured AI message #{len(ai_messages)}")
+                            if last_message.tool_calls:
+                                for call in last_message.tool_calls:
+                                    logger.debug(f"[trace={self.trace_id}] tool_call {call.get('name')} args={str(call.get('args'))[:300]}")
 
             logger.info(f"[trace={self.trace_id}] Subagent {self.config.name} completed async execution")
             token_usage_records = collector.snapshot_records()
