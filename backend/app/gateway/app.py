@@ -199,6 +199,12 @@ async def _reconcile_resource_metadata(startup_config: AppConfig) -> None:
 
     admin_id = str(admin_user.id)
 
+    # Reconcile workflow and agent metadata for any definitions that lack a
+    # DB record, reusing the same super_admin fallback owner. Runs before the
+    # skill scan so these resources are reconciled regardless of skill setup.
+    await _reconcile_workflow_metadata(sf, admin_id)
+    await _reconcile_agent_metadata(sf, admin_id)
+
     # Scan skills/custom/ directory for skill directories that exist on disk
     skills_path = startup_config.skills.get_skills_path()
     custom_dir: Path = skills_path / "custom"
@@ -219,6 +225,142 @@ async def _reconcile_resource_metadata(startup_config: AppConfig) -> None:
 
     if reconciled:
         logger.info("Reconciled %d custom skill(s) — created missing resource_metadata records", reconciled)
+
+
+async def _resolve_resource_owner(sf, raw_owner: str | None) -> tuple[str | None, str | None]:
+    """Resolve a raw owner reference to a valid ``(owner_id, department_id)`` pair.
+
+    Accepts either a ``users_ext.id`` (UUID) or a ``users_ext.username`` (email).
+    Returns ``(None, None)`` when the reference is ``system``, empty, or cannot
+    be matched to an existing user — callers then fall back to the super_admin.
+    """
+    from sqlalchemy import or_, select
+
+    from ideer.persistence.models.user import UserModel
+
+    if not raw_owner or raw_owner == "system":
+        return None, None
+    try:
+        async with sf() as session:
+            row = (await session.execute(select(UserModel).where(or_(UserModel.id == raw_owner, UserModel.username == raw_owner)))).scalar_one_or_none()
+    except Exception as e:
+        logger.warning("Failed to resolve resource owner '%s': %s", raw_owner, e)
+        return None, None
+    if row is None:
+        return None, None
+    department_id = str(row.department_id) if row.department_id else None
+    return str(row.id), department_id
+
+
+async def _reconcile_workflow_metadata(sf, admin_id: str) -> None:
+    """Startup hook: create resource_metadata for workflow definitions lacking one.
+
+    Enumerates the latest definition of every workflow and backfills a private
+    metadata record owned by the definition's creator (falling back to the
+    super_admin when creator resolution fails). Idempotent — existing records
+    are never touched.
+    """
+    from app.gateway.utils import ResourceMetadataStore
+    from ideer.workflows.v2.store import WorkflowV2Store
+
+    try:
+        definitions, _ = await WorkflowV2Store(sf).list_latest_definitions(limit=100_000, offset=0)
+    except Exception as e:
+        logger.warning("Failed to enumerate workflow definitions for reconciliation: %s", e)
+        return
+
+    store = ResourceMetadataStore("workflow")
+    reconciled = 0
+    for definition in definitions:
+        if await store.load_meta(definition.workflow_name):
+            continue
+        owner_id, dept_id = await _resolve_resource_owner(sf, definition.created_by)
+        if await store.save_meta(
+            definition.workflow_name,
+            {"owner_id": owner_id or admin_id, "department_id": dept_id, "visibility": "private"},
+        ):
+            reconciled += 1
+
+    if reconciled:
+        logger.info("Reconciled %d workflow(s) — created missing resource_metadata records", reconciled)
+
+
+def _scan_agent_dirs(base_dir) -> list:
+    """Return every custom agent directory under a platform base dir.
+
+    Includes per-user agents (``users/{user_id}/agents/*``) and legacy shared
+    agents (``agents/*``), deduplicated by directory name — per-user entries
+    shadow legacy entries.
+    """
+    from pathlib import Path
+
+    results: list[Path] = []
+    seen: set[str] = set()
+
+    def _collect(root: Path) -> None:
+        if not root.is_dir():
+            return
+        for entry in sorted(root.iterdir()):
+            if not entry.is_dir() or entry.name in seen:
+                continue
+            seen.add(entry.name)
+            results.append(entry)
+
+    users_root = base_dir / "users"
+    if users_root.is_dir():
+        for user_dir in sorted(users_root.iterdir()):
+            if user_dir.is_dir():
+                _collect(user_dir / "agents")
+    _collect(base_dir / "agents")
+    return results
+
+
+async def _reconcile_agent_metadata(sf, admin_id: str) -> None:
+    """Startup hook: create resource_metadata for custom agents lacking one.
+
+    Scans per-user and legacy agent directories and backfills a metadata record
+    owned by each agent's ``config.yaml`` owner (falling back to the super_admin).
+    Visibility defaults to ``private`` unless the config declares a valid value.
+    Idempotent — existing records are never touched.
+    """
+    import yaml
+
+    from app.gateway.utils import ResourceMetadataStore
+    from ideer.config.paths import get_paths
+
+    try:
+        agent_dirs = _scan_agent_dirs(get_paths().base_dir)
+    except Exception as e:
+        logger.warning("Failed to scan agent directories for reconciliation: %s", e)
+        return
+
+    store = ResourceMetadataStore("agent")
+    reconciled = 0
+    for agent_dir in agent_dirs:
+        if await store.load_meta(agent_dir.name):
+            continue
+        owner_id = None
+        dept_id = None
+        visibility = "private"
+        config_file = agent_dir / "config.yaml"
+        if config_file.is_file():
+            try:
+                cfg = yaml.safe_load(config_file.read_text(encoding="utf-8"))
+                if isinstance(cfg, dict):
+                    if cfg.get("owner_id"):
+                        owner_id, dept_id = await _resolve_resource_owner(sf, str(cfg["owner_id"]))
+                    if cfg.get("visibility") in ("private", "department", "public"):
+                        visibility = cfg["visibility"]
+            except Exception as e:
+                logger.warning("Failed to read %s: %s", config_file, e)
+        if await store.save_meta(
+            agent_dir.name,
+            {"owner_id": owner_id or admin_id, "department_id": dept_id, "visibility": visibility},
+        ):
+            reconciled += 1
+
+    if reconciled:
+        logger.info("Reconciled %d agent(s) — created missing resource_metadata records", reconciled)
 
 
 @asynccontextmanager
