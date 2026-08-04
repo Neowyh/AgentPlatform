@@ -33,8 +33,48 @@ def parse_bundled_workflow(path: Path) -> dict[str, Any]:
     return workflow.model_dump(mode="json", by_alias=True)
 
 
+async def _ensure_workflow_meta(
+    session_factory, workflow_name: str, *, created_by: str
+) -> None:
+    """Create the resource_metadata row so workflow API endpoints resolve
+    visibility/owner. An unknown owner (e.g. default 'system') fails the
+    users_ext foreign key; the definition stays seeded and meta creation is
+    skipped so the seed never hard-fails."""
+    import uuid
+
+    from sqlalchemy import select
+    from sqlalchemy.exc import IntegrityError
+
+    from ideer.persistence.models.resource_metadata import ResourceMetadata
+
+    async with session_factory() as session:
+        stmt = select(ResourceMetadata).where(
+            ResourceMetadata.resource_type == "workflow",
+            ResourceMetadata.resource_id == workflow_name,
+        )
+        if (await session.execute(stmt)).scalar_one_or_none() is not None:
+            return
+        session.add(
+            ResourceMetadata(
+                id=str(uuid.uuid4()),
+                resource_type="workflow",
+                resource_id=workflow_name,
+                owner_id=created_by,
+                visibility="private",
+            )
+        )
+        try:
+            await session.commit()
+        except IntegrityError:
+            await session.rollback()
+
+
 async def seed_workflow(
-    store, workflow_path: Path, *, created_by: str = "system"
+    store,
+    workflow_path: Path,
+    *,
+    created_by: str = "system",
+    session_factory=None,
 ) -> dict[str, Any]:
     """Idempotently seed the workflow definition, creating a new version on change."""
     definition = parse_bundled_workflow(workflow_path)
@@ -43,9 +83,13 @@ async def seed_workflow(
 
     latest = await store.get_latest_definition(name)
     if latest is not None and latest.content_hash == digest:
+        if session_factory is not None:
+            await _ensure_workflow_meta(session_factory, name, created_by=created_by)
         return {"status": "skipped", "workflow_name": name, "version": latest.version}
 
     row = await store.save_definition(name, definition, digest, created_by)
+    if session_factory is not None:
+        await _ensure_workflow_meta(session_factory, name, created_by=created_by)
     return {"status": "created", "workflow_name": name, "version": row.version}
 
 
@@ -93,7 +137,10 @@ async def _seed(args: argparse.Namespace) -> int:
             )
             return 1
         result = await seed_workflow(
-            WorkflowV2Store(sf), workflow_path, created_by=args.created_by
+            WorkflowV2Store(sf),
+            workflow_path,
+            created_by=args.created_by,
+            session_factory=sf,
         )
     finally:
         await close_engine()
