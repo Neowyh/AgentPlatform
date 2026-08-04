@@ -1,6 +1,6 @@
 # iDeer - Unified Development Environment
 
-.PHONY: help config config-upgrade migrate check install setup doctor detect-thread-boundaries detect-blocking-io dev dev-daemon start start-daemon stop up down clean docker-init docker-start docker-stop docker-logs docker-logs-frontend docker-logs-gateway
+.PHONY: help config config-upgrade migrate check install setup doctor detect-thread-boundaries detect-blocking-io dev dev-daemon start start-daemon stop up down clean docker-init docker-start docker-stop docker-logs docker-logs-frontend docker-logs-gateway docker-logs-workflow-worker
 
 BASH ?= bash
 BACKEND_UV_RUN = cd backend && uv run
@@ -181,6 +181,9 @@ docker-logs-frontend:
 	@$(RUN_WITH_GIT_BASH) ./scripts/docker.sh logs --frontend
 docker-logs-gateway:
 	@$(RUN_WITH_GIT_BASH) ./scripts/docker.sh logs --gateway
+
+docker-logs-workflow-worker:
+	@$(RUN_WITH_GIT_BASH) ./scripts/docker.sh logs --workflow-worker
 
 # ==========================================
 # Production Docker Commands

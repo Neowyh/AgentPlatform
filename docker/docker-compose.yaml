@@ -5,6 +5,7 @@
 #   - nginx:       Reverse proxy (port 2026, configurable via PORT env var)
 #   - frontend:    Next.js production server
 #   - gateway:     FastAPI Gateway API + agent runtime
+#   - workflow-worker: Durable workflow task consumer
 #   - provisioner: (optional) Sandbox provisioner for Kubernetes mode
 #
 # Key environment variables (set via environment/.env or scripts/deploy.sh):
@@ -131,12 +132,15 @@ services:
     command: sh -c "cd backend && PYTHONPATH=. uv run python -m app.workflow_worker"
     volumes:
       - ${IDEER_CONFIG_PATH}:/app/backend/config.yaml:ro
+      - ${IDEER_EXTENSIONS_CONFIG_PATH}:/app/backend/extensions_config.json:ro
+      - ../skills:/app/skills:ro
       - ${IDEER_HOME}:/app/backend/.ideer
     working_dir: /app
     environment:
       - IDEER_PROJECT_ROOT=/app
       - IDEER_HOME=/app/backend/.ideer
       - IDEER_CONFIG_PATH=/app/backend/config.yaml
+      - IDEER_EXTENSIONS_CONFIG_PATH=/app/backend/extensions_config.json
       - WORKFLOW_WORKER_ID=${WORKFLOW_WORKER_ID:-workflow-worker}
     env_file:
       - ../.env

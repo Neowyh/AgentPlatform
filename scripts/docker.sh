@@ -165,12 +165,12 @@ start() {
 
     sandbox_mode="$(detect_sandbox_mode)"
 
-    services="frontend gateway nginx"
+    services="frontend gateway workflow-worker nginx"
     if [ "$sandbox_mode" = "provisioner" ]; then
-        services="frontend gateway provisioner nginx"
+        services="frontend gateway workflow-worker provisioner nginx"
     fi
 
-    echo -e "${BLUE}Runtime: Gateway embedded agent runtime${NC}"
+    echo -e "${BLUE}Runtime: Gateway agent runtime + durable workflow worker${NC}"
     echo -e "${BLUE}Detected sandbox mode: $sandbox_mode${NC}"
     if [ "$sandbox_mode" = "provisioner" ]; then
         echo -e "${BLUE}Provisioner enabled (Kubernetes mode).${NC}"
@@ -229,7 +229,7 @@ start() {
     echo ""
     echo "  🌐 Application: http://localhost:2026"
     echo "  📡 API Gateway: http://localhost:2026/api/*"
-    echo "  🤖 Runtime:     Gateway embedded"
+    echo "  🤖 Runtime:     Gateway + workflow worker"
     echo "  API:            /api/langgraph/* → Gateway"
     echo ""
     echo "  📋 View logs: make docker-logs"
@@ -250,6 +250,10 @@ logs() {
             service="gateway"
             echo -e "${BLUE}Viewing gateway logs...${NC}"
             ;;
+        --workflow-worker)
+            service="workflow-worker"
+            echo -e "${BLUE}Viewing workflow worker logs...${NC}"
+            ;;
         --nginx)
             service="nginx"
             echo -e "${BLUE}Viewing nginx logs...${NC}"
@@ -263,7 +267,7 @@ logs() {
             ;;
         *)
             echo -e "${YELLOW}Unknown option: $1${NC}"
-            echo "Usage: $0 logs [--frontend|--gateway|--nginx|--provisioner]"
+            echo "Usage: $0 logs [--frontend|--gateway|--workflow-worker|--nginx|--provisioner]"
             exit 1
             ;;
     esac
@@ -314,6 +318,7 @@ help() {
     echo "  logs [option] - View Docker development logs"
     echo "                  --frontend   View frontend logs only"
     echo "                  --gateway    View gateway logs only"
+    echo "                  --workflow-worker View workflow worker logs only"
     echo "                  --nginx      View nginx logs only"
     echo "                  --provisioner View provisioner logs only"
     echo "  stop          - Stop Docker development services"

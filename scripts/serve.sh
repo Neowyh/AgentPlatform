@@ -16,9 +16,9 @@
 #   --restart   Stop all services, then start with the given mode flags
 #
 # Examples:
-#   ./scripts/serve.sh --dev                 # Gateway dev, hot reload
-#   ./scripts/serve.sh --prod                # Gateway prod
-#   ./scripts/serve.sh --dev --daemon        # Gateway dev, background
+#   ./scripts/serve.sh --dev                 # Gateway + workflow worker, hot reload
+#   ./scripts/serve.sh --prod                # Gateway + workflow worker, production
+#   ./scripts/serve.sh --dev --daemon        # Gateway + workflow worker, background
 #   ./scripts/serve.sh --stop                # Stop all services
 #   ./scripts/serve.sh --restart --dev       # Restart dev services
 #
@@ -28,6 +28,8 @@ set -e
 
 REPO_ROOT="$(builtin cd "$(dirname "${BASH_SOURCE[0]}")/.." >/dev/null 2>&1 && pwd -P)"
 cd "$REPO_ROOT"
+
+WORKFLOW_WORKER_PID_FILE="$REPO_ROOT/logs/workflow-worker.pid"
 
 # ── Load .env ────────────────────────────────────────────────────────────────
 
@@ -175,6 +177,14 @@ _kill_repo_nginx() {
 
 stop_all() {
     echo "Stopping all services..."
+    if [ -f "$WORKFLOW_WORKER_PID_FILE" ]; then
+        worker_pid=$(cat "$WORKFLOW_WORKER_PID_FILE")
+        if [ -n "$worker_pid" ] && kill -0 "$worker_pid" 2>/dev/null && _is_repo_pid "$worker_pid"; then
+            kill "$worker_pid" 2>/dev/null || true
+        fi
+        rm -f "$WORKFLOW_WORKER_PID_FILE"
+    fi
+    _kill_repo_processes "python -m app.workflow_worker"
     _kill_repo_processes "uvicorn app.gateway.app:app"
     _kill_repo_processes "next dev"
     _kill_repo_processes "next start"
@@ -205,9 +215,9 @@ fi
 
 # Mode label for banner
 if $DEV_MODE; then
-    MODE_LABEL="DEV (Gateway runtime, hot-reload enabled)"
+    MODE_LABEL="DEV (Gateway + workflow worker, hot-reload enabled)"
 else
-    MODE_LABEL="PROD (Gateway runtime, optimized)"
+    MODE_LABEL="PROD (Gateway + workflow worker, optimized)"
 fi
 
 if $DAEMON_MODE; then
@@ -311,6 +321,7 @@ echo "  Mode: $MODE_LABEL"
 echo ""
 echo "  Services:"
 echo "    Gateway     → localhost:8001  (REST API + agent runtime)"
+echo "    Worker      → workflow-worker (durable workflow tasks)"
 echo "    Frontend    → localhost:3000  (Next.js)"
 echo "    Nginx       → localhost:2026  (reverse proxy)"
 echo ""
@@ -357,6 +368,35 @@ run_service() {
     echo "✓ $name started on localhost:$port"
 }
 
+run_workflow_worker() {
+    local worker_pid
+
+    if [ -f "$WORKFLOW_WORKER_PID_FILE" ]; then
+        worker_pid=$(cat "$WORKFLOW_WORKER_PID_FILE")
+        if [ -n "$worker_pid" ] && kill -0 "$worker_pid" 2>/dev/null && _is_repo_pid "$worker_pid"; then
+            echo "✗ Workflow worker cannot start because it is already running (pid $worker_pid)."
+            cleanup 1
+        fi
+        rm -f "$WORKFLOW_WORKER_PID_FILE"
+    fi
+
+    echo "Starting Workflow worker..."
+    if $DAEMON_MODE; then
+        nohup sh -c "cd '$REPO_ROOT/backend' && PYTHONPATH=. uv run python -m app.workflow_worker" > logs/workflow-worker.log 2>&1 &
+    else
+        (cd backend && PYTHONPATH=. uv run python -m app.workflow_worker > ../logs/workflow-worker.log 2>&1) &
+    fi
+    worker_pid=$!
+    echo "$worker_pid" > "$WORKFLOW_WORKER_PID_FILE"
+    sleep 1
+    if ! kill -0 "$worker_pid" 2>/dev/null; then
+        echo "✗ Workflow worker failed to start."
+        tail -20 logs/workflow-worker.log 2>/dev/null || true
+        cleanup 1
+    fi
+    echo "✓ Workflow worker started (pid $worker_pid)"
+}
+
 # ── Start services ───────────────────────────────────────────────────────────
 
 mkdir -p logs
@@ -372,12 +412,15 @@ run_service "Gateway" \
     "cd backend && PYTHONPATH=. uv run uvicorn app.gateway.app:app --host 0.0.0.0 --port 8001 $GATEWAY_EXTRA_FLAGS > ../logs/gateway.log 2>&1" \
     8001 30
 
-# 2. Frontend
+# 2. Durable workflow task consumer
+run_workflow_worker
+
+# 3. Frontend
 run_service "Frontend" \
     "cd frontend && $FRONTEND_CMD > ../logs/frontend.log 2>&1" \
     3000 120
 
-# 3. Nginx
+# 4. Nginx
 run_service "Nginx" \
     "nginx -g 'daemon off;' -c '$REPO_ROOT/docker/nginx/nginx.local.conf' -p '$REPO_ROOT' > logs/nginx.log 2>&1" \
     2026 10
@@ -395,7 +438,7 @@ echo "  Routing: Frontend → Nginx → Gateway"
 echo "  API:     /api/langgraph/*  →  Gateway agent runtime"
 echo "           /api/*              →  Gateway REST API (8001)"
 echo ""
-echo "  📋 Logs: logs/{gateway,frontend,nginx}.log"
+echo "  📋 Logs: logs/{gateway,workflow-worker,frontend,nginx}.log"
 echo ""
 
 if $DAEMON_MODE; then

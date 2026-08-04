@@ -1,7 +1,8 @@
 #!/usr/bin/env sh
 #
-# iDeer gateway dev entrypoint — runs inside the docker-compose-dev gateway
-# container. Extracted from docker/docker-compose-dev.yaml's inline `command:`
+# iDeer development entrypoint — runs inside the docker-compose-dev gateway or
+# workflow-worker container. Extracted from docker/docker-compose-dev.yaml's
+# inline `command:`
 # (PR #2767, addressing review on Issue #2754).
 #
 # Responsibilities:
@@ -12,13 +13,23 @@
 #   3. `uv sync --all-packages` so workspace member extras (ideer-harness's
 #      postgres extra in particular) are installed — see PR #2584.
 #   4. Self-heal: if the first sync fails, recreate .venv and retry once.
-#   5. Hand off to uvicorn with reload, replacing this shell so uvicorn becomes
-#      PID 1 inside the container.
+#   5. Hand off to the selected service, replacing this shell so the service
+#      becomes PID 1 inside the container.
 #
 # Anchored at /bin/sh (not bash) since alpine-based base images may not ship
 # bash. Uses POSIX-only constructs throughout.
 
 set -e
+
+RUN_TARGET="${1:-gateway}"
+case "$RUN_TARGET" in
+    gateway|worker) ;;
+    --print-extras) RUN_TARGET="gateway" ;;
+    *)
+        echo "[startup] unknown run target: $RUN_TARGET (expected gateway or worker)" >&2
+        exit 1
+        ;;
+esac
 
 # `--print-extras` is a dry-run hook: parse + validate UV_EXTRAS, print the
 # resulting `--extra X` flags to stdout, and exit. Used by the unit test in
@@ -78,7 +89,11 @@ if ! uv sync --all-packages $EXTRAS_FLAGS; then
     uv sync --all-packages $EXTRAS_FLAGS
 fi
 
-# ── Hand off to uvicorn ─────────────────────────────────────────────────────
+# ── Hand off to the selected service ────────────────────────────────────────
+
+if [ "$RUN_TARGET" = "worker" ]; then
+    PYTHONPATH=. exec uv run python -m app.workflow_worker
+fi
 
 PYTHONPATH=. exec uv run uvicorn app.gateway.app:app \
     --host 0.0.0.0 --port 8001 \

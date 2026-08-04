@@ -2,7 +2,7 @@
 #
 # run-local-services.sh - Start iDeer local services for browser validation.
 #
-# This launcher keeps Gateway and Frontend in tmux sessions, then starts nginx
+# This launcher keeps Gateway, workflow worker, and Frontend in tmux sessions, then starts nginx
 # as the unified localhost:2026 entrypoint. It is intentionally small and
 # avoids serve.sh's port-only readiness check because Next.js can be reachable
 # before lsof reports a LISTEN socket in some local environments.
@@ -13,6 +13,7 @@ REPO_ROOT="$(builtin cd "$(dirname "${BASH_SOURCE[0]}")/.." >/dev/null 2>&1 && p
 cd "$REPO_ROOT"
 
 GATEWAY_SESSION="ideer-gateway"
+WORKFLOW_WORKER_SESSION="ideer-workflow-worker"
 FRONTEND_SESSION="ideer-frontend"
 NGINX_CONF="$REPO_ROOT/temp/nginx.local.runtime.conf"
 NGINX_SOURCE_CONF="$REPO_ROOT/docker/nginx/nginx.local.conf"
@@ -22,7 +23,7 @@ usage() {
 Usage: scripts/run-local-services.sh [start|stop|restart|status|logs]
 
 Commands:
-  start     Start Gateway, Frontend, and nginx in the background (default)
+  start     Start Gateway, workflow worker, Frontend, and nginx in the background (default)
   stop      Stop local iDeer services started by this script
   restart   Stop, then start
   status    Show service health and background sessions
@@ -117,6 +118,7 @@ stop_services() {
     echo "Stopping iDeer local services..."
     stop_nginx
     tmux kill-session -t "$GATEWAY_SESSION" >/dev/null 2>&1 || true
+    tmux kill-session -t "$WORKFLOW_WORKER_SESSION" >/dev/null 2>&1 || true
     tmux kill-session -t "$FRONTEND_SESSION" >/dev/null 2>&1 || true
     echo "Stopped."
 }
@@ -131,6 +133,10 @@ start_services() {
         "cd '$REPO_ROOT/backend' && PYTHONPATH=. uv run uvicorn app.gateway.app:app --host 0.0.0.0 --port 8001 > ../logs/gateway.log 2>&1"
     wait_url "Gateway" "http://localhost:8001/health" 60
 
+    echo "Starting workflow worker in tmux session: $WORKFLOW_WORKER_SESSION"
+    tmux_start_or_restart "$WORKFLOW_WORKER_SESSION" \
+        "cd '$REPO_ROOT/backend' && PYTHONPATH=. uv run python -m app.workflow_worker > ../logs/workflow-worker.log 2>&1"
+
     echo "Starting Frontend in tmux session: $FRONTEND_SESSION"
     tmux_start_or_restart "$FRONTEND_SESSION" \
         "cd '$REPO_ROOT/frontend' && pnpm run dev > ../logs/frontend.log 2>&1"
@@ -144,13 +150,13 @@ start_services() {
 
     echo ""
     echo "iDeer is running: http://localhost:2026"
-    echo "Logs: logs/gateway.log, logs/frontend.log, logs/nginx-error.log"
+    echo "Logs: logs/gateway.log, logs/workflow-worker.log, logs/frontend.log, logs/nginx-error.log"
     echo "Stop: scripts/run-local-services.sh stop"
 }
 
 status_services() {
     echo "Sessions:"
-    tmux list-sessions 2>/dev/null | grep -E "^(${GATEWAY_SESSION}|${FRONTEND_SESSION}):" || true
+    tmux list-sessions 2>/dev/null | grep -E "^(${GATEWAY_SESSION}|${WORKFLOW_WORKER_SESSION}|${FRONTEND_SESSION}):" || true
     echo ""
     echo "Health:"
     curl -fsS http://localhost:8001/health || true
@@ -166,6 +172,9 @@ show_logs() {
     echo ""
     echo "== Frontend =="
     tail -n 80 logs/frontend.log 2>/dev/null || true
+    echo ""
+    echo "== Workflow worker =="
+    tail -n 80 logs/workflow-worker.log 2>/dev/null || true
     echo ""
     echo "== nginx =="
     tail -n 80 logs/nginx-error.log 2>/dev/null || true

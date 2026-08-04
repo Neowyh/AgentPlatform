@@ -80,6 +80,37 @@ services:
       timeout: 5s
       retries: 6
 
+  workflow-worker:
+    image: ${IDEER_GATEWAY_IMAGE:-ideer-gateway:latest}
+    pull_policy: never
+    container_name: ideer-workflow-worker
+    command: sh -c "cd backend && PYTHONPATH=. uv run --no-sync python -m app.workflow_worker"
+    volumes:
+      - ${IDEER_CONFIG_PATH}:/app/backend/config.yaml:ro
+      - ${IDEER_EXTENSIONS_CONFIG_PATH}:/app/backend/extensions_config.json:ro
+      - ../skills:/app/skills:ro
+      - ${IDEER_HOME}:/app/backend/.ideer
+      - ${IDEER_DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
+    working_dir: /app
+    environment:
+      - CI=true
+      - IDEER_PROJECT_ROOT=/app
+      - IDEER_HOME=/app/backend/.ideer
+      - IDEER_CONFIG_PATH=/app/backend/config.yaml
+      - IDEER_EXTENSIONS_CONFIG_PATH=/app/backend/extensions_config.json
+      - IDEER_INTERNAL_AUTH_TOKEN=${IDEER_INTERNAL_AUTH_TOKEN}
+      - IDEER_HOST_BASE_DIR=${IDEER_HOME}
+      - IDEER_HOST_SKILLS_PATH=${IDEER_REPO_ROOT}/skills
+      - IDEER_SANDBOX_HOST=host.docker.internal
+      - WORKFLOW_WORKER_ID=${WORKFLOW_WORKER_ID:-workflow-worker}
+    env_file:
+      - ${IDEER_ENV_FILE:?IDEER_ENV_FILE must be set}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - ideer
+    restart: unless-stopped
+
 networks:
   ideer:
     driver: bridge

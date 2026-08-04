@@ -475,7 +475,7 @@ wait_for_http() {
         sleep 2
     done
 
-    die "$label health check failed: $url. Run './deploy-intranet.sh logs gateway' and './deploy-intranet.sh logs frontend' for details."
+    die "$label health check failed: $url. Run './deploy-intranet.sh logs gateway', './deploy-intranet.sh logs workflow-worker', and './deploy-intranet.sh logs frontend' for details."
 }
 
 verify_services() {
@@ -497,6 +497,7 @@ If the deployment failed, you can recover using these steps:
 
 2. Check service logs for errors:
    ./deploy-intranet.sh logs gateway
+   ./deploy-intranet.sh logs workflow-worker
    ./deploy-intranet.sh logs frontend
    ./deploy-intranet.sh logs nginx
 
