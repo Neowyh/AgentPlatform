@@ -1,0 +1,90 @@
+from __future__ import annotations
+
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+import pytest_asyncio
+import yaml
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+from app.workflow_worker import execute_workflow_task
+from ideer.persistence.base import Base
+from ideer.workflows.v2.adapters import ActionAdapterRegistry
+from ideer.workflows.v2.store import WorkflowV2Store
+from ideer.workflows.v2.worker import WorkflowWorker
+
+REPO_ROOT = Path(__file__).resolve().parents[4]
+WORKFLOW_PATH = REPO_ROOT / "workflows" / "fault-zeroing.yaml"
+
+
+@pytest_asyncio.fixture
+async def durable_store(tmp_path: Path):
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'workflow.db'}")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    try:
+        yield WorkflowV2Store(async_sessionmaker(engine, expire_on_commit=False))
+    finally:
+        await engine.dispose()
+
+
+class RecordingAgent:
+    def __init__(self, calls: list[str]) -> None:
+        self.calls = calls
+
+    async def run(self, context, params):
+        self.calls.append(context.node_id)
+        return {"node_id": context.node_id}
+
+
+@pytest.mark.asyncio
+async def test_production_worker_task_path_persists_all_fault_zeroing_events(
+    durable_store: WorkflowV2Store,
+    tmp_path: Path,
+) -> None:
+    definition = yaml.safe_load(WORKFLOW_PATH.read_text(encoding="utf-8"))
+    version = await durable_store.save_definition("fault-zeroing", definition, "test-hash", "user-1")
+    await durable_store.create_run(
+        "run-worker-real-path",
+        "fault-zeroing",
+        version.version,
+        {
+            "upload_dir": str(tmp_path / "uploads"),
+            "problem_description": "top event",
+            "output_base_dir": str(tmp_path / "outputs"),
+        },
+        "user-1",
+    )
+    calls: list[str] = []
+    registry = ActionAdapterRegistry({("agent", "fault-zeroing"): RecordingAgent(calls)})
+    config = SimpleNamespace(
+        checkpointer=SimpleNamespace(type="sqlite", connection_string=str(tmp_path / "checkpoints.db")),
+        database=SimpleNamespace(backend="memory"),
+        workflow_runtime=SimpleNamespace(
+            max_events_per_run=1000,
+            node_timeout_seconds=30,
+            max_parallel_actions=3,
+        ),
+    )
+
+    async def execute(task) -> None:
+        await execute_workflow_task(
+            task,
+            store=durable_store,
+            config=config,
+            registry_factory=lambda _config, _user_id: registry,
+        )
+
+    assert await WorkflowWorker(durable_store, execute, worker_id="worker-integration").run_once() is True
+
+    run = await durable_store.get_run("run-worker-real-path")
+    assert run is not None and run.status == "completed"
+    assert len(calls) == 9
+    assert set(calls[:2]) == {"evidence_collection", "deductive_tree"}
+    assert set(run.snapshot["outputs"]) == set(calls)
+    events = await durable_store.list_events(run.run_id)
+    assert events[0].event_type == "run_started"
+    assert events[-1].event_type == "run_completed"
+    assert [event.event_type for event in events].count("node_completed") == 9
+    assert (tmp_path / "checkpoints.db").is_file()
