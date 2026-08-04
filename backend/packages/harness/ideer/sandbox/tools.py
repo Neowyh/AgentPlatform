@@ -379,7 +379,10 @@ def _resolve_local_read_path(path: str, thread_data: ThreadDataState) -> str:
         return _resolve_skills_path(path)
     if _is_acp_workspace_path(path):
         return _resolve_acp_workspace_path(path, _extract_thread_id_from_thread_data(thread_data))
-    return _resolve_and_validate_user_data_path(path, thread_data)
+    if not _is_custom_mount_path(path):
+        return _resolve_and_validate_user_data_path(path, thread_data)
+    # Custom mount paths are resolved by LocalSandbox._resolve_path()
+    return path
 
 
 def _format_glob_results(root_path: str, matches: list[str], truncated: bool) -> str:

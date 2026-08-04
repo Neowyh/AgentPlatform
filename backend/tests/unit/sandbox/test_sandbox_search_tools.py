@@ -459,3 +459,59 @@ def test_ls_tool_returns_empty_for_empty_directory(tmp_path, monkeypatch) -> Non
     )
 
     assert result == "(empty)"
+
+
+def _custom_mount_sandbox(tmp_path):
+    from ideer.sandbox.local.local_sandbox import PathMapping
+
+    mount_dir = tmp_path / "custom_mount"
+    mount_dir.mkdir()
+    sandbox = LocalSandbox(
+        id="local",
+        path_mappings=[PathMapping(container_path="/mnt/custom", local_path=str(mount_dir), read_only=True)],
+    )
+    mount = SimpleNamespace(container_path="/mnt/custom", host_path=str(mount_dir), read_only=True)
+    return sandbox, mount
+
+
+def test_glob_tool_works_on_custom_mount_paths(tmp_path, monkeypatch) -> None:
+    """glob_tool must support read-only custom mount paths (regression: mount paths
+    were wrongly rejected by _validate_resolved_user_data_path)."""
+    runtime = _make_runtime(tmp_path)
+    sandbox, mount = _custom_mount_sandbox(tmp_path)
+    mount_host = tmp_path / "custom_mount"
+    (mount_host / "case").mkdir()
+    (mount_host / "case" / "01_data.md").write_text("data\n", encoding="utf-8")
+
+    monkeypatch.setattr("ideer.sandbox.tools.ensure_sandbox_initialized", lambda runtime: sandbox)
+    with patch("ideer.sandbox.tools._get_custom_mounts", return_value=[mount]):
+        result = glob_tool.func(
+            runtime=runtime,
+            description="scan case dir",
+            pattern="**/*.md",
+            path="/mnt/custom/case",
+        )
+
+    assert "/mnt/custom/case/01_data.md" in result
+    assert str(mount_host) not in result
+
+
+def test_grep_tool_works_on_custom_mount_paths(tmp_path, monkeypatch) -> None:
+    """grep_tool must support read-only custom mount paths (same regression)."""
+    runtime = _make_runtime(tmp_path)
+    sandbox, mount = _custom_mount_sandbox(tmp_path)
+    mount_host = tmp_path / "custom_mount"
+    (mount_host / "case").mkdir()
+    (mount_host / "case" / "01_data.md").write_text("top event data\n", encoding="utf-8")
+
+    monkeypatch.setattr("ideer.sandbox.tools.ensure_sandbox_initialized", lambda runtime: sandbox)
+    with patch("ideer.sandbox.tools._get_custom_mounts", return_value=[mount]):
+        result = grep_tool.func(
+            runtime=runtime,
+            description="find top event",
+            pattern="top event",
+            path="/mnt/custom/case",
+        )
+
+    assert "/mnt/custom/case/01_data.md:1: top event data" in result
+    assert str(mount_host) not in result
