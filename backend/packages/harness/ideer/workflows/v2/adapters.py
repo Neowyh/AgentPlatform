@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from types import SimpleNamespace
 from typing import Any, Protocol
 
 
@@ -26,6 +27,7 @@ class ActionContext:
     inputs: dict[str, Any]
     state: dict[str, Any]
     outputs: dict[str, Any]
+    file_access: dict[str, list[str]] | None = None
 
     @property
     def idempotency_key(self) -> str:
@@ -62,6 +64,15 @@ class _ToolAdapter:
 
 
 class _AgentAdapter:
+    # Graceful fallback texts produced by LLMErrorHandlingMiddleware when the
+    # provider is down. In a workflow node they signal failure, not output.
+    _LLM_UNAVAILABLE_MARKERS = (
+        "temporarily unavailable after multiple retries",
+        "circuit breaker is engaged",
+        "account is out of quota",
+        "authentication or access is invalid",
+    )
+
     def __init__(self, name: str, user_id: str) -> None:
         self.name = name
         self.user_id = user_id
@@ -69,6 +80,7 @@ class _AgentAdapter:
     async def run(self, context: ActionContext, params: dict[str, Any]) -> Any:
         from ideer.config import get_app_config
         from ideer.config.agents_config import load_agent_config, load_agent_soul
+        from ideer.runtime.user_context import reset_current_user, set_current_user
         from ideer.subagents.config import SubagentConfig
         from ideer.subagents.executor import SubagentExecutor, SubagentStatus
         from ideer.tools.tools import get_available_tools
@@ -76,24 +88,51 @@ class _AgentAdapter:
         config = load_agent_config(self.name, user_id=self.user_id)
         if config is None:
             raise ActionResolutionError(f"agent '{self.name}' not found")
+
+        soul = load_agent_soul(self.name, user_id=self.user_id) or ""
+        override = params.get("system_prompt", "")
+        if soul and override:
+            system_prompt = f"{soul}\n\n## 当前阶段指令\n\n{override}"
+        else:
+            system_prompt = soul or override
+
         subagent = SubagentConfig(
             name=self.name,
             description=f"Workflow node: {context.node_id}",
-            system_prompt=load_agent_soul(self.name, user_id=self.user_id),
-            tools=config.tool_groups,
+            system_prompt=system_prompt,
             skills=config.skills,
             model=config.model or "inherit",
+            max_turns=params.get("max_turns", 50),
+            file_access=context.file_access,
         )
-        executor = SubagentExecutor(subagent, get_available_tools(app_config=get_app_config()), app_config=get_app_config())
+        executor = SubagentExecutor(
+            subagent,
+            get_available_tools(groups=config.tool_groups, app_config=get_app_config()),
+            app_config=get_app_config(),
+            thread_id=context.run_id,
+        )
         prompt = params.get("prompt", params.get("input", params))
-        result = await executor._aexecute(str(prompt))
+        user_token = set_current_user(SimpleNamespace(id=self.user_id))
+        try:
+            result = await executor._aexecute(str(prompt))
+        finally:
+            reset_current_user(user_token)
         if result.status == SubagentStatus.COMPLETED:
+            if _is_llm_unavailable_text(result.result):
+                raise RuntimeError(f"agent '{self.name}' failed: LLM provider unavailable")
             return result.result
         raise RuntimeError(result.error or f"agent '{self.name}' failed with status {result.status}")
 
     async def astream(self, context: ActionContext, params: dict[str, Any]) -> AsyncIterator[dict[str, Any]]:
         yield {"type": "progress", "message": "started"}
         yield {"type": "result", "value": await self.run(context, params)}
+
+
+def _is_llm_unavailable_text(result: Any) -> bool:
+    if not isinstance(result, str):
+        return False
+    lowered = result.lower()
+    return any(marker in lowered for marker in _AgentAdapter._LLM_UNAVAILABLE_MARKERS)
 
 
 def build_default_registry(app_config: Any, user_id: str) -> ActionAdapterRegistry:
