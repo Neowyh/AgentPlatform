@@ -1,45 +1,74 @@
 # iDeer Workflows
 
-此目录存放 YAML 格式的工作流定义文件。
+此目录存放 schema v2 的 YAML 格式工作流定义文件。捆绑工作流通过
+`python scripts/seed_fault_zeroing_workflow.py` 幂等导入定义存储
+（内容未变化时跳过，变化时创建新版本）。
 
 ## 快速开始
 
-1. 在工作台页面点击 **工作流 → 新建**
-2. 编写 YAML 定义（参考下方示例）
-3. 保存后点击 **运行**
+1. 工作台页面点击 **工作流 → 新建**（或先用 seed 脚本导入 fault-zeroing）
+2. 编写 YAML 定义（参考下方格式与 `fault-zeroing.yaml`）
+3. 保存后点击 **运行**，填入输入参数
 
-## YAML 格式
+## YAML 格式（schema_version: 2）
 
 ```yaml
+schema_version: 2
 name: my-workflow          # 必填，唯一标识
 description: 工作流描述     # 可选
-version: "1.0"             # 可选
-
 inputs:                    # 输入参数定义
-  param1:
+  upload_dir:
     type: string
     required: true
-    default: "默认值"
-    description: "参数说明"
-
-steps:                     # 执行步骤
-  - id: step1              # 步骤唯一 ID
-    type: agent            # 步骤类型
-    agent: agent-name      # 使用的 Agent
-    prompt: "提示词"        # 支持 {{inputs.xxx}} 和 {{steps.xxx.output}} 模板
+    description: "上传目录（沙箱虚拟路径）"
+entrypoint: start
+nodes:
+  - id: start              # 节点唯一 ID
+    type: action           # action | route | fork | join | interrupt
+    action:
+      kind: agent          # 仅 agent 支持 file_access
+      name: some-agent
+      file_access:
+        read:
+          - "/mnt/user-data/uploads"            # 或 {{inputs.xxx}} 模板
+        write:
+          - "{{inputs.output_base_dir}}/artifacts/a.json"
+    writes:                # 节点输出写入的 state 字段
+      - "$.state.result"
+edges:
+  - from: start
+    to: next_node
 ```
 
-## 步骤类型
+## 虚拟路径与产物门禁
+
+工作流沙箱只允许 **虚拟路径**，宿主路径（如 `/tmp/...`、`/home/...`）在提交运行
+时直接返回 400：
+
+| 前缀 | 语义 | 可写 |
+|------|------|------|
+| `/mnt/user-data/{workspace,uploads,outputs}` | 该次运行专属数据目录 | 是 |
+| `/mnt/skills/custom/<skill>` | 公共技能目录 | 否 |
+| `/mnt/acp-workspace` | ACP 工作区 | 否 |
+| 配置的自定义 mount 容器路径 | 按 `config.yaml` 的 `mount.read_only` | 视配置 |
+
+file_access 的 write 根是 **产物门禁**：节点执行结束后，若声明的文件根不存在或
+为空、目录根不存在，运行进入 `paused` 状态等待人工处理；恢复（resume）后重新
+验证，直到产物齐备或人工取消。运行详情页可以浏览、预览和下载 write 根下的产物
+文件。
+
+## 节点类型
 
 | 类型 | 说明 | 必填字段 |
 |------|------|----------|
-| `agent` | 调用 AI Agent | `agent`, `prompt` |
-| `tool` | 调用工具 | `tool`, `params` |
-| `human_review` | 人工审核 | `message` |
-| `condition` | 条件分支 | `expression` |
-| `parallel` | 并行执行 | `steps` |
-| `loop` | 循环遍历 | `items`, `steps` |
+| `action` | 调用 agent / tool（agent 可声明 file_access） | `action` |
+| `route` | 按表达式分支 | `expression`, `routes` |
+| `fork` | 并行启动分支 | `branches`, `join` |
+| `join` | 等待 fork 分支汇合 | `fork` |
+| `interrupt` | 人工审批断点（触发 paused 等待 resume） | `roles` |
 
 ## 示例
 
-参考 `example-data-analysis.yaml`。
+- `fault-zeroing.yaml`：归零排故全流程（fork 并行 → 审查 → 评估 → 纠正 → 文档），
+  完整的 file_access 与产物门禁用法
+- `example-data-analysis.yaml`：简单数据分析示例

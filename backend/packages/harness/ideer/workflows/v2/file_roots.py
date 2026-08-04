@@ -43,6 +43,10 @@ def render_template(value: Any, state: dict[str, Any]) -> Any:
         end = result.index("}}", start)
         path = result[start + 2 : end].strip()
         replacement = lookup_path(path, state)
+        if replacement is None:
+            # Unpopulated state leaves the template verbatim so callers can
+            # skip it (e.g. start-up validation) instead of rendering "None".
+            break
         result = result[:start] + str(replacement) + result[end + 2 :]
     return result
 

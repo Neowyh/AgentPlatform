@@ -6,15 +6,15 @@ inputs:
   upload_dir:
     type: string
     required: true
-    description: "用户上传资料的目录路径"
+    description: "用户上传资料的目录路径（沙箱虚拟路径，如 /mnt/user-data/uploads/<case>/）"
   problem_description:
     type: string
     default: ""
     description: "问题/顶事件描述"
   output_base_dir:
     type: string
-    default: "/tmp/opencode/fault-zeroing-outputs"
-    description: "产物输出基础目录"
+    default: "/mnt/user-data/outputs"
+    description: "产物输出基础目录（沙箱虚拟路径；运行结束后可在运行详情页浏览和下载产物）"
 
 state:
   evidence_summary:

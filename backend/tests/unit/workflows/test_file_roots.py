@@ -56,6 +56,10 @@ class TestRenderTemplate:
         state = {"state": {"attempt": 3}}
         assert render_template("run-{{state.attempt}}", state) == "run-3"
 
+    def test_none_value_keeps_template_verbatim(self) -> None:
+        state = {"inputs": {"upload_dir": None}}
+        assert render_template("{{inputs.upload_dir}}/a.json", state) == "{{inputs.upload_dir}}/a.json"
+
 
 class TestRenderRoots:
     def test_missing_template_value_keeps_root_verbatim(self) -> None:
