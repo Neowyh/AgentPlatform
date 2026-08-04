@@ -56,7 +56,9 @@ class TestGetSkillsContainerPath:
         if hasattr(_get_skills_container_path, "_cached"):
             delattr(_get_skills_container_path, "_cached")
 
-        with patch("ideer.sandbox.tools.get_app_config", side_effect=Exception("no config")):
+        # The function imports get_app_config locally, so patch the source
+        # module (ideer.config) rather than the sandbox.tools namespace.
+        with patch("ideer.config.get_app_config", side_effect=Exception("no config")):
             result = _get_skills_container_path()
             assert result == "/mnt/skills"
 
@@ -75,13 +77,11 @@ class TestGetSkillsHostPath:
             if hasattr(_get_skills_host_path, attr):
                 delattr(_get_skills_host_path, attr)
 
-        # Patch get_app_config inside the tools module to raise
-        with patch("ideer.sandbox.tools.get_app_config", side_effect=Exception("no config")):
-            # Also ensure no cached value survives this call
+        # The function imports get_app_config locally, so patch the source
+        # module (ideer.config) rather than the sandbox.tools namespace.
+        with patch("ideer.config.get_app_config", side_effect=Exception("no config")):
             result = _get_skills_host_path()
-            # If config exists in the real environment, the function may cache and return it.
-            # Accept either None (config failure) or a string (cached real path).
-            assert result is None or isinstance(result, str)
+            assert result is None
 
 
 # ---------------------------------------------------------------------------
@@ -967,7 +967,9 @@ class TestCustomMounts:
         if hasattr(_get_custom_mounts, "_cached"):
             delattr(_get_custom_mounts, "_cached")
 
-        with patch("ideer.sandbox.tools.get_app_config", side_effect=Exception("no config")):
+        # The function imports get_app_config locally, so patch the source
+        # module (ideer.config) rather than the sandbox.tools namespace.
+        with patch("ideer.config.get_app_config", side_effect=Exception("no config")):
             result = _get_custom_mounts()
             assert result == []
 
@@ -2690,12 +2692,13 @@ class TestGetSkillsHostPathExtended:
             delattr(_get_skills_host_path, "_cached")
 
         try:
-            # With no cache and config failure, should return None
-            # (the function imports get_app_config locally, so we can't easily patch it)
-            # Instead, test that when no cache exists and real config fails, None is returned
-            result = _get_skills_host_path()
-            # Result depends on whether real config exists; accept either None or a valid path
-            assert result is None or isinstance(result, str)
+            # With no cache and a config whose skills dir does not exist,
+            # the function should return None without caching a failure.
+            mock_config = MagicMock()
+            mock_config.skills.get_skills_path.return_value = Path("/nonexistent/skills")
+            with patch("ideer.config.get_app_config", return_value=mock_config):
+                result = _get_skills_host_path()
+            assert result is None
         finally:
             if saved_cache is not None:
                 _get_skills_host_path._cached = saved_cache
@@ -2770,7 +2773,9 @@ class TestGetCustomMountsExtended:
             delattr(_get_custom_mounts, "_cached")
 
         try:
-            with patch("ideer.sandbox.tools.get_app_config") as mock_cfg:
+            # The function imports get_app_config locally, so patch the source
+            # module (ideer.config) rather than the sandbox.tools namespace.
+            with patch("ideer.config.get_app_config") as mock_cfg:
                 mock_cfg.return_value.sandbox = None
                 result = _get_custom_mounts()
                 assert result == []
