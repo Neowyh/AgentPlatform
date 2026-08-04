@@ -30,9 +30,9 @@ import type { RunArtifact } from "@/core/workflows";
 import { cn } from "@/lib/utils";
 
 function statusClass(status: string) {
-  if (status === "completed") return "text-green-600";
+  if (status === "completed") return "text-green-600 dark:text-green-400";
   if (status === "failed" || status === "cancelled") return "text-destructive";
-  if (status === "running") return "text-blue-600";
+  if (status === "running") return "text-blue-600 dark:text-blue-400";
   return "text-muted-foreground";
 }
 
@@ -214,12 +214,12 @@ export default function WorkflowRunDetailPage() {
       <div className="flex-1 overflow-y-auto p-6">
         <div className="mx-auto max-w-6xl space-y-6">
           {fallbackPolling && (
-            <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+            <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-300">
               {t.workflows.streamFallback}
             </p>
           )}
           {runStatus.error && (
-            <p className="text-destructive rounded-md border border-red-200 bg-red-50 p-3 text-sm">
+            <p className="text-destructive rounded-md border border-red-200 bg-red-50 p-3 text-sm dark:border-red-800 dark:bg-red-950/50">
               {runStatus.error}
             </p>
           )}

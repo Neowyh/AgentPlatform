@@ -17,6 +17,7 @@ import {
   PauseCircleIcon,
   WrenchIcon,
 } from "lucide-react";
+import { useTheme } from "next-themes";
 import { useEffect, useMemo } from "react";
 
 import type { RunStatus, WorkflowDetail, WorkflowNode } from "@/core/workflows";
@@ -29,9 +30,12 @@ const NODE_HEIGHT = 56;
 
 const STATUS_CLASS: Record<string, string> = {
   pending: "border-border bg-card text-card-foreground",
-  running: "animate-pulse border-blue-500 bg-blue-50 text-blue-950",
-  completed: "border-emerald-500 bg-emerald-50 text-emerald-950",
-  failed: "border-red-500 bg-red-50 text-red-950",
+  running:
+    "animate-pulse border-blue-500 bg-blue-50 text-blue-950 dark:border-blue-400 dark:bg-blue-950/40 dark:text-blue-300",
+  completed:
+    "border-emerald-500 bg-emerald-50 text-emerald-950 dark:border-emerald-400 dark:bg-emerald-950/40 dark:text-emerald-300",
+  failed:
+    "border-red-500 bg-red-50 text-red-950 dark:border-red-400 dark:bg-red-950/40 dark:text-red-300",
 };
 
 const ROUTE_EDGE_STYLE = { strokeDasharray: "6 4" };
@@ -176,6 +180,7 @@ function RunGraphInner({
   onSelect,
 }: RunGraphProps) {
   const { fitView } = useReactFlow();
+  const { resolvedTheme } = useTheme();
   const positions = useMemo(() => layoutPositions(workflow), [workflow]);
   const nodes = useMemo(
     () => toFlowNodes(workflow, runStatus, positions, selectedNodeId),
@@ -198,6 +203,7 @@ function RunGraphInner({
 
   return (
     <ReactFlow
+      className={cn(resolvedTheme === "dark" && "dark")}
       nodes={nodes}
       edges={edges}
       fitView

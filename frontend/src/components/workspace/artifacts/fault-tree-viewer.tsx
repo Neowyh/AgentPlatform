@@ -1,5 +1,8 @@
+"use client";
+
 import type { Edge as FlowEdge, Node as FlowNode } from "@xyflow/react";
 import { ReactFlow, Background, Controls } from "@xyflow/react";
+import { useTheme } from "next-themes";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -20,10 +23,14 @@ const Y_BY_KIND = {
 } as const;
 
 const STATUS_CLASS: Record<string, string> = {
-  confirmed: "border-emerald-500 bg-emerald-50 text-emerald-950",
-  likely: "border-amber-500 bg-amber-50 text-amber-950",
-  to_verify: "border-sky-500 bg-sky-50 text-sky-950",
-  rejected: "border-zinc-400 bg-zinc-50 text-zinc-800",
+  confirmed:
+    "border-emerald-500 bg-emerald-50 text-emerald-950 dark:border-emerald-400 dark:bg-emerald-950/40 dark:text-emerald-300",
+  likely:
+    "border-amber-500 bg-amber-50 text-amber-950 dark:border-amber-400 dark:bg-amber-950/40 dark:text-amber-300",
+  to_verify:
+    "border-sky-500 bg-sky-50 text-sky-950 dark:border-sky-400 dark:bg-sky-950/40 dark:text-sky-300",
+  rejected:
+    "border-zinc-400 bg-zinc-50 text-zinc-800 dark:border-zinc-500 dark:bg-zinc-900/40 dark:text-zinc-300",
   unknown: "border-border bg-card text-card-foreground",
 };
 
@@ -119,6 +126,7 @@ function toFlowEdges(
 
 export function FaultTreeViewer({ content }: { content: string }) {
   const result = parseFaultTreeArtifact(content);
+  const { resolvedTheme } = useTheme();
 
   if (result.error) {
     return (
@@ -152,6 +160,7 @@ export function FaultTreeViewer({ content }: { content: string }) {
       )}
       <div className="min-h-0 grow">
         <ReactFlow
+          className={cn(resolvedTheme === "dark" && "dark")}
           nodes={toFlowNodes(result.nodes)}
           edges={toFlowEdges(result.edges)}
           fitView

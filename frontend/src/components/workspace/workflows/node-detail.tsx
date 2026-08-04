@@ -16,9 +16,12 @@ import { cn } from "@/lib/utils";
 const MAX_OUTPUT_CHARS = 8000;
 
 function statusClass(status: string) {
-  if (status === "completed") return "border-emerald-500 text-emerald-700";
-  if (status === "failed") return "border-red-500 text-red-700";
-  if (status === "running") return "border-blue-500 text-blue-700";
+  if (status === "completed")
+    return "border-emerald-500 text-emerald-700 dark:text-emerald-400";
+  if (status === "failed")
+    return "border-red-500 text-red-700 dark:text-red-400";
+  if (status === "running")
+    return "border-blue-500 text-blue-700 dark:text-blue-400";
   return "border-border text-muted-foreground";
 }
 
@@ -103,7 +106,7 @@ export function NodeDetailPanel({
       )}
 
       {step?.error && (
-        <div className="text-destructive rounded-md border border-red-200 bg-red-50 p-2 text-xs break-words">
+        <div className="text-destructive rounded-md border border-red-200 bg-red-50 p-2 text-xs break-words dark:border-red-800 dark:bg-red-950/50">
           {step.error}
         </div>
       )}
