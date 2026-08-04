@@ -17,7 +17,7 @@
 
 资料覆盖矩阵必须逐项检查五类资料：问题描述、设计约束、试验记录或日志、总结报告、历史或复核记录。缺失项必须同时写入报告“输入资料”和“遗留风险”。
 
-先生成证据台账，再构建故障树。证据台账字段必须包含 `id`、`source`、`grade`、`type`、`summary`、`supports`、`contradicts`。底事件、根因和报告结论只能引用已有 evidence id 或明确资料来源。
+证据台账是证据评估和报告结论的唯一 evidence id 来源，字段必须包含 `id`、`source`、`grade`、`type`、`summary`、`supports`、`contradicts`。演绎建树不读取证据台账，证据提取与演绎建树的执行关系由 Workflow V2 图和节点文件访问策略控制。底事件、根因和报告结论只能引用已有 evidence id 或明确资料来源。
 
 `06_expected_analysis.md`、`*_expected_analysis.md` 等验收参考文件只可用于人工验收，不得作为底事件、根因或报告结论的证据来源。
 

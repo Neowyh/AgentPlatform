@@ -27,6 +27,7 @@ REMOVED_WORKFLOW_PHRASES = [
     "报告审查",
     "最多只进行一轮核心委托",
     "evidence-reader 不输出根因",
+    "先生成证据台账，再构建故障树",
 ]
 
 
