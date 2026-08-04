@@ -9,10 +9,14 @@ from ideer.workflows.v2 import file_roots
 from ideer.workflows.v2.file_roots import (
     collect_artifacts,
     make_host_resolver,
+    materialize_state,
     missing_written_artifacts,
     render_roots,
     render_template,
+    validate_read_roots,
     validate_roots,
+    workflow_state_path,
+    workflow_state_root,
 )
 
 
@@ -130,7 +134,7 @@ class TestMissingWrittenArtifacts:
         return path
 
     def test_file_root_present_and_non_empty_passes(self, tmp_path: Path) -> None:
-        self._write(tmp_path / "out" / "a.json")
+        self._write(tmp_path / "out" / "a.json", '{"ok": true}')
         assert missing_written_artifacts([str(tmp_path / "out" / "a.json")], lambda p: p) == []
 
     def test_missing_or_empty_file_is_reported(self, tmp_path: Path) -> None:
@@ -141,6 +145,18 @@ class TestMissingWrittenArtifacts:
         )
         assert missing == [str(tmp_path / "out" / "gone.json"), str(tmp_path / "out" / "empty.json")]
 
+    def test_invalid_json_is_reported_missing(self, tmp_path: Path) -> None:
+        self._write(tmp_path / "out" / "bad.json", "{not valid json")
+        assert missing_written_artifacts([str(tmp_path / "out" / "bad.json")], lambda p: p) == [str(tmp_path / "out" / "bad.json")]
+
+    def test_placeholder_marker_is_reported_missing(self, tmp_path: Path) -> None:
+        self._write(tmp_path / "out" / "stub.json", '{"status": "file_missing", "note": "占位文件"}')
+        assert missing_written_artifacts([str(tmp_path / "out" / "stub.json")], lambda p: p) == [str(tmp_path / "out" / "stub.json")]
+
+    def test_placeholder_marker_in_markdown_is_reported_missing(self, tmp_path: Path) -> None:
+        self._write(tmp_path / "out" / "stub.md", "占位文件，无法完成")
+        assert missing_written_artifacts([str(tmp_path / "out" / "stub.md")], lambda p: p) == [str(tmp_path / "out" / "stub.md")]
+
     def test_directory_root_only_checks_existence(self, tmp_path: Path) -> None:
         missing = missing_written_artifacts([f"{tmp_path / 'out' / 'tree'}/"], lambda p: p)
         assert missing == [f"{tmp_path / 'out' / 'tree'}/"]
@@ -149,6 +165,102 @@ class TestMissingWrittenArtifacts:
 
     def test_unresolvable_root_is_reported_missing(self, custom_mounts) -> None:
         assert missing_written_artifacts(["/mnt/unknown/x.json"], lambda p: None) == ["/mnt/unknown/x.json"]
+
+
+class _Node:
+    def __init__(self, node_id: str, read_roots: list[str], writable: bool = False) -> None:
+        self.id = node_id
+        self.type = "action"
+        self.action = type(
+            "Action",
+            (),
+            {
+                "file_access": type(
+                    "FileAccess",
+                    (),
+                    {"model_dump": lambda self: {"read": read_roots, "write": ["/mnt/fault-zeroing-outputs/x.json"] if writable else []}},
+                )()
+            },
+        )()
+
+
+class TestValidateReadRoots:
+    def test_missing_readonly_mount_is_reported(self, custom_mounts, tmp_path: Path) -> None:
+        def resolver(p: str) -> str | None:
+            return str(tmp_path / "eval-cases" / p.removeprefix("/mnt/eval-cases/").lstrip("/"))
+
+        missing = validate_read_roots(
+            [_Node("collect", ["/mnt/eval-cases/case_missing"])],
+            {"upload_dir": "/mnt/eval-cases/case_missing"},
+            resolver,
+        )
+        assert missing == ["node 'collect': /mnt/eval-cases/case_missing"]
+
+    def test_populated_readonly_mount_passes(self, custom_mounts, tmp_path: Path) -> None:
+        case_dir = tmp_path / "eval-cases" / "case_ok"
+        case_dir.mkdir(parents=True)
+        (case_dir / "data.md").write_text("x", encoding="utf-8")
+
+        def resolver(p: str) -> str | None:
+            return str(tmp_path / "eval-cases" / p.removeprefix("/mnt/eval-cases/").lstrip("/"))
+
+        assert validate_read_roots([_Node("collect", ["/mnt/eval-cases/case_ok"])], {"upload_dir": "/mnt/eval-cases/case_ok"}, resolver) == []
+
+    def test_empty_readonly_mount_is_reported(self, custom_mounts, tmp_path: Path) -> None:
+        (tmp_path / "eval-cases" / "case_empty").mkdir(parents=True)
+
+        def resolver(p: str) -> str | None:
+            return str(tmp_path / "eval-cases" / p.removeprefix("/mnt/eval-cases/").lstrip("/"))
+
+        missing = validate_read_roots([_Node("collect", ["/mnt/eval-cases/case_empty"])], {}, resolver)
+        assert missing == ["node 'collect': /mnt/eval-cases/case_empty"]
+
+    def test_uninitialized_uploads_root_is_skipped(self, custom_mounts) -> None:
+        resolver = make_host_resolver("run-1", "user-1")
+        assert validate_read_roots([_Node("collect", ["/mnt/user-data/uploads"])], {"upload_dir": "/mnt/user-data/uploads"}, resolver) == []
+
+    def test_empty_uploads_root_is_reported(self, custom_mounts, host_resolver) -> None:
+        host_resolver.sandbox_uploads_dir("run-1", user_id="user-1").mkdir(parents=True)
+        resolver = make_host_resolver("run-1", "user-1")
+        missing = validate_read_roots([_Node("collect", ["/mnt/user-data/uploads"])], {"upload_dir": "/mnt/user-data/uploads"}, resolver)
+        assert missing == ["node 'collect': /mnt/user-data/uploads"]
+
+    def test_writable_areas_are_not_preflighted(self, custom_mounts) -> None:
+        resolver = make_host_resolver("run-1", "user-1")
+        roots = [
+            "/mnt/fault-zeroing-outputs/artifacts/a.json",  # writable mount (produced artifact)
+            "/mnt/user-data/outputs/artifacts/b.json",  # outputs dir
+            "/mnt/user-data/workspace/c.md",  # workspace
+            "/mnt/skills/custom/fault-zeroing",  # skills
+        ]
+        assert validate_read_roots([_Node("read", roots)], {}, resolver) == []
+
+    def test_unresolvable_template_is_skipped(self, custom_mounts) -> None:
+        resolver = make_host_resolver("run-1", "user-1")
+        assert validate_read_roots([_Node("collect", ["{{state.late}}/x"])], {}, resolver) == []
+
+
+class TestWorkflowStateFiles:
+    def test_state_root_lives_under_workspace(self) -> None:
+        assert workflow_state_root() == "/mnt/user-data/workspace/.workflow/state"
+
+    def test_state_path_extension_follows_value_type(self) -> None:
+        assert workflow_state_path("all_findings", structured=False) == "/mnt/user-data/workspace/.workflow/state/all_findings.md"
+        assert workflow_state_path("result", structured=True) == "/mnt/user-data/workspace/.workflow/state/result.json"
+
+    def test_materialize_state_writes_text_and_json(self, host_resolver, tmp_path: Path) -> None:
+        resolver = make_host_resolver("run-1", "user-1")
+        virtual = materialize_state("notes", "some text", resolver)
+        assert virtual == "/mnt/user-data/workspace/.workflow/state/notes.md"
+        host = tmp_path / "base" / "users" / "user-1" / "threads" / "run-1" / "user-data" / "workspace" / ".workflow" / "state" / "notes.md"
+        assert host.read_text(encoding="utf-8") == "some text"
+
+        virtual = materialize_state("payload", {"a": 1}, resolver)
+        assert virtual == "/mnt/user-data/workspace/.workflow/state/payload.json"
+        assert Path(host.parent / "payload.json").read_text(encoding="utf-8") == '{\n  "a": 1\n}'
+
+    def test_materialize_state_returns_none_when_unresolvable(self, custom_mounts) -> None:
+        assert materialize_state("notes", "text", lambda p: None) is None
 
 
 class TestCollectArtifacts:

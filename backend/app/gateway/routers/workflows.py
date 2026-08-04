@@ -29,7 +29,7 @@ from ideer.config import get_app_config
 from ideer.persistence.engine import get_session_factory
 from ideer.persistence.models.user import UserModel, UserRole
 from ideer.persistence.models.workflow_legacy import LegacyWorkflowRunRow
-from ideer.workflows.v2.file_roots import collect_artifacts, make_host_resolver, render_roots, validate_workflow_roots
+from ideer.workflows.v2.file_roots import collect_artifacts, make_host_resolver, render_roots, validate_read_roots, validate_workflow_roots
 from ideer.workflows.v2.parser import parse_workflow_v2 as parse_workflow_string
 from ideer.workflows.v2.store import WorkflowV2Store
 
@@ -696,6 +696,12 @@ async def run_workflow(
         )
 
     run_id = str(uuid.uuid4())
+    # Fail fast when user-provided input roots are missing or empty: the run
+    # would otherwise consume the whole pipeline and produce garbage.
+    missing_read_roots = validate_read_roots(wf.nodes, inputs, make_host_resolver(run_id, str(current_user.id)))
+    if missing_read_roots:
+        raise HTTPException(400, "Missing input roots: " + "; ".join(missing_read_roots))
+
     runtime = get_app_config().workflow_runtime
     try:
         await store.create_run(

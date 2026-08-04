@@ -13,7 +13,7 @@ import yaml
 from .schema import WorkflowV2
 
 _PATH = re.compile(r"\$\.(?:inputs|state|outputs)(?:\.[A-Za-z_][A-Za-z0-9_]*)+")
-_TEMPLATE = re.compile(r"{{\s*((?:\$\.)?(?:inputs|state|outputs)(?:\.[A-Za-z_][A-Za-z0-9_]*)+)\s*}}")
+_TEMPLATE = re.compile(r"{{\s*((?:\$\.)?(?:inputs|state|state_files|outputs)(?:\.[A-Za-z_][A-Za-z0-9_]*)+)\s*}}")
 
 
 def parse_workflow_v2(content: str) -> WorkflowV2:
@@ -150,7 +150,7 @@ def _validate_expression(expression: str, workflow: WorkflowV2) -> None:
 
 
 def _validate_templates(workflow: WorkflowV2) -> None:
-    declared = {f"$.inputs.{key}" for key in workflow.inputs} | {f"$.state.{key}" for key in workflow.state}
+    declared = {f"$.inputs.{key}" for key in workflow.inputs} | {f"$.state.{key}" for key in workflow.state} | {f"$.state_files.{key}" for key in workflow.state}
     output_nodes = {node.id for node in workflow.nodes}
     declared |= {f"$.outputs.{key}" for key in output_nodes}
     for node in workflow.nodes:

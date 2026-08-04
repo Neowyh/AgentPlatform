@@ -18,7 +18,7 @@ from ideer.persistence.models.workflow_v2 import WorkflowTaskRow
 from ideer.runtime.checkpointer.async_provider import make_checkpointer
 from ideer.workflows.v2.adapters import build_default_registry
 from ideer.workflows.v2.compiler import WorkflowCancelled, WorkflowGraphCompiler
-from ideer.workflows.v2.file_roots import make_host_resolver, validate_workflow_roots
+from ideer.workflows.v2.file_roots import make_host_resolver, validate_read_roots, validate_workflow_roots
 from ideer.workflows.v2.parser import parse_workflow_v2
 from ideer.workflows.v2.store import WorkflowV2Store
 from ideer.workflows.v2.worker import WorkflowPaused, WorkflowWorker, workflow_snapshot
@@ -85,6 +85,9 @@ async def execute_workflow_task(
             invalid_roots = validate_workflow_roots(definition.nodes, run.inputs)
             if invalid_roots:
                 raise RuntimeError("invalid file_access roots: " + "; ".join(invalid_roots))
+            missing_read_roots = validate_read_roots(definition.nodes, run.inputs, make_host_resolver(run_id, run.created_by))
+            if missing_read_roots:
+                raise RuntimeError("missing input roots: " + "; ".join(missing_read_roots))
             await emit_event("resumed" if task.resume_command_id is not None else "run_started", {"definition_version": run.definition_version})
             result = await graph.ainvoke(
                 invocation,

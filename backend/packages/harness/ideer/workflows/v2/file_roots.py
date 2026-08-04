@@ -5,9 +5,13 @@ Workflow definitions declare ``file_access`` roots as virtual paths
 container paths).  These helpers centralise the rules shared by:
 
 - A: gateway start-up validation (reject host paths before a run is created)
+- B: input root pre-flight (a run whose read-only input roots are missing or
+  empty fails fast instead of producing garbage downstream)
 - C: node artifact verification (a node that declared write roots must
   actually produce data, otherwise the run pauses for manual intervention)
 - D: run artifact listing (resolve the declared output base directory)
+- E: cross-node state hand-off (each node's result is materialized to a file
+  under the run workspace so downstream nodes can read it on demand)
 
 The allowlist here mirrors ``ideer.sandbox.tools.validate_local_tool_path``
 so the DSL, the sandbox and the verification layer all agree on one rule set.
@@ -15,6 +19,7 @@ so the DSL, the sandbox and the verification layer all agree on one rule set.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -27,6 +32,42 @@ from ideer.sandbox.tools import (
 )
 
 _ACP_WORKSPACE_PREFIX = "/mnt/acp-workspace"
+
+_STATE_DIR_REL = ".workflow/state"
+
+_PLACEHOLDER_MARKERS = ("file_missing", "占位", "placeholder")
+
+
+def workflow_state_root() -> str:
+    """Virtual root where each node's state output is materialized."""
+    return f"{VIRTUAL_PATH_PREFIX}/workspace/{_STATE_DIR_REL}"
+
+
+def workflow_state_path(key: str, *, structured: bool) -> str:
+    """Virtual path of the materialized state file for one state key."""
+    suffix = ".json" if structured else ".md"
+    return f"{workflow_state_root()}/{key}{suffix}"
+
+
+def materialize_state(key: str, value: Any, resolver: Callable[[str], str | None]) -> str | None:
+    """Write a node's state output to the run workspace; return its virtual path.
+
+    String values are stored as markdown text (``<key>.md``); dict/list values
+    are JSON-serialized (``<key>.json``).  Returns ``None`` when the workspace
+    cannot be resolved (e.g. sandbox disabled), so callers degrade gracefully.
+    """
+    structured = isinstance(value, (dict, list))
+    virtual = workflow_state_path(key, structured=structured)
+    host = resolver(virtual)
+    if host is None:
+        return None
+    path = Path(host)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if structured:
+        path.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
+    else:
+        path.write_text(str(value), encoding="utf-8")
+    return virtual
 
 
 def render_template(value: Any, state: dict[str, Any]) -> Any:
@@ -168,9 +209,12 @@ def make_host_resolver(run_id: str, user_id: str | None) -> Callable[[str], str 
 def missing_written_artifacts(write_roots: list[str], resolver: Callable[[str], str | None]) -> list[str]:
     """Return the declared write roots that produced no usable data.
 
-    File roots must exist and be non-empty; directory roots (trailing ``/``)
-    must exist.  Roots that cannot be resolved are reported as missing so a
-    misconfigured definition fails loudly instead of silently passing.
+    File roots must exist and be non-empty; JSON file roots must also parse
+    and must not contain placeholder markers (agents sometimes write a
+    ``{"status": "file_missing"}`` stub instead of failing).  Directory roots
+    (trailing ``/``) must exist.  Roots that cannot be resolved are reported
+    as missing so a misconfigured definition fails loudly instead of silently
+    passing.
     """
     missing: list[str] = []
     for root in write_roots:
@@ -185,6 +229,83 @@ def missing_written_artifacts(write_roots: list[str], resolver: Callable[[str], 
             continue
         if not path.is_file() or path.stat().st_size == 0:
             missing.append(root)
+            continue
+        if _is_placeholder_output(path):
+            missing.append(root)
+    return missing
+
+
+def _is_placeholder_output(path: Path) -> bool:
+    """True when a file exists but looks like a fabricated placeholder.
+
+    JSON outputs must parse; any output containing a placeholder marker
+    (``file_missing``, ``占位``, ``placeholder``) is treated as missing so a
+    stubbed result cannot silently poison downstream nodes.
+    """
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return True
+    lowered = text.lower()
+    if any(marker in lowered for marker in _PLACEHOLDER_MARKERS):
+        return True
+    if path.name.endswith(".json"):
+        try:
+            json.loads(text)
+        except json.JSONDecodeError:
+            return True
+    return False
+
+
+def _is_input_read_root(path: str) -> bool:
+    """True when a read root carries user-provided input data.
+
+    Only these roots are pre-flighted for existence: user uploads and
+    read-only custom mounts.  Writable areas (outputs, workspace) hold
+    artifacts produced by earlier nodes that legitimately do not exist yet,
+    so they are never checked up front.
+    """
+    if path == f"{VIRTUAL_PATH_PREFIX}/uploads" or path.startswith(f"{VIRTUAL_PATH_PREFIX}/uploads/"):
+        return True
+    for mount in _get_custom_mounts():
+        if mount.read_only and (path == mount.container_path or path.startswith(f"{mount.container_path}/")):
+            return True
+    return False
+
+
+def validate_read_roots(nodes: list[Any], inputs: dict[str, Any], resolver: Callable[[str], str | None]) -> list[str]:
+    """Return the input read roots that are missing or empty.
+
+    A node declaring read access to an input root that does not exist (or is
+    empty) would produce garbage downstream, so runs fail fast instead.
+    Uploads under ``/mnt/user-data/uploads`` may not have their run-scoped
+    directory initialized yet, so only an already-existing host path is
+    checked for emptiness; read-only mounts are always checked.
+    """
+    state = {"inputs": inputs, "state": {}, "outputs": {}}
+    missing: list[str] = []
+    for node in nodes:
+        action = getattr(node, "action", None)
+        if getattr(node, "type", None) != "action" or action is None or action.file_access is None:
+            continue
+        rendered = render_roots(action.file_access.model_dump(), state)
+        for root in rendered.get("read", []):
+            if "{{" in root or not _is_input_read_root(root):
+                continue
+            host = resolver(root)
+            if host is None:
+                continue  # no host mapping (e.g. skills not installed) — framework-managed
+            path = Path(host)
+            if not path.exists():
+                if root.startswith(f"{VIRTUAL_PATH_PREFIX}/uploads"):
+                    continue  # run-scoped uploads dir may not be initialized yet
+                missing.append(f"node '{node.id}': {root}")
+                continue
+            if path.is_dir():
+                if not any(path.iterdir()):
+                    missing.append(f"node '{node.id}': {root}")
+            elif path.stat().st_size == 0:
+                missing.append(f"node '{node.id}': {root}")
     return missing
 
 

@@ -69,6 +69,9 @@ nodes:
           上传目录：{{inputs.upload_dir}}
           问题描述：{{inputs.problem_description}}
 
+          你拥有对该目录的完整读取权限，可以直接对精确路径 {{inputs.upload_dir}}
+          使用 ls / glob / grep 枚举目录内容（注意：不要枚举上级目录，上级目录不在权限内）。
+
           1. 使用 glob 扫描 {{inputs.upload_dir}}，了解文件结构
           2. 读取关键文件，抽取每一条证据
           3. 检查五类资料覆盖情况：问题描述、设计约束、试验记录或日志、总结报告、历史或复核记录
@@ -80,6 +83,8 @@ nodes:
             type、summary、supports（可支撑的事件ID）、contradicts（反证对象ID）
           b) 写入 {{inputs.output_base_dir}}/artifacts/evidence/coverage_matrix.md
           c) 输出摘要：总证据数、A/B/C/D 各级分布、覆盖情况
+          失败契约：若无法完成任务，回复必须以 FAILED: 开头说明原因；
+          严禁写入占位文件或空文件。
     writes:
       - "$.state.evidence_summary"
 
@@ -118,6 +123,8 @@ nodes:
           输出：写入 {{inputs.output_base_dir}}/artifacts/tree/fault_tree_structure.json
           参考 fault_tree.schema.json 格式，但不填充 evidence_ids、probability、
           probability_basis、confidence、status 字段（留 null 或空数组）
+          失败契约：若无法完成任务，回复必须以 FAILED: 开头说明原因；
+          严禁写入占位文件或空文件。
     writes:
       - "$.state.tree_structure"
 
@@ -160,7 +167,7 @@ nodes:
           逐条对照证据台账：如果某条证据指向的故障模式在树中无对应路径，
           记录为"遗漏"。只做添加不做删除。
 
-          输出（仅写入 state，不写文件）：
+          输出（仅写入 state，不写文件；引擎会自动把本回复保存为文件供下游节点读取）：
           ```json
           {
             "structure_issues": [
@@ -174,6 +181,9 @@ nodes:
             ]
           }
           ```
+
+          失败契约：若无法完成任务，回复必须以 FAILED: 开头说明原因；
+          严禁编造审查结论。
     writes:
       - "$.state.all_findings"
 
@@ -197,7 +207,8 @@ nodes:
         prompt: |
           读取：
           a) {{inputs.output_base_dir}}/artifacts/tree/fault_tree_structure.json
-          b) 审查发现（state 中的 all_findings）
+          b) 审查发现：读取 {{state_files.all_findings}}
+             （文件不存在说明上游节点失败，此时必须以 FAILED: 开头回复，不得编造）
 
           裁决规则（四象限矩阵）：
 
@@ -216,6 +227,8 @@ nodes:
           可选：如需核验证据内容，可读取 c) {{inputs.output_base_dir}}/artifacts/evidence/evidence_table.json
 
           输出：覆盖写入 {{inputs.output_base_dir}}/artifacts/tree/fault_tree_structure.json
+          失败契约：若无法完成任务，回复必须以 FAILED: 开头说明原因；
+          严禁写入占位文件或空文件。
     writes:
       - "$.state.tree_structure"
 
@@ -260,6 +273,8 @@ nodes:
           输出：写入 {{inputs.output_base_dir}}/fault_tree.json
           包含 7 个顶级字段：top_event, intermediate_events, bottom_events,
           logic, evidence, root_causes, verification_plan
+          失败契约：若无法完成任务，回复必须以 FAILED: 开头说明原因；
+          严禁写入占位文件或空文件。
     writes:
       - "$.state.assessment_summary"
     retry:
@@ -302,6 +317,9 @@ nodes:
             ]
           }
           ```
+
+          失败契约：若无法完成任务，回复必须以 FAILED: 开头说明原因；
+          严禁输出推测性结论。
     writes:
       - "$.state.assessment_review"
 
@@ -324,8 +342,8 @@ nodes:
         prompt: |
           读取 {{inputs.output_base_dir}}/fault_tree.json
 
-          审查发现的问题：
-          {{state.assessment_review}}
+          审查发现的问题：读取 {{state_files.assessment_review}}
+          （文件不存在说明审核节点失败，此时必须以 FAILED: 开头回复，不得编造）
 
           对每条问题，逐一回应：
           - 同意 → 修正 fault_tree.json
@@ -374,6 +392,9 @@ nodes:
             ]
           }
           ```
+
+          失败契约：若无法完成任务，回复必须以 FAILED: 开头说明原因；
+          严禁写入占位文件。
     writes:
       - "$.state.corrective_actions_summary"
 
@@ -439,6 +460,9 @@ nodes:
           - fault_tree.json 的顶事件、根因、待验证项与报告一致
           - SVG 为纯静态
           - 分析过程追溯标记：证据提取、故障树构建、底事件评估、根因归因、纠正措施、文档生产
+
+          失败契约：任一输入文件缺失或无法生成全部 4 个文件时，回复必须以
+          FAILED: 开头说明缺失项；严禁生成占位/空文件。
     retry:
       max_attempts: 2
       backoff_seconds: 30

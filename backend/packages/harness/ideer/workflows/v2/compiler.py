@@ -14,7 +14,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
 
 from .adapters import ActionAdapterRegistry, ActionContext
-from .file_roots import lookup_path, missing_written_artifacts, render_template
+from .file_roots import lookup_path, materialize_state, missing_written_artifacts, render_template, workflow_state_path, workflow_state_root
 from .schema import EdgeV2, NodeV2, WorkflowV2
 
 
@@ -28,6 +28,10 @@ class WorkflowNodeTimeout(RuntimeError):
 
 class WorkflowIterationLimit(RuntimeError):
     """Raised when a declared workflow back-edge exceeds its bound."""
+
+
+class WorkflowNodeFailed(RuntimeError):
+    """Raised when a node's response declares failure via the ``FAILED:`` marker."""
 
 
 class ArtifactsMissing(RuntimeError):
@@ -159,16 +163,25 @@ class WorkflowGraphCompiler:
                 return {"interrupt": interrupt({"node_id": node.id, "roles": node.roles})}
             if node.type != "action":
                 return state
+            context_state = dict(state.get("state", {}))
+            state_files = {key: workflow_state_path(key, structured=isinstance(value, (dict, list))) for key, value in context_state.items()}
+            render_state = {**state, "state_files": state_files}
+            file_access = render_template(node.action.file_access.model_dump(), render_state) if node.action is not None and node.action.file_access is not None else None
+            if file_access is not None:
+                read_roots = file_access.setdefault("read", [])
+                state_root = workflow_state_root()
+                if not any(read_root == state_root for read_root in read_roots):
+                    read_roots.append(state_root)
             context = ActionContext(
                 workflow_name=self.definition.name,
                 run_id=_run_id(state),
                 node_id=node.id,
                 inputs=dict(state.get("inputs", {})),
-                state=dict(state.get("state", {})),
+                state=context_state,
                 outputs=dict(state.get("outputs", {})),
-                file_access=(render_template(node.action.file_access.model_dump(), state) if node.action is not None and node.action.file_access is not None else None),
+                file_access=file_access,
             )
-            params = render_template(node.action.params, state)  # type: ignore[union-attr]
+            params = render_template(node.action.params, render_state)  # type: ignore[union-attr]
             await self._emit("node_started", {"node_id": node.id, "idempotency_key": context.idempotency_key})
             try:
                 adapter = self.adapters.resolve(node.action.kind, node.action.name)  # type: ignore[union-attr]
@@ -180,6 +193,8 @@ class WorkflowGraphCompiler:
                             result = await asyncio.wait_for(action, timeout=self.node_timeout_seconds) if self.node_timeout_seconds is not None else await action
                         except TimeoutError as exc:
                             raise WorkflowNodeTimeout("workflow_node_timeout") from exc
+                        if isinstance(result, str) and result.startswith("FAILED:"):
+                            raise WorkflowNodeFailed(f"node '{node.id}' reported failure: {result[:200]}")
                         if self.artifact_resolver is not None and context.file_access is not None:
                             missing = missing_written_artifacts(context.file_access.get("write", []), self.artifact_resolver)
                             if missing:
@@ -217,7 +232,10 @@ class WorkflowGraphCompiler:
             if node.writes:
                 if len(node.writes) != 1:
                     raise ValueError(f"action node '{node.id}' must declare exactly one write path")
-                update["state"] = {_write_key(node.writes[0]): result}
+                key = _write_key(node.writes[0])
+                update["state"] = {key: result}
+                if self.artifact_resolver is not None:
+                    materialize_state(key, result, self.artifact_resolver)
             return update
 
         return run
