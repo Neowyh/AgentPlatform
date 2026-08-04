@@ -70,7 +70,7 @@ class WorkflowV2Store:
             run_id=run_id,
             workflow_name=workflow_name,
             definition_version=definition_version,
-            checkpoint_thread_id=f"wf:{run_id}",
+            checkpoint_thread_id=f"wf-{run_id}",
             status="queued",
             inputs=inputs,
             snapshot={},
@@ -107,6 +107,10 @@ class WorkflowV2Store:
                 if department_count >= department_concurrency:
                     raise RuntimeError("workflow_department_concurrency_exceeded")
             session.add(run)
+            # Flush before inserting the task: with SQLite foreign keys enabled
+            # (production engine), the task row must reference an already
+            # persisted run row. Relying on flush ordering alone is fragile.
+            await session.flush()
             session.add(task)
             await session.commit()
         return run

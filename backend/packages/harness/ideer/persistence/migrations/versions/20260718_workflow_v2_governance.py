@@ -12,10 +12,8 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.add_column("workflow_v2_runs", sa.Column("event_seq", sa.Integer(), nullable=False, server_default="0"))
     op.add_column("workflow_v2_runs", sa.Column("department_id", sa.String(64), nullable=True))
 
 
 def downgrade() -> None:
     op.drop_column("workflow_v2_runs", "department_id")
-    op.drop_column("workflow_v2_runs", "event_seq")
