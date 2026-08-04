@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from ideer.persistence.models.workflow_v2 import WorkflowCommandRow, WorkflowDefinitionVersionRow, WorkflowV2RunRow
+from ideer.persistence.models.workflow_v2 import WorkflowCommandRow, WorkflowDefinitionVersionRow, WorkflowTaskRow, WorkflowV2RunRow
 from ideer.workflows.v2.store import WorkflowV2Store
 
 
@@ -164,6 +164,54 @@ async def test_finish_task_transitions_run_and_releases_lease() -> None:
     assert await store.finish_task("task-1", "failed", "adapter failed", "worker-1") is True
 
     assert session.execute.await_count == 3
+    session.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_resume_command_revives_failed_task() -> None:
+    session = AsyncMock()
+    session.add = MagicMock()
+    task = MagicMock(spec=WorkflowTaskRow, status="failed", attempts=3, run_id="run-1", cancel_requested=False)
+    run = MagicMock(spec=WorkflowV2RunRow, run_id="run-1", status="failed", error="workflow_max_attempts_exceeded")
+    command_result = MagicMock()
+    command_result.scalar_one_or_none.return_value = None
+    task_result = MagicMock()
+    task_result.scalar_one_or_none.return_value = task
+    run_result = MagicMock()
+    run_result.scalar_one_or_none.return_value = run
+    session.execute.side_effect = [command_result, task_result, run_result]
+    store = WorkflowV2Store(MagicMock(return_value=_Context(session)))
+
+    await store.submit_command("cmd-1", "run-1", "resume", {}, "u")
+
+    assert task.status == "queued"
+    assert task.attempts == 0
+    assert task.resume_command_id == "cmd-1"
+    assert run.status == "queued"
+    assert run.error is None
+    session.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_resume_command_does_not_reset_attempts_for_paused_task() -> None:
+    session = AsyncMock()
+    session.add = MagicMock()
+    task = MagicMock(spec=WorkflowTaskRow, status="paused", attempts=1, run_id="run-1", cancel_requested=False)
+    run = MagicMock(spec=WorkflowV2RunRow, run_id="run-1", status="paused", error=None)
+    command_result = MagicMock()
+    command_result.scalar_one_or_none.return_value = None
+    task_result = MagicMock()
+    task_result.scalar_one_or_none.return_value = task
+    run_result = MagicMock()
+    run_result.scalar_one_or_none.return_value = run
+    session.execute.side_effect = [command_result, task_result, run_result]
+    store = WorkflowV2Store(MagicMock(return_value=_Context(session)))
+
+    await store.submit_command("cmd-1", "run-1", "resume", {}, "u")
+
+    assert task.status == "queued"
+    assert task.attempts == 1
+    assert run.status == "queued"
     session.commit.assert_awaited_once()
 
 

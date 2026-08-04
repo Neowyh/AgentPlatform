@@ -84,6 +84,7 @@ class _AgentAdapter:
         from ideer.subagents.config import SubagentConfig
         from ideer.subagents.executor import SubagentExecutor, SubagentStatus
         from ideer.tools.tools import get_available_tools
+        from ideer.workflows.v2.compiler import WorkflowTransientError
 
         config = load_agent_config(self.name, user_id=self.user_id)
         if config is None:
@@ -119,8 +120,10 @@ class _AgentAdapter:
             reset_current_user(user_token)
         if result.status == SubagentStatus.COMPLETED:
             if _is_llm_unavailable_text(result.result):
-                raise RuntimeError(f"agent '{self.name}' failed: LLM provider unavailable")
+                raise WorkflowTransientError(f"agent '{self.name}' failed: LLM provider unavailable")
             return result.result
+        if _is_llm_unavailable_text(result.error):
+            raise WorkflowTransientError(result.error or f"agent '{self.name}' failed: LLM provider unavailable")
         raise RuntimeError(result.error or f"agent '{self.name}' failed with status {result.status}")
 
     async def astream(self, context: ActionContext, params: dict[str, Any]) -> AsyncIterator[dict[str, Any]]:

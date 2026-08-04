@@ -855,6 +855,7 @@ async def submit_workflow_command(
     workflow_name: str,
     run_id: str,
     body: WorkflowCommandRequest,
+    request: Request,
     current_user: UserModel = Depends(get_current_rbac_user),
 ):
     store = _v2_store()
@@ -866,12 +867,21 @@ async def submit_workflow_command(
     meta = await _workflow_store.load_meta(workflow_name)
     if not meta or not check_resource_access(current_user, meta.get("owner_id"), meta.get("department_id"), meta.get("visibility")):
         raise HTTPException(404, f"Workflow '{workflow_name}' not found")
-    if body.type == "resume" and current_user.role != UserRole.SUPER_ADMIN:
-        definition = await store.get_definition(workflow_name, run.definition_version)
-        interrupt_node = run.snapshot.get("interrupt", {}).get("node_id") if isinstance(run.snapshot, dict) else None
-        required_roles = {role for node in (definition.definition.get("nodes", []) if definition else []) if node.get("id") == interrupt_node for role in node.get("roles", [])}
-        if required_roles and current_user.role.value not in required_roles:
-            raise HTTPException(403, "You do not have permission to resume this workflow")
+    if body.type == "resume":
+        if run.status == "failed":
+            # a failed run can only be revived from a durable checkpoint; without
+            # one LangGraph would silently restart the workflow from scratch
+            checkpointer = getattr(request.app.state, "checkpointer", None)
+            if checkpointer is not None:
+                ckpt = await checkpointer.aget_tuple({"configurable": {"thread_id": run.checkpoint_thread_id}})
+                if ckpt is None:
+                    raise HTTPException(409, "Run has no checkpoint to resume from")
+        elif current_user.role != UserRole.SUPER_ADMIN:
+            definition = await store.get_definition(workflow_name, run.definition_version)
+            interrupt_node = run.snapshot.get("interrupt", {}).get("node_id") if isinstance(run.snapshot, dict) else None
+            required_roles = {role for node in (definition.definition.get("nodes", []) if definition else []) if node.get("id") == interrupt_node for role in node.get("roles", [])}
+            if required_roles and current_user.role.value not in required_roles:
+                raise HTTPException(403, "You do not have permission to resume this workflow")
     command = await store.submit_command(body.command_id, run_id, body.type, body.payload, str(current_user.id))
     await record_audit(
         str(current_user.id),

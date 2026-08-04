@@ -224,10 +224,17 @@ class WorkflowV2Store:
             task = (await session.execute(select(WorkflowTaskRow).where(WorkflowTaskRow.run_id == run_id))).scalar_one_or_none()
             run = (await session.execute(select(WorkflowV2RunRow).where(WorkflowV2RunRow.run_id == run_id))).scalar_one_or_none()
             if task is not None and run is not None:
-                if command_type == "resume" and task.status == "paused":
+                if command_type == "resume" and task.status in {"paused", "failed"}:
+                    was_failed = task.status == "failed"
                     task.status = "queued"
-                    run.status = "queued"
                     task.resume_command_id = command.command_id
+                    if was_failed:
+                        # a failed run is revived from its last checkpoint: reset
+                        # attempts (a max_attempts kill would otherwise re-trigger
+                        # immediately) and clear the recorded error
+                        task.attempts = 0
+                    run.status = "queued"
+                    run.error = None
                 elif command_type == "cancel" and task.status in {"queued", "paused"}:
                     task.status = "cancelled"
                     run.status = "cancelled"

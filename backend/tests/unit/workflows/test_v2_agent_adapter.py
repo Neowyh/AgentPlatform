@@ -18,6 +18,7 @@ import ideer.config.agents_config
 import ideer.tools.tools
 from ideer.runtime.user_context import get_effective_user_id
 from ideer.workflows.v2.adapters import ActionContext, _AgentAdapter
+from ideer.workflows.v2.compiler import WorkflowTransientError
 
 # conftest.py pre-injects a MagicMock for ideer.subagents.executor to dodge a
 # circular import, so we grab the mock module and re-patch the names the
@@ -205,8 +206,9 @@ async def test_agent_adapter_respects_max_turns_param(env: pytest.MonkeyPatch) -
 @pytest.mark.asyncio
 async def test_agent_adapter_fails_when_llm_unavailable(env: pytest.MonkeyPatch) -> None:
     """The LLM error middleware returns a graceful user-facing message when
-    the provider is down. A workflow node must treat that as a node failure
-    (so the run can be retried) instead of silently producing empty output."""
+    the provider is down. A workflow node must surface that as a transient
+    error (retried with backoff, then the run pauses for resume) instead of
+    silently producing empty output."""
 
     class UnavailableExecutor(FakeExecutor):
         async def _aexecute(self, prompt: str) -> SimpleNamespace:
@@ -227,7 +229,7 @@ async def test_agent_adapter_fails_when_llm_unavailable(env: pytest.MonkeyPatch)
         state={},
         outputs={},
     )
-    with pytest.raises(RuntimeError, match="LLM provider unavailable"):
+    with pytest.raises(WorkflowTransientError, match="LLM provider unavailable"):
         await adapter.run(context, {"prompt": "执行任务"})
 
 

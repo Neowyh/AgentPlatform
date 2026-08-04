@@ -35,12 +35,28 @@ class WorkflowNodeFailed(RuntimeError):
     """Raised when a node's response declares failure via the ``FAILED:`` marker."""
 
 
+class WorkflowTransientError(RuntimeError):
+    """Raised when a node action failed for a transient provider/network reason.
+
+    Transient errors are retried with a dedicated backoff budget (independent of the
+    node's retry policy) and then interrupt the run as ``paused`` instead of failing it,
+    so an operator can resume once the provider recovers.
+    """
+
+
 class ArtifactsMissing(RuntimeError):
     """Raised when a node's declared write roots produced no usable data."""
 
     def __init__(self, missing: list[str]) -> None:
         self.missing = missing
         super().__init__(f"artifacts_missing: {', '.join(missing)}")
+
+
+# Transient provider/network failures are retried with a dedicated backoff
+# budget before the run is interrupted as ``paused``. These are module-level
+# so tests can shrink the schedule without touching node retry policies.
+_TRANSIENT_MAX_ATTEMPTS = 3
+_TRANSIENT_BACKOFF_BASE_SECONDS = 30.0
 
 
 def _merge_maps(left: dict[str, Any] | None, right: dict[str, Any] | None) -> dict[str, Any]:
@@ -187,34 +203,54 @@ class WorkflowGraphCompiler:
             try:
                 adapter = self.adapters.resolve(node.action.kind, node.action.name)  # type: ignore[union-attr]
                 last_error: Exception | None = None
-                for attempt in range(node.retry.max_attempts):
-                    try:
-                        action = self._run_action(adapter, context, params)
+                result: Any = None
+                transient_attempts = 0
+                while True:
+                    last_error = None
+                    for attempt in range(node.retry.max_attempts):
                         try:
-                            result = await asyncio.wait_for(action, timeout=self.node_timeout_seconds) if self.node_timeout_seconds is not None else await action
-                        except TimeoutError as exc:
-                            raise WorkflowNodeTimeout("workflow_node_timeout") from exc
-                        if isinstance(result, str) and result.startswith("FAILED:"):
-                            raise WorkflowNodeFailed(f"node '{node.id}' reported failure: {result[:200]}")
-                        if self.artifact_resolver is not None and context.file_access is not None:
-                            missing = missing_written_artifacts(context.file_access.get("write", []), self.artifact_resolver)
-                            if missing:
-                                raise ArtifactsMissing(missing)
-                        break
-                    except Exception as exc:  # retry policy is deliberately node-local
-                        last_error = exc
-                        if attempt + 1 < node.retry.max_attempts and node.retry.backoff_seconds:
-                            await asyncio.sleep(node.retry.backoff_seconds)
-                else:
-                    if isinstance(last_error, ArtifactsMissing):
-                        # Two-phase interrupt so every resume re-verifies the
-                        # gate: on resume the node re-runs and the first
-                        # interrupt() consumes the resume value without raising,
-                        # then the second interrupt() has no resume value left
-                        # and raises a fresh GraphInterrupt — pausing again.
-                        interrupt({"type": "artifacts_missing", "node_id": node.id, "missing": last_error.missing})
-                        return {"interrupt": interrupt({"type": "artifacts_missing", "node_id": node.id, "missing": last_error.missing})}
-                    raise last_error or RuntimeError(f"node '{node.id}' failed")
+                            action = self._run_action(adapter, context, params)
+                            try:
+                                result = await asyncio.wait_for(action, timeout=self.node_timeout_seconds) if self.node_timeout_seconds is not None else await action
+                            except TimeoutError as exc:
+                                raise WorkflowNodeTimeout("workflow_node_timeout") from exc
+                            if isinstance(result, str) and result.startswith("FAILED:"):
+                                raise WorkflowNodeFailed(f"node '{node.id}' reported failure: {result[:200]}")
+                            if self.artifact_resolver is not None and context.file_access is not None:
+                                missing = missing_written_artifacts(context.file_access.get("write", []), self.artifact_resolver)
+                                if missing:
+                                    raise ArtifactsMissing(missing)
+                            break
+                        except WorkflowTransientError as exc:
+                            # transient provider/network errors leave the node-retry
+                            # policy and get their own backoff budget below
+                            last_error = exc
+                            break
+                        except Exception as exc:  # retry policy is deliberately node-local
+                            last_error = exc
+                            if attempt + 1 < node.retry.max_attempts and node.retry.backoff_seconds:
+                                await asyncio.sleep(node.retry.backoff_seconds)
+                    else:
+                        if isinstance(last_error, ArtifactsMissing):
+                            # Two-phase interrupt so every resume re-verifies the
+                            # gate: on resume the node re-runs and the first
+                            # interrupt() consumes the resume value without raising,
+                            # then the second interrupt() has no resume value left
+                            # and raises a fresh GraphInterrupt — pausing again.
+                            interrupt({"type": "artifacts_missing", "node_id": node.id, "missing": last_error.missing})
+                            return {"interrupt": interrupt({"type": "artifacts_missing", "node_id": node.id, "missing": last_error.missing})}
+                        raise last_error or RuntimeError(f"node '{node.id}' failed")
+                    if isinstance(last_error, WorkflowTransientError):
+                        transient_attempts += 1
+                        if transient_attempts < _TRANSIENT_MAX_ATTEMPTS:
+                            await asyncio.sleep(_TRANSIENT_BACKOFF_BASE_SECONDS * transient_attempts)
+                            continue
+                        # Two-phase interrupt, mirroring the artifacts_missing gate:
+                        # resuming re-runs the node, which retries the action and
+                        # either completes or pauses again with a fresh interrupt.
+                        interrupt({"type": "transient_error", "node_id": node.id, "error": str(last_error)})
+                        return {"interrupt": interrupt({"type": "transient_error", "node_id": node.id, "error": str(last_error)})}
+                    break
             except GraphInterrupt:
                 raise
             except Exception as exc:

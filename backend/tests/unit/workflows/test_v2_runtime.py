@@ -6,8 +6,15 @@ import pytest
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.types import Command
 
+from ideer.workflows.v2 import compiler as compiler_module
 from ideer.workflows.v2.adapters import ActionAdapterRegistry, ActionResolutionError
-from ideer.workflows.v2.compiler import WorkflowCancelled, WorkflowGraphCompiler, WorkflowNodeFailed, WorkflowNodeTimeout
+from ideer.workflows.v2.compiler import (
+    WorkflowCancelled,
+    WorkflowGraphCompiler,
+    WorkflowNodeFailed,
+    WorkflowNodeTimeout,
+    WorkflowTransientError,
+)
 from ideer.workflows.v2.file_roots import workflow_state_root
 from ideer.workflows.v2.parser import parse_workflow_v2
 
@@ -288,6 +295,95 @@ edges: []
     await graph.ainvoke({"run_id": "run-1", "inputs": {}, "state": {}, "outputs": {}}, config={"configurable": {"thread_id": "wf:json-state"}})
 
     assert state_file_host.read_text(encoding="utf-8") == '{\n  "a": 1\n}'
+
+
+@pytest.mark.asyncio
+async def test_compiler_pauses_on_transient_error_after_dedicated_backoff(monkeypatch: pytest.MonkeyPatch) -> None:
+    definition = parse_workflow_v2(
+        """
+schema_version: 2
+name: transient
+inputs: {}
+state: {task: {type: string}}
+entrypoint: task
+nodes:
+  - id: task
+    type: action
+    action: {kind: tool, name: flaky}
+    writes: [$.state.task]
+edges: []
+"""
+    )
+    # shrink the transient backoff schedule for a fast test; the node declares no
+    # retry policy, so the budget must come from WorkflowTransientError handling
+    monkeypatch.setattr(compiler_module, "_TRANSIENT_MAX_ATTEMPTS", 2)
+    monkeypatch.setattr(compiler_module, "_TRANSIENT_BACKOFF_BASE_SECONDS", 0)
+    attempts = 0
+    events: list[tuple[str, dict]] = []
+
+    class Adapter:
+        async def run(self, context, params):
+            nonlocal attempts
+            attempts += 1
+            raise WorkflowTransientError("LLM provider unavailable")
+
+    async def emit(event_type: str, payload: dict) -> None:
+        events.append((event_type, payload))
+
+    graph = WorkflowGraphCompiler(
+        definition,
+        ActionAdapterRegistry({("tool", "flaky"): Adapter()}),
+        emit_event=emit,
+    ).compile(checkpointer=MemorySaver())
+    config = {"configurable": {"thread_id": "wf:transient"}}
+    paused = await graph.ainvoke({"run_id": "run-1", "inputs": {}, "state": {}, "outputs": {}}, config=config)
+
+    assert attempts == 2
+    assert paused["__interrupt__"][0].value == {"type": "transient_error", "node_id": "task", "error": "LLM provider unavailable"}
+    assert not any(event_type == "node_failed" for event_type, _ in events)
+
+
+@pytest.mark.asyncio
+async def test_compiler_resumes_after_transient_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    definition = parse_workflow_v2(
+        """
+schema_version: 2
+name: transient-recover
+inputs: {}
+state: {task: {type: string}}
+entrypoint: task
+nodes:
+  - id: task
+    type: action
+    action: {kind: tool, name: flaky}
+    writes: [$.state.task]
+edges: []
+"""
+    )
+    monkeypatch.setattr(compiler_module, "_TRANSIENT_MAX_ATTEMPTS", 2)
+    monkeypatch.setattr(compiler_module, "_TRANSIENT_BACKOFF_BASE_SECONDS", 0)
+    attempts = 0
+
+    class Adapter:
+        async def run(self, context, params):
+            nonlocal attempts
+            attempts += 1
+            if attempts <= 2:
+                raise WorkflowTransientError("LLM provider unavailable")
+            return "recovered"
+
+    graph = WorkflowGraphCompiler(
+        definition,
+        ActionAdapterRegistry({("tool", "flaky"): Adapter()}),
+    ).compile(checkpointer=MemorySaver())
+    config = {"configurable": {"thread_id": "wf:transient-recover"}}
+    paused = await graph.ainvoke({"run_id": "run-1", "inputs": {}, "state": {}, "outputs": {}}, config=config)
+    assert paused["__interrupt__"]
+
+    completed = await graph.ainvoke(Command(resume={"operator": "ok"}), config=config)
+
+    assert completed["state"]["task"] == "recovered"
+    assert attempts == 3
 
 
 @pytest.mark.asyncio
