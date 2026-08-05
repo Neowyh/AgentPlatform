@@ -66,7 +66,7 @@ def _v2_store() -> WorkflowV2Store:
 
 
 def _definition_yaml(definition: dict) -> str:
-    return yaml.safe_dump(definition, sort_keys=False)
+    return yaml.safe_dump(definition, sort_keys=False, allow_unicode=True)
 
 
 def _can_access_run(current_user: UserModel, run) -> bool:
