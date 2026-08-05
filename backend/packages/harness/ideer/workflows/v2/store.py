@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -16,10 +18,27 @@ from ideer.persistence.models.workflow_v2 import (
     WorkflowV2RunRow,
 )
 
+logger = logging.getLogger(__name__)
+
 
 class WorkflowV2Store:
     def __init__(self, session_factory) -> None:
         self.session_factory = session_factory
+        # Optional sink invoked after every persisted event (including the
+        # max_attempts exhaustion event written inside claim_next_task), so the
+        # worker can stream a run record to disk. Sink failures are logged and
+        # never fail the run itself.
+        self.event_sink: Callable[[WorkflowV2RunRow, WorkflowV2EventRow], Awaitable[None]] | None = None
+
+    async def _notify_sink(self, run_id: str, event: WorkflowV2EventRow | None = None) -> None:
+        if self.event_sink is None:
+            return
+        try:
+            run = await self.get_run(run_id)
+            if run is not None:
+                await self.event_sink(run, event)
+        except Exception:
+            logger.exception("workflow event sink failed for run %s", run_id)
 
     async def save_definition(self, workflow_name: str, definition: dict, content_hash: str, created_by: str) -> WorkflowDefinitionVersionRow:
         async with self.session_factory() as session:
@@ -124,6 +143,20 @@ class WorkflowV2Store:
         worker_id: str | None = None,
         max_events: int | None = None,
     ) -> WorkflowV2EventRow | None:
+        event = await self._append_event_once(run_id, event_type, payload, worker_id=worker_id, max_events=max_events)
+        if event is not None:
+            await self._notify_sink(run_id, event)
+        return event
+
+    async def _append_event_once(
+        self,
+        run_id: str,
+        event_type: str,
+        payload: dict,
+        *,
+        worker_id: str | None,
+        max_events: int | None,
+    ) -> WorkflowV2EventRow | None:
         async with self.session_factory() as session:
             ownership = ()
             if worker_id is not None:
@@ -200,6 +233,7 @@ class WorkflowV2Store:
             if run is not None:
                 run.status = "cancelled"
             await session.commit()
+            await self._notify_sink(run_id)
             return True
 
     async def is_cancel_requested(self, run_id: str) -> bool:
@@ -287,16 +321,17 @@ class WorkflowV2Store:
                     run.status = "failed"
                     run.error = "workflow_max_attempts_exceeded"
                     run.event_seq += 1
-                    session.add(
-                        WorkflowV2EventRow(
-                            id=str(uuid4()),
-                            run_id=run.run_id,
-                            seq=run.event_seq,
-                            event_type="run_failed",
-                            payload={"error": "workflow_max_attempts_exceeded"},
-                        )
+                    event = WorkflowV2EventRow(
+                        id=str(uuid4()),
+                        run_id=run.run_id,
+                        seq=run.event_seq,
+                        event_type="run_failed",
+                        payload={"error": "workflow_max_attempts_exceeded"},
                     )
+                    session.add(event)
                 await session.commit()
+                if run is not None:
+                    await self._notify_sink(run.run_id, event)
                 return None
             previous_owner = task.lease_owner
             task.status = "running"
@@ -379,4 +414,6 @@ class WorkflowV2Store:
                 )
             )
             await session.commit()
+            # notify the sink after the status flip so terminal records finalize
+            await self._notify_sink(run_id)
             return True
