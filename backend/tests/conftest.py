@@ -73,7 +73,8 @@ _executor_mock.SubagentStatus = MagicMock
 _executor_mock.MAX_CONCURRENT_SUBAGENTS = 3
 _executor_mock.get_background_task_result = MagicMock()
 
-sys.modules["ideer.subagents.executor"] = _executor_mock
+if "ideer.subagents.executor" not in sys.modules:
+    sys.modules["ideer.subagents.executor"] = _executor_mock
 
 # Capture initial API key state BEFORE any test module imports ideer.client
 # (which sets OPENAI_API_KEY as a side effect from config.yaml/.env loading).
