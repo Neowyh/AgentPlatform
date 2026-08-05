@@ -75,6 +75,31 @@ describe("applyWorkflowEvent", () => {
     expect(completed.steps?.draft?.output).toEqual({ ok: true });
   });
 
+  test("appends each action_progress step to the node's list", () => {
+    const base = {
+      run_id: "run-1",
+      workflow: "wf",
+      status: "running",
+      error: null,
+    };
+    const first = applyWorkflowEvent(base, {
+      seq: 5,
+      type: "action_progress",
+      payload: { node_id: "collect", message: "[回合 1] 调用工具 grep" },
+    });
+    const second = applyWorkflowEvent(first, {
+      seq: 6,
+      type: "action_progress",
+      payload: { node_id: "collect", message: "[回合 1] 调用工具 read" },
+    });
+
+    expect(first.action_progress?.collect).toEqual(["[回合 1] 调用工具 grep"]);
+    expect(second.action_progress?.collect).toEqual([
+      "[回合 1] 调用工具 grep",
+      "[回合 1] 调用工具 read",
+    ]);
+  });
+
   test("collects unique edge_selected events", () => {
     const first = applyWorkflowEvent(
       { run_id: "run-1", workflow: "wf", status: "running", error: null },

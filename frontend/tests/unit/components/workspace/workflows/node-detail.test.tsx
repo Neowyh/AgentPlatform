@@ -108,6 +108,21 @@ describe("NodeDetailPanel", () => {
     expect(screen.getByText("hello world")).toBeInTheDocument();
   });
 
+  test("lists action progress messages with only the latest capped at 50", () => {
+    const messages = Array.from({ length: 60 }, (_, index) => `step ${index}`);
+    render(<NodeDetailPanel node={actionNode} progress={messages} />);
+    expect(screen.getByText("step 50")).toBeInTheDocument();
+    expect(screen.getByText("step 59")).toBeInTheDocument();
+    expect(screen.queryByText("step 0")).not.toBeInTheDocument();
+  });
+
+  test("hides progress when the list is empty", () => {
+    render(<NodeDetailPanel node={actionNode} progress={[]} />);
+    expect(
+      screen.getByText("This node has not started yet."),
+    ).toBeInTheDocument();
+  });
+
   test("reports when the node has not started", () => {
     render(<NodeDetailPanel node={actionNode} />);
     expect(

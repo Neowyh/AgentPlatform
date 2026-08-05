@@ -49,7 +49,7 @@ function formatOutput(output: unknown): string {
 export interface NodeDetailPanelProps {
   node: WorkflowNode | null;
   step?: StepStatus | null;
-  progress?: string;
+  progress?: string[];
   tokens?: string;
 }
 
@@ -111,7 +111,15 @@ export function NodeDetailPanel({
         </div>
       )}
 
-      {progress && <p className="text-muted-foreground text-xs">{progress}</p>}
+      {progress && progress.length > 0 && (
+        <div className="text-muted-foreground max-h-48 space-y-1 overflow-y-auto text-xs">
+          {progress.slice(-50).map((message, index) => (
+            <p key={index} className="break-words">
+              {message}
+            </p>
+          ))}
+        </div>
+      )}
 
       {step?.output !== undefined && step.output !== null && (
         <Collapsible open={showOutput} onOpenChange={setShowOutput}>
@@ -151,7 +159,7 @@ export function NodeDetailPanel({
         </Collapsible>
       )}
 
-      {!step && !progress && !tokens && (
+      {!step && (!progress || progress.length === 0) && !tokens && (
         <p className="text-muted-foreground text-xs">
           {t.workflows.nodeNotStarted}
         </p>

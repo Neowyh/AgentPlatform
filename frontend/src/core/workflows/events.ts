@@ -49,11 +49,13 @@ export function applyWorkflowEvent(
     };
   }
   if (event.type === "action_progress" && nodeId) {
+    const message = textValue(event.payload.message);
+    if (!message) return next;
     return {
       ...next,
       action_progress: {
         ...next.action_progress,
-        [nodeId]: textValue(event.payload.message),
+        [nodeId]: [...(next.action_progress?.[nodeId] ?? []), message],
       },
     };
   }
