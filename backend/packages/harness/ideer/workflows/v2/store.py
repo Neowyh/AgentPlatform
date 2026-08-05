@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 from sqlalchemy import and_, func, or_, select, update
+from sqlalchemy import delete as sql_delete
 
 from ideer.persistence.models.workflow_v2 import (
     WorkflowCommandRow,
@@ -53,6 +54,18 @@ class WorkflowV2Store:
                 latest.setdefault(row.workflow_name, row)
             values = list(latest.values())
             return values[offset : offset + limit], len(values)
+
+    async def delete_definition(self, workflow_name: str) -> int:
+        """Hard-delete every definition version of a workflow.
+
+        Run rows referencing the workflow are intentionally retained so
+        historical run data survives a deletion; only the definition versions
+        are removed. Returns the number of rows deleted.
+        """
+        async with self.session_factory() as session:
+            result = await session.execute(sql_delete(WorkflowDefinitionVersionRow).where(WorkflowDefinitionVersionRow.workflow_name == workflow_name))
+            await session.commit()
+            return result.rowcount or 0
 
     async def create_run(
         self,

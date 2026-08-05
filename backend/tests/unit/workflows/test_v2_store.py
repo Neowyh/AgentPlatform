@@ -107,6 +107,36 @@ async def test_save_definition_creates_an_immutable_version() -> None:
 
 
 @pytest.mark.asyncio
+async def test_delete_definition_targets_the_workflow_name() -> None:
+    session = AsyncMock()
+    result = MagicMock()
+    result.rowcount = 3
+    session.execute.return_value = result
+    store = WorkflowV2Store(MagicMock(return_value=_Context(session)))
+
+    deleted = await store.delete_definition("approval")
+
+    assert deleted == 3
+    statement = session.execute.await_args_list[0].args[0]
+    assert "DELETE FROM workflow_definition_versions" in str(statement)
+    assert "workflow_name" in str(statement)
+    assert "approval" in list(statement.compile().params.values())
+    session.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_delete_definition_returns_zero_for_unmatched_rows() -> None:
+    session = AsyncMock()
+    result = MagicMock()
+    result.rowcount = 0
+    session.execute.return_value = result
+    store = WorkflowV2Store(MagicMock(return_value=_Context(session)))
+
+    assert await store.delete_definition("missing") == 0
+    session.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_worker_claim_ignores_terminal_tasks() -> None:
     session = AsyncMock()
     session.add = MagicMock()

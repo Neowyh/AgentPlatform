@@ -15,7 +15,7 @@ from sqlalchemy import event, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from ideer.persistence.base import Base
-from ideer.persistence.models.workflow_v2 import WorkflowTaskRow, WorkflowV2RunRow
+from ideer.persistence.models.workflow_v2 import WorkflowDefinitionVersionRow, WorkflowTaskRow, WorkflowV2RunRow
 from ideer.workflows.v2.store import WorkflowV2Store
 
 
@@ -50,3 +50,37 @@ async def test_create_run_persists_run_and_task_with_fk_enabled(fk_engine) -> No
         assert persisted.definition_version == 1
         task = (await session.execute(select(WorkflowTaskRow).where(WorkflowTaskRow.run_id == "fk-run-1"))).scalar_one()
         assert task.status == "queued"
+
+
+@pytest.mark.asyncio
+async def test_delete_definition_removes_all_versions_but_keeps_runs(fk_engine) -> None:
+    store = WorkflowV2Store(async_sessionmaker(fk_engine, expire_on_commit=False))
+
+    for version, definition in ((1, {"schema_version": 2, "v": 1}), (2, {"schema_version": 2, "v": 2})):
+        await store.save_definition("fault-zeroing", definition, f"hash-{version}", "system")
+    await store.create_run("fk-run-2", "fault-zeroing", 2, {"upload_dir": "/tmp"}, "system")
+
+    deleted = await store.delete_definition("fault-zeroing")
+
+    assert deleted == 2
+    async with async_sessionmaker(fk_engine, expire_on_commit=False)() as session:
+        rows = (await session.execute(select(WorkflowDefinitionVersionRow).where(WorkflowDefinitionVersionRow.workflow_name == "fault-zeroing"))).scalars().all()
+        assert rows == []
+        run = await session.get(WorkflowV2RunRow, "fk-run-2")
+        assert run is not None
+        assert run.definition_version == 2
+
+
+@pytest.mark.asyncio
+async def test_delete_definition_keeps_other_workflows_untouched(fk_engine) -> None:
+    store = WorkflowV2Store(async_sessionmaker(fk_engine, expire_on_commit=False))
+
+    await store.save_definition("delete-me", {"schema_version": 2}, "hash", "system")
+    await store.save_definition("keep-me", {"schema_version": 2}, "hash", "system")
+
+    deleted = await store.delete_definition("delete-me")
+
+    assert deleted == 1
+    async with async_sessionmaker(fk_engine, expire_on_commit=False)() as session:
+        remaining = (await session.execute(select(WorkflowDefinitionVersionRow))).scalars().all()
+        assert [row.workflow_name for row in remaining] == ["keep-me"]

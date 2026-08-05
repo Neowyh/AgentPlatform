@@ -555,6 +555,12 @@ async def delete_workflow(
     if not check_resource_modify(current_user, meta.get("owner_id"), meta.get("department_id")):
         raise HTTPException(403, "You do not have permission to modify this resource")
 
+    # Hard-delete definition versions so no ghost definition survives the
+    # deletion (run rows are retained for historical audit). Runs before the
+    # metadata below: if definition deletion fails, both definition and
+    # metadata remain untouched and the request can safely be retried.
+    await store.delete_definition(workflow_name)
+
     deleted = await _workflow_store.delete(workflow_name)
     if not deleted:
         raise HTTPException(404, f"Workflow '{workflow_name}' not found")
