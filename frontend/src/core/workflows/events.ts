@@ -30,6 +30,25 @@ function updatedStep(
   };
 }
 
+function reconcileTerminalSteps(
+  steps: RunStatus["steps"],
+  terminal: RunStatus["status"],
+): RunStatus["steps"] {
+  if (terminal !== "cancelled" && terminal !== "failed") return steps;
+  if (!steps) return steps;
+  let changed = false;
+  const next: NonNullable<RunStatus["steps"]> = {};
+  for (const [nodeId, step] of Object.entries(steps)) {
+    if (step.status === "running") {
+      changed = true;
+      next[nodeId] = { ...step, status: "cancelled" };
+    } else {
+      next[nodeId] = step;
+    }
+  }
+  return changed ? next : steps;
+}
+
 export function applyWorkflowEvent(
   status: RunStatus,
   event: WorkflowEvent,
@@ -113,6 +132,7 @@ export function applyWorkflowEvent(
         event.type === "run_failed"
           ? textValue(event.payload.error) || "Workflow failed"
           : next.error,
+      steps: reconcileTerminalSteps(next.steps, terminal),
     };
   if (event.type === "interrupted") return { ...next, status: "paused" };
   if (event.type === "resumed") return { ...next, status: "running" };

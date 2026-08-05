@@ -36,6 +36,7 @@ const STATUS_CLASS: Record<string, string> = {
     "border-emerald-500 bg-emerald-50 text-emerald-950 dark:border-emerald-400 dark:bg-emerald-950/40 dark:text-emerald-300",
   failed:
     "border-red-500 bg-red-50 text-red-950 dark:border-red-400 dark:bg-red-950/40 dark:text-red-300",
+  cancelled: "border-border bg-muted/60 text-muted-foreground",
 };
 
 const ROUTE_EDGE_STYLE = { strokeDasharray: "6 4" };

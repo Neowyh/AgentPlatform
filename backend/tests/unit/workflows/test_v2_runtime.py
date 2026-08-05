@@ -855,3 +855,159 @@ edges:
 
     assert completed["outputs"]["finish"] == "finish"
     assert calls == ["prepare", "finish"]
+
+
+@pytest.mark.asyncio
+async def test_compiler_emits_lifecycle_events_for_fork_and_join_control_nodes() -> None:
+    """Control nodes must surface start+completed so the run visualizer can color them."""
+    definition = parse_workflow_v2(
+        """
+schema_version: 2
+name: parallel-events
+inputs: {}
+state: {}
+entrypoint: fork
+nodes:
+  - id: fork
+    type: fork
+    branches: [left, right]
+    join: join
+  - id: left
+    type: action
+    action: {kind: tool, name: branch}
+  - id: right
+    type: action
+    action: {kind: tool, name: branch}
+  - id: join
+    type: join
+    fork: fork
+edges:
+  - {from: fork, to: left}
+  - {from: fork, to: right}
+  - {from: left, to: join}
+  - {from: right, to: join}
+"""
+    )
+    events: list[tuple[str, dict]] = []
+
+    class Adapter:
+        async def run(self, context, params):
+            return context.node_id
+
+    async def emit(event_type: str, payload: dict) -> None:
+        events.append((event_type, payload))
+
+    graph = WorkflowGraphCompiler(
+        definition,
+        ActionAdapterRegistry({("tool", "branch"): Adapter()}),
+        emit_event=emit,
+    ).compile()
+    await graph.ainvoke({"inputs": {}, "state": {}, "outputs": {}}, config={"configurable": {"thread_id": "wf:parallel-events"}})
+
+    control = [event for event in events if event[1].get("node_id") in {"fork", "join"}]
+    assert [(event_type, event.get("node_id")) for event_type, event in control] == [
+        ("node_started", "fork"),
+        ("node_completed", "fork"),
+        ("node_started", "join"),
+        ("node_completed", "join"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_compiler_emits_lifecycle_events_for_route_control_node() -> None:
+    definition = parse_workflow_v2(
+        """
+schema_version: 2
+name: route-events
+inputs: {}
+state: {flag: {type: boolean}}
+entrypoint: route
+nodes:
+  - id: route
+    type: route
+    expression: "$.state.flag"
+  - id: "yes"
+    type: action
+    action: {kind: tool, name: echo}
+  - id: "no"
+    type: action
+    action: {kind: tool, name: echo}
+edges: [{from: route, to: "yes"}, {from: route, to: "no"}]
+"""
+    )
+    events: list[tuple[str, dict]] = []
+
+    class Adapter:
+        async def run(self, context, params):
+            return "ok"
+
+    async def emit(event_type: str, payload: dict) -> None:
+        events.append((event_type, payload))
+
+    graph = WorkflowGraphCompiler(
+        definition,
+        ActionAdapterRegistry({("tool", "echo"): Adapter()}),
+        emit_event=emit,
+    ).compile()
+    await graph.ainvoke(
+        {"run_id": "run-1", "inputs": {}, "state": {"flag": True}, "outputs": {}},
+        config={"configurable": {"thread_id": "wf:route-events"}},
+    )
+
+    route = [event for event in events if event[1].get("node_id") == "route"]
+    assert [(event_type, event.get("node_id")) for event_type, event in route].count(("node_started", "route")) == 1
+    assert [(event_type, event.get("node_id")) for event_type, event in route].count(("node_completed", "route")) == 1
+
+
+@pytest.mark.asyncio
+async def test_compiler_emits_node_completed_for_interrupt_node_on_resume() -> None:
+    definition = parse_workflow_v2(
+        """
+schema_version: 2
+name: approval-events
+inputs: {}
+state: {}
+entrypoint: prepare
+nodes:
+  - id: prepare
+    type: action
+    action: {kind: tool, name: prepare}
+  - id: review
+    type: interrupt
+    roles: [admin]
+  - id: finish
+    type: action
+    action: {kind: tool, name: finish}
+edges:
+  - {from: prepare, to: review}
+  - {from: review, to: finish}
+"""
+    )
+    events: list[tuple[str, dict]] = []
+
+    class Adapter:
+        async def run(self, context, params):
+            return context.node_id
+
+    async def emit(event_type: str, payload: dict) -> None:
+        events.append((event_type, payload))
+
+    graph = WorkflowGraphCompiler(
+        definition,
+        ActionAdapterRegistry({("tool", "prepare"): Adapter(), ("tool", "finish"): Adapter()}),
+        emit_event=emit,
+    ).compile(checkpointer=MemorySaver())
+    config = {"configurable": {"thread_id": "wf:approval-events"}}
+    await graph.ainvoke({"run_id": "run-1", "inputs": {}, "state": {}, "outputs": {}}, config=config)
+
+    review_started = [event for event in events if event[1].get("node_id") == "review"]
+    assert [(event_type, event.get("node_id")) for event_type, event in review_started] == [("node_started", "review")]
+
+    await graph.ainvoke(Command(resume={"approved": True}), config=config)
+
+    review = [event for event in events if event[1].get("node_id") == "review"]
+    assert [(event_type, event.get("node_id")) for event_type, event in review] == [
+        ("node_started", "review"),
+        ("node_started", "review"),
+        ("node_completed", "review"),
+    ]

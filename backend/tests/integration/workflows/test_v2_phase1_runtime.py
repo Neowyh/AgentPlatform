@@ -142,6 +142,7 @@ async def test_worker_restart_resumes_only_pending_nodes_from_persistent_command
         "interrupted",
         "resumed",
         "node_started",
+        "node_completed",
         "node_started",
         "node_completed",
         "run_completed",

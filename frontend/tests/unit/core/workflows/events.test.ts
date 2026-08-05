@@ -115,4 +115,75 @@ describe("applyWorkflowEvent", () => {
     expect(result.status).toBe("queued");
     expect(result.last_event_seq).toBe(0);
   });
+
+  test("marks in-flight nodes cancelled on run_cancelled", () => {
+    const started = applyWorkflowEvent(
+      { run_id: "run-1", workflow: "wf", status: "running", error: null },
+      { seq: 1, type: "node_started", payload: { node_id: "draft" } },
+    );
+    const cancelled = applyWorkflowEvent(started, {
+      seq: 2,
+      type: "run_cancelled",
+      payload: {},
+    });
+
+    expect(cancelled.status).toBe("cancelled");
+    expect(cancelled.steps?.draft?.status).toBe("cancelled");
+    expect(cancelled.steps?.draft?.error).toBeNull();
+  });
+
+  test("keeps completed and failed steps untouched on run_cancelled", () => {
+    const done = applyWorkflowEvent(
+      { run_id: "run-1", workflow: "wf", status: "running", error: null },
+      {
+        seq: 1,
+        type: "node_completed",
+        payload: { node_id: "draft", result: "ok" },
+      },
+    );
+    const cancelled = applyWorkflowEvent(done, {
+      seq: 2,
+      type: "run_cancelled",
+      payload: {},
+    });
+
+    expect(cancelled.steps?.draft?.status).toBe("completed");
+    expect(cancelled.steps?.draft?.output).toBe("ok");
+  });
+
+  test("marks only in-flight sibling nodes cancelled on run_failed", () => {
+    const running = applyWorkflowEvent(
+      { run_id: "run-1", workflow: "wf", status: "running", error: null },
+      { seq: 1, type: "node_started", payload: { node_id: "sibling" } },
+    );
+    const failed = applyWorkflowEvent(running, {
+      seq: 2,
+      type: "node_failed",
+      payload: { node_id: "draft", error: "adapter failed" },
+    });
+    const runFailed = applyWorkflowEvent(failed, {
+      seq: 3,
+      type: "run_failed",
+      payload: { error: "workflow failed" },
+    });
+
+    expect(runFailed.status).toBe("failed");
+    expect(runFailed.steps?.draft?.status).toBe("failed");
+    expect(runFailed.steps?.sibling?.status).toBe("cancelled");
+  });
+
+  test("leaves steps untouched on run_completed", () => {
+    const started = applyWorkflowEvent(
+      { run_id: "run-1", workflow: "wf", status: "running", error: null },
+      { seq: 1, type: "node_started", payload: { node_id: "draft" } },
+    );
+    const completed = applyWorkflowEvent(started, {
+      seq: 2,
+      type: "run_completed",
+      payload: {},
+    });
+
+    expect(completed.status).toBe("completed");
+    expect(completed.steps?.draft?.status).toBe("running");
+  });
 });

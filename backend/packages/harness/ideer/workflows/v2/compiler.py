@@ -177,8 +177,12 @@ class WorkflowGraphCompiler:
                 raise WorkflowCancelled(f"workflow cancelled before node '{node.id}'")
             if node.type == "interrupt":
                 await self._emit("node_started", {"node_id": node.id, "started_at": _now_iso()})
-                return {"interrupt": interrupt({"node_id": node.id, "roles": node.roles})}
+                value = interrupt({"node_id": node.id, "roles": node.roles})
+                await self._emit("node_completed", {"node_id": node.id, "finished_at": _now_iso()})
+                return {"interrupt": value}
             if node.type != "action":
+                await self._emit("node_started", {"node_id": node.id, "started_at": _now_iso()})
+                await self._emit("node_completed", {"node_id": node.id, "finished_at": _now_iso()})
                 return state
             context_state = dict(state.get("state", {}))
             state_files = {key: workflow_state_path(key, structured=isinstance(value, (dict, list))) for key, value in context_state.items()}

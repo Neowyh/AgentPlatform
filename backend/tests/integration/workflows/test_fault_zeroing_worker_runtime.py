@@ -118,7 +118,7 @@ async def test_production_worker_task_path_persists_all_fault_zeroing_events(
     events = await durable_store.list_events(run.run_id)
     assert events[0].event_type == "run_started"
     assert events[-1].event_type == "run_completed"
-    assert [event.event_type for event in events].count("node_completed") == 9
+    assert [event.event_type for event in events].count("node_completed") == 11
     assert (tmp_path / "checkpoints.db").is_file()
 
 
