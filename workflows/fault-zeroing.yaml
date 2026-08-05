@@ -395,6 +395,11 @@ nodes:
 
           失败契约：若无法完成任务，回复必须以 FAILED: 开头说明原因；
           严禁写入占位文件。
+    preconditions:
+      - file: "{{inputs.output_base_dir}}/fault_tree.json"
+        non_empty: true
+        json_path: "$.root_causes[*].status"
+        some_equals: confirmed
     writes:
       - "$.state.corrective_actions_summary"
 
@@ -463,6 +468,13 @@ nodes:
 
           失败契约：任一输入文件缺失或无法生成全部 4 个文件时，回复必须以
           FAILED: 开头说明缺失项；严禁生成占位/空文件。
+    preconditions:
+      - file: "{{inputs.output_base_dir}}/fault_tree.json"
+        non_empty: true
+      - file: "{{inputs.output_base_dir}}/artifacts/evidence/evidence_table.json"
+        non_empty: true
+      - file: "{{inputs.output_base_dir}}/artifacts/corrective_actions.json"
+        non_empty: true
     retry:
       max_attempts: 2
       backoff_seconds: 30

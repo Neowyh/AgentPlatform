@@ -146,6 +146,12 @@ def _is_allowed_root(path: str, *, write: bool) -> bool:
     return False
 
 
+def path_within_root(path: str, root: str) -> bool:
+    """True when ``path`` equals ``root`` or sits directly under it."""
+    base = root.rstrip("/")
+    return path.rstrip("/") == base or path.startswith(base + "/")
+
+
 def validate_roots(file_access: dict[str, list[str]] | None) -> list[str]:
     """Return the roots that are not permitted; empty list means valid."""
     if file_access is None:

@@ -45,7 +45,13 @@ class RecordingAgent:
                 assert host is not None, f"unresolvable write root {root}"
                 path = Path(host)
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text("{}", encoding="utf-8")
+                if path.name == "fault_tree.json":
+                    path.write_text(
+                        '{"top_event": "top", "root_causes": [{"id": "RC-01", "status": "confirmed"}]}',
+                        encoding="utf-8",
+                    )
+                else:
+                    path.write_text("{}", encoding="utf-8")
         return {"node_id": context.node_id}
 
 
