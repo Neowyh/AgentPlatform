@@ -299,6 +299,17 @@ class WorkflowV2Store:
         async with self.session_factory() as session:
             return (await session.execute(select(WorkflowCommandRow).where(WorkflowCommandRow.command_id == command_id))).scalar_one_or_none()
 
+    async def clear_resume_command(self, task_id: str) -> None:
+        """Consume a resume command once the worker has built its invocation.
+
+        The attempt-budget exemption in ``claim_next_task`` only applies to the
+        immediate resume execution; clearing the intent here means a later
+        lease take-over after a crash counts as a fresh attempt again.
+        """
+        async with self.session_factory() as session:
+            await session.execute(update(WorkflowTaskRow).where(WorkflowTaskRow.task_id == task_id).values(resume_command_id=None))
+            await session.commit()
+
     async def claim_next_task(
         self,
         worker_id: str,
@@ -325,7 +336,7 @@ class WorkflowV2Store:
             ).scalar_one_or_none()
             if task is None:
                 return None
-            if task.attempts >= max_attempts:
+            if task.resume_command_id is None and task.attempts >= max_attempts:
                 task.status = "failed"
                 task.lease_owner = None
                 task.lease_expires_at = None
@@ -351,7 +362,12 @@ class WorkflowV2Store:
             task.lease_owner = worker_id
             task.lease_expires_at = now + timedelta(seconds=lease_seconds)
             task.heartbeat_at = now
-            task.attempts += 1
+            # The immediate execution of an operator resume is free: paused and
+            # failed runs may be resumed without consuming the attempt budget.
+            # Only fresh claims (and lease take-overs after a worker crash)
+            # increment attempts, so max_attempts still kills crash loops.
+            if task.resume_command_id is None:
+                task.attempts += 1
             run = (await session.execute(select(WorkflowV2RunRow).where(WorkflowV2RunRow.run_id == task.run_id))).scalar_one_or_none()
             if run is not None:
                 run.status = "running"

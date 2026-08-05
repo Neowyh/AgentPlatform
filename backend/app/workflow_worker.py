@@ -48,6 +48,9 @@ async def execute_workflow_task(
         if command is None:
             raise RuntimeError(f"workflow task '{task.task_id}' has no resume command")
         invocation = Command(resume=command.payload)
+        # The attempt-budget exemption applies to the immediate resume only;
+        # a later crash/take-over must count as a fresh attempt again.
+        await store.clear_resume_command(task.task_id)
     else:
         invocation = {"run_id": run_id, "inputs": run.inputs, "state": {}, "outputs": {}}
 

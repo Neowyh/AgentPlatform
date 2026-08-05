@@ -275,3 +275,117 @@ async def test_finish_task_uses_compare_and_set_lease_ownership() -> None:
 
     statement = session.execute.await_args_list[1].args[0]
     assert "UPDATE workflow_tasks" in str(statement)
+
+
+@pytest.mark.asyncio
+async def test_fresh_claim_increments_attempts() -> None:
+    session = AsyncMock()
+    session.add = MagicMock()
+    task = MagicMock(
+        spec=WorkflowTaskRow,
+        task_id="task-1",
+        run_id="run-1",
+        status="queued",
+        attempts=2,
+        lease_owner=None,
+        resume_command_id=None,
+        cancel_requested=False,
+    )
+    task_result = MagicMock()
+    task_result.scalar_one_or_none.return_value = task
+    run_result = MagicMock()
+    run_result.scalar_one_or_none.return_value = MagicMock(spec=WorkflowV2RunRow, run_id="run-1", status="queued")
+    session.execute.side_effect = [task_result, run_result]
+    store = WorkflowV2Store(MagicMock(return_value=_Context(session)))
+
+    claimed = await store.claim_next_task("worker-1", max_attempts=3)
+
+    assert claimed is task
+    assert task.attempts == 3
+    task_result.delete.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_resumed_task_claim_does_not_increment_attempts() -> None:
+    """The immediate execution of an operator resume is free: it never consumes
+    the attempt budget, so pausing again cannot exhaust max_attempts."""
+    session = AsyncMock()
+    session.add = MagicMock()
+    task = MagicMock(
+        spec=WorkflowTaskRow,
+        task_id="task-1",
+        run_id="run-1",
+        status="queued",
+        attempts=3,
+        lease_owner=None,
+        resume_command_id="cmd-1",
+        cancel_requested=False,
+    )
+    task_result = MagicMock()
+    task_result.scalar_one_or_none.return_value = task
+    run_result = MagicMock()
+    run_result.scalar_one_or_none.return_value = MagicMock(spec=WorkflowV2RunRow, run_id="run-1", status="queued")
+    session.execute.side_effect = [task_result, run_result]
+    store = WorkflowV2Store(MagicMock(return_value=_Context(session)))
+
+    claimed = await store.claim_next_task("worker-1", max_attempts=3)
+
+    assert claimed is task
+    assert task.attempts == 3
+    assert task.resume_command_id == "cmd-1"
+
+
+@pytest.mark.asyncio
+async def test_max_attempts_kill_persists_failure_and_notifies_sink() -> None:
+    session = AsyncMock()
+    session.add = MagicMock()
+    task = MagicMock(
+        spec=WorkflowTaskRow,
+        task_id="task-1",
+        run_id="run-1",
+        status="queued",
+        attempts=3,
+        lease_owner=None,
+        resume_command_id=None,
+        cancel_requested=False,
+    )
+    task_result = MagicMock()
+    task_result.scalar_one_or_none.return_value = task
+    run = MagicMock(spec=WorkflowV2RunRow, run_id="run-1", status="queued", event_seq=4)
+    run_result = MagicMock()
+    run_result.scalar_one_or_none.return_value = run
+
+    def execute_stub(statement, *args, **kwargs):
+        if "workflow_v2_runs" in str(statement):
+            return run_result
+        return task_result
+
+    session.execute.side_effect = execute_stub
+    store = WorkflowV2Store(MagicMock(return_value=_Context(session)))
+    notified: list[tuple[str, str]] = []
+
+    async def sink(run_row, event_row):
+        notified.append((run_row.run_id, event_row.event_type))
+
+    store.event_sink = sink
+
+    assert await store.claim_next_task("worker-1", max_attempts=3) is None
+
+    assert task.status == "failed"
+    assert run.status == "failed"
+    assert run.error == "workflow_max_attempts_exceeded"
+    assert notified == [("run-1", "run_failed")]
+    session.commit.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_clear_resume_command_consumes_the_intent() -> None:
+    session = AsyncMock()
+    session.execute.return_value = MagicMock()
+    store = WorkflowV2Store(MagicMock(return_value=_Context(session)))
+
+    await store.clear_resume_command("task-1")
+
+    statement = session.execute.await_args.args[0]
+    assert "UPDATE workflow_tasks" in str(statement)
+    session.commit.assert_awaited_once()
