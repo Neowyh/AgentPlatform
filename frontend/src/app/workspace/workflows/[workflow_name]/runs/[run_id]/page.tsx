@@ -127,6 +127,28 @@ export default function WorkflowRunDetailPage() {
     }
   }
 
+  async function downloadRecord(format: "jsonl" | "md") {
+    try {
+      const res = await apiFetch(
+        `${getBackendBaseURL()}/api/workflows/${encodeURIComponent(workflow_name)}/runs/${encodeURIComponent(run_id)}/record?format=${format}`,
+      );
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `run_${run_id}.${format}`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (recordError) {
+      toast.error(
+        recordError instanceof Error
+          ? recordError.message
+          : String(recordError),
+      );
+    }
+  }
+
   if (isLoading)
     return (
       <div className="text-muted-foreground flex size-full items-center justify-center text-sm">
@@ -209,6 +231,24 @@ export default function WorkflowRunDetailPage() {
               {t.workflows.cancelRun}
             </Button>
           )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void downloadRecord("md")}
+            title="运行记录 (Markdown)"
+          >
+            <DownloadIcon className="h-4 w-4" />
+            MD
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void downloadRecord("jsonl")}
+            title="事件日志 (JSONL)"
+          >
+            <DownloadIcon className="h-4 w-4" />
+            JSONL
+          </Button>
         </div>
       </div>
       <div className="flex-1 overflow-y-auto p-6">

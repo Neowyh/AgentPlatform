@@ -34,6 +34,7 @@ from ideer.sandbox.tools import (
 _ACP_WORKSPACE_PREFIX = "/mnt/acp-workspace"
 
 _STATE_DIR_REL = ".workflow/state"
+_LOG_DIR_REL = ".workflow/logs"
 
 _PLACEHOLDER_MARKERS = ("file_missing", "占位", "placeholder")
 
@@ -41,6 +42,16 @@ _PLACEHOLDER_MARKERS = ("file_missing", "占位", "placeholder")
 def workflow_state_root() -> str:
     """Virtual root where each node's state output is materialized."""
     return f"{VIRTUAL_PATH_PREFIX}/workspace/{_STATE_DIR_REL}"
+
+
+def workflow_log_root() -> str:
+    """Virtual root where the per-run run record (JSONL/Markdown) is written."""
+    return f"{VIRTUAL_PATH_PREFIX}/workspace/{_LOG_DIR_REL}"
+
+
+def workflow_record_path(extension: str) -> str:
+    """Virtual path of the run record file for ``jsonl`` or ``md``."""
+    return f"{workflow_log_root()}/run_record.{extension}"
 
 
 def workflow_state_path(key: str, *, structured: bool) -> str:
@@ -133,6 +144,12 @@ def _is_allowed_root(path: str, *, write: bool) -> bool:
         if path == mount.container_path or path.startswith(f"{mount.container_path}/"):
             return not (write and mount.read_only)
     return False
+
+
+def path_within_root(path: str, root: str) -> bool:
+    """True when ``path`` equals ``root`` or sits directly under it."""
+    base = root.rstrip("/")
+    return path.rstrip("/") == base or path.startswith(base + "/")
 
 
 def validate_roots(file_access: dict[str, list[str]] | None) -> list[str]:

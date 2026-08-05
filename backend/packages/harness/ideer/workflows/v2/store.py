@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -17,10 +20,33 @@ from ideer.persistence.models.workflow_v2 import (
     WorkflowV2RunRow,
 )
 
+logger = logging.getLogger(__name__)
+
 
 class WorkflowV2Store:
     def __init__(self, session_factory) -> None:
         self.session_factory = session_factory
+        # Serializes event appends: parallel fork branches emit concurrently,
+        # and a cancelled branch must never leave an open write transaction
+        # behind (SQLite would then block every later writer until the busy
+        # timeout).  One lock per store instance is enough — a worker runs one
+        # run at a time, so only intra-run fork branches contend.
+        self._event_append_lock = asyncio.Lock()
+        # Optional sink invoked after every persisted event (including the
+        # max_attempts exhaustion event written inside claim_next_task), so the
+        # worker can stream a run record to disk. Sink failures are logged and
+        # never fail the run itself.
+        self.event_sink: Callable[[WorkflowV2RunRow, WorkflowV2EventRow], Awaitable[None]] | None = None
+
+    async def _notify_sink(self, run_id: str, event: WorkflowV2EventRow | None = None) -> None:
+        if self.event_sink is None:
+            return
+        try:
+            run = await self.get_run(run_id)
+            if run is not None:
+                await self.event_sink(run, event)
+        except Exception:
+            logger.exception("workflow event sink failed for run %s", run_id)
 
     async def save_definition(self, workflow_name: str, definition: dict, content_hash: str, created_by: str) -> WorkflowDefinitionVersionRow:
         async with self.session_factory() as session:
@@ -137,6 +163,26 @@ class WorkflowV2Store:
         worker_id: str | None = None,
         max_events: int | None = None,
     ) -> WorkflowV2EventRow | None:
+        async with self._event_append_lock:
+            # The write must survive branch cancellation: langgraph cancels the
+            # sibling of a failed fork branch mid-await, and an append killed
+            # inside ``session.execute`` would leave an open write transaction
+            # on the pooled connection — blocking every later writer for the
+            # SQLite busy timeout. Shielding lets the write finish cleanly.
+            event = await asyncio.shield(self._append_event_once(run_id, event_type, payload, worker_id=worker_id, max_events=max_events))
+            if event is not None:
+                await self._notify_sink(run_id, event)
+            return event
+
+    async def _append_event_once(
+        self,
+        run_id: str,
+        event_type: str,
+        payload: dict,
+        *,
+        worker_id: str | None,
+        max_events: int | None,
+    ) -> WorkflowV2EventRow | None:
         async with self.session_factory() as session:
             ownership = ()
             if worker_id is not None:
@@ -213,6 +259,7 @@ class WorkflowV2Store:
             if run is not None:
                 run.status = "cancelled"
             await session.commit()
+            await self._notify_sink(run_id)
             return True
 
     async def is_cancel_requested(self, run_id: str) -> bool:
@@ -265,6 +312,17 @@ class WorkflowV2Store:
         async with self.session_factory() as session:
             return (await session.execute(select(WorkflowCommandRow).where(WorkflowCommandRow.command_id == command_id))).scalar_one_or_none()
 
+    async def clear_resume_command(self, task_id: str) -> None:
+        """Consume a resume command once the worker has built its invocation.
+
+        The attempt-budget exemption in ``claim_next_task`` only applies to the
+        immediate resume execution; clearing the intent here means a later
+        lease take-over after a crash counts as a fresh attempt again.
+        """
+        async with self.session_factory() as session:
+            await session.execute(update(WorkflowTaskRow).where(WorkflowTaskRow.task_id == task_id).values(resume_command_id=None))
+            await session.commit()
+
     async def claim_next_task(
         self,
         worker_id: str,
@@ -291,7 +349,7 @@ class WorkflowV2Store:
             ).scalar_one_or_none()
             if task is None:
                 return None
-            if task.attempts >= max_attempts:
+            if task.resume_command_id is None and task.attempts >= max_attempts:
                 task.status = "failed"
                 task.lease_owner = None
                 task.lease_expires_at = None
@@ -300,23 +358,29 @@ class WorkflowV2Store:
                     run.status = "failed"
                     run.error = "workflow_max_attempts_exceeded"
                     run.event_seq += 1
-                    session.add(
-                        WorkflowV2EventRow(
-                            id=str(uuid4()),
-                            run_id=run.run_id,
-                            seq=run.event_seq,
-                            event_type="run_failed",
-                            payload={"error": "workflow_max_attempts_exceeded"},
-                        )
+                    event = WorkflowV2EventRow(
+                        id=str(uuid4()),
+                        run_id=run.run_id,
+                        seq=run.event_seq,
+                        event_type="run_failed",
+                        payload={"error": "workflow_max_attempts_exceeded"},
                     )
+                    session.add(event)
                 await session.commit()
+                if run is not None:
+                    await self._notify_sink(run.run_id, event)
                 return None
             previous_owner = task.lease_owner
             task.status = "running"
             task.lease_owner = worker_id
             task.lease_expires_at = now + timedelta(seconds=lease_seconds)
             task.heartbeat_at = now
-            task.attempts += 1
+            # The immediate execution of an operator resume is free: paused and
+            # failed runs may be resumed without consuming the attempt budget.
+            # Only fresh claims (and lease take-overs after a worker crash)
+            # increment attempts, so max_attempts still kills crash loops.
+            if task.resume_command_id is None:
+                task.attempts += 1
             run = (await session.execute(select(WorkflowV2RunRow).where(WorkflowV2RunRow.run_id == task.run_id))).scalar_one_or_none()
             if run is not None:
                 run.status = "running"
@@ -392,4 +456,6 @@ class WorkflowV2Store:
                 )
             )
             await session.commit()
+            # notify the sink after the status flip so terminal records finalize
+            await self._notify_sink(run_id)
             return True

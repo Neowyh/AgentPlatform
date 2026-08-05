@@ -77,14 +77,12 @@ class _AgentAdapter:
         self.name = name
         self.user_id = user_id
 
-    async def run(self, context: ActionContext, params: dict[str, Any]) -> Any:
+    def _build_executor(self, context: ActionContext, params: dict[str, Any]):
         from ideer.config import get_app_config
         from ideer.config.agents_config import load_agent_config, load_agent_soul
-        from ideer.runtime.user_context import reset_current_user, set_current_user
         from ideer.subagents.config import SubagentConfig
-        from ideer.subagents.executor import SubagentExecutor, SubagentStatus
+        from ideer.subagents.executor import SubagentExecutor
         from ideer.tools.tools import get_available_tools
-        from ideer.workflows.v2.compiler import WorkflowTransientError
 
         config = load_agent_config(self.name, user_id=self.user_id)
         if config is None:
@@ -113,11 +111,12 @@ class _AgentAdapter:
             thread_id=context.run_id,
         )
         prompt = params.get("prompt", params.get("input", params))
-        user_token = set_current_user(SimpleNamespace(id=self.user_id))
-        try:
-            result = await executor._aexecute(str(prompt))
-        finally:
-            reset_current_user(user_token)
+        return executor, str(prompt)
+
+    def _finalize_result(self, result: Any) -> Any:
+        from ideer.subagents.executor import SubagentStatus
+        from ideer.workflows.v2.compiler import WorkflowTransientError
+
         if result.status == SubagentStatus.COMPLETED:
             if _is_llm_unavailable_text(result.result):
                 raise WorkflowTransientError(f"agent '{self.name}' failed: LLM provider unavailable")
@@ -126,9 +125,50 @@ class _AgentAdapter:
             raise WorkflowTransientError(result.error or f"agent '{self.name}' failed: LLM provider unavailable")
         raise RuntimeError(result.error or f"agent '{self.name}' failed with status {result.status}")
 
+    async def run(self, context: ActionContext, params: dict[str, Any]) -> Any:
+        from ideer.runtime.user_context import reset_current_user, set_current_user
+
+        executor, prompt = self._build_executor(context, params)
+        user_token = set_current_user(SimpleNamespace(id=self.user_id))
+        try:
+            result = await executor._aexecute(prompt)
+        finally:
+            reset_current_user(user_token)
+        return self._finalize_result(result)
+
     async def astream(self, context: ActionContext, params: dict[str, Any]) -> AsyncIterator[dict[str, Any]]:
+        from ideer.runtime.user_context import reset_current_user, set_current_user
+
         yield {"type": "progress", "message": "started"}
-        yield {"type": "result", "value": await self.run(context, params)}
+        executor, prompt = self._build_executor(context, params)
+        queue: asyncio.Queue[Any] = asyncio.Queue()
+
+        async def produce() -> Any:
+            result = await executor._aexecute(prompt, progress_callback=queue.put)
+            await queue.put(_STREAM_END)
+            return result
+
+        user_token = set_current_user(SimpleNamespace(id=self.user_id))
+        producer = asyncio.create_task(produce())
+        try:
+            while True:
+                update = await queue.get()
+                if update is _STREAM_END:
+                    break
+                if update.get("type") == "tool_call":
+                    tool = update.get("tool", "?")
+                    args = update.get("args_summary", "")
+                    yield {"type": "progress", "message": f"[回合 {update.get('turn', '-')}] 调用工具 {tool} → {args}"}
+        except BaseException:
+            producer.cancel()
+            raise
+        finally:
+            reset_current_user(user_token)
+        yield {"type": "result", "value": self._finalize_result(await producer)}
+
+
+class _STREAM_END:
+    """Sentinel that closes an agent progress stream."""
 
 
 def _is_llm_unavailable_text(result: Any) -> bool:

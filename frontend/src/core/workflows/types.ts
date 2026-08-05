@@ -81,7 +81,7 @@ export interface RunStatus {
   steps?: Record<string, StepStatus>;
   last_event_seq?: number;
   action_tokens?: Record<string, string>;
-  action_progress?: Record<string, string>;
+  action_progress?: Record<string, string[]>;
   selected_edges?: Array<{ from: string; to: string }>;
   events?: WorkflowEvent[];
 }

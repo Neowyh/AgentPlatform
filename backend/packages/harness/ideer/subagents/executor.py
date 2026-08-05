@@ -5,7 +5,7 @@ import atexit
 import logging
 import threading
 import uuid
-from collections.abc import Callable, Coroutine
+from collections.abc import Awaitable, Callable, Coroutine
 from concurrent.futures import Future, ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from contextvars import Context, copy_context
@@ -470,7 +470,13 @@ class SubagentExecutor:
 
         return state, filtered_tools
 
-    async def _aexecute(self, task: str, result_holder: SubagentResult | None = None) -> SubagentResult:
+    async def _aexecute(
+        self,
+        task: str,
+        result_holder: SubagentResult | None = None,
+        *,
+        progress_callback: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
+    ) -> SubagentResult:
         """Execute a task asynchronously.
 
         Args:
@@ -572,8 +578,18 @@ class SubagentExecutor:
                             ai_messages.append(message_dict)
                             logger.info(f"[trace={self.trace_id}] Subagent {self.config.name} captured AI message #{len(ai_messages)}")
                             if last_message.tool_calls:
+                                turn = len(ai_messages)
                                 for call in last_message.tool_calls:
                                     logger.debug(f"[trace={self.trace_id}] tool_call {call.get('name')} args={str(call.get('args'))[:300]}")
+                                    if progress_callback is not None:
+                                        await progress_callback(
+                                            {
+                                                "type": "tool_call",
+                                                "tool": call.get("name"),
+                                                "turn": turn,
+                                                "args_summary": str(call.get("args"))[:300],
+                                            }
+                                        )
 
             logger.info(f"[trace={self.trace_id}] Subagent {self.config.name} completed async execution")
             token_usage_records = collector.snapshot_records()

@@ -29,7 +29,7 @@ from ideer.config import get_app_config
 from ideer.persistence.engine import get_session_factory
 from ideer.persistence.models.user import UserModel, UserRole
 from ideer.persistence.models.workflow_legacy import LegacyWorkflowRunRow
-from ideer.workflows.v2.file_roots import collect_artifacts, make_host_resolver, render_roots, validate_read_roots, validate_workflow_roots
+from ideer.workflows.v2.file_roots import collect_artifacts, make_host_resolver, render_roots, validate_read_roots, validate_workflow_roots, workflow_record_path
 from ideer.workflows.v2.parser import parse_workflow_v2 as parse_workflow_string
 from ideer.workflows.v2.store import WorkflowV2Store
 
@@ -854,6 +854,33 @@ async def stream_workflow_events(
         workflow_event_stream(store, run_id, max(0, after_seq)),
         media_type="text/event-stream",
     )
+
+
+@router.get("/{workflow_name}/runs/{run_id}/record")
+async def download_run_record(
+    workflow_name: str,
+    run_id: str,
+    format: str = "md",
+    current_user: UserModel = Depends(get_current_rbac_user),
+):
+    """Download the persisted run record (jsonl event log or markdown summary)."""
+    if format not in {"jsonl", "md"}:
+        raise HTTPException(400, "format must be 'jsonl' or 'md'")
+    store = _v2_store()
+    run = await store.get_run(run_id)
+    if run is None or run.workflow_name != workflow_name:
+        raise HTTPException(404, f"Run '{run_id}' not found for workflow '{workflow_name}'")
+    if not _can_access_run(current_user, run):
+        raise HTTPException(404, f"Run '{run_id}' not found for workflow '{workflow_name}'")
+    meta = await _workflow_store.load_meta(workflow_name)
+    if not meta or not check_resource_access(current_user, meta.get("owner_id"), meta.get("department_id"), meta.get("visibility")):
+        raise HTTPException(404, f"Workflow '{workflow_name}' not found")
+    virtual = workflow_record_path(format)
+    host = make_host_resolver(run.run_id, str(run.created_by))(virtual)
+    if host is None or not Path(host).is_file():
+        raise HTTPException(404, f"Run record for run '{run_id}' is not available")
+    media_types = {"jsonl": "application/x-ndjson", "md": "text/markdown"}
+    return FileResponse(host, media_type=media_types[format], filename=f"run_{run.run_id}.{format}")
 
 
 @router.post("/{workflow_name}/runs/{run_id}/commands")

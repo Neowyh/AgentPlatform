@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import ast
 import asyncio
+import json
 import operator
 import re
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Annotated, Any, TypedDict
 
 from langgraph.errors import GraphInterrupt
@@ -15,7 +17,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
 
 from .adapters import ActionAdapterRegistry, ActionContext
-from .file_roots import lookup_path, materialize_state, missing_written_artifacts, render_template, workflow_state_path, workflow_state_root
+from .file_roots import lookup_path, materialize_state, missing_written_artifacts, path_within_root, render_template, workflow_state_path, workflow_state_root
 from .schema import EdgeV2, NodeV2, WorkflowV2
 
 
@@ -205,6 +207,7 @@ class WorkflowGraphCompiler:
             params = render_template(node.action.params, render_state)  # type: ignore[union-attr]
             await self._emit("node_started", {"node_id": node.id, "idempotency_key": context.idempotency_key, "started_at": _now_iso()})
             try:
+                self._check_preconditions(node, render_state)
                 adapter = self.adapters.resolve(node.action.kind, node.action.name)  # type: ignore[union-attr]
                 last_error: Exception | None = None
                 result: Any = None
@@ -219,7 +222,7 @@ class WorkflowGraphCompiler:
                             except TimeoutError as exc:
                                 raise WorkflowNodeTimeout("workflow_node_timeout") from exc
                             if isinstance(result, str) and result.startswith("FAILED:"):
-                                raise WorkflowNodeFailed(f"node '{node.id}' reported failure: {result[:200]}")
+                                raise WorkflowNodeFailed(f"node '{node.id}' reported failure: {result[:4000]}")
                             if self.artifact_resolver is not None and context.file_access is not None:
                                 missing = missing_written_artifacts(context.file_access.get("write", []), self.artifact_resolver)
                                 if missing:
@@ -235,7 +238,7 @@ class WorkflowGraphCompiler:
                             if attempt + 1 < node.retry.max_attempts and node.retry.backoff_seconds:
                                 await asyncio.sleep(node.retry.backoff_seconds)
                     else:
-                        if isinstance(last_error, ArtifactsMissing):
+                        if isinstance(last_error, ArtifactsMissing) and node.on_missing_artifact == "pause":
                             # Two-phase interrupt so every resume re-verifies the
                             # gate: on resume the node re-runs and the first
                             # interrupt() consumes the resume value without raising,
@@ -243,6 +246,8 @@ class WorkflowGraphCompiler:
                             # and raises a fresh GraphInterrupt — pausing again.
                             interrupt({"type": "artifacts_missing", "node_id": node.id, "missing": last_error.missing})
                             return {"interrupt": interrupt({"type": "artifacts_missing", "node_id": node.id, "missing": last_error.missing})}
+                        # Default: missing artifacts are not something a resume
+                        # can fix — the node fails explicitly instead.
                         raise last_error or RuntimeError(f"node '{node.id}' failed")
                     if isinstance(last_error, WorkflowTransientError):
                         transient_attempts += 1
@@ -284,6 +289,64 @@ class WorkflowGraphCompiler:
     async def _emit(self, event_type: str, payload: dict[str, Any]) -> None:
         if self.emit_event is not None:
             await self.emit_event(event_type, payload)
+
+    def _check_preconditions(self, node: NodeV2, render_state: dict[str, Any]) -> None:
+        """Fail the node explicitly when an input precondition is unsatisfied.
+
+        Every violation is reported with a concrete reason (missing file, empty
+        file, unparseable JSON, no matching value) so operators see exactly why
+        the node failed instead of a generic agent failure.
+        """
+        if not node.preconditions or self.artifact_resolver is None:
+            return
+        read_roots: list[str] = [workflow_state_root()]
+        if node.action is not None and node.action.file_access is not None:
+            rendered_access = render_template(node.action.file_access.model_dump(), render_state)
+            read_roots.extend(rendered_access.get("read", []))
+        violations: list[str] = []
+        for precondition in node.preconditions:
+            file = render_template(precondition.file, render_state)
+            if not isinstance(file, str) or "{{" in file:
+                violations.append(f"precondition file '{precondition.file}' could not be resolved")
+                continue
+            if not any(path_within_root(file, root) for root in read_roots):
+                violations.append(f"precondition file '{file}' is not under the node's read roots")
+                continue
+            host = self.artifact_resolver(file)
+            if host is None:
+                violations.append(f"precondition file '{file}' cannot be resolved to the sandbox")
+                continue
+            path = Path(host)
+            if not path.is_file():
+                violations.append(f"precondition file '{file}' does not exist")
+                continue
+            if precondition.non_empty and path.stat().st_size == 0:
+                violations.append(f"precondition file '{file}' is empty")
+                continue
+            if precondition.json_path is not None or precondition.some_equals is not None or precondition.none_equals is not None:
+                try:
+                    data = json.loads(path.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    violations.append(f"precondition file '{file}' is not valid JSON")
+                    continue
+                if precondition.json_path is not None:
+                    try:
+                        values = _pick_json_values(data, precondition.json_path)
+                    except ValueError as exc:
+                        violations.append(f"precondition file '{file}': {exc}")
+                        continue
+                    if precondition.some_equals is not None:
+                        if not any(value == precondition.some_equals for value in values):
+                            violations.append(f"precondition '{precondition.json_path}' of '{file}' has no value equal to {precondition.some_equals!r} (found {values!r})")
+                    elif precondition.none_equals is not None:
+                        if any(value == precondition.none_equals for value in values):
+                            violations.append(f"precondition '{precondition.json_path}' of '{file}' must not contain {precondition.none_equals!r} (found {values!r})")
+                elif precondition.some_equals is not None and data != precondition.some_equals:
+                    violations.append(f"precondition file '{file}' must equal {precondition.some_equals!r}")
+                elif precondition.none_equals is not None and data == precondition.none_equals:
+                    violations.append(f"precondition file '{file}' must not equal {precondition.none_equals!r}")
+        if violations:
+            raise WorkflowNodeFailed(f"node '{node.id}' precondition failed: {'; '.join(violations)}")
 
     async def _run_action(self, adapter: Any, context: ActionContext, params: dict[str, Any]) -> Any:
         """Translate adapter updates into stable platform events."""
@@ -342,6 +405,44 @@ def _write_key(path: str) -> str:
     if len(parts) != 1:
         raise ValueError(f"nested state write path is not supported: '{path}'")
     return parts[0]
+
+
+def _pick_json_values(data: Any, path: str) -> list[Any]:
+    """Collect the values addressed by a compact JSON path.
+
+    Supports dotted keys, ``[*]`` (expand every list/dict value) and integer
+    indexes, e.g. ``$.root_causes[*].status``.  Missing keys simply produce no
+    values — callers decide what that means.
+    """
+    segments = re.findall(r"[A-Za-z_][A-Za-z0-9_]*|\[\*\]|\[[+-]?\d+\]", path)
+    current: list[Any] = [data]
+    for segment in segments:
+        if segment == "[*]":
+            expanded: list[Any] = []
+            for item in current:
+                if isinstance(item, list):
+                    expanded.extend(item)
+                elif isinstance(item, dict):
+                    expanded.extend(item.values())
+            current = expanded
+            continue
+        if segment.startswith("[") and segment.endswith("]"):
+            try:
+                index = int(segment[1:-1])
+            except ValueError as exc:
+                raise ValueError(f"invalid json_path segment '{segment}'") from exc
+            indexed: list[Any] = []
+            for item in current:
+                if isinstance(item, list) and -len(item) <= index < len(item):
+                    indexed.append(item[index])
+            current = indexed
+            continue
+        narrowed: list[Any] = []
+        for item in current:
+            if isinstance(item, dict) and segment in item:
+                narrowed.append(item[segment])
+        current = narrowed
+    return current
 
 
 def _evaluate_expression(expression: str, state: dict[str, Any]) -> bool:

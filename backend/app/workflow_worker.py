@@ -18,8 +18,9 @@ from ideer.persistence.models.workflow_v2 import WorkflowTaskRow
 from ideer.runtime.checkpointer.async_provider import make_checkpointer
 from ideer.workflows.v2.adapters import build_default_registry
 from ideer.workflows.v2.compiler import WorkflowCancelled, WorkflowGraphCompiler
-from ideer.workflows.v2.file_roots import make_host_resolver, validate_read_roots, validate_workflow_roots
+from ideer.workflows.v2.file_roots import make_host_resolver, validate_read_roots, validate_workflow_roots, workflow_log_root
 from ideer.workflows.v2.parser import parse_workflow_v2
+from ideer.workflows.v2.run_record import RunRecordWriter
 from ideer.workflows.v2.store import WorkflowV2Store
 from ideer.workflows.v2.worker import WorkflowPaused, WorkflowWorker, workflow_snapshot
 
@@ -47,6 +48,9 @@ async def execute_workflow_task(
         if command is None:
             raise RuntimeError(f"workflow task '{task.task_id}' has no resume command")
         invocation = Command(resume=command.payload)
+        # The attempt-budget exemption applies to the immediate resume only;
+        # a later crash/take-over must count as a fresh attempt again.
+        await store.clear_resume_command(task.task_id)
     else:
         invocation = {"run_id": run_id, "inputs": run.inputs, "state": {}, "outputs": {}}
 
@@ -120,6 +124,19 @@ async def run_worker() -> None:
     if sf is None:
         raise RuntimeError("workflow-worker could not initialize persistence")
     store = WorkflowV2Store(sf)
+    writers: dict[str, RunRecordWriter] = {}
+
+    async def record_sink(run, event) -> None:
+        writer = writers.get(run.run_id)
+        if writer is None:
+            writer = RunRecordWriter(make_host_resolver(run.run_id, str(run.created_by)), workflow_log_root())
+            writers[run.run_id] = writer
+        await writer.on_event(event)
+        if run.status in {"completed", "failed", "cancelled"}:
+            await writer.finalize(store, run)
+            writers.pop(run.run_id, None)
+
+    store.event_sink = record_sink
 
     try:
         runtime = config.workflow_runtime

@@ -10,6 +10,7 @@ from typing import Any
 
 import yaml
 
+from .file_roots import path_within_root, workflow_state_root
 from .schema import WorkflowV2
 
 _PATH = re.compile(r"\$\.(?:inputs|state|outputs)(?:\.[A-Za-z_][A-Za-z0-9_]*)+")
@@ -78,6 +79,7 @@ def _validate_graph(workflow: WorkflowV2) -> None:
     _validate_templates(workflow)
     _validate_forks(workflow, nodes, outgoing)
     _validate_writes(workflow)
+    _validate_preconditions(workflow)
 
 
 def _validate_cycles(workflow: WorkflowV2, outgoing: dict[str, list[str]]) -> None:
@@ -187,6 +189,27 @@ def _validate_writes(workflow: WorkflowV2) -> None:
             parts = path.split(".")
             if len(parts) != 3 or parts[:2] != ["$", "state"] or parts[2] not in declared:
                 raise ValueError(f"action node '{node.id}' writes undeclared state path '{path}'")
+
+
+def _validate_preconditions(workflow: WorkflowV2) -> None:
+    """Precondition files must be readable by their node.
+
+    Static (non-templated) precondition files must sit under one of the node's
+    static read roots or the shared state root; templated files are only
+    resolvable at runtime and are validated there against the rendered roots.
+    """
+    for node in workflow.nodes:
+        if node.type != "action" or not node.preconditions or node.action is None:
+            continue
+        read_roots = node.action.file_access.read if node.action.file_access is not None else []
+        for precondition in node.preconditions:
+            file = precondition.file
+            if "{{" in file:
+                continue  # resolved and validated at runtime
+            if path_within_root(file, workflow_state_root()):
+                continue
+            if not any(path_within_root(file, root) for root in read_roots if "{{" not in root):
+                raise ValueError(f"action node '{node.id}' precondition file '{file}' is not under its read roots")
 
 
 def _validate_path(path: str, workflow: WorkflowV2, context: str) -> None:
