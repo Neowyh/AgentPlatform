@@ -47,6 +47,7 @@ nodes:
         read: []
         write:
           - "/mnt/user-data/outputs/artifact.json"
+    on_missing_artifact: pause
     retry:
       max_attempts: 2
       backoff_seconds: 0
@@ -55,6 +56,28 @@ nodes:
     action: {kind: agent, name: record}
 edges:
   - {from: produce, to: plain}
+"""
+
+_FAIL_GATED_WORKFLOW = """
+schema_version: 2
+name: fail-gated
+inputs: {}
+state: {}
+entrypoint: produce
+nodes:
+  - id: produce
+    type: action
+    action:
+      kind: agent
+      name: record
+      file_access:
+        read: []
+        write:
+          - "/mnt/user-data/outputs/artifact.json"
+    retry:
+      max_attempts: 2
+      backoff_seconds: 0
+edges: []
 """
 
 _PLAIN_WORKFLOW = """
@@ -150,6 +173,36 @@ def _executor(
 async def _create_gated_run(store: WorkflowV2Store, run_id: str) -> None:
     await store.save_definition("gated", {}, "hash", "user-1")
     await store.create_run(run_id, "gated", 1, {}, "user-1")
+
+
+@pytest.mark.asyncio
+async def test_missing_artifacts_fail_by_default(
+    durable_store: WorkflowV2Store,
+    tmp_path: Path,
+) -> None:
+    """With the default ``on_missing_artifact: fail``, a node that produces no
+    artifact fails the run with a specific error instead of pausing forever."""
+    await durable_store.save_definition("fail-gated", {}, "hash", "user-1")
+    await durable_store.create_run("run-gate-fail", "fail-gated", 1, {}, "user-1")
+    calls: list[str] = []
+    execute = _executor(
+        durable_store,
+        tmp_path / "checkpoints.db",
+        calls,
+        definition_yaml=_FAIL_GATED_WORKFLOW,
+        should_write=lambda _attempt: False,
+        base_dir=tmp_path,
+    )
+
+    assert await WorkflowWorker(durable_store, execute).run_once() is True
+
+    failed = await durable_store.get_run("run-gate-fail")
+    assert failed is not None and failed.status == "failed"
+    assert failed.error is not None and "artifacts_missing" in failed.error
+    assert calls == ["wf:run-gate-fail:node:produce", "wf:run-gate-fail:node:produce"]  # 2 attempts, then failed
+    events = await durable_store.list_events("run-gate-fail")
+    node_errors = [event.payload.get("error", "") for event in events if event.event_type == "node_failed"]
+    assert node_errors and any("artifact.json" in error for error in node_errors)
 
 
 @pytest.mark.asyncio

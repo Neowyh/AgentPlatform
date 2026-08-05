@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
@@ -24,6 +25,12 @@ logger = logging.getLogger(__name__)
 class WorkflowV2Store:
     def __init__(self, session_factory) -> None:
         self.session_factory = session_factory
+        # Serializes event appends: parallel fork branches emit concurrently,
+        # and a cancelled branch must never leave an open write transaction
+        # behind (SQLite would then block every later writer until the busy
+        # timeout).  One lock per store instance is enough — a worker runs one
+        # run at a time, so only intra-run fork branches contend.
+        self._event_append_lock = asyncio.Lock()
         # Optional sink invoked after every persisted event (including the
         # max_attempts exhaustion event written inside claim_next_task), so the
         # worker can stream a run record to disk. Sink failures are logged and
@@ -143,10 +150,16 @@ class WorkflowV2Store:
         worker_id: str | None = None,
         max_events: int | None = None,
     ) -> WorkflowV2EventRow | None:
-        event = await self._append_event_once(run_id, event_type, payload, worker_id=worker_id, max_events=max_events)
-        if event is not None:
-            await self._notify_sink(run_id, event)
-        return event
+        async with self._event_append_lock:
+            # The write must survive branch cancellation: langgraph cancels the
+            # sibling of a failed fork branch mid-await, and an append killed
+            # inside ``session.execute`` would leave an open write transaction
+            # on the pooled connection — blocking every later writer for the
+            # SQLite busy timeout. Shielding lets the write finish cleanly.
+            event = await asyncio.shield(self._append_event_once(run_id, event_type, payload, worker_id=worker_id, max_events=max_events))
+            if event is not None:
+                await self._notify_sink(run_id, event)
+            return event
 
     async def _append_event_once(
         self,

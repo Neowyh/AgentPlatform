@@ -215,7 +215,7 @@ class WorkflowGraphCompiler:
                             except TimeoutError as exc:
                                 raise WorkflowNodeTimeout("workflow_node_timeout") from exc
                             if isinstance(result, str) and result.startswith("FAILED:"):
-                                raise WorkflowNodeFailed(f"node '{node.id}' reported failure: {result[:200]}")
+                                raise WorkflowNodeFailed(f"node '{node.id}' reported failure: {result[:4000]}")
                             if self.artifact_resolver is not None and context.file_access is not None:
                                 missing = missing_written_artifacts(context.file_access.get("write", []), self.artifact_resolver)
                                 if missing:
@@ -231,7 +231,7 @@ class WorkflowGraphCompiler:
                             if attempt + 1 < node.retry.max_attempts and node.retry.backoff_seconds:
                                 await asyncio.sleep(node.retry.backoff_seconds)
                     else:
-                        if isinstance(last_error, ArtifactsMissing):
+                        if isinstance(last_error, ArtifactsMissing) and node.on_missing_artifact == "pause":
                             # Two-phase interrupt so every resume re-verifies the
                             # gate: on resume the node re-runs and the first
                             # interrupt() consumes the resume value without raising,
@@ -239,6 +239,8 @@ class WorkflowGraphCompiler:
                             # and raises a fresh GraphInterrupt — pausing again.
                             interrupt({"type": "artifacts_missing", "node_id": node.id, "missing": last_error.missing})
                             return {"interrupt": interrupt({"type": "artifacts_missing", "node_id": node.id, "missing": last_error.missing})}
+                        # Default: missing artifacts are not something a resume
+                        # can fix — the node fails explicitly instead.
                         raise last_error or RuntimeError(f"node '{node.id}' failed")
                     if isinstance(last_error, WorkflowTransientError):
                         transient_attempts += 1

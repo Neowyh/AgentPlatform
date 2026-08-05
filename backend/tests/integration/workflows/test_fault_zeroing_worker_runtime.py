@@ -165,11 +165,13 @@ async def test_host_path_inputs_fail_the_run_instead_of_completing(
 
 
 @pytest.mark.asyncio
-async def test_missing_artifacts_pauses_the_run_instead_of_completing(
+async def test_missing_artifacts_fail_the_run_instead_of_completing(
     durable_store: WorkflowV2Store,
     tmp_path: Path,
     monkeypatch,
 ) -> None:
+    """Missing artifacts are a hard failure by default — the run must not
+    complete with a fabricated/stub output and does not pause."""
     monkeypatch.setattr("ideer.workflows.v2.file_roots.get_paths", lambda: Paths(str(tmp_path / "base")))
     calls: list[str] = []
     await _run_worker_once(
@@ -180,12 +182,8 @@ async def test_missing_artifacts_pauses_the_run_instead_of_completing(
     )
 
     run = await durable_store.get_run("run-worker-missing-artifacts")
-    assert run is not None and run.status == "paused"
-    assert run.snapshot is not None and run.snapshot.get("interrupt")
-    interrupt_value = run.snapshot["interrupt"][0]
-    assert interrupt_value["type"] == "artifacts_missing"
-    assert interrupt_value["node_id"] in {"evidence_collection", "deductive_tree"}
-    expected_missing = ["/mnt/user-data/outputs/artifacts/evidence/evidence_table.json"] if interrupt_value["node_id"] == "evidence_collection" else ["/mnt/user-data/outputs/artifacts/tree/fault_tree_structure.json"]
-    assert interrupt_value["missing"] == expected_missing
+    assert run is not None and run.status == "failed"
+    assert run.error is not None and "artifacts_missing" in run.error
     events = await durable_store.list_events(run.run_id)
-    assert [event.event_type for event in events].count("interrupted") == 1
+    assert "interrupted" not in {event.event_type for event in events}
+    assert any(event.event_type == "node_failed" for event in events)

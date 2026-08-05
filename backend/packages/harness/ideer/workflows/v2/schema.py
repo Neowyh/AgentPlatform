@@ -62,6 +62,7 @@ class NodeV2(BaseModel):
     fork: str | None = None
     roles: list[str] = Field(default_factory=list)
     writes: list[str] = Field(default_factory=list)
+    on_missing_artifact: Literal["fail", "pause"] = "fail"
     retry: RetrySpec = Field(default_factory=RetrySpec)
 
     @model_validator(mode="after")
@@ -78,6 +79,8 @@ class NodeV2(BaseModel):
             raise ValueError(f"interrupt node '{self.id}' requires roles")
         if self.type != "action" and self.writes:
             raise ValueError(f"only action nodes may declare writes ('{self.id}')")
+        if self.type != "action" and self.on_missing_artifact != "fail":
+            raise ValueError(f"on_missing_artifact is only valid on action nodes ('{self.id}')")
         return self
 
 
