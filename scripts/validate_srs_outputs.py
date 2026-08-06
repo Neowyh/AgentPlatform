@@ -88,7 +88,7 @@ def check_traceability(data: dict) -> None:
 
     covered: set[str] = set()
     for req in accepted:
-        rid = req.get("ID", "")
+        rid = str(req.get("id", req.get("ID", ""))).strip()
         src = req.get("source_function") or req.get("function_id")
         chapter = req.get("source_chapter") or req.get("taskbook_chapter") or ""
         if not src:
@@ -125,7 +125,7 @@ def check_artifacts(outputs: Path, data: dict) -> None:
         elif artifact.stat().st_size == 0:
             fail(f"{artifact.name} is empty")
 
-    rejected_ids = [r.get("ID") for r in data.get("requirements", []) if r.get("status", "").lower() == "rejected"]
+    rejected_ids = [r.get("id") or r.get("ID") for r in data.get("requirements", []) if r.get("status", "").lower() == "rejected"]
     if rejected_ids and srs.exists() and srs.stat().st_size:
         text = _docx_text(srs)
         present = [rid for rid in rejected_ids if rid and rid in text]
