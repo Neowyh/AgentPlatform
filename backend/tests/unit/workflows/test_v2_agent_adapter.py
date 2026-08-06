@@ -271,3 +271,72 @@ async def test_agent_adapter_raises_when_executor_fails(env: pytest.MonkeyPatch)
     )
     with pytest.raises(RuntimeError, match="agent 'fault-zeroing' failed with status"):
         await adapter.run(context, {"prompt": "hello"})
+
+
+class StreamingExecutor(FakeExecutor):
+    """Executor that takes the per-turn progress_callback and emits tool calls."""
+
+    def __init__(self, subagent, tools, app_config=None, thread_id=None) -> None:
+        super().__init__(subagent, tools, app_config, thread_id)
+        self.progress_callback = None
+
+    async def _aexecute(self, prompt: str, progress_callback=None) -> SimpleNamespace:
+        self.progress_callback = progress_callback
+        await progress_callback({"type": "tool_call", "tool": "read_file", "args_summary": "/mnt/user-data/uploads/case/a.txt", "turn": 1})
+        await progress_callback({"type": "tool_call", "tool": "grep", "args_summary": "fault", "turn": 2})
+        return SimpleNamespace(status=_Status.COMPLETED, result={"ok": True}, error=None)
+
+
+@pytest.mark.asyncio
+async def test_agent_adapter_streams_per_turn_tool_call_progress(env: pytest.MonkeyPatch) -> None:
+    """Each tool call made by the subagent must surface as an action_progress
+    message on the astream, bracketed by 'started' and the final result."""
+    env.setattr(executor_module, "SubagentExecutor", StreamingExecutor)
+
+    adapter = _AgentAdapter("fault-zeroing", "user-1")
+    context = ActionContext(
+        workflow_name="fault-zeroing",
+        run_id="run-progress",
+        node_id="evidence_collection",
+        inputs={},
+        state={},
+        outputs={},
+    )
+
+    updates = [update async for update in adapter.astream(context, {"prompt": "提取证据", "system_prompt": "你是证据分析师"})]
+
+    assert updates[0] == {"type": "progress", "message": "started"}
+    assert updates[1]["message"] == "[回合 1] 调用工具 read_file → /mnt/user-data/uploads/case/a.txt"
+    assert updates[2]["message"] == "[回合 2] 调用工具 grep → fault"
+    assert updates[3] == {"type": "result", "value": {"ok": True}}
+
+
+@pytest.mark.asyncio
+async def test_agent_adapter_stream_surfaces_transient_llm_failure(env: pytest.MonkeyPatch) -> None:
+    """The astream must apply the same transient-error markers as run(): an
+    LLM-unavailable result inside a stream raises WorkflowTransientError."""
+
+    class UnavailableStreamExecutor(StreamingExecutor):
+        async def _aexecute(self, prompt: str, progress_callback=None) -> SimpleNamespace:
+            await progress_callback({"type": "tool_call", "tool": "read_file", "args_summary": "a.txt", "turn": 1})
+            return SimpleNamespace(
+                status=_Status.COMPLETED,
+                result="The configured LLM provider is temporarily unavailable after multiple retries. Please wait a moment and continue the conversation.",
+                error=None,
+            )
+
+    env.setattr(executor_module, "SubagentExecutor", UnavailableStreamExecutor)
+
+    adapter = _AgentAdapter("fault-zeroing", "user-1")
+    context = ActionContext(
+        workflow_name="fault-zeroing",
+        run_id="run-progress-unavailable",
+        node_id="evidence_collection",
+        inputs={},
+        state={},
+        outputs={},
+    )
+
+    with pytest.raises(WorkflowTransientError, match="LLM provider unavailable"):
+        async for _ in adapter.astream(context, {"prompt": "提取证据"}):
+            pass

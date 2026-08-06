@@ -378,6 +378,51 @@ async def test_resumed_task_claim_does_not_increment_attempts() -> None:
 
 
 @pytest.mark.asyncio
+async def test_resume_exemption_is_bounded_to_the_pending_resume_command() -> None:
+    """The attempt exemption only lasts as long as the resume command is
+    pending. After the worker consumes it (clear_resume_command), the next
+    claim must count an attempt again, so a second pause cannot burn the
+    budget for free."""
+    session = AsyncMock()
+    session.add = MagicMock()
+    task = MagicMock(
+        spec=WorkflowTaskRow,
+        task_id="task-1",
+        run_id="run-1",
+        status="queued",
+        attempts=3,
+        lease_owner=None,
+        resume_command_id="cmd-1",
+        cancel_requested=False,
+    )
+    task_result = MagicMock()
+    task_result.scalar_one_or_none.return_value = task
+    run_result = MagicMock()
+    run_result.scalar_one_or_none.return_value = MagicMock(spec=WorkflowV2RunRow, run_id="run-1", status="queued")
+
+    def execute_stub(statement, *args, **kwargs):
+        if "workflow_v2_runs" in str(statement):
+            return run_result
+        return task_result
+
+    session.execute.side_effect = execute_stub
+    store = WorkflowV2Store(MagicMock(return_value=_Context(session)))
+
+    claimed = await store.claim_next_task("worker-1", max_attempts=5)
+    assert claimed is task
+    assert task.attempts == 3, "the pending resume command must exempt the claim"
+
+    # The production worker consumes the command right after the resume
+    # execution starts (workflow_process.py clears resume_command_id).
+    task.resume_command_id = None
+    session.execute.side_effect = execute_stub
+
+    claimed_again = await store.claim_next_task("worker-1", max_attempts=5)
+    assert claimed_again is task
+    assert task.attempts == 4, "after the command is consumed the budget resumes"
+
+
+@pytest.mark.asyncio
 async def test_max_attempts_kill_persists_failure_and_notifies_sink() -> None:
     session = AsyncMock()
     session.add = MagicMock()
