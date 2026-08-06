@@ -44,6 +44,18 @@ extensions_config.json
 .mimocode/
 .agent/
 
+# Development working logs (keep local only, never commit)
+/dev-log/
+task_plan.md
+progress.md
+findings.md
+coverage.json
+backend/.test_durations
+*.qodo-cover.json
+pr-build/
+.opencode/
+.agents/
+
 # Backup files
 *.bak
 

@@ -31,3 +31,12 @@ repos:
         language: system
         files: ^frontend/
         types_or: [javascript, tsx, ts, json, css]
+
+  # Block local-only working files (dev-log/, coverage, tool caches) from ever entering
+  - repo: local
+    hooks:
+      - id: block-untrackable-files
+        name: block untrackable working files
+        entry: bash -c 'blocked=$(git diff --cached --diff-filter=ACMR --name-only -z | xargs -0 -n1 echo | grep -E "^(dev-log/|task_plan\\.md$|progress\\.md$|findings\\.md$|coverage\\.json$|\\.coverage$|.*\\.qodo-cover\\.json$|backend/\\.test_durations$|pr-build/|\\.opencode/|\\.agents/|\\.mimocode/)"); if [ -n "$blocked" ]; then echo "Blocked files staged:"; echo "$blocked"; exit 1; fi'
+        language: system
+        stages: [pre-commit]
