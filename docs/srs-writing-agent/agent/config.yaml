@@ -1,0 +1,9 @@
+name: srs-writing
+description: 依据软件任务书（docx/doc/markdown/pdf）按 GJB438C-2021 生成软件需求规格说明（.docx）与功能-需求双向追踪矩阵（.docx），采用逐项确认的交互式流程
+tool_groups:
+  - file:read
+  - file:write
+  - document
+  - bash
+skills:
+  - srs-writing

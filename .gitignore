@@ -31,6 +31,7 @@ venv/
 # Configuration files
 config.yaml
 !docs/fault-zeroing-agent/agent/config.yaml
+!docs/srs-writing-agent/agent/config.yaml
 mcp_config.json
 extensions_config.json
 

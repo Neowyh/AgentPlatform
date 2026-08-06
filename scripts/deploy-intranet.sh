@@ -26,7 +26,6 @@ Options:
 
 Environment:
   IDEER_BUNDLE_ROOT, IDEER_VERSION, IDEER_NO_LOAD
-  IDEER_INSTALL_FAULT_ZEROING=0 skips installing the bundled shared fault-zeroing agent
 EOF
 }
 
@@ -402,27 +401,6 @@ EOF
     append_env_if_missing "IDEER_NETWORK_MODE" "offline"
 }
 
-install_fault_zeroing_agent() {
-    require_file "$SOURCE_DIR/scripts/install_fault_zeroing_agent.py"
-    require_file "$ENV_FILE"
-    # shellcheck disable=SC1090
-    . "$ENV_FILE"
-
-    if [ "${IDEER_INSTALL_FAULT_ZEROING:-1}" = "0" ]; then
-        log "skipping fault-zeroing agent install"
-        return 0
-    fi
-
-    local runtime_home="${IDEER_HOME:-$RUNTIME_DIR/data}"
-    local config_path="${IDEER_CONFIG_PATH:-$RUNTIME_DIR/config.yaml}"
-    require_file "$config_path"
-
-    log "installing bundled fault-zeroing agent..."
-    run_cmd env IDEER_HOME="$runtime_home" \
-        IDEER_CONFIG_PATH="$config_path" \
-        python3 "$SOURCE_DIR/scripts/install_fault_zeroing_agent.py"
-}
-
 load_images() {
     if [ "$NO_LOAD" -eq 1 ]; then
         log "skipping docker load"
@@ -519,13 +497,9 @@ EOF
 }
 
 prepare_bundle() {
-    local install_fault_zeroing="${1:-1}"
     extract_source
     seed_runtime
     validate_runtime
-    if [ "$install_fault_zeroing" = "1" ]; then
-        install_fault_zeroing_agent
-    fi
 }
 
 # ---------------------------------------------------------------------------
@@ -547,7 +521,7 @@ fi
 
 case "$COMMAND" in
     prepare)
-        prepare_bundle 1
+        prepare_bundle
         log "prepared source: $SOURCE_DIR"
         log "prepared runtime: $RUNTIME_DIR"
         log "env file: $ENV_FILE"
@@ -556,7 +530,7 @@ case "$COMMAND" in
         load_images
         ;;
     up|start)
-        if ! prepare_bundle 1; then
+        if ! prepare_bundle; then
             print_rollback_instructions
             die "prepare step failed"
         fi
@@ -572,7 +546,7 @@ case "$COMMAND" in
         log "deployment complete"
         ;;
     restart)
-        if ! prepare_bundle 1; then
+        if ! prepare_bundle; then
             print_rollback_instructions
             die "prepare step failed"
         fi
@@ -588,7 +562,7 @@ case "$COMMAND" in
         log "restart complete"
         ;;
     stop|down)
-        prepare_bundle 0
+        prepare_bundle
         if [ -f "$COMPOSE_FILE" ]; then
             compose_cmd down
         else
@@ -596,7 +570,7 @@ case "$COMMAND" in
         fi
         ;;
     status)
-        prepare_bundle 0
+        prepare_bundle
         if [ -f "$COMPOSE_FILE" ]; then
             compose_cmd ps
         else
@@ -604,7 +578,7 @@ case "$COMMAND" in
         fi
         ;;
     logs)
-        prepare_bundle 0
+        prepare_bundle
         if [ -f "$COMPOSE_FILE" ]; then
             if [ -n "${LOG_SERVICE:-}" ]; then
                 compose_cmd logs -f "$LOG_SERVICE"

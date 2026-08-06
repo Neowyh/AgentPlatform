@@ -2,6 +2,7 @@ import ast
 import importlib.util
 import os
 import shutil
+import sqlite3
 import subprocess
 import sys
 from pathlib import Path
@@ -239,6 +240,120 @@ def test_validate_fault_zeroing_subagent_registry_finds_merged_subagents(tmp_pat
     verified = install_script.validate_fault_zeroing_subagent_registry(config_path)
 
     assert verified == REQUIRED_SUBAGENTS
+
+
+def test_install_agent_installs_srs_writing_to_shared_dir(tmp_path: Path) -> None:
+    source_dir = tmp_path / "source"
+    base_dir = tmp_path / "runtime"
+    source_dir.mkdir()
+    (source_dir / "config.yaml").write_text("name: srs-writing\n", encoding="utf-8")
+    (source_dir / "SOUL.md").write_text("# Soul\n", encoding="utf-8")
+
+    target_dir, status = install_script.install_agent(
+        agent_name="srs-writing",
+        source_dir=source_dir,
+        base_dir=base_dir,
+    )
+
+    assert target_dir == base_dir / "agents" / "srs-writing"
+    assert status == "copied"
+    assert (target_dir / "config.yaml").read_text(encoding="utf-8") == "name: srs-writing\n"
+    assert (target_dir / "SOUL.md").read_text(encoding="utf-8") == "# Soul\n"
+
+
+def test_main_skips_subagent_merge_when_subagents_file_missing(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    (source_dir / "config.yaml").write_text("name: srs-writing\n", encoding="utf-8")
+    (source_dir / "SOUL.md").write_text("# Soul\n", encoding="utf-8")
+    monkeypatch.setattr(install_script, "default_source_dir", lambda agent_name="fault-zeroing": source_dir)
+    monkeypatch.setattr(install_script, "default_subagents_file", lambda agent_name="fault-zeroing": tmp_path / "subagents.yaml")
+    monkeypatch.setenv("IDEER_HOME", str(tmp_path / "runtime"))
+
+    exit_code = install_script.main(["--agent", "srs-writing"])
+
+    assert exit_code == 0
+    assert (tmp_path / "runtime" / "agents" / "srs-writing" / "config.yaml").is_file()
+    assert "none - no bundled subagents.yaml" in capsys.readouterr().out
+
+
+def test_install_agent_owner_super_admin_installs_to_per_user_dir(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    (source_dir / "config.yaml").write_text("name: srs-writing\n", encoding="utf-8")
+    (source_dir / "SOUL.md").write_text("# Soul\n", encoding="utf-8")
+    runtime_dir = tmp_path / "runtime"
+    db_path = runtime_dir / "data" / "ideer.db"
+    db_path.parent.mkdir(parents=True)
+    with sqlite3.connect(db_path) as connection:
+        connection.executescript(
+            """
+            CREATE TABLE users_ext (id TEXT PRIMARY KEY, role TEXT NOT NULL, disabled INTEGER NOT NULL);
+            INSERT INTO users_ext VALUES ('super-admin-id', 'super_admin', 0);
+            CREATE TABLE resource_metadata (
+                id TEXT PRIMARY KEY,
+                resource_type TEXT NOT NULL,
+                resource_id TEXT NOT NULL,
+                owner_id TEXT NOT NULL,
+                department_id TEXT,
+                visibility TEXT NOT NULL,
+                version INTEGER NOT NULL,
+                is_favorited INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(resource_type, resource_id, owner_id)
+            );
+            """
+        )
+
+    monkeypatch.setattr(install_script, "default_source_dir", lambda agent_name="fault-zeroing": source_dir)
+    monkeypatch.setattr(
+        install_script,
+        "default_subagents_file",
+        lambda agent_name="fault-zeroing": tmp_path / "subagents.yaml",
+    )
+    monkeypatch.setenv("IDEER_HOME", str(runtime_dir))
+
+    exit_code = install_script.main(["--agent", "srs-writing", "--owner", "super-admin"])
+
+    assert exit_code == 0
+    target_dir = runtime_dir / "users" / "super-admin-id" / "agents" / "srs-writing"
+    assert (target_dir / "config.yaml").is_file()
+    with sqlite3.connect(db_path) as connection:
+        metadata = connection.execute("SELECT resource_type, resource_id, owner_id, department_id, visibility, version, is_favorited FROM resource_metadata").fetchone()
+    assert metadata == ("agent", "srs-writing", "super-admin-id", None, "private", 1, 0)
+
+
+def test_install_agent_owner_missing_super_admin_reports_error(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    (source_dir / "config.yaml").write_text("name: srs-writing\n", encoding="utf-8")
+    (source_dir / "SOUL.md").write_text("# Soul\n", encoding="utf-8")
+    runtime_dir = tmp_path / "runtime"
+    db_path = runtime_dir / "data" / "ideer.db"
+    db_path.parent.mkdir(parents=True)
+    with sqlite3.connect(db_path) as connection:
+        connection.execute("CREATE TABLE users_ext (id TEXT PRIMARY KEY, role TEXT NOT NULL, disabled INTEGER NOT NULL)")
+
+    monkeypatch.setattr(install_script, "default_source_dir", lambda agent_name="fault-zeroing": source_dir)
+    monkeypatch.setenv("IDEER_HOME", str(runtime_dir))
+
+    exit_code = install_script.main(["--agent", "srs-writing", "--owner", "super-admin"])
+
+    assert exit_code == 1
+    assert "super_admin not found in" in capsys.readouterr().err
+    assert not (runtime_dir / "users").exists()
 
 
 def test_registry_module_import_does_not_eagerly_import_executor() -> None:
