@@ -216,4 +216,71 @@ describe("RunGraph", () => {
     fireEvent.click(screen.getByTestId("react-flow"));
     expect(onSelect).toHaveBeenCalledWith("route");
   });
+
+  test("shows completed fork and join control nodes from lifecycle events", () => {
+    const forkJoinWorkflow: WorkflowDetail = {
+      ...workflow,
+      entrypoint: "fork_start",
+      nodes: [
+        {
+          id: "fork_start",
+          type: "fork",
+          branches: ["evidence_collection", "deductive_tree"],
+          join: "join_review",
+        },
+        { id: "join_review", type: "join", fork: "fork_start" },
+        {
+          id: "evidence_collection",
+          type: "action",
+          action: { kind: "agent", name: "fault-zeroing" },
+        },
+      ],
+      edges: [
+        { from: "fork_start", to: "evidence_collection" },
+        { from: "evidence_collection", to: "join_review" },
+      ],
+    };
+    const completedRun: RunStatus = {
+      ...baseRun,
+      status: "completed",
+      steps: {
+        fork_start: {
+          status: "completed",
+          output: null,
+          error: null,
+          retries: 0,
+          started_at: null,
+          finished_at: null,
+        },
+        join_review: {
+          status: "completed",
+          output: null,
+          error: null,
+          retries: 0,
+          started_at: null,
+          finished_at: null,
+        },
+      },
+    };
+    render(
+      <RunGraph
+        workflow={forkJoinWorkflow}
+        runStatus={completedRun}
+        selectedNodeId={null}
+        onSelect={() => {}}
+      />,
+    );
+    const forkNode = lastFlowProps?.nodes.find(
+      (node) => node.id === "fork_start",
+    );
+    expect(forkNode?.className).toContain("border-emerald-500");
+    const joinNode = lastFlowProps?.nodes.find(
+      (node) => node.id === "join_review",
+    );
+    expect(joinNode?.className).toContain("border-emerald-500");
+    const actionNode = lastFlowProps?.nodes.find(
+      (node) => node.id === "evidence_collection",
+    );
+    expect(actionNode?.className).toContain("bg-card");
+  });
 });
