@@ -1,5 +1,11 @@
 # iDeer 离线产品线长期治理方案
 
+> audience: maintainers, release owners, operators<br>
+> status: current<br>
+> owner: product-line maintainers<br>
+> last-verified: 2026-07-15<br>
+> canonical-path: `docs/offline-product-line-governance-plan.md`
+
 ## 一句话核心思想
 
 项目有两个远程仓库（`origin` 是字节官方上游，`agentplatform` 是团队自有仓库）。本方案定下一套规矩，让团队在 agentplatform 上独立开发离线功能，不受上游日常改动干扰，同时定期从上游获取安全更新，并行不悖地完成 v2 大版本升级。

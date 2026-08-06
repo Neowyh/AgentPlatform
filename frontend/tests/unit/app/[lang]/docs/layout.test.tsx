@@ -22,7 +22,10 @@ vi.mock("nextra-theme-docs", () => ({
     pageMap,
     docsRepositoryBase,
   }: any) => (
-    <div data-testid="nextra-layout">
+    <div
+      data-testid="nextra-layout"
+      data-docs-repository-base={docsRepositoryBase}
+    >
       {navbar}
       {footer}
       {children}
@@ -69,6 +72,15 @@ describe("DocLayout", () => {
     const params = Promise.resolve({ lang: "en" });
     render(await DocLayout({ children: <div>content</div>, params }));
     expect(screen.getByTestId("nextra-layout")).toBeInTheDocument();
+  });
+
+  test("configures the repository source for edit links", async () => {
+    const params = Promise.resolve({ lang: "en" });
+    render(await DocLayout({ children: <div>content</div>, params }));
+    expect(screen.getByTestId("nextra-layout")).toHaveAttribute(
+      "data-docs-repository-base",
+      "https://github.com/Neowyh/AgentPlatform/tree/product/offline-1.x/frontend/src/content",
+    );
   });
 
   test("renders header component", async () => {

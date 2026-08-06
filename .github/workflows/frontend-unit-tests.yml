@@ -2,7 +2,7 @@ name: Frontend Unit Tests
 
 on:
   push:
-    branches: [ 'main' ]
+    branches: ["main"]
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
 
@@ -26,7 +26,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: "22"
 
       - name: Enable Corepack
         run: corepack enable
@@ -62,10 +62,8 @@ jobs:
           ")
           echo "Frontend statement coverage: ${STATEMENTS}%"
           echo "Frontend coverage is diagnostic only."
-
-      - name: Coverage Summary
-        if: always()
-        working-directory: frontend
-        run: |
-          echo "## Frontend Coverage Report" >> $GITHUB_STEP_SUMMARY
-          pnpm vitest run --coverage --reporter=verbose 2>&1 | grep -E "^(All files|File|%|---)" >> $GITHUB_STEP_SUMMARY || true
+          {
+            echo "## Frontend Coverage Report"
+            echo "Frontend statement coverage: ${STATEMENTS}%"
+            echo "Coverage is diagnostic only."
+          } >> "$GITHUB_STEP_SUMMARY"

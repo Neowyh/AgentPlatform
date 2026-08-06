@@ -46,3 +46,18 @@
 - The acceptance runner exited after the Case 02 failure, so no `acceptance.json` was written. A re-run is required; the three-case gate remains unclosed.
 - Second host re-run (session `20260803T172128Z`): Case 01 progressed through `integrate_tree` (directory-level read fix held) but failed at `assessment_refine` with the same `Recursion limit of 50` error after ~5 min (~6 s/step — normal LLM reasoning pace, not a blocked-tool loop; the same node passed with the default limit in the previous run). Conclusion: 50 default turns is too tight for real multi-turn agent work and LLM non-determinism; `generate_outputs` already carried `max_turns: 200` for the same reason.
 - Fix: all agent nodes in `workflows/fault-zeroing.yaml` now declare explicit `max_turns` (150; `generate_outputs` stays 200). DSL test extended to assert the full per-node map. Focused suite still 123 passed.
+
+## Verification record
+
+| Command | Result | Exit code | Notes |
+| --- | --- | --- | --- |
+| Pending | Pending | Pending | This file records only commands executed in the current Phase 5 run. |
+
+## 2026-07-15 physical migration findings
+
+- The worktree already contained uncommitted metadata, navigation, and smoke-test changes; they were preserved.
+- Historical files were moved instead of copied. Duplicate pre-existing archive snapshots for permission audit and role-access testing were removed after their content existed at the canonical archive paths.
+- `docs/backlog.md` is now the current backlog entry; the old mixed current/completed backlog and permission TODO list are retained as historical records under `docs/archive/2026/`.
+- `.git/index` became read-only during the optimization move. Filesystem moves continued safely; final verification must use worktree existence and `git diff/status`, and the user may need to stage moves in a writable Git environment.
+- Fresh verification: 205 non-code-block relative Markdown links, 0 broken; canonical-path duplicates 0; frontend docs layout tests 15/15; `next build --webpack` exit 0.
+- Fresh browser verification: `pnpm exec playwright test tests/e2e/smoke/docs.spec.ts --project=chromium` — 3 passed in 2.0m.

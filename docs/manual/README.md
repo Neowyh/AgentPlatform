@@ -1,5 +1,11 @@
 # iDeer 平台手册
 
+> audience: users, developers, operators<br>
+> status: current<br>
+> owner: documentation maintainers<br>
+> last-verified: 2026-07-15<br>
+> canonical-path: `docs/manual/README.md`
+
 > **版本**: v1.0  
 > **更新日期**: 2026-06-12
 

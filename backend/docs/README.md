@@ -27,7 +27,7 @@ This directory contains detailed documentation for the iDeer backend.
 
 | Document | Description |
 |----------|-------------|
-| [TODO.md](TODO.md) | Planned features and known issues |
+| [engineering-backlog.md](engineering-backlog.md) | Current backend backlog |
 
 ## Getting Started
 
@@ -52,6 +52,6 @@ docs/
 ├── plan_mode_usage.md         # Plan mode feature
 ├── STREAMING.md               # Token-level streaming design
 ├── AUTO_TITLE_GENERATION.md   # Title generation
-├── TITLE_GENERATION_IMPLEMENTATION.md  # Title implementation details
-└── TODO.md                    # Roadmap and issues
+├── engineering-backlog.md     # Current backend backlog
+└── archive/2026/              # Historical plans and implementation summaries
 ```

@@ -1,5 +1,11 @@
 # Test Migration Ledger
 
+> audience: testers, developers, release maintainers<br>
+> status: current<br>
+> owner: test maintainers<br>
+> last-verified: 2026-07-15<br>
+> canonical-path: `docs/testing/test-migration-ledger.md`
+
 This ledger is the deletion and move gate for the test-suite reorganization.
 Do not delete an old test file unless this file records an equal or stronger
 replacement assertion and the validation command for that batch.

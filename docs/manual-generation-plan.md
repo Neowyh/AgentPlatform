@@ -414,7 +414,7 @@ docs/screenshots/
 
 **格式规范**：
 - 使用中文，技术术语保留英文
-- 截图使用相对路径：`![截图说明](screenshots/xx-name.png)`
+- 截图使用相对路径，例如 `screenshots/31-settings-appearance.png`；示例文件名不应直接作为链接。
 - 操作步骤使用有序列表
 - 注意事项使用 `> ⚠️` 格式
 - 技巧使用 `> 💡` 格式

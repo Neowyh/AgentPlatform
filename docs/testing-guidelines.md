@@ -1,5 +1,11 @@
 # 测试规范指南
 
+> audience: testers, developers<br>
+> status: current<br>
+> owner: test maintainers<br>
+> last-verified: 2026-07-15<br>
+> canonical-path: `docs/testing-guidelines.md`
+
 > 本文档定义了项目的测试编写规范，确保测试质量一致、可维护。
 
 ## 一、Mock 原则

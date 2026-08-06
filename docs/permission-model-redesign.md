@@ -1,6 +1,12 @@
 # 资源管理体系 — 权限模型重构（主参考文档）
 
-> 本文档整合了权限模型定义、数据库设计、API 规范、迁移方案。审计与验证结论见 [permission-model-audit.md](permission-model-audit.md)，遗留待办见 `权限模型重构_待实现功能清单.md`。
+> audience: developers, security reviewers, maintainers<br>
+> status: current<br>
+> owner: security and platform maintainers<br>
+> last-verified: 2026-07-15<br>
+> canonical-path: `docs/permission-model-redesign.md`
+
+> 本文档整合了权限模型定义、数据库设计、API 规范、迁移方案。历史审计与验证结论见 [`docs/archive/2026/permission/permission-model-audit-2026-07-05.md`](archive/2026/permission/permission-model-audit-2026-07-05.md)，当前遗留待办见 [`docs/backlog.md`](backlog.md)。
 
 | 版本 | 日期 | 作者 | 变更说明 |
 |------|------|------|---------|

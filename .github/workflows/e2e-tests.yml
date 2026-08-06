@@ -2,18 +2,18 @@ name: E2E Tests
 
 on:
   schedule:
-    - cron: '0 2 * * *'
+    - cron: "0 2 * * *"
   workflow_dispatch:
   push:
-    branches: [ 'main' ]
+    branches: ["main"]
     paths:
-      - 'frontend/**'
-      - '.github/workflows/e2e-tests.yml'
+      - "frontend/**"
+      - ".github/workflows/e2e-tests.yml"
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
-      - 'frontend/**'
-      - '.github/workflows/e2e-tests.yml'
+      - "frontend/**"
+      - ".github/workflows/e2e-tests.yml"
 
 concurrency:
   group: e2e-tests-${{ github.event.pull_request.number || github.ref }}
@@ -35,7 +35,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: "22"
 
       - name: Enable Corepack
         run: corepack enable
@@ -51,11 +51,19 @@ jobs:
         working-directory: frontend
         run: npx playwright install chromium --with-deps
 
-      - name: Run E2E tests
+      - name: Run PR browser smoke
+        if: ${{ github.event_name == 'pull_request' }}
         working-directory: frontend
-        run: pnpm exec playwright test --project=chromium
+        run: pnpm test:e2e:smoke
         env:
-          SKIP_ENV_VALIDATION: '1'
+          SKIP_ENV_VALIDATION: "1"
+
+      - name: Run full mock E2E
+        if: ${{ github.event_name != 'pull_request' }}
+        working-directory: frontend
+        run: pnpm test:e2e
+        env:
+          SKIP_ENV_VALIDATION: "1"
 
       - name: Upload Playwright report
         uses: actions/upload-artifact@v4
@@ -77,7 +85,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: "22"
 
       - name: Enable Corepack
         run: corepack enable
@@ -97,7 +105,7 @@ jobs:
         working-directory: frontend
         run: pnpm test:e2e:visual
         env:
-          SKIP_ENV_VALIDATION: '1'
+          SKIP_ENV_VALIDATION: "1"
 
       - name: Upload visual regression report
         uses: actions/upload-artifact@v4
@@ -119,7 +127,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: "22"
 
       - name: Enable Corepack
         run: corepack enable
@@ -139,7 +147,7 @@ jobs:
         working-directory: frontend
         run: pnpm test:e2e:a11y
         env:
-          SKIP_ENV_VALIDATION: '1'
+          SKIP_ENV_VALIDATION: "1"
 
       - name: Upload accessibility report
         uses: actions/upload-artifact@v4
