@@ -54,8 +54,11 @@
     }
   },
   "$defs": {
-    "status": {
-      "enum": ["confirmed", "rejected", "to_verify", "in_progress", "not_applicable"]
+    "conclusion_status": {
+      "enum": ["confirmed", "rejected", "to_verify", "not_applicable"]
+    },
+    "verification_status": {
+      "enum": ["pending", "in_progress", "passed", "failed", "blocked"]
     },
     "confidence": {
       "enum": ["high", "medium", "low", "unknown"]
@@ -113,7 +116,7 @@
           "$ref": "#/$defs/confidence"
         },
         "status": {
-          "$ref": "#/$defs/status"
+          "$ref": "#/$defs/conclusion_status"
         },
         "verification_suggestion": {
           "type": "string"
@@ -164,7 +167,7 @@
           "type": "array",
           "items": { "type": "string", "minLength": 1 }
         },
-        "status": { "$ref": "#/$defs/status" },
+        "status": { "$ref": "#/$defs/conclusion_status" },
         "confidence": { "$ref": "#/$defs/confidence" }
       }
     },
@@ -177,7 +180,7 @@
         "item": { "type": "string", "minLength": 1 },
         "method": { "type": "string", "minLength": 1 },
         "expected_result": { "type": "string" },
-        "status": { "$ref": "#/$defs/status" }
+        "status": { "$ref": "#/$defs/verification_status" }
       }
     }
   }

@@ -255,7 +255,10 @@ def test_v2_parser_accepts_fault_zeroing_workflow() -> None:
         "generate_outputs",
     }
     assert policies["deductive_tree"] == {
-        "read": ["/mnt/skills/custom/fault-zeroing"],
+        "read": [
+            "/mnt/skills/custom/fault-zeroing",
+            "/mnt/skills/custom/fault-zeroing/templates",
+        ],
         "write": ["{{inputs.output_base_dir}}/artifacts/tree/fault_tree_structure.json"],
     }
     assert all("artifacts/evidence" not in root for root in policies["deductive_tree"]["read"])

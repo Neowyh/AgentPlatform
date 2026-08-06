@@ -36,6 +36,8 @@ const STATUS_CLASS: Record<string, string> = {
     "border-emerald-500 bg-emerald-50 text-emerald-950 dark:border-emerald-400 dark:bg-emerald-950/40 dark:text-emerald-300",
   failed:
     "border-red-500 bg-red-50 text-red-950 dark:border-red-400 dark:bg-red-950/40 dark:text-red-300",
+  skipped:
+    "border-amber-500 bg-amber-50 text-amber-950 dark:border-amber-400 dark:bg-amber-950/40 dark:text-amber-300",
   cancelled: "border-border bg-muted/60 text-muted-foreground",
 };
 

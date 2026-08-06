@@ -108,6 +108,7 @@ export interface WorkflowEvent {
     | "action_progress"
     | "node_completed"
     | "node_failed"
+    | "node_skipped"
     | "edge_selected"
     | "interrupted"
     | "resumed"

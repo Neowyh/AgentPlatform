@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any, TypedDict
 
+from jsonschema import ValidationError, validate
 from langgraph.errors import GraphInterrupt
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
@@ -206,8 +207,16 @@ class WorkflowGraphCompiler:
             )
             params = render_template(node.action.params, render_state)  # type: ignore[union-attr]
             await self._emit("node_started", {"node_id": node.id, "idempotency_key": context.idempotency_key, "started_at": _now_iso()})
+            violations = self._check_preconditions(node, render_state)
+            if violations and node.on_precondition_failure == "skip":
+                await self._emit(
+                    "node_skipped",
+                    {"node_id": node.id, "idempotency_key": context.idempotency_key, "reasons": violations, "finished_at": _now_iso()},
+                )
+                return {"outputs": {node.id: None}}
             try:
-                self._check_preconditions(node, render_state)
+                if violations:
+                    raise WorkflowNodeFailed(f"node '{node.id}' precondition failed: {'; '.join(violations)}")
                 adapter = self.adapters.resolve(node.action.kind, node.action.name)  # type: ignore[union-attr]
                 last_error: Exception | None = None
                 result: Any = None
@@ -227,6 +236,9 @@ class WorkflowGraphCompiler:
                                 missing = missing_written_artifacts(context.file_access.get("write", []), self.artifact_resolver)
                                 if missing:
                                     raise ArtifactsMissing(missing)
+                            schema_violations = self._check_write_schemas(node, render_state)
+                            if schema_violations:
+                                raise WorkflowNodeFailed(f"node '{node.id}' schema validation failed: {'; '.join(schema_violations)}")
                             break
                         except WorkflowTransientError as exc:
                             # transient provider/network errors leave the node-retry
@@ -290,15 +302,16 @@ class WorkflowGraphCompiler:
         if self.emit_event is not None:
             await self.emit_event(event_type, payload)
 
-    def _check_preconditions(self, node: NodeV2, render_state: dict[str, Any]) -> None:
-        """Fail the node explicitly when an input precondition is unsatisfied.
+    def _check_preconditions(self, node: NodeV2, render_state: dict[str, Any]) -> list[str]:
+        """Report every unsatisfied input precondition for the node.
 
-        Every violation is reported with a concrete reason (missing file, empty
-        file, unparseable JSON, no matching value) so operators see exactly why
-        the node failed instead of a generic agent failure.
+        Each violation carries a concrete reason (missing file, empty file,
+        unparseable JSON, no matching value) so operators see exactly why the
+        node would fail instead of a generic agent failure.  Callers decide
+        whether a violation fails the node or skips it.
         """
         if not node.preconditions or self.artifact_resolver is None:
-            return
+            return []
         read_roots: list[str] = [workflow_state_root()]
         if node.action is not None and node.action.file_access is not None:
             rendered_access = render_template(node.action.file_access.model_dump(), render_state)
@@ -345,8 +358,55 @@ class WorkflowGraphCompiler:
                     violations.append(f"precondition file '{file}' must equal {precondition.some_equals!r}")
                 elif precondition.none_equals is not None and data == precondition.none_equals:
                     violations.append(f"precondition file '{file}' must not equal {precondition.none_equals!r}")
-        if violations:
-            raise WorkflowNodeFailed(f"node '{node.id}' precondition failed: {'; '.join(violations)}")
+        return violations
+
+    def _check_write_schemas(self, node: NodeV2, render_state: dict[str, Any]) -> list[str]:
+        """Validate every declared write root against its JSON schema.
+
+        Returns concrete violations (unresolvable schema, unwritten target,
+        unparseable file, schema violation) so the node fails with a reason
+        an operator can act on instead of a generic agent failure.
+        """
+        if not node.schemas or self.artifact_resolver is None:
+            return []
+        read_roots: list[str] = [workflow_state_root()]
+        write_roots: list[str] = []
+        if node.action is not None and node.action.file_access is not None:
+            rendered_access = render_template(node.action.file_access.model_dump(), render_state)
+            read_roots.extend(rendered_access.get("read", []))
+            write_roots.extend(rendered_access.get("write", []))
+        violations: list[str] = []
+        for spec in node.schemas:
+            file = render_template(spec.file, render_state)
+            schema_file = render_template(spec.schema_file, render_state)
+            if not isinstance(file, str) or not isinstance(schema_file, str) or "{{" in file or "{{" in schema_file:
+                violations.append(f"schema gate '{spec.file}' → '{spec.schema_file}' could not be resolved")
+                continue
+            if not any(path_within_root(file, root) for root in write_roots):
+                violations.append(f"schema target '{file}' is not under the node's write roots")
+                continue
+            if not any(path_within_root(schema_file, root) for root in read_roots):
+                violations.append(f"schema file '{schema_file}' is not under the node's read roots")
+                continue
+            schema_host = self.artifact_resolver(schema_file)
+            if schema_host is None or not Path(schema_host).is_file():
+                violations.append(f"schema file '{schema_file}' cannot be resolved to the sandbox")
+                continue
+            file_host = self.artifact_resolver(file)
+            if file_host is None or not Path(file_host).is_file():
+                violations.append(f"schema target '{file}' was not written")
+                continue
+            try:
+                instance = json.loads(Path(file_host).read_text(encoding="utf-8"))
+                schema = json.loads(Path(schema_host).read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as exc:
+                violations.append(f"schema target '{file}' or schema '{schema_file}' is not valid JSON: {exc}")
+                continue
+            try:
+                validate(instance, schema)
+            except ValidationError as exc:
+                violations.append(f"'{file}' violates '{schema_file}' at {exc.json_path or '$'}: {exc.message}")
+        return violations
 
     async def _run_action(self, adapter: Any, context: ActionContext, params: dict[str, Any]) -> Any:
         """Translate adapter updates into stable platform events."""

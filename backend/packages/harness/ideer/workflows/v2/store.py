@@ -10,6 +10,7 @@ from uuid import uuid4
 
 from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy import delete as sql_delete
+from sqlalchemy.exc import OperationalError
 
 from ideer.persistence.models.workflow_v2 import (
     WorkflowCommandRow,
@@ -332,70 +333,91 @@ class WorkflowV2Store:
         max_attempts: int = 3,
     ) -> WorkflowTaskRow | None:
         now = now or datetime.now(UTC)
-        async with self.session_factory() as session:
-            task = (
-                await session.execute(
-                    select(WorkflowTaskRow)
-                    .where(
-                        or_(
-                            WorkflowTaskRow.status == "queued",
-                            and_(WorkflowTaskRow.status == "running", WorkflowTaskRow.lease_expires_at < now),
+        claim_scope = or_(
+            WorkflowTaskRow.status == "queued",
+            and_(WorkflowTaskRow.status == "running", WorkflowTaskRow.lease_expires_at < now),
+        )
+        # The claim itself is a single UPDATE ... RETURNING statement, so two
+        # workers can never claim the same task: SQLite serializes writers, and
+        # the candidate subquery is re-evaluated when the loser retries. The
+        # SELECT below only labels the lease-audit row (taken_over vs claimed)
+        # and never influences the claim decision.
+        #
+        # WAL mode does not invoke the busy handler for snapshot conflicts
+        # (SQLITE_BUSY_SNAPSHOT), so a concurrent commit can abort the whole
+        # statement with "database is locked"; retrying re-runs the subquery
+        # against fresh state.
+        for attempt in range(3):
+            try:
+                async with self.session_factory() as session:
+                    probe = (await session.execute(select(WorkflowTaskRow.task_id, WorkflowTaskRow.lease_owner).where(claim_scope).order_by(WorkflowTaskRow.task_id).limit(1))).first()
+                    claimed = await session.execute(
+                        update(WorkflowTaskRow)
+                        .where(WorkflowTaskRow.task_id.in_(select(WorkflowTaskRow.task_id).where(claim_scope).order_by(WorkflowTaskRow.task_id).limit(1)))
+                        .values(
+                            status="running",
+                            lease_owner=worker_id,
+                            lease_expires_at=now + timedelta(seconds=lease_seconds),
+                            heartbeat_at=now,
+                        )
+                        .returning(WorkflowTaskRow)
+                    )
+                    task = claimed.scalar_one_or_none()
+                    if task is None:
+                        return None
+                    # The immediate execution of an operator resume is free:
+                    # paused and failed runs may be resumed without consuming
+                    # the attempt budget. Only fresh claims (and lease
+                    # take-overs after a worker crash) increment attempts, so
+                    # max_attempts still kills crash loops. The row is ours
+                    # (fresh lease) while we settle attempts, so this is race-free.
+                    if task.resume_command_id is None:
+                        task.attempts += 1
+                        if task.attempts > max_attempts:
+                            task.status = "failed"
+                            task.lease_owner = None
+                            task.lease_expires_at = None
+                            run = (await session.execute(select(WorkflowV2RunRow).where(WorkflowV2RunRow.run_id == task.run_id))).scalar_one_or_none()
+                            if run is not None:
+                                run.status = "failed"
+                                run.error = "workflow_max_attempts_exceeded"
+                                run.event_seq += 1
+                                event = WorkflowV2EventRow(
+                                    id=str(uuid4()),
+                                    run_id=run.run_id,
+                                    seq=run.event_seq,
+                                    event_type="run_failed",
+                                    payload={"error": "workflow_max_attempts_exceeded"},
+                                )
+                                session.add(event)
+                            await session.commit()
+                            if run is not None:
+                                await self._notify_sink(run.run_id, event)
+                            return None
+                    run = (await session.execute(select(WorkflowV2RunRow).where(WorkflowV2RunRow.run_id == task.run_id))).scalar_one_or_none()
+                    if run is not None:
+                        run.status = "running"
+                    previous_owner = probe.lease_owner if probe is not None and probe.task_id == task.task_id else None
+                    session.add(
+                        WorkflowLeaseAuditRow(
+                            id=str(uuid4()),
+                            run_id=task.run_id,
+                            task_id=task.task_id,
+                            event_type="taken_over" if previous_owner else "claimed",
+                            worker_id=worker_id,
+                            attempt=task.attempts,
                         )
                     )
-                    .order_by(WorkflowTaskRow.task_id)
-                    .with_for_update(skip_locked=True)
-                    .limit(1)
-                )
-            ).scalar_one_or_none()
-            if task is None:
-                return None
-            if task.resume_command_id is None and task.attempts >= max_attempts:
-                task.status = "failed"
-                task.lease_owner = None
-                task.lease_expires_at = None
-                run = (await session.execute(select(WorkflowV2RunRow).where(WorkflowV2RunRow.run_id == task.run_id))).scalar_one_or_none()
-                if run is not None:
-                    run.status = "failed"
-                    run.error = "workflow_max_attempts_exceeded"
-                    run.event_seq += 1
-                    event = WorkflowV2EventRow(
-                        id=str(uuid4()),
-                        run_id=run.run_id,
-                        seq=run.event_seq,
-                        event_type="run_failed",
-                        payload={"error": "workflow_max_attempts_exceeded"},
-                    )
-                    session.add(event)
-                await session.commit()
-                if run is not None:
-                    await self._notify_sink(run.run_id, event)
-                return None
-            previous_owner = task.lease_owner
-            task.status = "running"
-            task.lease_owner = worker_id
-            task.lease_expires_at = now + timedelta(seconds=lease_seconds)
-            task.heartbeat_at = now
-            # The immediate execution of an operator resume is free: paused and
-            # failed runs may be resumed without consuming the attempt budget.
-            # Only fresh claims (and lease take-overs after a worker crash)
-            # increment attempts, so max_attempts still kills crash loops.
-            if task.resume_command_id is None:
-                task.attempts += 1
-            run = (await session.execute(select(WorkflowV2RunRow).where(WorkflowV2RunRow.run_id == task.run_id))).scalar_one_or_none()
-            if run is not None:
-                run.status = "running"
-            session.add(
-                WorkflowLeaseAuditRow(
-                    id=str(uuid4()),
-                    run_id=task.run_id,
-                    task_id=task.task_id,
-                    event_type="taken_over" if previous_owner else "claimed",
-                    worker_id=worker_id,
-                    attempt=task.attempts,
-                )
-            )
-            await session.commit()
-            return task
+                    await session.commit()
+                    return task
+            except OperationalError as exc:
+                message = str(exc.orig).lower()
+                if "busy" not in message and "locked" not in message and "snapshot" not in message:
+                    raise
+                logger.warning("claim_next_task hit a transient SQLite lock, retrying: %s", exc)
+                await asyncio.sleep(0.05 * (attempt + 1))
+        logger.error("claim_next_task exhausted retries for worker %s", worker_id)
+        return None
 
     async def renew_lease(
         self,

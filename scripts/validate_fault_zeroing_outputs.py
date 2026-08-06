@@ -44,7 +44,8 @@ REQUIRED_STAGE_MARKERS = (
     "纠正措施",
     "文档生产",
 )
-STATUS_VALUES = {"confirmed", "rejected", "to_verify", "in_progress", "not_applicable"}
+STATUS_VALUES = {"confirmed", "rejected", "to_verify", "not_applicable"}
+VERIFICATION_STATUS_VALUES = {"pending", "in_progress", "passed", "failed", "blocked"}
 CONFIDENCE_VALUES = {"high", "medium", "low", "unknown"}
 EVIDENCE_GRADES = {"A", "B", "C", "D"}
 AB_GRADES = {"A", "B"}
@@ -414,7 +415,7 @@ def _validate_fault_tree_shape(tree: dict[str, Any], result: ValidationResult) -
             f"verification item {item_id}",
             result,
         )
-        if _string(item.get("status")) not in STATUS_VALUES:
+        if _string(item.get("status")) not in VERIFICATION_STATUS_VALUES:
             result.add(
                 f"verification item {item_id} has invalid status {_string(item.get('status'))}"
             )
@@ -623,12 +624,12 @@ def _validate_report(
     for item in _list(tree.get("verification_plan")):
         if not isinstance(item, dict):
             continue
-        if _string(item.get("status")) != "to_verify":
+        if _string(item.get("status")) != "pending":
             continue
         item_id = _string(item.get("id")) or "<missing>"
         item_name = _string(item.get("item")).strip()
         if item_name and item_name not in report_text:
-            result.add(f"report missing to_verify item {item_id}")
+            result.add(f"report missing pending verification item {item_id}")
 
     missing_rows = [
         line

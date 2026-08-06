@@ -22,6 +22,8 @@ function statusClass(status: string) {
     return "border-red-500 text-red-700 dark:text-red-400";
   if (status === "running")
     return "border-blue-500 text-blue-700 dark:text-blue-400";
+  if (status === "skipped")
+    return "border-amber-500 text-amber-700 dark:text-amber-400";
   return "border-border text-muted-foreground";
 }
 

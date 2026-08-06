@@ -103,7 +103,7 @@ def _render_markdown(run: WorkflowV2RunRow, events: list[WorkflowV2EventRow]) ->
     node_states: dict[str, dict[str, Any]] = {}
     for event in events:
         node_id = event.payload.get("node_id")
-        if event.event_type in {"node_started", "node_completed", "node_failed"} and isinstance(node_id, str):
+        if event.event_type in {"node_started", "node_completed", "node_failed", "node_skipped"} and isinstance(node_id, str):
             node_sections.setdefault(node_id, []).append(event)
             node_states.setdefault(node_id, {})[event.event_type] = event
 
@@ -114,8 +114,15 @@ def _render_markdown(run: WorkflowV2RunRow, events: list[WorkflowV2EventRow]) ->
         lines.append("|------|------|------|-----------|")
         for node_id, state in node_states.items():
             started = state.get("node_started")
-            terminal = state.get("node_completed") or state.get("node_failed")
-            status = "completed" if "node_completed" in state else ("failed" if "node_failed" in state else "running")
+            terminal = state.get("node_completed") or state.get("node_failed") or state.get("node_skipped")
+            if "node_completed" in state:
+                status = "completed"
+            elif "node_failed" in state:
+                status = "failed"
+            elif "node_skipped" in state:
+                status = "skipped"
+            else:
+                status = "running"
             duration = ""
             if started and terminal:
                 try:
@@ -128,6 +135,8 @@ def _render_markdown(run: WorkflowV2RunRow, events: list[WorkflowV2EventRow]) ->
             if terminal is not None:
                 if "node_completed" in state:
                     summary = json.dumps(terminal.payload.get("result"), ensure_ascii=False, default=str)[:_MD_PAYLOAD_CAP]
+                elif "node_skipped" in state:
+                    summary = "跳过: " + json.dumps(terminal.payload.get("reasons"), ensure_ascii=False, default=str)[:_MD_PAYLOAD_CAP]
                 else:
                     summary = json.dumps(terminal.payload.get("error"), ensure_ascii=False, default=str)[:_MD_PAYLOAD_CAP]
             lines.append(f"| `{node_id}` | {status} | {duration} | {summary.replace('|', '\\|')} |")

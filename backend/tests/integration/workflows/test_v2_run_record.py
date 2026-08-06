@@ -172,3 +172,14 @@ async def test_terminal_notify_without_event_still_finalizes_markdown(
     md_path = tmp_path / "users" / "user-1" / "threads" / "run-1" / "user-data" / "workspace" / ".workflow" / "logs" / "run_record.md"
     assert md_path.is_file()
     assert "`completed`" in md_path.read_text(encoding="utf-8")
+
+
+@pytest.mark.asyncio
+async def test_null_event_is_a_noop_for_the_record_writer(tmp_path: Path) -> None:
+    """A None sink event (e.g. an event-limit drop) must not crash the writer."""
+    writer = RunRecordWriter(_resolver(tmp_path), workflow_log_root())
+
+    await writer.on_event(None)
+
+    jsonl_path = tmp_path / "users" / "user-1" / "threads" / "run-1" / "user-data" / "workspace" / ".workflow" / "logs" / "run_record.jsonl"
+    assert not jsonl_path.exists()

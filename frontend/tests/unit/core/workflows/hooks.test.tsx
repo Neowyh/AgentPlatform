@@ -140,6 +140,41 @@ describe("useRunStatus", () => {
     );
     expect(result.current.runStatus?.action_tokens?.draft).toBe("one");
   });
+
+  test("closes the stream and stops fallback polling on a terminal event", async () => {
+    vi.stubGlobal("EventSource", MockEventSource);
+    const api = await import("@/core/workflows/api");
+    vi.mocked(api.getRunStatus).mockResolvedValue({
+      run_id: "run-1",
+      workflow: "approval",
+      status: "running",
+      error: null,
+    });
+    const { useRunStatus } = await import("@/core/workflows/hooks");
+    const { result } = renderHook(() => useRunStatus("approval", "run-1"), {
+      wrapper,
+    });
+
+    await waitFor(() => expect(MockEventSource.instances).toHaveLength(1));
+    vi.useFakeTimers();
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      act(() => MockEventSource.instances.at(-1)?.onerror?.());
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000 * 2 ** attempt);
+      });
+    }
+    expect(result.current.fallbackPolling).toBe(true);
+    const polled = vi.mocked(api.getRunStatus).mock.calls.length;
+
+    act(() => {
+      MockEventSource.instances.at(-1)?.emit("run_completed", 3, {});
+    });
+    await vi.advanceTimersByTimeAsync(6000);
+
+    expect(result.current.runStatus?.status).toBe("completed");
+    expect(MockEventSource.instances.at(-1)?.close).toHaveBeenCalled();
+    expect(vi.mocked(api.getRunStatus).mock.calls.length).toBe(polled);
+  });
 });
 
 describe("useRunArtifacts", () => {
