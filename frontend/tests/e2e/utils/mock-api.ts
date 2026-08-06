@@ -65,6 +65,7 @@ export type MockWorkflow = {
     agent?: string;
     prompt?: string;
   }[];
+  edges?: { from: string; to: string }[];
   inputs?: Record<
     string,
     {
@@ -206,11 +207,41 @@ export type MockMCPConfig = {
   >;
 };
 
+export type MockWorkflowRun = {
+  run_id: string;
+  workflow: string;
+  status: string;
+  definition_version?: number;
+  error?: string | null;
+  steps?: Record<
+    string,
+    {
+      status: string;
+      output?: unknown;
+      error?: string | null;
+      retries?: number;
+      started_at?: string | null;
+      finished_at?: string | null;
+    }
+  >;
+  action_tokens?: Record<string, string>;
+  action_progress?: Record<string, unknown>;
+  events?: Array<{
+    seq: number;
+    type: string;
+    payload: Record<string, unknown>;
+  }>;
+  artifacts?: Array<{ path: string; size: number }>;
+  artifactContents?: Record<string, string>;
+  record?: { md?: string; jsonl?: string };
+};
+
 export type MockAPIOptions = {
   threads?: MockThread[];
   agents?: MockAgent[];
   artifacts?: Record<string, MockArtifact>;
   workflows?: MockWorkflow[];
+  workflowRuns?: Record<string, MockWorkflowRun>;
   skills?: MockSkill[];
   users?: MockUser[];
   departments?: MockDepartment[];
@@ -263,6 +294,7 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
   const agents = options?.agents ?? [];
   const artifacts = options?.artifacts ?? {};
   const workflows = options?.workflows ?? [];
+  const workflowRuns = options?.workflowRuns ?? {};
   const skills = options?.skills ?? [];
   const users = options?.users ?? [];
   const departments = options?.departments ?? [];
@@ -679,29 +711,33 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
   void page.route("**/api/workflows/*/runs/*", (route) => {
     const method = route.request().method();
     const url = route.request().url();
+    const runId = url.split("/runs/")[1]?.split("?")[0];
+    const run = runId ? workflowRuns[runId] : undefined;
 
-    // Run status polling
+    // Run status GET
     if (method === "GET" && url.includes("/runs/")) {
       return route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({
-          run_id: "mock-run-id",
-          workflow: "test-workflow",
-          status: "completed",
-          current_step: null,
-          error: null,
-          steps: {
-            step1: {
-              status: "completed",
-              output: "done",
-              error: null,
-              retries: 0,
-              started_at: "2025-01-01T00:00:00Z",
-              finished_at: "2025-01-01T00:00:01Z",
+        body: JSON.stringify(
+          run ?? {
+            run_id: "mock-run-id",
+            workflow: "test-workflow",
+            status: "completed",
+            current_step: null,
+            error: null,
+            steps: {
+              step1: {
+                status: "completed",
+                output: "done",
+                error: null,
+                retries: 0,
+                started_at: "2025-01-01T00:00:00Z",
+                finished_at: "2025-01-01T00:00:01Z",
+              },
             },
           },
-        }),
+        ),
       });
     }
 
@@ -715,6 +751,91 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
     }
 
     return route.fallback();
+  });
+
+  // Run artifacts list
+  void page.route("**/api/workflows/*/runs/*/artifacts", (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    const runId = route.request().url().split("/runs/")[1]?.split("/")[0];
+    const run = runId ? workflowRuns[runId] : undefined;
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        run_id: run?.run_id ?? "mock-run-id",
+        workflow: run?.workflow ?? "test-workflow",
+        artifacts: run?.artifacts ?? [],
+      }),
+    });
+  });
+
+  // Run artifact content
+  void page.route("**/api/workflows/*/runs/*/artifacts/content*", (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    const url = new URL(route.request().url());
+    const runId = url.pathname.split("/runs/")[1]?.split("/")[0];
+    const run = runId ? workflowRuns[runId] : undefined;
+    const path = url.searchParams.get("path") ?? "";
+    const content = run?.artifactContents?.[path];
+    return route.fulfill({
+      status: 200,
+      contentType: contentTypeOfArtifact(path),
+      body: content ?? "",
+    });
+  });
+
+  // Run record download (jsonl / md)
+  void page.route("**/api/workflows/*/runs/*/record*", (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    const url = new URL(route.request().url());
+    const runId = url.pathname.split("/runs/")[1]?.split("/")[0];
+    const run = runId ? workflowRuns[runId] : undefined;
+    const format = url.searchParams.get("format") ?? "md";
+    const record = run?.record?.[format as "md" | "jsonl"];
+    return route.fulfill({
+      status: 200,
+      contentType:
+        format === "jsonl"
+          ? "application/x-ndjson"
+          : "text/markdown; charset=utf-8",
+      body: record ?? "",
+    });
+  });
+
+  // Run events SSE stream (terminal events close the EventSource)
+  void page.route("**/api/workflows/*/runs/*/events*", (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    const url = new URL(route.request().url());
+    const runId = url.pathname.split("/runs/")[1]?.split("/")[0];
+    const run = runId ? workflowRuns[runId] : undefined;
+    const events = run?.events ?? [];
+    const afterSeq = Number(url.searchParams.get("after_seq") ?? "0");
+    const pending = events.filter((e) => e.seq > afterSeq);
+    const body = pending
+      .map(
+        (e) =>
+          `id: ${e.seq}\nevent: ${e.type}\ndata: ${JSON.stringify(e.payload)}\n\n`,
+      )
+      .join("");
+    return route.fulfill({
+      status: 200,
+      contentType: "text/event-stream",
+      body,
+    });
+  });
+
+  // Workflow run commands (resume / cancel)
+  void page.route("**/api/workflows/*/runs/*/commands", (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        command_id: "mock-command-id",
+        run_id: "mock-run-id",
+        accepted: true,
+      }),
+    });
   });
 
   void page.route("**/api/workflows/*/run", (route) => {
@@ -776,6 +897,7 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
               },
             ],
             steps_count: (wf.nodes ?? []).length || 1,
+            edges: wf.edges ?? [],
             inputs: wf.inputs ?? {},
           }),
         });
@@ -812,6 +934,7 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
             },
           ],
           steps_count: 1,
+          edges: [],
           inputs: {},
         }),
       });
