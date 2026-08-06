@@ -124,6 +124,12 @@ tools:
     group: bash
     use: ideer.sandbox.tools:bash_tool
 
+  # 文档读取工具 — 将 PDF/Word/Excel/PowerPoint 转换为 Markdown 供智能体阅读
+  # （软件任务书等办公文档解析依赖此工具）
+  - name: read_document
+    group: document
+    use: ideer.community.doc_reader.tools:read_document_tool
+
 # ============================================================================
 # 工具搜索配置（延迟加载）
 # ============================================================================
@@ -176,6 +182,17 @@ sandbox:
   bash_output_max_chars: 20000
   read_file_output_max_chars: 50000
   ls_output_max_chars: 20000
+
+  # OfficeCLI 单文件二进制只读挂载（离线 Word/Excel/PPT 生成）
+  # host_path 指向仓库内 vendor/officecli/officecli（随代码库分发，内网可复现）
+  mounts:
+    - host_path: /opt/deer-flow/vendor/officecli/officecli
+      container_path: /usr/local/bin/officecli
+      read_only: true
+
+  # 关闭 OfficeCLI 后台联网更新检查（离线必需）
+  environment:
+    OFFICECLI_SKIP_UPDATE: "1"
 
 # ============================================================================
 # 子代理配置
