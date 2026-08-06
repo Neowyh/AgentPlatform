@@ -241,22 +241,20 @@ def test_prepare_seeds_valid_runtime_config_and_stable_auth_files(tmp_path: Path
     assert "IDEER_INTERNAL_AUTH_TOKEN=" in env_text
 
 
-def test_prepare_installs_fault_zeroing_agent_to_shared_runtime_dir(tmp_path: Path):
+def test_prepare_does_not_install_bundled_agent_automatically(tmp_path: Path):
+    """prepare no longer hardcodes fault-zeroing install; install_agent.py is manual."""
     bundle_root = _make_bundle(tmp_path)
 
     proc = _run_deploy(bundle_root, "prepare", env=_env_with_fake_docker(tmp_path))
 
     assert proc.returncode == 0, proc.stderr
     runtime_dir = bundle_root / "runtime"
-    agent_dir = runtime_dir / "data" / "agents" / "fault-zeroing"
-    assert (agent_dir / "config.yaml").read_text(encoding="utf-8") == "name: fault-zeroing\n"
-    assert (agent_dir / "SOUL.md").read_text(encoding="utf-8") == "# Fault Zeroing\n"
-    assert "Agent directory:" in proc.stdout
-    assert "Workflow files:" in proc.stdout
+    assert not (runtime_dir / "data" / "agents" / "fault-zeroing").exists()
+    assert "Agent directory:" not in proc.stdout
 
 
-def test_prepare_does_not_install_fault_zeroing_agent_to_user_dirs(tmp_path: Path):
-    """Shared-only install: agent should NOT be copied to per-user directories."""
+def test_prepare_does_not_install_agent_to_any_runtime_dir(tmp_path: Path):
+    """No bundled agent is copied to shared or per-user directories."""
     bundle_root = _make_bundle(tmp_path)
     user_dir = bundle_root / "runtime" / "data" / "users" / "alice"
     user_dir.mkdir(parents=True)
@@ -265,24 +263,8 @@ def test_prepare_does_not_install_fault_zeroing_agent_to_user_dirs(tmp_path: Pat
 
     assert proc.returncode == 0, proc.stderr
     runtime_dir = bundle_root / "runtime"
-    # Shared agent should exist
-    assert (runtime_dir / "data" / "agents" / "fault-zeroing" / "config.yaml").is_file()
-    # Per-user agent should NOT exist
-    assert not (user_dir / "agents" / "fault-zeroing" / "config.yaml").exists()
-    assert "installing bundled fault-zeroing agent for existing user" not in proc.stdout
-
-
-def test_prepare_skips_fault_zeroing_install_when_disabled(tmp_path: Path):
-    bundle_root = _make_bundle(tmp_path)
-    env = _env_with_fake_docker(tmp_path)
-    env["IDEER_INSTALL_FAULT_ZEROING"] = "0"
-
-    proc = _run_deploy(bundle_root, "prepare", env=env)
-
-    assert proc.returncode == 0, proc.stderr
-    assert not (bundle_root / "runtime" / "data" / "agents" / "fault-zeroing").exists()
-    cfg = yaml.safe_load((bundle_root / "runtime" / "config.yaml").read_text(encoding="utf-8"))
-    assert "subagents" not in cfg
+    assert not (runtime_dir / "data" / "agents" / "fault-zeroing").exists()
+    assert not (user_dir / "agents" / "fault-zeroing").exists()
 
 
 def test_status_logs_and_stop_do_not_install_fault_zeroing_agent(tmp_path: Path):
