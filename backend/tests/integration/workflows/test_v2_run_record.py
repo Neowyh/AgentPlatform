@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import pytest_asyncio
@@ -183,3 +184,58 @@ async def test_null_event_is_a_noop_for_the_record_writer(tmp_path: Path) -> Non
 
     jsonl_path = tmp_path / "users" / "user-1" / "threads" / "run-1" / "user-data" / "workspace" / ".workflow" / "logs" / "run_record.jsonl"
     assert not jsonl_path.exists()
+
+
+@pytest.mark.asyncio
+async def test_writer_io_failures_are_tolerated_and_never_crash_the_run(
+    durable_store: WorkflowV2Store,
+    tmp_path: Path,
+) -> None:
+    """An unwritable record directory must be logged, not raised: the run and
+    sink must survive, and prior record bytes must stay untouched."""
+    await durable_store.save_definition("wf", {}, "hash", "user-1")
+    await durable_store.create_run("run-1", "wf", 1, {}, "user-1")
+
+    log_dir = tmp_path / "users" / "user-1" / "threads" / "run-1" / "user-data" / "workspace" / ".workflow" / "logs"
+    log_dir.parent.mkdir(parents=True, exist_ok=True)
+    log_dir.write_text("i am a file, not a directory", encoding="utf-8")
+
+    writer = RunRecordWriter(_resolver(tmp_path), workflow_log_root())
+    run = await durable_store.get_run("run-1")
+
+    await writer.on_event(SimpleNamespace(seq=1, event_type="run_started", payload={}, created_at=None))
+    await writer.finalize(durable_store, run)
+
+    assert log_dir.read_text(encoding="utf-8") == "i am a file, not a directory"
+
+
+@pytest.mark.asyncio
+async def test_markdown_counts_interactions_and_truncates_payload(
+    durable_store: WorkflowV2Store,
+    tmp_path: Path,
+) -> None:
+    """The summary must count per-node action_progress messages under a
+    '节点交互' section and cap oversized payload cells at 2000 characters."""
+    await durable_store.save_definition("wf", {}, "hash", "user-1")
+    await durable_store.create_run("run-1", "wf", 1, {}, "user-1")
+    await durable_store.append_event("run-1", "run_started", {})
+    await durable_store.append_event("run-1", "node_started", {"node_id": "evidence_collection", "started_at": "2026-01-01T00:00:00+00:00"})
+    await durable_store.append_event("run-1", "action_progress", {"node_id": "evidence_collection", "message": "[回合 1] 调用工具 read_file → a.txt"})
+    await durable_store.append_event("run-1", "action_progress", {"node_id": "evidence_collection", "message": "[回合 2] 调用工具 grep → fault"})
+    await durable_store.append_event("run-1", "node_completed", {"node_id": "evidence_collection", "result": "x" * 3000, "finished_at": "2026-01-01T00:01:00+00:00"})
+    await durable_store.append_event("run-1", "action_progress", {"node_id": "generate_outputs", "message": "[回合 1] 调用工具 write_file → zeroing_report.md"})
+    await durable_store.append_event("run-1", "node_completed", {"node_id": "generate_outputs", "result": "ok", "finished_at": "2026-01-01T00:02:00+00:00"})
+    await durable_store.append_event("run-1", "run_completed", {})
+
+    writer = RunRecordWriter(_resolver(tmp_path), workflow_log_root())
+    run = await durable_store.get_run("run-1")
+    await writer.finalize(durable_store, run)
+
+    md_path = tmp_path / "users" / "user-1" / "threads" / "run-1" / "user-data" / "workspace" / ".workflow" / "logs" / "run_record.md"
+    content = md_path.read_text(encoding="utf-8")
+    assert "## 节点交互" in content
+    assert "- `evidence_collection`: 2 条工具调用/进度消息" in content
+    assert "- `generate_outputs`: 1 条工具调用/进度消息" in content
+    row = next(line for line in content.splitlines() if line.startswith("| `evidence_collection` | completed"))
+    assert '"' in row
+    assert row.count("x") < 3000 and row.count("x") > 1990, "the payload cell must be truncated close to the 2000 char cap"
