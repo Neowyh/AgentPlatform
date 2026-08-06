@@ -639,6 +639,15 @@ sandbox:
   #     container_path: /mnt/my-project     # Virtual path inside the sandbox
   #     read_only: true                     # Whether the mount is read-only (default: false)
 
+  # Example: mount the vendored OfficeCLI binary (vendor/officecli/officecli) for
+  # offline Word/Excel/PowerPoint generation, and disable its online update check:
+  # mounts:
+  #   - host_path: /opt/deer-flow/vendor/officecli/officecli
+  #     container_path: /usr/local/bin/officecli
+  #     read_only: true
+  # environment:
+  #   OFFICECLI_SKIP_UPDATE: "1"
+
   # Tool output truncation limits (characters).
   # bash uses middle-truncation (head + tail) since errors can appear anywhere in the output.
   # read_file and ls use head-truncation since their content is front-loaded.
