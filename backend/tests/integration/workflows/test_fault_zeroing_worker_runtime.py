@@ -32,12 +32,23 @@ async def durable_store(tmp_path: Path):
 
 
 class RecordingAgent:
-    def __init__(self, calls: list[str], *, write_artifacts: bool) -> None:
+    def __init__(
+        self,
+        calls: list[str],
+        *,
+        write_artifacts: bool,
+        fail_nodes: set[str] | None = None,
+        confirmed_root_causes: bool = True,
+    ) -> None:
         self.calls = calls
         self.write_artifacts = write_artifacts
+        self.fail_nodes = fail_nodes or set()
+        self.confirmed_root_causes = confirmed_root_causes
 
     async def run(self, context, params):
         self.calls.append(context.node_id)
+        if context.node_id in self.fail_nodes:
+            raise RuntimeError(f"agent failed for node {context.node_id}")
         if self.write_artifacts and context.file_access:
             resolver = make_host_resolver(context.run_id, "user-1")
             for root in context.file_access.get("write", []):
@@ -47,12 +58,12 @@ class RecordingAgent:
                 path.parent.mkdir(parents=True, exist_ok=True)
                 if path.name == "fault_tree.json":
                     path.write_text(
-                        '{"top_event": "top", "intermediate_events": [], "bottom_events": [], '
-                        '"logic": [], "evidence": [], '
-                        '"root_causes": [{"id": "RC-01", "name": "root cause", '
-                        '"description": "desc", "evidence_ids": [], '
-                        '"status": "confirmed", "confidence": "high"}], '
-                        '"verification_plan": []}',
+                        f'{{"top_event": "top", "intermediate_events": [], "bottom_events": [], '
+                        f'"logic": [], "evidence": [], '
+                        f'"root_causes": [{{"id": "RC-01", "name": "root cause", '
+                        f'"description": "desc", "evidence_ids": [], '
+                        f'"status": "{("confirmed" if self.confirmed_root_causes else "to_verify")}", "confidence": "high"}}], '
+                        f'"verification_plan": []}}',
                         encoding="utf-8",
                     )
                 elif path.name == "corrective_actions.json":
@@ -207,6 +218,105 @@ async def test_missing_artifacts_fail_the_run_instead_of_completing(
     events = await durable_store.list_events(run.run_id)
     assert "interrupted" not in {event.event_type for event in events}
     assert any(event.event_type == "node_failed" for event in events)
+
+
+@pytest.mark.asyncio
+async def test_precondition_skip_skips_corrective_actions_and_still_generates_outputs(
+    durable_store: WorkflowV2Store,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """The real workflow's corrective_actions gate must skip when no root cause
+    is confirmed (fault_tree.json `root_causes[*].status` has no `confirmed`),
+    and generate_outputs must still complete the run with all 4 files."""
+    monkeypatch.setattr("ideer.workflows.v2.file_roots.get_paths", lambda: Paths(str(tmp_path / "base")))
+    calls: list[str] = []
+    await _run_worker_once(
+        durable_store,
+        tmp_path,
+        RecordingAgent(calls, write_artifacts=True, confirmed_root_causes=False),
+        run_id="run-worker-precondition-skip",
+    )
+
+    run = await durable_store.get_run("run-worker-precondition-skip")
+    assert run is not None and run.status == "completed"
+    events = await durable_store.list_events(run.run_id)
+
+    skipped = [event for event in events if event.event_type == "node_skipped"]
+    assert len(skipped) == 1
+    assert skipped[0].payload["node_id"] == "corrective_actions"
+    assert any("precondition" in (reason or "") for reason in skipped[0].payload.get("reasons", []))
+
+    assert "corrective_actions" not in calls
+    assert "generate_outputs" in calls
+    assert [event.event_type for event in events].count("node_completed") == 10
+
+
+@pytest.mark.asyncio
+async def test_fork_branch_failure_fails_run_and_persists_node_failure(
+    durable_store: WorkflowV2Store,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """A failing fork branch must fail the run (default missing-artifact/failure
+    semantics), persist the node_failed event, and never mark the join completed."""
+    monkeypatch.setattr("ideer.workflows.v2.file_roots.get_paths", lambda: Paths(str(tmp_path / "base")))
+    calls: list[str] = []
+    await _run_worker_once(
+        durable_store,
+        tmp_path,
+        RecordingAgent(calls, write_artifacts=True, fail_nodes={"evidence_collection"}),
+        run_id="run-worker-fork-branch-failure",
+    )
+
+    run = await durable_store.get_run("run-worker-fork-branch-failure")
+    assert run is not None and run.status == "failed"
+    events = await durable_store.list_events(run.run_id)
+
+    failed = [event for event in events if event.event_type == "node_failed"]
+    assert any(event.payload.get("node_id") == "evidence_collection" for event in failed)
+    completed_nodes = {event.payload.get("node_id") for event in events if event.event_type == "node_completed"}
+    assert "join_review" not in completed_nodes
+    assert events[-1].event_type == "run_failed"
+    assert "evidence_collection" in calls
+
+
+@pytest.mark.asyncio
+async def test_control_node_lifecycle_events_reach_the_event_stream(
+    durable_store: WorkflowV2Store,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """fork_start and join_review must emit node_started/node_completed so the
+    run graph shows real status for control nodes (fix/workflow-node-status)."""
+    monkeypatch.setattr("ideer.workflows.v2.file_roots.get_paths", lambda: Paths(str(tmp_path / "base")))
+    calls: list[str] = []
+    await _run_worker_once(
+        durable_store,
+        tmp_path,
+        RecordingAgent(calls, write_artifacts=True),
+        run_id="run-worker-control-node-events",
+    )
+
+    run = await durable_store.get_run("run-worker-control-node-events")
+    assert run is not None and run.status == "completed"
+    events = await durable_store.list_events(run.run_id)
+
+    def node_events(event_type: str, node_id: str):
+        return [event for event in events if event.event_type == event_type and event.payload.get("node_id") == node_id]
+
+    for node_id in ("fork_start", "join_review"):
+        started = node_events("node_started", node_id)
+        completed = node_events("node_completed", node_id)
+        assert len(started) == 1, f"{node_id} must emit exactly one node_started"
+        assert len(completed) == 1, f"{node_id} must emit exactly one node_completed"
+        assert started[0].payload.get("started_at")
+        assert completed[0].payload.get("finished_at")
+
+    seqs = {(event.event_type, event.payload.get("node_id")): event.seq for event in events}
+    assert seqs[("node_started", "fork_start")] < seqs[("node_started", "evidence_collection")]
+    assert seqs[("node_started", "evidence_collection")] < seqs[("node_started", "join_review")]
+    assert seqs[("node_started", "join_review")] < seqs[("node_started", "review_and_crosscheck")]
 
 
 GATED_WORKFLOW = """
