@@ -83,11 +83,14 @@ def _executor(
     *,
     base_dir: Path,
     payload: str,
+    workflow_text: str = _SCHEMA_GATED_WORKFLOW,
+    prompts: list[str] | None = None,
+    payload_factory: Callable[[int], str] | None = None,
 ):
     async def execute(task: WorkflowTaskRow) -> None:
         run = await store.get_run(task.run_id)
         assert run is not None
-        definition = parse_workflow_v2(_SCHEMA_GATED_WORKFLOW)
+        definition = parse_workflow_v2(workflow_text)
         import ideer.workflows.v2.file_roots as file_roots
         from ideer.config.paths import Paths
 
@@ -96,12 +99,15 @@ def _executor(
         class Adapter:
             async def run(self, context, params):
                 calls.append(context.idempotency_key)
+                if prompts is not None:
+                    prompts.append(str(params.get("prompt", params)))
+                body = payload_factory(len(calls) - 1) if payload_factory is not None else payload
                 for root in (context.file_access or {}).get("write", []):
                     host = make_host_resolver(run.run_id, "user-1")(root)
                     assert host is not None
                     path = Path(host)
                     path.parent.mkdir(parents=True, exist_ok=True)
-                    path.write_text(payload, encoding="utf-8")
+                    path.write_text(body, encoding="utf-8")
                 return {"node": context.node_id}
 
         async def emit(event_type: str, payload: dict) -> None:
@@ -221,3 +227,98 @@ async def test_schema_conforming_write_completes_the_node(
     completed = await durable_store.get_run("run-ok-schema")
     assert completed is not None and completed.status == "completed"
     assert len(calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_schema_violation_feedback_injected_on_retry(
+    durable_store: WorkflowV2Store,
+    tmp_path: Path,
+) -> None:
+    import ideer.workflows.v2.file_roots as file_roots
+    from ideer.config.paths import Paths
+
+    file_roots.get_paths = lambda: Paths(str(tmp_path))
+    await durable_store.save_definition("schema-gated", {}, "hash", "user-1")
+    await durable_store.create_run("run-feedback-schema", "schema-gated", 1, {}, "user-1")
+
+    outputs = make_host_resolver("run-feedback-schema", "user-1")("/mnt/user-data/outputs")
+    assert outputs is not None
+    outputs_path = Path(outputs)
+    outputs_path.mkdir(parents=True, exist_ok=True)
+    (outputs_path / "artifact.schema.json").write_text(_SCHEMA, encoding="utf-8")
+
+    calls: list[str] = []
+    prompts: list[str] = []
+    execute = _executor(
+        durable_store,
+        tmp_path / "checkpoints.db",
+        calls,
+        base_dir=tmp_path,
+        payload="",
+        prompts=prompts,
+        payload_factory=lambda attempt: json.dumps(
+            {"status": "to_verify"} if attempt == 0 else {"status": "confirmed"},
+            ensure_ascii=False,
+        ),
+    )
+    assert await WorkflowWorker(durable_store, execute).run_once() is True
+
+    completed = await durable_store.get_run("run-feedback-schema")
+    assert completed is not None and completed.status == "completed"
+    assert len(calls) == 2
+    assert len(prompts) == 2
+    assert prompts[1] != prompts[0]
+    assert "schema" in prompts[1]
+    assert "$.status" in prompts[1]
+    assert "'to_verify'" in prompts[1]
+
+    events = await durable_store.list_events("run-feedback-schema")
+    progress = [event.payload.get("message", "") for event in events if event.event_type == "action_progress"]
+    assert progress and "第 1 次尝试" in progress[0] and "$.status" in progress[0]
+
+
+@pytest.mark.asyncio
+async def test_schema_violations_aggregated_in_error(
+    durable_store: WorkflowV2Store,
+    tmp_path: Path,
+) -> None:
+    import ideer.workflows.v2.file_roots as file_roots
+    from ideer.config.paths import Paths
+
+    aggregate_schema = json.dumps(
+        {
+            "type": "object",
+            "required": ["status", "grade"],
+            "properties": {
+                "status": {"enum": ["confirmed", "rejected"]},
+                "grade": {"enum": ["A", "B"]},
+            },
+        },
+        ensure_ascii=False,
+    )
+
+    file_roots.get_paths = lambda: Paths(str(tmp_path))
+    await durable_store.save_definition("schema-gated", {}, "hash", "user-1")
+    await durable_store.create_run("run-agg-schema", "schema-gated", 1, {}, "user-1")
+
+    outputs = make_host_resolver("run-agg-schema", "user-1")("/mnt/user-data/outputs")
+    assert outputs is not None
+    outputs_path = Path(outputs)
+    outputs_path.mkdir(parents=True, exist_ok=True)
+    (outputs_path / "artifact.schema.json").write_text(aggregate_schema, encoding="utf-8")
+
+    calls: list[str] = []
+    execute = _executor(
+        durable_store,
+        tmp_path / "checkpoints.db",
+        calls,
+        base_dir=tmp_path,
+        payload=json.dumps({"status": "to_verify", "grade": "Z"}, ensure_ascii=False),
+    )
+    assert await WorkflowWorker(durable_store, execute).run_once() is True
+
+    failed = await durable_store.get_run("run-agg-schema")
+    assert failed is not None and failed.status == "failed"
+    assert failed.error is not None
+    assert "schema validation failed" in failed.error
+    assert "to_verify" in failed.error and "'Z'" in failed.error

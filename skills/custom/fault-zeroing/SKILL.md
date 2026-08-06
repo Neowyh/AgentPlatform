@@ -40,6 +40,7 @@ allowed-tools:
 4. 对每个底事件记录 `id`、`name`、`description`、`parent_ids`、`evidence_ids`、`probability`、`probability_basis`、`confidence`、`status`、`verification_suggestion`。
 5. 证据不足时，`probability` 填 `null`，`confidence` 填 `low`，`status` 填 `to_verify`。
 6. `fault_tree.json` 必须符合 `templates/fault_tree.schema.json`。不确定字段也要保留键名并填 `null`、空数组或“待验证”说明。
+7. `verification_plan` 每项必须包含 `id`、`target_id`（引用其指向的底事件或根因 id）、`item`、`method`、`expected_result`、`status` 六个字段；`status` 枚举为 `pending` / `in_progress` / `passed` / `failed` / `blocked`（新验证项用 `pending`）。注意与底事件/根因的 `status` 枚举（`confirmed` / `rejected` / `to_verify` / `not_applicable`）区分，不要混用。
 
 ## 底事件评估规则
 

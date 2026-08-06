@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any, TypedDict
 
-from jsonschema import ValidationError, validate
+from jsonschema import Draft202012Validator
 from langgraph.errors import GraphInterrupt
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
@@ -38,6 +38,18 @@ class WorkflowNodeFailed(RuntimeError):
     """Raised when a node's response declares failure via the ``FAILED:`` marker."""
 
 
+class WorkflowSchemaViolation(WorkflowNodeFailed):
+    """Raised when a node's written output violates a declared JSON schema.
+
+    Carries the full violation list so the retry loop can feed it back to the
+    agent on the next attempt instead of re-running blindly.
+    """
+
+    def __init__(self, node_id: str, violations: list[str]) -> None:
+        super().__init__(f"node '{node_id}' schema validation failed: {'; '.join(violations)}")
+        self.violations = violations
+
+
 class WorkflowTransientError(RuntimeError):
     """Raised when a node action failed for a transient provider/network reason.
 
@@ -60,6 +72,31 @@ class ArtifactsMissing(RuntimeError):
 # so tests can shrink the schedule without touching node retry policies.
 _TRANSIENT_MAX_ATTEMPTS = 3
 _TRANSIENT_BACKOFF_BASE_SECONDS = 30.0
+
+# Schema gate violations reported per node: every violation is collected up to
+# this cap (jsonschema stops at the first error by default, which hides the
+# rest of the defect list from both the operator and retry feedback).
+_SCHEMA_VIOLATION_LIMIT = 10
+_SCHEMA_FEEDBACK_MAX_CHARS = 4000
+
+
+def _schema_feedback_message(node_id: str, attempt: int, violations: list[str]) -> str:
+    """Human-readable retry feedback carrying the schema violations."""
+    joined = "; ".join(violations)
+    if len(joined) > _SCHEMA_FEEDBACK_MAX_CHARS:
+        joined = f"{joined[:_SCHEMA_FEEDBACK_MAX_CHARS]}…"
+    return f"第 {attempt} 次尝试，schema 校验反馈：节点 {node_id} 上一次写入的输出文件未通过 JSON Schema 校验，将重试。请先读取校验错误，仅修复输出文件中的问题后重新写入（不要重复已完成的工作，不要改动与这些错误无关的内容）：\n{joined}"
+
+
+def _inject_prompt_feedback(params: dict[str, Any], feedback: str) -> dict[str, Any]:
+    """Append retry feedback to the next attempt's agent prompt."""
+    updated = dict(params)
+    for key in ("prompt", "input"):
+        if isinstance(updated.get(key), str):
+            updated[key] = f"{updated[key]}\n\n{feedback}"
+            return updated
+    updated["prompt"] = feedback
+    return updated
 
 
 def _merge_maps(left: dict[str, Any] | None, right: dict[str, Any] | None) -> dict[str, Any]:
@@ -238,7 +275,7 @@ class WorkflowGraphCompiler:
                                     raise ArtifactsMissing(missing)
                             schema_violations = self._check_write_schemas(node, render_state)
                             if schema_violations:
-                                raise WorkflowNodeFailed(f"node '{node.id}' schema validation failed: {'; '.join(schema_violations)}")
+                                raise WorkflowSchemaViolation(node.id, schema_violations)
                             break
                         except WorkflowTransientError as exc:
                             # transient provider/network errors leave the node-retry
@@ -247,6 +284,10 @@ class WorkflowGraphCompiler:
                             break
                         except Exception as exc:  # retry policy is deliberately node-local
                             last_error = exc
+                            if isinstance(exc, WorkflowSchemaViolation) and attempt + 1 < node.retry.max_attempts and node.action is not None and node.action.kind == "agent":
+                                feedback = _schema_feedback_message(node.id, attempt + 1, exc.violations)
+                                await self._emit("action_progress", {"node_id": node.id, "message": feedback})
+                                params = _inject_prompt_feedback(params, feedback)
                             if attempt + 1 < node.retry.max_attempts and node.retry.backoff_seconds:
                                 await asyncio.sleep(node.retry.backoff_seconds)
                     else:
@@ -365,7 +406,10 @@ class WorkflowGraphCompiler:
 
         Returns concrete violations (unresolvable schema, unwritten target,
         unparseable file, schema violation) so the node fails with a reason
-        an operator can act on instead of a generic agent failure.
+        an operator can act on instead of a generic agent failure.  All
+        schema violations are collected (up to ``_SCHEMA_VIOLATION_LIMIT``)
+        instead of just the first, so the defect list is complete for both
+        the operator and the retry feedback.
         """
         if not node.schemas or self.artifact_resolver is None:
             return []
@@ -403,9 +447,13 @@ class WorkflowGraphCompiler:
                 violations.append(f"schema target '{file}' or schema '{schema_file}' is not valid JSON: {exc}")
                 continue
             try:
-                validate(instance, schema)
-            except ValidationError as exc:
-                violations.append(f"'{file}' violates '{schema_file}' at {exc.json_path or '$'}: {exc.message}")
+                validator = Draft202012Validator(schema)
+                for index, error in enumerate(validator.iter_errors(instance)):
+                    if index >= _SCHEMA_VIOLATION_LIMIT:
+                        break
+                    violations.append(f"'{file}' violates '{schema_file}' at {error.json_path or '$'}: {error.message}")
+            except Exception as exc:
+                violations.append(f"schema '{schema_file}' could not be applied: {exc}")
         return violations
 
     async def _run_action(self, adapter: Any, context: ActionContext, params: dict[str, Any]) -> Any:

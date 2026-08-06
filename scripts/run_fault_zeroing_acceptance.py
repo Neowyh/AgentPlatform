@@ -35,12 +35,24 @@ EXPECTED_OUTPUTS = (
     "zeroing_report.md",
 )
 ACTION_NODE_COUNT = 9
+CONTROL_NODE_IDS = {"fork_start", "join_review"}
 
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--user-id", required=True, help="Owner of the installed fault-zeroing custom agent")
+    parser.add_argument(
+        "--case",
+        choices=sorted(path.name for path in CASES_ROOT.glob("case_*")),
+        help="Run only the selected evaluation case; defaults to all cases",
+    )
     return parser.parse_args()
+
+
+def _case_dirs(case_name: str | None) -> list[Path]:
+    if case_name is not None:
+        return [CASES_ROOT / case_name]
+    return [path for path in sorted(CASES_ROOT.glob("case_*")) if path.is_dir()]
 
 
 def _stage_case(case_dir: Path, uploads_dir: Path) -> list[str]:
@@ -54,7 +66,7 @@ def _stage_case(case_dir: Path, uploads_dir: Path) -> list[str]:
     return staged
 
 
-async def _run(user_id: str) -> dict:
+async def _run(user_id: str, case_name: str | None = None) -> dict:
     started_at = datetime.now(UTC)
     session_id = started_at.strftime("%Y%m%dT%H%M%SZ")
     acceptance_dir = get_paths().base_dir / "acceptance" / "fault-zeroing" / session_id
@@ -82,9 +94,7 @@ async def _run(user_id: str) -> dict:
     )
     results: list[dict] = []
     try:
-        for case_dir in sorted(CASES_ROOT.glob("case_*")):
-            if not case_dir.is_dir():
-                continue
+        for case_dir in _case_dirs(case_name):
             run_id = f"fz-{case_dir.name.split('_')[1]}-{session_id}-{uuid4().hex[:6]}"
             paths = get_paths()
             paths.ensure_thread_dirs(run_id, user_id=user_id)
@@ -121,12 +131,22 @@ async def _run(user_id: str) -> dict:
             duration_seconds = round(time.monotonic() - started, 3)
             run = await store.get_run(run_id)
             events = await store.list_events(run_id)
-            completed_nodes = [event.payload.get("node_id") for event in events if event.event_type == "node_completed"]
+            completed_nodes = [
+                event.payload.get("node_id")
+                for event in events
+                if event.event_type == "node_completed" and event.payload.get("node_id") not in CONTROL_NODE_IDS
+            ]
+            skipped_nodes = [
+                event.payload.get("node_id")
+                for event in events
+                if event.event_type == "node_skipped" and event.payload.get("node_id") not in CONTROL_NODE_IDS
+            ]
+            terminal_action_nodes = completed_nodes + skipped_nodes
             artifacts = {name: str(outputs_dir / name) for name in EXPECTED_OUTPUTS}
             if run is None or run.status != "completed":
                 raise RuntimeError(f"{case_dir.name} failed: {None if run is None else run.error}")
-            if len(completed_nodes) != ACTION_NODE_COUNT or len(set(completed_nodes)) != ACTION_NODE_COUNT:
-                raise AssertionError(f"{case_dir.name} completed nodes mismatch: {completed_nodes}")
+            if len(terminal_action_nodes) != ACTION_NODE_COUNT or len(set(terminal_action_nodes)) != ACTION_NODE_COUNT:
+                raise AssertionError(f"{case_dir.name} terminal action nodes mismatch: {terminal_action_nodes}")
             for name, raw_path in artifacts.items():
                 path = Path(raw_path)
                 if not path.is_file() or path.stat().st_size == 0:
@@ -140,6 +160,8 @@ async def _run(user_id: str) -> dict:
                     "duration_seconds": duration_seconds,
                     "event_count": len(events),
                     "completed_nodes": completed_nodes,
+                    "skipped_nodes": skipped_nodes,
+                    "terminal_action_nodes": terminal_action_nodes,
                     "staged_inputs": staged_files,
                     "expected_analysis_provided": False,
                     "artifacts": artifacts,
@@ -166,7 +188,7 @@ async def _run(user_id: str) -> dict:
 
 def main() -> int:
     args = _parse_args()
-    print(json.dumps(asyncio.run(_run(args.user_id)), ensure_ascii=False, indent=2))
+    print(json.dumps(asyncio.run(_run(args.user_id, args.case)), ensure_ascii=False, indent=2))
     return 0
 
 

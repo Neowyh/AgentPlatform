@@ -68,7 +68,7 @@
       "item": "验证项名称",
       "method": "验证方法",
       "expected_result": "期望结果",
-      "status": "to_verify"
+      "status": "pending"
     }
   ]
 }

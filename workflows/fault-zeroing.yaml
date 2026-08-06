@@ -259,6 +259,10 @@ nodes:
         prompt: |
           任务：对照证据评估每个底事件，确定根因，生成验证计划。
 
+          执行前先读取输出格式 schema：
+          /mnt/skills/custom/fault-zeroing/templates/fault_tree.schema.json
+          写入前必须按该 schema 逐字段自检，确保字段齐全、枚举合法。
+
           读取：
           a) {{inputs.output_base_dir}}/artifacts/tree/fault_tree_structure.json
           b) {{inputs.output_base_dir}}/artifacts/evidence/evidence_table.json
@@ -275,6 +279,17 @@ nodes:
           - 有反证证据 → 保留节点，降低概率
           - 根因必须有 A/B 级证据；否则标 to_verify
           - 数值概率须有明确依据；否则 null
+
+          verification_plan 每项必须包含且只能引用 schema 要求的字段：
+           - id（如 VP-001）、target_id（引用其指向的底事件或根因 id）、
+             item、method、expected_result、status
+           - status 只能是 pending / in_progress / passed / failed / blocked
+             （新验证项一律用 pending；禁止用 to_verify）
+          注意 status 枚举分两类，不要混用：
+           - bottom_events / root_causes 的 status 用
+             confirmed / rejected / to_verify / not_applicable
+           - verification_plan 的 status 用
+             pending / in_progress / passed / failed / blocked
 
           输出：写入 {{inputs.output_base_dir}}/fault_tree.json
           包含 7 个顶级字段：top_event, intermediate_events, bottom_events,

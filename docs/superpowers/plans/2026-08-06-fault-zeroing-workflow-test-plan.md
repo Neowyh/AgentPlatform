@@ -112,3 +112,12 @@ cd frontend && pnpm test:e2e:workflows
 ### 已知失败（预存在，与本次改动无关）
 
 - `i18n-language-switching.spec.ts:337` "locale cookie zh is normalized to zh-CN"：即使在 stash 掉全部改动后单独重跑仍失败（期望 `zh-CN` 实际 `zh`），属仓库既有问题，不在本计划范围。
+
+### Case 01 真实验收收口记录（2026-08-06）
+
+- 真实 worker run：`fz-01-20260806T125834Z-5172d9`，workflow version `1`，耗时约 `1164.006s`，事件 `114` 条。
+- 输入：`00_problem_statement.md`、`01_design方案.md`、`02_test_outline试验大纲.md`、`03_test_summary试验总结报告.md`、`04_test_data.csv`、`05_historical_or_review_notes.md`；未提供 `06_expected_analysis.md`。
+- 运行状态：`completed`；9 个 action 节点达到 terminal 状态，其中 8 个 `node_completed`，`corrective_actions` 按前置条件 `node_skipped`；schema feedback 事件 6 条，均含具体 violation。
+- 五类产物均已生成、非空，`fault_tree.json` 可解析；验收目录：`backend/.ideer/users/435b5779-61da-408b-8ccc-867c5dcdcc78/threads/fz-01-20260806T125834Z-5172d9/user-data/outputs`。
+- validator 已按本轮计划执行，退出码 `1`。失败项为 validator 对报告覆盖表头/待验证项文本的严格匹配：实际报告语义上包含五类资料和 VP-01~VP-06，但未满足 validator 当前匹配规则；未修改 validator，故本轮尚不能报告整体收口完成。
+- 当前仅完成 case 01；case 02/03 未执行。
