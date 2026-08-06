@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -149,6 +150,9 @@ def main() -> int:
     print("=== outputs generated under", outputs)
     for f in sorted(outputs.iterdir()):
         print(f"  {f.name} ({f.stat().st_size} bytes)")
+
+    print("=== running offline validator against generated outputs")
+    print(run([sys.executable, str(REPO / "scripts" / "validate_srs_outputs.py"), "--outputs-dir", str(outputs)]))
     return 0
 
 
