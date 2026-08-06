@@ -54,9 +54,14 @@ coverage/
 skills/custom/*
 !skills/custom/fault-zeroing/
 !skills/custom/fault-zeroing/**
+!skills/custom/srs-writing/
+!skills/custom/srs-writing/**
 logs/
 !docs/fault-zeroing-agent/samples/**/logs/
 !docs/fault-zeroing-agent/samples/**/logs/**
+# Generated sample artifacts (regenerate via samples/generate_samples.py)
+docs/srs-writing-agent/samples/*.docx
+docs/srs-writing-agent/samples/*.pdf
 log/
 debug.log
 
