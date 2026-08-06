@@ -325,7 +325,13 @@ async def test_fresh_claim_increments_attempts() -> None:
     task_result.scalar_one_or_none.return_value = task
     run_result = MagicMock()
     run_result.scalar_one_or_none.return_value = MagicMock(spec=WorkflowV2RunRow, run_id="run-1", status="queued")
-    session.execute.side_effect = [task_result, run_result]
+
+    def execute_stub(statement, *args, **kwargs):
+        if "workflow_v2_runs" in str(statement):
+            return run_result
+        return task_result
+
+    session.execute.side_effect = execute_stub
     store = WorkflowV2Store(MagicMock(return_value=_Context(session)))
 
     claimed = await store.claim_next_task("worker-1", max_attempts=3)
@@ -355,7 +361,13 @@ async def test_resumed_task_claim_does_not_increment_attempts() -> None:
     task_result.scalar_one_or_none.return_value = task
     run_result = MagicMock()
     run_result.scalar_one_or_none.return_value = MagicMock(spec=WorkflowV2RunRow, run_id="run-1", status="queued")
-    session.execute.side_effect = [task_result, run_result]
+
+    def execute_stub(statement, *args, **kwargs):
+        if "workflow_v2_runs" in str(statement):
+            return run_result
+        return task_result
+
+    session.execute.side_effect = execute_stub
     store = WorkflowV2Store(MagicMock(return_value=_Context(session)))
 
     claimed = await store.claim_next_task("worker-1", max_attempts=3)

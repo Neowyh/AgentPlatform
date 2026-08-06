@@ -75,6 +75,34 @@ describe("applyWorkflowEvent", () => {
     expect(completed.steps?.draft?.output).toEqual({ ok: true });
   });
 
+  test("marks a node skipped from node_skipped events", () => {
+    const started = applyWorkflowEvent(
+      { run_id: "run-1", workflow: "wf", status: "running", error: null },
+      {
+        seq: 1,
+        type: "node_started",
+        payload: { node_id: "gate", started_at: "2026-08-04T07:00:00Z" },
+      },
+    );
+    const skipped = applyWorkflowEvent(started, {
+      seq: 2,
+      type: "node_skipped",
+      payload: {
+        node_id: "gate",
+        reasons: ["no confirmed root cause"],
+        finished_at: "2026-08-04T07:00:01Z",
+      },
+    });
+
+    expect(skipped.steps?.gate).toMatchObject({
+      status: "skipped",
+      error: null,
+      started_at: "2026-08-04T07:00:00Z",
+      finished_at: "2026-08-04T07:00:01Z",
+    });
+    expect(skipped.current_step).toBeNull();
+  });
+
   test("appends each action_progress step to the node's list", () => {
     const base = {
       run_id: "run-1",

@@ -103,7 +103,7 @@ def valid_fault_tree() -> dict:
                 "item": "真实热流超限复核",
                 "method": "复查相邻测点和重复试验数据",
                 "expected_result": "确认是否存在真实热环境异常",
-                "status": "to_verify",
+                "status": "pending",
             }
         ],
     }
@@ -401,7 +401,7 @@ def test_report_must_match_json_top_event_root_cause_and_to_verify_items(tmp_pat
     assert_invalid(write_outputs(tmp_path, report=report), "report main root cause does not match fault_tree.json")
 
     report = valid_report().replace("真实热流超限复核", "未列出的验证项")
-    assert_invalid(write_outputs(tmp_path, report=report), "report missing to_verify item VP-01")
+    assert_invalid(write_outputs(tmp_path, report=report), "report missing pending verification item VP-01")
 
 
 def test_verification_plan_target_id_must_reference_known_node_or_root_cause(tmp_path: Path) -> None:

@@ -51,6 +51,24 @@ class ActionSpec(BaseModel):
         return self
 
 
+class WriteSchemaSpec(BaseModel):
+    """Post-write JSON schema gate for one declared write root.
+
+    Once the node has written ``file``, it is validated against the JSON
+    schema at ``schema_file``; a violation fails the node with a concrete reason.
+    """
+
+    file: str = Field(min_length=1)
+    schema_file: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_shape(self) -> WriteSchemaSpec:
+        for path in (self.file, self.schema_file):
+            if "\\" in path or ".." in path.split("/"):
+                raise ValueError(f"unsafe schema validation path '{path}'")
+        return self
+
+
 class PreconditionSpec(BaseModel):
     """Runtime gate on a node's inputs; an unsatisfied precondition fails the node.
 
@@ -91,7 +109,9 @@ class NodeV2(BaseModel):
     roles: list[str] = Field(default_factory=list)
     writes: list[str] = Field(default_factory=list)
     preconditions: list[PreconditionSpec] = Field(default_factory=list)
+    schemas: list[WriteSchemaSpec] = Field(default_factory=list)
     on_missing_artifact: Literal["fail", "pause"] = "fail"
+    on_precondition_failure: Literal["fail", "skip"] = "fail"
     retry: RetrySpec = Field(default_factory=RetrySpec)
 
     @model_validator(mode="after")
@@ -110,8 +130,12 @@ class NodeV2(BaseModel):
             raise ValueError(f"only action nodes may declare writes ('{self.id}')")
         if self.type != "action" and self.preconditions:
             raise ValueError(f"only action nodes may declare preconditions ('{self.id}')")
+        if self.type != "action" and self.schemas:
+            raise ValueError(f"only action nodes may declare schemas ('{self.id}')")
         if self.type != "action" and self.on_missing_artifact != "fail":
             raise ValueError(f"on_missing_artifact is only valid on action nodes ('{self.id}')")
+        if self.type != "action" and self.on_precondition_failure != "fail":
+            raise ValueError(f"on_precondition_failure is only valid on action nodes ('{self.id}')")
         return self
 
 

@@ -131,7 +131,8 @@ async def run_worker() -> None:
         if writer is None:
             writer = RunRecordWriter(make_host_resolver(run.run_id, str(run.created_by)), workflow_log_root())
             writers[run.run_id] = writer
-        await writer.on_event(event)
+        if event is not None:
+            await writer.on_event(event)
         if run.status in {"completed", "failed", "cancelled"}:
             await writer.finalize(store, run)
             writers.pop(run.run_id, None)
@@ -140,10 +141,12 @@ async def run_worker() -> None:
 
     try:
         runtime = config.workflow_runtime
+        # Default to a per-process id: two workers on one machine must never
+        # share the default lease owner, or they race to claim the same task.
         await WorkflowWorker(
             store,
             partial(execute_workflow_task, store=store, config=config),
-            os.getenv("WORKFLOW_WORKER_ID", "workflow-worker"),
+            os.getenv("WORKFLOW_WORKER_ID") or f"workflow-worker-{os.getpid()}",
             lease_seconds=runtime.lease_seconds,
             heartbeat_seconds=runtime.heartbeat_seconds,
             max_attempts=runtime.max_attempts,

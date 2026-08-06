@@ -67,8 +67,30 @@ class WorkflowWorker:
                     return
 
         heartbeat_task = asyncio.create_task(heartbeat())
+        execute_task = asyncio.create_task(self.execute(task))
         try:
-            await self.execute(task)
+            done, _ = await asyncio.wait(
+                {heartbeat_task, execute_task},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if heartbeat_task in done:
+                if heartbeat_task.exception() is not None:
+                    logger.error("workflow task %s heartbeat failed; aborting", task.task_id, exc_info=heartbeat_task.exception())
+                else:
+                    logger.warning("workflow task %s lease lost; aborting execution", task.task_id)
+                # The lease is gone (or unverifiable): stop executing now so we
+                # cannot keep appending events or a terminal state for a task
+                # another worker may already own. The task is left for lease
+                # take-over, which retries it against a fresh attempt budget.
+                execute_task.cancel()
+                try:
+                    await execute_task
+                except asyncio.CancelledError:
+                    pass
+                except Exception as exc:
+                    logger.warning("workflow task %s aborted after lease loss: %s", task.task_id, exc)
+                return True
+            await execute_task
         except WorkflowPaused:
             if not lease_lost.is_set():
                 await self.store.finish_task(task.task_id, "paused", None, self.worker_id)

@@ -54,6 +54,36 @@ edges:
 """
 
 
+_SKIP_PRECOND_WORKFLOW = """
+schema_version: 2
+name: precond
+inputs: {}
+state: {}
+entrypoint: gate
+nodes:
+  - id: gate
+    type: action
+    action:
+      kind: agent
+      name: record
+      file_access:
+        read:
+          - "/mnt/user-data/outputs"
+        write: []
+    preconditions:
+      - file: "/mnt/user-data/outputs/fault_tree.json"
+        non_empty: true
+        json_path: "$.root_causes[*].status"
+        some_equals: confirmed
+    on_precondition_failure: skip
+  - id: done
+    type: action
+    action: {kind: agent, name: record}
+edges:
+  - {from: gate, to: done}
+"""
+
+
 @pytest_asyncio.fixture
 async def durable_store(tmp_path: Path):
     engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'workflow.db'}")
@@ -75,11 +105,12 @@ def _executor(
     calls: list[str],
     *,
     base_dir: Path,
+    workflow: str = _PRECOND_WORKFLOW,
 ):
     async def execute(task: WorkflowTaskRow) -> None:
         run = await store.get_run(task.run_id)
         assert run is not None
-        definition = parse_workflow_v2(_PRECOND_WORKFLOW)
+        definition = parse_workflow_v2(workflow)
         import ideer.workflows.v2.file_roots as file_roots
         from ideer.config.paths import Paths
 
@@ -226,3 +257,44 @@ async def test_precondition_pass_runs_the_node(
     completed = await durable_store.get_run("run-ok")
     assert completed is not None and completed.status == "completed"
     assert calls == ["gate", "done"]
+
+
+@pytest.mark.asyncio
+async def test_precondition_failure_skips_node_and_continues(
+    durable_store: WorkflowV2Store,
+    tmp_path: Path,
+) -> None:
+    import ideer.workflows.v2.file_roots as file_roots
+    from ideer.config.paths import Paths
+
+    file_roots.get_paths = lambda: Paths(str(tmp_path))
+    await durable_store.save_definition("precond", {}, "hash", "user-1")
+    await durable_store.create_run("run-skip", "precond", 1, {}, "user-1")
+
+    outputs = make_host_resolver("run-skip", "user-1")("/mnt/user-data/outputs")
+    assert outputs is not None
+    tree_path = Path(outputs)
+    tree_path.mkdir(parents=True, exist_ok=True)
+    (tree_path / "fault_tree.json").write_text(
+        json.dumps({"root_causes": [{"id": "RC-01", "status": "to_verify"}]}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    calls: list[str] = []
+    execute = _executor(
+        durable_store,
+        tmp_path / "checkpoints.db",
+        calls,
+        base_dir=tmp_path,
+        workflow=_SKIP_PRECOND_WORKFLOW,
+    )
+    await _run_to_terminal(durable_store, "run-skip", execute)
+
+    completed = await durable_store.get_run("run-skip")
+    assert completed is not None and completed.status == "completed"
+    assert calls == ["done"]  # gate's adapter never ran, downstream still ran
+    events = await durable_store.list_events("run-skip")
+    skipped = [event for event in events if event.event_type == "node_skipped"]
+    assert len(skipped) == 1
+    assert skipped[0].payload["node_id"] == "gate"
+    assert "confirmed" in str(skipped[0].payload.get("reasons"))

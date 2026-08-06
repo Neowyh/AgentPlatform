@@ -112,6 +112,17 @@ export function applyWorkflowEvent(
       }),
     };
   }
+  if (event.type === "node_skipped" && nodeId) {
+    return {
+      ...next,
+      current_step: null,
+      steps: updatedStep(next, nodeId, {
+        status: "skipped",
+        error: null,
+        finished_at: textValue(event.payload.finished_at) || null,
+      }),
+    };
+  }
   if (event.type === "edge_selected") {
     const from = textValue(event.payload.from);
     const to = textValue(event.payload.to);

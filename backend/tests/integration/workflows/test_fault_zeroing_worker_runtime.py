@@ -47,7 +47,17 @@ class RecordingAgent:
                 path.parent.mkdir(parents=True, exist_ok=True)
                 if path.name == "fault_tree.json":
                     path.write_text(
-                        '{"top_event": "top", "root_causes": [{"id": "RC-01", "status": "confirmed"}]}',
+                        '{"top_event": "top", "intermediate_events": [], "bottom_events": [], '
+                        '"logic": [], "evidence": [], '
+                        '"root_causes": [{"id": "RC-01", "name": "root cause", '
+                        '"description": "desc", "evidence_ids": [], '
+                        '"status": "confirmed", "confidence": "high"}], '
+                        '"verification_plan": []}',
+                        encoding="utf-8",
+                    )
+                elif path.name == "corrective_actions.json":
+                    path.write_text(
+                        '{"corrective_actions": [{"id": "CA-01", "name": "fix", "description": "desc", "target_root_cause_id": "RC-01", "completion_criteria": "done"}]}',
                         encoding="utf-8",
                     )
                 else:
@@ -108,6 +118,10 @@ async def test_production_worker_task_path_persists_all_fault_zeroing_events(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr("ideer.workflows.v2.file_roots.get_paths", lambda: Paths(str(tmp_path / "base")))
+    monkeypatch.setattr(
+        "ideer.workflows.v2.file_roots._get_skills_host_path",
+        lambda: str(REPO_ROOT / "skills"),
+    )
     calls: list[str] = []
     await _run_worker_once(
         durable_store,

@@ -143,3 +143,14 @@ async def test_exhausted_run_still_reaches_the_record(
     assert [line["type"] for line in lines] == ["run_failed"]
     assert lines[0]["payload"]["error"] == "workflow_max_attempts_exceeded"
     assert jsonl_path.with_suffix(".md").is_file()
+
+
+@pytest.mark.asyncio
+async def test_null_event_is_a_noop_for_the_record_writer(tmp_path: Path) -> None:
+    """A None sink event (e.g. an event-limit drop) must not crash the writer."""
+    writer = RunRecordWriter(_resolver(tmp_path), workflow_log_root())
+
+    await writer.on_event(None)
+
+    jsonl_path = tmp_path / "users" / "user-1" / "threads" / "run-1" / "user-data" / "workspace" / ".workflow" / "logs" / "run_record.jsonl"
+    assert not jsonl_path.exists()

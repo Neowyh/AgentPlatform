@@ -80,6 +80,7 @@ def _validate_graph(workflow: WorkflowV2) -> None:
     _validate_forks(workflow, nodes, outgoing)
     _validate_writes(workflow)
     _validate_preconditions(workflow)
+    _validate_write_schemas(workflow)
 
 
 def _validate_cycles(workflow: WorkflowV2, outgoing: dict[str, list[str]]) -> None:
@@ -210,6 +211,26 @@ def _validate_preconditions(workflow: WorkflowV2) -> None:
                 continue
             if not any(path_within_root(file, root) for root in read_roots if "{{" not in root):
                 raise ValueError(f"action node '{node.id}' precondition file '{file}' is not under its read roots")
+
+
+def _validate_write_schemas(workflow: WorkflowV2) -> None:
+    """Schema gates must point at a declared write root and a readable schema.
+
+    Static (non-templated) paths are checked here; templated paths are only
+    resolvable at runtime and are validated there against the rendered roots.
+    """
+    for node in workflow.nodes:
+        if node.type != "action" or not node.schemas or node.action is None:
+            continue
+        read_roots = node.action.file_access.read if node.action.file_access is not None else []
+        write_roots = node.action.file_access.write if node.action.file_access is not None else []
+        for spec in node.schemas:
+            if "{{" not in spec.file:
+                if not any(path_within_root(spec.file, root) for root in write_roots if "{{" not in root):
+                    raise ValueError(f"action node '{node.id}' schema target '{spec.file}' is not under its write roots")
+            if "{{" not in spec.schema_file:
+                if not any(path_within_root(spec.schema_file, root) for root in read_roots if "{{" not in root):
+                    raise ValueError(f"action node '{node.id}' schema file '{spec.schema_file}' is not under its read roots")
 
 
 def _validate_path(path: str, workflow: WorkflowV2, context: str) -> None:

@@ -18,11 +18,11 @@ from alembic.command import upgrade
 from alembic.config import Config as AlembicConfig
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.types import Command
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, func, select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from ideer.persistence.base import Base
-from ideer.persistence.models.workflow_v2 import WorkflowTaskRow
+from ideer.persistence.models.workflow_v2 import WorkflowLeaseAuditRow, WorkflowTaskRow
 from ideer.workflows.v2.adapters import ActionAdapterRegistry
 from ideer.workflows.v2.compiler import WorkflowGraphCompiler
 from ideer.workflows.v2.parser import parse_workflow_v2
@@ -281,6 +281,28 @@ async def test_second_worker_takes_over_a_dead_holder_from_durable_snapshot(
     run = await durable_store.get_run("run-dual-worker")
     assert run is not None and run.status == "completed"
     assert completed_actions == ["finish"]
+
+
+@pytest.mark.asyncio
+async def test_concurrent_claims_never_duplicate_a_task(durable_store: WorkflowV2Store) -> None:
+    """Simultaneous claims from two workers must hand out each task at most once.
+
+    Regression test for the pre-atomic claim race: workers SELECTed the same
+    queued task before either UPDATE ran, so two workers executed one task.
+    """
+    await durable_store.save_definition("approval", {}, "hash", "user-1")
+    for index in range(8):
+        await durable_store.create_run(f"run-race-{index}", "approval", 1, {}, "user-1")
+
+    claims = await asyncio.gather(*[durable_store.claim_next_task(f"worker-{index % 2}", lease_seconds=5) for index in range(32)])
+    claimed = [task for task in claims if task is not None]
+    task_ids = [task.task_id for task in claimed]
+    assert len(task_ids) == len(set(task_ids)), f"duplicate claims: {task_ids}"
+    assert len(task_ids) == 8
+
+    async with durable_store.session_factory() as session:
+        counts = dict((await session.execute(select(WorkflowLeaseAuditRow.task_id, func.count()).group_by(WorkflowLeaseAuditRow.task_id))).all())
+    assert counts == {task_id: 1 for task_id in task_ids}
 
 
 @pytest.mark.serial

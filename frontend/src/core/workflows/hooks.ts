@@ -34,6 +34,12 @@ const workflowEventTypes = new Set<WorkflowEvent["type"]>([
   "run_cancelled",
 ]);
 
+const terminalEventTypes = new Set<WorkflowEvent["type"]>([
+  "run_completed",
+  "run_failed",
+  "run_cancelled",
+]);
+
 function parseWorkflowEvent(
   message: MessageEvent<string>,
 ): WorkflowEvent | null {
@@ -237,6 +243,12 @@ export function useRunStatus(
             events: [...(base.events ?? []), event],
           };
         });
+        if (terminalEventTypes.has(event.type)) {
+          closed = true;
+          source?.close();
+          if (retryTimer) clearTimeout(retryTimer);
+          if (pollTimer) clearInterval(pollTimer);
+        }
       };
       for (const type of [
         "run_started",

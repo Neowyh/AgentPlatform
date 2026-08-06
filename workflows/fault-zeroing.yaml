@@ -56,6 +56,7 @@ nodes:
         read:
           - "{{inputs.upload_dir}}"
           - "/mnt/skills/custom/fault-zeroing"
+          - "/mnt/skills/custom/fault-zeroing/references"
         write:
           - "{{inputs.output_base_dir}}/artifacts/evidence/evidence_table.json"
           - "{{inputs.output_base_dir}}/artifacts/evidence/coverage_matrix.md"
@@ -65,6 +66,9 @@ nodes:
           你是证据分析师。只负责读取资料、抽取证据、标注来源，不做根因结论。
         prompt: |
           任务：读取归零资料，提取证据，形成证据台账。
+
+          执行前先读取证据规则：
+          /mnt/skills/custom/fault-zeroing/references/evidence_rules.md
 
           上传目录：{{inputs.upload_dir}}
           问题描述：{{inputs.problem_description}}
@@ -96,6 +100,7 @@ nodes:
       file_access:
         read:
           - "/mnt/skills/custom/fault-zeroing"
+          - "/mnt/skills/custom/fault-zeroing/templates"
         write:
           - "{{inputs.output_base_dir}}/artifacts/tree/fault_tree_structure.json"
       params:
@@ -121,7 +126,8 @@ nodes:
           - 列出所有理论上可能的路径
 
           输出：写入 {{inputs.output_base_dir}}/artifacts/tree/fault_tree_structure.json
-          参考 fault_tree.schema.json 格式，但不填充 evidence_ids、probability、
+          参考 /mnt/skills/custom/fault-zeroing/templates/fault_tree.schema.json 格式，
+          但不填充 evidence_ids、probability、
           probability_basis、confidence、status 字段（留 null 或空数组）
           失败契约：若无法完成任务，回复必须以 FAILED: 开头说明原因；
           严禁写入占位文件或空文件。
@@ -275,6 +281,9 @@ nodes:
           logic, evidence, root_causes, verification_plan
           失败契约：若无法完成任务，回复必须以 FAILED: 开头说明原因；
           严禁写入占位文件或空文件。
+    schemas:
+      - file: "{{inputs.output_base_dir}}/fault_tree.json"
+        schema_file: "/mnt/skills/custom/fault-zeroing/templates/fault_tree.schema.json"
     writes:
       - "$.state.assessment_summary"
     retry:
@@ -290,6 +299,9 @@ nodes:
       file_access:
         read:
           - "/mnt/skills/custom/fault-zeroing"
+          - "{{inputs.upload_dir}}"
+          - "{{inputs.output_base_dir}}/artifacts/tree/"
+          - "{{inputs.output_base_dir}}/artifacts/evidence/"
           - "{{inputs.output_base_dir}}/fault_tree.json"
         write: []
       params:
@@ -395,11 +407,15 @@ nodes:
 
           失败契约：若无法完成任务，回复必须以 FAILED: 开头说明原因；
           严禁写入占位文件。
+    schemas:
+      - file: "{{inputs.output_base_dir}}/artifacts/corrective_actions.json"
+        schema_file: "/mnt/skills/custom/fault-zeroing/templates/corrective_actions.schema.json"
     preconditions:
       - file: "{{inputs.output_base_dir}}/fault_tree.json"
         non_empty: true
         json_path: "$.root_causes[*].status"
         some_equals: confirmed
+    on_precondition_failure: skip
     writes:
       - "$.state.corrective_actions_summary"
 
@@ -412,6 +428,7 @@ nodes:
       file_access:
         read:
           - "/mnt/skills/custom/fault-zeroing"
+          - "/mnt/skills/custom/fault-zeroing/templates"
           - "{{inputs.output_base_dir}}/fault_tree.json"
           - "{{inputs.output_base_dir}}/artifacts/evidence/evidence_table.json"
           - "{{inputs.output_base_dir}}/artifacts/evidence/coverage_matrix.md"
@@ -432,6 +449,9 @@ nodes:
           - {{inputs.output_base_dir}}/artifacts/evidence/evidence_table.json
           - {{inputs.output_base_dir}}/artifacts/evidence/coverage_matrix.md
           - {{inputs.output_base_dir}}/artifacts/corrective_actions.json
+          （若 corrective_actions.json 不存在，说明根因归因后没有 confirmed 根因，
+          纠正措施被跳过；此时报告的"纠正措施"章节应写明"无已确认根因，
+          不生成纠正措施"，其余输出照常生成。）
 
           生成以下 4 个文件到 {{inputs.output_base_dir}}/：
 
@@ -440,7 +460,7 @@ nodes:
              不含 script/event handler/external URL
 
           2. bottom_event_assessment.md
-             格式参考 templates/bottom_event_assessment.md
+              格式参考 /mnt/skills/custom/fault-zeroing/templates/bottom_event_assessment.md
 
           3. analysis_process.svg
              静态 SVG：证据提取→故障树构建→底事件评估→根因归因→纠正措施→文档生产
@@ -472,8 +492,6 @@ nodes:
       - file: "{{inputs.output_base_dir}}/fault_tree.json"
         non_empty: true
       - file: "{{inputs.output_base_dir}}/artifacts/evidence/evidence_table.json"
-        non_empty: true
-      - file: "{{inputs.output_base_dir}}/artifacts/corrective_actions.json"
         non_empty: true
     retry:
       max_attempts: 2
