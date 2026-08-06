@@ -372,6 +372,65 @@ def test_material_coverage_matrix_requires_matrix_header(tmp_path: Path) -> None
     )
 
 
+def test_material_coverage_matrix_accepts_semantic_header(tmp_path: Path) -> None:
+    report = valid_report().replace(
+        "| 类别 | 检查结果 | 来源 | 缺失影响 |",
+        "| 资料类别 | 覆盖状态 | 文件 | 风险影响 |",
+    )
+
+    result = load_validator().validate_outputs(write_outputs(tmp_path, report=report))
+
+    assert result.ok
+
+
+def test_pending_verification_description_may_be_reworded_when_id_is_kept(
+    tmp_path: Path,
+) -> None:
+    report = valid_report().replace("真实热流超限复核", "复核实际热流是否发生超限")
+
+    result = load_validator().validate_outputs(write_outputs(tmp_path, report=report))
+
+    assert result.ok
+
+
+def test_report_must_contain_each_pending_verification_id(tmp_path: Path) -> None:
+    report = valid_report().replace("| VP-01 |", "| VP-99 |")
+
+    assert_invalid(write_outputs(tmp_path, report=report), "report missing pending verification item VP-01")
+
+
+@pytest.mark.parametrize(
+    ("row", "expected"),
+    [
+        (
+            "| VP-01 | 真实热流超限复核 | 复查相邻测点和重复试验数据 | to_verify |\n| VP-01 | 重复的验证项 | 复查相邻测点和重复试验数据 | pending |",
+            "report contains duplicate verification item id VP-01",
+        ),
+        (
+            "| VP-01 | 真实热流超限复核 | 复查相邻测点和重复试验数据 | to_verify |\n| VP-99 | 虚构的验证项 | 复查相邻测点和重复试验数据 | pending |",
+            "report references unknown verification item id VP-99",
+        ),
+    ],
+)
+def test_report_rejects_duplicate_or_unknown_verification_ids(tmp_path: Path, row: str, expected: str) -> None:
+    report = valid_report().replace(
+        "| VP-01 | 真实热流超限复核 | 复查相邻测点和重复试验数据 | to_verify |",
+        row,
+    )
+
+    assert_invalid(write_outputs(tmp_path, report=report), expected)
+
+
+def test_current_case_01_output_is_accepted() -> None:
+    output_dir = REPO_ROOT / "backend/.ideer/users/435b5779-61da-408b-8ccc-867c5dcdcc78/threads/fz-01-20260806T125834Z-5172d9/user-data/outputs"
+    if not output_dir.is_dir():
+        pytest.skip("the current case 01 runtime fixture is not available")
+
+    result = load_validator().validate_outputs(output_dir)
+
+    assert result.ok, result.errors
+
+
 def test_confirmed_root_cause_requires_ab_evidence(tmp_path: Path) -> None:
     fault_tree = valid_fault_tree()
     fault_tree["root_causes"][0]["evidence_ids"] = ["EV-03"]
@@ -393,14 +452,14 @@ def test_rejected_bottom_event_requires_counterevidence(tmp_path: Path) -> None:
     assert_invalid(write_outputs(tmp_path, fault_tree), "rejected bottom event BE-02 lacks counterevidence")
 
 
-def test_report_must_match_json_top_event_root_cause_and_to_verify_items(tmp_path: Path) -> None:
+def test_report_must_match_json_top_event_root_cause_and_verification_ids(tmp_path: Path) -> None:
     report = valid_report().replace("热流传感器 HF-07 测值超过试验允许上限", "另一个顶事件", 1)
     assert_invalid(write_outputs(tmp_path, report=report), "report top event does not match fault_tree.json")
 
     report = valid_report().replace("HF-07 测量链路零点漂移", "另一个根因", 1)
     assert_invalid(write_outputs(tmp_path, report=report), "report main root cause does not match fault_tree.json")
 
-    report = valid_report().replace("真实热流超限复核", "未列出的验证项")
+    report = valid_report().replace("| VP-01 |", "| VP-99 |")
     assert_invalid(write_outputs(tmp_path, report=report), "report missing pending verification item VP-01")
 
 

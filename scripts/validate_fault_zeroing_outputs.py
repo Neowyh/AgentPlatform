@@ -621,15 +621,28 @@ def _validate_report(
         elif first_root_name and not report_root and first_root_name not in report_text:
             result.add("report main root cause does not match fault_tree.json")
 
-    for item in _list(tree.get("verification_plan")):
-        if not isinstance(item, dict):
-            continue
-        if _string(item.get("status")) != "pending":
-            continue
-        item_id = _string(item.get("id")) or "<missing>"
-        item_name = _string(item.get("item")).strip()
-        if item_name and item_name not in report_text:
+    expected_verification_ids = {
+        _string(item.get("id"))
+        for item in _list(tree.get("verification_plan"))
+        if isinstance(item, dict) and _string(item.get("id"))
+    }
+    pending_verification_ids = {
+        _string(item.get("id"))
+        for item in _list(tree.get("verification_plan"))
+        if isinstance(item, dict)
+        and _string(item.get("status")) == "pending"
+        and _string(item.get("id"))
+    }
+    report_verification_ids = _verification_plan_ids(report_text)
+    report_verification_id_set = set(report_verification_ids)
+    for item_id in report_verification_id_set - expected_verification_ids:
+        result.add(f"report references unknown verification item id {item_id}")
+    for item_id in pending_verification_ids:
+        count = report_verification_ids.count(item_id)
+        if count == 0:
             result.add(f"report missing pending verification item {item_id}")
+        elif count > 1:
+            result.add(f"report contains duplicate verification item id {item_id}")
 
     missing_rows = [
         line
@@ -664,13 +677,37 @@ def _coverage_matrix_rows(report_text: str) -> list[str]:
             continue
         in_table = True
         if not has_matrix_header:
-            if "类别" in stripped and "检查结果" in stripped:
+            if _is_coverage_matrix_header(stripped):
                 has_matrix_header = True
             continue
         if re.match(r"^\|\s*:?-{3,}:?\s*(?:\||$)", stripped):
             continue
         rows.append(stripped)
     return rows
+
+
+def _is_coverage_matrix_header(line: str) -> bool:
+    return (
+        ("类别" in line or "资料类别" in line)
+        and any(
+            phrase in line
+            for phrase in ("检查结果", "覆盖状态", "覆盖情况", "覆盖结论")
+        )
+        and any(phrase in line for phrase in ("来源", "文件", "证据"))
+    )
+
+
+def _verification_plan_ids(report_text: str) -> list[str]:
+    section = _section_text(report_text, "验证计划")
+    ids: list[str] = []
+    for line in section.splitlines():
+        cells = [cell.strip() for cell in line.split("|")[1:-1]]
+        if not cells:
+            continue
+        match = re.fullmatch(r"VP-[A-Za-z0-9_-]+", cells[0])
+        if match:
+            ids.append(match.group(0))
+    return ids
 
 
 def _section_text(text: str, title: str) -> str:
