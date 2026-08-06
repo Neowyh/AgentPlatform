@@ -911,7 +911,8 @@ async def submit_workflow_command(
                     raise HTTPException(409, "Run has no checkpoint to resume from")
         elif current_user.role != UserRole.SUPER_ADMIN:
             definition = await store.get_definition(workflow_name, run.definition_version)
-            interrupt_node = run.snapshot.get("interrupt", {}).get("node_id") if isinstance(run.snapshot, dict) else None
+            interrupt_value = run.snapshot.get("interrupt") if isinstance(run.snapshot, dict) else None
+            interrupt_node = interrupt_value[0].get("node_id") if isinstance(interrupt_value, list) and interrupt_value else (interrupt_value or {}).get("node_id")
             required_roles = {role for node in (definition.definition.get("nodes", []) if definition else []) if node.get("id") == interrupt_node for role in node.get("roles", [])}
             if required_roles and current_user.role.value not in required_roles:
                 raise HTTPException(403, "You do not have permission to resume this workflow")

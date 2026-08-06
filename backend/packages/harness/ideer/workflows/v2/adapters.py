@@ -49,13 +49,56 @@ class ActionAdapterRegistry:
 
 
 class _ToolAdapter:
-    def __init__(self, tool: Any) -> None:
+    def __init__(self, tool: Any, user_id: str | None = None) -> None:
         self.tool = tool
+        self.user_id = user_id
+        self._runtime_cache: dict[str, Any] = {}
+
+    def _build_runtime(self, context: ActionContext) -> Any:
+        from langchain.tools import ToolRuntime
+
+        from ideer.config.paths import get_paths
+        from ideer.sandbox.sandbox_provider import get_sandbox_provider
+
+        # The sandbox tools resolve virtual paths through runtime.state.thread_data
+        # and lazily acquire a sandbox through runtime.context.thread_id; mirror
+        # the thread-scoped paths the local sandbox derives for agent runs so
+        # workflow `kind: tool` nodes behave identically (thread_id == run_id).
+        thread_id = context.run_id
+        cached = self._runtime_cache.get(thread_id)
+        if cached is not None:
+            return cached
+        paths = get_paths()
+        thread_data = {
+            "workspace_path": str(paths.sandbox_work_dir(thread_id, user_id=self.user_id)),
+            "uploads_path": str(paths.sandbox_uploads_dir(thread_id, user_id=self.user_id)),
+            "outputs_path": str(paths.sandbox_outputs_dir(thread_id, user_id=self.user_id)),
+        }
+        state: dict[str, Any] = {"thread_data": thread_data, "artifacts": [], "todos": None}
+        provider = get_sandbox_provider()
+        sandbox_id = provider.acquire(thread_id)
+        state["sandbox"] = {"sandbox_id": sandbox_id}
+        runtime = ToolRuntime(
+            state=state,
+            context={"thread_id": thread_id, "run_id": thread_id},
+            config={"configurable": {"thread_id": thread_id}},
+            stream_writer=lambda _update: None,
+            tools=[self.tool],
+            tool_call_id=None,
+            store=None,
+        )
+        self._runtime_cache[thread_id] = runtime
+        return runtime
 
     async def run(self, context: ActionContext, params: dict[str, Any]) -> Any:
+        runtime = self._build_runtime(context)
+        tool_params = dict(params)
+        if "runtime" in tool_params:
+            del tool_params["runtime"]
+        tool_params["runtime"] = runtime
         if hasattr(self.tool, "ainvoke"):
-            return await self.tool.ainvoke(params)
-        return await asyncio.to_thread(self.tool.invoke, params)
+            return await self.tool.ainvoke(tool_params)
+        return await asyncio.to_thread(self.tool.invoke, tool_params)
 
     async def astream(self, context: ActionContext, params: dict[str, Any]) -> AsyncIterator[dict[str, Any]]:
         yield {"type": "progress", "message": "started"}
@@ -185,7 +228,7 @@ def build_default_registry(app_config: Any, user_id: str) -> ActionAdapterRegist
 
     registry = ActionAdapterRegistry()
     for tool in get_available_tools(app_config=app_config):
-        registry.register("tool", tool.name, _ToolAdapter(tool))
+        registry.register("tool", tool.name, _ToolAdapter(tool, user_id=user_id))
     for agent in list_custom_agents(user_id=user_id):
         registry.register("agent", agent.name, _AgentAdapter(agent.name, user_id))
     return registry

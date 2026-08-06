@@ -48,7 +48,9 @@ class RunRecordWriter:
             return None
         return Path(host)
 
-    async def on_event(self, event: WorkflowV2EventRow) -> None:
+    async def on_event(self, event: WorkflowV2EventRow | None) -> None:
+        if event is None:
+            return
         path = self._host_path("jsonl")
         if path is None:
             return

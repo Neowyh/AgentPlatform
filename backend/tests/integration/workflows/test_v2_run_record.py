@@ -143,3 +143,32 @@ async def test_exhausted_run_still_reaches_the_record(
     assert [line["type"] for line in lines] == ["run_failed"]
     assert lines[0]["payload"]["error"] == "workflow_max_attempts_exceeded"
     assert jsonl_path.with_suffix(".md").is_file()
+
+
+@pytest.mark.asyncio
+async def test_terminal_notify_without_event_still_finalizes_markdown(
+    durable_store: WorkflowV2Store,
+    tmp_path: Path,
+) -> None:
+    """finish_task notifies the sink with a None event after flipping the run
+    status; the writer must tolerate that and still render the summary."""
+    await durable_store.save_definition("wf", {}, "hash", "user-1")
+    await durable_store.create_run("run-1", "wf", 1, {}, "user-1")
+
+    writer = RunRecordWriter(_resolver(tmp_path), workflow_log_root())
+
+    async def sink(run, event) -> None:
+        await writer.on_event(event)
+        if run.status in {"completed", "failed", "cancelled"}:
+            await writer.finalize(durable_store, run)
+
+    durable_store.event_sink = sink
+
+    task = await durable_store.claim_next_task("worker-1", max_attempts=3)
+    assert task is not None
+    await durable_store.append_event("run-1", "run_started", {})
+    assert await durable_store.finish_task(task.task_id, "completed", None, "worker-1") is True
+
+    md_path = tmp_path / "users" / "user-1" / "threads" / "run-1" / "user-data" / "workspace" / ".workflow" / "logs" / "run_record.md"
+    assert md_path.is_file()
+    assert "`completed`" in md_path.read_text(encoding="utf-8")

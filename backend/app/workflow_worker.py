@@ -47,7 +47,11 @@ async def execute_workflow_task(
         command = await store.get_command(task.resume_command_id)
         if command is None:
             raise RuntimeError(f"workflow task '{task.task_id}' has no resume command")
-        invocation = Command(resume=command.payload)
+        # LangGraph treats an empty dict as a resume map with no entries, so a
+        # payload-less resume would never deliver a value and the interrupt gate
+        # would re-raise on every attempt. Normalize to an explicit value.
+        resume_value = command.payload if command.payload else {"resumed": True}
+        invocation = Command(resume=resume_value)
         # The attempt-budget exemption applies to the immediate resume only;
         # a later crash/take-over must count as a fresh attempt again.
         await store.clear_resume_command(task.task_id)
