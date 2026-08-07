@@ -26,6 +26,8 @@ Options:
 
 Environment:
   IDEER_BUNDLE_ROOT, IDEER_VERSION, IDEER_NO_LOAD
+  IDEER_INSTALL_FAULT_ZEROING=0 skips installing the bundled shared fault-zeroing agent
+  IDEER_INSTALL_SRS_WRITING=0 skips installing the bundled shared srs-writing agent
 EOF
 }
 
@@ -237,8 +239,24 @@ seed_config() {
         log "[dry-run] generate $target from $source (with models: [])"
         return 0
     fi
+    # Replace the whole models block (including trailing example entries and
+    # their comments) with an empty list; otherwise the seeded config keeps
+    # dangling "- name:" items that make the YAML invalid.
     awk '
-        /^[[:space:]]*models:[[:space:]]*$/ { print "models: []"; next }
+        function blank_or_comment(l) {
+            return l ~ /^[[:space:]]*$/ || l ~ /^[[:space:]]*#/
+        }
+        /^[[:space:]]*models:[[:space:]]*$/ {
+            print "models: []"
+            in_models = 1
+            next
+        }
+        in_models {
+            if (blank_or_comment($0) || $0 ~ /^[[:space:]]/ || $0 ~ /^[[:space:]]*-/) {
+                next
+            }
+            in_models = 0
+        }
         { print }
     ' "$source" > "$target"
 }
@@ -256,6 +274,26 @@ patch_agents_api_enabled() {
         log "enabling agents_api in $config ..."
         run_cmd sed -i '/^agents_api:/{n;s/enabled: false/enabled: true/;}' "$config"
     fi
+}
+
+# The config template ships an officecli sandbox mount whose host_path is a
+# placeholder (e.g. /opt/deer-flow/vendor/officecli/officecli).  When the seeded
+# runtime config points at a path that does not exist, rewrite it to the bundle's
+# own vendor/officecli binary so the sandbox can inject it offline.  Idempotent:
+# a user-customized host_path that actually exists is left untouched.
+patch_officecli_mount() {
+    local config="$RUNTIME_DIR/config.yaml"
+    local bundled_bin="$SOURCE_DIR/vendor/officecli/officecli"
+    [ -f "$config" ] || return 0
+    [ -f "$bundled_bin" ] || return 0
+
+    local current
+    current="$(grep -B1 'container_path: /usr/local/bin/officecli' "$config" | grep 'host_path:' | sed -E "s/.*host_path:[[:space:]]*['\"]?([^[:space:]'\"]*).*/\1/" | head -1 || true)"
+    [ -n "$current" ] || return 0
+    [ -e "$current" ] && return 0
+
+    log "patching officecli mount host_path: $current -> $bundled_bin"
+    run_cmd sed -i "s|host_path: ${current}|host_path: ${bundled_bin}|" "$config"
 }
 
 load_or_create_secret_file() {
@@ -356,6 +394,7 @@ seed_runtime() {
 
     seed_config
     patch_agents_api_enabled
+    patch_officecli_mount
     seed_file "$RUNTIME_DIR/.env" "$SOURCE_DIR/.env.example"
     seed_file "$RUNTIME_DIR/frontend.env" "$SOURCE_DIR/frontend/.env.example"
     if [ ! -f "$RUNTIME_DIR/extensions_config.json" ]; then
@@ -413,6 +452,80 @@ load_images() {
 
 compose_cmd() {
     run_cmd docker compose -p ideer -f "$COMPOSE_FILE" --env-file "$ENV_FILE" "$@"
+}
+
+# Install the bundled shared agents (fault-zeroing, srs-writing) into the
+# runtime data dir and merge their config prerequisites into runtime/config.yaml.
+# The shared-dir install does not require the runtime DB, so it fits the prepare
+# step before first boot.  Skip each agent with IDEER_INSTALL_<NAME>=0, mirroring
+# the pre-refactor behavior.
+install_bundled_agents() {
+    command -v python3 >/dev/null 2>&1 || {
+        warn "python3 not found; skipping bundled agent install"
+        return 0
+    }
+
+    require_file "$ENV_FILE"
+    # shellcheck disable=SC1090
+    . "$ENV_FILE"
+
+    # The env file is the source of truth for the data dir: only trust the
+    # IDEER_HOME it explicitly declares.  A pre-existing env file (e.g. from a
+    # first boot before IDEER_HOME was added) must not inherit an unrelated
+    # IDEER_HOME from the surrounding shell, which would relocate the agents.
+    local runtime_home="$RUNTIME_DIR/data"
+    if grep -qE '^IDEER_HOME=' "$ENV_FILE"; then
+        runtime_home="${IDEER_HOME:-$runtime_home}"
+    fi
+    local config_path="${IDEER_CONFIG_PATH:-$RUNTIME_DIR/config.yaml}"
+    require_file "$config_path"
+
+    if [ "${IDEER_INSTALL_FAULT_ZEROING:-1}" = "0" ]; then
+        log "skipping fault-zeroing agent install"
+    elif [ -d "$SOURCE_DIR/docs/fault-zeroing-agent/agent" ] && [ -f "$SOURCE_DIR/scripts/install_agent.py" ]; then
+        log "installing bundled fault-zeroing agent..."
+        run_cmd env IDEER_HOME="$runtime_home" IDEER_CONFIG_PATH="$config_path" \
+            python3 "$SOURCE_DIR/scripts/install_agent.py" --agent fault-zeroing
+    else
+        warn "fault-zeroing agent source not found in bundle; skipping"
+    fi
+
+    if [ "${IDEER_INSTALL_SRS_WRITING:-1}" = "0" ]; then
+        log "skipping srs-writing agent install"
+    elif [ -d "$SOURCE_DIR/docs/srs-writing-agent/agent" ] && [ -f "$SOURCE_DIR/scripts/install_srs_writing_agent.py" ]; then
+        log "installing bundled srs-writing agent..."
+        if ! run_cmd env IDEER_HOME="$runtime_home" IDEER_CONFIG_PATH="$config_path" \
+            python3 "$SOURCE_DIR/scripts/install_srs_writing_agent.py"; then
+            warn "srs-writing agent install reported issues (see output above); the agent files and config may still be usable"
+        fi
+    else
+        warn "srs-writing agent source not found in bundle; skipping"
+    fi
+}
+
+# Seed the bundled fault-zeroing workflow into the workflow v2 store after the
+# gateway is healthy (the DB only exists after the first boot).  Runs the
+# repository's seed script inside the gateway container, so it needs no Python
+# tooling on the host.  Idempotent; failures are warnings, not fatal.
+seed_bundled_workflows() {
+    [ -f "$SOURCE_DIR/workflows/fault-zeroing.yaml" ] || return 0
+    [ -f "$SOURCE_DIR/scripts/seed_fault_zeroing_workflow.py" ] || return 0
+
+    if ! docker container inspect ideer-gateway >/dev/null 2>&1; then
+        warn "gateway container not running; skipping bundled workflow seed"
+        return 0
+    fi
+
+    log "seeding bundled fault-zeroing workflow..."
+    if run_cmd docker cp "$SOURCE_DIR/workflows/fault-zeroing.yaml" ideer-gateway:/tmp/fault-zeroing.yaml \
+        && run_cmd docker cp "$SOURCE_DIR/scripts/seed_fault_zeroing_workflow.py" ideer-gateway:/tmp/seed_fault_zeroing_workflow.py \
+        && run_cmd docker compose -p ideer -f "$COMPOSE_FILE" --env-file "$ENV_FILE" exec -T gateway \
+            sh -c 'cd /app/backend && PYTHONPATH=. uv run --no-sync python /tmp/seed_fault_zeroing_workflow.py --workflow-path /tmp/fault-zeroing.yaml'; then
+        log "bundled fault-zeroing workflow seeded"
+    else
+        warn "bundled workflow seed failed; run it manually after 'up' with:"
+        warn "  docker compose -p ideer exec gateway sh -c 'cd /app/backend && PYTHONPATH=. uv run --no-sync python /tmp/seed_fault_zeroing_workflow.py --workflow-path /tmp/fault-zeroing.yaml'"
+    fi
 }
 
 http_ok() {
@@ -498,9 +611,13 @@ EOF
 }
 
 prepare_bundle() {
+    local install_agents="${1:-1}"
     extract_source
     seed_runtime
     validate_runtime
+    if [ "$install_agents" = "1" ]; then
+        install_bundled_agents
+    fi
 }
 
 # ---------------------------------------------------------------------------
@@ -543,6 +660,7 @@ case "$COMMAND" in
         fi
         if [ "$DRY_RUN" -eq 0 ]; then
             verify_services
+            seed_bundled_workflows
         fi
         log "deployment complete"
         ;;
@@ -559,11 +677,12 @@ case "$COMMAND" in
         fi
         if [ "$DRY_RUN" -eq 0 ]; then
             verify_services
+            seed_bundled_workflows
         fi
         log "restart complete"
         ;;
     stop|down)
-        prepare_bundle
+        prepare_bundle 0
         if [ -f "$COMPOSE_FILE" ]; then
             compose_cmd down
         else
@@ -571,7 +690,7 @@ case "$COMMAND" in
         fi
         ;;
     status)
-        prepare_bundle
+        prepare_bundle 0
         if [ -f "$COMPOSE_FILE" ]; then
             compose_cmd ps
         else
@@ -579,7 +698,7 @@ case "$COMMAND" in
         fi
         ;;
     logs)
-        prepare_bundle
+        prepare_bundle 0
         if [ -f "$COMPOSE_FILE" ]; then
             if [ -n "${LOG_SERVICE:-}" ]; then
                 compose_cmd logs -f "$LOG_SERVICE"

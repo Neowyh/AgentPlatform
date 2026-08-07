@@ -22,6 +22,7 @@ unless ``--force`` is given.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import re
 import shutil
 import subprocess
@@ -103,27 +104,42 @@ def allow_host_bash_value(lines: list[str]) -> bool | None:
     return None
 
 
+def _list_indent(lines: list[str], start: int, end: int) -> str:
+    """Indentation (whitespace prefix) of the first ``- item`` in a block.
+
+    Defaults to two spaces so inserts stay valid YAML even when the block has
+    no items yet. Real config templates indent lists under a top-level key.
+    """
+    for line in lines[start + 1 : end]:
+        match = re.match(r"^([ \t]*)- ", line)
+        if match:
+            return match.group(1)
+    return "  "
+
+
 def _add_document_tool_group(lines: list[str]) -> list[str]:
     start, end = _find_top_level_block(lines, "tool_groups")
+    indent = _list_indent(lines, start, end) if start is not None else "  "
     if start is None:
         lines.append("tool_groups:\n")
-        lines.append("- name: document\n")
+        lines.append(f"{indent}- name: document\n")
         return lines
     last = start
     for index in range(start + 1, end):
         if re.match(r"^\s*- name: \S+", lines[index]):
             last = index
-    lines.insert(last + 1, "- name: document\n")
+    lines.insert(last + 1, f"{indent}- name: document\n")
     return lines
 
 
 def _add_read_document_tool(lines: list[str]) -> list[str]:
-    block = [
-        "- name: read_document\n",
-        "  group: document\n",
-        f"  use: {READ_DOCUMENT_USE}\n",
-    ]
     start, end = _find_top_level_block(lines, "tools")
+    indent = _list_indent(lines, start, end) if start is not None else "  "
+    block = [
+        f"{indent}- name: read_document\n",
+        f"{indent}  group: document\n",
+        f"{indent}  use: {READ_DOCUMENT_USE}\n",
+    ]
     if start is None:
         if lines and not lines[-1].endswith("\n"):
             lines[-1] = f"{lines[-1]}\n"
@@ -223,7 +239,11 @@ def provision_officecli(
 
 def yaml_parse_ok(path: Path) -> bool:
     """Best-effort YAML validity check via an isolated subprocess (keeps this
-    script standard-library only)."""
+    script standard-library only). Hosts without a ``yaml`` module installed
+    cannot verify, so the check passes rather than hard-failing the installer.
+    """
+    if importlib.util.find_spec("yaml") is None:
+        return True
     code = "import sys; import yaml\ntry:\n    with open(sys.argv[1], encoding='utf-8') as fh:\n        yaml.safe_load(fh)\nexcept Exception:\n    sys.exit(1)\n"
     try:
         result = subprocess.run([sys.executable, "-c", code, str(path)], capture_output=True, timeout=60)

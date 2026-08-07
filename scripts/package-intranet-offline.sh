@@ -225,6 +225,7 @@ tar \
     frontend \
     scripts \
     skills \
+    vendor \
     workflows
 
 log "[6/6] assembling bundle..."

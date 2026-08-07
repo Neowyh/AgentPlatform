@@ -13,6 +13,7 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[4]
 DEPLOY_SCRIPT = REPO_ROOT / "scripts" / "deploy-intranet.sh"
 PACKAGE_SCRIPT = REPO_ROOT / "scripts" / "package-intranet-offline.sh"
+CHECK_SCRIPT = REPO_ROOT / "scripts" / "check-intranet.sh"
 INSTALL_SCRIPT = REPO_ROOT / "scripts" / "install_fault_zeroing_agent.py"
 COMPOSE_FILE = REPO_ROOT / "docker" / "docker-compose.intranet.yaml"
 GUIDE_FILE = REPO_ROOT / "docs" / "deployment" / "禁公网内网离线部署作业指导书.md"
@@ -131,6 +132,15 @@ sandbox:
         "# Fault Zeroing\n",
         encoding="utf-8",
     )
+    (root / "docs" / "srs-writing-agent" / "agent").mkdir(parents=True)
+    (root / "docs" / "srs-writing-agent" / "agent" / "config.yaml").write_text(
+        "name: srs-writing\n",
+        encoding="utf-8",
+    )
+    (root / "docs" / "srs-writing-agent" / "agent" / "SOUL.md").write_text(
+        "# SRS Writing\n",
+        encoding="utf-8",
+    )
     (root / "workflows").mkdir()
     (root / "workflows" / "fault-zeroing.yaml").write_text(
         "name: fault-zeroing\nversion: 1\n",
@@ -142,6 +152,16 @@ sandbox:
         encoding="utf-8",
     )
     _write_executable(root / "scripts" / "install_fault_zeroing_agent.py", INSTALL_SCRIPT.read_text(encoding="utf-8"))
+    _write_executable(
+        root / "scripts" / "install_agent.py",
+        (REPO_ROOT / "scripts" / "install_agent.py").read_text(encoding="utf-8"),
+    )
+    _write_executable(
+        root / "scripts" / "install_srs_writing_agent.py",
+        (REPO_ROOT / "scripts" / "install_srs_writing_agent.py").read_text(encoding="utf-8"),
+    )
+    (root / "vendor" / "officecli").mkdir(parents=True)
+    (root / "vendor" / "officecli" / "officecli").write_text("fake binary\n", encoding="utf-8")
 
 
 def _make_bundle(tmp_path: Path, *, version: str = "test", include_frontend_env: bool = True) -> Path:
@@ -241,20 +261,21 @@ def test_prepare_seeds_valid_runtime_config_and_stable_auth_files(tmp_path: Path
     assert "IDEER_INTERNAL_AUTH_TOKEN=" in env_text
 
 
-def test_prepare_does_not_install_bundled_agent_automatically(tmp_path: Path):
-    """prepare no longer hardcodes fault-zeroing install; install_agent.py is manual."""
+def test_prepare_installs_bundled_shared_agents(tmp_path: Path):
+    """prepare installs the bundled fault-zeroing and srs-writing agents into the shared dir."""
     bundle_root = _make_bundle(tmp_path)
 
     proc = _run_deploy(bundle_root, "prepare", env=_env_with_fake_docker(tmp_path))
 
     assert proc.returncode == 0, proc.stderr
     runtime_dir = bundle_root / "runtime"
-    assert not (runtime_dir / "data" / "agents" / "fault-zeroing").exists()
-    assert "Agent directory:" not in proc.stdout
+    assert (runtime_dir / "data" / "agents" / "fault-zeroing" / "config.yaml").is_file()
+    assert (runtime_dir / "data" / "agents" / "srs-writing" / "config.yaml").is_file()
+    assert "Agent directory:" in proc.stdout
 
 
-def test_prepare_does_not_install_agent_to_any_runtime_dir(tmp_path: Path):
-    """No bundled agent is copied to shared or per-user directories."""
+def test_prepare_installs_agents_shared_but_not_per_user(tmp_path: Path):
+    """Bundled agents go to the shared runtime dir, never into a per-user directory."""
     bundle_root = _make_bundle(tmp_path)
     user_dir = bundle_root / "runtime" / "data" / "users" / "alice"
     user_dir.mkdir(parents=True)
@@ -263,7 +284,9 @@ def test_prepare_does_not_install_agent_to_any_runtime_dir(tmp_path: Path):
 
     assert proc.returncode == 0, proc.stderr
     runtime_dir = bundle_root / "runtime"
-    assert not (runtime_dir / "data" / "agents" / "fault-zeroing").exists()
+    assert (runtime_dir / "data" / "agents" / "fault-zeroing" / "config.yaml").is_file()
+    assert (runtime_dir / "data" / "agents" / "srs-writing" / "config.yaml").is_file()
+    assert not (runtime_dir / "data" / "agents" / "users" / "alice").exists()
     assert not (user_dir / "agents" / "fault-zeroing").exists()
 
 
@@ -416,3 +439,69 @@ def test_intranet_runbook_points_frontend_env_to_runtime_file():
     assert "登录后无法进入主页" in guide
     assert "frontend is healthy: http://127.0.0.1:2026/" in guide
     assert "curl -fsS http://127.0.0.1:2026/" in guide
+
+
+def test_check_script_uses_bundle_version_images_and_runtime_env_contract(tmp_path: Path):
+    bundle_root = _make_bundle(tmp_path)
+    (bundle_root / "config.intranet.yaml").write_text(
+        "models: []\n",
+        encoding="utf-8",
+    )
+    (bundle_root / "env.intranet").write_text(
+        "PORT=2026\nIDEER_GATEWAY_IMAGE=ideer-gateway:test\n",
+        encoding="utf-8",
+    )
+
+    proc = subprocess.run(
+        ["bash", str(CHECK_SCRIPT)],
+        cwd=bundle_root,
+        env=_env_with_fake_docker(tmp_path),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    out = proc.stdout
+    assert "ideer-gateway:test" in out
+    assert "ideer-frontend:test" in out
+    assert "nginx:alpine" in out
+    assert "ideer-gateway:latest" not in out
+    assert "env.intranet" in out
+    assert "docker/.env.intranet" not in out
+    assert "Port 2026" in out
+    assert "PASSED" in out
+
+
+def test_check_script_warns_when_env_file_is_missing(tmp_path: Path):
+    bundle_root = _make_bundle(tmp_path)
+    (bundle_root / "config.intranet.yaml").write_text(
+        "models: []\n",
+        encoding="utf-8",
+    )
+
+    proc = subprocess.run(
+        ["bash", str(CHECK_SCRIPT)],
+        cwd=bundle_root,
+        env=_env_with_fake_docker(tmp_path),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert "env.intranet" in proc.stdout
+    assert "prepare" in proc.stdout
+
+
+def test_guide_documents_bundled_agent_and_workflow_hooks():
+    guide = GUIDE_FILE.read_text(encoding="utf-8")
+
+    assert "installing bundled fault-zeroing agent..." in guide
+    assert "installing bundled srs-writing agent..." in guide
+    assert "agents_api" in guide
+    assert "officecli" in guide
+    assert "IDEER_INSTALL_FAULT_ZEROING=0" in guide
+    assert "IDEER_INSTALL_SRS_WRITING=0" in guide
+    assert "seed" in guide
+    assert "runtime/data/agents/srs-writing" in guide

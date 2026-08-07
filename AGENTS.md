@@ -54,9 +54,9 @@ Developer session artifacts (`task_plan.md`, `progress.md`, `findings.md`, and a
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-GitNexus is configured with a **deer-flow** index. Before relying on it, verify that the index points to the current worktree and matches its HEAD; index statistics are environment-specific and are intentionally not recorded here.
+This project is indexed by GitNexus as **deer-flow** (52225 symbols, 97561 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
-> If the current worktree is absent or any GitNexus tool reports a stale index, run `npx gitnexus analyze` from this worktree first.
+> If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
 ## Always Do
 
