@@ -1,6 +1,6 @@
 # iDeer 用户使用手册
 
-> **版本**: v1.0 | **更新日期**: 2026-06-12
+> **版本**: v1.1 | **更新日期**: 2026-08-07
 
 ---
 
@@ -35,11 +35,11 @@ iDeer 是一个企业级 AI 智能体平台，基于 LangGraph 构建，提供�
 |------|------|
 | **多模型对话** | 支持多种 LLM 模型，提供 Flash/Thinking/Pro/Ultra 四种推理模式 |
 | **智能体（Agent）** | 可创建自定义 AI 助手，配置专属技能、工具和系统提示词 |
-| **工作流（Workflow）** | YAML DSL 定义多步骤自动化流程，支持条件分支、并行、循环和人工审核 |
+| **工作流（Workflow）** | 基于 LangGraph 的声明式图 DSL（schema_version: 2），以节点/边定义自动化流程，支持 Agent/Tool 动作、条件路由、并行汇合、有界循环和人工断点 |
 | **技能系统** | 内置公共技能 + 用户自定义技能，扩展 AI 能力边界 |
 | **工具扩展** | 内置工具 + 社区工具 + MCP 服务器，支持文档解析、代码执行、数据分析 |
 | **文件处理** | 支持 PDF/Word/Excel/PPT 等格式上传、解析和分析 |
-| **RBAC 权限** | 四级角色权限体系（超级管理员 > 部门管理员 > 用户 > 查看者） |
+| **RBAC 权限** | 四级角色权限体系（超级管理员 > 部门管理员 > 用户 > 查看者），资源可见性变更通过申请 + 审批流程完成 |
 
 ### 1.3 适用场景
 
@@ -384,14 +384,26 @@ Agent 是具有专属配置的 AI 助手，可以拥有独立的系统提示词�
 
 ### 9.1 什么是工作流
 
-工作流是基于 YAML DSL 定义的多步骤自动化流程，支持 AI Agent 调用、工具执行、条件分支、并行处理、循环迭代和人工审核。
+工作流是基于 **LangGraph** 的声明式图 DSL（`schema_version: 2`）定义的多节点自动化流程。它通过显式的**节点（nodes）**和**边（edges）**描述执行图，每个 run 固定引用其创建时的定义版本独立执行，支持从断点（checkpoint）恢复。
+
+节点类型：
+
+| 类型 | 说明 |
+|------|------|
+| **action** | 执行动作，仅支持受控的 `agent` 或 `tool` 适配器，禁止嵌入任意 Python 或 LangGraph 配置 |
+| **route** | 条件路由，根据表达式决定后续走向 |
+| **fork** | 静态并行分支，分为多支执行 |
+| **join** | 并行汇合，合并分支结果 |
+| **interrupt** | 人工断点，暂停执行等待审批 |
+
+边可以声明 `max_iterations` 限制形成**有界循环**；节点支持 `retry`（重试）、`preconditions`（前置校验）、`schemas`（写入产物 schema 校验）等声明。
 
 ### 9.2 浏览工作流
 
 ![工作流画廊](screenshots/25-workflows-gallery.png)
 
 - 访问 `/workspace/workflows` 查看所有工作流
-- 卡片展示名称、描述、版本和步骤数
+- 卡片展示名称、描述、版本和节点数
 
 ### 9.3 创建工作流
 
@@ -410,34 +422,48 @@ Agent 是具有专属配置的 AI 助手，可以拥有独立的系统提示词�
 1. 进入工作流编辑页面
 2. 使用 CodeMirror 编辑器编写 YAML
 3. 编辑器支持语法高亮、行号、代码折叠
-4. 系统自动验证 YAML 格式
+4. 系统自动验证 YAML 格式和 schema
 
-**YAML 结构示例**：
+**YAML v2 结构示例**：
 
 ```yaml
+schema_version: 2
 name: data-analysis
 description: 数据分析工作流
-version: "1.0"
 inputs:
-  - name: file_path
+  file_path:
     type: string
     required: true
     description: 数据文件路径
-steps:
+state:
+  report:
+    type: string
+entrypoint: read_data
+nodes:
   - id: read_data
-    type: tool
-    tool: read_document
+    type: action
+    action:
+      kind: tool
+      name: read_document
     params:
       path: "{{inputs.file_path}}"
   - id: analyze
-    type: agent
-    agent: data-analyst
-    prompt: "分析以下数据并生成报告：{{steps.read_data.output}}"
+    type: action
+    action:
+      kind: agent
+      name: data-analyst
+      file_access:
+        read: ["{{inputs.file_path}}"]
+        write: ["/mnt/user-data/outputs"]
+    writes: ["$.state.report"]
   - id: review
-    type: human_review
-    message: "请审核分析报告"
-    approvers:
-      - role: department_admin
+    type: interrupt
+    roles: [department_admin]
+edges:
+  - from: read_data
+    to: analyze
+  - from: analyze
+    to: review
 ```
 
 ### 9.4 运行工作流
@@ -449,16 +475,23 @@ steps:
 3. 点击「执行」开始运行
 4. 实时查看每一步的执行状态（运行中/完成/失败）
 
-### 9.5 人工审核
+运行机制要点：
 
-![人工审核](screenshots/29-workflow-human-review.png)
+- 每次运行固定引用创建时的定义版本（定义不可变），并绑定独立的 checkpoint 命名空间
+- 运行状态与事件通过 SSE 实时推送（`run_started`、`node_started`、`node_completed`、`node_failed`、`interrupted`、`resumed`、`run_completed` 等事件）
+- 断线后可依据事件序号（`after_seq`）无缺口补齐事件
+- 运行由独立的持久化 worker 执行服务，支持断点恢复
 
-工作流中可配置人工审核步骤：
+### 9.5 人工审批（断点）
 
-- 执行到审核步骤时自动暂停
-- 审核者收到审核请求
-- 审核者可以批准或拒绝
-- 根据审核结果决定后续流程
+![人工审批](screenshots/29-workflow-human-review.png)
+
+工作流中通过 `interrupt` 节点设置人工审批断点：
+
+- 执行到 interrupt 节点时自动暂停（进入 `paused` 状态）
+- 只有节点声明 `roles` 中包含的角色可执行审批
+- 审批动作即"继续执行"（resume），无权限的用户会被拒绝（403）
+- 审批通过后工作流继续执行，也可直接取消运行
 
 ### 9.6 运行详情、断点恢复与产物
 
@@ -466,9 +499,9 @@ steps:
 
 - **状态与操作**：顶部展示运行状态（排队中/运行中/已暂停/已完成/失败/已取消）。
   已暂停的运行可以「继续执行」或「取消运行」；排队中、运行中的运行可以取消。
-- **断点恢复**：当节点产物不满足声明（例如 AI 节点声明写入的文件缺失或为空，
-  或配置了人工审批断点）时，运行进入 `paused`。修正数据后点击「继续执行」，
-  系统会重新校验产物，校验通过才继续；也可以直接取消运行。
+- **断点恢复**：当节点产物不满足声明（例如 AI 节点声明写入的文件缺失或为空、
+  前置校验失败、写入产物未通过 schema 校验，或配置了人工审批断点）时，运行进入 `paused`。
+  修正数据后点击「继续执行」，系统会重新校验产物，校验通过才继续；也可以直接取消运行。
 - **产物浏览**：运行详情页底部列出该运行声明写入的产物文件，支持预览
   （JSON/Markdown/SVG 等文本格式）和下载。
 - **事件时间线**：按顺序展示节点开始/完成/失败、断点、恢复、运行结束等事件。
@@ -543,12 +576,14 @@ steps:
 
 ![管理后台](screenshots/36-admin-dashboard.png)
 
-访问 `/workspace/admin`，管理后台显示四项统计卡片：
+访问 `/workspace/admin`，管理后台显示六项统计卡片：
 
-- 用户总数
-- 部门总数
-- Agent 总数
-- 技能总数
+- 用户总数（跳转用户管理）
+- 部门总数（跳转部门管理）
+- 工具总数（跳转工具管理）
+- 待审批申请（跳转审批管理）
+- 资源总数（跳转资源管理）
+- 审计日志（跳转审计日志）
 
 每张卡片可点击跳转到对应的管理页面。
 
@@ -583,16 +618,58 @@ steps:
 
 | 角色 | 权限范围 |
 |------|----------|
-| **super_admin** | 全局管理权限，可管理所有用户、部门和资源 |
-| **department_admin** | 部门级管理权限，可管理本部门用户和资源 |
-| **user** | 普通用户，可创建和管理自己的对话、Agent、工作流 |
-| **viewer** | 只读用户，可查看公开资源但不能创建 |
+| **super_admin** | 全局管理权限，可管理所有用户、部门和资源，可审批所有 visibility 变更申请（全局不超过 2 人） |
+| **department_admin** | 部门级管理权限，可管理本部门用户和资源，可审批本部门的 visibility 变更申请（每个部门不超过 3 人），不可自审自己提交的申请 |
+| **user** | 普通用户，可创建和管理自己的对话、Agent、工作流，可提交 visibility 变更申请 |
+| **viewer** | 只读用户，可浏览可见资源和使用资源，不能创建、编辑、删除、导入、导出，也不能提交审批申请 |
 
 **资源可见性**：
 
-- **私有（private）**: 仅创建者可见
+- **私有（private）**: 仅创建者 + 超级管理员可见
 - **部门内（department）**: 同部门成员可见
 - **公开（public）**: 所有用户可见
+
+**可见性变更流程**：
+
+- 资源的可见性**不能直接修改**，只能由资源创建者（owner）通过「提交申请 → 审批」流程变更
+- 普通用户和部门管理员提交申请后自动进入审批；
+- department 级变更由同部门的 `department_admin` / `super_admin` 审批；public 级变更仅 `super_admin` 可审批
+- 申请可撤回（待审批状态、本人可撤回）
+- 当资源被删除时，相关的待审批申请会自动关闭（状态为「已拒绝」，附注"资源已删除"）
+
+### 11.6 审批管理
+
+> 对应页面 `/workspace/admin/visibility-applications`（可用于查看所有角色提交的可见性变更申请）。
+
+![审批管理](screenshots/47-admin-visibility-applications.png)
+<span style="color:#888">（图为示例数据）</span>
+
+- **申请列表**：展示申请的资源类型、当前可见性、目标可见性、申请人、提交时间、状态（待审批 / 已批准 / 已拒绝 / 已撤回）
+- **批准 / 驳回**：部门管理员可操作本部门的申请，超级管理员可操作全部申请
+- **撤回**：申请人本人可撤回自己的待审批申请
+- 审批记录会写入**审计日志**
+
+### 11.7 审计日志
+
+> 对应页面 `/workspace/admin/audit-logs`。
+
+![审计日志](screenshots/48-admin-audit-logs.png)
+<span style="color:#888">（图为示例数据）</span>
+
+- 按操作类型（创建 / 更新 / 删除 / 审批 / 批准 / 驳回 / 撤回 / 授权 / 撤销）查看系统审计记录
+- 配合资源类型筛选，支持查看指定资源 / 用户的操作痕迹
+- 用于安全审计和权限问题的追溯
+
+### 11.8 资源管理
+
+> 对应页面 `/workspace/admin/resources`。
+
+![资源管理](screenshots/49-admin-resources.png)
+<span style="color:#888">（图为示例数据）</span>
+
+- 跨资源类型（Agent / Workflow / Skill / Tool）总览所有资源
+- 展示资源类型、资源标识、可见性、owner、创建时间
+- 支持按资源类型筛选，便于管理员统一治理
 
 ---
 

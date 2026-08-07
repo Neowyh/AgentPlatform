@@ -6,8 +6,8 @@
 > last-verified: 2026-07-15<br>
 > canonical-path: `docs/manual/README.md`
 
-> **版本**: v1.0  
-> **更新日期**: 2026-06-12
+> **版本**: v1.1  
+> **更新日期**: 2026-08-07
 
 ---
 
@@ -16,6 +16,7 @@
 | 手册 | 说明 | 适用对象 |
 |------|------|----------|
 | [用户使用手册](user-manual.md) | 平台功能操作指南 | 所有用户、管理员 |
+| [使用手册（小白版）](user-manual-simple.md) | 面向新同事的入门手册：按功能点、场景-定义-步骤-推荐写法 | 所有用户、管理员 |
 | [开发运维手册](devops-manual.md) | 架构设计、开发指南、部署运维 | 开发人员、运维人员 |
 
 ---
@@ -66,6 +67,9 @@ npx playwright test ../docs/manual/scripts/generate-screenshots.ts --project=chr
 | 41 | 41-command-palette.png | 任意页面 | Cmd+K 命令面板 |
 | 42 | 42-export-json.png | 聊天页 | 导出 JSON |
 | 45 | 45-error-state.png | 任意页面 | 错误状态展示 |
+| 47 | 47-admin-visibility-applications.png | `/workspace/admin/visibility-applications` | 审批管理（示例数据） |
+| 48 | 48-admin-audit-logs.png | `/workspace/admin/audit-logs` | 审计日志（示例数据） |
+| 49 | 49-admin-resources.png | `/workspace/admin/resources` | 资源管理（示例数据） |
 
 ### 待生成截图
 
@@ -116,7 +120,7 @@ npx playwright test ../docs/manual/scripts/generate-screenshots.ts --project=chr
 
 ### 截图
 
-- [x] 覆盖主要界面（26个截图已生成）
+- [x] 覆盖主要界面（29个截图已生成）
 - [x] 截图清晰、分辨率足够
 - [x] 文件命名规范统一
 - [x] 在手册中正确引用
