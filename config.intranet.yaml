@@ -84,6 +84,7 @@ tool_groups:
   - name: file:read
   - name: file:write
   - name: bash
+  - name: document
 
 # ============================================================================
 # 工具配置
@@ -167,10 +168,13 @@ uploads:
 # ============================================================================
 # 沙箱配置（内网 Docker 部署）
 # ============================================================================
-# 使用容器化沙箱，指向内网镜像仓库
+# 使用容器化沙箱。离线部署时无需手工配置镜像：
+# deploy-intranet.sh prepare 会自动把 image 改写为离线包内已导出的
+# ideer-sandbox:<版本>；若使用自备镜像（先 docker load 到本机），
+# 可自行修改 image 为本地已存在的镜像名。
 sandbox:
   use: ideer.community.aio_sandbox:AioSandboxProvider
-  image: harbor.internal.com/ideer/all-in-one-sandbox:latest
+  image: ideer-sandbox:latest
   # 基础端口（默认 8080）
   # port: 8080
   # 最大并发沙箱数量（默认 3）

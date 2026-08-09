@@ -296,6 +296,38 @@ patch_officecli_mount() {
     run_cmd sed -i "s|host_path: ${current}|host_path: ${bundled_bin}|" "$config"
 }
 
+# When the sandbox image is bundled with the bundle (ideer-sandbox:<version>)
+# and the seeded runtime config still references a placeholder or default
+# sandbox image (an external registry placeholder, the public default, or a
+# version-less ideer-sandbox:latest template value) that is NOT present
+# locally, rewrite sandbox.image to the bundled tag so the AIO sandbox can
+# start offline. Idempotent: a user-customized image name that is already
+# present locally is left untouched.
+patch_sandbox_image() {
+    local config="$RUNTIME_DIR/config.yaml"
+    local image="ideer-sandbox:$VERSION"
+    [ -f "$config" ] || return 0
+
+    docker image inspect "$image" >/dev/null 2>&1 || return 0
+
+    local provider current
+    provider="$(awk '/^sandbox:/{f=1;next} f&&/^[^[:space:]]/{exit} f&&/^[[:space:]]*use:/{sub(/^[[:space:]]*use:[[:space:]]*/,"");print;exit}' "$config" 2>/dev/null || true)"
+    [ "$provider" = "ideer.community.aio_sandbox:AioSandboxProvider" ] || return 0
+
+    current="$(awk '/^sandbox:/{f=1;next} f&&/^[^[:space:]]/{exit} f&&/^[[:space:]]*image:/{sub(/^[[:space:]]*image:[[:space:]]*/,"");gsub(/"/,"");print;exit}' "$config" 2>/dev/null || true)"
+    [ -n "$current" ] || return 0
+    [ "$current" = "$image" ] && return 0
+
+    if echo "$current" | grep -qE 'harbor\.internal\.com|cr\.volces\.com|^ideer-sandbox:'; then
+        if docker image inspect "$current" >/dev/null 2>&1; then
+            return 0
+        fi
+        log "patching sandbox image: $current -> $image"
+        run_cmd sed -i "s|image: ${current}|image: ${image}|" "$config"
+        append_env_if_missing "IDEER_SANDBOX_IMAGE" "$image"
+    fi
+}
+
 load_or_create_secret_file() {
     local secret_file="$1"
     local secret
@@ -369,6 +401,19 @@ validate_runtime() {
             }
         }
     ' "$config_path"
+
+    # Soft check: when the AIO sandbox provider is configured, warn if its
+    # image is not present in the local Docker daemon (sandboxed tools will
+    # fail at runtime). Not fatal: the operator may load the image later or
+    # switch sandbox.use to a provider that needs no image.
+    local sandbox_provider sandbox_image
+    sandbox_provider="$(awk '/^sandbox:/{f=1;next} f&&/^[^[:space:]]/{exit} f&&/^[[:space:]]*use:/{sub(/^[[:space:]]*use:[[:space:]]*/,"");print;exit}' "$config_path" 2>/dev/null || true)"
+    if [ "$sandbox_provider" = "ideer.community.aio_sandbox:AioSandboxProvider" ]; then
+        sandbox_image="$(awk '/^sandbox:/{f=1;next} f&&/^[^[:space:]]/{exit} f&&/^[[:space:]]*image:/{sub(/^[[:space:]]*image:[[:space:]]*/,"");gsub(/"/,"");print;exit}' "$config_path" 2>/dev/null || true)"
+        if [ -n "$sandbox_image" ] && [ "$sandbox_image" != "null" ] && ! docker image inspect "$sandbox_image" >/dev/null 2>&1; then
+            warn "sandbox.image '${sandbox_image}' is not present in the local Docker daemon; sandboxed tools (bash, file writes) will fail until the image is loaded or sandbox.use is changed"
+        fi
+    fi
 }
 
 append_env_if_missing() {
@@ -438,6 +483,8 @@ EOF
     append_env_if_missing "BETTER_AUTH_SECRET" "$BETTER_AUTH_SECRET_VALUE"
     append_env_if_missing "IDEER_INTERNAL_AUTH_TOKEN" "$IDEER_INTERNAL_AUTH_TOKEN_VALUE"
     append_env_if_missing "IDEER_NETWORK_MODE" "offline"
+
+    patch_sandbox_image
 }
 
 load_images() {

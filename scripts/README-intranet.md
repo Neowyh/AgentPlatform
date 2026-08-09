@@ -15,10 +15,15 @@ scripts/package-intranet-offline.sh --version <version-tag>
 ```
 
 This produces a self-contained bundle in `dist/intranet/ideer-<version>/` containing:
-- Docker images (gateway, frontend, nginx)
+- Docker images (gateway, frontend, nginx, and the sandbox image as `ideer-sandbox:<version>`)
 - Source code archive
 - Deploy and pre-check scripts
 - Config templates
+
+The sandbox image (`ideer-sandbox:<version>`) is bundled by default so the AI
+sandbox (file writes, bash execution) works offline. Override the source image
+with `--sandbox-image <image>` or skip it entirely with `--no-sandbox` (not
+recommended -- sandboxed tools will be unavailable).
 
 ### On the Intranet Target Machine
 
@@ -76,7 +81,9 @@ models:
 
 If using a self-hosted vLLM, Ollama, or similar service, point `base_url` to its OpenAI-compatible endpoint.
 
-`prepare` also enables `agents_api`, points the officecli tool mount at the bundled `vendor/officecli/officecli` binary (when present), and installs the bundled shared agents (`fault-zeroing`, `srs-writing`) into `runtime/data/agents/`. Disable an agent for the session with `IDEER_INSTALL_FAULT_ZEROING=0` or `IDEER_INSTALL_SRS_WRITING=0`.
+`prepare` also enables `agents_api`, points the officecli tool mount at the bundled `vendor/officecli/officecli` binary (when present), installs the bundled shared agents (`fault-zeroing`, `srs-writing`) into `runtime/data/agents/`, and rewrites `sandbox.image` in `runtime/config.yaml` to the bundled `ideer-sandbox:<version>` tag when the sandbox image is present locally (a user-configured image name that already exists locally is left untouched). Disable an agent for the session with `IDEER_INSTALL_FAULT_ZEROING=0` or `IDEER_INSTALL_SRS_WRITING=0`.
+
+No manual sandbox configuration is required on the normal path: `prepare` points `sandbox.image` at the bundled image automatically.
 
 ### 3. Run Pre-check
 
@@ -184,6 +191,18 @@ If Docker reports missing images:
 ./deploy-intranet.sh load
 ```
 
+If the sandbox reports `image ... was not found` when the AI writes files or
+runs commands, the sandbox image is missing or `sandbox.image` points at a
+locally absent name:
+```bash
+docker images | grep sandbox
+grep -n -A3 '^sandbox:' runtime/config.yaml
+```
+Fix by re-loading the images tar (then `./deploy-intranet.sh restart` to let
+`prepare` rewrite `sandbox.image`), by `docker load`ing a custom sandbox image
+and setting `sandbox.image` to it, or by switching `sandbox.use` to
+`ideer.sandbox.local:LocalSandboxProvider` (no container isolation).
+
 ### Full reset
 
 To completely start over:
@@ -204,10 +223,13 @@ docker system prune -f
 
 ## Architecture
 
-The intranet deployment runs three containers:
+The intranet deployment runs four containers:
 
 - **nginx** -- Reverse proxy on the configured port (default 2026)
 - **frontend** -- Next.js application on port 3000 (internal)
 - **gateway** -- Python backend API on port 8001 (internal)
+- **sandbox** (on demand) -- AIO sandbox containers started by the gateway
+  through the host Docker socket, using the bundled `ideer-sandbox:<version>`
+  image
 
 All containers communicate over an internal Docker bridge network (`ideer`).

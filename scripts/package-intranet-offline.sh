@@ -11,6 +11,11 @@ Options:
   --version <value>       Bundle version tag. Default: YYYYMMDD-<git short hash>
   --output-dir <path>     Output directory. Default: dist/intranet/ideer-<version>
   --platform <value>      Build platform. Default: linux/amd64
+  --sandbox-image <value> Sandbox container image to bundle (default:
+                          enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:latest).
+                          Retagged as ideer-sandbox:<version> inside the bundle.
+  --no-sandbox            Skip bundling the sandbox image (deploy steps will
+                          warn unless a sandbox image is provided separately)
   --force                 Remove the output directory if it already exists
   --no-cache              Rebuild Docker images without using cache
   --require-clean         Fail if the git worktree contains uncommitted changes
@@ -33,9 +38,13 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 VERSION=""
 OUTPUT_DIR=""
 PLATFORM="linux/amd64"
+SANDBOX_IMAGE=""
+NO_SANDBOX=0
 FORCE=0
 NO_CACHE=0
 REQUIRE_CLEAN=0
+
+DEFAULT_SANDBOX_IMAGE="enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:latest"
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -53,6 +62,15 @@ while [ "$#" -gt 0 ]; do
             [ "$#" -ge 2 ] || die "--platform requires a value"
             PLATFORM="$2"
             shift 2
+            ;;
+        --sandbox-image)
+            [ "$#" -ge 2 ] || die "--sandbox-image requires a value"
+            SANDBOX_IMAGE="$2"
+            shift 2
+            ;;
+        --no-sandbox)
+            NO_SANDBOX=1
+            shift
             ;;
         --force)
             FORCE=1
@@ -140,6 +158,8 @@ mkdir -p "$OUTPUT_DIR"
 GATEWAY_IMAGE="ideer-gateway:$VERSION"
 FRONTEND_IMAGE="ideer-frontend:$VERSION"
 NGINX_IMAGE="nginx:alpine"
+BUNDLED_SANDBOX_TAG="ideer-sandbox:$VERSION"
+INCLUDE_SANDBOX=0
 SOURCE_TAR="$OUTPUT_DIR/ideer-source-$VERSION.tar.gz"
 IMAGES_TAR="$OUTPUT_DIR/ideer-images-$VERSION.tar"
 MANIFEST_FILE="$OUTPUT_DIR/MANIFEST.txt"
@@ -161,7 +181,7 @@ if [ "$NO_CACHE" -eq 1 ]; then
     BUILD_CACHE_ARGS+=(--no-cache)
 fi
 
-log "[1/6] building gateway image..."
+log "[1/7] building gateway image..."
 docker build \
     "${BUILD_CACHE_ARGS[@]}" \
     --platform "$PLATFORM" \
@@ -173,7 +193,7 @@ docker build \
     -t "$GATEWAY_IMAGE" \
     "$REPO_ROOT"
 
-log "[2/6] building frontend image..."
+log "[2/7] building frontend image..."
 docker build \
     "${BUILD_CACHE_ARGS[@]}" \
     --platform "$PLATFORM" \
@@ -184,13 +204,34 @@ docker build \
     -t "$FRONTEND_IMAGE" \
     "$REPO_ROOT"
 
-log "[3/6] pulling nginx image..."
+log "[3/7] pulling nginx image..."
 docker pull "$NGINX_IMAGE"
 
-log "[4/6] saving docker images..."
-docker save -o "$IMAGES_TAR" "$GATEWAY_IMAGE" "$FRONTEND_IMAGE" "$NGINX_IMAGE"
+log "[4/7] preparing sandbox image..."
+if [ "$NO_SANDBOX" -eq 1 ]; then
+    log "  sandbox image disabled (--no-sandbox); bundle will not include a sandbox image"
+else
+    SANDBOX_IMAGE="${SANDBOX_IMAGE:-$DEFAULT_SANDBOX_IMAGE}"
+    log "  pulling: $SANDBOX_IMAGE"
+    docker pull "$SANDBOX_IMAGE"
+    local_arch="$(docker image inspect "$SANDBOX_IMAGE" --format '{{.Architecture}}' 2>/dev/null || true)"
+    expected_arch="${PLATFORM#linux/}"
+    if [ -n "$local_arch" ] && [ -n "$expected_arch" ] && [ "$local_arch" != "$expected_arch" ]; then
+        warn "sandbox image architecture '$local_arch' does not match --platform '$PLATFORM'; target machines must load it on $local_arch hosts"
+    fi
+    log "  tagging as $BUNDLED_SANDBOX_TAG"
+    docker tag "$SANDBOX_IMAGE" "$BUNDLED_SANDBOX_TAG"
+    INCLUDE_SANDBOX=1
+fi
 
-log "[5/6] packing source archive..."
+log "[5/7] saving docker images..."
+IMAGES_TO_SAVE=("$GATEWAY_IMAGE" "$FRONTEND_IMAGE" "$NGINX_IMAGE")
+if [ "$INCLUDE_SANDBOX" -eq 1 ]; then
+    IMAGES_TO_SAVE+=("$BUNDLED_SANDBOX_TAG")
+fi
+docker save -o "$IMAGES_TAR" "${IMAGES_TO_SAVE[@]}"
+
+log "[6/7] packing source archive..."
 tar \
     -C "$REPO_ROOT" \
     --exclude='.git' \
@@ -228,7 +269,7 @@ tar \
     vendor \
     workflows
 
-log "[6/6] assembling bundle..."
+log "[7/7] assembling bundle..."
 cp "$GUIDE_FILE" "$OUTPUT_DIR/$GUIDE_BASENAME"
 cp "$DEPLOY_SCRIPT_FILE" "$OUTPUT_DIR/$DEPLOY_BASENAME"
 cp "$CHECK_SCRIPT_FILE" "$OUTPUT_DIR/$CHECK_BASENAME"
@@ -245,6 +286,15 @@ fi
 GATEWAY_DIGEST="$(docker image inspect "$GATEWAY_IMAGE" --format '{{.Id}}' 2>/dev/null | cut -c8-19 || echo 'unknown')"
 FRONTEND_DIGEST="$(docker image inspect "$FRONTEND_IMAGE" --format '{{.Id}}' 2>/dev/null | cut -c8-19 || echo 'unknown')"
 NGINX_DIGEST="$(docker image inspect "$NGINX_IMAGE" --format '{{.Id}}' 2>/dev/null | cut -c8-19 || echo 'unknown')"
+if [ "$INCLUDE_SANDBOX" -eq 1 ]; then
+    SANDBOX_DIGEST="$(docker image inspect "$BUNDLED_SANDBOX_TAG" --format '{{.Id}}' 2>/dev/null | cut -c8-19 || echo 'unknown')"
+    SANDBOX_SOURCE_NOTE=" (source: $SANDBOX_IMAGE)"
+    SANDBOX_SOURCE_LINE="  - Source image for the sandbox: $SANDBOX_IMAGE"
+else
+    SANDBOX_DIGEST="not bundled"
+    SANDBOX_SOURCE_NOTE=" (not bundled; deployment must supply a sandbox image or use a local provider)"
+    SANDBOX_SOURCE_LINE=""
+fi
 
 cat > "$MANIFEST_FILE" <<EOF
 iDeer Intranet Offline Bundle
@@ -258,6 +308,7 @@ Docker Images:
   - $GATEWAY_IMAGE (digest: $GATEWAY_DIGEST)
   - $FRONTEND_IMAGE (digest: $FRONTEND_DIGEST)
   - $NGINX_IMAGE (digest: $NGINX_DIGEST)
+  - $BUNDLED_SANDBOX_TAG (digest: $SANDBOX_DIGEST)$SANDBOX_SOURCE_NOTE
 
 Files:
   - $(basename "$IMAGES_TAR")        (Docker images archive)
@@ -276,6 +327,14 @@ Deployment Steps:
   3. Run: ./deploy-intranet.sh up (deploy and start services)
   4. Access http://localhost:2026 (or the configured port)
 
+Notes:
+  - deploy-intranet.sh prepare automatically rewrites sandbox.image in
+    runtime/config.yaml to $BUNDLED_SANDBOX_TAG when the sandbox image is
+    bundled. No manual sandbox configuration is required.
+  - When the sandbox image is not bundled, either load a sandbox image
+    manually and set sandbox.image to a locally present name, or switch
+    sandbox.use to a provider that needs no image (local).
+$SANDBOX_SOURCE_LINE
 For details, see the deployment guide included in this bundle.
 EOF
 

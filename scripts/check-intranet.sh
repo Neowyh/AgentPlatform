@@ -38,6 +38,15 @@ else
 fi
 echo "[3/8] Docker images (version $VERSION)..."
 REQUIRED_IMAGES=("ideer-frontend:$VERSION" "ideer-gateway:$VERSION" "nginx:alpine")
+# When prepare already generated env.intranet and bundled a sandbox image,
+# verify the sandbox image is loaded too (WARNING level, so bundles without
+# a sandbox image or local-provider setups are not treated as errors).
+if [ -f "env.intranet" ]; then
+    SANDBOX_IMAGE="$(grep -E '^IDEER_SANDBOX_IMAGE=' env.intranet | tail -1 | cut -d= -f2 || true)"
+    if [ -n "$SANDBOX_IMAGE" ]; then
+        REQUIRED_IMAGES+=("$SANDBOX_IMAGE")
+    fi
+fi
 for img in "${REQUIRED_IMAGES[@]}"; do
     echo -n "  - $img... "
     if docker image inspect "$img" &>/dev/null; then
