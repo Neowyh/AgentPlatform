@@ -219,6 +219,41 @@ class TestFromFile:
                 cfg = ExtensionsConfig.from_file()
                 assert cfg.mcp_servers["s"].url == "https://resolved.com"
 
+    def test_disabled_mcp_server_does_not_require_missing_environment_variable(self, tmp_path):
+        data = {
+            "mcpServers": {
+                "github": {
+                    "enabled": False,
+                    "env": {"GITHUB_TOKEN": "$GITHUB_TOKEN"},
+                }
+            }
+        }
+        p = tmp_path / "ext.json"
+        p.write_text(json.dumps(data))
+
+        with patch.dict(os.environ, {}, clear=True):
+            with patch.object(ExtensionsConfig, "resolve_config_path", return_value=p):
+                cfg = ExtensionsConfig.from_file()
+
+        assert cfg.mcp_servers["github"].enabled is False
+
+    def test_enabled_mcp_server_still_requires_missing_environment_variable(self, tmp_path):
+        data = {
+            "mcpServers": {
+                "github": {
+                    "enabled": True,
+                    "env": {"GITHUB_TOKEN": "$GITHUB_TOKEN"},
+                }
+            }
+        }
+        p = tmp_path / "ext.json"
+        p.write_text(json.dumps(data))
+
+        with patch.dict(os.environ, {}, clear=True):
+            with patch.object(ExtensionsConfig, "resolve_config_path", return_value=p):
+                with pytest.raises(RuntimeError, match="Required environment variable 'GITHUB_TOKEN' is not set"):
+                    ExtensionsConfig.from_file()
+
 
 # ---------------------------------------------------------------------------
 # ExtensionsConfig — get_enabled_mcp_servers / is_skill_enabled

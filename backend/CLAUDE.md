@@ -244,6 +244,8 @@ Config values starting with `$` are resolved as environment variables (e.g., `$O
 
 MCP servers and skills are configured together in `extensions_config.json` in project root:
 
+Environment variables referenced by an MCP server are required only when that server is enabled. Disabled servers may keep unresolved credential placeholders in the configuration, which allows offline deployments to start without credentials for unused integrations.
+
 Configuration priority:
 1. Explicit `config_path` argument
 2. `IDEER_EXTENSIONS_CONFIG_PATH` environment variable

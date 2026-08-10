@@ -144,12 +144,28 @@ class ExtensionsConfig(BaseModel):
         try:
             with open(resolved_path, encoding="utf-8") as f:
                 config_data = json.load(f)
-            config_data = cls.resolve_env_variables(config_data)
+            config_data = cls._resolve_config_env_variables(config_data)
             return cls.model_validate(config_data)
         except json.JSONDecodeError as e:
             raise ValueError(f"Extensions config file at {resolved_path} is not valid JSON: {e}") from e
         except Exception as e:
             raise RuntimeError(f"Failed to load extensions config from {resolved_path}: {e}") from e
+
+    @classmethod
+    def _resolve_config_env_variables(cls, config: Any) -> Any:
+        """Resolve config environment variables while ignoring disabled MCP servers."""
+        if not isinstance(config, dict):
+            return cls.resolve_env_variables(config)
+
+        resolved_config = {}
+        for key, value in config.items():
+            if key == "mcpServers" and isinstance(value, dict):
+                resolved_config[key] = {
+                    server_name: server_config if isinstance(server_config, dict) and server_config.get("enabled", True) is False else cls.resolve_env_variables(server_config) for server_name, server_config in value.items()
+                }
+            else:
+                resolved_config[key] = cls.resolve_env_variables(value)
+        return resolved_config
 
     @classmethod
     def resolve_env_variables(cls, config: Any) -> Any:
