@@ -48,6 +48,10 @@ vi.mock("@/core/streamdown", () => ({
   streamdownPlugins: {
     remarkPlugins: [],
   },
+  preprocessStreamdownMarkdown: (content: string) =>
+    content === '```mermaid\nA -- "label" -.-> B\n```'
+      ? '```mermaid\nA -. "label" .-> B\n```'
+      : content,
 }));
 
 vi.mock("@/components/workspace/citations/citation-link", () => ({
@@ -99,6 +103,20 @@ describe("MarkdownContent", () => {
     );
     expect(screen.getByTestId("message-response")).toBeInTheDocument();
     expect(screen.getByText("Hello world")).toBeInTheDocument();
+  });
+
+  test("normalizes Mermaid markdown before rendering", () => {
+    render(
+      <MarkdownContent
+        content={'```mermaid\nA -- "label" -.-> B\n```'}
+        isLoading={false}
+        rehypePlugins={defaultRehypePlugins}
+      />,
+    );
+
+    expect(
+      screen.getByText('```mermaid A -. "label" .-> B ```'),
+    ).toBeInTheDocument();
   });
 
   test("returns null when content is empty", () => {
@@ -239,6 +257,7 @@ describe("MarkdownContent a component", () => {
       streamdownPlugins: {
         remarkPlugins: [],
       },
+      preprocessStreamdownMarkdown: (content: string) => content,
     }));
 
     vi.doMock("@/components/workspace/citations/citation-link", () => ({

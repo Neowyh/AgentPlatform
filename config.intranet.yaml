@@ -168,19 +168,12 @@ uploads:
 # ============================================================================
 # 沙箱配置（内网 Docker 部署）
 # ============================================================================
-# 使用容器化沙箱。离线部署时无需手工配置镜像：
-# deploy-intranet.sh prepare 会自动把 image 改写为离线包内已导出的
-# ideer-sandbox:<版本>；若使用自备镜像（先 docker load 到本机），
-# 可自行修改 image 为本地已存在的镜像名。
+# 默认使用本地 provider，因此离线包不依赖额外 sandbox 镜像。
+# 为避免在 gateway 容器中执行宿主机命令，bash 默认关闭；需要容器化
+# sandbox 的部署可自行改为 AioSandboxProvider 并显式打包 --sandbox-image。
 sandbox:
-  use: ideer.community.aio_sandbox:AioSandboxProvider
-  image: ideer-sandbox:latest
-  # 基础端口（默认 8080）
-  # port: 8080
-  # 最大并发沙箱数量（默认 3）
-  # replicas: 3
-  # 容器名称前缀
-  # container_prefix: ideer-sandbox
+  use: ideer.sandbox.local:LocalSandboxProvider
+  allow_host_bash: false
 
   # 工具输出截断限制（字符数）
   bash_output_max_chars: 20000

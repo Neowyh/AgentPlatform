@@ -22,6 +22,7 @@ repos:
         name: eslint (frontend)
         entry: bash -c 'cd frontend && npx eslint --fix "${@/#frontend\//}"' --
         language: system
+        require_serial: true
         types_or: [javascript, tsx, ts]
         files: ^frontend/
 
@@ -29,6 +30,7 @@ repos:
         name: prettier (frontend)
         entry: bash -c 'cd frontend && npx prettier --write "${@/#frontend\//}"' --
         language: system
+        require_serial: true
         files: ^frontend/
         types_or: [javascript, tsx, ts, json, css]
 

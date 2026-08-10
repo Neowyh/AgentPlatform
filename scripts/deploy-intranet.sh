@@ -26,6 +26,8 @@ Options:
 
 Environment:
   IDEER_BUNDLE_ROOT, IDEER_VERSION, IDEER_NO_LOAD
+  IDEER_COMPOSE_PROJECT, IDEER_CONTAINER_PREFIX override the Docker Compose
+    project and container-name prefix (both default to ideer).
   IDEER_ADMIN_EMAIL, IDEER_ADMIN_PASSWORD override the auto-created super admin
     credentials (default: super_admin@test.com / super_admin@test.com)
   IDEER_INSTALL_FAULT_ZEROING=0 skips installing the bundled fault-zeroing agent
@@ -58,6 +60,8 @@ NO_LOAD="${IDEER_NO_LOAD:-0}"
 COMMAND="up"
 SKIP_CHECK=0
 DRY_RUN=0
+COMPOSE_PROJECT="${IDEER_COMPOSE_PROJECT:-ideer}"
+GATEWAY_CONTAINER="${IDEER_CONTAINER_PREFIX:-ideer}-gateway"
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -500,7 +504,7 @@ load_images() {
 }
 
 compose_cmd() {
-    run_cmd docker compose -p ideer -f "$COMPOSE_FILE" --env-file "$ENV_FILE" "$@"
+    run_cmd docker compose -p "$COMPOSE_PROJECT" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" "$@"
 }
 
 # POST a JSON body and print the HTTP status code.  Uses curl when available
@@ -647,7 +651,7 @@ install_admin_private_resources() {
     elif [ -d "$SOURCE_DIR/docs/srs-writing-agent/agent" ] && [ -f "$SOURCE_DIR/scripts/install_srs_writing_agent.py" ]; then
         log "installing bundled srs-writing agent for super admin (private)..."
         if ! run_cmd env IDEER_HOME="$runtime_home" IDEER_CONFIG_PATH="$config_path" \
-            python3 "$SOURCE_DIR/scripts/install_srs_writing_agent.py" --owner super-admin; then
+            python3 "$SOURCE_DIR/scripts/install_srs_writing_agent.py" --owner super-admin --no-host-bash; then
             warn "srs-writing agent install failed (see output above)"
             resource_install_failed=1
         fi
@@ -665,11 +669,11 @@ install_admin_private_resources() {
         if [ "${IDEER_INSTALL_SRS_WRITING:-1}" != "0" ]; then
             agent_seed_args="$agent_seed_args --agent srs-writing"
         fi
-        if ! docker container inspect ideer-gateway >/dev/null 2>&1; then
+        if ! docker container inspect "$GATEWAY_CONTAINER" >/dev/null 2>&1; then
             warn "gateway container not running; cannot seed custom skill ownership"
             resource_install_failed=1
-        elif ! run_cmd docker cp "$SOURCE_DIR/scripts/seed_custom_skill_owners.py" ideer-gateway:/tmp/seed_custom_skill_owners.py \
-            || ! run_cmd docker compose -p ideer -f "$COMPOSE_FILE" --env-file "$ENV_FILE" exec -T gateway \
+        elif ! run_cmd docker cp "$SOURCE_DIR/scripts/seed_custom_skill_owners.py" "$GATEWAY_CONTAINER":/tmp/seed_custom_skill_owners.py \
+            || ! run_cmd docker compose -p "$COMPOSE_PROJECT" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" exec -T gateway \
                 sh -c 'cd /app/backend && PYTHONPATH=. uv run --no-sync python /tmp/seed_custom_skill_owners.py --db /app/backend/.ideer/data/ideer.db --skills-dir /app/skills/custom --owner '"$admin_id$agent_seed_args"; then
             warn "custom skill ownership seeding failed"
             resource_install_failed=1
@@ -691,7 +695,7 @@ seed_bundled_workflows() {
     [ -f "$SOURCE_DIR/workflows/fault-zeroing.yaml" ] || return 0
     [ -f "$SOURCE_DIR/scripts/seed_fault_zeroing_workflow.py" ] || return 0
 
-    if ! docker container inspect ideer-gateway >/dev/null 2>&1; then
+    if ! docker container inspect "$GATEWAY_CONTAINER" >/dev/null 2>&1; then
         warn "gateway container not running; skipping bundled workflow seed"
         return 0
     fi
@@ -704,14 +708,14 @@ seed_bundled_workflows() {
     fi
 
     log "seeding bundled fault-zeroing workflow (owner: $created_by)..."
-    if run_cmd docker cp "$SOURCE_DIR/workflows/fault-zeroing.yaml" ideer-gateway:/tmp/fault-zeroing.yaml \
-        && run_cmd docker cp "$SOURCE_DIR/scripts/seed_fault_zeroing_workflow.py" ideer-gateway:/tmp/seed_fault_zeroing_workflow.py \
-        && run_cmd docker compose -p ideer -f "$COMPOSE_FILE" --env-file "$ENV_FILE" exec -T gateway \
+    if run_cmd docker cp "$SOURCE_DIR/workflows/fault-zeroing.yaml" "$GATEWAY_CONTAINER":/tmp/fault-zeroing.yaml \
+        && run_cmd docker cp "$SOURCE_DIR/scripts/seed_fault_zeroing_workflow.py" "$GATEWAY_CONTAINER":/tmp/seed_fault_zeroing_workflow.py \
+        && run_cmd docker compose -p "$COMPOSE_PROJECT" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" exec -T gateway \
             sh -c 'cd /app/backend && PYTHONPATH=. uv run --no-sync python /tmp/seed_fault_zeroing_workflow.py --workflow-path /tmp/fault-zeroing.yaml --created-by '"$created_by"; then
         log "bundled fault-zeroing workflow seeded"
     else
         warn "bundled workflow seed failed; run it manually after 'up' with:"
-        warn "  docker compose -p ideer exec gateway sh -c 'cd /app/backend && PYTHONPATH=. uv run --no-sync python /tmp/seed_fault_zeroing_workflow.py --workflow-path /tmp/fault-zeroing.yaml --created-by '"$created_by"'"
+        warn "  docker compose -p $COMPOSE_PROJECT exec gateway sh -c 'cd /app/backend && PYTHONPATH=. uv run --no-sync python /tmp/seed_fault_zeroing_workflow.py --workflow-path /tmp/fault-zeroing.yaml --created-by '"$created_by"'"
     fi
 }
 
@@ -792,7 +796,7 @@ If the deployment failed, you can recover using these steps:
    ./deploy-intranet.sh up
 
 6. If Docker containers are stuck:
-   docker compose -p ideer down --remove-orphans
+   docker compose -p ${IDEER_COMPOSE_PROJECT:-ideer} down --remove-orphans
    docker system prune -f
 EOF
 }

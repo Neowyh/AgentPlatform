@@ -2,7 +2,7 @@ services:
   nginx:
     image: ${NGINX_IMAGE:-nginx:alpine}
     pull_policy: never
-    container_name: ideer-nginx
+    container_name: ${IDEER_CONTAINER_PREFIX:-ideer}-nginx
     ports:
       - "${PORT:-2026}:2026"
     volumes:
@@ -25,7 +25,7 @@ services:
   frontend:
     image: ${IDEER_FRONTEND_IMAGE:-ideer-frontend:latest}
     pull_policy: never
-    container_name: ideer-frontend
+    container_name: ${IDEER_CONTAINER_PREFIX:-ideer}-frontend
     environment:
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
       - IDEER_INTERNAL_GATEWAY_BASE_URL=http://gateway:8001
@@ -43,7 +43,7 @@ services:
   gateway:
     image: ${IDEER_GATEWAY_IMAGE:-ideer-gateway:latest}
     pull_policy: never
-    container_name: ideer-gateway
+    container_name: ${IDEER_CONTAINER_PREFIX:-ideer}-gateway
     # Runs and stream buffers are process-local while stream_bridge.type=memory.
     # Keep offline Docker single-worker by default so stream reconnect/join
     # requests hit the same worker that owns the active run.
@@ -83,7 +83,7 @@ services:
   workflow-worker:
     image: ${IDEER_GATEWAY_IMAGE:-ideer-gateway:latest}
     pull_policy: never
-    container_name: ideer-workflow-worker
+    container_name: ${IDEER_CONTAINER_PREFIX:-ideer}-workflow-worker
     command: sh -c "cd backend && PYTHONPATH=. uv run --no-sync python -m app.workflow_worker"
     volumes:
       - ${IDEER_CONFIG_PATH}:/app/backend/config.yaml:ro

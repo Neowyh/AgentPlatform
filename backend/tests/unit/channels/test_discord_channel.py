@@ -772,7 +772,7 @@ class TestCreateThread:
 
         msg = _make_mock_message(channel_type=voice_type)
 
-        with caplog.at_level(logging.INFO):
+        with caplog.at_level(logging.INFO, logger="app.channels.discord"):
             result = await ch._create_thread(msg)
         assert result is None
         assert "does not support threads" in caplog.text

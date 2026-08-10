@@ -17,6 +17,7 @@ CHECK_SCRIPT = REPO_ROOT / "scripts" / "check-intranet.sh"
 INSTALL_SCRIPT = REPO_ROOT / "scripts" / "install_fault_zeroing_agent.py"
 COMPOSE_FILE = REPO_ROOT / "docker" / "docker-compose.intranet.yaml"
 GUIDE_FILE = REPO_ROOT / "docs" / "deployment" / "禁公网内网离线部署作业指导书.md"
+INTRANET_CONFIG_FILE = REPO_ROOT / "config.intranet.yaml"
 
 
 def _write_executable(path: Path, content: str) -> None:
@@ -209,12 +210,12 @@ def test_packaged_deploy_script_defaults_to_its_bundle_directory(tmp_path: Path)
 def test_private_skill_seed_runs_inside_gateway_container(tmp_path: Path):
     script = DEPLOY_SCRIPT.read_text(encoding="utf-8")
 
-    assert 'docker cp "$SOURCE_DIR/scripts/seed_custom_skill_owners.py" ideer-gateway:/tmp/seed_custom_skill_owners.py' in script
+    assert 'docker cp "$SOURCE_DIR/scripts/seed_custom_skill_owners.py" "$GATEWAY_CONTAINER":/tmp/seed_custom_skill_owners.py' in script
     assert "--db /app/backend/.ideer/data/ideer.db" in script
     assert "--skills-dir /app/skills/custom" in script
     assert "--agent fault-zeroing" in script
     assert "--agent srs-writing" in script
-    assert 'docker compose -p ideer -f "$COMPOSE_FILE" --env-file "$ENV_FILE" exec -T gateway' in script
+    assert 'docker compose -p "$COMPOSE_PROJECT" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" exec -T gateway' in script
     assert '--db "$runtime_home/data/ideer.db"' not in script
 
 
@@ -321,6 +322,7 @@ def test_deploy_script_wires_admin_bootstrap_and_private_resource_steps():
     assert "install_agent.py" in script
     assert "install_srs_writing_agent.py" in script
     assert "--owner super-admin" in script
+    assert 'install_srs_writing_agent.py" --owner super-admin --no-host-bash' in script
     assert "seed_custom_skill_owners.py" in script
     assert "cleanup_legacy_shared_agent" in script
     assert "removing legacy shared agent copy" in script
@@ -450,10 +452,35 @@ def test_intranet_compose_uses_runtime_env_contract_and_internal_token():
     assert "IDEER_INTERNAL_AUTH_TOKEN=${IDEER_INTERNAL_AUTH_TOKEN}" in compose
 
 
+def test_intranet_compose_allows_an_isolated_container_prefix():
+    compose = COMPOSE_FILE.read_text(encoding="utf-8")
+
+    assert "${IDEER_CONTAINER_PREFIX:-ideer}-nginx" in compose
+    assert "${IDEER_CONTAINER_PREFIX:-ideer}-frontend" in compose
+    assert "${IDEER_CONTAINER_PREFIX:-ideer}-gateway" in compose
+    assert "${IDEER_CONTAINER_PREFIX:-ideer}-workflow-worker" in compose
+
+
+def test_intranet_config_uses_local_sandbox_without_host_bash():
+    config = yaml.safe_load(INTRANET_CONFIG_FILE.read_text(encoding="utf-8"))
+
+    assert config["sandbox"]["use"] == "ideer.sandbox.local:LocalSandboxProvider"
+    assert config["sandbox"]["allow_host_bash"] is False
+    assert "image" not in config["sandbox"]
+
+
 def test_intranet_gateway_startup_does_not_sync_dependencies():
     compose = COMPOSE_FILE.read_text(encoding="utf-8")
 
     assert "uv run --no-sync uvicorn app.gateway.app:app" in compose
+
+
+def test_intranet_deploy_supports_an_isolated_compose_project():
+    script = DEPLOY_SCRIPT.read_text(encoding="utf-8")
+
+    assert 'COMPOSE_PROJECT="${IDEER_COMPOSE_PROJECT:-ideer}"' in script
+    assert 'GATEWAY_CONTAINER="${IDEER_CONTAINER_PREFIX:-ideer}-gateway"' in script
+    assert 'docker compose -p "$COMPOSE_PROJECT" -f "$COMPOSE_FILE"' in script
 
 
 def test_intranet_runbook_points_frontend_env_to_runtime_file():

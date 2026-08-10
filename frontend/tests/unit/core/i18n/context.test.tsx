@@ -75,6 +75,27 @@ describe("I18nProvider", () => {
     expect(screen.getByTestId("locale").textContent).toBe("zh-CN");
   });
 
+  it("normalizes a short locale cookie on mount", () => {
+    let cookieValue = "locale=zh";
+    Object.defineProperty(Document.prototype, "cookie", {
+      get() {
+        return cookieValue;
+      },
+      set(value: string) {
+        cookieValue = value;
+      },
+      configurable: true,
+    });
+
+    render(
+      <I18nProvider initialLocale="zh-CN">
+        <LocaleDisplay />
+      </I18nProvider>,
+    );
+
+    expect(cookieValue).toContain("locale=zh-CN");
+  });
+
   it("updates locale and sets cookie when setLocale is called", () => {
     let cookieValue = "";
     Object.defineProperty(Document.prototype, "cookie", {

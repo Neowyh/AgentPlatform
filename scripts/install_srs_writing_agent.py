@@ -290,6 +290,7 @@ def verify_install(
     owner_id: str | None,
     bin_path: str | Path | None = None,
     require_officecli: bool = True,
+    require_host_bash: bool = True,
 ) -> dict:
     """Inspect the current runtime state and report what is present.
 
@@ -308,7 +309,7 @@ def verify_install(
         "config_yaml": yaml_parse_ok(config_path),
         "document_group": _has_document_tool_group(config_lines),
         "read_document_tool": _has_read_document_tool(config_lines),
-        "allow_host_bash": allow_host_bash_value(config_lines) is True,
+        "allow_host_bash": not require_host_bash or allow_host_bash_value(config_lines) is True,
         "officecli": officecli_available(officecli) if require_officecli else True,
     }
     return {
@@ -379,7 +380,12 @@ def main(argv: list[str] | None = None) -> int:
     want_officecli = not args.no_officecli
 
     if args.verify_only:
-        report = verify_install(config_path, owner_id=owner_id, require_officecli=want_officecli)
+        report = verify_install(
+            config_path,
+            owner_id=owner_id,
+            require_officecli=want_officecli,
+            require_host_bash=want_host_bash,
+        )
         print_verify_report(report)
         return 0 if all(report["checks"].values()) else 1
 
@@ -426,7 +432,12 @@ def main(argv: list[str] | None = None) -> int:
 
     _print_config_summary(wire, officecli_status)
 
-    report = verify_install(config_path, owner_id=owner_id, require_officecli=want_officecli)
+    report = verify_install(
+        config_path,
+        owner_id=owner_id,
+        require_officecli=want_officecli,
+        require_host_bash=want_host_bash,
+    )
     print_verify_report(report)
 
     ok = all(report["checks"].values())

@@ -256,8 +256,9 @@ test.describe("i18n — Language switching", () => {
 
       await selectLanguage(page, "中文");
 
-      const cookie = await getLocaleCookie(page);
-      expect(cookie).toBe("zh-CN");
+      await expect
+        .poll(() => getLocaleCookie(page), { timeout: 15_000 })
+        .toBe("zh-CN");
     });
 
     test("locale cookie is set to en-US when switching to English", async ({
@@ -346,8 +347,9 @@ test.describe("i18n — Language switching", () => {
       ).toBeVisible({ timeout: 15_000 });
 
       // Cookie should also be updated to the normalized value.
-      const cookie = await getLocaleCookie(page);
-      expect(cookie).toBe("zh-CN");
+      await expect
+        .poll(() => getLocaleCookie(page), { timeout: 15_000 })
+        .toBe("zh-CN");
     });
 
     test("navigator.language is used when no cookie is set", async ({

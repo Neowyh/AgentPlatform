@@ -171,6 +171,18 @@ def test_verify_install_reports_state(tmp_path: Path) -> None:
     assert report["checks"]["agent_files"] is False
 
 
+def test_verify_install_accepts_disabled_host_bash_when_not_required(tmp_path: Path) -> None:
+    config_path = write_sample_config(tmp_path / "config.yaml")
+
+    report = install_script.verify_install(
+        config_path,
+        owner_id=None,
+        require_host_bash=False,
+    )
+
+    assert report["checks"]["allow_host_bash"] is True
+
+
 def test_main_installs_agent_and_wires_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     runtime = tmp_path / "runtime"
     source = tmp_path / "agent-src"

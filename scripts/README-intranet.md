@@ -15,15 +15,14 @@ scripts/package-intranet-offline.sh --version <version-tag>
 ```
 
 This produces a self-contained bundle in `dist/intranet/ideer-<version>/` containing:
-- Docker images (gateway, frontend, nginx, and the sandbox image as `ideer-sandbox:<version>`)
+- Docker images (gateway, frontend, nginx)
 - Source code archive
 - Deploy and pre-check scripts
 - Config templates
 
-The sandbox image (`ideer-sandbox:<version>`) is bundled by default so the AI
-sandbox (file writes, bash execution) works offline. Override the source image
-with `--sandbox-image <image>` or skip it entirely with `--no-sandbox` (not
-recommended -- sandboxed tools will be unavailable).
+The default bundle uses the local sandbox provider with host bash disabled, so
+it has no sandbox-image dependency. To opt in to a container sandbox, provide
+`--sandbox-image <image>`; it is then retagged as `ideer-sandbox:<version>`.
 
 ### On the Intranet Target Machine
 
@@ -81,9 +80,7 @@ models:
 
 If using a self-hosted vLLM, Ollama, or similar service, point `base_url` to its OpenAI-compatible endpoint.
 
-`prepare` also enables `agents_api`, points the officecli tool mount at the bundled `vendor/officecli/officecli` binary (when present), and rewrites `sandbox.image` in `runtime/config.yaml` to the bundled `ideer-sandbox:<version>` tag when the sandbox image is present locally (a user-configured image name that already exists locally is left untouched).
-
-No manual sandbox configuration is required on the normal path: `prepare` points `sandbox.image` at the bundled image automatically.
+`prepare` also enables `agents_api` and points the officecli tool mount at the bundled `vendor/officecli/officecli` binary when present. The default local provider requires no sandbox image. When a bundle explicitly includes a sandbox image, `prepare` rewrites an AIO configuration to `ideer-sandbox:<version>`.
 
 ### 3. Run Pre-check
 
@@ -105,6 +102,14 @@ IDEER_LLM_ENDPOINT=http://your-llm-server:8000 ./check-intranet.sh
 
 ```bash
 ./deploy-intranet.sh up
+```
+
+For a second isolated instance on the same host, set a distinct project and
+container prefix, then change `PORT` in the generated `env.intranet` before
+running `up`:
+
+```bash
+IDEER_COMPOSE_PROJECT=accept-v2 IDEER_CONTAINER_PREFIX=accept-v2 ./deploy-intranet.sh up
 ```
 
 This will:
@@ -172,7 +177,7 @@ View logs:
 If the deploy script hangs at health checks:
 - The gateway may be crashing -- check `./deploy-intranet.sh logs gateway`
 - The LLM endpoint may be unreachable from inside the container
-- Try: `docker compose -p ideer down` then `./deploy-intranet.sh up`
+- Try: `docker compose -p "${IDEER_COMPOSE_PROJECT:-ideer}" down` then `./deploy-intranet.sh up`
 
 ### Port conflict
 
@@ -194,9 +199,9 @@ If Docker reports missing images:
 ./deploy-intranet.sh load
 ```
 
-If the sandbox reports `image ... was not found` when the AI writes files or
-runs commands, the sandbox image is missing or `sandbox.image` points at a
-locally absent name:
+If an explicitly configured AIO sandbox reports `image ... was not found`,
+the sandbox image is missing or `sandbox.image` points at a locally absent
+name:
 ```bash
 docker images | grep sandbox
 grep -n -A3 '^sandbox:' runtime/config.yaml
@@ -219,7 +224,7 @@ rm -rf runtime/ source/ env.intranet
 
 If containers are stuck and won't stop:
 ```bash
-docker compose -p ideer down --remove-orphans
+docker compose -p "${IDEER_COMPOSE_PROJECT:-ideer}" down --remove-orphans
 docker system prune -f
 ./deploy-intranet.sh up
 ```

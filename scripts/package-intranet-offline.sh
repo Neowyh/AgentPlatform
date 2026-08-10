@@ -11,11 +11,9 @@ Options:
   --version <value>       Bundle version tag. Default: YYYYMMDD-<git short hash>
   --output-dir <path>     Output directory. Default: dist/intranet/ideer-<version>
   --platform <value>      Build platform. Default: linux/amd64
-  --sandbox-image <value> Sandbox container image to bundle (default:
-                          enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:latest).
+  --sandbox-image <value> Sandbox container image to bundle explicitly.
                           Retagged as ideer-sandbox:<version> inside the bundle.
-  --no-sandbox            Skip bundling the sandbox image (deploy steps will
-                          warn unless a sandbox image is provided separately)
+  --no-sandbox            Skip bundling the sandbox image (the default).
   --force                 Remove the output directory if it already exists
   --no-cache              Rebuild Docker images without using cache
   --require-clean         Fail if the git worktree contains uncommitted changes
@@ -39,12 +37,10 @@ VERSION=""
 OUTPUT_DIR=""
 PLATFORM="linux/amd64"
 SANDBOX_IMAGE=""
-NO_SANDBOX=0
+NO_SANDBOX=1
 FORCE=0
 NO_CACHE=0
 REQUIRE_CLEAN=0
-
-DEFAULT_SANDBOX_IMAGE="enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:latest"
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -66,6 +62,7 @@ while [ "$#" -gt 0 ]; do
         --sandbox-image)
             [ "$#" -ge 2 ] || die "--sandbox-image requires a value"
             SANDBOX_IMAGE="$2"
+            NO_SANDBOX=0
             shift 2
             ;;
         --no-sandbox)
@@ -211,7 +208,6 @@ log "[4/7] preparing sandbox image..."
 if [ "$NO_SANDBOX" -eq 1 ]; then
     log "  sandbox image disabled (--no-sandbox); bundle will not include a sandbox image"
 else
-    SANDBOX_IMAGE="${SANDBOX_IMAGE:-$DEFAULT_SANDBOX_IMAGE}"
     log "  pulling: $SANDBOX_IMAGE"
     docker pull "$SANDBOX_IMAGE"
     local_arch="$(docker image inspect "$SANDBOX_IMAGE" --format '{{.Architecture}}' 2>/dev/null || true)"

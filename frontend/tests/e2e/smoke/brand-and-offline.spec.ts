@@ -53,7 +53,7 @@ test.describe("Brand and offline adaptations", () => {
       await page.goto("/login");
 
       // Should show iDeer brand
-      await expect(page.getByText("iDeer")).toBeVisible({
+      await expect(page.getByText("iDeer").first()).toBeVisible({
         timeout: 15_000,
       });
     });

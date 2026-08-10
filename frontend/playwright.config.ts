@@ -64,7 +64,10 @@ export default defineConfig({
   ],
 
   webServer: {
-    command: `pnpm exec next build --webpack && pnpm start -p ${frontendPort}`,
+    command:
+      process.env.IDEER_E2E_SKIP_BUILD === "1"
+        ? `pnpm start -p ${frontendPort}`
+        : `pnpm exec next build --webpack && pnpm start -p ${frontendPort}`,
     url: baseURL,
     reuseExistingServer: false,
     timeout: 120_000,
