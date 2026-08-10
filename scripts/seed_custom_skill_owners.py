@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Assign bundled custom skills to a super admin as private resources.
+"""Assign bundled skills and agents to a super admin as private resources.
 
 The gateway already reconciles ``skills/custom/`` metadata at startup
 (``app.gateway.app._reconcile_resource_metadata``), but on the first boot no
-admin exists yet so the scan is skipped.  This host-side helper performs the
-same backfill after the admin account has been created during an offline
-deployment.
+admin exists yet so the scan is skipped.  This helper performs the same
+backfill after the admin account has been created during an offline
+deployment. It is intended to run inside the gateway container so it writes
+through the runtime's database permissions.
 
 Stdlib-only (sqlite3), idempotent: existing metadata rows are never touched.
 """
@@ -18,9 +19,6 @@ import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-
-RESOURCE_TYPE = "skill"
-
 
 def _now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
@@ -50,7 +48,17 @@ def resolve_super_admin_id(db_path: Path) -> str | None:
 
 def seed_skill_owners(db_path: Path, skills_dir: Path, owner_id: str) -> dict:
     """Upsert private resource_metadata for every bundled custom skill."""
-    names = _skill_names(skills_dir)
+    result = _seed_resource_owners(db_path, "skill", _skill_names(skills_dir), owner_id)
+    return {**result, "skills_dir": str(skills_dir)}
+
+
+def seed_agent_owners(db_path: Path, agent_names: list[str], owner_id: str) -> dict:
+    """Upsert private resource_metadata for installed bundled agents."""
+    return _seed_resource_owners(db_path, "agent", sorted(set(agent_names)), owner_id)
+
+
+def _seed_resource_owners(db_path: Path, resource_type: str, names: list[str], owner_id: str) -> dict:
+    """Upsert private metadata for named resources of one type."""
     added: list[str] = []
     skipped: list[str] = []
     now = _now()
@@ -61,7 +69,7 @@ def seed_skill_owners(db_path: Path, skills_dir: Path, owner_id: str) -> dict:
             for name in names:
                 existing = conn.execute(
                     "SELECT 1 FROM resource_metadata WHERE resource_type=? AND resource_id=?",
-                    (RESOURCE_TYPE, name),
+                    (resource_type, name),
                 ).fetchone()
                 if existing:
                     skipped.append(name)
@@ -72,14 +80,14 @@ def seed_skill_owners(db_path: Path, skills_dir: Path, owner_id: str) -> dict:
                         id, resource_type, resource_id, owner_id, department_id,
                         visibility, imported_from, version, is_favorited,
                         created_at, updated_at
-                    ) VALUES (?, 'skill', ?, ?, NULL, 'private', NULL, 1, 0, ?, ?)
+                    ) VALUES (?, ?, ?, ?, NULL, 'private', NULL, 1, 0, ?, ?)
                     """,
-                    (uuid.uuid4().hex, name, owner_id, now, now),
+                    (uuid.uuid4().hex, resource_type, name, owner_id, now, now),
                 )
                 added.append(name)
     except sqlite3.Error as exc:
         raise RuntimeError(
-            f"failed to seed skill metadata in {db_path}: {exc}"
+            f"failed to seed {resource_type} metadata in {db_path}: {exc}"
         ) from exc
     finally:
         conn.close()
@@ -87,8 +95,8 @@ def seed_skill_owners(db_path: Path, skills_dir: Path, owner_id: str) -> dict:
     return {
         "added": added,
         "skipped": skipped,
-        "skills_dir": str(skills_dir),
         "owner_id": owner_id,
+        "resource_type": resource_type,
     }
 
 
@@ -108,6 +116,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--owner",
         default=None,
         help="Super admin user id; defaults to the first active super admin in the database.",
+    )
+    parser.add_argument(
+        "--agent",
+        action="append",
+        default=[],
+        help="Bundled agent name to assign as a private resource; may be repeated.",
     )
     return parser.parse_args(argv)
 
@@ -136,6 +150,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         result = seed_skill_owners(db_path, skills_dir, owner_id)
+        agent_result = seed_agent_owners(db_path, args.agent, owner_id)
     except RuntimeError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
@@ -144,6 +159,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Owner      : {result['owner_id']}")
     print(f"Skills added: {', '.join(result['added']) or '(none)'}")
     print(f"Skills skipped: {', '.join(result['skipped']) or '(none)'}")
+    print(f"Agents added: {', '.join(agent_result['added']) or '(none)'}")
+    print(f"Agents skipped: {', '.join(agent_result['skipped']) or '(none)'}")
     return 0
 
 

@@ -60,6 +60,21 @@ def _load_meta(db_path: Path, skill_name: str) -> tuple | None:
         ).fetchone()
 
 
+def test_seed_agent_owners_assigns_private_owner(tmp_path: Path) -> None:
+    db_path = tmp_path / "ideer.db"
+    _make_db(db_path, admin_id="admin-1")
+
+    result = seed_script.seed_agent_owners(db_path, ["fault-zeroing", "srs-writing"], "admin-1")
+
+    assert result["added"] == ["fault-zeroing", "srs-writing"]
+    with sqlite3.connect(db_path) as conn:
+        rows = conn.execute("SELECT resource_id, owner_id, visibility FROM resource_metadata WHERE resource_type='agent' ORDER BY resource_id").fetchall()
+    assert rows == [
+        ("fault-zeroing", "admin-1", "private"),
+        ("srs-writing", "admin-1", "private"),
+    ]
+
+
 def test_seed_assigns_private_owner_and_is_idempotent(tmp_path: Path) -> None:
     db_path = tmp_path / "ideer.db"
     _make_db(db_path, admin_id="admin-1")

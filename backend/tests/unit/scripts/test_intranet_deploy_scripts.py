@@ -206,6 +206,18 @@ def test_packaged_deploy_script_defaults_to_its_bundle_directory(tmp_path: Path)
     assert (bundle_root / "env.intranet").is_file()
 
 
+def test_private_skill_seed_runs_inside_gateway_container(tmp_path: Path):
+    script = DEPLOY_SCRIPT.read_text(encoding="utf-8")
+
+    assert 'docker cp "$SOURCE_DIR/scripts/seed_custom_skill_owners.py" ideer-gateway:/tmp/seed_custom_skill_owners.py' in script
+    assert "--db /app/backend/.ideer/data/ideer.db" in script
+    assert "--skills-dir /app/skills/custom" in script
+    assert "--agent fault-zeroing" in script
+    assert "--agent srs-writing" in script
+    assert 'docker compose -p ideer -f "$COMPOSE_FILE" --env-file "$ENV_FILE" exec -T gateway' in script
+    assert '--db "$runtime_home/data/ideer.db"' not in script
+
+
 def test_up_fails_when_frontend_route_is_unhealthy(tmp_path: Path):
     bundle_root = _make_bundle(tmp_path)
     env = _env_with_fake_docker(tmp_path)

@@ -127,6 +127,22 @@ def test_provision_officecli_conflict_requires_force(tmp_path: Path) -> None:
     assert install_script.officecli_available(bin_path, bundled=source) is True
 
 
+def test_provision_officecli_reuses_content_equivalent_existing_file(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    source = repo / "vendor" / "officecli" / "officecli"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(b"bundled binary")
+    bin_path = tmp_path / "bin" / "officecli"
+    bin_path.parent.mkdir(parents=True)
+    bin_path.write_bytes(source.read_bytes())
+
+    result = install_script.provision_officecli(repo, bin_path=bin_path)
+
+    assert result["status"] == "equivalent"
+    assert bin_path.read_bytes() == source.read_bytes()
+    assert install_script.officecli_available(bin_path, bundled=source) is True
+
+
 def test_provision_officecli_missing_source(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     result = install_script.provision_officecli(repo, bin_path=tmp_path / "bin" / "officecli")

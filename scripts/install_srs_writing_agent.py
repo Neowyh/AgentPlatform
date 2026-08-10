@@ -22,6 +22,7 @@ unless ``--force`` is given.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.util
 import re
 import shutil
@@ -47,6 +48,24 @@ def bundled_officecli() -> Path:
 
 def default_officecli_bin() -> Path:
     return Path.home() / ".local" / "bin" / "officecli"
+
+
+def _same_file_content(first: Path, second: Path) -> bool:
+    if not first.is_file() or not second.is_file():
+        return False
+    digest = hashlib.sha256()
+    try:
+        with first.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        first_digest = digest.digest()
+        digest = hashlib.sha256()
+        with second.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return first_digest == digest.digest()
+    except OSError:
+        return False
 
 
 def resolve_owner_id(args: argparse.Namespace) -> tuple[str | None, str]:
@@ -222,6 +241,8 @@ def provision_officecli(
     if destination.is_symlink() and destination.resolve() == source.resolve():
         return {"status": "linked", "source": str(source), "bin": str(destination)}
     if destination.exists():
+        if _same_file_content(destination, source):
+            return {"status": "equivalent", "source": str(source), "bin": str(destination)}
         if not force:
             return {"status": "conflict", "source": str(source), "bin": str(destination)}
         if dry_run:
@@ -256,10 +277,11 @@ def officecli_available(bin_path: Path, *, bundled: Path | None = None) -> bool:
     reference = bundled if bundled is not None else bundled_officecli()
     if bin_path.is_symlink():
         try:
-            return bin_path.resolve() == reference.resolve()
+            if bin_path.resolve() == reference.resolve():
+                return True
         except OSError:
             return False
-    return bin_path.is_file()
+    return _same_file_content(bin_path, reference)
 
 
 def verify_install(
