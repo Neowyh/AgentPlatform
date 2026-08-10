@@ -81,7 +81,7 @@ models:
 
 If using a self-hosted vLLM, Ollama, or similar service, point `base_url` to its OpenAI-compatible endpoint.
 
-`prepare` also enables `agents_api`, points the officecli tool mount at the bundled `vendor/officecli/officecli` binary (when present), installs the bundled shared agents (`fault-zeroing`, `srs-writing`) into `runtime/data/agents/`, and rewrites `sandbox.image` in `runtime/config.yaml` to the bundled `ideer-sandbox:<version>` tag when the sandbox image is present locally (a user-configured image name that already exists locally is left untouched). Disable an agent for the session with `IDEER_INSTALL_FAULT_ZEROING=0` or `IDEER_INSTALL_SRS_WRITING=0`.
+`prepare` also enables `agents_api`, points the officecli tool mount at the bundled `vendor/officecli/officecli` binary (when present), and rewrites `sandbox.image` in `runtime/config.yaml` to the bundled `ideer-sandbox:<version>` tag when the sandbox image is present locally (a user-configured image name that already exists locally is left untouched).
 
 No manual sandbox configuration is required on the normal path: `prepare` points `sandbox.image` at the bundled image automatically.
 
@@ -108,11 +108,14 @@ IDEER_LLM_ENDPOINT=http://your-llm-server:8000 ./check-intranet.sh
 ```
 
 This will:
-1. Run the same bundle prep as `prepare` (extract source, seed runtime config/env, install bundled shared agents)
+1. Run the same bundle prep as `prepare` (extract source, seed runtime config/env)
 2. Load Docker images
 3. Start all services
 4. Run health checks
-5. Seed the bundled `fault-zeroing` workflow once the gateway is healthy
+5. Auto-create the super admin account (`super_admin@test.com` / `super_admin@test.com` by default; override with `IDEER_ADMIN_EMAIL` / `IDEER_ADMIN_PASSWORD`; skipped when an admin already exists)
+6. Install the bundled agents (`fault-zeroing`, `srs-writing`) as **private resources of the super admin** (into `runtime/data/users/<admin-id>/agents/`), assign the bundled `skills/custom/` skills to the same private owner, and seed the bundled `fault-zeroing` workflow as the admin's private workflow once the gateway is healthy
+
+Disable an agent for the session with `IDEER_INSTALL_FAULT_ZEROING=0` or `IDEER_INSTALL_SRS_WRITING=0`. The bundled `skills/public/` skills remain public templates for all users.
 
 To preview what would happen without making changes:
 
