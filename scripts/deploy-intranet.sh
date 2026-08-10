@@ -26,8 +26,10 @@ Options:
 
 Environment:
   IDEER_BUNDLE_ROOT, IDEER_VERSION, IDEER_NO_LOAD
-  IDEER_INSTALL_FAULT_ZEROING=0 skips installing the bundled shared fault-zeroing agent
-  IDEER_INSTALL_SRS_WRITING=0 skips installing the bundled shared srs-writing agent
+  IDEER_ADMIN_EMAIL, IDEER_ADMIN_PASSWORD override the auto-created super admin
+    credentials (default: super_admin@test.com / super_admin@test.com)
+  IDEER_INSTALL_FAULT_ZEROING=0 skips installing the bundled fault-zeroing agent
+  IDEER_INSTALL_SRS_WRITING=0 skips installing the bundled srs-writing agent
 EOF
 }
 
@@ -501,14 +503,87 @@ compose_cmd() {
     run_cmd docker compose -p ideer -f "$COMPOSE_FILE" --env-file "$ENV_FILE" "$@"
 }
 
-# Install the bundled shared agents (fault-zeroing, srs-writing) into the
-# runtime data dir and merge their config prerequisites into runtime/config.yaml.
-# The shared-dir install does not require the runtime DB, so it fits the prepare
-# step before first boot.  Skip each agent with IDEER_INSTALL_<NAME>=0, mirroring
-# the pre-refactor behavior.
-install_bundled_agents() {
+# POST a JSON body and print the HTTP status code.  Uses curl when available
+# and falls back to python3 so machines without curl can still bootstrap.
+http_post_json() {
+    local url="$1"
+    local json="$2"
+    if command -v curl >/dev/null 2>&1; then
+        curl -sS -o /dev/null -w '%{http_code}' -X POST "$url" \
+            -H 'Content-Type: application/json' --data "$json"
+        return 0
+    fi
+    if command -v python3 >/dev/null 2>&1; then
+        python3 -c '
+import json, sys, urllib.request
+url, payload = sys.argv[1], sys.argv[2].encode()
+req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
+try:
+    with urllib.request.urlopen(req, timeout=15):
+        print(200)
+except urllib.error.HTTPError as exc:
+    print(exc.code)
+' "$url" "$json"
+        return 0
+    fi
+    die "curl or python3 is required to initialize the super admin"
+}
+
+# Create the first super admin account once the gateway is healthy.  The
+# /initialize endpoint refuses with 409 when an admin already exists, so this
+# is idempotent across re-runs.  Credentials default to the standard test
+# account and can be overridden with IDEER_ADMIN_EMAIL / IDEER_ADMIN_PASSWORD.
+initialize_super_admin() {
+    local email="${IDEER_ADMIN_EMAIL:-super_admin@test.com}"
+    local password="${IDEER_ADMIN_PASSWORD:-super_admin@test.com}"
+
+    # shellcheck disable=SC1090
+    . "$ENV_FILE"
+    local port="${PORT:-2026}"
+
+    log "initializing super admin account ($email)..."
+    local status
+    status="$(http_post_json \
+        "http://127.0.0.1:${port}/api/v1/auth/initialize" \
+        "{\"email\":\"${email}\",\"password\":\"${password}\"}")" || die "failed to reach the gateway for admin initialization"
+    case "$status" in
+        201) log "super admin account created" ;;
+        409) log "super admin already exists; skipping" ;;
+        *)
+            die "admin initialization failed (HTTP $status)"
+            ;;
+    esac
+}
+
+# Resolve the active super admin user id from the runtime database.  Prints
+# nothing when no admin exists yet (e.g. first boot before initialization).
+find_super_admin_id() {
+    # shellcheck disable=SC1090
+    . "$ENV_FILE"
+    local db="${IDEER_HOME:-$RUNTIME_DIR/data}/data/ideer.db"
+    [ -f "$db" ] || return 0
+    python3 - "$db" <<'PY'
+import sqlite3, sys
+try:
+    with sqlite3.connect(sys.argv[1]) as conn:
+        row = conn.execute(
+            "SELECT id FROM users_ext WHERE role='super_admin' AND disabled=0 LIMIT 1"
+        ).fetchone()
+except sqlite3.Error:
+    row = None
+print(row[0] if row else "")
+PY
+}
+
+# Install the bundled agents (fault-zeroing, srs-writing), assign the bundled
+# custom skills, and seed the fault-zeroing workflow as PRIVATE resources of
+# the super admin.  Runs after the gateway is healthy and the admin exists
+# because the per-user install and resource ownership live in the runtime
+# database.  Skip each agent with IDEER_INSTALL_<NAME>=0.  Failures are
+# warnings, not fatal.
+install_admin_private_resources() {
     command -v python3 >/dev/null 2>&1 || {
-        warn "python3 not found; skipping bundled agent install"
+        warn "python3 not found; skipping bundled resource install"
         return 0
     }
 
@@ -527,12 +602,39 @@ install_bundled_agents() {
     local config_path="${IDEER_CONFIG_PATH:-$RUNTIME_DIR/config.yaml}"
     require_file "$config_path"
 
+    local admin_id
+    admin_id="$(find_super_admin_id)"
+    if [ -z "$admin_id" ]; then
+        warn "no active super admin found in runtime DB; skipping private resource install"
+        return 0
+    fi
+    log "installing bundled resources for super admin $admin_id (private)..."
+
+    # Older bundle versions auto-installed the bundled agents into the shared
+    # directory (runtime/data/agents/<name>), which keeps them visible to every
+    # user as read-only templates.  Once the private per-user copy is in place,
+    # remove a legacy shared copy when it still matches the bundle byte-for-byte;
+    # a customized shared agent is left behind with a warning.
+    cleanup_legacy_shared_agent() {
+        local name="$1"
+        local source_dir="$2"
+        local shared_dir="$runtime_home/agents/$name"
+        [ -d "$shared_dir" ] || return 0
+        if ! diff -rq "$source_dir" "$shared_dir" >/dev/null 2>&1; then
+            warn "legacy shared agent $shared_dir differs from the bundle; leaving it for manual review"
+            return 0
+        fi
+        log "removing legacy shared agent copy: $shared_dir"
+        run_cmd rm -rf "$shared_dir"
+    }
+
     if [ "${IDEER_INSTALL_FAULT_ZEROING:-1}" = "0" ]; then
         log "skipping fault-zeroing agent install"
     elif [ -d "$SOURCE_DIR/docs/fault-zeroing-agent/agent" ] && [ -f "$SOURCE_DIR/scripts/install_agent.py" ]; then
-        log "installing bundled fault-zeroing agent..."
+        log "installing bundled fault-zeroing agent for super admin (private)..."
         run_cmd env IDEER_HOME="$runtime_home" IDEER_CONFIG_PATH="$config_path" \
-            python3 "$SOURCE_DIR/scripts/install_agent.py" --agent fault-zeroing
+            python3 "$SOURCE_DIR/scripts/install_agent.py" --agent fault-zeroing --owner super-admin
+        cleanup_legacy_shared_agent fault-zeroing "$SOURCE_DIR/docs/fault-zeroing-agent/agent"
     else
         warn "fault-zeroing agent source not found in bundle; skipping"
     fi
@@ -540,20 +642,35 @@ install_bundled_agents() {
     if [ "${IDEER_INSTALL_SRS_WRITING:-1}" = "0" ]; then
         log "skipping srs-writing agent install"
     elif [ -d "$SOURCE_DIR/docs/srs-writing-agent/agent" ] && [ -f "$SOURCE_DIR/scripts/install_srs_writing_agent.py" ]; then
-        log "installing bundled srs-writing agent..."
+        log "installing bundled srs-writing agent for super admin (private)..."
         if ! run_cmd env IDEER_HOME="$runtime_home" IDEER_CONFIG_PATH="$config_path" \
-            python3 "$SOURCE_DIR/scripts/install_srs_writing_agent.py"; then
+            python3 "$SOURCE_DIR/scripts/install_srs_writing_agent.py" --owner super-admin; then
             warn "srs-writing agent install reported issues (see output above); the agent files and config may still be usable"
         fi
+        cleanup_legacy_shared_agent srs-writing "$SOURCE_DIR/docs/srs-writing-agent/agent"
     else
         warn "srs-writing agent source not found in bundle; skipping"
+    fi
+
+    if [ -f "$SOURCE_DIR/scripts/seed_custom_skill_owners.py" ]; then
+        log "assigning bundled custom skills to the super admin (private)..."
+        if ! run_cmd python3 "$SOURCE_DIR/scripts/seed_custom_skill_owners.py" \
+            --db "$runtime_home/data/ideer.db" \
+            --skills-dir "$SOURCE_DIR/skills/custom" \
+            --owner "$admin_id"; then
+            warn "custom skill ownership seeding failed; the gateway will reconcile it on the next restart"
+        fi
+    else
+        warn "scripts/seed_custom_skill_owners.py not found in bundle; skipping"
     fi
 }
 
 # Seed the bundled fault-zeroing workflow into the workflow v2 store after the
 # gateway is healthy (the DB only exists after the first boot).  Runs the
 # repository's seed script inside the gateway container, so it needs no Python
-# tooling on the host.  Idempotent; failures are warnings, not fatal.
+# tooling on the host.  The workflow is recorded as a private resource owned by
+# the active super admin (falling back to "system" when none exists).
+# Idempotent; failures are warnings, not fatal.
 seed_bundled_workflows() {
     [ -f "$SOURCE_DIR/workflows/fault-zeroing.yaml" ] || return 0
     [ -f "$SOURCE_DIR/scripts/seed_fault_zeroing_workflow.py" ] || return 0
@@ -563,15 +680,22 @@ seed_bundled_workflows() {
         return 0
     fi
 
-    log "seeding bundled fault-zeroing workflow..."
+    local created_by="system"
+    local admin_id
+    admin_id="$(find_super_admin_id)"
+    if [ -n "$admin_id" ]; then
+        created_by="$admin_id"
+    fi
+
+    log "seeding bundled fault-zeroing workflow (owner: $created_by)..."
     if run_cmd docker cp "$SOURCE_DIR/workflows/fault-zeroing.yaml" ideer-gateway:/tmp/fault-zeroing.yaml \
         && run_cmd docker cp "$SOURCE_DIR/scripts/seed_fault_zeroing_workflow.py" ideer-gateway:/tmp/seed_fault_zeroing_workflow.py \
         && run_cmd docker compose -p ideer -f "$COMPOSE_FILE" --env-file "$ENV_FILE" exec -T gateway \
-            sh -c 'cd /app/backend && PYTHONPATH=. uv run --no-sync python /tmp/seed_fault_zeroing_workflow.py --workflow-path /tmp/fault-zeroing.yaml'; then
+            sh -c 'cd /app/backend && PYTHONPATH=. uv run --no-sync python /tmp/seed_fault_zeroing_workflow.py --workflow-path /tmp/fault-zeroing.yaml --created-by '"$created_by"; then
         log "bundled fault-zeroing workflow seeded"
     else
         warn "bundled workflow seed failed; run it manually after 'up' with:"
-        warn "  docker compose -p ideer exec gateway sh -c 'cd /app/backend && PYTHONPATH=. uv run --no-sync python /tmp/seed_fault_zeroing_workflow.py --workflow-path /tmp/fault-zeroing.yaml'"
+        warn "  docker compose -p ideer exec gateway sh -c 'cd /app/backend && PYTHONPATH=. uv run --no-sync python /tmp/seed_fault_zeroing_workflow.py --workflow-path /tmp/fault-zeroing.yaml --created-by '"$created_by"'"
     fi
 }
 
@@ -658,13 +782,9 @@ EOF
 }
 
 prepare_bundle() {
-    local install_agents="${1:-1}"
     extract_source
     seed_runtime
     validate_runtime
-    if [ "$install_agents" = "1" ]; then
-        install_bundled_agents
-    fi
 }
 
 # ---------------------------------------------------------------------------
@@ -707,6 +827,8 @@ case "$COMMAND" in
         fi
         if [ "$DRY_RUN" -eq 0 ]; then
             verify_services
+            initialize_super_admin
+            install_admin_private_resources
             seed_bundled_workflows
         fi
         log "deployment complete"
@@ -724,12 +846,14 @@ case "$COMMAND" in
         fi
         if [ "$DRY_RUN" -eq 0 ]; then
             verify_services
+            initialize_super_admin
+            install_admin_private_resources
             seed_bundled_workflows
         fi
         log "restart complete"
         ;;
     stop|down)
-        prepare_bundle 0
+        prepare_bundle
         if [ -f "$COMPOSE_FILE" ]; then
             compose_cmd down
         else
@@ -737,7 +861,7 @@ case "$COMMAND" in
         fi
         ;;
     status)
-        prepare_bundle 0
+        prepare_bundle
         if [ -f "$COMPOSE_FILE" ]; then
             compose_cmd ps
         else
@@ -745,7 +869,7 @@ case "$COMMAND" in
         fi
         ;;
     logs)
-        prepare_bundle 0
+        prepare_bundle
         if [ -f "$COMPOSE_FILE" ]; then
             if [ -n "${LOG_SERVICE:-}" ]; then
                 compose_cmd logs -f "$LOG_SERVICE"

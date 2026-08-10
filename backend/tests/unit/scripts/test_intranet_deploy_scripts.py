@@ -261,21 +261,20 @@ def test_prepare_seeds_valid_runtime_config_and_stable_auth_files(tmp_path: Path
     assert "IDEER_INTERNAL_AUTH_TOKEN=" in env_text
 
 
-def test_prepare_installs_bundled_shared_agents(tmp_path: Path):
-    """prepare installs the bundled fault-zeroing and srs-writing agents into the shared dir."""
+def test_prepare_no_longer_installs_bundled_agents(tmp_path: Path):
+    """prepare only seeds runtime config; bundled agents are installed post-up as
+    the super admin's private resources (they need the runtime DB)."""
     bundle_root = _make_bundle(tmp_path)
 
     proc = _run_deploy(bundle_root, "prepare", env=_env_with_fake_docker(tmp_path))
 
     assert proc.returncode == 0, proc.stderr
     runtime_dir = bundle_root / "runtime"
-    assert (runtime_dir / "data" / "agents" / "fault-zeroing" / "config.yaml").is_file()
-    assert (runtime_dir / "data" / "agents" / "srs-writing" / "config.yaml").is_file()
-    assert "Agent directory:" in proc.stdout
+    assert not (runtime_dir / "data" / "agents").exists()
 
 
-def test_prepare_installs_agents_shared_but_not_per_user(tmp_path: Path):
-    """Bundled agents go to the shared runtime dir, never into a per-user directory."""
+def test_prepare_never_installs_agents_into_per_user_directories(tmp_path: Path):
+    """prepare never touches per-user agent directories."""
     bundle_root = _make_bundle(tmp_path)
     user_dir = bundle_root / "runtime" / "data" / "users" / "alice"
     user_dir.mkdir(parents=True)
@@ -284,9 +283,7 @@ def test_prepare_installs_agents_shared_but_not_per_user(tmp_path: Path):
 
     assert proc.returncode == 0, proc.stderr
     runtime_dir = bundle_root / "runtime"
-    assert (runtime_dir / "data" / "agents" / "fault-zeroing" / "config.yaml").is_file()
-    assert (runtime_dir / "data" / "agents" / "srs-writing" / "config.yaml").is_file()
-    assert not (runtime_dir / "data" / "agents" / "users" / "alice").exists()
+    assert not (runtime_dir / "data" / "agents").exists()
     assert not (user_dir / "agents" / "fault-zeroing").exists()
 
 
@@ -297,6 +294,28 @@ def test_status_logs_and_stop_do_not_install_fault_zeroing_agent(tmp_path: Path)
 
         assert proc.returncode == 0, proc.stderr
         assert not (bundle_root / "runtime" / "data" / "agents" / "fault-zeroing").exists()
+
+
+def test_deploy_script_wires_admin_bootstrap_and_private_resource_steps():
+    """The up/restart flow auto-creates the super admin and installs the bundled
+    agents/workflow/skills as the admin's private resources."""
+    script = DEPLOY_SCRIPT.read_text(encoding="utf-8")
+
+    assert "initialize_super_admin" in script
+    assert "/api/v1/auth/initialize" in script
+    assert "IDEER_ADMIN_EMAIL:-super_admin@test.com" in script
+    assert "IDEER_ADMIN_PASSWORD:-super_admin@test.com" in script
+    assert "install_admin_private_resources" in script
+    assert "install_agent.py" in script
+    assert "install_srs_writing_agent.py" in script
+    assert "--owner super-admin" in script
+    assert "seed_custom_skill_owners.py" in script
+    assert "cleanup_legacy_shared_agent" in script
+    assert "removing legacy shared agent copy" in script
+    assert "--created-by" in script
+    assert "find_super_admin_id" in script
+    assert "install_bundled_agents" not in script
+    assert "prepare_bundle 0" not in script
 
 
 def test_prepare_reuses_persisted_auth_secrets_when_env_file_is_recreated(tmp_path: Path):
@@ -497,11 +516,13 @@ def test_check_script_warns_when_env_file_is_missing(tmp_path: Path):
 def test_guide_documents_bundled_agent_and_workflow_hooks():
     guide = GUIDE_FILE.read_text(encoding="utf-8")
 
-    assert "installing bundled fault-zeroing agent..." in guide
-    assert "installing bundled srs-writing agent..." in guide
+    assert "installing bundled fault-zeroing agent for super admin (private)..." in guide
+    assert "installing bundled srs-writing agent for super admin (private)..." in guide
     assert "agents_api" in guide
     assert "officecli" in guide
     assert "IDEER_INSTALL_FAULT_ZEROING=0" in guide
     assert "IDEER_INSTALL_SRS_WRITING=0" in guide
     assert "seed" in guide
-    assert "runtime/data/agents/srs-writing" in guide
+    assert "super_admin@test.com" in guide
+    assert "私有" in guide
+    assert "users/<" in guide or "users/" in guide
