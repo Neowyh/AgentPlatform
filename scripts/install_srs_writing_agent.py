@@ -240,6 +240,13 @@ def provision_officecli(
 
     if destination.is_symlink() and destination.resolve() == source.resolve():
         return {"status": "linked", "source": str(source), "bin": str(destination)}
+    if destination.is_symlink() and not destination.exists():
+        if dry_run:
+            return {"status": "will_replace", "source": str(source), "bin": str(destination)}
+        destination.unlink()
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.symlink_to(source)
+        return {"status": "replaced", "source": str(source), "bin": str(destination)}
     if destination.exists():
         if _same_file_content(destination, source):
             return {"status": "equivalent", "source": str(source), "bin": str(destination)}

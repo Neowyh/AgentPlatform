@@ -127,6 +127,22 @@ def test_provision_officecli_conflict_requires_force(tmp_path: Path) -> None:
     assert install_script.officecli_available(bin_path, bundled=source) is True
 
 
+def test_provision_officecli_replaces_dangling_symlink(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    source = repo / "vendor" / "officecli" / "officecli"
+    source.parent.mkdir(parents=True)
+    source.write_text("binary", encoding="utf-8")
+    bin_path = tmp_path / "bin" / "officecli"
+    bin_path.parent.mkdir(parents=True)
+    bin_path.symlink_to(tmp_path / "gone" / "officecli")
+
+    result = install_script.provision_officecli(repo, bin_path=bin_path)
+
+    assert result["status"] == "replaced"
+    assert install_script.officecli_available(bin_path, bundled=source) is True
+    assert bin_path.resolve() == source.resolve()
+
+
 def test_provision_officecli_reuses_content_equivalent_existing_file(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     source = repo / "vendor" / "officecli" / "officecli"
