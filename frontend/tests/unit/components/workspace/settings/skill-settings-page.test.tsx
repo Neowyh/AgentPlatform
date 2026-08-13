@@ -283,6 +283,25 @@ describe("SkillSettingsPage", () => {
     expect(screen.getByText("Custom Skill")).toBeInTheDocument();
   });
 
+  test("does not show visibility application actions for public skills", () => {
+    render(<SkillSettingsPage />);
+
+    expect(
+      screen.queryByRole("button", { name: "Apply visibility" }),
+    ).not.toBeInTheDocument();
+  });
+
+  test("shows visibility application actions for custom skills", async () => {
+    const user = userEvent.setup();
+    render(<SkillSettingsPage />);
+
+    await user.click(screen.getByText("Custom Tab"));
+
+    expect(
+      screen.getByRole("button", { name: "Apply visibility" }),
+    ).toBeInTheDocument();
+  });
+
   test("shows EmptySkill when no skills match filter", async () => {
     const user = userEvent.setup();
     // Only provide public skills
@@ -320,9 +339,8 @@ describe("SkillSettingsPage", () => {
     const user = userEvent.setup();
     render(<SkillSettingsPage />);
 
-    await user.click(
-      screen.getAllByRole("button", { name: "Apply visibility" })[0]!,
-    );
+    await user.click(screen.getByText("Custom Tab"));
+    await user.click(screen.getByRole("button", { name: "Apply visibility" }));
     await user.click(
       screen.getByRole("button", { name: "Submit application" }),
     );
@@ -330,7 +348,7 @@ describe("SkillSettingsPage", () => {
     await waitFor(() => {
       expect(mockCreateVisibilityApplication).toHaveBeenCalledWith({
         resource_type: "skill",
-        resource_id: "Code Review",
+        resource_id: "Custom Skill",
         target_visibility: "department",
         reason: "Need team access",
       });
@@ -345,9 +363,8 @@ describe("SkillSettingsPage", () => {
     );
     render(<SkillSettingsPage />);
 
-    await user.click(
-      screen.getAllByRole("button", { name: "Apply visibility" })[0]!,
-    );
+    await user.click(screen.getByText("Custom Tab"));
+    await user.click(screen.getByRole("button", { name: "Apply visibility" }));
     await user.click(
       screen.getByRole("button", { name: "Submit application" }),
     );

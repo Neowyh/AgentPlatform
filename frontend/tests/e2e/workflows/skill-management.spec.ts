@@ -80,7 +80,9 @@ test.describe("Skill management", () => {
       });
     });
 
-    test("skills show category and visibility application action", async ({ page }) => {
+    test("public skills do not show a visibility application action", async ({
+      page,
+    }) => {
       mockLangGraphAPI(page, { skills: MOCK_SKILLS });
       await page.goto("/workspace/chats/new");
 
@@ -92,7 +94,27 @@ test.describe("Skill management", () => {
         timeout: 15_000,
       });
 
-      await expect(page.getByRole("button", { name: /apply visibility/i }).first()).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: /apply visibility/i }),
+      ).toHaveCount(0);
+    });
+
+    test("custom skills show a visibility application action", async ({
+      page,
+    }) => {
+      mockLangGraphAPI(page, { skills: MOCK_SKILLS });
+      await page.goto("/workspace/chats/new");
+
+      await openSettings(page);
+      await page.getByText(/^skills$/i).click();
+      await page.getByRole("tab", { name: /custom/i }).click();
+
+      await expect(page.getByText("my-custom-skill")).toBeVisible({
+        timeout: 15_000,
+      });
+      await expect(
+        page.getByRole("button", { name: /apply visibility/i }),
+      ).toBeVisible();
     });
   });
 });
