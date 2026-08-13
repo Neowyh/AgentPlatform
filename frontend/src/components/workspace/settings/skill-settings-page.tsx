@@ -107,13 +107,15 @@ function SkillSettingsList({ skills }: { skills: Skill[] }) {
                 {skill.description}
               </ItemDescription>
             </ItemContent>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setApplySkill(skill)}
-            >
-              {t.settings.skills.applyVisibility}
-            </Button>
+            {skill.category === "custom" && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setApplySkill(skill)}
+              >
+                {t.settings.skills.applyVisibility}
+              </Button>
+            )}
           </Item>
         ))}
       <SkillApplyDialog
