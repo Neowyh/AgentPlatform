@@ -13,7 +13,10 @@ Options:
   --platform <value>      Build platform. Default: linux/amd64
   --sandbox-image <value> Sandbox container image to bundle explicitly.
                           Retagged as ideer-sandbox:<version> inside the bundle.
-  --no-sandbox            Skip bundling the sandbox image (the default).
+--no-sandbox            Skip bundling the sandbox image (the default).
+  --exclude-skills <csv>  Comma-separated skill names under skills/custom to
+                          exclude from the source archive
+  --force                 Remove the output directory if it already exists
   --force                 Remove the output directory if it already exists
   --no-cache              Rebuild Docker images without using cache
   --require-clean         Fail if the git worktree contains uncommitted changes
@@ -41,6 +44,7 @@ NO_SANDBOX=1
 FORCE=0
 NO_CACHE=0
 REQUIRE_CLEAN=0
+EXCLUDE_SKILLS=""
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -68,6 +72,11 @@ while [ "$#" -gt 0 ]; do
         --no-sandbox)
             NO_SANDBOX=1
             shift
+            ;;
+        --exclude-skills)
+            [ "$#" -ge 2 ] || die "--exclude-skills requires a value"
+            EXCLUDE_SKILLS="$2"
+            shift 2
             ;;
         --force)
             FORCE=1
@@ -228,6 +237,15 @@ fi
 docker save -o "$IMAGES_TAR" "${IMAGES_TO_SAVE[@]}"
 
 log "[6/7] packing source archive..."
+TAR_EXCLUDES=()
+if [ -n "$EXCLUDE_SKILLS" ]; then
+    IFS=',' read -r -a EXCLUDED_SKILLS <<< "$EXCLUDE_SKILLS"
+    for skill in "${EXCLUDED_SKILLS[@]}"; do
+        [ -n "$skill" ] || continue
+        TAR_EXCLUDES+=(--exclude="skills/custom/${skill}")
+    done
+    log "  excluding custom skills: ${EXCLUDED_SKILLS[*]}"
+fi
 tar \
     -C "$REPO_ROOT" \
     --exclude='.git' \
@@ -249,6 +267,7 @@ tar \
     --exclude='node_modules' \
     --exclude='logs' \
     --exclude='*.log' \
+    "${TAR_EXCLUDES[@]}" \
     -czf "$SOURCE_TAR" \
     .env.example \
     Makefile \
