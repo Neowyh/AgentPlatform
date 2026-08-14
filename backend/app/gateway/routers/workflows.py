@@ -579,6 +579,7 @@ async def delete_workflow(
                     .where(
                         VisibilityApplication.resource_type == "workflow",
                         VisibilityApplication.resource_id == workflow_name,
+                        VisibilityApplication.applicant_id == str(current_user.id),
                         VisibilityApplication.status == "pending",
                     )
                     .values(status="rejected", review_comment="资源已删除，申请自动关闭")

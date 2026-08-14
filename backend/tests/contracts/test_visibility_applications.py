@@ -20,9 +20,9 @@ from ideer.persistence.models.user import ResourceVisibility
 # ---------------------------------------------------------------------------
 
 
-def _make_user(role: str = "user", dept_id: str | None = None) -> MagicMock:
+def _make_user(role: str = "user", dept_id: str | None = None, user_id: str = "user-1") -> MagicMock:
     u = MagicMock()
-    u.id = uuid4()
+    u.id = user_id
     u.role = role
     u.department_id = dept_id
     return u
@@ -63,7 +63,7 @@ def _make_app(
     return app
 
 
-def _make_session_factory(scalar_result=None, scalars_result=None):
+def _make_session_factory(scalar_result=None, scalars_result=None, resource_owner_id: str = "user-1"):
     """Create a mock session factory that works with `async with sf() as session:`."""
     mock_session = AsyncMock()
     _call_count = {"n": 0}
@@ -76,11 +76,14 @@ def _make_session_factory(scalar_result=None, scalars_result=None):
             # First query: check for existing pending application
             result.scalar_one_or_none.return_value = scalar_result
         elif "resource_metadata" in stmt_str:
-            # Resource metadata query: return a mock resource
+            # Resource metadata query: return a mock resource owned by the caller
             resource = MagicMock()
             resource.visibility = "private"
             resource.department_id = None
-            result.scalar_one_or_none.return_value = resource
+            resource.owner_id = resource_owner_id
+            mock_scalars = MagicMock()
+            mock_scalars.all.return_value = [resource]
+            result.scalars.return_value = mock_scalars
         else:
             result.scalar_one_or_none.return_value = scalar_result
         if scalars_result is not None:
@@ -235,9 +238,9 @@ class TestCreateApplication:
         session = AsyncMock()
         no_pending = MagicMock()
         no_pending.scalar_one_or_none.return_value = None
-        resource = MagicMock(visibility="private", department_id=None)
+        resource = MagicMock(visibility="private", department_id=None, owner_id="user-1")
         resource_result = MagicMock()
-        resource_result.scalar_one_or_none.return_value = resource
+        resource_result.scalars.return_value.all.return_value = [resource]
         session.execute.side_effect = (no_pending, resource_result)
         session.__aenter__ = AsyncMock(return_value=session)
         session.__aexit__ = AsyncMock(return_value=False)

@@ -718,6 +718,7 @@ class TestDeleteCustomSkill:
         assert session.execute.await_args.args[0].compile().params == {
             "resource_type_1": "skill",
             "resource_id_1": "my-skill",
+            "applicant_id_1": "test-user",
             "status_1": "pending",
             "status": "rejected",
             "review_comment": "资源已删除，申请自动关闭",

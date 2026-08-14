@@ -882,6 +882,7 @@ async def delete_agent(
                         .where(
                             VisibilityApplication.resource_type == "agent",
                             VisibilityApplication.resource_id == name,
+                            VisibilityApplication.applicant_id == str(current_user.id),
                             VisibilityApplication.status == "pending",
                         )
                         .values(status="rejected", review_comment="资源已删除，申请自动关闭")

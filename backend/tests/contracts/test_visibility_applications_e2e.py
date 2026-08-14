@@ -65,12 +65,14 @@ def _make_resource(
     resource_id: str = "my-skill",
     visibility: str = "private",
     department_id: str | None = "dept-1",
+    owner_id: str | None = None,
 ) -> MagicMock:
     res = MagicMock()
     res.resource_type = resource_type
     res.resource_id = resource_id
     res.visibility = visibility
     res.department_id = department_id
+    res.owner_id = owner_id
     res.deleted_at = None
     return res
 
@@ -135,17 +137,18 @@ def _patch_session(session_mock: MagicMock):
     )
 
 
-def _setup_create_session(resource: MagicMock):
+def _setup_create_session(*resources: MagicMock):
     """Build a session mock for POST (create application).
 
     Call sequence: pending check → resource lookup → add → commit → refresh.
+    ``resources`` are the candidate resource rows returned by the lookup.
     """
     session = MagicMock()
     pending_result = MagicMock()
     pending_result.scalar_one_or_none.return_value = None  # no existing pending
 
     resource_result = MagicMock()
-    resource_result.scalar_one_or_none.return_value = resource
+    resource_result.scalars.return_value.all.return_value = list(resources)
 
     session.execute = AsyncMock(side_effect=[pending_result, resource_result])
     session.add = MagicMock()
@@ -180,7 +183,7 @@ class TestCreateApplication:
 
     def test_create_application_success(self):
         """Submit application succeeds with valid resource and different visibility."""
-        resource = _make_resource(visibility="private")
+        resource = _make_resource(visibility="private", owner_id="applicant-1")
         session = _setup_create_session(resource)
 
         # After add+commit, refresh should set attributes on the app obj
@@ -223,7 +226,7 @@ class TestCreateApplication:
 
     def test_create_application_target_same_as_current(self):
         """Reject application when target == current visibility."""
-        resource = _make_resource(visibility="private")
+        resource = _make_resource(visibility="private", owner_id="admin-1")
         session = _setup_create_session(resource)
         sf_patch, audit_patch = _patch_session(session)
         app, _ = _make_app()
@@ -241,13 +244,54 @@ class TestCreateApplication:
         assert resp.status_code == 400
         assert "same as current" in resp.json()["detail"].lower()
 
+    def test_create_application_non_owner_forbidden(self):
+        """Non-owner cannot submit a visibility application (403)."""
+        resource = _make_resource(visibility="public", owner_id="someone-else")
+        session = _setup_create_session(resource)
+        sf_patch, audit_patch = _patch_session(session)
+        app, _ = _make_app(role="user", user_id="applicant-1")
+        with sf_patch, audit_patch:
+            with TestClient(app) as client:
+                resp = client.post(
+                    "/api/visibility-applications",
+                    json={
+                        "resource_type": "skill",
+                        "resource_id": "my-skill",
+                        "target_visibility": "private",
+                    },
+                )
+        assert resp.status_code == 403
+        assert "resource owner" in resp.json()["detail"].lower()
+        session.add.assert_not_called()
+
+    def test_create_application_same_name_different_owners(self):
+        """Same-named resources owned by different users each get their own
+        pending application."""
+        resource_a = _make_resource(resource_id="shared-name", owner_id="user-a")
+        resource_b = _make_resource(resource_id="shared-name", owner_id="user-b")
+        session = _setup_create_session(resource_a, resource_b)
+        sf_patch, audit_patch = _patch_session(session)
+        app, _ = _make_app(role="user", user_id="user-a")
+        with sf_patch, audit_patch:
+            with TestClient(app) as client:
+                resp = client.post(
+                    "/api/visibility-applications",
+                    json={
+                        "resource_type": "skill",
+                        "resource_id": "shared-name",
+                        "target_visibility": "public",
+                    },
+                )
+        assert resp.status_code == 201
+        assert resp.json()["applicant_id"] == "user-a"
+
     def test_create_application_resource_not_found(self):
         """Reject application when resource does not exist."""
         session = MagicMock()
         pending_result = MagicMock()
         pending_result.scalar_one_or_none.return_value = None
         resource_result = MagicMock()
-        resource_result.scalar_one_or_none.return_value = None
+        resource_result.scalars.return_value.all.return_value = []
         session.execute = AsyncMock(side_effect=[pending_result, resource_result])
         sf_patch, audit_patch = _patch_session(session)
         app, _ = _make_app()
@@ -632,7 +676,7 @@ class TestRBAC:
 
     def test_regular_user_can_submit(self):
         """Regular user can submit applications."""
-        resource = _make_resource(visibility="private")
+        resource = _make_resource(visibility="private", owner_id="applicant-1")
         session = _setup_create_session(resource)
         sf_patch, audit_patch = _patch_session(session)
         app, _ = _make_app(role="user", user_id="applicant-1")
@@ -659,7 +703,7 @@ class TestFullWorkflow:
 
     def test_submit_then_approve_updates_visibility(self):
         """Submit → approve flow updates resource visibility."""
-        resource = _make_resource(visibility="private")
+        resource = _make_resource(visibility="private", owner_id="applicant-1")
         session = _setup_create_session(resource)
 
         # Refresh sets fields on the app object after commit
@@ -716,7 +760,7 @@ class TestFullWorkflow:
 
     def test_submit_then_withdraw(self):
         """Submit → withdraw flow."""
-        resource = _make_resource(visibility="private")
+        resource = _make_resource(visibility="private", owner_id="applicant-1")
         session = _setup_create_session(resource)
 
         created_app_id = "app-withdraw-test"
@@ -770,7 +814,7 @@ class TestFullWorkflow:
 
     def test_submit_then_reject(self):
         """Submit → reject flow."""
-        resource = _make_resource(visibility="private")
+        resource = _make_resource(visibility="private", owner_id="applicant-1")
         session = _setup_create_session(resource)
 
         created_app_id = "app-reject-test"
