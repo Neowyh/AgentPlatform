@@ -253,6 +253,42 @@ async def test_agent_adapter_raises_when_agent_missing(env: pytest.MonkeyPatch) 
 
 
 @pytest.mark.asyncio
+async def test_agent_adapter_shared_agent_loads_owner_config_but_runs_as_runner(
+    env: pytest.MonkeyPatch,
+) -> None:
+    """A shared agent reads config/SOUL from the declaring owner's directory
+    while the execution context (sandbox, user) stays with the runner."""
+    calls: dict[str, str | None] = {}
+
+    def record_config(name, user_id=None):
+        calls["config_user_id"] = user_id
+        return _agent_config()
+
+    def record_soul(name, user_id=None):
+        calls["soul_user_id"] = user_id
+        return SOUL
+
+    env.setattr(ideer.config.agents_config, "load_agent_config", record_config)
+    env.setattr(ideer.config.agents_config, "load_agent_soul", record_soul)
+
+    adapter = _AgentAdapter("fault-zeroing", "user-1", owner_id="owner-1")
+    context = ActionContext(
+        workflow_name="fault-zeroing",
+        run_id="run-shared",
+        node_id="evidence_collection",
+        inputs={},
+        state={},
+        outputs={},
+    )
+
+    result = await adapter.run(context, {"prompt": "执行任务"})
+
+    assert calls == {"config_user_id": "owner-1", "soul_user_id": "owner-1"}
+    assert FakeExecutor.effective_user_ids == ["user-1"]
+    assert result == {"ok": True}
+
+
+@pytest.mark.asyncio
 async def test_agent_adapter_raises_when_executor_fails(env: pytest.MonkeyPatch) -> None:
     class FailingExecutor(FakeExecutor):
         async def _aexecute(self, prompt: str) -> SimpleNamespace:

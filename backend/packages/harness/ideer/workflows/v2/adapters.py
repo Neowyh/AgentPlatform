@@ -116,9 +116,13 @@ class _AgentAdapter:
         "authentication or access is invalid",
     )
 
-    def __init__(self, name: str, user_id: str) -> None:
+    def __init__(self, name: str, user_id: str, *, owner_id: str | None = None) -> None:
         self.name = name
         self.user_id = user_id
+        # For shared agents the config/SOUL are read from the declaring owner's
+        # directory while the runtime context (sandbox, user) stays with the
+        # runner.
+        self.owner_id = owner_id
 
     def _build_executor(self, context: ActionContext, params: dict[str, Any]):
         from ideer.config import get_app_config
@@ -127,11 +131,12 @@ class _AgentAdapter:
         from ideer.subagents.executor import SubagentExecutor
         from ideer.tools.tools import get_available_tools
 
-        config = load_agent_config(self.name, user_id=self.user_id)
+        config_user_id = self.owner_id or self.user_id
+        config = load_agent_config(self.name, user_id=config_user_id)
         if config is None:
             raise ActionResolutionError(f"agent '{self.name}' not found")
 
-        soul = load_agent_soul(self.name, user_id=self.user_id) or ""
+        soul = load_agent_soul(self.name, user_id=config_user_id) or ""
         override = params.get("system_prompt", "")
         if soul and override:
             system_prompt = f"{soul}\n\n## 当前阶段指令\n\n{override}"
