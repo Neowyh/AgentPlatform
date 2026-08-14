@@ -7,7 +7,8 @@ different users have independent application flows.
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+import asyncio
+from unittest.mock import patch
 
 import pytest
 from sqlalchemy import create_engine, text
@@ -45,8 +46,8 @@ CREATE UNIQUE INDEX uq_visibility_app_pending
 
 
 @pytest.fixture()
-def engine():
-    eng = create_engine("sqlite:///:memory:")
+def engine(tmp_path):
+    eng = create_engine(f"sqlite:///{tmp_path}/test.db")
     Base.metadata.drop_all(eng)
     with eng.begin() as conn:
         for stmt in _DDL.split(";"):
@@ -66,11 +67,14 @@ def session(engine):
 
 
 def _run(session, *, dry_run=False):
-    sf = MagicMock(return_value=session)
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    url = session.get_bind().url.render_as_string(hide_password=False).replace("sqlite://", "sqlite+aiosqlite://")
+    sf = async_sessionmaker(bind=create_async_engine(url), expire_on_commit=False)
     with patch("ideer.scripts.migrate_visibility_app_pending_index.get_session_factory", return_value=sf):
         from ideer.scripts.migrate_visibility_app_pending_index import migrate_visibility_app_pending_index
 
-        return migrate_visibility_app_pending_index(dry_run=dry_run)
+        return asyncio.run(migrate_visibility_app_pending_index(dry_run=dry_run))
 
 
 def _insert(session, *, app_id, applicant_id, resource_id="my-agent", status="pending"):
@@ -117,7 +121,7 @@ class TestMigration:
         with patch("ideer.scripts.migrate_visibility_app_pending_index.get_session_factory", return_value=None):
             from ideer.scripts.migrate_visibility_app_pending_index import migrate_visibility_app_pending_index
 
-            assert migrate_visibility_app_pending_index()["action"] == "skipped"
+            assert asyncio.run(migrate_visibility_app_pending_index())["action"] == "skipped"
 
 
 # ---------------------------------------------------------------------------
