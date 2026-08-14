@@ -115,9 +115,12 @@ async def create_application(
     try:
         async with sf() as session:
             # Check for an existing pending application for the same resource
+            # (scoped to the applicant so same-named resources owned by
+            # different users have independent application flows)
             pending_check = select(VisibilityApplication).where(
                 VisibilityApplication.resource_type == request.resource_type,
                 VisibilityApplication.resource_id == request.resource_id,
+                VisibilityApplication.applicant_id == str(current_user.id),
                 VisibilityApplication.status == VisibilityApplicationStatus.PENDING,
             )
             existing = (await session.execute(pending_check)).scalar_one_or_none()
@@ -127,14 +130,28 @@ async def create_application(
                     detail="A pending application already exists for this resource",
                 )
 
-            # Fetch current visibility from resource_metadata
+            # Fetch current visibility from resource_metadata.
+            # resource_id is only unique per owner, so collect all matches
+            # instead of scalar_one_or_none() (which would raise 500 on
+            # same-named resources owned by different users).
             resource_stmt = select(ResourceMetadata).where(
                 ResourceMetadata.resource_type == request.resource_type,
                 ResourceMetadata.resource_id == request.resource_id,
             )
-            resource = (await session.execute(resource_stmt)).scalar_one_or_none()
-            if not resource:
+            candidates = (await session.execute(resource_stmt)).scalars().all()
+            if not candidates:
                 raise HTTPException(status_code=404, detail="Resource not found")
+
+            # Only the resource owner may submit a visibility application
+            resource = next(
+                (r for r in candidates if r.owner_id == str(current_user.id)),
+                None,
+            )
+            if resource is None:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Only resource owner can submit visibility application",
+                )
 
             # Check target_visibility != current_visibility
             if request.target_visibility.value == resource.visibility:
@@ -293,13 +310,16 @@ async def review_application(
             application.review_comment = request.comment
             application.version += 1
 
-            # On approval, sync visibility to resource_metadata
+            # On approval, sync visibility to resource_metadata. Scope by the
+            # applicant (the resource owner) so same-named resources owned by
+            # other users are never touched.
             if request.action == VisibilityApplicationStatus.APPROVED.value:
                 await session.execute(
                     sql_update(ResourceMetadata)
                     .where(
                         ResourceMetadata.resource_type == application.resource_type,
                         ResourceMetadata.resource_id == application.resource_id,
+                        ResourceMetadata.owner_id == application.applicant_id,
                     )
                     .values(
                         visibility=application.target_visibility,

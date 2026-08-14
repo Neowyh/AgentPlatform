@@ -64,12 +64,14 @@ class VisibilityApplication(Base):
         return value
 
 
-# Cross-DB partial unique index: only one PENDING application per resource.
+# Cross-DB partial unique index: only one PENDING application per resource
+# owner. Scoped by applicant_id so same-named resources owned by different
+# users have independent application flows.
 # Uses raw SQL DDL instead of postgresql_where (which SQLite ignores).
 event.listen(
     VisibilityApplication.__table__,
     "after_create",
     DDL(
-        "CREATE UNIQUE INDEX IF NOT EXISTS uq_visibility_app_pending ON visibility_applications(resource_type, resource_id) WHERE status = 'pending'",
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_visibility_app_pending ON visibility_applications(resource_type, resource_id, applicant_id) WHERE status = 'pending'",
     ),
 )

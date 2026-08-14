@@ -771,7 +771,9 @@ class TestVisibilityApplicationEdgeCases:
                 result.scalar_one_or_none.return_value = None
             else:
                 # Second call: resource lookup
-                result.scalar_one_or_none.return_value = None
+                mock_scalars = MagicMock()
+                mock_scalars.all.return_value = []
+                result.scalars.return_value = mock_scalars
             return result
 
         mock_session.execute = AsyncMock(side_effect=_execute)
@@ -808,11 +810,14 @@ class TestVisibilityApplicationEdgeCases:
             if call_count == 1:
                 result.scalar_one_or_none.return_value = None  # no pending
             else:
-                # Resource with visibility=public
+                # Resource with visibility=public, owned by the caller
                 resource = MagicMock()
                 resource.visibility = "public"
                 resource.department_id = None
-                result.scalar_one_or_none.return_value = resource
+                resource.owner_id = str(user.id)
+                mock_scalars = MagicMock()
+                mock_scalars.all.return_value = [resource]
+                result.scalars.return_value = mock_scalars
             return result
 
         mock_session.execute = AsyncMock(side_effect=_execute)
