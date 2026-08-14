@@ -70,7 +70,7 @@ export default function WorkflowEditPage() {
     try {
       await updateWorkflow.mutateAsync({
         name: workflow_name,
-        data: { yaml_content: content },
+        data: { yaml_content: content, version: Number(workflow?.version) },
       });
       toast.success(t.workflows.updated);
       router.push(`/workspace/workflows/${workflow_name}`);
