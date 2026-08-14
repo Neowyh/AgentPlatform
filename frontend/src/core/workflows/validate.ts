@@ -55,12 +55,14 @@ function parseTopLevelFields(yaml: string): {
 
     // ---- Inside the nodes block -------------------------------------------
     if (inNodesBlock) {
-      if (indent <= nodesIndent && line !== "") {
-        inNodesBlock = false;
-      } else if (line.startsWith("- ")) {
+      if (line.startsWith("- ")) {
+        // Node items may be indented below "nodes:" or use a valid YAML
+        // indentless block sequence (dash at the same column) – both count.
         fields.nodesHasItems = true;
         // We only need to know there is at least one item – keep scanning for
         // potential syntax errors but stop counting.
+      } else if (indent <= nodesIndent) {
+        inNodesBlock = false;
       }
     }
 
@@ -141,8 +143,9 @@ function checkEmptyActionNames(content: string): string[] {
       continue;
     }
 
-    // Still in nodes: a line at or shallower than nodes: itself exits
-    if (indent <= nodesIndent) {
+    // Still in nodes: an indentless "- " item stays in the block; a non-item
+    // line at or shallower than "nodes:" itself exits it.
+    if (indent <= nodesIndent && !trimmed.startsWith("- ")) {
       inNodes = false;
       continue;
     }

@@ -41,6 +41,46 @@ describe("validateYaml", () => {
     );
   });
 
+  it("accepts PyYAML indentless block sequences (safe_dump output)", () => {
+    const yaml = `schema_version: 2
+name: fault-zeroing
+description: test
+inputs: {}
+state: {}
+entrypoint: fork_start
+nodes:
+- id: fork_start
+  type: fork
+  branches:
+  - evidence_collection
+- id: evidence_collection
+  type: action
+  action:
+    kind: agent
+    name: fault-zeroing
+edges:
+- from: fork_start
+  to: evidence_collection
+`;
+    expect(validateYaml(yaml)).toEqual([]);
+  });
+
+  it("detects empty action names in indentless sequence format", () => {
+    const errors = validateYaml(`schema_version: 2
+name: workflow
+nodes:
+- id: start
+  type: action
+  action:
+    kind: agent
+    name: ""
+edges: []
+`);
+    expect(errors).toContain(
+      'Action node has empty "name" — provide a valid agent or tool name',
+    );
+  });
+
   it("accepts action node with non-empty name", () => {
     expect(
       validateYaml(
