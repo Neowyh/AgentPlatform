@@ -487,11 +487,11 @@ async def update_workflow(
     if not check_resource_modify(current_user, meta.get("owner_id"), meta.get("department_id")):
         raise HTTPException(403, "You do not have permission to modify this resource")
 
-    # Optimistic locking: verify version matches
+    # Optimistic locking: use the latest definition version as the token,
+    # matching the version returned by get_workflow
     from app.gateway.error_codes import ApiException
 
-    current_version = meta.get("version")
-    if current_version is not None and body.version != current_version:
+    if body.version != existing.version:
         raise ApiException("VERSION_CONFLICT", "乐观锁冲突，需刷新重试")
 
     # Validate new YAML
