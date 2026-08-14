@@ -108,6 +108,18 @@ def test_update_agent_rejects_unknown_agent(tmp_path, patched_paths):
     assert not _user_agent_dir(tmp_path, "ghost").exists()
 
 
+def test_update_agent_rejects_shared_agent(tmp_path, patched_paths):
+    """A shared agent (agent_owner_id in runtime context) is read-only for the runner."""
+    _seed_agent(tmp_path)
+    runtime = _DummyRuntime(context={"agent_name": "test-agent", "agent_owner_id": "owner-1"}, tool_call_id="call_1")
+
+    result = update_agent.func(runtime=runtime, soul="new soul")
+
+    msg = result.update["messages"][0]
+    assert "read-only" in msg.content
+    assert "new soul" not in _user_agent_dir(tmp_path).joinpath("SOUL.md").read_text()
+
+
 def test_update_agent_requires_at_least_one_field(tmp_path, patched_paths):
     _seed_agent(tmp_path)
 

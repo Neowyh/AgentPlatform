@@ -117,6 +117,12 @@ def update_agent(
     if not agent_name:
         return _err("update_agent is only available inside a custom agent's chat. There is no agent_name in the current runtime context, so there is nothing to update. If you are inside the bootstrap flow, use setup_agent instead.")
 
+    # Shared agents (owned by another user) are read-only for the runner. The
+    # gateway stamps the declaring owner into the run context, so refuse even
+    # if the tool somehow ends up in this agent's tool list.
+    if runtime.context and runtime.context.get("agent_owner_id"):
+        return _err(f"Agent '{agent_name}' is shared by another user and is read-only; it cannot be modified.")
+
     # Resolve the active user so that updates only affect this user's agent.
     # ``resolve_runtime_user_id`` prefers ``runtime.context["user_id"]`` (set by
     # the gateway from the auth-validated request) and falls back to the

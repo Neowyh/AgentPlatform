@@ -178,6 +178,36 @@ def test_get_agent_soul_returns_soul_content():
     assert "I am helpful" in result
 
 
+def test_get_agent_soul_forwards_user_id_to_owner_directory():
+    """A shared agent's SOUL is read from the declaring owner's directory."""
+    with patch("ideer.agents.lead_agent.prompt.load_agent_soul") as mock_soul:
+        mock_soul.return_value = "owner soul"
+        result = prompt_module.get_agent_soul("my-agent", user_id="owner-1")
+    mock_soul.assert_called_once_with("my-agent", user_id="owner-1")
+    assert "owner soul" in result
+
+
+def test_apply_prompt_template_shared_agent_uses_owner_soul_and_skips_self_update(monkeypatch):
+    """Shared agents load SOUL from the owner and get no self-update section."""
+    seen = {}
+
+    def fake_soul(agent_name=None, *, user_id=None):
+        seen["user_id"] = user_id
+        return "<soul>shared</soul>"
+
+    monkeypatch.setattr(prompt_module, "get_agent_soul", fake_soul)
+    monkeypatch.setattr(prompt_module, "get_skills_prompt_section", lambda *a, **kw: "")
+    monkeypatch.setattr(prompt_module, "get_deferred_tools_prompt_section", lambda *a, **kw: "")
+    monkeypatch.setattr(prompt_module, "_build_acp_section", lambda *a, **kw: "")
+    monkeypatch.setattr(prompt_module, "_build_custom_mounts_section", lambda *a, **kw: "")
+
+    result = prompt_module.apply_prompt_template(agent_name="my-agent", agent_user_id="owner-1")
+
+    assert seen["user_id"] == "owner-1"
+    assert "<soul>shared</soul>" in result
+    assert "<self_update>" not in result
+
+
 # --- Lines 697-702: get_deferred_tools_prompt_section ---
 
 

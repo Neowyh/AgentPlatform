@@ -446,7 +446,7 @@ class TestPromptApplyPromptTemplate:
         )
         monkeypatch.setattr("ideer.config.get_app_config", lambda: config)
         monkeypatch.setattr(prompt_mod, "get_or_new_skill_storage", lambda **kw: SimpleNamespace(load_skills=lambda enabled_only=True: []))
-        monkeypatch.setattr(prompt_mod, "get_agent_soul", lambda agent_name=None: "")
+        monkeypatch.setattr(prompt_mod, "get_agent_soul", lambda agent_name=None, **kwargs: "")
         monkeypatch.setattr(prompt_mod, "get_deferred_tools_prompt_section", lambda **kw: "")
         monkeypatch.setattr(prompt_mod, "_build_acp_section", lambda **kw: "")
 
@@ -465,7 +465,7 @@ class TestPromptApplyPromptTemplate:
         )
         monkeypatch.setattr("ideer.config.get_app_config", lambda: config)
         monkeypatch.setattr(prompt_mod, "get_or_new_skill_storage", lambda **kw: SimpleNamespace(load_skills=lambda enabled_only=True: []))
-        monkeypatch.setattr(prompt_mod, "get_agent_soul", lambda agent_name=None: "<soul>Custom soul</soul>")
+        monkeypatch.setattr(prompt_mod, "get_agent_soul", lambda agent_name=None, **kwargs: "<soul>Custom soul</soul>")
         monkeypatch.setattr(prompt_mod, "get_deferred_tools_prompt_section", lambda **kw: "")
         monkeypatch.setattr(prompt_mod, "_build_acp_section", lambda **kw: "")
 
@@ -485,7 +485,7 @@ class TestPromptApplyPromptTemplate:
         )
         monkeypatch.setattr("ideer.config.get_app_config", lambda: config)
         monkeypatch.setattr(prompt_mod, "get_or_new_skill_storage", lambda **kw: SimpleNamespace(load_skills=lambda enabled_only=True: []))
-        monkeypatch.setattr(prompt_mod, "get_agent_soul", lambda agent_name=None: "")
+        monkeypatch.setattr(prompt_mod, "get_agent_soul", lambda agent_name=None, **kwargs: "")
         monkeypatch.setattr(prompt_mod, "get_deferred_tools_prompt_section", lambda **kw: "")
         monkeypatch.setattr(prompt_mod, "_build_acp_section", lambda **kw: "")
 

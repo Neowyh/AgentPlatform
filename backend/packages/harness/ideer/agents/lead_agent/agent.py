@@ -398,8 +398,12 @@ def _make_lead_agent(config: RunnableConfig, *, app_config: AppConfig):
     max_concurrent_subagents = cfg.get("max_concurrent_subagents", 3)
     is_bootstrap = cfg.get("is_bootstrap", False)
     agent_name = validate_agent_name(cfg.get("agent_name"))
+    # When the agent belongs to another user (shared agent), config/SOUL are
+    # loaded from the declaring owner's directory while the run context
+    # (sandbox, memory) stays with the current user.
+    agent_owner_id = cfg.get("agent_owner_id")
 
-    agent_config = load_agent_config(agent_name) if not is_bootstrap else None
+    agent_config = load_agent_config(agent_name, user_id=agent_owner_id) if not is_bootstrap else None
     available_skills = _available_skill_names(agent_config, is_bootstrap)
     # Custom agent model from agent config (if any), or None to let _resolve_model_name pick the default
     agent_model_name = agent_config.model if agent_config and agent_config.model else None
@@ -475,8 +479,9 @@ def _make_lead_agent(config: RunnableConfig, *, app_config: AppConfig):
         )
 
     # Custom agents can update their own SOUL.md / config via update_agent.
-    # The default agent (no agent_name) does not see this tool.
-    extra_tools = [update_agent] if agent_name else []
+    # The default agent (no agent_name) does not see this tool, and shared
+    # agents (owned by another user) are read-only for the runner.
+    extra_tools = [update_agent] if agent_name and not agent_owner_id else []
     # Default lead agent (unchanged behavior)
     tools = get_available_tools(model_name=model_name, groups=agent_config.tool_groups if agent_config else None, subagent_enabled=subagent_enabled, app_config=resolved_app_config)
     return create_agent(
@@ -487,6 +492,7 @@ def _make_lead_agent(config: RunnableConfig, *, app_config: AppConfig):
             subagent_enabled=subagent_enabled,
             max_concurrent_subagents=max_concurrent_subagents,
             agent_name=agent_name,
+            agent_user_id=agent_owner_id,
             available_skills=set(agent_config.skills) if agent_config and agent_config.skills is not None else None,
             app_config=resolved_app_config,
         ),
