@@ -119,6 +119,37 @@ def _is_shared_only(agent_name: str, user_id: str) -> bool:
     return paths.agent_dir(agent_name).exists() and not paths.user_agent_dir(user_id, agent_name).exists()
 
 
+async def _resolve_agent_config(name: str, user_id: str) -> tuple[AgentConfig, str, dict]:
+    """Resolve an agent config for read endpoints, falling back to its owner's directory.
+
+    Reads search the current user's directory first (plus the legacy shared
+    path via ``load_agent_config``). When that fails, the resource_metadata
+    record is consulted: if it declares another owner whose per-user directory
+    holds the agent, the config is loaded from there so public/department
+    agents remain reachable in detail views.
+
+    Returns:
+        ``(agent_cfg, resolved_user_id, meta)`` — ``resolved_user_id`` is the
+        user id whose directory the config was loaded from (the owner for
+        other-owned agents).
+
+    Raises:
+        FileNotFoundError: If the agent is not found in the current user's
+            directory nor the declared owner's directory.
+    """
+    try:
+        agent_cfg = load_agent_config(name, user_id=user_id)
+        return agent_cfg, user_id, await _load_agent_meta(name, user_id)
+    except FileNotFoundError:
+        pass
+
+    meta = await _load_agent_meta(name, user_id)
+    owner_id = meta.get("owner_id")
+    if owner_id and owner_id != user_id and get_paths().user_agent_dir(owner_id, name).exists():
+        return load_agent_config(name, user_id=owner_id), owner_id, meta
+    raise FileNotFoundError(f"Agent directory not found: {name}")
+
+
 async def _load_agent_meta(agent_name: str, user_id: str, for_owner: str | None = None) -> dict:
     """Load agent RBAC metadata from resource_metadata table."""
     from ideer.persistence.engine import get_session_factory
@@ -437,7 +468,7 @@ async def get_agent(
     user_id = get_effective_user_id()
 
     try:
-        agent_cfg = load_agent_config(name, user_id=user_id)
+        agent_cfg, resolved_user_id, meta = await _resolve_agent_config(name, user_id)
 
         # BUG-20: Shared agents are treated as public
         is_shared = _is_shared_only(name, user_id)
@@ -447,7 +478,6 @@ async def get_agent(
             owner_id = None
             department_id = None
         else:
-            meta = await _load_agent_meta(name, user_id)
             # Lazy migration: auto-create DB record for per-user agents without one
             if not meta and get_paths().user_agent_dir(user_id, name).exists():
                 meta = {"visibility": "private", "owner_id": user_id, "department_id": None}
@@ -466,8 +496,8 @@ async def get_agent(
         return _agent_config_to_response(
             agent_cfg,
             include_soul=True,
-            user_id=user_id,
-            read_only=is_shared,
+            user_id=resolved_user_id,
+            read_only=is_shared or resolved_user_id != user_id,
             visibility=visibility,
             owner_id=owner_id,
             department_id=department_id,
@@ -973,7 +1003,7 @@ async def export_agent(
     user_id = get_effective_user_id()
 
     try:
-        agent_cfg = load_agent_config(name, user_id=user_id)
+        agent_cfg, resolved_user_id, meta = await _resolve_agent_config(name, user_id)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"Agent '{name}' not found")
 
@@ -985,8 +1015,9 @@ async def export_agent(
         department_id = None
         meta = {}
     else:
-        await _ensure_agent_meta(name, user_id)
-        meta = await _load_agent_meta(name, user_id, for_owner=user_id)
+        if resolved_user_id == user_id:
+            await _ensure_agent_meta(name, user_id)
+            meta = await _load_agent_meta(name, user_id, for_owner=user_id)
         visibility = meta.get("visibility", "private")
         owner_id = meta.get("owner_id")
         department_id = meta.get("department_id")
@@ -998,7 +1029,7 @@ async def export_agent(
     elif visibility != "public":
         raise HTTPException(status_code=404, detail=f"Agent '{name}' not found")
 
-    soul = load_agent_soul(name, user_id=user_id) or ""
+    soul = load_agent_soul(name, user_id=resolved_user_id) or ""
 
     config_dict: dict = {
         "name": agent_cfg.name,
@@ -1131,7 +1162,7 @@ async def get_agent_stats(
     user_id = get_effective_user_id()
 
     try:
-        agent_cfg = load_agent_config(name, user_id=user_id)
+        agent_cfg, resolved_user_id, meta = await _resolve_agent_config(name, user_id)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"Agent '{name}' not found")
 
@@ -1143,7 +1174,8 @@ async def get_agent_stats(
         department_id = None
         meta = {}
     else:
-        meta = await _load_agent_meta(name, user_id)
+        if not meta:
+            meta = await _load_agent_meta(name, user_id)
         visibility = meta.get("visibility", "private")
         owner_id = meta.get("owner_id")
         department_id = meta.get("department_id")
@@ -1155,7 +1187,7 @@ async def get_agent_stats(
     elif visibility != "public":
         raise HTTPException(status_code=404, detail=f"Agent '{name}' not found")
 
-    soul = load_agent_soul(name, user_id=user_id)
+    soul = load_agent_soul(name, user_id=resolved_user_id)
 
     # Query real run/message stats from the database
     total_runs = 0

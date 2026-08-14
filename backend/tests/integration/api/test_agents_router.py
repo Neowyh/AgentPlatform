@@ -227,6 +227,52 @@ class TestGetAgent:
         response = client.get("/api/agents/nonexistent")
         assert response.status_code == 404
 
+    @_patch_agents_api_enabled()
+    @patch(_USER_ID_PATCH, return_value="user-1")
+    @patch(_LOAD_CONFIG_PATCH, side_effect=[FileNotFoundError, _mock_agent_config()])
+    @patch(_SHARED_PATCH, return_value=False)
+    @patch(_LOAD_SOUL_PATCH, return_value="# Shared Agent Soul")
+    def test_get_agent_public_owned_by_other_user(self, mock_soul, mock_shared, mock_load, mock_uid, mock_cfg):
+        """Get agent resolves a public agent from its owner's directory."""
+        mock_paths_obj = MagicMock()
+        mock_paths_obj.user_agent_dir.return_value = MagicMock(exists=MagicMock(return_value=True))
+
+        app = _make_app()
+        client = TestClient(app)
+        with (
+            patch(_PATHS_PATCH, return_value=mock_paths_obj),
+            patch(
+                _META_PATCH,
+                new=AsyncMock(return_value={"visibility": "public", "owner_id": "user-owner", "department_id": None, "is_favorited": False}),
+            ),
+        ):
+            response = client.get("/api/agents/test-agent")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["read_only"] is True
+        assert data["owner_id"] == "user-owner"
+        assert data["soul"] == "# Shared Agent Soul"
+        assert mock_load.call_args.kwargs["user_id"] == "user-owner"
+        assert mock_soul.call_args.kwargs["user_id"] == "user-owner"
+
+    @_patch_agents_api_enabled()
+    @patch(_USER_ID_PATCH, return_value="user-1")
+    @patch(_LOAD_CONFIG_PATCH, side_effect=FileNotFoundError)
+    @patch(_SHARED_PATCH, return_value=False)
+    def test_get_agent_other_owner_dir_missing_404(self, mock_shared, mock_load, mock_uid, mock_cfg):
+        """Get agent returns 404 when the declared owner's directory is missing."""
+        mock_paths_obj = MagicMock()
+        mock_paths_obj.user_agent_dir.return_value = MagicMock(exists=MagicMock(return_value=False))
+
+        app = _make_app()
+        client = TestClient(app)
+        with (
+            patch(_PATHS_PATCH, return_value=mock_paths_obj),
+            patch(_META_PATCH, new=AsyncMock(return_value={"visibility": "public", "owner_id": "user-owner"})),
+        ):
+            response = client.get("/api/agents/test-agent")
+        assert response.status_code == 404
+
 
 # ---------------------------------------------------------------------------
 # Tests — Create Agent
@@ -437,6 +483,30 @@ class TestExportAgent:
         response = client.post("/api/agents/nonexistent/export")
         assert response.status_code == 404
 
+    @_patch_agents_api_enabled()
+    @patch(_USER_ID_PATCH, return_value="user-1")
+    @patch(_LOAD_CONFIG_PATCH, side_effect=[FileNotFoundError, _mock_agent_config()])
+    @patch(_SHARED_PATCH, return_value=False)
+    @patch(_LOAD_SOUL_PATCH, return_value="# Shared Agent Soul")
+    def test_export_agent_public_owned_by_other_user(self, mock_soul, mock_shared, mock_load, mock_uid, mock_cfg):
+        """Export agent resolves a public agent from its owner's directory."""
+        mock_paths_obj = MagicMock()
+        mock_paths_obj.user_agent_dir.return_value = MagicMock(exists=MagicMock(return_value=True))
+
+        app = _make_app()
+        client = TestClient(app)
+        with (
+            patch(_PATHS_PATCH, return_value=mock_paths_obj),
+            patch(_META_PATCH, new=AsyncMock(return_value={"visibility": "public", "owner_id": "user-owner"})),
+        ):
+            response = client.post("/api/agents/test-agent/export")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["meta"]["owner_id"] == "user-owner"
+        assert data["soul"] == "# Shared Agent Soul"
+        assert mock_load.call_args.kwargs["user_id"] == "user-owner"
+        assert mock_soul.call_args.kwargs["user_id"] == "user-owner"
+
 
 # ---------------------------------------------------------------------------
 # Tests — Import Agent
@@ -540,6 +610,30 @@ class TestGetAgentStats:
         client = TestClient(app)
         response = client.get("/api/agents/nonexistent/stats")
         assert response.status_code == 404
+
+    @_patch_agents_api_enabled()
+    @patch(_USER_ID_PATCH, return_value="user-1")
+    @patch(_LOAD_CONFIG_PATCH, side_effect=[FileNotFoundError, _mock_agent_config()])
+    @patch(_SHARED_PATCH, return_value=False)
+    @patch(_LOAD_SOUL_PATCH, return_value="# Shared Agent Soul")
+    def test_get_agent_stats_public_owned_by_other_user(self, mock_soul, mock_shared, mock_load, mock_uid, mock_cfg):
+        """Get agent stats resolves a public agent from its owner's directory."""
+        mock_paths_obj = MagicMock()
+        mock_paths_obj.user_agent_dir.return_value = MagicMock(exists=MagicMock(return_value=True))
+
+        app = _make_app()
+        client = TestClient(app)
+        with (
+            patch(_PATHS_PATCH, return_value=mock_paths_obj),
+            patch(_META_PATCH, new=AsyncMock(return_value={"visibility": "public", "owner_id": "user-owner"})),
+        ):
+            response = client.get("/api/agents/test-agent/stats")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["owner_id"] == "user-owner"
+        assert data["has_soul"] is True
+        assert mock_load.call_args.kwargs["user_id"] == "user-owner"
+        assert mock_soul.call_args.kwargs["user_id"] == "user-owner"
 
 
 # ---------------------------------------------------------------------------
