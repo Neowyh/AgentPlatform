@@ -19,7 +19,11 @@ const {
   mockMutateAsync: vi.fn(),
   mockValidateYaml: vi.fn().mockReturnValue([]),
   mockUseWorkflow: vi.fn().mockReturnValue({
-    workflow: { name: "test-workflow", yaml_content: "name: test\nsteps: []" },
+    workflow: {
+      name: "test-workflow",
+      version: "1",
+      yaml_content: "name: test\nsteps: []",
+    },
     isLoading: false,
   }),
   mockIsPending: { value: false },
@@ -122,6 +126,7 @@ describe("WorkflowEditPage", () => {
     mockUseWorkflow.mockReturnValue({
       workflow: {
         name: "test-workflow",
+        version: "1",
         yaml_content: "name: test\nsteps: []",
       },
       isLoading: false,
@@ -233,7 +238,7 @@ describe("WorkflowEditPage", () => {
     await waitFor(() => {
       expect(mockMutateAsync).toHaveBeenCalledWith({
         name: "test-workflow",
-        data: { yaml_content: "name: test\nsteps: []" },
+        data: { yaml_content: "name: test\nsteps: []", version: 1 },
       });
     });
   });
