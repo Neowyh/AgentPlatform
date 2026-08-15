@@ -222,6 +222,24 @@ describe("AgentCard", () => {
     );
   });
 
+  test("canonical Agent navigation uses resource UUID instead of display name", () => {
+    render(
+      <AgentCard
+        agent={makeAgent({
+          name: "Shared Agent",
+          resource_id: "11111111-1111-1111-1111-111111111111",
+          read_only: true,
+        })}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("agent-chat-button"));
+    expect(mockPush).toHaveBeenCalledWith(
+      "/workspace/agents/11111111-1111-1111-1111-111111111111/chats/new",
+    );
+    expect(screen.getByTestId("agent-favorite-button")).toBeInTheDocument();
+    expect(screen.getByTestId("agent-export-button")).toBeInTheDocument();
+  });
+
   test("favorite button adds agent to favorites", async () => {
     mockToggleMutateAsync.mockResolvedValue(undefined);
     render(<AgentCard agent={makeAgent({ is_favorited: false })} />);

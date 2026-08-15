@@ -46,14 +46,22 @@ export function AgentCard({ agent }: AgentCardProps) {
   const deleteAgent = useDeleteAgent();
   const toggleFavorite = useToggleAgentFavorite();
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const routeIdentity = agent.resource_id ?? agent.name;
 
   function handleChat() {
-    router.push(`/workspace/agents/${agent.name}/chats/new`);
+    router.push(`/workspace/agents/${routeIdentity}/chats/new`);
   }
 
   async function handleToggleFavorite() {
     try {
-      await toggleFavorite.mutateAsync(agent.name);
+      await toggleFavorite.mutateAsync(
+        agent.resource_id
+          ? {
+              name: agent.resource_id,
+              isFavorited: agent.is_favorited ?? false,
+            }
+          : agent.name,
+      );
       toast.success(
         agent.is_favorited ? t.agents.favoriteRemoved : t.agents.favoriteAdded,
       );
@@ -64,7 +72,7 @@ export function AgentCard({ agent }: AgentCardProps) {
 
   async function handleDelete() {
     try {
-      await deleteAgent.mutateAsync(agent.name);
+      await deleteAgent.mutateAsync(routeIdentity);
       toast.success(t.agents.deleteSuccess);
       setDeleteOpen(false);
     } catch (err) {
@@ -74,7 +82,7 @@ export function AgentCard({ agent }: AgentCardProps) {
 
   async function handleExport() {
     try {
-      const blob = await exportAgent(agent.name);
+      const blob = await exportAgent(routeIdentity);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -104,7 +112,7 @@ export function AgentCard({ agent }: AgentCardProps) {
               <div className="min-w-0">
                 <CardTitle className="truncate text-base">
                   <Link
-                    href={`/workspace/agents/${agent.name}`}
+                    href={`/workspace/agents/${routeIdentity}`}
                     className="hover:underline"
                   >
                     {agent.name}

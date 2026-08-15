@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -57,6 +57,12 @@ export default function AgentDetailPage() {
   const [visibilityReason, setVisibilityReason] = useState("");
   const [submittingApplication, setSubmittingApplication] = useState(false);
 
+  useEffect(() => {
+    if (agent?.resource_id && agent_name !== agent.resource_id) {
+      router.replace(`/workspace/agents/${agent.resource_id}`);
+    }
+  }, [agent, agent_name, router]);
+
   async function handleSubmitVisibility() {
     if (!agent || !visibilityReason.trim()) {
       toast.error(t.agents.visibilityReasonRequired);
@@ -67,7 +73,7 @@ export default function AgentDetailPage() {
     try {
       await createVisibilityApplication({
         resource_type: "agent",
-        resource_id: agent.name,
+        resource_id: agent.resource_id ?? agent.name,
         target_visibility: targetVisibility,
         reason: visibilityReason.trim(),
       });
@@ -135,18 +141,22 @@ export default function AgentDetailPage() {
         <div className="flex items-center gap-2">
           {agent.model && <Badge variant="secondary">{agent.model}</Badge>}
           {agent.read_only && <Badge variant="outline">Template</Badge>}
-          <Button
-            variant="outline"
-            onClick={() => setVisibilityDialogOpen(true)}
-          >
-            {t.agents.applyVisibility}
-          </Button>
-          <Button asChild>
-            <Link href={`/workspace/agents/${agent_name}/edit`}>
-              <EditIcon className="mr-1.5 h-4 w-4" />
-              Edit Agent
-            </Link>
-          </Button>
+          {!agent.read_only && (
+            <>
+              <Button
+                variant="outline"
+                onClick={() => setVisibilityDialogOpen(true)}
+              >
+                {t.agents.applyVisibility}
+              </Button>
+              <Button asChild>
+                <Link href={`/workspace/agents/${agent_name}/edit`}>
+                  <EditIcon className="mr-1.5 h-4 w-4" />
+                  Edit Agent
+                </Link>
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
@@ -269,12 +279,14 @@ export default function AgentDetailPage() {
                     Start Chat
                   </Link>
                 </Button>
-                <Button variant="outline" asChild>
-                  <Link href={`/workspace/agents/${agent_name}/edit`}>
-                    <EditIcon className="mr-1.5 h-4 w-4" />
-                    Edit Configuration
-                  </Link>
-                </Button>
+                {!agent.read_only && (
+                  <Button variant="outline" asChild>
+                    <Link href={`/workspace/agents/${agent_name}/edit`}>
+                      <EditIcon className="mr-1.5 h-4 w-4" />
+                      Edit Configuration
+                    </Link>
+                  </Button>
+                )}
               </div>
             </CardContent>
           </Card>

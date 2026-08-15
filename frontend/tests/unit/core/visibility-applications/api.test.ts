@@ -214,6 +214,29 @@ describe("visibility-applications API", () => {
       });
       expect(result).toEqual(sampleApplication);
     });
+
+    test("routes UUID resources through the canonical approval service", async () => {
+      mockFetch.mockResolvedValue(okJson(sampleApplication));
+      const resourceId = "11111111-1111-1111-1111-111111111111";
+
+      await createVisibilityApplication({
+        resource_type: "workflow",
+        resource_id: resourceId,
+        target_visibility: "department",
+        reason: "Share with department",
+      });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        `http://localhost:8000/api/resources/${resourceId}/visibility-applications`,
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            target_visibility: "department",
+            reason: "Share with department",
+          }),
+        }),
+      );
+    });
   });
 
   // ── reviewVisibilityApplication ─────────────────────────────────

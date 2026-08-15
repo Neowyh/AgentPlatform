@@ -245,6 +245,34 @@ describe("SkillSettingsPage", () => {
     expect(screen.getByText("Web Skill")).toBeInTheDocument();
   });
 
+  test("submits canonical visibility applications by resource UUID", async () => {
+    const user = userEvent.setup();
+    mockSkillsData = [
+      {
+        resource_id: "11111111-1111-1111-1111-111111111111",
+        name: "Canonical Skill",
+        description: "Owned canonical Skill",
+        category: "custom",
+        enabled: true,
+        license: "",
+        read_only: false,
+      },
+    ];
+    render(<SkillSettingsPage />);
+
+    await user.click(screen.getByText("Custom Tab"));
+    await user.click(screen.getByText("Apply visibility"));
+    await user.click(screen.getByText("Submit application"));
+
+    await waitFor(() =>
+      expect(mockCreateVisibilityApplication).toHaveBeenCalledWith(
+        expect.objectContaining({
+          resource_id: "11111111-1111-1111-1111-111111111111",
+        }),
+      ),
+    );
+  });
+
   test("renders tabs for public and custom", () => {
     render(<SkillSettingsPage />);
     expect(screen.getByText("Public Tab")).toBeInTheDocument();

@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -57,6 +57,12 @@ export default function WorkflowDetailPage() {
   const [targetVisibility, setTargetVisibility] = useState("department");
   const [visibilityReason, setVisibilityReason] = useState("");
   const [submittingApplication, setSubmittingApplication] = useState(false);
+
+  useEffect(() => {
+    if (workflow?.resource_id && workflow_name !== workflow.resource_id) {
+      router.replace(`/workspace/workflows/${workflow.resource_id}`);
+    }
+  }, [router, workflow, workflow_name]);
 
   const { runs } = useWorkflowRuns(workflow_name);
 
@@ -154,7 +160,7 @@ export default function WorkflowDetailPage() {
     try {
       await createVisibilityApplication({
         resource_type: "workflow",
-        resource_id: workflow.name,
+        resource_id: workflow.resource_id ?? workflow.name,
         target_visibility: targetVisibility,
         reason: visibilityReason.trim(),
       });
@@ -204,20 +210,24 @@ export default function WorkflowDetailPage() {
             <DownloadIcon className="mr-1.5 h-4 w-4" />
             {t.workflows.export}
           </Button>
-          <Button
-            variant="outline"
-            onClick={() => setVisibilityDialogOpen(true)}
-          >
-            {t.workflows.applyVisibility}
-          </Button>
-          <Button variant="outline" asChild>
-            <Link
-              href={`/workspace/workflows/${encodeURIComponent(workflow_name)}/edit`}
-            >
-              <EditIcon className="mr-1.5 h-4 w-4" />
-              {t.workflows.edit}
-            </Link>
-          </Button>
+          {!workflow.read_only && (
+            <>
+              <Button
+                variant="outline"
+                onClick={() => setVisibilityDialogOpen(true)}
+              >
+                {t.workflows.applyVisibility}
+              </Button>
+              <Button variant="outline" asChild>
+                <Link
+                  href={`/workspace/workflows/${encodeURIComponent(workflow_name)}/edit`}
+                >
+                  <EditIcon className="mr-1.5 h-4 w-4" />
+                  {t.workflows.edit}
+                </Link>
+              </Button>
+            </>
+          )}
           <Button onClick={() => setRunDialogOpen(true)}>
             <PlayIcon className="mr-1.5 h-4 w-4" />
             {t.workflows.run}

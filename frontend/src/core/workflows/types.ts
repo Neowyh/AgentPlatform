@@ -33,6 +33,10 @@ export interface WorkflowNode {
 }
 
 export interface WorkflowSummary {
+  resource_id?: string;
+  slug?: string;
+  read_only?: boolean;
+  draft_revision?: number;
   name: string;
   description: string;
   version: string;

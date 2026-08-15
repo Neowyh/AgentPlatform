@@ -4,6 +4,8 @@ import { getBackendBaseURL } from "@/core/config";
 
 import type { ApplicationsResponse, VisibilityApplication } from "./types";
 
+const RESOURCE_UUID_PATTERN = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
+
 export async function listVisibilityApplications(params?: {
   status?: string;
   resource_type?: string;
@@ -40,10 +42,20 @@ export async function createVisibilityApplication(
   request: CreateVisibilityApplicationRequest,
 ): Promise<VisibilityApplication> {
   const baseURL = getBackendBaseURL();
-  const res = await fetch(`${baseURL}/api/visibility-applications`, {
+  const canonical = RESOURCE_UUID_PATTERN.test(request.resource_id);
+  const url = canonical
+    ? `${baseURL}/api/resources/${encodeURIComponent(request.resource_id)}/visibility-applications`
+    : `${baseURL}/api/visibility-applications`;
+  const body = canonical
+    ? {
+        target_visibility: request.target_visibility,
+        reason: request.reason,
+      }
+    : request;
+  const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(request),
+    body: JSON.stringify(body),
   });
   if (!res.ok) {
     await extractError(res, "Failed to submit visibility application");

@@ -99,10 +99,15 @@ describe("agents barrel — api function behavior", () => {
         visibility: "public",
       },
     ];
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ agents }),
-    } as Response);
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ items: [], total: 0 }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ agents }),
+      } as Response);
 
     const result = await listAgents();
     expect(result).toEqual(agents);

@@ -1,4 +1,7 @@
 export interface Agent {
+  resource_id?: string;
+  slug?: string;
+  draft_revision?: number;
   name: string;
   description: string;
   model: string | null;
@@ -23,6 +26,7 @@ export interface CreateAgentRequest {
 }
 
 export interface UpdateAgentRequest {
+  draft_revision?: number;
   description?: string | null;
   model?: string | null;
   tool_groups?: string[] | null;

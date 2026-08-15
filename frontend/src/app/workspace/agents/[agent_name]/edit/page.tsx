@@ -67,6 +67,7 @@ export default function AgentEditPage() {
         tool_groups: agent.tool_groups ?? [],
         skills: agent.skills ?? [],
         soul: agent.soul ?? "",
+        draft_revision: agent.draft_revision,
       });
       setOriginalVisibility(agent.visibility ?? "private");
     }
@@ -129,6 +130,22 @@ export default function AgentEditPage() {
           onClick={() => router.push("/workspace/agents")}
         >
           {t.agents.backToGallery}
+        </Button>
+      </div>
+    );
+  }
+
+  if (agent.read_only) {
+    return (
+      <div className="flex size-full flex-col items-center justify-center gap-4">
+        <div className="text-destructive text-sm">
+          You do not have permission to edit this Agent
+        </div>
+        <Button
+          variant="outline"
+          onClick={() => router.push(`/workspace/agents/${agent_name}`)}
+        >
+          Back to Agent
         </Button>
       </div>
     );
@@ -268,13 +285,19 @@ export default function AgentEditPage() {
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               {skills.map((skill) => (
                 <label
-                  key={skill.name}
+                  key={skill.resource_id ?? skill.name}
                   className="hover:bg-accent flex cursor-pointer items-center gap-2 rounded-md border p-3 transition-colors"
                 >
                   <input
                     type="checkbox"
-                    checked={formData.skills?.includes(skill.name) ?? false}
-                    onChange={() => toggleSkill(skill.name)}
+                    checked={
+                      formData.skills?.includes(
+                        skill.resource_id ?? skill.name,
+                      ) ?? false
+                    }
+                    onChange={() =>
+                      toggleSkill(skill.resource_id ?? skill.name)
+                    }
                     className="h-4 w-4 rounded border-gray-300"
                   />
                   <div className="min-w-0">

@@ -120,7 +120,10 @@ export function useDeleteWorkflow() {
 export function useToggleWorkflowFavorite() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (name: string) => toggleWorkflowFavorite(name),
+    mutationFn: (input: string | { name: string; isFavorited: boolean }) =>
+      typeof input === "string"
+        ? toggleWorkflowFavorite(input)
+        : toggleWorkflowFavorite(input.name, input.isFavorited),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["workflows"] });
     },

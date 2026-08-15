@@ -65,7 +65,7 @@ function SkillSettingsList({ skills }: { skills: Skill[] }) {
     try {
       await createVisibilityApplication({
         resource_type: "skill",
-        resource_id: applySkill.name,
+        resource_id: applySkill.resource_id ?? applySkill.name,
         target_visibility: targetVisibility,
         reason,
       });
@@ -93,7 +93,11 @@ function SkillSettingsList({ skills }: { skills: Skill[] }) {
       {filteredSkills.length === 0 && <EmptySkill />}
       {filteredSkills.length > 0 &&
         filteredSkills.map((skill) => (
-          <Item className="w-full" variant="outline" key={skill.name}>
+          <Item
+            className="w-full"
+            variant="outline"
+            key={skill.resource_id ?? skill.name}
+          >
             <ItemContent>
               <ItemTitle>
                 <div className="flex items-center gap-2">
@@ -107,7 +111,7 @@ function SkillSettingsList({ skills }: { skills: Skill[] }) {
                 {skill.description}
               </ItemDescription>
             </ItemContent>
-            {skill.category === "custom" && (
+            {skill.category === "custom" && !skill.read_only && (
               <Button
                 variant="outline"
                 size="sm"
