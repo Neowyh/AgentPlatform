@@ -22,6 +22,7 @@ from langchain_core.messages.utils import convert_to_messages
 from app.gateway.deps import get_run_context, get_run_manager, get_stream_bridge
 from app.gateway.utils import ResourceMetadataStore, sanitize_log_param
 from ideer.config.app_config import get_app_config
+from ideer.resources.mode import ResourceCatalogMode, get_resource_catalog_mode
 from ideer.runtime import (
     END_SENTINEL,
     HEARTBEAT_SENTINEL,
@@ -420,6 +421,70 @@ async def _resolve_run_agent_owner(body: Any, request: Request) -> str | None:
     return owner_id
 
 
+async def _resolve_canonical_alias(assistant_id: str | None, request: Request) -> str | None:
+    """Resolve a legacy-name assistant through the catalog alias resolver.
+
+    Only active in canonical mode: legacy owner-directory reads are sealed,
+    so names must map to an active catalog resource — owner-first, then a
+    unique visible shared resource. Unknown names (404) and ambiguous names
+    (409) fail closed instead of leaking legacy behavior. The default
+    assistant is preserved and returns ``None``.
+    """
+
+    if not assistant_id or assistant_id == _DEFAULT_ASSISTANT_ID:
+        return None
+    if get_resource_catalog_mode() is not ResourceCatalogMode.CANONICAL:
+        return None
+
+    user_id = getattr(getattr(request.state, "user", None), "id", None)
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    from sqlalchemy import select
+
+    from ideer.persistence.engine import get_session_factory
+    from ideer.persistence.models.user import UserModel
+    from ideer.resources.service import (
+        ResourceAction,
+        ResourceActor,
+        ResourceConflict,
+        ResourceNotFound,
+        ResourcePermissionDenied,
+        ResourceService,
+    )
+
+    session_factory = get_session_factory()
+    if session_factory is None:
+        raise HTTPException(status_code=503, detail="Resource persistence is unavailable")
+    try:
+        async with session_factory() as session:
+            user = (
+                await session.execute(
+                    select(UserModel).where(
+                        UserModel.id == str(user_id),
+                        UserModel.disabled.is_not(True),
+                    )
+                )
+            ).scalar_one_or_none()
+            if user is None:
+                raise ResourcePermissionDenied("Active RBAC user is required")
+            actor = ResourceActor(
+                user_id=str(user.id),
+                department_id=str(user.department_id) if user.department_id is not None else None,
+                role=str(user.role),
+                permissions=frozenset({ResourceAction.READ, ResourceAction.USE}),
+                tool_groups=None,
+            )
+            resource = await ResourceService(session, actor).resolve_legacy_alias("agent", assistant_id)
+        return resource.id
+    except ResourceNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ResourcePermissionDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ResourceConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
 async def start_run(
     body: Any,
     thread_id: str,
@@ -447,6 +512,11 @@ async def start_run(
     model_name = body_context.get("model_name")
 
     canonical_resource_id = _canonical_assistant_id(getattr(body, "assistant_id", None))
+    # Canonical mode seals legacy owner-directory reads: legacy-name
+    # assistants resolve through the catalog alias resolver (owner-first,
+    # unique visible shared), failing closed when unknown or ambiguous.
+    if canonical_resource_id is None and get_resource_catalog_mode() is ResourceCatalogMode.CANONICAL:
+        canonical_resource_id = await _resolve_canonical_alias(getattr(body, "assistant_id", None), request)
     # Legacy shared-agent resolution is untouched. UUID assistants use the
     # canonical visibility/snapshot boundary instead of owner directories.
     agent_owner_id = None if canonical_resource_id else await _resolve_run_agent_owner(body, request)

@@ -55,6 +55,10 @@ class AgentConfig(BaseModel):
 def resolve_agent_dir(name: str, *, user_id: str | None = None) -> Path:
     """Return the on-disk directory for an agent, preferring the per-user layout.
 
+    DEPRECATED: legacy name-addressed filesystem resolution. Sealed in
+    canonical mode — canonical agents are addressed by resource UUID and
+    loaded from versioned catalog storage instead of owner directories.
+
     Resolution order:
     1. ``{base_dir}/users/{user_id}/agents/{name}/`` (per-user, current layout).
     2. ``{base_dir}/agents/{name}/`` (legacy shared layout — read-only fallback).
@@ -82,6 +86,10 @@ def resolve_agent_dir(name: str, *, user_id: str | None = None) -> Path:
 
 def load_agent_config(name: str | None, *, user_id: str | None = None) -> AgentConfig | None:
     """Load the custom or default agent's config from its directory.
+
+    DEPRECATED: legacy name-addressed filesystem read. Sealed in canonical
+    mode — canonical agents are frozen from catalog resources via
+    ``ideer.resources.runtime.CanonicalResourceLoader``.
 
     Reads from the per-user layout first; falls back to the legacy shared layout
     for installations that have not yet been migrated.
@@ -131,6 +139,9 @@ def load_agent_config(name: str | None, *, user_id: str | None = None) -> AgentC
 
 def load_agent_soul(agent_name: str | None, *, user_id: str | None = None) -> str | None:
     """Read the SOUL.md file for a custom agent, if it exists.
+
+    DEPRECATED: legacy name-addressed filesystem read. Sealed in canonical
+    mode — canonical agent SOUL content is loaded from frozen run snapshots.
 
     SOUL.md defines the agent's personality, values, and behavioral guardrails.
     It is injected into the lead agent's system prompt as additional context.
