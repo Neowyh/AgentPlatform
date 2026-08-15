@@ -6,11 +6,12 @@ import json
 from pathlib import Path
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 import ideer.persistence.models  # noqa: F401
 from ideer.persistence.base import Base
+from ideer.persistence.models.resource_catalog import Resource, ResourceDependency
 from ideer.persistence.models.resource_metadata import ResourceMetadata
 from ideer.persistence.models.workflow_v2 import WorkflowDefinitionVersionRow
 from ideer.scripts.resource_catalog_v2 import build_parser, run
@@ -224,6 +225,60 @@ async def test_rollback_cli_moves_files_to_backup_and_emits_json(capsys, tmp_pat
     assert (backup / "resources" / "agents" / agent_item["resource_id"]).is_dir()
     assert not (runtime / "resources" / "agents" / agent_item["resource_id"]).exists()
     assert (runtime / "users" / "owner" / "agents" / "writer" / "config.yaml").exists()
+
+
+@pytest.mark.asyncio
+async def test_compare_cli_requires_dual_mode(capsys, tmp_path, monkeypatch) -> None:
+    runtime, skills = _legacy_layout(tmp_path)
+    database = await _make_database(tmp_path)
+    monkeypatch.setenv("IDEER_RESOURCE_CATALOG_MODE", "canonical")
+    args = build_parser().parse_args(
+        [
+            "compare",
+            "--database-url",
+            f"sqlite+aiosqlite:///{database}",
+            "--legacy-base-dir",
+            str(runtime),
+            "--skills-root",
+            str(skills),
+        ]
+    )
+
+    with pytest.raises(ValueError, match="dual mode"):
+        await run(args)
+
+
+@pytest.mark.asyncio
+async def test_compare_cli_succeeds_after_migrate_and_emits_json(capsys, tmp_path) -> None:
+    migrate_code, _ = await _run_cli(capsys, tmp_path, "migrate")
+    compare_code, payload = await _run_cli(capsys, tmp_path, "compare")
+
+    assert migrate_code == 0
+    assert compare_code == 0
+    assert payload["command"] == "compare"
+    assert payload["ok"] == 3
+    assert payload["errors"] == []
+    assert payload["diverged"] == []
+    assert payload["extras"] == []
+    assert {item["status"] for item in payload["items"]} == {"ok"}
+
+
+@pytest.mark.asyncio
+async def test_compare_cli_fails_on_structural_mismatch(capsys, tmp_path) -> None:
+    migrate_code, _ = await _run_cli(capsys, tmp_path, "migrate")
+    assert migrate_code == 0
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'cli.db'}")
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with factory() as session:
+        agent = (await session.execute(select(Resource).where(Resource.type == "agent"))).scalar_one()
+        await session.execute(delete(ResourceDependency).where(ResourceDependency.source_resource_id == agent.id))
+        await session.commit()
+    await engine.dispose()
+
+    compare_code, payload = await _run_cli(capsys, tmp_path, "compare")
+
+    assert compare_code == 1
+    assert any("dependencies" in error for error in payload["errors"])
 
 
 @pytest.mark.asyncio
