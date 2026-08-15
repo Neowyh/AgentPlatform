@@ -642,6 +642,18 @@ async def test_model_name_create_or_reject():
 
 
 @pytest.mark.anyio
+async def test_create_or_reject_accepts_preallocated_run_id_for_resource_snapshot() -> None:
+    manager = RunManager()
+
+    record = await manager.create_or_reject(
+        "thread-preallocated",
+        run_id="run-preallocated",
+    )
+
+    assert record.run_id == "run-preallocated"
+
+
+@pytest.mark.anyio
 async def test_create_or_reject_interrupt_persists_interrupted_status_to_store():
     """interrupt strategy should persist interrupted status for old runs."""
     store = MemoryRunStore()

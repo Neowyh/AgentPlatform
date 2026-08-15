@@ -60,6 +60,22 @@ def test_get_skills_prompt_section_returns_all_when_available_skills_is_none(mon
     assert "skill2" in result
 
 
+def test_get_skills_prompt_section_uses_only_frozen_run_skills_without_global_scan(monkeypatch):
+    frozen = _make_skill("frozen-skill")
+    monkeypatch.setattr(
+        "ideer.agents.lead_agent.prompt.get_enabled_skills_for_config",
+        lambda _config: (_ for _ in ()).throw(AssertionError("global skills must not be scanned")),
+    )
+
+    result = get_skills_prompt_section(
+        resolved_skills=[frozen],
+        container_base_path="/mnt/run-skills",
+    )
+
+    assert "frozen-skill" in result
+    assert "/mnt/run-skills/public/frozen-skill/SKILL.md" in result
+
+
 def test_get_skills_prompt_section_includes_self_evolution_rules(monkeypatch):
     skills = [_make_skill("skill1")]
     monkeypatch.setattr("ideer.agents.lead_agent.prompt._get_enabled_skills", lambda: skills)
@@ -194,6 +210,55 @@ def test_make_lead_agent_filters_tools_from_available_skills(monkeypatch):
     agent_kwargs = lead_agent_module.make_lead_agent({"configurable": {"agent_name": "test"}})
 
     assert [tool.name for tool in agent_kwargs["tools"]] == ["read_file"]
+
+
+def test_canonical_lead_agent_uses_frozen_definition_skills_and_runner_tool_intersection(monkeypatch):
+    from unittest.mock import MagicMock
+
+    from ideer.agents.lead_agent import agent as lead_agent_module
+    from ideer.resources.runtime import CanonicalAgentDefinition
+
+    definition = CanonicalAgentDefinition(
+        resource_id="11111111-1111-1111-1111-111111111111",
+        version=3,
+        content_hash="a" * 64,
+        path=Path("/immutable/agent"),
+        config=AgentConfig(name="Canonical Agent", skills=["frozen-skill"], tool_groups=["safe", "owner-only"]),
+        soul="Frozen soul",
+    )
+    frozen_skill = _make_skill("frozen-skill", ["read_file"])
+    monkeypatch.setattr(
+        lead_agent_module,
+        "load_agent_config",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("legacy Agent config must not load")),
+    )
+    monkeypatch.setattr(lead_agent_module, "_resolve_model_name", lambda x=None, **kwargs: "default-model")
+    monkeypatch.setattr(lead_agent_module, "create_chat_model", lambda **kwargs: "model")
+    monkeypatch.setattr(lead_agent_module, "_build_middlewares", lambda *args, **kwargs: [])
+    prompt_args = {}
+    monkeypatch.setattr(lead_agent_module, "apply_prompt_template", lambda **kwargs: prompt_args.update(kwargs) or "prompt")
+    monkeypatch.setattr(lead_agent_module, "create_agent", lambda **kwargs: kwargs)
+    captured_groups = []
+    monkeypatch.setattr(
+        "ideer.tools.get_available_tools",
+        lambda **kwargs: captured_groups.append(kwargs.get("groups")) or [NamedTool("bash"), NamedTool("read_file")],
+    )
+    app_config = MagicMock()
+    app_config.get_model_config.return_value = SimpleNamespace(supports_thinking=False, supports_vision=False)
+
+    factory = lead_agent_module.build_canonical_lead_agent_factory(
+        definition,
+        [frozen_skill],
+        runner_tool_groups=frozenset({"safe"}),
+    )
+    agent_kwargs = factory({"configurable": {}}, app_config=app_config)
+
+    assert captured_groups == [["safe"]]
+    assert [tool.name for tool in agent_kwargs["tools"]] == ["read_file"]
+    assert prompt_args["resolved_skills"] == [frozen_skill]
+    assert prompt_args["soul_override"] == "Frozen soul"
+    assert prompt_args["read_only"] is True
+    assert prompt_args["agent_name"] == "Canonical Agent"
 
 
 def test_make_lead_agent_all_legacy_skills_preserve_all_tools(monkeypatch):

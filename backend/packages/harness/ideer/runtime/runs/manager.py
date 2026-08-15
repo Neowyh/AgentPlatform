@@ -499,6 +499,7 @@ class RunManager:
         thread_id: str,
         assistant_id: str | None = None,
         *,
+        run_id: str | None = None,
         on_disconnect: DisconnectMode = DisconnectMode.cancel,
         metadata: dict | None = None,
         kwargs: dict | None = None,
@@ -514,13 +515,15 @@ class RunManager:
         This method holds the lock across both the check and the insert,
         eliminating the TOCTOU race in separate ``has_inflight`` + ``create``.
         """
-        run_id = str(uuid.uuid4())
+        run_id = run_id or str(uuid.uuid4())
         now = _now_iso()
 
         _supported_strategies = ("reject", "interrupt", "rollback")
         interrupted_records: list[RunRecord] = []
 
         async with self._lock:
+            if run_id in self._runs:
+                raise ConflictError(f"Run {run_id} already exists")
             if multitask_strategy not in _supported_strategies:
                 raise UnsupportedStrategyError(f"Multitask strategy '{multitask_strategy}' is not yet supported. Supported strategies: {', '.join(_supported_strategies)}")
 

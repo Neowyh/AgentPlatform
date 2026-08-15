@@ -322,6 +322,7 @@ class SubagentExecutor:
         self.sandbox_state = sandbox_state
         self.thread_data = thread_data
         self.thread_id = thread_id
+        self.canonical_run_id: str | None = None
         # Generate trace_id if not provided (for top-level calls)
         self.trace_id = trace_id or str(uuid.uuid4())[:8]
 
@@ -522,6 +523,9 @@ class SubagentExecutor:
             if self.thread_id:
                 run_config["configurable"] = {"thread_id": self.thread_id}
                 context["thread_id"] = self.thread_id
+            if self.canonical_run_id:
+                run_config.setdefault("configurable", {})["canonical_run_id"] = self.canonical_run_id
+                context["canonical_run_id"] = self.canonical_run_id
             if self.app_config is not None:
                 context["app_config"] = self.app_config
 

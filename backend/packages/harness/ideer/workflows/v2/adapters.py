@@ -215,6 +215,56 @@ class _AgentAdapter:
         yield {"type": "result", "value": self._finalize_result(await producer)}
 
 
+class _CanonicalAgentAdapter(_AgentAdapter):
+    """Run one frozen Agent definition with runner-scoped tools and Skills."""
+
+    def __init__(self, definition: Any, skills: list[Any], user_id: str, *, allowed_tool_groups: frozenset[str] | None) -> None:
+        super().__init__(definition.resource_id, user_id)
+        self.definition = definition
+        self.skills = list(skills)
+        self.allowed_tool_groups = allowed_tool_groups
+
+    def _build_executor(self, context: ActionContext, params: dict[str, Any]):
+        from ideer.config import get_app_config
+        from ideer.resources.runtime import intersect_tool_groups
+        from ideer.subagents.config import SubagentConfig
+        from ideer.subagents.executor import SubagentExecutor
+        from ideer.tools.tools import get_available_tools
+
+        config = self.definition.config
+        override = params.get("system_prompt", "")
+        if self.definition.soul and override:
+            system_prompt = f"{self.definition.soul}\n\n## 当前阶段指令\n\n{override}"
+        else:
+            system_prompt = self.definition.soul or override
+        subagent = SubagentConfig(
+            name=self.definition.resource_id,
+            description=f"Workflow node: {context.node_id}",
+            system_prompt=system_prompt,
+            skills=[skill.name for skill in self.skills],
+            model=config.model or "inherit",
+            max_turns=params.get("max_turns", 50),
+            file_access=context.file_access,
+        )
+        frozen_skills = list(self.skills)
+
+        class CanonicalSubagentExecutor(SubagentExecutor):
+            async def _load_skills(self) -> list[Any]:
+                return list(frozen_skills)
+
+        app_config = get_app_config()
+        groups = intersect_tool_groups(config.tool_groups, self.allowed_tool_groups)
+        executor = CanonicalSubagentExecutor(
+            subagent,
+            get_available_tools(groups=groups, app_config=app_config),
+            app_config=app_config,
+            thread_id=context.run_id,
+        )
+        executor.canonical_run_id = context.run_id
+        prompt = params.get("prompt", params.get("input", params))
+        return executor, str(prompt)
+
+
 class _STREAM_END:
     """Sentinel that closes an agent progress stream."""
 

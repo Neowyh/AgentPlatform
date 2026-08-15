@@ -25,6 +25,85 @@ from ideer.workflows.v2.store import WorkflowV2Store
 from ideer.workflows.v2.worker import WorkflowPaused, WorkflowWorker, workflow_snapshot
 
 
+async def load_workflow_definition_for_run(run: Any, store: Any, session_factory: Any, storage: Any) -> dict:
+    """Load canonical Runs by frozen UUID; retain name/version for legacy Runs."""
+
+    workflow_resource_id = getattr(run, "workflow_resource_id", None)
+    if workflow_resource_id:
+        if session_factory is None or storage is None:
+            raise RuntimeError("canonical workflow run requires catalog persistence and storage")
+        from ideer.resources.runtime import CanonicalResourceLoader
+
+        async with session_factory() as session:
+            frozen = await CanonicalResourceLoader(session, storage).load_workflow(run.run_id, workflow_resource_id)
+            return frozen.content
+    version = await store.get_definition(run.workflow_name, run.definition_version)
+    if version is None:
+        raise RuntimeError(f"workflow definition {run.workflow_name}@{run.definition_version} not found")
+    return version.definition
+
+
+async def build_canonical_registry(run: Any, config: Any, session_factory: Any, storage: Any) -> Any:
+    """Build adapters only from the Run's frozen UUID closure and runner policy."""
+
+    from sqlalchemy import select
+
+    from ideer.persistence.models.resource_catalog import Resource, RunResourceSnapshot
+    from ideer.resources.runtime import CanonicalResourceLoader
+    from ideer.tools.tools import get_available_tools
+    from ideer.workflows.v2.adapters import ActionAdapterRegistry, _CanonicalAgentAdapter, _ToolAdapter
+
+    if session_factory is None:
+        raise RuntimeError("canonical workflow run requires catalog persistence")
+    raw_groups = run.runner_tool_groups
+    allowed_groups = frozenset(raw_groups) if raw_groups is not None else None
+    registry = ActionAdapterRegistry()
+    for tool in get_available_tools(
+        groups=sorted(allowed_groups) if allowed_groups is not None else None,
+        app_config=config,
+    ):
+        registry.register("tool", tool.name, _ToolAdapter(tool, user_id=run.created_by))
+
+    async with session_factory() as session:
+        loader = CanonicalResourceLoader(session, storage)
+        frozen_skill_versions: dict[str, tuple[int, str]] = {}
+        agent_ids = list(
+            (
+                await session.execute(
+                    select(Resource.id)
+                    .join(RunResourceSnapshot, RunResourceSnapshot.resource_id == Resource.id)
+                    .where(
+                        RunResourceSnapshot.run_id == run.run_id,
+                        Resource.type == "agent",
+                    )
+                    .order_by(Resource.id)
+                )
+            ).scalars()
+        )
+        for resource_id in agent_ids:
+            definition = await loader.load_agent(run.run_id, resource_id)
+            skill_definitions = await loader.load_agent_skill_definitions(run.run_id, resource_id)
+            skills = [value.skill for value in skill_definitions]
+            for value in skill_definitions:
+                frozen_skill_versions[value.resource_id] = (value.version, value.content_hash)
+            registry.register(
+                "agent",
+                resource_id,
+                _CanonicalAgentAdapter(
+                    definition,
+                    skills,
+                    run.created_by,
+                    allowed_tool_groups=allowed_groups,
+                ),
+            )
+        await asyncio.to_thread(
+            storage.create_run_skill_view,
+            run.run_id,
+            [(resource_id, version, content_hash) for resource_id, (version, content_hash) in sorted(frozen_skill_versions.items())],
+        )
+    return registry
+
+
 async def resolve_shared_agent_adapters(definition: Any, registry: Any, runner_id: str) -> None:
     """Register shared agents referenced by workflow nodes but owned by another user.
 
@@ -101,12 +180,29 @@ async def execute_workflow_task(
     run = await store.get_run(run_id)
     if run is None:
         raise RuntimeError(f"workflow run '{run_id}' not found")
-    version = await store.get_definition(run.workflow_name, run.definition_version)
-    if version is None:
-        raise RuntimeError(f"workflow definition {run.workflow_name}@{run.definition_version} not found")
-    definition = parse_workflow_v2(yaml.safe_dump(version.definition))
-    adapters = registry_factory(config, run.created_by)
-    await resolve_shared_agent_adapters(definition, adapters, run.created_by)
+    storage = None
+    if run.workflow_resource_id:
+        from ideer.config.paths import get_paths
+        from ideer.resources.storage import ResourceStorage
+
+        storage = ResourceStorage(get_paths().base_dir)
+    definition_payload = await load_workflow_definition_for_run(
+        run,
+        store,
+        getattr(store, "session_factory", None),
+        storage,
+    )
+    definition = parse_workflow_v2(yaml.safe_dump(definition_payload))
+    if run.workflow_resource_id:
+        adapters = await build_canonical_registry(
+            run,
+            config,
+            getattr(store, "session_factory", None),
+            storage,
+        )
+    else:
+        adapters = registry_factory(config, run.created_by)
+        await resolve_shared_agent_adapters(definition, adapters, run.created_by)
     if task.resume_command_id is not None:
         command = await store.get_command(task.resume_command_id)
         if command is None:

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import sys
 from enum import Enum
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -16,8 +17,10 @@ import pytest
 import ideer.config
 import ideer.config.agents_config
 import ideer.tools.tools
+from ideer.config.agents_config import AgentConfig
+from ideer.resources.runtime import CanonicalAgentDefinition
 from ideer.runtime.user_context import get_effective_user_id
-from ideer.workflows.v2.adapters import ActionContext, _AgentAdapter
+from ideer.workflows.v2.adapters import ActionContext, _AgentAdapter, _CanonicalAgentAdapter
 from ideer.workflows.v2.compiler import WorkflowTransientError
 
 # conftest.py pre-injects a MagicMock for ideer.subagents.executor to dodge a
@@ -42,6 +45,7 @@ class FakeExecutor:
     captured: list = []
     thread_ids: list[str | None] = []
     effective_user_ids: list[str] = []
+    canonical_run_ids: list[str | None] = []
 
     def __init__(self, subagent, tools, app_config=None, thread_id=None) -> None:
         FakeExecutor.captured.append(subagent)
@@ -49,6 +53,7 @@ class FakeExecutor:
 
     async def _aexecute(self, prompt: str) -> SimpleNamespace:
         FakeExecutor.effective_user_ids.append(get_effective_user_id())
+        FakeExecutor.canonical_run_ids.append(getattr(self, "canonical_run_id", None))
         return SimpleNamespace(status=_Status.COMPLETED, result={"ok": True}, error=None)
 
 
@@ -57,6 +62,7 @@ def env(monkeypatch: pytest.MonkeyPatch) -> pytest.MonkeyPatch:
     FakeExecutor.captured = []
     FakeExecutor.thread_ids = []
     FakeExecutor.effective_user_ids = []
+    FakeExecutor.canonical_run_ids = []
     monkeypatch.setattr(ideer.config, "get_app_config", lambda: SimpleNamespace())
     monkeypatch.setattr(ideer.config.agents_config, "load_agent_config", lambda name, user_id=None: _agent_config())
     monkeypatch.setattr(ideer.tools.tools, "get_available_tools", lambda groups=None, app_config=None: [])
@@ -177,6 +183,66 @@ async def test_agent_adapter_filters_tools_by_tool_groups(env: pytest.MonkeyPatc
     assert {t.name for t in passed_tools} == {"read_file", "write_file", "grep"}
     assert all(t.group in ("file:read", "file:write") for t in passed_tools)
     assert FakeExecutor.captured[0].tools is None
+
+
+@pytest.mark.asyncio
+async def test_canonical_agent_adapter_intersects_runner_groups_and_never_loads_owner_paths(
+    env: pytest.MonkeyPatch,
+) -> None:
+    class FakeTool:
+        def __init__(self, name: str, group: str) -> None:
+            self.name = name
+            self.group = group
+
+    tools = [FakeTool("read_file", "file:read"), FakeTool("write_file", "file:write")]
+    captured_tools: list = []
+
+    class CapturingExecutor(FakeExecutor):
+        def __init__(self, subagent, tools, app_config=None, thread_id=None) -> None:
+            super().__init__(subagent, tools, app_config, thread_id)
+            captured_tools.extend(tools)
+
+    env.setattr(executor_module, "SubagentExecutor", CapturingExecutor)
+    env.setattr(
+        ideer.tools.tools,
+        "get_available_tools",
+        lambda groups=None, app_config=None: [tool for tool in tools if tool.group in (groups or [])],
+    )
+    env.setattr(
+        ideer.config.agents_config,
+        "load_agent_config",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("legacy path used")),
+    )
+    definition = CanonicalAgentDefinition(
+        resource_id="agent-uuid",
+        version=1,
+        content_hash="a" * 64,
+        path=Path("/unused"),
+        config=AgentConfig(name="writer", tool_groups=["file:read", "file:write"], skills=[]),
+        soul="Frozen soul",
+    )
+    adapter = _CanonicalAgentAdapter(
+        definition,
+        [],
+        "runner",
+        allowed_tool_groups=frozenset({"file:read"}),
+    )
+    context = ActionContext(
+        workflow_name="flow",
+        run_id="run-canonical",
+        node_id="node",
+        inputs={},
+        state={},
+        outputs={},
+    )
+
+    result = await adapter.run(context, {"prompt": "work"})
+
+    assert result == {"ok": True}
+    assert [tool.name for tool in captured_tools] == ["read_file"]
+    assert FakeExecutor.captured[0].name == "agent-uuid"
+    assert FakeExecutor.effective_user_ids == ["runner"]
+    assert FakeExecutor.canonical_run_ids == ["run-canonical"]
 
 
 @pytest.mark.asyncio

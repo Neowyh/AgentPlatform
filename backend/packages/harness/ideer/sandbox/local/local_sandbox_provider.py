@@ -3,6 +3,11 @@ import threading
 from collections import OrderedDict
 from pathlib import Path
 
+from ideer.resources.canonical_sandbox import (
+    CANONICAL_SKILLS_CONTAINER_PATH,
+    canonical_run_skill_view_path,
+    parse_canonical_sandbox_scope,
+)
 from ideer.sandbox.local.local_sandbox import LocalSandbox, PathMapping
 from ideer.sandbox.sandbox import Sandbox
 from ideer.sandbox.sandbox_provider import SandboxProvider
@@ -93,6 +98,7 @@ class LocalSandboxProvider(SandboxProvider):
             List of static path mappings
         """
         mappings: list[PathMapping] = []
+        self._legacy_skills_container_path = "/mnt/skills"
 
         # Map skills container path to local skills directory
         try:
@@ -101,6 +107,7 @@ class LocalSandboxProvider(SandboxProvider):
             config = get_app_config()
             skills_path = config.skills.get_skills_path()
             container_path = config.skills.container_path
+            self._legacy_skills_container_path = container_path
 
             # Only add mapping if skills directory exists
             if skills_path.exists():
@@ -247,9 +254,26 @@ class LocalSandboxProvider(SandboxProvider):
                 self._thread_sandboxes.move_to_end(thread_id)
                 return cached.id
 
+        canonical_scope = parse_canonical_sandbox_scope(thread_id)
+        data_thread_id = canonical_scope[0] if canonical_scope else thread_id
+
         # ``_build_thread_path_mappings`` touches the filesystem
         # (``ensure_thread_dirs``); release the lock during I/O.
-        new_mappings = list(self._path_mappings) + self._build_thread_path_mappings(thread_id)
+        static_mappings = list(self._path_mappings)
+        if canonical_scope:
+            legacy_skills_path = getattr(self, "_legacy_skills_container_path", "/mnt/skills")
+            static_mappings = [mapping for mapping in static_mappings if mapping.container_path != legacy_skills_path]
+            run_view = canonical_run_skill_view_path(canonical_scope[1])
+            if not run_view.is_dir():
+                raise RuntimeError(f"Canonical Run Skill view is missing: {canonical_scope[1]}")
+            static_mappings.append(
+                PathMapping(
+                    container_path=CANONICAL_SKILLS_CONTAINER_PATH,
+                    local_path=str(run_view),
+                    read_only=True,
+                )
+            )
+        new_mappings = static_mappings + self._build_thread_path_mappings(data_thread_id)
 
         with self._lock:
             # Re-check after the lock-free I/O: another caller may have

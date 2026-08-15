@@ -208,6 +208,27 @@ def test_apply_prompt_template_shared_agent_uses_owner_soul_and_skips_self_updat
     assert "<self_update>" not in result
 
 
+def test_apply_prompt_template_accepts_frozen_soul_without_legacy_owner_lookup(monkeypatch):
+    monkeypatch.setattr(
+        prompt_module,
+        "get_agent_soul",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("legacy soul lookup must not run")),
+    )
+    monkeypatch.setattr(prompt_module, "get_skills_prompt_section", lambda *args, **kwargs: "")
+    monkeypatch.setattr(prompt_module, "get_deferred_tools_prompt_section", lambda **kwargs: "")
+    monkeypatch.setattr(prompt_module, "_build_acp_section", lambda **kwargs: "")
+    monkeypatch.setattr(prompt_module, "_build_custom_mounts_section", lambda **kwargs: "")
+
+    result = prompt_module.apply_prompt_template(
+        agent_name="canonical-agent",
+        soul_override="Frozen identity",
+        read_only=True,
+    )
+
+    assert "<soul>\nFrozen identity\n</soul>" in result
+    assert "<self_update>" not in result
+
+
 # --- Lines 697-702: get_deferred_tools_prompt_section ---
 
 
