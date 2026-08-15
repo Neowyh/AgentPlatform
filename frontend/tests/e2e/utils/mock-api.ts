@@ -248,7 +248,22 @@ export type MockAPIOptions = {
   tools?: MockTool[];
   memory?: MockMemory;
   auditLogs?: MockAuditLog[];
+  resources?: MockAdminResource[];
   mcpConfig?: MockMCPConfig;
+  systemRole?: string;
+};
+
+export type MockAdminResource = {
+  id: string;
+  resource_type: string;
+  resource_type_label: string;
+  resource_id: string;
+  visibility: string;
+  owner_id?: string | null;
+  owner_username?: string | null;
+  department_id?: string | null;
+  lifecycle_status?: string | null;
+  created_at?: string | null;
 };
 
 function normalizeArtifactPath(filepath: string) {
@@ -301,6 +316,8 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
   const tools = options?.tools ?? [];
   const memory = options?.memory ?? DEFAULT_MOCK_MEMORY;
   const auditLogs = options?.auditLogs ?? [];
+  const resources = options?.resources ?? [];
+  const systemRole = options?.systemRole ?? "super_admin";
   const mcpConfig = options?.mcpConfig ?? { mcp_servers: {} };
 
   // ── Auth endpoints (defense-in-depth for IDEER_AUTH_DISABLED mode) ──
@@ -313,7 +330,7 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
         body: JSON.stringify({
           id: "e2e-user",
           email: "e2e@test.local",
-          system_role: "super_admin",
+          system_role: systemRole,
           needs_setup: false,
         }),
       });
@@ -586,6 +603,27 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({ suggestions: [] }),
+      });
+    }
+    return route.fallback();
+  });
+
+  // Canonical catalog list — dual mode keeps the existing typed-facade mocks
+  // authoritative in these compatibility-focused E2E fixtures.
+  void page.route(/\/api\/resources\?.*/, (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (
+      request.method() === "GET" &&
+      url.pathname.endsWith("/api/resources") &&
+      ["agent", "skill", "workflow"].includes(
+        url.searchParams.get("type") ?? "",
+      )
+    ) {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ items: [], total: 0, mode: "dual" }),
       });
     }
     return route.fallback();
@@ -1230,6 +1268,68 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
         status: 200,
         contentType: "application/json",
         body: JSON.stringify(memory),
+      });
+    }
+    return route.fallback();
+  });
+
+  // ── Admin Resources (canonical lifecycle) ───────────────────
+
+  void page.route("**/api/admin/resources*", (route) => {
+    if (route.request().method() === "GET") {
+      const url = new URL(route.request().url());
+      const resourceType = url.searchParams.get("resource_type");
+      const limit = Number(url.searchParams.get("limit") ?? "50");
+      const offset = Number(url.searchParams.get("offset") ?? "0");
+
+      let filtered = resources;
+      if (resourceType)
+        filtered = filtered.filter((r) => r.resource_type === resourceType);
+
+      const items = filtered.slice(offset, offset + limit);
+
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          resources: items,
+          total: filtered.length,
+          limit,
+          offset,
+        }),
+      });
+    }
+    return route.fallback();
+  });
+
+  void page.route("**/api/resources/*/archive", (route) => {
+    if (route.request().method() === "POST") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true }),
+      });
+    }
+    return route.fallback();
+  });
+
+  void page.route("**/api/resources/*/suspend", (route) => {
+    if (route.request().method() === "POST") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true }),
+      });
+    }
+    return route.fallback();
+  });
+
+  void page.route("**/api/resources/*/restore", (route) => {
+    if (route.request().method() === "POST") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true }),
       });
     }
     return route.fallback();
