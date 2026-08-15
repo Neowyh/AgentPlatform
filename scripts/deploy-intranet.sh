@@ -478,6 +478,7 @@ IDEER_GATEWAY_IMAGE=ideer-gateway:$VERSION
 IDEER_FRONTEND_IMAGE=ideer-frontend:$VERSION
 NGINX_IMAGE=nginx:alpine
 IDEER_NETWORK_MODE=offline
+IDEER_RESOURCE_CATALOG_MODE=dual
 EOF
         fi
     fi
@@ -485,6 +486,7 @@ EOF
     append_env_if_missing "BETTER_AUTH_SECRET" "$BETTER_AUTH_SECRET_VALUE"
     append_env_if_missing "IDEER_INTERNAL_AUTH_TOKEN" "$IDEER_INTERNAL_AUTH_TOKEN_VALUE"
     append_env_if_missing "IDEER_NETWORK_MODE" "offline"
+    append_env_if_missing "IDEER_RESOURCE_CATALOG_MODE" "dual"
 
     patch_sandbox_image
 }
@@ -605,8 +607,8 @@ install_admin_private_resources() {
     local admin_id
     admin_id="$(find_super_admin_id)"
     if [ -z "$admin_id" ]; then
-        warn "no active super admin found in runtime DB; skipping private resource install"
-        return 0
+        warn "no active super admin found in runtime DB; bundled resources cannot be initialized"
+        return 1
     fi
     log "installing bundled resources for super admin $admin_id (private)..."
 
@@ -639,7 +641,8 @@ install_admin_private_resources() {
         fi
         cleanup_legacy_shared_agent fault-zeroing "$SOURCE_DIR/docs/fault-zeroing-agent/agent"
     else
-        warn "fault-zeroing agent source not found in bundle; skipping"
+        warn "fault-zeroing agent source not found in bundle"
+        resource_install_failed=1
     fi
 
     if [ "${IDEER_INSTALL_SRS_WRITING:-1}" = "0" ]; then
@@ -653,7 +656,8 @@ install_admin_private_resources() {
         fi
         cleanup_legacy_shared_agent srs-writing "$SOURCE_DIR/docs/srs-writing-agent/agent"
     else
-        warn "srs-writing agent source not found in bundle; skipping"
+        warn "srs-writing agent source not found in bundle"
+        resource_install_failed=1
     fi
 
     if [ -f "$SOURCE_DIR/scripts/seed_custom_skill_owners.py" ]; then
@@ -675,7 +679,23 @@ install_admin_private_resources() {
             resource_install_failed=1
         fi
     else
-        warn "scripts/seed_custom_skill_owners.py not found in bundle; skipping"
+        warn "scripts/seed_custom_skill_owners.py not found in bundle"
+        resource_install_failed=1
+    fi
+
+    if [ ! -f "$SOURCE_DIR/scripts/seed_bundled_resources.py" ] \
+        || [ ! -f "$SOURCE_DIR/bundled-resources.json" ]; then
+        warn "canonical bundled resource seeder or manifest is missing"
+        resource_install_failed=1
+    elif ! docker container inspect ideer-gateway >/dev/null 2>&1; then
+        warn "gateway container not running; cannot seed canonical bundled resources"
+        resource_install_failed=1
+    elif ! run_cmd docker cp "$SOURCE_DIR/scripts/seed_bundled_resources.py" ideer-gateway:/tmp/seed_bundled_resources.py \
+        || ! run_cmd docker cp "$SOURCE_DIR/bundled-resources.json" ideer-gateway:/tmp/bundled-resources.json \
+        || ! run_cmd docker compose -p ideer -f "$COMPOSE_FILE" --env-file "$ENV_FILE" exec -T gateway \
+            sh -c 'cd /app/backend && PYTHONPATH=. uv run --no-sync python /tmp/seed_bundled_resources.py --manifest /tmp/bundled-resources.json --source-root /app --owner '"$admin_id"; then
+        warn "canonical bundled resource seeding failed"
+        resource_install_failed=1
     fi
 
     return "$resource_install_failed"
@@ -686,14 +706,14 @@ install_admin_private_resources() {
 # repository's seed script inside the gateway container, so it needs no Python
 # tooling on the host.  The workflow is recorded as a private resource owned by
 # the active super admin (falling back to "system" when none exists).
-# Idempotent; failures are warnings, not fatal.
+# Idempotent; a missing or failed seed aborts deployment initialization.
 seed_bundled_workflows() {
-    [ -f "$SOURCE_DIR/workflows/fault-zeroing.yaml" ] || return 0
-    [ -f "$SOURCE_DIR/scripts/seed_fault_zeroing_workflow.py" ] || return 0
+    [ -f "$SOURCE_DIR/workflows/fault-zeroing.yaml" ] || return 1
+    [ -f "$SOURCE_DIR/scripts/seed_fault_zeroing_workflow.py" ] || return 1
 
     if ! docker container inspect ideer-gateway >/dev/null 2>&1; then
-        warn "gateway container not running; skipping bundled workflow seed"
-        return 0
+        warn "gateway container not running; cannot seed bundled workflow"
+        return 1
     fi
 
     local created_by="system"
@@ -712,6 +732,7 @@ seed_bundled_workflows() {
     else
         warn "bundled workflow seed failed; run it manually after 'up' with:"
         warn "  docker compose -p ideer exec gateway sh -c 'cd /app/backend && PYTHONPATH=. uv run --no-sync python /tmp/seed_fault_zeroing_workflow.py --workflow-path /tmp/fault-zeroing.yaml --created-by '"$created_by"'"
+        return 1
     fi
 }
 
@@ -847,7 +868,9 @@ case "$COMMAND" in
             if ! install_admin_private_resources; then
                 die "private resource initialization failed"
             fi
-            seed_bundled_workflows
+            if ! seed_bundled_workflows; then
+                die "bundled workflow initialization failed"
+            fi
         fi
         log "deployment complete"
         ;;
@@ -868,7 +891,9 @@ case "$COMMAND" in
             if ! install_admin_private_resources; then
                 die "private resource initialization failed"
             fi
-            seed_bundled_workflows
+            if ! seed_bundled_workflows; then
+                die "bundled workflow initialization failed"
+            fi
         fi
         log "restart complete"
         ;;

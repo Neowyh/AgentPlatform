@@ -506,6 +506,21 @@ class TestListAssistants:
         result = _list_assistants()
         assert result[0].assistant_id == "lead_agent"
 
+    def test_canonical_mode_does_not_expose_legacy_named_agents(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        monkeypatch.setenv("IDEER_RESOURCE_CATALOG_MODE", "canonical")
+        custom_cfg = _make_agent_config("legacy-name")
+
+        with patch(
+            "ideer.config.agents_config.list_custom_agents",
+            return_value=[custom_cfg],
+        ):
+            result = _list_assistants()
+
+        assert [item.assistant_id for item in result] == ["lead_agent"]
+
     @patch("app.gateway.routers.assistants_compat._list_assistants")
     def test_includes_custom_agents(self, mock_list):
         """Custom agents from config are appended after the default."""

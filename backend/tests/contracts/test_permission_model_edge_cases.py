@@ -368,8 +368,8 @@ class TestDeptAdminDepartmentFilter:
         return app
 
     @pytest.mark.asyncio
-    async def test_dept_admin_sees_all_applications(self):
-        """dept_admin's GET query does NOT include department_id filter."""
+    async def test_dept_admin_sees_only_own_department_applications(self):
+        """dept_admin's GET query applies the department boundary in SQL."""
         user = _make_rbac_user(role="department_admin", department_id="dept-1")
         app = self._build_app(user)
 
@@ -415,10 +415,10 @@ class TestDeptAdminDepartmentFilter:
                 resp = await client.get("/api/visibility-applications")
 
         assert resp.status_code == 200
-        # Verify the SQL does NOT filter by department_id (the column name may
-        # appear in SELECT but not as a WHERE condition)
+        # The filter must be part of both the count and page queries instead of
+        # relying on post-query filtering.
         combined = " ".join(captured_stmts)
-        assert "department_id =" not in combined
+        assert "department_id =" in combined
 
     @pytest.mark.asyncio
     async def test_super_admin_no_department_filter(self):

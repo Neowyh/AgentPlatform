@@ -13,11 +13,13 @@ from ideer.persistence.models.user import UserModel, UserRole
 def _stub_database_steps(monkeypatch):
     for name in (
         "_validate_preconditions",
+        "_handle_canonical_resources",
         "_handle_resource_metadata",
         "_handle_visibility_applications",
         "_handle_historical_data",
         "_handle_audit_logs",
         "_record_user_deletion_audit",
+        "_has_canonical_identity_references",
         "_delete_user_rows",
     ):
         monkeypatch.setattr(user_deletion, name, AsyncMock())
@@ -214,3 +216,24 @@ async def test_delete_user_rows_deletes_only_records_that_exist(auth_user, rbac_
 
     assert session.delete.await_count == expected_deletes
     assert session.delete.await_args_list == [call(record) for record in (auth_record, rbac_record) if record is not None]
+
+
+@pytest.mark.asyncio
+async def test_delete_user_rows_keeps_disabled_rbac_history_anchor() -> None:
+    class Result:
+        def __init__(self, value):
+            self.value = value
+
+        def scalar_one_or_none(self):
+            return self.value
+
+    auth_record = SimpleNamespace(id="auth-deleted")
+    rbac_record = SimpleNamespace(id="rbac-deleted", disabled=True, department_id="dept-a")
+    session = AsyncMock()
+    session.execute.side_effect = (Result(auth_record), Result(rbac_record))
+
+    await user_deletion._delete_user_rows(session, "deleted", retain_rbac_identity=True)
+
+    session.delete.assert_awaited_once_with(auth_record)
+    assert rbac_record.disabled is True
+    assert rbac_record.department_id is None

@@ -80,7 +80,7 @@ def _seed_resource_owners(db_path: Path, resource_type: str, names: list[str], o
                         id, resource_type, resource_id, owner_id, department_id,
                         visibility, imported_from, version, is_favorited,
                         created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, NULL, 'private', NULL, 1, 0, ?, ?)
+                    ) VALUES (?, ?, ?, ?, NULL, 'private', 'bundled', 1, 0, ?, ?)
                     """,
                     (uuid.uuid4().hex, resource_type, name, owner_id, now, now),
                 )

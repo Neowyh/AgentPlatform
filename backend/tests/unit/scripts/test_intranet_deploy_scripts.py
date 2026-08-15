@@ -58,6 +58,9 @@ fi
 if [ "$1" = "pull" ]; then
   exit 0
 fi
+if [ "$1" = "tag" ]; then
+  exit 0
+fi
 if [ "$1" = "save" ]; then
   out=""
   while [ "$#" -gt 0 ]; do
@@ -216,6 +219,18 @@ def test_private_skill_seed_runs_inside_gateway_container(tmp_path: Path):
     assert "--agent srs-writing" in script
     assert 'docker compose -p ideer -f "$COMPOSE_FILE" --env-file "$ENV_FILE" exec -T gateway' in script
     assert '--db "$runtime_home/data/ideer.db"' not in script
+    assert 'docker cp "$SOURCE_DIR/scripts/seed_bundled_resources.py" ideer-gateway:/tmp/seed_bundled_resources.py' in script
+    assert 'docker cp "$SOURCE_DIR/bundled-resources.json" ideer-gateway:/tmp/bundled-resources.json' in script
+    assert "--manifest /tmp/bundled-resources.json --source-root /app --owner" in script
+
+
+def test_deploy_fails_closed_when_any_bundled_resource_seed_fails() -> None:
+    script = DEPLOY_SCRIPT.read_text(encoding="utf-8")
+
+    assert 'die "private resource initialization failed"' in script
+    assert "if ! seed_bundled_workflows; then" in script
+    assert 'die "bundled workflow initialization failed"' in script
+    assert "Idempotent; failures are warnings, not fatal." not in script
 
 
 def test_up_fails_when_frontend_route_is_unhealthy(tmp_path: Path):
@@ -430,6 +445,8 @@ def test_package_source_archive_includes_runtime_seed_templates(tmp_path: Path):
     assert "frontend/.env.example" in names
     assert "frontend/.env" not in names
     assert "workflows/fault-zeroing.yaml" in names
+    assert "bundled-resources.json" in names
+    assert "scripts/seed_bundled_resources.py" in names
     assert "skills/custom/fault-zeroing/templates/corrective_actions.schema.json" in names
     assert not (output_dir / "docker-compose.intranet.yaml").exists()
     assert not (output_dir / "env.intranet.example").exists()
@@ -447,6 +464,7 @@ def test_intranet_compose_uses_runtime_env_contract_and_internal_token():
 
     assert "${IDEER_FRONTEND_ENV_FILE:?IDEER_FRONTEND_ENV_FILE must be set}" in compose
     assert "${IDEER_ENV_FILE:?IDEER_ENV_FILE must be set}" in compose
+    assert compose.count("IDEER_RESOURCE_CATALOG_MODE=${IDEER_RESOURCE_CATALOG_MODE:-dual}") == 2
     assert "IDEER_INTERNAL_AUTH_TOKEN=${IDEER_INTERNAL_AUTH_TOKEN}" in compose
 
 

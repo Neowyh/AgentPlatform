@@ -89,7 +89,7 @@ def migrate_skill_applications(*, dry_run: bool = False) -> dict:
             try:
                 # Idempotency: skip if already migrated (same skill_id + applicant_id + pending)
                 existing = session.execute(
-                    select(VisibilityApplication).where(
+                    select(VisibilityApplication.id).where(
                         VisibilityApplication.resource_type == "skill",
                         VisibilityApplication.resource_id == app.skill_id,
                         VisibilityApplication.applicant_id == app.applicant_id,
