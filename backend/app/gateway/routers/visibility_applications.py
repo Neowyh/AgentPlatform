@@ -31,6 +31,12 @@ from ideer.persistence.models.visibility_application import (
     VisibilityApplication,
     VisibilityApplicationStatus,
 )
+from ideer.resources.service import (
+    ResourceConflict,
+    ResourceNotFound,
+    ResourcePermissionDenied,
+    ResourceService,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -304,6 +310,37 @@ async def review_application(
                         detail="You can only review applications from your own department",
                     )
 
+            canonical_resource_id = getattr(application, "canonical_resource_id", None)
+            if isinstance(canonical_resource_id, str) and canonical_resource_id:
+                from app.gateway.routers.resources import _resource_actor
+
+                reviewed = await ResourceService(
+                    session,
+                    _resource_actor(current_user),
+                ).review_visibility_application(
+                    application_id,
+                    approve=request.action == VisibilityApplicationStatus.APPROVED.value,
+                    comment=request.comment,
+                    expected_version=request.version,
+                )
+                await session.commit()
+                await session.refresh(reviewed)
+                await record_audit(
+                    actor_id=current_user.id,
+                    action="visibility_change",
+                    resource_type=reviewed.resource_type,
+                    resource_id=reviewed.canonical_resource_id,
+                    detail={
+                        "old_visibility": reviewed.current_visibility,
+                        "target_visibility": reviewed.target_visibility,
+                        "status": reviewed.status,
+                        "requested_version": reviewed.requested_version,
+                        "requested_hash": reviewed.requested_hash,
+                    },
+                    ip_address=http_request.client.host if http_request.client else None,
+                )
+                return _to_response(reviewed)
+
             application.status = request.action
             application.reviewed_by = str(current_user.id)
             application.reviewed_at = datetime.now(UTC)
@@ -352,6 +389,12 @@ async def review_application(
             return _to_response(application)
     except HTTPException:
         raise
+    except ResourceNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ResourcePermissionDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ResourceConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except Exception as e:
         logger.error("Failed to review visibility application %s: %s", application_id, e, exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -387,6 +430,12 @@ async def list_applications(
 
             if resource_type:
                 stmt = stmt.where(VisibilityApplication.resource_type == resource_type)
+
+            if current_user.role == UserRole.DEPARTMENT_ADMIN:
+                if current_user.department_id is None:
+                    stmt = stmt.where(VisibilityApplication.department_id.is_(None))
+                else:
+                    stmt = stmt.where(VisibilityApplication.department_id == str(current_user.department_id))
 
             # Count total
             from sqlalchemy import func

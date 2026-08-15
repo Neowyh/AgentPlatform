@@ -24,6 +24,7 @@ from app.gateway.authz import (
     get_optional_rbac_user,
     require_role,
 )
+from app.gateway.resource_catalog_mode import require_legacy_resource_facades
 from app.gateway.utils import ResourceMetadataStore
 from ideer.config import get_app_config
 from ideer.persistence.engine import get_session_factory
@@ -35,7 +36,11 @@ from ideer.workflows.v2.store import WorkflowV2Store
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/workflows", tags=["workflows"])
+router = APIRouter(
+    prefix="/api/workflows",
+    tags=["workflows"],
+    dependencies=[Depends(require_legacy_resource_facades)],
+)
 
 
 def _friendly_validation_error(raw: str) -> str:

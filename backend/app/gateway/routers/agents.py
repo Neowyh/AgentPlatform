@@ -14,6 +14,7 @@ from sqlalchemy import func, select
 
 from app.gateway.audit import record_audit
 from app.gateway.authz import check_resource_access, check_resource_modify, get_current_rbac_user, get_optional_rbac_user, require_role
+from app.gateway.resource_catalog_mode import require_legacy_resource_facades
 from ideer.config.agents_api_config import get_agents_api_config
 from ideer.config.agents_config import AgentConfig, list_custom_agents, load_agent_config, load_agent_soul
 from ideer.config.paths import get_paths
@@ -22,7 +23,11 @@ from ideer.persistence.models.user import UserModel, UserRole
 from ideer.runtime.user_context import get_effective_user_id
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api", tags=["agents"])
+router = APIRouter(
+    prefix="/api",
+    tags=["agents"],
+    dependencies=[Depends(require_legacy_resource_facades)],
+)
 
 
 # ---------------------------------------------------------------------------

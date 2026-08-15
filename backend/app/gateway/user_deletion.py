@@ -29,6 +29,7 @@ from sqlalchemy import update as sql_update
 
 from ideer.persistence.feedback.model import FeedbackRow
 from ideer.persistence.models.audit_log import AuditLog
+from ideer.persistence.models.resource_catalog import Resource, ResourceDraft, ResourceVersion
 from ideer.persistence.models.resource_metadata import ResourceMetadata
 from ideer.persistence.models.run_event import RunEventRow
 from ideer.persistence.models.user import UserModel, UserRole
@@ -36,6 +37,7 @@ from ideer.persistence.models.visibility_application import VisibilityApplicatio
 from ideer.persistence.run.model import RunRow
 from ideer.persistence.thread_meta.model import ThreadMetaRow
 from ideer.persistence.user.model import UserRow
+from ideer.resources.service import ResourceAction, ResourceActor, ResourceService
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -97,6 +99,13 @@ async def delete_user(
         target_user_id=target_user_id,
     )
 
+    await _handle_canonical_resources(
+        session=session,
+        user_id=user_id,
+        current_user_id=current_user_id,
+        strategy=resource_strategy,
+        target_user_id=target_user_id,
+    )
     await _handle_resource_metadata(
         session=session,
         paths=paths,
@@ -108,7 +117,12 @@ async def delete_user(
     await _handle_historical_data(session=session, paths=paths, user_id=user_id)
     await _handle_audit_logs(session=session, user_id=user_id)
     await _record_user_deletion_audit(session=session, user_id=user_id, current_user_id=current_user_id, strategy=resource_strategy)
-    await _delete_user_rows(session=session, user_id=user_id)
+    retain_rbac_identity = await _has_canonical_identity_references(session, user_id)
+    await _delete_user_rows(
+        session=session,
+        user_id=user_id,
+        retain_rbac_identity=retain_rbac_identity,
+    )
     await session.commit()
 
     try:
@@ -208,6 +222,44 @@ async def _check_target_user_exists(session: AsyncSession, target_user_id: str) 
 # ---------------------------------------------------------------------------
 # Resource metadata handling (strategy-based)
 # ---------------------------------------------------------------------------
+
+
+async def _handle_canonical_resources(
+    session: AsyncSession,
+    user_id: str,
+    current_user_id: str,
+    strategy: str,
+    target_user_id: str | None,
+) -> None:
+    """Govern canonical resources while retaining immutable history."""
+
+    actor = ResourceActor(
+        user_id=current_user_id,
+        department_id=None,
+        role="super_admin",
+        permissions=frozenset(ResourceAction),
+    )
+    canonical_strategy = "transfer" if strategy == "transfer" else "archive"
+    await ResourceService(session, actor).govern_owner_deletion(
+        user_id,
+        strategy=canonical_strategy,
+        target_owner_id=target_user_id,
+    )
+
+
+async def _has_canonical_identity_references(session: AsyncSession, user_id: str) -> bool:
+    """Return whether immutable catalog history still requires the RBAC identity row."""
+
+    statements = (
+        select(Resource.id).where(Resource.owner_id == user_id).limit(1),
+        select(ResourceVersion.id).where(ResourceVersion.created_by == user_id).limit(1),
+        select(ResourceDraft.resource_id).where(ResourceDraft.modified_by == user_id).limit(1),
+        select(VisibilityApplication.id).where((VisibilityApplication.applicant_id == user_id) | (VisibilityApplication.reviewed_by == user_id)).limit(1),
+    )
+    for statement in statements:
+        if (await session.execute(statement)).scalar_one_or_none() is not None:
+            return True
+    return False
 
 
 async def _handle_resource_metadata(
@@ -367,8 +419,13 @@ async def _handle_audit_logs(session: AsyncSession, user_id: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-async def _delete_user_rows(session: AsyncSession, user_id: str) -> None:
-    """Delete the auth (users) and RBAC (users_ext) rows."""
+async def _delete_user_rows(
+    session: AsyncSession,
+    user_id: str,
+    *,
+    retain_rbac_identity: bool = False,
+) -> None:
+    """Delete login identity and retain a disabled RBAC history anchor when required."""
     auth_stmt = select(UserRow).where(UserRow.id == user_id)
     auth_result = await session.execute(auth_stmt)
     auth_user = auth_result.scalar_one_or_none()
@@ -378,5 +435,8 @@ async def _delete_user_rows(session: AsyncSession, user_id: str) -> None:
     rbac_stmt = select(UserModel).where(UserModel.id == user_id)
     rbac_result = await session.execute(rbac_stmt)
     rbac_user = rbac_result.scalar_one_or_none()
-    if rbac_user:
+    if rbac_user and retain_rbac_identity:
+        rbac_user.disabled = True
+        rbac_user.department_id = None
+    elif rbac_user:
         await session.delete(rbac_user)

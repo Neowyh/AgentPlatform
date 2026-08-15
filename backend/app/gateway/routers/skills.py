@@ -10,6 +10,7 @@ from app.gateway.audit import record_audit
 from app.gateway.authz import check_resource_access, check_resource_modify, get_current_rbac_user, get_optional_rbac_user, require_role
 from app.gateway.deps import get_config
 from app.gateway.path_utils import resolve_thread_virtual_path
+from app.gateway.resource_catalog_mode import require_legacy_resource_facades
 from app.gateway.utils import ResourceMetadataStore
 from ideer.agents.lead_agent.prompt import refresh_skills_system_prompt_cache_async
 from ideer.config.app_config import AppConfig
@@ -39,7 +40,11 @@ def _validate_skill_name(name: str) -> None:
         raise HTTPException(status_code=422, detail=f"Invalid skill name '{name}'. Only alphanumeric, underscore, and hyphen characters are allowed.")
 
 
-router = APIRouter(prefix="/api/skills", tags=["skills"])
+router = APIRouter(
+    prefix="/api/skills",
+    tags=["skills"],
+    dependencies=[Depends(require_legacy_resource_facades)],
+)
 
 
 async def _load_skill_meta(skill_name: str, config: AppConfig) -> dict:

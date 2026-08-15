@@ -11,6 +11,7 @@ import asyncio
 import json
 import logging
 import re
+import uuid
 from collections.abc import Mapping
 from typing import Any
 
@@ -185,6 +186,108 @@ def resolve_agent_factory(assistant_id: str | None):
     return make_lead_agent
 
 
+def _canonical_assistant_id(assistant_id: str | None) -> str | None:
+    if not assistant_id or assistant_id == _DEFAULT_ASSISTANT_ID:
+        return None
+    try:
+        return str(uuid.UUID(assistant_id))
+    except ValueError:
+        return None
+
+
+async def _prepare_canonical_agent_run(
+    resource_id: str,
+    request: Request,
+    run_id: str,
+):
+    """Freeze and load a canonical Agent closure before the Run is claimable."""
+
+    from sqlalchemy import select
+
+    from ideer.agents.lead_agent.agent import build_canonical_lead_agent_factory
+    from ideer.config import get_paths
+    from ideer.persistence.engine import get_session_factory
+    from ideer.persistence.models.user import UserModel, UserRole
+    from ideer.resources.runtime import CanonicalResourceLoader, ResourceRuntimeError
+    from ideer.resources.service import (
+        ResourceAction,
+        ResourceActor,
+        ResourceConflict,
+        ResourceNotFound,
+        ResourcePermissionDenied,
+        ResourceService,
+    )
+    from ideer.resources.storage import ResourceStorage
+
+    user_id = getattr(getattr(request.state, "user", None), "id", None)
+    if user_id is None:
+        raise HTTPException(401, "Authentication required")
+    session_factory = get_session_factory()
+    if session_factory is None:
+        raise HTTPException(503, "Resource persistence is unavailable")
+    try:
+        async with session_factory() as session:
+            user = (
+                await session.execute(
+                    select(UserModel).where(
+                        UserModel.id == str(user_id),
+                        UserModel.disabled.is_not(True),
+                    )
+                )
+            ).scalar_one_or_none()
+            if user is None:
+                raise ResourcePermissionDenied("Active RBAC user is required")
+            permissions = {ResourceAction.READ}
+            if user.role in {UserRole.USER, UserRole.DEPARTMENT_ADMIN, UserRole.SUPER_ADMIN}:
+                permissions.add(ResourceAction.USE)
+            actor = ResourceActor(
+                user_id=str(user.id),
+                department_id=str(user.department_id) if user.department_id is not None else None,
+                role=str(user.role),
+                permissions=frozenset(permissions),
+                tool_groups=None,
+            )
+            await ResourceService(session, actor).create_run_snapshot(run_id, resource_id)
+            storage = ResourceStorage(get_paths().base_dir)
+            loader = CanonicalResourceLoader(session, storage)
+            definition = await loader.load_agent(run_id, resource_id)
+            skill_definitions = await loader.load_agent_skill_definitions(run_id, resource_id)
+            skills = [value.skill for value in skill_definitions]
+            await asyncio.to_thread(
+                storage.create_run_skill_view,
+                run_id,
+                [(value.resource_id, value.version, value.content_hash) for value in skill_definitions],
+            )
+            await session.commit()
+        return build_canonical_lead_agent_factory(
+            definition,
+            skills,
+            runner_tool_groups=actor.tool_groups,
+        )
+    except ResourceNotFound as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except ResourcePermissionDenied as exc:
+        raise HTTPException(403, str(exc)) from exc
+    except (ResourceConflict, ResourceRuntimeError) as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
+async def _discard_canonical_run_snapshot(run_id: str) -> None:
+    """Compensate a prepared snapshot when Run creation is rejected."""
+
+    from sqlalchemy import delete
+
+    from ideer.persistence.engine import get_session_factory
+    from ideer.persistence.models.resource_catalog import RunResourceSnapshot
+
+    session_factory = get_session_factory()
+    if session_factory is None:
+        return
+    async with session_factory() as session:
+        await session.execute(delete(RunResourceSnapshot).where(RunResourceSnapshot.run_id == run_id))
+        await session.commit()
+
+
 def build_run_config(
     thread_id: str,
     request_config: dict[str, Any] | None,
@@ -343,9 +446,10 @@ async def start_run(
     body_context = getattr(body, "context", None) or {}
     model_name = body_context.get("model_name")
 
-    # Resolve the declaring owner of a shared agent before the run record is
-    # created so denied requests 404 without leaving side effects behind.
-    agent_owner_id = await _resolve_run_agent_owner(body, request)
+    canonical_resource_id = _canonical_assistant_id(getattr(body, "assistant_id", None))
+    # Legacy shared-agent resolution is untouched. UUID assistants use the
+    # canonical visibility/snapshot boundary instead of owner directories.
+    agent_owner_id = None if canonical_resource_id else await _resolve_run_agent_owner(body, request)
 
     # Coerce non-string model_name values to str before truncation.
     if model_name is not None and not isinstance(model_name, str):
@@ -361,20 +465,32 @@ async def start_run(
                 detail=f"Model {model_name!r} is not in the configured model allowlist",
             )
 
+    canonical_run_id = str(uuid.uuid4()) if canonical_resource_id else None
+    canonical_factory = await _prepare_canonical_agent_run(canonical_resource_id, request, canonical_run_id) if canonical_resource_id and canonical_run_id else None
+
     try:
-        record = await run_mgr.create_or_reject(
-            thread_id,
-            body.assistant_id,
-            on_disconnect=disconnect,
-            metadata=body.metadata or {},
-            kwargs={"input": body.input, "config": body.config},
-            multitask_strategy=body.multitask_strategy,
-            model_name=model_name,
-        )
+        create_kwargs = {
+            "on_disconnect": disconnect,
+            "metadata": body.metadata or {},
+            "kwargs": {"input": body.input, "config": body.config},
+            "multitask_strategy": body.multitask_strategy,
+            "model_name": model_name,
+        }
+        if canonical_run_id:
+            create_kwargs["run_id"] = canonical_run_id
+        record = await run_mgr.create_or_reject(thread_id, body.assistant_id, **create_kwargs)
     except ConflictError as exc:
+        if canonical_run_id:
+            await _discard_canonical_run_snapshot(canonical_run_id)
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except UnsupportedStrategyError as exc:
+        if canonical_run_id:
+            await _discard_canonical_run_snapshot(canonical_run_id)
         raise HTTPException(status_code=501, detail=str(exc)) from exc
+    except BaseException:
+        if canonical_run_id:
+            await _discard_canonical_run_snapshot(canonical_run_id)
+        raise
 
     # Upsert thread metadata so the thread appears in /threads/search,
     # even for threads that were never explicitly created via POST /threads
@@ -392,9 +508,15 @@ async def start_run(
     except Exception:
         logger.warning("Failed to upsert thread_meta for %s (non-fatal)", sanitize_log_param(thread_id))
 
-    agent_factory = resolve_agent_factory(body.assistant_id)
+    agent_factory = canonical_factory or resolve_agent_factory(body.assistant_id)
     graph_input = normalize_input(body.input)
     config = build_run_config(thread_id, body.config, body.metadata, assistant_id=body.assistant_id)
+
+    if canonical_run_id:
+        for container_name in ("context", "configurable"):
+            container = config.setdefault(container_name, {})
+            if isinstance(container, dict):
+                container["canonical_run_id"] = canonical_run_id
 
     # Merge iDeer-specific context overrides into both ``configurable`` and ``context``.
     # The ``context`` field is a custom extension for the langgraph-compat layer

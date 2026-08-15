@@ -219,6 +219,89 @@ class TestStartRun:
         run_ctx.thread_store.create.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_start_run_uuid_uses_frozen_canonical_factory_and_preallocated_run_id(self, mock_deps):
+        bridge, run_mgr, run_ctx, request = mock_deps
+        assistant_id = "11111111-1111-1111-1111-111111111111"
+        canonical_factory = MagicMock()
+        record = MagicMock(run_id="canonical-run", task=None)
+        run_mgr.create_or_reject.return_value = record
+        body = SimpleNamespace(
+            assistant_id=assistant_id,
+            on_disconnect="cancel",
+            input={"messages": [{"role": "user", "content": "hi"}]},
+            config=None,
+            metadata=None,
+            multitask_strategy="reject",
+            stream_mode=None,
+            stream_subgraphs=False,
+            interrupt_before=None,
+            interrupt_after=None,
+            context=None,
+        )
+
+        with (
+            patch("app.gateway.services.get_stream_bridge", return_value=bridge),
+            patch("app.gateway.services.get_run_manager", return_value=run_mgr),
+            patch("app.gateway.services.get_run_context", return_value=run_ctx),
+            patch("app.gateway.services._prepare_canonical_agent_run", new_callable=AsyncMock) as prepare,
+            patch("app.gateway.services.resolve_agent_factory") as legacy_factory,
+            patch("app.gateway.services.run_agent", new_callable=AsyncMock) as run_agent,
+            patch("app.gateway.services.get_app_config") as mock_app_config,
+            patch("app.gateway.services.uuid.uuid4", return_value="canonical-run"),
+        ):
+            prepare.return_value = canonical_factory
+            mock_app_config.return_value.get_model_config.return_value = None
+            from app.gateway.services import start_run
+
+            result = await start_run(body, "thread-1", request)
+
+        assert result is record
+        prepare.assert_awaited_once_with(assistant_id, request, "canonical-run")
+        assert run_mgr.create_or_reject.call_args.kwargs["run_id"] == "canonical-run"
+        legacy_factory.assert_not_called()
+        config = run_agent.call_args.kwargs["config"]
+        assert config["context"]["canonical_run_id"] == "canonical-run"
+        assert config["configurable"]["canonical_run_id"] == "canonical-run"
+
+    @pytest.mark.asyncio
+    async def test_start_run_uuid_discards_prepared_snapshot_when_run_is_rejected(self, mock_deps):
+        bridge, run_mgr, run_ctx, request = mock_deps
+        from ideer.runtime import ConflictError
+
+        run_mgr.create_or_reject.side_effect = ConflictError("already running")
+        body = SimpleNamespace(
+            assistant_id="11111111-1111-1111-1111-111111111111",
+            on_disconnect="cancel",
+            input=None,
+            config=None,
+            metadata=None,
+            multitask_strategy="reject",
+            stream_mode=None,
+            stream_subgraphs=False,
+            interrupt_before=None,
+            interrupt_after=None,
+            context=None,
+        )
+
+        with (
+            patch("app.gateway.services.get_stream_bridge", return_value=bridge),
+            patch("app.gateway.services.get_run_manager", return_value=run_mgr),
+            patch("app.gateway.services.get_run_context", return_value=run_ctx),
+            patch("app.gateway.services._prepare_canonical_agent_run", new_callable=AsyncMock),
+            patch("app.gateway.services._discard_canonical_run_snapshot", new_callable=AsyncMock) as discard,
+            patch("app.gateway.services.get_app_config") as mock_app_config,
+            patch("app.gateway.services.uuid.uuid4", return_value="rejected-run"),
+        ):
+            mock_app_config.return_value.get_model_config.return_value = None
+            from app.gateway.services import start_run
+
+            with pytest.raises(HTTPException) as exc_info:
+                await start_run(body, "thread-1", request)
+
+        assert exc_info.value.status_code == 409
+        discard.assert_awaited_once_with("rejected-run")
+
+    @pytest.mark.asyncio
     async def test_start_run_with_model_name(self, mock_deps):
         """Cover model validation path."""
         bridge, run_mgr, run_ctx, request = mock_deps

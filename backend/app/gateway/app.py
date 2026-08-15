@@ -26,6 +26,7 @@ from app.gateway.routers import (
     mcp,
     memory,
     models,
+    resources,
     runs,
     skills,
     suggestions,
@@ -363,6 +364,28 @@ async def _reconcile_agent_metadata(sf, admin_id: str) -> None:
         logger.info("Reconciled %d agent(s) — created missing resource_metadata records", reconciled)
 
 
+async def _reconcile_canonical_resource_storage() -> None:
+    """Fail startup on broken DB pointers and report recoverable orphan files."""
+
+    from ideer.config.paths import get_paths
+    from ideer.persistence.engine import get_session_factory
+    from ideer.resources.reconciliation import reconcile_catalog_storage
+    from ideer.resources.storage import ResourceStorage
+
+    session_factory = get_session_factory()
+    if session_factory is None:
+        return
+    async with session_factory() as session:
+        report = await reconcile_catalog_storage(session, ResourceStorage(get_paths().base_dir))
+    orphans = {
+        "unreferenced_versions": report.unreferenced_versions,
+        "orphan_staging": report.orphan_staging,
+        "orphan_drafts": report.orphan_drafts,
+    }
+    if any(orphans.values()):
+        logger.warning("Canonical resource storage has recoverable orphans; no files were removed: %s", orphans)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan handler."""
@@ -409,6 +432,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             await _reconcile_resource_metadata(startup_config)
         except Exception:
             logger.exception("Skill metadata reconciliation failed (non-fatal)")
+
+        # Published catalog pointers must be usable before the gateway accepts
+        # runs. Orphan files are only reported; startup never deletes them.
+        await _reconcile_canonical_resource_storage()
 
         # Start IM channel service if any channels are configured
         try:
@@ -612,6 +639,9 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
     # Include routers
     # Models API is mounted at /api/models
     app.include_router(models.router)
+
+    # UUID-first canonical Skill, Agent, and Workflow resources API
+    app.include_router(resources.router)
 
     # MCP API is mounted at /api/mcp
     app.include_router(mcp.router)

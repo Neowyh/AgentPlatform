@@ -1404,10 +1404,13 @@ class TestAExecute:
             thread_id="tid-123",
             app_config=app_cfg,
         )
+        executor.canonical_run_id = "run-uuid"
         with patch.object(executor, "_create_agent", return_value=mock_agent):
             await executor._aexecute("T")
         assert captured_config.get("configurable", {}).get("thread_id") == "tid-123"
+        assert captured_config.get("configurable", {}).get("canonical_run_id") == "run-uuid"
         assert captured_context.get("thread_id") == "tid-123"
+        assert captured_context.get("canonical_run_id") == "run-uuid"
         assert captured_context.get("app_config") is app_cfg
 
     @pytest.mark.anyio
