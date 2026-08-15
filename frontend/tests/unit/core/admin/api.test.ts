@@ -30,6 +30,9 @@ import {
   listResources,
   listTools,
   testTool,
+  archiveResource,
+  suspendResource,
+  restoreResource,
 } from "@/core/admin/api";
 import { extractError } from "@/core/api/errors";
 import { fetch } from "@/core/api/fetcher";
@@ -361,6 +364,63 @@ describe("admin API", () => {
       expect(url.searchParams.get("resource_type")).toBe("workflow");
       expect(url.searchParams.get("limit")).toBe("10");
       expect(url.searchParams.get("offset")).toBe("20");
+    });
+  });
+
+  // ── Resource lifecycle actions ─────────────────────────────────
+
+  describe("resource lifecycle actions", () => {
+    test("archives a canonical resource via POST /api/resources/{id}/archive", async () => {
+      mockFetch.mockResolvedValue(okJson({}));
+
+      await archiveResource("11111111-1111-1111-1111-111111111111");
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        "http://localhost:8000/api/resources/11111111-1111-1111-1111-111111111111/archive",
+        { method: "POST" },
+      );
+    });
+
+    test("suspends a canonical resource via POST /api/resources/{id}/suspend", async () => {
+      mockFetch.mockResolvedValue(okJson({}));
+
+      await suspendResource("22222222-2222-2222-2222-222222222222");
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        "http://localhost:8000/api/resources/22222222-2222-2222-2222-222222222222/suspend",
+        { method: "POST" },
+      );
+    });
+
+    test("restores a canonical resource via POST /api/resources/{id}/restore", async () => {
+      mockFetch.mockResolvedValue(okJson({}));
+
+      await restoreResource("33333333-3333-3333-3333-333333333333");
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        "http://localhost:8000/api/resources/33333333-3333-3333-3333-333333333333/restore",
+        { method: "POST" },
+      );
+    });
+
+    test("delegates archive failures to extractError", async () => {
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 500,
+        statusText: "Server Error",
+        headers: new Headers(),
+        redirected: false,
+        type: "basic",
+        url: "",
+        json: () => Promise.reject(new Error("no body")),
+      } as Response);
+      mockExtractError.mockImplementation(() => {
+        throw new Error("Failed to archive resource");
+      });
+
+      await expect(
+        archiveResource("44444444-4444-4444-4444-444444444444"),
+      ).rejects.toThrow("Failed to archive resource");
     });
   });
 

@@ -1,8 +1,11 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 const mockListResources = vi.fn();
+const mockArchiveResource = vi.fn();
+const mockSuspendResource = vi.fn();
+const mockRestoreResource = vi.fn();
 const mockReplace = vi.fn();
 let mockUser: { system_role: string } | null = {
   system_role: "department_admin",
@@ -30,6 +33,9 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/core/admin/api", () => ({
   listResources: (...args: unknown[]) => mockListResources(...args),
+  archiveResource: (...args: unknown[]) => mockArchiveResource(...args),
+  suspendResource: (...args: unknown[]) => mockSuspendResource(...args),
+  restoreResource: (...args: unknown[]) => mockRestoreResource(...args),
 }));
 
 vi.mock("@/core/auth/AuthProvider", () => ({
@@ -37,6 +43,16 @@ vi.mock("@/core/auth/AuthProvider", () => ({
     user: mockUser,
   }),
 }));
+
+vi.mock("lucide-react", async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return {
+    ...actual,
+    ArchiveIcon: () => null,
+    RefreshCwIcon: () => null,
+    BanIcon: () => null,
+  };
+});
 
 import ResourcesPage from "@/app/workspace/admin/resources/page";
 
@@ -135,5 +151,170 @@ describe("ResourcesPage", () => {
     await user.click(screen.getByText("上一页"));
 
     await waitFor(() => expect(screen.getByText("1 / 2")).toBeInTheDocument());
+  });
+
+  test("shows lifecycle actions only for canonical resources", async () => {
+    mockUser = { system_role: "super_admin" };
+    mockListResources.mockResolvedValue({
+      resources: [
+        {
+          id: "11111111-1111-1111-1111-111111111111",
+          resource_type: "agent",
+          resource_type_label: "智能体",
+          resource_id: "reviewer",
+          visibility: "department",
+          owner_id: "owner-1",
+          department_id: null,
+          lifecycle_status: "active",
+          created_at: "2024-01-01T00:00:00",
+        },
+        {
+          id: "legacy-agent-1",
+          resource_type: "agent",
+          resource_type_label: "智能体",
+          resource_id: "legacy-agent-1",
+          visibility: "public",
+          owner_id: null,
+          department_id: null,
+          created_at: "2024-01-01T00:00:00",
+        },
+      ],
+      total: 2,
+      limit: 50,
+      offset: 0,
+    });
+    const user = userEvent.setup();
+    render(<ResourcesPage />);
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("resource-row")).toHaveLength(2);
+    });
+
+    const canonicalRow = screen
+      .getAllByTestId("resource-row")
+      .find((row) => row.textContent?.includes("reviewer"));
+    const legacyRow = screen
+      .getAllByTestId("resource-row")
+      .find((row) => row.textContent?.includes("legacy-agent-1"));
+
+    expect(canonicalRow).toBeTruthy();
+    expect(legacyRow).toBeTruthy();
+    expect(
+      within(canonicalRow!).getByRole("button", { name: "归档" }),
+    ).toBeInTheDocument();
+    expect(
+      within(legacyRow!).queryByRole("button", { name: "归档" }),
+    ).not.toBeInTheDocument();
+  });
+
+  test("archives a canonical resource and reloads the list", async () => {
+    mockUser = { system_role: "department_admin" };
+    mockListResources.mockResolvedValue({
+      resources: [
+        {
+          id: "11111111-1111-1111-1111-111111111111",
+          resource_type: "workflow",
+          resource_type_label: "工作流",
+          resource_id: "wf-1",
+          visibility: "private",
+          owner_id: "owner-1",
+          department_id: null,
+          lifecycle_status: "active",
+          created_at: "2024-01-01T00:00:00",
+        },
+      ],
+      total: 1,
+      limit: 50,
+      offset: 0,
+    });
+    mockArchiveResource.mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    render(<ResourcesPage />);
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("resource-row")).toHaveLength(1);
+    });
+
+    await user.click(screen.getByRole("button", { name: "归档" }));
+
+    await waitFor(() => {
+      expect(mockArchiveResource).toHaveBeenCalledWith(
+        "11111111-1111-1111-1111-111111111111",
+      );
+    });
+    expect(mockListResources).toHaveBeenCalledTimes(2);
+  });
+
+  test("shows suspend and restore only for super admins", async () => {
+    mockUser = { system_role: "super_admin" };
+    mockListResources.mockResolvedValue({
+      resources: [
+        {
+          id: "11111111-1111-1111-1111-111111111111",
+          resource_type: "agent",
+          resource_type_label: "智能体",
+          resource_id: "reviewer",
+          visibility: "department",
+          owner_id: "owner-1",
+          department_id: null,
+          lifecycle_status: "suspended",
+          created_at: "2024-01-01T00:00:00",
+        },
+      ],
+      total: 1,
+      limit: 50,
+      offset: 0,
+    });
+    const user = userEvent.setup();
+    render(<ResourcesPage />);
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("resource-row")).toHaveLength(1);
+    });
+
+    expect(screen.getByRole("button", { name: /恢复/ })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /恢复/ }));
+
+    await waitFor(() => {
+      expect(mockRestoreResource).toHaveBeenCalledWith(
+        "11111111-1111-1111-1111-111111111111",
+      );
+    });
+  });
+
+  test("department admins see only archive for canonical resources", async () => {
+    mockUser = { system_role: "department_admin" };
+    mockListResources.mockResolvedValue({
+      resources: [
+        {
+          id: "11111111-1111-1111-1111-111111111111",
+          resource_type: "agent",
+          resource_type_label: "智能体",
+          resource_id: "reviewer",
+          visibility: "department",
+          owner_id: "owner-1",
+          department_id: null,
+          lifecycle_status: "active",
+          created_at: "2024-01-01T00:00:00",
+        },
+      ],
+      total: 1,
+      limit: 50,
+      offset: 0,
+    });
+    render(<ResourcesPage />);
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("resource-row")).toHaveLength(1);
+    });
+
+    expect(screen.getByRole("button", { name: "归档" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /恢复/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /下架/ }),
+    ).not.toBeInTheDocument();
   });
 });

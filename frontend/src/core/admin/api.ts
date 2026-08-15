@@ -323,3 +323,30 @@ export async function testTool(
     error?: string;
   }>;
 }
+
+// ── Resource lifecycle (canonical) ───────────────────────────────
+
+async function resourceLifecycleAction(
+  resourceId: string,
+  action: "archive" | "suspend" | "restore",
+  actionLabel: string,
+): Promise<void> {
+  const baseURL = getBackendBaseURL();
+  const res = await fetch(
+    `${baseURL}/api/resources/${encodeURIComponent(resourceId)}/${action}`,
+    { method: "POST" },
+  );
+  if (!res.ok) return extractError(res, `Failed to ${actionLabel} resource`);
+}
+
+export function archiveResource(resourceId: string): Promise<void> {
+  return resourceLifecycleAction(resourceId, "archive", "archive");
+}
+
+export function suspendResource(resourceId: string): Promise<void> {
+  return resourceLifecycleAction(resourceId, "suspend", "suspend");
+}
+
+export function restoreResource(resourceId: string): Promise<void> {
+  return resourceLifecycleAction(resourceId, "restore", "restore");
+}

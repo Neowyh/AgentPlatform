@@ -171,10 +171,12 @@ class TestGetAdminStats:
         )
         metadata_result = MagicMock()
         metadata_result.scalars.return_value.all.return_value = [metadata]
+        canonical_result = MagicMock()
+        canonical_result.scalars.return_value.all.return_value = []
         owner_result = MagicMock()
         owner_result.all.return_value = [SimpleNamespace(id="owner-1", username="Ada")]
         session = AsyncMock()
-        session.execute = AsyncMock(side_effect=[metadata_result, owner_result])
+        session.execute = AsyncMock(side_effect=[metadata_result, canonical_result, owner_result])
         workflow_store = MagicMock()
         workflow_store.list_latest_definitions = AsyncMock(return_value=([], 0))
 
@@ -263,10 +265,12 @@ class TestAdminRemainingGuards:
     @patch("app.gateway.routers.admin.get_or_new_skill_storage")
     @patch("app.gateway.routers.admin.get_available_tools")
     @patch("app.gateway.routers.admin.get_paths", create=True)
+    @patch("app.gateway.routers.admin.get_app_config")
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_stats_uses_canonical_inventory_when_metadata_undercounts(
         self,
         mock_sf,
+        mock_get_app_config,
         mock_get_paths,
         mock_get_tools,
         mock_get_skill_storage,
@@ -286,6 +290,7 @@ class TestAdminRemainingGuards:
         (user_agents / "custom-a" / "config.yaml").write_text("name: custom-a\n")
 
         mock_get_paths.return_value = SimpleNamespace(base_dir=tmp_path, agents_dir=shared_agents)
+        mock_get_app_config.return_value = SimpleNamespace()
         mock_get_tools.return_value = [SimpleNamespace(name="tool-a"), SimpleNamespace(name="tool-b")]
         mock_get_skill_storage.return_value.load_skills.return_value = [SimpleNamespace(name="skill-a")]
         mock_workflow_store.return_value.list_latest_definitions = AsyncMock(return_value=([SimpleNamespace(workflow_name="wf-a"), SimpleNamespace(workflow_name="wf-b")], 2))
@@ -374,10 +379,12 @@ class TestListResources:
     @patch("app.gateway.routers.admin.get_or_new_skill_storage")
     @patch("app.gateway.routers.admin.get_available_tools")
     @patch("app.gateway.routers.admin.get_paths", create=True)
+    @patch("app.gateway.routers.admin.get_app_config")
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_resources_returns_canonical_inventory_with_metadata_defaults(
         self,
         mock_sf,
+        mock_get_app_config,
         mock_get_paths,
         mock_get_tools,
         mock_get_skill_storage,
@@ -394,6 +401,7 @@ class TestListResources:
         (user_agents / "custom-a" / "config.yaml").write_text("name: custom-a\n")
 
         mock_get_paths.return_value = SimpleNamespace(base_dir=tmp_path, agents_dir=shared_agents)
+        mock_get_app_config.return_value = SimpleNamespace()
         mock_get_tools.return_value = [SimpleNamespace(name="tool-a")]
         mock_get_skill_storage.return_value.load_skills.return_value = [
             SimpleNamespace(name="public-skill", category="public"),
@@ -412,9 +420,15 @@ class TestListResources:
 
         session = AsyncMock()
 
+        call_count = {"n": 0}
+
         async def _execute(stmt):
+            call_count["n"] += 1
             result = MagicMock()
-            result.scalars.return_value.all.return_value = [meta]
+            if call_count["n"] == 1:
+                result.scalars.return_value.all.return_value = [meta]
+            else:
+                result.scalars.return_value.all.return_value = []
             return result
 
         session.execute = AsyncMock(side_effect=_execute)
@@ -438,10 +452,12 @@ class TestListResources:
     @patch("app.gateway.routers.admin.get_or_new_skill_storage")
     @patch("app.gateway.routers.admin.get_available_tools")
     @patch("app.gateway.routers.admin.get_paths", create=True)
+    @patch("app.gateway.routers.admin.get_app_config")
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_resources_applies_type_filter_before_total_and_pagination(
         self,
         mock_sf,
+        mock_get_app_config,
         mock_get_paths,
         mock_get_tools,
         mock_get_skill_storage,
@@ -455,6 +471,7 @@ class TestListResources:
             (shared_agents / name / "config.yaml").write_text(f"name: {name}\n")
 
         mock_get_paths.return_value = SimpleNamespace(base_dir=tmp_path, agents_dir=shared_agents)
+        mock_get_app_config.return_value = SimpleNamespace()
         mock_get_tools.return_value = [SimpleNamespace(name="tool-a")]
         mock_get_skill_storage.return_value.load_skills.return_value = []
         mock_workflow_store.return_value.list_latest_definitions = AsyncMock(return_value=([], 0))
@@ -473,6 +490,67 @@ class TestListResources:
         assert data["total"] == 2
         assert len(data["resources"]) == 1
         assert data["resources"][0]["resource_type"] == "agent"
+
+    @patch("app.gateway.routers.admin.WorkflowV2Store")
+    @patch("app.gateway.routers.admin.get_or_new_skill_storage")
+    @patch("app.gateway.routers.admin.get_available_tools")
+    @patch("app.gateway.routers.admin.get_paths", create=True)
+    @patch("app.gateway.routers.admin.get_app_config")
+    @patch("app.gateway.routers.admin.get_session_factory")
+    def test_resources_surfaces_canonical_lifecycle_status(
+        self,
+        mock_sf,
+        mock_get_app_config,
+        mock_get_paths,
+        mock_get_tools,
+        mock_get_skill_storage,
+        mock_workflow_store,
+        tmp_path,
+    ):
+        shared_agents = tmp_path / "agents"
+        shared_agents.mkdir()
+        mock_get_paths.return_value = SimpleNamespace(base_dir=tmp_path, agents_dir=shared_agents)
+        mock_get_app_config.return_value = SimpleNamespace()
+        mock_get_tools.return_value = []
+        mock_get_skill_storage.return_value.load_skills.return_value = []
+        mock_workflow_store.return_value.list_latest_definitions = AsyncMock(return_value=([], 0))
+
+        canonical = MagicMock()
+        canonical.id = "11111111-1111-1111-1111-111111111111"
+        canonical.type = "agent"
+        canonical.slug = "reviewer"
+        canonical.display_name = "reviewer"
+        canonical.owner_id = "owner-1"
+        canonical.visibility = "department"
+        canonical.scope_department_id = "dept-1"
+        canonical.lifecycle_status = "suspended"
+        canonical.created_at = datetime(2024, 1, 2)
+
+        session = AsyncMock()
+        call_count = {"n": 0}
+
+        async def _execute(stmt):
+            call_count["n"] += 1
+            result = MagicMock()
+            if call_count["n"] == 1:
+                result.scalars.return_value.all.return_value = []
+            else:
+                result.scalars.return_value.all.return_value = [canonical]
+            return result
+
+        session.execute = AsyncMock(side_effect=_execute)
+        mock_sf.return_value = _make_session_factory(session)
+
+        app = _make_app()
+        resp = TestClient(app).get("/api/admin/resources?limit=20&offset=0")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 1
+        item = data["resources"][0]
+        assert item["id"] == "11111111-1111-1111-1111-111111111111"
+        assert item["resource_type"] == "agent"
+        assert item["lifecycle_status"] == "suspended"
 
 
 # ---------------------------------------------------------------------------

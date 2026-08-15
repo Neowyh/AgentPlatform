@@ -1,12 +1,23 @@
 "use client";
 
-import { ArrowLeftIcon, BoxIcon } from "lucide-react";
+import {
+  ArchiveIcon,
+  ArrowLeftIcon,
+  BanIcon,
+  BoxIcon,
+  RefreshCwIcon,
+} from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { listResources } from "@/core/admin/api";
+import {
+  archiveResource,
+  listResources,
+  restoreResource,
+  suspendResource,
+} from "@/core/admin/api";
 import type { AdminResource } from "@/core/admin/types";
 import { useAuth } from "@/core/auth/AuthProvider";
 
@@ -37,7 +48,25 @@ const VISIBILITY_STYLES: Record<string, string> = {
   public: "bg-green-100 text-green-800",
 };
 
+const LIFECYCLE_LABELS: Record<string, string> = {
+  active: "启用",
+  archived: "已归档",
+  suspended: "已下架",
+};
+
+const LIFECYCLE_STYLES: Record<string, string> = {
+  active: "bg-green-100 text-green-800",
+  archived: "bg-gray-100 text-gray-800",
+  suspended: "bg-red-100 text-red-800",
+};
+
+const RESOURCE_UUID_PATTERN = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
+
 const PAGE_SIZE = 50;
+
+function isCanonicalResource(resource: AdminResource): boolean {
+  return RESOURCE_UUID_PATTERN.test(resource.id);
+}
 
 export default function ResourcesPage() {
   const { user } = useAuth();
@@ -47,14 +76,10 @@ export default function ResourcesPage() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [filterType, setFilterType] = useState("");
+  const [actingOn, setActingOn] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (
-      user?.system_role !== "super_admin" &&
-      user?.system_role !== "department_admin"
-    )
-      return;
-
+  const reload = useCallback(() => {
     setLoading(true);
     setError(null);
     listResources({
@@ -70,9 +95,83 @@ export default function ResourcesPage() {
         setError(err instanceof Error ? err.message : String(err)),
       )
       .finally(() => setLoading(false));
-  }, [user, filterType, page]);
+  }, [filterType, page]);
+
+  useEffect(() => {
+    if (
+      user?.system_role !== "super_admin" &&
+      user?.system_role !== "department_admin"
+    )
+      return;
+    reload();
+  }, [user, reload]);
 
   const totalPages = Math.ceil(total / PAGE_SIZE);
+
+  const isSuperAdmin = user?.system_role === "super_admin";
+
+  const handleLifecycleAction = useCallback(
+    async (
+      resource: AdminResource,
+      action: "archive" | "suspend" | "restore",
+    ) => {
+      setActingOn(resource.id);
+      setActionError(null);
+      try {
+        if (action === "archive") await archiveResource(resource.id);
+        else if (action === "suspend") await suspendResource(resource.id);
+        else await restoreResource(resource.id);
+        reload();
+      } catch (err) {
+        setActionError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setActingOn(null);
+      }
+    },
+    [reload],
+  );
+
+  const renderActions = (resource: AdminResource) => {
+    if (!isCanonicalResource(resource)) return null;
+    const lifecycle = resource.lifecycle_status ?? "active";
+    return (
+      <div className="flex items-center justify-end gap-2">
+        {isSuperAdmin && lifecycle === "active" && (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={actingOn === resource.id}
+            onClick={() => handleLifecycleAction(resource, "suspend")}
+          >
+            <BanIcon className="h-3.5 w-3.5" />
+            下架
+          </Button>
+        )}
+        {isSuperAdmin && lifecycle === "suspended" && (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={actingOn === resource.id}
+            onClick={() => handleLifecycleAction(resource, "restore")}
+          >
+            <RefreshCwIcon className="h-3.5 w-3.5" />
+            恢复
+          </Button>
+        )}
+        {lifecycle !== "suspended" && (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={actingOn === resource.id}
+            onClick={() => handleLifecycleAction(resource, "archive")}
+          >
+            <ArchiveIcon className="h-3.5 w-3.5" />
+            归档
+          </Button>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="flex size-full flex-col">
@@ -109,6 +208,10 @@ export default function ResourcesPage() {
           ))}
         </div>
 
+        {actionError && (
+          <div className="text-destructive mb-4 text-sm">{actionError}</div>
+        )}
+
         {loading ? (
           <div className="text-muted-foreground flex h-40 items-center justify-center text-sm">
             加载中...
@@ -134,8 +237,10 @@ export default function ResourcesPage() {
                     <th className="px-4 py-3 font-medium">类型</th>
                     <th className="px-4 py-3 font-medium">名称</th>
                     <th className="px-4 py-3 font-medium">可见性</th>
+                    <th className="px-4 py-3 font-medium">状态</th>
                     <th className="px-4 py-3 font-medium">创建者</th>
                     <th className="px-4 py-3 font-medium">创建时间</th>
+                    <th className="px-4 py-3 text-right">操作</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -159,6 +264,19 @@ export default function ResourcesPage() {
                           {VISIBILITY_LABELS[r.visibility] ?? r.visibility}
                         </Badge>
                       </td>
+                      <td className="px-4 py-3">
+                        {isCanonicalResource(r) && r.lifecycle_status && (
+                          <Badge
+                            className={
+                              LIFECYCLE_STYLES[r.lifecycle_status] ?? ""
+                            }
+                            variant="outline"
+                          >
+                            {LIFECYCLE_LABELS[r.lifecycle_status] ??
+                              r.lifecycle_status}
+                          </Badge>
+                        )}
+                      </td>
                       <td className="text-muted-foreground px-4 py-3">
                         {r.owner_username ?? "-"}
                       </td>
@@ -167,6 +285,7 @@ export default function ResourcesPage() {
                           ? new Date(r.created_at).toLocaleDateString("zh-CN")
                           : "-"}
                       </td>
+                      <td className="px-4 py-3">{renderActions(r)}</td>
                     </tr>
                   ))}
                 </tbody>
