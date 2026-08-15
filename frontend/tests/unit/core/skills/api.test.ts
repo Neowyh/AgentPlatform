@@ -29,22 +29,28 @@ describe("skills api", () => {
   describe("loadSkills", () => {
     test("returns skills list on success", async () => {
       const { fetch: fetcher } = await import("@/core/api/fetcher");
-      vi.mocked(fetcher).mockResolvedValue(
-        new Response(
-          JSON.stringify({
-            skills: [
-              {
-                name: "test-skill",
-                description: "A test skill",
-                category: "testing",
-                license: "MIT",
-                enabled: true,
-              },
-            ],
+      vi.mocked(fetcher)
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ items: [], total: 0 }), {
+            status: 200,
           }),
-          { status: 200 },
-        ),
-      );
+        )
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              skills: [
+                {
+                  name: "test-skill",
+                  description: "A test skill",
+                  category: "testing",
+                  license: "MIT",
+                  enabled: true,
+                },
+              ],
+            }),
+            { status: 200 },
+          ),
+        );
 
       const { loadSkills } = await import("@/core/skills/api");
       const result = await loadSkills();
@@ -52,6 +58,46 @@ describe("skills api", () => {
       expect(result).toHaveLength(1);
       expect(result[0]!.name).toBe("test-skill");
       expect(result[0]!.enabled).toBe(true);
+    });
+
+    test("merges canonical Skills and keeps UUID identity separate from display name", async () => {
+      const { fetch: fetcher } = await import("@/core/api/fetcher");
+      vi.mocked(fetcher)
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              items: [
+                {
+                  id: "11111111-1111-1111-1111-111111111111",
+                  type: "skill",
+                  slug: "review-skill",
+                  display_name: "Review Skill",
+                  owner_id: "owner",
+                  visibility: "public",
+                  scope_department_id: null,
+                  can_modify: false,
+                },
+              ],
+              total: 1,
+            }),
+            { status: 200 },
+          ),
+        )
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ skills: [] }), { status: 200 }),
+        );
+
+      const { loadSkills } = await import("@/core/skills/api");
+
+      await expect(loadSkills()).resolves.toEqual([
+        expect.objectContaining({
+          resource_id: "11111111-1111-1111-1111-111111111111",
+          name: "Review Skill",
+          slug: "review-skill",
+          category: "public",
+          read_only: true,
+        }),
+      ]);
     });
 
     test("calls extractError on non-ok response", async () => {
@@ -70,7 +116,7 @@ describe("skills api", () => {
 
       expect(extractError).toHaveBeenCalledWith(
         errorResponse,
-        "Failed to load skills",
+        "Failed to load canonical skills",
       );
     });
   });
@@ -109,6 +155,34 @@ describe("skills api", () => {
       expect(extractError).toHaveBeenCalledWith(
         errorResponse,
         "Failed to disable skill",
+      );
+    });
+
+    test("rejects canonical UUID identities with a readable lifecycle error instead of calling the legacy endpoint", async () => {
+      const { fetch: fetcher } = await import("@/core/api/fetcher");
+      vi.mocked(fetcher).mockClear();
+
+      const { enableSkill } = await import("@/core/skills/api");
+      await expect(
+        enableSkill("11111111-1111-1111-1111-111111111111", false),
+      ).rejects.toThrow(/canonical/i);
+
+      expect(fetcher).not.toHaveBeenCalled();
+    });
+
+    test("keeps legacy name path unchanged for non-UUID identities", async () => {
+      const { fetch: fetcher } = await import("@/core/api/fetcher");
+      vi.mocked(fetcher).mockResolvedValue(new Response(null, { status: 200 }));
+
+      const { enableSkill } = await import("@/core/skills/api");
+      await enableSkill("my-skill", true);
+
+      expect(fetcher).toHaveBeenCalledWith(
+        "http://localhost:8000/api/skills/my-skill",
+        expect.objectContaining({
+          method: "PUT",
+          body: JSON.stringify({ enabled: true }),
+        }),
       );
     });
   });
@@ -316,6 +390,36 @@ describe("skills api", () => {
       expect(result.success).toBe(false);
       expect(result.skill_name).toBe("");
       expect(result.message).toBe("Conflict error");
+    });
+
+    test("returns a readable canonical-mode degradation message on 410 instead of the raw legacy detail", async () => {
+      const { fetch: fetcher } = await import("@/core/api/fetcher");
+      vi.mocked(fetcher).mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            detail:
+              "Legacy name-addressed resource APIs are disabled in canonical mode; use /api/resources with a resource UUID",
+          }),
+          { status: 410, statusText: "Gone" },
+        ),
+      );
+
+      const { formatErrorMessage } = await import("@/core/api/errors");
+      vi.mocked(formatErrorMessage).mockClear();
+      vi.mocked(formatErrorMessage).mockResolvedValue(
+        "Legacy name-addressed resource APIs are disabled in canonical mode; use /api/resources with a resource UUID",
+      );
+
+      const { installSkill } = await import("@/core/skills/api");
+      const result = await installSkill({
+        thread_id: "t1",
+        path: "/skills/new-skill",
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.skill_name).toBe("");
+      expect(result.message).toMatch(/canonical mode/i);
+      expect(formatErrorMessage).not.toHaveBeenCalled();
     });
   });
 });

@@ -1,4 +1,7 @@
 export interface Skill {
+  resource_id?: string;
+  slug?: string;
+  read_only?: boolean;
   name: string;
   description: string;
   category: string;
