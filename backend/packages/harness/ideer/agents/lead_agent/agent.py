@@ -38,7 +38,7 @@ from ideer.agents.middlewares.token_usage_middleware import TokenUsageMiddleware
 from ideer.agents.middlewares.tool_error_handling_middleware import build_lead_runtime_middlewares
 from ideer.agents.middlewares.view_image_middleware import ViewImageMiddleware
 from ideer.agents.thread_state import ThreadState
-from ideer.config.agents_config import load_agent_config, validate_agent_name
+from ideer.config.agents_config import validate_agent_name
 from ideer.config.app_config import AppConfig, get_app_config
 from ideer.models import create_chat_model
 from ideer.resources.runtime import CanonicalAgentDefinition, intersect_tool_groups
@@ -427,17 +427,12 @@ def _make_lead_agent(
     is_bootstrap = cfg.get("is_bootstrap", False)
     if canonical_definition is None:
         agent_name = validate_agent_name(cfg.get("agent_name"))
-        # When the agent belongs to another user (shared agent), config/SOUL are
-        # loaded from the declaring owner's directory while the run context
-        # (sandbox, memory) stays with the current user.
-        agent_owner_id = cfg.get("agent_owner_id")
-        agent_config = load_agent_config(agent_name, user_id=agent_owner_id) if not is_bootstrap else None
-        effective_tool_groups = agent_config.tool_groups if agent_config else None
+        agent_config = None
+        effective_tool_groups = None
     else:
         if is_bootstrap:
             raise ValueError("Canonical Agent resources cannot run in bootstrap mode")
         agent_name = canonical_definition.resource_id
-        agent_owner_id = None
         agent_config = canonical_definition.config
         effective_tool_groups = intersect_tool_groups(agent_config.tool_groups, runner_tool_groups)
     available_skills = _available_skill_names(agent_config, is_bootstrap)
@@ -519,7 +514,7 @@ def _make_lead_agent(
     # Custom agents can update their own SOUL.md / config via update_agent.
     # The default agent (no agent_name) does not see this tool, and shared
     # agents (owned by another user) are read-only for the runner.
-    extra_tools = [update_agent] if agent_name and not agent_owner_id and canonical_definition is None else []
+    extra_tools = [update_agent] if agent_name and canonical_definition is None else []
     # Default lead agent (unchanged behavior)
     tools = get_available_tools(model_name=model_name, groups=effective_tool_groups, subagent_enabled=subagent_enabled, app_config=resolved_app_config)
     return create_agent(
@@ -530,7 +525,7 @@ def _make_lead_agent(
             subagent_enabled=subagent_enabled,
             max_concurrent_subagents=max_concurrent_subagents,
             agent_name=canonical_definition.config.name if canonical_definition else agent_name,
-            agent_user_id=agent_owner_id,
+            agent_user_id=None,
             available_skills=set(agent_config.skills) if agent_config and agent_config.skills is not None else None,
             app_config=resolved_app_config,
             resolved_skills=resolved_skills if canonical_definition else None,

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
@@ -11,6 +12,8 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.workflow_worker import execute_workflow_task
 from ideer.config.paths import Paths
 from ideer.persistence.base import Base
+from ideer.resources.runtime import _json_hash
+from ideer.resources.service import ResourceAction, ResourceActor
 from ideer.workflows.v2.adapters import ActionAdapterRegistry, _ToolAdapter
 from ideer.workflows.v2.file_roots import make_host_resolver
 from ideer.workflows.v2.store import WorkflowV2Store
@@ -29,6 +32,63 @@ async def durable_store(tmp_path: Path):
         yield WorkflowV2Store(async_sessionmaker(engine, expire_on_commit=False))
     finally:
         await engine.dispose()
+
+
+async def _make_canonical_run(
+    store: WorkflowV2Store,
+    run_id: str,
+    definition: dict,
+    inputs: dict,
+    *,
+    name: str = "fault-zeroing",
+    owner: str = "user-1",
+) -> None:
+    """Freeze a canonical workflow run whose dependency closure is a single workflow root."""
+    from uuid import uuid4
+
+    from ideer.persistence.models.resource_catalog import Resource, ResourceVersion
+
+    workflow_id = str(uuid4())
+    async with store.session_factory() as session:
+        session.add(
+            Resource(
+                id=workflow_id,
+                type="workflow",
+                slug=name,
+                display_name=name,
+                owner_id=owner,
+                visibility="public",
+                scope_department_id=None,
+                lifecycle_status="active",
+                latest_version=1,
+                draft_revision=0,
+                storage_kind="database",
+                storage_key=f"workflows/{workflow_id}",
+                system_owned=False,
+                authz_revision=1,
+            )
+        )
+        session.add(
+            ResourceVersion(
+                id=f"wv-{run_id}",
+                resource_id=workflow_id,
+                version=1,
+                content_hash=_json_hash(definition),
+                storage_key=f"workflows/{workflow_id}/versions/1",
+                scan_result={},
+                content=definition,
+                created_by=owner,
+            )
+        )
+        await session.commit()
+    actor = ResourceActor(
+        user_id=owner,
+        department_id=None,
+        role="user",
+        permissions=frozenset({ResourceAction.READ, ResourceAction.USE}),
+        tool_groups=None,
+    )
+    await store.create_canonical_run(run_id, workflow_id, inputs, actor)
 
 
 class RecordingAgent:
@@ -94,29 +154,28 @@ async def _run_worker_once(
     agent: RecordingAgent,
     *,
     run_id: str,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     definition = yaml.safe_load(WORKFLOW_PATH.read_text(encoding="utf-8"))
-    version = await durable_store.save_definition("fault-zeroing", definition, "test-hash", "user-1")
-    await durable_store.create_run(
+    await _make_canonical_run(
+        durable_store,
         run_id,
-        "fault-zeroing",
-        version.version,
+        definition,
         {
             "upload_dir": "/mnt/user-data/uploads",
             "problem_description": "top event",
             "output_base_dir": "/mnt/user-data/outputs",
         },
-        "user-1",
     )
     registry = ActionAdapterRegistry({("agent", "fault-zeroing"): agent})
     config = _make_config(tmp_path)
+    monkeypatch.setattr("app.workflow_worker.build_canonical_registry", AsyncMock(return_value=registry))
 
     async def execute(task) -> None:
         await execute_workflow_task(
             task,
             store=durable_store,
             config=config,
-            registry_factory=lambda _config, _user_id: registry,
         )
 
     assert await WorkflowWorker(durable_store, execute, worker_id="worker-integration").run_once() is True
@@ -139,6 +198,7 @@ async def test_production_worker_task_path_persists_all_fault_zeroing_events(
         tmp_path,
         RecordingAgent(calls, write_artifacts=True),
         run_id="run-worker-real-path",
+        monkeypatch=monkeypatch,
     )
 
     run = await durable_store.get_run("run-worker-real-path")
@@ -159,40 +219,24 @@ async def test_host_path_inputs_fail_the_run_instead_of_completing(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
+    """Host paths are rejected when the canonical run is created — a run can
+    never reach the worker with invalid file_access roots."""
     monkeypatch.setattr("ideer.workflows.v2.file_roots.get_paths", lambda: Paths(str(tmp_path / "base")))
     definition = yaml.safe_load(WORKFLOW_PATH.read_text(encoding="utf-8"))
-    version = await durable_store.save_definition("fault-zeroing", definition, "test-hash", "user-1")
-    await durable_store.create_run(
-        "run-worker-host-paths",
-        "fault-zeroing",
-        version.version,
-        {
-            "upload_dir": str(tmp_path / "uploads"),
-            "problem_description": "top event",
-            "output_base_dir": str(tmp_path / "outputs"),
-        },
-        "user-1",
-    )
-    calls: list[str] = []
-    registry = ActionAdapterRegistry({("agent", "fault-zeroing"): RecordingAgent(calls, write_artifacts=True)})
-    config = _make_config(tmp_path)
-
-    async def execute(task) -> None:
-        await execute_workflow_task(
-            task,
-            store=durable_store,
-            config=config,
-            registry_factory=lambda _config, _user_id: registry,
+    with pytest.raises(ValueError, match="Invalid file_access paths"):
+        await _make_canonical_run(
+            durable_store,
+            "run-worker-host-paths",
+            definition,
+            {
+                "upload_dir": str(tmp_path / "uploads"),
+                "problem_description": "top event",
+                "output_base_dir": str(tmp_path / "outputs"),
+            },
         )
 
-    assert await WorkflowWorker(durable_store, execute, worker_id="worker-integration").run_once() is True
-
     run = await durable_store.get_run("run-worker-host-paths")
-    assert run is not None and run.status == "failed"
-    assert "invalid file_access roots" in (run.error or "")
-    assert calls == []
-    events = await durable_store.list_events(run.run_id)
-    assert [event.event_type for event in events][-1] == "run_failed"
+    assert run is None
 
 
 @pytest.mark.asyncio
@@ -210,6 +254,7 @@ async def test_missing_artifacts_fail_the_run_instead_of_completing(
         tmp_path,
         RecordingAgent(calls, write_artifacts=False),
         run_id="run-worker-missing-artifacts",
+        monkeypatch=monkeypatch,
     )
 
     run = await durable_store.get_run("run-worker-missing-artifacts")
@@ -236,6 +281,7 @@ async def test_precondition_skip_skips_corrective_actions_and_still_generates_ou
         tmp_path,
         RecordingAgent(calls, write_artifacts=True, confirmed_root_causes=False),
         run_id="run-worker-precondition-skip",
+        monkeypatch=monkeypatch,
     )
 
     run = await durable_store.get_run("run-worker-precondition-skip")
@@ -267,6 +313,7 @@ async def test_fork_branch_failure_fails_run_and_persists_node_failure(
         tmp_path,
         RecordingAgent(calls, write_artifacts=True, fail_nodes={"evidence_collection"}),
         run_id="run-worker-fork-branch-failure",
+        monkeypatch=monkeypatch,
     )
 
     run = await durable_store.get_run("run-worker-fork-branch-failure")
@@ -296,6 +343,7 @@ async def test_control_node_lifecycle_events_reach_the_event_stream(
         tmp_path,
         RecordingAgent(calls, write_artifacts=True),
         run_id="run-worker-control-node-events",
+        monkeypatch=monkeypatch,
     )
 
     run = await durable_store.get_run("run-worker-control-node-events")
@@ -360,17 +408,16 @@ async def test_empty_payload_resume_advances_past_interrupt_gates(
     """
     monkeypatch.setattr("ideer.workflows.v2.file_roots.get_paths", lambda: Paths(str(tmp_path / "base")))
     definition = yaml.safe_load(GATED_WORKFLOW)
-    version = await durable_store.save_definition("gated", definition, "test-hash", "user-1")
-    await durable_store.create_run("run-gate-resume-empty", "gated", version.version, {}, "user-1")
+    await _make_canonical_run(durable_store, "run-gate-resume-empty", definition, {}, name="gated")
     registry = ActionAdapterRegistry({("tool", "finish"): FinishAgent()})
     config = _make_config(tmp_path)
+    monkeypatch.setattr("app.workflow_worker.build_canonical_registry", AsyncMock(return_value=registry))
 
     async def execute(task) -> None:
         await execute_workflow_task(
             task,
             store=durable_store,
             config=config,
-            registry_factory=lambda _config, _user_id: registry,
         )
 
     worker = WorkflowWorker(durable_store, execute, worker_id="worker-integration")
@@ -449,8 +496,7 @@ edges:
   - {from: write, to: read}
 """
     definition = yaml.safe_load(WRITE_WORKFLOW)
-    version = await durable_store.save_definition("gated-tool", definition, "test-hash", "user-1")
-    await durable_store.create_run("run-tool-runtime", "gated-tool", version.version, {}, "user-1")
+    await _make_canonical_run(durable_store, "run-tool-runtime", definition, {}, name="gated-tool")
     registry = ActionAdapterRegistry(
         {
             ("tool", "write_file"): _ToolAdapter(write_file_tool, user_id="user-1"),
@@ -458,13 +504,13 @@ edges:
         }
     )
     config = _make_config(tmp_path)
+    monkeypatch.setattr("app.workflow_worker.build_canonical_registry", AsyncMock(return_value=registry))
 
     async def execute(task) -> None:
         await execute_workflow_task(
             task,
             store=durable_store,
             config=config,
-            registry_factory=lambda _config, _user_id: registry,
         )
 
     worker = WorkflowWorker(durable_store, execute, worker_id="worker-integration")

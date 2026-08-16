@@ -6,7 +6,6 @@ import threading
 from functools import lru_cache
 from typing import TYPE_CHECKING
 
-from ideer.config.agents_config import load_agent_soul
 from ideer.skills.storage import get_or_new_skill_storage
 from ideer.skills.types import Skill, SkillCategory
 from ideer.subagents import get_available_subagent_names
@@ -665,14 +664,6 @@ def get_skills_prompt_section(
     return _get_cached_skills_prompt_section(skill_signature, available_key, container_base_path, skill_evolution_section)
 
 
-def get_agent_soul(agent_name: str | None, *, user_id: str | None = None) -> str:
-    # Append SOUL.md (agent personality) if present
-    soul = load_agent_soul(agent_name, user_id=user_id)
-    if soul:
-        return f"<soul>\n{soul}\n</soul>\n" if soul else ""
-    return ""
-
-
 def _build_self_update_section(agent_name: str | None) -> str:
     """Prompt block that teaches the custom agent to persist self-updates via update_agent."""
     if not agent_name:
@@ -829,12 +820,7 @@ def apply_prompt_template(
     # Memory and current date are injected per-turn via DynamicContextMiddleware
     # as a <system-reminder> in the first HumanMessage, keeping this prompt
     # identical across users and sessions for maximum prefix-cache reuse.
-    # Shared agents (owned by another user) are read-only: load SOUL from the
-    # owner's directory and skip the self-update instructions.
-    if soul_override is None:
-        soul = get_agent_soul(agent_name, user_id=agent_user_id)
-    else:
-        soul = f"<soul>\n{soul_override}\n</soul>\n" if soul_override else ""
+    soul = f"<soul>\n{soul_override}\n</soul>\n" if soul_override else ""
     return SYSTEM_PROMPT_TEMPLATE.format(
         agent_name=agent_name or "iDeer 2.0",
         soul=soul,

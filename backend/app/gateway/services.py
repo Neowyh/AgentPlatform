@@ -20,7 +20,7 @@ from langchain_core.messages import BaseMessage
 from langchain_core.messages.utils import convert_to_messages
 
 from app.gateway.deps import get_run_context, get_run_manager, get_stream_bridge
-from app.gateway.utils import ResourceMetadataStore, sanitize_log_param
+from app.gateway.utils import sanitize_log_param
 from ideer.config.app_config import get_app_config
 from ideer.resources.mode import ResourceCatalogMode, get_resource_catalog_mode
 from ideer.runtime import (
@@ -376,61 +376,6 @@ def build_run_config(
 # ---------------------------------------------------------------------------
 
 
-async def _resolve_run_agent_owner(body: Any, request: Request) -> str | None:
-    """Resolve the declaring owner of a shared agent for a run.
-
-    Mirrors the read API (``GET /api/agents``): when the requested agent is
-    absent from the current user's directories (per-user and legacy shared
-    layouts), consult ``resource_metadata``. If a record exists for another
-    user whose directory holds the agent, enforce RBAC visibility — a denied
-    request is a 404, so the existence of the agent is not leaked — and return
-    the owner id so the harness loads config/SOUL from the owner's directory.
-
-    Returns ``None`` when no agent is requested, no authenticated user is
-    available, the database is unavailable, or no owner record exists — the
-    legacy failure mode is preserved in those cases.
-    """
-    body_context = getattr(body, "context", None) or {}
-    agent_name = body_context.get("agent_name")
-    if not agent_name:
-        assistant_id = getattr(body, "assistant_id", None)
-        if assistant_id and assistant_id != _DEFAULT_ASSISTANT_ID:
-            agent_name = assistant_id.strip().lower().replace("_", "-")
-    if not agent_name:
-        return None
-
-    user = getattr(request.state, "user", None)
-    user_id = getattr(user, "id", None)
-    if not user_id:
-        return None
-    user_id = str(user_id)
-
-    from ideer.config.agents_config import resolve_agent_dir, validate_agent_name
-
-    try:
-        agent_name = validate_agent_name(agent_name)
-    except ValueError:
-        return None
-    if resolve_agent_dir(agent_name, user_id=user_id).exists():
-        return None
-
-    meta = await ResourceMetadataStore("agent").load_meta(agent_name)
-    owner_id = meta.get("owner_id")
-    if not owner_id or owner_id == user_id:
-        return None
-    owner_id = str(owner_id)
-    from ideer.config.paths import get_paths
-
-    if not get_paths().user_agent_dir(owner_id, agent_name).exists():
-        return None
-
-    from app.gateway.authz import check_resource_access
-
-    if not check_resource_access(user, owner_id, meta.get("department_id"), meta.get("visibility", "private")):
-        raise HTTPException(status_code=404, detail=f"Agent '{agent_name}' not found")
-    return owner_id
-
-
 async def _resolve_canonical_alias(assistant_id: str | None, request: Request) -> str | None:
     """Resolve a legacy-name assistant through the catalog alias resolver.
 
@@ -536,9 +481,6 @@ async def start_run(
         candidate = body_context.get("agent_name") or getattr(body, "assistant_id", None)
         if candidate:
             canonical_resource_id = await _resolve_canonical_alias(candidate, request)
-    # Legacy shared-agent resolution is untouched. UUID assistants use the
-    # canonical visibility/snapshot boundary instead of owner directories.
-    agent_owner_id = None if canonical_resource_id else await _resolve_run_agent_owner(body, request)
 
     # Coerce non-string model_name values to str before truncation.
     if model_name is not None and not isinstance(model_name, str):
@@ -613,12 +555,6 @@ async def start_run(
     # Only agent-relevant keys are forwarded; unknown keys (e.g. thread_id) are ignored.
     merge_run_context_overrides(config, getattr(body, "context", None))
     inject_authenticated_user_context(config, request)
-    if agent_owner_id:
-        # Stamp the declaring owner so the harness loads config/SOUL from the
-        # owner's directory; the run context itself stays with the runner.
-        for container in (config.get("context"), config.get("configurable")):
-            if isinstance(container, dict):
-                container.setdefault("agent_owner_id", agent_owner_id)
 
     stream_modes = normalize_stream_modes(body.stream_mode)
 

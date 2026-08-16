@@ -16,7 +16,6 @@ from ideer.config import get_app_config
 from ideer.persistence.engine import close_engine, get_session_factory, init_engine_from_config
 from ideer.persistence.models.workflow_v2 import WorkflowTaskRow
 from ideer.runtime.checkpointer.async_provider import make_checkpointer
-from ideer.workflows.v2.adapters import ActionResolutionError, build_default_registry
 from ideer.workflows.v2.compiler import WorkflowCancelled, WorkflowGraphCompiler
 from ideer.workflows.v2.file_roots import make_host_resolver, validate_read_roots, validate_workflow_roots, workflow_log_root
 from ideer.workflows.v2.parser import parse_workflow_v2
@@ -104,75 +103,11 @@ async def build_canonical_registry(run: Any, config: Any, session_factory: Any, 
     return registry
 
 
-async def resolve_shared_agent_adapters(definition: Any, registry: Any, runner_id: str) -> None:
-    """Register shared agents referenced by workflow nodes but owned by another user.
-
-    ``build_default_registry`` registers the runner's own agents from the
-    runner's directory. This step adds agents the runner does not own but is
-    allowed to use (public / department / super_admin visibility, enforced
-    with the same RBAC rules as the agents API). Config and SOUL are loaded
-    from the declaring owner's directory by ``_AgentAdapter`` while the run
-    context stays with the runner.
-
-    Names the runner already owns (or that the injected registry already
-    resolves) are left untouched; unresolvable or inaccessible agents keep the
-    existing ``ActionResolutionError`` failure path.
-    """
-    from app.gateway.authz import check_resource_access
-    from app.gateway.utils import ResourceMetadataStore
-    from ideer.config.agents_config import validate_agent_name
-    from ideer.config.paths import get_paths
-    from ideer.persistence.engine import get_session_factory
-    from ideer.persistence.models.user import UserModel
-    from ideer.workflows.v2.adapters import _AgentAdapter
-
-    agent_names: set[str] = set()
-    for node in definition.nodes:
-        if getattr(node, "type", None) != "action":
-            continue
-        action = getattr(node, "action", None)
-        if action is None or getattr(action, "kind", None) != "agent":
-            continue
-        try:
-            agent_names.add(validate_agent_name(getattr(action, "name", None)))
-        except ValueError:
-            continue
-
-    meta_store = ResourceMetadataStore("agent")
-    for name in agent_names:
-        try:
-            registry.resolve("agent", name)
-            continue
-        except ActionResolutionError:
-            pass
-
-        meta = await meta_store.load_meta(name)
-        owner_id = meta.get("owner_id")
-        if not owner_id or owner_id == runner_id:
-            continue
-        if not get_paths().user_agent_dir(owner_id, name).exists():
-            continue
-
-        sf = get_session_factory()
-        user_row = None
-        if sf is not None:
-            from sqlalchemy import select
-
-            async with sf() as session:
-                user_row = (await session.execute(select(UserModel).where(UserModel.id == runner_id))).scalar_one_or_none()
-        if user_row is None:
-            continue
-        if not check_resource_access(user_row, owner_id, meta.get("department_id"), meta.get("visibility", "private")):
-            continue
-        registry.register("agent", name, _AgentAdapter(name, runner_id, owner_id=owner_id))
-
-
 async def execute_workflow_task(
     task: WorkflowTaskRow,
     *,
     store: WorkflowV2Store,
     config: Any,
-    registry_factory: Callable[[Any, str], Any] = build_default_registry,
     checkpointer_factory: Callable[[Any], AbstractAsyncContextManager[Any]] = make_checkpointer,
 ) -> None:
     """Execute one claimed task through the production graph and event chain."""
@@ -193,16 +128,12 @@ async def execute_workflow_task(
         storage,
     )
     definition = parse_workflow_v2(yaml.safe_dump(definition_payload))
-    if run.workflow_resource_id:
-        adapters = await build_canonical_registry(
-            run,
-            config,
-            getattr(store, "session_factory", None),
-            storage,
-        )
-    else:
-        adapters = registry_factory(config, run.created_by)
-        await resolve_shared_agent_adapters(definition, adapters, run.created_by)
+    adapters = await build_canonical_registry(
+        run,
+        config,
+        getattr(store, "session_factory", None),
+        storage,
+    )
     if task.resume_command_id is not None:
         command = await store.get_command(task.resume_command_id)
         if command is None:

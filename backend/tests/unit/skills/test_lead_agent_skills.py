@@ -173,23 +173,13 @@ def test_make_lead_agent_empty_skills_passed_correctly(monkeypatch):
 
     monkeypatch.setattr(lead_agent_module, "apply_prompt_template", mock_apply_prompt_template)
 
-    # Case 1: Empty skills list
-    monkeypatch.setattr(lead_agent_module, "load_agent_config", lambda x, **kwargs: AgentConfig(name="test", skills=[]))
-    lead_agent_module.make_lead_agent({"configurable": {"agent_name": "test"}})
-    assert captured_skills[-1] == set()
-
-    # Case 2: None skills list
-    monkeypatch.setattr(lead_agent_module, "load_agent_config", lambda x, **kwargs: AgentConfig(name="test", skills=None))
+    # Canonical-only: agent config is never read from owner directories, so
+    # the skill allowlist stays unset and the prompt template sees None.
     lead_agent_module.make_lead_agent({"configurable": {"agent_name": "test"}})
     assert captured_skills[-1] is None
 
-    # Case 3: Some skills list
-    monkeypatch.setattr(lead_agent_module, "load_agent_config", lambda x, **kwargs: AgentConfig(name="test", skills=["skill1"]))
-    lead_agent_module.make_lead_agent({"configurable": {"agent_name": "test"}})
-    assert captured_skills[-1] == {"skill1"}
 
-
-def test_make_lead_agent_filters_tools_from_available_skills(monkeypatch):
+def test_make_lead_agent_keeps_all_tools_without_legacy_skill_policy(monkeypatch):
     from unittest.mock import MagicMock
 
     from ideer.agents.lead_agent import agent as lead_agent_module
@@ -199,8 +189,7 @@ def test_make_lead_agent_filters_tools_from_available_skills(monkeypatch):
     monkeypatch.setattr(lead_agent_module, "_build_middlewares", lambda *args, **kwargs: [])
     monkeypatch.setattr(lead_agent_module, "apply_prompt_template", lambda **kwargs: "mock_prompt")
     monkeypatch.setattr(lead_agent_module, "create_agent", lambda **kwargs: kwargs)
-    monkeypatch.setattr(lead_agent_module, "load_agent_config", lambda x, **kwargs: AgentConfig(name="test", skills=["restricted", "legacy"]))
-    monkeypatch.setattr(lead_agent_module, "_load_enabled_skills_for_tool_policy", lambda available_skills, *, app_config: [_make_skill("restricted", ["read_file"]), _make_skill("legacy", None)])
+    monkeypatch.setattr(lead_agent_module, "_load_enabled_skills_for_tool_policy", lambda available_skills, *, app_config: [])
     monkeypatch.setattr("ideer.tools.get_available_tools", lambda **kwargs: [NamedTool("bash"), NamedTool("read_file"), NamedTool("web_search")])
 
     mock_app_config = MagicMock()
@@ -209,7 +198,7 @@ def test_make_lead_agent_filters_tools_from_available_skills(monkeypatch):
 
     agent_kwargs = lead_agent_module.make_lead_agent({"configurable": {"agent_name": "test"}})
 
-    assert [tool.name for tool in agent_kwargs["tools"]] == ["read_file"]
+    assert [tool.name for tool in agent_kwargs["tools"]] == ["bash", "read_file", "web_search", "update_agent"]
 
 
 def test_canonical_lead_agent_uses_frozen_definition_skills_and_runner_tool_intersection(monkeypatch):
@@ -227,11 +216,6 @@ def test_canonical_lead_agent_uses_frozen_definition_skills_and_runner_tool_inte
         soul="Frozen soul",
     )
     frozen_skill = _make_skill("frozen-skill", ["read_file"])
-    monkeypatch.setattr(
-        lead_agent_module,
-        "load_agent_config",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("legacy Agent config must not load")),
-    )
     monkeypatch.setattr(lead_agent_module, "_resolve_model_name", lambda x=None, **kwargs: "default-model")
     monkeypatch.setattr(lead_agent_module, "create_chat_model", lambda **kwargs: "model")
     monkeypatch.setattr(lead_agent_module, "_build_middlewares", lambda *args, **kwargs: [])
@@ -261,7 +245,7 @@ def test_canonical_lead_agent_uses_frozen_definition_skills_and_runner_tool_inte
     assert prompt_args["agent_name"] == "Canonical Agent"
 
 
-def test_make_lead_agent_all_legacy_skills_preserve_all_tools(monkeypatch):
+def test_make_lead_agent_preserves_all_tools_without_skill_allowlist(monkeypatch):
     from unittest.mock import MagicMock
 
     from ideer.agents.lead_agent import agent as lead_agent_module
@@ -271,7 +255,6 @@ def test_make_lead_agent_all_legacy_skills_preserve_all_tools(monkeypatch):
     monkeypatch.setattr(lead_agent_module, "_build_middlewares", lambda *args, **kwargs: [])
     monkeypatch.setattr(lead_agent_module, "apply_prompt_template", lambda **kwargs: "mock_prompt")
     monkeypatch.setattr(lead_agent_module, "create_agent", lambda **kwargs: kwargs)
-    monkeypatch.setattr(lead_agent_module, "load_agent_config", lambda x, **kwargs: AgentConfig(name="test", skills=None))
     monkeypatch.setattr(lead_agent_module, "_load_enabled_skills_for_tool_policy", lambda available_skills, *, app_config: [_make_skill("legacy", None)])
     monkeypatch.setattr("ideer.tools.get_available_tools", lambda **kwargs: [NamedTool("bash"), NamedTool("read_file")])
 
@@ -295,7 +278,6 @@ def test_make_lead_agent_enforces_allowed_tools_when_skill_cache_is_cold(monkeyp
     monkeypatch.setattr(lead_agent_module, "_build_middlewares", lambda *args, **kwargs: [])
     monkeypatch.setattr(lead_agent_module, "apply_prompt_template", lambda **kwargs: "mock_prompt")
     monkeypatch.setattr(lead_agent_module, "create_agent", lambda **kwargs: kwargs)
-    monkeypatch.setattr(lead_agent_module, "load_agent_config", lambda x, **kwargs: AgentConfig(name="test", skills=["restricted"]))
     monkeypatch.setattr("ideer.tools.get_available_tools", lambda **kwargs: [NamedTool("bash"), NamedTool("read_file"), NamedTool("web_search")])
 
     mock_app_config = MagicMock()
@@ -324,7 +306,6 @@ def test_make_lead_agent_fails_closed_when_skill_policy_load_fails(monkeypatch):
     monkeypatch.setattr(lead_agent_module, "create_chat_model", lambda **kwargs: "model")
     create_agent_mock = MagicMock()
     monkeypatch.setattr(lead_agent_module, "create_agent", create_agent_mock)
-    monkeypatch.setattr(lead_agent_module, "load_agent_config", lambda x, **kwargs: AgentConfig(name="test", skills=["restricted"]))
 
     mock_app_config = MagicMock()
     mock_app_config.get_model_config.return_value = SimpleNamespace(supports_thinking=False, supports_vision=False)
@@ -339,81 +320,3 @@ def test_make_lead_agent_fails_closed_when_skill_policy_load_fails(monkeypatch):
         lead_agent_module.make_lead_agent({"configurable": {"agent_name": "test"}})
 
     create_agent_mock.assert_not_called()
-
-
-def test_make_lead_agent_shared_agent_loads_owner_config_and_hides_update_agent(monkeypatch):
-    """A shared agent (agent_owner_id set) loads config/SOUL from the owner's
-    directory and does not expose the update_agent tool to the runner."""
-    from unittest.mock import MagicMock
-
-    from ideer.agents.lead_agent import agent as lead_agent_module
-
-    seen: dict = {}
-
-    def mock_load_agent_config(name, *, user_id=None):
-        seen["config_user_id"] = user_id
-        return AgentConfig(name=name, skills=None)
-
-    monkeypatch.setattr(lead_agent_module, "load_agent_config", mock_load_agent_config)
-    monkeypatch.setattr(lead_agent_module, "_resolve_model_name", lambda x=None, **kwargs: "default-model")
-    monkeypatch.setattr(lead_agent_module, "create_chat_model", lambda **kwargs: "model")
-    monkeypatch.setattr(lead_agent_module, "_build_middlewares", lambda *args, **kwargs: [])
-    monkeypatch.setattr(lead_agent_module, "create_agent", lambda **kwargs: kwargs)
-    monkeypatch.setattr(lead_agent_module, "_load_enabled_skills_for_tool_policy", lambda available_skills, *, app_config: [])
-    monkeypatch.setattr("ideer.tools.get_available_tools", lambda **kwargs: [NamedTool("bash")])
-    monkeypatch.setattr(
-        lead_agent_module,
-        "apply_prompt_template",
-        lambda **kwargs: seen.update(agent_user_id=kwargs.get("agent_user_id")) or "mock_prompt",
-    )
-
-    mock_app_config = MagicMock()
-    mock_app_config.get_model_config.return_value = SimpleNamespace(supports_thinking=False, supports_vision=False)
-    monkeypatch.setattr(lead_agent_module, "get_app_config", lambda: mock_app_config)
-
-    agent_kwargs = lead_agent_module.make_lead_agent({"configurable": {"agent_name": "test", "agent_owner_id": "owner-1"}})
-
-    assert seen["config_user_id"] == "owner-1"
-    assert seen["agent_user_id"] == "owner-1"
-    assert [tool.name for tool in agent_kwargs["tools"]] == ["bash"]
-
-
-def test_make_lead_agent_shared_agent_loads_from_owner_directory(monkeypatch, tmp_path):
-    """Regression for the shared-agent run bug: running another user's public
-    agent must load config/SOUL from the declaring owner's directory instead
-    of raising FileNotFoundError against the runner's own directory."""
-    from unittest.mock import MagicMock
-
-    from ideer.agents.lead_agent import agent as lead_agent_module
-    from ideer.config.paths import Paths
-
-    owner_dir = tmp_path / "users" / "owner-1" / "agents" / "fault-zeroing"
-    owner_dir.mkdir(parents=True)
-    (owner_dir / "config.yaml").write_text("name: fault-zeroing\ndescription: shared agent\ntool_groups: []\n", encoding="utf-8")
-    (owner_dir / "SOUL.md").write_text("# Shared SOUL", encoding="utf-8")
-    runner_dir = tmp_path / "users" / "user-2" / "agents" / "fault-zeroing"
-    assert not runner_dir.exists()
-
-    seen: dict = {}
-    monkeypatch.setattr(
-        lead_agent_module,
-        "apply_prompt_template",
-        lambda **kwargs: seen.update(agent_user_id=kwargs.get("agent_user_id")) or "mock_prompt",
-    )
-    monkeypatch.setattr(lead_agent_module, "_resolve_model_name", lambda x=None, **kwargs: "default-model")
-    monkeypatch.setattr(lead_agent_module, "create_chat_model", lambda **kwargs: "model")
-    monkeypatch.setattr(lead_agent_module, "_build_middlewares", lambda *args, **kwargs: [])
-    monkeypatch.setattr(lead_agent_module, "create_agent", lambda **kwargs: kwargs)
-    monkeypatch.setattr(lead_agent_module, "_load_enabled_skills_for_tool_policy", lambda available_skills, *, app_config: [])
-    monkeypatch.setattr("ideer.tools.get_available_tools", lambda **kwargs: [])
-    monkeypatch.setattr("ideer.config.agents_config.get_paths", lambda: Paths(str(tmp_path)))
-
-    mock_app_config = MagicMock()
-    mock_app_config.get_model_config.return_value = SimpleNamespace(supports_thinking=False, supports_vision=False)
-    monkeypatch.setattr(lead_agent_module, "get_app_config", lambda: mock_app_config)
-
-    agent_kwargs = lead_agent_module.make_lead_agent({"configurable": {"agent_name": "fault-zeroing", "agent_owner_id": "owner-1"}})
-
-    assert seen["agent_user_id"] == "owner-1"
-    assert agent_kwargs["system_prompt"] == "mock_prompt"
-    assert agent_kwargs["tools"] == []

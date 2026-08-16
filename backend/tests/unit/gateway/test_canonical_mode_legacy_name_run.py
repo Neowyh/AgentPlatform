@@ -229,7 +229,6 @@ class TestStartRunCanonicalLegacyName:
             patch("app.gateway.services.get_run_context", return_value=run_ctx),
             patch("app.gateway.services._resolve_canonical_alias", new_callable=AsyncMock, return_value=resource_id) as alias,
             patch("app.gateway.services._prepare_canonical_agent_run", new_callable=AsyncMock) as prepare,
-            patch("app.gateway.services._resolve_run_agent_owner", new_callable=AsyncMock) as owner_resolver,
             patch("app.gateway.services.run_agent", new_callable=AsyncMock),
             patch("app.gateway.services.get_app_config") as mock_app_config,
             patch("app.gateway.services.uuid.uuid4", return_value="canonical-run"),
@@ -241,7 +240,6 @@ class TestStartRunCanonicalLegacyName:
 
         assert result is record
         alias.assert_awaited_once_with("writer", request)
-        owner_resolver.assert_not_called()
         prepare.assert_awaited_once_with(resource_id, request, "canonical-run")
         assert run_mgr.create_or_reject.call_args.kwargs["run_id"] == "canonical-run"
 
@@ -259,7 +257,6 @@ class TestStartRunCanonicalLegacyName:
                 new_callable=AsyncMock,
                 side_effect=HTTPException(status_code=404, detail="Agent 'ghost' not found"),
             ),
-            patch("app.gateway.services._resolve_run_agent_owner", new_callable=AsyncMock) as owner_resolver,
             patch("app.gateway.services.run_agent", new_callable=AsyncMock),
             patch("app.gateway.services.get_app_config") as mock_app_config,
         ):
@@ -270,7 +267,6 @@ class TestStartRunCanonicalLegacyName:
                 await start_run(self._body("ghost"), "thread-1", request)
 
         assert exc_info.value.status_code == 404
-        owner_resolver.assert_not_called()
         run_mgr.create_or_reject.assert_not_called()
 
     @pytest.mark.asyncio
@@ -285,7 +281,6 @@ class TestStartRunCanonicalLegacyName:
             patch("app.gateway.services.get_run_manager", return_value=run_mgr),
             patch("app.gateway.services.get_run_context", return_value=run_ctx),
             patch("app.gateway.services._resolve_canonical_alias", new_callable=AsyncMock, return_value=None) as alias,
-            patch("app.gateway.services._resolve_run_agent_owner", new_callable=AsyncMock, return_value=None) as owner_resolver,
             patch("app.gateway.services.resolve_agent_factory") as mock_factory,
             patch("app.gateway.services.run_agent", new_callable=AsyncMock),
             patch("app.gateway.services.get_app_config") as mock_app_config,
@@ -298,35 +293,6 @@ class TestStartRunCanonicalLegacyName:
 
         assert result is record
         alias.assert_awaited_once_with("lead_agent", request)
-        owner_resolver.assert_awaited_once()
-        run_mgr.create_or_reject.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_dual_mode_keeps_legacy_owner_resolution(self, mock_deps, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.delenv("IDEER_RESOURCE_CATALOG_MODE", raising=False)
-        bridge, run_mgr, run_ctx, request = mock_deps
-        record = MagicMock(run_id="run-123", task=None)
-        run_mgr.create_or_reject.return_value = record
-
-        with (
-            patch("app.gateway.services.get_stream_bridge", return_value=bridge),
-            patch("app.gateway.services.get_run_manager", return_value=run_mgr),
-            patch("app.gateway.services.get_run_context", return_value=run_ctx),
-            patch("app.gateway.services._resolve_canonical_alias", new_callable=AsyncMock) as alias,
-            patch("app.gateway.services._resolve_run_agent_owner", new_callable=AsyncMock, return_value=None) as owner_resolver,
-            patch("app.gateway.services.resolve_agent_factory") as mock_factory,
-            patch("app.gateway.services.run_agent", new_callable=AsyncMock),
-            patch("app.gateway.services.get_app_config") as mock_app_config,
-        ):
-            mock_factory.return_value = MagicMock()
-            mock_app_config.return_value.get_model_config.return_value = None
-            from app.gateway.services import start_run
-
-            result = await start_run(self._body("writer"), "thread-1", request)
-
-        assert result is record
-        alias.assert_not_called()
-        owner_resolver.assert_awaited_once()
         run_mgr.create_or_reject.assert_called_once()
 
     @pytest.mark.asyncio
@@ -343,7 +309,6 @@ class TestStartRunCanonicalLegacyName:
             patch("app.gateway.services.get_run_context", return_value=run_ctx),
             patch("app.gateway.services._resolve_canonical_alias", new_callable=AsyncMock) as alias,
             patch("app.gateway.services._prepare_canonical_agent_run", new_callable=AsyncMock) as prepare,
-            patch("app.gateway.services._resolve_run_agent_owner", new_callable=AsyncMock) as owner_resolver,
             patch("app.gateway.services.run_agent", new_callable=AsyncMock),
             patch("app.gateway.services.get_app_config") as mock_app_config,
             patch("app.gateway.services.uuid.uuid4", return_value="canonical-run"),
@@ -355,7 +320,6 @@ class TestStartRunCanonicalLegacyName:
 
         assert result is record
         alias.assert_not_called()
-        owner_resolver.assert_not_called()
         prepare.assert_awaited_once_with(resource_id, request, "canonical-run")
         assert run_mgr.create_or_reject.call_args.kwargs["run_id"] == "canonical-run"
 
@@ -373,7 +337,6 @@ class TestStartRunCanonicalLegacyName:
             patch("app.gateway.services.get_run_context", return_value=run_ctx),
             patch("app.gateway.services._resolve_canonical_alias", new_callable=AsyncMock, return_value=resource_id) as alias,
             patch("app.gateway.services._prepare_canonical_agent_run", new_callable=AsyncMock) as prepare,
-            patch("app.gateway.services._resolve_run_agent_owner", new_callable=AsyncMock) as owner_resolver,
             patch("app.gateway.services.run_agent", new_callable=AsyncMock),
             patch("app.gateway.services.get_app_config") as mock_app_config,
             patch("app.gateway.services.uuid.uuid4", return_value="canonical-run"),
@@ -385,7 +348,6 @@ class TestStartRunCanonicalLegacyName:
 
         assert result is record
         alias.assert_awaited_once_with("writer", request)
-        owner_resolver.assert_not_called()
         prepare.assert_awaited_once_with(resource_id, request, "canonical-run")
 
     @pytest.mark.asyncio
@@ -402,7 +364,6 @@ class TestStartRunCanonicalLegacyName:
             patch("app.gateway.services.get_run_context", return_value=run_ctx),
             patch("app.gateway.services._resolve_canonical_alias", new_callable=AsyncMock) as alias,
             patch("app.gateway.services._prepare_canonical_agent_run", new_callable=AsyncMock) as prepare,
-            patch("app.gateway.services._resolve_run_agent_owner", new_callable=AsyncMock) as owner_resolver,
             patch("app.gateway.services.run_agent", new_callable=AsyncMock),
             patch("app.gateway.services.get_app_config") as mock_app_config,
             patch("app.gateway.services.uuid.uuid4", return_value="canonical-run"),
@@ -414,5 +375,4 @@ class TestStartRunCanonicalLegacyName:
 
         assert result is record
         alias.assert_not_called()
-        owner_resolver.assert_not_called()
         prepare.assert_awaited_once_with(resource_id, request, "canonical-run")
