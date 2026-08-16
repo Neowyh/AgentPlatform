@@ -31,7 +31,7 @@ from ideer.persistence.models.resource_catalog import (
 from ideer.persistence.models.user import UserModel, UserRole
 from ideer.persistence.models.workflow_v2 import WorkflowV2RunRow
 from ideer.resources.mode import ResourceCatalogMode, get_resource_catalog_mode
-from ideer.resources.publisher import ResourcePublisher
+from ideer.resources.publisher import ResourcePublisher, write_agent_draft_source
 from ideer.resources.retention import build_retention_report
 from ideer.resources.runtime import load_validated_agent_definition
 from ideer.resources.service import (
@@ -282,22 +282,6 @@ def _extract_resource_archive(
         raise StorageValidationError("Resource archive is not a valid ZIP file") from exc
 
 
-def _write_agent_draft_source(
-    source: Path,
-    *,
-    slug: str,
-    config: dict[str, Any],
-    soul: str,
-) -> None:
-    definition = {key: value for key, value in config.items() if key not in {"name", "owner_id", "department_id", "visibility"}}
-    definition["name"] = slug
-    (source / "config.yaml").write_text(
-        yaml.safe_dump(definition, sort_keys=False, allow_unicode=True),
-        encoding="utf-8",
-    )
-    (source / "SOUL.md").write_text(soul, encoding="utf-8")
-
-
 def _run_payload(run: WorkflowV2RunRow, resource_id: str) -> dict[str, Any]:
     return {
         "run_id": run.run_id,
@@ -453,7 +437,7 @@ async def import_agent_resource(
                     if target.type != "skill":
                         raise ValueError(f"Agent dependency {identity} is not a Skill")
                     dependencies.append(target.id)
-                _write_agent_draft_source(
+                write_agent_draft_source(
                     source,
                     slug=config.name,
                     config={
@@ -722,7 +706,7 @@ async def save_agent_draft(
             if skills is not None:
                 config["skills"] = dependencies
             await asyncio.to_thread(
-                _write_agent_draft_source,
+                write_agent_draft_source,
                 source,
                 slug=resource.slug,
                 config=config,

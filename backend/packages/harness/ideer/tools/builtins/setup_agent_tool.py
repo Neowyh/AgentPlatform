@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import uuid
+from pathlib import Path
 
 import yaml
 from langchain_core.messages import ToolMessage
@@ -11,11 +12,118 @@ from sqlalchemy import select
 from ideer.config.agents_config import validate_agent_name
 from ideer.config.paths import get_paths
 from ideer.persistence.engine import get_session_factory
+from ideer.persistence.models.resource_catalog import Resource
 from ideer.persistence.models.resource_metadata import ResourceMetadata
+from ideer.resources.mode import ResourceCatalogMode, get_resource_catalog_mode
 from ideer.runtime.user_context import resolve_runtime_user_id
 from ideer.tools.types import Runtime
 
 logger = logging.getLogger(__name__)
+
+
+def _create_canonical_agent(
+    *,
+    agent_name: str,
+    description: str,
+    soul: str,
+    skills: list[str] | None,
+    user_id: str,
+) -> str:
+    """Create or update the agent through the canonical resource catalog.
+
+    Mirrors the /resources agent-draft and publish endpoints using the same
+    service and publisher boundaries, so the catalog row, filesystem draft,
+    dependencies, and published version stay consistent. Runs in asyncio.run
+    because @tool bodies are synchronous.
+    """
+    from tempfile import TemporaryDirectory
+
+    from ideer.persistence.models.user import UserModel, UserRole
+    from ideer.resources.publisher import ResourcePublisher, write_agent_draft_source
+    from ideer.resources.service import ResourceAction, ResourceActor, ResourceNotFound, ResourceService
+    from ideer.resources.storage import ResourceStorage
+
+    sf = get_session_factory()
+    if sf is None:
+        raise RuntimeError("Resource catalog persistence is unavailable")
+
+    async def _create() -> str:
+        async with sf() as session:
+            user = (await session.execute(select(UserModel).where(UserModel.id == user_id, UserModel.disabled.is_not(True)))).scalar_one_or_none()
+            if user is None:
+                raise RuntimeError("Active user is required to create a catalog agent")
+            permissions = {ResourceAction.READ, ResourceAction.USE}
+            if user.role in {UserRole.USER, UserRole.DEPARTMENT_ADMIN, UserRole.SUPER_ADMIN}:
+                permissions.add(ResourceAction.WRITE)
+            actor = ResourceActor(
+                user_id=str(user.id),
+                department_id=str(user.department_id) if user.department_id is not None else None,
+                role=str(user.role),
+                permissions=frozenset(permissions),
+                tool_groups=None,
+            )
+            service = ResourceService(session, actor)
+            existing = (
+                await session.execute(
+                    select(Resource).where(
+                        Resource.type == "agent",
+                        Resource.owner_id == actor.user_id,
+                        Resource.slug == agent_name,
+                    )
+                )
+            ).scalar_one_or_none()
+            if existing is None:
+                resource = await service.create_resource(
+                    resource_type="agent",
+                    slug=agent_name,
+                    display_name=agent_name,
+                    storage_kind="filesystem",
+                )
+            else:
+                resource = existing
+            dependencies: list[str] = []
+            if skills:
+                for name in skills:
+                    try:
+                        target = await service.resolve_legacy_alias("skill", name)
+                    except ResourceNotFound:
+                        logger.warning("[agent_creator] Skill '%s' is not catalogued; skipping dependency", name)
+                        continue
+                    dependencies.append(target.id)
+            config: dict = {"name": agent_name}
+            if description:
+                config["description"] = description
+            if skills is not None:
+                config["skills"] = dependencies
+            if dependencies:
+                await service.replace_dependencies(resource.id, dependencies)
+            with TemporaryDirectory(prefix="ideer-setup-agent-") as temporary:
+                source = Path(temporary)
+                await asyncio.to_thread(
+                    write_agent_draft_source,
+                    source,
+                    slug=agent_name,
+                    config=config,
+                    soul=soul,
+                )
+                publisher = ResourcePublisher(service, ResourceStorage(get_paths().base_dir))
+                draft = await publisher.save_filesystem_draft(
+                    resource.id,
+                    source_dir=source,
+                    expected_revision=resource.draft_revision,
+                )
+            await publisher.publish_filesystem(
+                resource.id,
+                expected_draft_revision=draft.revision,
+                scan_result={},
+            )
+            return resource.id
+
+    try:
+        return asyncio.run(_create())
+    except Exception:
+        logger.exception("[agent_creator] Failed to create canonical agent '%s'", agent_name)
+        raise
 
 
 def _upsert_agent_metadata(agent_name: str, user_id: str) -> None:
@@ -125,6 +233,23 @@ def setup_agent(
 
     try:
         agent_name = validate_agent_name(agent_name)
+        if agent_name and get_resource_catalog_mode() is ResourceCatalogMode.CANONICAL:
+            user_id = resolve_runtime_user_id(runtime)
+            resource_id = _create_canonical_agent(
+                agent_name=agent_name,
+                description=description,
+                soul=soul,
+                skills=skills,
+                user_id=user_id,
+            )
+            logger.info("[agent_creator] Created canonical agent '%s' (%s)", agent_name, resource_id)
+            return Command(
+                update={
+                    "created_agent_name": agent_name,
+                    "created_agent_resource_id": resource_id,
+                    "messages": [ToolMessage(content=f"Agent '{agent_name}' created successfully!", tool_call_id=runtime.tool_call_id)],
+                }
+            )
         paths = get_paths()
         if agent_name:
             # Custom agents are persisted under the current user's bucket so

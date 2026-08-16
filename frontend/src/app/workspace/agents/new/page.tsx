@@ -128,6 +128,23 @@ export default function NewAgentPage() {
     },
   });
 
+  const resourceId =
+    typeof thread.values?.created_agent_resource_id === "string"
+      ? thread.values.created_agent_resource_id
+      : undefined;
+
+  useEffect(() => {
+    if (!resourceId || agent) return;
+    void getAgentWithRetry(resourceId).then((fetched) => {
+      if (fetched) {
+        setAgent(fetched);
+        return;
+      }
+
+      toast.error(t.agents.agentCreatedPendingRefresh);
+    });
+  }, [agent, resourceId, t.agents.agentCreatedPendingRefresh]);
+
   useEffect(() => {
     if (typeof window === "undefined" || step !== "chat") {
       return;

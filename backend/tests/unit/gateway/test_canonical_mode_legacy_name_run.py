@@ -200,7 +200,7 @@ class TestStartRunCanonicalLegacyName:
         return bridge, run_mgr, run_ctx, request
 
     @staticmethod
-    def _body(assistant_id: str) -> SimpleNamespace:
+    def _body(assistant_id: str, context: dict | None = None) -> SimpleNamespace:
         return SimpleNamespace(
             assistant_id=assistant_id,
             on_disconnect="cancel",
@@ -212,7 +212,7 @@ class TestStartRunCanonicalLegacyName:
             stream_subgraphs=False,
             interrupt_before=None,
             interrupt_after=None,
-            context=None,
+            context=context,
         )
 
     @pytest.mark.asyncio
@@ -328,3 +328,91 @@ class TestStartRunCanonicalLegacyName:
         alias.assert_not_called()
         owner_resolver.assert_awaited_once()
         run_mgr.create_or_reject.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_canonical_mode_resolves_context_agent_name_uuid(self, mock_deps, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setenv("IDEER_RESOURCE_CATALOG_MODE", "canonical")
+        bridge, run_mgr, run_ctx, request = mock_deps
+        resource_id = "11111111-1111-1111-1111-111111111111"
+        record = MagicMock(run_id="canonical-run", task=None)
+        run_mgr.create_or_reject.return_value = record
+
+        with (
+            patch("app.gateway.services.get_stream_bridge", return_value=bridge),
+            patch("app.gateway.services.get_run_manager", return_value=run_mgr),
+            patch("app.gateway.services.get_run_context", return_value=run_ctx),
+            patch("app.gateway.services._resolve_canonical_alias", new_callable=AsyncMock) as alias,
+            patch("app.gateway.services._prepare_canonical_agent_run", new_callable=AsyncMock) as prepare,
+            patch("app.gateway.services._resolve_run_agent_owner", new_callable=AsyncMock) as owner_resolver,
+            patch("app.gateway.services.run_agent", new_callable=AsyncMock),
+            patch("app.gateway.services.get_app_config") as mock_app_config,
+            patch("app.gateway.services.uuid.uuid4", return_value="canonical-run"),
+        ):
+            mock_app_config.return_value.get_model_config.return_value = None
+            from app.gateway.services import start_run
+
+            result = await start_run(self._body("lead_agent", {"agent_name": resource_id}), "thread-1", request)
+
+        assert result is record
+        alias.assert_not_called()
+        owner_resolver.assert_not_called()
+        prepare.assert_awaited_once_with(resource_id, request, "canonical-run")
+        assert run_mgr.create_or_reject.call_args.kwargs["run_id"] == "canonical-run"
+
+    @pytest.mark.asyncio
+    async def test_canonical_mode_resolves_context_agent_name_legacy_name(self, mock_deps, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setenv("IDEER_RESOURCE_CATALOG_MODE", "canonical")
+        bridge, run_mgr, run_ctx, request = mock_deps
+        resource_id = "22222222-2222-2222-2222-222222222222"
+        record = MagicMock(run_id="canonical-run", task=None)
+        run_mgr.create_or_reject.return_value = record
+
+        with (
+            patch("app.gateway.services.get_stream_bridge", return_value=bridge),
+            patch("app.gateway.services.get_run_manager", return_value=run_mgr),
+            patch("app.gateway.services.get_run_context", return_value=run_ctx),
+            patch("app.gateway.services._resolve_canonical_alias", new_callable=AsyncMock, return_value=resource_id) as alias,
+            patch("app.gateway.services._prepare_canonical_agent_run", new_callable=AsyncMock) as prepare,
+            patch("app.gateway.services._resolve_run_agent_owner", new_callable=AsyncMock) as owner_resolver,
+            patch("app.gateway.services.run_agent", new_callable=AsyncMock),
+            patch("app.gateway.services.get_app_config") as mock_app_config,
+            patch("app.gateway.services.uuid.uuid4", return_value="canonical-run"),
+        ):
+            mock_app_config.return_value.get_model_config.return_value = None
+            from app.gateway.services import start_run
+
+            result = await start_run(self._body("lead_agent", {"agent_name": "writer"}), "thread-1", request)
+
+        assert result is record
+        alias.assert_awaited_once_with("writer", request)
+        owner_resolver.assert_not_called()
+        prepare.assert_awaited_once_with(resource_id, request, "canonical-run")
+
+    @pytest.mark.asyncio
+    async def test_dual_mode_resolves_context_agent_name_uuid(self, mock_deps, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.delenv("IDEER_RESOURCE_CATALOG_MODE", raising=False)
+        bridge, run_mgr, run_ctx, request = mock_deps
+        resource_id = "11111111-1111-1111-1111-111111111111"
+        record = MagicMock(run_id="canonical-run", task=None)
+        run_mgr.create_or_reject.return_value = record
+
+        with (
+            patch("app.gateway.services.get_stream_bridge", return_value=bridge),
+            patch("app.gateway.services.get_run_manager", return_value=run_mgr),
+            patch("app.gateway.services.get_run_context", return_value=run_ctx),
+            patch("app.gateway.services._resolve_canonical_alias", new_callable=AsyncMock) as alias,
+            patch("app.gateway.services._prepare_canonical_agent_run", new_callable=AsyncMock) as prepare,
+            patch("app.gateway.services._resolve_run_agent_owner", new_callable=AsyncMock) as owner_resolver,
+            patch("app.gateway.services.run_agent", new_callable=AsyncMock),
+            patch("app.gateway.services.get_app_config") as mock_app_config,
+            patch("app.gateway.services.uuid.uuid4", return_value="canonical-run"),
+        ):
+            mock_app_config.return_value.get_model_config.return_value = None
+            from app.gateway.services import start_run
+
+            result = await start_run(self._body("lead_agent", {"agent_name": resource_id}), "thread-1", request)
+
+        assert result is record
+        alias.assert_not_called()
+        owner_resolver.assert_not_called()
+        prepare.assert_awaited_once_with(resource_id, request, "canonical-run")

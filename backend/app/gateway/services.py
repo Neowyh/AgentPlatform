@@ -522,11 +522,20 @@ async def start_run(
     model_name = body_context.get("model_name")
 
     canonical_resource_id = _canonical_assistant_id(getattr(body, "assistant_id", None))
+    # The workspace and channel manager always send the default assistant id
+    # and carry the requested agent in ``context.agent_name``; treat a UUID
+    # there as a canonical resource the same way as an assistant_id UUID.
+    if canonical_resource_id is None:
+        canonical_resource_id = _canonical_assistant_id(body_context.get("agent_name"))
     # Canonical mode seals legacy owner-directory reads: legacy-name
     # assistants resolve through the catalog alias resolver (owner-first,
     # unique visible shared), failing closed when unknown or ambiguous.
+    # ``context.agent_name`` takes precedence over assistant_id because it is
+    # where the workspace and channels actually carry the requested agent.
     if canonical_resource_id is None and get_resource_catalog_mode() is ResourceCatalogMode.CANONICAL:
-        canonical_resource_id = await _resolve_canonical_alias(getattr(body, "assistant_id", None), request)
+        candidate = body_context.get("agent_name") or getattr(body, "assistant_id", None)
+        if candidate:
+            canonical_resource_id = await _resolve_canonical_alias(candidate, request)
     # Legacy shared-agent resolution is untouched. UUID assistants use the
     # canonical visibility/snapshot boundary instead of owner directories.
     agent_owner_id = None if canonical_resource_id else await _resolve_run_agent_owner(body, request)

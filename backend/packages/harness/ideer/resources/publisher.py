@@ -19,6 +19,23 @@ from ideer.workflows.v2.parser import parse_workflow_v2
 logger = logging.getLogger(__name__)
 
 
+def write_agent_draft_source(
+    source: Path,
+    *,
+    slug: str,
+    config: dict,
+    soul: str,
+) -> None:
+    """Materialize an agent draft directory from a config mapping and SOUL."""
+    definition = {key: value for key, value in config.items() if key not in {"name", "owner_id", "department_id", "visibility"}}
+    definition["name"] = slug
+    (source / "config.yaml").write_text(
+        yaml.safe_dump(definition, sort_keys=False, allow_unicode=True),
+        encoding="utf-8",
+    )
+    (source / "SOUL.md").write_text(soul, encoding="utf-8")
+
+
 class ResourcePublisher:
     """Order filesystem publication before committing its database pointer."""
 
