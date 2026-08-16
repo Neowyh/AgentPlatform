@@ -2,8 +2,25 @@
 
 > audience: developers, reviewers, QA, release engineering
 > status: binding acceptance contract
-> last-verified: 2026-08-14
+> last-verified: 2026-08-16
 > canonical-path: `docs/testing/resource-governance-v2-acceptance-matrix.md`
+
+## 切换验收执行记录（2026-08-15，本地工作树 `resource-governance-v2`）
+
+以下为切换 canonical 前本地执行的 fresh 证据，全部真实 exit 0：
+
+- Alembic 单 head `20260814_resource_catalog_v2`，DB 已 `upgrade head`（`alembic_version` 一致）；
+- `audit` exit 0 / errors 0；`migrate` 首次 created 10、二次 unchanged 10（幂等）；`verify` exit 0；
+- `seed_bundled_resources` created 24 / unchanged 3（含 bundled 身份冲突修复后重建）；目录 34 资源、bundled 27、dependencies 3；
+- `compare`（dual）exit 0：total 10 / ok 10，diverged/errors 为空，extras = 24 个 bundled 稳定 UUID（预期信号：bundled 资源不落 legacy 目录）；
+- backend：`make lint` exit 0；`make test` 12594 passed；`make test-blocking-io` 5 passed；runtime 修复后全量重跑 `make test` 12596 passed（= 12594 + 新增 2 测试，无回归）；
+- frontend：`pnpm check` exit 0（1270 warnings）；`pnpm test` 332 files / 7896 passed；`pnpm test:e2e` 148 passed，1 项 flaky（`i18n-language-switching.spec.ts:337`）单独复跑通过且文件本分支未改动；
+- canonical 冒烟（`IDEER_RESOURCE_CATALOG_MODE=canonical`，Gateway 8001）：`/api/resources` 返回 34 项 canonical；`/api/agents|skills|workflows/{name}` 全部 410；老名字 `fault-zeroing` run 经 alias 解析为 UUID 56e2423d… 成功创建；`run_resource_snapshots` 落库 agent+skill 各 1 行（version/hash 正确）；前端 admin 资源页经同源代理渲染 canonical 数据（66 项全局清单，fault-zeroing/srs-writing/bundled skills 可见）。
+- canonical Workflow Worker 冒烟（`IDEER_RESOURCE_CATALOG_MODE=canonical`）：`POST /api/resources/{id}/workflow-runs` 201 入队；worker 消费后状态 queued→running→failed（failed 为冒烟占位 `upload_dir` 不存在导致的业务失败，非加载错误）；`run_resource_snapshots` 为该 run 落 3 行完整闭包（workflow fault-zeroing + agent fault-zeroing + skill fault-zeroing，version/hash 正确）。
+
+冒烟发现并修复一处契约断裂：bundled `_prepare_agent` 将 `config.skills` 改写为稳定 UUID，而 `runtime.load_agent_skill_definitions` 只按 slug 匹配导致 bundled Agent run 409。修复为按 UUID 优先、slug 次之匹配，缺失引用 fail-closed；新增 2 个单元测试（UUID 引用解析、缺失引用拒绝），`tests/unit/resources/` 93 passed。
+
+Assistants compatibility 已由 `tests/integration/api/test_assistants_compat_comprehensive.py`（含 `IDEER_RESOURCE_CATALOG_MODE=canonical` 场景）与 `test_assistants_compat_router.py` 覆盖，随 backend 全量 12596 通过。已知待补证据（观察期外另行执行）：离线部署项（本分支未运行对应环境）。
 
 本矩阵是完成判定依据。单元测试通过不能替代同一行要求的集成、运行时或部署证据；挂起、扩大 skip、降低断言或旧产物不计为通过。
 

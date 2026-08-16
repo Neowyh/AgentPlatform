@@ -1,10 +1,11 @@
 # Skill、Agent、Workflow 资源治理 V2 架构决策
 
 > audience: developers, architects, security reviewers, operators
-> status: accepted, implementation in progress
+> status: implemented
 > owner: engineering maintainers
-> last-verified: 2026-08-14
+> last-verified: 2026-08-16
 > canonical-path: `docs/decisions/2026-08-14-resource-governance-v2.md`
+> switch-to-canonical: 2026-08-15, local worktree `resource-governance-v2`, mode `canonical`
 
 ## 决策摘要
 
@@ -138,6 +139,8 @@ Agent 和 Workflow 依赖保存 UUID，不固定版本。新 Run 在任何副作
 - canonical：三类资源只从新目录读取，旧 facade 通过 alias resolver 访问。
 
 旧名称解析顺序是当前用户资源优先，其次唯一可见共享资源；多个可见匹配返回 409。`lead_agent` 保留为特殊 assistant 值，其余 `assistant_id` 接受资源 UUID。
+
+bundled Agent 发布时 `config.skills` 中的 slug 引用会被改写为依赖资源的稳定 UUID（`bundled._prepare_agent`）；运行时依赖闭包解析同时按 UUID 与 slug 匹配（`runtime.load_agent_skill_definitions`），缺失引用 fail-closed。
 
 ## 失败处理与可观测性
 

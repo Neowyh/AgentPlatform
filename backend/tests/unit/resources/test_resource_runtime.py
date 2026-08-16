@@ -207,3 +207,82 @@ async def test_agent_skills_load_only_from_uuid_dependencies_in_same_snapshot(
 
     assert [item.name for item in skills] == ["research"]
     assert skills[0].skill_file == storage.resources_root / f"skills/{skill.id}/versions/1/SKILL.md"
+
+
+@pytest.mark.asyncio
+async def test_agent_skills_resolve_uuid_references_from_bundled_manifest(
+    session: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    skill_id = "951d48c2-c528-41ac-b188-5636ca425f70"
+    agent_source = tmp_path / "agent-with-uuid-skill"
+    agent_source.mkdir()
+    (agent_source / "config.yaml").write_text(f"name: writer\nskills: [{skill_id}]\n")
+    skill_source = tmp_path / "skill"
+    skill_source.mkdir()
+    (skill_source / "SKILL.md").write_text("---\nname: research\ndescription: Research carefully\n---\n# Research\n")
+    storage = ResourceStorage(tmp_path)
+    agent = await _snapshot_agent(session, storage, agent_source)
+    skill_published = storage.publish_staged(storage.stage_directory("skill", skill_id, skill_source), version=1)
+    skill = Resource(
+        id=skill_id,
+        type="skill",
+        slug="research",
+        display_name="Research",
+        owner_id="owner",
+        visibility="public",
+        scope_department_id=None,
+        lifecycle_status="active",
+        latest_version=1,
+        draft_revision=0,
+        storage_kind="filesystem",
+        storage_key=f"skills/{skill_id}",
+        system_owned=False,
+        authz_revision=1,
+    )
+    from ideer.persistence.models.resource_catalog import ResourceDependency
+
+    session.add_all(
+        [
+            skill,
+            ResourceVersion(
+                id="skill-version",
+                resource_id=skill.id,
+                version=1,
+                content_hash=skill_published.content_hash,
+                storage_key=skill_published.storage_key,
+                scan_result={},
+                created_by="owner",
+            ),
+            ResourceDependency(id="agent-skill", source_resource_id=agent.id, target_resource_id=skill.id),
+            RunResourceSnapshot(
+                id="skill-snapshot",
+                run_id="run-1",
+                root_resource_id=agent.id,
+                resource_id=skill.id,
+                version=1,
+                content_hash=skill_published.content_hash,
+                authz_revision=1,
+            ),
+        ]
+    )
+    await session.commit()
+
+    skills = await CanonicalResourceLoader(session, storage).load_agent_skills("run-1", agent.id)
+
+    assert [item.name for item in skills] == ["research"]
+
+
+@pytest.mark.asyncio
+async def test_agent_skills_missing_reference_fails_closed(
+    session: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    agent_source = tmp_path / "agent-with-missing-skill"
+    agent_source.mkdir()
+    (agent_source / "config.yaml").write_text("name: writer\nskills: [no-such-skill]\n")
+    storage = ResourceStorage(tmp_path)
+    agent = await _snapshot_agent(session, storage, agent_source)
+
+    with pytest.raises(ResourceRuntimeError, match="unresolved Skill dependencies"):
+        await CanonicalResourceLoader(session, storage).load_agent_skills("run-1", agent.id)

@@ -220,9 +220,14 @@ class CanonicalResourceLoader:
             ).scalars()
         )
         by_slug = {target.slug: target for target in targets}
+        by_id = {target.id: target for target in targets}
+
+        def _match(name: str) -> Resource | None:
+            return by_id.get(name) or by_slug.get(name)
+
         requested = definition.config.skills
-        selected = targets if requested is None else [by_slug[name] for name in requested if name in by_slug]
-        missing = [] if requested is None else [name for name in requested if name not in by_slug]
+        selected = targets if requested is None else [target for name in requested if (target := _match(name)) is not None]
+        missing = [] if requested is None else [name for name in requested if _match(name) is None]
         if missing:
             raise ResourceRuntimeError(f"Agent {agent_resource_id} has unresolved Skill dependencies: {', '.join(missing)}")
         return [await self.load_skill(run_id, target.id) for target in selected]
