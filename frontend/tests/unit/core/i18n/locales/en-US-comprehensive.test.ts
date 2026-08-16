@@ -361,8 +361,6 @@ describe("enUS locale comprehensive", () => {
         "Network request failed — check your network or backend connection",
       nameStepCheckError:
         "Could not verify name availability — please try again",
-      nameStepApiDisabledError:
-        "Custom agent management is not enabled on this server. Please contact your administrator.",
       nameStepBootstrapMessage:
         "The new custom agent name is {name}. Help me design its purpose, behavior, and SOUL.md before saving it.",
       save: "Save agent",

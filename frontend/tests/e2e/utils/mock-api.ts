@@ -608,8 +608,78 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
     return route.fallback();
   });
 
-  // Canonical catalog list — dual mode keeps the existing typed-facade mocks
-  // authoritative in these compatibility-focused E2E fixtures.
+  // ── Canonical catalog ──────────────────────────────────────────
+
+  const canonicalResourceOf = (
+    type: "agent" | "workflow" | "skill",
+    item: { name: string },
+    canModify = true,
+  ) => ({
+    id: `00000000-0000-0000-0000-${`${type}-${item.name}`.slice(-12).padStart(12, "0")}`,
+    type,
+    slug: item.name,
+    display_name: item.name,
+    owner_id: "e2e-user",
+    visibility: "public",
+    scope_department_id: null,
+    latest_version: 1,
+    draft_revision: 1,
+    system_owned: false,
+    can_modify: canModify,
+  });
+
+  const canonicalPublished = (
+    type: "agent" | "workflow" | "skill",
+    resource: ReturnType<typeof canonicalResourceOf>,
+  ) => {
+    if (type === "workflow") {
+      const wf = workflows.find((w) => w.name === resource.slug);
+      const nodes = wf?.nodes ??
+        wf?.steps ?? [
+          {
+            id: "start",
+            type: "action",
+            action: { kind: "agent", name: "my-agent", params: { prompt: "" } },
+          },
+        ];
+      return {
+        resource,
+        version: { version: 1 },
+        content: {
+          schema_version: 2,
+          name: resource.slug,
+          description: wf?.description ?? "",
+          inputs: wf?.inputs ?? {},
+          state: {},
+          entrypoint: "start",
+          nodes,
+          edges: wf?.edges ?? [],
+        },
+        yaml_content:
+          wf?.yaml_content ??
+          `schema_version: 2\nname: ${resource.slug}\ndescription: ""\ninputs: {}\nstate: {}\nentrypoint: start\nnodes:\n  - id: step1\n    type: action\n    action:\n      kind: run_workflow\n      name: ${resource.slug}\n      params: {}\n`,
+      };
+    }
+    if (type === "agent") {
+      const agent = agents.find((a) => a.name === resource.slug);
+      return {
+        resource,
+        version: { version: 1 },
+        content: {
+          config: {
+            description: agent?.description ?? "",
+            model: agent?.model ?? null,
+            tool_groups: agent?.tool_groups ?? [],
+            skills: agent?.skills ?? [],
+          },
+          soul: agent?.soul ?? agent?.system_prompt ?? "",
+        },
+      };
+    }
+    return { resource, version: { version: 1 }, content: {} };
+  };
+
+  // Canonical catalog list — single source of truth for agents/workflows/skills
   void page.route(/\/api\/resources\?.*/, (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -620,104 +690,365 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
         url.searchParams.get("type") ?? "",
       )
     ) {
+      const type = url.searchParams.get("type") as
+        | "agent"
+        | "workflow"
+        | "skill";
+      const items =
+        type === "agent"
+          ? agents.map((a) => canonicalResourceOf("agent", a))
+          : type === "workflow"
+            ? workflows.map((w) => canonicalResourceOf("workflow", w))
+            : skills.map((s) =>
+                canonicalResourceOf("skill", s, s.category === "custom"),
+              );
       return route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ items: [], total: 0, mode: "dual" }),
+        body: JSON.stringify({ items, total: items.length }),
       });
     }
     return route.fallback();
   });
 
-  // Agents list — sidebar & gallery page
-  void page.route("**/api/agents", (route) => {
+  // Agent name check via deterministic alias endpoint
+  void page.route(/\/api\/resources\/aliases\/agent\/[^/?]+/, (route) => {
+    const url = new URL(route.request().url());
+    const name = decodeURIComponent(url.pathname.split("/aliases/agent/")[1]!);
+    const exists = agents.some((a) => a.name === name);
+    return route.fulfill({
+      status: exists ? 200 : 404,
+      contentType: "application/json",
+      body: exists
+        ? JSON.stringify(
+            canonicalResourceOf("agent", agents.find((a) => a.name === name)!),
+          )
+        : JSON.stringify({ detail: "Alias not found" }),
+    });
+  });
+
+  // Published canonical detail (agent / workflow)
+  void page.route(/\/api\/resources\/[^/?]+\/published/, (route) => {
+    const url = new URL(route.request().url());
+    const id = url.pathname.split("/api/resources/")[1]!.split("/")[0]!;
+    const agent =
+      agents.find((a) => canonicalResourceOf("agent", a).id === id) ??
+      agents.find((a) => a.name === id);
+    const wf =
+      workflows.find((w) => canonicalResourceOf("workflow", w).id === id) ??
+      workflows.find((w) => w.name === id);
+    if (agent) {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(
+          canonicalPublished("agent", canonicalResourceOf("agent", agent)),
+        ),
+      });
+    }
+    if (wf) {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(
+          canonicalPublished("workflow", canonicalResourceOf("workflow", wf)),
+        ),
+      });
+    }
+    // Fallback: unknown name/id resolves to a default workflow detail
+    // (mirrors the legacy mock's "empty list falls back to valid v2 detail")
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(
+        canonicalPublished(
+          "workflow",
+          canonicalResourceOf("workflow", { name: id }),
+        ),
+      ),
+    });
+  });
+
+  // Canonical resource creation (agents / workflows / skills)
+  void page.route("**/api/resources", (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    const body = route.request().postDataJSON() as {
+      type: string;
+      slug?: string;
+    };
+    const name = body.slug ?? body.type;
+    const resource = canonicalResourceOf(
+      (["agent", "workflow", "skill"].includes(body.type)
+        ? body.type
+        : "workflow") as "agent" | "workflow" | "skill",
+      { name },
+    );
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(resource),
+    });
+  });
+
+  // Agent draft / publish / archive / favorite / export / import
+  void page.route("**/api/resources/import/agent", (route) => {
+    if (route.request().method() === "POST") {
+      const name = "imported-agent";
+      const resource = canonicalResourceOf("agent", { name });
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(resource),
+      });
+    }
+    return route.fallback();
+  });
+
+  void page.route(/\/api\/resources\/[^/?]+\/export/, (route) => {
     if (route.request().method() === "GET") {
       return route.fulfill({
         status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ agents }),
+        contentType: "application/zip",
+        headers: {
+          "Content-Disposition": 'attachment; filename="agent.zip"',
+        },
+        body: Buffer.from("fake-zip-content"),
       });
     }
     return route.fallback();
   });
 
-  // Individual agent — agent chat page, CRUD, export/import
-  void page.route(/\/api\/agents\/check/, (route) => {
-    if (route.request().method() === "GET") {
-      const url = new URL(route.request().url());
-      const name = url.searchParams.get("name") ?? "";
-      const exists = agents.some((a) => a.name === name);
+  void page.route(/\/api\/resources\/[^/?]+\/agent-draft/, (route) => {
+    if (route.request().method() === "PUT") {
       return route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ available: !exists, name }),
+        body: JSON.stringify({ revision: 2 }),
       });
     }
     return route.fallback();
   });
 
-  void page.route("**/api/agents/import", (route) => {
+  void page.route(/\/api\/resources\/[^/?]+\/workflow-draft/, (route) => {
+    if (route.request().method() === "PUT") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ revision: 2 }),
+      });
+    }
+    return route.fallback();
+  });
+
+  void page.route(/\/api\/resources\/[^/?]+\/publish/, (route) => {
     if (route.request().method() === "POST") {
       return route.fulfill({
         status: 200,
         contentType: "application/json",
+        body: JSON.stringify({ version: 1 }),
+      });
+    }
+    return route.fallback();
+  });
+
+  void page.route(/\/api\/resources\/[^/?]+\/archive/, (route) => {
+    if (route.request().method() === "POST") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ lifecycle_status: "archived" }),
+      });
+    }
+    return route.fallback();
+  });
+
+  void page.route(/\/api\/resources\/[^/?]+\/favorite/, (route) => {
+    const method = route.request().method();
+    if (method === "POST" || method === "DELETE") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
         body: JSON.stringify({
-          name: "imported-agent",
-          description: "An imported agent",
+          success: true,
+          is_favorited: method === "POST",
         }),
       });
     }
     return route.fallback();
   });
 
-  void page.route("**/api/agents/*", (route) => {
+  // Canonical workflow run operations
+  void page.route(/\/api\/resources\/[^/?]+\/workflow-runs/, (route) => {
     const method = route.request().method();
-    const url = route.request().url();
-
-    if (url.includes("/api/agents/check")) {
-      return route.fallback();
-    }
-
-    if (method === "GET") {
-      // Export endpoint
-      if (url.includes("/export")) {
-        return route.fulfill({
-          status: 200,
-          contentType: "application/zip",
-          headers: {
-            "Content-Disposition": 'attachment; filename="agent.zip"',
-          },
-          body: Buffer.from("fake-zip-content"),
-        });
-      }
-      const agent = agents.find((a) => url.endsWith(`/api/agents/${a.name}`));
-      if (agent) {
-        return route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify(agent),
-        });
-      }
-    }
-
-    if (method === "PUT") {
+    if (method === "POST") {
       return route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ name: "updated-agent", description: "Updated" }),
+        body: JSON.stringify({
+          run_id: MOCK_RUN_ID,
+          status: "running",
+          workflow: "test-workflow",
+        }),
       });
     }
-
-    if (method === "DELETE") {
-      return route.fulfill({ status: 204 });
+    if (method === "GET") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          runs: Object.values(workflowRuns),
+          total: Object.keys(workflowRuns).length,
+          limit: 50,
+          offset: 0,
+        }),
+      });
     }
-
-    return route.fulfill({
-      status: 404,
-      contentType: "application/json",
-      body: JSON.stringify({ detail: "Agent not found" }),
-    });
+    return route.fallback();
   });
+
+  void page.route(
+    /\/api\/resources\/[^/?]+\/workflow-runs\/[^/?]+/,
+    (route) => {
+      const method = route.request().method();
+      const url = new URL(route.request().url());
+      const runId = url.pathname.split("/workflow-runs/")[1]!.split("/")[0]!;
+      const run = workflowRuns[runId];
+
+      if (
+        method === "GET" &&
+        !url.pathname.includes("/artifacts") &&
+        !url.pathname.includes("/record") &&
+        !url.pathname.includes("/events") &&
+        !url.pathname.includes("/commands")
+      ) {
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(
+            run ?? {
+              run_id: MOCK_RUN_ID,
+              workflow: "test-workflow",
+              status: "completed",
+              current_step: null,
+              error: null,
+              steps: {
+                step1: {
+                  status: "completed",
+                  output: "done",
+                  error: null,
+                  retries: 0,
+                  started_at: "2025-01-01T00:00:00Z",
+                  finished_at: "2025-01-01T00:00:01Z",
+                },
+              },
+            },
+          ),
+        });
+      }
+      return route.fallback();
+    },
+  );
+
+  // Canonical run artifacts list
+  void page.route(
+    /\/api\/resources\/[^/?]+\/workflow-runs\/[^/?]+\/artifacts/,
+    (route) => {
+      if (route.request().method() !== "GET") return route.fallback();
+      const url = new URL(route.request().url());
+      const runId = url.pathname.split("/workflow-runs/")[1]!.split("/")[0]!;
+      const run = workflowRuns[runId];
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          run_id: run?.run_id ?? MOCK_RUN_ID,
+          workflow: run?.workflow ?? "test-workflow",
+          artifacts: run?.artifacts ?? [],
+        }),
+      });
+    },
+  );
+
+  // Canonical run artifact content
+  void page.route(
+    /\/api\/resources\/[^/?]+\/workflow-runs\/[^/?]+\/artifacts\/content\?/,
+    (route) => {
+      if (route.request().method() !== "GET") return route.fallback();
+      const url = new URL(route.request().url());
+      const runId = url.pathname.split("/workflow-runs/")[1]!.split("/")[0]!;
+      const run = workflowRuns[runId];
+      const path = url.searchParams.get("path") ?? "";
+      const content = run?.artifactContents?.[path];
+      return route.fulfill({
+        status: 200,
+        contentType: contentTypeOfArtifact(path),
+        body: content ?? "",
+      });
+    },
+  );
+
+  // Canonical run record download
+  void page.route(
+    /\/api\/resources\/[^/?]+\/workflow-runs\/[^/?]+\/record/,
+    (route) => {
+      if (route.request().method() !== "GET") return route.fallback();
+      const url = new URL(route.request().url());
+      const runId = url.pathname.split("/workflow-runs/")[1]!.split("/")[0]!;
+      const run = workflowRuns[runId];
+      const format = url.searchParams.get("format") ?? "md";
+      const record = run?.record?.[format as "md" | "jsonl"];
+      return route.fulfill({
+        status: 200,
+        contentType:
+          format === "jsonl"
+            ? "application/x-ndjson"
+            : "text/markdown; charset=utf-8",
+        body: record ?? "",
+      });
+    },
+  );
+
+  // Canonical run events SSE stream
+  void page.route(
+    /\/api\/resources\/[^/?]+\/workflow-runs\/[^/?]+\/events/,
+    (route) => {
+      if (route.request().method() !== "GET") return route.fallback();
+      const url = new URL(route.request().url());
+      const runId = url.pathname.split("/workflow-runs/")[1]!.split("/")[0]!;
+      const run = workflowRuns[runId];
+      const events = run?.events ?? [];
+      const afterSeq = Number(url.searchParams.get("after_seq") ?? "0");
+      const pending = events.filter((e) => e.seq > afterSeq);
+      const body = pending
+        .map(
+          (e) =>
+            `id: ${e.seq}\nevent: ${e.type}\ndata: ${JSON.stringify(e.payload)}\n\n`,
+        )
+        .join("");
+      return route.fulfill({
+        status: 200,
+        contentType: "text/event-stream",
+        body,
+      });
+    },
+  );
+
+  // Canonical run commands (resume / cancel)
+  void page.route(
+    /\/api\/resources\/[^/?]+\/workflow-runs\/[^/?]+\/commands/,
+    (route) => {
+      if (route.request().method() !== "POST") return route.fallback();
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          command_id: "mock-command-id",
+          run_id: MOCK_RUN_ID,
+          accepted: true,
+        }),
+      });
+    },
+  );
 
   // ── Workflow CRUD + Run ─────────────────────────────────────────
 

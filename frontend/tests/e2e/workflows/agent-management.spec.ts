@@ -25,10 +25,10 @@ test.describe("Agent management", () => {
       mockLangGraphAPI(page, { agents: MOCK_AGENTS });
       await page.goto("/workspace/agents");
 
-      await expect(page.getByText("test-agent")).toBeVisible({
+      await expect(page.getByText("test-agent").first()).toBeVisible({
         timeout: 15_000,
       });
-      await expect(page.getByText("template-agent")).toBeVisible();
+      await expect(page.getByText("template-agent").first()).toBeVisible();
     });
 
     test("gallery shows New Agent and Import buttons", async ({ page }) => {
@@ -94,18 +94,6 @@ test.describe("Agent management", () => {
 
     test("name validation rejects duplicate names", async ({ page }) => {
       mockLangGraphAPI(page, { agents: MOCK_AGENTS });
-
-      // Intercept the agent name check endpoint directly
-      await page.route(/\/api\/agents\/check/, async (route) => {
-        const url = new URL(route.request().url());
-        const name = url.searchParams.get("name") ?? "";
-        const exists = MOCK_AGENTS.some((a) => a.name === name);
-        return route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify({ available: !exists, name }),
-        });
-      });
 
       await page.goto("/workspace/agents/new");
 

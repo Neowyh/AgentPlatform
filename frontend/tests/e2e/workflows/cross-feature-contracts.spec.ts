@@ -69,16 +69,22 @@ test("shared mock fixture preserves agent workflow memory and skill contracts", 
   });
 
   await page.goto("/workspace/agents");
-  await expect(page.getByText("contract-agent")).toBeVisible({
+  await expect(page.getByText("contract-agent").first()).toBeVisible({
     timeout: 15_000,
   });
-  await expect(page.getByText(CONTRACT_AGENT.description!)).toBeVisible();
+  await page.getByText("contract-agent").first().click();
+  await expect(page.getByText(CONTRACT_AGENT.description!)).toBeVisible({
+    timeout: 15_000,
+  });
 
   await page.goto("/workspace/workflows");
-  await expect(page.getByText("contract-workflow")).toBeVisible({
+  await expect(page.getByText("contract-workflow").first()).toBeVisible({
     timeout: 15_000,
   });
-  await expect(page.getByText(CONTRACT_WORKFLOW.description!)).toBeVisible();
+  await page.getByText("contract-workflow").first().click();
+  await expect(page.getByText(CONTRACT_WORKFLOW.description!)).toBeVisible({
+    timeout: 15_000,
+  });
 
   await page.goto("/workspace/chats/new");
   await openSettings(page);
@@ -88,8 +94,7 @@ test("shared mock fixture preserves agent workflow memory and skill contracts", 
   });
 
   await page.getByTestId("settings-tab-skills").click();
-  await expect(page.getByText("contract-skill")).toBeVisible({
+  await expect(page.getByText("contract-skill").first()).toBeVisible({
     timeout: 15_000,
   });
-  await expect(page.getByText(CONTRACT_SKILL.description!)).toBeVisible();
 });

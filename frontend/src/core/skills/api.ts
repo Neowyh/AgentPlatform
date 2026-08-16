@@ -1,19 +1,17 @@
-import { extractError, formatErrorMessage } from "@/core/api/errors";
+import { extractError } from "@/core/api/errors";
 import { fetch } from "@/core/api/fetcher";
 import { getBackendBaseURL } from "@/core/config";
 
 import type { Skill } from "./type";
 
-const RESOURCE_UUID_PATTERN = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
-
 export async function loadSkills(): Promise<Skill[]> {
-  const canonicalResponse = await fetch(
+  const response = await fetch(
     `${getBackendBaseURL()}/api/resources?type=skill&limit=200`,
   );
-  if (!canonicalResponse.ok) {
-    await extractError(canonicalResponse, "Failed to load canonical skills");
+  if (!response.ok) {
+    await extractError(response, "Failed to load canonical skills");
   }
-  const canonical = (await canonicalResponse.json()) as {
+  const canonical = (await response.json()) as {
     items: Array<{
       id: string;
       slug: string;
@@ -24,9 +22,8 @@ export async function loadSkills(): Promise<Skill[]> {
       system_owned: boolean;
       can_modify: boolean;
     }>;
-    mode?: "legacy" | "dual" | "canonical";
   };
-  const canonicalSkills = canonical.items.map(
+  return canonical.items.map(
     (resource): Skill => ({
       resource_id: resource.id,
       slug: resource.slug,
@@ -41,58 +38,17 @@ export async function loadSkills(): Promise<Skill[]> {
       department_id: resource.scope_department_id,
     }),
   );
-  if (canonical.mode === "canonical") return canonicalSkills;
-  const response = await fetch(`${getBackendBaseURL()}/api/skills`);
-  if (!response.ok) {
-    await extractError(response, "Failed to load skills");
-  }
-  const json = (await response.json()) as { skills: Skill[] };
-  if (canonical.mode === "legacy") return json.skills;
-  const canonicalKeys = new Set(
-    canonical.items.map((item) => `${item.slug}\u0000${item.owner_id}`),
-  );
-  const bundledSlugs = new Set(
-    canonical.items
-      .filter((item) => item.system_owned)
-      .map((item) => item.slug),
-  );
-  const legacy = json.skills.filter((item) => {
-    const slug = item.slug ?? item.name;
-    return (
-      !bundledSlugs.has(slug) &&
-      !canonicalKeys.has(`${slug}\u0000${item.owner_id ?? ""}`)
-    );
-  });
-  return [...legacy, ...canonicalSkills];
 }
 
 export async function enableSkill(
   skillName: string,
   enabled: boolean,
 ): Promise<void> {
-  if (RESOURCE_UUID_PATTERN.test(skillName)) {
-    throw new Error(
-      "Skill enable/disable is managed by the resource lifecycle in canonical mode; use /api/resources/{id}/archive or /api/resources/{id}/suspend",
-    );
-  }
-  const response = await fetch(
-    `${getBackendBaseURL()}/api/skills/${skillName}`,
-    {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        enabled,
-      }),
-    },
+  void skillName;
+  void enabled;
+  throw new Error(
+    "Skill enable/disable is managed by the resource lifecycle in canonical mode; use /api/resources/{id}/archive or /api/resources/{id}/suspend",
   );
-  if (!response.ok) {
-    await extractError(
-      response,
-      `Failed to ${enabled ? "enable" : "disable"} skill`,
-    );
-  }
 }
 
 export interface SkillApplicationResponse {
@@ -160,34 +116,11 @@ export interface InstallSkillResponse {
 export async function installSkill(
   request: InstallSkillRequest,
 ): Promise<InstallSkillResponse> {
-  const response = await fetch(`${getBackendBaseURL()}/api/skills/install`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(request),
-  });
-
-  if (response.status === 410) {
-    return {
-      success: false,
-      skill_name: "",
-      message:
-        "Skill installation is not available in canonical mode; use resource workflows to create a Skill",
-    };
-  }
-
-  if (!response.ok) {
-    const errorMessage = await formatErrorMessage(
-      response,
-      "Failed to install skill",
-    );
-    return {
-      success: false,
-      skill_name: "",
-      message: errorMessage,
-    };
-  }
-
-  return response.json();
+  void request;
+  return {
+    success: false,
+    skill_name: "",
+    message:
+      "Skill installation is not available in canonical mode; use resource workflows to create a Skill",
+  };
 }

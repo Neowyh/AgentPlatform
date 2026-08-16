@@ -11,8 +11,6 @@ import type {
   WorkflowSummary,
 } from "./types";
 
-const RESOURCE_UUID_PATTERN = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
-
 interface CanonicalWorkflowResource {
   id: string;
   type: "workflow";
@@ -83,10 +81,6 @@ function fromCanonicalPublished(payload: {
   };
 }
 
-function isCanonicalIdentity(value: string): boolean {
-  return RESOURCE_UUID_PATTERN.test(value);
-}
-
 async function getCanonicalWorkflow(
   resourceId: string,
 ): Promise<WorkflowDetail> {
@@ -110,71 +104,22 @@ export async function listWorkflows(): Promise<{
   workflows: WorkflowSummary[];
   total: number;
 }> {
-  const canonicalRes = await fetch(
+  const res = await fetch(
     `${getBackendBaseURL()}/api/resources?type=workflow&limit=200`,
   );
-  if (!canonicalRes.ok)
-    return extractError(canonicalRes, "Failed to load canonical workflows");
-  const canonical = (await canonicalRes.json()) as {
+  if (!res.ok) return extractError(res, "Failed to load workflows");
+  const canonical = (await res.json()) as {
     items: CanonicalWorkflowResource[];
     total: number;
-    mode?: "legacy" | "dual" | "canonical";
   };
-  if (canonical.mode === "canonical") {
-    return {
-      workflows: canonical.items.map(fromCanonicalResource),
-      total: canonical.total,
-    };
-  }
-  const res = await fetch(`${getBackendBaseURL()}/api/workflows`);
-  if (!res.ok) return extractError(res, "Failed to load workflows");
-  const legacy = (await res.json()) as {
-    workflows: WorkflowSummary[];
-    total: number;
-  };
-  if (canonical.mode === "legacy") return legacy;
-  const canonicalKeys = new Set(
-    canonical.items.map((item) => `${item.slug}\u0000${item.owner_id}`),
-  );
-  const bundledSlugs = new Set(
-    canonical.items
-      .filter((item) => item.system_owned)
-      .map((item) => item.slug),
-  );
-  const legacyWorkflows = legacy.workflows.filter((item) => {
-    const slug = item.slug ?? item.name;
-    return (
-      !bundledSlugs.has(slug) &&
-      !canonicalKeys.has(`${slug}\u0000${item.owner_id ?? ""}`)
-    );
-  });
   return {
-    workflows: [
-      ...legacyWorkflows,
-      ...canonical.items.map(fromCanonicalResource),
-    ],
-    total: legacyWorkflows.length + canonical.total,
+    workflows: canonical.items.map(fromCanonicalResource),
+    total: canonical.total,
   };
 }
 
 export async function getWorkflow(name: string): Promise<WorkflowDetail> {
-  if (isCanonicalIdentity(name)) {
-    return getCanonicalWorkflow(name);
-  }
-  const res = await fetch(
-    `${getBackendBaseURL()}/api/workflows/${encodeURIComponent(name)}`,
-  );
-  if (!res.ok && (res.status === 404 || res.status === 410)) {
-    const aliasRes = await fetch(
-      `${getBackendBaseURL()}/api/resources/aliases/workflow/${encodeURIComponent(name)}`,
-    );
-    if (!aliasRes.ok)
-      return extractError(aliasRes, `Workflow '${name}' not found`);
-    const resource = (await aliasRes.json()) as CanonicalWorkflowResource;
-    return getCanonicalWorkflow(resource.id);
-  }
-  if (!res.ok) return extractError(res, `Workflow '${name}' not found`);
-  return res.json() as Promise<WorkflowDetail>;
+  return getCanonicalWorkflow(name);
 }
 
 export async function createWorkflow(
@@ -238,72 +183,50 @@ export async function updateWorkflow(
   name: string,
   data: Record<string, unknown>,
 ): Promise<WorkflowSummary | void> {
-  if (isCanonicalIdentity(name)) {
-    const draftRes = await fetch(
-      `${getBackendBaseURL()}/api/resources/${encodeURIComponent(name)}/workflow-draft`,
-      {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          content: data.yaml_content,
-          expected_revision: data.draft_revision,
-        }),
-      },
-    );
-    if (!draftRes.ok)
-      return extractError(draftRes, "Failed to save Workflow draft");
-    const draft = (await draftRes.json()) as { revision: number };
-    const publishRes = await fetch(
-      `${getBackendBaseURL()}/api/resources/${encodeURIComponent(name)}/publish`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          expected_draft_revision: draft.revision,
-          scan_result: {},
-        }),
-      },
-    );
-    if (!publishRes.ok)
-      return extractError(publishRes, "Failed to publish Workflow");
-    await publishRes.json();
-    return;
-  }
-  const res = await fetch(
-    `${getBackendBaseURL()}/api/workflows/${encodeURIComponent(name)}`,
+  const draftRes = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(name)}/workflow-draft`,
     {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
+      body: JSON.stringify({
+        content: data.yaml_content,
+        expected_revision: data.draft_revision,
+      }),
     },
   );
-  if (!res.ok) return extractError(res, "Failed to update workflow");
-  return res.json() as Promise<WorkflowSummary>;
+  if (!draftRes.ok)
+    return extractError(draftRes, "Failed to save Workflow draft");
+  const draft = (await draftRes.json()) as { revision: number };
+  const publishRes = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(name)}/publish`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        expected_draft_revision: draft.revision,
+        scan_result: {},
+      }),
+    },
+  );
+  if (!publishRes.ok)
+    return extractError(publishRes, "Failed to publish Workflow");
+  await publishRes.json();
+  return;
 }
 
 export async function deleteWorkflow(name: string): Promise<void> {
-  if (isCanonicalIdentity(name)) {
-    const res = await fetch(
-      `${getBackendBaseURL()}/api/resources/${encodeURIComponent(name)}/archive`,
-      { method: "POST" },
-    );
-    if (!res.ok) return extractError(res, "Failed to archive Workflow");
-    return;
-  }
   const res = await fetch(
-    `${getBackendBaseURL()}/api/workflows/${encodeURIComponent(name)}`,
-    { method: "DELETE" },
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(name)}/archive`,
+    { method: "POST" },
   );
-  if (!res.ok) return extractError(res, "Failed to delete workflow");
+  if (!res.ok) return extractError(res, "Failed to archive Workflow");
 }
 
 export async function runWorkflow(
   name: string,
   inputs: Record<string, unknown>,
 ): Promise<WorkflowRunResult> {
-  const path = isCanonicalIdentity(name)
-    ? `/api/resources/${encodeURIComponent(name)}/workflow-runs`
-    : `/api/workflows/${encodeURIComponent(name)}/run`;
+  const path = `/api/resources/${encodeURIComponent(name)}/workflow-runs`;
   const res = await fetch(`${getBackendBaseURL()}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -318,10 +241,9 @@ export async function getRunStatus(
   name: string,
   runId: string,
 ): Promise<RunStatus> {
-  const path = isCanonicalIdentity(name)
-    ? `/api/resources/${encodeURIComponent(name)}/workflow-runs/${encodeURIComponent(runId)}`
-    : `/api/workflows/${encodeURIComponent(name)}/runs/${encodeURIComponent(runId)}`;
-  const res = await fetch(`${getBackendBaseURL()}${path}`);
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(name)}/workflow-runs/${encodeURIComponent(runId)}`,
+  );
   if (!res.ok) return extractError(res, "Failed to get run status");
   return res.json() as Promise<RunStatus>;
 }
@@ -329,10 +251,9 @@ export async function getRunStatus(
 export async function listWorkflowRuns(
   name: string,
 ): Promise<WorkflowRunHistory> {
-  const path = isCanonicalIdentity(name)
-    ? `/api/resources/${encodeURIComponent(name)}/workflow-runs`
-    : `/api/workflows/${encodeURIComponent(name)}/runs`;
-  const res = await fetch(`${getBackendBaseURL()}${path}`);
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(name)}/workflow-runs`,
+  );
   if (!res.ok) return extractError(res, "Failed to load workflow runs");
   return res.json() as Promise<WorkflowRunHistory>;
 }
@@ -341,11 +262,8 @@ export async function listRunArtifacts(
   name: string,
   runId: string,
 ): Promise<{ run_id: string; workflow: string; artifacts: RunArtifact[] }> {
-  const base = isCanonicalIdentity(name)
-    ? `/api/resources/${encodeURIComponent(name)}/workflow-runs`
-    : `/api/workflows/${encodeURIComponent(name)}/runs`;
   const res = await fetch(
-    `${getBackendBaseURL()}${base}/${encodeURIComponent(runId)}/artifacts`,
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(name)}/workflow-runs/${encodeURIComponent(runId)}/artifacts`,
   );
   if (!res.ok) return extractError(res, "Failed to load run artifacts");
   return res.json() as Promise<{
@@ -360,11 +278,8 @@ export async function getRunArtifactContent(
   runId: string,
   path: string,
 ): Promise<string> {
-  const base = isCanonicalIdentity(name)
-    ? `/api/resources/${encodeURIComponent(name)}/workflow-runs`
-    : `/api/workflows/${encodeURIComponent(name)}/runs`;
   const res = await fetch(
-    `${getBackendBaseURL()}${base}/${encodeURIComponent(runId)}/artifacts/content?path=${encodeURIComponent(path)}`,
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(name)}/workflow-runs/${encodeURIComponent(runId)}/artifacts/content?path=${encodeURIComponent(path)}`,
   );
   if (!res.ok) return extractError(res, "Failed to load artifact content");
   return res.text();
@@ -376,10 +291,7 @@ export function workflowEventsUrl(
   afterSeq = 0,
 ): string {
   const params = new URLSearchParams({ after_seq: String(afterSeq) });
-  const base = isCanonicalIdentity(name)
-    ? `/api/resources/${encodeURIComponent(name)}/workflow-runs`
-    : `/api/workflows/${encodeURIComponent(name)}/runs`;
-  return `${getBackendBaseURL()}${base}/${encodeURIComponent(runId)}/events?${params}`;
+  return `${getBackendBaseURL()}/api/resources/${encodeURIComponent(name)}/workflow-runs/${encodeURIComponent(runId)}/events?${params}`;
 }
 
 export function workflowRunArtifactDownloadUrl(
@@ -387,10 +299,7 @@ export function workflowRunArtifactDownloadUrl(
   runId: string,
   path: string,
 ): string {
-  const base = isCanonicalIdentity(name)
-    ? `/api/resources/${encodeURIComponent(name)}/workflow-runs`
-    : `/api/workflows/${encodeURIComponent(name)}/runs`;
-  return `${getBackendBaseURL()}${base}/${encodeURIComponent(runId)}/artifacts/content?path=${encodeURIComponent(path)}`;
+  return `${getBackendBaseURL()}/api/resources/${encodeURIComponent(name)}/workflow-runs/${encodeURIComponent(runId)}/artifacts/content?path=${encodeURIComponent(path)}`;
 }
 
 export function workflowRunRecordDownloadUrl(
@@ -398,10 +307,7 @@ export function workflowRunRecordDownloadUrl(
   runId: string,
   format: "jsonl" | "md",
 ): string {
-  const base = isCanonicalIdentity(name)
-    ? `/api/resources/${encodeURIComponent(name)}/workflow-runs`
-    : `/api/workflows/${encodeURIComponent(name)}/runs`;
-  return `${getBackendBaseURL()}${base}/${encodeURIComponent(runId)}/record?format=${format}`;
+  return `${getBackendBaseURL()}/api/resources/${encodeURIComponent(name)}/workflow-runs/${encodeURIComponent(runId)}/record?format=${format}`;
 }
 
 export async function submitWorkflowCommand(
@@ -413,11 +319,8 @@ export async function submitWorkflowCommand(
     payload?: Record<string, unknown>;
   },
 ): Promise<{ command_id: string; run_id: string; accepted: boolean }> {
-  const base = isCanonicalIdentity(name)
-    ? `/api/resources/${encodeURIComponent(name)}/workflow-runs`
-    : `/api/workflows/${encodeURIComponent(name)}/runs`;
   const res = await fetch(
-    `${getBackendBaseURL()}${base}/${encodeURIComponent(runId)}/commands`,
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(name)}/workflow-runs/${encodeURIComponent(runId)}/commands`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -436,21 +339,10 @@ export async function toggleWorkflowFavorite(
   name: string,
   isFavorited = false,
 ): Promise<{ success: boolean; is_favorited: boolean }> {
-  if (isCanonicalIdentity(name)) {
-    const res = await fetch(
-      `${getBackendBaseURL()}/api/resources/${encodeURIComponent(name)}/favorite`,
-      { method: isFavorited ? "DELETE" : "POST" },
-    );
-    if (!res.ok) return extractError(res, "Failed to update favorite");
-    return { success: true, is_favorited: !isFavorited };
-  }
   const res = await fetch(
-    `${getBackendBaseURL()}/api/workflows/${encodeURIComponent(name)}/favorite`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-    },
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(name)}/favorite`,
+    { method: isFavorited ? "DELETE" : "POST" },
   );
-  if (!res.ok) return extractError(res, "Failed to toggle favorite");
-  return res.json() as Promise<{ success: boolean; is_favorited: boolean }>;
+  if (!res.ok) return extractError(res, "Failed to update favorite");
+  return { success: true, is_favorited: !isFavorited };
 }

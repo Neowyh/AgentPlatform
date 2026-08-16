@@ -30,7 +30,6 @@ import {
   importAgent,
   toggleAgentFavorite,
   AgentNameCheckError,
-  AgentsApiDisabledError,
 } from "@/core/agents/api";
 import { extractError, parseErrorDetail } from "@/core/api/errors";
 import { fetch } from "@/core/api/fetcher";
@@ -40,37 +39,13 @@ const mockExtractError = extractError as ReturnType<typeof vi.fn>;
 const mockParseErrorDetail = parseErrorDetail as ReturnType<typeof vi.fn>;
 
 afterEach(() => {
-  vi.clearAllMocks();
+  vi.resetAllMocks();
 });
 
 // ── listAgents ───────────────────────────────────────────────────────────
 
 describe("listAgents", () => {
-  test("returns agents array from API", async () => {
-    const agents = [
-      {
-        name: "agent1",
-        description: "Test agent",
-        model: "gpt-4",
-        visibility: "public",
-      },
-    ];
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: () => Promise.resolve({ items: [], total: 0, mode: "dual" }),
-    });
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: () => Promise.resolve({ agents }),
-    });
-
-    const result = await listAgents();
-
-    expect(mockFetch).toHaveBeenCalledWith("http://localhost:8000/api/agents");
-    expect(result).toEqual(agents);
-  });
-
-  test("merges visible canonical Agents and keeps their UUID as route identity", async () => {
+  test("returns canonical Agents mapped to route identities", async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: () =>
@@ -84,17 +59,22 @@ describe("listAgents", () => {
               owner_id: "owner",
               visibility: "public",
               scope_department_id: null,
+              latest_version: 1,
+              draft_revision: 1,
+              can_modify: false,
             },
           ],
           total: 1,
         }),
     });
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: () => Promise.resolve({ agents: [] }),
-    });
 
-    await expect(listAgents()).resolves.toEqual([
+    const result = await listAgents();
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(mockFetch).toHaveBeenCalledWith(
+      "http://localhost:8000/api/resources?type=agent&limit=200",
+    );
+    expect(result).toEqual([
       expect.objectContaining({
         resource_id: "11111111-1111-1111-1111-111111111111",
         name: "Shared Agent",
@@ -119,10 +99,10 @@ describe("listAgents", () => {
     );
   });
 
-  test("canonical mode never reads the legacy Agent list", async () => {
+  test("lists canonical Agents only, never reads the legacy Agent list", async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
-      json: () => Promise.resolve({ items: [], total: 0, mode: "canonical" }),
+      json: () => Promise.resolve({ items: [], total: 0 }),
     });
 
     await expect(listAgents()).resolves.toEqual([]);
@@ -176,109 +156,11 @@ describe("listAgents", () => {
 // ── getAgent ─────────────────────────────────────────────────────────────
 
 describe("getAgent", () => {
-  test("returns single agent by name", async () => {
-    const agent = {
-      name: "agent1",
-      description: "Test",
-      model: null,
-      visibility: "public",
-    };
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve(agent),
-    });
-
-    const result = await getAgent("agent1");
-
-    expect(mockFetch).toHaveBeenCalledWith(
-      "http://localhost:8000/api/agents/agent1",
-    );
-    expect(result).toEqual(agent);
-  });
-
   test("calls extractError on failure", async () => {
     mockFetch.mockResolvedValue({ ok: false });
     mockExtractError.mockRejectedValue(new Error("Agent not found"));
 
     await expect(getAgent("nonexistent")).rejects.toThrow("Agent not found");
-  });
-
-  test("resolves a migrated legacy slug to its canonical UUID", async () => {
-    const resourceId = "11111111-1111-1111-1111-111111111111";
-    const resource = {
-      id: resourceId,
-      type: "agent",
-      slug: "migrated-agent",
-      display_name: "Migrated Agent",
-      owner_id: "owner",
-      visibility: "public",
-      scope_department_id: null,
-      latest_version: 1,
-      draft_revision: 1,
-      can_modify: false,
-    };
-    mockFetch
-      .mockResolvedValueOnce({ ok: false, status: 404 })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve(resource),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            resource,
-            content: { config: {}, soul: "" },
-          }),
-      });
-
-    await expect(getAgent("migrated-agent")).resolves.toMatchObject({
-      resource_id: resourceId,
-    });
-    expect(mockFetch.mock.calls.map((call) => call[0])).toEqual([
-      "http://localhost:8000/api/agents/migrated-agent",
-      "http://localhost:8000/api/resources/aliases/agent/migrated-agent",
-      `http://localhost:8000/api/resources/${resourceId}/published`,
-    ]);
-  });
-
-  test("falls back to the canonical alias when legacy Agent details are gone (410)", async () => {
-    const resourceId = "11111111-1111-1111-1111-111111111111";
-    const resource = {
-      id: resourceId,
-      type: "agent",
-      slug: "migrated-agent",
-      display_name: "Migrated Agent",
-      owner_id: "owner",
-      visibility: "public",
-      scope_department_id: null,
-      latest_version: 1,
-      draft_revision: 1,
-      can_modify: false,
-    };
-    mockFetch
-      .mockResolvedValueOnce({ ok: false, status: 410 })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve(resource),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            resource,
-            content: { config: {}, soul: "" },
-          }),
-      });
-
-    await expect(getAgent("migrated-agent")).resolves.toMatchObject({
-      resource_id: resourceId,
-    });
-    expect(mockFetch.mock.calls.map((call) => call[0])).toEqual([
-      "http://localhost:8000/api/agents/migrated-agent",
-      "http://localhost:8000/api/resources/aliases/agent/migrated-agent",
-      `http://localhost:8000/api/resources/${resourceId}/published`,
-    ]);
   });
 });
 
@@ -389,27 +271,6 @@ describe("createAgent", () => {
 // ── updateAgent ──────────────────────────────────────────────────────────
 
 describe("updateAgent", () => {
-  test("sends PUT request with updated data", async () => {
-    const agent = {
-      name: "agent1",
-      description: "Updated",
-      model: "gpt-4",
-      visibility: "public",
-    };
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve(agent),
-    });
-
-    const result = await updateAgent("agent1", { description: "Updated" });
-
-    expect(mockFetch).toHaveBeenCalledWith(
-      "http://localhost:8000/api/agents/agent1",
-      expect.objectContaining({ method: "PUT" }),
-    );
-    expect(result).toEqual(agent);
-  });
-
   test("calls extractError on failure", async () => {
     mockFetch.mockResolvedValue({ ok: false });
     mockExtractError.mockRejectedValue(new Error("Failed to update agent"));
@@ -457,17 +318,6 @@ describe("updateAgent", () => {
 // ── deleteAgent ──────────────────────────────────────────────────────────
 
 describe("deleteAgent", () => {
-  test("sends DELETE request", async () => {
-    mockFetch.mockResolvedValue({ ok: true });
-
-    await deleteAgent("agent1");
-
-    expect(mockFetch).toHaveBeenCalledWith(
-      "http://localhost:8000/api/agents/agent1",
-      expect.objectContaining({ method: "DELETE" }),
-    );
-  });
-
   test("calls extractError on failure", async () => {
     mockFetch.mockResolvedValue({ ok: false });
     mockExtractError.mockRejectedValue(new Error("Failed to delete agent"));
@@ -491,22 +341,6 @@ describe("deleteAgent", () => {
 });
 
 describe("toggleAgentFavorite", () => {
-  test("posts the agent name and returns favorite state", async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ success: true, is_favorited: true }),
-    });
-
-    await expect(toggleAgentFavorite("agent one")).resolves.toEqual({
-      success: true,
-      is_favorited: true,
-    });
-    expect(mockFetch).toHaveBeenCalledWith(
-      "http://localhost:8000/api/agents/agent%20one/favorite",
-      expect.objectContaining({ method: "POST" }),
-    );
-  });
-
   test("uses extractError when toggling favorite fails", async () => {
     mockFetch.mockResolvedValue({ ok: false });
     mockExtractError.mockRejectedValue(new Error("favorite failed"));
@@ -534,21 +368,6 @@ describe("toggleAgentFavorite", () => {
 // ── checkAgentName ───────────────────────────────────────────────────────
 
 describe("checkAgentName", () => {
-  test("returns availability check result", async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ available: true, name: "my-agent" }),
-    });
-
-    const result = await checkAgentName("my-agent");
-
-    expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining("/api/agents/check?name="),
-    );
-    expect(result.available).toBe(true);
-    expect(result.name).toBe("my-agent");
-  });
-
   test("throws AgentNameCheckError on network failure", async () => {
     mockFetch.mockRejectedValue(new Error("Network error"));
 
@@ -591,28 +410,6 @@ describe("checkAgentName", () => {
     await expect(checkAgentName("test")).rejects.toThrow(AgentNameCheckError);
   });
 
-  test("throws AgentsApiDisabledError when API is disabled", async () => {
-    mockFetch.mockResolvedValue({ ok: false, status: 403 });
-    mockParseErrorDetail.mockResolvedValue({
-      detail: { code: "AGENTS_API_DISABLED" },
-    });
-
-    await expect(checkAgentName("test")).rejects.toThrow(
-      AgentsApiDisabledError,
-    );
-  });
-
-  test("throws AgentsApiDisabledError with legacy string detail", async () => {
-    mockFetch.mockResolvedValue({ ok: false, status: 403 });
-    mockParseErrorDetail.mockResolvedValue({
-      detail: "agents_api.enabled must be true",
-    });
-
-    await expect(checkAgentName("test")).rejects.toThrow(
-      AgentsApiDisabledError,
-    );
-  });
-
   test("throws AgentNameCheckError with request_failed for other errors", async () => {
     mockFetch.mockResolvedValue({
       ok: false,
@@ -632,58 +429,52 @@ describe("checkAgentName", () => {
     }
   });
 
-  test("reports a canonical alias hit as unavailable when the legacy check is disabled (410)", async () => {
-    mockFetch
-      .mockResolvedValueOnce({ ok: false, status: 410 })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            id: "11111111-1111-1111-1111-111111111111",
-            type: "agent",
-            slug: "existing-agent",
-            display_name: "existing-agent",
-            owner_id: "owner",
-            visibility: "private",
-            scope_department_id: null,
-            latest_version: 1,
-            draft_revision: 1,
-            system_owned: false,
-            can_modify: true,
-          }),
-      });
+  test("reports an alias hit as unavailable", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          id: "11111111-1111-1111-1111-111111111111",
+          type: "agent",
+          slug: "existing-agent",
+          display_name: "existing-agent",
+          owner_id: "owner",
+          visibility: "private",
+          scope_department_id: null,
+          latest_version: 1,
+          draft_revision: 1,
+          system_owned: false,
+          can_modify: true,
+        }),
+    });
 
     const result = await checkAgentName("existing-agent");
 
     expect(result).toEqual({ available: false, name: "existing-agent" });
     expect(mockFetch).toHaveBeenNthCalledWith(
-      2,
+      1,
       "http://localhost:8000/api/resources/aliases/agent/existing-agent",
     );
   });
 
-  test("reports a canonical alias miss as available when the legacy check is disabled (410)", async () => {
-    mockFetch
-      .mockResolvedValueOnce({ ok: false, status: 410 })
-      .mockResolvedValueOnce({ ok: false, status: 404 });
+  test("reports an alias miss as available", async () => {
+    mockFetch.mockResolvedValueOnce({ ok: false, status: 404 });
 
     const result = await checkAgentName("fresh-agent");
 
     expect(result).toEqual({ available: true, name: "fresh-agent" });
     expect(mockFetch).toHaveBeenNthCalledWith(
-      2,
+      1,
       "http://localhost:8000/api/resources/aliases/agent/fresh-agent",
     );
   });
 
-  test("throws AgentNameCheckError when the canonical alias lookup fails", async () => {
-    mockFetch
-      .mockResolvedValueOnce({ ok: false, status: 410 })
-      .mockResolvedValueOnce({
-        ok: false,
-        status: 500,
-        statusText: "Server Error",
-      });
+  test("throws AgentNameCheckError when the alias lookup fails", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      statusText: "Server Error",
+    });
     mockParseErrorDetail.mockResolvedValue({ detail: undefined });
 
     await expect(checkAgentName("test")).rejects.toThrow(AgentNameCheckError);
@@ -693,22 +484,6 @@ describe("checkAgentName", () => {
 // ── exportAgent ──────────────────────────────────────────────────────────
 
 describe("exportAgent", () => {
-  test("sends POST request and returns blob", async () => {
-    const mockBlob = new Blob(["exported data"]);
-    mockFetch.mockResolvedValue({
-      ok: true,
-      blob: () => Promise.resolve(mockBlob),
-    });
-
-    const result = await exportAgent("agent1");
-
-    expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining("/api/agents/agent1/export"),
-      expect.objectContaining({ method: "POST" }),
-    );
-    expect(result).toBe(mockBlob);
-  });
-
   test("calls extractError on failure", async () => {
     mockFetch.mockResolvedValue({ ok: false });
     mockExtractError.mockRejectedValue(new Error("Failed to export agent"));
@@ -779,147 +554,6 @@ describe("importAgent", () => {
     );
     expect(result).toMatchObject({ resource_id: resourceId, slug: "reviewer" });
   });
-
-  test("reads file, parses JSON, and sends POST request", async () => {
-    const importData = { name: "imported-agent", description: "Imported" };
-    const mockFile = new File([JSON.stringify(importData)], "agent.json", {
-      type: "application/json",
-    });
-
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve(importData),
-    });
-
-    const result = await importAgent(mockFile);
-
-    expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining("/api/agents/import"),
-      expect.objectContaining({
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(importData),
-      }),
-    );
-    expect(result).toEqual(importData);
-  });
-
-  test("throws error for invalid JSON file", async () => {
-    const mockFile = new File(["not json"], "bad.json", {
-      type: "application/json",
-    });
-
-    await expect(importAgent(mockFile)).rejects.toThrow(
-      "Invalid import file: must be valid JSON",
-    );
-  });
-
-  test("throws AgentsApiDisabledError when API is disabled", async () => {
-    const importData = { name: "agent", description: "" };
-    const mockFile = new File([JSON.stringify(importData)], "agent.json", {
-      type: "application/json",
-    });
-
-    mockFetch.mockResolvedValue({ ok: false, status: 403 });
-    mockParseErrorDetail.mockResolvedValue({
-      detail: { code: "AGENTS_API_DISABLED" },
-    });
-
-    await expect(importAgent(mockFile)).rejects.toThrow(AgentsApiDisabledError);
-  });
-
-  test("creates a canonical Agent from a JSON bundle when the legacy import is disabled (410)", async () => {
-    const importData = {
-      name: "imported-agent",
-      config: { description: "Imported", model: "gpt-4o" },
-      soul: "SOUL",
-      visibility: "private",
-    };
-    const mockFile = new File([JSON.stringify(importData)], "agent.json", {
-      type: "application/json",
-    });
-    const resourceId = "22222222-2222-2222-2222-222222222222";
-    const resource = {
-      id: resourceId,
-      type: "agent",
-      slug: "imported-agent",
-      display_name: "imported-agent",
-      owner_id: "owner",
-      visibility: "private",
-      scope_department_id: null,
-      latest_version: 1,
-      draft_revision: 1,
-      system_owned: false,
-      can_modify: true,
-    };
-
-    mockFetch
-      .mockResolvedValueOnce({ ok: false, status: 410 })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve(resource),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({ revision: 1 }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({ version: { version: 1 } }),
-      });
-
-    const result = await importAgent(mockFile);
-
-    expect(mockFetch).toHaveBeenNthCalledWith(
-      1,
-      expect.stringContaining("/api/agents/import"),
-      expect.objectContaining({ method: "POST" }),
-    );
-    expect(mockFetch).toHaveBeenNthCalledWith(
-      2,
-      "http://localhost:8000/api/resources",
-      expect.objectContaining({ method: "POST" }),
-    );
-    expect(result).toMatchObject({
-      resource_id: resourceId,
-      slug: "imported-agent",
-      name: "imported-agent",
-    });
-  });
-
-  test("throws when the canonical creation path also fails after a 410", async () => {
-    const importData = { name: "imported-agent" };
-    const mockFile = new File([JSON.stringify(importData)], "agent.json", {
-      type: "application/json",
-    });
-
-    mockFetch
-      .mockResolvedValueOnce({ ok: false, status: 410 })
-      .mockResolvedValueOnce({ ok: false, status: 500 });
-    mockExtractError.mockRejectedValue(
-      new Error("Failed to create Agent resource"),
-    );
-
-    await expect(importAgent(mockFile)).rejects.toThrow(
-      "Failed to create Agent resource",
-    );
-  });
-
-  test("throws generic error on other import failures", async () => {
-    const importData = { name: "agent" };
-    const mockFile = new File([JSON.stringify(importData)], "agent.json", {
-      type: "application/json",
-    });
-
-    mockFetch.mockResolvedValue({
-      ok: false,
-      status: 500,
-      statusText: "Server Error",
-    });
-    mockParseErrorDetail.mockResolvedValue({ detail: undefined });
-
-    await expect(importAgent(mockFile)).rejects.toThrow();
-  });
 });
 
 // ── AgentNameCheckError ──────────────────────────────────────────────────
@@ -937,21 +571,6 @@ describe("AgentNameCheckError", () => {
 
   test("is instance of Error", () => {
     const error = new AgentNameCheckError("msg", "request_failed");
-    expect(error).toBeInstanceOf(Error);
-  });
-});
-
-// ── AgentsApiDisabledError ───────────────────────────────────────────────
-
-describe("AgentsApiDisabledError", () => {
-  test("has correct name and message", () => {
-    const error = new AgentsApiDisabledError("disabled");
-    expect(error.name).toBe("AgentsApiDisabledError");
-    expect(error.message).toBe("disabled");
-  });
-
-  test("is instance of Error", () => {
-    const error = new AgentsApiDisabledError("msg");
     expect(error).toBeInstanceOf(Error);
   });
 });

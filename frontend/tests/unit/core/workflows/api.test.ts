@@ -57,22 +57,29 @@ const definition = {
 };
 
 describe("canonical Workflow API facade", () => {
-  afterEach(() => vi.clearAllMocks());
+  afterEach(() => vi.resetAllMocks());
 
-  test("merges visible canonical Workflows and preserves UUID routing", async () => {
-    mockFetch
-      .mockResolvedValueOnce(response({ items: [resource], total: 1 }))
-      .mockResolvedValueOnce(response({ workflows: [], total: 0 }));
+  test("lists canonical Workflows only", async () => {
+    mockFetch.mockResolvedValueOnce(response({ items: [resource], total: 1 }));
 
     const result = await listWorkflows();
 
-    expect(result.workflows[0]).toMatchObject({
-      resource_id: resourceId,
-      slug: "review-flow",
-      name: "Review Flow",
-      version: "2",
-      read_only: false,
-      is_favorited: true,
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(mockFetch).toHaveBeenCalledWith(
+      "http://localhost:8000/api/resources?type=workflow&limit=200",
+    );
+    expect(result).toEqual({
+      workflows: [
+        expect.objectContaining({
+          resource_id: resourceId,
+          slug: "review-flow",
+          name: "Review Flow",
+          version: "2",
+          read_only: false,
+          is_favorited: true,
+        }),
+      ],
+      total: 1,
     });
   });
 
@@ -98,42 +105,6 @@ describe("canonical Workflow API facade", () => {
       read_only: false,
       yaml_content: "schema_version: 2\nname: review-flow\n",
     });
-  });
-
-  test("resolves migrated Workflow slugs through the deterministic alias endpoint", async () => {
-    mockFetch
-      .mockResolvedValueOnce({ ok: false, status: 404 })
-      .mockResolvedValueOnce(response(resource))
-      .mockResolvedValueOnce(
-        response({ resource, version: { version: 2 }, content: definition }),
-      );
-
-    await expect(getWorkflow("review-flow")).resolves.toMatchObject({
-      resource_id: resourceId,
-    });
-    expect(mockFetch.mock.calls.map((call) => call[0])).toEqual([
-      "http://localhost:8000/api/workflows/review-flow",
-      "http://localhost:8000/api/resources/aliases/workflow/review-flow",
-      `http://localhost:8000/api/resources/${resourceId}/published`,
-    ]);
-  });
-
-  test("falls back to the canonical alias when legacy Workflow details are gone (410)", async () => {
-    mockFetch
-      .mockResolvedValueOnce({ ok: false, status: 410 })
-      .mockResolvedValueOnce(response(resource))
-      .mockResolvedValueOnce(
-        response({ resource, version: { version: 2 }, content: definition }),
-      );
-
-    await expect(getWorkflow("review-flow")).resolves.toMatchObject({
-      resource_id: resourceId,
-    });
-    expect(mockFetch.mock.calls.map((call) => call[0])).toEqual([
-      "http://localhost:8000/api/workflows/review-flow",
-      "http://localhost:8000/api/resources/aliases/workflow/review-flow",
-      `http://localhost:8000/api/resources/${resourceId}/published`,
-    ]);
   });
 
   test("creates new Workflows as private canonical resources and publishes v1", async () => {

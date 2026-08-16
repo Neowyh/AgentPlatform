@@ -140,7 +140,7 @@ test.describe("Workflow run detail", () => {
 
     const commandResponse = page.waitForResponse(
       (res) =>
-        res.url().includes("/runs/run-2/commands") &&
+        res.url().includes("/workflow-runs/run-2/commands") &&
         res.request().method() === "POST",
     );
     await page.getByRole("button", { name: "Resume execution" }).click();
@@ -158,7 +158,7 @@ test.describe("Workflow run detail", () => {
 
     const recordResponse = page.waitForResponse(
       (res) =>
-        res.url().includes("/runs/run-1/record?format=md") &&
+        res.url().includes("/workflow-runs/run-1/record?format=md") &&
         res.status() === 200,
     );
     await page.getByRole("button", { name: "MD" }).click();
@@ -176,7 +176,7 @@ test.describe("Workflow run detail", () => {
 
     const recordResponse = page.waitForResponse(
       (res) =>
-        res.url().includes("/runs/run-1/record?format=jsonl") &&
+        res.url().includes("/workflow-runs/run-1/record?format=jsonl") &&
         res.status() === 200,
     );
     await page.getByRole("button", { name: "JSONL" }).click();

@@ -72,7 +72,7 @@ const sampleListResponse: ApplicationsResponse = {
 
 describe("visibility-applications API", () => {
   afterEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
   });
 
   // ── listVisibilityApplications ──────────────────────────────────
@@ -210,36 +210,7 @@ describe("visibility-applications API", () => {
   // ── createVisibilityApplication ─────────────────────────────────
 
   describe("createVisibilityApplication", () => {
-    test("sends POST request with correct body", async () => {
-      mockFetch.mockResolvedValue(okJson(sampleApplication));
-
-      const result = await createVisibilityApplication({
-        resource_type: "agent",
-        resource_id: "agent-1",
-        target_visibility: "public",
-        reason: "Need public access",
-      });
-
-      expect(mockFetch).toHaveBeenCalledTimes(1);
-      const calledUrl = mockFetch.mock.calls[0]![0] as string;
-      expect(calledUrl).toBe(
-        "http://localhost:8000/api/visibility-applications",
-      );
-      const calledInit = mockFetch.mock.calls[0]![1] as RequestInit;
-      expect(calledInit.method).toBe("POST");
-      expect(calledInit.headers).toEqual({
-        "Content-Type": "application/json",
-      });
-      expect(JSON.parse(calledInit.body as string)).toEqual({
-        resource_type: "agent",
-        resource_id: "agent-1",
-        target_visibility: "public",
-        reason: "Need public access",
-      });
-      expect(result).toEqual(sampleApplication);
-    });
-
-    test("routes UUID resources through the canonical approval service", async () => {
+    test("routes all resources through the canonical approval service", async () => {
       mockFetch.mockResolvedValue(okJson(sampleApplication));
       const resourceId = "11111111-1111-1111-1111-111111111111";
 
@@ -250,10 +221,12 @@ describe("visibility-applications API", () => {
         reason: "Share with department",
       });
 
+      expect(mockFetch).toHaveBeenCalledTimes(1);
       expect(mockFetch).toHaveBeenCalledWith(
         `http://localhost:8000/api/resources/${resourceId}/visibility-applications`,
         expect.objectContaining({
           method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             target_visibility: "department",
             reason: "Share with department",
