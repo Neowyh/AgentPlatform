@@ -138,7 +138,7 @@ The same Lead Agent runtime powers both the default agent and any custom agents 
 - which **tool groups** it can use, and
 - which **model** it defaults to.
 
-Custom agents are created through the iDeer App UI or via the `/api/agents` endpoint. Their configuration is stored in `agents/{name}/config.yaml` relative to the backend directory.
+Custom agents are created through the iDeer App UI or via the `/api/resources` endpoint. Their definitions are managed by the unified resource catalog (canonical), stored under `resources/agents/<uuid>/` as versioned draft/publish content.
 
 <Callout type="tip">
   When a custom agent is selected in a thread, the Lead Agent loads that agent's

@@ -2,12 +2,12 @@
 
 > audience: developers, database maintainers, operators
 > status: implementation contract
-> last-verified: 2026-08-14
+> last-verified: 2026-08-17
 > canonical-path: `docs/governance/resource-governance-v2-migration-map.md`
 
 ## 映射原则
 
-迁移以“零覆盖、可审计、可回滚”为硬约束。旧名称不是新主键；每条 Skill、Agent、Workflow 记录分配或复用稳定 UUID。迁移不合并同名多 owner 资源，不自动改名，不把个人运行状态搬进资源定义目录。
+迁移以“零覆盖、可审计”为硬约束。旧名称不是新主键；每条 Skill、Agent、Workflow 记录分配或复用稳定 UUID。迁移不合并同名多 owner 资源，不自动改名，不把个人运行状态搬进资源定义目录。本版本为 canonical-only，迁移工具（`audit`/`migrate`/`verify`）仅存在于旧版本，由部署侧在升级前执行。
 
 ## 数据映射
 
@@ -40,29 +40,28 @@
 - canonical 唯一键为 `(type, owner_id, slug)`，不是全局名称；
 - 转移保持 UUID 和版本不变，visibility 降为 private；
 - 目标 owner 同 type/slug 已存在时，预检失败并要求明确 rename；
-- alias resolver 仅用于兼容入口：当前 owner 匹配优先，唯一可见共享资源次之，多匹配返回 409；
+- alias resolver 仅用于确定性兼容入口：当前 owner 匹配优先，唯一可见共享资源次之，多匹配返回 409；
 - bundled UUID 来自版本控制中的稳定清单，安装和升级不得重新生成。
 
-## 四个运维命令的边界
+## 存量迁移的部署侧契约
 
-| 命令 | 是否写入 | 输出/保证 |
-|---|---:|---|
-| `audit` | 否 | 枚举资源、owner、名称冲突、非法文件、依赖缺口、预计 UUID 和 hash |
-| `migrate` | 是 | 先备份；staging→hash→原子 rename→DB；可重复执行，不覆盖已迁资源 |
-| `verify` | 否 | 对比行数、UUID、owner、visibility、版本、依赖、逐文件 hash、权限和 bundled 清单 |
-| `rollback` | 是 | 将运行模式退回 legacy/dual，撤销未启用 canonical 投影；不删除新版本或历史审计 |
+迁移工具随旧版本交付，本版本不再携带。升级流程：
+
+1. 在旧版本上执行 `audit`（只读枚举、冲突、hash、预计 UUID）→ 无未决冲突后执行 `migrate`（staging→hash→原子 rename→DB，幂等）→ `verify`（只读对比行数、UUID、owner、visibility、版本、依赖、hash 与 bundled 清单），三者 exit 0 后再升级；
+2. 升级到本版本后旧名称路由（`/api/agents`、`/api/skills`、`/api/workflows`）不存在（404），外部集成需切 `/api/resources`；`IDEER_RESOURCE_CATALOG_MODE` 已移除；
+3. 无存量数据时直接安装，无需迁移；
+4. 回滚：`git revert` 本分支；legacy 源未删时可在旧版本重跑迁移。
 
 ## 切换检查点
 
 1. 空库、旧库和重复升级都只有一个 Alembic head；
 2. audit 无未决冲突后才可 migrate；
-3. dual 模式对比新旧列表、owner、visibility、版本、依赖和执行结果；
-4. canonical 观察期内不删除旧目录；
-5. 物理清理另需备份、hash 校验、保留期满足和超级管理员明确授权。
+3. 升级前 verify 全绿（旧版本执行）；升级后以 canonical-only 语义运行验收矩阵；
+4. 旧目录与 `resource_metadata` 兼容数据在观察期内保留，物理清理另需备份、hash 校验、保留期满足和超级管理员明确授权。
 
-## 命令调用
+## 旧版本命令调用（升级前执行）
 
-四个命令均需指向实际运行目录；`audit` 和 `verify` 只读。`rollback` 还必须指定一个尚不存在、且位于 canonical `resources/` 之外的备份目录。
+`audit` 和 `verify` 只读；`migrate` 幂等可重复执行。
 
 ```bash
 cd backend
@@ -72,9 +71,6 @@ PYTHONPATH=packages/harness uv run python -m ideer.scripts.resource_catalog_v2 m
   --legacy-base-dir /path/to/IDEER_HOME --skills-root /path/to/skills
 PYTHONPATH=packages/harness uv run python -m ideer.scripts.resource_catalog_v2 verify \
   --legacy-base-dir /path/to/IDEER_HOME --skills-root /path/to/skills
-PYTHONPATH=packages/harness uv run python -m ideer.scripts.resource_catalog_v2 rollback \
-  --legacy-base-dir /path/to/IDEER_HOME --skills-root /path/to/skills \
-  --backup-dir /path/to/new-backup-directory
 ```
 
-rollback 仅允许回退仍为迁移 v1、无草稿、无 Run 快照、无外部依赖的资源；文件内容先移入备份目录，数据库提交失败时补偿移回。旧 Skill、Agent、Workflow 源不会被命令删除。
+旧版本提供的 `rollback` 仅允许回退仍为迁移 v1、无草稿、无 Run 快照、无外部依赖的资源；文件内容先移入备份目录，数据库提交失败时补偿移回。旧 Skill、Agent、Workflow 源不会被命令删除。

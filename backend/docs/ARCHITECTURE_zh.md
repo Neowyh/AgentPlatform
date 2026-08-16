@@ -84,7 +84,7 @@ Agent 运行时嵌入在 FastAPI Gateway 中，基于 LangGraph 构建，用于�
 - `models.py` - `/api/models` - 模型列表与详情
 - `thread_runs.py` / `runs.py` - `/api/threads/{id}/runs`, `/api/runs/*` - LangGraph 兼容的运行与流式传输
 - `mcp.py` - `/api/mcp` - MCP 服务器配置
-- `skills.py` - `/api/skills` - 技能管理
+- `resources.py` - `/api/resources` - 技能、智能体、工作流统一资源目录（canonical；旧 `/api/skills`、`/api/agents`、`/api/workflows` 路由已删除）
 - `uploads.py` - `/api/threads/{id}/uploads` - 文件上传
 - `threads.py` - `/api/threads/{id}` - LangGraph 删除后本地 iDeer 线程数据清理
 - `artifacts.py` - `/api/threads/{id}/artifacts` - 产物服务

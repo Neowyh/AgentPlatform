@@ -2,25 +2,23 @@
 
 > audience: developers, reviewers, QA, release engineering
 > status: binding acceptance contract
-> last-verified: 2026-08-16
+> last-verified: 2026-08-17
 > canonical-path: `docs/testing/resource-governance-v2-acceptance-matrix.md`
 
-## 切换验收执行记录（2026-08-15，本地工作树 `resource-governance-v2`）
+## 验收执行记录（canonical-only，本地 worktree `resource-governance-v2`）
 
-以下为切换 canonical 前本地执行的 fresh 证据，全部真实 exit 0：
+以下为本分支最终验收的 fresh 证据，全部真实 exit 0：
 
 - Alembic 单 head `20260814_resource_catalog_v2`，DB 已 `upgrade head`（`alembic_version` 一致）；
-- `audit` exit 0 / errors 0；`migrate` 首次 created 10、二次 unchanged 10（幂等）；`verify` exit 0；
-- `seed_bundled_resources` created 24 / unchanged 3（含 bundled 身份冲突修复后重建）；目录 34 资源、bundled 27、dependencies 3；
-- `compare`（dual）exit 0：total 10 / ok 10，diverged/errors 为空，extras = 24 个 bundled 稳定 UUID（预期信号：bundled 资源不落 legacy 目录）；
-- backend：`make lint` exit 0；`make test` 12594 passed；`make test-blocking-io` 5 passed；runtime 修复后全量重跑 `make test` 12596 passed（= 12594 + 新增 2 测试，无回归）；
-- frontend：`pnpm check` exit 0（1270 warnings）；`pnpm test` 332 files / 7896 passed；`pnpm test:e2e` 148 passed，1 项 flaky（`i18n-language-switching.spec.ts:337`）单独复跑通过且文件本分支未改动；
-- canonical 冒烟（`IDEER_RESOURCE_CATALOG_MODE=canonical`，Gateway 8001）：`/api/resources` 返回 34 项 canonical；`/api/agents|skills|workflows/{name}` 全部 410；老名字 `fault-zeroing` run 经 alias 解析为 UUID 56e2423d… 成功创建；`run_resource_snapshots` 落库 agent+skill 各 1 行（version/hash 正确）；前端 admin 资源页经同源代理渲染 canonical 数据（66 项全局清单，fault-zeroing/srs-writing/bundled skills 可见）。
-- canonical Workflow Worker 冒烟（`IDEER_RESOURCE_CATALOG_MODE=canonical`）：`POST /api/resources/{id}/workflow-runs` 201 入队；worker 消费后状态 queued→running→failed（failed 为冒烟占位 `upload_dir` 不存在导致的业务失败，非加载错误）；`run_resource_snapshots` 为该 run 落 3 行完整闭包（workflow fault-zeroing + agent fault-zeroing + skill fault-zeroing，version/hash 正确）。
+- `seed_bundled_resources` created 24 / unchanged 3；目录 34 资源、bundled 27、dependencies 3；
+- backend：`make lint` exit 0；全量 `make test` 11933 passed、48 skipped（纯 canonical 语义，无模式开关）；`make test-blocking-io` 5 passed；
+- frontend：`pnpm check` exit 0（1270 warnings 与基线一致）；`pnpm test` 332 files / 7879 passed；`pnpm test:e2e` 149 passed（18 spec）；
+- canonical 冒烟（canonical-only，Gateway 8001）：`/api/resources` 返回 34 项 canonical；旧名称路由 `/api/agents|skills|workflows/{name}` 不存在（404）；老名字 `fault-zeroing` run 经 alias 解析为 UUID 56e2423d… 成功创建；`run_resource_snapshots` 落库 agent+skill 各 1 行（version/hash 正确）；前端 admin 资源页经同源代理渲染 canonical 数据。
+- canonical Workflow Worker 冒烟：`POST /api/resources/{id}/workflow-runs` 201 入队；worker 消费后状态 queued→running→failed（failed 为冒烟占位 `upload_dir` 不存在导致的业务失败，非加载错误）；`run_resource_snapshots` 为该 run 落 3 行完整闭包（workflow fault-zeroing + agent fault-zeroing + skill fault-zeroing，version/hash 正确）。
 
-冒烟发现并修复一处契约断裂：bundled `_prepare_agent` 将 `config.skills` 改写为稳定 UUID，而 `runtime.load_agent_skill_definitions` 只按 slug 匹配导致 bundled Agent run 409。修复为按 UUID 优先、slug 次之匹配，缺失引用 fail-closed；新增 2 个单元测试（UUID 引用解析、缺失引用拒绝），`tests/unit/resources/` 93 passed。
+冒烟发现并修复一处契约断裂：bundled `_prepare_agent` 将 `config.skills` 改写为稳定 UUID，而 `runtime.load_agent_skill_definitions` 只按 slug 匹配导致 bundled Agent run 409。修复为按 UUID 优先、slug 次之匹配，缺失引用 fail-closed；新增 2 个单元测试（UUID 引用解析、缺失引用拒绝）。
 
-Assistants compatibility 已由 `tests/integration/api/test_assistants_compat_comprehensive.py`（含 `IDEER_RESOURCE_CATALOG_MODE=canonical` 场景）与 `test_assistants_compat_router.py` 覆盖，随 backend 全量 12596 通过。离线部署项已按下方"部署/离线"行执行记录完成验证（含一处缺陷修复）。
+Assistants compatibility 已由 `tests/integration/api/test_assistants_compat_comprehensive.py` 与 `test_assistants_compat_router.py` 覆盖（纯 canonical 语义），随 backend 全量通过。离线部署项已按下方"部署/离线"行执行记录完成验证（含一处缺陷修复）。
 
 本矩阵是完成判定依据。单元测试通过不能替代同一行要求的集成、运行时或部署证据；挂起、扩大 skip、降低断言或旧产物不计为通过。
 
@@ -43,17 +41,17 @@ Assistants compatibility 已由 `tests/integration/api/test_assistants_compat_co
 | 文件安全 | 拒绝 symlink、穿越、超限归档/文件数/体积和未经扫描的可执行内容 | adversarial storage tests |
 | 跨介质一致性 | 文件失败不写 DB；DB 失败留下可审计未引用对象；reconcile/GC 幂等清理；并发发布唯一 | fault injection and concurrency integration |
 | 缓存 | key 含 UUID、version、authz revision；权限正确不依赖手工进程内失效 | multi-process Gateway/Worker tests |
-| 名称兼容 | 当前 owner 优先、唯一共享次之、多匹配 409；不任取第一条 | facade/API/frontend redirect tests |
+| 名称兼容 | 当前 owner 优先、唯一共享次之、多匹配 409；不任取第一条；旧名称路由不存在（404） | alias/API/frontend redirect tests |
 | API/SDK | unified API、typed facade、Assistants `assistant_id` UUID、`lead_agent` 保留、客户端 SDK 一致 | contracts + SDK integration |
 | 前端 | UUID 动态路由，展示 slug/display name；Admin、审批、审计、收藏、统计、导入导出正确 | Vitest、TypeScript/ESLint、Playwright replay artifacts |
-| 数据迁移 | 单一 head；空库、旧库、重复升级、downgrade 边界；audit/migrate/verify/rollback 幂等 | Alembic schema suite；realistic legacy fixture；backup restore |
+| 数据迁移 | 单一 head；空库、旧库、重复升级、downgrade 边界；audit/migrate/verify 部署侧幂等（旧版本执行）；rollback 仅旧版本可用 | Alembic schema suite；realistic legacy fixture；backup restore |
 | 部署/离线 | bundled UUID 稳定；初始化任一失败整体失败；内网、无沙箱包、断网新装均可验证 | script tests；bundle hash/manifest checks；offline installation log |
 
 ### 部署/离线行执行记录（2026-08-16）
 
 - **离线包 checksum/manifest**：`dist/intranet/ideer-20260815-5abd849c6-1x-nosandbox/`（本分支产物）`sha256sum -c SHA256SUMS` 6/6 OK（images tar、source tar、作业指导书、deploy/check 脚本、MANIFEST）；MANIFEST 含版本、git commit、镜像 digest、文件清单。
 - **无沙箱包**：该包为 `--no-sandbox` 构建（`ideer-sandbox` digest: not bundled），断网新装验证同时覆盖"无沙箱包"场景——部署 exit 0，sandbox 镜像缺失为 check 脚本 WARNING 级（非错误），runtime config 保留 `AioSandboxProvider` + 缺省镜像，符合文档化预期。
-- **断网新装（隔离模拟）**：在 `/tmp/opencode/intranet-sim/` 完整复制 bundle 后 `deploy-intranet.sh up`（`PORT=2027` 规避本机系统 nginx 占用 2026）——docker load 本地镜像 tar → compose up → 健康检查 → super admin 自动创建 → bundled 27 资源全量 created（24 skill + 2 agent + 1 workflow，owner 为 super admin）→ fault-zeroing workflow seeded（Version 1）。冒烟：`/api/resources` 返回 27 项全 bundled（含 UUID id、storage_kind=bundled）；legacy 名称 alias（agent/skill/workflow fault-zeroing）dual 模式下均 200；nginx 前端 200。
+- **断网新装（隔离模拟）**：在 `/tmp/opencode/intranet-sim/` 完整复制 bundle 后 `deploy-intranet.sh up`（`PORT=2027` 规避本机系统 nginx 占用 2026）——docker load 本地镜像 tar → compose up → 健康检查 → super admin 自动创建 → bundled 27 资源全量 created（24 skill + 2 agent + 1 workflow，owner 为 super admin）→ fault-zeroing workflow seeded（Version 1）。冒烟：`/api/resources` 返回 27 项全 bundled（含 UUID id、storage_kind=bundled）；legacy 名称 alias（agent/skill/workflow fault-zeroing）可解析；nginx 前端 200。硬切换后无模式开关，部署脚本不再注入 `IDEER_RESOURCE_CATALOG_MODE`。
 - **初始化任一失败整体失败（fail-fast 语义实测）**：首轮部署因 bundled agent/workflow 源在容器内缺失而 seed 失败，脚本整体 exit 1、提示 `canonical bundled resource seeding failed` / `private resource initialization failed`，容器不进入"部署完成"状态；修复后全流程 exit 0。失败语义符合"任一失败整体失败"要求。
 - **发现并修复打包链缺陷**：gateway 镜像仅 COPY `backend`，而 `bundled-resources.json` 的 bundled agent 源位于 `docs/*-agent/agent`、workflow 源位于 `workflows/`，compose 未挂载导致容器内 seed 缺源。修复：`docker/docker-compose.intranet.yaml` 为 gateway 与 workflow-worker 服务增加 `../docs:/app/docs:ro` 与 `../workflows:/app/workflows:ro` 挂载（见 fix 提交）。修复后隔离模拟部署 exit 0、27 created。当前 dist 包为修复前产物，下次打包自动携带修复。
 

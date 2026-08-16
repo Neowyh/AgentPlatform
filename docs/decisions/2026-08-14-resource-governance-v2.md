@@ -3,13 +3,13 @@
 > audience: developers, architects, security reviewers, operators
 > status: implemented
 > owner: engineering maintainers
-> last-verified: 2026-08-16
+> last-verified: 2026-08-17
 > canonical-path: `docs/decisions/2026-08-14-resource-governance-v2.md`
-> switch-to-canonical: 2026-08-15, local worktree `resource-governance-v2`, mode `canonical`
+> switch-to-canonical: 2026-08-16, branch `refactor/resource-governance-v2` 定案为 canonical-only（无模式开关）
 
 ## 决策摘要
 
-Skill、Agent、Workflow 统一使用 UUID 标识的权威资源目录。每个资源只有一份规范源，非 owner 直接只读使用已发布版本，不再按用户复制安装。旧 `resource_metadata` 在兼容期保留，继续承载 Tool 和旧名称接口；新的 `resources` 及配套表独立承担三类资源的 owner、可见性、生命周期、版本、依赖、草稿、收藏和运行快照。
+Skill、Agent、Workflow 统一使用 UUID 标识的权威资源目录。每个资源只有一份规范源，非 owner 直接只读使用已发布版本，不再按用户复制安装。旧 `resource_metadata` 仅保留承载 Tool 的职责；新的 `resources` 及配套表独立承担三类资源的 owner、可见性、生命周期、版本、依赖、草稿、收藏和运行快照。本版本为 canonical-only：不再提供 `legacy | dual | canonical` 模式开关，旧名称路由与迁移工具随本分支删除。
 
 该决策同时收敛存储与运行权限。资源可见不等于无条件可运行；每次新 Run 必须在产生队列、文件或外部调用等副作用前，以调用者身份解析完整依赖闭包、工具上限和实际版本，随后将 UUID、版本及内容 hash 固化到运行快照。Worker 只消费快照，不按名称或 owner 目录重新猜测定义。
 
@@ -35,7 +35,7 @@ Skill、Agent、Workflow 统一使用 UUID 标识的权威资源目录。每个�
 3. 保证共享执行使用调用者权限、凭据和隔离记忆，不借用 owner 身份。
 4. 使新 Run 自动使用当时的完整 latest 闭包，已启动 Run 使用冻结快照。
 5. 覆盖 API、Frontend、SDK、Worker、删除/reconcile、安装、部署和离线资产。
-6. 以 dual 模式完成无损迁移和对比验证，再切换 canonical。
+6. 迁移执行是部署侧动作：有存量数据先在旧版本执行 `audit → migrate → verify`，再升级到本版本；本版本不再携带迁移工具。
 
 非目标：
 
@@ -68,7 +68,7 @@ Skill、Agent、Workflow 统一使用 UUID 标识的权威资源目录。每个�
 - `resource_drafts`：草稿 revision、hash、修改者和 staging 引用；
 - visibility application：新增 `resource_id`、申请时版本和 hash，兼容期保留旧 type/name 字段。
 
-`resource_metadata` 不改造成上述主表。dual 期间由类型 facade 维护兼容读写；canonical 后仅保留 Tool 和明确的旧接口兼容数据。
+`resource_metadata` 不改造成上述主表。它仅继续承载 Tool 和系统能力策略数据，不再参与 Skill、Agent、Workflow 的读写。
 
 ## 存储与发布一致性
 
@@ -132,13 +132,11 @@ Agent 和 Workflow 依赖保存 UUID，不固定版本。新 Run 在任何副作
 
 ## 兼容与切换
 
-系统提供 `legacy | dual | canonical` 三种模式，默认 dual：
+本版本为 canonical-only 定案，不提供 `legacy | dual | canonical` 模式开关（`IDEER_RESOURCE_CATALOG_MODE` 已移除）。`/api/agents`、`/api/skills`、`/api/workflows` 等旧名称路由已删除，统一由 `/api/resources` 提供资源 API；旧端点返回 404，外部集成需切换。
 
-- legacy：旧路径和 metadata 是读写真源，用于紧急回退；
-- dual：canonical 主写并生成兼容投影，读取结果做可观测对比；不允许静默选择冲突名称；
-- canonical：三类资源只从新目录读取，旧 facade 通过 alias resolver 访问。
+旧名称解析仅保留在确定性场景：`/api/resources/aliases/{type}/{slug}` 与运行时 alias 解析（当前 owner 优先，其次唯一可见共享资源；多匹配 409）。`lead_agent` 保留为特殊 assistant 值，其余 `assistant_id` 接受资源 UUID。
 
-旧名称解析顺序是当前用户资源优先，其次唯一可见共享资源；多个可见匹配返回 409。`lead_agent` 保留为特殊 assistant 值，其余 `assistant_id` 接受资源 UUID。
+存量数据迁移由部署侧完成：升级前在旧版本执行 `audit → migrate → verify`，确认 exit 0 后再升级；本版本不再携带迁移命令。回滚通过 `git revert` 本分支完成（legacy 源未删时可在旧版本重跑迁移）。
 
 bundled Agent 发布时 `config.skills` 中的 slug 引用会被改写为依赖资源的稳定 UUID（`bundled._prepare_agent`）；运行时依赖闭包解析同时按 UUID 与 slug 匹配（`runtime.load_agent_skill_definitions`），缺失引用 fail-closed。
 
@@ -153,14 +151,14 @@ bundled Agent 发布时 `config.skills` 中的 slug 引用会被改写为依赖�
 
 - 发布、审批、Fork、转移使用乐观锁或唯一约束处理并发；
 - reconcile 报告 DB 缺文件、文件无 DB、hash 不一致、非法链接、旧目录漂移和 bundled UUID 漂移；
-- migration audit、migrate、verify、rollback 是四个独立命令；audit 和 verify 只读；
+- 存量数据迁移在旧版本执行（`audit`、`migrate`、`verify` 三个只读/写命令），本版本仅保留部署侧提示，不携带迁移工具；
 - 部署初始化任一资源失败必须返回失败，不得仅记录日志后输出成功；
 - 所有迁移、可见性、发布、归档、下架、转移、Fork 和清理动作写审计。
 
 ## 采用该方案的代价
 
-该方案新增目录表、不可变版本和运行快照，迁移期还需维护兼容投影，短期复杂度高于原地修改 `resource_metadata`。代价换来三项必要保证：Tool 不被误迁移；同名多 owner 内容不被覆盖；运行历史和权限撤销具备可证明语义。由于文件系统与数据库不能原子提交，仍需接受未引用文件的补偿清理，而不能宣称跨介质事务。
+该方案新增目录表、不可变版本和运行快照，短期复杂度高于原地修改 `resource_metadata`。代价换来三项必要保证：Tool 不被误迁移；同名多 owner 内容不被覆盖；运行历史和权限撤销具备可证明语义。由于文件系统与数据库不能原子提交，仍需接受未引用文件的补偿清理，而不能宣称跨介质事务。旧名称路由与模式开关的删除属于一次性迁移成本，由部署侧在升级前完成。
 
 ## 验收与退出条件
 
-实现必须满足 [Resource Governance V2 验收矩阵](../testing/resource-governance-v2-acceptance-matrix.md)。迁移字段和旧入口对应关系见 [迁移映射](../governance/resource-governance-v2-migration-map.md)。只有 dual 对比、真实旧库迁移、全套测试、Worker/兼容 API、部署和离线新装均真实 exit 0 后，才可将默认模式切换 canonical。
+实现必须满足 [Resource Governance V2 验收矩阵](../testing/resource-governance-v2-acceptance-matrix.md)。迁移字段和旧入口对应关系见 [迁移映射](../governance/resource-governance-v2-migration-map.md)。验收以 canonical-only 语义执行：backend unit/integration/contracts、blocking-I/O、frontend unit/check/E2E、Workflow Worker、Assistants compatibility、内网部署、私有 bundled 初始化、离线包 checksum/manifest 和断网新装均需真实 exit 0。

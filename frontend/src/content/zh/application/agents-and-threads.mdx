@@ -36,9 +36,11 @@ iDeer 允许你创建多个具有不同专业领域的自定义 Agent。每个 A
 #### 通过 API
 
 ```bash
-curl -X POST http://localhost:8001/api/agents \
+curl -X POST http://localhost:8001/api/resources \
   -H "Content-Type: application/json" \
   -d '{
+    "resource_type": "agent",
+    "slug": "data-analyst",
     "display_name": "数据分析师",
     "description": "专业的数据分析和可视化",
     "skills": ["data-analysis", "chart-visualization"]
@@ -54,11 +56,11 @@ curl -X POST http://localhost:8001/api/agents \
 - `display_name`：对用户显示的任意字符串（例如 "数据分析师"）
 - `name`（slug）：用于 API 和文件路径的 ASCII 标识符（例如 `data-analyst`）
 
-如果派生的 slug 与现有 Agent 冲突，`/api/agents/check` 端点会建议一个唯一的替代名称。
+如果派生的 slug 与现有 Agent 冲突，系统会建议一个唯一的替代名称（名称解析走 `/api/resources/aliases/agent/{slug}`）。
 
 ### Agent 存储
 
-自定义 Agent 配置存储在 `backend/agents/{name}/config.yaml` 中。你可以直接编辑这些文件——更改在下次 Agent 调用时自动加载。
+自定义 Agent 由统一资源目录（canonical）管理：定义（`SOUL.md` + `config.yaml`）以版本化草稿-发布（draft/publish）方式存储在 `resources/agents/<uuid>/versions/<version>`，通过 `PUT /api/resources/{id}/agent-draft` 更新、`POST /api/resources/{id}/publish` 发布，更改在下次 Agent 调用时自动加载。旧 `/api/agents` 路由已删除（404）。
 
 ## 线程生命周期
 

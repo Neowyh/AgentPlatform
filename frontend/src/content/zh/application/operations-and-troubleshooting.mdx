@@ -147,7 +147,7 @@ iDeer 将持久化数据存储在：
 - **线程数据**：`backend/.ideer/threads/` — 每个线程的上传文件、输出和工作区文件
 - **检查点**：取决于检查点器配置（SQLite：`backend/.ideer/checkpoints.db`，Redis：外部存储）
 - **记忆**：`backend/.ideer/memory.json`（以及 `agent-memory/*/memory.json`）
-- **自定义 Agent 配置**：`backend/agents/*/config.yaml`
+- **自定义 Agent 配置**：统一资源目录（canonical）`backend/.ideer/resources/agents/*/`（draft + versions）
 
 对于生产部署，定期备份这些目录。Docker 部署中，确保这些目录绑定挂载到持久卷，而不是容器内部。
 

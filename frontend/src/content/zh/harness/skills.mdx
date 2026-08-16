@@ -113,10 +113,10 @@ skills:
 
 ## 按自定义 Agent 限制技能
 
-自定义 Agent 可以被限制为特定技能子集。在 Agent 的配置中（存储在 `agents/{name}/config.yaml`），设置 `skills` 列表：
+自定义 Agent 可以被限制为特定技能子集。在 Agent 的配置中（由统一资源目录管理，见 `resources/agents/<uuid>/` 的 agent-draft），设置 `skills` 列表：
 
 ```yaml
-# agents/my-researcher/config.yaml
+# agent definition in the resource catalog (agent-draft)
 name: my-researcher
 skills:
   - deep-research

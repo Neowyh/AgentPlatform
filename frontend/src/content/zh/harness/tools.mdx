@@ -57,13 +57,13 @@ task(agent="general-purpose", task="...", context="...")
 
 ### setup_agent
 
-动态配置当前 Agent 会话。在设置新自定义 Agent 的引导流程中使用。
+动态配置当前 Agent 会话。在设置新自定义 Agent 的引导流程中使用——通过统一资源目录（canonical）创建 Agent 草稿并发布（`_create_canonical_agent`，draft + publish），返回 `created_agent_resource_id`。
 
 ---
 
 ### update_agent
 
-将更新持久化到当前自定义 Agent 的 `SOUL.md` 和 `config.yaml`。仅当激活了自定义 Agent（运行时上下文中存在 `agent_name`）时，才会绑定到 lead agent。当用户在 Agent 内开启 chat 并要求该 Agent 调整自身的描述、人格、技能白名单、工具组白名单或默认模型时使用——它会直接写入按用户隔离的 `{base_dir}/users/{user_id}/agents/{agent_name}/` 下的真实配置文件，下一轮对话即可生效。仅显式传入的字段会被更新；省略某个字段以保留其现有值。传入 `skills=[]` 可禁用全部技能，省略 `skills` 则保留现有白名单。
+将更新持久化到当前自定义 Agent 的 `SOUL.md` 和 `config.yaml`。仅当激活了自定义 Agent（运行时上下文中存在 `agent_name`）时，才会绑定到 lead agent。当用户在 Agent 内开启 chat 并要求该 Agent 调整自身的描述、人格、技能白名单、工具组白名单或默认模型时使用——它会通过统一资源目录（canonical）按 `agent_name` 解析资源 UUID，以 draft + publish 方式写入版本化存储（`resources/agents/<uuid>/`），下一轮对话即可生效。仅显式传入的字段会被更新；省略某个字段以保留其现有值。传入 `skills=[]` 可禁用全部技能，省略 `skills` 则保留现有白名单。
 
 ---
 
