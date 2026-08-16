@@ -117,27 +117,6 @@ def test_resource_payload_only_marks_active_non_system_owner_as_modifiable() -> 
 
 
 @pytest.mark.asyncio
-async def test_legacy_catalog_mode_returns_no_canonical_list_rows(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("IDEER_RESOURCE_CATALOG_MODE", "legacy")
-
-    payload = await resources.list_resources(
-        resource_type=None,
-        offset=0,
-        limit=50,
-        current_user=_user(UserRole.USER),
-    )
-
-    assert payload == {
-        "items": [],
-        "total": 0,
-        "offset": 0,
-        "limit": 50,
-        "mode": "legacy",
-    }
-
-
 def test_canonical_resume_roles_are_read_from_the_frozen_interrupt_node() -> None:
     run = WorkflowV2RunRow(
         run_id="run-id",

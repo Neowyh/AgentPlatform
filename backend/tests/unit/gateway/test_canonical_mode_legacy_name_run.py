@@ -57,8 +57,10 @@ def _request(user_id: str | None = "user-1") -> SimpleNamespace:
 
 
 @pytest.fixture()
-def canonical_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("IDEER_RESOURCE_CATALOG_MODE", "canonical")
+def canonical_env() -> None:
+    """Canonical behavior is unconditional in stage 4; kept as a marker
+    fixture so the tests read the same way they did under mode gating."""
+    return None
 
 
 def _no_db(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -161,13 +163,6 @@ class TestResolveCanonicalAlias:
         assert await _resolve_canonical_alias("lead_agent", _request("user-1")) is None
 
     @pytest.mark.asyncio
-    async def test_non_canonical_mode_returns_none_without_db(self, session_factory: async_sessionmaker[AsyncSession], monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("IDEER_RESOURCE_CATALOG_MODE", "dual")
-        _no_db(monkeypatch)
-
-        assert await _resolve_canonical_alias("writer", _request("user-1")) is None
-
-    @pytest.mark.asyncio
     async def test_missing_authenticated_user_is_401(self, session_factory: async_sessionmaker[AsyncSession], monkeypatch: pytest.MonkeyPatch, canonical_env: None) -> None:
         _no_db(monkeypatch)
 
@@ -217,7 +212,6 @@ class TestStartRunCanonicalLegacyName:
 
     @pytest.mark.asyncio
     async def test_canonical_mode_resolves_legacy_name_via_alias(self, mock_deps, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.setenv("IDEER_RESOURCE_CATALOG_MODE", "canonical")
         bridge, run_mgr, run_ctx, request = mock_deps
         resource_id = "22222222-2222-2222-2222-222222222222"
         record = MagicMock(run_id="canonical-run", task=None)
@@ -245,7 +239,6 @@ class TestStartRunCanonicalLegacyName:
 
     @pytest.mark.asyncio
     async def test_canonical_mode_fails_closed_when_alias_missing(self, mock_deps, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.setenv("IDEER_RESOURCE_CATALOG_MODE", "canonical")
         bridge, run_mgr, run_ctx, request = mock_deps
 
         with (
@@ -271,7 +264,6 @@ class TestStartRunCanonicalLegacyName:
 
     @pytest.mark.asyncio
     async def test_canonical_mode_default_assistant_keeps_default_path(self, mock_deps, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.setenv("IDEER_RESOURCE_CATALOG_MODE", "canonical")
         bridge, run_mgr, run_ctx, request = mock_deps
         record = MagicMock(run_id="run-123", task=None)
         run_mgr.create_or_reject.return_value = record
@@ -297,7 +289,6 @@ class TestStartRunCanonicalLegacyName:
 
     @pytest.mark.asyncio
     async def test_canonical_mode_resolves_context_agent_name_uuid(self, mock_deps, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.setenv("IDEER_RESOURCE_CATALOG_MODE", "canonical")
         bridge, run_mgr, run_ctx, request = mock_deps
         resource_id = "11111111-1111-1111-1111-111111111111"
         record = MagicMock(run_id="canonical-run", task=None)
@@ -325,7 +316,6 @@ class TestStartRunCanonicalLegacyName:
 
     @pytest.mark.asyncio
     async def test_canonical_mode_resolves_context_agent_name_legacy_name(self, mock_deps, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.setenv("IDEER_RESOURCE_CATALOG_MODE", "canonical")
         bridge, run_mgr, run_ctx, request = mock_deps
         resource_id = "22222222-2222-2222-2222-222222222222"
         record = MagicMock(run_id="canonical-run", task=None)
@@ -352,7 +342,6 @@ class TestStartRunCanonicalLegacyName:
 
     @pytest.mark.asyncio
     async def test_dual_mode_resolves_context_agent_name_uuid(self, mock_deps, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.delenv("IDEER_RESOURCE_CATALOG_MODE", raising=False)
         bridge, run_mgr, run_ctx, request = mock_deps
         resource_id = "11111111-1111-1111-1111-111111111111"
         record = MagicMock(run_id="canonical-run", task=None)

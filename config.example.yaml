@@ -897,14 +897,6 @@ memory:
   max_injection_tokens: 2000 # Maximum tokens for memory injection
 
 # ============================================================================
-# Custom Agent Management API
-# ============================================================================
-# Controls whether the HTTP gateway exposes custom-agent SOUL/USER.md management.
-# Keep this disabled unless the gateway is behind a trusted authenticated admin boundary.
-agents_api:
-  enabled: false
-
-# ============================================================================
 # Skill Self-Evolution Configuration
 # ============================================================================
 # Allow the agent to autonomously create and improve skills in skills/custom/.

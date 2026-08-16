@@ -480,7 +480,6 @@ def test_intranet_compose_uses_runtime_env_contract_and_internal_token():
 
     assert "${IDEER_FRONTEND_ENV_FILE:?IDEER_FRONTEND_ENV_FILE must be set}" in compose
     assert "${IDEER_ENV_FILE:?IDEER_ENV_FILE must be set}" in compose
-    assert compose.count("IDEER_RESOURCE_CATALOG_MODE=${IDEER_RESOURCE_CATALOG_MODE:-dual}") == 2
     assert "IDEER_INTERNAL_AUTH_TOKEN=${IDEER_INTERNAL_AUTH_TOKEN}" in compose
 
 

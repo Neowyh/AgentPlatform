@@ -176,23 +176,6 @@ async def test_validate_preconditions_rejects_missing_or_active_or_missing_trans
 
 
 @pytest.mark.asyncio
-async def test_transfer_copies_agents_without_removing_source_and_rejects_name_conflicts(tmp_path):
-    paths = Paths(tmp_path)
-    source = paths.user_agent_dir("deleted", "research")
-    source.mkdir(parents=True)
-    (source / "SOUL.md").write_text("source", encoding="utf-8")
-
-    await user_deletion._handle_resource_metadata(AsyncMock(), paths, "deleted", "transfer", "target")
-    copied = paths.user_agent_dir("target", "research")
-    assert copied.joinpath("SOUL.md").read_text(encoding="utf-8") == "source"
-    assert source.exists()
-
-    with pytest.raises(ValueError, match="already has agent 'research'"):
-        user_deletion._copy_agent_directories(paths, "deleted", "target")
-    assert source.exists()
-
-
-@pytest.mark.asyncio
 async def test_transfer_succeeds_when_source_agent_directory_is_absent(tmp_path):
     await user_deletion._handle_resource_metadata(AsyncMock(), Paths(tmp_path), "deleted", "transfer", "target")
 

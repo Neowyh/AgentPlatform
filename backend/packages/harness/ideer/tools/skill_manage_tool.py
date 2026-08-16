@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import shutil
-import uuid
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
@@ -17,8 +16,6 @@ from sqlalchemy import select
 from ideer.agents.lead_agent.prompt import refresh_skills_system_prompt_cache_async
 from ideer.persistence.engine import get_session_factory
 from ideer.persistence.models.resource_catalog import Resource
-from ideer.persistence.models.resource_metadata import ResourceMetadata
-from ideer.resources.mode import ResourceCatalogMode, get_resource_catalog_mode
 from ideer.runtime.user_context import resolve_runtime_user_id
 from ideer.skills.security_scanner import scan_skill_content
 from ideer.skills.storage import get_or_new_skill_storage
@@ -73,169 +70,6 @@ async def _scan_or_raise(content: str, *, executable: bool, location: str) -> di
 
 async def _to_thread(func, /, *args, **kwargs):
     return await asyncio.to_thread(func, *args, **kwargs)
-
-
-async def _skill_manage_impl(
-    runtime: Runtime,
-    action: str,
-    name: str,
-    content: str | None = None,
-    path: str | None = None,
-    find: str | None = None,
-    replace: str | None = None,
-    expected_count: int | None = None,
-) -> str:
-    """Manage custom skills under skills/custom/.
-
-    Args:
-        action: One of create, patch, edit, delete, write_file, remove_file.
-        name: Skill name in hyphen-case.
-        content: New file content for create, edit, or write_file.
-        path: Supporting file path for write_file or remove_file.
-        find: Existing text to replace for patch.
-        replace: Replacement text for patch.
-        expected_count: Optional expected number of replacements for patch.
-    """
-    name = SkillStorage.validate_skill_name(name)
-    lock = _get_lock(name)
-    thread_id = _get_thread_id(runtime)
-    skill_storage = get_or_new_skill_storage()
-
-    async with lock:
-        if action == "create":
-            if await _to_thread(skill_storage.custom_skill_exists, name):
-                raise ValueError(f"Custom skill '{name}' already exists.")
-            if content is None:
-                raise ValueError("content is required for create.")
-            await _to_thread(skill_storage.validate_skill_markdown_content, name, content)
-            scan = await _scan_or_raise(content, executable=False, location=f"{name}/{SKILL_MD_FILE}")
-            await _to_thread(skill_storage.write_custom_skill, name, SKILL_MD_FILE, content)
-            await _to_thread(
-                skill_storage.append_history,
-                name,
-                _history_record(action="create", file_path=SKILL_MD_FILE, prev_content=None, new_content=content, thread_id=thread_id, scanner=scan),
-            )
-            # Persist RBAC metadata to resource_metadata table
-            try:
-                sf = get_session_factory()
-                if sf is not None:
-                    async with sf() as session:
-                        existing = await session.execute(
-                            select(ResourceMetadata).where(
-                                ResourceMetadata.resource_type == "skill",
-                                ResourceMetadata.resource_id == name,
-                            )
-                        )
-                        if not existing.scalar_one_or_none():
-                            owner_id = resolve_runtime_user_id(runtime)
-                            session.add(
-                                ResourceMetadata(
-                                    id=str(uuid.uuid4()),
-                                    resource_type="skill",
-                                    resource_id=name,
-                                    owner_id=owner_id,
-                                    visibility="private",
-                                )
-                            )
-                            await session.commit()
-            except Exception:
-                logger.warning("Failed to save resource metadata for skill '%s'", name)
-            await refresh_skills_system_prompt_cache_async()
-            return f"Created custom skill '{name}'."
-
-        if action == "edit":
-            await _to_thread(skill_storage.ensure_custom_skill_is_editable, name)
-            if content is None:
-                raise ValueError("content is required for edit.")
-            await _to_thread(skill_storage.validate_skill_markdown_content, name, content)
-            scan = await _scan_or_raise(content, executable=False, location=f"{name}/{SKILL_MD_FILE}")
-            skill_file = skill_storage.get_custom_skill_file(name)
-            prev_content = await _to_thread(skill_file.read_text, encoding="utf-8")
-            await _to_thread(skill_storage.write_custom_skill, name, SKILL_MD_FILE, content)
-            await _to_thread(
-                skill_storage.append_history,
-                name,
-                _history_record(action="edit", file_path=SKILL_MD_FILE, prev_content=prev_content, new_content=content, thread_id=thread_id, scanner=scan),
-            )
-            await refresh_skills_system_prompt_cache_async()
-            return f"Updated custom skill '{name}'."
-
-        if action == "patch":
-            await _to_thread(skill_storage.ensure_custom_skill_is_editable, name)
-            if find is None or replace is None:
-                raise ValueError("find and replace are required for patch.")
-            skill_file = skill_storage.get_custom_skill_file(name)
-            prev_content = await _to_thread(skill_file.read_text, encoding="utf-8")
-            occurrences = prev_content.count(find)
-            if occurrences == 0:
-                raise ValueError("Patch target not found in SKILL.md.")
-            if expected_count is not None and occurrences != expected_count:
-                raise ValueError(f"Expected {expected_count} replacements but found {occurrences}.")
-            replacement_count = expected_count if expected_count is not None else 1
-            new_content = prev_content.replace(find, replace, replacement_count)
-            await _to_thread(skill_storage.validate_skill_markdown_content, name, new_content)
-            scan = await _scan_or_raise(new_content, executable=False, location=f"{name}/{SKILL_MD_FILE}")
-            await _to_thread(skill_storage.write_custom_skill, name, SKILL_MD_FILE, new_content)
-            await _to_thread(
-                skill_storage.append_history,
-                name,
-                _history_record(action="patch", file_path=SKILL_MD_FILE, prev_content=prev_content, new_content=new_content, thread_id=thread_id, scanner=scan),
-            )
-            await refresh_skills_system_prompt_cache_async()
-            return f"Patched custom skill '{name}' ({replacement_count} replacement(s) applied, {occurrences} match(es) found)."
-
-        if action == "delete":
-            await _to_thread(
-                skill_storage.delete_custom_skill,
-                name,
-                history_meta=_history_record(
-                    action="delete",
-                    file_path=SKILL_MD_FILE,
-                    prev_content=None,
-                    new_content=None,
-                    thread_id=thread_id,
-                    scanner={"decision": "allow", "reason": "Deletion requested."},
-                ),
-            )
-            await refresh_skills_system_prompt_cache_async()
-            return f"Deleted custom skill '{name}'."
-
-        if action == "write_file":
-            await _to_thread(skill_storage.ensure_custom_skill_is_editable, name)
-            if path is None or content is None:
-                raise ValueError("path and content are required for write_file.")
-            target = await _to_thread(skill_storage.ensure_safe_support_path, name, path)
-            exists = await _to_thread(target.exists)
-            prev_content = await _to_thread(target.read_text, encoding="utf-8") if exists else None
-            executable = "scripts/" in path or path.startswith("scripts/")
-            scan = await _scan_or_raise(content, executable=executable, location=f"{name}/{path}")
-            await _to_thread(skill_storage.write_custom_skill, name, path, content)
-            await _to_thread(
-                skill_storage.append_history,
-                name,
-                _history_record(action="write_file", file_path=path, prev_content=prev_content, new_content=content, thread_id=thread_id, scanner=scan),
-            )
-            return f"Wrote '{path}' for custom skill '{name}'."
-
-        if action == "remove_file":
-            await _to_thread(skill_storage.ensure_custom_skill_is_editable, name)
-            if path is None:
-                raise ValueError("path is required for remove_file.")
-            target = await _to_thread(skill_storage.ensure_safe_support_path, name, path)
-            if not await _to_thread(target.exists):
-                raise FileNotFoundError(f"Supporting file '{path}' not found for skill '{name}'.")
-            prev_content = await _to_thread(target.read_text, encoding="utf-8")
-            await _to_thread(target.unlink)
-            await _to_thread(
-                skill_storage.append_history,
-                name,
-                _history_record(action="remove_file", file_path=path, prev_content=prev_content, new_content=None, thread_id=thread_id, scanner={"decision": "allow", "reason": "Deletion requested."}),
-            )
-            return f"Removed '{path}' from custom skill '{name}'."
-
-        if await _to_thread(skill_storage.public_skill_exists, name):
-            raise ValueError(f"'{name}' is a built-in skill. To customise it, create a new skill with the same name under skills/custom/.")
-        raise ValueError(f"Unsupported action '{action}'.")
 
 
 async def _skill_manage_canonical_impl(
@@ -433,18 +267,7 @@ async def _skill_manage_dispatch(
     replace: str | None = None,
     expected_count: int | None = None,
 ) -> str:
-    if get_resource_catalog_mode() is ResourceCatalogMode.CANONICAL:
-        return await _skill_manage_canonical_impl(
-            runtime=runtime,
-            action=action,
-            name=name,
-            content=content,
-            path=path,
-            find=find,
-            replace=replace,
-            expected_count=expected_count,
-        )
-    return await _skill_manage_impl(
+    return await _skill_manage_canonical_impl(
         runtime=runtime,
         action=action,
         name=name,

@@ -495,7 +495,6 @@ IDEER_GATEWAY_IMAGE=ideer-gateway:$VERSION
 IDEER_FRONTEND_IMAGE=ideer-frontend:$VERSION
 NGINX_IMAGE=nginx:alpine
 IDEER_NETWORK_MODE=offline
-IDEER_RESOURCE_CATALOG_MODE=dual
 EOF
         fi
     fi
@@ -503,7 +502,6 @@ EOF
     append_env_if_missing "BETTER_AUTH_SECRET" "$BETTER_AUTH_SECRET_VALUE"
     append_env_if_missing "IDEER_INTERNAL_AUTH_TOKEN" "$IDEER_INTERNAL_AUTH_TOKEN_VALUE"
     append_env_if_missing "IDEER_NETWORK_MODE" "offline"
-    append_env_if_missing "IDEER_RESOURCE_CATALOG_MODE" "dual"
 
     patch_sandbox_image
 }

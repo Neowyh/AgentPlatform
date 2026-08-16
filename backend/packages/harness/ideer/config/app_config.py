@@ -10,7 +10,6 @@ from dotenv import load_dotenv
 from pydantic import BaseModel, ConfigDict, Field
 
 from ideer.config.acp_config import ACPAgentConfig, load_acp_config_from_dict
-from ideer.config.agents_api_config import AgentsApiConfig, load_agents_api_config_from_dict
 from ideer.config.checkpointer_config import CheckpointerConfig, load_checkpointer_config_from_dict
 from ideer.config.database_config import DatabaseConfig
 from ideer.config.extensions_config import ExtensionsConfig
@@ -108,7 +107,6 @@ class AppConfig(BaseModel):
     title: TitleConfig = Field(default_factory=TitleConfig, description="Automatic title generation configuration")
     summarization: SummarizationConfig = Field(default_factory=SummarizationConfig, description="Conversation summarization configuration")
     memory: MemoryConfig = Field(default_factory=MemoryConfig, description="Memory subsystem configuration")
-    agents_api: AgentsApiConfig = Field(default_factory=AgentsApiConfig, description="Custom-agent management API configuration")
     acp_agents: dict[str, ACPAgentConfig] = Field(default_factory=dict, description="ACP-compatible agent configuration")
     subagents: SubagentsAppConfig = Field(default_factory=SubagentsAppConfig, description="Subagent runtime configuration")
     guardrails: GuardrailsConfig = Field(default_factory=GuardrailsConfig, description="Guardrail middleware configuration")
@@ -202,7 +200,6 @@ class AppConfig(BaseModel):
         load_title_config_from_dict(config.title.model_dump())
         load_summarization_config_from_dict(config.summarization.model_dump())
         load_memory_config_from_dict(config.memory.model_dump())
-        load_agents_api_config_from_dict(config.agents_api.model_dump())
         load_subagents_config_from_dict(config.subagents.model_dump())
         load_tool_search_config_from_dict(config.tool_search.model_dump())
         load_guardrails_config_from_dict(config.guardrails.model_dump())

@@ -19,7 +19,6 @@ from ideer.persistence.models.resource_catalog import (
     RunResourceSnapshot,
 )
 from ideer.persistence.models.visibility_application import VisibilityApplication
-from ideer.resources.mode import ResourceCatalogMode, get_resource_catalog_mode
 from ideer.resources.service import (
     ResourceAction,
     ResourceActor,
@@ -97,18 +96,6 @@ async def _publish(
         storage_key=storage_key,
     )
     return await service.publish(resource_id, expected_draft_revision=draft.revision, scan_result={"status": "clean"})
-
-
-def test_catalog_mode_defaults_to_dual_and_rejects_unknown_values(monkeypatch) -> None:
-    monkeypatch.delenv("IDEER_RESOURCE_CATALOG_MODE", raising=False)
-    assert get_resource_catalog_mode() is ResourceCatalogMode.DUAL
-
-    monkeypatch.setenv("IDEER_RESOURCE_CATALOG_MODE", "canonical")
-    assert get_resource_catalog_mode() is ResourceCatalogMode.CANONICAL
-
-    monkeypatch.setenv("IDEER_RESOURCE_CATALOG_MODE", "unknown")
-    with pytest.raises(ValueError, match="IDEER_RESOURCE_CATALOG_MODE"):
-        get_resource_catalog_mode()
 
 
 @pytest.mark.asyncio

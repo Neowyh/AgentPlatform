@@ -15,7 +15,6 @@ from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, Sys
 from app.gateway.routers.mcp import McpConfigResponse
 from app.gateway.routers.memory import MemoryConfigResponse, MemoryStatusResponse
 from app.gateway.routers.models import ModelResponse, ModelsListResponse
-from app.gateway.routers.skills import SkillInstallResponse, SkillResponse, SkillsListResponse
 from app.gateway.routers.uploads import UploadResponse
 from ideer.client import IDeerClient
 from ideer.config.paths import Paths
@@ -2358,9 +2357,7 @@ class TestGatewayConformance:
         with patch("ideer.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", return_value=[skill]):
             result = client.list_skills()
 
-        parsed = SkillsListResponse(**result)
-        assert len(parsed.skills) == 1
-        assert parsed.skills[0].name == "web-search"
+        assert result["skills"][0]["name"] == "web-search"
 
     def test_get_skill(self, client):
         skill = MagicMock()
@@ -2374,8 +2371,7 @@ class TestGatewayConformance:
             result = client.get_skill("web-search")
 
         assert result is not None
-        parsed = SkillResponse(**result)
-        assert parsed.name == "web-search"
+        assert result["name"] == "web-search"
 
     def test_install_skill(self, client, tmp_path, allow_skill_security_scan):
         skill_dir = tmp_path / "my-skill"
@@ -2391,9 +2387,9 @@ class TestGatewayConformance:
         with patch("ideer.skills.storage._default_skill_storage", LocalSkillStorage(host_path=str(tmp_path))):
             result = client.install_skill(archive)
 
-        parsed = SkillInstallResponse(**result)
-        assert parsed.success is True
-        assert parsed.skill_name == "my-skill"
+        parsed = result
+        assert parsed["success"] is True
+        assert parsed["skill_name"] == "my-skill"
 
     def test_get_mcp_config(self, client):
         server = MagicMock()

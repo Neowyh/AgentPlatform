@@ -22,7 +22,6 @@ from langchain_core.messages.utils import convert_to_messages
 from app.gateway.deps import get_run_context, get_run_manager, get_stream_bridge
 from app.gateway.utils import sanitize_log_param
 from ideer.config.app_config import get_app_config
-from ideer.resources.mode import ResourceCatalogMode, get_resource_catalog_mode
 from ideer.runtime import (
     END_SENTINEL,
     HEARTBEAT_SENTINEL,
@@ -379,16 +378,14 @@ def build_run_config(
 async def _resolve_canonical_alias(assistant_id: str | None, request: Request) -> str | None:
     """Resolve a legacy-name assistant through the catalog alias resolver.
 
-    Only active in canonical mode: legacy owner-directory reads are sealed,
-    so names must map to an active catalog resource — owner-first, then a
-    unique visible shared resource. Unknown names (404) and ambiguous names
-    (409) fail closed instead of leaking legacy behavior. The default
-    assistant is preserved and returns ``None``.
+    Legacy owner-directory reads are sealed, so names must map to an active
+    catalog resource — owner-first, then a unique visible shared resource.
+    Unknown names (404) and ambiguous names (409) fail closed instead of
+    leaking legacy behavior. The default assistant is preserved and returns
+    ``None``.
     """
 
     if not assistant_id or assistant_id == _DEFAULT_ASSISTANT_ID:
-        return None
-    if get_resource_catalog_mode() is not ResourceCatalogMode.CANONICAL:
         return None
 
     user_id = getattr(getattr(request.state, "user", None), "id", None)
@@ -472,12 +469,14 @@ async def start_run(
     # there as a canonical resource the same way as an assistant_id UUID.
     if canonical_resource_id is None:
         canonical_resource_id = _canonical_assistant_id(body_context.get("agent_name"))
-    # Canonical mode seals legacy owner-directory reads: legacy-name
-    # assistants resolve through the catalog alias resolver (owner-first,
-    # unique visible shared), failing closed when unknown or ambiguous.
+    # Legacy owner-directory reads are sealed: legacy-name assistants
+    # resolve through the catalog alias resolver (owner-first, unique
+    # visible shared), failing closed when unknown or ambiguous.
     # ``context.agent_name`` takes precedence over assistant_id because it is
     # where the workspace and channels actually carry the requested agent.
-    if canonical_resource_id is None and get_resource_catalog_mode() is ResourceCatalogMode.CANONICAL:
+    # Bootstrap runs carry the name of the agent being created, which cannot
+    # exist in the catalog yet — skip resolution so setup_agent can create it.
+    if canonical_resource_id is None and not body_context.get("is_bootstrap"):
         candidate = body_context.get("agent_name") or getattr(body, "assistant_id", None)
         if candidate:
             canonical_resource_id = await _resolve_canonical_alias(candidate, request)

@@ -1,7 +1,6 @@
 from . import (
     admin,
     admin_skill_applications,
-    agents,
     artifacts,
     assistants_compat,
     audit_logs,
@@ -12,20 +11,17 @@ from . import (
     memory,
     models,
     runs,
-    skills,
     suggestions,
     thread_runs,
     threads,
     tools,
     uploads,
     visibility_applications,
-    workflows,
 )
 
 __all__ = [
     "admin",
     "admin_skill_applications",
-    "agents",
     "artifacts",
     "assistants_compat",
     "audit_logs",
@@ -36,12 +32,10 @@ __all__ = [
     "memory",
     "models",
     "runs",
-    "skills",
     "suggestions",
     "threads",
     "thread_runs",
     "tools",
     "uploads",
     "visibility_applications",
-    "workflows",
 ]

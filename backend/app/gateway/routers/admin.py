@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import uuid
-from dataclasses import dataclass
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -25,10 +24,7 @@ from ideer.persistence.models.resource_metadata import ResourceMetadata
 from ideer.persistence.models.user import DepartmentModel, UserModel, UserRole
 from ideer.persistence.models.visibility_application import VisibilityApplication, VisibilityApplicationStatus
 from ideer.resources.service import ResourceAction, ResourceActor, ResourceService
-from ideer.skills.storage import get_or_new_skill_storage
-from ideer.skills.types import SkillCategory
 from ideer.tools.tools import get_available_tools
-from ideer.workflows.v2.store import WorkflowV2Store
 
 logger = logging.getLogger(__name__)
 
@@ -43,59 +39,27 @@ RESOURCE_TYPE_LABELS = {
 }
 
 
-@dataclass(frozen=True)
-class AdminResourceInventoryItem:
-    resource_type: str
-    resource_id: str
-    default_visibility: str
-    source_key: str
-
-
 async def _collect_admin_resource_inventory(
     session,
 ) -> list[dict[str, str | None]]:
     config = get_app_config()
-    metadata_rows = (await session.execute(select(ResourceMetadata))).scalars().all()
-    metadata = {(row.resource_type, row.resource_id): row for row in metadata_rows}
     canonical_rows = list((await session.execute(select(Resource))).scalars().all())
 
-    inventory: list[AdminResourceInventoryItem] = []
-    inventory.extend(AdminResourceInventoryItem("tool", tool.name, "public", f"tool:{tool.name}") for tool in get_available_tools(app_config=config) if getattr(tool, "name", None))
-    inventory.extend(
-        AdminResourceInventoryItem(
-            "skill",
-            skill.name,
-            "public" if getattr(skill, "category", None) == SkillCategory.PUBLIC else "private",
-            f"skill:{skill.name}",
-        )
-        for skill in get_or_new_skill_storage(app_config=config).load_skills(enabled_only=False)
-        if getattr(skill, "name", None)
-    )
-
-    session_factory = get_session_factory()
-    if session_factory is not None:
-        workflows, _ = await WorkflowV2Store(session_factory).list_latest_definitions(limit=10000, offset=0)
-        inventory.extend(AdminResourceInventoryItem("workflow", workflow.workflow_name, "private", f"workflow:{workflow.workflow_name}") for workflow in workflows)
-
-    resources: list[dict[str, str | None]] = []
-    for item in inventory:
-        meta = metadata.get((item.resource_type, item.resource_id))
-        created_at = getattr(meta, "created_at", None)
-        resources.append(
-            {
-                "id": meta.id if meta else item.source_key,
-                "resource_type": item.resource_type,
-                "resource_type_label": RESOURCE_TYPE_LABELS.get(item.resource_type, item.resource_type),
-                "resource_id": item.resource_id,
-                "visibility": meta.visibility if meta else item.default_visibility,
-                "owner_id": meta.owner_id if meta else None,
-                "department_id": meta.department_id if meta else None,
-                "created_at": str(created_at) if created_at else None,
-            }
-        )
-
-    canonical_keys = {(row.type, row.slug, row.owner_id) for row in canonical_rows}
-    resources = [item for item in resources if item["resource_type"] == "tool" or (item["resource_type"], item["resource_id"], item["owner_id"]) not in canonical_keys]
+    resources: list[dict[str, str | None]] = [
+        {
+            "id": f"tool:{tool.name}",
+            "resource_type": "tool",
+            "resource_type_label": RESOURCE_TYPE_LABELS.get("tool", "tool"),
+            "resource_id": tool.name,
+            "visibility": "public",
+            "owner_id": None,
+            "department_id": None,
+            "lifecycle_status": None,
+            "created_at": None,
+        }
+        for tool in get_available_tools(app_config=config)
+        if getattr(tool, "name", None)
+    ]
     resources.extend(
         {
             "id": row.id,

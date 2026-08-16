@@ -506,21 +506,6 @@ class TestListAssistants:
         result = _list_assistants()
         assert result[0].assistant_id == "lead_agent"
 
-    def test_canonical_mode_does_not_expose_legacy_named_agents(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-    ):
-        monkeypatch.setenv("IDEER_RESOURCE_CATALOG_MODE", "canonical")
-        custom_cfg = _make_agent_config("legacy-name")
-
-        with patch(
-            "ideer.config.agents_config.list_custom_agents",
-            return_value=[custom_cfg],
-        ):
-            result = _list_assistants()
-
-        assert [item.assistant_id for item in result] == ["lead_agent"]
-
     @patch("app.gateway.routers.assistants_compat._list_assistants")
     def test_includes_custom_agents(self, mock_list):
         """Custom agents from config are appended after the default."""
@@ -554,27 +539,37 @@ class TestListAssistants:
         ids = [a.assistant_id for a in result]
         assert ids == ["lead_agent", "alpha", "beta"]
 
-    def test_custom_agents_load_failure_still_returns_default(self):
-        """If list_custom_agents raises, we still get the default assistant."""
-        with patch(
-            "ideer.config.agents_config.list_custom_agents",
-            side_effect=RuntimeError("config missing"),
-        ):
-            from app.gateway.routers import assistants_compat
+    def test_canonical_load_failure_still_returns_default(self):
+        """If catalog lookup raises, we still get the default assistant."""
+        from app.gateway.routers import assistants_compat
 
+        with patch(
+            "app.gateway.routers.assistants_compat._list_canonical_assistants",
+            side_effect=RuntimeError("catalog unavailable"),
+        ):
             result = assistants_compat._list_assistants()
-            assert len(result) >= 1
-            assert result[0].assistant_id == "lead_agent"
+        assert len(result) >= 1
+        assert result[0].assistant_id == "lead_agent"
 
-    def test_custom_agents_use_lead_agent_graph_id(self):
-        """All custom agents get graph_id='lead_agent'."""
-        custom_cfg = _make_agent_config("g_agent")
+    def test_canonical_agents_use_lead_agent_graph_id(self):
+        """All canonical agents get graph_id='lead_agent'."""
+        from app.gateway.routers import assistants_compat
+
+        custom = AssistantResponse(
+            assistant_id="g_agent",
+            graph_id="lead_agent",
+            name="g_agent",
+            config={},
+            metadata={"created_by": "user"},
+            description="Agent from catalog",
+            created_at="",
+            updated_at="",
+            version=1,
+        )
         with patch(
-            "ideer.config.agents_config.list_custom_agents",
-            return_value=[custom_cfg],
+            "app.gateway.routers.assistants_compat._list_canonical_assistants",
+            return_value=[custom],
         ):
-            from app.gateway.routers import assistants_compat
-
             result = assistants_compat._list_assistants()
             for a in result:
                 assert a.graph_id == "lead_agent"

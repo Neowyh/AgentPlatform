@@ -1,9 +1,7 @@
 import asyncio
 import logging
-import uuid
 from pathlib import Path
 
-import yaml
 from langchain_core.messages import ToolMessage
 from langchain_core.tools import tool
 from langgraph.types import Command
@@ -12,9 +10,6 @@ from sqlalchemy import select
 from ideer.config.agents_config import validate_agent_name
 from ideer.config.paths import get_paths
 from ideer.persistence.engine import get_session_factory
-from ideer.persistence.models.resource_catalog import Resource
-from ideer.persistence.models.resource_metadata import ResourceMetadata
-from ideer.resources.mode import ResourceCatalogMode, get_resource_catalog_mode
 from ideer.runtime.user_context import resolve_runtime_user_id
 from ideer.tools.types import Runtime
 
@@ -38,6 +33,7 @@ def _create_canonical_agent(
     """
     from tempfile import TemporaryDirectory
 
+    from ideer.persistence.models.resource_catalog import Resource
     from ideer.persistence.models.user import UserModel, UserRole
     from ideer.resources.publisher import ResourcePublisher, write_agent_draft_source
     from ideer.resources.service import ResourceAction, ResourceActor, ResourceNotFound, ResourceService
@@ -126,92 +122,6 @@ def _create_canonical_agent(
         raise
 
 
-def _upsert_agent_metadata(agent_name: str, user_id: str) -> None:
-    """Persist agent metadata to ResourceMetadata table.
-
-    This is a sync wrapper (for use in @tool) that runs the async DB operation
-    via asyncio.run(). When DB is unavailable (memory mode), silently skips.
-    """
-    sf = get_session_factory()
-    if sf is None:
-        return
-
-    async def _upsert():
-        async with sf() as session:
-            stmt = select(ResourceMetadata).where(
-                ResourceMetadata.resource_type == "agent",
-                ResourceMetadata.resource_id == agent_name,
-            )
-            result = await session.execute(stmt)
-            resource = result.scalar_one_or_none()
-            if not resource:
-                resource = ResourceMetadata(
-                    id=str(uuid.uuid4()),
-                    resource_type="agent",
-                    resource_id=agent_name,
-                    owner_id=user_id,
-                    department_id=None,
-                    visibility="private",
-                )
-                session.add(resource)
-                await session.commit()
-
-    try:
-        asyncio.run(_upsert())
-    except Exception:
-        logger.exception("Failed to write agent metadata to ResourceMetadata table")
-
-
-def _upsert_skill_metadata_if_missing(skill_names: list[str], user_id: str) -> None:
-    """Ensure referenced custom skills have ResourceMetadata records.
-
-    For each skill name that exists on disk but has no DB record, creates one
-    with the given user as owner. Silently skips skills that already have
-    metadata or don't exist on disk.
-    """
-    from ideer.skills.storage import get_or_new_skill_storage
-
-    storage = get_or_new_skill_storage()
-
-    sf = get_session_factory()
-    if sf is None:
-        return
-
-    async def _upsert_one(name: str):
-        if not await asyncio.to_thread(storage.custom_skill_exists, name):
-            return
-        async with sf() as session:
-            stmt = select(ResourceMetadata).where(
-                ResourceMetadata.resource_type == "skill",
-                ResourceMetadata.resource_id == name,
-            )
-            existing = (await session.execute(stmt)).scalar_one_or_none()
-            if existing:
-                return
-            session.add(
-                ResourceMetadata(
-                    id=str(uuid.uuid4()),
-                    resource_type="skill",
-                    resource_id=name,
-                    owner_id=user_id,
-                    visibility="private",
-                )
-            )
-            await session.commit()
-
-    async def _upsert_all():
-        for name in skill_names:
-            try:
-                await _upsert_one(name)
-            except Exception:
-                logger.warning("Failed to upsert metadata for skill '%s'", name)
-
-    try:
-        asyncio.run(_upsert_all())
-    except Exception:
-        logger.exception("Failed to cascade skill metadata registration")
-
-
 @tool(parse_docstring=True)
 def setup_agent(
     soul: str,
@@ -233,7 +143,7 @@ def setup_agent(
 
     try:
         agent_name = validate_agent_name(agent_name)
-        if agent_name and get_resource_catalog_mode() is ResourceCatalogMode.CANONICAL:
+        if agent_name:
             user_id = resolve_runtime_user_id(runtime)
             resource_id = _create_canonical_agent(
                 agent_name=agent_name,
@@ -250,43 +160,18 @@ def setup_agent(
                     "messages": [ToolMessage(content=f"Agent '{agent_name}' created successfully!", tool_call_id=runtime.tool_call_id)],
                 }
             )
+        # Default agent (no agent_name): SOUL.md lives at the global base dir.
         paths = get_paths()
-        if agent_name:
-            # Custom agents are persisted under the current user's bucket so
-            # different users do not see each other's agents.
-            user_id = resolve_runtime_user_id(runtime)
-            agent_dir = paths.user_agent_dir(user_id, agent_name)
-        else:
-            # Default agent (no agent_name): SOUL.md lives at the global base dir.
-            agent_dir = paths.base_dir
+        agent_dir = paths.base_dir
         is_new_dir = not agent_dir.exists()
         agent_dir.mkdir(parents=True, exist_ok=True)
-
-        if agent_name:
-            # If agent_name is provided, we are creating a custom agent in the agents/ directory
-            config_data: dict = {"name": agent_name}
-            if description:
-                config_data["description"] = description
-            if skills is not None:
-                config_data["skills"] = skills
-
-            config_file = agent_dir / "config.yaml"
-            with open(config_file, "w", encoding="utf-8") as f:
-                yaml.dump(config_data, f, default_flow_style=False, allow_unicode=True)
 
         soul_file = agent_dir / "SOUL.md"
         soul_file.write_text(soul, encoding="utf-8")
 
-        if agent_name:
-            _upsert_agent_metadata(agent_name, user_id)
-            # Cascade: ensure referenced custom skills also have resource_metadata
-            if skills:
-                _upsert_skill_metadata_if_missing(skills, user_id)
-
-        logger.info(f"[agent_creator] Created agent '{agent_name}' at {agent_dir}")
+        logger.info(f"[agent_creator] Created default agent SOUL at {agent_dir}")
         return Command(
             update={
-                "created_agent_name": agent_name,
                 "messages": [ToolMessage(content=f"Agent '{agent_name}' created successfully!", tool_call_id=runtime.tool_call_id)],
             }
         )

@@ -16,7 +16,6 @@ from app.gateway.error_codes import ApiException
 from app.gateway.routers import (
     admin,
     admin_skill_applications,
-    agents,
     artifacts,
     assistants_compat,
     audit_logs,
@@ -28,14 +27,12 @@ from app.gateway.routers import (
     models,
     resources,
     runs,
-    skills,
     suggestions,
     thread_runs,
     threads,
     tools,
     uploads,
     visibility_applications,
-    workflows,
 )
 from ideer.config import app_config as ideer_app_config
 from ideer.config.app_config import apply_logging_level
@@ -618,9 +615,6 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
     # Memory API is mounted at /api/memory
     app.include_router(memory.router)
 
-    # Skills API is mounted at /api/skills
-    app.include_router(skills.router)
-
     # Admin Skill Applications API is mounted at /api/admin/skill-applications
     app.include_router(admin_skill_applications.router)
 
@@ -632,9 +626,6 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
 
     # Thread cleanup API is mounted at /api/threads/{thread_id}
     app.include_router(threads.router)
-
-    # Agents API is mounted at /api/agents
-    app.include_router(agents.router)
 
     # Suggestions API is mounted at /api/threads/{thread_id}/suggestions
     app.include_router(suggestions.router)
@@ -665,9 +656,6 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
 
     # Tools API is mounted at /api/tools
     app.include_router(tools.router)
-
-    # Workflows API is mounted at /api/workflows
-    app.include_router(workflows.router)
 
     # Visibility Applications API is mounted at /api/visibility-applications
     app.include_router(visibility_applications.router)

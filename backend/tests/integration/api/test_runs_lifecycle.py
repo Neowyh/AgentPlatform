@@ -219,7 +219,6 @@ def _preserve_process_config_singletons(monkeypatch: pytest.MonkeyPatch) -> None
 
     from ideer.config import (
         acp_config,
-        agents_api_config,
         checkpointer_config,
         guardrails_config,
         memory_config,
@@ -234,7 +233,6 @@ def _preserve_process_config_singletons(monkeypatch: pytest.MonkeyPatch) -> None
         (title_config, "_title_config"),
         (summarization_config, "_summarization_config"),
         (memory_config, "_memory_config"),
-        (agents_api_config, "_agents_api_config"),
         (subagents_config, "_subagents_config"),
         (tool_search_config, "_tool_search_config"),
         (guardrails_config, "_guardrails_config"),
@@ -527,9 +525,26 @@ def test_stream_run_executes_real_lead_agent_setup_agent_business_path(isolated_
         run = _wait_for_status(client, thread_id, run_id, "success", timeout=10.0)
         assert run["assistant_id"] == "lead_agent"
 
-        expected_soul = isolated_deer_flow_home / "users" / auth_user_id / "agents" / agent_name / "SOUL.md"
-        assert expected_soul.exists(), f"setup_agent did not write SOUL.md. tmp tree: {sorted(str(p.relative_to(isolated_deer_flow_home)) for p in isolated_deer_flow_home.rglob('SOUL.md'))}"
-        assert f"Agent name: {agent_name}" in expected_soul.read_text(encoding="utf-8")
+        # Canonical outcome: the agent is a catalog resource owned by the
+        # authenticated user, published under resources/agents/<id>/versions/1.
+        import asyncio
+
+        from sqlalchemy import select
+
+        from ideer.persistence.engine import get_session_factory
+        from ideer.persistence.models.resource_catalog import Resource
+
+        async def _fetch_catalog_agent() -> tuple[str, str, int]:
+            async with get_session_factory()() as session:
+                resource = (await session.execute(select(Resource).where(Resource.type == "agent", Resource.slug == agent_name))).scalar_one_or_none()
+                assert resource is not None, f"no catalog agent with slug {agent_name!r}"
+                return str(resource.owner_id), resource.id, resource.latest_version
+
+        owner_id, resource_id, latest_version = asyncio.run(_fetch_catalog_agent())
+        assert owner_id == auth_user_id, f"agent owned by {owner_id!r}, expected {auth_user_id!r}"
+        soul_root = isolated_deer_flow_home / "resources" / "agents" / resource_id / "versions" / str(latest_version)
+        assert (soul_root / "SOUL.md").exists(), f"published SOUL missing. tmp tree: {sorted(str(p.relative_to(isolated_deer_flow_home)) for p in isolated_deer_flow_home.rglob('SOUL.md'))}"
+        assert f"Agent name: {agent_name}" in (soul_root / "SOUL.md").read_text(encoding="utf-8")
         assert not (isolated_deer_flow_home / "users" / "default" / "agents" / agent_name).exists()
 
 

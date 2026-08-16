@@ -276,7 +276,6 @@ async def _handle_resource_metadata(
         if not target_user_id:
             raise ValueError("target_user_id required for transfer strategy")
         await _bulk_transfer_resources(session, user_id, target_user_id, now)
-        _copy_agent_directories(paths, user_id, target_user_id)
 
     elif strategy == "delete":
         await _bulk_hard_delete_resources(session, user_id)
@@ -293,20 +292,6 @@ async def _bulk_transfer_resources(session: AsyncSession, user_id: str, target_u
 async def _bulk_hard_delete_resources(session: AsyncSession, user_id: str) -> None:
     """Hard-delete all resource metadata owned by *user_id*."""
     await session.execute(sql_delete(ResourceMetadata).where(ResourceMetadata.owner_id == user_id))
-
-
-def _copy_agent_directories(paths: Paths, user_id: str, target_user_id: str) -> None:
-    """Copy agents before commit; source state is removed only after commit."""
-    src_dir = paths.user_agents_dir(user_id)
-    if not src_dir.exists():
-        return
-
-    for agent_dir in src_dir.iterdir():
-        if agent_dir.is_dir():
-            dst = paths.user_agent_dir(target_user_id, agent_dir.name)
-            if dst.exists():
-                raise ValueError(f"Target user already has agent '{agent_dir.name}'")
-            shutil.copytree(agent_dir, dst)
 
 
 # ---------------------------------------------------------------------------

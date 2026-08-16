@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import uuid
 import zipfile
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from functools import wraps
 from pathlib import Path
@@ -30,7 +32,6 @@ from ideer.persistence.models.resource_catalog import (
 )
 from ideer.persistence.models.user import UserModel, UserRole
 from ideer.persistence.models.workflow_v2 import WorkflowV2RunRow
-from ideer.resources.mode import ResourceCatalogMode, get_resource_catalog_mode
 from ideer.resources.publisher import ResourcePublisher, write_agent_draft_source
 from ideer.resources.retention import build_retention_report
 from ideer.resources.runtime import load_validated_agent_definition
@@ -45,6 +46,12 @@ from ideer.resources.service import (
     VisibilityClosureError,
 )
 from ideer.resources.storage import ResourceStorage, StorageConflict, StorageValidationError
+from ideer.workflows.v2.file_roots import (
+    collect_artifacts,
+    make_host_resolver,
+    render_roots,
+    workflow_record_path,
+)
 from ideer.workflows.v2.parser import parse_workflow_v2
 from ideer.workflows.v2.store import WorkflowV2Store
 
@@ -321,15 +328,6 @@ async def list_resources(
     limit: int = Query(default=50, ge=1, le=200),
     current_user: UserModel = Depends(get_current_rbac_user),
 ) -> dict[str, Any]:
-    mode = get_resource_catalog_mode()
-    if mode is ResourceCatalogMode.LEGACY:
-        return {
-            "items": [],
-            "total": 0,
-            "offset": offset,
-            "limit": limit,
-            "mode": mode.value,
-        }
     async with _factory()() as session:
         page = await ResourceService(session, _resource_actor(current_user)).list_visible(
             resource_type=resource_type,
@@ -349,7 +347,6 @@ async def list_resources(
             "total": page.total,
             "offset": page.offset,
             "limit": page.limit,
-            "mode": mode.value,
         }
 
 
@@ -1092,12 +1089,73 @@ async def stream_canonical_workflow_events(
     current_user: UserModel = Depends(get_current_rbac_user),
 ) -> StreamingResponse:
     await _get_canonical_run(resource_id, run_id, current_user)
-    from app.gateway.routers.workflows import workflow_event_stream
 
     return StreamingResponse(
         workflow_event_stream(WorkflowV2Store(_factory()), run_id, after_seq),
         media_type="text/event-stream",
     )
+
+
+async def workflow_event_stream(
+    store: WorkflowV2Store,
+    run_id: str,
+    after_seq: int,
+    *,
+    poll_seconds: float = 0.25,
+) -> AsyncIterator[str]:
+    """Replay and then tail the durable, run-local event sequence."""
+    cursor = after_seq
+    terminal = {"completed", "failed", "cancelled"}
+    while True:
+        events = await store.list_events(run_id, cursor)
+        for event in events:
+            cursor = event.seq
+            yield f"id: {event.seq}\nevent: {event.event_type}\ndata: {json.dumps(event.payload, ensure_ascii=False)}\n\n"
+        run = await store.get_run(run_id)
+        if run is None or run.status in terminal:
+            return
+        await asyncio.sleep(poll_seconds)
+
+
+def _run_write_roots(nodes: list[dict]) -> list[str]:
+    """Collect every declared write root across a definition's nodes."""
+    roots: list[str] = []
+    for node in nodes:
+        if not isinstance(node, dict):
+            continue
+        action = node.get("action") or {}
+        if not isinstance(action, dict):
+            continue
+        file_access = action.get("file_access") or {}
+        if not isinstance(file_access, dict):
+            continue
+        roots.extend(file_access.get("write") or [])
+    return roots
+
+
+async def _run_artifacts(store: WorkflowV2Store, run) -> list[dict]:
+    """List the files a run produced under its declared write roots.
+
+    Roots are rendered against the persisted snapshot state so a run's
+    artifacts can be browsed after completion; virtual paths are returned so
+    host paths never leak to the client.
+    """
+    definition = await store.get_definition(run.workflow_name, run.definition_version)
+    if definition is None:
+        return []
+    nodes = definition.definition.get("nodes", []) if isinstance(definition.definition, dict) else []
+    write_roots = _run_write_roots(nodes)
+    if not write_roots:
+        return []
+    snapshot = run.snapshot if isinstance(run.snapshot, dict) else {}
+    state = {
+        "inputs": run.inputs or {},
+        "state": snapshot.get("state", {}),
+        "outputs": snapshot.get("outputs", {}),
+    }
+    rendered = render_roots({"write": write_roots}, state)
+    resolver = make_host_resolver(run.run_id, str(run.created_by))
+    return collect_artifacts(rendered.get("write", []), resolver)
 
 
 @router.get("/{resource_id}/workflow-runs/{run_id}/artifacts")
@@ -1108,7 +1166,6 @@ async def list_canonical_run_artifacts(
     current_user: UserModel = Depends(get_current_rbac_user),
 ) -> dict[str, Any]:
     run = await _get_canonical_run(resource_id, run_id, current_user)
-    from app.gateway.routers.workflows import _run_artifacts
 
     artifacts = await _run_artifacts(WorkflowV2Store(_factory()), run)
     return {"run_id": run_id, "workflow": resource_id, "artifacts": artifacts}
@@ -1123,8 +1180,6 @@ async def get_canonical_run_artifact_content(
     current_user: UserModel = Depends(get_current_rbac_user),
 ) -> FileResponse:
     run = await _get_canonical_run(resource_id, run_id, current_user)
-    from app.gateway.routers.workflows import _run_artifacts
-    from ideer.workflows.v2.file_roots import make_host_resolver
 
     artifacts = await _run_artifacts(WorkflowV2Store(_factory()), run)
     if not any(item["path"] == path for item in artifacts):
@@ -1147,8 +1202,6 @@ async def download_canonical_run_record(
     if format not in {"jsonl", "md"}:
         raise ValueError("format must be 'jsonl' or 'md'")
     run = await _get_canonical_run(resource_id, run_id, current_user)
-    from ideer.workflows.v2.file_roots import make_host_resolver, workflow_record_path
-
     host = make_host_resolver(run.run_id, str(run.created_by))(workflow_record_path(format))
     if host is None or not Path(host).is_file():
         raise ResourceNotFound(f"Run record for run '{run_id}' is not available")

@@ -49,9 +49,6 @@ postgres = [
 ]
 pymupdf = ["pymupdf4llm>=0.0.17"]
 
-[project.scripts]
-ideer-resource-catalog = "ideer.scripts.resource_catalog_v2:main"
-
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

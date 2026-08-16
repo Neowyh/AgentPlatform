@@ -125,46 +125,7 @@ class _AgentAdapter:
         self.owner_id = owner_id
 
     async def _build_executor(self, context: ActionContext, params: dict[str, Any]):
-        from ideer.resources.mode import ResourceCatalogMode, get_resource_catalog_mode
-
-        if get_resource_catalog_mode() is ResourceCatalogMode.CANONICAL:
-            return await self._build_canonical_executor(context, params)
-
-        from ideer.config import get_app_config
-        from ideer.config.agents_config import load_agent_config, load_agent_soul
-        from ideer.subagents.config import SubagentConfig
-        from ideer.subagents.executor import SubagentExecutor
-        from ideer.tools.tools import get_available_tools
-
-        config_user_id = self.owner_id or self.user_id
-        config = load_agent_config(self.name, user_id=config_user_id)
-        if config is None:
-            raise ActionResolutionError(f"agent '{self.name}' not found")
-
-        soul = load_agent_soul(self.name, user_id=config_user_id) or ""
-        override = params.get("system_prompt", "")
-        if soul and override:
-            system_prompt = f"{soul}\n\n## 当前阶段指令\n\n{override}"
-        else:
-            system_prompt = soul or override
-
-        subagent = SubagentConfig(
-            name=self.name,
-            description=f"Workflow node: {context.node_id}",
-            system_prompt=system_prompt,
-            skills=config.skills,
-            model=config.model or "inherit",
-            max_turns=params.get("max_turns", 50),
-            file_access=context.file_access,
-        )
-        executor = SubagentExecutor(
-            subagent,
-            get_available_tools(groups=config.tool_groups, app_config=get_app_config()),
-            app_config=get_app_config(),
-            thread_id=context.run_id,
-        )
-        prompt = params.get("prompt", params.get("input", params))
-        return executor, str(prompt)
+        return await self._build_canonical_executor(context, params)
 
     async def _build_canonical_executor(self, context: ActionContext, params: dict[str, Any]):
         import yaml
@@ -366,16 +327,3 @@ def _is_llm_unavailable_text(result: Any) -> bool:
         return False
     lowered = result.lower()
     return any(marker in lowered for marker in _AgentAdapter._LLM_UNAVAILABLE_MARKERS)
-
-
-def build_default_registry(app_config: Any, user_id: str) -> ActionAdapterRegistry:
-    """Resolve configured tools and agents for one workflow run."""
-    from ideer.config.agents_config import list_custom_agents
-    from ideer.tools.tools import get_available_tools
-
-    registry = ActionAdapterRegistry()
-    for tool in get_available_tools(app_config=app_config):
-        registry.register("tool", tool.name, _ToolAdapter(tool, user_id=user_id))
-    for agent in list_custom_agents(user_id=user_id):
-        registry.register("agent", agent.name, _AgentAdapter(agent.name, user_id))
-    return registry

@@ -158,48 +158,56 @@ class TestGetAdminStats:
         assert data["total_resources"] == 15
 
     @pytest.mark.asyncio
-    async def test_inventory_keeps_owner_mapping_when_metadata_date_is_invalid(self):
-        """Malformed persisted timestamps sort deterministically without losing owner attribution."""
-        metadata = SimpleNamespace(
-            id="meta-tool-1",
-            resource_type="tool",
-            resource_id="tool-1",
-            visibility="department",
+    async def test_inventory_lists_canonical_rows_with_owner_mapping(self):
+        """Inventory is built from canonical catalog rows plus built-in tools."""
+        canonical = SimpleNamespace(
+            id="res-1",
+            type="skill",
+            slug="research",
+            visibility="private",
             owner_id="owner-1",
-            department_id="dept-1",
-            created_at="not-a-date",
+            scope_department_id=None,
+            lifecycle_status="active",
+            created_at=datetime(2026, 1, 1),
         )
-        metadata_result = MagicMock()
-        metadata_result.scalars.return_value.all.return_value = [metadata]
         canonical_result = MagicMock()
-        canonical_result.scalars.return_value.all.return_value = []
+        canonical_result.scalars.return_value.all.return_value = [canonical]
         owner_result = MagicMock()
         owner_result.all.return_value = [SimpleNamespace(id="owner-1", username="Ada")]
         session = AsyncMock()
-        session.execute = AsyncMock(side_effect=[metadata_result, canonical_result, owner_result])
-        workflow_store = MagicMock()
-        workflow_store.list_latest_definitions = AsyncMock(return_value=([], 0))
+        session.execute = AsyncMock(side_effect=[canonical_result, owner_result])
 
         with (
             patch("app.gateway.routers.admin.get_app_config", return_value=SimpleNamespace()),
             patch("app.gateway.routers.admin.get_available_tools", return_value=[SimpleNamespace(name="tool-1")]),
-            patch("app.gateway.routers.admin.get_or_new_skill_storage", return_value=MagicMock(load_skills=MagicMock(return_value=[]))),
-            patch("app.gateway.routers.admin.WorkflowV2Store", return_value=workflow_store),
         ):
             resources = await admin_module._collect_admin_resource_inventory(session)
 
         assert resources == [
             {
-                "id": "meta-tool-1",
+                "id": "res-1",
+                "resource_type": "skill",
+                "resource_type_label": "Skill",
+                "resource_id": "research",
+                "visibility": "private",
+                "owner_id": "owner-1",
+                "department_id": None,
+                "lifecycle_status": "active",
+                "created_at": "2026-01-01 00:00:00",
+                "owner_username": "Ada",
+            },
+            {
+                "id": "tool:tool-1",
                 "resource_type": "tool",
                 "resource_type_label": "工具",
                 "resource_id": "tool-1",
-                "visibility": "department",
-                "owner_id": "owner-1",
-                "department_id": "dept-1",
-                "created_at": "not-a-date",
-                "owner_username": "Ada",
-            }
+                "visibility": "public",
+                "owner_id": None,
+                "department_id": None,
+                "lifecycle_status": None,
+                "created_at": None,
+                "owner_username": None,
+            },
         ]
 
 
@@ -260,36 +268,26 @@ class TestAdminRemainingGuards:
         assert response.json()["detail"] == "Internal server error"
         service_delete_user.assert_awaited_once()
 
-    @patch("app.gateway.routers.admin.WorkflowV2Store")
-    @patch("app.gateway.routers.admin.get_or_new_skill_storage")
     @patch("app.gateway.routers.admin.get_available_tools")
-    @patch("app.gateway.routers.admin.get_paths", create=True)
     @patch("app.gateway.routers.admin.get_app_config")
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_stats_uses_canonical_inventory_when_metadata_undercounts(
         self,
         mock_sf,
         mock_get_app_config,
-        mock_get_paths,
         mock_get_tools,
-        mock_get_skill_storage,
-        mock_workflow_store,
-        tmp_path,
     ):
-        """Stats count live inventory, not only resource_metadata rows."""
-        mock_get_paths.return_value = SimpleNamespace(base_dir=tmp_path, agents_dir=tmp_path / "agents")
+        """Stats count canonical catalog rows, not legacy storage scans."""
         mock_get_app_config.return_value = SimpleNamespace()
         mock_get_tools.return_value = [SimpleNamespace(name="tool-a"), SimpleNamespace(name="tool-b")]
-        mock_get_skill_storage.return_value.load_skills.return_value = [SimpleNamespace(name="skill-a")]
-        mock_workflow_store.return_value.list_latest_definitions = AsyncMock(return_value=([SimpleNamespace(workflow_name="wf-a"), SimpleNamespace(workflow_name="wf-b")], 2))
 
         session = AsyncMock()
         call_count = {"n": 0}
 
-        def _canonical_row(slug):
+        def _canonical_row(slug, resource_type):
             return SimpleNamespace(
                 id=f"uuid-{slug}",
-                type="agent",
+                type=resource_type,
                 slug=slug,
                 visibility="private",
                 owner_id="owner-1",
@@ -306,9 +304,14 @@ class TestAdminRemainingGuards:
             elif call_count["n"] == 2:
                 result.scalar = MagicMock(return_value=3)
             elif call_count["n"] == 3:
-                result.scalars.return_value.all.return_value = []
+                result.scalars.return_value.all.return_value = [
+                    _canonical_row("canon-agent", "agent"),
+                    _canonical_row("canon-skill", "skill"),
+                    _canonical_row("canon-flow-a", "workflow"),
+                    _canonical_row("canon-flow-b", "workflow"),
+                ]
             elif call_count["n"] == 4:
-                result.scalars.return_value.all.return_value = [_canonical_row("canon-agent")]
+                result.all.return_value = [SimpleNamespace(id="owner-1", username="Ada")]
             else:
                 result.scalar = MagicMock(return_value=0)
             return result
@@ -327,28 +330,18 @@ class TestAdminRemainingGuards:
         assert data["total_workflows"] == 2
         assert data["total_resources"] == 6
 
-    @patch("app.gateway.routers.admin.WorkflowV2Store")
-    @patch("app.gateway.routers.admin.get_or_new_skill_storage")
     @patch("app.gateway.routers.admin.get_available_tools")
-    @patch("app.gateway.routers.admin.get_paths", create=True)
     @patch("app.gateway.routers.admin.get_app_config")
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_stats_counts_canonical_resource_rows(
         self,
         mock_sf,
         mock_get_app_config,
-        mock_get_paths,
         mock_get_tools,
-        mock_get_skill_storage,
-        mock_workflow_store,
-        tmp_path,
     ):
         """Canonical catalog rows are counted in type statistics."""
-        mock_get_paths.return_value = SimpleNamespace(base_dir=tmp_path, agents_dir=tmp_path / "agents")
         mock_get_app_config.return_value = SimpleNamespace()
         mock_get_tools.return_value = [SimpleNamespace(name="tool-a")]
-        mock_get_skill_storage.return_value.load_skills.return_value = [SimpleNamespace(name="legacy-skill", category="private")]
-        mock_workflow_store.return_value.list_latest_definitions = AsyncMock(return_value=([], 0))
 
         session = AsyncMock()
         call_count = {"n": 0}
@@ -373,14 +366,12 @@ class TestAdminRemainingGuards:
             elif call_count["n"] == 2:
                 result.scalar = MagicMock(return_value=3)
             elif call_count["n"] == 3:
-                result.scalars.return_value.all.return_value = []
-            elif call_count["n"] == 4:
                 result.scalars.return_value.all.return_value = [
                     _canonical_row("agent", "canon-agent", "owner-1"),
                     _canonical_row("skill", "canon-skill", "owner-1"),
                     _canonical_row("workflow", "canon-flow", "owner-1"),
                 ]
-            elif call_count["n"] == 5:
+            elif call_count["n"] == 4:
                 result.all.return_value = [
                     SimpleNamespace(id="owner-1", username="Ada"),
                 ]
@@ -398,9 +389,9 @@ class TestAdminRemainingGuards:
         data = resp.json()
         assert data["total_agents"] == 1
         assert data["total_tools"] == 1
-        assert data["total_skills"] == 2
+        assert data["total_skills"] == 1
         assert data["total_workflows"] == 1
-        assert data["total_resources"] == 5
+        assert data["total_resources"] == 4
         assert data["total_users"] == 10
         assert data["total_departments"] == 3
 
@@ -454,39 +445,17 @@ class TestAdminRemainingGuards:
 class TestListResources:
     """Tests for GET /api/admin/resources endpoint."""
 
-    @patch("app.gateway.routers.admin.WorkflowV2Store")
-    @patch("app.gateway.routers.admin.get_or_new_skill_storage")
     @patch("app.gateway.routers.admin.get_available_tools")
-    @patch("app.gateway.routers.admin.get_paths", create=True)
     @patch("app.gateway.routers.admin.get_app_config")
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_resources_returns_canonical_inventory_with_metadata_defaults(
         self,
         mock_sf,
         mock_get_app_config,
-        mock_get_paths,
         mock_get_tools,
-        mock_get_skill_storage,
-        mock_workflow_store,
-        tmp_path,
     ):
-        mock_get_paths.return_value = SimpleNamespace(base_dir=tmp_path, agents_dir=tmp_path / "agents")
         mock_get_app_config.return_value = SimpleNamespace()
         mock_get_tools.return_value = [SimpleNamespace(name="tool-a")]
-        mock_get_skill_storage.return_value.load_skills.return_value = [
-            SimpleNamespace(name="public-skill", category="public"),
-            SimpleNamespace(name="custom-skill", category="custom"),
-        ]
-        mock_workflow_store.return_value.list_latest_definitions = AsyncMock(return_value=([SimpleNamespace(workflow_name="wf-a")], 1))
-
-        meta = MagicMock()
-        meta.id = "meta-tool-a"
-        meta.resource_type = "tool"
-        meta.resource_id = "tool-a"
-        meta.visibility = "department"
-        meta.owner_id = "owner-1"
-        meta.department_id = "dept-1"
-        meta.created_at = datetime(2024, 1, 1)
 
         session = AsyncMock()
 
@@ -508,11 +477,12 @@ class TestListResources:
             call_count["n"] += 1
             result = MagicMock()
             if call_count["n"] == 1:
-                result.scalars.return_value.all.return_value = [meta]
-            elif call_count["n"] == 2:
                 result.scalars.return_value.all.return_value = [
                     _canonical_row("shared-a", "public"),
                     _canonical_row("custom-a", "private"),
+                    _canonical_row("public-skill", "public", "skill"),
+                    _canonical_row("custom-skill", "private", "skill"),
+                    _canonical_row("wf-a", "private", "workflow"),
                 ]
             else:
                 result.scalars.return_value.all.return_value = []
@@ -529,33 +499,23 @@ class TestListResources:
         assert data["total"] == 6
         by_id = {item["resource_id"]: item for item in data["resources"]}
         assert by_id["shared-a"]["visibility"] == "public"
-        assert by_id["tool-a"]["visibility"] == "department"
+        assert by_id["tool-a"]["visibility"] == "public"
         assert by_id["custom-a"]["visibility"] == "private"
         assert by_id["public-skill"]["visibility"] == "public"
         assert by_id["custom-skill"]["visibility"] == "private"
         assert by_id["wf-a"]["visibility"] == "private"
 
-    @patch("app.gateway.routers.admin.WorkflowV2Store")
-    @patch("app.gateway.routers.admin.get_or_new_skill_storage")
     @patch("app.gateway.routers.admin.get_available_tools")
-    @patch("app.gateway.routers.admin.get_paths", create=True)
     @patch("app.gateway.routers.admin.get_app_config")
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_resources_applies_type_filter_before_total_and_pagination(
         self,
         mock_sf,
         mock_get_app_config,
-        mock_get_paths,
         mock_get_tools,
-        mock_get_skill_storage,
-        mock_workflow_store,
-        tmp_path,
     ):
-        mock_get_paths.return_value = SimpleNamespace(base_dir=tmp_path, agents_dir=tmp_path / "agents")
         mock_get_app_config.return_value = SimpleNamespace()
         mock_get_tools.return_value = [SimpleNamespace(name="tool-a")]
-        mock_get_skill_storage.return_value.load_skills.return_value = []
-        mock_workflow_store.return_value.list_latest_definitions = AsyncMock(return_value=([], 0))
 
         session = AsyncMock()
 
@@ -577,8 +537,6 @@ class TestListResources:
             call_count["n"] += 1
             result = MagicMock()
             if call_count["n"] == 1:
-                result.scalars.return_value.all.return_value = []
-            elif call_count["n"] == 2:
                 result.scalars.return_value.all.return_value = [_canonical_row("agent-a"), _canonical_row("agent-b")]
             else:
                 result.scalars.return_value.all.return_value = []
@@ -596,29 +554,17 @@ class TestListResources:
         assert len(data["resources"]) == 1
         assert data["resources"][0]["resource_type"] == "agent"
 
-    @patch("app.gateway.routers.admin.WorkflowV2Store")
-    @patch("app.gateway.routers.admin.get_or_new_skill_storage")
     @patch("app.gateway.routers.admin.get_available_tools")
-    @patch("app.gateway.routers.admin.get_paths", create=True)
     @patch("app.gateway.routers.admin.get_app_config")
     @patch("app.gateway.routers.admin.get_session_factory")
     def test_resources_surfaces_canonical_lifecycle_status(
         self,
         mock_sf,
         mock_get_app_config,
-        mock_get_paths,
         mock_get_tools,
-        mock_get_skill_storage,
-        mock_workflow_store,
-        tmp_path,
     ):
-        shared_agents = tmp_path / "agents"
-        shared_agents.mkdir()
-        mock_get_paths.return_value = SimpleNamespace(base_dir=tmp_path, agents_dir=shared_agents)
         mock_get_app_config.return_value = SimpleNamespace()
         mock_get_tools.return_value = []
-        mock_get_skill_storage.return_value.load_skills.return_value = []
-        mock_workflow_store.return_value.list_latest_definitions = AsyncMock(return_value=([], 0))
 
         canonical = MagicMock()
         canonical.id = "11111111-1111-1111-1111-111111111111"
@@ -638,9 +584,9 @@ class TestListResources:
             call_count["n"] += 1
             result = MagicMock()
             if call_count["n"] == 1:
-                result.scalars.return_value.all.return_value = []
-            else:
                 result.scalars.return_value.all.return_value = [canonical]
+            else:
+                result.scalars.return_value.all.return_value = []
             return result
 
         session.execute = AsyncMock(side_effect=_execute)

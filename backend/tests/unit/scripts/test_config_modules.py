@@ -14,12 +14,6 @@ from ideer.config.acp_config import (
     get_acp_agents,
     load_acp_config_from_dict,
 )
-from ideer.config.agents_api_config import (
-    AgentsApiConfig,
-    get_agents_api_config,
-    load_agents_api_config_from_dict,
-    set_agents_api_config,
-)
 
 # ---------------------------------------------------------------------------
 # CheckpointerConfig
@@ -1232,42 +1226,6 @@ class TestACPAgentConfig:
                 load_acp_config_from_dict({"bad": {"description": "d"}})
         finally:
             mod._acp_agents = original
-
-
-# ===================================================================
-# AgentsApiConfig
-# ===================================================================
-
-
-class TestAgentsApiConfig:
-    def test_defaults(self):
-        cfg = AgentsApiConfig()
-        assert cfg.enabled is False
-
-    def test_enabled(self):
-        cfg = AgentsApiConfig(enabled=True)
-        assert cfg.enabled is True
-
-    def test_singleton_get_set(self):
-        original = get_agents_api_config()
-        try:
-            set_agents_api_config(AgentsApiConfig(enabled=True))
-            assert get_agents_api_config().enabled is True
-        finally:
-            set_agents_api_config(original)
-
-    def test_load_from_dict(self):
-        original = get_agents_api_config()
-        try:
-            load_agents_api_config_from_dict({"enabled": True})
-            assert get_agents_api_config().enabled is True
-        finally:
-            set_agents_api_config(original)
-
-    def test_extra_fields_ignored(self):
-        # Pydantic v2 default extra="ignore" silently drops unknown fields
-        cfg = AgentsApiConfig(custom="val")
-        assert not hasattr(cfg, "custom") or cfg.model_extra is None
 
 
 # ===================================================================
