@@ -564,6 +564,7 @@ async def get_published_resource(
             "content": published.content,
         }
         if resource.type == "workflow":
+            payload["yaml_content"] = yaml.safe_dump(published.content, sort_keys=False, allow_unicode=True)
             return payload
         expected_key = f"{'skills' if resource.type == 'skill' else 'agents'}/{resource.id}/versions/{published.version}"
         if published.storage_key != expected_key:

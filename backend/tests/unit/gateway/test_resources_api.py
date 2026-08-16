@@ -2,10 +2,19 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+from types import SimpleNamespace
+
 import pytest
+import yaml
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.gateway.routers import resources
-from ideer.persistence.models.resource_catalog import Resource
+from ideer.persistence.base import Base
+from ideer.persistence.models.resource_catalog import (
+    Resource,
+    ResourceVersion,
+)
 from ideer.persistence.models.user import UserModel, UserRole
 from ideer.persistence.models.workflow_v2 import WorkflowV2RunRow
 from ideer.resources.service import ResourceAction
@@ -143,3 +152,75 @@ def test_canonical_resume_roles_are_read_from_the_frozen_interrupt_node() -> Non
     definition = {"nodes": [{"id": "approval", "type": "interrupt", "roles": ["department_admin"]}]}
 
     assert resources._required_canonical_resume_roles(run, definition) == {"department_admin"}
+
+
+@pytest.mark.asyncio
+async def test_published_workflow_response_includes_real_yaml(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'published.db'}")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with factory() as session:
+        session.add(
+            UserModel(
+                id="owner",
+                username="owner@test.com",
+                role=UserRole.SUPER_ADMIN,
+                disabled=False,
+            )
+        )
+        session.add(
+            Resource(
+                id="workflow-id",
+                type="workflow",
+                slug="review",
+                display_name="Review",
+                owner_id="owner",
+                visibility="private",
+                lifecycle_status="active",
+                latest_version=1,
+                draft_revision=0,
+                storage_kind="database",
+                storage_key="workflows/workflow-id",
+                system_owned=False,
+                authz_revision=1,
+            )
+        )
+        session.add(
+            ResourceVersion(
+                id="version-id",
+                resource_id="workflow-id",
+                version=1,
+                content_hash="a" * 64,
+                storage_key="workflows/workflow-id/versions/1",
+                scan_result={},
+                content={"name": "review", "nodes": [{"id": "start"}]},
+                created_by="owner",
+            )
+        )
+        await session.commit()
+
+    monkeypatch.setattr(resources, "_factory", lambda: factory)
+    monkeypatch.setattr(
+        "app.gateway.routers.resources.get_paths",
+        lambda: SimpleNamespace(base_dir=tmp_path / "runtime"),
+    )
+
+    payload = await resources.get_published_resource(
+        "workflow-id",
+        version=None,
+        current_user=UserModel(
+            id="owner",
+            username="owner@test.com",
+            role=UserRole.SUPER_ADMIN,
+            disabled=False,
+        ),
+    )
+
+    assert payload["resource"]["slug"] == "review"
+    assert payload["content"] == {"name": "review", "nodes": [{"id": "start"}]}
+    assert yaml.safe_load(payload["yaml_content"]) == payload["content"]
+    await engine.dispose()

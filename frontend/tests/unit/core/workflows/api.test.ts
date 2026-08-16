@@ -76,7 +76,12 @@ describe("canonical Workflow API facade", () => {
 
   test("loads UUID details from the published canonical version", async () => {
     mockFetch.mockResolvedValueOnce(
-      response({ resource, version: { version: 2 }, content: definition }),
+      response({
+        resource,
+        version: { version: 2 },
+        content: definition,
+        yaml_content: "schema_version: 2\nname: review-flow\n",
+      }),
     );
 
     const result = await getWorkflow(resourceId);
@@ -89,12 +94,31 @@ describe("canonical Workflow API facade", () => {
       name: "Review Flow",
       entrypoint: "review",
       read_only: false,
+      yaml_content: "schema_version: 2\nname: review-flow\n",
     });
   });
 
   test("resolves migrated Workflow slugs through the deterministic alias endpoint", async () => {
     mockFetch
       .mockResolvedValueOnce({ ok: false, status: 404 })
+      .mockResolvedValueOnce(response(resource))
+      .mockResolvedValueOnce(
+        response({ resource, version: { version: 2 }, content: definition }),
+      );
+
+    await expect(getWorkflow("review-flow")).resolves.toMatchObject({
+      resource_id: resourceId,
+    });
+    expect(mockFetch.mock.calls.map((call) => call[0])).toEqual([
+      "http://localhost:8000/api/workflows/review-flow",
+      "http://localhost:8000/api/resources/aliases/workflow/review-flow",
+      `http://localhost:8000/api/resources/${resourceId}/published`,
+    ]);
+  });
+
+  test("falls back to the canonical alias when legacy Workflow details are gone (410)", async () => {
+    mockFetch
+      .mockResolvedValueOnce({ ok: false, status: 410 })
       .mockResolvedValueOnce(response(resource))
       .mockResolvedValueOnce(
         response({ resource, version: { version: 2 }, content: definition }),

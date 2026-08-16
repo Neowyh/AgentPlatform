@@ -147,7 +147,7 @@ export async function getAgent(identifier: string): Promise<Agent> {
     return getCanonicalAgent(identifier);
   }
   const res = await fetch(`${getBackendBaseURL()}/api/agents/${identifier}`);
-  if (!res.ok && res.status === 404) {
+  if (!res.ok && (res.status === 404 || res.status === 410)) {
     const aliasRes = await fetch(
       `${getBackendBaseURL()}/api/resources/aliases/agent/${encodeURIComponent(identifier)}`,
     );

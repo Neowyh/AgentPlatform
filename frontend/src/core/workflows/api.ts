@@ -63,6 +63,7 @@ function fromCanonicalPublished(payload: {
   resource: CanonicalWorkflowResource;
   version: { version: number };
   content: CanonicalWorkflowDefinition;
+  yaml_content?: string;
 }): WorkflowDetail {
   const summary = fromCanonicalResource(payload.resource);
   const content = payload.content;
@@ -72,7 +73,7 @@ function fromCanonicalPublished(payload: {
     version: String(payload.version.version),
     steps_count: content.nodes.length,
     inputs: content.inputs ?? {},
-    yaml_content: JSON.stringify(content, null, 2),
+    yaml_content: payload.yaml_content ?? JSON.stringify(content, null, 2),
     schema_version: 2,
     state: content.state ?? {},
     entrypoint: content.entrypoint,
@@ -163,7 +164,7 @@ export async function getWorkflow(name: string): Promise<WorkflowDetail> {
   const res = await fetch(
     `${getBackendBaseURL()}/api/workflows/${encodeURIComponent(name)}`,
   );
-  if (!res.ok && res.status === 404) {
+  if (!res.ok && (res.status === 404 || res.status === 410)) {
     const aliasRes = await fetch(
       `${getBackendBaseURL()}/api/resources/aliases/workflow/${encodeURIComponent(name)}`,
     );

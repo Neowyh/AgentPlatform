@@ -241,6 +241,45 @@ describe("getAgent", () => {
       `http://localhost:8000/api/resources/${resourceId}/published`,
     ]);
   });
+
+  test("falls back to the canonical alias when legacy Agent details are gone (410)", async () => {
+    const resourceId = "11111111-1111-1111-1111-111111111111";
+    const resource = {
+      id: resourceId,
+      type: "agent",
+      slug: "migrated-agent",
+      display_name: "Migrated Agent",
+      owner_id: "owner",
+      visibility: "public",
+      scope_department_id: null,
+      latest_version: 1,
+      draft_revision: 1,
+      can_modify: false,
+    };
+    mockFetch
+      .mockResolvedValueOnce({ ok: false, status: 410 })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(resource),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            resource,
+            content: { config: {}, soul: "" },
+          }),
+      });
+
+    await expect(getAgent("migrated-agent")).resolves.toMatchObject({
+      resource_id: resourceId,
+    });
+    expect(mockFetch.mock.calls.map((call) => call[0])).toEqual([
+      "http://localhost:8000/api/agents/migrated-agent",
+      "http://localhost:8000/api/resources/aliases/agent/migrated-agent",
+      `http://localhost:8000/api/resources/${resourceId}/published`,
+    ]);
+  });
 });
 
 // ── createAgent ──────────────────────────────────────────────────────────
