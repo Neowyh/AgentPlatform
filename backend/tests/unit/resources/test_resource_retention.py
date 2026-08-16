@@ -116,6 +116,7 @@ async def test_retention_report_never_marks_frozen_or_system_versions_eligible(
     assert by_key[("archived", 1)].blockers == ("run_snapshot_reference",)
     assert by_key[("archived", 2)].eligible is True
     assert by_key[("system", 1)].eligible is False
+    assert "bundled" in by_key[("system", 1)].blockers
     assert "system_owned" in by_key[("system", 1)].blockers
     await engine.dispose()
 

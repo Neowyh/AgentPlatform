@@ -19,6 +19,11 @@ Commands:
 Options:
   --version <value>   Use a specific bundle version
   --bundle-root <dir> Use a specific bundle directory
+  --bundled-conflict <keep|override>
+                    How to handle bundled resources modified after install
+                    on upgrade: keep (default) preserves user changes and
+                    skips the bundled update, override publishes the bundled
+                    content as a new version
   --no-load           Skip docker load when running up/start/restart
   --skip-check        Skip the pre-deployment environment check
   --dry-run           Show what would be done without executing
@@ -30,6 +35,7 @@ Environment:
     credentials (default: super_admin@test.com / super_admin@test.com)
   IDEER_INSTALL_FAULT_ZEROING=0 skips installing the bundled fault-zeroing agent
   IDEER_INSTALL_SRS_WRITING=0 skips installing the bundled srs-writing agent
+  IDEER_BUNDLED_CONFLICT=keep|override same as --bundled-conflict
 EOF
 }
 
@@ -58,6 +64,7 @@ NO_LOAD="${IDEER_NO_LOAD:-0}"
 COMMAND="up"
 SKIP_CHECK=0
 DRY_RUN=0
+BUNDLED_CONFLICT="${IDEER_BUNDLED_CONFLICT:-keep}"
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -69,6 +76,11 @@ while [ "$#" -gt 0 ]; do
         --bundle-root)
             [ "$#" -ge 2 ] || die "--bundle-root requires a value"
             BUNDLE_ROOT="$2"
+            shift 2
+            ;;
+        --bundled-conflict)
+            [ "$#" -ge 2 ] || die "--bundled-conflict requires a value"
+            BUNDLED_CONFLICT="$2"
             shift 2
             ;;
         --no-load)
@@ -104,6 +116,11 @@ while [ "$#" -gt 0 ]; do
 done
 
 BUNDLE_ROOT="$(cd "$BUNDLE_ROOT" && pwd)"
+
+case "$BUNDLED_CONFLICT" in
+    keep|override) ;;
+    *) die "--bundled-conflict must be keep or override" ;;
+esac
 
 # ---------------------------------------------------------------------------
 # Pre-deployment check
@@ -693,7 +710,7 @@ install_admin_private_resources() {
     elif ! run_cmd docker cp "$SOURCE_DIR/scripts/seed_bundled_resources.py" ideer-gateway:/tmp/seed_bundled_resources.py \
         || ! run_cmd docker cp "$SOURCE_DIR/bundled-resources.json" ideer-gateway:/tmp/bundled-resources.json \
         || ! run_cmd docker compose -p ideer -f "$COMPOSE_FILE" --env-file "$ENV_FILE" exec -T gateway \
-            sh -c 'cd /app/backend && PYTHONPATH=. uv run --no-sync python /tmp/seed_bundled_resources.py --manifest /tmp/bundled-resources.json --source-root /app --owner '"$admin_id"; then
+            sh -c 'cd /app/backend && PYTHONPATH=. uv run --no-sync python /tmp/seed_bundled_resources.py --manifest /tmp/bundled-resources.json --source-root /app --owner '"$admin_id"' --conflict-policy '"$BUNDLED_CONFLICT"; then
         warn "canonical bundled resource seeding failed"
         resource_install_failed=1
     fi

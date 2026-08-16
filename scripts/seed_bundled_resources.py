@@ -24,6 +24,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         required=True,
         help="Existing system/super-admin user id used as the immutable FK owner.",
     )
+    parser.add_argument(
+        "--conflict-policy",
+        choices=("keep", "override"),
+        default="keep",
+        help="How to handle bundled resources modified after install: "
+        "'keep' (default) skips the bundled update, 'override' publishes "
+        "the bundled content as a new version.",
+    )
     return parser.parse_args(argv)
 
 
@@ -68,6 +76,7 @@ async def _seed(args: argparse.Namespace) -> int:
             manifest_path=manifest_path,
             source_root=source_root,
             owner_id=args.owner,
+            conflict_policy=args.conflict_policy,
         )
     except Exception as exc:
         print(f"Error: bundled resource seed failed: {exc}", file=sys.stderr)
@@ -77,6 +86,7 @@ async def _seed(args: argparse.Namespace) -> int:
     print(f"Bundled resources created: {report.created}")
     print(f"Bundled resources updated: {report.updated}")
     print(f"Bundled resources unchanged: {report.unchanged}")
+    print(f"Bundled resources skipped: {report.skipped}")
     return 0
 
 

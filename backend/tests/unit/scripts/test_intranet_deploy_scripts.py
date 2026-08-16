@@ -222,6 +222,22 @@ def test_private_skill_seed_runs_inside_gateway_container(tmp_path: Path):
     assert 'docker cp "$SOURCE_DIR/scripts/seed_bundled_resources.py" ideer-gateway:/tmp/seed_bundled_resources.py' in script
     assert 'docker cp "$SOURCE_DIR/bundled-resources.json" ideer-gateway:/tmp/bundled-resources.json' in script
     assert "--manifest /tmp/bundled-resources.json --source-root /app --owner" in script
+    assert '--conflict-policy \'"$BUNDLED_CONFLICT"' in script
+
+
+def test_bundled_conflict_option_is_validated_and_parsed(tmp_path: Path):
+    bundle_root = _make_bundle(tmp_path)
+    env = _env_with_fake_docker(tmp_path)
+
+    proc = _run_deploy(bundle_root, "--bundled-conflict", "force", "prepare", env=env)
+    assert proc.returncode != 0
+    assert "must be keep or override" in proc.stderr
+
+    proc = _run_deploy(bundle_root, "--bundled-conflict", "override", "prepare", env=env)
+    assert proc.returncode == 0, proc.stderr
+
+    script = DEPLOY_SCRIPT.read_text(encoding="utf-8")
+    assert 'BUNDLED_CONFLICT="${IDEER_BUNDLED_CONFLICT:-keep}"' in script
 
 
 def test_deploy_fails_closed_when_any_bundled_resource_seed_fails() -> None:

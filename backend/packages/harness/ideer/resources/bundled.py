@@ -29,6 +29,7 @@ class BundledResource:
     slug: str
     visibility: str
     source: str
+    system_owned: bool = False
 
 
 @dataclass(frozen=True)
@@ -42,6 +43,7 @@ class BundledSeedReport:
     created: int = 0
     updated: int = 0
     unchanged: int = 0
+    skipped: int = 0
 
 
 def load_bundled_manifest(path: str | Path) -> BundledManifest:
@@ -58,12 +60,16 @@ def load_bundled_manifest(path: str | Path) -> BundledManifest:
     for raw_item in values:
         if not isinstance(raw_item, dict):
             raise ValueError("Bundled resource entries must be objects")
+        system_owned = raw_item.get("system_owned", False)
+        if not isinstance(system_owned, bool):
+            raise ValueError(f"Invalid bundled resource system_owned: {raw_item.get('slug', '')}")
         item = BundledResource(
             id=str(raw_item.get("id", "")),
             type=str(raw_item.get("type", "")),
             slug=str(raw_item.get("slug", "")),
             visibility=str(raw_item.get("visibility", "")),
             source=str(raw_item.get("source", "")),
+            system_owned=system_owned,
         )
         try:
             canonical_id = str(uuid.UUID(item.id))
@@ -209,8 +215,18 @@ async def seed_bundled_resources(
     manifest_path: str | Path,
     source_root: str | Path,
     owner_id: str,
+    conflict_policy: str = "keep",
 ) -> BundledSeedReport:
-    """Publish one immutable canonical version for every manifest entry."""
+    """Publish one immutable canonical version for every manifest entry.
+
+    conflict_policy controls what happens when a bundled resource was
+    modified after install (its latest version is no longer the bundled
+    original): "keep" skips the bundled update, "override" publishes the
+    bundled content as a new version.
+    """
+
+    if conflict_policy not in {"keep", "override"}:
+        raise ValueError(f"Invalid bundled conflict policy: {conflict_policy}")
 
     manifest = load_bundled_manifest(manifest_path)
     root = Path(source_root).resolve()
@@ -259,7 +275,8 @@ async def seed_bundled_resources(
             raise
     _assert_acyclic({resource_id: value[2] for resource_id, value in prepared.items()})
 
-    created = updated = unchanged = 0
+    created = updated = unchanged = skipped = 0
+    skipped_ids: set[str] = set()
     try:
         async with session_factory() as session:
             for item in manifest.resources:
@@ -288,14 +305,16 @@ async def seed_bundled_resources(
                         draft_revision=0,
                         storage_kind="bundled",
                         storage_key=f"{directory}/{item.id}",
-                        system_owned=True,
+                        system_owned=item.system_owned,
                         authz_revision=1,
                     )
                     session.add(resource)
                     await session.flush()
                     created += 1
-                elif resource.type != item.type or resource.slug != item.slug or not resource.system_owned:
+                elif resource.type != item.type or resource.slug != item.slug or resource.storage_kind != "bundled":
                     raise StorageConflict(f"Bundled UUID {item.id} is occupied by incompatible resource")
+                if resource.system_owned != item.system_owned:
+                    resource.system_owned = item.system_owned
                 latest = None
                 if resource.latest_version:
                     latest = await session.scalar(
@@ -306,6 +325,10 @@ async def seed_bundled_resources(
                     )
                 if latest is not None and latest.content_hash == content_hash:
                     unchanged += 1
+                    continue
+                if latest is not None and conflict_policy == "keep" and ((latest.scan_result or {}).get("status") != "trusted_bundled_manifest"):
+                    skipped += 1
+                    skipped_ids.add(item.id)
                     continue
                 version_number = resource.latest_version + 1
                 if item.type == "workflow":
@@ -349,9 +372,11 @@ async def seed_bundled_resources(
                 if version_number > 1:
                     updated += 1
 
-            resource_ids = list(prepared)
+            resource_ids = [resource_id for resource_id in prepared if resource_id not in skipped_ids]
             await session.execute(delete(ResourceDependency).where(ResourceDependency.source_resource_id.in_(resource_ids)))
             for source_id, (_hash, _content, target_ids, _cleanup) in prepared.items():
+                if source_id in skipped_ids:
+                    continue
                 for target_id in dict.fromkeys(target_ids):
                     session.add(
                         ResourceDependency(
@@ -365,4 +390,4 @@ async def seed_bundled_resources(
         for _hash, _content, _dependencies, cleanup in prepared.values():
             if cleanup is not None:
                 cleanup.cleanup()
-    return BundledSeedReport(created=created, updated=updated, unchanged=unchanged)
+    return BundledSeedReport(created=created, updated=updated, unchanged=unchanged, skipped=skipped)

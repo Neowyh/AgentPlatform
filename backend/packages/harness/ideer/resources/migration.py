@@ -394,7 +394,7 @@ class LegacyResourceMigrator:
                 draft_revision=0,
                 storage_kind=storage_kind,
                 storage_key=storage_key.rsplit("/versions/1", 1)[0],
-                system_owned=source.metadata.imported_from == "bundled",
+                system_owned=False,
                 authz_revision=1,
                 created_at=source.metadata.created_at,
                 updated_at=source.metadata.updated_at,
