@@ -382,6 +382,28 @@ export function workflowEventsUrl(
   return `${getBackendBaseURL()}${base}/${encodeURIComponent(runId)}/events?${params}`;
 }
 
+export function workflowRunArtifactDownloadUrl(
+  name: string,
+  runId: string,
+  path: string,
+): string {
+  const base = isCanonicalIdentity(name)
+    ? `/api/resources/${encodeURIComponent(name)}/workflow-runs`
+    : `/api/workflows/${encodeURIComponent(name)}/runs`;
+  return `${getBackendBaseURL()}${base}/${encodeURIComponent(runId)}/artifacts/content?path=${encodeURIComponent(path)}`;
+}
+
+export function workflowRunRecordDownloadUrl(
+  name: string,
+  runId: string,
+  format: "jsonl" | "md",
+): string {
+  const base = isCanonicalIdentity(name)
+    ? `/api/resources/${encodeURIComponent(name)}/workflow-runs`
+    : `/api/workflows/${encodeURIComponent(name)}/runs`;
+  return `${getBackendBaseURL()}${base}/${encodeURIComponent(runId)}/record?format=${format}`;
+}
+
 export async function submitWorkflowCommand(
   name: string,
   runId: string,

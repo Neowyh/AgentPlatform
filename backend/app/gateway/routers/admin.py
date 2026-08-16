@@ -6,7 +6,6 @@ import logging
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, EmailStr, Field
@@ -52,39 +51,6 @@ class AdminResourceInventoryItem:
     source_key: str
 
 
-def _valid_agent_dirs(root: Path) -> list[Path]:
-    if not root.exists():
-        return []
-    return sorted(entry for entry in root.iterdir() if entry.is_dir() and (entry / "config.yaml").exists())
-
-
-def _collect_agent_inventory() -> list[AdminResourceInventoryItem]:
-    paths = get_paths()
-    items = [
-        AdminResourceInventoryItem(
-            resource_type="agent",
-            resource_id=entry.name,
-            default_visibility="public",
-            source_key=f"agent:shared:{entry.name}",
-        )
-        for entry in _valid_agent_dirs(paths.agents_dir)
-    ]
-
-    users_root = paths.base_dir / "users"
-    if users_root.exists():
-        for user_dir in sorted(entry for entry in users_root.iterdir() if entry.is_dir()):
-            for agent_dir in _valid_agent_dirs(user_dir / "agents"):
-                items.append(
-                    AdminResourceInventoryItem(
-                        resource_type="agent",
-                        resource_id=agent_dir.name,
-                        default_visibility="private",
-                        source_key=f"agent:user:{user_dir.name}:{agent_dir.name}",
-                    )
-                )
-    return items
-
-
 async def _collect_admin_resource_inventory(
     session,
 ) -> list[dict[str, str | None]]:
@@ -93,7 +59,7 @@ async def _collect_admin_resource_inventory(
     metadata = {(row.resource_type, row.resource_id): row for row in metadata_rows}
     canonical_rows = list((await session.execute(select(Resource))).scalars().all())
 
-    inventory: list[AdminResourceInventoryItem] = _collect_agent_inventory()
+    inventory: list[AdminResourceInventoryItem] = []
     inventory.extend(AdminResourceInventoryItem("tool", tool.name, "public", f"tool:{tool.name}") for tool in get_available_tools(app_config=config) if getattr(tool, "name", None))
     inventory.extend(
         AdminResourceInventoryItem(

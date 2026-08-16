@@ -17,7 +17,6 @@ import { NodeDetailPanel } from "@/components/workspace/workflows/node-detail";
 import { RunGraph } from "@/components/workspace/workflows/run-graph";
 import { WorkspaceBreadcrumb } from "@/components/workspace/workspace-breadcrumb";
 import { fetch as apiFetch } from "@/core/api/fetcher";
-import { getBackendBaseURL } from "@/core/config";
 import { useI18n } from "@/core/i18n/hooks";
 import {
   useRunArtifacts,
@@ -25,6 +24,8 @@ import {
   useRunStatus,
   useSubmitWorkflowCommand,
   useWorkflow,
+  workflowRunArtifactDownloadUrl,
+  workflowRunRecordDownloadUrl,
 } from "@/core/workflows";
 import type { RunArtifact } from "@/core/workflows";
 import { cn } from "@/lib/utils";
@@ -108,7 +109,7 @@ export default function WorkflowRunDetailPage() {
   async function downloadArtifact(artifact: RunArtifact) {
     try {
       const res = await apiFetch(
-        `${getBackendBaseURL()}/api/workflows/${encodeURIComponent(workflow_name)}/runs/${encodeURIComponent(run_id)}/artifacts/content?path=${encodeURIComponent(artifact.path)}`,
+        workflowRunArtifactDownloadUrl(workflow_name, run_id, artifact.path),
       );
       if (!res.ok) throw new Error("HTTP " + res.status);
       const blob = await res.blob();
@@ -130,7 +131,7 @@ export default function WorkflowRunDetailPage() {
   async function downloadRecord(format: "jsonl" | "md") {
     try {
       const res = await apiFetch(
-        `${getBackendBaseURL()}/api/workflows/${encodeURIComponent(workflow_name)}/runs/${encodeURIComponent(run_id)}/record?format=${format}`,
+        workflowRunRecordDownloadUrl(workflow_name, run_id, format),
       );
       if (!res.ok) throw new Error("HTTP " + res.status);
       const blob = await res.blob();

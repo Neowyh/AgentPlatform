@@ -17,7 +17,6 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from app.gateway.authz import require_permission
-from ideer.resources.mode import ResourceCatalogMode, get_resource_catalog_mode
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/assistants", tags=["assistants-compat"])
@@ -60,41 +59,12 @@ def _get_default_assistant() -> AssistantResponse:
 
 
 def _list_assistants() -> list[AssistantResponse]:
-    """List all available assistants from config."""
-    assistants = [_get_default_assistant()]
-    if get_resource_catalog_mode() is ResourceCatalogMode.CANONICAL:
-        return assistants
-
-    # Also include custom agents from config.yaml agents directory
-    try:
-        from ideer.config.agents_config import list_custom_agents
-
-        for agent_cfg in list_custom_agents():
-            now = datetime.now(UTC).isoformat()
-            assistants.append(
-                AssistantResponse(
-                    assistant_id=agent_cfg.name,
-                    graph_id="lead_agent",  # All agents use the same graph
-                    name=agent_cfg.name,
-                    config={},
-                    metadata={"created_by": "user"},
-                    description=agent_cfg.description or "",
-                    created_at=now,
-                    updated_at=now,
-                    version=1,
-                )
-            )
-    except Exception:
-        logger.debug("Could not load custom agents for assistants list")
-
-    return assistants
+    """List the built-in lead_agent assistant."""
+    return [_get_default_assistant()]
 
 
 async def _list_canonical_assistants(request: Request) -> list[AssistantResponse]:
     """List only UUID Agent resources visible to the authenticated caller."""
-
-    if get_resource_catalog_mode() is ResourceCatalogMode.LEGACY:
-        return []
 
     from sqlalchemy import select
 

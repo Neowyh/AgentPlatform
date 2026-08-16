@@ -65,6 +65,7 @@ def test_router_exposes_uuid_first_workflow_lifecycle() -> None:
     assert ("GET", "/api/resources/{resource_id}/workflow-runs/{run_id}/events") in routes
     assert ("GET", "/api/resources/{resource_id}/workflow-runs/{run_id}/artifacts") in routes
     assert ("GET", "/api/resources/{resource_id}/workflow-runs/{run_id}/artifacts/content") in routes
+    assert ("GET", "/api/resources/{resource_id}/workflow-runs/{run_id}/record") in routes
     assert ("POST", "/api/resources/{resource_id}/workflow-runs/{run_id}/commands") in routes
     assert ("GET", "/api/resources/admin/visibility-applications") in routes
     assert ("GET", "/api/resources/admin/retention-report") in routes
@@ -224,3 +225,79 @@ async def test_published_workflow_response_includes_real_yaml(
     assert payload["content"] == {"name": "review", "nodes": [{"id": "start"}]}
     assert yaml.safe_load(payload["yaml_content"]) == payload["content"]
     await engine.dispose()
+
+
+# --- Canonical run record download ---
+
+
+def _record_host(tmp_path: Path, run_id: str, created_by: str, ext: str) -> Path:
+    from ideer.workflows.v2.file_roots import make_host_resolver, workflow_record_path
+
+    host = make_host_resolver(run_id, created_by)(workflow_record_path(ext))
+    assert host is not None, "record virtual path must resolve under the workspace"
+    path = Path(host)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+class TestCanonicalRunRecordDownload:
+    @pytest.fixture
+    def client(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        from app.gateway.authz import get_current_rbac_user
+        from app.gateway.routers.resources import router as resources_router
+
+        app = FastAPI()
+        app.include_router(resources_router)
+
+        async def _stub_user():
+            return SimpleNamespace(id="user-1", role="user", department_id=None, username="u@test.com")
+
+        app.dependency_overrides[get_current_rbac_user] = _stub_user
+
+        from ideer.config.paths import Paths
+
+        async def _stub_run(_resource_id: str, _run_id: str, _user) -> SimpleNamespace:
+            return SimpleNamespace(run_id="run-1", workflow_resource_id="workflow-id", created_by="user-1", status="completed")
+
+        monkeypatch.setattr(resources, "_get_canonical_run", _stub_run)
+        monkeypatch.setattr(
+            "ideer.workflows.v2.file_roots.get_paths",
+            lambda: Paths(str(tmp_path / "runtime")),
+        )
+        monkeypatch.setattr("ideer.workflows.v2.file_roots._get_custom_mounts", lambda: [])
+
+        with TestClient(app) as test_client:
+            yield test_client
+
+    def test_record_download_rejects_unknown_format(self, client) -> None:
+        response = client.get("/api/resources/workflow-id/workflow-runs/run-1/record?format=pdf")
+        assert response.status_code == 400
+
+    def test_record_download_is_404_when_not_persisted(self, client, tmp_path: Path) -> None:
+        response = client.get("/api/resources/workflow-id/workflow-runs/run-1/record?format=jsonl")
+        assert response.status_code == 404
+
+    def test_record_download_jsonl_returns_ndjson(self, client, tmp_path: Path) -> None:
+        record = _record_host(tmp_path, "run-1", "user-1", "jsonl")
+        record.write_text('{"event": "started"}\n', encoding="utf-8")
+
+        response = client.get("/api/resources/workflow-id/workflow-runs/run-1/record?format=jsonl")
+
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "application/x-ndjson"
+        assert response.headers["content-disposition"].endswith('filename="run_run-1.jsonl"')
+        assert response.text == '{"event": "started"}\n'
+
+    def test_record_download_md_returns_markdown(self, client, tmp_path: Path) -> None:
+        record = _record_host(tmp_path, "run-1", "user-1", "md")
+        record.write_text("# 运行记录 `run-1`\n", encoding="utf-8")
+
+        response = client.get("/api/resources/workflow-id/workflow-runs/run-1/record?format=md")
+
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("text/markdown")
+        assert response.headers["content-disposition"].endswith('filename="run_run-1.md"')
+        assert response.text == "# 运行记录 `run-1`\n"

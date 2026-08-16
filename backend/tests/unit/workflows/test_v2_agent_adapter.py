@@ -20,7 +20,7 @@ import ideer.tools.tools
 from ideer.config.agents_config import AgentConfig
 from ideer.resources.runtime import CanonicalAgentDefinition
 from ideer.runtime.user_context import get_effective_user_id
-from ideer.workflows.v2.adapters import ActionContext, _AgentAdapter, _CanonicalAgentAdapter
+from ideer.workflows.v2.adapters import ActionContext, ActionResolutionError, _AgentAdapter, _CanonicalAgentAdapter
 from ideer.workflows.v2.compiler import WorkflowTransientError
 
 # conftest.py pre-injects a MagicMock for ideer.subagents.executor to dodge a
@@ -442,3 +442,184 @@ async def test_agent_adapter_stream_surfaces_transient_llm_failure(env: pytest.M
     with pytest.raises(WorkflowTransientError, match="LLM provider unavailable"):
         async for _ in adapter.astream(context, {"prompt": "提取证据"}):
             pass
+
+
+class _FakeResult:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def scalars(self):
+        return iter(self._rows)
+
+    def scalar_one_or_none(self):
+        return self._rows[0] if self._rows else None
+
+
+class _FakeSession:
+    def __init__(self, *, get_row, execute_rows):
+        self._get_row = get_row
+        self._execute_rows = list(execute_rows)
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        return None
+
+    async def get(self, model, resource_id):
+        return self._get_row
+
+    async def execute(self, stmt):
+        return _FakeResult(self._execute_rows.pop(0))
+
+
+class _FakeSessionFactory:
+    def __init__(self, session):
+        self._session = session
+
+    def __call__(self):
+        return self._session
+
+
+def _canonical_agent(resource_id: str = "agent-1", slug: str = "fault-zeroing") -> SimpleNamespace:
+    return SimpleNamespace(
+        id=resource_id,
+        type="agent",
+        slug=slug,
+        owner_id="user-1",
+        visibility="private",
+        scope_department_id=None,
+        lifecycle_status="active",
+        latest_version=1,
+        draft_revision=0,
+        storage_kind="filesystem",
+        storage_key=f"agent/{resource_id}",
+    )
+
+
+def _canonical_skill(resource_id: str, slug: str) -> SimpleNamespace:
+    return SimpleNamespace(
+        id=resource_id,
+        type="skill",
+        slug=slug,
+        owner_id="user-1",
+        visibility="public",
+        lifecycle_status="active",
+    )
+
+
+@pytest.mark.asyncio
+async def test_agent_adapter_canonical_branch_loads_published_agent_via_alias(
+    monkeypatch: pytest.MonkeyPatch,
+    env: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Canonical mode resolves legacy names through the catalog and runs the frozen content."""
+    import ideer.config.paths
+    import ideer.persistence.engine
+    import ideer.resources.mode
+    from ideer.resources.mode import ResourceCatalogMode
+
+    agent = _canonical_agent()
+    version = SimpleNamespace(resource_id="agent-1", version=1, content_hash="h", storage_key="agent/agent-1")
+    skill = _canonical_skill("skill-1", "fault-zeroing")
+    session = _FakeSession(get_row=None, execute_rows=[[agent], [agent], [version], [skill]])
+
+    root = tmp_path / "runtime" / "resources" / "agent" / "agent-1"
+    root.mkdir(parents=True)
+    (root / "config.yaml").write_text(
+        "name: fault-zeroing\nmodel: gpt-5\ntool_groups: [file:read]\nskills: [skill-1]\n",
+        encoding="utf-8",
+    )
+    (root / "SOUL.md").write_text(SOUL, encoding="utf-8")
+
+    monkeypatch.setattr(ideer.resources.mode, "get_resource_catalog_mode", lambda: ResourceCatalogMode.CANONICAL)
+    monkeypatch.setattr(ideer.persistence.engine, "get_session_factory", lambda: _FakeSessionFactory(session))
+    monkeypatch.setattr(ideer.config.paths, "get_paths", lambda: SimpleNamespace(base_dir=tmp_path / "runtime"))
+
+    adapter = _AgentAdapter("fault-zeroing", "user-1")
+    context = ActionContext(
+        workflow_name="fault-zeroing",
+        run_id="run-canon-alias",
+        node_id="evidence_collection",
+        inputs={},
+        state={},
+        outputs={},
+    )
+    result = await adapter.run(context, {"prompt": "执行任务", "system_prompt": OVERRIDE})
+
+    assert result == {"ok": True}
+    captured = FakeExecutor.captured[-1]
+    assert captured.system_prompt == f"{SOUL}\n\n## 当前阶段指令\n\n{OVERRIDE}"
+    assert captured.skills == ["fault-zeroing"]
+    assert captured.model == "gpt-5"
+
+
+@pytest.mark.asyncio
+async def test_agent_adapter_canonical_branch_resolves_dependency_subset_by_slug(
+    monkeypatch: pytest.MonkeyPatch,
+    env: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Missing config.skills falls back to all catalogued skill dependencies."""
+    import ideer.config.paths
+    import ideer.persistence.engine
+    import ideer.resources.mode
+    from ideer.resources.mode import ResourceCatalogMode
+
+    agent = _canonical_agent(resource_id="agent-2", slug="evidence-agent")
+    version = SimpleNamespace(resource_id="agent-2", version=1, content_hash="h", storage_key="agent/agent-2")
+    skill = _canonical_skill("skill-2", "evidence-reader")
+    session = _FakeSession(get_row=agent, execute_rows=[[agent], [version], [skill]])
+
+    root = tmp_path / "runtime" / "resources" / "agent" / "agent-2"
+    root.mkdir(parents=True)
+    (root / "config.yaml").write_text("name: evidence-agent\n", encoding="utf-8")
+    (root / "SOUL.md").write_text(SOUL, encoding="utf-8")
+
+    monkeypatch.setattr(ideer.resources.mode, "get_resource_catalog_mode", lambda: ResourceCatalogMode.CANONICAL)
+    monkeypatch.setattr(ideer.persistence.engine, "get_session_factory", lambda: _FakeSessionFactory(session))
+    monkeypatch.setattr(ideer.config.paths, "get_paths", lambda: SimpleNamespace(base_dir=tmp_path / "runtime"))
+
+    adapter = _AgentAdapter("agent-2", "user-1")
+    context = ActionContext(
+        workflow_name="evidence-agent",
+        run_id="run-canon-uuid",
+        node_id="evidence_collection",
+        inputs={},
+        state={},
+        outputs={},
+    )
+    await adapter.run(context, {"prompt": "执行任务"})
+
+    captured = FakeExecutor.captured[-1]
+    assert captured.skills == ["evidence-reader"]
+    assert captured.system_prompt == SOUL
+    assert captured.model == "inherit"
+
+
+@pytest.mark.asyncio
+async def test_agent_adapter_canonical_branch_raises_when_agent_missing(
+    monkeypatch: pytest.MonkeyPatch,
+    env: pytest.MonkeyPatch,
+) -> None:
+    """An unresolvable agent name keeps the ActionResolutionError failure path."""
+    import ideer.persistence.engine
+    import ideer.resources.mode
+    from ideer.resources.mode import ResourceCatalogMode
+
+    session = _FakeSession(get_row=None, execute_rows=[[]])
+    monkeypatch.setattr(ideer.resources.mode, "get_resource_catalog_mode", lambda: ResourceCatalogMode.CANONICAL)
+    monkeypatch.setattr(ideer.persistence.engine, "get_session_factory", lambda: _FakeSessionFactory(session))
+
+    adapter = _AgentAdapter("missing-agent", "user-1")
+    context = ActionContext(
+        workflow_name="fault-zeroing",
+        run_id="run-canon-missing",
+        node_id="evidence_collection",
+        inputs={},
+        state={},
+        outputs={},
+    )
+    with pytest.raises(ActionResolutionError, match="agent 'missing-agent' not found"):
+        await adapter.run(context, {"prompt": "执行任务"})

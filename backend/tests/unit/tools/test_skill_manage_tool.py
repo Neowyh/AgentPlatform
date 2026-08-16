@@ -3,10 +3,20 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import pytest_asyncio
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+import ideer.persistence.models  # noqa: F401
+from ideer.persistence.base import Base
+from ideer.persistence.models.resource_catalog import Resource, ResourceVersion
+from ideer.persistence.models.user import UserModel
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -630,3 +640,204 @@ class TestLockBehaviour:
         # After GC, a new lock may be created (not guaranteed, but no crash)
         lock = _get_lock("gc-test")
         assert isinstance(lock, asyncio.Lock)
+
+
+# ===================================================================
+# Canonical catalog mode
+# ===================================================================
+
+
+@pytest_asyncio.fixture
+async def _catalog_db(tmp_path: Path) -> AsyncIterator[async_sessionmaker[AsyncSession]]:
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'catalog.db'}")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    yield async_sessionmaker(engine, expire_on_commit=False)
+    await engine.dispose()
+
+
+async def _seed_user_canonical(catalog_db: async_sessionmaker[AsyncSession]) -> None:
+    async with catalog_db() as session:
+        session.add(UserModel(id="test-user-autouse", username="test-user-autouse@test.com", role="user", disabled=False))
+        await session.commit()
+
+
+def _skill_root(tmp_path: Path, resource_id: str) -> Path:
+    return tmp_path / "resources" / "skills" / resource_id
+
+
+async def _resolve_skill_resource(catalog_db: async_sessionmaker[AsyncSession], slug: str) -> Resource:
+    async with catalog_db() as session:
+        resource = (await session.execute(select(Resource).where(Resource.type == "skill", Resource.slug == slug))).scalar_one()
+        return resource
+
+
+async def _published_skill(tmp_path: Path, catalog_db: async_sessionmaker[AsyncSession], slug: str) -> tuple[str, Path]:
+    resource = await _resolve_skill_resource(catalog_db, slug)
+    async with catalog_db() as session:
+        versions = (await session.execute(select(ResourceVersion).where(ResourceVersion.resource_id == resource.id))).scalars().all()
+        version = max(item.version for item in versions)
+    return resource.id, _skill_root(tmp_path, resource.id) / "versions" / str(version)
+
+
+class TestSkillManageCanonical:
+    @pytest.mark.asyncio
+    async def test_create_publishes_skill(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        _catalog_db: async_sessionmaker[AsyncSession],
+        _patch_deps,
+    ) -> None:
+        monkeypatch.setenv("IDEER_RESOURCE_CATALOG_MODE", "canonical")
+        await _seed_user_canonical(_catalog_db)
+
+        with patch("ideer.tools.skill_manage_tool.get_session_factory", return_value=_catalog_db):
+            with patch("ideer.config.paths.get_paths", return_value=SimpleNamespace(base_dir=tmp_path)):
+                result = await skill_manage_tool.coroutine(
+                    runtime=_make_runtime(),
+                    action="create",
+                    name="my-skill",
+                    content=_skill_content("my-skill"),
+                )
+
+        assert result == "Created custom skill 'my-skill'."
+        resource_id, published = await _published_skill(tmp_path, _catalog_db, "my-skill")
+        assert (published / "SKILL.md").read_text(encoding="utf-8") == _skill_content("my-skill")
+        assert not (tmp_path / "skills" / "custom" / "my-skill").exists()
+
+    @pytest.mark.asyncio
+    async def test_create_rejects_existing_skill(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        _catalog_db: async_sessionmaker[AsyncSession],
+        _patch_deps,
+    ) -> None:
+        monkeypatch.setenv("IDEER_RESOURCE_CATALOG_MODE", "canonical")
+        await _seed_user_canonical(_catalog_db)
+
+        with patch("ideer.tools.skill_manage_tool.get_session_factory", return_value=_catalog_db):
+            with patch("ideer.config.paths.get_paths", return_value=SimpleNamespace(base_dir=tmp_path)):
+                await skill_manage_tool.coroutine(runtime=_make_runtime(), action="create", name="my-skill", content=_skill_content("my-skill"))
+                with pytest.raises(ValueError, match="already exists"):
+                    await skill_manage_tool.coroutine(runtime=_make_runtime(), action="create", name="my-skill", content=_skill_content("my-skill"))
+
+    @pytest.mark.asyncio
+    async def test_edit_publishes_new_version(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        _catalog_db: async_sessionmaker[AsyncSession],
+        _patch_deps,
+    ) -> None:
+        monkeypatch.setenv("IDEER_RESOURCE_CATALOG_MODE", "canonical")
+        await _seed_user_canonical(_catalog_db)
+
+        with patch("ideer.tools.skill_manage_tool.get_session_factory", return_value=_catalog_db):
+            with patch("ideer.config.paths.get_paths", return_value=SimpleNamespace(base_dir=tmp_path)):
+                await skill_manage_tool.coroutine(runtime=_make_runtime(), action="create", name="my-skill", content=_skill_content("my-skill"))
+                result = await skill_manage_tool.coroutine(
+                    runtime=_make_runtime(),
+                    action="edit",
+                    name="my-skill",
+                    content=_skill_content("my-skill", description="Edited"),
+                )
+
+        assert result == "Updated custom skill 'my-skill'."
+        resource_id, published = await _published_skill(tmp_path, _catalog_db, "my-skill")
+        assert (published / "SKILL.md").read_text(encoding="utf-8") == _skill_content("my-skill", description="Edited")
+        assert _skill_root(tmp_path, resource_id).joinpath("versions", "1").exists(), "previous version must be retained"
+
+    @pytest.mark.asyncio
+    async def test_patch_applies_replacement(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        _catalog_db: async_sessionmaker[AsyncSession],
+        _patch_deps,
+    ) -> None:
+        monkeypatch.setenv("IDEER_RESOURCE_CATALOG_MODE", "canonical")
+        await _seed_user_canonical(_catalog_db)
+
+        with patch("ideer.tools.skill_manage_tool.get_session_factory", return_value=_catalog_db):
+            with patch("ideer.config.paths.get_paths", return_value=SimpleNamespace(base_dir=tmp_path)):
+                await skill_manage_tool.coroutine(runtime=_make_runtime(), action="create", name="my-skill", content=_skill_content("my-skill"))
+                result = await skill_manage_tool.coroutine(runtime=_make_runtime(), action="patch", name="my-skill", find="Demo skill", replace="Patched skill")
+
+        assert "1 replacement(s)" in result
+        _, published = await _published_skill(tmp_path, _catalog_db, "my-skill")
+        assert "Patched skill" in (published / "SKILL.md").read_text(encoding="utf-8")
+
+    @pytest.mark.asyncio
+    async def test_write_file_and_remove_file(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        _catalog_db: async_sessionmaker[AsyncSession],
+        _patch_deps,
+    ) -> None:
+        monkeypatch.setenv("IDEER_RESOURCE_CATALOG_MODE", "canonical")
+        await _seed_user_canonical(_catalog_db)
+
+        with patch("ideer.tools.skill_manage_tool.get_session_factory", return_value=_catalog_db):
+            with patch("ideer.config.paths.get_paths", return_value=SimpleNamespace(base_dir=tmp_path)):
+                await skill_manage_tool.coroutine(runtime=_make_runtime(), action="create", name="my-skill", content=_skill_content("my-skill"))
+                await skill_manage_tool.coroutine(runtime=_make_runtime(), action="write_file", name="my-skill", path="templates/letter.md", content="# Letter")
+
+                _, published = await _published_skill(tmp_path, _catalog_db, "my-skill")
+                assert (published / "templates" / "letter.md").read_text(encoding="utf-8") == "# Letter"
+
+                await skill_manage_tool.coroutine(runtime=_make_runtime(), action="remove_file", name="my-skill", path="templates/letter.md")
+                _, published = await _published_skill(tmp_path, _catalog_db, "my-skill")
+                assert not (published / "templates" / "letter.md").exists()
+                assert (published / "SKILL.md").exists(), "SKILL.md must survive a support-file removal"
+
+    @pytest.mark.asyncio
+    async def test_delete_archives_resource(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        _catalog_db: async_sessionmaker[AsyncSession],
+        _patch_deps,
+    ) -> None:
+        monkeypatch.setenv("IDEER_RESOURCE_CATALOG_MODE", "canonical")
+        await _seed_user_canonical(_catalog_db)
+
+        with patch("ideer.tools.skill_manage_tool.get_session_factory", return_value=_catalog_db):
+            with patch("ideer.config.paths.get_paths", return_value=SimpleNamespace(base_dir=tmp_path)):
+                await skill_manage_tool.coroutine(runtime=_make_runtime(), action="create", name="my-skill", content=_skill_content("my-skill"))
+                result = await skill_manage_tool.coroutine(runtime=_make_runtime(), action="delete", name="my-skill")
+
+        assert result == "Deleted custom skill 'my-skill'."
+        resource = await _resolve_skill_resource(_catalog_db, "my-skill")
+        assert resource.lifecycle_status == "archived"
+
+    @pytest.mark.asyncio
+    async def test_edit_unknown_skill_raises(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        _catalog_db: async_sessionmaker[AsyncSession],
+        _patch_deps,
+    ) -> None:
+        monkeypatch.setenv("IDEER_RESOURCE_CATALOG_MODE", "canonical")
+        await _seed_user_canonical(_catalog_db)
+
+        with patch("ideer.tools.skill_manage_tool.get_session_factory", return_value=_catalog_db):
+            with patch("ideer.config.paths.get_paths", return_value=SimpleNamespace(base_dir=tmp_path)):
+                with pytest.raises(ValueError, match="does not exist"):
+                    await skill_manage_tool.coroutine(runtime=_make_runtime(), action="edit", name="ghost-skill", content="# Ghost")
+
+    @pytest.mark.asyncio
+    async def test_without_database_raises(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        _patch_deps,
+    ) -> None:
+        monkeypatch.setenv("IDEER_RESOURCE_CATALOG_MODE", "canonical")
+
+        with patch("ideer.tools.skill_manage_tool.get_session_factory", return_value=None):
+            with pytest.raises(RuntimeError, match="persistence is unavailable"):
+                await skill_manage_tool.coroutine(runtime=_make_runtime(), action="create", name="my-skill", content="# X")

@@ -286,77 +286,46 @@ async def _reconcile_workflow_metadata(sf, admin_id: str) -> None:
         logger.info("Reconciled %d workflow(s) — created missing resource_metadata records", reconciled)
 
 
-def _scan_agent_dirs(base_dir) -> list:
-    """Return every custom agent directory under a platform base dir.
-
-    Includes per-user agents (``users/{user_id}/agents/*``) and legacy shared
-    agents (``agents/*``), deduplicated by directory name — per-user entries
-    shadow legacy entries.
-    """
-    from pathlib import Path
-
-    results: list[Path] = []
-    seen: set[str] = set()
-
-    def _collect(root: Path) -> None:
-        if not root.is_dir():
-            return
-        for entry in sorted(root.iterdir()):
-            if not entry.is_dir() or entry.name in seen:
-                continue
-            seen.add(entry.name)
-            results.append(entry)
-
-    users_root = base_dir / "users"
-    if users_root.is_dir():
-        for user_dir in sorted(users_root.iterdir()):
-            if user_dir.is_dir():
-                _collect(user_dir / "agents")
-    _collect(base_dir / "agents")
-    return results
-
-
 async def _reconcile_agent_metadata(sf, admin_id: str) -> None:
-    """Startup hook: create resource_metadata for custom agents lacking one.
+    """Startup hook: create resource_metadata for catalog agents lacking one.
 
-    Scans per-user and legacy agent directories and backfills a metadata record
-    owned by each agent's ``config.yaml`` owner (falling back to the super_admin).
-    Visibility defaults to ``private`` unless the config declares a valid value.
-    Idempotent — existing records are never touched.
+    Reads active agent resources from the catalog and backfills a metadata
+    record owned by the resource owner (falling back to the super_admin).
+    Visibility mirrors the catalog resource. Idempotent — existing records
+    are never touched.
     """
-    import yaml
+    from sqlalchemy import select
 
     from app.gateway.utils import ResourceMetadataStore
-    from ideer.config.paths import get_paths
-
-    try:
-        agent_dirs = _scan_agent_dirs(get_paths().base_dir)
-    except Exception as e:
-        logger.warning("Failed to scan agent directories for reconciliation: %s", e)
-        return
+    from ideer.persistence.models.resource_catalog import Resource
 
     store = ResourceMetadataStore("agent")
     reconciled = 0
-    for agent_dir in agent_dirs:
-        if await store.load_meta(agent_dir.name):
+    async with sf() as session:
+        rows = list(
+            (
+                await session.execute(
+                    select(Resource).where(
+                        Resource.type == "agent",
+                        Resource.lifecycle_status == "active",
+                    )
+                )
+            ).scalars()
+        )
+    for row in rows:
+        if await store.load_meta(row.id):
             continue
         owner_id = None
         dept_id = None
-        visibility = "private"
-        config_file = agent_dir / "config.yaml"
-        if config_file.is_file():
-            try:
-                cfg = yaml.safe_load(config_file.read_text(encoding="utf-8"))
-                if isinstance(cfg, dict):
-                    if cfg.get("owner_id"):
-                        owner_id, dept_id = await _resolve_resource_owner(sf, str(cfg["owner_id"]))
-                    if cfg.get("visibility") in ("private", "department", "public"):
-                        visibility = cfg["visibility"]
-            except Exception as e:
-                logger.warning("Failed to read %s: %s", config_file, e)
+        if row.owner_id:
+            owner_id, dept_id = await _resolve_resource_owner(sf, row.owner_id)
         if await store.save_meta(
-            agent_dir.name,
-            {"owner_id": owner_id or admin_id, "department_id": dept_id, "visibility": visibility},
+            row.id,
+            {
+                "owner_id": owner_id or admin_id,
+                "department_id": dept_id,
+                "visibility": row.visibility,
+            },
         ):
             reconciled += 1
 

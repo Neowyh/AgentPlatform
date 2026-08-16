@@ -17,6 +17,8 @@ import {
   runWorkflow,
   updateWorkflow,
   workflowEventsUrl,
+  workflowRunArtifactDownloadUrl,
+  workflowRunRecordDownloadUrl,
 } from "@/core/workflows/api";
 
 function response(body: unknown, ok = true) {
@@ -259,6 +261,14 @@ describe("canonical Workflow API facade", () => {
     ]);
     expect(workflowEventsUrl(resourceId, "run-1", 3)).toBe(
       `http://localhost:8000/api/resources/${resourceId}/workflow-runs/run-1/events?after_seq=3`,
+    );
+    expect(
+      workflowRunArtifactDownloadUrl(resourceId, "run-1", "reports/summary.md"),
+    ).toBe(
+      `http://localhost:8000/api/resources/${resourceId}/workflow-runs/run-1/artifacts/content?path=reports%2Fsummary.md`,
+    );
+    expect(workflowRunRecordDownloadUrl(resourceId, "run-1", "jsonl")).toBe(
+      `http://localhost:8000/api/resources/${resourceId}/workflow-runs/run-1/record?format=jsonl`,
     );
   });
 });

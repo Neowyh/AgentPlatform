@@ -1135,6 +1135,27 @@ async def get_canonical_run_artifact_content(
     return FileResponse(host, media_type="application/octet-stream", filename=Path(host).name)
 
 
+@router.get("/{resource_id}/workflow-runs/{run_id}/record")
+@_translate_resource_errors
+async def download_canonical_run_record(
+    resource_id: str,
+    run_id: str,
+    format: str = "md",
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> FileResponse:
+    """Download the persisted run record (jsonl event log or markdown summary)."""
+    if format not in {"jsonl", "md"}:
+        raise ValueError("format must be 'jsonl' or 'md'")
+    run = await _get_canonical_run(resource_id, run_id, current_user)
+    from ideer.workflows.v2.file_roots import make_host_resolver, workflow_record_path
+
+    host = make_host_resolver(run.run_id, str(run.created_by))(workflow_record_path(format))
+    if host is None or not Path(host).is_file():
+        raise ResourceNotFound(f"Run record for run '{run_id}' is not available")
+    media_types = {"jsonl": "application/x-ndjson", "md": "text/markdown"}
+    return FileResponse(host, media_type=media_types[format], filename=f"run_{run.run_id}.{format}")
+
+
 @router.post("/{resource_id}/workflow-runs/{run_id}/commands")
 @_translate_resource_errors
 async def submit_canonical_workflow_command(

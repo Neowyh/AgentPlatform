@@ -14,6 +14,7 @@ config.yaml updated while SOUL.md still holds stale content.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import tempfile
 from pathlib import Path
@@ -23,14 +24,133 @@ import yaml
 from langchain_core.messages import ToolMessage
 from langchain_core.tools import tool
 from langgraph.types import Command
+from sqlalchemy import select
 
 from ideer.config.agents_config import load_agent_config, validate_agent_name
 from ideer.config.app_config import get_app_config
 from ideer.config.paths import get_paths
+from ideer.persistence.engine import get_session_factory
+from ideer.resources.mode import ResourceCatalogMode, get_resource_catalog_mode
 from ideer.runtime.user_context import resolve_runtime_user_id
 from ideer.tools.types import Runtime
 
 logger = logging.getLogger(__name__)
+
+
+def _update_canonical_agent(
+    *,
+    agent_name: str,
+    soul: str | None,
+    description: str | None,
+    skills: list[str] | None,
+    tool_groups: list[str] | None,
+    model: str | None,
+    user_id: str,
+) -> tuple[list[str], str]:
+    """Update an agent through the canonical resource catalog (draft + publish).
+
+    Mirrors the /resources agent-draft and publish endpoints using the same
+    service and publisher boundaries, so the catalog row, filesystem draft,
+    dependencies, and published version stay consistent. Runs in asyncio.run
+    because @tool bodies are synchronous.
+    """
+    from tempfile import TemporaryDirectory
+
+    import yaml
+
+    from ideer.persistence.models.resource_catalog import Resource
+    from ideer.persistence.models.user import UserModel, UserRole
+    from ideer.resources.publisher import ResourcePublisher, write_agent_draft_source
+    from ideer.resources.service import ResourceAction, ResourceActor, ResourceService
+    from ideer.resources.storage import ResourceStorage
+
+    sf = get_session_factory()
+    if sf is None:
+        raise RuntimeError("Resource catalog persistence is unavailable")
+
+    async def _update() -> tuple[list[str], str]:
+        async with sf() as session:
+            user = (await session.execute(select(UserModel).where(UserModel.id == user_id, UserModel.disabled.is_not(True)))).scalar_one_or_none()
+            if user is None:
+                raise RuntimeError("Active user is required to update a catalog agent")
+            permissions = {ResourceAction.READ, ResourceAction.USE}
+            if user.role in {UserRole.USER, UserRole.DEPARTMENT_ADMIN, UserRole.SUPER_ADMIN}:
+                permissions.add(ResourceAction.WRITE)
+            actor = ResourceActor(
+                user_id=str(user.id),
+                department_id=str(user.department_id) if user.department_id is not None else None,
+                role=str(user.role),
+                permissions=frozenset(permissions),
+                tool_groups=None,
+            )
+            service = ResourceService(session, actor)
+            resource = await service.resolve_legacy_alias("agent", agent_name)
+            published = await service.get_published_content(resource.id)
+            storage = ResourceStorage(get_paths().base_dir)
+            version_root = storage.resources_root / published.storage_key
+            config: dict[str, Any] = yaml.safe_load((version_root / "config.yaml").read_text(encoding="utf-8")) or {}
+            current_soul = (version_root / "SOUL.md").read_text(encoding="utf-8")
+
+            updated_fields: list[str] = []
+            if description is not None and description != config.get("description"):
+                config["description"] = description
+                updated_fields.append("description")
+            if model is not None and model != config.get("model"):
+                config["model"] = model
+                updated_fields.append("model")
+            if tool_groups is not None and tool_groups != config.get("tool_groups"):
+                config["tool_groups"] = tool_groups
+                updated_fields.append("tool_groups")
+            if skills is not None and skills != config.get("skills"):
+                config["skills"] = skills
+                updated_fields.append("skills")
+            new_soul = soul if soul is not None else current_soul
+            if soul is not None and soul != current_soul:
+                updated_fields.append("soul")
+            if not updated_fields:
+                return [], resource.id
+
+            dependencies: list[str] = []
+            configured_skills = config.get("skills")
+            if configured_skills is not None:
+                if not isinstance(configured_skills, list) or not all(isinstance(item, str) and item for item in configured_skills):
+                    raise ValueError("Agent skills must be a list of resource UUIDs or aliases")
+                for identity in configured_skills:
+                    target = await session.get(Resource, identity)
+                    if target is None:
+                        target = await service.resolve_legacy_alias("skill", identity)
+                    if target.type != "skill":
+                        raise ValueError(f"Agent dependency {identity} is not a Skill")
+                    dependencies.append(target.id)
+                config["skills"] = dependencies
+            await service.replace_dependencies(resource.id, dependencies)
+            with TemporaryDirectory(prefix="ideer-update-agent-") as temporary:
+                source = Path(temporary)
+                await asyncio.to_thread(
+                    write_agent_draft_source,
+                    source,
+                    slug=resource.slug,
+                    config=config,
+                    soul=new_soul,
+                )
+                publisher = ResourcePublisher(service, storage)
+                draft = await publisher.save_filesystem_draft(
+                    resource.id,
+                    source_dir=source,
+                    expected_revision=resource.draft_revision,
+                )
+            await publisher.publish_filesystem(
+                resource.id,
+                expected_draft_revision=draft.revision,
+                scan_result={},
+            )
+            return updated_fields, resource.id
+
+    try:
+        return asyncio.run(_update())
+    except Exception:
+        logger.exception("[update_agent] Failed to update canonical agent '%s'", agent_name)
+        raise
 
 
 def _stage_temp(path: Path, text: str) -> Path:
@@ -137,6 +257,35 @@ def update_agent(
     # and the user sees confusing repeated warnings on every later turn.
     if model is not None and get_app_config().get_model_config(model) is None:
         return _err(f"Unknown model '{model}'. Pass a model name that exists in config.yaml's models section.")
+
+    if get_resource_catalog_mode() is ResourceCatalogMode.CANONICAL:
+        user_id = resolve_runtime_user_id(runtime)
+        try:
+            updated_fields, resource_id = _update_canonical_agent(
+                agent_name=agent_name,
+                soul=soul,
+                description=description,
+                skills=skills,
+                tool_groups=tool_groups,
+                model=model,
+                user_id=user_id,
+            )
+        except Exception as e:
+            logger.error("[update_agent] Failed to update canonical agent '%s' (user=%s): %s", agent_name, user_id, e, exc_info=True)
+            return _err(f"Failed to update agent '{agent_name}': {e}")
+        if not updated_fields:
+            return Command(update={"messages": [ToolMessage(content=f"No changes applied to agent '{agent_name}'. The provided values matched the existing config.", tool_call_id=tool_call_id)]})
+        logger.info("[update_agent] Updated canonical agent '%s' (%s) fields: %s", agent_name, resource_id, updated_fields)
+        return Command(
+            update={
+                "messages": [
+                    ToolMessage(
+                        content=(f"Agent '{agent_name}' updated successfully. Changed: {', '.join(updated_fields)}. The new configuration takes effect on the next user turn."),
+                        tool_call_id=tool_call_id,
+                    )
+                ]
+            }
+        )
 
     paths = get_paths()
     agent_dir = paths.user_agent_dir(user_id, agent_name)

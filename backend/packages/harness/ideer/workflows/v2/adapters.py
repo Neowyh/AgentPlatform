@@ -124,7 +124,12 @@ class _AgentAdapter:
         # runner.
         self.owner_id = owner_id
 
-    def _build_executor(self, context: ActionContext, params: dict[str, Any]):
+    async def _build_executor(self, context: ActionContext, params: dict[str, Any]):
+        from ideer.resources.mode import ResourceCatalogMode, get_resource_catalog_mode
+
+        if get_resource_catalog_mode() is ResourceCatalogMode.CANONICAL:
+            return await self._build_canonical_executor(context, params)
+
         from ideer.config import get_app_config
         from ideer.config.agents_config import load_agent_config, load_agent_soul
         from ideer.subagents.config import SubagentConfig
@@ -161,6 +166,93 @@ class _AgentAdapter:
         prompt = params.get("prompt", params.get("input", params))
         return executor, str(prompt)
 
+    async def _build_canonical_executor(self, context: ActionContext, params: dict[str, Any]):
+        import yaml
+        from sqlalchemy import select
+
+        from ideer.config import get_app_config
+        from ideer.config.paths import get_paths
+        from ideer.persistence.engine import get_session_factory
+        from ideer.persistence.models.resource_catalog import Resource, ResourceDependency
+        from ideer.resources.service import (
+            ResourceAction,
+            ResourceActor,
+            ResourceNotFound,
+            ResourceService,
+        )
+        from ideer.resources.storage import ResourceStorage
+        from ideer.subagents.config import SubagentConfig
+        from ideer.subagents.executor import SubagentExecutor
+        from ideer.tools.tools import get_available_tools
+
+        sf = get_session_factory()
+        if sf is None:
+            raise ActionResolutionError(f"agent '{self.name}' not found (catalog unavailable)")
+        async with sf() as session:
+            actor = ResourceActor(
+                user_id=self.user_id,
+                department_id=None,
+                role="user",
+                permissions=frozenset({ResourceAction.READ, ResourceAction.USE}),
+            )
+            service = ResourceService(session, actor)
+            resource = await session.get(Resource, self.name)
+            if resource is None or resource.type != "agent":
+                try:
+                    resource = await service.resolve_legacy_alias("agent", self.name)
+                except ResourceNotFound as exc:
+                    raise ActionResolutionError(f"agent '{self.name}' not found") from exc
+            published = await service.get_published_content(resource.id)
+            storage = ResourceStorage(get_paths().base_dir)
+            root = storage.resources_root / published.storage_key
+            config_yaml = yaml.safe_load((root / "config.yaml").read_text(encoding="utf-8")) or {}
+            soul = ""
+            soul_path = root / "SOUL.md"
+            if soul_path.exists():
+                soul = soul_path.read_text(encoding="utf-8")
+            targets = list(
+                (
+                    await session.execute(
+                        select(Resource)
+                        .join(ResourceDependency, ResourceDependency.target_resource_id == Resource.id)
+                        .where(
+                            ResourceDependency.source_resource_id == resource.id,
+                            Resource.type == "skill",
+                        )
+                        .order_by(Resource.slug, Resource.id)
+                    )
+                ).scalars()
+            )
+            by_slug = {target.slug: target for target in targets}
+            by_id = {target.id: target for target in targets}
+            requested = config_yaml.get("skills")
+            selected = targets if requested is None else [target for name in requested if (target := by_id.get(name) or by_slug.get(name)) is not None]
+            skill_names = [target.slug for target in selected]
+
+        override = params.get("system_prompt", "")
+        if soul and override:
+            system_prompt = f"{soul}\n\n## 当前阶段指令\n\n{override}"
+        else:
+            system_prompt = soul or override
+
+        subagent = SubagentConfig(
+            name=self.name,
+            description=f"Workflow node: {context.node_id}",
+            system_prompt=system_prompt,
+            skills=skill_names,
+            model=config_yaml.get("model") or "inherit",
+            max_turns=params.get("max_turns", 50),
+            file_access=context.file_access,
+        )
+        executor = SubagentExecutor(
+            subagent,
+            get_available_tools(groups=config_yaml.get("tool_groups"), app_config=get_app_config()),
+            app_config=get_app_config(),
+            thread_id=context.run_id,
+        )
+        prompt = params.get("prompt", params.get("input", params))
+        return executor, str(prompt)
+
     def _finalize_result(self, result: Any) -> Any:
         from ideer.subagents.executor import SubagentStatus
         from ideer.workflows.v2.compiler import WorkflowTransientError
@@ -176,7 +268,7 @@ class _AgentAdapter:
     async def run(self, context: ActionContext, params: dict[str, Any]) -> Any:
         from ideer.runtime.user_context import reset_current_user, set_current_user
 
-        executor, prompt = self._build_executor(context, params)
+        executor, prompt = await self._build_executor(context, params)
         user_token = set_current_user(SimpleNamespace(id=self.user_id))
         try:
             result = await executor._aexecute(prompt)
@@ -188,7 +280,7 @@ class _AgentAdapter:
         from ideer.runtime.user_context import reset_current_user, set_current_user
 
         yield {"type": "progress", "message": "started"}
-        executor, prompt = self._build_executor(context, params)
+        executor, prompt = await self._build_executor(context, params)
         queue: asyncio.Queue[Any] = asyncio.Queue()
 
         async def produce() -> Any:
@@ -224,7 +316,7 @@ class _CanonicalAgentAdapter(_AgentAdapter):
         self.skills = list(skills)
         self.allowed_tool_groups = allowed_tool_groups
 
-    def _build_executor(self, context: ActionContext, params: dict[str, Any]):
+    async def _build_executor(self, context: ActionContext, params: dict[str, Any]):
         from ideer.config import get_app_config
         from ideer.resources.runtime import intersect_tool_groups
         from ideer.subagents.config import SubagentConfig

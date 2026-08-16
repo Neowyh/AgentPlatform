@@ -554,49 +554,6 @@ class TestListAssistants:
         ids = [a.assistant_id for a in result]
         assert ids == ["lead_agent", "alpha", "beta"]
 
-    def test_custom_agents_use_user_metadata(self):
-        """Custom agents get metadata.created_by = 'user'."""
-        custom_cfg = _make_agent_config("my_custom", "Custom desc")
-        with patch(
-            "ideer.config.agents_config.list_custom_agents",
-            return_value=[custom_cfg],
-        ):
-            # Re-import to exercise the real code path with the mock
-            from app.gateway.routers import assistants_compat
-
-            result = assistants_compat._list_assistants()
-            custom = [a for a in result if a.assistant_id == "my_custom"]
-            assert len(custom) == 1
-            assert custom[0].metadata.get("created_by") == "user"
-
-    def test_custom_agents_description_from_config(self):
-        """Custom agent description comes from agent_cfg.description."""
-        custom_cfg = _make_agent_config("desc_agent", "Hello world")
-        with patch(
-            "ideer.config.agents_config.list_custom_agents",
-            return_value=[custom_cfg],
-        ):
-            from app.gateway.routers import assistants_compat
-
-            result = assistants_compat._list_assistants()
-            custom = [a for a in result if a.assistant_id == "desc_agent"]
-            assert len(custom) == 1
-            assert custom[0].description == "Hello world"
-
-    def test_custom_agents_empty_description(self):
-        """Custom agent with None description gets empty string."""
-        custom_cfg = _make_agent_config("no_desc", None)
-        with patch(
-            "ideer.config.agents_config.list_custom_agents",
-            return_value=[custom_cfg],
-        ):
-            from app.gateway.routers import assistants_compat
-
-            result = assistants_compat._list_assistants()
-            custom = [a for a in result if a.assistant_id == "no_desc"]
-            assert len(custom) == 1
-            assert custom[0].description == ""
-
     def test_custom_agents_load_failure_still_returns_default(self):
         """If list_custom_agents raises, we still get the default assistant."""
         with patch(
