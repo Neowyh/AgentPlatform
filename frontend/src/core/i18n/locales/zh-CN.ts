@@ -366,6 +366,7 @@ export const zhCN: Translations = {
     userManagement: "用户管理",
     departmentManagement: "部门管理",
     toolManagement: "工具管理",
+    resourceManagement: "资源管理",
     applicationManagement: "审批管理",
     auditLogManagement: "审计日志",
   },

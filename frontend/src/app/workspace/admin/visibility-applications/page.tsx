@@ -31,6 +31,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { listUsers } from "@/core/admin/api";
+import type { User } from "@/core/admin/types";
 import { useAuth } from "@/core/auth/AuthProvider";
 import {
   listVisibilityApplications,
@@ -77,6 +79,9 @@ export default function VisibilityApplicationsPage() {
   const [page, setPage] = useState(1);
   const [filterStatus, setFilterStatus] = useState<string>("pending");
   const [filterResourceType, setFilterResourceType] = useState<string>("all");
+  const [filterVisibility, setFilterVisibility] = useState<string>("all");
+  const [filterApplicant, setFilterApplicant] = useState<string>("all");
+  const [users, setUsers] = useState<User[]>([]);
   const [reviewingApplication, setReviewingApplication] =
     useState<VisibilityApplication | null>(null);
   const [reviewComment, setReviewComment] = useState("");
@@ -89,10 +94,13 @@ export default function VisibilityApplicationsPage() {
       const params: Parameters<typeof listVisibilityApplications>[0] = {
         page,
         page_size: 20,
+        status: filterStatus,
       };
-      if (filterStatus !== "all") params.status = filterStatus;
       if (filterResourceType !== "all")
         params.resource_type = filterResourceType;
+      if (filterVisibility !== "all")
+        params.target_visibility = filterVisibility;
+      if (filterApplicant !== "all") params.applicant_id = filterApplicant;
 
       const data = await listVisibilityApplications(params);
       setApplications(data.applications);
@@ -101,7 +109,26 @@ export default function VisibilityApplicationsPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
-  }, [filterStatus, filterResourceType, page]);
+  }, [
+    filterStatus,
+    filterResourceType,
+    filterVisibility,
+    filterApplicant,
+    page,
+  ]);
+
+  useEffect(() => {
+    if (
+      currentUser?.system_role !== "super_admin" &&
+      currentUser?.system_role !== "department_admin"
+    ) {
+      return;
+    }
+
+    void listUsers({ limit: 500 })
+      .then((data) => setUsers(data.users))
+      .catch(() => setUsers([]));
+  }, [currentUser]);
 
   useEffect(() => {
     if (
@@ -163,6 +190,19 @@ export default function VisibilityApplicationsPage() {
     setFilterResourceType(value);
     setPage(1);
   };
+
+  const handleFilterVisibilityChange = (value: string) => {
+    setFilterVisibility(value);
+    setPage(1);
+  };
+
+  const handleFilterApplicantChange = (value: string) => {
+    setFilterApplicant(value);
+    setPage(1);
+  };
+
+  const applicantName = (applicantId: string) =>
+    users.find((u) => u.id === applicantId)?.username ?? applicantId;
 
   const totalPages = Math.max(1, Math.ceil(total / 20));
 
@@ -271,6 +311,38 @@ export default function VisibilityApplicationsPage() {
                 </SelectContent>
               </Select>
 
+              <Select
+                value={filterVisibility}
+                onValueChange={handleFilterVisibilityChange}
+              >
+                <SelectTrigger className="w-32">
+                  <SelectValue placeholder="目标可见性" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">全部可见性</SelectItem>
+                  <SelectItem value="private">私有</SelectItem>
+                  <SelectItem value="department">部门</SelectItem>
+                  <SelectItem value="public">公开</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select
+                value={filterApplicant}
+                onValueChange={handleFilterApplicantChange}
+              >
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="申请人" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">全部申请人</SelectItem>
+                  {users.map((u) => (
+                    <SelectItem key={u.id} value={u.id}>
+                      {u.username}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
               <span className="text-muted-foreground ml-auto text-sm">
                 共 {total} 条
               </span>
@@ -307,8 +379,9 @@ export default function VisibilityApplicationsPage() {
                         </div>
                       </div>
                       <CardDescription>
-                        申请编号: {app.id} | 申请人: {app.applicant_id} |
-                        可见性: {VISIBILITY_LABELS[app.current_visibility]} →{" "}
+                        申请编号: {app.id} | 申请人:{" "}
+                        {applicantName(app.applicant_id)} | 可见性:{" "}
+                        {VISIBILITY_LABELS[app.current_visibility]} →{" "}
                         {VISIBILITY_LABELS[app.target_visibility]}
                       </CardDescription>
                     </CardHeader>
@@ -422,7 +495,12 @@ export default function VisibilityApplicationsPage() {
                   reviewingApplication?.target_visibility ?? ""
                 ] ?? reviewingApplication?.target_visibility}
               </Label>
-              <Label>申请人: {reviewingApplication?.applicant_id}</Label>
+              <Label>
+                申请人:{" "}
+                {reviewingApplication
+                  ? applicantName(reviewingApplication.applicant_id)
+                  : ""}
+              </Label>
               <Label>申请理由: {reviewingApplication?.reason ?? "无"}</Label>
             </div>
             <div className="grid gap-2">

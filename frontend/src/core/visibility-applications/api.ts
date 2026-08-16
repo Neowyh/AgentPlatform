@@ -9,6 +9,8 @@ const RESOURCE_UUID_PATTERN = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 export async function listVisibilityApplications(params?: {
   status?: string;
   resource_type?: string;
+  target_visibility?: string;
+  applicant_id?: string;
   page?: number;
   page_size?: number;
 }): Promise<ApplicationsResponse> {
@@ -17,6 +19,10 @@ export async function listVisibilityApplications(params?: {
   if (params?.status) searchParams.set("status", params.status);
   if (params?.resource_type)
     searchParams.set("resource_type", params.resource_type);
+  if (params?.target_visibility)
+    searchParams.set("target_visibility", params.target_visibility);
+  if (params?.applicant_id)
+    searchParams.set("applicant_id", params.applicant_id);
   if (params?.page) searchParams.set("page", String(params.page));
   if (params?.page_size)
     searchParams.set("page_size", String(params.page_size));

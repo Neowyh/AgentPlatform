@@ -111,6 +111,26 @@ describe("visibility-applications API", () => {
       expect(url.searchParams.get("resource_type")).toBe("agent");
     });
 
+    test("includes target_visibility in query string", async () => {
+      mockFetch.mockResolvedValue(okJson(sampleListResponse));
+
+      await listVisibilityApplications({ target_visibility: "public" });
+
+      const calledUrl = mockFetch.mock.calls[0]![0] as string;
+      const url = new URL(calledUrl);
+      expect(url.searchParams.get("target_visibility")).toBe("public");
+    });
+
+    test("includes applicant_id in query string", async () => {
+      mockFetch.mockResolvedValue(okJson(sampleListResponse));
+
+      await listVisibilityApplications({ applicant_id: "user-1" });
+
+      const calledUrl = mockFetch.mock.calls[0]![0] as string;
+      const url = new URL(calledUrl);
+      expect(url.searchParams.get("applicant_id")).toBe("user-1");
+    });
+
     test("includes page and page_size in query string", async () => {
       mockFetch.mockResolvedValue(okJson(sampleListResponse));
 
@@ -128,6 +148,8 @@ describe("visibility-applications API", () => {
       await listVisibilityApplications({
         status: "pending",
         resource_type: "thread",
+        target_visibility: "department",
+        applicant_id: "user-1",
         page: 3,
         page_size: 5,
       });
@@ -136,6 +158,8 @@ describe("visibility-applications API", () => {
       const url = new URL(calledUrl);
       expect(url.searchParams.get("status")).toBe("pending");
       expect(url.searchParams.get("resource_type")).toBe("thread");
+      expect(url.searchParams.get("target_visibility")).toBe("department");
+      expect(url.searchParams.get("applicant_id")).toBe("user-1");
       expect(url.searchParams.get("page")).toBe("3");
       expect(url.searchParams.get("page_size")).toBe("5");
     });
