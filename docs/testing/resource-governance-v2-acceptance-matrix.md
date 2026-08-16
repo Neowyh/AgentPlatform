@@ -20,7 +20,7 @@
 
 冒烟发现并修复一处契约断裂：bundled `_prepare_agent` 将 `config.skills` 改写为稳定 UUID，而 `runtime.load_agent_skill_definitions` 只按 slug 匹配导致 bundled Agent run 409。修复为按 UUID 优先、slug 次之匹配，缺失引用 fail-closed；新增 2 个单元测试（UUID 引用解析、缺失引用拒绝），`tests/unit/resources/` 93 passed。
 
-Assistants compatibility 已由 `tests/integration/api/test_assistants_compat_comprehensive.py`（含 `IDEER_RESOURCE_CATALOG_MODE=canonical` 场景）与 `test_assistants_compat_router.py` 覆盖，随 backend 全量 12596 通过。已知待补证据（观察期外另行执行）：离线部署项（本分支未运行对应环境）。
+Assistants compatibility 已由 `tests/integration/api/test_assistants_compat_comprehensive.py`（含 `IDEER_RESOURCE_CATALOG_MODE=canonical` 场景）与 `test_assistants_compat_router.py` 覆盖，随 backend 全量 12596 通过。离线部署项已按下方"部署/离线"行执行记录完成验证（含一处缺陷修复）。
 
 本矩阵是完成判定依据。单元测试通过不能替代同一行要求的集成、运行时或部署证据；挂起、扩大 skip、降低断言或旧产物不计为通过。
 
@@ -48,6 +48,14 @@ Assistants compatibility 已由 `tests/integration/api/test_assistants_compat_co
 | 前端 | UUID 动态路由，展示 slug/display name；Admin、审批、审计、收藏、统计、导入导出正确 | Vitest、TypeScript/ESLint、Playwright replay artifacts |
 | 数据迁移 | 单一 head；空库、旧库、重复升级、downgrade 边界；audit/migrate/verify/rollback 幂等 | Alembic schema suite；realistic legacy fixture；backup restore |
 | 部署/离线 | bundled UUID 稳定；初始化任一失败整体失败；内网、无沙箱包、断网新装均可验证 | script tests；bundle hash/manifest checks；offline installation log |
+
+### 部署/离线行执行记录（2026-08-16）
+
+- **离线包 checksum/manifest**：`dist/intranet/ideer-20260815-5abd849c6-1x-nosandbox/`（本分支产物）`sha256sum -c SHA256SUMS` 6/6 OK（images tar、source tar、作业指导书、deploy/check 脚本、MANIFEST）；MANIFEST 含版本、git commit、镜像 digest、文件清单。
+- **无沙箱包**：该包为 `--no-sandbox` 构建（`ideer-sandbox` digest: not bundled），断网新装验证同时覆盖"无沙箱包"场景——部署 exit 0，sandbox 镜像缺失为 check 脚本 WARNING 级（非错误），runtime config 保留 `AioSandboxProvider` + 缺省镜像，符合文档化预期。
+- **断网新装（隔离模拟）**：在 `/tmp/opencode/intranet-sim/` 完整复制 bundle 后 `deploy-intranet.sh up`（`PORT=2027` 规避本机系统 nginx 占用 2026）——docker load 本地镜像 tar → compose up → 健康检查 → super admin 自动创建 → bundled 27 资源全量 created（24 skill + 2 agent + 1 workflow，owner 为 super admin）→ fault-zeroing workflow seeded（Version 1）。冒烟：`/api/resources` 返回 27 项全 bundled（含 UUID id、storage_kind=bundled）；legacy 名称 alias（agent/skill/workflow fault-zeroing）dual 模式下均 200；nginx 前端 200。
+- **初始化任一失败整体失败（fail-fast 语义实测）**：首轮部署因 bundled agent/workflow 源在容器内缺失而 seed 失败，脚本整体 exit 1、提示 `canonical bundled resource seeding failed` / `private resource initialization failed`，容器不进入"部署完成"状态；修复后全流程 exit 0。失败语义符合"任一失败整体失败"要求。
+- **发现并修复打包链缺陷**：gateway 镜像仅 COPY `backend`，而 `bundled-resources.json` 的 bundled agent 源位于 `docs/*-agent/agent`、workflow 源位于 `workflows/`，compose 未挂载导致容器内 seed 缺源。修复：`docker/docker-compose.intranet.yaml` 为 gateway 与 workflow-worker 服务增加 `../docs:/app/docs:ro` 与 `../workflows:/app/workflows:ro` 挂载（见 fix 提交）。修复后隔离模拟部署 exit 0、27 created。当前 dist 包为修复前产物，下次打包自动携带修复。
 
 ## 阶段门
 

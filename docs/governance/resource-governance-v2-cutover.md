@@ -96,4 +96,6 @@ PYTHONPATH=packages/harness uv run python -m ideer.scripts.resource_catalog_v2 r
 - Workflow Worker canonical 冒烟（2026-08-16）：worker 以 canonical 模式消费 workflow run，状态 queued→running→failed（冒烟占位 `upload_dir` 不存在导致业务失败），`run_resource_snapshots` 完整闭包 3 行落库；runtime 修复后全量 `make test` 12596 passed。
 - 观察期开始：2026-08-15 23:36（本地，Gateway 保持 canonical 运行）。
 - 观察期操作：保留 `IDEER_HOME` 旧目录与 `resource_metadata` 兼容数据；周期重跑 `verify` 与 reconcile 报告；新 Run 落快照后，回滚仅限未产生快照/草稿/外部依赖的迁移 v1 资源。
-- 待办：离线部署项（观察期外另行执行；Assistants compatibility 已由 integration 测试覆盖，含 canonical 场景）。
+- 离线部署项（2026-08-16，本工作树）：断网新装隔离模拟完成（详见[验收矩阵"部署/离线"行执行记录](../testing/resource-governance-v2-acceptance-matrix.md)）——离线包 checksum/manifest 6/6 OK；无沙箱包部署 exit 0；bundled 27 资源全量 created、fault-zeroing workflow seeded；`/api/resources` 27 项全 bundled、legacy alias 200；fail-fast 语义实测（缺源时整体失败 exit 1）。
+- 离线部署项中发现并修复打包链缺陷：compose intranet 未挂载 `docs/` 与 `workflows/`，bundled agent/workflow 源在容器内缺失导致 seed 失败；`docker/docker-compose.intranet.yaml` 为 gateway 与 workflow-worker 增加 `../docs:/app/docs:ro`、`../workflows:/app/workflows:ro` 后隔离模拟部署 exit 0、27 created。dist 离线包需在下次打包时重新生成以携带该修复。
+- 待办：观察期结束评估（起止记录见上）；重新打包离线包携带 compose 修复；Assistants compatibility 已由 integration 测试覆盖（含 canonical 场景）。
