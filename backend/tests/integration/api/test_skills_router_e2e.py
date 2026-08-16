@@ -133,6 +133,21 @@ class TestListSkills:
             resp = client.get("/api/skills")
         assert resp.status_code == 200
 
+    @patch(_STORAGE_PATCH)
+    @patch(_META_PATCH, new_callable=AsyncMock, return_value={"visibility": "public", "owner_id": "user-1"})
+    def test_list_skills_reflects_metadata_visibility(self, mock_meta, mock_storage_fn):
+        """List skills returns the real visibility from ResourceMetadata."""
+        skill = _make_skill(category=SkillCategory.CUSTOM)
+        mock_storage_fn.return_value = _make_mock_storage(skills=[skill])
+        app, _ = _make_app()
+        with TestClient(app) as client:
+            resp = client.get("/api/skills")
+        assert resp.status_code == 200
+        items = resp.json()["skills"]
+        assert len(items) == 1
+        assert items[0]["visibility"] == "public"
+        assert items[0]["owner_id"] == "user-1"
+
 
 # ---------------------------------------------------------------------------
 # Tests — GET /api/skills/{skill_name}
@@ -152,6 +167,18 @@ class TestGetSkill:
             resp = client.get("/api/skills/test-skill")
         assert resp.status_code == 200
         assert resp.json()["name"] == "test-skill"
+
+    @patch(_STORAGE_PATCH)
+    @patch(_META_PATCH, new_callable=AsyncMock, return_value={"visibility": "public", "owner_id": "user-1"})
+    def test_get_skill_reflects_metadata_visibility(self, mock_meta, mock_storage_fn):
+        """Get skill returns the real visibility from ResourceMetadata."""
+        skill = _make_skill(category=SkillCategory.CUSTOM)
+        mock_storage_fn.return_value = _make_mock_storage(skills=[skill])
+        app, _ = _make_app()
+        with TestClient(app) as client:
+            resp = client.get("/api/skills/test-skill")
+        assert resp.status_code == 200
+        assert resp.json()["visibility"] == "public"
 
     @patch(_STORAGE_PATCH)
     def test_get_skill_not_found(self, mock_storage_fn):

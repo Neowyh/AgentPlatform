@@ -16,7 +16,7 @@ from ideer.agents.lead_agent.prompt import refresh_skills_system_prompt_cache_as
 from ideer.config.app_config import AppConfig
 from ideer.config.extensions_config import ExtensionsConfig, SkillStateConfig, get_extensions_config, reload_extensions_config
 from ideer.persistence.engine import get_session_factory
-from ideer.persistence.models.user import UserModel, UserRole
+from ideer.persistence.models.user import ResourceVisibility, UserModel, UserRole
 from ideer.skills import Skill
 from ideer.skills.installer import SkillAlreadyExistsError
 from ideer.skills.security_scanner import scan_skill_content
@@ -135,6 +135,13 @@ class SkillImportRequest(BaseModel):
     visibility: str = Field(default="private", description="Visibility: private, department, or public")
 
 
+def _apply_skill_meta(skill: Skill, meta: dict) -> None:
+    """Write ResourceMetadata values back onto the Skill object so responses reflect reality."""
+    skill.visibility = ResourceVisibility(meta.get("visibility", "private"))
+    skill.owner_id = meta.get("owner_id")
+    skill.department_id = meta.get("department_id")
+
+
 def _skill_to_response(skill: Skill) -> SkillResponse:
     """Convert a Skill object to a SkillResponse."""
     return SkillResponse(
@@ -184,6 +191,8 @@ async def list_skills(
             visibility = meta.get("visibility", "private")
             owner_id = meta.get("owner_id")
             dept_id = meta.get("department_id")
+
+            _apply_skill_meta(skill, meta)
 
             if current_user is not None:
                 if check_resource_access(current_user, owner_id, dept_id, visibility):
@@ -266,6 +275,8 @@ async def list_custom_skills(
             owner_id = meta.get("owner_id")
             dept_id = meta.get("department_id")
 
+            _apply_skill_meta(skill, meta)
+
             if current_user is not None:
                 if check_resource_access(current_user, owner_id, dept_id, visibility):
                     filtered.append(skill)
@@ -298,6 +309,7 @@ async def get_custom_skill(
         visibility = meta.get("visibility", "private")
         owner_id = meta.get("owner_id")
         dept_id = meta.get("department_id")
+        _apply_skill_meta(skill, meta)
         if current_user is not None:
             if not check_resource_access(current_user, owner_id, dept_id, visibility):
                 raise HTTPException(status_code=404, detail=f"Custom skill '{skill_name}' not found")
@@ -669,6 +681,7 @@ async def get_skill(skill_name: str, config: AppConfig = Depends(get_config), cu
             visibility = meta.get("visibility", "private")
             owner_id = meta.get("owner_id")
             dept_id = meta.get("department_id")
+            _apply_skill_meta(skill, meta)
             if current_user is not None:
                 if not check_resource_access(current_user, owner_id, dept_id, visibility):
                     raise HTTPException(status_code=404, detail=f"Skill '{skill_name}' not found")
