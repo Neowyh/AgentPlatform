@@ -4,6 +4,7 @@ import { ArrowLeftIcon, CheckIcon, XIcon } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -194,12 +195,26 @@ export default function VisibilityApplicationsPage() {
           <div className="text-muted-foreground flex h-40 items-center justify-center text-sm">
             加载中...
           </div>
-        ) : error ? (
-          <div className="text-destructive flex h-40 items-center justify-center text-sm">
-            {error}
-          </div>
         ) : (
           <div className="flex flex-col gap-4">
+            {error && (
+              <Alert variant="destructive">
+                <AlertTitle className="flex items-center justify-between gap-2 pr-1">
+                  操作失败
+                  <button
+                    type="button"
+                    aria-label="关闭错误提示"
+                    onClick={() => setError(null)}
+                  >
+                    <XIcon className="h-4 w-4" />
+                  </button>
+                </AlertTitle>
+                <AlertDescription className="whitespace-pre-line">
+                  {error}
+                </AlertDescription>
+              </Alert>
+            )}
+
             {/* Filters */}
             <div className="flex items-center gap-3">
               <div className="flex gap-2">

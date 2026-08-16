@@ -1,9 +1,72 @@
 /** Raw detail shape from a FastAPI error response. */
+export interface VisibilityClosureViolation {
+  source?: {
+    slug?: string;
+    display_name?: string;
+    type?: string;
+  };
+  target?: {
+    slug?: string;
+    display_name?: string;
+    type?: string;
+    visibility?: string;
+  };
+  required_visibility?: string;
+}
+
 export type ErrorDetail =
   | string
-  | { code?: string; message?: string }
+  | {
+      code?: string;
+      message?: string;
+      violations?: VisibilityClosureViolation[];
+    }
   | Array<{ msg?: string; loc?: string[] }>
   | undefined;
+
+const RESOURCE_TYPE_LABELS: Record<string, string> = {
+  tool: "工具",
+  skill: "Skill",
+  workflow: "工作流",
+  agent: "智能体",
+};
+
+const VISIBILITY_LABELS: Record<string, string> = {
+  private: "私有",
+  department: "部门",
+  public: "公开",
+};
+
+/**
+ * Format a visibility closure violation payload into a localized,
+ * actionable message.
+ */
+export function formatVisibilityClosureViolations(detail: {
+  message?: string;
+  violations?: VisibilityClosureViolation[];
+}): string {
+  const violations = detail.violations ?? [];
+  const summary =
+    detail.message ?? "可见性闭包校验失败：公开资源只能依赖公开资源。";
+  const lines = violations.map((violation) => {
+    const target = violation.target;
+    const label = target?.display_name ?? target?.slug ?? "未知资源";
+    const type = target?.type
+      ? (RESOURCE_TYPE_LABELS[target.type] ?? target.type)
+      : "";
+    const visibility = target?.visibility
+      ? (VISIBILITY_LABELS[target.visibility] ?? target.visibility)
+      : "未知";
+    return `- ${type}「${label}」当前可见性：${visibility}`;
+  });
+  const guidance =
+    violations.length > 1
+      ? "请先将这些依赖提升为公开，或移除该依赖后重试"
+      : "请先将该依赖提升为公开，或移除该依赖后重试";
+  return lines.length > 0
+    ? `${summary}\n${guidance}：\n${lines.join("\n")}`
+    : summary;
+}
 
 /**
  * Parse the raw error detail from a failed API response.
@@ -46,7 +109,18 @@ export function formatDetail(
       .join("; ");
   }
   if (typeof detail === "object" && detail !== null) {
-    return (detail as { message?: string }).message ?? JSON.stringify(detail);
+    const structured = detail as {
+      code?: string;
+      message?: string;
+      violations?: VisibilityClosureViolation[];
+    };
+    if (
+      structured.code === "visibility_closure_violation" &&
+      Array.isArray(structured.violations)
+    ) {
+      return formatVisibilityClosureViolations(structured);
+    }
+    return structured.message ?? JSON.stringify(detail);
   }
   if (typeof detail === "string") {
     return detail;

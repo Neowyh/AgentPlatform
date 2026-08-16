@@ -18,6 +18,7 @@ from ideer.persistence.models.resource_catalog import (
     ResourceVersion,
     RunResourceSnapshot,
 )
+from ideer.persistence.models.visibility_application import VisibilityApplication
 from ideer.resources.mode import ResourceCatalogMode, get_resource_catalog_mode
 from ideer.resources.service import (
     ResourceAction,
@@ -25,6 +26,7 @@ from ideer.resources.service import (
     ResourceConflict,
     ResourceNotFound,
     ResourceService,
+    VisibilityClosureError,
 )
 
 
@@ -39,12 +41,17 @@ async def session(tmp_path) -> AsyncIterator[AsyncSession]:
     await engine.dispose()
 
 
-def _actor(user_id: str = "owner") -> ResourceActor:
+def _actor(
+    user_id: str = "owner",
+    *,
+    role: str = "user",
+    permissions: set[ResourceAction] | None = None,
+) -> ResourceActor:
     return ResourceActor(
         user_id=user_id,
         department_id="dept-a",
-        role="user",
-        permissions=frozenset({ResourceAction.READ, ResourceAction.USE, ResourceAction.WRITE}),
+        role=role,
+        permissions=frozenset(permissions or {ResourceAction.READ, ResourceAction.USE, ResourceAction.WRITE}),
     )
 
 
@@ -172,6 +179,109 @@ async def test_public_resource_cannot_depend_on_private_resource(session: AsyncS
 
     with pytest.raises(ResourceConflict, match="visibility closure"):
         await ResourceService(session, _actor()).replace_dependencies(source.id, [target.id])
+
+
+@pytest.mark.asyncio
+async def test_dependency_closure_error_carries_structured_violation(session: AsyncSession) -> None:
+    source = _resource("public-agent", visibility="public")
+    target = _resource("private-skill", resource_type="skill", visibility="private")
+    session.add_all([source, target])
+    await session.commit()
+
+    with pytest.raises(VisibilityClosureError) as excinfo:
+        await ResourceService(session, _actor()).replace_dependencies(source.id, [target.id])
+
+    assert "slug-public-agent" in str(excinfo.value)
+    assert "slug-private-skill" in str(excinfo.value)
+    assert excinfo.value.violations == [
+        {
+            "source": {"slug": source.slug, "display_name": source.display_name, "type": "agent"},
+            "target": {
+                "slug": target.slug,
+                "display_name": target.display_name,
+                "type": "skill",
+                "visibility": "private",
+            },
+            "required_visibility": "public",
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_request_visibility_fails_fast_on_closure_violation(session: AsyncSession) -> None:
+    agent = _resource("public-agent")
+    skill = _resource("private-skill", resource_type="skill")
+    session.add_all([agent, skill])
+    await session.commit()
+    service = ResourceService(session, _actor())
+    await _publish(service, agent.id, expected_revision=0, content_hash="a" * 64, storage_key="agents/public-agent/1")
+    session.add_all([ResourceDependency(id="edge-1", source_resource_id=agent.id, target_resource_id=skill.id)])
+    await session.commit()
+
+    with pytest.raises(VisibilityClosureError) as excinfo:
+        await service.request_visibility(
+            agent.id,
+            target_visibility="public",
+            scope_department_id=None,
+            reason="share",
+        )
+
+    assert len(excinfo.value.violations) == 1
+    assert excinfo.value.violations[0]["target"]["slug"] == skill.slug
+    assert excinfo.value.violations[0]["required_visibility"] == "public"
+    assert not list((await session.execute(select(VisibilityApplication))).scalars())
+
+
+@pytest.mark.asyncio
+async def test_review_aggregates_all_closure_violations(session: AsyncSession) -> None:
+    agent = _resource("public-agent")
+    skill_a = _resource("private-skill-a", resource_type="skill")
+    skill_b = _resource("private-skill-b", resource_type="skill")
+    session.add_all([agent, skill_a, skill_b])
+    await session.commit()
+    service = ResourceService(session, _actor())
+    await _publish(service, agent.id, expected_revision=0, content_hash="a" * 64, storage_key="agents/public-agent/1")
+    session.add_all(
+        [
+            ResourceDependency(id="edge-a", source_resource_id=agent.id, target_resource_id=skill_a.id),
+            ResourceDependency(id="edge-b", source_resource_id=agent.id, target_resource_id=skill_b.id),
+        ]
+    )
+    application = VisibilityApplication(
+        id="app-1",
+        resource_type="agent",
+        resource_id=agent.slug,
+        canonical_resource_id=agent.id,
+        requested_version=1,
+        requested_hash="a" * 64,
+        applicant_id="owner",
+        current_visibility="private",
+        target_visibility="public",
+        reason="share",
+        status="pending",
+        version=1,
+    )
+    session.add(application)
+    await session.commit()
+
+    reviewer = ResourceService(
+        session,
+        _actor(
+            "reviewer",
+            role="super_admin",
+            permissions={
+                ResourceAction.READ,
+                ResourceAction.USE,
+                ResourceAction.WRITE,
+                ResourceAction.APPROVE,
+            },
+        ),
+    )
+    with pytest.raises(VisibilityClosureError) as excinfo:
+        await reviewer.review_visibility_application("app-1", approve=True, comment="")
+
+    assert {v["target"]["slug"] for v in excinfo.value.violations} == {skill_a.slug, skill_b.slug}
+    assert application.status == "pending"
 
 
 @pytest.mark.asyncio

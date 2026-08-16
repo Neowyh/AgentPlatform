@@ -36,6 +36,7 @@ from ideer.resources.service import (
     ResourceNotFound,
     ResourcePermissionDenied,
     ResourceService,
+    VisibilityClosureError,
 )
 
 logger = logging.getLogger(__name__)
@@ -393,6 +394,15 @@ async def review_application(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ResourcePermissionDenied as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except VisibilityClosureError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "visibility_closure_violation",
+                "message": str(exc),
+                "violations": exc.violations,
+            },
+        ) from exc
     except ResourceConflict as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except Exception as e:

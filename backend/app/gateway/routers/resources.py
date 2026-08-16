@@ -42,6 +42,7 @@ from ideer.resources.service import (
     ResourceNotFound,
     ResourcePermissionDenied,
     ResourceService,
+    VisibilityClosureError,
 )
 from ideer.resources.storage import ResourceStorage, StorageConflict, StorageValidationError
 from ideer.workflows.v2.parser import parse_workflow_v2
@@ -140,6 +141,15 @@ def _translate_resource_errors(handler):
             raise HTTPException(404, str(exc)) from exc
         except ResourcePermissionDenied as exc:
             raise HTTPException(403, str(exc)) from exc
+        except VisibilityClosureError as exc:
+            raise HTTPException(
+                409,
+                detail={
+                    "code": "visibility_closure_violation",
+                    "message": str(exc),
+                    "violations": exc.violations,
+                },
+            ) from exc
         except (ResourceConflict, ResourceApprovalRequired, StorageConflict) as exc:
             raise HTTPException(409, str(exc)) from exc
         except (StorageValidationError, ValueError) as exc:

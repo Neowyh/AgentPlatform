@@ -91,6 +91,60 @@ describe("errors", () => {
       expect(result).toBe('{"code":"ERR_001"}');
     });
 
+    test("formats visibility closure violations into a localized list", async () => {
+      const { formatDetail } = await import("@/core/api/errors");
+      const detail = {
+        code: "visibility_closure_violation",
+        message:
+          'Dependency violates visibility closure: agent "fault-zeroing" cannot be made public',
+        violations: [
+          {
+            source: {
+              slug: "fault-zeroing",
+              display_name: "fault-zeroing",
+              type: "agent",
+            },
+            target: {
+              slug: "fault-zeroing-skill",
+              display_name: "fault-zeroing",
+              type: "skill",
+              visibility: "private",
+            },
+            required_visibility: "public",
+          },
+        ],
+      };
+
+      const result = formatDetail(detail, "Review", "Conflict");
+
+      expect(result).toContain("fault-zeroing");
+      expect(result).toContain("Skill「fault-zeroing」当前可见性：私有");
+      expect(result).toContain("请先将该依赖提升为公开，或移除该依赖后重试");
+    });
+
+    test("renders each violation on its own line for multiple violations", async () => {
+      const { formatDetail } = await import("@/core/api/errors");
+      const detail = {
+        code: "visibility_closure_violation",
+        violations: [
+          { target: { slug: "skill-a", type: "skill", visibility: "private" } },
+          {
+            target: {
+              slug: "skill-b",
+              type: "skill",
+              visibility: "department",
+            },
+          },
+        ],
+      };
+
+      const result = formatDetail(detail, "Review", "Conflict");
+
+      expect(result).toContain("- Skill「skill-a」当前可见性：私有");
+      expect(result).toContain("- Skill「skill-b」当前可见性：部门");
+      expect(result).toContain("请先将这些依赖提升为公开");
+    });
+
     test("formats string detail directly", async () => {
       const { formatDetail } = await import("@/core/api/errors");
       const result = formatDetail("Simple error", "Test action", "Bad Request");

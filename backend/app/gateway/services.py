@@ -217,6 +217,7 @@ async def _prepare_canonical_agent_run(
         ResourceNotFound,
         ResourcePermissionDenied,
         ResourceService,
+        VisibilityClosureError,
     )
     from ideer.resources.storage import ResourceStorage
 
@@ -269,6 +270,15 @@ async def _prepare_canonical_agent_run(
         raise HTTPException(404, str(exc)) from exc
     except ResourcePermissionDenied as exc:
         raise HTTPException(403, str(exc)) from exc
+    except VisibilityClosureError as exc:
+        raise HTTPException(
+            409,
+            detail={
+                "code": "visibility_closure_violation",
+                "message": str(exc),
+                "violations": exc.violations,
+            },
+        ) from exc
     except (ResourceConflict, ResourceRuntimeError) as exc:
         raise HTTPException(409, str(exc)) from exc
 

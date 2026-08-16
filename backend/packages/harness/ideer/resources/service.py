@@ -90,6 +90,18 @@ class ResourceApprovalRequired(ResourceError):
     pass
 
 
+class VisibilityClosureError(ResourceConflict):
+    """Raised when a resource's dependencies violate the visibility closure invariant.
+
+    Carries structured ``violations`` so gateways can surface actionable,
+    localized errors instead of a bare message.
+    """
+
+    def __init__(self, message: str, violations: list[dict[str, object]]) -> None:
+        super().__init__(message)
+        self.violations = violations
+
+
 class ResourceService:
     """Single authorization and lifecycle boundary for canonical resources."""
 
@@ -366,6 +378,20 @@ class ResourceService:
         ).scalar_one_or_none()
         if published is None:
             raise ResourceConflict("Resource latest version is missing")
+        violations = await self._visibility_closure_violations_for(
+            resource,
+            source_visibility=target_visibility,
+            source_department_id=scope_department_id if target_visibility == "department" else self.actor.department_id,
+        )
+        if violations:
+            raise VisibilityClosureError(
+                self._visibility_closure_message(
+                    resource,
+                    source_visibility=target_visibility,
+                    violations=violations,
+                ),
+                violations,
+            )
         application = VisibilityApplication(
             id=str(uuid.uuid4()),
             resource_type=resource.type,
@@ -446,13 +472,19 @@ class ResourceService:
             ).scalar_one_or_none()
             if version is None or resource.latest_version != application.requested_version or version.content_hash != application.requested_hash or resource.visibility != application.current_visibility:
                 raise ResourceConflict("Visibility application is stale")
-            targets = list((await self.session.execute(select(Resource).join(ResourceDependency, ResourceDependency.target_resource_id == Resource.id).where(ResourceDependency.source_resource_id == resource.id))).scalars())
-            for target in targets:
-                self._assert_visibility_closure(
-                    resource,
-                    target,
-                    source_visibility=application.target_visibility,
-                    source_department_id=application.department_id,
+            violations = await self._visibility_closure_violations_for(
+                resource,
+                source_visibility=application.target_visibility,
+                source_department_id=application.department_id,
+            )
+            if violations:
+                raise VisibilityClosureError(
+                    self._visibility_closure_message(
+                        resource,
+                        source_visibility=application.target_visibility,
+                        violations=violations,
+                    ),
+                    violations,
                 )
             resource.visibility = application.target_visibility
             resource.scope_department_id = application.department_id if application.target_visibility == "department" else None
@@ -834,6 +866,59 @@ class ResourceService:
             raise ResourceConflict(f"{source.type} resources cannot depend on {target.type} resources")
 
     @staticmethod
+    def _visibility_closure_violation(
+        source: Resource,
+        target: Resource,
+        *,
+        source_visibility: str | None = None,
+        source_department_id: str | None = None,
+    ) -> dict[str, object] | None:
+        visibility = source.visibility if source_visibility is None else source_visibility
+        department_id = source.scope_department_id if source_department_id is None else source_department_id
+        if visibility == "public" and target.visibility != "public":
+            return {
+                "source": {"slug": source.slug, "display_name": source.display_name, "type": source.type},
+                "target": {
+                    "slug": target.slug,
+                    "display_name": target.display_name,
+                    "type": target.type,
+                    "visibility": target.visibility,
+                },
+                "required_visibility": "public",
+            }
+        if visibility == "department":
+            valid_department = target.visibility == "department" and target.scope_department_id == department_id
+            if target.visibility != "public" and not valid_department:
+                return {
+                    "source": {"slug": source.slug, "display_name": source.display_name, "type": source.type},
+                    "target": {
+                        "slug": target.slug,
+                        "display_name": target.display_name,
+                        "type": target.type,
+                        "visibility": target.visibility,
+                    },
+                    "required_visibility": "department",
+                }
+        return None
+
+    @staticmethod
+    def _visibility_closure_message(
+        source: Resource,
+        *,
+        source_visibility: str,
+        violations: list[dict[str, object]],
+    ) -> str:
+        if source_visibility == "public":
+            allowed = "public"
+        else:
+            allowed = "public or in the same department"
+        deps = "; ".join(f'{v["target"]["type"]} "{v["target"]["slug"]}" (visibility {v["target"]["visibility"]})' for v in violations)
+        guidance = "Publish the dependency first or remove it." if len(violations) == 1 else "Publish the dependencies first or remove them."
+        return (
+            f'Dependency violates visibility closure: {source.type} "{source.slug}" cannot be made {source_visibility} because it depends on {deps}; a {source_visibility} resource may only depend on resources that are {allowed}. {guidance}'
+        )
+
+    @staticmethod
     def _assert_visibility_closure(
         source: Resource,
         target: Resource,
@@ -841,14 +926,45 @@ class ResourceService:
         source_visibility: str | None = None,
         source_department_id: str | None = None,
     ) -> None:
+        violation = ResourceService._visibility_closure_violation(
+            source,
+            target,
+            source_visibility=source_visibility,
+            source_department_id=source_department_id,
+        )
+        if violation is None:
+            return
         visibility = source.visibility if source_visibility is None else source_visibility
-        department_id = source.scope_department_id if source_department_id is None else source_department_id
-        if visibility == "public" and target.visibility != "public":
-            raise ResourceConflict("Dependency violates public visibility closure")
-        if visibility == "department":
-            valid_department = target.visibility == "department" and target.scope_department_id == department_id
-            if target.visibility != "public" and not valid_department:
-                raise ResourceConflict("Dependency violates department visibility closure")
+        raise VisibilityClosureError(
+            ResourceService._visibility_closure_message(
+                source,
+                source_visibility=visibility,
+                violations=[violation],
+            ),
+            [violation],
+        )
+
+    async def _visibility_closure_violations_for(
+        self,
+        source: Resource,
+        *,
+        source_visibility: str,
+        source_department_id: str | None,
+    ) -> list[dict[str, object]]:
+        targets = list((await self.session.execute(select(Resource).join(ResourceDependency, ResourceDependency.target_resource_id == Resource.id).where(ResourceDependency.source_resource_id == source.id))).scalars())
+        return [
+            violation
+            for violation in (
+                self._visibility_closure_violation(
+                    source,
+                    target,
+                    source_visibility=source_visibility,
+                    source_department_id=source_department_id,
+                )
+                for target in targets
+            )
+            if violation is not None
+        ]
 
     async def replace_dependencies(self, resource_id: str, target_resource_ids: list[str]) -> list[ResourceDependency]:
         self._require_action(ResourceAction.USE)
