@@ -410,6 +410,8 @@ async def review_application(
 async def list_applications(
     status: str | None = None,
     resource_type: str | None = None,
+    target_visibility: ResourceVisibility | None = None,
+    applicant_id: str | None = None,
     page: int = 1,
     page_size: int = 20,
     current_user: UserModel = Depends(get_current_rbac_user),
@@ -423,13 +425,19 @@ async def list_applications(
         async with sf() as session:
             stmt = select(VisibilityApplication)
 
-            if status:
+            if status and status != "all":
                 stmt = stmt.where(VisibilityApplication.status == status)
-            else:
+            elif not status:
                 stmt = stmt.where(VisibilityApplication.status == VisibilityApplicationStatus.PENDING)
 
             if resource_type:
                 stmt = stmt.where(VisibilityApplication.resource_type == resource_type)
+
+            if target_visibility:
+                stmt = stmt.where(VisibilityApplication.target_visibility == target_visibility)
+
+            if applicant_id:
+                stmt = stmt.where(VisibilityApplication.applicant_id == applicant_id)
 
             if current_user.role == UserRole.DEPARTMENT_ADMIN:
                 if current_user.department_id is None:

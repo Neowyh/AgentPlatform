@@ -76,6 +76,12 @@ const mockFetchApplications = vi.fn();
 const mockReviewApplication = vi.fn();
 const mockWithdrawApplication = vi.fn();
 const mockRouterReplace = vi.fn();
+const mockListUsers = vi.fn();
+
+const mockUsers = [
+  { id: "user-2", username: "alice", role: "user" },
+  { id: "user-3", username: "bob", role: "user" },
+];
 
 vi.mock("@/core/auth/AuthProvider", () => ({
   useAuth: () => ({ user: mockUser }),
@@ -88,6 +94,10 @@ vi.mock("@/core/visibility-applications/api", () => ({
     mockReviewApplication(...args),
   withdrawVisibilityApplication: (...args: unknown[]) =>
     mockWithdrawApplication(...args),
+}));
+
+vi.mock("@/core/admin/api", () => ({
+  listUsers: (...args: unknown[]) => mockListUsers(...args),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -124,6 +134,12 @@ beforeEach(async () => {
   mockFetchApplications.mockResolvedValue(mockListResponse);
   mockReviewApplication.mockResolvedValue({ id: "app-1", version: 2 });
   mockWithdrawApplication.mockResolvedValue({ success: true });
+  mockListUsers.mockResolvedValue({
+    users: mockUsers,
+    total: 2,
+    limit: 500,
+    offset: 0,
+  });
 
   const mod =
     await import("@/app/workspace/admin/visibility-applications/page");
@@ -354,7 +370,7 @@ describe("VisibilityApplicationsPage", () => {
     });
 
     mockFetchApplications.mockClear();
-    await user.click(screen.getByRole("combobox"));
+    await user.click(screen.getAllByRole("combobox")[0]!);
     await user.click(screen.getByRole("option", { name: "工作流" }));
     await waitFor(() => {
       expect(mockFetchApplications).toHaveBeenCalledWith({
@@ -364,6 +380,100 @@ describe("VisibilityApplicationsPage", () => {
         resource_type: "workflow",
       });
     });
+  });
+
+  test("uses visibility filter when fetching", async () => {
+    const user = userEvent.setup();
+    render(<VisibilityApplicationsPage />);
+    await waitFor(() => {
+      expect(screen.getByText("web-search")).toBeInTheDocument();
+    });
+    mockFetchApplications.mockClear();
+
+    await user.click(screen.getAllByRole("combobox")[1]!);
+    await user.click(screen.getByRole("option", { name: "部门" }));
+    await waitFor(() => {
+      expect(mockFetchApplications).toHaveBeenCalledWith({
+        page: 1,
+        page_size: 20,
+        status: "pending",
+        target_visibility: "department",
+      });
+    });
+  });
+
+  test("uses applicant filter when fetching", async () => {
+    const user = userEvent.setup();
+    render(<VisibilityApplicationsPage />);
+    await waitFor(() => {
+      expect(screen.getByText("web-search")).toBeInTheDocument();
+    });
+    mockFetchApplications.mockClear();
+
+    await user.click(screen.getAllByRole("combobox")[2]!);
+    await user.click(screen.getByRole("option", { name: "alice" }));
+    await waitFor(() => {
+      expect(mockFetchApplications).toHaveBeenCalledWith({
+        page: 1,
+        page_size: 20,
+        status: "pending",
+        applicant_id: "user-2",
+      });
+    });
+  });
+
+  test("combines all filters when fetching", async () => {
+    const user = userEvent.setup();
+    render(<VisibilityApplicationsPage />);
+    await waitFor(() => {
+      expect(screen.getByText("web-search")).toBeInTheDocument();
+    });
+    mockFetchApplications.mockClear();
+
+    await user.click(screen.getByRole("button", { name: "已批准" }));
+    await user.click(screen.getAllByRole("combobox")[0]!);
+    await user.click(screen.getByRole("option", { name: "工作流" }));
+    await user.click(screen.getAllByRole("combobox")[1]!);
+    await user.click(screen.getByRole("option", { name: "部门" }));
+    await user.click(screen.getAllByRole("combobox")[2]!);
+    await user.click(screen.getByRole("option", { name: "alice" }));
+    await waitFor(() => {
+      expect(mockFetchApplications).toHaveBeenCalledWith({
+        page: 1,
+        page_size: 20,
+        status: "approved",
+        resource_type: "workflow",
+        target_visibility: "department",
+        applicant_id: "user-2",
+      });
+    });
+  });
+
+  test("sends status=all when 全部 is selected", async () => {
+    const user = userEvent.setup();
+    render(<VisibilityApplicationsPage />);
+    await waitFor(() => {
+      expect(screen.getByText("web-search")).toBeInTheDocument();
+    });
+    mockFetchApplications.mockClear();
+
+    await user.click(screen.getByRole("button", { name: "全部" }));
+    await waitFor(() => {
+      expect(mockFetchApplications).toHaveBeenCalledWith({
+        page: 1,
+        page_size: 20,
+        status: "all",
+      });
+    });
+  });
+
+  test("shows applicant username in cards", async () => {
+    render(<VisibilityApplicationsPage />);
+    await waitFor(() => {
+      expect(screen.getByText("web-search")).toBeInTheDocument();
+    });
+    expect(screen.getByText(/申请人: alice/)).toBeInTheDocument();
+    expect(screen.getByText(/申请人: bob/)).toBeInTheDocument();
   });
 
   test("requests next and previous pages", async () => {

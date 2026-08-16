@@ -313,6 +313,7 @@ export interface Translations {
     userManagement: string;
     departmentManagement: string;
     toolManagement: string;
+    resourceManagement: string;
     applicationManagement: string;
     auditLogManagement: string;
   };

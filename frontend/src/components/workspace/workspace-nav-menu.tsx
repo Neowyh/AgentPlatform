@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  BoxIcon,
   Building2Icon,
   ChevronsUpDown,
   ClipboardCheckIcon,
@@ -136,6 +137,12 @@ export function WorkspaceNavMenu() {
                         <Link href="/workspace/admin/tools">
                           <WrenchIcon />
                           {t.workspace.toolManagement}
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link href="/workspace/admin/resources">
+                          <BoxIcon />
+                          {t.workspace.resourceManagement}
                         </Link>
                       </DropdownMenuItem>
                       <DropdownMenuItem asChild>

@@ -380,6 +380,7 @@ export const enUS: Translations = {
     userManagement: "User Management",
     departmentManagement: "Department Management",
     toolManagement: "Tool Management",
+    resourceManagement: "Resource Management",
     applicationManagement: "Application Review",
     auditLogManagement: "Audit Logs",
   },
