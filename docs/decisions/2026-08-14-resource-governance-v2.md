@@ -52,7 +52,7 @@ Skill、Agent、Workflow 统一使用 UUID 标识的权威资源目录。每个�
 | 字段组 | 字段 | 约束 |
 |---|---|---|
 | 标识 | `id`, `type`, `slug`, `display_name` | `id` 为 UUID；`type` 为 skill/agent/workflow；`(type, owner_id, slug)` 唯一 |
-| 所有权 | `owner_id`, `system_owned` | 系统资源使用稳定 UUID 和 system owner |
+| 所有权 | `owner_id`, `system_owned` | bundled 预装资源归 super admin 所有；`system_owned` 仅按 manifest 显式标记（tools 与内置 skill 等只读保护场景） |
 | 可见性 | `visibility`, `scope_department_id`, `authz_revision` | private/department/public；权限语义不从路径或 manifest 推导 |
 | 生命周期 | `lifecycle_status` | active/archived/suspended |
 | 版本 | `latest_version`, `draft_revision` | 发布版本单调递增；草稿使用乐观锁 |
@@ -141,6 +141,13 @@ Agent 和 Workflow 依赖保存 UUID，不固定版本。新 Run 在任何副作
 旧名称解析顺序是当前用户资源优先，其次唯一可见共享资源；多个可见匹配返回 409。`lead_agent` 保留为特殊 assistant 值，其余 `assistant_id` 接受资源 UUID。
 
 bundled Agent 发布时 `config.skills` 中的 slug 引用会被改写为依赖资源的稳定 UUID（`bundled._prepare_agent`）；运行时依赖闭包解析同时按 UUID 与 slug 匹配（`runtime.load_agent_skill_definitions`），缺失引用 fail-closed。
+
+### 预装资源升级与冲突
+
+- 预装（bundled）资源 seed 时以 super admin 为 owner、`system_owned` 按 manifest 可选字段（默认 false），老部署升级时自动同步存量标记（解除历史锁定）；
+- seed 是幂等的：内容 hash 未变则跳过；已变更且当前最新版本仍为原装内容时发布 bundled 新版本；
+- 若最新版本被 super admin 修改（非原装），默认 `keep` 跳过 bundled 更新以保留用户内容；显式 `--bundled-conflict override` 时发布 bundled 内容为新版本（用户版本保留在历史，可回滚）；
+- 预装资源（`storage_kind="bundled"`）永不进入保留期物理清理；`system_owned` 资源同样受 purge blocker 保护。
 
 ## 失败处理与可观测性
 

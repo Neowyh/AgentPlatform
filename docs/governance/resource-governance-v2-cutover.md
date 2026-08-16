@@ -72,7 +72,7 @@ PYTHONPATH=packages/harness uv run python -m ideer.scripts.resource_catalog_v2 r
 
 `purge_eligible_versions`（`ideer.resources.retention`）只回收满足全部条件的归档版本：
 
-- 资源已 `archived`、非 system-owned、超出保留期、未被 Run 快照引用；
+- 资源已 `archived`、非预装（`storage_kind != "bundled"`）、非 system-owned、超出保留期、未被 Run 快照引用；
 - 磁盘内容 hash 与 catalog 一致；
 - 显式授权（`authorized_by` 非空）与备份目录；
 - 内容先移入备份目录，DB 失败补偿移回；资源无剩余版本且无入边依赖时连同 Resource 行移除。
