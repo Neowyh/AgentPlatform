@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { VisibilityImpactPanel } from "@/components/workspace/resources/visibility-impact-panel";
 import { useI18n } from "@/core/i18n/hooks";
 import type { Skill } from "@/core/skills/type";
 import { classifyVisibilityChange } from "@/core/visibility-applications/options";
@@ -29,7 +30,10 @@ interface SkillApplyDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSubmit: (targetVisibility: string, reason: string) => void | Promise<void>;
-  onChange: (targetVisibility: string) => void | Promise<void>;
+  onChange: (
+    targetVisibility: string,
+    cascade: boolean,
+  ) => void | Promise<void>;
 }
 
 export function SkillApplyDialog({
@@ -46,6 +50,7 @@ export function SkillApplyDialog({
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [confirmingDowngrade, setConfirmingDowngrade] =
     useState<boolean>(false);
+  const [cascadeDowngrade, setCascadeDowngrade] = useState<boolean>(false);
   const mountedRef = useRef(true);
   useEffect(() => {
     return () => {
@@ -58,6 +63,7 @@ export function SkillApplyDialog({
       setTargetVisibility(skill.visibility ?? "private");
       setReason("");
       setConfirmingDowngrade(false);
+      setCascadeDowngrade(false);
     }
   }, [skill]);
 
@@ -69,6 +75,7 @@ export function SkillApplyDialog({
     setReason("");
     setTargetVisibility(skill.visibility ?? "private");
     setConfirmingDowngrade(false);
+    setCascadeDowngrade(false);
   };
 
   const handleSubmit = async () => {
@@ -92,7 +99,7 @@ export function SkillApplyDialog({
   const handleConfirmDowngrade = async () => {
     setIsSubmitting(true);
     try {
-      await onChange(targetVisibility);
+      await onChange(targetVisibility, cascadeDowngrade);
     } finally {
       if (mountedRef.current) {
         setIsSubmitting(false);
@@ -114,6 +121,12 @@ export function SkillApplyDialog({
               {t.settings.skills.applyDialogDowngradeConfirmDescription}
             </DialogDescription>
           </DialogHeader>
+          <VisibilityImpactPanel
+            resourceId={skill.resource_id ?? skill.name}
+            currentVisibility={skill.visibility ?? "private"}
+            targetVisibility={targetVisibility}
+            onCascadeChange={setCascadeDowngrade}
+          />
           <DialogFooter>
             <Button
               variant="outline"
