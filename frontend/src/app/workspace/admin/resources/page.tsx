@@ -30,7 +30,7 @@ import type { AdminResource, User } from "@/core/admin/types";
 import { useAuth } from "@/core/auth/AuthProvider";
 
 const RESOURCE_TYPES = [
-  { value: "", label: "全部" },
+  { value: "all", label: "全部类型" },
   { value: "agent", label: "智能体" },
   { value: "tool", label: "工具" },
   { value: "skill", label: "Skill" },
@@ -83,7 +83,7 @@ export default function ResourcesPage() {
   const [error, setError] = useState<string | null>(null);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [filterType, setFilterType] = useState("");
+  const [filterType, setFilterType] = useState("all");
   const [filterVisibility, setFilterVisibility] = useState("all");
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterOwner, setFilterOwner] = useState("all");
@@ -95,7 +95,7 @@ export default function ResourcesPage() {
     setLoading(true);
     setError(null);
     listResources({
-      resource_type: filterType || undefined,
+      resource_type: filterType !== "all" ? filterType : undefined,
       visibility: filterVisibility !== "all" ? filterVisibility : undefined,
       lifecycle_status: filterStatus !== "all" ? filterStatus : undefined,
       owner_id: filterOwner !== "all" ? filterOwner : undefined,
@@ -226,19 +226,21 @@ export default function ResourcesPage() {
 
       <div className="flex-1 overflow-y-auto p-6">
         <div className="mb-4 flex flex-wrap items-center gap-2">
-          {RESOURCE_TYPES.map((t) => (
-            <Button
-              key={t.value}
-              variant={filterType === t.value ? "default" : "outline"}
-              size="sm"
-              onClick={() => {
-                setFilterType(t.value);
-                setPage(1);
-              }}
-            >
-              {t.label}
-            </Button>
-          ))}
+          <Select
+            value={filterType}
+            onValueChange={handleFilterChange(setFilterType)}
+          >
+            <SelectTrigger className="w-32">
+              <SelectValue placeholder="类型" />
+            </SelectTrigger>
+            <SelectContent>
+              {RESOURCE_TYPES.map((t) => (
+                <SelectItem key={t.value} value={t.value}>
+                  {t.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
           <Select
             value={filterVisibility}
