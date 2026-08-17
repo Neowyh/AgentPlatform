@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 const mockListResources = vi.fn();
+const mockListUsers = vi.fn();
 const mockArchiveResource = vi.fn();
 const mockSuspendResource = vi.fn();
 const mockRestoreResource = vi.fn();
@@ -33,6 +34,7 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/core/admin/api", () => ({
   listResources: (...args: unknown[]) => mockListResources(...args),
+  listUsers: (...args: unknown[]) => mockListUsers(...args),
   archiveResource: (...args: unknown[]) => mockArchiveResource(...args),
   suspendResource: (...args: unknown[]) => mockSuspendResource(...args),
   restoreResource: (...args: unknown[]) => mockRestoreResource(...args),
@@ -75,7 +77,20 @@ describe("ResourcesPage", () => {
       limit: 50,
       offset: 0,
     });
+    mockListUsers.mockResolvedValue({
+      users: [{ id: "user-1", username: "alice" }],
+      total: 1,
+      limit: 500,
+      offset: 0,
+    });
   });
+
+  const baseFilterParams = {
+    resource_type: undefined,
+    visibility: undefined,
+    lifecycle_status: undefined,
+    owner_id: undefined,
+  };
 
   test("renders canonical resource total and requests next page", async () => {
     const user = userEvent.setup();
@@ -87,7 +102,7 @@ describe("ResourcesPage", () => {
 
     expect(screen.getByText("1 / 2")).toBeInTheDocument();
     expect(mockListResources).toHaveBeenCalledWith({
-      resource_type: undefined,
+      ...baseFilterParams,
       limit: 50,
       offset: 0,
     });
@@ -96,7 +111,7 @@ describe("ResourcesPage", () => {
 
     await waitFor(() => {
       expect(mockListResources).toHaveBeenLastCalledWith({
-        resource_type: undefined,
+        ...baseFilterParams,
         limit: 50,
         offset: 50,
       });
@@ -115,7 +130,120 @@ describe("ResourcesPage", () => {
 
     await waitFor(() => {
       expect(mockListResources).toHaveBeenLastCalledWith({
+        ...baseFilterParams,
         resource_type: "workflow",
+        limit: 50,
+        offset: 0,
+      });
+    });
+  });
+
+  test("applies visibility filter", async () => {
+    const user = userEvent.setup();
+    render(<ResourcesPage />);
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("resource-row")).toHaveLength(60);
+    });
+
+    await user.click(screen.getAllByRole("combobox")[0]!);
+    await user.click(screen.getByRole("option", { name: "私有" }));
+
+    await waitFor(() => {
+      expect(mockListResources).toHaveBeenLastCalledWith({
+        ...baseFilterParams,
+        visibility: "private",
+        limit: 50,
+        offset: 0,
+      });
+    });
+  });
+
+  test("applies lifecycle status filter", async () => {
+    const user = userEvent.setup();
+    render(<ResourcesPage />);
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("resource-row")).toHaveLength(60);
+    });
+
+    await user.click(screen.getAllByRole("combobox")[1]!);
+    await user.click(screen.getByRole("option", { name: "已归档" }));
+
+    await waitFor(() => {
+      expect(mockListResources).toHaveBeenLastCalledWith({
+        ...baseFilterParams,
+        lifecycle_status: "archived",
+        limit: 50,
+        offset: 0,
+      });
+    });
+  });
+
+  test("applies owner filter from user dropdown", async () => {
+    const user = userEvent.setup();
+    render(<ResourcesPage />);
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("resource-row")).toHaveLength(60);
+    });
+
+    await user.click(screen.getAllByRole("combobox")[2]!);
+    await user.click(screen.getByRole("option", { name: "alice" }));
+
+    await waitFor(() => {
+      expect(mockListResources).toHaveBeenLastCalledWith({
+        ...baseFilterParams,
+        owner_id: "user-1",
+        limit: 50,
+        offset: 0,
+      });
+    });
+  });
+
+  test("combines type, visibility, status and owner filters", async () => {
+    const user = userEvent.setup();
+    render(<ResourcesPage />);
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("resource-row")).toHaveLength(60);
+    });
+
+    await user.click(screen.getByRole("button", { name: "智能体" }));
+    await user.click(screen.getAllByRole("combobox")[0]!);
+    await user.click(screen.getByRole("option", { name: "部门" }));
+    await user.click(screen.getAllByRole("combobox")[1]!);
+    await user.click(screen.getByRole("option", { name: "已下架" }));
+    await user.click(screen.getAllByRole("combobox")[2]!);
+    await user.click(screen.getByRole("option", { name: "alice" }));
+
+    await waitFor(() => {
+      expect(mockListResources).toHaveBeenLastCalledWith({
+        resource_type: "agent",
+        visibility: "department",
+        lifecycle_status: "suspended",
+        owner_id: "user-1",
+        limit: 50,
+        offset: 0,
+      });
+    });
+  });
+
+  test("resets to first page when a filter changes", async () => {
+    const user = userEvent.setup();
+    render(<ResourcesPage />);
+
+    await waitFor(() => expect(screen.getByText("1 / 2")).toBeInTheDocument());
+    await user.click(screen.getByText("下一页"));
+    await waitFor(() => expect(screen.getByText("2 / 2")).toBeInTheDocument());
+
+    await user.click(screen.getAllByRole("combobox")[0]!);
+    await user.click(screen.getByRole("option", { name: "公开" }));
+
+    await waitFor(() => {
+      expect(mockListResources).toHaveBeenLastCalledWith({
+        ...baseFilterParams,
+        visibility: "public",
         limit: 50,
         offset: 0,
       });

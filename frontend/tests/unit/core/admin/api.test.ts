@@ -357,13 +357,34 @@ describe("admin API", () => {
         okJson({ resources: [], total: 1, limit: 10, offset: 20 }),
       );
 
-      await listResources({ resource_type: "workflow", limit: 10, offset: 20 });
+      await listResources({
+        resource_type: "workflow",
+        visibility: "department",
+        owner_id: "user-1",
+        lifecycle_status: "archived",
+        limit: 10,
+        offset: 20,
+      });
 
       const calledUrl = mockFetch.mock.calls[0]![0] as string;
       const url = new URL(calledUrl);
       expect(url.searchParams.get("resource_type")).toBe("workflow");
+      expect(url.searchParams.get("visibility")).toBe("department");
+      expect(url.searchParams.get("owner_id")).toBe("user-1");
+      expect(url.searchParams.get("lifecycle_status")).toBe("archived");
       expect(url.searchParams.get("limit")).toBe("10");
       expect(url.searchParams.get("offset")).toBe("20");
+    });
+
+    test("omits empty filter params from query string", async () => {
+      mockFetch.mockResolvedValue(
+        okJson({ resources: [], total: 0, limit: 50, offset: 0 }),
+      );
+
+      await listResources({ visibility: "", owner_id: "" });
+
+      const calledUrl = mockFetch.mock.calls[0]![0] as string;
+      expect(calledUrl).toBe("http://localhost:8000/api/admin/resources");
     });
   });
 
