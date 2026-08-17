@@ -15,6 +15,7 @@ from ideer.persistence.base import Base
 from ideer.resources.runtime import _json_hash
 from ideer.resources.service import ResourceAction, ResourceActor
 from ideer.workflows.v2.adapters import ActionAdapterRegistry, _ToolAdapter
+from ideer.workflows.v2.errors import WorkflowInvalidRootsError
 from ideer.workflows.v2.file_roots import make_host_resolver
 from ideer.workflows.v2.store import WorkflowV2Store
 from ideer.workflows.v2.worker import WorkflowWorker
@@ -223,7 +224,7 @@ async def test_host_path_inputs_fail_the_run_instead_of_completing(
     never reach the worker with invalid file_access roots."""
     monkeypatch.setattr("ideer.workflows.v2.file_roots.get_paths", lambda: Paths(str(tmp_path / "base")))
     definition = yaml.safe_load(WORKFLOW_PATH.read_text(encoding="utf-8"))
-    with pytest.raises(ValueError, match="Invalid file_access paths"):
+    with pytest.raises(WorkflowInvalidRootsError) as exc_info:
         await _make_canonical_run(
             durable_store,
             "run-worker-host-paths",
@@ -234,6 +235,9 @@ async def test_host_path_inputs_fail_the_run_instead_of_completing(
                 "output_base_dir": str(tmp_path / "outputs"),
             },
         )
+
+    assert exc_info.value.code == "invalid_file_roots"
+    assert exc_info.value.violations and all({"node_id", "access", "path"} <= set(v) for v in exc_info.value.violations)
 
     run = await durable_store.get_run("run-worker-host-paths")
     assert run is None
@@ -259,7 +263,7 @@ async def test_missing_artifacts_fail_the_run_instead_of_completing(
 
     run = await durable_store.get_run("run-worker-missing-artifacts")
     assert run is not None and run.status == "failed"
-    assert run.error is not None and "artifacts_missing" in run.error
+    assert run.error is not None and "未产出声明的工作文件" in run.error
     events = await durable_store.list_events(run.run_id)
     assert "interrupted" not in {event.event_type for event in events}
     assert any(event.event_type == "node_failed" for event in events)

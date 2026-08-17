@@ -28,6 +28,7 @@ import {
   workflowRunRecordDownloadUrl,
 } from "@/core/workflows";
 import type { RunArtifact } from "@/core/workflows";
+import { formatWorkflowRunError } from "@/core/workflows/errors";
 import { cn } from "@/lib/utils";
 
 function statusClass(status: string) {
@@ -261,7 +262,7 @@ export default function WorkflowRunDetailPage() {
           )}
           {runStatus.error && (
             <p className="text-destructive rounded-md border border-red-200 bg-red-50 p-3 text-sm dark:border-red-800 dark:bg-red-950/50">
-              {runStatus.error}
+              {formatWorkflowRunError(runStatus.error, runStatus.error_code)}
             </p>
           )}
           {workflow &&

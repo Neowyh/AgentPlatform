@@ -807,7 +807,10 @@ edges:
         await graph.ainvoke({"run_id": "run-1", "inputs": {}, "state": {}, "outputs": {}}, config={"configurable": {"thread_id": "wf:bounded-loop"}})
 
     assert calls == ["first", "second", "first", "second"]
-    assert events[-1] == ("node_failed", {"node_id": "second", "error": "workflow_iteration_limit_exceeded"})
+    assert events[-1] == (
+        "node_failed",
+        {"node_id": "second", "code": "iteration_limit", "summary": "节点「second」循环次数达到上限", "error": "workflow_iteration_limit_exceeded"},
+    )
 
 
 @pytest.mark.asyncio

@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 def _validated_canonical_inputs(definition: dict, submitted: dict, run_id: str, user_id: str) -> dict:
     """Validate one frozen Workflow definition before its Run becomes claimable."""
 
+    from ideer.workflows.v2.errors import WorkflowInvalidRootsError, WorkflowMissingInputRootsError
     from ideer.workflows.v2.file_roots import (
         make_host_resolver,
         validate_read_roots,
@@ -56,14 +57,14 @@ def _validated_canonical_inputs(definition: dict, submitted: dict, run_id: str, 
 
     invalid_roots = validate_workflow_roots(workflow.nodes, inputs)
     if invalid_roots:
-        raise ValueError("Invalid file_access paths: " + "; ".join(invalid_roots))
+        raise WorkflowInvalidRootsError(invalid_roots)
     missing_roots = validate_read_roots(
         workflow.nodes,
         inputs,
         make_host_resolver(run_id, user_id),
     )
     if missing_roots:
-        raise ValueError("Missing input roots: " + "; ".join(missing_roots))
+        raise WorkflowMissingInputRootsError(missing_roots)
     return inputs
 
 
@@ -522,14 +523,14 @@ class WorkflowV2Store:
                             run = (await session.execute(select(WorkflowV2RunRow).where(WorkflowV2RunRow.run_id == task.run_id))).scalar_one_or_none()
                             if run is not None:
                                 run.status = "failed"
-                                run.error = "workflow_max_attempts_exceeded"
+                                run.error = "工作流执行失败：重试次数已达上限"
                                 run.event_seq += 1
                                 event = WorkflowV2EventRow(
                                     id=str(uuid4()),
                                     run_id=run.run_id,
                                     seq=run.event_seq,
                                     event_type="run_failed",
-                                    payload={"error": "workflow_max_attempts_exceeded"},
+                                    payload={"code": "max_attempts", "summary": "工作流执行失败：重试次数已达上限", "error": "workflow_max_attempts_exceeded"},
                                 )
                                 session.add(event)
                             await session.commit()

@@ -46,6 +46,7 @@ from ideer.resources.service import (
     VisibilityClosureError,
 )
 from ideer.resources.storage import ResourceStorage, StorageConflict, StorageValidationError
+from ideer.workflows.v2.errors import WorkflowRunError
 from ideer.workflows.v2.file_roots import (
     collect_artifacts,
     make_host_resolver,
@@ -159,6 +160,8 @@ def _translate_resource_errors(handler):
             ) from exc
         except (ResourceConflict, ResourceApprovalRequired, StorageConflict) as exc:
             raise HTTPException(409, str(exc)) from exc
+        except WorkflowRunError as exc:
+            raise HTTPException(400, detail=exc.api_detail()) from exc
         except (StorageValidationError, ValueError) as exc:
             raise HTTPException(400, str(exc)) from exc
 

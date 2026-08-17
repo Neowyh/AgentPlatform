@@ -152,35 +152,40 @@ def path_within_root(path: str, root: str) -> bool:
     return path.rstrip("/") == base or path.startswith(base + "/")
 
 
-def validate_roots(file_access: dict[str, list[str]] | None) -> list[str]:
-    """Return the roots that are not permitted; empty list means valid."""
+def validate_roots(file_access: dict[str, list[str]] | None) -> list[dict[str, str]]:
+    """Return the roots that are not permitted; empty list means valid.
+
+    Each violation is structured as ``{"access": "read"|"write", "path"}`` so
+    callers can render actionable messages instead of raw strings.
+    """
     if file_access is None:
         return []
-    invalid: list[str] = []
+    invalid: list[dict[str, str]] = []
     for key in ("read", "write"):
         for root in file_access.get(key, []):
             if "{{" in root:
                 continue  # resolved and validated at runtime
             if not _is_allowed_root(root, write=key == "write"):
-                invalid.append(f"{key}:{root}")
+                invalid.append({"access": key, "path": root})
     return invalid
 
 
-def validate_workflow_roots(nodes: list[Any], inputs: dict[str, Any]) -> list[str]:
+def validate_workflow_roots(nodes: list[Any], inputs: dict[str, Any]) -> list[dict[str, str]]:
     """Return every invalid file_access root across a workflow definition.
 
-    ``inputs`` holds the submitted run inputs; roots templated on ``state``
-    values are only resolvable at runtime and are skipped here.
+    Each violation carries ``node_id``/``access``/``path``.  ``inputs`` holds
+    the submitted run inputs; roots templated on ``state`` values are only
+    resolvable at runtime and are skipped here.
     """
     state = {"inputs": inputs, "state": {}, "outputs": {}}
-    invalid: list[str] = []
+    invalid: list[dict[str, str]] = []
     for node in nodes:
         action = getattr(node, "action", None)
         if getattr(node, "type", None) != "action" or action is None or action.file_access is None:
             continue
         rendered = render_roots(action.file_access.model_dump(), state)
         for root in validate_roots(rendered):
-            invalid.append(f"node '{node.id}': {root}")
+            invalid.append({"node_id": node.id, "access": root["access"], "path": root["path"]})
     return invalid
 
 
@@ -290,17 +295,18 @@ def _is_input_read_root(path: str) -> bool:
     return False
 
 
-def validate_read_roots(nodes: list[Any], inputs: dict[str, Any], resolver: Callable[[str], str | None]) -> list[str]:
+def validate_read_roots(nodes: list[Any], inputs: dict[str, Any], resolver: Callable[[str], str | None]) -> list[dict[str, str]]:
     """Return the input read roots that are missing or empty.
 
-    A node declaring read access to an input root that does not exist (or is
-    empty) would produce garbage downstream, so runs fail fast instead.
-    Uploads under ``/mnt/user-data/uploads`` may not have their run-scoped
-    directory initialized yet, so only an already-existing host path is
-    checked for emptiness; read-only mounts are always checked.
+    Each violation carries ``node_id``/``access``/``path``.  A node declaring
+    read access to an input root that does not exist (or is empty) would
+    produce garbage downstream, so runs fail fast instead.  Uploads under
+    ``/mnt/user-data/uploads`` may not have their run-scoped directory
+    initialized yet, so only an already-existing host path is checked for
+    emptiness; read-only mounts are always checked.
     """
     state = {"inputs": inputs, "state": {}, "outputs": {}}
-    missing: list[str] = []
+    missing: list[dict[str, str]] = []
     for node in nodes:
         action = getattr(node, "action", None)
         if getattr(node, "type", None) != "action" or action is None or action.file_access is None:
@@ -316,13 +322,13 @@ def validate_read_roots(nodes: list[Any], inputs: dict[str, Any], resolver: Call
             if not path.exists():
                 if root.startswith(f"{VIRTUAL_PATH_PREFIX}/uploads"):
                     continue  # run-scoped uploads dir may not be initialized yet
-                missing.append(f"node '{node.id}': {root}")
+                missing.append({"node_id": node.id, "access": "read", "path": root})
                 continue
             if path.is_dir():
                 if not any(path.iterdir()):
-                    missing.append(f"node '{node.id}': {root}")
+                    missing.append({"node_id": node.id, "access": "read", "path": root})
             elif path.stat().st_size == 0:
-                missing.append(f"node '{node.id}': {root}")
+                missing.append({"node_id": node.id, "access": "read", "path": root})
     return missing
 
 

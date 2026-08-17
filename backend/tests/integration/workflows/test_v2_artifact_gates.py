@@ -198,7 +198,7 @@ async def test_missing_artifacts_fail_by_default(
 
     failed = await durable_store.get_run("run-gate-fail")
     assert failed is not None and failed.status == "failed"
-    assert failed.error is not None and "artifacts_missing" in failed.error
+    assert failed.error is not None and "未产出声明的工作文件" in failed.error
     assert calls == ["wf:run-gate-fail:node:produce", "wf:run-gate-fail:node:produce"]  # 2 attempts, then failed
     events = await durable_store.list_events("run-gate-fail")
     node_errors = [event.payload.get("error", "") for event in events if event.event_type == "node_failed"]

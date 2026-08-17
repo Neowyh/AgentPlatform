@@ -17,6 +17,7 @@ from ideer.persistence.engine import close_engine, get_session_factory, init_eng
 from ideer.persistence.models.workflow_v2 import WorkflowTaskRow
 from ideer.runtime.checkpointer.async_provider import make_checkpointer
 from ideer.workflows.v2.compiler import WorkflowCancelled, WorkflowGraphCompiler
+from ideer.workflows.v2.errors import WorkflowInvalidRootsError, WorkflowMissingInputRootsError, WorkflowRunError, run_failure_payload
 from ideer.workflows.v2.file_roots import make_host_resolver, validate_read_roots, validate_workflow_roots, workflow_log_root
 from ideer.workflows.v2.parser import parse_workflow_v2
 from ideer.workflows.v2.run_record import RunRecordWriter
@@ -160,7 +161,7 @@ async def execute_workflow_task(
             max_events=event_limit - 1,
         )
         if event is None:
-            raise RuntimeError("workflow_event_limit_exceeded")
+            raise WorkflowRunError("event_limit", "工作流执行失败：事件数量已达上限", detail="workflow_event_limit_exceeded")
 
     async def emit_terminal_event(event_type: str, payload: dict) -> None:
         await store.append_event(
@@ -183,10 +184,10 @@ async def execute_workflow_task(
         try:
             invalid_roots = validate_workflow_roots(definition.nodes, run.inputs)
             if invalid_roots:
-                raise RuntimeError("invalid file_access roots: " + "; ".join(invalid_roots))
+                raise WorkflowInvalidRootsError(invalid_roots)
             missing_read_roots = validate_read_roots(definition.nodes, run.inputs, make_host_resolver(run_id, run.created_by))
             if missing_read_roots:
-                raise RuntimeError("missing input roots: " + "; ".join(missing_read_roots))
+                raise WorkflowMissingInputRootsError(missing_read_roots)
             await emit_event("resumed" if task.resume_command_id is not None else "run_started", {"definition_version": run.definition_version})
             result = await graph.ainvoke(
                 invocation,
@@ -199,7 +200,7 @@ async def execute_workflow_task(
             await emit_terminal_event("run_cancelled", {"error": str(exc)})
             raise
         except Exception as exc:
-            await emit_terminal_event("run_failed", {"error": str(exc)})
+            await emit_terminal_event("run_failed", run_failure_payload(exc))
             raise
     snapshot = workflow_snapshot(result)
     if not await store.update_snapshot(run_id, snapshot, worker_id=task.lease_owner):

@@ -224,6 +224,80 @@ describe("errors", () => {
       expect(result).toBe("raw closure message");
     });
 
+    test("formats invalid_file_roots with violation lines and the fix path", async () => {
+      const { formatDetail } = await import("@/core/api/errors");
+      const detail = {
+        code: "invalid_file_roots",
+        message: "无法启动工作流：2 个文件访问路径不在允许的挂载范围内",
+        violations: [
+          {
+            node_id: "evidence_collection",
+            access: "read",
+            path: "/mnt/eval-cases/case_01",
+          },
+          {
+            node_id: "evidence_collection",
+            access: "write",
+            path: "/mnt/fault-zeroing-outputs/out",
+          },
+        ],
+      };
+
+      const result = formatDetail(detail, "Create run", "Bad Request");
+
+      expect(result).toContain("2 个文件访问路径不在允许的挂载范围内");
+      expect(result).toContain(
+        "节点「evidence_collection」：read /mnt/eval-cases/case_01",
+      );
+      expect(result).toContain(
+        "节点「evidence_collection」：write /mnt/fault-zeroing-outputs/out",
+      );
+      expect(result).toContain("挂载配置");
+      expect(result).not.toContain("提升为公开");
+    });
+
+    test("formats missing_input_roots with the missing-paths summary", async () => {
+      const { formatDetail } = await import("@/core/api/errors");
+      const detail = {
+        code: "missing_input_roots",
+        violations: [
+          {
+            node_id: "collect",
+            access: "read",
+            path: "/mnt/eval-cases/case_missing",
+          },
+        ],
+      };
+
+      const result = formatDetail(detail, "Create run", "Bad Request");
+
+      expect(result).toContain("1 个输入路径缺失或为空");
+      expect(result).toContain(
+        "节点「collect」：read /mnt/eval-cases/case_missing",
+      );
+    });
+
+    test("caps long violation lists at 20 with an overflow line", async () => {
+      const { formatWorkflowRootViolations } =
+        await import("@/core/api/errors");
+      const violations = Array.from({ length: 25 }, (_, i) => ({
+        node_id: `node-${i}`,
+        access: "read",
+        path: `/mnt/cases/case_${i}`,
+      }));
+
+      const result = formatWorkflowRootViolations({
+        code: "invalid_file_roots",
+        violations,
+      });
+
+      const rendered = result
+        .split("\n")
+        .filter((line) => line.startsWith("- 节点"));
+      expect(rendered).toHaveLength(20);
+      expect(result).toContain("另有 5 条");
+    });
+
     test("formats string detail directly", async () => {
       const { formatDetail } = await import("@/core/api/errors");
       const result = formatDetail("Simple error", "Test action", "Bad Request");

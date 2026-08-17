@@ -18,6 +18,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
 
 from .adapters import ActionAdapterRegistry, ActionContext
+from .errors import node_failure_payload
 from .file_roots import lookup_path, materialize_state, missing_written_artifacts, path_within_root, render_template, workflow_state_path, workflow_state_root
 from .schema import EdgeV2, NodeV2, WorkflowV2
 
@@ -36,6 +37,18 @@ class WorkflowIterationLimit(RuntimeError):
 
 class WorkflowNodeFailed(RuntimeError):
     """Raised when a node's response declares failure via the ``FAILED:`` marker."""
+
+
+class WorkflowPreconditionFailed(WorkflowNodeFailed):
+    """Raised when a node's input preconditions are not satisfied.
+
+    Carries the full violation list so callers can render every reason the
+    node cannot run instead of a generic failure.
+    """
+
+    def __init__(self, node_id: str, violations: list[str]) -> None:
+        super().__init__(f"node '{node_id}' precondition failed: {'; '.join(violations)}")
+        self.violations = violations
 
 
 class WorkflowSchemaViolation(WorkflowNodeFailed):
@@ -205,7 +218,7 @@ class WorkflowGraphCompiler:
         async def run(state: dict[str, Any]) -> dict[str, Any]:
             count = int(state.get("edge_iterations", {}).get(key, 0)) + 1
             if count > edge.max_iterations:  # parser guarantees this for cycle edges
-                await self._emit("node_failed", {"node_id": edge.from_, "error": "workflow_iteration_limit_exceeded"})
+                await self._emit("node_failed", node_failure_payload(edge.from_, WorkflowIterationLimit("workflow_iteration_limit_exceeded")))
                 raise WorkflowIterationLimit("workflow_iteration_limit_exceeded")
             return {"edge_iterations": {key: count}}
 
@@ -253,7 +266,7 @@ class WorkflowGraphCompiler:
                 return {"outputs": {node.id: None}}
             try:
                 if violations:
-                    raise WorkflowNodeFailed(f"node '{node.id}' precondition failed: {'; '.join(violations)}")
+                    raise WorkflowPreconditionFailed(node.id, violations)
                 adapter = self.adapters.resolve(node.action.kind, node.action.name)  # type: ignore[union-attr]
                 last_error: Exception | None = None
                 result: Any = None
@@ -318,7 +331,7 @@ class WorkflowGraphCompiler:
             except Exception as exc:
                 await self._emit(
                     "node_failed",
-                    {"node_id": node.id, "idempotency_key": context.idempotency_key, "error": str(exc), "finished_at": _now_iso()},
+                    {**node_failure_payload(node.id, exc), "idempotency_key": context.idempotency_key, "finished_at": _now_iso()},
                 )
                 raise
             await self._emit(

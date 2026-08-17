@@ -69,6 +69,7 @@ export interface StepStatus {
   status: string;
   output: unknown;
   error: string | null;
+  error_code?: string | null;
   retries: number;
   started_at: string | null;
   finished_at: string | null;
@@ -81,6 +82,7 @@ export interface RunStatus {
   definition_version?: number;
   snapshot?: Record<string, unknown>;
   error: string | null;
+  error_code?: string | null;
   current_step?: string | null;
   steps?: Record<string, StepStatus>;
   last_event_seq?: number;

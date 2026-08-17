@@ -190,10 +190,10 @@ async def test_schema_violation_fails_node_with_specific_reason(
     failed = await durable_store.get_run("run-bad-schema")
     assert failed is not None and failed.status == "failed"
     assert failed.error is not None
-    assert "schema validation failed" in failed.error and "confirmed" in failed.error
+    assert "未通过 schema 校验" in failed.error
     events = await durable_store.list_events("run-bad-schema")
     details = [event.payload.get("error", "") for event in events if event.event_type == "node_failed"]
-    assert details and "schema validation failed" in details[0]
+    assert details and "violates" in details[0] and "confirmed" in details[0]
 
 
 @pytest.mark.asyncio
@@ -320,5 +320,7 @@ async def test_schema_violations_aggregated_in_error(
     failed = await durable_store.get_run("run-agg-schema")
     assert failed is not None and failed.status == "failed"
     assert failed.error is not None
-    assert "schema validation failed" in failed.error
-    assert "to_verify" in failed.error and "'Z'" in failed.error
+    assert "未通过 schema 校验（2 项违规）" in failed.error
+    events = await durable_store.list_events("run-agg-schema")
+    details = [event.payload.get("error", "") for event in events if event.event_type == "node_failed"]
+    assert details and "to_verify" in details[0] and "'Z'" in details[0]

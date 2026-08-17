@@ -15,12 +15,19 @@ export interface VisibilityClosureViolation {
   owned_by_actor?: boolean;
 }
 
+/** Structured file_access root violation from workflow run creation. */
+export interface FileRootViolation {
+  node_id?: string;
+  access?: "read" | "write" | string;
+  path?: string;
+}
+
 export type ErrorDetail =
   | string
   | {
       code?: string;
       message?: string;
-      violations?: VisibilityClosureViolation[];
+      violations?: (VisibilityClosureViolation | FileRootViolation)[];
     }
   | Array<{ msg?: string; loc?: string[] }>
   | undefined;
@@ -105,6 +112,42 @@ export function formatVisibilityClosureViolations(detail: {
 }
 
 /**
+ * Format a workflow file_access root violation payload into a localized,
+ * actionable message: a short summary, the violation list, and the path
+ * to fix it. Mirrors the visibility closure formatting.
+ */
+const WORKFLOW_ROOT_VIOLATIONS_MAX = 20;
+
+export function formatWorkflowRootViolations(detail: {
+  code?: string;
+  message?: string;
+  violations?: FileRootViolation[];
+}): string {
+  const violations = detail.violations ?? [];
+  const summary =
+    detail.code === "missing_input_roots"
+      ? `无法启动工作流：${violations.length} 个输入路径缺失或为空。`
+      : `无法启动工作流：${violations.length} 个文件访问路径不在允许的挂载范围内。`;
+
+  if (violations.length === 0) {
+    return detail.message ?? summary;
+  }
+
+  const lines = violations
+    .slice(0, WORKFLOW_ROOT_VIOLATIONS_MAX)
+    .map((violation) => {
+      const node = violation.node_id ? `节点「${violation.node_id}」` : "节点";
+      return `- ${node}：${violation.access ?? "read"} ${violation.path ?? ""}`;
+    });
+  const overflow =
+    violations.length > WORKFLOW_ROOT_VIOLATIONS_MAX
+      ? `\n- …另有 ${violations.length - WORKFLOW_ROOT_VIOLATIONS_MAX} 条`
+      : "";
+
+  return `${summary}\n\n违规路径：\n${lines.join("\n")}${overflow}\n\n可行路径：\n1. 在「挂载配置」中注册这些路径（read-only 或可写挂载）。\n2. 或修改工作流的 file_access 声明，使其只访问已注册的路径。`;
+}
+
+/**
  * Parse the raw error detail from a failed API response.
  *
  * Returns the parsed body and its `detail` field without formatting.
@@ -148,13 +191,31 @@ export function formatDetail(
     const structured = detail as {
       code?: string;
       message?: string;
-      violations?: VisibilityClosureViolation[];
+      violations?: (VisibilityClosureViolation | FileRootViolation)[];
     };
     if (
       structured.code === "visibility_closure_violation" &&
       Array.isArray(structured.violations)
     ) {
-      return formatVisibilityClosureViolations(structured);
+      return formatVisibilityClosureViolations(
+        structured as {
+          message?: string;
+          violations?: VisibilityClosureViolation[];
+        },
+      );
+    }
+    if (
+      (structured.code === "invalid_file_roots" ||
+        structured.code === "missing_input_roots") &&
+      Array.isArray(structured.violations)
+    ) {
+      return formatWorkflowRootViolations(
+        structured as {
+          code?: string;
+          message?: string;
+          violations?: FileRootViolation[];
+        },
+      );
     }
     return structured.message ?? JSON.stringify(detail);
   }

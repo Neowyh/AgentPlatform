@@ -231,9 +231,18 @@ async def test_max_attempts_exhaustion_persists_a_failure_event(
 
     run = await durable_store.get_run("run-max-attempts")
     assert run is not None
-    assert (run.status, run.error) == ("failed", "workflow_max_attempts_exceeded")
+    assert (run.status, run.error) == ("failed", "工作流执行失败：重试次数已达上限")
     events = await durable_store.list_events("run-max-attempts")
-    assert [(event.event_type, event.payload) for event in events] == [("run_failed", {"error": "workflow_max_attempts_exceeded"})]
+    assert [(event.event_type, event.payload) for event in events] == [
+        (
+            "run_failed",
+            {
+                "code": "max_attempts",
+                "summary": "工作流执行失败：重试次数已达上限",
+                "error": "workflow_max_attempts_exceeded",
+            },
+        )
+    ]
 
 
 @pytest.mark.asyncio
