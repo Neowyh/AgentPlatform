@@ -209,7 +209,7 @@ def test_packaged_deploy_script_defaults_to_its_bundle_directory(tmp_path: Path)
     assert (bundle_root / "env.intranet").is_file()
 
 
-def test_private_skill_seed_runs_inside_gateway_container(tmp_path: Path):
+def test_bundled_skill_seed_runs_inside_gateway_container(tmp_path: Path):
     script = DEPLOY_SCRIPT.read_text(encoding="utf-8")
 
     assert 'docker cp "$SOURCE_DIR/scripts/seed_custom_skill_owners.py" ideer-gateway:/tmp/seed_custom_skill_owners.py' in script
@@ -243,7 +243,7 @@ def test_bundled_conflict_option_is_validated_and_parsed(tmp_path: Path):
 def test_deploy_fails_closed_when_any_bundled_resource_seed_fails() -> None:
     script = DEPLOY_SCRIPT.read_text(encoding="utf-8")
 
-    assert 'die "private resource initialization failed"' in script
+    assert 'die "public resource initialization failed"' in script
     assert "if ! seed_bundled_workflows; then" in script
     assert 'die "bundled workflow initialization failed"' in script
     assert "Idempotent; failures are warnings, not fatal." not in script
@@ -306,7 +306,7 @@ def test_prepare_seeds_valid_runtime_config_and_stable_auth_files(tmp_path: Path
 
 def test_prepare_no_longer_installs_bundled_agents(tmp_path: Path):
     """prepare only seeds runtime config; bundled agents are installed post-up as
-    the super admin's private resources (they need the runtime DB)."""
+    the super admin's public resources (they need the runtime DB)."""
     bundle_root = _make_bundle(tmp_path)
 
     proc = _run_deploy(bundle_root, "prepare", env=_env_with_fake_docker(tmp_path))
@@ -339,16 +339,16 @@ def test_status_logs_and_stop_do_not_install_fault_zeroing_agent(tmp_path: Path)
         assert not (bundle_root / "runtime" / "data" / "agents" / "fault-zeroing").exists()
 
 
-def test_deploy_script_wires_admin_bootstrap_and_private_resource_steps():
+def test_deploy_script_wires_admin_bootstrap_and_bundled_resource_steps():
     """The up/restart flow auto-creates the super admin and installs the bundled
-    agents/workflow/skills as the admin's private resources."""
+    agents/workflow/skills as the admin's public resources."""
     script = DEPLOY_SCRIPT.read_text(encoding="utf-8")
 
     assert "initialize_super_admin" in script
     assert "/api/v1/auth/initialize" in script
     assert "IDEER_ADMIN_EMAIL:-super_admin@test.com" in script
     assert "IDEER_ADMIN_PASSWORD:-super_admin@test.com" in script
-    assert "install_admin_private_resources" in script
+    assert "install_admin_bundled_resources" in script
     assert "install_agent.py" in script
     assert "install_srs_writing_agent.py" in script
     assert "--owner super-admin" in script
@@ -561,13 +561,13 @@ def test_check_script_warns_when_env_file_is_missing(tmp_path: Path):
 def test_guide_documents_bundled_agent_and_workflow_hooks():
     guide = GUIDE_FILE.read_text(encoding="utf-8")
 
-    assert "installing bundled fault-zeroing agent for super admin (private)..." in guide
-    assert "installing bundled srs-writing agent for super admin (private)..." in guide
+    assert "installing bundled fault-zeroing agent for super admin (public)..." in guide
+    assert "installing bundled srs-writing agent for super admin (public)..." in guide
     assert "agents_api" in guide
     assert "officecli" in guide
     assert "IDEER_INSTALL_FAULT_ZEROING=0" in guide
     assert "IDEER_INSTALL_SRS_WRITING=0" in guide
     assert "seed" in guide
     assert "super_admin@test.com" in guide
-    assert "私有" in guide
+    assert "公开" in guide
     assert "users/<" in guide or "users/" in guide

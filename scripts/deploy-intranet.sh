@@ -597,7 +597,7 @@ PY
 # the super admin.  Runs after the gateway is healthy and the admin exists
 # because the per-user install and resource ownership live in the runtime
 # database.  Skip each agent with IDEER_INSTALL_<NAME>=0.
-install_admin_private_resources() {
+install_admin_bundled_resources() {
     local resource_install_failed=0
     command -v python3 >/dev/null 2>&1 || {
         warn "python3 not found; skipping bundled resource install"
@@ -625,11 +625,11 @@ install_admin_private_resources() {
         warn "no active super admin found in runtime DB; bundled resources cannot be initialized"
         return 1
     fi
-    log "installing bundled resources for super admin $admin_id (private)..."
+    log "installing bundled resources for super admin $admin_id (public)..."
 
     # Older bundle versions auto-installed the bundled agents into the shared
     # directory (runtime/data/agents/<name>), which keeps them visible to every
-    # user as read-only templates.  Once the private per-user copy is in place,
+    # user as read-only templates.  Once the per-user copy is in place,
     # remove a legacy shared copy when it still matches the bundle byte-for-byte;
     # a customized shared agent is left behind with a warning.
     cleanup_legacy_shared_agent() {
@@ -648,7 +648,7 @@ install_admin_private_resources() {
     if [ "${IDEER_INSTALL_FAULT_ZEROING:-1}" = "0" ]; then
         log "skipping fault-zeroing agent install"
     elif [ -d "$SOURCE_DIR/docs/fault-zeroing-agent/agent" ] && [ -f "$SOURCE_DIR/scripts/install_agent.py" ]; then
-        log "installing bundled fault-zeroing agent for super admin (private)..."
+        log "installing bundled fault-zeroing agent for super admin (public)..."
         if ! run_cmd env IDEER_HOME="$runtime_home" IDEER_CONFIG_PATH="$config_path" \
             python3 "$SOURCE_DIR/scripts/install_agent.py" --agent fault-zeroing --owner super-admin
         then
@@ -663,7 +663,7 @@ install_admin_private_resources() {
     if [ "${IDEER_INSTALL_SRS_WRITING:-1}" = "0" ]; then
         log "skipping srs-writing agent install"
     elif [ -d "$SOURCE_DIR/docs/srs-writing-agent/agent" ] && [ -f "$SOURCE_DIR/scripts/install_srs_writing_agent.py" ]; then
-        log "installing bundled srs-writing agent for super admin (private)..."
+        log "installing bundled srs-writing agent for super admin (public)..."
         if ! run_cmd env IDEER_HOME="$runtime_home" IDEER_CONFIG_PATH="$config_path" \
             python3 "$SOURCE_DIR/scripts/install_srs_writing_agent.py" --owner super-admin; then
             warn "srs-writing agent install failed (see output above)"
@@ -676,7 +676,7 @@ install_admin_private_resources() {
     fi
 
     if [ -f "$SOURCE_DIR/scripts/seed_custom_skill_owners.py" ]; then
-        log "assigning bundled custom skills to the super admin (private)..."
+        log "assigning bundled custom skills to the super admin (public)..."
         local agent_seed_args=""
         if [ "${IDEER_INSTALL_FAULT_ZEROING:-1}" != "0" ]; then
             agent_seed_args="$agent_seed_args --agent fault-zeroing"
@@ -719,7 +719,7 @@ install_admin_private_resources() {
 # Seed the bundled fault-zeroing workflow into the workflow v2 store after the
 # gateway is healthy (the DB only exists after the first boot).  Runs the
 # repository's seed script inside the gateway container, so it needs no Python
-# tooling on the host.  The workflow is recorded as a private resource owned by
+# tooling on the host.  The workflow is recorded as a public resource owned by
 # the active super admin (falling back to "system" when none exists).
 # Idempotent; a missing or failed seed aborts deployment initialization.
 seed_bundled_workflows() {
@@ -880,8 +880,8 @@ case "$COMMAND" in
         if [ "$DRY_RUN" -eq 0 ]; then
             verify_services
             initialize_super_admin
-            if ! install_admin_private_resources; then
-                die "private resource initialization failed"
+            if ! install_admin_bundled_resources; then
+                die "public resource initialization failed"
             fi
             if ! seed_bundled_workflows; then
                 die "bundled workflow initialization failed"
@@ -903,8 +903,8 @@ case "$COMMAND" in
         if [ "$DRY_RUN" -eq 0 ]; then
             verify_services
             initialize_super_admin
-            if ! install_admin_private_resources; then
-                die "private resource initialization failed"
+            if ! install_admin_bundled_resources; then
+                die "public resource initialization failed"
             fi
             if ! seed_bundled_workflows; then
                 die "bundled workflow initialization failed"

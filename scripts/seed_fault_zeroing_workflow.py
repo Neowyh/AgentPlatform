@@ -60,7 +60,7 @@ async def _ensure_workflow_meta(
                 resource_type="workflow",
                 resource_id=workflow_name,
                 owner_id=created_by,
-                visibility="private",
+                visibility="public",
             )
         )
         try:

@@ -22,11 +22,11 @@
     {"id": "e9fea0cb-f28b-584d-b3fb-8644a61a8d38", "type": "skill", "slug": "vercel-deploy-claimable", "visibility": "public", "source": "skills/public/vercel-deploy-claimable"},
     {"id": "6f87332e-8cc7-5cc5-b252-c0c8dc10fed2", "type": "skill", "slug": "video-generation", "visibility": "public", "source": "skills/public/video-generation"},
     {"id": "e8232bc7-d592-5d7f-814e-d13ddea44193", "type": "skill", "slug": "web-design-guidelines", "visibility": "public", "source": "skills/public/web-design-guidelines"},
-    {"id": "f258c030-0aa2-5ca4-9072-c28fa9fdadbd", "type": "skill", "slug": "fault-zeroing", "visibility": "private", "source": "skills/custom/fault-zeroing"},
-    {"id": "97d724ff-70ad-5ed2-85c4-538ac1162760", "type": "skill", "slug": "officecli", "visibility": "private", "source": "skills/custom/officecli"},
-    {"id": "a56d9e3d-297e-536b-ba7c-80dce0ade891", "type": "skill", "slug": "srs-writing", "visibility": "private", "source": "skills/custom/srs-writing"},
-    {"id": "56e2423d-37c3-52cb-a05f-d32677e6abcb", "type": "agent", "slug": "fault-zeroing", "visibility": "private", "source": "docs/fault-zeroing-agent/agent"},
-    {"id": "4b0b0a3b-1321-59f9-870f-bcdf47489d4d", "type": "agent", "slug": "srs-writing", "visibility": "private", "source": "docs/srs-writing-agent/agent"},
-    {"id": "018ce2c1-4d43-5db4-b4e3-d8d40624260d", "type": "workflow", "slug": "fault-zeroing", "visibility": "private", "source": "workflows/fault-zeroing.yaml"}
+    {"id": "f258c030-0aa2-5ca4-9072-c28fa9fdadbd", "type": "skill", "slug": "fault-zeroing", "visibility": "public", "source": "skills/custom/fault-zeroing"},
+    {"id": "97d724ff-70ad-5ed2-85c4-538ac1162760", "type": "skill", "slug": "officecli", "visibility": "public", "source": "skills/custom/officecli"},
+    {"id": "a56d9e3d-297e-536b-ba7c-80dce0ade891", "type": "skill", "slug": "srs-writing", "visibility": "public", "source": "skills/custom/srs-writing"},
+    {"id": "56e2423d-37c3-52cb-a05f-d32677e6abcb", "type": "agent", "slug": "fault-zeroing", "visibility": "public", "source": "docs/fault-zeroing-agent/agent"},
+    {"id": "4b0b0a3b-1321-59f9-870f-bcdf47489d4d", "type": "agent", "slug": "srs-writing", "visibility": "public", "source": "docs/srs-writing-agent/agent"},
+    {"id": "018ce2c1-4d43-5db4-b4e3-d8d40624260d", "type": "workflow", "slug": "fault-zeroing", "visibility": "public", "source": "workflows/fault-zeroing.yaml"}
   ]
 }
