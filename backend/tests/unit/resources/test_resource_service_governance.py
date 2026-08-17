@@ -19,6 +19,7 @@ from ideer.persistence.models.resource_catalog import (
     ResourceVersion,
     RunResourceSnapshot,
 )
+from ideer.persistence.models.user import UserModel, UserRole
 from ideer.persistence.models.visibility_application import VisibilityApplication
 from ideer.persistence.models.workflow_v2 import WorkflowCommandRow, WorkflowTaskRow, WorkflowV2RunRow
 from ideer.resources.service import (
@@ -406,3 +407,191 @@ async def test_department_deletion_governance_reassigns_or_downgrades_scope(sess
         None,
         2,
     )
+
+
+def _skill_resource(
+    resource_id: str,
+    *,
+    owner_id: str = "owner",
+    visibility: str = "private",
+    department_id: str | None = None,
+    system_owned: bool = False,
+) -> Resource:
+    return Resource(
+        id=resource_id,
+        type="skill",
+        slug=f"slug-{resource_id}",
+        display_name=resource_id,
+        owner_id=owner_id,
+        visibility=visibility,
+        scope_department_id=department_id,
+        lifecycle_status="active",
+        latest_version=1,
+        draft_revision=0,
+        storage_kind="filesystem",
+        storage_key=f"skills/{resource_id}",
+        system_owned=system_owned,
+        authz_revision=1,
+    )
+
+
+def _dependency(edge_id: str, source_id: str, target_id: str) -> ResourceDependency:
+    return ResourceDependency(id=edge_id, source_resource_id=source_id, target_resource_id=target_id)
+
+
+@pytest.mark.asyncio
+async def test_visibility_reduction_impact_lists_direct_and_transitive_dependents(session: AsyncSession) -> None:
+    skill = _skill_resource("shared-skill", visibility="public")
+    agent = _resource("public-agent", owner_id="alice", visibility="public")
+    workflow = _resource("public-workflow", owner_id="bob", visibility="public")
+    session.add_all(
+        [
+            skill,
+            agent,
+            workflow,
+            _dependency("e1", agent.id, skill.id),
+            _dependency("e2", workflow.id, agent.id),
+        ]
+    )
+    await session.commit()
+
+    impact = await ResourceService(session, _actor("owner")).visibility_reduction_impact(skill.id, "private")
+
+    assert impact["total"] == 2
+    assert [item["resource_id"] for item in impact["direct"]] == ["public-agent"]
+    assert [item["resource_id"] for item in impact["transitive"]] == ["public-workflow"]
+    assert impact["blocked_count"] == 0
+    assert impact["impacted"][0]["proposed_visibility"] == "private"
+    assert impact["impacted"][0]["owned_by_actor"] is False
+
+
+@pytest.mark.asyncio
+async def test_visibility_reduction_impact_is_empty_without_dependents_or_reduction(session: AsyncSession) -> None:
+    skill = _skill_resource("lonely-skill", visibility="public")
+    session.add(skill)
+    await session.commit()
+    service = ResourceService(session, _actor("owner"))
+
+    reduced = await service.visibility_reduction_impact(skill.id, "private")
+    expanded = await service.visibility_reduction_impact(skill.id, "public")
+
+    assert reduced["total"] == 0 and reduced["direct"] == [] and reduced["transitive"] == []
+    assert expanded["total"] == 0
+
+
+@pytest.mark.asyncio
+async def test_visibility_reduction_impact_requires_owner(session: AsyncSession) -> None:
+    skill = _skill_resource("others-skill", owner_id="someone", visibility="public")
+    session.add(skill)
+    await session.commit()
+
+    with pytest.raises(ResourcePermissionDenied):
+        await ResourceService(session, _actor("owner")).visibility_reduction_impact(skill.id, "private")
+
+
+@pytest.mark.asyncio
+async def test_visibility_reduction_impact_marks_system_owned_dependents_blocked(session: AsyncSession) -> None:
+    skill = _skill_resource("shared-skill", visibility="public")
+    bundled = _resource("bundled-agent", owner_id="bob", visibility="public")
+    bundled.system_owned = True
+    session.add_all([skill, bundled, _dependency("e1", bundled.id, skill.id)])
+    await session.commit()
+
+    impact = await ResourceService(session, _actor("owner")).visibility_reduction_impact(skill.id, "private")
+
+    assert impact["blocked_count"] == 1
+    assert impact["direct"][0]["blocked"] is True
+    assert impact["direct"][0]["proposed_visibility"] == "public"
+
+
+@pytest.mark.asyncio
+async def test_cascade_repair_reduces_dependents_and_notifies_their_owners(session: AsyncSession) -> None:
+    skill = _skill_resource("shared-skill", visibility="public")
+    agent = _resource("public-agent", owner_id="alice", visibility="public")
+    workflow = _resource("public-workflow", owner_id="bob", visibility="public")
+    session.add_all(
+        [
+            skill,
+            agent,
+            workflow,
+            _dependency("e1", agent.id, skill.id),
+            _dependency("e2", workflow.id, agent.id),
+        ]
+    )
+    await session.commit()
+    service = ResourceService(session, _actor("owner"))
+
+    changed = await service.change_visibility(skill.id, "private", cascade=True)
+
+    assert changed.visibility == "private"
+    assert (await session.get(Resource, agent.id)).visibility == "private"
+    assert (await session.get(Resource, workflow.id)).visibility == "private"
+    assert (await session.get(Resource, workflow.id)).scope_department_id is None
+    assert (await session.get(Resource, workflow.id)).authz_revision == 2
+
+    alice_notifications = list((await session.execute(select(ResourceNotification).where(ResourceNotification.recipient_id == "alice"))).scalars())
+    assert [item.event for item in alice_notifications] == ["visibility_reduced_cascade"]
+    assert alice_notifications[0].resource_id == agent.id
+    assert alice_notifications[0].detail["source_slug"] == skill.slug
+    bob_notifications = list((await session.execute(select(ResourceNotification).where(ResourceNotification.recipient_id == "bob"))).scalars())
+    assert any(item.resource_id == workflow.id and item.event == "visibility_reduced_cascade" for item in bob_notifications)
+
+
+@pytest.mark.asyncio
+async def test_cascade_skips_system_owned_dependents(session: AsyncSession) -> None:
+    skill = _skill_resource("shared-skill", visibility="public")
+    bundled = _resource("bundled-agent", owner_id="bob", visibility="public")
+    bundled.system_owned = True
+    session.add_all([skill, bundled, _dependency("e1", bundled.id, skill.id)])
+    await session.commit()
+    service = ResourceService(session, _actor("owner"))
+
+    await service.change_visibility(skill.id, "private", cascade=True)
+
+    assert (await session.get(Resource, bundled.id)).visibility == "public"
+
+
+@pytest.mark.asyncio
+async def test_cascade_without_flag_keeps_dependents_and_notifies_directly(session: AsyncSession) -> None:
+    skill = _skill_resource("shared-skill", visibility="public")
+    agent = _resource("public-agent", owner_id="alice", visibility="public")
+    session.add_all([skill, agent, _dependency("e1", agent.id, skill.id)])
+    await session.commit()
+    service = ResourceService(session, _actor("owner"))
+
+    await service.change_visibility(skill.id, "private")
+
+    assert (await session.get(Resource, agent.id)).visibility == "public"
+    notification = (await session.execute(select(ResourceNotification))).scalar_one()
+    assert notification.event == "visibility_reduced"
+    assert notification.detail["dependent_resource_ids"] == [agent.id]
+    assert notification.detail["dependent_display_names"] == [agent.display_name]
+    assert notification.detail["resource_slug"] == skill.slug
+
+
+@pytest.mark.asyncio
+async def test_super_admin_alert_only_when_other_owners_are_impacted(session: AsyncSession) -> None:
+    session.add(UserModel(id="sadmin", username="sadmin", role=UserRole.SUPER_ADMIN.value, disabled=False))
+    skill = _skill_resource("shared-skill", visibility="public")
+    agent = _resource("public-agent", owner_id="alice", visibility="public")
+    session.add_all([skill, agent, _dependency("e1", agent.id, skill.id)])
+    await session.commit()
+    service = ResourceService(session, _actor("owner"))
+
+    await service.change_visibility(skill.id, "private")
+
+    admin_notifications = list((await session.execute(select(ResourceNotification).where(ResourceNotification.recipient_id == "sadmin"))).scalars())
+    assert len(admin_notifications) == 1
+    assert admin_notifications[0].event == "admin_visibility_reduced"
+    assert admin_notifications[0].detail["impacted_count"] == 1
+    assert admin_notifications[0].detail["previous_visibility"] == "public"
+
+    own_skill = _skill_resource("own-skill", visibility="public")
+    own_agent = _resource("own-agent", owner_id="owner", visibility="public")
+    session.add_all([own_skill, own_agent, _dependency("e2", own_agent.id, own_skill.id)])
+    await session.commit()
+
+    await service.change_visibility(own_skill.id, "private")
+
+    admin_notifications = list((await session.execute(select(ResourceNotification).where(ResourceNotification.recipient_id == "sadmin"))).scalars())
+    assert len(admin_notifications) == 1

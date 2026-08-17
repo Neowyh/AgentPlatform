@@ -17,7 +17,7 @@ import yaml
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from starlette.background import BackgroundTask
 
 from app.gateway.audit import record_audit
@@ -362,6 +362,7 @@ async def list_resource_notifications(
     async with _factory()() as session:
         condition = ResourceNotification.recipient_id == str(current_user.id)
         total = int((await session.execute(select(func.count()).select_from(ResourceNotification).where(condition))).scalar_one())
+        unread = int((await session.execute(select(func.count()).select_from(ResourceNotification).where(condition, ResourceNotification.read_at.is_(None)))).scalar_one())
         rows = list(
             (
                 await session.execute(
@@ -391,7 +392,47 @@ async def list_resource_notifications(
             "total": total,
             "offset": offset,
             "limit": limit,
+            "unread_count": unread,
         }
+
+
+@router.put("/notifications/{notification_id}/read", status_code=204)
+async def mark_resource_notification_read(
+    notification_id: str,
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> Response:
+    async with _factory()() as session:
+        notification = (
+            await session.execute(
+                select(ResourceNotification).where(
+                    ResourceNotification.id == notification_id,
+                    ResourceNotification.recipient_id == str(current_user.id),
+                )
+            )
+        ).scalar_one_or_none()
+        if notification is None:
+            raise HTTPException(404, "Notification not found")
+        if notification.read_at is None:
+            notification.read_at = datetime.now(UTC)
+            await session.commit()
+        return Response(status_code=204)
+
+
+@router.put("/notifications/read-all", status_code=204)
+async def mark_all_resource_notifications_read(
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> Response:
+    async with _factory()() as session:
+        await session.execute(
+            update(ResourceNotification)
+            .where(
+                ResourceNotification.recipient_id == str(current_user.id),
+                ResourceNotification.read_at.is_(None),
+            )
+            .values(read_at=datetime.now(UTC))
+        )
+        await session.commit()
+        return Response(status_code=204)
 
 
 @router.post("/import/agent", status_code=201)
@@ -875,11 +916,28 @@ async def request_visibility(
         return _visibility_application_payload(application)
 
 
+@router.get("/{resource_id}/visibility-impact")
+@_translate_resource_errors
+async def get_visibility_impact(
+    resource_id: str,
+    target_visibility: str = Query(pattern="^(private|department|public)$"),
+    scope_department_id: str | None = Query(default=None),
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> dict[str, Any]:
+    async with _factory()() as session:
+        return await ResourceService(session, _resource_actor(current_user)).visibility_reduction_impact(
+            resource_id,
+            target_visibility,
+            scope_department_id=scope_department_id,
+        )
+
+
 @router.put("/{resource_id}/visibility")
 @_translate_resource_errors
 async def change_visibility(
     resource_id: str,
     body: VisibilityRequest,
+    cascade: bool = Query(default=False),
     current_user: UserModel = Depends(get_current_rbac_user),
 ) -> dict[str, Any]:
     async with _factory()() as session:
@@ -887,6 +945,7 @@ async def change_visibility(
             resource_id,
             body.visibility,
             scope_department_id=body.scope_department_id,
+            cascade=cascade,
         )
         await session.commit()
         await record_audit(
@@ -898,6 +957,7 @@ async def change_visibility(
                 "visibility": resource.visibility,
                 "scope_department_id": resource.scope_department_id,
                 "authz_revision": resource.authz_revision,
+                "cascade": cascade,
             },
         )
         return _resource_payload(resource, current_user=current_user)

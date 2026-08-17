@@ -39,6 +39,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { VisibilityImpactPanel } from "@/components/workspace/resources/visibility-impact-panel";
 import { WorkspaceBreadcrumb } from "@/components/workspace/workspace-breadcrumb";
 import { useI18n } from "@/core/i18n/hooks";
 import {
@@ -62,6 +63,7 @@ export default function WorkflowDetailPage() {
   const [visibilityReason, setVisibilityReason] = useState("");
   const [submittingApplication, setSubmittingApplication] = useState(false);
   const [confirmingDowngrade, setConfirmingDowngrade] = useState(false);
+  const [cascadeDowngrade, setCascadeDowngrade] = useState(false);
 
   useEffect(() => {
     if (workflow?.resource_id && workflow_name !== workflow.resource_id) {
@@ -204,11 +206,13 @@ export default function WorkflowDetailPage() {
       await changeResourceVisibility({
         resource_id: workflow.resource_id ?? workflow.name,
         visibility: targetVisibility,
+        cascade: cascadeDowngrade,
       });
       toast.success(t.workflows.visibilityUpdated);
       setVisibilityDialogOpen(false);
       setVisibilityReason("");
       setConfirmingDowngrade(false);
+      setCascadeDowngrade(false);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     } finally {
@@ -440,6 +444,14 @@ export default function WorkflowDetailPage() {
                   {t.workflows.downgradeConfirmDescription}
                 </DialogDescription>
               </DialogHeader>
+              {workflow && (
+                <VisibilityImpactPanel
+                  resourceId={workflow.resource_id ?? workflow.name}
+                  currentVisibility={workflow.visibility}
+                  targetVisibility={targetVisibility}
+                  onCascadeChange={setCascadeDowngrade}
+                />
+              )}
               <DialogFooter>
                 <Button
                   variant="outline"

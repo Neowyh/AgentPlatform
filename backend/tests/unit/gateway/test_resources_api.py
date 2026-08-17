@@ -72,6 +72,9 @@ def test_router_exposes_uuid_first_workflow_lifecycle() -> None:
     assert ("POST", "/api/resources/admin/visibility-applications/{application_id}/review") in routes
     assert ("POST", "/api/resources/{resource_id}/suspend") in routes
     assert ("POST", "/api/resources/{resource_id}/transfer") in routes
+    assert ("GET", "/api/resources/{resource_id}/visibility-impact") in routes
+    assert ("PUT", "/api/resources/notifications/{notification_id}/read") in routes
+    assert ("PUT", "/api/resources/notifications/read-all") in routes
 
 
 def test_workflow_draft_request_accepts_raw_yaml_for_editor_round_trip() -> None:

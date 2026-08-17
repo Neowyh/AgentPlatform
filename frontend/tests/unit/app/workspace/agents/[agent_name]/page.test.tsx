@@ -604,6 +604,7 @@ describe("AgentDetailPage", () => {
       expect(mockChangeResourceVisibility).toHaveBeenCalledWith({
         resource_id: "test-agent",
         visibility: "private",
+        cascade: false,
       });
       expect(screen.queryByText("Confirm")).not.toBeInTheDocument();
     });

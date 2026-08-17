@@ -609,6 +609,7 @@ describe("WorkflowDetailPage", () => {
         expect(mockChangeResourceVisibility).toHaveBeenCalledWith({
           resource_id: "test-workflow",
           visibility: "private",
+          cascade: false,
         });
         expect(toast.success).toHaveBeenCalledWith("Visibility updated");
       });

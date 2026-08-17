@@ -482,6 +482,33 @@ export const zhCN: Translations = {
   },
 
   // Settings
+  resources: {
+    impactTitle: "降级影响",
+    impactSummary: (total, direct, transitive) =>
+      `此变更将影响 ${total} 个资源（直接依赖 ${direct} 个，传递依赖 ${transitive} 个）。`,
+    impactBlockedSummary: (count) =>
+      `其中 ${count} 个为系统内置资源，无法自动修复。`,
+    impactCascadeLabel: "同时将可修复的受影响资源降为私有",
+    impactLoadError: "无法加载影响分析，请重试。",
+    resourceTypeAgent: "智能体",
+    resourceTypeSkill: "Skill",
+    resourceTypeWorkflow: "工作流",
+    resourceTypeTool: "工具",
+    visibilityPrivate: "私有",
+    visibilityDepartment: "部门",
+    visibilityPublic: "公开",
+    notificationsTitle: "资源通知",
+    notificationsEmpty: "暂无通知",
+    notificationsMarkAllRead: "全部已读",
+    notificationsMarkAllReadDone: "已全部标记为已读",
+    notificationsVisibilityReduced: (name) => `「${name}」的可见性已降低`,
+    notificationsVisibilityReducedCascade: (name) =>
+      `「${name}」的可见性已降低，依赖方已级联降级`,
+    notificationsAdminVisibilityReduced: (count) =>
+      `有管理员将资源降级，影响了 ${count} 个资源的可见性`,
+    notificationsUnknownEvent: "新的资源变更通知",
+    notificationsLoadFailed: "加载通知失败",
+  },
   settings: {
     title: "设置",
     description: "根据你的偏好调整 iDeer 的界面和行为。",

@@ -41,6 +41,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { VisibilityImpactPanel } from "@/components/workspace/resources/visibility-impact-panel";
 import { WorkspaceBreadcrumb } from "@/components/workspace/workspace-breadcrumb";
 import { useAgent } from "@/core/agents";
 import { useI18n } from "@/core/i18n/hooks";
@@ -61,6 +62,7 @@ export default function AgentDetailPage() {
   const [visibilityReason, setVisibilityReason] = useState("");
   const [submittingApplication, setSubmittingApplication] = useState(false);
   const [confirmingDowngrade, setConfirmingDowngrade] = useState(false);
+  const [cascadeDowngrade, setCascadeDowngrade] = useState(false);
 
   useEffect(() => {
     if (agent?.resource_id && agent_name !== agent.resource_id) {
@@ -73,6 +75,7 @@ export default function AgentDetailPage() {
       setTargetVisibility(agent.visibility ?? "private");
       setVisibilityReason("");
       setConfirmingDowngrade(false);
+      setCascadeDowngrade(false);
     }
   }, [agent]);
 
@@ -114,6 +117,7 @@ export default function AgentDetailPage() {
       await changeResourceVisibility({
         resource_id: agent.resource_id ?? agent.name,
         visibility: targetVisibility,
+        cascade: cascadeDowngrade,
       });
       toast.success(t.agents.visibilityUpdated);
       setVisibilityDialogOpen(false);
@@ -346,6 +350,12 @@ export default function AgentDetailPage() {
                   {t.agents.downgradeConfirmDescription}
                 </DialogDescription>
               </DialogHeader>
+              <VisibilityImpactPanel
+                resourceId={agent.resource_id ?? agent.name}
+                currentVisibility={agent.visibility}
+                targetVisibility={targetVisibility}
+                onCascadeChange={setCascadeDowngrade}
+              />
               <DialogFooter>
                 <Button
                   variant="outline"
