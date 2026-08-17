@@ -1,8 +1,9 @@
 """Contract for the global HTTPException response payload builder.
 
-Structured dict details (visibility closure violations) must pass through
-unchanged so the frontend can render localized, actionable messages; every
-other detail keeps the legacy error envelope.
+Structured dict details (visibility closure violations) must keep the
+envelope while passing through as the ``detail`` field so the frontend can
+render localized, actionable messages; every other detail keeps the legacy
+envelope verbatim.
 """
 
 from fastapi import HTTPException
@@ -10,7 +11,7 @@ from fastapi import HTTPException
 from app.gateway.app import _http_exception_payload
 
 
-def test_visibility_closure_violation_passes_through_structured_detail():
+def test_visibility_closure_violation_keeps_envelope_with_structured_detail():
     detail = {
         "code": "visibility_closure_violation",
         "message": 'Dependency violates visibility closure: agent "fault-zeroing" cannot be made public',
@@ -27,7 +28,12 @@ def test_visibility_closure_violation_passes_through_structured_detail():
 
     payload = _http_exception_payload(exc)
 
-    assert payload == detail
+    assert payload == {
+        "success": False,
+        "data": None,
+        "error": {"code": "INTERNAL_ERROR", "message": detail["message"]},
+        "detail": detail,
+    }
 
 
 def test_string_detail_keeps_legacy_envelope():

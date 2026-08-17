@@ -437,13 +437,18 @@ def _http_exception_payload(exc: HTTPException) -> dict:
     """Build the response body for an HTTPException.
 
     Structured dict details (e.g. visibility closure violations carrying
-    ``code``/``message``/``violations``) pass through unchanged so clients
-    can render localized, actionable errors. Plain string details keep the
-    legacy ``{success, error: {code, message}}`` envelope.
+    ``code``/``message``/``violations``) keep the envelope but pass through
+    as the ``detail`` field so clients can render localized, actionable
+    errors. Plain string details keep the legacy envelope verbatim.
     """
     detail = exc.detail
     if isinstance(detail, dict) and detail.get("code") == "visibility_closure_violation":
-        return detail
+        return {
+            "success": False,
+            "data": None,
+            "error": {"code": "INTERNAL_ERROR", "message": detail.get("message", "")},
+            "detail": detail,
+        }
     return {
         "success": False,
         "data": None,
