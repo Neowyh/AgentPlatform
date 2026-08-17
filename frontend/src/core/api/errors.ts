@@ -10,7 +10,6 @@ export interface VisibilityClosureViolation {
     display_name?: string;
     type?: string;
     visibility?: string;
-    owner_id?: string;
   };
   required_visibility?: string;
   owned_by_actor?: boolean;

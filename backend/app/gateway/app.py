@@ -433,6 +433,25 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("Shutting down API Gateway")
 
 
+def _http_exception_payload(exc: HTTPException) -> dict:
+    """Build the response body for an HTTPException.
+
+    Structured dict details (e.g. visibility closure violations carrying
+    ``code``/``message``/``violations``) pass through unchanged so clients
+    can render localized, actionable errors. Plain string details keep the
+    legacy ``{success, error: {code, message}}`` envelope.
+    """
+    detail = exc.detail
+    if isinstance(detail, dict) and detail.get("code") == "visibility_closure_violation":
+        return detail
+    return {
+        "success": False,
+        "data": None,
+        "error": {"code": "INTERNAL_ERROR", "message": str(detail)},
+        "detail": str(detail),
+    }
+
+
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application.
 
@@ -564,12 +583,7 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
     async def http_exception_handler(_request: Request, exc: HTTPException) -> JSONResponse:
         return JSONResponse(
             status_code=exc.status_code,
-            content={
-                "success": False,
-                "data": None,
-                "error": {"code": "INTERNAL_ERROR", "message": str(exc.detail)},
-                "detail": str(exc.detail),
-            },
+            content=_http_exception_payload(exc),
         )
 
     @app.exception_handler(RequestValidationError)

@@ -885,7 +885,6 @@ class ResourceService:
                     "display_name": target.display_name,
                     "type": target.type,
                     "visibility": target.visibility,
-                    "owner_id": target.owner_id,
                 },
                 "required_visibility": required_visibility,
             }

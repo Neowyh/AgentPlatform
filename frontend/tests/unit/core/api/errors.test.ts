@@ -109,7 +109,6 @@ describe("errors", () => {
               display_name: "fault-zeroing",
               type: "skill",
               visibility: "private",
-              owner_id: "owner-1",
             },
             required_visibility: "public",
           },
