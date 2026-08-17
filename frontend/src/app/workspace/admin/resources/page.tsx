@@ -13,12 +13,20 @@ import { useCallback, useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   archiveResource,
   listResources,
+  listUsers,
   restoreResource,
   suspendResource,
 } from "@/core/admin/api";
-import type { AdminResource } from "@/core/admin/types";
+import type { AdminResource, User } from "@/core/admin/types";
 import { useAuth } from "@/core/auth/AuthProvider";
 
 const RESOURCE_TYPES = [
@@ -76,6 +84,10 @@ export default function ResourcesPage() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [filterType, setFilterType] = useState("");
+  const [filterVisibility, setFilterVisibility] = useState("all");
+  const [filterStatus, setFilterStatus] = useState("all");
+  const [filterOwner, setFilterOwner] = useState("all");
+  const [users, setUsers] = useState<User[]>([]);
   const [actingOn, setActingOn] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -84,6 +96,9 @@ export default function ResourcesPage() {
     setError(null);
     listResources({
       resource_type: filterType || undefined,
+      visibility: filterVisibility !== "all" ? filterVisibility : undefined,
+      lifecycle_status: filterStatus !== "all" ? filterStatus : undefined,
+      owner_id: filterOwner !== "all" ? filterOwner : undefined,
       limit: PAGE_SIZE,
       offset: (page - 1) * PAGE_SIZE,
     })
@@ -95,7 +110,7 @@ export default function ResourcesPage() {
         setError(err instanceof Error ? err.message : String(err)),
       )
       .finally(() => setLoading(false));
-  }, [filterType, page]);
+  }, [filterType, filterVisibility, filterStatus, filterOwner, page]);
 
   useEffect(() => {
     if (
@@ -105,6 +120,24 @@ export default function ResourcesPage() {
       return;
     reload();
   }, [user, reload]);
+
+  useEffect(() => {
+    if (
+      user?.system_role !== "super_admin" &&
+      user?.system_role !== "department_admin"
+    )
+      return;
+    listUsers({ limit: 500 })
+      .then((data) => setUsers(data.users))
+      .catch(() => setUsers([]));
+  }, [user]);
+
+  const handleFilterChange = (setter: (value: string) => void) => {
+    return (value: string) => {
+      setter(value);
+      setPage(1);
+    };
+  };
 
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
@@ -192,7 +225,7 @@ export default function ResourcesPage() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-6">
-        <div className="mb-4 flex items-center gap-2">
+        <div className="mb-4 flex flex-wrap items-center gap-2">
           {RESOURCE_TYPES.map((t) => (
             <Button
               key={t.value}
@@ -206,6 +239,53 @@ export default function ResourcesPage() {
               {t.label}
             </Button>
           ))}
+
+          <Select
+            value={filterVisibility}
+            onValueChange={handleFilterChange(setFilterVisibility)}
+          >
+            <SelectTrigger className="w-32">
+              <SelectValue placeholder="可见性" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部可见性</SelectItem>
+              <SelectItem value="private">私有</SelectItem>
+              <SelectItem value="department">部门</SelectItem>
+              <SelectItem value="public">公开</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select
+            value={filterStatus}
+            onValueChange={handleFilterChange(setFilterStatus)}
+          >
+            <SelectTrigger className="w-32">
+              <SelectValue placeholder="状态" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部状态</SelectItem>
+              <SelectItem value="active">启用</SelectItem>
+              <SelectItem value="archived">已归档</SelectItem>
+              <SelectItem value="suspended">已下架</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select
+            value={filterOwner}
+            onValueChange={handleFilterChange(setFilterOwner)}
+          >
+            <SelectTrigger className="w-40">
+              <SelectValue placeholder="创建者" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部创建者</SelectItem>
+              {users.map((u) => (
+                <SelectItem key={u.id} value={u.id}>
+                  {u.username}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         {actionError && (

@@ -227,6 +227,9 @@ export async function deleteDepartment(
 
 export async function listResources(params?: {
   resource_type?: string;
+  visibility?: string;
+  owner_id?: string;
+  lifecycle_status?: string;
   limit?: number;
   offset?: number;
 }): Promise<{
@@ -239,6 +242,10 @@ export async function listResources(params?: {
   const searchParams = new URLSearchParams();
   if (params?.resource_type)
     searchParams.set("resource_type", params.resource_type);
+  if (params?.visibility) searchParams.set("visibility", params.visibility);
+  if (params?.owner_id) searchParams.set("owner_id", params.owner_id);
+  if (params?.lifecycle_status)
+    searchParams.set("lifecycle_status", params.lifecycle_status);
   if (params?.limit !== undefined)
     searchParams.set("limit", String(params.limit));
   if (params?.offset !== undefined)

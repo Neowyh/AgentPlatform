@@ -145,6 +145,9 @@ async def get_admin_stats(
 @require_role(UserRole.SUPER_ADMIN, UserRole.DEPARTMENT_ADMIN)
 async def list_resources(
     resource_type: str | None = Query(default=None, description="Filter by type: agent|tool|skill|workflow"),
+    visibility: str | None = Query(default=None, pattern="^(private|department|public)$", description="Filter by visibility"),
+    owner_id: str | None = Query(default=None, description="Filter by owner user id"),
+    lifecycle_status: str | None = Query(default=None, pattern="^(active|archived|suspended)$", description="Filter by lifecycle status"),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     current_user: UserModel = Depends(get_current_rbac_user),
@@ -158,6 +161,12 @@ async def list_resources(
         resources = await _collect_admin_resource_inventory(session)
         if resource_type:
             resources = [resource for resource in resources if resource["resource_type"] == resource_type]
+        if visibility:
+            resources = [resource for resource in resources if resource["visibility"] == visibility]
+        if owner_id:
+            resources = [resource for resource in resources if resource["owner_id"] == owner_id]
+        if lifecycle_status:
+            resources = [resource for resource in resources if resource["lifecycle_status"] == lifecycle_status]
 
         total = len(resources)
         return {"resources": resources[offset : offset + limit], "total": total, "limit": limit, "offset": offset}

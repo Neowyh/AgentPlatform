@@ -603,6 +603,212 @@ class TestListResources:
         assert item["resource_type"] == "agent"
         assert item["lifecycle_status"] == "suspended"
 
+    @patch("app.gateway.routers.admin.get_available_tools")
+    @patch("app.gateway.routers.admin.get_app_config")
+    @patch("app.gateway.routers.admin.get_session_factory")
+    def test_resources_filters_by_visibility(
+        self,
+        mock_sf,
+        mock_get_app_config,
+        mock_get_tools,
+    ):
+        mock_get_app_config.return_value = SimpleNamespace()
+        mock_get_tools.return_value = [SimpleNamespace(name="tool-a")]
+
+        session = AsyncMock()
+        call_count = {"n": 0}
+
+        def _canonical_row(slug, visibility):
+            return SimpleNamespace(
+                id=f"uuid-{slug}",
+                type="agent",
+                slug=slug,
+                visibility=visibility,
+                owner_id="owner-1",
+                scope_department_id=None,
+                lifecycle_status="active",
+                created_at=None,
+            )
+
+        async def _execute(stmt):
+            call_count["n"] += 1
+            result = MagicMock()
+            if call_count["n"] == 1:
+                result.scalars.return_value.all.return_value = [
+                    _canonical_row("public-a", "public"),
+                    _canonical_row("dept-a", "department"),
+                    _canonical_row("private-a", "private"),
+                ]
+            else:
+                result.scalars.return_value.all.return_value = []
+            return result
+
+        session.execute = AsyncMock(side_effect=_execute)
+        mock_sf.return_value = _make_session_factory(session)
+
+        app = _make_app()
+        resp = TestClient(app).get("/api/admin/resources?visibility=public")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 2
+        assert {item["resource_id"] for item in data["resources"]} == {
+            "public-a",
+            "tool-a",
+        }
+
+    @patch("app.gateway.routers.admin.get_available_tools")
+    @patch("app.gateway.routers.admin.get_app_config")
+    @patch("app.gateway.routers.admin.get_session_factory")
+    def test_resources_filters_by_owner_id(
+        self,
+        mock_sf,
+        mock_get_app_config,
+        mock_get_tools,
+    ):
+        mock_get_app_config.return_value = SimpleNamespace()
+        mock_get_tools.return_value = [SimpleNamespace(name="tool-a")]
+
+        session = AsyncMock()
+        call_count = {"n": 0}
+
+        def _canonical_row(slug, owner_id):
+            return SimpleNamespace(
+                id=f"uuid-{slug}",
+                type="agent",
+                slug=slug,
+                visibility="private",
+                owner_id=owner_id,
+                scope_department_id=None,
+                lifecycle_status="active",
+                created_at=None,
+            )
+
+        async def _execute(stmt):
+            call_count["n"] += 1
+            result = MagicMock()
+            if call_count["n"] == 1:
+                result.scalars.return_value.all.return_value = [
+                    _canonical_row("mine-a", "owner-1"),
+                    _canonical_row("other-a", "owner-2"),
+                ]
+            else:
+                result.scalars.return_value.all.return_value = []
+            return result
+
+        session.execute = AsyncMock(side_effect=_execute)
+        mock_sf.return_value = _make_session_factory(session)
+
+        app = _make_app()
+        resp = TestClient(app).get("/api/admin/resources?owner_id=owner-1")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 1
+        assert data["resources"][0]["resource_id"] == "mine-a"
+
+    @patch("app.gateway.routers.admin.get_available_tools")
+    @patch("app.gateway.routers.admin.get_app_config")
+    @patch("app.gateway.routers.admin.get_session_factory")
+    def test_resources_filters_by_lifecycle_status(
+        self,
+        mock_sf,
+        mock_get_app_config,
+        mock_get_tools,
+    ):
+        mock_get_app_config.return_value = SimpleNamespace()
+        mock_get_tools.return_value = [SimpleNamespace(name="tool-a")]
+
+        session = AsyncMock()
+        call_count = {"n": 0}
+
+        def _canonical_row(slug, lifecycle_status):
+            return SimpleNamespace(
+                id=f"uuid-{slug}",
+                type="agent",
+                slug=slug,
+                visibility="private",
+                owner_id="owner-1",
+                scope_department_id=None,
+                lifecycle_status=lifecycle_status,
+                created_at=None,
+            )
+
+        async def _execute(stmt):
+            call_count["n"] += 1
+            result = MagicMock()
+            if call_count["n"] == 1:
+                result.scalars.return_value.all.return_value = [
+                    _canonical_row("active-a", "active"),
+                    _canonical_row("archived-a", "archived"),
+                ]
+            else:
+                result.scalars.return_value.all.return_value = []
+            return result
+
+        session.execute = AsyncMock(side_effect=_execute)
+        mock_sf.return_value = _make_session_factory(session)
+
+        app = _make_app()
+        resp = TestClient(app).get("/api/admin/resources?lifecycle_status=archived")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 1
+        assert data["resources"][0]["resource_id"] == "archived-a"
+
+    @patch("app.gateway.routers.admin.get_available_tools")
+    @patch("app.gateway.routers.admin.get_app_config")
+    @patch("app.gateway.routers.admin.get_session_factory")
+    def test_resources_combines_all_filters(
+        self,
+        mock_sf,
+        mock_get_app_config,
+        mock_get_tools,
+    ):
+        mock_get_app_config.return_value = SimpleNamespace()
+        mock_get_tools.return_value = [SimpleNamespace(name="tool-a")]
+
+        session = AsyncMock()
+        call_count = {"n": 0}
+
+        def _canonical_row(slug, visibility, owner_id, lifecycle_status):
+            return SimpleNamespace(
+                id=f"uuid-{slug}",
+                type="agent",
+                slug=slug,
+                visibility=visibility,
+                owner_id=owner_id,
+                scope_department_id=None,
+                lifecycle_status=lifecycle_status,
+                created_at=None,
+            )
+
+        async def _execute(stmt):
+            call_count["n"] += 1
+            result = MagicMock()
+            if call_count["n"] == 1:
+                result.scalars.return_value.all.return_value = [
+                    _canonical_row("match-a", "private", "owner-1", "active"),
+                    _canonical_row("wrong-vis", "public", "owner-1", "active"),
+                    _canonical_row("wrong-owner", "private", "owner-2", "active"),
+                    _canonical_row("wrong-life", "private", "owner-1", "archived"),
+                ]
+            else:
+                result.scalars.return_value.all.return_value = []
+            return result
+
+        session.execute = AsyncMock(side_effect=_execute)
+        mock_sf.return_value = _make_session_factory(session)
+
+        app = _make_app()
+        resp = TestClient(app).get("/api/admin/resources?resource_type=agent&visibility=private&owner_id=owner-1&lifecycle_status=active")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 1
+        assert data["resources"][0]["resource_id"] == "match-a"
+
 
 # ---------------------------------------------------------------------------
 # GET /api/admin/users
