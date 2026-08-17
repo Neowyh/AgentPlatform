@@ -63,6 +63,29 @@ export async function createVisibilityApplication(
   return res.json() as Promise<VisibilityApplication>;
 }
 
+export interface ChangeVisibilityRequest {
+  resource_id: string;
+  visibility: string;
+}
+
+export async function changeResourceVisibility(
+  request: ChangeVisibilityRequest,
+): Promise<{ success: boolean }> {
+  const baseURL = getBackendBaseURL();
+  const res = await fetch(
+    `${baseURL}/api/resources/${encodeURIComponent(request.resource_id)}/visibility`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ visibility: request.visibility }),
+    },
+  );
+  if (!res.ok) {
+    await extractError(res, "Failed to change resource visibility");
+  }
+  return { success: true };
+}
+
 export async function reviewVisibilityApplication(
   applicationId: string,
   action: "approved" | "rejected",

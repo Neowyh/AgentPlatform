@@ -67,6 +67,7 @@ let mockIsPending = false;
 let mockRuns: RunStatus[] = [];
 let mockPush: ReturnType<typeof vi.fn>;
 const mockCreateVisibilityApplication = vi.fn();
+const mockChangeResourceVisibility = vi.fn();
 
 /* ------------------------------------------------------------------ */
 /*  Module mocks                                                       */
@@ -104,6 +105,8 @@ vi.mock("@/core/auth/AuthProvider", () => ({
 vi.mock("@/core/visibility-applications/api", () => ({
   createVisibilityApplication: (...args: any[]) =>
     mockCreateVisibilityApplication(...args),
+  changeResourceVisibility: (...args: any[]) =>
+    mockChangeResourceVisibility(...args),
 }));
 
 vi.mock("@/core/i18n/hooks", () => ({
@@ -151,6 +154,13 @@ vi.mock("@/core/i18n/hooks", () => ({
         submitting: "Submitting...",
         submit: "Submit Application",
         applicationSubmitted: "Application submitted",
+        visibilityUpgradeHint: "Upgrade requires admin approval",
+        visibilityDowngradeHint: "Downgrade takes effect immediately",
+        visibilityUpdated: "Visibility updated",
+        downgradeConfirmTitle: "Confirm downgrade",
+        downgradeConfirmDescription:
+          "Downgrade takes effect immediately. Continue?",
+        confirm: "Confirm",
         notOwner: "You are not the owner",
       },
       common: { loading: "Loading...", cancel: "Cancel" },
@@ -307,6 +317,9 @@ beforeEach(() => {
   mockPush = vi.fn();
   mockCreateVisibilityApplication.mockReset().mockResolvedValue({
     id: "application-1",
+  });
+  mockChangeResourceVisibility.mockReset().mockResolvedValue({
+    success: true,
   });
   vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:workflow");
   vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
@@ -528,6 +541,8 @@ describe("WorkflowDetailPage", () => {
       render(<WorkflowDetailPage />);
 
       await user.click(screen.getByText("Apply Visibility Change"));
+      await user.click(screen.getByRole("combobox"));
+      await user.click(screen.getByRole("option", { name: "Department" }));
       fireEvent.change(screen.getByPlaceholderText("Enter your reason..."), {
         target: { value: "Need wider access" },
       });
@@ -546,6 +561,8 @@ describe("WorkflowDetailPage", () => {
       render(<WorkflowDetailPage />);
 
       await user.click(screen.getByText("Apply Visibility Change"));
+      await user.click(screen.getByRole("combobox"));
+      await user.click(screen.getByRole("option", { name: "Department" }));
       fireEvent.change(screen.getByPlaceholderText("Enter your reason..."), {
         target: { value: "Need wider access" },
       });
@@ -554,6 +571,65 @@ describe("WorkflowDetailPage", () => {
       await waitFor(() => {
         expect(toast.error).toHaveBeenCalledWith("raw application error");
       });
+    });
+
+    test("shows downgrade hint and hides reason when downgrading", async () => {
+      const user = userEvent.setup();
+      mockWorkflow = { ...defaultWorkflow, visibility: "public" };
+      render(<WorkflowDetailPage />);
+
+      await user.click(screen.getByText("Apply Visibility Change"));
+      await user.click(screen.getByRole("combobox"));
+      await user.click(screen.getByRole("option", { name: "Private" }));
+
+      expect(
+        screen.getByText("Downgrade takes effect immediately"),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByPlaceholderText("Enter your reason..."),
+      ).not.toBeInTheDocument();
+    });
+
+    test("confirms downgrade before changing visibility directly", async () => {
+      const user = userEvent.setup();
+      mockWorkflow = { ...defaultWorkflow, visibility: "public" };
+      render(<WorkflowDetailPage />);
+
+      await user.click(screen.getByText("Apply Visibility Change"));
+      await user.click(screen.getByRole("combobox"));
+      await user.click(screen.getByRole("option", { name: "Private" }));
+      await user.click(screen.getByText("Submit Application"));
+
+      expect(screen.getByText("Confirm downgrade")).toBeInTheDocument();
+      expect(mockChangeResourceVisibility).not.toHaveBeenCalled();
+
+      await user.click(screen.getByText("Confirm"));
+
+      await waitFor(() => {
+        expect(mockChangeResourceVisibility).toHaveBeenCalledWith({
+          resource_id: "test-workflow",
+          visibility: "private",
+        });
+        expect(toast.success).toHaveBeenCalledWith("Visibility updated");
+      });
+      expect(mockCreateVisibilityApplication).not.toHaveBeenCalled();
+    });
+
+    test("cancels downgrade confirmation without applying the change", async () => {
+      const user = userEvent.setup();
+      mockWorkflow = { ...defaultWorkflow, visibility: "public" };
+      render(<WorkflowDetailPage />);
+
+      await user.click(screen.getByText("Apply Visibility Change"));
+      await user.click(screen.getByRole("combobox"));
+      await user.click(screen.getByRole("option", { name: "Private" }));
+      await user.click(screen.getByText("Submit Application"));
+      await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+      expect(mockChangeResourceVisibility).not.toHaveBeenCalled();
+      expect(
+        screen.getByRole("button", { name: "Submit Application" }),
+      ).toBeInTheDocument();
     });
   });
 

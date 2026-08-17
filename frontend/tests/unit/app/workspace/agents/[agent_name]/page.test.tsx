@@ -36,6 +36,8 @@ vi.mock("@/core/i18n/hooks", () => ({
       agents: {
         backToGallery: "Back",
         applyVisibility: "Apply visibility",
+        applyVisibilityDescription: "Apply for a visibility change",
+        currentVisibility: "Current visibility",
         targetVisibility: "Target visibility",
         visibilityPrivate: "Private",
         visibilityDepartment: "Department",
@@ -47,6 +49,13 @@ vi.mock("@/core/i18n/hooks", () => ({
         cancel: "Cancel",
         visibilityReasonRequired: "Reason is required",
         applicationSubmitted: "Application submitted",
+        visibilityUpgradeHint: "Upgrade requires admin approval",
+        visibilityDowngradeHint: "Downgrade takes effect immediately",
+        visibilityUpdated: "Visibility updated",
+        downgradeConfirmTitle: "Confirm downgrade",
+        downgradeConfirmDescription:
+          "Downgrade takes effect immediately. Continue?",
+        confirm: "Confirm",
       },
     },
   }),
@@ -54,6 +63,7 @@ vi.mock("@/core/i18n/hooks", () => ({
 
 const mockUseAgent = vi.fn();
 const mockCreateVisibilityApplication = vi.fn();
+const mockChangeResourceVisibility = vi.fn();
 vi.mock("@/core/agents", () => ({
   useAgent: (...args: unknown[]) => mockUseAgent(...args),
 }));
@@ -61,6 +71,8 @@ vi.mock("@/core/agents", () => ({
 vi.mock("@/core/visibility-applications/api", () => ({
   createVisibilityApplication: (...args: unknown[]) =>
     mockCreateVisibilityApplication(...args),
+  changeResourceVisibility: (...args: unknown[]) =>
+    mockChangeResourceVisibility(...args),
 }));
 
 vi.mock("@/components/workspace/workspace-breadcrumb", () => ({
@@ -486,6 +498,8 @@ describe("AgentDetailPage", () => {
     render(<AgentDetailPage />);
 
     await user.click(screen.getByRole("button", { name: "Apply visibility" }));
+    await user.click(screen.getByRole("combobox"));
+    await user.click(screen.getByRole("option", { name: "Department" }));
     await user.type(
       screen.getByPlaceholderText("Explain why"),
       "  Need access  ",
@@ -514,6 +528,8 @@ describe("AgentDetailPage", () => {
     render(<AgentDetailPage />);
 
     await user.click(screen.getByRole("button", { name: "Apply visibility" }));
+    await user.click(screen.getByRole("combobox"));
+    await user.click(screen.getByRole("option", { name: "Department" }));
     await user.type(screen.getByPlaceholderText("Explain why"), "Need access");
     await user.click(screen.getByRole("button", { name: "Submit" }));
 
@@ -538,6 +554,60 @@ describe("AgentDetailPage", () => {
     expect(
       screen.queryByPlaceholderText("Explain why"),
     ).not.toBeInTheDocument();
+  });
+
+  test("shows upgrade hint when upgrading visibility", async () => {
+    const user = userEvent.setup();
+    mockUseAgent.mockReturnValue({
+      agent: fullAgent,
+      isLoading: false,
+      error: null,
+    });
+    render(<AgentDetailPage />);
+
+    await user.click(screen.getByRole("button", { name: "Apply visibility" }));
+    await user.click(screen.getByRole("combobox"));
+    await user.click(screen.getByRole("option", { name: "Public" }));
+
+    expect(
+      screen.getByText("Upgrade requires admin approval"),
+    ).toBeInTheDocument();
+  });
+
+  test("confirms downgrade before changing visibility directly", async () => {
+    const user = userEvent.setup();
+    mockChangeResourceVisibility.mockResolvedValue({ success: true });
+    mockUseAgent.mockReturnValue({
+      agent: { ...fullAgent, visibility: "public" },
+      isLoading: false,
+      error: null,
+    });
+    render(<AgentDetailPage />);
+
+    await user.click(screen.getByRole("button", { name: "Apply visibility" }));
+    await user.click(screen.getByRole("combobox"));
+    await user.click(screen.getByRole("option", { name: "Private" }));
+
+    expect(
+      screen.getByText("Downgrade takes effect immediately"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByPlaceholderText("Explain why"),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Submit" }));
+    expect(screen.getByText("Confirm downgrade")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Confirm" }));
+
+    await waitFor(() => {
+      expect(mockChangeResourceVisibility).toHaveBeenCalledWith({
+        resource_id: "test-agent",
+        visibility: "private",
+      });
+      expect(screen.queryByText("Confirm")).not.toBeInTheDocument();
+    });
+    expect(mockCreateVisibilityApplication).not.toHaveBeenCalled();
   });
 
   // ── Description conditionally hidden ───────────────────────────────

@@ -19,6 +19,7 @@ import { fetch } from "@/core/api/fetcher";
 import {
   listVisibilityApplications,
   createVisibilityApplication,
+  changeResourceVisibility,
   reviewVisibilityApplication,
   withdrawVisibilityApplication,
 } from "@/core/visibility-applications/api";
@@ -233,6 +234,57 @@ describe("visibility-applications API", () => {
           }),
         }),
       );
+    });
+  });
+
+  // ── changeResourceVisibility ────────────────────────────────────
+
+  describe("changeResourceVisibility", () => {
+    test("sends PUT request to change visibility directly", async () => {
+      mockFetch.mockResolvedValue(okJson({}));
+      const resourceId = "11111111-1111-1111-1111-111111111111";
+
+      const result = await changeResourceVisibility({
+        resource_id: resourceId,
+        visibility: "private",
+      });
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(mockFetch).toHaveBeenCalledWith(
+        `http://localhost:8000/api/resources/${resourceId}/visibility`,
+        expect.objectContaining({
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ visibility: "private" }),
+        }),
+      );
+      expect(result).toEqual({ success: true });
+    });
+
+    test("URL-encodes special characters in resourceId", async () => {
+      mockFetch.mockResolvedValue(okJson({}));
+
+      await changeResourceVisibility({
+        resource_id: "a/b=c",
+        visibility: "department",
+      });
+
+      const calledUrl = mockFetch.mock.calls[0]![0] as string;
+      expect(calledUrl).toBe(
+        "http://localhost:8000/api/resources/a%2Fb%3Dc/visibility",
+      );
+    });
+
+    test("throws via extractError when the request fails", async () => {
+      mockFetch.mockResolvedValue(notOkJson(403, "Forbidden"));
+
+      await expect(
+        changeResourceVisibility({
+          resource_id: "11111111-1111-1111-1111-111111111111",
+          visibility: "private",
+        }),
+      ).rejects.toThrow("Failed to change resource visibility");
+      expect(mockExtractError).toHaveBeenCalled();
     });
   });
 

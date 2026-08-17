@@ -23,7 +23,10 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useI18n } from "@/core/i18n/hooks";
 import { useSkills } from "@/core/skills/hooks";
 import type { Skill } from "@/core/skills/type";
-import { createVisibilityApplication } from "@/core/visibility-applications/api";
+import {
+  changeResourceVisibility,
+  createVisibilityApplication,
+} from "@/core/visibility-applications/api";
 
 import { SettingsSection } from "./settings-section";
 import { SkillApplyDialog } from "./skill-apply-dialog";
@@ -78,6 +81,22 @@ function SkillSettingsList({ skills }: { skills: Skill[] }) {
     }
   };
 
+  const handleApplyChange = async (targetVisibility: string) => {
+    if (!applySkill) return;
+    try {
+      await changeResourceVisibility({
+        resource_id: applySkill.resource_id ?? applySkill.name,
+        visibility: targetVisibility,
+      });
+      toast.success(t.settings.skills.visibilityUpdated);
+      setApplySkill(null);
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to change visibility",
+      );
+    }
+  };
+
   return (
     <div className="flex w-full flex-col gap-4">
       <header className="flex justify-between">
@@ -127,6 +146,7 @@ function SkillSettingsList({ skills }: { skills: Skill[] }) {
         open={applySkill !== null}
         onOpenChange={(open) => !open && setApplySkill(null)}
         onSubmit={handleApplySubmit}
+        onChange={handleApplyChange}
       />
     </div>
   );

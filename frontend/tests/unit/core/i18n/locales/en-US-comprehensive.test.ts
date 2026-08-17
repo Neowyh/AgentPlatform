@@ -398,6 +398,15 @@ describe("enUS locale comprehensive", () => {
       submitting: "Submitting...",
       submit: "Submit Application",
       applicationSubmitted: "Application submitted",
+      visibilityUpgradeHint:
+        "Upgrading visibility requires admin approval and takes effect after review.",
+      visibilityDowngradeHint:
+        "Downgrading visibility takes effect immediately without approval.",
+      visibilityUpdated: "Visibility updated",
+      downgradeConfirmTitle: "Confirm visibility downgrade",
+      downgradeConfirmDescription:
+        "The downgrade takes effect immediately without approval. Continue?",
+      confirm: "Confirm",
     };
 
     for (const [key, value] of Object.entries(expected)) {
@@ -1129,8 +1138,8 @@ describe("enUS locale comprehensive", () => {
         });
       }
 
-      it("has 23 keys", () => {
-        expect(Object.keys(enUS.settings.skills)).toHaveLength(23);
+      it("has 29 keys", () => {
+        expect(Object.keys(enUS.settings.skills)).toHaveLength(29);
       });
     });
 
