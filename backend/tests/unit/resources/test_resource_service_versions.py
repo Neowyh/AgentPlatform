@@ -408,3 +408,33 @@ async def test_fork_creates_private_v1_and_keeps_shallow_dependencies(session: A
     )
     fork_edges = list((await session.execute(select(ResourceDependency).where(ResourceDependency.source_resource_id == forked.id))).scalars())
     assert [edge.target_resource_id for edge in fork_edges] == [dependency.id]
+
+
+@pytest.mark.asyncio
+async def test_fork_of_bundled_resource_is_user_provenance(session: AsyncSession) -> None:
+    source = _resource("bundled-source", resource_type="workflow", visibility="public", owner_id="source-owner")
+    source.provenance = "bundled"
+    session.add(source)
+    session.add(
+        ResourceVersion(
+            id="source-version",
+            resource_id=source.id,
+            version=1,
+            content_hash="e" * 64,
+            storage_key="workflows/bundled-source/versions/1",
+            scan_result={"status": "trusted_bundled_manifest"},
+            created_by="source-owner",
+        )
+    )
+    source.latest_version = 1
+    await session.commit()
+
+    forked = await ResourceService(session, _actor("fork-owner")).fork(
+        source.id,
+        slug="forked-flow",
+        display_name="Forked Flow",
+        copied_storage_key="workflows/forked/versions/1",
+    )
+
+    assert forked.provenance == "user"
+    assert forked.storage_kind == "database"

@@ -11,6 +11,8 @@ class _BatchOpRecorder:
         self.dropped_columns: list[str] = []
         self.created_indexes: list[tuple[str, tuple[str, ...], bool]] = []
         self.dropped_indexes: list[str] = []
+        self.dropped_constraints: list[tuple[str, str]] = []
+        self.created_checks: list[tuple[str, str]] = []
 
     def __enter__(self):
         return self
@@ -18,7 +20,7 @@ class _BatchOpRecorder:
     def __exit__(self, exc_type, exc, tb):
         return False
 
-    def alter_column(self, column_name: str, *, nullable: bool):
+    def alter_column(self, column_name: str, *, nullable: bool, **kwargs):
         self.altered_columns.append((column_name, nullable))
 
     def add_column(self, column):
@@ -32,6 +34,12 @@ class _BatchOpRecorder:
 
     def drop_index(self, index_name: str):
         self.dropped_indexes.append(index_name)
+
+    def drop_constraint(self, constraint_name: str, *, type_: str):
+        self.dropped_constraints.append((constraint_name, type_))
+
+    def create_check_constraint(self, constraint_name: str, condition: str):
+        self.created_checks.append((constraint_name, condition))
 
 
 class _OpRecorder:
@@ -327,3 +335,38 @@ def test_resource_metadata_indexes_migration_replaces_indexes(monkeypatch):
         "ix_resource_metadata_visibility",
         "ix_resource_metadata_type",
     ]
+
+
+def test_split_bundled_provenance_migration_backfills_and_rebuilds_constraints(monkeypatch):
+    migration = _load("20260817_split_bundled_provenance")
+    op = _OpRecorder()
+    monkeypatch.setattr(migration, "op", op)
+
+    migration.upgrade()
+
+    assert op.added_columns == [("resources", "provenance")]
+    assert op.executed_sql == [
+        "UPDATE resources SET provenance = 'bundled' WHERE storage_kind = 'bundled'",
+        "UPDATE resources SET provenance = 'user' WHERE provenance IS NULL",
+        "UPDATE resources SET storage_kind = 'database' WHERE storage_kind = 'bundled' AND type = 'workflow'",
+        "UPDATE resources SET storage_kind = 'filesystem' WHERE storage_kind = 'bundled'",
+    ]
+    batch = op.batches[0]
+    assert batch.dropped_constraints == [("ck_resources_storage_kind", "check")]
+    assert ("ck_resources_storage_kind", "storage_kind IN ('filesystem', 'database')") in batch.created_checks
+    assert ("ck_resources_provenance", "provenance IN ('user', 'bundled')") in batch.created_checks
+    assert batch.altered_columns == [("provenance", False)]
+
+    op = _OpRecorder()
+    monkeypatch.setattr(migration, "op", op)
+
+    migration.downgrade()
+
+    batch = op.batches[0]
+    assert batch.dropped_constraints == [("ck_resources_provenance", "check")]
+    assert batch.altered_columns == [("provenance", True)]
+    assert op.executed_sql == ["UPDATE resources SET storage_kind = 'bundled' WHERE provenance = 'bundled'"]
+    assert op.dropped_columns == [("resources", "provenance")]
+    restored = op.batches[1]
+    assert restored.dropped_constraints == [("ck_resources_storage_kind", "check")]
+    assert ("ck_resources_storage_kind", "storage_kind IN ('filesystem', 'database', 'bundled')") in restored.created_checks

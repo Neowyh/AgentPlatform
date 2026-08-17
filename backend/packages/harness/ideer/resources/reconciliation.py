@@ -24,7 +24,7 @@ async def reconcile_catalog_storage(
             select(ResourceVersion.storage_key, ResourceVersion.content_hash)
             .join(Resource, Resource.id == ResourceVersion.resource_id)
             .where(
-                Resource.storage_kind.in_(["filesystem", "bundled"]),
+                Resource.storage_kind == "filesystem",
                 Resource.type != "workflow",
             )
         )
@@ -34,7 +34,7 @@ async def reconcile_catalog_storage(
             select(ResourceDraft.storage_key, ResourceDraft.content_hash)
             .join(Resource, Resource.id == ResourceDraft.resource_id)
             .where(
-                Resource.storage_kind.in_(["filesystem", "bundled"]),
+                Resource.storage_kind == "filesystem",
                 Resource.type != "workflow",
             )
         )

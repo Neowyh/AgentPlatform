@@ -16,6 +16,7 @@ from sqlalchemy import delete, select
 from ideer.persistence.models.resource_catalog import (
     Resource,
     ResourceDependency,
+    ResourceProvenance,
     ResourceVersion,
 )
 from ideer.resources.storage import ResourceStorage, StorageConflict
@@ -303,15 +304,16 @@ async def seed_bundled_resources(
                         lifecycle_status="active",
                         latest_version=0,
                         draft_revision=0,
-                        storage_kind="bundled",
+                        storage_kind="database" if item.type == "workflow" else "filesystem",
                         storage_key=f"{directory}/{item.id}",
+                        provenance=ResourceProvenance.BUNDLED.value,
                         system_owned=item.system_owned,
                         authz_revision=1,
                     )
                     session.add(resource)
                     await session.flush()
                     created += 1
-                elif resource.type != item.type or resource.slug != item.slug or resource.storage_kind != "bundled":
+                elif resource.type != item.type or resource.slug != item.slug or resource.provenance != ResourceProvenance.BUNDLED.value:
                     raise StorageConflict(f"Bundled UUID {item.id} is occupied by incompatible resource")
                 if resource.system_owned != item.system_owned:
                     resource.system_owned = item.system_owned

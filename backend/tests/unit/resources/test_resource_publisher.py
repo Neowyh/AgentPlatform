@@ -323,3 +323,44 @@ async def test_agent_with_plaintext_credentials_cannot_be_published(
         resource = await verification.get(Resource, resource_id)
         assert resource is not None and resource.latest_version == 0
         assert not (storage.resources_root / f"agents/{resource_id}/versions/1").exists()
+
+
+@pytest.mark.asyncio
+async def test_bundled_workflow_database_flow_draft_publish_and_rollback_succeed(
+    session_factory: async_sessionmaker[AsyncSession],
+    tmp_path: Path,
+) -> None:
+    async with session_factory() as session:
+        resource = await ResourceService(session, _actor()).create_resource(
+            resource_type="workflow",
+            slug="bundled-flow",
+            display_name="Bundled Flow",
+            storage_kind="database",
+        )
+        resource.provenance = "bundled"
+        await session.commit()
+        resource_id = resource.id
+
+    storage = ResourceStorage(tmp_path)
+    async with session_factory() as session:
+        publisher = ResourcePublisher(ResourceService(session, _actor()), storage)
+        content = {
+            "schema_version": 2,
+            "name": "bundled-flow",
+            "entrypoint": "start",
+            "nodes": [{"id": "start", "type": "action", "action": {"kind": "tool", "name": "noop"}}],
+            "edges": [],
+        }
+        draft = await publisher.save_database_draft(resource_id, content=content, expected_revision=0)
+        first = await publisher.publish_database(
+            resource_id,
+            expected_draft_revision=draft.revision,
+            scan_result={"status": "valid"},
+        )
+        rolled_back = await publisher.rollback_database(resource_id, source_version=1)
+
+    assert (first.version, rolled_back.version) == (1, 2)
+    async with session_factory() as verification:
+        resource = await verification.get(Resource, resource_id)
+        assert resource is not None and resource.provenance == "bundled"
+        assert resource.latest_version == 2

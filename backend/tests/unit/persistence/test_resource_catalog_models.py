@@ -10,6 +10,7 @@ from ideer.persistence.models.resource_catalog import (
     ResourceDraft,
     ResourceFavorite,
     ResourceLifecycleStatus,
+    ResourceProvenance,
     ResourceStorageKind,
     ResourceType,
     ResourceVersion,
@@ -30,7 +31,8 @@ def _check_sql(model: type) -> set[str]:
 def test_catalog_enums_are_closed_to_the_accepted_contract() -> None:
     assert {item.value for item in ResourceType} == {"skill", "agent", "workflow"}
     assert {item.value for item in ResourceLifecycleStatus} == {"active", "archived", "suspended"}
-    assert {item.value for item in ResourceStorageKind} == {"filesystem", "database", "bundled"}
+    assert {item.value for item in ResourceStorageKind} == {"filesystem", "database"}
+    assert {item.value for item in ResourceProvenance} == {"user", "bundled"}
 
 
 def test_resource_identity_and_revision_columns_match_the_contract() -> None:
@@ -49,6 +51,7 @@ def test_resource_identity_and_revision_columns_match_the_contract() -> None:
         "draft_revision",
         "storage_kind",
         "storage_key",
+        "provenance",
         "system_owned",
         "authz_revision",
         "created_at",

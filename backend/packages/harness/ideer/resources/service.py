@@ -17,6 +17,7 @@ from ideer.persistence.models.resource_catalog import (
     ResourceDraft,
     ResourceFavorite,
     ResourceNotification,
+    ResourceProvenance,
     ResourceStorageKind,
     ResourceType,
     ResourceVersion,
@@ -167,6 +168,7 @@ class ResourceService:
             draft_revision=0,
             storage_kind=canonical_storage.value,
             storage_key=f"{directory}/{resource_id}",
+            provenance=ResourceProvenance.USER.value,
             system_owned=False,
             authz_revision=1,
         )
@@ -1307,6 +1309,7 @@ class ResourceService:
             draft_revision=0,
             storage_kind=source.storage_kind,
             storage_key=copied_storage_key,
+            provenance=ResourceProvenance.USER.value,
             system_owned=False,
             authz_revision=1,
         )

@@ -200,6 +200,7 @@ def _resource_payload(
         "latest_version": resource.latest_version,
         "draft_revision": resource.draft_revision,
         "storage_kind": resource.storage_kind,
+        "provenance": resource.provenance,
         "system_owned": resource.system_owned,
         "authz_revision": resource.authz_revision,
         "can_modify": can_modify,
