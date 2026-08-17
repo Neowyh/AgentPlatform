@@ -256,44 +256,22 @@ export default function VisibilityApplicationsPage() {
             )}
 
             {/* Filters */}
-            <div className="flex items-center gap-3">
-              <div className="flex gap-2">
-                <Button
-                  variant={filterStatus === "pending" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => handleFilterStatusChange("pending")}
-                >
-                  待审批
-                </Button>
-                <Button
-                  variant={filterStatus === "approved" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => handleFilterStatusChange("approved")}
-                >
-                  已批准
-                </Button>
-                <Button
-                  variant={filterStatus === "rejected" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => handleFilterStatusChange("rejected")}
-                >
-                  已拒绝
-                </Button>
-                <Button
-                  variant={filterStatus === "withdrawn" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => handleFilterStatusChange("withdrawn")}
-                >
-                  已撤回
-                </Button>
-                <Button
-                  variant={filterStatus === "all" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => handleFilterStatusChange("all")}
-                >
-                  全部
-                </Button>
-              </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <Select
+                value={filterStatus}
+                onValueChange={handleFilterStatusChange}
+              >
+                <SelectTrigger className="w-36">
+                  <SelectValue placeholder="状态" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="pending">待审批</SelectItem>
+                  <SelectItem value="approved">已批准</SelectItem>
+                  <SelectItem value="rejected">已拒绝</SelectItem>
+                  <SelectItem value="withdrawn">已撤回</SelectItem>
+                  <SelectItem value="all">全部状态</SelectItem>
+                </SelectContent>
+              </Select>
 
               <Select
                 value={filterResourceType}
