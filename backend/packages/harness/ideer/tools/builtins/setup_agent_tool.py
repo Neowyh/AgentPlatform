@@ -86,6 +86,7 @@ def _create_canonical_agent(
                         logger.warning("[agent_creator] Skill '%s' is not catalogued; skipping dependency", name)
                         continue
                     dependencies.append(target.id)
+            dependencies = list(dict.fromkeys(dependencies))
             config: dict = {"name": agent_name}
             if description:
                 config["description"] = description

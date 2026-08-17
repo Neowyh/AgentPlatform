@@ -478,6 +478,7 @@ async def import_agent_resource(
                     if target.type != "skill":
                         raise ValueError(f"Agent dependency {identity} is not a Skill")
                     dependencies.append(target.id)
+                dependencies = list(dict.fromkeys(dependencies))
                 write_agent_draft_source(
                     source,
                     slug=config.name,
@@ -703,6 +704,7 @@ async def save_workflow_draft(
                 raise ValueError(f"Workflow dependency {identity} is not an Agent")
             node.action.name = target.id
             dependencies.append(target.id)
+        dependencies = list(dict.fromkeys(dependencies))
         content = workflow.model_dump(mode="json", by_alias=True)
         await service.replace_dependencies(resource_id, dependencies)
         draft = await ResourcePublisher(service, ResourceStorage(get_paths().base_dir)).save_database_draft(
@@ -743,6 +745,7 @@ async def save_agent_draft(
                     if target.type != "skill":
                         raise ValueError(f"Agent dependency {identity} is not a Skill")
                     dependencies.append(target.id)
+            dependencies = list(dict.fromkeys(dependencies))
             config = dict(body.config)
             if skills is not None:
                 config["skills"] = dependencies

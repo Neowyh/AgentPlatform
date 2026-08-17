@@ -169,6 +169,17 @@ async def test_public_resource_cannot_depend_on_private_resource(session: AsyncS
 
 
 @pytest.mark.asyncio
+async def test_replace_dependencies_rejects_duplicate_explicit_ids(session: AsyncSession) -> None:
+    source = _resource("workflow-dep")
+    target = _resource("agent-dep", resource_type="agent")
+    session.add_all([source, target])
+    await session.commit()
+
+    with pytest.raises(ResourceConflict, match="Duplicate resource dependency"):
+        await ResourceService(session, _actor()).replace_dependencies(source.id, [target.id, target.id])
+
+
+@pytest.mark.asyncio
 async def test_dependency_closure_error_carries_structured_violation(session: AsyncSession) -> None:
     source = _resource("public-agent", visibility="public")
     target = _resource("private-skill", resource_type="skill", visibility="private")

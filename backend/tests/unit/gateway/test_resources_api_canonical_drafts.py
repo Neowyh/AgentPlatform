@@ -101,6 +101,82 @@ async def test_workflow_draft_resolves_agent_alias_and_persists_uuid_reference(
 
 
 @pytest.mark.asyncio
+async def test_workflow_draft_dedupes_agent_reuse_across_nodes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'resources-dedup.db'}")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    current_user = UserModel(
+        id="owner",
+        username="owner@test.com",
+        role=UserRole.USER,
+        department_id="dept-a",
+        disabled=False,
+    )
+    async with factory() as session:
+        session.add(current_user)
+        await session.commit()
+        service = ResourceService(session, _actor())
+        agent = await service.create_resource(
+            resource_type="agent",
+            slug="review-agent",
+            display_name="Review Agent",
+            storage_kind="filesystem",
+        )
+        workflow = await service.create_resource(
+            resource_type="workflow",
+            slug="review-flow",
+            display_name="Review Flow",
+            storage_kind="database",
+        )
+        await session.commit()
+        agent_id = agent.id
+        workflow_id = workflow.id
+
+    monkeypatch.setattr(resources, "get_session_factory", lambda: factory)
+    monkeypatch.setattr(resources, "get_paths", lambda: SimpleNamespace(base_dir=tmp_path))
+
+    result = await resources.save_workflow_draft(
+        workflow_id,
+        resources.WorkflowDraftRequest(
+            content={
+                "schema_version": 2,
+                "name": "review-flow",
+                "entrypoint": "review",
+                "nodes": [
+                    {
+                        "id": "review",
+                        "type": "action",
+                        "action": {"kind": "agent", "name": "review-agent"},
+                    },
+                    {
+                        "id": "summarize",
+                        "type": "action",
+                        "action": {"kind": "agent", "name": "review-agent"},
+                    },
+                ],
+                "edges": [{"from": "review", "to": "summarize"}],
+            },
+            expected_revision=0,
+        ),
+        current_user,
+    )
+
+    assert result["revision"] == 1
+    async with factory() as session:
+        draft = await session.get(ResourceDraft, workflow_id)
+        dependencies = list((await session.execute(select(ResourceDependency).where(ResourceDependency.source_resource_id == workflow_id))).scalars())
+        assert draft is not None
+        names = [node["action"]["name"] for node in draft.content["nodes"]]
+        assert names == [agent_id, agent_id]
+        assert [item.target_resource_id for item in dependencies] == [agent_id]
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_canonical_agent_zip_import_creates_private_uuid_version(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
