@@ -38,9 +38,10 @@ from ideer.agents.middlewares.token_usage_middleware import TokenUsageMiddleware
 from ideer.agents.middlewares.tool_error_handling_middleware import build_lead_runtime_middlewares
 from ideer.agents.middlewares.view_image_middleware import ViewImageMiddleware
 from ideer.agents.thread_state import ThreadState
-from ideer.config.agents_config import load_agent_config, validate_agent_name
+from ideer.config.agents_config import validate_agent_name
 from ideer.config.app_config import AppConfig, get_app_config
 from ideer.models import create_chat_model
+from ideer.resources.runtime import CanonicalAgentDefinition, intersect_tool_groups
 from ideer.skills.tool_policy import filter_tools_by_skill_allowed_tools
 from ideer.skills.types import Skill
 from ideer.tracing import build_tracing_callbacks
@@ -382,7 +383,34 @@ def make_lead_agent(config: RunnableConfig):
     return _make_lead_agent(config, app_config=runtime_app_config or get_app_config())
 
 
-def _make_lead_agent(config: RunnableConfig, *, app_config: AppConfig):
+def build_canonical_lead_agent_factory(
+    definition: CanonicalAgentDefinition,
+    skills: list[Skill],
+    *,
+    runner_tool_groups: frozenset[str] | None,
+):
+    """Build an in-process factory bound to a frozen canonical Agent closure."""
+
+    def factory(config: RunnableConfig, app_config: AppConfig | None = None):
+        return _make_lead_agent(
+            config,
+            app_config=app_config or get_app_config(),
+            canonical_definition=definition,
+            resolved_skills=skills,
+            runner_tool_groups=runner_tool_groups,
+        )
+
+    return factory
+
+
+def _make_lead_agent(
+    config: RunnableConfig,
+    *,
+    app_config: AppConfig,
+    canonical_definition: CanonicalAgentDefinition | None = None,
+    resolved_skills: list[Skill] | None = None,
+    runner_tool_groups: frozenset[str] | None = None,
+):
     # Lazy import to avoid circular dependency
     from ideer.tools import get_available_tools
     from ideer.tools.builtins import setup_agent, update_agent
@@ -397,13 +425,16 @@ def _make_lead_agent(config: RunnableConfig, *, app_config: AppConfig):
     subagent_enabled = cfg.get("subagent_enabled", False)
     max_concurrent_subagents = cfg.get("max_concurrent_subagents", 3)
     is_bootstrap = cfg.get("is_bootstrap", False)
-    agent_name = validate_agent_name(cfg.get("agent_name"))
-    # When the agent belongs to another user (shared agent), config/SOUL are
-    # loaded from the declaring owner's directory while the run context
-    # (sandbox, memory) stays with the current user.
-    agent_owner_id = cfg.get("agent_owner_id")
-
-    agent_config = load_agent_config(agent_name, user_id=agent_owner_id) if not is_bootstrap else None
+    if canonical_definition is None:
+        agent_name = validate_agent_name(cfg.get("agent_name"))
+        agent_config = None
+        effective_tool_groups = None
+    else:
+        if is_bootstrap:
+            raise ValueError("Canonical Agent resources cannot run in bootstrap mode")
+        agent_name = canonical_definition.resource_id
+        agent_config = canonical_definition.config
+        effective_tool_groups = intersect_tool_groups(agent_config.tool_groups, runner_tool_groups)
     available_skills = _available_skill_names(agent_config, is_bootstrap)
     # Custom agent model from agent config (if any), or None to let _resolve_model_name pick the default
     agent_model_name = agent_config.model if agent_config and agent_config.model else None
@@ -442,8 +473,10 @@ def _make_lead_agent(config: RunnableConfig, *, app_config: AppConfig):
             "reasoning_effort": reasoning_effort,
             "is_plan_mode": is_plan_mode,
             "subagent_enabled": subagent_enabled,
-            "tool_groups": agent_config.tool_groups if agent_config else None,
+            "tool_groups": effective_tool_groups,
             "available_skills": sorted(available_skills) if available_skills is not None else None,
+            "agent_resource_id": canonical_definition.resource_id if canonical_definition else None,
+            "agent_resource_version": canonical_definition.version if canonical_definition else None,
         }
     )
 
@@ -460,7 +493,7 @@ def _make_lead_agent(config: RunnableConfig, *, app_config: AppConfig):
             existing = list(existing)
         config["callbacks"] = [*existing, *tracing_callbacks]
 
-    skills_for_tool_policy = _load_enabled_skills_for_tool_policy(available_skills, app_config=resolved_app_config)
+    skills_for_tool_policy = list(resolved_skills or []) if canonical_definition is not None else _load_enabled_skills_for_tool_policy(available_skills, app_config=resolved_app_config)
 
     if is_bootstrap:
         # Special bootstrap agent with minimal prompt for initial custom agent creation flow
@@ -481,9 +514,9 @@ def _make_lead_agent(config: RunnableConfig, *, app_config: AppConfig):
     # Custom agents can update their own SOUL.md / config via update_agent.
     # The default agent (no agent_name) does not see this tool, and shared
     # agents (owned by another user) are read-only for the runner.
-    extra_tools = [update_agent] if agent_name and not agent_owner_id else []
+    extra_tools = [update_agent] if agent_name and canonical_definition is None else []
     # Default lead agent (unchanged behavior)
-    tools = get_available_tools(model_name=model_name, groups=agent_config.tool_groups if agent_config else None, subagent_enabled=subagent_enabled, app_config=resolved_app_config)
+    tools = get_available_tools(model_name=model_name, groups=effective_tool_groups, subagent_enabled=subagent_enabled, app_config=resolved_app_config)
     return create_agent(
         model=create_chat_model(name=model_name, thinking_enabled=thinking_enabled, reasoning_effort=reasoning_effort, app_config=resolved_app_config, attach_tracing=False),
         tools=filter_tools_by_skill_allowed_tools(tools + extra_tools, skills_for_tool_policy),
@@ -491,10 +524,14 @@ def _make_lead_agent(config: RunnableConfig, *, app_config: AppConfig):
         system_prompt=apply_prompt_template(
             subagent_enabled=subagent_enabled,
             max_concurrent_subagents=max_concurrent_subagents,
-            agent_name=agent_name,
-            agent_user_id=agent_owner_id,
+            agent_name=canonical_definition.config.name if canonical_definition else agent_name,
+            agent_user_id=None,
             available_skills=set(agent_config.skills) if agent_config and agent_config.skills is not None else None,
             app_config=resolved_app_config,
+            resolved_skills=resolved_skills if canonical_definition else None,
+            skills_container_path="/mnt/run-skills" if canonical_definition else None,
+            soul_override=canonical_definition.soul if canonical_definition else None,
+            read_only=canonical_definition is not None,
         ),
         state_schema=ThreadState,
     )

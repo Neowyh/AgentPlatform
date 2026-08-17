@@ -37,14 +37,22 @@ export function WorkflowCard({ workflow }: WorkflowCardProps) {
   const toggleFavorite = useToggleWorkflowFavorite();
   const [deleteOpen, setDeleteOpen] = useState(false);
   const { t } = useI18n();
+  const routeIdentity = workflow.resource_id ?? workflow.name;
 
   function handleClick() {
-    router.push(`/workspace/workflows/${workflow.name}`);
+    router.push(`/workspace/workflows/${routeIdentity}`);
   }
 
   async function handleToggleFavorite() {
     try {
-      await toggleFavorite.mutateAsync(workflow.name);
+      await toggleFavorite.mutateAsync(
+        workflow.resource_id
+          ? {
+              name: workflow.resource_id,
+              isFavorited: workflow.is_favorited ?? false,
+            }
+          : workflow.name,
+      );
       toast.success(
         workflow.is_favorited
           ? t.workflows.favoriteRemoved
@@ -57,7 +65,7 @@ export function WorkflowCard({ workflow }: WorkflowCardProps) {
 
   async function handleDelete() {
     try {
-      await deleteWorkflow.mutateAsync(workflow.name);
+      await deleteWorkflow.mutateAsync(routeIdentity);
       toast.success(t.workflows.deleteSuccess);
       setDeleteOpen(false);
     } catch (err) {
@@ -160,18 +168,20 @@ export function WorkflowCard({ workflow }: WorkflowCardProps) {
             <PlayIcon className="mr-1.5 h-3.5 w-3.5" />
             {t.workflows.view}
           </Button>
-          <Button
-            size="icon"
-            variant="ghost"
-            className="text-destructive hover:text-destructive h-8 w-8 shrink-0"
-            onClick={(e) => {
-              e.stopPropagation();
-              setDeleteOpen(true);
-            }}
-            data-testid="workflow-delete-button"
-          >
-            <Trash2Icon className="h-3.5 w-3.5" />
-          </Button>
+          {!workflow.read_only && (
+            <Button
+              size="icon"
+              variant="ghost"
+              className="text-destructive hover:text-destructive h-8 w-8 shrink-0"
+              onClick={(e) => {
+                e.stopPropagation();
+                setDeleteOpen(true);
+              }}
+              data-testid="workflow-delete-button"
+            >
+              <Trash2Icon className="h-3.5 w-3.5" />
+            </Button>
+          )}
         </CardFooter>
       </Card>
 

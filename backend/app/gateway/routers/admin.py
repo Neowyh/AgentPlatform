@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from dataclasses import dataclass
 from datetime import datetime
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, EmailStr, Field
@@ -21,13 +19,12 @@ from ideer.config.app_config import get_app_config
 from ideer.config.paths import get_paths
 from ideer.persistence.engine import get_session_factory
 from ideer.persistence.models.audit_log import AuditLog
+from ideer.persistence.models.resource_catalog import Resource
 from ideer.persistence.models.resource_metadata import ResourceMetadata
 from ideer.persistence.models.user import DepartmentModel, UserModel, UserRole
 from ideer.persistence.models.visibility_application import VisibilityApplication, VisibilityApplicationStatus
-from ideer.skills.storage import get_or_new_skill_storage
-from ideer.skills.types import SkillCategory
+from ideer.resources.service import ResourceAction, ResourceActor, ResourceService
 from ideer.tools.tools import get_available_tools
-from ideer.workflows.v2.store import WorkflowV2Store
 
 logger = logging.getLogger(__name__)
 
@@ -42,88 +39,41 @@ RESOURCE_TYPE_LABELS = {
 }
 
 
-@dataclass(frozen=True)
-class AdminResourceInventoryItem:
-    resource_type: str
-    resource_id: str
-    default_visibility: str
-    source_key: str
-
-
-def _valid_agent_dirs(root: Path) -> list[Path]:
-    if not root.exists():
-        return []
-    return sorted(entry for entry in root.iterdir() if entry.is_dir() and (entry / "config.yaml").exists())
-
-
-def _collect_agent_inventory() -> list[AdminResourceInventoryItem]:
-    paths = get_paths()
-    items = [
-        AdminResourceInventoryItem(
-            resource_type="agent",
-            resource_id=entry.name,
-            default_visibility="public",
-            source_key=f"agent:shared:{entry.name}",
-        )
-        for entry in _valid_agent_dirs(paths.agents_dir)
-    ]
-
-    users_root = paths.base_dir / "users"
-    if users_root.exists():
-        for user_dir in sorted(entry for entry in users_root.iterdir() if entry.is_dir()):
-            for agent_dir in _valid_agent_dirs(user_dir / "agents"):
-                items.append(
-                    AdminResourceInventoryItem(
-                        resource_type="agent",
-                        resource_id=agent_dir.name,
-                        default_visibility="private",
-                        source_key=f"agent:user:{user_dir.name}:{agent_dir.name}",
-                    )
-                )
-    return items
-
-
 async def _collect_admin_resource_inventory(
     session,
 ) -> list[dict[str, str | None]]:
     config = get_app_config()
-    metadata_rows = (await session.execute(select(ResourceMetadata))).scalars().all()
-    metadata = {(row.resource_type, row.resource_id): row for row in metadata_rows}
+    canonical_rows = list((await session.execute(select(Resource))).scalars().all())
 
-    inventory: list[AdminResourceInventoryItem] = _collect_agent_inventory()
-    inventory.extend(AdminResourceInventoryItem("tool", tool.name, "public", f"tool:{tool.name}") for tool in get_available_tools(app_config=config) if getattr(tool, "name", None))
-    inventory.extend(
-        AdminResourceInventoryItem(
-            "skill",
-            skill.name,
-            "public" if getattr(skill, "category", None) == SkillCategory.PUBLIC else "private",
-            f"skill:{skill.name}",
-        )
-        for skill in get_or_new_skill_storage(app_config=config).load_skills(enabled_only=False)
-        if getattr(skill, "name", None)
+    resources: list[dict[str, str | None]] = [
+        {
+            "id": f"tool:{tool.name}",
+            "resource_type": "tool",
+            "resource_type_label": RESOURCE_TYPE_LABELS.get("tool", "tool"),
+            "resource_id": tool.name,
+            "visibility": "public",
+            "owner_id": None,
+            "department_id": None,
+            "lifecycle_status": None,
+            "created_at": None,
+        }
+        for tool in get_available_tools(app_config=config)
+        if getattr(tool, "name", None)
+    ]
+    resources.extend(
+        {
+            "id": row.id,
+            "resource_type": row.type,
+            "resource_type_label": RESOURCE_TYPE_LABELS.get(row.type, row.type),
+            "resource_id": row.slug,
+            "visibility": row.visibility,
+            "owner_id": row.owner_id,
+            "department_id": row.scope_department_id,
+            "lifecycle_status": row.lifecycle_status,
+            "created_at": str(row.created_at) if row.created_at else None,
+        }
+        for row in canonical_rows
     )
-
-    session_factory = get_session_factory()
-    if session_factory is not None:
-        workflows, _ = await WorkflowV2Store(session_factory).list_latest_definitions(limit=10000, offset=0)
-        inventory.extend(AdminResourceInventoryItem("workflow", workflow.workflow_name, "private", f"workflow:{workflow.workflow_name}") for workflow in workflows)
-
-    resources: list[dict[str, str | None]] = []
-    for item in inventory:
-        meta = metadata.get((item.resource_type, item.resource_id))
-        created_at = getattr(meta, "created_at", None)
-        resources.append(
-            {
-                "id": meta.id if meta else item.source_key,
-                "resource_type": item.resource_type,
-                "resource_type_label": RESOURCE_TYPE_LABELS.get(item.resource_type, item.resource_type),
-                "resource_id": item.resource_id,
-                "visibility": meta.visibility if meta else item.default_visibility,
-                "owner_id": meta.owner_id if meta else None,
-                "department_id": meta.department_id if meta else None,
-                "created_at": str(created_at) if created_at else None,
-            }
-        )
 
     # Batch resolve owner usernames
     owner_ids = {r["owner_id"] for r in resources if r.get("owner_id")}
@@ -195,6 +145,9 @@ async def get_admin_stats(
 @require_role(UserRole.SUPER_ADMIN, UserRole.DEPARTMENT_ADMIN)
 async def list_resources(
     resource_type: str | None = Query(default=None, description="Filter by type: agent|tool|skill|workflow"),
+    visibility: str | None = Query(default=None, pattern="^(private|department|public)$", description="Filter by visibility"),
+    owner_id: str | None = Query(default=None, description="Filter by owner user id"),
+    lifecycle_status: str | None = Query(default=None, pattern="^(active|archived|suspended)$", description="Filter by lifecycle status"),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     current_user: UserModel = Depends(get_current_rbac_user),
@@ -208,6 +161,12 @@ async def list_resources(
         resources = await _collect_admin_resource_inventory(session)
         if resource_type:
             resources = [resource for resource in resources if resource["resource_type"] == resource_type]
+        if visibility:
+            resources = [resource for resource in resources if resource["visibility"] == visibility]
+        if owner_id:
+            resources = [resource for resource in resources if resource["owner_id"] == owner_id]
+        if lifecycle_status:
+            resources = [resource for resource in resources if resource["lifecycle_status"] == lifecycle_status]
 
         total = len(resources)
         return {"resources": resources[offset : offset + limit], "total": total, "limit": limit, "offset": offset}
@@ -793,6 +752,7 @@ async def get_department_resources(
         )
         resources_result = await session.execute(resources_stmt)
         resources = resources_result.scalars().all()
+        canonical_resources = list((await session.execute(select(Resource).where(Resource.scope_department_id == dept_id))).scalars())
 
         return {
             "department_id": dept_id,
@@ -806,8 +766,18 @@ async def get_department_resources(
                     "owner_id": r.owner_id,
                 }
                 for r in resources
+            ]
+            + [
+                {
+                    "id": r.id,
+                    "resource_type": r.type,
+                    "resource_id": r.id,
+                    "visibility": r.visibility,
+                    "owner_id": r.owner_id,
+                }
+                for r in canonical_resources
             ],
-            "total_count": len(resources),
+            "total_count": len(resources) + len(canonical_resources),
         }
 
 
@@ -858,6 +828,15 @@ async def delete_department(
 
         # Resource handling: reassign to target_dept_id if provided, otherwise downgrade to private
         target_dept_id = body.target_dept_id if body else None
+        resource_service = ResourceService(
+            session,
+            ResourceActor(
+                user_id=str(current_user.id),
+                department_id=current_user.department_id,
+                role="super_admin",
+                permissions=frozenset(ResourceAction),
+            ),
+        )
 
         if target_dept_id:
             # Verify target department exists
@@ -866,6 +845,11 @@ async def delete_department(
             target_dept = target_dept_result.scalar_one_or_none()
             if target_dept is None:
                 raise HTTPException(status_code=404, detail="Target department not found")
+
+            await resource_service.govern_department_deletion(
+                dept_id,
+                target_department_id=target_dept_id,
+            )
 
             # Reassign department-level resources to target department
             await session.execute(
@@ -879,6 +863,10 @@ async def delete_department(
             # Also reassign private resources to target department
             await session.execute(sql_update(ResourceMetadata).where(ResourceMetadata.department_id == dept_id).values(department_id=target_dept_id))
         else:
+            await resource_service.govern_department_deletion(
+                dept_id,
+                target_department_id=None,
+            )
             # Lifecycle: downgrade department-level resources to private before deleting department
             await session.execute(
                 sql_update(ResourceMetadata)

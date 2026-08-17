@@ -41,7 +41,6 @@ import { ThreadContext } from "@/components/workspace/messages/context";
 import type { Agent } from "@/core/agents";
 import {
   AgentNameCheckError,
-  AgentsApiDisabledError,
   checkAgentName,
   getAgent,
 } from "@/core/agents/api";
@@ -128,6 +127,23 @@ export default function NewAgentPage() {
     },
   });
 
+  const resourceId =
+    typeof thread.values?.created_agent_resource_id === "string"
+      ? thread.values.created_agent_resource_id
+      : undefined;
+
+  useEffect(() => {
+    if (!resourceId || agent) return;
+    void getAgentWithRetry(resourceId).then((fetched) => {
+      if (fetched) {
+        setAgent(fetched);
+        return;
+      }
+
+      toast.error(t.agents.agentCreatedPendingRefresh);
+    });
+  }, [agent, resourceId, t.agents.agentCreatedPendingRefresh]);
+
   useEffect(() => {
     if (typeof window === "undefined" || step !== "chat") {
       return;
@@ -156,9 +172,7 @@ export default function NewAgentPage() {
         return;
       }
     } catch (err) {
-      if (err instanceof AgentsApiDisabledError) {
-        setNameError(t.agents.nameStepApiDisabledError);
-      } else if (
+      if (
         err instanceof AgentNameCheckError &&
         err.reason === "backend_unreachable"
       ) {
@@ -185,7 +199,6 @@ export default function NewAgentPage() {
     nameInput,
     sendMessage,
     t.agents.nameStepAlreadyExistsError,
-    t.agents.nameStepApiDisabledError,
     t.agents.nameStepNetworkError,
     t.agents.nameStepBootstrapMessage,
     t.agents.nameStepCheckError,

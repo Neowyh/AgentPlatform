@@ -30,18 +30,23 @@ class WorkflowV2RunRow(Base):
     __tablename__ = "workflow_v2_runs"
     run_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     workflow_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    workflow_resource_id: Mapped[str | None] = mapped_column(ForeignKey("resources.id", ondelete="RESTRICT"), nullable=True)
     definition_version: Mapped[int] = mapped_column(Integer, nullable=False)
     checkpoint_thread_id: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
     status: Mapped[str] = mapped_column(String(24), nullable=False, default="queued")
     inputs: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     snapshot: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    runner_tool_groups: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     event_seq: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by: Mapped[str] = mapped_column(String(64), nullable=False)
     department_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now, nullable=False)
-    __table_args__ = (Index("ix_workflow_v2_runs_name", "workflow_name"),)
+    __table_args__ = (
+        Index("ix_workflow_v2_runs_name", "workflow_name"),
+        Index("ix_workflow_v2_runs_resource", "workflow_resource_id"),
+    )
 
 
 class WorkflowTaskRow(Base):

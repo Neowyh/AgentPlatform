@@ -24,7 +24,7 @@ test.describe("Workflow management", () => {
       mockLangGraphAPI(page, { workflows: MOCK_WORKFLOWS });
       await page.goto("/workspace/workflows");
 
-      await expect(page.getByText("test-workflow")).toBeVisible({
+      await expect(page.getByText("test-workflow").first()).toBeVisible({
         timeout: 15_000,
       });
     });
@@ -53,7 +53,7 @@ test.describe("Workflow management", () => {
 
       await page.getByText("test-workflow").first().click();
 
-      await expect(page).toHaveURL(/\/workspace\/workflows\/test-workflow/);
+      await expect(page).toHaveURL(/\/workspace\/workflows\/[^/?]+/);
       await expect(page.getByText("step1").first()).toBeVisible({
         timeout: 10_000,
       });
@@ -174,28 +174,27 @@ test.describe("Workflow management", () => {
       await expect(page.getByText("test-workflow").first()).toBeVisible();
     });
 
-    test("save sends version in PUT request body", async ({ page }) => {
+    test("save sends draft revision in workflow-draft PUT request body", async ({
+      page,
+    }) => {
       // Empty workflows list falls back to the mock's valid v2 detail YAML
       mockLangGraphAPI(page, { workflows: [] });
       let putBody: Record<string, unknown> | null = null;
       // Registered after mockLangGraphAPI so it takes precedence for PUT
-      await page.route("**/api/workflows/test-workflow", async (route) => {
-        if (route.request().method() === "PUT") {
-          putBody = route.request().postDataJSON();
-          return route.fulfill({
-            status: 200,
-            contentType: "application/json",
-            body: JSON.stringify({
-              name: "test-workflow",
-              description: "Updated",
-              version: "2",
-              steps_count: 1,
-              inputs: {},
-            }),
-          });
-        }
-        return route.fallback();
-      });
+      await page.route(
+        /\/api\/resources\/[^/?]+\/workflow-draft/,
+        async (route) => {
+          if (route.request().method() === "PUT") {
+            putBody = route.request().postDataJSON();
+            return route.fulfill({
+              status: 200,
+              contentType: "application/json",
+              body: JSON.stringify({ revision: 2 }),
+            });
+          }
+          return route.fallback();
+        },
+      );
       await page.goto("/workspace/workflows/test-workflow/edit");
 
       await expect(page.locator(".cm-editor")).toBeVisible({
@@ -203,10 +202,10 @@ test.describe("Workflow management", () => {
       });
       await page.getByRole("button", { name: /save changes/i }).click();
 
-      await expect(page).toHaveURL(/\/workspace\/workflows\/test-workflow$/);
+      await expect(page).toHaveURL(/\/workspace\/workflows\/[^/?]+$/);
       expect(putBody).toMatchObject({
-        version: 1,
-        yaml_content: expect.any(String),
+        content: expect.any(String),
+        expected_revision: expect.any(Number),
       });
     });
   });

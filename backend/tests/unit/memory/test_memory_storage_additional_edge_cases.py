@@ -60,7 +60,7 @@ def test_load_memory_from_file_returns_empty_on_json_error(tmp_path):
     bad_file.write_text("not valid json {{{")
 
     storage = FileMemoryStorage()
-    with patch.object(storage, "_get_read_memory_file_path", return_value=bad_file):
+    with patch.object(storage, "_get_memory_file_path", return_value=bad_file):
         result = storage._load_memory_from_file()
     assert result["version"] == "1.0"
     assert result["facts"] == []
@@ -73,7 +73,7 @@ def test_load_memory_from_file_returns_empty_on_os_error(tmp_path):
     mock_path.exists.return_value = True
     mock_path.__fspath__ = MagicMock(return_value="/nonexistent/path/memory.json")
 
-    with patch.object(storage, "_get_read_memory_file_path", return_value=mock_path):
+    with patch.object(storage, "_get_memory_file_path", return_value=mock_path):
         # open() will raise FileNotFoundError
         with patch("builtins.open", side_effect=OSError("permission denied")):
             result = storage._load_memory_from_file()

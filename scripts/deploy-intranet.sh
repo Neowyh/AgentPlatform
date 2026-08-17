@@ -19,6 +19,11 @@ Commands:
 Options:
   --version <value>   Use a specific bundle version
   --bundle-root <dir> Use a specific bundle directory
+  --bundled-conflict <keep|override>
+                    How to handle bundled resources modified after install
+                    on upgrade: keep (default) preserves user changes and
+                    skips the bundled update, override publishes the bundled
+                    content as a new version
   --no-load           Skip docker load when running up/start/restart
   --skip-check        Skip the pre-deployment environment check
   --dry-run           Show what would be done without executing
@@ -30,6 +35,7 @@ Environment:
     credentials (default: super_admin@test.com / super_admin@test.com)
   IDEER_INSTALL_FAULT_ZEROING=0 skips installing the bundled fault-zeroing agent
   IDEER_INSTALL_SRS_WRITING=0 skips installing the bundled srs-writing agent
+  IDEER_BUNDLED_CONFLICT=keep|override same as --bundled-conflict
 EOF
 }
 
@@ -58,6 +64,7 @@ NO_LOAD="${IDEER_NO_LOAD:-0}"
 COMMAND="up"
 SKIP_CHECK=0
 DRY_RUN=0
+BUNDLED_CONFLICT="${IDEER_BUNDLED_CONFLICT:-keep}"
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -69,6 +76,11 @@ while [ "$#" -gt 0 ]; do
         --bundle-root)
             [ "$#" -ge 2 ] || die "--bundle-root requires a value"
             BUNDLE_ROOT="$2"
+            shift 2
+            ;;
+        --bundled-conflict)
+            [ "$#" -ge 2 ] || die "--bundled-conflict requires a value"
+            BUNDLED_CONFLICT="$2"
             shift 2
             ;;
         --no-load)
@@ -104,6 +116,11 @@ while [ "$#" -gt 0 ]; do
 done
 
 BUNDLE_ROOT="$(cd "$BUNDLE_ROOT" && pwd)"
+
+case "$BUNDLED_CONFLICT" in
+    keep|override) ;;
+    *) die "--bundled-conflict must be keep or override" ;;
+esac
 
 # ---------------------------------------------------------------------------
 # Pre-deployment check
@@ -580,7 +597,7 @@ PY
 # the super admin.  Runs after the gateway is healthy and the admin exists
 # because the per-user install and resource ownership live in the runtime
 # database.  Skip each agent with IDEER_INSTALL_<NAME>=0.
-install_admin_private_resources() {
+install_admin_bundled_resources() {
     local resource_install_failed=0
     command -v python3 >/dev/null 2>&1 || {
         warn "python3 not found; skipping bundled resource install"
@@ -605,14 +622,14 @@ install_admin_private_resources() {
     local admin_id
     admin_id="$(find_super_admin_id)"
     if [ -z "$admin_id" ]; then
-        warn "no active super admin found in runtime DB; skipping private resource install"
-        return 0
+        warn "no active super admin found in runtime DB; bundled resources cannot be initialized"
+        return 1
     fi
-    log "installing bundled resources for super admin $admin_id (private)..."
+    log "installing bundled resources for super admin $admin_id (public)..."
 
     # Older bundle versions auto-installed the bundled agents into the shared
     # directory (runtime/data/agents/<name>), which keeps them visible to every
-    # user as read-only templates.  Once the private per-user copy is in place,
+    # user as read-only templates.  Once the per-user copy is in place,
     # remove a legacy shared copy when it still matches the bundle byte-for-byte;
     # a customized shared agent is left behind with a warning.
     cleanup_legacy_shared_agent() {
@@ -631,7 +648,7 @@ install_admin_private_resources() {
     if [ "${IDEER_INSTALL_FAULT_ZEROING:-1}" = "0" ]; then
         log "skipping fault-zeroing agent install"
     elif [ -d "$SOURCE_DIR/docs/fault-zeroing-agent/agent" ] && [ -f "$SOURCE_DIR/scripts/install_agent.py" ]; then
-        log "installing bundled fault-zeroing agent for super admin (private)..."
+        log "installing bundled fault-zeroing agent for super admin (public)..."
         if ! run_cmd env IDEER_HOME="$runtime_home" IDEER_CONFIG_PATH="$config_path" \
             python3 "$SOURCE_DIR/scripts/install_agent.py" --agent fault-zeroing --owner super-admin
         then
@@ -639,13 +656,14 @@ install_admin_private_resources() {
         fi
         cleanup_legacy_shared_agent fault-zeroing "$SOURCE_DIR/docs/fault-zeroing-agent/agent"
     else
-        warn "fault-zeroing agent source not found in bundle; skipping"
+        warn "fault-zeroing agent source not found in bundle"
+        resource_install_failed=1
     fi
 
     if [ "${IDEER_INSTALL_SRS_WRITING:-1}" = "0" ]; then
         log "skipping srs-writing agent install"
     elif [ -d "$SOURCE_DIR/docs/srs-writing-agent/agent" ] && [ -f "$SOURCE_DIR/scripts/install_srs_writing_agent.py" ]; then
-        log "installing bundled srs-writing agent for super admin (private)..."
+        log "installing bundled srs-writing agent for super admin (public)..."
         if ! run_cmd env IDEER_HOME="$runtime_home" IDEER_CONFIG_PATH="$config_path" \
             python3 "$SOURCE_DIR/scripts/install_srs_writing_agent.py" --owner super-admin; then
             warn "srs-writing agent install failed (see output above)"
@@ -653,11 +671,12 @@ install_admin_private_resources() {
         fi
         cleanup_legacy_shared_agent srs-writing "$SOURCE_DIR/docs/srs-writing-agent/agent"
     else
-        warn "srs-writing agent source not found in bundle; skipping"
+        warn "srs-writing agent source not found in bundle"
+        resource_install_failed=1
     fi
 
     if [ -f "$SOURCE_DIR/scripts/seed_custom_skill_owners.py" ]; then
-        log "assigning bundled custom skills to the super admin (private)..."
+        log "assigning bundled custom skills to the super admin (public)..."
         local agent_seed_args=""
         if [ "${IDEER_INSTALL_FAULT_ZEROING:-1}" != "0" ]; then
             agent_seed_args="$agent_seed_args --agent fault-zeroing"
@@ -675,7 +694,23 @@ install_admin_private_resources() {
             resource_install_failed=1
         fi
     else
-        warn "scripts/seed_custom_skill_owners.py not found in bundle; skipping"
+        warn "scripts/seed_custom_skill_owners.py not found in bundle"
+        resource_install_failed=1
+    fi
+
+    if [ ! -f "$SOURCE_DIR/scripts/seed_bundled_resources.py" ] \
+        || [ ! -f "$SOURCE_DIR/bundled-resources.json" ]; then
+        warn "canonical bundled resource seeder or manifest is missing"
+        resource_install_failed=1
+    elif ! docker container inspect ideer-gateway >/dev/null 2>&1; then
+        warn "gateway container not running; cannot seed canonical bundled resources"
+        resource_install_failed=1
+    elif ! run_cmd docker cp "$SOURCE_DIR/scripts/seed_bundled_resources.py" ideer-gateway:/tmp/seed_bundled_resources.py \
+        || ! run_cmd docker cp "$SOURCE_DIR/bundled-resources.json" ideer-gateway:/tmp/bundled-resources.json \
+        || ! run_cmd docker compose -p ideer -f "$COMPOSE_FILE" --env-file "$ENV_FILE" exec -T gateway \
+            sh -c 'cd /app/backend && PYTHONPATH=. uv run --no-sync python /tmp/seed_bundled_resources.py --manifest /tmp/bundled-resources.json --source-root /app --owner '"$admin_id"' --conflict-policy '"$BUNDLED_CONFLICT"; then
+        warn "canonical bundled resource seeding failed"
+        resource_install_failed=1
     fi
 
     return "$resource_install_failed"
@@ -684,16 +719,16 @@ install_admin_private_resources() {
 # Seed the bundled fault-zeroing workflow into the workflow v2 store after the
 # gateway is healthy (the DB only exists after the first boot).  Runs the
 # repository's seed script inside the gateway container, so it needs no Python
-# tooling on the host.  The workflow is recorded as a private resource owned by
+# tooling on the host.  The workflow is recorded as a public resource owned by
 # the active super admin (falling back to "system" when none exists).
-# Idempotent; failures are warnings, not fatal.
+# Idempotent; a missing or failed seed aborts deployment initialization.
 seed_bundled_workflows() {
-    [ -f "$SOURCE_DIR/workflows/fault-zeroing.yaml" ] || return 0
-    [ -f "$SOURCE_DIR/scripts/seed_fault_zeroing_workflow.py" ] || return 0
+    [ -f "$SOURCE_DIR/workflows/fault-zeroing.yaml" ] || return 1
+    [ -f "$SOURCE_DIR/scripts/seed_fault_zeroing_workflow.py" ] || return 1
 
     if ! docker container inspect ideer-gateway >/dev/null 2>&1; then
-        warn "gateway container not running; skipping bundled workflow seed"
-        return 0
+        warn "gateway container not running; cannot seed bundled workflow"
+        return 1
     fi
 
     local created_by="system"
@@ -712,6 +747,7 @@ seed_bundled_workflows() {
     else
         warn "bundled workflow seed failed; run it manually after 'up' with:"
         warn "  docker compose -p ideer exec gateway sh -c 'cd /app/backend && PYTHONPATH=. uv run --no-sync python /tmp/seed_fault_zeroing_workflow.py --workflow-path /tmp/fault-zeroing.yaml --created-by '"$created_by"'"
+        return 1
     fi
 }
 
@@ -844,10 +880,12 @@ case "$COMMAND" in
         if [ "$DRY_RUN" -eq 0 ]; then
             verify_services
             initialize_super_admin
-            if ! install_admin_private_resources; then
-                die "private resource initialization failed"
+            if ! install_admin_bundled_resources; then
+                die "public resource initialization failed"
             fi
-            seed_bundled_workflows
+            if ! seed_bundled_workflows; then
+                die "bundled workflow initialization failed"
+            fi
         fi
         log "deployment complete"
         ;;
@@ -865,10 +903,12 @@ case "$COMMAND" in
         if [ "$DRY_RUN" -eq 0 ]; then
             verify_services
             initialize_super_admin
-            if ! install_admin_private_resources; then
-                die "private resource initialization failed"
+            if ! install_admin_bundled_resources; then
+                die "public resource initialization failed"
             fi
-            seed_bundled_workflows
+            if ! seed_bundled_workflows; then
+                die "bundled workflow initialization failed"
+            fi
         fi
         log "restart complete"
         ;;

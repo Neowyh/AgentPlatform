@@ -460,7 +460,7 @@ async def test_max_attempts_kill_persists_failure_and_notifies_sink() -> None:
 
     assert task.status == "failed"
     assert run.status == "failed"
-    assert run.error == "workflow_max_attempts_exceeded"
+    assert run.error == "工作流执行失败：重试次数已达上限"
     assert notified == [("run-1", "run_failed")]
     session.commit.assert_awaited()
 

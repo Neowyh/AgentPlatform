@@ -227,6 +227,9 @@ export async function deleteDepartment(
 
 export async function listResources(params?: {
   resource_type?: string;
+  visibility?: string;
+  owner_id?: string;
+  lifecycle_status?: string;
   limit?: number;
   offset?: number;
 }): Promise<{
@@ -239,6 +242,10 @@ export async function listResources(params?: {
   const searchParams = new URLSearchParams();
   if (params?.resource_type)
     searchParams.set("resource_type", params.resource_type);
+  if (params?.visibility) searchParams.set("visibility", params.visibility);
+  if (params?.owner_id) searchParams.set("owner_id", params.owner_id);
+  if (params?.lifecycle_status)
+    searchParams.set("lifecycle_status", params.lifecycle_status);
   if (params?.limit !== undefined)
     searchParams.set("limit", String(params.limit));
   if (params?.offset !== undefined)
@@ -322,4 +329,31 @@ export async function testTool(
     result?: string;
     error?: string;
   }>;
+}
+
+// ── Resource lifecycle (canonical) ───────────────────────────────
+
+async function resourceLifecycleAction(
+  resourceId: string,
+  action: "archive" | "suspend" | "restore",
+  actionLabel: string,
+): Promise<void> {
+  const baseURL = getBackendBaseURL();
+  const res = await fetch(
+    `${baseURL}/api/resources/${encodeURIComponent(resourceId)}/${action}`,
+    { method: "POST" },
+  );
+  if (!res.ok) return extractError(res, `Failed to ${actionLabel} resource`);
+}
+
+export function archiveResource(resourceId: string): Promise<void> {
+  return resourceLifecycleAction(resourceId, "archive", "archive");
+}
+
+export function suspendResource(resourceId: string): Promise<void> {
+  return resourceLifecycleAction(resourceId, "suspend", "suspend");
+}
+
+export function restoreResource(resourceId: string): Promise<void> {
+  return resourceLifecycleAction(resourceId, "restore", "restore");
 }

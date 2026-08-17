@@ -544,44 +544,6 @@ class TestFileMemoryStorageExtended:
             path = storage._get_memory_file_path(None)
             assert str(path).endswith("custom/memory.json")
 
-    def test_get_read_memory_file_path_legacy_fallback_no_user(self, tmp_path):
-        """When the canonical path doesn't exist, fall back to legacy agent path."""
-        legacy_path = tmp_path / "agents" / "test-agent" / "memory.json"
-        legacy_path.parent.mkdir(parents=True)
-        legacy_path.write_text('{"version": "1.0"}')
-
-        mock_paths = SimpleNamespace(
-            agent_memory_file=lambda name: tmp_path / "agent-memory" / name / "memory.json",
-            legacy_agent_memory_file=lambda name: tmp_path / "agents" / name / "memory.json",
-        )
-
-        with (
-            patch("ideer.agents.memory.storage.get_paths", return_value=mock_paths),
-            patch("ideer.agents.memory.storage.get_memory_config", return_value=MemoryConfig(storage_path="")),
-        ):
-            storage = FileMemoryStorage()
-            path = storage._get_read_memory_file_path("test-agent")
-            assert path == legacy_path
-
-    def test_get_read_memory_file_path_legacy_fallback_with_user(self, tmp_path):
-        """When the canonical path doesn't exist, fall back to legacy user agent path."""
-        legacy_path = tmp_path / "users" / "u1" / "agents" / "test-agent" / "memory.json"
-        legacy_path.parent.mkdir(parents=True)
-        legacy_path.write_text('{"version": "1.0"}')
-
-        mock_paths = SimpleNamespace(
-            user_agent_memory_file=lambda uid, name: tmp_path / "users" / uid / "agent-memory" / name / "memory.json",
-            legacy_user_agent_memory_file=lambda uid, name: tmp_path / "users" / uid / "agents" / name / "memory.json",
-        )
-
-        with (
-            patch("ideer.agents.memory.storage.get_paths", return_value=mock_paths),
-            patch("ideer.agents.memory.storage.get_memory_config", return_value=MemoryConfig(storage_path="")),
-        ):
-            storage = FileMemoryStorage()
-            path = storage._get_read_memory_file_path("test-agent", user_id="u1")
-            assert path == legacy_path
-
     def test_load_returns_empty_on_json_error(self, tmp_path):
         bad_file = tmp_path / "bad.json"
         bad_file.write_text("not valid json {{{")

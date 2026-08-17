@@ -59,7 +59,7 @@ test.describe("Skill management", () => {
       await page.getByText(/^skills$/i).click();
 
       // Public tab should be active by default, showing deep-research
-      await expect(page.getByText("deep-research")).toBeVisible({
+      await expect(page.getByText("deep-research").first()).toBeVisible({
         timeout: 15_000,
       });
     });
@@ -75,7 +75,7 @@ test.describe("Skill management", () => {
       await page.getByRole("tab", { name: /custom/i }).click();
 
       // Should show custom skill
-      await expect(page.getByText("my-custom-skill")).toBeVisible({
+      await expect(page.getByText("my-custom-skill").first()).toBeVisible({
         timeout: 15_000,
       });
     });
@@ -109,7 +109,7 @@ test.describe("Skill management", () => {
       await page.getByText(/^skills$/i).click();
       await page.getByRole("tab", { name: /custom/i }).click();
 
-      await expect(page.getByText("my-custom-skill")).toBeVisible({
+      await expect(page.getByText("my-custom-skill").first()).toBeVisible({
         timeout: 15_000,
       });
       await expect(

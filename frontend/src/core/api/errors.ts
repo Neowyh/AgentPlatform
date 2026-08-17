@@ -1,9 +1,151 @@
 /** Raw detail shape from a FastAPI error response. */
+export interface VisibilityClosureViolation {
+  source?: {
+    slug?: string;
+    display_name?: string;
+    type?: string;
+  };
+  target?: {
+    slug?: string;
+    display_name?: string;
+    type?: string;
+    visibility?: string;
+  };
+  required_visibility?: string;
+  owned_by_actor?: boolean;
+}
+
+/** Structured file_access root violation from workflow run creation. */
+export interface FileRootViolation {
+  node_id?: string;
+  access?: "read" | "write" | string;
+  path?: string;
+}
+
 export type ErrorDetail =
   | string
-  | { code?: string; message?: string }
+  | {
+      code?: string;
+      message?: string;
+      violations?: (VisibilityClosureViolation | FileRootViolation)[];
+    }
   | Array<{ msg?: string; loc?: string[] }>
   | undefined;
+
+const RESOURCE_TYPE_LABELS: Record<string, string> = {
+  tool: "工具",
+  skill: "Skill",
+  workflow: "工作流",
+  agent: "智能体",
+};
+
+const VISIBILITY_LABELS: Record<string, string> = {
+  private: "私有",
+  department: "部门",
+  public: "公开",
+};
+
+/**
+ * Format a visibility closure violation payload into a localized,
+ * actionable message with concrete paths to complete the request.
+ */
+export function formatVisibilityClosureViolations(detail: {
+  message?: string;
+  violations?: VisibilityClosureViolation[];
+}): string {
+  const violations = detail.violations ?? [];
+  if (violations.length === 0) {
+    return detail.message ?? "可见性闭包校验失败：公开资源只能依赖公开资源。";
+  }
+
+  const first = violations[0] ?? {};
+  const sourceType = first.source?.type
+    ? (RESOURCE_TYPE_LABELS[first.source.type] ?? first.source.type)
+    : "资源";
+  const sourceLabel =
+    first.source?.display_name ?? first.source?.slug ?? "该资源";
+  const requiredVisibility = first.required_visibility ?? "public";
+  const summary =
+    requiredVisibility === "department"
+      ? `无法将${sourceType}「${sourceLabel}」提升为部门可见：它依赖的资源需为公开或属于同一部门。`
+      : `无法将${sourceType}「${sourceLabel}」提升为公开：它依赖的资源未满足可见性要求。`;
+
+  const lines = violations.map((violation) => {
+    const target = violation.target;
+    const label = target?.display_name ?? target?.slug ?? "未知资源";
+    const type = target?.type
+      ? (RESOURCE_TYPE_LABELS[target.type] ?? target.type)
+      : "";
+    const visibility = target?.visibility
+      ? (VISIBILITY_LABELS[target.visibility] ?? target.visibility)
+      : "未知";
+    const owner =
+      violation.owned_by_actor === true
+        ? "，你拥有"
+        : violation.owned_by_actor === false
+          ? "，他人拥有"
+          : "";
+    const requiredLabel =
+      (violation.required_visibility ?? requiredVisibility) === "department"
+        ? "需为公开或与本资源同部门"
+        : "需提升为公开";
+    return `- ${type}「${label}」（当前：${visibility}${owner}）→ ${requiredLabel}`;
+  });
+
+  const hasOwned = violations.some((v) => v.owned_by_actor === true);
+  const hasNotOwned = violations.some((v) => v.owned_by_actor === false);
+  let ownedPath: string;
+  if (hasOwned && !hasNotOwned) {
+    ownedPath =
+      "你拥有这些依赖：请先为依赖资源提交可见性提升申请（在对应资源设置页），审批通过后再重新提交本申请。";
+  } else if (hasNotOwned && !hasOwned) {
+    ownedPath =
+      "这些依赖由他人拥有：请联系其拥有者提升可见性，再重新提交本申请。";
+  } else {
+    ownedPath =
+      "你拥有的依赖可先提交可见性提升申请，他人拥有的依赖需联系其拥有者处理，然后再重新提交本申请。";
+  }
+
+  return `${summary}\n\n阻塞依赖：\n${lines.join(
+    "\n",
+  )}\n\n可行路径：\n1. ${ownedPath}\n2. 或移除相关依赖后，重新提交本申请。`;
+}
+
+/**
+ * Format a workflow file_access root violation payload into a localized,
+ * actionable message: a short summary, the violation list, and the path
+ * to fix it. Mirrors the visibility closure formatting.
+ */
+const WORKFLOW_ROOT_VIOLATIONS_MAX = 20;
+
+export function formatWorkflowRootViolations(detail: {
+  code?: string;
+  message?: string;
+  violations?: FileRootViolation[];
+}): string {
+  const violations = detail.violations ?? [];
+  const summary =
+    detail.code === "missing_input_roots"
+      ? `无法启动工作流：${violations.length} 个输入路径缺失或为空。`
+      : `无法启动工作流：${violations.length} 个文件访问路径不在允许的挂载范围内。`;
+
+  if (violations.length === 0) {
+    return detail.message ?? summary;
+  }
+
+  const lines = violations
+    .slice(0, WORKFLOW_ROOT_VIOLATIONS_MAX)
+    .map((violation) => {
+      const node = violation.node_id ? `节点「${violation.node_id}」` : "节点";
+      return `- ${node}：${violation.access ?? "read"} ${violation.path ?? ""}`;
+    });
+  const overflow =
+    violations.length > WORKFLOW_ROOT_VIOLATIONS_MAX
+      ? `\n- …另有 ${violations.length - WORKFLOW_ROOT_VIOLATIONS_MAX} 条`
+      : "";
+
+  return `${summary}\n\n违规路径：\n${lines.join("\n")}${overflow}\n\n可行路径：\n1. 在「挂载配置」中注册这些路径（read-only 或可写挂载）。\n2. 或修改工作流的 file_access 声明，使其只访问已注册的路径。`;
+}
 
 /**
  * Parse the raw error detail from a failed API response.
@@ -46,7 +188,36 @@ export function formatDetail(
       .join("; ");
   }
   if (typeof detail === "object" && detail !== null) {
-    return (detail as { message?: string }).message ?? JSON.stringify(detail);
+    const structured = detail as {
+      code?: string;
+      message?: string;
+      violations?: (VisibilityClosureViolation | FileRootViolation)[];
+    };
+    if (
+      structured.code === "visibility_closure_violation" &&
+      Array.isArray(structured.violations)
+    ) {
+      return formatVisibilityClosureViolations(
+        structured as {
+          message?: string;
+          violations?: VisibilityClosureViolation[];
+        },
+      );
+    }
+    if (
+      (structured.code === "invalid_file_roots" ||
+        structured.code === "missing_input_roots") &&
+      Array.isArray(structured.violations)
+    ) {
+      return formatWorkflowRootViolations(
+        structured as {
+          code?: string;
+          message?: string;
+          violations?: FileRootViolation[];
+        },
+      );
+    }
+    return structured.message ?? JSON.stringify(detail);
   }
   if (typeof detail === "string") {
     return detail;

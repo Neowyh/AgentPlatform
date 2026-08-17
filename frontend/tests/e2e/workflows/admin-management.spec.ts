@@ -260,4 +260,154 @@ test.describe("Admin management", () => {
       await expect(page).toHaveURL(/\/admin\/departments/);
     });
   });
+
+  test.describe("Resource Management", () => {
+    const CANONICAL_AGENT = {
+      id: "11111111-1111-1111-1111-111111111111",
+      resource_type: "agent",
+      resource_type_label: "智能体",
+      resource_id: "reviewer",
+      visibility: "department",
+      owner_id: "user-1",
+      owner_username: "admin-user",
+      department_id: "dept-1",
+      lifecycle_status: "active",
+      created_at: "2025-01-01T00:00:00Z",
+    };
+
+    const CANONICAL_SKILL = {
+      id: "22222222-2222-2222-2222-222222222222",
+      resource_type: "skill",
+      resource_type_label: "Skill",
+      resource_id: "review-skill",
+      visibility: "public",
+      owner_id: "user-1",
+      owner_username: "admin-user",
+      department_id: null,
+      lifecycle_status: "suspended",
+      created_at: "2025-01-02T00:00:00Z",
+    };
+
+    const LEGACY_WORKFLOW = {
+      id: "legacy-workflow-1",
+      resource_type: "workflow",
+      resource_type_label: "工作流",
+      resource_id: "legacy-flow",
+      visibility: "private",
+      owner_id: null,
+      owner_username: null,
+      department_id: null,
+      created_at: "2025-01-03T00:00:00Z",
+    };
+
+    test("canonical rows show lifecycle actions, legacy rows do not", async ({
+      page,
+    }) => {
+      mockLangGraphAPI(page, {
+        resources: [CANONICAL_AGENT, LEGACY_WORKFLOW],
+      });
+      await page.goto("/workspace/admin/resources");
+
+      const canonicalRow = page
+        .locator('tr[data-testid="resource-row"]')
+        .filter({ hasText: "reviewer" });
+      const legacyRow = page
+        .locator('tr[data-testid="resource-row"]')
+        .filter({ hasText: "legacy-flow" });
+
+      await expect(canonicalRow).toBeVisible({ timeout: 15_000 });
+      await expect(legacyRow).toBeVisible();
+
+      await expect(
+        canonicalRow.getByRole("button", { name: /归档/ }),
+      ).toBeVisible();
+      await expect(legacyRow.getByRole("button", { name: /归档/ })).toHaveCount(
+        0,
+      );
+    });
+
+    test("super admin suspends and restores a canonical resource", async ({
+      page,
+    }) => {
+      const suspendRequests: string[] = [];
+      const restoreRequests: string[] = [];
+      page.on("request", (req) => {
+        if (req.url().includes("/api/resources/") && req.method() === "POST") {
+          if (req.url().endsWith("/suspend")) suspendRequests.push(req.url());
+          if (req.url().endsWith("/restore")) restoreRequests.push(req.url());
+        }
+      });
+
+      mockLangGraphAPI(page, {
+        resources: [CANONICAL_AGENT, CANONICAL_SKILL],
+      });
+      await page.goto("/workspace/admin/resources");
+
+      const agentRow = page
+        .locator('tr[data-testid="resource-row"]')
+        .filter({ hasText: "reviewer" });
+      await expect(agentRow.getByRole("button", { name: /下架/ })).toBeVisible({
+        timeout: 15_000,
+      });
+      await agentRow.getByRole("button", { name: /下架/ }).click();
+
+      await expect
+        .poll(() => suspendRequests.length, { timeout: 5_000 })
+        .toBe(1);
+      expect(suspendRequests[0]).toContain(
+        "/api/resources/11111111-1111-1111-1111-111111111111/suspend",
+      );
+
+      const suspendedRow = page
+        .locator('tr[data-testid="resource-row"]')
+        .filter({ hasText: "review-skill" });
+      await expect(
+        suspendedRow.getByRole("button", { name: /恢复/ }),
+      ).toBeVisible({ timeout: 15_000 });
+      await suspendedRow.getByRole("button", { name: /恢复/ }).click();
+
+      await expect
+        .poll(() => restoreRequests.length, { timeout: 5_000 })
+        .toBe(1);
+      expect(restoreRequests[0]).toContain(
+        "/api/resources/22222222-2222-2222-2222-222222222222/restore",
+      );
+    });
+
+    test("super admin archives a canonical resource", async ({ page }) => {
+      const archiveRequests: string[] = [];
+      page.on("request", (req) => {
+        if (
+          req.method() === "POST" &&
+          req
+            .url()
+            .endsWith(
+              "/api/resources/11111111-1111-1111-1111-111111111111/archive",
+            )
+        ) {
+          archiveRequests.push(req.url());
+        }
+      });
+
+      mockLangGraphAPI(page, {
+        resources: [CANONICAL_AGENT],
+      });
+      await page.goto("/workspace/admin/resources");
+
+      const agentRow = page
+        .locator('tr[data-testid="resource-row"]')
+        .filter({ hasText: "reviewer" });
+      await expect(agentRow).toBeVisible({ timeout: 15_000 });
+
+      await expect(
+        agentRow.getByRole("button", { name: /归档/ }),
+      ).toBeVisible();
+
+      await agentRow.getByRole("button", { name: /归档/ }).click();
+
+      await expect
+        .poll(() => archiveRequests.length, { timeout: 5_000 })
+        .toBe(1);
+    });
+  });
 });

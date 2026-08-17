@@ -149,7 +149,7 @@ async def test_worker_restart_resumes_only_pending_nodes_from_persistent_command
     ]
     assert completed.snapshot["outputs"] == {"prepare": {"node": "prepare"}, "finish": {"node": "finish"}}
 
-    from app.gateway.routers.workflows import workflow_event_stream
+    from app.gateway.routers.resources import workflow_event_stream
 
     replayed = [chunk async for chunk in workflow_event_stream(durable_store, "run-1", after_seq=5, poll_seconds=0)]
     assert [int(chunk.split("\n", 1)[0].removeprefix("id: ")) for chunk in replayed] == list(range(6, len(events) + 1))
@@ -231,9 +231,18 @@ async def test_max_attempts_exhaustion_persists_a_failure_event(
 
     run = await durable_store.get_run("run-max-attempts")
     assert run is not None
-    assert (run.status, run.error) == ("failed", "workflow_max_attempts_exceeded")
+    assert (run.status, run.error) == ("failed", "工作流执行失败：重试次数已达上限")
     events = await durable_store.list_events("run-max-attempts")
-    assert [(event.event_type, event.payload) for event in events] == [("run_failed", {"error": "workflow_max_attempts_exceeded"})]
+    assert [(event.event_type, event.payload) for event in events] == [
+        (
+            "run_failed",
+            {
+                "code": "max_attempts",
+                "summary": "工作流执行失败：重试次数已达上限",
+                "error": "workflow_max_attempts_exceeded",
+            },
+        )
+    ]
 
 
 @pytest.mark.asyncio

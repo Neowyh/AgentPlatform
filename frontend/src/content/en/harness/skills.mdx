@@ -118,10 +118,10 @@ Because `load_skills()` re-reads the extensions config on every call, changes ta
 
 ## Restricting skills per custom agent
 
-A custom agent can be restricted to a specific subset of skills. In the agent's config (stored in `agents/{name}/config.yaml`), set a `skills` list:
+A custom agent can be restricted to a specific subset of skills. In the agent's config (managed by the unified resource catalog, see the agent-draft under `resources/agents/<uuid>/`), set a `skills` list:
 
 ```yaml
-# agents/my-researcher/config.yaml
+# agent definition in the resource catalog (agent-draft)
 name: my-researcher
 skills:
   - deep-research

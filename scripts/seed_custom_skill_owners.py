@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Assign bundled skills and agents to a super admin as private resources.
+"""Assign bundled skills and agents to a super admin as public resources.
 
 The gateway already reconciles ``skills/custom/`` metadata at startup
 (``app.gateway.app._reconcile_resource_metadata``), but on the first boot no
@@ -47,18 +47,18 @@ def resolve_super_admin_id(db_path: Path) -> str | None:
 
 
 def seed_skill_owners(db_path: Path, skills_dir: Path, owner_id: str) -> dict:
-    """Upsert private resource_metadata for every bundled custom skill."""
+    """Upsert public resource_metadata for every bundled custom skill."""
     result = _seed_resource_owners(db_path, "skill", _skill_names(skills_dir), owner_id)
     return {**result, "skills_dir": str(skills_dir)}
 
 
 def seed_agent_owners(db_path: Path, agent_names: list[str], owner_id: str) -> dict:
-    """Upsert private resource_metadata for installed bundled agents."""
+    """Upsert public resource_metadata for installed bundled agents."""
     return _seed_resource_owners(db_path, "agent", sorted(set(agent_names)), owner_id)
 
 
 def _seed_resource_owners(db_path: Path, resource_type: str, names: list[str], owner_id: str) -> dict:
-    """Upsert private metadata for named resources of one type."""
+    """Upsert public metadata for named resources of one type."""
     added: list[str] = []
     skipped: list[str] = []
     now = _now()
@@ -80,7 +80,7 @@ def _seed_resource_owners(db_path: Path, resource_type: str, names: list[str], o
                         id, resource_type, resource_id, owner_id, department_id,
                         visibility, imported_from, version, is_favorited,
                         created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, NULL, 'private', NULL, 1, 0, ?, ?)
+                    ) VALUES (?, ?, ?, ?, NULL, 'public', 'bundled', 1, 0, ?, ?)
                     """,
                     (uuid.uuid4().hex, resource_type, name, owner_id, now, now),
                 )
@@ -102,7 +102,7 @@ def _seed_resource_owners(db_path: Path, resource_type: str, names: list[str], o
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Assign bundled custom skills to a super admin as private resources.",
+        description="Assign bundled custom skills to a super admin as public resources.",
     )
     parser.add_argument(
         "--db", required=True, help="Path to the runtime SQLite database (ideer.db)."
@@ -121,7 +121,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--agent",
         action="append",
         default=[],
-        help="Bundled agent name to assign as a private resource; may be repeated.",
+        help="Bundled agent name to assign as a public resource; may be repeated.",
     )
     return parser.parse_args(argv)
 

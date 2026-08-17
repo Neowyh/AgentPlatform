@@ -184,7 +184,6 @@ describe("en-US translations", () => {
       expect(enUS.agents.nameStepAlreadyExistsError).toBeTruthy();
       expect(enUS.agents.nameStepNetworkError).toBeTruthy();
       expect(enUS.agents.nameStepCheckError).toBeTruthy();
-      expect(enUS.agents.nameStepApiDisabledError).toBeTruthy();
     });
 
     it("has nameStepBootstrapMessage with placeholder", () => {

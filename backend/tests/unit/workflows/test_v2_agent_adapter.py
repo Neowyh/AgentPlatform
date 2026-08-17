@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import sys
 from enum import Enum
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -16,8 +17,10 @@ import pytest
 import ideer.config
 import ideer.config.agents_config
 import ideer.tools.tools
+from ideer.config.agents_config import AgentConfig
+from ideer.resources.runtime import CanonicalAgentDefinition
 from ideer.runtime.user_context import get_effective_user_id
-from ideer.workflows.v2.adapters import ActionContext, _AgentAdapter
+from ideer.workflows.v2.adapters import ActionContext, ActionResolutionError, _AgentAdapter, _CanonicalAgentAdapter
 from ideer.workflows.v2.compiler import WorkflowTransientError
 
 # conftest.py pre-injects a MagicMock for ideer.subagents.executor to dodge a
@@ -42,6 +45,7 @@ class FakeExecutor:
     captured: list = []
     thread_ids: list[str | None] = []
     effective_user_ids: list[str] = []
+    canonical_run_ids: list[str | None] = []
 
     def __init__(self, subagent, tools, app_config=None, thread_id=None) -> None:
         FakeExecutor.captured.append(subagent)
@@ -49,6 +53,7 @@ class FakeExecutor:
 
     async def _aexecute(self, prompt: str) -> SimpleNamespace:
         FakeExecutor.effective_user_ids.append(get_effective_user_id())
+        FakeExecutor.canonical_run_ids.append(getattr(self, "canonical_run_id", None))
         return SimpleNamespace(status=_Status.COMPLETED, result={"ok": True}, error=None)
 
 
@@ -57,12 +62,41 @@ def env(monkeypatch: pytest.MonkeyPatch) -> pytest.MonkeyPatch:
     FakeExecutor.captured = []
     FakeExecutor.thread_ids = []
     FakeExecutor.effective_user_ids = []
+    FakeExecutor.canonical_run_ids = []
     monkeypatch.setattr(ideer.config, "get_app_config", lambda: SimpleNamespace())
-    monkeypatch.setattr(ideer.config.agents_config, "load_agent_config", lambda name, user_id=None: _agent_config())
     monkeypatch.setattr(ideer.tools.tools, "get_available_tools", lambda groups=None, app_config=None: [])
     monkeypatch.setattr(executor_module, "SubagentExecutor", FakeExecutor)
     monkeypatch.setattr(executor_module, "SubagentStatus", _Status)
     return monkeypatch
+
+
+def _canonical_env(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    *,
+    name: str = "fault-zeroing",
+    resource_id: str = "agent-1",
+    config_yaml: str = "name: fault-zeroing\nmodel: inherit\ntool_groups: [file:read, file:write]\n",
+    soul: str = SOUL,
+    skill_rows: list | None = None,
+) -> None:
+    """Stand up the canonical branch for a plain _AgentAdapter: catalog
+    session + frozen files, mirroring the explicit canonical tests below."""
+    import ideer.config.paths
+    import ideer.persistence.engine
+
+    agent = _canonical_agent(resource_id=resource_id, slug=name)
+    version = SimpleNamespace(resource_id=resource_id, version=1, content_hash="h", storage_key=f"agent/{resource_id}")
+    session = _FakeSession(get_row=None, execute_rows=[[agent], [agent], [version], skill_rows or []])
+
+    root = tmp_path / "runtime" / "resources" / "agent" / resource_id
+    root.mkdir(parents=True)
+    (root / "config.yaml").write_text(config_yaml, encoding="utf-8")
+    if soul:
+        (root / "SOUL.md").write_text(soul, encoding="utf-8")
+
+    monkeypatch.setattr(ideer.persistence.engine, "get_session_factory", lambda: _FakeSessionFactory(session))
+    monkeypatch.setattr(ideer.config.paths, "get_paths", lambda: SimpleNamespace(base_dir=tmp_path / "runtime"))
 
 
 @pytest.mark.parametrize(
@@ -75,12 +109,8 @@ def env(monkeypatch: pytest.MonkeyPatch) -> pytest.MonkeyPatch:
     ids=["soul-plus-override", "soul-only", "override-only"],
 )
 @pytest.mark.asyncio
-async def test_agent_adapter_system_prompt_composition(env: pytest.MonkeyPatch, soul: str | None, override: str, expected: str) -> None:
-    if soul is None:
-        soul_provider = lambda name, user_id=None: None  # noqa: E731
-    else:
-        soul_provider = lambda name, user_id=None: soul  # noqa: E731
-    env.setattr(ideer.config.agents_config, "load_agent_soul", soul_provider)
+async def test_agent_adapter_system_prompt_composition(env: pytest.MonkeyPatch, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, soul: str | None, override: str, expected: str) -> None:
+    _canonical_env(monkeypatch, tmp_path, soul=soul)
 
     adapter = _AgentAdapter("fault-zeroing", "user-1")
     context = ActionContext(
@@ -106,10 +136,12 @@ async def test_agent_adapter_system_prompt_composition(env: pytest.MonkeyPatch, 
 @pytest.mark.asyncio
 async def test_agent_adapter_propagates_file_access_without_debug_stdout(
     env: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     previous_user_id = get_effective_user_id()
-    env.setattr(ideer.config.agents_config, "load_agent_soul", lambda name, user_id=None: SOUL)
+    _canonical_env(monkeypatch, tmp_path)
     adapter = _AgentAdapter("fault-zeroing", "user-1")
     context = ActionContext(
         workflow_name="fault-zeroing",
@@ -131,7 +163,7 @@ async def test_agent_adapter_propagates_file_access_without_debug_stdout(
 
 
 @pytest.mark.asyncio
-async def test_agent_adapter_filters_tools_by_tool_groups(env: pytest.MonkeyPatch) -> None:
+async def test_agent_adapter_filters_tools_by_tool_groups(env: pytest.MonkeyPatch, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """SubagentConfig.tools is a tool-name allowlist, not a group allowlist.
 
     Group names like ``file:read`` would filter away every tool. The adapter
@@ -159,6 +191,7 @@ async def test_agent_adapter_filters_tools_by_tool_groups(env: pytest.MonkeyPatc
 
     env.setattr(executor_module, "SubagentExecutor", CapturingExecutor)
     env.setattr(ideer.tools.tools, "get_available_tools", lambda groups=None, app_config=None: [t for t in tools if t.group in (groups or [])])
+    _canonical_env(monkeypatch, tmp_path)
 
     adapter = _AgentAdapter("fault-zeroing", "user-1")
     context = ActionContext(
@@ -180,9 +213,65 @@ async def test_agent_adapter_filters_tools_by_tool_groups(env: pytest.MonkeyPatc
 
 
 @pytest.mark.asyncio
-async def test_agent_adapter_respects_max_turns_param(env: pytest.MonkeyPatch) -> None:
+async def test_canonical_agent_adapter_intersects_runner_groups_and_never_loads_owner_paths(
+    env: pytest.MonkeyPatch,
+) -> None:
+    class FakeTool:
+        def __init__(self, name: str, group: str) -> None:
+            self.name = name
+            self.group = group
+
+    tools = [FakeTool("read_file", "file:read"), FakeTool("write_file", "file:write")]
+    captured_tools: list = []
+
+    class CapturingExecutor(FakeExecutor):
+        def __init__(self, subagent, tools, app_config=None, thread_id=None) -> None:
+            super().__init__(subagent, tools, app_config, thread_id)
+            captured_tools.extend(tools)
+
+    env.setattr(executor_module, "SubagentExecutor", CapturingExecutor)
+    env.setattr(
+        ideer.tools.tools,
+        "get_available_tools",
+        lambda groups=None, app_config=None: [tool for tool in tools if tool.group in (groups or [])],
+    )
+    definition = CanonicalAgentDefinition(
+        resource_id="agent-uuid",
+        version=1,
+        content_hash="a" * 64,
+        path=Path("/unused"),
+        config=AgentConfig(name="writer", tool_groups=["file:read", "file:write"], skills=[]),
+        soul="Frozen soul",
+    )
+    adapter = _CanonicalAgentAdapter(
+        definition,
+        [],
+        "runner",
+        allowed_tool_groups=frozenset({"file:read"}),
+    )
+    context = ActionContext(
+        workflow_name="flow",
+        run_id="run-canonical",
+        node_id="node",
+        inputs={},
+        state={},
+        outputs={},
+    )
+
+    result = await adapter.run(context, {"prompt": "work"})
+
+    assert result == {"ok": True}
+    assert [tool.name for tool in captured_tools] == ["read_file"]
+    assert FakeExecutor.captured[0].name == "agent-uuid"
+    assert FakeExecutor.effective_user_ids == ["runner"]
+    assert FakeExecutor.canonical_run_ids == ["run-canonical"]
+
+
+@pytest.mark.asyncio
+async def test_agent_adapter_respects_max_turns_param(env: pytest.MonkeyPatch, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Long-running nodes (e.g. report generation) can raise max_turns to
     avoid hitting the langgraph recursion limit mid-flight."""
+    _canonical_env(monkeypatch, tmp_path)
 
     adapter = _AgentAdapter("fault-zeroing", "user-1")
     context = ActionContext(
@@ -204,7 +293,7 @@ async def test_agent_adapter_respects_max_turns_param(env: pytest.MonkeyPatch) -
 
 
 @pytest.mark.asyncio
-async def test_agent_adapter_fails_when_llm_unavailable(env: pytest.MonkeyPatch) -> None:
+async def test_agent_adapter_fails_when_llm_unavailable(env: pytest.MonkeyPatch, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """The LLM error middleware returns a graceful user-facing message when
     the provider is down. A workflow node must surface that as a transient
     error (retried with backoff, then the run pauses for resume) instead of
@@ -219,6 +308,7 @@ async def test_agent_adapter_fails_when_llm_unavailable(env: pytest.MonkeyPatch)
             )
 
     env.setattr(executor_module, "SubagentExecutor", UnavailableExecutor)
+    _canonical_env(monkeypatch, tmp_path)
 
     adapter = _AgentAdapter("fault-zeroing", "user-1")
     context = ActionContext(
@@ -234,10 +324,12 @@ async def test_agent_adapter_fails_when_llm_unavailable(env: pytest.MonkeyPatch)
 
 
 @pytest.mark.asyncio
-async def test_agent_adapter_raises_when_agent_missing(env: pytest.MonkeyPatch) -> None:
-    env.setattr(ideer.config.agents_config, "load_agent_config", lambda name, user_id=None: None)
-
+async def test_agent_adapter_raises_when_agent_missing(env: pytest.MonkeyPatch, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    import ideer.persistence.engine
     from ideer.workflows.v2.adapters import ActionResolutionError
+
+    session = _FakeSession(get_row=None, execute_rows=[[]])
+    monkeypatch.setattr(ideer.persistence.engine, "get_session_factory", lambda: _FakeSessionFactory(session))
 
     adapter = _AgentAdapter("missing-agent", "user-1")
     context = ActionContext(
@@ -253,48 +345,13 @@ async def test_agent_adapter_raises_when_agent_missing(env: pytest.MonkeyPatch) 
 
 
 @pytest.mark.asyncio
-async def test_agent_adapter_shared_agent_loads_owner_config_but_runs_as_runner(
-    env: pytest.MonkeyPatch,
-) -> None:
-    """A shared agent reads config/SOUL from the declaring owner's directory
-    while the execution context (sandbox, user) stays with the runner."""
-    calls: dict[str, str | None] = {}
-
-    def record_config(name, user_id=None):
-        calls["config_user_id"] = user_id
-        return _agent_config()
-
-    def record_soul(name, user_id=None):
-        calls["soul_user_id"] = user_id
-        return SOUL
-
-    env.setattr(ideer.config.agents_config, "load_agent_config", record_config)
-    env.setattr(ideer.config.agents_config, "load_agent_soul", record_soul)
-
-    adapter = _AgentAdapter("fault-zeroing", "user-1", owner_id="owner-1")
-    context = ActionContext(
-        workflow_name="fault-zeroing",
-        run_id="run-shared",
-        node_id="evidence_collection",
-        inputs={},
-        state={},
-        outputs={},
-    )
-
-    result = await adapter.run(context, {"prompt": "执行任务"})
-
-    assert calls == {"config_user_id": "owner-1", "soul_user_id": "owner-1"}
-    assert FakeExecutor.effective_user_ids == ["user-1"]
-    assert result == {"ok": True}
-
-
-@pytest.mark.asyncio
-async def test_agent_adapter_raises_when_executor_fails(env: pytest.MonkeyPatch) -> None:
+async def test_agent_adapter_raises_when_executor_fails(env: pytest.MonkeyPatch, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     class FailingExecutor(FakeExecutor):
         async def _aexecute(self, prompt: str) -> SimpleNamespace:
             return SimpleNamespace(status=_Status.FAILED, result=None, error=None)
 
     env.setattr(executor_module, "SubagentExecutor", FailingExecutor)
+    _canonical_env(monkeypatch, tmp_path)
 
     adapter = _AgentAdapter("fault-zeroing", "user-1")
     context = ActionContext(
@@ -324,10 +381,11 @@ class StreamingExecutor(FakeExecutor):
 
 
 @pytest.mark.asyncio
-async def test_agent_adapter_streams_per_turn_tool_call_progress(env: pytest.MonkeyPatch) -> None:
+async def test_agent_adapter_streams_per_turn_tool_call_progress(env: pytest.MonkeyPatch, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Each tool call made by the subagent must surface as an action_progress
     message on the astream, bracketed by 'started' and the final result."""
     env.setattr(executor_module, "SubagentExecutor", StreamingExecutor)
+    _canonical_env(monkeypatch, tmp_path)
 
     adapter = _AgentAdapter("fault-zeroing", "user-1")
     context = ActionContext(
@@ -348,7 +406,7 @@ async def test_agent_adapter_streams_per_turn_tool_call_progress(env: pytest.Mon
 
 
 @pytest.mark.asyncio
-async def test_agent_adapter_stream_surfaces_transient_llm_failure(env: pytest.MonkeyPatch) -> None:
+async def test_agent_adapter_stream_surfaces_transient_llm_failure(env: pytest.MonkeyPatch, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """The astream must apply the same transient-error markers as run(): an
     LLM-unavailable result inside a stream raises WorkflowTransientError."""
 
@@ -362,6 +420,7 @@ async def test_agent_adapter_stream_surfaces_transient_llm_failure(env: pytest.M
             )
 
     env.setattr(executor_module, "SubagentExecutor", UnavailableStreamExecutor)
+    _canonical_env(monkeypatch, tmp_path)
 
     adapter = _AgentAdapter("fault-zeroing", "user-1")
     context = ActionContext(
@@ -376,3 +435,178 @@ async def test_agent_adapter_stream_surfaces_transient_llm_failure(env: pytest.M
     with pytest.raises(WorkflowTransientError, match="LLM provider unavailable"):
         async for _ in adapter.astream(context, {"prompt": "提取证据"}):
             pass
+
+
+class _FakeResult:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def scalars(self):
+        return iter(self._rows)
+
+    def scalar_one_or_none(self):
+        return self._rows[0] if self._rows else None
+
+
+class _FakeSession:
+    def __init__(self, *, get_row, execute_rows):
+        self._get_row = get_row
+        self._execute_rows = list(execute_rows)
+        self._execute_index = 0
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        return None
+
+    async def get(self, model, resource_id):
+        return self._get_row
+
+    async def execute(self, stmt):
+        rows = self._execute_rows[self._execute_index % len(self._execute_rows)]
+        self._execute_index += 1
+        return _FakeResult(list(rows))
+
+
+class _FakeSessionFactory:
+    def __init__(self, session):
+        self._session = session
+
+    def __call__(self):
+        return self._session
+
+
+def _canonical_agent(resource_id: str = "agent-1", slug: str = "fault-zeroing") -> SimpleNamespace:
+    return SimpleNamespace(
+        id=resource_id,
+        type="agent",
+        slug=slug,
+        owner_id="user-1",
+        visibility="private",
+        scope_department_id=None,
+        lifecycle_status="active",
+        latest_version=1,
+        draft_revision=0,
+        storage_kind="filesystem",
+        storage_key=f"agent/{resource_id}",
+    )
+
+
+def _canonical_skill(resource_id: str, slug: str) -> SimpleNamespace:
+    return SimpleNamespace(
+        id=resource_id,
+        type="skill",
+        slug=slug,
+        owner_id="user-1",
+        visibility="public",
+        lifecycle_status="active",
+    )
+
+
+@pytest.mark.asyncio
+async def test_agent_adapter_canonical_branch_loads_published_agent_via_alias(
+    monkeypatch: pytest.MonkeyPatch,
+    env: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Canonical mode resolves legacy names through the catalog and runs the frozen content."""
+    import ideer.config.paths
+    import ideer.persistence.engine
+
+    agent = _canonical_agent()
+    version = SimpleNamespace(resource_id="agent-1", version=1, content_hash="h", storage_key="agent/agent-1")
+    skill = _canonical_skill("skill-1", "fault-zeroing")
+    session = _FakeSession(get_row=None, execute_rows=[[agent], [agent], [version], [skill]])
+
+    root = tmp_path / "runtime" / "resources" / "agent" / "agent-1"
+    root.mkdir(parents=True)
+    (root / "config.yaml").write_text(
+        "name: fault-zeroing\nmodel: gpt-5\ntool_groups: [file:read]\nskills: [skill-1]\n",
+        encoding="utf-8",
+    )
+    (root / "SOUL.md").write_text(SOUL, encoding="utf-8")
+
+    monkeypatch.setattr(ideer.persistence.engine, "get_session_factory", lambda: _FakeSessionFactory(session))
+    monkeypatch.setattr(ideer.config.paths, "get_paths", lambda: SimpleNamespace(base_dir=tmp_path / "runtime"))
+
+    adapter = _AgentAdapter("fault-zeroing", "user-1")
+    context = ActionContext(
+        workflow_name="fault-zeroing",
+        run_id="run-canon-alias",
+        node_id="evidence_collection",
+        inputs={},
+        state={},
+        outputs={},
+    )
+    result = await adapter.run(context, {"prompt": "执行任务", "system_prompt": OVERRIDE})
+
+    assert result == {"ok": True}
+    captured = FakeExecutor.captured[-1]
+    assert captured.system_prompt == f"{SOUL}\n\n## 当前阶段指令\n\n{OVERRIDE}"
+    assert captured.skills == ["fault-zeroing"]
+    assert captured.model == "gpt-5"
+
+
+@pytest.mark.asyncio
+async def test_agent_adapter_canonical_branch_resolves_dependency_subset_by_slug(
+    monkeypatch: pytest.MonkeyPatch,
+    env: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Missing config.skills falls back to all catalogued skill dependencies."""
+    import ideer.config.paths
+    import ideer.persistence.engine
+
+    agent = _canonical_agent(resource_id="agent-2", slug="evidence-agent")
+    version = SimpleNamespace(resource_id="agent-2", version=1, content_hash="h", storage_key="agent/agent-2")
+    skill = _canonical_skill("skill-2", "evidence-reader")
+    session = _FakeSession(get_row=agent, execute_rows=[[agent], [version], [skill]])
+
+    root = tmp_path / "runtime" / "resources" / "agent" / "agent-2"
+    root.mkdir(parents=True)
+    (root / "config.yaml").write_text("name: evidence-agent\n", encoding="utf-8")
+    (root / "SOUL.md").write_text(SOUL, encoding="utf-8")
+
+    monkeypatch.setattr(ideer.persistence.engine, "get_session_factory", lambda: _FakeSessionFactory(session))
+    monkeypatch.setattr(ideer.config.paths, "get_paths", lambda: SimpleNamespace(base_dir=tmp_path / "runtime"))
+
+    adapter = _AgentAdapter("agent-2", "user-1")
+    context = ActionContext(
+        workflow_name="evidence-agent",
+        run_id="run-canon-uuid",
+        node_id="evidence_collection",
+        inputs={},
+        state={},
+        outputs={},
+    )
+    await adapter.run(context, {"prompt": "执行任务"})
+
+    captured = FakeExecutor.captured[-1]
+    assert captured.skills == ["evidence-reader"]
+    assert captured.system_prompt == SOUL
+    assert captured.model == "inherit"
+
+
+@pytest.mark.asyncio
+async def test_agent_adapter_canonical_branch_raises_when_agent_missing(
+    monkeypatch: pytest.MonkeyPatch,
+    env: pytest.MonkeyPatch,
+) -> None:
+    """An unresolvable agent name keeps the ActionResolutionError failure path."""
+    import ideer.persistence.engine
+
+    session = _FakeSession(get_row=None, execute_rows=[[]])
+    monkeypatch.setattr(ideer.persistence.engine, "get_session_factory", lambda: _FakeSessionFactory(session))
+
+    adapter = _AgentAdapter("missing-agent", "user-1")
+    context = ActionContext(
+        workflow_name="fault-zeroing",
+        run_id="run-canon-missing",
+        node_id="evidence_collection",
+        inputs={},
+        state={},
+        outputs={},
+    )
+    with pytest.raises(ActionResolutionError, match="agent 'missing-agent' not found"):
+        await adapter.run(context, {"prompt": "执行任务"})

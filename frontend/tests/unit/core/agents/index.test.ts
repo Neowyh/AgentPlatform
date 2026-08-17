@@ -37,7 +37,6 @@ const expectedAPISymbols = [
   "importAgent",
   "toggleAgentFavorite",
   "AgentNameCheckError",
-  "AgentsApiDisabledError",
 ] as const;
 
 const expectedHooksSymbols = [
@@ -86,26 +85,40 @@ describe("agents barrel — runtime exports", () => {
 });
 
 describe("agents barrel — api function behavior", () => {
-  test("listAgents returns agents array through barrel", async () => {
+  test("listAgents returns canonical Agents through barrel", async () => {
     const { listAgents } = await import("@/core/agents/index");
     const { fetch } = await import("@/core/api/fetcher");
     const mockFetch = vi.mocked(fetch);
 
-    const agents = [
-      {
-        name: "agent1",
-        description: "Test agent",
-        model: "gpt-4",
-        visibility: "public",
-      },
-    ];
-    mockFetch.mockResolvedValue({
+    mockFetch.mockResolvedValueOnce({
       ok: true,
-      json: () => Promise.resolve({ agents }),
+      json: () =>
+        Promise.resolve({
+          items: [
+            {
+              id: "11111111-1111-1111-1111-111111111111",
+              type: "agent",
+              slug: "agent1",
+              display_name: "agent1",
+              owner_id: "owner",
+              visibility: "private",
+              scope_department_id: null,
+              latest_version: 1,
+              draft_revision: 1,
+              can_modify: true,
+            },
+          ],
+          total: 1,
+        }),
     } as Response);
 
     const result = await listAgents();
-    expect(result).toEqual(agents);
+    expect(result).toEqual([
+      expect.objectContaining({
+        resource_id: "11111111-1111-1111-1111-111111111111",
+        name: "agent1",
+      }),
+    ]);
   });
 });
 

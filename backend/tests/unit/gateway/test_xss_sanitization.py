@@ -2,16 +2,15 @@
 
 Tests input sanitization across user-facing content paths:
 - Log parameter sanitization (sanitize_log_param)
-- Skill name validation (_validate_skill_name)
+- Skill name validation (SkillStorage.validate_skill_name)
 - Message content handling
 - XSS payload rejection patterns
 """
 
 import pytest
-from fastapi import HTTPException
 
-from app.gateway.routers.skills import _validate_skill_name
 from app.gateway.utils import sanitize_log_param
+from ideer.skills.storage.skill_storage import SkillStorage
 
 # ---------------------------------------------------------------------------
 # sanitize_log_param
@@ -86,7 +85,8 @@ class TestSanitizeLogParam:
 class TestSkillNameXSS:
     """Skill name validation rejects XSS and injection payloads.
 
-    Uses the same _validate_skill_name function as the skills router.
+    Uses the same SkillStorage.validate_skill_name function the skill
+    management tool relies on.
     """
 
     @pytest.mark.parametrize(
@@ -100,33 +100,27 @@ class TestSkillNameXSS:
             "skill with spaces",
             "skill.name",
             "skill,name",
-            "skill@name",
             "skill(name)",
             "",
         ],
     )
     def test_xss_payloads_rejected(self, name):
         """Skill names with XSS, injection, or special chars are rejected."""
-        with pytest.raises(HTTPException, match="Invalid skill name"):
-            _validate_skill_name(name)
+        with pytest.raises(ValueError, match="hyphen-case"):
+            SkillStorage.validate_skill_name(name)
 
     @pytest.mark.parametrize(
         "name",
         [
-            "validSkill",
-            "valid_skill",
             "valid-skill",
-            "Skill123",
-            "MY_SKILL",
-            "a" * 100,
-            "test-1_2-3",
-            "-start-with-dash",
-            "_underscore_start",
+            "skill123",
+            "my-skill-1",
+            "a" * 63,
         ],
     )
     def test_legitimate_names_accepted(self, name):
         """Valid skill names should not raise an error."""
-        _validate_skill_name(name)  # should not raise
+        SkillStorage.validate_skill_name(name)  # should not raise
 
 
 # ---------------------------------------------------------------------------

@@ -90,7 +90,9 @@ await client.ainvoke(thread_id=existing_thread_id, message="Follow up question")
 Build domain-specific agents by creating named agent configs and passing the `agent_name` at runtime:
 
 ```python
-# agents/research-assistant/config.yaml must exist with skills and tool config
+# The custom agent must first be created and published via the unified resource
+# catalog (/api/resources); at runtime the agent_name resolves to the resource UUID
+# and the config carries skills and tool config
 
 result = await client.ainvoke(
     thread_id=thread_id,

@@ -22,12 +22,14 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useI18n } from "@/core/i18n/hooks";
 import type { Skill } from "@/core/skills/type";
+import { classifyVisibilityChange } from "@/core/visibility-applications/options";
 
 interface SkillApplyDialogProps {
   skill: Skill | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSubmit: (targetVisibility: string, reason: string) => void | Promise<void>;
+  onChange: (targetVisibility: string) => void | Promise<void>;
 }
 
 export function SkillApplyDialog({
@@ -35,12 +37,15 @@ export function SkillApplyDialog({
   open,
   onOpenChange,
   onSubmit,
+  onChange,
 }: SkillApplyDialogProps) {
   const { t } = useI18n();
   const [targetVisibility, setTargetVisibility] =
     useState<string>("department");
   const [reason, setReason] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [confirmingDowngrade, setConfirmingDowngrade] =
+    useState<boolean>(false);
   const mountedRef = useRef(true);
   useEffect(() => {
     return () => {
@@ -48,7 +53,30 @@ export function SkillApplyDialog({
     };
   }, []);
 
+  useEffect(() => {
+    if (skill) {
+      setTargetVisibility(skill.visibility ?? "private");
+      setReason("");
+      setConfirmingDowngrade(false);
+    }
+  }, [skill]);
+
+  if (!skill) return null;
+
+  const change = classifyVisibilityChange(skill.visibility, targetVisibility);
+
+  const resetForm = () => {
+    setReason("");
+    setTargetVisibility(skill.visibility ?? "private");
+    setConfirmingDowngrade(false);
+  };
+
   const handleSubmit = async () => {
+    if (change === "unchanged") return;
+    if (change === "downgrade") {
+      setConfirmingDowngrade(true);
+      return;
+    }
     setIsSubmitting(true);
     try {
       await onSubmit(targetVisibility, reason);
@@ -56,13 +84,51 @@ export function SkillApplyDialog({
       if (mountedRef.current) {
         setIsSubmitting(false);
         onOpenChange(false);
-        setReason("");
-        setTargetVisibility("department");
+        resetForm();
       }
     }
   };
 
-  if (!skill) return null;
+  const handleConfirmDowngrade = async () => {
+    setIsSubmitting(true);
+    try {
+      await onChange(targetVisibility);
+    } finally {
+      if (mountedRef.current) {
+        setIsSubmitting(false);
+        onOpenChange(false);
+        resetForm();
+      }
+    }
+  };
+
+  if (confirmingDowngrade) {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>
+              {t.settings.skills.applyDialogDowngradeConfirmTitle}
+            </DialogTitle>
+            <DialogDescription>
+              {t.settings.skills.applyDialogDowngradeConfirmDescription}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setConfirmingDowngrade(false)}
+            >
+              {t.settings.skills.applyDialogCancel}
+            </Button>
+            <Button onClick={handleConfirmDowngrade} disabled={isSubmitting}>
+              {t.settings.skills.applyDialogConfirm}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -110,23 +176,38 @@ export function SkillApplyDialog({
               </SelectContent>
             </Select>
           </div>
-          <div className="grid gap-2">
-            <Label htmlFor="reason">
-              {t.settings.skills.applyDialogReason}
-            </Label>
-            <Textarea
-              id="reason"
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              placeholder={t.settings.skills.applyDialogReasonPlaceholder}
-            />
-          </div>
+          {change === "upgrade" && (
+            <p className="text-muted-foreground text-sm">
+              {t.settings.skills.applyDialogUpgradeHint}
+            </p>
+          )}
+          {change === "downgrade" && (
+            <p className="text-muted-foreground text-sm">
+              {t.settings.skills.applyDialogDowngradeHint}
+            </p>
+          )}
+          {change !== "downgrade" && (
+            <div className="grid gap-2">
+              <Label htmlFor="reason">
+                {t.settings.skills.applyDialogReason}
+              </Label>
+              <Textarea
+                id="reason"
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                placeholder={t.settings.skills.applyDialogReasonPlaceholder}
+              />
+            </div>
+          )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             {t.settings.skills.applyDialogCancel}
           </Button>
-          <Button onClick={handleSubmit} disabled={isSubmitting}>
+          <Button
+            onClick={handleSubmit}
+            disabled={isSubmitting || change === "unchanged"}
+          >
             {t.settings.skills.applyDialogSubmit}
           </Button>
         </DialogFooter>

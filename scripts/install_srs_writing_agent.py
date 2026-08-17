@@ -5,7 +5,7 @@ Composes the generic ``install_agent`` flow with the functional wiring the
 agent needs on a local (host-sandbox) deployment:
 
   1. Install agent files (docs/srs-writing-agent/agent) into the runtime
-     per-user agent directory and upsert resource_metadata (agent/private).
+     per-user agent directory and upsert resource_metadata (agent/public).
   2. Register the ``document`` tool group and ``read_document`` tool in
      config.yaml so docx/pdf 任务书 can be parsed.
   3. Set ``sandbox.allow_host_bash: true`` (explicit opt-in) so officecli can

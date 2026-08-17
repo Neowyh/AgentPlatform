@@ -113,8 +113,11 @@ FastAPI application providing REST endpoints for frontend integration:
 |-------|---------|
 | `GET /api/models` | List available LLM models |
 | `GET/PUT /api/mcp/config` | Manage MCP server configurations |
-| `GET/PUT /api/skills` | List and manage skills |
-| `POST /api/skills/install` | Install skill from `.skill` archive |
+| `GET /api/resources` | List skills, agents, and workflows (unified resource catalog) |
+| `GET /api/resources/{id}/published` | Get published content of a resource |
+| `PUT /api/resources/{id}/agent-draft` | Update agent draft (SOUL.md / config.yaml) |
+| `POST /api/resources/{id}/publish` | Publish a resource draft |
+| `GET /api/resources/aliases/{type}/{slug}` | Resolve legacy name aliases |
 | `GET /api/memory` | Retrieve memory data |
 | `POST /api/memory/reload` | Force memory reload |
 | `GET /api/memory/config` | Memory configuration |

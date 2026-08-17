@@ -19,6 +19,7 @@ import { fetch } from "@/core/api/fetcher";
 import {
   listVisibilityApplications,
   createVisibilityApplication,
+  changeResourceVisibility,
   reviewVisibilityApplication,
   withdrawVisibilityApplication,
 } from "@/core/visibility-applications/api";
@@ -72,7 +73,7 @@ const sampleListResponse: ApplicationsResponse = {
 
 describe("visibility-applications API", () => {
   afterEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
   });
 
   // ── listVisibilityApplications ──────────────────────────────────
@@ -111,6 +112,26 @@ describe("visibility-applications API", () => {
       expect(url.searchParams.get("resource_type")).toBe("agent");
     });
 
+    test("includes target_visibility in query string", async () => {
+      mockFetch.mockResolvedValue(okJson(sampleListResponse));
+
+      await listVisibilityApplications({ target_visibility: "public" });
+
+      const calledUrl = mockFetch.mock.calls[0]![0] as string;
+      const url = new URL(calledUrl);
+      expect(url.searchParams.get("target_visibility")).toBe("public");
+    });
+
+    test("includes applicant_id in query string", async () => {
+      mockFetch.mockResolvedValue(okJson(sampleListResponse));
+
+      await listVisibilityApplications({ applicant_id: "user-1" });
+
+      const calledUrl = mockFetch.mock.calls[0]![0] as string;
+      const url = new URL(calledUrl);
+      expect(url.searchParams.get("applicant_id")).toBe("user-1");
+    });
+
     test("includes page and page_size in query string", async () => {
       mockFetch.mockResolvedValue(okJson(sampleListResponse));
 
@@ -128,6 +149,8 @@ describe("visibility-applications API", () => {
       await listVisibilityApplications({
         status: "pending",
         resource_type: "thread",
+        target_visibility: "department",
+        applicant_id: "user-1",
         page: 3,
         page_size: 5,
       });
@@ -136,6 +159,8 @@ describe("visibility-applications API", () => {
       const url = new URL(calledUrl);
       expect(url.searchParams.get("status")).toBe("pending");
       expect(url.searchParams.get("resource_type")).toBe("thread");
+      expect(url.searchParams.get("target_visibility")).toBe("department");
+      expect(url.searchParams.get("applicant_id")).toBe("user-1");
       expect(url.searchParams.get("page")).toBe("3");
       expect(url.searchParams.get("page_size")).toBe("5");
     });
@@ -186,33 +211,80 @@ describe("visibility-applications API", () => {
   // ── createVisibilityApplication ─────────────────────────────────
 
   describe("createVisibilityApplication", () => {
-    test("sends POST request with correct body", async () => {
+    test("routes all resources through the canonical approval service", async () => {
       mockFetch.mockResolvedValue(okJson(sampleApplication));
+      const resourceId = "11111111-1111-1111-1111-111111111111";
 
-      const result = await createVisibilityApplication({
-        resource_type: "agent",
-        resource_id: "agent-1",
-        target_visibility: "public",
-        reason: "Need public access",
+      await createVisibilityApplication({
+        resource_type: "workflow",
+        resource_id: resourceId,
+        target_visibility: "department",
+        reason: "Share with department",
       });
 
       expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(mockFetch).toHaveBeenCalledWith(
+        `http://localhost:8000/api/resources/${resourceId}/visibility-applications`,
+        expect.objectContaining({
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            target_visibility: "department",
+            reason: "Share with department",
+          }),
+        }),
+      );
+    });
+  });
+
+  // ── changeResourceVisibility ────────────────────────────────────
+
+  describe("changeResourceVisibility", () => {
+    test("sends PUT request to change visibility directly", async () => {
+      mockFetch.mockResolvedValue(okJson({}));
+      const resourceId = "11111111-1111-1111-1111-111111111111";
+
+      const result = await changeResourceVisibility({
+        resource_id: resourceId,
+        visibility: "private",
+      });
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(mockFetch).toHaveBeenCalledWith(
+        `http://localhost:8000/api/resources/${resourceId}/visibility`,
+        expect.objectContaining({
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ visibility: "private" }),
+        }),
+      );
+      expect(result).toEqual({ success: true });
+    });
+
+    test("URL-encodes special characters in resourceId", async () => {
+      mockFetch.mockResolvedValue(okJson({}));
+
+      await changeResourceVisibility({
+        resource_id: "a/b=c",
+        visibility: "department",
+      });
+
       const calledUrl = mockFetch.mock.calls[0]![0] as string;
       expect(calledUrl).toBe(
-        "http://localhost:8000/api/visibility-applications",
+        "http://localhost:8000/api/resources/a%2Fb%3Dc/visibility",
       );
-      const calledInit = mockFetch.mock.calls[0]![1] as RequestInit;
-      expect(calledInit.method).toBe("POST");
-      expect(calledInit.headers).toEqual({
-        "Content-Type": "application/json",
-      });
-      expect(JSON.parse(calledInit.body as string)).toEqual({
-        resource_type: "agent",
-        resource_id: "agent-1",
-        target_visibility: "public",
-        reason: "Need public access",
-      });
-      expect(result).toEqual(sampleApplication);
+    });
+
+    test("throws via extractError when the request fails", async () => {
+      mockFetch.mockResolvedValue(notOkJson(403, "Forbidden"));
+
+      await expect(
+        changeResourceVisibility({
+          resource_id: "11111111-1111-1111-1111-111111111111",
+          visibility: "private",
+        }),
+      ).rejects.toThrow("Failed to change resource visibility");
+      expect(mockExtractError).toHaveBeenCalled();
     });
   });
 

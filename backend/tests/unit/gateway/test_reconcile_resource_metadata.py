@@ -136,89 +136,79 @@ class TestReconcileWorkflowMetadata:
         store.save_meta.assert_not_awaited()
 
 
-class TestScanAgentDirs:
-    def test_returns_per_user_and_legacy_agents(self, tmp_path):
-        from app.gateway.app import _scan_agent_dirs
-
-        per_user = tmp_path / "users" / "u1" / "agents" / "helper"
-        per_user.mkdir(parents=True)
-        legacy = tmp_path / "agents" / "legacy-agent"
-        legacy.mkdir(parents=True)
-        (tmp_path / "agents" / "not-a-dir.txt").write_text("x", encoding="utf-8")
-
-        dirs = _scan_agent_dirs(tmp_path)
-
-        assert [d.name for d in dirs] == ["helper", "legacy-agent"]
-
-    def test_per_user_shadows_legacy(self, tmp_path):
-        from app.gateway.app import _scan_agent_dirs
-
-        per_user = tmp_path / "users" / "u1" / "agents" / "dup"
-        per_user.mkdir(parents=True)
-        legacy = tmp_path / "agents" / "dup"
-        legacy.mkdir(parents=True)
-
-        dirs = _scan_agent_dirs(tmp_path)
-
-        assert len(dirs) == 1
-        assert dirs[0] == per_user
-
-    def test_missing_dirs_yield_empty(self, tmp_path):
-        from app.gateway.app import _scan_agent_dirs
-
-        assert _scan_agent_dirs(tmp_path / "nonexistent") == []
-
-
 @pytest.mark.asyncio
 class TestReconcileAgentMetadata:
-    async def test_creates_meta_for_agents_on_disk(self, tmp_path):
+    def _agent_row(self, resource_id: str, owner_id: str, visibility: str = "private", lifecycle_status: str = "active"):
+        return MagicMock(
+            id=resource_id,
+            type="agent",
+            owner_id=owner_id,
+            visibility=visibility,
+            lifecycle_status=lifecycle_status,
+        )
+
+    async def test_creates_meta_for_catalog_agents(self):
         from app.gateway.app import _reconcile_agent_metadata
 
-        per_user = tmp_path / "users" / "u1" / "agents" / "helper"
-        per_user.mkdir(parents=True)
-        (per_user / "config.yaml").write_text("owner_id: u1\n", encoding="utf-8")
-        legacy = tmp_path / "agents" / "legacy-agent"
-        legacy.mkdir(parents=True)
-        (legacy / "config.yaml").write_text("", encoding="utf-8")
+        rows = [self._agent_row("agent-1", "u1"), self._agent_row("agent-2", "u2")]
+        result = MagicMock()
+        result.scalars.return_value = rows
+        session = MagicMock()
+        session.execute = AsyncMock(return_value=result)
 
         store = MagicMock()
         store.load_meta = AsyncMock(return_value={})
         store.save_meta = AsyncMock(return_value=True)
 
-        with patch("ideer.config.paths.get_paths") as paths:
-            paths.return_value.base_dir = tmp_path
-            with patch("app.gateway.utils.ResourceMetadataStore", return_value=store):
-                with patch("app.gateway.app._resolve_resource_owner", side_effect=[("u1", "dept-1")]):
-                    await _reconcile_agent_metadata(_session_factory(MagicMock()), "admin-1")
+        with patch("app.gateway.utils.ResourceMetadataStore", return_value=store):
+            with patch("app.gateway.app._resolve_resource_owner", side_effect=[("u1", "dept-1"), ("u2", None)]):
+                await _reconcile_agent_metadata(_session_factory(session), "admin-1")
 
         store.save_meta.assert_has_awaits(
             [
-                call("helper", {"owner_id": "u1", "department_id": "dept-1", "visibility": "private"}),
-                call("legacy-agent", {"owner_id": "admin-1", "department_id": None, "visibility": "private"}),
+                call("agent-1", {"owner_id": "u1", "department_id": "dept-1", "visibility": "private"}),
+                call("agent-2", {"owner_id": "u2", "department_id": None, "visibility": "private"}),
             ]
         )
 
-    async def test_respects_config_visibility_and_skips_existing(self, tmp_path):
+    async def test_mirrors_catalog_visibility_and_skips_existing(self):
         from app.gateway.app import _reconcile_agent_metadata
 
-        existing_dir = tmp_path / "agents" / "known"
-        existing_dir.mkdir(parents=True)
-        (existing_dir / "config.yaml").write_text("owner_id: other\n", encoding="utf-8")
-        new_dir = tmp_path / "agents" / "shared"
-        new_dir.mkdir(parents=True)
-        (new_dir / "config.yaml").write_text("owner_id: u1\nvisibility: public\n", encoding="utf-8")
+        rows = [self._agent_row("agent-known", "other", visibility="public"), self._agent_row("agent-new", "u1", visibility="public")]
+        result = MagicMock()
+        result.scalars.return_value = rows
+        session = MagicMock()
+        session.execute = AsyncMock(return_value=result)
 
         store = MagicMock()
         store.load_meta = AsyncMock(side_effect=[{"owner_id": "other"}, {}])
         store.save_meta = AsyncMock(return_value=True)
 
-        with patch("ideer.config.paths.get_paths") as paths:
-            paths.return_value.base_dir = tmp_path
-            with patch("app.gateway.utils.ResourceMetadataStore", return_value=store):
-                with patch("app.gateway.app._resolve_resource_owner", return_value=("u1", None)):
-                    await _reconcile_agent_metadata(_session_factory(MagicMock()), "admin-1")
+        with patch("app.gateway.utils.ResourceMetadataStore", return_value=store):
+            with patch("app.gateway.app._resolve_resource_owner", return_value=("u1", None)):
+                await _reconcile_agent_metadata(_session_factory(session), "admin-1")
 
-        store.save_meta.assert_awaited_once_with("shared", {"owner_id": "u1", "department_id": None, "visibility": "public"})
+        store.save_meta.assert_awaited_once_with("agent-new", {"owner_id": "u1", "department_id": None, "visibility": "public"})
+
+    async def test_inactive_agents_are_not_queried(self):
+        from app.gateway.app import _reconcile_agent_metadata
+
+        session = MagicMock()
+        session.execute = AsyncMock(return_value=MagicMock())
+
+        store = MagicMock()
+        store.load_meta = AsyncMock(return_value={})
+        store.save_meta = AsyncMock(return_value=True)
+
+        with patch("app.gateway.utils.ResourceMetadataStore", return_value=store):
+            await _reconcile_agent_metadata(_session_factory(session), "admin-1")
+
+        from sqlalchemy import Select
+
+        stmt = session.execute.await_args.args[0]
+        assert isinstance(stmt, Select)
+        assert "lifecycle_status" in str(stmt)
+        store.save_meta.assert_not_awaited()
 
 
 @pytest.mark.asyncio

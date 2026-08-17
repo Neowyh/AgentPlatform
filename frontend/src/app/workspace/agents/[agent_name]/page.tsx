@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -44,7 +44,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { WorkspaceBreadcrumb } from "@/components/workspace/workspace-breadcrumb";
 import { useAgent } from "@/core/agents";
 import { useI18n } from "@/core/i18n/hooks";
-import { createVisibilityApplication } from "@/core/visibility-applications/api";
+import {
+  changeResourceVisibility,
+  createVisibilityApplication,
+} from "@/core/visibility-applications/api";
+import { classifyVisibilityChange } from "@/core/visibility-applications/options";
 
 export default function AgentDetailPage() {
   const { t } = useI18n();
@@ -56,9 +60,31 @@ export default function AgentDetailPage() {
   const [targetVisibility, setTargetVisibility] = useState("department");
   const [visibilityReason, setVisibilityReason] = useState("");
   const [submittingApplication, setSubmittingApplication] = useState(false);
+  const [confirmingDowngrade, setConfirmingDowngrade] = useState(false);
+
+  useEffect(() => {
+    if (agent?.resource_id && agent_name !== agent.resource_id) {
+      router.replace(`/workspace/agents/${agent.resource_id}`);
+    }
+  }, [agent, agent_name, router]);
+
+  useEffect(() => {
+    if (agent) {
+      setTargetVisibility(agent.visibility ?? "private");
+      setVisibilityReason("");
+      setConfirmingDowngrade(false);
+    }
+  }, [agent]);
 
   async function handleSubmitVisibility() {
-    if (!agent || !visibilityReason.trim()) {
+    if (!agent) return;
+    const change = classifyVisibilityChange(agent.visibility, targetVisibility);
+    if (change === "unchanged") return;
+    if (change === "downgrade") {
+      setConfirmingDowngrade(true);
+      return;
+    }
+    if (!visibilityReason.trim()) {
       toast.error(t.agents.visibilityReasonRequired);
       return;
     }
@@ -67,13 +93,32 @@ export default function AgentDetailPage() {
     try {
       await createVisibilityApplication({
         resource_type: "agent",
-        resource_id: agent.name,
+        resource_id: agent.resource_id ?? agent.name,
         target_visibility: targetVisibility,
         reason: visibilityReason.trim(),
       });
       toast.success(t.agents.applicationSubmitted);
       setVisibilityDialogOpen(false);
       setVisibilityReason("");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSubmittingApplication(false);
+    }
+  }
+
+  async function handleConfirmDowngrade() {
+    if (!agent) return;
+    setSubmittingApplication(true);
+    try {
+      await changeResourceVisibility({
+        resource_id: agent.resource_id ?? agent.name,
+        visibility: targetVisibility,
+      });
+      toast.success(t.agents.visibilityUpdated);
+      setVisibilityDialogOpen(false);
+      setVisibilityReason("");
+      setConfirmingDowngrade(false);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     } finally {
@@ -135,18 +180,22 @@ export default function AgentDetailPage() {
         <div className="flex items-center gap-2">
           {agent.model && <Badge variant="secondary">{agent.model}</Badge>}
           {agent.read_only && <Badge variant="outline">Template</Badge>}
-          <Button
-            variant="outline"
-            onClick={() => setVisibilityDialogOpen(true)}
-          >
-            {t.agents.applyVisibility}
-          </Button>
-          <Button asChild>
-            <Link href={`/workspace/agents/${agent_name}/edit`}>
-              <EditIcon className="mr-1.5 h-4 w-4" />
-              Edit Agent
-            </Link>
-          </Button>
+          {!agent.read_only && (
+            <>
+              <Button
+                variant="outline"
+                onClick={() => setVisibilityDialogOpen(true)}
+              >
+                {t.agents.applyVisibility}
+              </Button>
+              <Button asChild>
+                <Link href={`/workspace/agents/${agent_name}/edit`}>
+                  <EditIcon className="mr-1.5 h-4 w-4" />
+                  Edit Agent
+                </Link>
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
@@ -269,12 +318,14 @@ export default function AgentDetailPage() {
                     Start Chat
                   </Link>
                 </Button>
-                <Button variant="outline" asChild>
-                  <Link href={`/workspace/agents/${agent_name}/edit`}>
-                    <EditIcon className="mr-1.5 h-4 w-4" />
-                    Edit Configuration
-                  </Link>
-                </Button>
+                {!agent.read_only && (
+                  <Button variant="outline" asChild>
+                    <Link href={`/workspace/agents/${agent_name}/edit`}>
+                      <EditIcon className="mr-1.5 h-4 w-4" />
+                      Edit Configuration
+                    </Link>
+                  </Button>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -287,68 +338,131 @@ export default function AgentDetailPage() {
         onOpenChange={setVisibilityDialogOpen}
       >
         <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t.agents.applyVisibility}</DialogTitle>
-            <DialogDescription>
-              {t.agents.applyVisibilityDescription}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>{t.agents.currentVisibility}</Label>
-              <p className="text-muted-foreground text-sm">
-                {agent.visibility}
-              </p>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="target-visibility">
-                {t.agents.targetVisibility}
-              </Label>
-              <Select
-                value={targetVisibility}
-                onValueChange={setTargetVisibility}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="private">
-                    {t.agents.visibilityPrivate}
-                  </SelectItem>
-                  <SelectItem value="department">
-                    {t.agents.visibilityDepartment}
-                  </SelectItem>
-                  <SelectItem value="public">
-                    {t.agents.visibilityPublic}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="reason">{t.agents.reason}</Label>
-              <Textarea
-                id="reason"
-                placeholder={t.agents.reasonPlaceholder}
-                value={visibilityReason}
-                onChange={(e) => setVisibilityReason(e.target.value)}
-                rows={3}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setVisibilityDialogOpen(false)}
-            >
-              {t.common.cancel}
-            </Button>
-            <Button
-              onClick={handleSubmitVisibility}
-              disabled={submittingApplication || !visibilityReason.trim()}
-            >
-              {submittingApplication ? t.agents.submitting : t.agents.submit}
-            </Button>
-          </DialogFooter>
+          {confirmingDowngrade ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>{t.agents.downgradeConfirmTitle}</DialogTitle>
+                <DialogDescription>
+                  {t.agents.downgradeConfirmDescription}
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => setConfirmingDowngrade(false)}
+                >
+                  {t.common.cancel}
+                </Button>
+                <Button
+                  onClick={handleConfirmDowngrade}
+                  disabled={submittingApplication}
+                >
+                  {submittingApplication
+                    ? t.agents.submitting
+                    : t.agents.confirm}
+                </Button>
+              </DialogFooter>
+            </>
+          ) : (
+            <>
+              <DialogHeader>
+                <DialogTitle>{t.agents.applyVisibility}</DialogTitle>
+                <DialogDescription>
+                  {t.agents.applyVisibilityDescription}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label>{t.agents.currentVisibility}</Label>
+                  <p className="text-muted-foreground text-sm">
+                    {agent.visibility}
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="target-visibility">
+                    {t.agents.targetVisibility}
+                  </Label>
+                  <Select
+                    value={targetVisibility}
+                    onValueChange={setTargetVisibility}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="private">
+                        {t.agents.visibilityPrivate}
+                      </SelectItem>
+                      <SelectItem value="department">
+                        {t.agents.visibilityDepartment}
+                      </SelectItem>
+                      <SelectItem value="public">
+                        {t.agents.visibilityPublic}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {classifyVisibilityChange(
+                  agent.visibility,
+                  targetVisibility,
+                ) === "upgrade" && (
+                  <p className="text-muted-foreground text-sm">
+                    {t.agents.visibilityUpgradeHint}
+                  </p>
+                )}
+                {classifyVisibilityChange(
+                  agent.visibility,
+                  targetVisibility,
+                ) === "downgrade" && (
+                  <p className="text-muted-foreground text-sm">
+                    {t.agents.visibilityDowngradeHint}
+                  </p>
+                )}
+                {classifyVisibilityChange(
+                  agent.visibility,
+                  targetVisibility,
+                ) !== "downgrade" && (
+                  <div className="space-y-2">
+                    <Label htmlFor="reason">{t.agents.reason}</Label>
+                    <Textarea
+                      id="reason"
+                      placeholder={t.agents.reasonPlaceholder}
+                      value={visibilityReason}
+                      onChange={(e) => setVisibilityReason(e.target.value)}
+                      rows={3}
+                    />
+                  </div>
+                )}
+              </div>
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => setVisibilityDialogOpen(false)}
+                >
+                  {t.common.cancel}
+                </Button>
+                <Button
+                  onClick={handleSubmitVisibility}
+                  disabled={
+                    submittingApplication ||
+                    classifyVisibilityChange(
+                      agent.visibility,
+                      targetVisibility,
+                    ) === "unchanged" ||
+                    (classifyVisibilityChange(
+                      agent.visibility,
+                      targetVisibility,
+                    ) === "upgrade" &&
+                      !visibilityReason.trim())
+                  }
+                >
+                  {submittingApplication
+                    ? t.agents.submitting
+                    : t.agents.submit}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </div>

@@ -11,6 +11,7 @@ import asyncio
 import json
 import logging
 import re
+import uuid
 from collections.abc import Mapping
 from typing import Any
 
@@ -19,7 +20,7 @@ from langchain_core.messages import BaseMessage
 from langchain_core.messages.utils import convert_to_messages
 
 from app.gateway.deps import get_run_context, get_run_manager, get_stream_bridge
-from app.gateway.utils import ResourceMetadataStore, sanitize_log_param
+from app.gateway.utils import sanitize_log_param
 from ideer.config.app_config import get_app_config
 from ideer.runtime import (
     END_SENTINEL,
@@ -185,6 +186,118 @@ def resolve_agent_factory(assistant_id: str | None):
     return make_lead_agent
 
 
+def _canonical_assistant_id(assistant_id: str | None) -> str | None:
+    if not assistant_id or assistant_id == _DEFAULT_ASSISTANT_ID:
+        return None
+    try:
+        return str(uuid.UUID(assistant_id))
+    except ValueError:
+        return None
+
+
+async def _prepare_canonical_agent_run(
+    resource_id: str,
+    request: Request,
+    run_id: str,
+):
+    """Freeze and load a canonical Agent closure before the Run is claimable."""
+
+    from sqlalchemy import select
+
+    from ideer.agents.lead_agent.agent import build_canonical_lead_agent_factory
+    from ideer.config import get_paths
+    from ideer.persistence.engine import get_session_factory
+    from ideer.persistence.models.user import UserModel, UserRole
+    from ideer.resources.runtime import CanonicalResourceLoader, ResourceRuntimeError
+    from ideer.resources.service import (
+        ResourceAction,
+        ResourceActor,
+        ResourceConflict,
+        ResourceNotFound,
+        ResourcePermissionDenied,
+        ResourceService,
+        VisibilityClosureError,
+    )
+    from ideer.resources.storage import ResourceStorage
+
+    user_id = getattr(getattr(request.state, "user", None), "id", None)
+    if user_id is None:
+        raise HTTPException(401, "Authentication required")
+    session_factory = get_session_factory()
+    if session_factory is None:
+        raise HTTPException(503, "Resource persistence is unavailable")
+    try:
+        async with session_factory() as session:
+            user = (
+                await session.execute(
+                    select(UserModel).where(
+                        UserModel.id == str(user_id),
+                        UserModel.disabled.is_not(True),
+                    )
+                )
+            ).scalar_one_or_none()
+            if user is None:
+                raise ResourcePermissionDenied("Active RBAC user is required")
+            permissions = {ResourceAction.READ}
+            if user.role in {UserRole.USER, UserRole.DEPARTMENT_ADMIN, UserRole.SUPER_ADMIN}:
+                permissions.add(ResourceAction.USE)
+            actor = ResourceActor(
+                user_id=str(user.id),
+                department_id=str(user.department_id) if user.department_id is not None else None,
+                role=str(user.role),
+                permissions=frozenset(permissions),
+                tool_groups=None,
+            )
+            await ResourceService(session, actor).create_run_snapshot(run_id, resource_id)
+            storage = ResourceStorage(get_paths().base_dir)
+            loader = CanonicalResourceLoader(session, storage)
+            definition = await loader.load_agent(run_id, resource_id)
+            skill_definitions = await loader.load_agent_skill_definitions(run_id, resource_id)
+            skills = [value.skill for value in skill_definitions]
+            await asyncio.to_thread(
+                storage.create_run_skill_view,
+                run_id,
+                [(value.resource_id, value.version, value.content_hash) for value in skill_definitions],
+            )
+            await session.commit()
+        return build_canonical_lead_agent_factory(
+            definition,
+            skills,
+            runner_tool_groups=actor.tool_groups,
+        )
+    except ResourceNotFound as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except ResourcePermissionDenied as exc:
+        raise HTTPException(403, str(exc)) from exc
+    except VisibilityClosureError as exc:
+        raise HTTPException(
+            409,
+            detail={
+                "code": "visibility_closure_violation",
+                "message": str(exc),
+                "violations": exc.violations,
+            },
+        ) from exc
+    except (ResourceConflict, ResourceRuntimeError) as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
+async def _discard_canonical_run_snapshot(run_id: str) -> None:
+    """Compensate a prepared snapshot when Run creation is rejected."""
+
+    from sqlalchemy import delete
+
+    from ideer.persistence.engine import get_session_factory
+    from ideer.persistence.models.resource_catalog import RunResourceSnapshot
+
+    session_factory = get_session_factory()
+    if session_factory is None:
+        return
+    async with session_factory() as session:
+        await session.execute(delete(RunResourceSnapshot).where(RunResourceSnapshot.run_id == run_id))
+        await session.commit()
+
+
 def build_run_config(
     thread_id: str,
     request_config: dict[str, Any] | None,
@@ -262,59 +375,66 @@ def build_run_config(
 # ---------------------------------------------------------------------------
 
 
-async def _resolve_run_agent_owner(body: Any, request: Request) -> str | None:
-    """Resolve the declaring owner of a shared agent for a run.
+async def _resolve_canonical_alias(assistant_id: str | None, request: Request) -> str | None:
+    """Resolve a legacy-name assistant through the catalog alias resolver.
 
-    Mirrors the read API (``GET /api/agents``): when the requested agent is
-    absent from the current user's directories (per-user and legacy shared
-    layouts), consult ``resource_metadata``. If a record exists for another
-    user whose directory holds the agent, enforce RBAC visibility — a denied
-    request is a 404, so the existence of the agent is not leaked — and return
-    the owner id so the harness loads config/SOUL from the owner's directory.
-
-    Returns ``None`` when no agent is requested, no authenticated user is
-    available, the database is unavailable, or no owner record exists — the
-    legacy failure mode is preserved in those cases.
+    Legacy owner-directory reads are sealed, so names must map to an active
+    catalog resource — owner-first, then a unique visible shared resource.
+    Unknown names (404) and ambiguous names (409) fail closed instead of
+    leaking legacy behavior. The default assistant is preserved and returns
+    ``None``.
     """
-    body_context = getattr(body, "context", None) or {}
-    agent_name = body_context.get("agent_name")
-    if not agent_name:
-        assistant_id = getattr(body, "assistant_id", None)
-        if assistant_id and assistant_id != _DEFAULT_ASSISTANT_ID:
-            agent_name = assistant_id.strip().lower().replace("_", "-")
-    if not agent_name:
+
+    if not assistant_id or assistant_id == _DEFAULT_ASSISTANT_ID:
         return None
 
-    user = getattr(request.state, "user", None)
-    user_id = getattr(user, "id", None)
-    if not user_id:
-        return None
-    user_id = str(user_id)
+    user_id = getattr(getattr(request.state, "user", None), "id", None)
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
 
-    from ideer.config.agents_config import resolve_agent_dir, validate_agent_name
+    from sqlalchemy import select
 
+    from ideer.persistence.engine import get_session_factory
+    from ideer.persistence.models.user import UserModel
+    from ideer.resources.service import (
+        ResourceAction,
+        ResourceActor,
+        ResourceConflict,
+        ResourceNotFound,
+        ResourcePermissionDenied,
+        ResourceService,
+    )
+
+    session_factory = get_session_factory()
+    if session_factory is None:
+        raise HTTPException(status_code=503, detail="Resource persistence is unavailable")
     try:
-        agent_name = validate_agent_name(agent_name)
-    except ValueError:
-        return None
-    if resolve_agent_dir(agent_name, user_id=user_id).exists():
-        return None
-
-    meta = await ResourceMetadataStore("agent").load_meta(agent_name)
-    owner_id = meta.get("owner_id")
-    if not owner_id or owner_id == user_id:
-        return None
-    owner_id = str(owner_id)
-    from ideer.config.paths import get_paths
-
-    if not get_paths().user_agent_dir(owner_id, agent_name).exists():
-        return None
-
-    from app.gateway.authz import check_resource_access
-
-    if not check_resource_access(user, owner_id, meta.get("department_id"), meta.get("visibility", "private")):
-        raise HTTPException(status_code=404, detail=f"Agent '{agent_name}' not found")
-    return owner_id
+        async with session_factory() as session:
+            user = (
+                await session.execute(
+                    select(UserModel).where(
+                        UserModel.id == str(user_id),
+                        UserModel.disabled.is_not(True),
+                    )
+                )
+            ).scalar_one_or_none()
+            if user is None:
+                raise ResourcePermissionDenied("Active RBAC user is required")
+            actor = ResourceActor(
+                user_id=str(user.id),
+                department_id=str(user.department_id) if user.department_id is not None else None,
+                role=str(user.role),
+                permissions=frozenset({ResourceAction.READ, ResourceAction.USE}),
+                tool_groups=None,
+            )
+            resource = await ResourceService(session, actor).resolve_legacy_alias("agent", assistant_id)
+        return resource.id
+    except ResourceNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ResourcePermissionDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ResourceConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 async def start_run(
@@ -343,9 +463,23 @@ async def start_run(
     body_context = getattr(body, "context", None) or {}
     model_name = body_context.get("model_name")
 
-    # Resolve the declaring owner of a shared agent before the run record is
-    # created so denied requests 404 without leaving side effects behind.
-    agent_owner_id = await _resolve_run_agent_owner(body, request)
+    canonical_resource_id = _canonical_assistant_id(getattr(body, "assistant_id", None))
+    # The workspace and channel manager always send the default assistant id
+    # and carry the requested agent in ``context.agent_name``; treat a UUID
+    # there as a canonical resource the same way as an assistant_id UUID.
+    if canonical_resource_id is None:
+        canonical_resource_id = _canonical_assistant_id(body_context.get("agent_name"))
+    # Legacy owner-directory reads are sealed: legacy-name assistants
+    # resolve through the catalog alias resolver (owner-first, unique
+    # visible shared), failing closed when unknown or ambiguous.
+    # ``context.agent_name`` takes precedence over assistant_id because it is
+    # where the workspace and channels actually carry the requested agent.
+    # Bootstrap runs carry the name of the agent being created, which cannot
+    # exist in the catalog yet — skip resolution so setup_agent can create it.
+    if canonical_resource_id is None and not body_context.get("is_bootstrap"):
+        candidate = body_context.get("agent_name") or getattr(body, "assistant_id", None)
+        if candidate:
+            canonical_resource_id = await _resolve_canonical_alias(candidate, request)
 
     # Coerce non-string model_name values to str before truncation.
     if model_name is not None and not isinstance(model_name, str):
@@ -361,20 +495,32 @@ async def start_run(
                 detail=f"Model {model_name!r} is not in the configured model allowlist",
             )
 
+    canonical_run_id = str(uuid.uuid4()) if canonical_resource_id else None
+    canonical_factory = await _prepare_canonical_agent_run(canonical_resource_id, request, canonical_run_id) if canonical_resource_id and canonical_run_id else None
+
     try:
-        record = await run_mgr.create_or_reject(
-            thread_id,
-            body.assistant_id,
-            on_disconnect=disconnect,
-            metadata=body.metadata or {},
-            kwargs={"input": body.input, "config": body.config},
-            multitask_strategy=body.multitask_strategy,
-            model_name=model_name,
-        )
+        create_kwargs = {
+            "on_disconnect": disconnect,
+            "metadata": body.metadata or {},
+            "kwargs": {"input": body.input, "config": body.config},
+            "multitask_strategy": body.multitask_strategy,
+            "model_name": model_name,
+        }
+        if canonical_run_id:
+            create_kwargs["run_id"] = canonical_run_id
+        record = await run_mgr.create_or_reject(thread_id, body.assistant_id, **create_kwargs)
     except ConflictError as exc:
+        if canonical_run_id:
+            await _discard_canonical_run_snapshot(canonical_run_id)
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except UnsupportedStrategyError as exc:
+        if canonical_run_id:
+            await _discard_canonical_run_snapshot(canonical_run_id)
         raise HTTPException(status_code=501, detail=str(exc)) from exc
+    except BaseException:
+        if canonical_run_id:
+            await _discard_canonical_run_snapshot(canonical_run_id)
+        raise
 
     # Upsert thread metadata so the thread appears in /threads/search,
     # even for threads that were never explicitly created via POST /threads
@@ -392,9 +538,15 @@ async def start_run(
     except Exception:
         logger.warning("Failed to upsert thread_meta for %s (non-fatal)", sanitize_log_param(thread_id))
 
-    agent_factory = resolve_agent_factory(body.assistant_id)
+    agent_factory = canonical_factory or resolve_agent_factory(body.assistant_id)
     graph_input = normalize_input(body.input)
     config = build_run_config(thread_id, body.config, body.metadata, assistant_id=body.assistant_id)
+
+    if canonical_run_id:
+        for container_name in ("context", "configurable"):
+            container = config.setdefault(container_name, {})
+            if isinstance(container, dict):
+                container["canonical_run_id"] = canonical_run_id
 
     # Merge iDeer-specific context overrides into both ``configurable`` and ``context``.
     # The ``context`` field is a custom extension for the langgraph-compat layer
@@ -402,12 +554,6 @@ async def start_run(
     # Only agent-relevant keys are forwarded; unknown keys (e.g. thread_id) are ignored.
     merge_run_context_overrides(config, getattr(body, "context", None))
     inject_authenticated_user_context(config, request)
-    if agent_owner_id:
-        # Stamp the declaring owner so the harness loads config/SOUL from the
-        # owner's directory; the run context itself stays with the runner.
-        for container in (config.get("context"), config.get("configurable")):
-            if isinstance(container, dict):
-                container.setdefault("agent_owner_id", agent_owner_id)
 
     stream_modes = normalize_stream_modes(body.stream_mode)
 

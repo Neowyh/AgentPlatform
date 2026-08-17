@@ -31,7 +31,6 @@ vi.mock("@/core/i18n/hooks", () => ({
         nameStepContinue: "Continue",
         nameStepInvalidError: "Invalid name",
         nameStepAlreadyExistsError: "Already exists",
-        nameStepApiDisabledError: "API disabled",
         nameStepNetworkError: "Network error",
         nameStepCheckError: "Check error",
         nameStepBootstrapMessage: "Hello {name}",
@@ -67,7 +66,6 @@ vi.mock("@/core/agents/api", () => ({
       this.reason = reason;
     }
   },
-  AgentsApiDisabledError: class extends Error {},
 }));
 
 vi.mock("@/core/auth/AuthProvider", () => ({
@@ -562,19 +560,6 @@ describe("NewAgentPage", () => {
 
       await act(async () => {});
       expect(screen.getByText("Already exists")).toBeInTheDocument();
-    });
-
-    test("AgentsApiDisabledError shows API disabled error", async () => {
-      const { AgentsApiDisabledError } = await import("@/core/agents/api");
-      mockedCheckAgentName.mockRejectedValue(
-        new AgentsApiDisabledError("disabled"),
-      );
-      renderPage();
-      fireEvent.change(getNameInput(), { target: { value: "test-agent" } });
-      fireEvent.click(getContinueButton());
-
-      await act(async () => {});
-      expect(screen.getByText("API disabled")).toBeInTheDocument();
     });
 
     test("AgentNameCheckError with backend_unreachable shows network error", async () => {

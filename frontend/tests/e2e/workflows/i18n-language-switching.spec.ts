@@ -346,8 +346,11 @@ test.describe("i18n — Language switching", () => {
       ).toBeVisible({ timeout: 15_000 });
 
       // Cookie should also be updated to the normalized value.
-      const cookie = await getLocaleCookie(page);
-      expect(cookie).toBe("zh-CN");
+      // (poll: SSR renders with the normalized locale, so the client-side
+      // effect that rewrites the cookie may lag behind the visible UI)
+      await expect
+        .poll(async () => getLocaleCookie(page), { timeout: 15_000 })
+        .toBe("zh-CN");
     });
 
     test("navigator.language is used when no cookie is set", async ({

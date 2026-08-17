@@ -14,12 +14,15 @@ async function submitApplication(
   page: Page,
   agentName: string,
   reason: string,
+  targetVisibility: "department" | "public" = "department",
 ) {
   await page.goto(`/workspace/agents/${encodeURIComponent(agentName)}`);
   await page
     .getByRole("button", { name: /apply.*visibility|申请.*可见性/i })
     .click();
   const dialog = page.getByRole("dialog");
+  await dialog.getByRole("combobox").click();
+  await dialog.getByRole("option", { name: targetVisibility }).click();
   await dialog.getByLabel(/reason|理由/i).fill(reason);
   await dialog.getByRole("button", { name: /submit|提交/i }).click();
   await expect(

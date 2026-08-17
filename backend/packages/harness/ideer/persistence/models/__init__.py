@@ -16,6 +16,18 @@ there is no matching entity directory.
 
 from ideer.persistence.feedback.model import FeedbackRow
 from ideer.persistence.models.audit_log import AuditLog
+from ideer.persistence.models.resource_catalog import (
+    Resource,
+    ResourceDependency,
+    ResourceDraft,
+    ResourceFavorite,
+    ResourceLifecycleStatus,
+    ResourceNotification,
+    ResourceStorageKind,
+    ResourceType,
+    ResourceVersion,
+    RunResourceSnapshot,
+)
 from ideer.persistence.models.resource_metadata import ResourceMetadata
 from ideer.persistence.models.run_event import RunEventRow
 from ideer.persistence.models.user import DepartmentModel, ResourceVisibility, UserModel, UserRole
@@ -37,10 +49,20 @@ __all__ = [
     "DepartmentModel",
     "FeedbackRow",
     "LegacyWorkflowRunRow",
+    "Resource",
+    "ResourceDependency",
+    "ResourceDraft",
+    "ResourceFavorite",
+    "ResourceLifecycleStatus",
+    "ResourceNotification",
     "ResourceMetadata",
+    "ResourceStorageKind",
+    "ResourceType",
+    "ResourceVersion",
     "ResourceVisibility",
     "RunEventRow",
     "RunRow",
+    "RunResourceSnapshot",
     "ThreadMetaRow",
     "UserModel",
     "UserRole",

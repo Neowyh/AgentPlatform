@@ -135,6 +135,12 @@ def _is_skills_path(path: str) -> bool:
     return path == skills_prefix or path.startswith(f"{skills_prefix}/")
 
 
+def _is_canonical_run_skills_path(path: str) -> bool:
+    from ideer.resources.canonical_sandbox import CANONICAL_SKILLS_CONTAINER_PATH
+
+    return path == CANONICAL_SKILLS_CONTAINER_PATH or path.startswith(f"{CANONICAL_SKILLS_CONTAINER_PATH}/")
+
+
 def _resolve_skills_path(path: str) -> str:
     """Resolve a virtual skills path to a host filesystem path.
 
@@ -379,9 +385,9 @@ def _resolve_local_read_path(path: str, thread_data: ThreadDataState) -> str:
         return _resolve_skills_path(path)
     if _is_acp_workspace_path(path):
         return _resolve_acp_workspace_path(path, _extract_thread_id_from_thread_data(thread_data))
-    if not _is_custom_mount_path(path):
+    if not (_is_custom_mount_path(path) or _is_canonical_run_skills_path(path)):
         return _resolve_and_validate_user_data_path(path, thread_data)
-    # Custom mount paths are resolved by LocalSandbox._resolve_path()
+    # Custom and frozen Run Skill mounts are resolved by LocalSandbox._resolve_path().
     return path
 
 
@@ -638,6 +644,7 @@ def validate_local_tool_path(path: str, thread_data: ThreadDataState | None, *, 
     Allowed virtual-path families:
       - ``/mnt/user-data/*``  — always allowed (read + write)
       - ``/mnt/skills/*``     — allowed only when *read_only* is True
+      - ``/mnt/run-skills/*`` — allowed only when *read_only* is True
       - ``/mnt/acp-workspace/*`` — allowed only when *read_only* is True
       - Custom mount paths (from config.yaml) — respects per-mount ``read_only`` flag
 
@@ -659,6 +666,11 @@ def validate_local_tool_path(path: str, thread_data: ThreadDataState | None, *, 
     if _is_skills_path(path):
         if not read_only:
             raise PermissionError(f"Write access to skills path is not allowed: {path}")
+        return
+
+    if _is_canonical_run_skills_path(path):
+        if not read_only:
+            raise PermissionError(f"Write access to canonical Run skills is not allowed: {path}")
         return
 
     # ACP workspace paths — read-only access only
@@ -791,6 +803,10 @@ def _is_allowed_local_bash_absolute_path(path: str, allowed_paths: list[str], *,
 
     # Allow skills container path (resolved by tools.py before passing to sandbox)
     if _is_skills_path(path):
+        _reject_path_traversal(path)
+        return True
+
+    if _is_canonical_run_skills_path(path):
         _reject_path_traversal(path)
         return True
 
@@ -1140,6 +1156,14 @@ def ensure_sandbox_initialized(runtime: Runtime | None = None) -> Sandbox:
     if thread_id is None:
         raise SandboxRuntimeError("Thread ID not available in runtime context")
 
+    canonical_run_id = runtime.context.get("canonical_run_id") if runtime.context else None
+    if canonical_run_id is None and runtime.config:
+        canonical_run_id = runtime.config.get("configurable", {}).get("canonical_run_id")
+    if canonical_run_id:
+        from ideer.resources.canonical_sandbox import canonical_sandbox_scope
+
+        thread_id = canonical_sandbox_scope(thread_id, str(canonical_run_id))
+
     provider = get_sandbox_provider()
     sandbox_id = provider.acquire(thread_id)
 
@@ -1184,6 +1208,14 @@ async def ensure_sandbox_initialized_async(runtime: Runtime | None = None) -> Sa
         thread_id = runtime.config.get("configurable", {}).get("thread_id") if runtime.config else None
     if thread_id is None:
         raise SandboxRuntimeError("Thread ID not available in runtime context")
+
+    canonical_run_id = runtime.context.get("canonical_run_id") if runtime.context else None
+    if canonical_run_id is None and runtime.config:
+        canonical_run_id = runtime.config.get("configurable", {}).get("canonical_run_id")
+    if canonical_run_id:
+        from ideer.resources.canonical_sandbox import canonical_sandbox_scope
+
+        thread_id = canonical_sandbox_scope(thread_id, str(canonical_run_id))
 
     provider = get_sandbox_provider()
     sandbox_id = await provider.acquire_async(thread_id)
@@ -1407,9 +1439,9 @@ def ls_tool(runtime: Runtime, description: str, path: str) -> str:
                 path = _resolve_skills_path(path)
             elif _is_acp_workspace_path(path):
                 path = _resolve_acp_workspace_path(path, _extract_thread_id_from_thread_data(thread_data))
-            elif not _is_custom_mount_path(path):
+            elif not (_is_custom_mount_path(path) or _is_canonical_run_skills_path(path)):
                 path = _resolve_and_validate_user_data_path(path, thread_data)
-            # Custom mount paths are resolved by LocalSandbox._resolve_path()
+            # Custom and frozen Run Skill mounts are resolved by LocalSandbox._resolve_path().
         children = sandbox.list_dir(path)
         if not children:
             return "(empty)"
@@ -1636,9 +1668,9 @@ def read_file_tool(
                 path = _resolve_skills_path(path)
             elif _is_acp_workspace_path(path):
                 path = _resolve_acp_workspace_path(path, _extract_thread_id_from_thread_data(thread_data))
-            elif not _is_custom_mount_path(path):
+            elif not (_is_custom_mount_path(path) or _is_canonical_run_skills_path(path)):
                 path = _resolve_and_validate_user_data_path(path, thread_data)
-            # Custom mount paths are resolved by LocalSandbox._resolve_path()
+            # Custom and frozen Run Skill mounts are resolved by LocalSandbox._resolve_path().
         content = sandbox.read_file(path)
         if not content:
             return "(empty)"

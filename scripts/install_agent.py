@@ -74,9 +74,9 @@ def _upsert_agent_metadata(db_path: Path, agent_name: str, owner_id: str) -> Non
                 INSERT INTO resource_metadata (
                     id, resource_type, resource_id, owner_id, department_id,
                     visibility, version, is_favorited, created_at, updated_at
-                ) VALUES (?, 'agent', ?, ?, NULL, 'private', 1, 0, ?, ?)
+                ) VALUES (?, 'agent', ?, ?, NULL, 'public', 1, 0, ?, ?)
                 ON CONFLICT(resource_type, resource_id, owner_id)
-                DO UPDATE SET visibility='private', department_id=NULL
+                DO UPDATE SET visibility='public', department_id=NULL
                 """,
                 (uuid4().hex, agent_name, owner_id, now, now),
             )

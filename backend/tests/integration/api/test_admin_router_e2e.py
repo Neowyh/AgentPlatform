@@ -451,6 +451,7 @@ class TestAdminDeleteDepartment:
                 mock_find_result,  # find department
                 mock_count_result,  # count members
                 mock_ok_result,  # update users department_id
+                mock_ok_result,  # query canonical resources for governance
                 mock_ok_result,  # downgrade department resources
                 mock_ok_result,  # clear department_id on resources
             ]

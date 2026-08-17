@@ -89,7 +89,8 @@ await client.ainvoke(thread_id=existing_thread_id, message="后续问题")
 通过创建命名 Agent 配置并在运行时传入 `agent_name` 来构建领域特定 Agent：
 
 ```python
-# agents/research-assistant/config.yaml 必须存在并包含技能和工具配置
+# 自定义 Agent 需先通过统一资源目录（canonical）创建并发布（/api/resources）
+# 运行时按 agent_name 解析资源 UUID，配置包含技能和工具配置
 
 result = await client.ainvoke(
     thread_id=thread_id,

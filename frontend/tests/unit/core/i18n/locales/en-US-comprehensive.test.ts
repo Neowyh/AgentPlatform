@@ -361,8 +361,6 @@ describe("enUS locale comprehensive", () => {
         "Network request failed — check your network or backend connection",
       nameStepCheckError:
         "Could not verify name availability — please try again",
-      nameStepApiDisabledError:
-        "Custom agent management is not enabled on this server. Please contact your administrator.",
       nameStepBootstrapMessage:
         "The new custom agent name is {name}. Help me design its purpose, behavior, and SOUL.md before saving it.",
       save: "Save agent",
@@ -400,6 +398,15 @@ describe("enUS locale comprehensive", () => {
       submitting: "Submitting...",
       submit: "Submit Application",
       applicationSubmitted: "Application submitted",
+      visibilityUpgradeHint:
+        "Upgrading visibility requires admin approval and takes effect after review.",
+      visibilityDowngradeHint:
+        "Downgrading visibility takes effect immediately without approval.",
+      visibilityUpdated: "Visibility updated",
+      downgradeConfirmTitle: "Confirm visibility downgrade",
+      downgradeConfirmDescription:
+        "The downgrade takes effect immediately without approval. Continue?",
+      confirm: "Confirm",
     };
 
     for (const [key, value] of Object.entries(expected)) {
@@ -567,7 +574,7 @@ describe("enUS locale comprehensive", () => {
     }
 
     it("has 14 keys", () => {
-      expect(Object.keys(enUS.workspace)).toHaveLength(14);
+      expect(Object.keys(enUS.workspace)).toHaveLength(15);
     });
   });
 
@@ -1131,8 +1138,8 @@ describe("enUS locale comprehensive", () => {
         });
       }
 
-      it("has 23 keys", () => {
-        expect(Object.keys(enUS.settings.skills)).toHaveLength(23);
+      it("has 29 keys", () => {
+        expect(Object.keys(enUS.settings.skills)).toHaveLength(29);
       });
     });
 

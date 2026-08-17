@@ -91,7 +91,10 @@ class TestValidateRoots:
 
     def test_host_path_roots_are_rejected(self, custom_mounts) -> None:
         invalid = validate_roots({"read": [], "write": ["/home/user/out.json", "/tmp/x.json"]})
-        assert invalid == ["write:/home/user/out.json", "write:/tmp/x.json"]
+        assert invalid == [
+            {"access": "write", "path": "/home/user/out.json"},
+            {"access": "write", "path": "/tmp/x.json"},
+        ]
 
     def test_write_to_readonly_areas_is_rejected(self, custom_mounts) -> None:
         invalid = validate_roots(
@@ -100,7 +103,11 @@ class TestValidateRoots:
                 "write": ["/mnt/skills/custom/x.json", "/mnt/acp-workspace/y", "/mnt/eval-cases/z.json"],
             }
         )
-        assert invalid == ["write:/mnt/skills/custom/x.json", "write:/mnt/acp-workspace/y", "write:/mnt/eval-cases/z.json"]
+        assert invalid == [
+            {"access": "write", "path": "/mnt/skills/custom/x.json"},
+            {"access": "write", "path": "/mnt/acp-workspace/y"},
+            {"access": "write", "path": "/mnt/eval-cases/z.json"},
+        ]
 
     def test_writable_custom_mount_is_allowed(self, custom_mounts) -> None:
         assert validate_roots({"read": [], "write": ["/mnt/fault-zeroing-outputs/run1/a.json"]}) == []
@@ -194,7 +201,7 @@ class TestValidateReadRoots:
             {"upload_dir": "/mnt/eval-cases/case_missing"},
             resolver,
         )
-        assert missing == ["node 'collect': /mnt/eval-cases/case_missing"]
+        assert missing == [{"access": "read", "node_id": "collect", "path": "/mnt/eval-cases/case_missing"}]
 
     def test_populated_readonly_mount_passes(self, custom_mounts, tmp_path: Path) -> None:
         case_dir = tmp_path / "eval-cases" / "case_ok"
@@ -213,7 +220,7 @@ class TestValidateReadRoots:
             return str(tmp_path / "eval-cases" / p.removeprefix("/mnt/eval-cases/").lstrip("/"))
 
         missing = validate_read_roots([_Node("collect", ["/mnt/eval-cases/case_empty"])], {}, resolver)
-        assert missing == ["node 'collect': /mnt/eval-cases/case_empty"]
+        assert missing == [{"access": "read", "node_id": "collect", "path": "/mnt/eval-cases/case_empty"}]
 
     def test_uninitialized_uploads_root_is_skipped(self, custom_mounts) -> None:
         resolver = make_host_resolver("run-1", "user-1")
@@ -223,7 +230,7 @@ class TestValidateReadRoots:
         host_resolver.sandbox_uploads_dir("run-1", user_id="user-1").mkdir(parents=True)
         resolver = make_host_resolver("run-1", "user-1")
         missing = validate_read_roots([_Node("collect", ["/mnt/user-data/uploads"])], {"upload_dir": "/mnt/user-data/uploads"}, resolver)
-        assert missing == ["node 'collect': /mnt/user-data/uploads"]
+        assert missing == [{"access": "read", "node_id": "collect", "path": "/mnt/user-data/uploads"}]
 
     def test_writable_areas_are_not_preflighted(self, custom_mounts) -> None:
         resolver = make_host_resolver("run-1", "user-1")

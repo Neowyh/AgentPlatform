@@ -208,8 +208,6 @@ export const enUS: Translations = {
     nameStepNetworkError:
       "Network request failed — check your network or backend connection",
     nameStepCheckError: "Could not verify name availability — please try again",
-    nameStepApiDisabledError:
-      "Custom agent management is not enabled on this server. Please contact your administrator.",
     nameStepBootstrapMessage:
       "The new custom agent name is {name}. Help me design its purpose, behavior, and SOUL.md before saving it.",
     save: "Save agent",
@@ -243,6 +241,15 @@ export const enUS: Translations = {
     submitting: "Submitting...",
     submit: "Submit Application",
     applicationSubmitted: "Application submitted",
+    visibilityUpgradeHint:
+      "Upgrading visibility requires admin approval and takes effect after review.",
+    visibilityDowngradeHint:
+      "Downgrading visibility takes effect immediately without approval.",
+    visibilityUpdated: "Visibility updated",
+    downgradeConfirmTitle: "Confirm visibility downgrade",
+    downgradeConfirmDescription:
+      "The downgrade takes effect immediately without approval. Continue?",
+    confirm: "Confirm",
     favoriteAdded: "Added to favorites",
     favoriteRemoved: "Removed from favorites",
     exportSuccess: "Agent exported",
@@ -351,6 +358,15 @@ export const enUS: Translations = {
     submitting: "Submitting...",
     submit: "Submit Application",
     applicationSubmitted: "Application submitted",
+    visibilityUpgradeHint:
+      "Upgrading visibility requires admin approval and takes effect after review.",
+    visibilityDowngradeHint:
+      "Downgrading visibility takes effect immediately without approval.",
+    visibilityUpdated: "Visibility updated",
+    downgradeConfirmTitle: "Confirm visibility downgrade",
+    downgradeConfirmDescription:
+      "The downgrade takes effect immediately without approval. Continue?",
+    confirm: "Confirm",
     notOwner: "You are not the owner of this workflow and cannot edit it",
     visibilityPrivate: "Private",
     visibilityDepartment: "Department",
@@ -380,6 +396,7 @@ export const enUS: Translations = {
     userManagement: "User Management",
     departmentManagement: "Department Management",
     toolManagement: "Tool Management",
+    resourceManagement: "Resource Management",
     applicationManagement: "Application Review",
     auditLogManagement: "Audit Logs",
   },
@@ -645,6 +662,15 @@ export const enUS: Translations = {
       applyDialogReasonPlaceholder: "Please describe the reason for change...",
       applyDialogCancel: "Cancel",
       applyDialogSubmit: "Submit Application",
+      applyDialogUpgradeHint:
+        "Upgrading visibility requires admin approval and takes effect after review.",
+      applyDialogDowngradeHint:
+        "Downgrading visibility takes effect immediately without approval.",
+      visibilityUpdated: "Visibility updated",
+      applyDialogDowngradeConfirmTitle: "Confirm visibility downgrade",
+      applyDialogDowngradeConfirmDescription:
+        "The downgrade takes effect immediately without approval. Continue?",
+      applyDialogConfirm: "Confirm",
     },
     notification: {
       title: "Notification",

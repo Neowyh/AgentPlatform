@@ -85,7 +85,7 @@ FastAPI application providing REST endpoints plus the public LangGraph-compatibl
 - `models.py` - `/api/models` - Model listing and details
 - `thread_runs.py` / `runs.py` - `/api/threads/{id}/runs`, `/api/runs/*` - LangGraph-compatible runs and streaming
 - `mcp.py` - `/api/mcp` - MCP server configuration
-- `skills.py` - `/api/skills` - Skills management
+- `resources.py` - `/api/resources` - Unified resource catalog for skills, agents, and workflows (canonical; legacy `/api/skills`, `/api/agents`, `/api/workflows` routes removed)
 - `uploads.py` - `/api/threads/{id}/uploads` - File upload
 - `threads.py` - `/api/threads/{id}` - Local iDeer thread data cleanup after LangGraph deletion
 - `artifacts.py` - `/api/threads/{id}/artifacts` - Artifact serving

@@ -63,7 +63,7 @@ ideer/
 │   ├── app/                   # 应用层（导入：app.*）
 │   │   ├── gateway/           # FastAPI Gateway API
 │   │   │   ├── app.py         # FastAPI 应用
-│   │   │   └── routers/       # FastAPI 路由模块（models、mcp、memory、skills、uploads、threads、artifacts、agents、suggestions、channels）
+│   │   │   └── routers/       # FastAPI 路由模块（models、mcp、memory、resources、uploads、threads、artifacts、admin、suggestions、channels）
 │   │   └── channels/          # IM 平台集成
 │   ├── tests/                 # 测试套件
 │   └── docs/                  # 文档
@@ -235,7 +235,7 @@ FastAPI 应用运行在端口 8001，健康检查为 `GET /health`。生产环�
 | ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Models**（`/api/models`）                             | `GET /`：列出模型；`GET /{name}`：模型详情                                                                                                                                                                                                                                                           |
 | **MCP**（`/api/mcp`）                                   | `GET /config`：获取配置；`PUT /config`：更新配置（保存到 extensions_config.json）                                                                                                                                                                                                                         |
-| **Skills**（`/api/skills`）                             | `GET /`：列出技能；`GET /{name}`：详情；`PUT /{name}`：更新启用状态；`POST /install`：从 .skill 归档安装（接受标准可选 frontmatter，如 `version`、`author`、`compatibility`）                                                                                                                                                 |
+| **Resources**（`/api/resources`）                       | Skill、Agent、Workflow 统一资源目录（canonical）：`GET /` 列表；`POST /` 创建（agent-draft/publish）；`GET /{id}/published`、`GET /{id}/export`；`PUT /{id}/agent-draft`、`PUT /{id}/workflow-draft`、`PUT /{id}/archive-draft`；`POST /{id}/publish`、`/fork`、`/archive`、`/suspend`、`/restore`、`/transfer`、`/visibility-applications`、`/favorite`（DELETE 取消）；`PUT /{id}/visibility`、`PUT /{id}/dependencies`；`GET /aliases/{type}/{slug}` 旧名称解析；`GET /notifications`；`POST /import/agent`。旧 `/api/agents`、`/api/skills`、`/api/workflows` 路由已删除（404）                                                                                                                                                 |
 | **Memory**（`/api/memory`）                             | `GET /`：记忆数据；`POST /reload`：强制重新加载；`GET /config`：配置；`GET /status`：配置 + 数据                                                                                                                                                                                                                 |
 | **Uploads**（`/api/threads/{id}/uploads`）              | `POST /`：上传文件（自动转换 PDF/PPT/Excel/Word）；`GET /list`：列表；`DELETE /{filename}`：删除                                                                                                                                                                                                             |
 | **Threads**（`/api/threads/{id}`）                      | `DELETE /`：在 LangGraph 删除线程后移除 iDeer 管理的本地线程数据；意外失败会在服务端记录日志，并返回通用 500 detail                                                                                                                                                                                                          |
@@ -301,8 +301,8 @@ FastAPI 应用运行在端口 8001，健康检查为 `GET /health`。生产环�
    - `present_files`：让输出文件对用户可见（仅限 `/mnt/user-data/outputs`）
    - `ask_clarification`：请求澄清（由 ClarificationMiddleware 拦截并中断）
    - `view_image`：将图片读取为 base64（仅在模型支持 vision 时添加）
-   - `setup_agent`：仅引导阶段使用，持久化一个全新自定义智能体的 `SOUL.md` 和 `config.yaml`。仅在 `is_bootstrap=True` 时绑定。
-   - `update_agent`：仅自定义智能体使用，在普通聊天中从内部持久化当前智能体对自身 `SOUL.md` / `config.yaml` 的更新（部分更新 + 原子写）。当设置了 `agent_name` 且 `is_bootstrap=False` 时绑定。
+   - `setup_agent`：仅引导阶段使用，通过 canonical 资源目录创建全新自定义智能体（`_create_canonical_agent`：ResourceService + publisher draft/publish）。仅在 `is_bootstrap=True` 时绑定。
+   - `update_agent`：仅自定义智能体使用，在普通聊天中把当前智能体对自身 `SOUL.md` / `config.yaml` 的更新写入 canonical 资源（draft + publish，按 `agent_name` 解析资源 UUID）。当设置了 `agent_name` 且 `is_bootstrap=False` 时绑定。
 4. **子智能体工具**（启用时）：
    - `task`：委托给子智能体（description、prompt、subagent_type）
 
@@ -331,11 +331,11 @@ FastAPI 应用运行在端口 8001，健康检查为 `GET /health`。生产环�
 
 ### 技能系统（`packages/harness/ideer/skills/`）
 
-- **位置**：`ideer/skills/{public,custom}/`
+- **位置**：`ideer/skills/{public,custom}/`（自定义技能与 built-in 技能由 canonical 资源目录管理，见 `resources/` 模块）
 - **格式**：包含 `SKILL.md` 的目录（YAML frontmatter：name、description、license、allowed-tools）
 - **加载**：`load_skills()` 递归扫描 `skills/{public,custom}` 中的 `SKILL.md`，解析元数据，并从 extensions_config.json 读取启用状态
 - **注入**：已启用技能会连同容器路径一起列入智能体系统提示词
-- **安装**：`POST /api/skills/install` 将 .skill ZIP 归档解压到 custom/ 目录
+- **管理**：Skill 的创建、发布、可见性、归档、下架、Fork 走 `/api/resources`（旧 `/api/skills` 路由已删除）
 
 ### 模型工厂（`packages/harness/ideer/models/factory.py`）
 
@@ -398,8 +398,8 @@ FastAPI 应用运行在端口 8001，健康检查为 `GET /health`。生产环�
 **按用户隔离**：
 
 - 记忆按用户存储在 `{base_dir}/users/{user_id}/memory.json`
-- 每个智能体的用户级记忆存储在 `{base_dir}/users/{user_id}/agent-memory/{agent_name}/memory.json`
-- 自定义智能体定义（`SOUL.md` + `config.yaml`）按用户存储在 `{base_dir}/users/{user_id}/agents/{agent_name}/`，与 `agent-memory/` 中的记忆状态分离。旧的共享布局 `{base_dir}/agents/{agent_name}/` 仍作为未迁移安装的只读回退
+- 每个智能体的用户级记忆存储在 `{base_dir}/users/{user_id}/agent-memory/{agent_name}/memory.json`（canonical 流程中 `agent_name` 为资源 UUID）
+- 自定义智能体定义（`SOUL.md` + `config.yaml`）由 canonical 资源目录管理（`resources/agents/<uuid>/versions/<version>`），不再按用户目录读写；旧 `{base_dir}/users/{user_id}/agents/{agent_name}/` 布局仅存历史数据，不再作为运行回退
 - `user_id` 通过 `ideer.runtime.user_context` 中的 `get_effective_user_id()` 解析
 - 无认证模式下，`user_id` 默认为 `"default"`（常量 `DEFAULT_USER_ID`）
 - 配置中的绝对 `storage_path` 会退出按用户隔离

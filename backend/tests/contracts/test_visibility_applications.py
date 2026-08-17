@@ -116,6 +116,28 @@ def _build_app(user: MagicMock | None = None) -> FastAPI:
     return app
 
 
+def _make_capturing_session_factory(statements: list):
+    """Session factory that records every executed statement for SQL assertions."""
+    mock_session = AsyncMock()
+
+    async def _execute(stmt):
+        statements.append(stmt)
+        result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = []
+        result.scalars.return_value = mock_scalars
+        return result
+
+    mock_session.execute = AsyncMock(side_effect=_execute)
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=False)
+    return MagicMock(return_value=mock_session)
+
+
+def _sql(stmt) -> str:
+    return str(stmt.compile(compile_kwargs={"literal_binds": True}))
+
+
 # ---------------------------------------------------------------------------
 # POST /api/visibility-applications
 # ---------------------------------------------------------------------------
@@ -564,3 +586,77 @@ class TestListApplications:
         data = resp.json()
         assert len(data["applications"]) == 1
         assert data["applications"][0]["status"] == "approved"
+
+    @pytest.mark.asyncio
+    async def test_status_all_skips_status_filter(self):
+        user = _make_user(role="super_admin")
+        app_obj = _build_app(user)
+        statements: list = []
+        mock_sf = _make_capturing_session_factory(statements)
+
+        with patch("app.gateway.routers.visibility_applications.get_session_factory", return_value=mock_sf):
+            async with AsyncClient(transport=ASGITransport(app=app_obj), base_url="http://test") as client:
+                resp = await client.get("/api/visibility-applications?status=all")
+
+        assert resp.status_code == 200
+        assert "status = 'pending'" not in _sql(statements[-1])
+
+    @pytest.mark.asyncio
+    async def test_missing_status_defaults_to_pending(self):
+        user = _make_user(role="super_admin")
+        app_obj = _build_app(user)
+        statements: list = []
+        mock_sf = _make_capturing_session_factory(statements)
+
+        with patch("app.gateway.routers.visibility_applications.get_session_factory", return_value=mock_sf):
+            async with AsyncClient(transport=ASGITransport(app=app_obj), base_url="http://test") as client:
+                resp = await client.get("/api/visibility-applications")
+
+        assert resp.status_code == 200
+        assert "status = 'pending'" in _sql(statements[-1])
+
+    @pytest.mark.asyncio
+    async def test_lists_by_target_visibility(self):
+        user = _make_user(role="super_admin")
+        app_obj = _build_app(user)
+        statements: list = []
+        mock_sf = _make_capturing_session_factory(statements)
+
+        with patch("app.gateway.routers.visibility_applications.get_session_factory", return_value=mock_sf):
+            async with AsyncClient(transport=ASGITransport(app=app_obj), base_url="http://test") as client:
+                resp = await client.get("/api/visibility-applications?target_visibility=public")
+
+        assert resp.status_code == 200
+        assert "target_visibility = 'public'" in _sql(statements[-1])
+
+    @pytest.mark.asyncio
+    async def test_lists_by_applicant_id(self):
+        user = _make_user(role="super_admin")
+        app_obj = _build_app(user)
+        statements: list = []
+        mock_sf = _make_capturing_session_factory(statements)
+
+        with patch("app.gateway.routers.visibility_applications.get_session_factory", return_value=mock_sf):
+            async with AsyncClient(transport=ASGITransport(app=app_obj), base_url="http://test") as client:
+                resp = await client.get("/api/visibility-applications?applicant_id=user-1")
+
+        assert resp.status_code == 200
+        assert "applicant_id = 'user-1'" in _sql(statements[-1])
+
+    @pytest.mark.asyncio
+    async def test_lists_with_combined_filters(self):
+        user = _make_user(role="super_admin")
+        app_obj = _build_app(user)
+        statements: list = []
+        mock_sf = _make_capturing_session_factory(statements)
+
+        with patch("app.gateway.routers.visibility_applications.get_session_factory", return_value=mock_sf):
+            async with AsyncClient(transport=ASGITransport(app=app_obj), base_url="http://test") as client:
+                resp = await client.get("/api/visibility-applications?status=approved&resource_type=skill&target_visibility=public&applicant_id=user-1")
+
+        assert resp.status_code == 200
+        sql = _sql(statements[-1])
+        assert "status = 'approved'" in sql
+        assert "resource_type = 'skill'" in sql
+        assert "target_visibility = 'public'" in sql
+        assert "applicant_id = 'user-1'" in sql

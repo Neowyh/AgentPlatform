@@ -12,6 +12,7 @@ import logging
 import signal
 import threading
 import time
+import uuid
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -441,6 +442,25 @@ class TestMountHelpers:
 
         result = provider._get_extra_mounts("thread-1")
         assert len(result) == 1
+
+    def test_get_extra_mounts_uses_exact_canonical_run_view(self, monkeypatch, tmp_path):
+        from ideer.resources.canonical_sandbox import canonical_sandbox_scope
+
+        provider = _make_provider_minimal()
+        run_id = str(uuid.uuid4())
+        view = tmp_path / "resources" / "run-skill-views" / run_id
+        view.mkdir(parents=True)
+        monkeypatch.setenv("IDEER_HOME", str(tmp_path))
+        provider._get_thread_mounts = MagicMock(return_value=[("/thread", "/mnt/user-data", False)])
+        provider._get_skills_mount = MagicMock(return_value=("/global", "/mnt/skills", True))
+
+        mounts = provider._get_extra_mounts(canonical_sandbox_scope("thread-1", run_id))
+
+        provider._get_thread_mounts.assert_called_once_with("thread-1")
+        assert mounts == [
+            ("/thread", "/mnt/user-data", False),
+            (str(view), "/mnt/run-skills", True),
+        ]
 
     def test_get_skills_mount_success(self, monkeypatch):
         aio_mod = _get_aio_mod()

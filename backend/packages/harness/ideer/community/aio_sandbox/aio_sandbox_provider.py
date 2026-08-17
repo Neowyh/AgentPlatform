@@ -284,11 +284,34 @@ class AioSandboxProvider(SandboxProvider):
 
     def _get_extra_mounts(self, thread_id: str | None) -> list[tuple[str, str, bool]]:
         """Collect all extra mounts for a sandbox (thread-specific + skills)."""
-        mounts: list[tuple[str, str, bool]] = []
+        from ideer.resources.canonical_sandbox import (
+            CANONICAL_SKILLS_CONTAINER_PATH,
+            canonical_run_skill_view_host_path,
+            canonical_run_skill_view_path,
+            parse_canonical_sandbox_scope,
+        )
 
-        if thread_id:
-            mounts.extend(self._get_thread_mounts(thread_id))
-            logger.info(f"Adding thread mounts for thread {thread_id}: {mounts}")
+        mounts: list[tuple[str, str, bool]] = []
+        canonical_scope = parse_canonical_sandbox_scope(thread_id)
+        data_thread_id = canonical_scope[0] if canonical_scope else thread_id
+
+        if data_thread_id:
+            mounts.extend(self._get_thread_mounts(data_thread_id))
+            logger.info(f"Adding thread mounts for thread {data_thread_id}: {mounts}")
+
+        if canonical_scope:
+            run_id = canonical_scope[1]
+            if not canonical_run_skill_view_path(run_id).is_dir():
+                raise RuntimeError(f"Canonical Run Skill view is missing: {run_id}")
+            mounts.append(
+                (
+                    canonical_run_skill_view_host_path(run_id),
+                    CANONICAL_SKILLS_CONTAINER_PATH,
+                    True,
+                )
+            )
+            logger.info("Adding frozen Run Skill mount for %s", run_id)
+            return mounts
 
         skills_mount = self._get_skills_mount()
         if skills_mount:

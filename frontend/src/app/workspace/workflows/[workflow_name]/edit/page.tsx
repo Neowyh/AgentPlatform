@@ -62,6 +62,10 @@ export default function WorkflowEditPage() {
     setValidationErrors(validateYaml(value));
   }, []);
 
+  const workflowResourceId = workflow?.resource_id;
+  const workflowDraftRevision = workflow?.draft_revision;
+  const workflowVersion = workflow?.version;
+
   const handleSave = useCallback(async () => {
     const errors = validateYaml(content);
     setValidationErrors(errors);
@@ -70,14 +74,28 @@ export default function WorkflowEditPage() {
     try {
       await updateWorkflow.mutateAsync({
         name: workflow_name,
-        data: { yaml_content: content, version: Number(workflow?.version) },
+        data: workflowResourceId
+          ? {
+              yaml_content: content,
+              draft_revision: workflowDraftRevision,
+            }
+          : { yaml_content: content, version: Number(workflowVersion) },
       });
       toast.success(t.workflows.updated);
       router.push(`/workspace/workflows/${workflow_name}`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     }
-  }, [content, router, updateWorkflow, workflow_name, t]);
+  }, [
+    content,
+    router,
+    updateWorkflow,
+    workflow_name,
+    t,
+    workflowDraftRevision,
+    workflowResourceId,
+    workflowVersion,
+  ]);
 
   if (isLoadingWorkflow) {
     return (

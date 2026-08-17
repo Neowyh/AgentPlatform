@@ -48,6 +48,7 @@ const mockT = {
     userManagement: "User Management",
     departmentManagement: "Department Management",
     toolManagement: "Tool Management",
+    resourceManagement: "Resource Management",
     auditLogManagement: "Audit Logs",
     about: "About iDeer",
   },
@@ -275,6 +276,11 @@ describe("WorkspaceNavMenu", () => {
       expect(screen.getByText("Tool Management")).toBeInTheDocument();
     });
 
+    test("shows Resource Management link", () => {
+      render(<WorkspaceNavMenu />);
+      expect(screen.getByText("Resource Management")).toBeInTheDocument();
+    });
+
     test("Admin Panel link points to /workspace/admin", () => {
       render(<WorkspaceNavMenu />);
       const link = screen.getByText("Admin Panel").closest("a");
@@ -298,6 +304,12 @@ describe("WorkspaceNavMenu", () => {
       const link = screen.getByText("Tool Management").closest("a");
       expect(link).toHaveAttribute("href", "/workspace/admin/tools");
     });
+
+    test("Resource Management link points to /workspace/admin/resources", () => {
+      render(<WorkspaceNavMenu />);
+      const link = screen.getByText("Resource Management").closest("a");
+      expect(link).toHaveAttribute("href", "/workspace/admin/resources");
+    });
   });
 
   describe("admin links for department_admin", () => {
@@ -311,6 +323,7 @@ describe("WorkspaceNavMenu", () => {
       expect(screen.getByText("User Management")).toBeInTheDocument();
       expect(screen.getByText("Department Management")).toBeInTheDocument();
       expect(screen.getByText("Tool Management")).toBeInTheDocument();
+      expect(screen.getByText("Resource Management")).toBeInTheDocument();
       expect(screen.getByText("Audit Logs")).toBeInTheDocument();
     });
   });
@@ -328,6 +341,7 @@ describe("WorkspaceNavMenu", () => {
         screen.queryByText("Department Management"),
       ).not.toBeInTheDocument();
       expect(screen.queryByText("Tool Management")).not.toBeInTheDocument();
+      expect(screen.queryByText("Resource Management")).not.toBeInTheDocument();
     });
 
     test("still shows Settings and About items", () => {
@@ -350,6 +364,7 @@ describe("WorkspaceNavMenu", () => {
         screen.queryByText("Department Management"),
       ).not.toBeInTheDocument();
       expect(screen.queryByText("Tool Management")).not.toBeInTheDocument();
+      expect(screen.queryByText("Resource Management")).not.toBeInTheDocument();
     });
   });
 

@@ -115,26 +115,6 @@ class TestUserIsolatedStorage:
             assert expected_path.exists()
             assert not (base_dir / "users" / "alice" / "agents" / "test-agent").exists()
 
-    def test_user_agent_memory_reads_legacy_file_when_new_file_absent(self, base_dir: Path):
-        """Existing memory under the old agents namespace remains readable."""
-        from ideer.config.paths import Paths
-
-        paths = Paths(base_dir)
-        legacy_file = base_dir / "users" / "alice" / "agents" / "test-agent" / "memory.json"
-        legacy_file.parent.mkdir(parents=True)
-        legacy_memory = create_empty_memory()
-        legacy_memory["user"]["workContext"]["summary"] = "legacy agent memory"
-
-        import json
-
-        legacy_file.write_text(json.dumps(legacy_memory), encoding="utf-8")
-
-        with patch("ideer.agents.memory.storage.get_paths", return_value=paths):
-            s = FileMemoryStorage()
-            loaded = s.load("test-agent", user_id="alice")
-
-        assert loaded["user"]["workContext"]["summary"] == "legacy agent memory"
-
     def test_user_agent_memory_prefers_new_file_over_legacy_file(self, base_dir: Path):
         """New agent-memory state wins when both layouts contain memory.json."""
         from ideer.config.paths import Paths
@@ -162,7 +142,6 @@ class TestUserIsolatedStorage:
 
     def test_saving_memory_does_not_shadow_shared_agent_config(self, base_dir: Path):
         """Memory writes for a shared agent name must not create a per-user agent config dir."""
-        from ideer.config.agents_config import load_agent_config
         from ideer.config.paths import Paths
 
         paths = Paths(base_dir)
@@ -171,18 +150,13 @@ class TestUserIsolatedStorage:
         (shared_dir / "config.yaml").write_text(yaml.safe_dump({"name": "fault-zeroing", "description": "shared"}), encoding="utf-8")
         (shared_dir / "SOUL.md").write_text("shared soul", encoding="utf-8")
 
-        with (
-            patch("ideer.agents.memory.storage.get_paths", return_value=paths),
-            patch("ideer.config.agents_config.get_paths", return_value=paths),
-        ):
+        with patch("ideer.agents.memory.storage.get_paths", return_value=paths):
             s = FileMemoryStorage()
             assert s.save(create_empty_memory(), "fault-zeroing", user_id="alice") is True
-            cfg = load_agent_config("fault-zeroing", user_id="alice")
 
         assert (base_dir / "users" / "alice" / "agent-memory" / "fault-zeroing" / "memory.json").exists()
         assert not (base_dir / "users" / "alice" / "agents" / "fault-zeroing").exists()
-        assert cfg is not None
-        assert cfg.description == "shared"
+        assert (shared_dir / "config.yaml").read_text(encoding="utf-8") == yaml.safe_dump({"name": "fault-zeroing", "description": "shared"})
 
     def test_cache_key_is_user_agent_tuple(self, base_dir: Path):
         """Cache keys must be (user_id, agent_name) tuples, not bare agent names."""

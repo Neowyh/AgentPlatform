@@ -24,6 +24,50 @@ from ideer.persistence.models.workflow_v2 import (
 logger = logging.getLogger(__name__)
 
 
+def _validated_canonical_inputs(definition: dict, submitted: dict, run_id: str, user_id: str) -> dict:
+    """Validate one frozen Workflow definition before its Run becomes claimable."""
+
+    from ideer.workflows.v2.errors import WorkflowInvalidRootsError, WorkflowMissingInputRootsError
+    from ideer.workflows.v2.file_roots import (
+        make_host_resolver,
+        validate_read_roots,
+        validate_workflow_roots,
+    )
+    from ideer.workflows.v2.schema import WorkflowV2
+
+    workflow = WorkflowV2.model_validate(definition)
+    inputs = dict(submitted)
+    expected_types = {
+        "string": lambda value: isinstance(value, str),
+        "integer": lambda value: isinstance(value, int) and not isinstance(value, bool),
+        "number": lambda value: isinstance(value, (int, float)) and not isinstance(value, bool),
+        "boolean": lambda value: isinstance(value, bool),
+        "object": lambda value: isinstance(value, dict),
+        "array": lambda value: isinstance(value, list),
+    }
+    for name, parameter in workflow.inputs.items():
+        if name not in inputs:
+            if parameter.default is not None:
+                inputs[name] = parameter.default
+            elif parameter.required:
+                raise ValueError(f"Missing required input: '{name}'")
+            continue
+        if not expected_types[parameter.type](inputs[name]):
+            raise ValueError(f"Input '{name}' expects {parameter.type}, got {type(inputs[name]).__name__}")
+
+    invalid_roots = validate_workflow_roots(workflow.nodes, inputs)
+    if invalid_roots:
+        raise WorkflowInvalidRootsError(invalid_roots)
+    missing_roots = validate_read_roots(
+        workflow.nodes,
+        inputs,
+        make_host_resolver(run_id, user_id),
+    )
+    if missing_roots:
+        raise WorkflowMissingInputRootsError(missing_roots)
+    return inputs
+
+
 class WorkflowV2Store:
     def __init__(self, session_factory) -> None:
         self.session_factory = session_factory
@@ -154,6 +198,105 @@ class WorkflowV2Store:
             session.add(task)
             await session.commit()
         return run
+
+    async def create_canonical_run(
+        self,
+        run_id: str,
+        workflow_resource_id: str,
+        inputs: dict,
+        actor,
+        *,
+        user_concurrency: int | None = None,
+        department_concurrency: int | None = None,
+    ) -> WorkflowV2RunRow:
+        """Freeze a canonical dependency closure before making the Run claimable."""
+
+        from ideer.persistence.models.resource_catalog import Resource, ResourceVersion
+        from ideer.resources.service import ResourceConflict, ResourceService
+
+        async with self.session_factory() as session:
+            service = ResourceService(session, actor)
+            snapshots = await service.create_run_snapshot(run_id, workflow_resource_id)
+            resource = await session.get(Resource, workflow_resource_id)
+            if resource is None or resource.type != "workflow":
+                raise ResourceConflict(f"Resource {workflow_resource_id} is not a Workflow")
+            root_snapshot = next(
+                (snapshot for snapshot in snapshots if snapshot.resource_id == workflow_resource_id),
+                None,
+            )
+            if root_snapshot is None:
+                raise ResourceConflict("Canonical Workflow snapshot is missing its root")
+            version = (
+                await session.execute(
+                    select(ResourceVersion).where(
+                        ResourceVersion.resource_id == workflow_resource_id,
+                        ResourceVersion.version == root_snapshot.version,
+                    )
+                )
+            ).scalar_one()
+            if not isinstance(version.content, dict):
+                raise ResourceConflict("Canonical Workflow version has no definition content")
+            inputs = _validated_canonical_inputs(
+                version.content,
+                inputs,
+                run_id,
+                actor.user_id,
+            )
+
+            active = ("queued", "running", "paused")
+            if user_concurrency is not None:
+                user_count = (
+                    await session.execute(
+                        select(func.count())
+                        .select_from(WorkflowV2RunRow)
+                        .where(
+                            WorkflowV2RunRow.created_by == actor.user_id,
+                            WorkflowV2RunRow.status.in_(active),
+                        )
+                    )
+                ).scalar_one()
+                if user_count >= user_concurrency:
+                    raise RuntimeError("workflow_user_concurrency_exceeded")
+            if actor.department_id is not None and department_concurrency is not None:
+                department_count = (
+                    await session.execute(
+                        select(func.count())
+                        .select_from(WorkflowV2RunRow)
+                        .where(
+                            WorkflowV2RunRow.department_id == actor.department_id,
+                            WorkflowV2RunRow.status.in_(active),
+                        )
+                    )
+                ).scalar_one()
+                if department_count >= department_concurrency:
+                    raise RuntimeError("workflow_department_concurrency_exceeded")
+
+            run = WorkflowV2RunRow(
+                run_id=run_id,
+                workflow_name=resource.slug,
+                workflow_resource_id=resource.id,
+                definition_version=root_snapshot.version,
+                checkpoint_thread_id=f"wf-{run_id}",
+                status="queued",
+                inputs=inputs,
+                snapshot={},
+                runner_tool_groups=sorted(actor.tool_groups) if actor.tool_groups is not None else None,
+                created_by=actor.user_id,
+                department_id=actor.department_id,
+            )
+            session.add(run)
+            await session.flush()
+            session.add(
+                WorkflowTaskRow(
+                    task_id=str(uuid4()),
+                    run_id=run_id,
+                    status="queued",
+                    attempts=0,
+                    cancel_requested=False,
+                )
+            )
+            await session.commit()
+            return run
 
     async def append_event(
         self,
@@ -380,14 +523,14 @@ class WorkflowV2Store:
                             run = (await session.execute(select(WorkflowV2RunRow).where(WorkflowV2RunRow.run_id == task.run_id))).scalar_one_or_none()
                             if run is not None:
                                 run.status = "failed"
-                                run.error = "workflow_max_attempts_exceeded"
+                                run.error = "工作流执行失败：重试次数已达上限"
                                 run.event_seq += 1
                                 event = WorkflowV2EventRow(
                                     id=str(uuid4()),
                                     run_id=run.run_id,
                                     seq=run.event_seq,
                                     event_type="run_failed",
-                                    payload={"error": "workflow_max_attempts_exceeded"},
+                                    payload={"code": "max_attempts", "summary": "工作流执行失败：重试次数已达上限", "error": "workflow_max_attempts_exceeded"},
                                 )
                                 session.add(event)
                             await session.commit()

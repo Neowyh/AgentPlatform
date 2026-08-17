@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "resources": [
+    {"id": "f76c06ae-a32d-58ed-951a-6a2f0c3457f3", "type": "skill", "slug": "academic-paper-review", "visibility": "public", "source": "skills/public/academic-paper-review"},
+    {"id": "5e05ca2a-7233-5f37-9f35-3a95f6286038", "type": "skill", "slug": "bootstrap", "visibility": "public", "source": "skills/public/bootstrap"},
+    {"id": "3a51041d-9e6b-570d-ad1e-822c3d1560ce", "type": "skill", "slug": "chart-visualization", "visibility": "public", "source": "skills/public/chart-visualization"},
+    {"id": "ee46a05e-ad0d-5ce2-ad7e-8d38b13e6c20", "type": "skill", "slug": "claude-to-ideer", "visibility": "public", "source": "skills/public/claude-to-ideer"},
+    {"id": "b23511a5-41a1-5081-9983-51398faa31cf", "type": "skill", "slug": "code-documentation", "visibility": "public", "source": "skills/public/code-documentation"},
+    {"id": "30188f26-f215-575d-8738-1da440c9607a", "type": "skill", "slug": "consulting-analysis", "visibility": "public", "source": "skills/public/consulting-analysis"},
+    {"id": "4451bc3c-8252-5e06-b53e-5b47b6083500", "type": "skill", "slug": "data-analysis", "visibility": "public", "source": "skills/public/data-analysis"},
+    {"id": "4befeeda-b2fb-5c91-962d-4ff207abdce7", "type": "skill", "slug": "deep-research", "visibility": "public", "source": "skills/public/deep-research"},
+    {"id": "5c36cca5-dff7-5bd6-a031-13fbc56cfa3f", "type": "skill", "slug": "find-skills", "visibility": "public", "source": "skills/public/find-skills"},
+    {"id": "68602677-c8db-5ba2-ade8-f540d027a33a", "type": "skill", "slug": "frontend-design", "visibility": "public", "source": "skills/public/frontend-design"},
+    {"id": "3f2bba94-a068-5dae-96af-355f5ed7959e", "type": "skill", "slug": "github-deep-research", "visibility": "public", "source": "skills/public/github-deep-research"},
+    {"id": "baf9a84d-37e3-55e2-a157-79655f41e113", "type": "skill", "slug": "image-generation", "visibility": "public", "source": "skills/public/image-generation"},
+    {"id": "16cc8a98-e817-52fa-9b78-781b6c5de0f1", "type": "skill", "slug": "newsletter-generation", "visibility": "public", "source": "skills/public/newsletter-generation"},
+    {"id": "9fb592e4-b3b8-5df9-8a70-0948cd29a103", "type": "skill", "slug": "podcast-generation", "visibility": "public", "source": "skills/public/podcast-generation"},
+    {"id": "23f5210a-7a22-547f-b562-5862a0de8db5", "type": "skill", "slug": "ppt-generation", "visibility": "public", "source": "skills/public/ppt-generation"},
+    {"id": "f6d20629-ce42-5807-ad5c-ea1935a10473", "type": "skill", "slug": "skill-creator", "visibility": "public", "source": "skills/public/skill-creator"},
+    {"id": "04def76a-ede6-5b5e-838b-de50ebb10a93", "type": "skill", "slug": "surprise-me", "visibility": "public", "source": "skills/public/surprise-me"},
+    {"id": "fc0299ac-9825-5055-99c1-51810bc96834", "type": "skill", "slug": "systematic-literature-review", "visibility": "public", "source": "skills/public/systematic-literature-review"},
+    {"id": "e9fea0cb-f28b-584d-b3fb-8644a61a8d38", "type": "skill", "slug": "vercel-deploy-claimable", "visibility": "public", "source": "skills/public/vercel-deploy-claimable"},
+    {"id": "6f87332e-8cc7-5cc5-b252-c0c8dc10fed2", "type": "skill", "slug": "video-generation", "visibility": "public", "source": "skills/public/video-generation"},
+    {"id": "e8232bc7-d592-5d7f-814e-d13ddea44193", "type": "skill", "slug": "web-design-guidelines", "visibility": "public", "source": "skills/public/web-design-guidelines"},
+    {"id": "f258c030-0aa2-5ca4-9072-c28fa9fdadbd", "type": "skill", "slug": "fault-zeroing", "visibility": "public", "source": "skills/custom/fault-zeroing"},
+    {"id": "97d724ff-70ad-5ed2-85c4-538ac1162760", "type": "skill", "slug": "officecli", "visibility": "public", "source": "skills/custom/officecli"},
+    {"id": "a56d9e3d-297e-536b-ba7c-80dce0ade891", "type": "skill", "slug": "srs-writing", "visibility": "public", "source": "skills/custom/srs-writing"},
+    {"id": "56e2423d-37c3-52cb-a05f-d32677e6abcb", "type": "agent", "slug": "fault-zeroing", "visibility": "public", "source": "docs/fault-zeroing-agent/agent"},
+    {"id": "4b0b0a3b-1321-59f9-870f-bcdf47489d4d", "type": "agent", "slug": "srs-writing", "visibility": "public", "source": "docs/srs-writing-agent/agent"},
+    {"id": "018ce2c1-4d43-5db4-b4e3-d8d40624260d", "type": "workflow", "slug": "fault-zeroing", "visibility": "public", "source": "workflows/fault-zeroing.yaml"}
+  ]
+}

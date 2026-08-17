@@ -6,7 +6,6 @@ from pathlib import Path
 import yaml
 
 from ideer.config.acp_config import load_acp_config_from_dict
-from ideer.config.agents_api_config import load_agents_api_config_from_dict
 from ideer.config.app_config import reset_app_config
 from ideer.config.checkpointer_config import load_checkpointer_config_from_dict
 from ideer.config.guardrails_config import load_guardrails_config_from_dict
@@ -24,7 +23,6 @@ def _reset_config_singletons() -> None:
     load_title_config_from_dict({})
     load_summarization_config_from_dict({})
     load_memory_config_from_dict({})
-    load_agents_api_config_from_dict({})
     load_subagents_config_from_dict({})
     load_tool_search_config_from_dict({})
     load_guardrails_config_from_dict({})

@@ -68,7 +68,10 @@ export function useDeleteAgent() {
 export function useToggleAgentFavorite() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (name: string) => toggleAgentFavorite(name),
+    mutationFn: (input: string | { name: string; isFavorited: boolean }) =>
+      typeof input === "string"
+        ? toggleAgentFavorite(input)
+        : toggleAgentFavorite(input.name, input.isFavorited),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["agents"] });
     },

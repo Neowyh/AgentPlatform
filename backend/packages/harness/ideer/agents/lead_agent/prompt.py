@@ -6,7 +6,6 @@ import threading
 from functools import lru_cache
 from typing import TYPE_CHECKING
 
-from ideer.config.agents_config import load_agent_soul
 from ideer.skills.storage import get_or_new_skill_storage
 from ideer.skills.types import Skill, SkillCategory
 from ideer.subagents import get_available_subagent_names
@@ -623,23 +622,32 @@ You have access to skills that provide optimized workflows for specific tasks. E
 </skill_system>"""
 
 
-def get_skills_prompt_section(available_skills: set[str] | None = None, *, app_config: AppConfig | None = None) -> str:
+def get_skills_prompt_section(
+    available_skills: set[str] | None = None,
+    *,
+    app_config: AppConfig | None = None,
+    resolved_skills: list[Skill] | None = None,
+    container_base_path: str | None = None,
+) -> str:
     """Generate the skills prompt section with available skills list."""
-    skills = get_enabled_skills_for_config(app_config)
+    skills = list(resolved_skills) if resolved_skills is not None else get_enabled_skills_for_config(app_config)
 
-    if app_config is None:
+    if resolved_skills is not None:
+        container_base_path = container_base_path or "/mnt/skills"
+        skill_evolution_enabled = False
+    elif app_config is None:
         try:
             from ideer.config import get_app_config
 
             config = get_app_config()
-            container_base_path = config.skills.container_path
+            container_base_path = container_base_path or config.skills.container_path
             skill_evolution_enabled = config.skill_evolution.enabled
         except Exception:
-            container_base_path = "/mnt/skills"
+            container_base_path = container_base_path or "/mnt/skills"
             skill_evolution_enabled = False
     else:
         config = app_config
-        container_base_path = config.skills.container_path
+        container_base_path = container_base_path or config.skills.container_path
         skill_evolution_enabled = config.skill_evolution.enabled
 
     if not skills and not skill_evolution_enabled:
@@ -654,14 +662,6 @@ def get_skills_prompt_section(available_skills: set[str] | None = None, *, app_c
         return ""
     skill_evolution_section = _build_skill_evolution_section(skill_evolution_enabled)
     return _get_cached_skills_prompt_section(skill_signature, available_key, container_base_path, skill_evolution_section)
-
-
-def get_agent_soul(agent_name: str | None, *, user_id: str | None = None) -> str:
-    # Append SOUL.md (agent personality) if present
-    soul = load_agent_soul(agent_name, user_id=user_id)
-    if soul:
-        return f"<soul>\n{soul}\n</soul>\n" if soul else ""
-    return ""
 
 
 def _build_self_update_section(agent_name: str | None) -> str:
@@ -773,6 +773,10 @@ def apply_prompt_template(
     agent_user_id: str | None = None,
     available_skills: set[str] | None = None,
     app_config: AppConfig | None = None,
+    resolved_skills: list[Skill] | None = None,
+    skills_container_path: str | None = None,
+    soul_override: str | None = None,
+    read_only: bool = False,
 ) -> str:
     # Include subagent section only if enabled (from runtime parameter)
     n = max_concurrent_subagents
@@ -797,7 +801,12 @@ def apply_prompt_template(
     )
 
     # Get skills section
-    skills_section = get_skills_prompt_section(available_skills, app_config=app_config)
+    skills_section = get_skills_prompt_section(
+        available_skills,
+        app_config=app_config,
+        resolved_skills=resolved_skills,
+        container_base_path=skills_container_path,
+    )
 
     # Get deferred tools section (tool_search)
     deferred_tools_section = get_deferred_tools_prompt_section(app_config=app_config)
@@ -811,12 +820,11 @@ def apply_prompt_template(
     # Memory and current date are injected per-turn via DynamicContextMiddleware
     # as a <system-reminder> in the first HumanMessage, keeping this prompt
     # identical across users and sessions for maximum prefix-cache reuse.
-    # Shared agents (owned by another user) are read-only: load SOUL from the
-    # owner's directory and skip the self-update instructions.
+    soul = f"<soul>\n{soul_override}\n</soul>\n" if soul_override else ""
     return SYSTEM_PROMPT_TEMPLATE.format(
         agent_name=agent_name or "iDeer 2.0",
-        soul=get_agent_soul(agent_name, user_id=agent_user_id),
-        self_update_section=_build_self_update_section(agent_name) if not agent_user_id else "",
+        soul=soul,
+        self_update_section=_build_self_update_section(agent_name) if not agent_user_id and not read_only else "",
         skills_section=skills_section,
         deferred_tools_section=deferred_tools_section,
         subagent_section=subagent_section,

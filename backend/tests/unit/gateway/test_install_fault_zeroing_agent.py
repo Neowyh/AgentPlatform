@@ -239,7 +239,7 @@ def test_install_agent_owner_super_admin_installs_to_per_user_dir(
     assert (target_dir / "config.yaml").is_file()
     with sqlite3.connect(db_path) as connection:
         metadata = connection.execute("SELECT resource_type, resource_id, owner_id, department_id, visibility, version, is_favorited FROM resource_metadata").fetchone()
-    assert metadata == ("agent", "srs-writing", "super-admin-id", None, "private", 1, 0)
+    assert metadata == ("agent", "srs-writing", "super-admin-id", None, "public", 1, 0)
 
 
 def test_install_agent_owner_missing_super_admin_reports_error(

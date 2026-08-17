@@ -27,20 +27,25 @@ describe("skills api", () => {
   });
 
   describe("loadSkills", () => {
-    test("returns skills list on success", async () => {
+    test("returns canonical skills on success", async () => {
       const { fetch: fetcher } = await import("@/core/api/fetcher");
-      vi.mocked(fetcher).mockResolvedValue(
+      vi.mocked(fetcher).mockResolvedValueOnce(
         new Response(
           JSON.stringify({
-            skills: [
+            items: [
               {
-                name: "test-skill",
-                description: "A test skill",
-                category: "testing",
-                license: "MIT",
-                enabled: true,
+                id: "11111111-1111-1111-1111-111111111111",
+                type: "skill",
+                slug: "test-skill",
+                display_name: "test-skill",
+                owner_id: "owner",
+                visibility: "public",
+                scope_department_id: null,
+                system_owned: false,
+                can_modify: true,
               },
             ],
+            total: 1,
           }),
           { status: 200 },
         ),
@@ -49,9 +54,47 @@ describe("skills api", () => {
       const { loadSkills } = await import("@/core/skills/api");
       const result = await loadSkills();
 
+      expect(fetcher).toHaveBeenCalledTimes(1);
       expect(result).toHaveLength(1);
       expect(result[0]!.name).toBe("test-skill");
       expect(result[0]!.enabled).toBe(true);
+      expect(result[0]!.category).toBe("custom");
+    });
+
+    test("maps canonical Skills and keeps UUID identity separate from display name", async () => {
+      const { fetch: fetcher } = await import("@/core/api/fetcher");
+      vi.mocked(fetcher).mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            items: [
+              {
+                id: "11111111-1111-1111-1111-111111111111",
+                type: "skill",
+                slug: "review-skill",
+                display_name: "Review Skill",
+                owner_id: "owner",
+                visibility: "public",
+                scope_department_id: null,
+                can_modify: false,
+              },
+            ],
+            total: 1,
+          }),
+          { status: 200 },
+        ),
+      );
+
+      const { loadSkills } = await import("@/core/skills/api");
+
+      await expect(loadSkills()).resolves.toEqual([
+        expect.objectContaining({
+          resource_id: "11111111-1111-1111-1111-111111111111",
+          name: "Review Skill",
+          slug: "review-skill",
+          category: "public",
+          read_only: true,
+        }),
+      ]);
     });
 
     test("calls extractError on non-ok response", async () => {
@@ -70,58 +113,34 @@ describe("skills api", () => {
 
       expect(extractError).toHaveBeenCalledWith(
         errorResponse,
-        "Failed to load skills",
+        "Failed to load canonical skills",
       );
     });
   });
 
   describe("enableSkill", () => {
-    test("sends PUT request with correct body", async () => {
+    test("throws a readable lifecycle error and never calls the legacy endpoint", async () => {
       const { fetch: fetcher } = await import("@/core/api/fetcher");
-      vi.mocked(fetcher).mockResolvedValue(new Response(null, { status: 200 }));
+      vi.mocked(fetcher).mockClear();
 
       const { enableSkill } = await import("@/core/skills/api");
-      await enableSkill("my-skill", true);
+      await expect(
+        enableSkill("11111111-1111-1111-1111-111111111111", false),
+      ).rejects.toThrow(/canonical/i);
 
-      expect(fetcher).toHaveBeenLastCalledWith(
-        "http://localhost:8000/api/skills/my-skill",
-        expect.objectContaining({
-          method: "PUT",
-          body: JSON.stringify({ enabled: true }),
-        }),
-      );
-    });
-
-    test("calls extractError on failure", async () => {
-      const { fetch: fetcher } = await import("@/core/api/fetcher");
-      const errorResponse = new Response(
-        JSON.stringify({ detail: "Not found" }),
-        { status: 404, statusText: "Not Found" },
-      );
-      vi.mocked(fetcher).mockResolvedValue(errorResponse);
-
-      const { extractError } = await import("@/core/api/errors");
-      vi.mocked(extractError).mockRejectedValue(new Error("Not found"));
-
-      const { enableSkill } = await import("@/core/skills/api");
-      await expect(enableSkill("my-skill", false)).rejects.toThrow("Not found");
-
-      expect(extractError).toHaveBeenCalledWith(
-        errorResponse,
-        "Failed to disable skill",
-      );
+      expect(fetcher).not.toHaveBeenCalled();
     });
   });
 
   describe("visibility application requests", () => {
-    test("submits a skill visibility application using the current API contract", async () => {
+    test("submits a skill visibility application through the canonical resource endpoint", async () => {
       const { fetch: fetcher } = await import("@/core/api/fetcher");
       vi.mocked(fetcher).mockResolvedValue(
         new Response(
           JSON.stringify({
             id: "app-1",
             resource_type: "skill",
-            resource_id: "my-skill",
+            resource_id: "11111111-1111-1111-1111-111111111111",
             applicant_id: "user-1",
             current_visibility: "private",
             target_visibility: "department",
@@ -143,14 +162,14 @@ describe("skills api", () => {
       await expect(
         createVisibilityApplication({
           resource_type: "skill",
-          resource_id: "my-skill",
+          resource_id: "11111111-1111-1111-1111-111111111111",
           target_visibility: "department",
           reason: "share",
         }),
       ).resolves.toEqual({
         id: "app-1",
         resource_type: "skill",
-        resource_id: "my-skill",
+        resource_id: "11111111-1111-1111-1111-111111111111",
         applicant_id: "user-1",
         current_visibility: "private",
         target_visibility: "department",
@@ -164,13 +183,11 @@ describe("skills api", () => {
         version: 1,
       });
       expect(fetcher).toHaveBeenCalledWith(
-        "http://localhost:8000/api/visibility-applications",
+        "http://localhost:8000/api/resources/11111111-1111-1111-1111-111111111111/visibility-applications",
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            resource_type: "skill",
-            resource_id: "my-skill",
             target_visibility: "department",
             reason: "share",
           }),
@@ -274,38 +291,9 @@ describe("skills api", () => {
   });
 
   describe("installSkill", () => {
-    test("returns success response on ok", async () => {
+    test("returns a canonical-mode degradation message without calling the network", async () => {
       const { fetch: fetcher } = await import("@/core/api/fetcher");
-      const successResponse = {
-        success: true,
-        skill_name: "new-skill",
-        message: "Installed",
-      };
-      vi.mocked(fetcher).mockResolvedValue(
-        new Response(JSON.stringify(successResponse), { status: 200 }),
-      );
-
-      const { installSkill } = await import("@/core/skills/api");
-      const result = await installSkill({
-        thread_id: "t1",
-        path: "/skills/new-skill",
-      });
-
-      expect(result.success).toBe(true);
-      expect(result.skill_name).toBe("new-skill");
-    });
-
-    test("returns failure response on non-ok status", async () => {
-      const { fetch: fetcher } = await import("@/core/api/fetcher");
-      vi.mocked(fetcher).mockResolvedValue(
-        new Response(JSON.stringify({ detail: "Conflict" }), {
-          status: 409,
-          statusText: "Conflict",
-        }),
-      );
-
-      const { formatErrorMessage } = await import("@/core/api/errors");
-      vi.mocked(formatErrorMessage).mockResolvedValue("Conflict error");
+      vi.mocked(fetcher).mockClear();
 
       const { installSkill } = await import("@/core/skills/api");
       const result = await installSkill({
@@ -315,7 +303,8 @@ describe("skills api", () => {
 
       expect(result.success).toBe(false);
       expect(result.skill_name).toBe("");
-      expect(result.message).toBe("Conflict error");
+      expect(result.message).toMatch(/canonical mode/i);
+      expect(fetcher).not.toHaveBeenCalled();
     });
   });
 });

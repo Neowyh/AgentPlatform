@@ -2,7 +2,6 @@
 
 Targets:
 - Lines 49, 54, 59: abstract method ``pass`` bodies (via concrete subclass calling super)
-- Line 118: _get_read_memory_file_path fallback when legacy path also missing
 - Lines 149-150, 161-162: OSError from stat() in load()
 - Lines 177-178: OSError from stat() in reload()
 - Lines 204-205: OSError from stat() in save()
@@ -72,49 +71,6 @@ class TestAbstractMethodBodies:
         assert result is True
 
 
-# ---------------------------------------------------------------------------
-# Line 118 -- _get_read_memory_file_path: primary missing AND legacy missing
-# ---------------------------------------------------------------------------
-
-
-class TestGetReadMemoryFilePathFallback:
-    """Cover line 118: return primary path when neither primary nor legacy exist."""
-
-    def test_fallback_when_legacy_does_not_exist(self, tmp_path):
-        """Should return the primary path when legacy path also does not exist."""
-        primary = tmp_path / "agent-memory" / "my-agent" / "memory.json"
-        legacy = tmp_path / "agents" / "my-agent" / "memory.json"
-
-        mock_paths = MagicMock()
-        mock_paths.agent_memory_file.return_value = primary
-        mock_paths.legacy_agent_memory_file.return_value = legacy
-
-        with patch("ideer.agents.memory.storage.get_paths", return_value=mock_paths):
-            storage = FileMemoryStorage()
-            result = storage._get_read_memory_file_path("my-agent")
-            # Neither exists -> line 118: return the primary (non-legacy) path
-            assert result == primary
-
-    def test_fallback_with_user_id_when_legacy_does_not_exist(self, tmp_path):
-        """Should return the primary path when user legacy path also does not exist."""
-        primary = tmp_path / "users" / "u1" / "agent-memory" / "my-agent" / "memory.json"
-        legacy = tmp_path / "users" / "u1" / "agents" / "my-agent" / "memory.json"
-
-        mock_paths = MagicMock()
-        mock_paths.user_agent_memory_file.return_value = primary
-        mock_paths.legacy_user_agent_memory_file.return_value = legacy
-
-        with patch("ideer.agents.memory.storage.get_paths", return_value=mock_paths):
-            storage = FileMemoryStorage()
-            result = storage._get_read_memory_file_path("my-agent", user_id="u1")
-            assert result == primary
-
-
-# ---------------------------------------------------------------------------
-# Lines 149-150, 161-162 -- OSError from stat() in load()
-# ---------------------------------------------------------------------------
-
-
 def _make_mock_path(exists: bool = True, stat_raises: bool = False):
     """Create a MagicMock that behaves like a Path for exists() and stat()."""
     mock_path = MagicMock(spec=Path)
@@ -138,7 +94,7 @@ class TestLoadOSErrorPaths:
         # File "exists" but stat() raises -> triggers lines 149-150
         file_path = _make_mock_path(exists=True, stat_raises=True)
 
-        with patch.object(storage, "_get_read_memory_file_path", return_value=file_path):
+        with patch.object(storage, "_get_memory_file_path", return_value=file_path):
             with patch.object(storage, "_load_memory_from_file", return_value=create_empty_memory()):
                 result = storage.load()
 
@@ -164,7 +120,7 @@ class TestLoadOSErrorPaths:
         file_path = _make_mock_path(exists=True)
         file_path.stat.side_effect = stat_side_effect
 
-        with patch.object(storage, "_get_read_memory_file_path", return_value=file_path):
+        with patch.object(storage, "_get_memory_file_path", return_value=file_path):
             with patch.object(storage, "_load_memory_from_file", return_value=create_empty_memory()):
                 result = storage.load()
 
@@ -187,7 +143,7 @@ class TestReloadOSErrorPath:
         # File exists but stat() raises -> triggers lines 177-178
         file_path = _make_mock_path(exists=True, stat_raises=True)
 
-        with patch.object(storage, "_get_read_memory_file_path", return_value=file_path):
+        with patch.object(storage, "_get_memory_file_path", return_value=file_path):
             with patch.object(storage, "_load_memory_from_file", return_value=create_empty_memory()):
                 result = storage.reload()
 

@@ -276,6 +276,7 @@ tar \
     Makefile \
     README.md \
     backend \
+    bundled-resources.json \
     config.example.yaml \
     config.intranet.yaml \
     docker \

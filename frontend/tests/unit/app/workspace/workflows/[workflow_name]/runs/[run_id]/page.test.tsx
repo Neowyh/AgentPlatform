@@ -91,6 +91,10 @@ vi.mock("@/core/workflows", () => ({
     mutateAsync: mockMutateAsync,
     isPending: false,
   }),
+  workflowRunArtifactDownloadUrl: (name: string, runId: string, path: string) =>
+    `http://backend/api/workflows/${encodeURIComponent(name)}/runs/${encodeURIComponent(runId)}/artifacts/content?path=${encodeURIComponent(path)}`,
+  workflowRunRecordDownloadUrl: (name: string, runId: string, format: string) =>
+    `http://backend/api/workflows/${encodeURIComponent(name)}/runs/${encodeURIComponent(runId)}/record?format=${format}`,
 }));
 vi.mock("@/components/workspace/workspace-breadcrumb", () => ({
   WorkspaceBreadcrumb: () => <div />,

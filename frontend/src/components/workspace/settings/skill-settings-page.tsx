@@ -23,7 +23,10 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useI18n } from "@/core/i18n/hooks";
 import { useSkills } from "@/core/skills/hooks";
 import type { Skill } from "@/core/skills/type";
-import { createVisibilityApplication } from "@/core/visibility-applications/api";
+import {
+  changeResourceVisibility,
+  createVisibilityApplication,
+} from "@/core/visibility-applications/api";
 
 import { SettingsSection } from "./settings-section";
 import { SkillApplyDialog } from "./skill-apply-dialog";
@@ -65,7 +68,7 @@ function SkillSettingsList({ skills }: { skills: Skill[] }) {
     try {
       await createVisibilityApplication({
         resource_type: "skill",
-        resource_id: applySkill.name,
+        resource_id: applySkill.resource_id ?? applySkill.name,
         target_visibility: targetVisibility,
         reason,
       });
@@ -74,6 +77,22 @@ function SkillSettingsList({ skills }: { skills: Skill[] }) {
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "Failed to submit application",
+      );
+    }
+  };
+
+  const handleApplyChange = async (targetVisibility: string) => {
+    if (!applySkill) return;
+    try {
+      await changeResourceVisibility({
+        resource_id: applySkill.resource_id ?? applySkill.name,
+        visibility: targetVisibility,
+      });
+      toast.success(t.settings.skills.visibilityUpdated);
+      setApplySkill(null);
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to change visibility",
       );
     }
   };
@@ -93,7 +112,11 @@ function SkillSettingsList({ skills }: { skills: Skill[] }) {
       {filteredSkills.length === 0 && <EmptySkill />}
       {filteredSkills.length > 0 &&
         filteredSkills.map((skill) => (
-          <Item className="w-full" variant="outline" key={skill.name}>
+          <Item
+            className="w-full"
+            variant="outline"
+            key={skill.resource_id ?? skill.name}
+          >
             <ItemContent>
               <ItemTitle>
                 <div className="flex items-center gap-2">
@@ -107,7 +130,7 @@ function SkillSettingsList({ skills }: { skills: Skill[] }) {
                 {skill.description}
               </ItemDescription>
             </ItemContent>
-            {skill.category === "custom" && (
+            {skill.category === "custom" && !skill.read_only && (
               <Button
                 variant="outline"
                 size="sm"
@@ -123,6 +146,7 @@ function SkillSettingsList({ skills }: { skills: Skill[] }) {
         open={applySkill !== null}
         onOpenChange={(open) => !open && setApplySkill(null)}
         onSubmit={handleApplySubmit}
+        onChange={handleApplyChange}
       />
     </div>
   );

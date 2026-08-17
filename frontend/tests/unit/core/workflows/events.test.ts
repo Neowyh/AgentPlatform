@@ -47,6 +47,33 @@ describe("applyWorkflowEvent", () => {
     expect(malformed.action_tokens?.draft).toBe("");
   });
 
+  test("prefers the structured summary and code on node_failed", () => {
+    const started = applyWorkflowEvent(
+      { run_id: "run-1", workflow: "wf", status: "queued", error: null },
+      { seq: 1, type: "node_started", payload: { node_id: "collect" } },
+    );
+    const failed = applyWorkflowEvent(started, {
+      seq: 2,
+      type: "node_failed",
+      payload: {
+        node_id: "collect",
+        code: "invalid_file_roots",
+        summary:
+          "无法启动工作流：2 个文件访问路径不在允许的挂载范围内（涉及 1 个节点）",
+        error: "node 'collect': write:/mnt/eval-cases/z.json",
+      },
+    });
+
+    expect(failed.error).toBe(
+      "无法启动工作流：2 个文件访问路径不在允许的挂载范围内（涉及 1 个节点）",
+    );
+    expect(failed.error_code).toBe("invalid_file_roots");
+    expect(failed.steps?.collect).toMatchObject({
+      status: "failed",
+      error_code: "invalid_file_roots",
+    });
+  });
+
   test("records started_at and finished_at from node lifecycle events", () => {
     const started = applyWorkflowEvent(
       { run_id: "run-1", workflow: "wf", status: "queued", error: null },
@@ -223,6 +250,35 @@ describe("applyWorkflowEvent", () => {
     expect(runFailed.status).toBe("failed");
     expect(runFailed.steps?.draft?.status).toBe("failed");
     expect(runFailed.steps?.sibling?.status).toBe("cancelled");
+  });
+
+  test("carries the structured run_failed summary and code", () => {
+    const failed = applyWorkflowEvent(
+      { run_id: "run-1", workflow: "wf", status: "running", error: null },
+      {
+        seq: 2,
+        type: "run_failed",
+        payload: {
+          code: "max_attempts",
+          summary: "工作流执行失败：重试次数已达上限",
+          error: "workflow_max_attempts_exceeded",
+        },
+      },
+    );
+
+    expect(failed.status).toBe("failed");
+    expect(failed.error).toBe("工作流执行失败：重试次数已达上限");
+    expect(failed.error_code).toBe("max_attempts");
+  });
+
+  test("falls back to the legacy error key when no summary is present", () => {
+    const failed = applyWorkflowEvent(
+      { run_id: "run-1", workflow: "wf", status: "running", error: null },
+      { seq: 1, type: "run_failed", payload: { error: "legacy message" } },
+    );
+
+    expect(failed.error).toBe("legacy message");
+    expect(failed.error_code).toBeFalsy();
   });
 
   test("leaves steps untouched on run_completed", () => {

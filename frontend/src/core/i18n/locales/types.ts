@@ -145,7 +145,6 @@ export interface Translations {
     nameStepAlreadyExistsError: string;
     nameStepNetworkError: string;
     nameStepCheckError: string;
-    nameStepApiDisabledError: string;
     nameStepBootstrapMessage: string;
     save: string;
     saving: string;
@@ -172,6 +171,12 @@ export interface Translations {
     submitting: string;
     submit: string;
     applicationSubmitted: string;
+    visibilityUpgradeHint: string;
+    visibilityDowngradeHint: string;
+    visibilityUpdated: string;
+    downgradeConfirmTitle: string;
+    downgradeConfirmDescription: string;
+    confirm: string;
     favoriteAdded: string;
     favoriteRemoved: string;
     exportSuccess: string;
@@ -282,6 +287,12 @@ export interface Translations {
     submitting: string;
     submit: string;
     applicationSubmitted: string;
+    visibilityUpgradeHint: string;
+    visibilityDowngradeHint: string;
+    visibilityUpdated: string;
+    downgradeConfirmTitle: string;
+    downgradeConfirmDescription: string;
+    confirm: string;
     notOwner: string;
     visibilityPrivate: string;
     visibilityDepartment: string;
@@ -313,6 +324,7 @@ export interface Translations {
     userManagement: string;
     departmentManagement: string;
     toolManagement: string;
+    resourceManagement: string;
     applicationManagement: string;
     auditLogManagement: string;
   };
@@ -560,6 +572,12 @@ export interface Translations {
       applyDialogReasonPlaceholder: string;
       applyDialogCancel: string;
       applyDialogSubmit: string;
+      applyDialogUpgradeHint: string;
+      applyDialogDowngradeHint: string;
+      visibilityUpdated: string;
+      applyDialogDowngradeConfirmTitle: string;
+      applyDialogDowngradeConfirmDescription: string;
+      applyDialogConfirm: string;
     };
     notification: {
       title: string;

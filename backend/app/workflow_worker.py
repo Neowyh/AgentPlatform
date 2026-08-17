@@ -16,8 +16,8 @@ from ideer.config import get_app_config
 from ideer.persistence.engine import close_engine, get_session_factory, init_engine_from_config
 from ideer.persistence.models.workflow_v2 import WorkflowTaskRow
 from ideer.runtime.checkpointer.async_provider import make_checkpointer
-from ideer.workflows.v2.adapters import ActionResolutionError, build_default_registry
 from ideer.workflows.v2.compiler import WorkflowCancelled, WorkflowGraphCompiler
+from ideer.workflows.v2.errors import WorkflowInvalidRootsError, WorkflowMissingInputRootsError, WorkflowRunError, run_failure_payload
 from ideer.workflows.v2.file_roots import make_host_resolver, validate_read_roots, validate_workflow_roots, workflow_log_root
 from ideer.workflows.v2.parser import parse_workflow_v2
 from ideer.workflows.v2.run_record import RunRecordWriter
@@ -25,67 +25,83 @@ from ideer.workflows.v2.store import WorkflowV2Store
 from ideer.workflows.v2.worker import WorkflowPaused, WorkflowWorker, workflow_snapshot
 
 
-async def resolve_shared_agent_adapters(definition: Any, registry: Any, runner_id: str) -> None:
-    """Register shared agents referenced by workflow nodes but owned by another user.
+async def load_workflow_definition_for_run(run: Any, store: Any, session_factory: Any, storage: Any) -> dict:
+    """Load canonical Runs by frozen UUID; retain name/version for legacy Runs."""
 
-    ``build_default_registry`` registers the runner's own agents from the
-    runner's directory. This step adds agents the runner does not own but is
-    allowed to use (public / department / super_admin visibility, enforced
-    with the same RBAC rules as the agents API). Config and SOUL are loaded
-    from the declaring owner's directory by ``_AgentAdapter`` while the run
-    context stays with the runner.
+    workflow_resource_id = getattr(run, "workflow_resource_id", None)
+    if workflow_resource_id:
+        if session_factory is None or storage is None:
+            raise RuntimeError("canonical workflow run requires catalog persistence and storage")
+        from ideer.resources.runtime import CanonicalResourceLoader
 
-    Names the runner already owns (or that the injected registry already
-    resolves) are left untouched; unresolvable or inaccessible agents keep the
-    existing ``ActionResolutionError`` failure path.
-    """
-    from app.gateway.authz import check_resource_access
-    from app.gateway.utils import ResourceMetadataStore
-    from ideer.config.agents_config import validate_agent_name
-    from ideer.config.paths import get_paths
-    from ideer.persistence.engine import get_session_factory
-    from ideer.persistence.models.user import UserModel
-    from ideer.workflows.v2.adapters import _AgentAdapter
+        async with session_factory() as session:
+            frozen = await CanonicalResourceLoader(session, storage).load_workflow(run.run_id, workflow_resource_id)
+            return frozen.content
+    version = await store.get_definition(run.workflow_name, run.definition_version)
+    if version is None:
+        raise RuntimeError(f"workflow definition {run.workflow_name}@{run.definition_version} not found")
+    return version.definition
 
-    agent_names: set[str] = set()
-    for node in definition.nodes:
-        if getattr(node, "type", None) != "action":
-            continue
-        action = getattr(node, "action", None)
-        if action is None or getattr(action, "kind", None) != "agent":
-            continue
-        try:
-            agent_names.add(validate_agent_name(getattr(action, "name", None)))
-        except ValueError:
-            continue
 
-    meta_store = ResourceMetadataStore("agent")
-    for name in agent_names:
-        try:
-            registry.resolve("agent", name)
-            continue
-        except ActionResolutionError:
-            pass
+async def build_canonical_registry(run: Any, config: Any, session_factory: Any, storage: Any) -> Any:
+    """Build adapters only from the Run's frozen UUID closure and runner policy."""
 
-        meta = await meta_store.load_meta(name)
-        owner_id = meta.get("owner_id")
-        if not owner_id or owner_id == runner_id:
-            continue
-        if not get_paths().user_agent_dir(owner_id, name).exists():
-            continue
+    from sqlalchemy import select
 
-        sf = get_session_factory()
-        user_row = None
-        if sf is not None:
-            from sqlalchemy import select
+    from ideer.persistence.models.resource_catalog import Resource, RunResourceSnapshot
+    from ideer.resources.runtime import CanonicalResourceLoader
+    from ideer.tools.tools import get_available_tools
+    from ideer.workflows.v2.adapters import ActionAdapterRegistry, _CanonicalAgentAdapter, _ToolAdapter
 
-            async with sf() as session:
-                user_row = (await session.execute(select(UserModel).where(UserModel.id == runner_id))).scalar_one_or_none()
-        if user_row is None:
-            continue
-        if not check_resource_access(user_row, owner_id, meta.get("department_id"), meta.get("visibility", "private")):
-            continue
-        registry.register("agent", name, _AgentAdapter(name, runner_id, owner_id=owner_id))
+    if session_factory is None:
+        raise RuntimeError("canonical workflow run requires catalog persistence")
+    raw_groups = run.runner_tool_groups
+    allowed_groups = frozenset(raw_groups) if raw_groups is not None else None
+    registry = ActionAdapterRegistry()
+    for tool in get_available_tools(
+        groups=sorted(allowed_groups) if allowed_groups is not None else None,
+        app_config=config,
+    ):
+        registry.register("tool", tool.name, _ToolAdapter(tool, user_id=run.created_by))
+
+    async with session_factory() as session:
+        loader = CanonicalResourceLoader(session, storage)
+        frozen_skill_versions: dict[str, tuple[int, str]] = {}
+        agent_ids = list(
+            (
+                await session.execute(
+                    select(Resource.id)
+                    .join(RunResourceSnapshot, RunResourceSnapshot.resource_id == Resource.id)
+                    .where(
+                        RunResourceSnapshot.run_id == run.run_id,
+                        Resource.type == "agent",
+                    )
+                    .order_by(Resource.id)
+                )
+            ).scalars()
+        )
+        for resource_id in agent_ids:
+            definition = await loader.load_agent(run.run_id, resource_id)
+            skill_definitions = await loader.load_agent_skill_definitions(run.run_id, resource_id)
+            skills = [value.skill for value in skill_definitions]
+            for value in skill_definitions:
+                frozen_skill_versions[value.resource_id] = (value.version, value.content_hash)
+            registry.register(
+                "agent",
+                resource_id,
+                _CanonicalAgentAdapter(
+                    definition,
+                    skills,
+                    run.created_by,
+                    allowed_tool_groups=allowed_groups,
+                ),
+            )
+        await asyncio.to_thread(
+            storage.create_run_skill_view,
+            run.run_id,
+            [(resource_id, version, content_hash) for resource_id, (version, content_hash) in sorted(frozen_skill_versions.items())],
+        )
+    return registry
 
 
 async def execute_workflow_task(
@@ -93,7 +109,6 @@ async def execute_workflow_task(
     *,
     store: WorkflowV2Store,
     config: Any,
-    registry_factory: Callable[[Any, str], Any] = build_default_registry,
     checkpointer_factory: Callable[[Any], AbstractAsyncContextManager[Any]] = make_checkpointer,
 ) -> None:
     """Execute one claimed task through the production graph and event chain."""
@@ -101,12 +116,25 @@ async def execute_workflow_task(
     run = await store.get_run(run_id)
     if run is None:
         raise RuntimeError(f"workflow run '{run_id}' not found")
-    version = await store.get_definition(run.workflow_name, run.definition_version)
-    if version is None:
-        raise RuntimeError(f"workflow definition {run.workflow_name}@{run.definition_version} not found")
-    definition = parse_workflow_v2(yaml.safe_dump(version.definition))
-    adapters = registry_factory(config, run.created_by)
-    await resolve_shared_agent_adapters(definition, adapters, run.created_by)
+    storage = None
+    if run.workflow_resource_id:
+        from ideer.config.paths import get_paths
+        from ideer.resources.storage import ResourceStorage
+
+        storage = ResourceStorage(get_paths().base_dir)
+    definition_payload = await load_workflow_definition_for_run(
+        run,
+        store,
+        getattr(store, "session_factory", None),
+        storage,
+    )
+    definition = parse_workflow_v2(yaml.safe_dump(definition_payload))
+    adapters = await build_canonical_registry(
+        run,
+        config,
+        getattr(store, "session_factory", None),
+        storage,
+    )
     if task.resume_command_id is not None:
         command = await store.get_command(task.resume_command_id)
         if command is None:
@@ -133,7 +161,7 @@ async def execute_workflow_task(
             max_events=event_limit - 1,
         )
         if event is None:
-            raise RuntimeError("workflow_event_limit_exceeded")
+            raise WorkflowRunError("event_limit", "工作流执行失败：事件数量已达上限", detail="workflow_event_limit_exceeded")
 
     async def emit_terminal_event(event_type: str, payload: dict) -> None:
         await store.append_event(
@@ -156,10 +184,10 @@ async def execute_workflow_task(
         try:
             invalid_roots = validate_workflow_roots(definition.nodes, run.inputs)
             if invalid_roots:
-                raise RuntimeError("invalid file_access roots: " + "; ".join(invalid_roots))
+                raise WorkflowInvalidRootsError(invalid_roots)
             missing_read_roots = validate_read_roots(definition.nodes, run.inputs, make_host_resolver(run_id, run.created_by))
             if missing_read_roots:
-                raise RuntimeError("missing input roots: " + "; ".join(missing_read_roots))
+                raise WorkflowMissingInputRootsError(missing_read_roots)
             await emit_event("resumed" if task.resume_command_id is not None else "run_started", {"definition_version": run.definition_version})
             result = await graph.ainvoke(
                 invocation,
@@ -172,7 +200,7 @@ async def execute_workflow_task(
             await emit_terminal_event("run_cancelled", {"error": str(exc)})
             raise
         except Exception as exc:
-            await emit_terminal_event("run_failed", {"error": str(exc)})
+            await emit_terminal_event("run_failed", run_failure_payload(exc))
             raise
     snapshot = workflow_snapshot(result)
     if not await store.update_snapshot(run_id, snapshot, worker_id=task.lease_owner):

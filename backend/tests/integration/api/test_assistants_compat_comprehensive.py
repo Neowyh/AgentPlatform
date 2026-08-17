@@ -539,70 +539,37 @@ class TestListAssistants:
         ids = [a.assistant_id for a in result]
         assert ids == ["lead_agent", "alpha", "beta"]
 
-    def test_custom_agents_use_user_metadata(self):
-        """Custom agents get metadata.created_by = 'user'."""
-        custom_cfg = _make_agent_config("my_custom", "Custom desc")
-        with patch(
-            "ideer.config.agents_config.list_custom_agents",
-            return_value=[custom_cfg],
-        ):
-            # Re-import to exercise the real code path with the mock
-            from app.gateway.routers import assistants_compat
+    def test_canonical_load_failure_still_returns_default(self):
+        """If catalog lookup raises, we still get the default assistant."""
+        from app.gateway.routers import assistants_compat
 
+        with patch(
+            "app.gateway.routers.assistants_compat._list_canonical_assistants",
+            side_effect=RuntimeError("catalog unavailable"),
+        ):
             result = assistants_compat._list_assistants()
-            custom = [a for a in result if a.assistant_id == "my_custom"]
-            assert len(custom) == 1
-            assert custom[0].metadata.get("created_by") == "user"
+        assert len(result) >= 1
+        assert result[0].assistant_id == "lead_agent"
 
-    def test_custom_agents_description_from_config(self):
-        """Custom agent description comes from agent_cfg.description."""
-        custom_cfg = _make_agent_config("desc_agent", "Hello world")
+    def test_canonical_agents_use_lead_agent_graph_id(self):
+        """All canonical agents get graph_id='lead_agent'."""
+        from app.gateway.routers import assistants_compat
+
+        custom = AssistantResponse(
+            assistant_id="g_agent",
+            graph_id="lead_agent",
+            name="g_agent",
+            config={},
+            metadata={"created_by": "user"},
+            description="Agent from catalog",
+            created_at="",
+            updated_at="",
+            version=1,
+        )
         with patch(
-            "ideer.config.agents_config.list_custom_agents",
-            return_value=[custom_cfg],
+            "app.gateway.routers.assistants_compat._list_canonical_assistants",
+            return_value=[custom],
         ):
-            from app.gateway.routers import assistants_compat
-
-            result = assistants_compat._list_assistants()
-            custom = [a for a in result if a.assistant_id == "desc_agent"]
-            assert len(custom) == 1
-            assert custom[0].description == "Hello world"
-
-    def test_custom_agents_empty_description(self):
-        """Custom agent with None description gets empty string."""
-        custom_cfg = _make_agent_config("no_desc", None)
-        with patch(
-            "ideer.config.agents_config.list_custom_agents",
-            return_value=[custom_cfg],
-        ):
-            from app.gateway.routers import assistants_compat
-
-            result = assistants_compat._list_assistants()
-            custom = [a for a in result if a.assistant_id == "no_desc"]
-            assert len(custom) == 1
-            assert custom[0].description == ""
-
-    def test_custom_agents_load_failure_still_returns_default(self):
-        """If list_custom_agents raises, we still get the default assistant."""
-        with patch(
-            "ideer.config.agents_config.list_custom_agents",
-            side_effect=RuntimeError("config missing"),
-        ):
-            from app.gateway.routers import assistants_compat
-
-            result = assistants_compat._list_assistants()
-            assert len(result) >= 1
-            assert result[0].assistant_id == "lead_agent"
-
-    def test_custom_agents_use_lead_agent_graph_id(self):
-        """All custom agents get graph_id='lead_agent'."""
-        custom_cfg = _make_agent_config("g_agent")
-        with patch(
-            "ideer.config.agents_config.list_custom_agents",
-            return_value=[custom_cfg],
-        ):
-            from app.gateway.routers import assistants_compat
-
             result = assistants_compat._list_assistants()
             for a in result:
                 assert a.graph_id == "lead_agent"

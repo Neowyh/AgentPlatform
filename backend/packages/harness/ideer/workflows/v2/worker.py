@@ -9,6 +9,7 @@ from typing import Any
 
 from ideer.persistence.models.workflow_v2 import WorkflowTaskRow
 
+from .errors import run_error_summary
 from .store import WorkflowV2Store
 
 logger = logging.getLogger(__name__)
@@ -97,7 +98,7 @@ class WorkflowWorker:
         except Exception as exc:
             logger.exception("workflow task %s failed", task.task_id)
             if not lease_lost.is_set():
-                await self.store.finish_task(task.task_id, "failed", str(exc), self.worker_id)
+                await self.store.finish_task(task.task_id, "failed", run_error_summary(exc), self.worker_id)
         else:
             if not lease_lost.is_set():
                 await self.store.finish_task(task.task_id, "completed", None, self.worker_id)

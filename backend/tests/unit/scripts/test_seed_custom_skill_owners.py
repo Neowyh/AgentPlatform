@@ -55,7 +55,7 @@ def _make_skills_dir(path: Path, *names: str) -> Path:
 def _load_meta(db_path: Path, skill_name: str) -> tuple | None:
     with sqlite3.connect(db_path) as conn:
         return conn.execute(
-            "SELECT resource_id, owner_id, visibility FROM resource_metadata WHERE resource_type='skill' AND resource_id=?",
+            "SELECT resource_id, owner_id, visibility, imported_from FROM resource_metadata WHERE resource_type='skill' AND resource_id=?",
             (skill_name,),
         ).fetchone()
 
@@ -85,7 +85,7 @@ def test_seed_assigns_private_owner_and_is_idempotent(tmp_path: Path) -> None:
     assert first["skipped"] == []
 
     for name in ("fault-zeroing", "srs-writing", "officecli"):
-        assert _load_meta(db_path, name) == (name, "admin-1", "private")
+        assert _load_meta(db_path, name) == (name, "admin-1", "private", "bundled")
 
     second = seed_script.seed_skill_owners(db_path, skills_dir, "admin-1")
     assert second["added"] == []
@@ -168,7 +168,12 @@ def test_main_seeds_with_default_owner_resolution(tmp_path: Path) -> None:
     skills_dir = _make_skills_dir(tmp_path / "skills", "fault-zeroing")
 
     assert seed_script.main(["--db", str(db_path), "--skills-dir", str(skills_dir)]) == 0
-    assert _load_meta(db_path, "fault-zeroing") == ("fault-zeroing", "admin-1", "private")
+    assert _load_meta(db_path, "fault-zeroing") == (
+        "fault-zeroing",
+        "admin-1",
+        "private",
+        "bundled",
+    )
 
 
 def test_seed_script_uses_only_standard_library_imports_for_offline_deploy_hosts() -> None:

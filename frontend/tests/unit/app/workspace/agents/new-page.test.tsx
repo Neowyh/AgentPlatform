@@ -31,7 +31,6 @@ vi.mock("@/core/i18n/hooks", () => ({
         nameStepContinue: "Continue",
         nameStepInvalidError: "Invalid name format",
         nameStepAlreadyExistsError: "Name already exists",
-        nameStepApiDisabledError: "API disabled",
         nameStepNetworkError: "Network error",
         nameStepCheckError: "Check failed",
         nameStepBootstrapMessage: "Create agent {name}",
@@ -65,7 +64,6 @@ vi.mock("@/core/agents/api", () => ({
       this.reason = reason;
     }
   },
-  AgentsApiDisabledError: class extends Error {},
 }));
 
 vi.mock("@/core/agents", () => ({

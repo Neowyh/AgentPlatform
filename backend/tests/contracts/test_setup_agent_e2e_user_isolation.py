@@ -25,20 +25,28 @@ fallback would put files into ``default/`` if propagation breaks.
 
 from __future__ import annotations
 
+import asyncio
+from collections.abc import AsyncIterator
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 from uuid import UUID
 
 import pytest
+import pytest_asyncio
 from _agent_e2e_helpers import FakeToolCallingModel
 from langchain_core.messages import AIMessage, HumanMessage
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.gateway.services import (
     build_run_config,
     inject_authenticated_user_context,
     merge_run_context_overrides,
 )
+from ideer.persistence.base import Base
+from ideer.persistence.models.resource_catalog import Resource
+from ideer.persistence.models.user import UserModel, UserRole
 from ideer.runtime.runs.worker import _build_runtime_context, _install_runtime_context
 
 # ---------------------------------------------------------------------------
@@ -72,14 +80,34 @@ def _assemble_config(
 
 
 def _make_paths_mock(tmp_path: Path):
-    """Mirror the production paths.user_agent_dir signature."""
+    """Mirror the production paths.base_dir signature."""
     from unittest.mock import MagicMock
 
     paths = MagicMock()
     paths.base_dir = tmp_path
-    paths.agent_dir = lambda name: tmp_path / "agents" / name
-    paths.user_agent_dir = lambda user_id, name: tmp_path / "users" / user_id / "agents" / name
     return paths
+
+
+@pytest_asyncio.fixture
+async def catalog_db(tmp_path: Path) -> AsyncIterator[async_sessionmaker[AsyncSession]]:
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'catalog.db'}")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    yield async_sessionmaker(engine, expire_on_commit=False)
+    await engine.dispose()
+
+
+async def _seed_user(catalog_db: async_sessionmaker[AsyncSession], user_id: str) -> None:
+    async with catalog_db() as session:
+        session.add(UserModel(id=user_id, username=f"{user_id}@test.com", role=UserRole.USER, disabled=False))
+        await session.commit()
+
+
+async def _assert_agent_owner(catalog_db: async_sessionmaker[AsyncSession], slug: str, expected_owner: str) -> None:
+    async with catalog_db() as session:
+        resource = (await session.execute(select(Resource).where(Resource.type == "agent", Resource.slug == slug))).scalar_one_or_none()
+        assert resource is not None, f"no catalog agent with slug {slug!r}"
+        assert str(resource.owner_id) == expected_owner, f"agent {slug!r} owned by {resource.owner_id!r}, expected {expected_owner!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -202,17 +230,18 @@ def _build_real_bootstrap_graph(authenticated_user_id: str):
 
 @pytest.mark.no_auto_user
 @pytest.mark.asyncio
-async def test_real_graph_real_setup_agent_writes_to_authenticated_user_dir(tmp_path: Path):
+async def test_real_graph_real_setup_agent_writes_to_authenticated_user_dir(tmp_path: Path, catalog_db: async_sessionmaker[AsyncSession]):
     """The smoking-gun test for issue #2862.
 
     Under no_auto_user (contextvar = empty), if user_id propagation through
     runtime.context is broken, setup_agent will fall back to DEFAULT_USER_ID
-    and write to users/default/agents/... The assertion that this directory
-    DOES NOT exist is what makes this test load-bearing.
+    and the catalog resource would be owned by the default user. The owner
+    assertion is what makes this test load-bearing.
     """
     from langgraph.runtime import Runtime
 
     auth_uid = "abcdef01-2345-6789-abcd-ef0123456789"
+    await _seed_user(catalog_db, auth_uid)
     config = _assemble_config(
         body_config={"recursion_limit": 50},
         body_context={"agent_name": "e2e-agent", "is_bootstrap": True},
@@ -230,10 +259,14 @@ async def test_real_graph_real_setup_agent_writes_to_authenticated_user_dir(tmp_
 
     graph = _build_real_bootstrap_graph(auth_uid)
 
-    # Patch get_paths only (the file-system rooting); everything else is real
-    with patch(
-        "ideer.tools.builtins.setup_agent_tool.get_paths",
-        return_value=_make_paths_mock(tmp_path),
+    # Patch get_paths (file-system rooting) + get_session_factory (catalog);
+    # everything else is real
+    with (
+        patch(
+            "ideer.tools.builtins.setup_agent_tool.get_paths",
+            return_value=_make_paths_mock(tmp_path),
+        ),
+        patch("ideer.tools.builtins.setup_agent_tool.get_session_factory", return_value=catalog_db),
     ):
         # Drive the real graph. This goes through real ToolNode + real Runtime merge.
         final_state = await graph.ainvoke(
@@ -241,14 +274,8 @@ async def test_real_graph_real_setup_agent_writes_to_authenticated_user_dir(tmp_
             config=config,
         )
 
-    expected_dir = tmp_path / "users" / auth_uid / "agents" / "e2e-agent"
-    default_dir = tmp_path / "users" / "default" / "agents" / "e2e-agent"
-
-    # Load-bearing assertions:
-    assert expected_dir.exists(), f"Agent directory not found at the authenticated user's path. Expected: {expected_dir}. tmp_path tree: {[str(p) for p in tmp_path.rglob('*')]}"
-    assert (expected_dir / "SOUL.md").read_text() == "# My E2E Agent\n\nA SOUL written by the model."
-    assert (expected_dir / "config.yaml").exists()
-    assert not default_dir.exists(), "REGRESSION: agent landed under users/default/. user_id propagation broke somewhere between HTTP layer and ToolRuntime.context."
+    # Load-bearing assertions: catalog agent must be owned by the authenticated user
+    await _assert_agent_owner(catalog_db, "e2e-agent", auth_uid)
 
     # And final state should reflect tool success
     last = final_state["messages"][-1]
@@ -257,14 +284,18 @@ async def test_real_graph_real_setup_agent_writes_to_authenticated_user_dir(tmp_
 
 @pytest.mark.no_auto_user
 @pytest.mark.asyncio
-async def test_inject_failure_falls_back_to_default_proving_test_is_load_bearing(tmp_path: Path):
+async def test_inject_failure_falls_back_to_default_proving_test_is_load_bearing(tmp_path: Path, catalog_db: async_sessionmaker[AsyncSession]):
     """Negative control: if inject does NOT happen (no user in request), and
-    contextvar is empty (no_auto_user), setup_agent must land in default/.
+    contextvar is empty (no_auto_user), setup_agent must fail (no catalog
+    user to own the resource) rather than silently landing under default/.
 
     This proves the positive test is actually load-bearing — i.e. it would
     have failed before PR #2784, not passed accidentally.
     """
     from langgraph.runtime import Runtime
+
+    # Only an unrelated user exists in the catalog — the fallback user does not.
+    await _seed_user(catalog_db, "someone-else")
 
     config = _assemble_config(
         body_config={"recursion_limit": 50},
@@ -280,17 +311,24 @@ async def test_inject_failure_falls_back_to_default_proving_test_is_load_bearing
 
     graph = _build_real_bootstrap_graph("does-not-matter")
 
-    with patch(
-        "ideer.tools.builtins.setup_agent_tool.get_paths",
-        return_value=_make_paths_mock(tmp_path),
+    with (
+        patch(
+            "ideer.tools.builtins.setup_agent_tool.get_paths",
+            return_value=_make_paths_mock(tmp_path),
+        ),
+        patch("ideer.tools.builtins.setup_agent_tool.get_session_factory", return_value=catalog_db),
     ):
         await graph.ainvoke(
             {"messages": [HumanMessage(content="Create fallback-agent")]},
             config=config,
         )
 
-    default_dir = tmp_path / "users" / "default" / "agents" / "fallback-agent"
-    assert default_dir.exists(), "Negative control failed: even without inject + contextvar, agent did not land in default/. The test infrastructure may not be reproducing the bug condition."
+    # Negative control: no inject + no contextvar must NOT create a catalog
+    # resource — the fallback user does not exist in the catalog, so the tool
+    # must fail instead of silently writing somewhere.
+    async with catalog_db() as session:
+        resource = (await session.execute(select(Resource).where(Resource.type == "agent", Resource.slug == "fallback-agent"))).scalar_one_or_none()
+        assert resource is None, "Negative control failed: agent was created despite no authenticated user. The test infrastructure may not be reproducing the bug condition."
 
 
 # ---------------------------------------------------------------------------
@@ -300,7 +338,7 @@ async def test_inject_failure_falls_back_to_default_proving_test_is_load_bearing
 
 @pytest.mark.no_auto_user
 @pytest.mark.asyncio
-async def test_subgraph_invocation_preserves_user_id_in_runtime(tmp_path: Path):
+async def test_subgraph_invocation_preserves_user_id_in_runtime(tmp_path: Path, catalog_db: async_sessionmaker[AsyncSession]):
     """When a parent graph invokes a child graph (the pattern used by
     subagents), parent_runtime.merge() must keep user_id intact.
 
@@ -314,6 +352,7 @@ async def test_subgraph_invocation_preserves_user_id_in_runtime(tmp_path: Path):
     from ideer.tools.builtins.setup_agent_tool import setup_agent
 
     auth_uid = "deadbeef-0000-1111-2222-333344445555"
+    await _seed_user(catalog_db, auth_uid)
 
     # Inner graph: same as the bootstrap flow
     inner_model = FakeToolCallingModel(
@@ -349,9 +388,12 @@ async def test_subgraph_invocation_preserves_user_id_in_runtime(tmp_path: Path):
     runtime = Runtime(context=runtime_ctx, store=None)
     config.setdefault("configurable", {})["__pregel_runtime"] = runtime
 
-    with patch(
-        "ideer.tools.builtins.setup_agent_tool.get_paths",
-        return_value=_make_paths_mock(tmp_path),
+    with (
+        patch(
+            "ideer.tools.builtins.setup_agent_tool.get_paths",
+            return_value=_make_paths_mock(tmp_path),
+        ),
+        patch("ideer.tools.builtins.setup_agent_tool.get_session_factory", return_value=catalog_db),
     ):
         # Direct sub-graph invoke (mimics what a subagent invocation looks like
         # — distinct ainvoke call, but parent config carries the same runtime).
@@ -360,10 +402,7 @@ async def test_subgraph_invocation_preserves_user_id_in_runtime(tmp_path: Path):
             config=config,
         )
 
-    expected_dir = tmp_path / "users" / auth_uid / "agents" / "subgraph-agent"
-    default_dir = tmp_path / "users" / "default" / "agents" / "subgraph-agent"
-    assert expected_dir.exists()
-    assert not default_dir.exists()
+    await _assert_agent_owner(catalog_db, "subgraph-agent", auth_uid)
 
 
 # ---------------------------------------------------------------------------
@@ -371,7 +410,7 @@ async def test_subgraph_invocation_preserves_user_id_in_runtime(tmp_path: Path):
 # ---------------------------------------------------------------------------
 
 
-def test_sync_tool_dispatch_through_thread_pool_uses_runtime_context(tmp_path: Path):
+def test_sync_tool_dispatch_through_thread_pool_uses_runtime_context(tmp_path: Path, catalog_db: async_sessionmaker[AsyncSession]):
     """setup_agent is a sync function. When dispatched through ToolNode's
     ContextThreadPoolExecutor, runtime.context must still carry user_id —
     not via thread-local copy_context (which only carries contextvars), but
@@ -383,6 +422,7 @@ def test_sync_tool_dispatch_through_thread_pool_uses_runtime_context(tmp_path: P
     from ideer.tools.builtins.setup_agent_tool import setup_agent
 
     auth_uid = "11112222-3333-4444-5555-666677778888"
+    asyncio.run(_seed_user(catalog_db, auth_uid))
 
     fake_model = FakeToolCallingModel(
         responses=[
@@ -413,9 +453,12 @@ def test_sync_tool_dispatch_through_thread_pool_uses_runtime_context(tmp_path: P
     runtime = Runtime(context=runtime_ctx, store=None)
     config.setdefault("configurable", {})["__pregel_runtime"] = runtime
 
-    with patch(
-        "ideer.tools.builtins.setup_agent_tool.get_paths",
-        return_value=_make_paths_mock(tmp_path),
+    with (
+        patch(
+            "ideer.tools.builtins.setup_agent_tool.get_paths",
+            return_value=_make_paths_mock(tmp_path),
+        ),
+        patch("ideer.tools.builtins.setup_agent_tool.get_session_factory", return_value=catalog_db),
     ):
         # Use SYNC invoke to hit the ContextThreadPoolExecutor path
         graph.invoke(
@@ -423,7 +466,4 @@ def test_sync_tool_dispatch_through_thread_pool_uses_runtime_context(tmp_path: P
             config=config,
         )
 
-    expected_dir = tmp_path / "users" / auth_uid / "agents" / "sync-agent"
-    default_dir = tmp_path / "users" / "default" / "agents" / "sync-agent"
-    assert expected_dir.exists()
-    assert not default_dir.exists()
+    asyncio.run(_assert_agent_owner(catalog_db, "sync-agent", auth_uid))

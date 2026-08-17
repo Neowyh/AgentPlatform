@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -41,7 +41,11 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { WorkspaceBreadcrumb } from "@/components/workspace/workspace-breadcrumb";
 import { useI18n } from "@/core/i18n/hooks";
-import { createVisibilityApplication } from "@/core/visibility-applications/api";
+import {
+  changeResourceVisibility,
+  createVisibilityApplication,
+} from "@/core/visibility-applications/api";
+import { classifyVisibilityChange } from "@/core/visibility-applications/options";
 import { useRunWorkflow, useWorkflow, useWorkflowRuns } from "@/core/workflows";
 
 export default function WorkflowDetailPage() {
@@ -57,6 +61,21 @@ export default function WorkflowDetailPage() {
   const [targetVisibility, setTargetVisibility] = useState("department");
   const [visibilityReason, setVisibilityReason] = useState("");
   const [submittingApplication, setSubmittingApplication] = useState(false);
+  const [confirmingDowngrade, setConfirmingDowngrade] = useState(false);
+
+  useEffect(() => {
+    if (workflow?.resource_id && workflow_name !== workflow.resource_id) {
+      router.replace(`/workspace/workflows/${workflow.resource_id}`);
+    }
+  }, [router, workflow, workflow_name]);
+
+  useEffect(() => {
+    if (workflow) {
+      setTargetVisibility(workflow.visibility ?? "private");
+      setVisibilityReason("");
+      setConfirmingDowngrade(false);
+    }
+  }, [workflow]);
 
   const { runs } = useWorkflowRuns(workflow_name);
 
@@ -145,7 +164,17 @@ export default function WorkflowDetailPage() {
   }
 
   async function handleSubmitVisibility() {
-    if (!workflow || !visibilityReason.trim()) {
+    if (!workflow) return;
+    const change = classifyVisibilityChange(
+      workflow.visibility,
+      targetVisibility,
+    );
+    if (change === "unchanged") return;
+    if (change === "downgrade") {
+      setConfirmingDowngrade(true);
+      return;
+    }
+    if (!visibilityReason.trim()) {
       toast.error(t.workflows.reasonRequired);
       return;
     }
@@ -154,13 +183,32 @@ export default function WorkflowDetailPage() {
     try {
       await createVisibilityApplication({
         resource_type: "workflow",
-        resource_id: workflow.name,
+        resource_id: workflow.resource_id ?? workflow.name,
         target_visibility: targetVisibility,
         reason: visibilityReason.trim(),
       });
       toast.success(t.workflows.applicationSubmitted);
       setVisibilityDialogOpen(false);
       setVisibilityReason("");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSubmittingApplication(false);
+    }
+  }
+
+  async function handleConfirmDowngrade() {
+    if (!workflow) return;
+    setSubmittingApplication(true);
+    try {
+      await changeResourceVisibility({
+        resource_id: workflow.resource_id ?? workflow.name,
+        visibility: targetVisibility,
+      });
+      toast.success(t.workflows.visibilityUpdated);
+      setVisibilityDialogOpen(false);
+      setVisibilityReason("");
+      setConfirmingDowngrade(false);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     } finally {
@@ -204,20 +252,24 @@ export default function WorkflowDetailPage() {
             <DownloadIcon className="mr-1.5 h-4 w-4" />
             {t.workflows.export}
           </Button>
-          <Button
-            variant="outline"
-            onClick={() => setVisibilityDialogOpen(true)}
-          >
-            {t.workflows.applyVisibility}
-          </Button>
-          <Button variant="outline" asChild>
-            <Link
-              href={`/workspace/workflows/${encodeURIComponent(workflow_name)}/edit`}
-            >
-              <EditIcon className="mr-1.5 h-4 w-4" />
-              {t.workflows.edit}
-            </Link>
-          </Button>
+          {!workflow.read_only && (
+            <>
+              <Button
+                variant="outline"
+                onClick={() => setVisibilityDialogOpen(true)}
+              >
+                {t.workflows.applyVisibility}
+              </Button>
+              <Button variant="outline" asChild>
+                <Link
+                  href={`/workspace/workflows/${encodeURIComponent(workflow_name)}/edit`}
+                >
+                  <EditIcon className="mr-1.5 h-4 w-4" />
+                  {t.workflows.edit}
+                </Link>
+              </Button>
+            </>
+          )}
           <Button onClick={() => setRunDialogOpen(true)}>
             <PlayIcon className="mr-1.5 h-4 w-4" />
             {t.workflows.run}
@@ -380,66 +432,131 @@ export default function WorkflowDetailPage() {
         onOpenChange={setVisibilityDialogOpen}
       >
         <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t.workflows.applyVisibility}</DialogTitle>
-            <DialogDescription>
-              {t.workflows.applyVisibilityDescription}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>{t.workflows.currentTargetVisibility}</Label>
-              <p className="text-muted-foreground text-sm">
-                {workflow.visibility}
-              </p>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="target-visibility">
-                {t.workflows.targetVisibility}
-              </Label>
-              <Select
-                value={targetVisibility}
-                onValueChange={setTargetVisibility}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="private">{t.workflows.private}</SelectItem>
-                  <SelectItem value="department">
-                    {t.workflows.department}
-                  </SelectItem>
-                  <SelectItem value="public">{t.workflows.public}</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="reason">{t.workflows.reason}</Label>
-              <Textarea
-                id="reason"
-                placeholder={t.workflows.reasonPlaceholder}
-                value={visibilityReason}
-                onChange={(e) => setVisibilityReason(e.target.value)}
-                rows={3}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setVisibilityDialogOpen(false)}
-            >
-              {t.common.cancel}
-            </Button>
-            <Button
-              onClick={handleSubmitVisibility}
-              disabled={submittingApplication || !visibilityReason.trim()}
-            >
-              {submittingApplication
-                ? t.workflows.submitting
-                : t.workflows.submit}
-            </Button>
-          </DialogFooter>
+          {confirmingDowngrade ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>{t.workflows.downgradeConfirmTitle}</DialogTitle>
+                <DialogDescription>
+                  {t.workflows.downgradeConfirmDescription}
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => setConfirmingDowngrade(false)}
+                >
+                  {t.common.cancel}
+                </Button>
+                <Button
+                  onClick={handleConfirmDowngrade}
+                  disabled={submittingApplication}
+                >
+                  {submittingApplication
+                    ? t.workflows.submitting
+                    : t.workflows.confirm}
+                </Button>
+              </DialogFooter>
+            </>
+          ) : (
+            <>
+              <DialogHeader>
+                <DialogTitle>{t.workflows.applyVisibility}</DialogTitle>
+                <DialogDescription>
+                  {t.workflows.applyVisibilityDescription}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label>{t.workflows.currentTargetVisibility}</Label>
+                  <p className="text-muted-foreground text-sm">
+                    {workflow.visibility}
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="target-visibility">
+                    {t.workflows.targetVisibility}
+                  </Label>
+                  <Select
+                    value={targetVisibility}
+                    onValueChange={setTargetVisibility}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="private">
+                        {t.workflows.private}
+                      </SelectItem>
+                      <SelectItem value="department">
+                        {t.workflows.department}
+                      </SelectItem>
+                      <SelectItem value="public">
+                        {t.workflows.public}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {classifyVisibilityChange(
+                  workflow.visibility,
+                  targetVisibility,
+                ) === "upgrade" && (
+                  <p className="text-muted-foreground text-sm">
+                    {t.workflows.visibilityUpgradeHint}
+                  </p>
+                )}
+                {classifyVisibilityChange(
+                  workflow.visibility,
+                  targetVisibility,
+                ) === "downgrade" && (
+                  <p className="text-muted-foreground text-sm">
+                    {t.workflows.visibilityDowngradeHint}
+                  </p>
+                )}
+                {classifyVisibilityChange(
+                  workflow.visibility,
+                  targetVisibility,
+                ) !== "downgrade" && (
+                  <div className="space-y-2">
+                    <Label htmlFor="reason">{t.workflows.reason}</Label>
+                    <Textarea
+                      id="reason"
+                      placeholder={t.workflows.reasonPlaceholder}
+                      value={visibilityReason}
+                      onChange={(e) => setVisibilityReason(e.target.value)}
+                      rows={3}
+                    />
+                  </div>
+                )}
+              </div>
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => setVisibilityDialogOpen(false)}
+                >
+                  {t.common.cancel}
+                </Button>
+                <Button
+                  onClick={handleSubmitVisibility}
+                  disabled={
+                    submittingApplication ||
+                    classifyVisibilityChange(
+                      workflow.visibility,
+                      targetVisibility,
+                    ) === "unchanged" ||
+                    (classifyVisibilityChange(
+                      workflow.visibility,
+                      targetVisibility,
+                    ) === "upgrade" &&
+                      !visibilityReason.trim())
+                  }
+                >
+                  {submittingApplication
+                    ? t.workflows.submitting
+                    : t.workflows.submit}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
 

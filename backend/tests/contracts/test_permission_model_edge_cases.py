@@ -74,141 +74,131 @@ def _make_app_with_user(user: MagicMock | None = None, *, role: str = "user", de
 
 
 class TestPathTraversalDefense:
-    """Verify that _validate_skill_name and _validate_agent_name reject path traversal."""
+    """Verify skill/agent name validation rejects path traversal.
+
+    Uses the same validation functions the canonical tools rely on:
+    ``SkillStorage.validate_skill_name`` (ideer) and
+    ``ideer.config.agents_config.validate_agent_name``.
+    """
 
     # --- Skill names ---
 
     def test_skill_name_rejects_slash(self):
-        from app.gateway.routers.skills import _validate_skill_name
+        from ideer.skills.storage.skill_storage import SkillStorage
 
-        with pytest.raises(HTTPException) as exc_info:
-            _validate_skill_name("my/skill")
-        assert exc_info.value.status_code == 422
-        assert "Invalid skill name" in exc_info.value.detail
+        with pytest.raises(ValueError, match="hyphen-case"):
+            SkillStorage.validate_skill_name("my/skill")
 
     def test_skill_name_rejects_dotdot(self):
-        from app.gateway.routers.skills import _validate_skill_name
+        from ideer.skills.storage.skill_storage import SkillStorage
 
-        with pytest.raises(HTTPException) as exc_info:
-            _validate_skill_name("../etc/passwd")
-        assert exc_info.value.status_code == 422
+        with pytest.raises(ValueError, match="hyphen-case"):
+            SkillStorage.validate_skill_name("../etc/passwd")
 
     def test_skill_name_rejects_backslash(self):
-        from app.gateway.routers.skills import _validate_skill_name
+        from ideer.skills.storage.skill_storage import SkillStorage
 
-        with pytest.raises(HTTPException) as exc_info:
-            _validate_skill_name("skill\\..\\..\\etc")
-        assert exc_info.value.status_code == 422
+        with pytest.raises(ValueError, match="hyphen-case"):
+            SkillStorage.validate_skill_name("skill\\..\\..\\etc")
 
     def test_skill_name_rejects_space(self):
-        from app.gateway.routers.skills import _validate_skill_name
+        from ideer.skills.storage.skill_storage import SkillStorage
 
-        with pytest.raises(HTTPException) as exc_info:
-            _validate_skill_name("my skill")
-        assert exc_info.value.status_code == 422
+        with pytest.raises(ValueError, match="hyphen-case"):
+            SkillStorage.validate_skill_name("my skill")
 
     def test_skill_name_rejects_dot(self):
-        from app.gateway.routers.skills import _validate_skill_name
+        from ideer.skills.storage.skill_storage import SkillStorage
 
-        with pytest.raises(HTTPException) as exc_info:
-            _validate_skill_name("my.skill")
-        assert exc_info.value.status_code == 422
+        with pytest.raises(ValueError, match="hyphen-case"):
+            SkillStorage.validate_skill_name("my.skill")
 
     def test_skill_name_rejects_special_chars(self):
-        from app.gateway.routers.skills import _validate_skill_name
+        from ideer.skills.storage.skill_storage import SkillStorage
 
         for name in ["skill@name!", "skill#test", "skill$var", "skill%20", "skill&x"]:
-            with pytest.raises(HTTPException) as exc_info:
-                _validate_skill_name(name)
-            assert exc_info.value.status_code == 422
+            with pytest.raises(ValueError, match="hyphen-case"):
+                SkillStorage.validate_skill_name(name)
 
     def test_skill_name_rejects_empty(self):
-        from app.gateway.routers.skills import _validate_skill_name
+        from ideer.skills.storage.skill_storage import SkillStorage
 
-        with pytest.raises(HTTPException) as exc_info:
-            _validate_skill_name("")
-        assert exc_info.value.status_code == 422
+        with pytest.raises(ValueError, match="hyphen-case"):
+            SkillStorage.validate_skill_name("")
 
     def test_skill_name_accepts_valid(self):
-        from app.gateway.routers.skills import _validate_skill_name
+        from ideer.skills.storage.skill_storage import SkillStorage
 
-        for name in ["my-skill", "my_skill", "Skill_123-test", "a", "ABC_123"]:
-            _validate_skill_name(name)  # should not raise
+        for name in ["my-skill", "skill-123", "a", "a" * 63]:
+            SkillStorage.validate_skill_name(name)  # should not raise
 
     # --- Agent names ---
 
     def test_agent_name_rejects_slash(self):
-        from app.gateway.routers.agents import _validate_agent_name
+        from ideer.config.agents_config import validate_agent_name
 
-        with pytest.raises(HTTPException) as exc_info:
-            _validate_agent_name("my/agent")
-        assert exc_info.value.status_code == 422
-        assert "Invalid agent name" in exc_info.value.detail
+        with pytest.raises(ValueError, match="Invalid agent name"):
+            validate_agent_name("my/agent")
 
     def test_agent_name_rejects_dotdot(self):
-        from app.gateway.routers.agents import _validate_agent_name
+        from ideer.config.agents_config import validate_agent_name
 
-        with pytest.raises(HTTPException) as exc_info:
-            _validate_agent_name("../../../etc/shadow")
-        assert exc_info.value.status_code == 422
+        with pytest.raises(ValueError, match="Invalid agent name"):
+            validate_agent_name("../../../etc/shadow")
 
     def test_agent_name_rejects_backslash(self):
-        from app.gateway.routers.agents import _validate_agent_name
+        from ideer.config.agents_config import validate_agent_name
 
-        with pytest.raises(HTTPException) as exc_info:
-            _validate_agent_name("agent\\..\\..\\etc")
-        assert exc_info.value.status_code == 422
+        with pytest.raises(ValueError, match="Invalid agent name"):
+            validate_agent_name("agent\\..\\..\\etc")
 
     def test_agent_name_rejects_space(self):
-        from app.gateway.routers.agents import _validate_agent_name
+        from ideer.config.agents_config import validate_agent_name
 
-        with pytest.raises(HTTPException) as exc_info:
-            _validate_agent_name("my agent")
-        assert exc_info.value.status_code == 422
+        with pytest.raises(ValueError, match="Invalid agent name"):
+            validate_agent_name("my agent")
 
     def test_agent_name_rejects_special_chars(self):
-        from app.gateway.routers.agents import _validate_agent_name
+        from ideer.config.agents_config import validate_agent_name
 
         for name in ["agent@name!", "agent#test", "agent.dot"]:
-            with pytest.raises(HTTPException) as exc_info:
-                _validate_agent_name(name)
-            assert exc_info.value.status_code == 422
+            with pytest.raises(ValueError, match="Invalid agent name"):
+                validate_agent_name(name)
 
     def test_agent_name_rejects_empty(self):
-        from app.gateway.routers.agents import _validate_agent_name
+        from ideer.config.agents_config import validate_agent_name
 
-        with pytest.raises(HTTPException) as exc_info:
-            _validate_agent_name("")
-        assert exc_info.value.status_code == 422
+        with pytest.raises(ValueError, match="Invalid agent name"):
+            validate_agent_name("")
 
     def test_agent_name_accepts_valid(self):
-        from app.gateway.routers.agents import _validate_agent_name
+        from ideer.config.agents_config import validate_agent_name
 
         for name in ["my-agent", "agent123", "Agent-Test", "a", "12345"]:
-            _validate_agent_name(name)  # should not raise
+            validate_agent_name(name)  # should not raise
 
     def test_agent_pattern_rejects_unicode(self):
         """Agent name regex should reject non-ASCII characters."""
-        from app.gateway.routers.agents import AGENT_NAME_PATTERN
+        from ideer.config.agents_config import AGENT_NAME_PATTERN
 
         assert not AGENT_NAME_PATTERN.match("agent中文")
         assert not AGENT_NAME_PATTERN.match("agent日本語")
 
     def test_skill_pattern_rejects_unicode(self):
         """Skill name regex should reject non-ASCII characters."""
-        from app.gateway.routers.skills import _SKILL_NAME_PATTERN
+        from ideer.skills.storage.skill_storage import _SKILL_NAME_PATTERN
 
         assert not _SKILL_NAME_PATTERN.match("skill中文")
         assert not _SKILL_NAME_PATTERN.match("skill日本語")
 
-    def test_agent_pattern_rejects_path_separator(self):
-        from app.gateway.routers.agents import AGENT_NAME_PATTERN
+    def test_agent_pattern_rejects_path_separators(self):
+        from ideer.config.agents_config import AGENT_NAME_PATTERN
 
         assert not AGENT_NAME_PATTERN.match("path/traversal")
         assert not AGENT_NAME_PATTERN.match("path\\traversal")
 
-    def test_skill_pattern_rejects_path_separator(self):
-        from app.gateway.routers.skills import _SKILL_NAME_PATTERN
+    def test_skill_pattern_rejects_path_separators(self):
+        from ideer.skills.storage.skill_storage import _SKILL_NAME_PATTERN
 
         assert not _SKILL_NAME_PATTERN.match("path/traversal")
         assert not _SKILL_NAME_PATTERN.match("path\\traversal")
@@ -368,8 +358,8 @@ class TestDeptAdminDepartmentFilter:
         return app
 
     @pytest.mark.asyncio
-    async def test_dept_admin_sees_all_applications(self):
-        """dept_admin's GET query does NOT include department_id filter."""
+    async def test_dept_admin_sees_only_own_department_applications(self):
+        """dept_admin's GET query applies the department boundary in SQL."""
         user = _make_rbac_user(role="department_admin", department_id="dept-1")
         app = self._build_app(user)
 
@@ -415,10 +405,10 @@ class TestDeptAdminDepartmentFilter:
                 resp = await client.get("/api/visibility-applications")
 
         assert resp.status_code == 200
-        # Verify the SQL does NOT filter by department_id (the column name may
-        # appear in SELECT but not as a WHERE condition)
+        # The filter must be part of both the count and page queries instead of
+        # relying on post-query filtering.
         combined = " ".join(captured_stmts)
-        assert "department_id =" not in combined
+        assert "department_id =" in combined
 
     @pytest.mark.asyncio
     async def test_super_admin_no_department_filter(self):
@@ -606,104 +596,12 @@ class TestDisabledUser403:
 
 
 # ===========================================================================
-# P2-9: Agent Concurrent Creation Conflict
-# ===========================================================================
-
-
-class TestAgentConcurrentCreation:
-    """Verify that creating an agent with an existing name returns 409."""
-
-    def _build_app(self, user: MagicMock) -> FastAPI:
-        from _router_auth_helpers import make_authed_test_app
-
-        from app.gateway.routers.agents import router as agents_router
-
-        app = make_authed_test_app()
-        app.include_router(agents_router)
-
-        async def _stub():
-            return user
-
-        app.dependency_overrides[get_current_rbac_user] = _stub
-        app.dependency_overrides[get_optional_rbac_user] = _stub
-        return app
-
-    @pytest.mark.asyncio
-    async def test_create_agent_already_exists(self):
-        """Creating an agent with an existing name returns 409."""
-        user = _make_rbac_user(role="user")
-        app = self._build_app(user)
-
-        with (
-            patch("app.gateway.routers.agents._require_agents_api_enabled"),
-            patch("app.gateway.routers.agents.get_effective_user_id", return_value="user-1"),
-            patch("app.gateway.routers.agents.get_paths") as mock_paths,
-            patch("app.gateway.routers.agents.load_agent_config"),
-            patch("app.gateway.routers.agents._load_agent_meta", new_callable=AsyncMock, return_value={}),
-        ):
-            # Agent directory exists (both user and legacy)
-            agent_dir = MagicMock()
-            agent_dir.exists.return_value = True
-            mock_paths.return_value.user_agent_dir.return_value = agent_dir
-            mock_paths.return_value.agent_dir.return_value = agent_dir
-
-            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-                resp = await client.post(
-                    "/api/agents",
-                    json={"name": "existing-agent", "description": "test"},
-                )
-
-        assert resp.status_code == 409
-
-    @pytest.mark.asyncio
-    async def test_create_agent_with_invalid_name_rejected(self):
-        """Creating an agent with path traversal name returns 422."""
-        user = _make_rbac_user(role="user")
-        app = self._build_app(user)
-
-        with patch("app.gateway.routers.agents._require_agents_api_enabled"):
-            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-                resp = await client.post(
-                    "/api/agents",
-                    json={"name": "../etc/passwd", "description": "evil"},
-                )
-
-        assert resp.status_code == 422
-
-
-# ===========================================================================
 # P2-10: Metadata returns empty dict when DB is unavailable
 # ===========================================================================
 
 
 class TestMetadataWhenDbUnavailable:
     """Verify metadata loading returns empty dict when DB is unavailable (no fallback)."""
-
-    @pytest.mark.asyncio
-    async def test_skill_meta_returns_empty_when_db_unavailable(self):
-        """When session_factory is None, skill meta returns empty dict."""
-        from app.gateway.routers.skills import _load_skill_meta
-
-        config = MagicMock()
-        mock_storage = MagicMock()
-
-        with (
-            patch("ideer.persistence.engine.get_session_factory", return_value=None),
-            patch("app.gateway.routers.skills.get_or_new_skill_storage", return_value=mock_storage),
-        ):
-            result = await _load_skill_meta("test-skill", config)
-
-        assert result == {}
-
-    @pytest.mark.asyncio
-    async def test_agent_meta_returns_empty_when_db_unavailable(self):
-        """When DB is unavailable, agent meta returns empty dict."""
-        from app.gateway.routers.agents import _load_agent_meta
-
-        with patch("ideer.persistence.engine.get_session_factory", return_value=None):
-            result = await _load_agent_meta("agent-name", "user-1")
-
-        assert result == {}
 
     @pytest.mark.asyncio
     async def test_tool_meta_returns_empty_when_db_unavailable(self):

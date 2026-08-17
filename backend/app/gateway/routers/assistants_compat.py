@@ -59,32 +59,61 @@ def _get_default_assistant() -> AssistantResponse:
 
 
 def _list_assistants() -> list[AssistantResponse]:
-    """List all available assistants from config."""
-    assistants = [_get_default_assistant()]
+    """List the built-in lead_agent assistant."""
+    return [_get_default_assistant()]
 
-    # Also include custom agents from config.yaml agents directory
-    try:
-        from ideer.config.agents_config import list_custom_agents
 
-        for agent_cfg in list_custom_agents():
-            now = datetime.now(UTC).isoformat()
-            assistants.append(
-                AssistantResponse(
-                    assistant_id=agent_cfg.name,
-                    graph_id="lead_agent",  # All agents use the same graph
-                    name=agent_cfg.name,
-                    config={},
-                    metadata={"created_by": "user"},
-                    description=agent_cfg.description or "",
-                    created_at=now,
-                    updated_at=now,
-                    version=1,
+async def _list_canonical_assistants(request: Request) -> list[AssistantResponse]:
+    """List only UUID Agent resources visible to the authenticated caller."""
+
+    from sqlalchemy import select
+
+    from ideer.persistence.engine import get_session_factory
+    from ideer.persistence.models.user import UserModel
+    from ideer.resources.service import ResourceAction, ResourceActor, ResourceService
+
+    user_id = getattr(getattr(request.state, "user", None), "id", None)
+    session_factory = get_session_factory()
+    if user_id is None or session_factory is None:
+        return []
+    async with session_factory() as session:
+        user = (
+            await session.execute(
+                select(UserModel).where(
+                    UserModel.id == str(user_id),
+                    UserModel.disabled.is_not(True),
                 )
             )
-    except Exception:
-        logger.debug("Could not load custom agents for assistants list")
-
-    return assistants
+        ).scalar_one_or_none()
+        if user is None:
+            return []
+        actor = ResourceActor(
+            user_id=str(user.id),
+            department_id=str(user.department_id) if user.department_id is not None else None,
+            role=str(user.role),
+            permissions=frozenset({ResourceAction.READ}),
+        )
+        page = await ResourceService(session, actor).list_visible(resource_type="agent", limit=200)
+        return [
+            AssistantResponse(
+                assistant_id=resource.id,
+                graph_id="lead_agent",
+                name=resource.display_name,
+                config={},
+                metadata={
+                    "resource_id": resource.id,
+                    "slug": resource.slug,
+                    "owner_id": resource.owner_id,
+                    "visibility": resource.visibility,
+                },
+                description=resource.display_name,
+                created_at=resource.created_at.isoformat(),
+                updated_at=resource.updated_at.isoformat(),
+                version=resource.latest_version,
+            )
+            for resource in page.items
+            if resource.latest_version > 0
+        ]
 
 
 @router.post("/search", response_model=list[AssistantResponse])
@@ -94,7 +123,7 @@ async def search_assistants(request: Request, body: AssistantSearchRequest | Non
 
     Returns all registered assistants (lead_agent + custom agents from config).
     """
-    assistants = _list_assistants()
+    assistants = [*_list_assistants(), *await _list_canonical_assistants(request)]
 
     if body and body.graph_id:
         assistants = [a for a in assistants if a.graph_id == body.graph_id]
@@ -110,7 +139,7 @@ async def search_assistants(request: Request, body: AssistantSearchRequest | Non
 @require_permission("assistants", "read")
 async def get_assistant_compat(request: Request, assistant_id: str) -> AssistantResponse:
     """Get an assistant by ID."""
-    for a in _list_assistants():
+    for a in [*_list_assistants(), *await _list_canonical_assistants(request)]:
         if a.assistant_id == assistant_id:
             return a
     raise HTTPException(status_code=404, detail=f"Assistant {assistant_id} not found")
@@ -124,7 +153,7 @@ async def get_assistant_graph(request: Request, assistant_id: str) -> dict:
     Returns a minimal graph description. Full graph introspection is
     not supported in the Gateway — this stub satisfies SDK validation.
     """
-    found = any(a.assistant_id == assistant_id for a in _list_assistants())
+    found = any(a.assistant_id == assistant_id for a in [*_list_assistants(), *await _list_canonical_assistants(request)])
     if not found:
         raise HTTPException(status_code=404, detail=f"Assistant {assistant_id} not found")
 
@@ -142,7 +171,7 @@ async def get_assistant_schemas(request: Request, assistant_id: str) -> dict:
 
     Returns empty schemas — full introspection not supported in Gateway.
     """
-    found = any(a.assistant_id == assistant_id for a in _list_assistants())
+    found = any(a.assistant_id == assistant_id for a in [*_list_assistants(), *await _list_canonical_assistants(request)])
     if not found:
         raise HTTPException(status_code=404, detail=f"Assistant {assistant_id} not found")
 

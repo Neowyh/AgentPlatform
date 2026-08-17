@@ -340,19 +340,6 @@ class TestPromptBuildSelfUpdateSection:
         assert "<self_update>" in result
 
 
-class TestPromptGetAgentSoul:
-    def test_returns_empty_for_none(self):
-        with patch("ideer.agents.lead_agent.prompt.load_agent_soul", return_value=None):
-            result = prompt_mod.get_agent_soul(None)
-        assert result == ""
-
-    def test_wraps_soul_in_tags(self):
-        with patch("ideer.agents.lead_agent.prompt.load_agent_soul", return_value="My soul"):
-            result = prompt_mod.get_agent_soul("agent-a")
-        assert "<soul>" in result
-        assert "My soul" in result
-
-
 class TestPromptBuildSkillEvolutionSection:
     def test_empty_when_disabled(self):
         assert prompt_mod._build_skill_evolution_section(False) == ""
@@ -446,7 +433,6 @@ class TestPromptApplyPromptTemplate:
         )
         monkeypatch.setattr("ideer.config.get_app_config", lambda: config)
         monkeypatch.setattr(prompt_mod, "get_or_new_skill_storage", lambda **kw: SimpleNamespace(load_skills=lambda enabled_only=True: []))
-        monkeypatch.setattr(prompt_mod, "get_agent_soul", lambda agent_name=None, **kwargs: "")
         monkeypatch.setattr(prompt_mod, "get_deferred_tools_prompt_section", lambda **kw: "")
         monkeypatch.setattr(prompt_mod, "_build_acp_section", lambda **kw: "")
 
@@ -465,11 +451,10 @@ class TestPromptApplyPromptTemplate:
         )
         monkeypatch.setattr("ideer.config.get_app_config", lambda: config)
         monkeypatch.setattr(prompt_mod, "get_or_new_skill_storage", lambda **kw: SimpleNamespace(load_skills=lambda enabled_only=True: []))
-        monkeypatch.setattr(prompt_mod, "get_agent_soul", lambda agent_name=None, **kwargs: "<soul>Custom soul</soul>")
         monkeypatch.setattr(prompt_mod, "get_deferred_tools_prompt_section", lambda **kw: "")
         monkeypatch.setattr(prompt_mod, "_build_acp_section", lambda **kw: "")
 
-        result = prompt_mod.apply_prompt_template(agent_name="custom-agent", app_config=config)
+        result = prompt_mod.apply_prompt_template(agent_name="custom-agent", soul_override="Custom soul", app_config=config)
         assert "custom-agent" in result
         assert "Custom soul" in result
 
@@ -485,7 +470,6 @@ class TestPromptApplyPromptTemplate:
         )
         monkeypatch.setattr("ideer.config.get_app_config", lambda: config)
         monkeypatch.setattr(prompt_mod, "get_or_new_skill_storage", lambda **kw: SimpleNamespace(load_skills=lambda enabled_only=True: []))
-        monkeypatch.setattr(prompt_mod, "get_agent_soul", lambda agent_name=None, **kwargs: "")
         monkeypatch.setattr(prompt_mod, "get_deferred_tools_prompt_section", lambda **kw: "")
         monkeypatch.setattr(prompt_mod, "_build_acp_section", lambda **kw: "")
 

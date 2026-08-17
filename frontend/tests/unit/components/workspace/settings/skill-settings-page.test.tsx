@@ -8,6 +8,7 @@ let mockSkillsData: unknown[] = [];
 let mockIsLoading = false;
 let mockError: Error | null = null;
 const mockCreateVisibilityApplication = vi.fn();
+const mockChangeResourceVisibility = vi.fn();
 const mockToastSuccess = vi.fn();
 const mockToastError = vi.fn();
 
@@ -22,6 +23,8 @@ vi.mock("@/core/skills/hooks", () => ({
 vi.mock("@/core/visibility-applications/api", () => ({
   createVisibilityApplication: (...args: unknown[]) =>
     mockCreateVisibilityApplication(...args),
+  changeResourceVisibility: (...args: unknown[]) =>
+    mockChangeResourceVisibility(...args),
 }));
 
 vi.mock("sonner", () => ({
@@ -36,10 +39,12 @@ vi.mock("@/components/workspace/settings/skill-apply-dialog", () => ({
     skill,
     open,
     onSubmit,
+    onChange,
   }: {
     skill: { name: string } | null;
     open: boolean;
     onSubmit: (targetVisibility: string, reason: string) => void;
+    onChange: (targetVisibility: string) => void;
   }) =>
     open && skill ? (
       <div data-testid="skill-apply-dialog">
@@ -47,6 +52,7 @@ vi.mock("@/components/workspace/settings/skill-apply-dialog", () => ({
         <button onClick={() => onSubmit("department", "Need team access")}>
           Submit application
         </button>
+        <button onClick={() => onChange("private")}>Change visibility</button>
       </div>
     ) : null,
 }));
@@ -172,6 +178,7 @@ vi.mock("@/core/i18n/hooks", () => ({
           emptyDescription: "No skills available",
           applyVisibility: "Apply visibility",
           applicationSubmitted: "Application submitted",
+          visibilityUpdated: "Visibility updated",
         },
       },
       common: {
@@ -216,6 +223,7 @@ beforeEach(async () => {
   mockIsLoading = false;
   mockError = null;
   mockCreateVisibilityApplication.mockResolvedValue({ success: true });
+  mockChangeResourceVisibility.mockResolvedValue({ success: true });
   const mod =
     await import("@/components/workspace/settings/skill-settings-page");
   SkillSettingsPage = mod.SkillSettingsPage;
@@ -243,6 +251,65 @@ describe("SkillSettingsPage", () => {
     // Default tab is public, so only public skills are shown
     expect(screen.getByText("Code Review")).toBeInTheDocument();
     expect(screen.getByText("Web Skill")).toBeInTheDocument();
+  });
+
+  test("submits canonical visibility applications by resource UUID", async () => {
+    const user = userEvent.setup();
+    mockSkillsData = [
+      {
+        resource_id: "11111111-1111-1111-1111-111111111111",
+        name: "Canonical Skill",
+        description: "Owned canonical Skill",
+        category: "custom",
+        enabled: true,
+        license: "",
+        read_only: false,
+      },
+    ];
+    render(<SkillSettingsPage />);
+
+    await user.click(screen.getByText("Custom Tab"));
+    await user.click(screen.getByText("Apply visibility"));
+    await user.click(screen.getByText("Submit application"));
+
+    await waitFor(() =>
+      expect(mockCreateVisibilityApplication).toHaveBeenCalledWith(
+        expect.objectContaining({
+          resource_id: "11111111-1111-1111-1111-111111111111",
+        }),
+      ),
+    );
+  });
+
+  test("changes visibility directly on downgrade confirm and toasts", async () => {
+    const user = userEvent.setup();
+    mockSkillsData = [
+      {
+        resource_id: "11111111-1111-1111-1111-111111111111",
+        name: "Canonical Skill",
+        description: "Owned canonical Skill",
+        category: "custom",
+        enabled: true,
+        license: "",
+        read_only: false,
+      },
+    ];
+    render(<SkillSettingsPage />);
+
+    await user.click(screen.getByText("Custom Tab"));
+    await user.click(screen.getByText("Apply visibility"));
+    await user.click(screen.getByText("Change visibility"));
+
+    await waitFor(() =>
+      expect(mockChangeResourceVisibility).toHaveBeenCalledWith(
+        expect.objectContaining({
+          resource_id: "11111111-1111-1111-1111-111111111111",
+          visibility: "private",
+        }),
+      ),
+    );
+    expect(mockToastSuccess).toHaveBeenCalledWith("Visibility updated");
+    expect(mockCreateVisibilityApplication).not.toHaveBeenCalled();
   });
 
   test("renders tabs for public and custom", () => {

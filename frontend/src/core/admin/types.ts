@@ -30,5 +30,6 @@ export interface AdminResource {
   owner_id: string;
   owner_username?: string;
   department_id: string | null;
+  lifecycle_status?: string;
   created_at: string | null;
 }

@@ -222,11 +222,11 @@ async def test_precondition_failure_fails_node_with_specific_reason(
     failed = await durable_store.get_run("run-pre")
     assert failed is not None and failed.status == "failed"
     assert failed.error is not None
-    assert "precondition" in failed.error and "confirmed" in failed.error
+    assert "前置条件不满足" in failed.error
     assert calls == []  # node never ran its adapter
     events = await durable_store.list_events("run-pre")
     details = [event.payload.get("error", "") for event in events if event.event_type == "node_failed"]
-    assert details and details[0].startswith("node 'gate' precondition failed:")
+    assert details and "confirmed" in details[0]
 
 
 @pytest.mark.asyncio

@@ -253,6 +253,48 @@ describe("WorkflowCard", () => {
     expect(mockPush).toHaveBeenCalledWith("/workspace/workflows/my-flow");
   });
 
+  test("shared canonical Workflow uses UUID navigation and hides owner-only archive", () => {
+    render(
+      <WorkflowCard
+        workflow={makeWorkflow({
+          name: "Shared Flow",
+          resource_id: "11111111-1111-1111-1111-111111111111",
+          read_only: true,
+        })}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("workflow-card"));
+    expect(mockPush).toHaveBeenCalledWith(
+      "/workspace/workflows/11111111-1111-1111-1111-111111111111",
+    );
+    expect(screen.getByTestId("workflow-favorite-button")).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("workflow-delete-button"),
+    ).not.toBeInTheDocument();
+  });
+
+  test("owner canonical Workflow can archive by resource UUID", async () => {
+    mockMutateAsync.mockResolvedValue(undefined);
+    render(
+      <WorkflowCard
+        workflow={makeWorkflow({
+          name: "Owned Flow",
+          resource_id: "11111111-1111-1111-1111-111111111111",
+          read_only: false,
+        })}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("workflow-delete-button"));
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+    await waitFor(() =>
+      expect(mockMutateAsync).toHaveBeenCalledWith(
+        "11111111-1111-1111-1111-111111111111",
+      ),
+    );
+  });
+
   test("card has role='button' and tabIndex=0 for accessibility", () => {
     render(<WorkflowCard workflow={makeWorkflow()} />);
     const card = screen.getByTestId("workflow-card");

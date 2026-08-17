@@ -1,40 +1,54 @@
-import { extractError, formatErrorMessage } from "@/core/api/errors";
+import { extractError } from "@/core/api/errors";
 import { fetch } from "@/core/api/fetcher";
 import { getBackendBaseURL } from "@/core/config";
 
 import type { Skill } from "./type";
 
 export async function loadSkills(): Promise<Skill[]> {
-  const response = await fetch(`${getBackendBaseURL()}/api/skills`);
+  const response = await fetch(
+    `${getBackendBaseURL()}/api/resources?type=skill&limit=200`,
+  );
   if (!response.ok) {
-    await extractError(response, "Failed to load skills");
+    await extractError(response, "Failed to load canonical skills");
   }
-  const json = await response.json();
-  return json.skills as Skill[];
+  const canonical = (await response.json()) as {
+    items: Array<{
+      id: string;
+      slug: string;
+      display_name: string;
+      owner_id: string;
+      visibility: string;
+      scope_department_id: string | null;
+      system_owned: boolean;
+      can_modify: boolean;
+    }>;
+  };
+  return canonical.items.map(
+    (resource): Skill => ({
+      resource_id: resource.id,
+      slug: resource.slug,
+      read_only: !resource.can_modify,
+      name: resource.display_name,
+      description: resource.display_name,
+      category: resource.can_modify ? "custom" : "public",
+      license: "",
+      enabled: true,
+      visibility: resource.visibility,
+      owner_id: resource.owner_id,
+      department_id: resource.scope_department_id,
+    }),
+  );
 }
 
 export async function enableSkill(
   skillName: string,
   enabled: boolean,
 ): Promise<void> {
-  const response = await fetch(
-    `${getBackendBaseURL()}/api/skills/${skillName}`,
-    {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        enabled,
-      }),
-    },
+  void skillName;
+  void enabled;
+  throw new Error(
+    "Skill enable/disable is managed by the resource lifecycle in canonical mode; use /api/resources/{id}/archive or /api/resources/{id}/suspend",
   );
-  if (!response.ok) {
-    await extractError(
-      response,
-      `Failed to ${enabled ? "enable" : "disable"} skill`,
-    );
-  }
 }
 
 export interface SkillApplicationResponse {
@@ -102,25 +116,11 @@ export interface InstallSkillResponse {
 export async function installSkill(
   request: InstallSkillRequest,
 ): Promise<InstallSkillResponse> {
-  const response = await fetch(`${getBackendBaseURL()}/api/skills/install`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(request),
-  });
-
-  if (!response.ok) {
-    const errorMessage = await formatErrorMessage(
-      response,
-      "Failed to install skill",
-    );
-    return {
-      success: false,
-      skill_name: "",
-      message: errorMessage,
-    };
-  }
-
-  return response.json();
+  void request;
+  return {
+    success: false,
+    skill_name: "",
+    message:
+      "Skill installation is not available in canonical mode; use resource workflows to create a Skill",
+  };
 }

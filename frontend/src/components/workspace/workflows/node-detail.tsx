@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/collapsible";
 import { useI18n } from "@/core/i18n/hooks";
 import type { StepStatus, WorkflowNode } from "@/core/workflows";
+import { formatWorkflowRunError } from "@/core/workflows/errors";
 import { cn } from "@/lib/utils";
 
 const MAX_OUTPUT_CHARS = 8000;
@@ -109,7 +110,7 @@ export function NodeDetailPanel({
 
       {step?.error && (
         <div className="text-destructive rounded-md border border-red-200 bg-red-50 p-2 text-xs break-words dark:border-red-800 dark:bg-red-950/50">
-          {step.error}
+          {formatWorkflowRunError(step.error, step.error_code)}
         </div>
       )}
 

@@ -14,6 +14,7 @@ Covers:
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import FastAPI
@@ -133,9 +134,18 @@ def _mock_session(user_model_results=None, dept_model_results=None, count_result
 class TestAdminStats:
     """Tests for GET /api/admin/stats."""
 
+    @patch("app.gateway.routers.admin.get_available_tools")
+    @patch("app.gateway.routers.admin.get_app_config")
     @patch("app.gateway.routers.admin.get_session_factory")
-    def test_get_stats_returns_counts(self, mock_sf):
+    def test_get_stats_returns_counts(
+        self,
+        mock_sf,
+        mock_get_app_config,
+        mock_get_tools,
+    ):
         """Stats endpoint returns user and department counts."""
+        mock_get_app_config.return_value = SimpleNamespace()
+        mock_get_tools.return_value = []
         session = _mock_session(count_results=5)
         sf_mock = MagicMock()
         sf_mock.return_value.__aenter__ = AsyncMock(return_value=session)

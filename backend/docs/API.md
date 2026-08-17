@@ -281,112 +281,71 @@ Content-Type: application/json
 }
 ```
 
-### Skills
+### Skills, Agents & Workflows (Resources)
 
-#### List Skills
+Skill、Agent、Workflow 统一由 Resource Catalog（canonical）管理，接口位于 `/api/resources`（旧 `/api/skills`、`/api/agents`、`/api/workflows` 路由已删除，返回 404）。
 
-Get all available skills.
+#### List Resources
+
+Get all available resources.
 
 ```http
-GET /api/skills
+GET /api/resources
 ```
 
 **Response:**
 ```json
 {
-  "skills": [
+  "data": [
     {
-      "name": "pdf-processing",
+      "id": "9f0c2e1a-...",
+      "resource_type": "skill",
+      "slug": "pdf-processing",
       "display_name": "PDF Processing",
       "description": "Handle PDF documents efficiently",
-      "enabled": true,
-      "license": "MIT",
-      "path": "public/pdf-processing"
-    },
-    {
-      "name": "frontend-design",
-      "display_name": "Frontend Design",
-      "description": "Design and build frontend interfaces",
-      "enabled": false,
-      "license": "MIT",
-      "path": "public/frontend-design"
+      "visibility": "public",
+      "owner_id": "...",
+      "published_version": 3,
+      "storage_kind": "bundled",
+      "updated_at": "2026-08-17T..."
     }
   ]
 }
 ```
 
-#### Get Skill Details
+#### Get Published Resource Content
 
 ```http
-GET /api/skills/{skill_name}
+GET /api/resources/{resource_id}/published
 ```
 
-**Response:**
-```json
-{
-  "name": "pdf-processing",
-  "display_name": "PDF Processing",
-  "description": "Handle PDF documents efficiently",
-  "enabled": true,
-  "license": "MIT",
-  "path": "public/pdf-processing",
-  "allowed_tools": ["read_file", "write_file", "bash"],
-  "content": "# PDF Processing\n\nInstructions for the agent..."
-}
-```
-
-#### Enable Skill
+#### Update Agent Draft (SOUL.md / config.yaml)
 
 ```http
-POST /api/skills/{skill_name}/enable
+PUT /api/resources/{resource_id}/agent-draft
+Content-Type: application/json
 ```
 
-**Response:**
-```json
-{
-  "success": true,
-  "message": "Skill 'pdf-processing' enabled"
-}
-```
-
-#### Disable Skill
+#### Publish Resource
 
 ```http
-POST /api/skills/{skill_name}/disable
+POST /api/resources/{resource_id}/publish
 ```
 
-**Response:**
-```json
-{
-  "success": true,
-  "message": "Skill 'pdf-processing' disabled"
-}
-```
-
-#### Install Skill
-
-Install a skill from a `.skill` file.
+#### Resolve Legacy Name Alias
 
 ```http
-POST /api/skills/install
+GET /api/resources/aliases/{resource_type}/{slug}
+```
+
+#### Import Agent
+
+```http
+POST /api/resources/import/agent
 Content-Type: multipart/form-data
 ```
 
-**Request Body:**
-- `file`: The `.skill` file to install
-
-**Response:**
-```json
-{
-  "success": true,
-  "message": "Skill 'my-skill' installed successfully",
-  "skill": {
-    "name": "my-skill",
-    "display_name": "My Skill",
-    "path": "custom/my-skill"
-  }
-}
-```
+> 更多端点（workflow-draft、archive-draft、fork、archive、suspend、restore、transfer、visibility、dependencies、favorite、notifications）见 FastAPI 自述文档（`/docs`）与 `backend/app/gateway/routers/resources.py`。技能启用状态经 `extensions_config.json` 管理，不再有独立 `/api/skills` 端点。
 
 ### File Uploads
 
@@ -640,8 +599,14 @@ curl http://localhost:2026/api/mcp/config
 curl -X POST http://localhost:2026/api/threads/abc123/uploads \
   -F "files=@document.pdf"
 
-# Enable skill
-curl -X POST http://localhost:2026/api/skills/pdf-processing/enable
+# List resources (skills, agents, workflows)
+curl http://localhost:2026/api/resources
+
+# Get published content of a resource
+curl http://localhost:2026/api/resources/{resource_id}/published
+
+# Resolve legacy name alias
+curl http://localhost:2026/api/resources/aliases/skill/pdf-processing
 
 # Create thread and run agent
 curl -X POST http://localhost:2026/api/langgraph/threads \

@@ -20,6 +20,13 @@ vi.mock("@/core/i18n/hooks", () => ({
           applyDialogReasonPlaceholder: "Enter your reason",
           applyDialogCancel: "Cancel",
           applyDialogSubmit: "Submit",
+          applyDialogUpgradeHint: "Upgrade requires admin approval",
+          applyDialogDowngradeHint: "Downgrade takes effect immediately",
+          visibilityUpdated: "Visibility updated",
+          applyDialogDowngradeConfirmTitle: "Confirm downgrade",
+          applyDialogDowngradeConfirmDescription:
+            "Downgrade takes effect immediately. Continue?",
+          applyDialogConfirm: "Confirm",
         },
       },
     },
@@ -115,6 +122,7 @@ const mockSkill = {
 
 const mockOnOpenChange = vi.fn();
 const mockOnSubmit = vi.fn();
+const mockOnChange = vi.fn();
 
 let SkillApplyDialog: typeof import("@/components/workspace/settings/skill-apply-dialog").SkillApplyDialog;
 
@@ -138,6 +146,7 @@ describe("SkillApplyDialog", () => {
         open={true}
         onOpenChange={mockOnOpenChange}
         onSubmit={mockOnSubmit}
+        onChange={mockOnChange}
       />,
     );
     expect(screen.queryByTestId("dialog")).not.toBeInTheDocument();
@@ -150,6 +159,7 @@ describe("SkillApplyDialog", () => {
         open={true}
         onOpenChange={mockOnOpenChange}
         onSubmit={mockOnSubmit}
+        onChange={mockOnChange}
       />,
     );
     expect(screen.getByText("Apply for Test Skill")).toBeInTheDocument();
@@ -162,12 +172,42 @@ describe("SkillApplyDialog", () => {
         open={false}
         onOpenChange={mockOnOpenChange}
         onSubmit={mockOnSubmit}
+        onChange={mockOnChange}
       />,
     );
     expect(screen.queryByTestId("dialog")).not.toBeInTheDocument();
   });
 
-  test("calls onSubmit with correct args when submitted", async () => {
+  test("defaults target visibility to current visibility", () => {
+    render(
+      <SkillApplyDialog
+        skill={mockSkill}
+        open={true}
+        onOpenChange={mockOnOpenChange}
+        onSubmit={mockOnSubmit}
+        onChange={mockOnChange}
+      />,
+    );
+    expect(screen.getByTestId("select")).toHaveAttribute(
+      "data-value",
+      "private",
+    );
+  });
+
+  test("disables submit when target equals current visibility", () => {
+    render(
+      <SkillApplyDialog
+        skill={mockSkill}
+        open={true}
+        onOpenChange={mockOnOpenChange}
+        onSubmit={mockOnSubmit}
+        onChange={mockOnChange}
+      />,
+    );
+    expect(screen.getByTestId("button-submit")).toBeDisabled();
+  });
+
+  test("shows upgrade hint and calls onSubmit with correct args when upgraded", async () => {
     const user = userEvent.setup();
     render(
       <SkillApplyDialog
@@ -175,10 +215,14 @@ describe("SkillApplyDialog", () => {
         open={true}
         onOpenChange={mockOnOpenChange}
         onSubmit={mockOnSubmit}
+        onChange={mockOnChange}
       />,
     );
 
     await user.click(screen.getByTestId("select-item-public"));
+    expect(
+      screen.getByText("Upgrade requires admin approval"),
+    ).toBeInTheDocument();
 
     const textarea = screen.getByTestId("textarea");
     await user.type(textarea, "I need this skill");
@@ -186,6 +230,57 @@ describe("SkillApplyDialog", () => {
     await user.click(screen.getByTestId("button-submit"));
 
     expect(mockOnSubmit).toHaveBeenCalledWith("public", "I need this skill");
+    expect(mockOnChange).not.toHaveBeenCalled();
+  });
+
+  test("shows downgrade hint, hides reason, and confirms before changing", async () => {
+    const user = userEvent.setup();
+    render(
+      <SkillApplyDialog
+        skill={{ ...mockSkill, visibility: "public" }}
+        open={true}
+        onOpenChange={mockOnOpenChange}
+        onSubmit={mockOnSubmit}
+        onChange={mockOnChange}
+      />,
+    );
+
+    await user.click(screen.getByTestId("select-item-private"));
+    expect(
+      screen.getByText("Downgrade takes effect immediately"),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("textarea")).not.toBeInTheDocument();
+
+    await user.click(screen.getByTestId("button-submit"));
+
+    expect(screen.getByText("Confirm downgrade")).toBeInTheDocument();
+    expect(mockOnChange).not.toHaveBeenCalled();
+
+    await user.click(screen.getByTestId("button-confirm"));
+
+    expect(mockOnChange).toHaveBeenCalledWith("private");
+    expect(mockOnSubmit).not.toHaveBeenCalled();
+    expect(mockOnOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  test("cancels downgrade confirmation without applying the change", async () => {
+    const user = userEvent.setup();
+    render(
+      <SkillApplyDialog
+        skill={{ ...mockSkill, visibility: "public" }}
+        open={true}
+        onOpenChange={mockOnOpenChange}
+        onSubmit={mockOnSubmit}
+        onChange={mockOnChange}
+      />,
+    );
+
+    await user.click(screen.getByTestId("select-item-private"));
+    await user.click(screen.getByTestId("button-submit"));
+    await user.click(screen.getByTestId("button-cancel"));
+
+    expect(mockOnChange).not.toHaveBeenCalled();
+    expect(screen.getByText("Apply for Test Skill")).toBeInTheDocument();
   });
 
   test("calls onOpenChange(false) on cancel", async () => {
@@ -196,6 +291,7 @@ describe("SkillApplyDialog", () => {
         open={true}
         onOpenChange={mockOnOpenChange}
         onSubmit={mockOnSubmit}
+        onChange={mockOnChange}
       />,
     );
 
@@ -212,6 +308,7 @@ describe("SkillApplyDialog", () => {
         open={true}
         onOpenChange={mockOnOpenChange}
         onSubmit={mockOnSubmit}
+        onChange={mockOnChange}
       />,
     );
 
@@ -230,12 +327,13 @@ describe("SkillApplyDialog", () => {
         open={true}
         onOpenChange={mockOnOpenChange}
         onSubmit={mockOnSubmit}
+        onChange={mockOnChange}
       />,
     );
 
     expect(screen.getByTestId("select")).toHaveAttribute(
       "data-value",
-      "department",
+      "private",
     );
     expect(screen.getByTestId("textarea")).toHaveValue("");
   });
@@ -248,6 +346,7 @@ describe("SkillApplyDialog", () => {
         open={true}
         onOpenChange={mockOnOpenChange}
         onSubmit={mockOnSubmit}
+        onChange={mockOnChange}
       />,
     );
 
@@ -270,6 +369,7 @@ describe("SkillApplyDialog", () => {
         open={true}
         onOpenChange={mockOnOpenChange}
         onSubmit={asyncOnSubmit}
+        onChange={mockOnChange}
       />,
     );
 
@@ -280,9 +380,13 @@ describe("SkillApplyDialog", () => {
     expect(screen.getByTestId("button-submit")).toBeDisabled();
 
     resolveSubmit(undefined);
-    await vi.waitFor(() =>
-      expect(screen.getByTestId("button-submit")).not.toBeDisabled(),
-    );
+    await vi.waitFor(() => {
+      expect(screen.getByTestId("select")).toHaveAttribute(
+        "data-value",
+        "private",
+      );
+      expect(screen.getByTestId("textarea")).toHaveValue("");
+    });
   });
 
   test("submits with empty reason", async () => {
@@ -293,9 +397,11 @@ describe("SkillApplyDialog", () => {
         open={true}
         onOpenChange={mockOnOpenChange}
         onSubmit={mockOnSubmit}
+        onChange={mockOnChange}
       />,
     );
 
+    await user.click(screen.getByTestId("select-item-department"));
     await user.click(screen.getByTestId("button-submit"));
 
     expect(mockOnSubmit).toHaveBeenCalledWith("department", "");
@@ -315,6 +421,7 @@ describe("SkillApplyDialog", () => {
         open={true}
         onOpenChange={mockOnOpenChange}
         onSubmit={asyncOnSubmit}
+        onChange={mockOnChange}
       />,
     );
 

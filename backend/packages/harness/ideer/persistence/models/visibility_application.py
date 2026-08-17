@@ -25,6 +25,9 @@ class VisibilityApplication(Base):
     id = Column(String(64), primary_key=True)
     resource_type = Column(String(32), nullable=False)
     resource_id = Column(String(255), nullable=False)
+    canonical_resource_id = Column(String(36), ForeignKey("resources.id", ondelete="SET NULL"), nullable=True)
+    requested_version = Column(Integer, nullable=True)
+    requested_hash = Column(String(64), nullable=True)
     applicant_id = Column(String(64), ForeignKey("users_ext.id"), nullable=False)
     current_visibility = Column(String(32), nullable=False)
     target_visibility = Column(String(32), nullable=False)
@@ -41,8 +44,10 @@ class VisibilityApplication(Base):
     __table_args__ = (
         CheckConstraint("resource_type IN ('tool', 'skill', 'workflow', 'agent')", name="ck_visibility_app_resource_type"),
         CheckConstraint("version >= 1", name="ck_visibility_app_version_positive"),
+        CheckConstraint("requested_version IS NULL OR requested_version >= 1", name="ck_visibility_app_requested_version"),
         Index("ix_visibility_app_status", "status"),
         Index("ix_visibility_app_resource", "resource_type", "resource_id"),
+        Index("ix_visibility_app_canonical_resource", "canonical_resource_id"),
         Index("ix_visibility_app_applicant", "applicant_id"),
         Index("ix_visibility_app_type", "resource_type"),
     )
@@ -73,5 +78,15 @@ event.listen(
     "after_create",
     DDL(
         "CREATE UNIQUE INDEX IF NOT EXISTS uq_visibility_app_pending ON visibility_applications(resource_type, resource_id, applicant_id) WHERE status = 'pending'",
+    ),
+)
+
+# Canonical resources are UUID-addressed and may be reached through several
+# legacy aliases, so concurrency control must key pending applications by UUID.
+event.listen(
+    VisibilityApplication.__table__,
+    "after_create",
+    DDL(
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_visibility_app_pending_canonical ON visibility_applications(canonical_resource_id) WHERE canonical_resource_id IS NOT NULL AND status = 'pending'",
     ),
 )

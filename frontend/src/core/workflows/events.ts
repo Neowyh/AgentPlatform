@@ -104,10 +104,18 @@ export function applyWorkflowEvent(
     return {
       ...next,
       current_step: null,
-      error: textValue(event.payload.error) || next.error,
+      error:
+        textValue(event.payload.summary) ||
+        textValue(event.payload.error) ||
+        next.error,
+      error_code: textValue(event.payload.code) || next.error_code,
       steps: updatedStep(next, nodeId, {
         status: "failed",
-        error: textValue(event.payload.error) || null,
+        error:
+          textValue(event.payload.summary) ||
+          textValue(event.payload.error) ||
+          null,
+        error_code: textValue(event.payload.code) || null,
         finished_at: textValue(event.payload.finished_at) || null,
       }),
     };
@@ -143,8 +151,14 @@ export function applyWorkflowEvent(
       status: terminal,
       error:
         event.type === "run_failed"
-          ? textValue(event.payload.error) || "Workflow failed"
+          ? textValue(event.payload.summary) ||
+            textValue(event.payload.error) ||
+            "Workflow failed"
           : next.error,
+      error_code:
+        event.type === "run_failed"
+          ? textValue(event.payload.code) || next.error_code
+          : next.error_code,
       steps: reconcileTerminalSteps(next.steps, terminal),
     };
   if (event.type === "interrupted") return { ...next, status: "paused" };

@@ -160,51 +160,32 @@ def test_get_skills_prompt_section_returns_empty_when_no_skills_and_no_evolution
     assert result == ""
 
 
-# --- Lines 661-664: get_agent_soul ---
-
-
-def test_get_agent_soul_returns_empty_for_none():
-    """Lines 661-664: Returns empty for None agent_name."""
-    with patch("ideer.agents.lead_agent.prompt.load_agent_soul", return_value=""):
-        result = prompt_module.get_agent_soul(None)
-    assert result == ""
-
-
-def test_get_agent_soul_returns_soul_content():
-    """Lines 661-664: Returns formatted soul for valid agent."""
-    with patch("ideer.agents.lead_agent.prompt.load_agent_soul", return_value="I am helpful"):
-        result = prompt_module.get_agent_soul("my-agent")
-    assert "<soul>" in result
-    assert "I am helpful" in result
-
-
-def test_get_agent_soul_forwards_user_id_to_owner_directory():
-    """A shared agent's SOUL is read from the declaring owner's directory."""
-    with patch("ideer.agents.lead_agent.prompt.load_agent_soul") as mock_soul:
-        mock_soul.return_value = "owner soul"
-        result = prompt_module.get_agent_soul("my-agent", user_id="owner-1")
-    mock_soul.assert_called_once_with("my-agent", user_id="owner-1")
-    assert "owner soul" in result
-
-
-def test_apply_prompt_template_shared_agent_uses_owner_soul_and_skips_self_update(monkeypatch):
-    """Shared agents load SOUL from the owner and get no self-update section."""
-    seen = {}
-
-    def fake_soul(agent_name=None, *, user_id=None):
-        seen["user_id"] = user_id
-        return "<soul>shared</soul>"
-
-    monkeypatch.setattr(prompt_module, "get_agent_soul", fake_soul)
+def test_apply_prompt_template_read_only_uses_frozen_soul_and_skips_self_update(monkeypatch):
+    """Read-only shared agents get soul from the frozen override and no self-update section."""
     monkeypatch.setattr(prompt_module, "get_skills_prompt_section", lambda *a, **kw: "")
     monkeypatch.setattr(prompt_module, "get_deferred_tools_prompt_section", lambda *a, **kw: "")
     monkeypatch.setattr(prompt_module, "_build_acp_section", lambda *a, **kw: "")
     monkeypatch.setattr(prompt_module, "_build_custom_mounts_section", lambda *a, **kw: "")
 
-    result = prompt_module.apply_prompt_template(agent_name="my-agent", agent_user_id="owner-1")
+    result = prompt_module.apply_prompt_template(agent_name="my-agent", soul_override="shared", read_only=True)
 
-    assert seen["user_id"] == "owner-1"
-    assert "<soul>shared</soul>" in result
+    assert "<soul>\nshared\n</soul>" in result
+    assert "<self_update>" not in result
+
+
+def test_apply_prompt_template_accepts_frozen_soul_without_legacy_owner_lookup(monkeypatch):
+    monkeypatch.setattr(prompt_module, "get_skills_prompt_section", lambda *args, **kwargs: "")
+    monkeypatch.setattr(prompt_module, "get_deferred_tools_prompt_section", lambda **kwargs: "")
+    monkeypatch.setattr(prompt_module, "_build_acp_section", lambda **kwargs: "")
+    monkeypatch.setattr(prompt_module, "_build_custom_mounts_section", lambda **kwargs: "")
+
+    result = prompt_module.apply_prompt_template(
+        agent_name="canonical-agent",
+        soul_override="Frozen identity",
+        read_only=True,
+    )
+
+    assert "<soul>\nFrozen identity\n</soul>" in result
     assert "<self_update>" not in result
 
 
