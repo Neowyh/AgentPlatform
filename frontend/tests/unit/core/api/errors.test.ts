@@ -109,6 +109,7 @@ describe("errors", () => {
               display_name: "fault-zeroing",
               type: "skill",
               visibility: "private",
+              owner_id: "owner-1",
             },
             required_visibility: "public",
           },
@@ -117,9 +118,12 @@ describe("errors", () => {
 
       const result = formatDetail(detail, "Review", "Conflict");
 
-      expect(result).toContain("fault-zeroing");
-      expect(result).toContain("Skill「fault-zeroing」当前可见性：私有");
-      expect(result).toContain("请先将该依赖提升为公开，或移除该依赖后重试");
+      expect(result).toContain("无法将智能体「fault-zeroing」提升为公开");
+      expect(result).toContain(
+        "Skill「fault-zeroing」（当前：私有）→ 需提升为公开",
+      );
+      expect(result).toContain("可行路径");
+      expect(result).not.toContain("Dependency violates visibility closure");
     });
 
     test("renders each violation on its own line for multiple violations", async () => {
@@ -140,9 +144,85 @@ describe("errors", () => {
 
       const result = formatDetail(detail, "Review", "Conflict");
 
-      expect(result).toContain("- Skill「skill-a」当前可见性：私有");
-      expect(result).toContain("- Skill「skill-b」当前可见性：部门");
-      expect(result).toContain("请先将这些依赖提升为公开");
+      expect(result).toContain("- Skill「skill-a」（当前：私有）");
+      expect(result).toContain("- Skill「skill-b」（当前：部门）");
+      expect(result).toContain("可行路径");
+    });
+
+    test("suggests self-application path when dependency is owned by the actor", async () => {
+      const { formatDetail } = await import("@/core/api/errors");
+      const detail = {
+        code: "visibility_closure_violation",
+        violations: [
+          {
+            source: { slug: "my-agent", type: "agent" },
+            target: { slug: "my-skill", type: "skill", visibility: "private" },
+            required_visibility: "public",
+            owned_by_actor: true,
+          },
+        ],
+      };
+
+      const result = formatDetail(detail, "Review", "Conflict");
+
+      expect(result).toContain("你拥有这些依赖");
+      expect(result).toContain("提交可见性提升申请");
+    });
+
+    test("suggests contacting the owner when dependency is not owned by the actor", async () => {
+      const { formatDetail } = await import("@/core/api/errors");
+      const detail = {
+        code: "visibility_closure_violation",
+        violations: [
+          {
+            source: { slug: "my-agent", type: "agent" },
+            target: {
+              slug: "their-skill",
+              type: "skill",
+              visibility: "private",
+            },
+            required_visibility: "public",
+            owned_by_actor: false,
+          },
+        ],
+      };
+
+      const result = formatDetail(detail, "Review", "Conflict");
+
+      expect(result).toContain("这些依赖由他人拥有");
+      expect(result).toContain("联系其拥有者提升可见性");
+    });
+
+    test("formats department visibility closure with department-aware wording", async () => {
+      const { formatDetail } = await import("@/core/api/errors");
+      const detail = {
+        code: "visibility_closure_violation",
+        violations: [
+          {
+            source: { slug: "my-agent", type: "agent" },
+            target: { slug: "my-skill", type: "skill", visibility: "private" },
+            required_visibility: "department",
+            owned_by_actor: true,
+          },
+        ],
+      };
+
+      const result = formatDetail(detail, "Review", "Conflict");
+
+      expect(result).toContain("无法将智能体「my-agent」提升为部门可见");
+      expect(result).toContain("需为公开或与本资源同部门");
+    });
+
+    test("falls back to raw message when no violations are present", async () => {
+      const { formatDetail } = await import("@/core/api/errors");
+      const detail = {
+        code: "visibility_closure_violation",
+        message: "raw closure message",
+      };
+
+      const result = formatDetail(detail, "Review", "Conflict");
+
+      expect(result).toBe("raw closure message");
     });
 
     test("formats string detail directly", async () => {

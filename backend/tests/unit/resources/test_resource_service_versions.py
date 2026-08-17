@@ -188,10 +188,32 @@ async def test_dependency_closure_error_carries_structured_violation(session: As
                 "display_name": target.display_name,
                 "type": "skill",
                 "visibility": "private",
+                "owner_id": "owner",
             },
             "required_visibility": "public",
+            "owned_by_actor": True,
         }
     ]
+
+
+@pytest.mark.asyncio
+async def test_dependency_closure_violation_flags_ownership_for_other_owners(session: AsyncSession) -> None:
+    source = _resource("public-agent", visibility="public")
+    target = _resource(
+        "private-skill",
+        resource_type="skill",
+        visibility="department",
+        department_id="dept-a",
+        owner_id="someone-else",
+    )
+    session.add_all([source, target])
+    await session.commit()
+
+    with pytest.raises(VisibilityClosureError) as excinfo:
+        await ResourceService(session, _actor()).replace_dependencies(source.id, [target.id])
+
+    assert excinfo.value.violations[0]["owned_by_actor"] is False
+    assert excinfo.value.violations[0]["target"]["owner_id"] == "someone-else"
 
 
 @pytest.mark.asyncio

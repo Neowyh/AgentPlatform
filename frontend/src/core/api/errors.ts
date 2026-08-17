@@ -10,8 +10,10 @@ export interface VisibilityClosureViolation {
     display_name?: string;
     type?: string;
     visibility?: string;
+    owner_id?: string;
   };
   required_visibility?: string;
+  owned_by_actor?: boolean;
 }
 
 export type ErrorDetail =
@@ -39,15 +41,29 @@ const VISIBILITY_LABELS: Record<string, string> = {
 
 /**
  * Format a visibility closure violation payload into a localized,
- * actionable message.
+ * actionable message with concrete paths to complete the request.
  */
 export function formatVisibilityClosureViolations(detail: {
   message?: string;
   violations?: VisibilityClosureViolation[];
 }): string {
   const violations = detail.violations ?? [];
+  if (violations.length === 0) {
+    return detail.message ?? "可见性闭包校验失败：公开资源只能依赖公开资源。";
+  }
+
+  const first = violations[0] ?? {};
+  const sourceType = first.source?.type
+    ? (RESOURCE_TYPE_LABELS[first.source.type] ?? first.source.type)
+    : "资源";
+  const sourceLabel =
+    first.source?.display_name ?? first.source?.slug ?? "该资源";
+  const requiredVisibility = first.required_visibility ?? "public";
   const summary =
-    detail.message ?? "可见性闭包校验失败：公开资源只能依赖公开资源。";
+    requiredVisibility === "department"
+      ? `无法将${sourceType}「${sourceLabel}」提升为部门可见：它依赖的资源需为公开或属于同一部门。`
+      : `无法将${sourceType}「${sourceLabel}」提升为公开：它依赖的资源未满足可见性要求。`;
+
   const lines = violations.map((violation) => {
     const target = violation.target;
     const label = target?.display_name ?? target?.slug ?? "未知资源";
@@ -57,15 +73,36 @@ export function formatVisibilityClosureViolations(detail: {
     const visibility = target?.visibility
       ? (VISIBILITY_LABELS[target.visibility] ?? target.visibility)
       : "未知";
-    return `- ${type}「${label}」当前可见性：${visibility}`;
+    const owner =
+      violation.owned_by_actor === true
+        ? "，你拥有"
+        : violation.owned_by_actor === false
+          ? "，他人拥有"
+          : "";
+    const requiredLabel =
+      (violation.required_visibility ?? requiredVisibility) === "department"
+        ? "需为公开或与本资源同部门"
+        : "需提升为公开";
+    return `- ${type}「${label}」（当前：${visibility}${owner}）→ ${requiredLabel}`;
   });
-  const guidance =
-    violations.length > 1
-      ? "请先将这些依赖提升为公开，或移除该依赖后重试"
-      : "请先将该依赖提升为公开，或移除该依赖后重试";
-  return lines.length > 0
-    ? `${summary}\n${guidance}：\n${lines.join("\n")}`
-    : summary;
+
+  const hasOwned = violations.some((v) => v.owned_by_actor === true);
+  const hasNotOwned = violations.some((v) => v.owned_by_actor === false);
+  let ownedPath: string;
+  if (hasOwned && !hasNotOwned) {
+    ownedPath =
+      "你拥有这些依赖：请先为依赖资源提交可见性提升申请（在对应资源设置页），审批通过后再重新提交本申请。";
+  } else if (hasNotOwned && !hasOwned) {
+    ownedPath =
+      "这些依赖由他人拥有：请联系其拥有者提升可见性，再重新提交本申请。";
+  } else {
+    ownedPath =
+      "你拥有的依赖可先提交可见性提升申请，他人拥有的依赖需联系其拥有者处理，然后再重新提交本申请。";
+  }
+
+  return `${summary}\n\n阻塞依赖：\n${lines.join(
+    "\n",
+  )}\n\n可行路径：\n1. ${ownedPath}\n2. 或移除相关依赖后，重新提交本申请。`;
 }
 
 /**

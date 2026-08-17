@@ -872,33 +872,33 @@ class ResourceService:
         *,
         source_visibility: str | None = None,
         source_department_id: str | None = None,
+        actor_user_id: str | None = None,
     ) -> dict[str, object] | None:
         visibility = source.visibility if source_visibility is None else source_visibility
         department_id = source.scope_department_id if source_department_id is None else source_department_id
-        if visibility == "public" and target.visibility != "public":
-            return {
+
+        def _violation(required_visibility: str) -> dict[str, object]:
+            violation: dict[str, object] = {
                 "source": {"slug": source.slug, "display_name": source.display_name, "type": source.type},
                 "target": {
                     "slug": target.slug,
                     "display_name": target.display_name,
                     "type": target.type,
                     "visibility": target.visibility,
+                    "owner_id": target.owner_id,
                 },
-                "required_visibility": "public",
+                "required_visibility": required_visibility,
             }
+            if actor_user_id is not None:
+                violation["owned_by_actor"] = target.owner_id == actor_user_id
+            return violation
+
+        if visibility == "public" and target.visibility != "public":
+            return _violation("public")
         if visibility == "department":
             valid_department = target.visibility == "department" and target.scope_department_id == department_id
             if target.visibility != "public" and not valid_department:
-                return {
-                    "source": {"slug": source.slug, "display_name": source.display_name, "type": source.type},
-                    "target": {
-                        "slug": target.slug,
-                        "display_name": target.display_name,
-                        "type": target.type,
-                        "visibility": target.visibility,
-                    },
-                    "required_visibility": "department",
-                }
+                return _violation("department")
         return None
 
     @staticmethod
@@ -925,12 +925,14 @@ class ResourceService:
         *,
         source_visibility: str | None = None,
         source_department_id: str | None = None,
+        actor_user_id: str | None = None,
     ) -> None:
         violation = ResourceService._visibility_closure_violation(
             source,
             target,
             source_visibility=source_visibility,
             source_department_id=source_department_id,
+            actor_user_id=actor_user_id,
         )
         if violation is None:
             return
@@ -960,6 +962,7 @@ class ResourceService:
                     target,
                     source_visibility=source_visibility,
                     source_department_id=source_department_id,
+                    actor_user_id=self.actor.user_id,
                 )
                 for target in targets
             )
@@ -979,7 +982,7 @@ class ResourceService:
                 raise ResourceConflict("Resource dependency cycle: self dependency")
             target = await self._get_visible(target_id)
             self._assert_dependency_type(source, target)
-            self._assert_visibility_closure(source, target)
+            self._assert_visibility_closure(source, target, actor_user_id=self.actor.user_id)
             targets.append(target)
 
         await self.session.execute(delete(ResourceDependency).where(ResourceDependency.source_resource_id == source.id))
@@ -1024,7 +1027,7 @@ class ResourceService:
             target_ids = list((await self.session.execute(select(ResourceDependency.target_resource_id).where(ResourceDependency.source_resource_id == resource.id).order_by(ResourceDependency.target_resource_id))).scalars())
             for target_id in target_ids:
                 target = await self._get_visible(target_id)
-                self._assert_visibility_closure(resource, target)
+                self._assert_visibility_closure(resource, target, actor_user_id=self.actor.user_id)
                 await visit(target_id)
             visiting.remove(resource_id)
             visited.add(resource_id)
