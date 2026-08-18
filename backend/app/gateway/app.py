@@ -157,21 +157,14 @@ async def _migrate_orphaned_threads(store, admin_user_id: str) -> int:
     return migrated
 
 
-async def _reconcile_resource_metadata(startup_config: AppConfig) -> None:
-    """Startup hook: ensure all custom skills on disk have a resource_metadata record.
+async def _reconcile_workflow_and_agent_metadata() -> None:
+    """Startup hook: backfill resource_metadata for workflow/agent definitions lacking one.
 
-    Scans the ``skills/custom/`` directory and auto-creates metadata for any
-    skill directory that is missing one. Uses the first active super_admin as
-    the owner so these skills are discoverable by admins and manageable via
-    the visibility UI.
-
-    This function is idempotent — existing metadata records are never touched.
+    Uses the first active super_admin as the fallback owner. Idempotent —
+    existing metadata records are never touched.
     """
-    from pathlib import Path
-
     from sqlalchemy import select
 
-    from app.gateway.utils import ResourceMetadataStore
     from ideer.persistence.engine import get_session_factory
     from ideer.persistence.models.user import UserModel, UserRole
 
@@ -179,7 +172,6 @@ async def _reconcile_resource_metadata(startup_config: AppConfig) -> None:
     if sf is None:
         return
 
-    # Find first active super_admin
     async with sf() as session:
         stmt = (
             select(UserModel)
@@ -192,37 +184,12 @@ async def _reconcile_resource_metadata(startup_config: AppConfig) -> None:
         admin_user = (await session.execute(stmt)).scalar_one_or_none()
 
     if admin_user is None:
-        logger.info("No active super_admin found; skipping skill resource_metadata reconciliation")
+        logger.info("No active super_admin found; skipping resource_metadata reconciliation")
         return
 
     admin_id = str(admin_user.id)
-
-    # Reconcile workflow and agent metadata for any definitions that lack a
-    # DB record, reusing the same super_admin fallback owner. Runs before the
-    # skill scan so these resources are reconciled regardless of skill setup.
     await _reconcile_workflow_metadata(sf, admin_id)
     await _reconcile_agent_metadata(sf, admin_id)
-
-    # Scan skills/custom/ directory for skill directories that exist on disk
-    skills_path = startup_config.skills.get_skills_path()
-    custom_dir: Path = skills_path / "custom"
-    if not custom_dir.is_dir():
-        return
-
-    store = ResourceMetadataStore("skill")
-    reconciled = 0
-    for entry in sorted(custom_dir.iterdir()):
-        if not entry.is_dir() or entry.name.startswith("."):
-            continue
-        skill_name = entry.name
-        existing = await store.load_meta(skill_name)
-        if existing:
-            continue
-        if await store.save_meta(skill_name, {"owner_id": admin_id, "visibility": "private"}):
-            reconciled += 1
-
-    if reconciled:
-        logger.info("Reconciled %d custom skill(s) — created missing resource_metadata records", reconciled)
 
 
 async def _resolve_resource_owner(sf, raw_owner: str | None) -> tuple[str | None, str | None]:
@@ -391,11 +358,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         except Exception:
             logger.exception("User-state anomaly audit failed (non-fatal)")
 
-        # Reconcile skill resource_metadata for any custom skills on disk
-        # that lack a DB record. Must run AFTER _ensure_admin_user so
-        # the super_admin ID is available as the fallback owner.
+        # Reconcile workflow/agent resource_metadata for definitions lacking a
+        # DB record. Must run AFTER _ensure_admin_user so the super_admin ID
+        # is available as the fallback owner.
         try:
-            await _reconcile_resource_metadata(startup_config)
+            await _reconcile_workflow_and_agent_metadata()
         except Exception:
             logger.exception("Skill metadata reconciliation failed (non-fatal)")
 
