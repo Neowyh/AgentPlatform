@@ -33,6 +33,7 @@ def test_manifest_system_owned_is_optional_and_validated(tmp_path: Path) -> None
                         "id": "11111111-1111-5111-8111-111111111111",
                         "type": "skill",
                         "slug": "protected",
+                        "display_name": "受保护技能",
                         "visibility": "private",
                         "source": "skills/protected",
                         "system_owned": True,
@@ -41,6 +42,7 @@ def test_manifest_system_owned_is_optional_and_validated(tmp_path: Path) -> None
                         "id": "22222222-2222-5222-8222-222222222222",
                         "type": "agent",
                         "slug": "managed",
+                        "display_name": "受管智能体",
                         "visibility": "private",
                         "source": "agents/managed",
                     },
@@ -62,6 +64,7 @@ def test_manifest_system_owned_is_optional_and_validated(tmp_path: Path) -> None
                         "id": "11111111-1111-5111-8111-111111111111",
                         "type": "skill",
                         "slug": "protected",
+                        "display_name": "受保护技能",
                         "visibility": "private",
                         "source": "skills/protected",
                         "system_owned": "yes",
@@ -79,7 +82,7 @@ def test_repository_bundled_manifest_has_unique_stable_ids_and_existing_sources(
     manifest = load_bundled_manifest(REPO_ROOT / "bundled-resources.json")
 
     assert manifest.schema_version == 1
-    assert len(manifest.resources) == 27
+    assert len(manifest.resources) == 34
     assert len({item.id for item in manifest.resources}) == len(manifest.resources)
     assert len({(item.type, item.slug) for item in manifest.resources}) == len(manifest.resources)
     assert {(item.type, item.slug): item.id for item in manifest.resources}[("workflow", "fault-zeroing")] == "018ce2c1-4d43-5db4-b4e3-d8d40624260d"
@@ -133,6 +136,7 @@ edges: []
                         "id": skill_id,
                         "type": "skill",
                         "slug": "review",
+                        "display_name": "评审",
                         "visibility": "public",
                         "source": "skills/review",
                     },
@@ -140,6 +144,7 @@ edges: []
                         "id": agent_id,
                         "type": "agent",
                         "slug": "reviewer",
+                        "display_name": "评审智能体",
                         "visibility": "public",
                         "source": "agents/reviewer",
                     },
@@ -147,6 +152,7 @@ edges: []
                         "id": workflow_id,
                         "type": "workflow",
                         "slug": "review-flow",
+                        "display_name": "评审工作流",
                         "visibility": "public",
                         "source": "workflows/review.yaml",
                     },
@@ -238,10 +244,10 @@ async def test_repository_bundle_can_be_seeded_offline_as_one_complete_set(
         owner_id="system-owner",
     )
 
-    assert report.created == 27
+    assert report.created == 34
     async with factory() as session:
-        assert await session.scalar(select(func.count()).select_from(Resource)) == 27
-        assert await session.scalar(select(func.count()).select_from(ResourceVersion)) == 27
+        assert await session.scalar(select(func.count()).select_from(Resource)) == 34
+        assert await session.scalar(select(func.count()).select_from(ResourceVersion)) == 34
     await engine.dispose()
 
 
@@ -282,6 +288,7 @@ def _write_workflow_manifest(path: Path, description: str) -> None:
                         "id": "22222222-2222-5222-8222-222222222222",
                         "type": "agent",
                         "slug": "reviewer",
+                        "display_name": "评审智能体",
                         "visibility": "public",
                         "source": "agents/reviewer",
                     },
@@ -289,6 +296,7 @@ def _write_workflow_manifest(path: Path, description: str) -> None:
                         "id": "33333333-3333-5333-8333-333333333333",
                         "type": "workflow",
                         "slug": "review-flow",
+                        "display_name": "评审工作流",
                         "visibility": "public",
                         "source": "workflows/review.yaml",
                     },
@@ -360,6 +368,47 @@ async def test_bundled_seed_self_heals_existing_system_owned(tmp_path: Path) -> 
     async with factory() as session:
         resource = await session.get(Resource, resource_id)
         assert resource.system_owned is False
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_bundled_seed_syncs_existing_display_name(tmp_path: Path) -> None:
+    engine, factory = await _make_factory(tmp_path, "display-name.db")
+    resource_id = "33333333-3333-5333-8333-333333333333"
+    source_root = tmp_path / "source"
+    manifest_path = source_root / "bundled-resources.json"
+    _write_workflow_manifest(manifest_path, "Review v1")
+    storage = ResourceStorage(tmp_path / "runtime")
+    first = await seed_bundled_resources(
+        factory,
+        storage,
+        manifest_path=manifest_path,
+        source_root=source_root,
+        owner_id="system-owner",
+    )
+    assert first.created == 2
+
+    async with factory() as session:
+        resource = await session.get(Resource, resource_id)
+        assert resource.display_name == "评审工作流"
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    for item in manifest["resources"]:
+        if item["slug"] == "review-flow":
+            item["display_name"] = "评审工作流（新名）"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    second = await seed_bundled_resources(
+        factory,
+        storage,
+        manifest_path=manifest_path,
+        source_root=source_root,
+        owner_id="system-owner",
+    )
+    assert second.unchanged == 2
+    async with factory() as session:
+        resource = await session.get(Resource, resource_id)
+        assert resource.display_name == "评审工作流（新名）"
     await engine.dispose()
 
 
