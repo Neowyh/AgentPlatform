@@ -16,6 +16,7 @@ export async function loadSkills(): Promise<Skill[]> {
       id: string;
       slug: string;
       display_name: string;
+      description?: string | null;
       owner_id: string;
       visibility: string;
       scope_department_id: string | null;
@@ -29,7 +30,7 @@ export async function loadSkills(): Promise<Skill[]> {
       slug: resource.slug,
       read_only: !resource.can_modify,
       name: resource.display_name,
-      description: resource.display_name,
+      description: resource.description ?? resource.display_name,
       category: resource.can_modify ? "custom" : "public",
       license: "",
       enabled: true,

@@ -18,6 +18,7 @@ from ideer.persistence.models.resource_catalog import (
 from ideer.persistence.models.user import UserModel, UserRole
 from ideer.persistence.models.workflow_v2 import WorkflowV2RunRow
 from ideer.resources.service import ResourceAction
+from ideer.resources.storage import ResourceStorage
 
 
 def _user(role: UserRole, *, user_id: str = "user", department_id: str | None = "dept-a") -> UserModel:
@@ -28,6 +29,62 @@ def _user(role: UserRole, *, user_id: str = "user", department_id: str | None = 
         department_id=department_id,
         disabled=False,
     )
+
+
+def _skill_resource(resource_id: str) -> Resource:
+    return Resource(
+        id=resource_id,
+        type="skill",
+        slug="demo",
+        display_name="Demo",
+        owner_id="owner",
+        visibility="private",
+        lifecycle_status="active",
+        latest_version=1,
+        draft_revision=0,
+        storage_kind="filesystem",
+        storage_key=f"skills/{resource_id}",
+        system_owned=False,
+        authz_revision=0,
+    )
+
+
+def _write_skill_md(storage: ResourceStorage, resource_id: str, frontmatter: str) -> None:
+    source = storage.resources_root / f"skills/{resource_id}/versions/1"
+    source.mkdir(parents=True, exist_ok=True)
+    (source / "SKILL.md").write_text(f"---\n{frontmatter}---\n", encoding="utf-8")
+
+
+def test_skill_description_prefers_description_zh(tmp_path: Path) -> None:
+    storage = ResourceStorage(tmp_path / "runtime")
+    _write_skill_md(
+        storage,
+        "skill-zh",
+        "name: demo\ndescription: English description\ndescription_zh: 中文说明\n",
+    )
+
+    assert resources._skill_description(_skill_resource("skill-zh"), storage) == "中文说明"
+
+
+def test_skill_description_falls_back_to_english(tmp_path: Path) -> None:
+    storage = ResourceStorage(tmp_path / "runtime")
+    _write_skill_md(
+        storage,
+        "skill-en",
+        "name: demo\ndescription: English description\n",
+    )
+
+    assert resources._skill_description(_skill_resource("skill-en"), storage) == "English description"
+
+
+def test_skill_description_is_none_for_missing_or_invalid_content(tmp_path: Path) -> None:
+    storage = ResourceStorage(tmp_path / "runtime")
+    assert resources._skill_description(_skill_resource("skill-missing"), storage) is None
+    _write_skill_md(storage, "skill-bad", "not: yaml: [")
+    assert resources._skill_description(_skill_resource("skill-bad"), storage) is None
+    workflow = _skill_resource("skill-other")
+    workflow.type = "workflow"
+    assert resources._skill_description(workflow, storage) is None
 
 
 def test_actor_mapping_separates_read_use_write_and_admin_governance() -> None:

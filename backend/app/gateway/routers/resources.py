@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import uuid
 import zipfile
 from collections.abc import AsyncIterator
@@ -58,6 +59,49 @@ from ideer.workflows.v2.parser import parse_workflow_v2
 from ideer.workflows.v2.store import WorkflowV2Store
 
 router = APIRouter(prefix="/api/resources", tags=["resources"])
+
+_skill_description_cache: dict[str, str | None] = {}
+
+
+def _skill_description(
+    resource: Resource,
+    storage: ResourceStorage,
+) -> str | None:
+    """Chinese display description from the published SKILL.md frontmatter.
+
+    Prefers the ``description_zh`` metadata field (kept in the source file
+    alongside the English ``description`` used by agents) and falls back to
+    ``description``. Cached per published version.
+    """
+    if resource.type != "skill" or resource.latest_version is None:
+        return None
+    key = f"{resource.id}:{resource.latest_version}"
+    if key in _skill_description_cache:
+        return _skill_description_cache[key]
+    source = storage.resources_root / f"skills/{resource.id}/versions/{resource.latest_version}/SKILL.md"
+    if not source.is_file():
+        _skill_description_cache[key] = None
+        return None
+    front_matter_match = re.match(r"\A---\s*\n(.*?)\n---", source.read_text(encoding="utf-8"), re.DOTALL)
+    if front_matter_match is None:
+        _skill_description_cache[key] = None
+        return None
+    try:
+        metadata = yaml.safe_load(front_matter_match.group(1))
+    except yaml.YAMLError:
+        _skill_description_cache[key] = None
+        return None
+    description = None
+    if isinstance(metadata, dict):
+        description_zh = metadata.get("description_zh")
+        if isinstance(description_zh, str) and description_zh.strip():
+            description = description_zh.strip()
+        else:
+            fallback = metadata.get("description")
+            if isinstance(fallback, str) and fallback.strip():
+                description = fallback.strip()
+    _skill_description_cache[key] = description
+    return description
 
 
 class ResourceCreateRequest(BaseModel):
@@ -340,13 +384,20 @@ async def list_resources(
             limit=limit,
         )
         favorites = await _favorite_ids(session, str(current_user.id), [item.id for item in page.items])
+        storage = ResourceStorage(get_paths().base_dir)
+        descriptions = await asyncio.to_thread(
+            lambda: {item.id: _skill_description(item, storage) for item in page.items}
+        )
         return {
             "items": [
-                _resource_payload(
-                    item,
-                    current_user=current_user,
-                    is_favorited=item.id in favorites,
-                )
+                {
+                    **_resource_payload(
+                        item,
+                        current_user=current_user,
+                        is_favorited=item.id in favorites,
+                    ),
+                    "description": descriptions.get(item.id),
+                }
                 for item in page.items
             ],
             "total": page.total,
@@ -578,11 +629,18 @@ async def get_resource(
     async with _factory()() as session:
         resource = await ResourceService(session, _resource_actor(current_user)).get_visible(resource_id)
         favorites = await _favorite_ids(session, str(current_user.id), [resource.id])
-        return _resource_payload(
-            resource,
-            current_user=current_user,
-            is_favorited=resource.id in favorites,
-        )
+        return {
+            **_resource_payload(
+                resource,
+                current_user=current_user,
+                is_favorited=resource.id in favorites,
+            ),
+            "description": await asyncio.to_thread(
+                _skill_description,
+                resource,
+                ResourceStorage(get_paths().base_dir),
+            ),
+        }
 
 
 @router.get("/{resource_id}/published")
