@@ -72,7 +72,7 @@ allowed-tools:
   - 4 合格性规定：从每条需求验证方法字段汇总成表。
   - 5 需求可追踪性：嵌入追踪矩阵（与矩阵文档同一内容）。
   - 6 注释：缩写词表（从任务书抽取），可人工追加。
-- 模板模式：若 `/mnt/skills/custom/srs-writing/templates/` 存在 `*.docx` 模板（单位模板），改为「打开模板 → 在占位符标记处插入生成内容」流程（见 templates/README.md 占位符约定）。
+- 模板模式：若 `/mnt/skills/srs-writing/templates/` 存在 `*.docx` 模板（单位模板），改为「打开模板 → 在占位符标记处插入生成内容」流程（见 templates/README.md 占位符约定）。
 
 ### 6. review 审阅
 - 输出前自检：需求无遗漏（缺口清单检查）、追踪无断裂（矩阵一致性）、ID 无重复。

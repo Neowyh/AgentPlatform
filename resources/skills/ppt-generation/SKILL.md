@@ -84,7 +84,7 @@ Create a JSON file in `/mnt/user-data/workspace/` with the presentation structur
 
 **IMPORTANT**: Generate slides **strictly one by one, in order**. Do NOT parallelize or batch image generation. Each slide depends on the previous slide's output as a reference image. Generating slides in parallel will break visual consistency and is not allowed.
 
-1. Read the image-generation skill: `/mnt/skills/public/image-generation/SKILL.md`
+1. Read the image-generation skill: `/mnt/skills/image-generation/SKILL.md`
 
 2. **For the FIRST slide (slide 1)**, create a prompt that establishes the visual style:
 
@@ -99,7 +99,7 @@ Create a JSON file in `/mnt/user-data/workspace/` with the presentation structur
 ```
 
 ```bash
-python /mnt/skills/public/image-generation/scripts/generate.py \
+python /mnt/skills/image-generation/scripts/generate.py \
   --prompt-file /mnt/user-data/workspace/slide-01-prompt.json \
   --output-file /mnt/user-data/outputs/slide-01.jpg \
   --aspect-ratio 16:9
@@ -118,7 +118,7 @@ python /mnt/skills/public/image-generation/scripts/generate.py \
 ```
 
 ```bash
-python /mnt/skills/public/image-generation/scripts/generate.py \
+python /mnt/skills/image-generation/scripts/generate.py \
   --prompt-file /mnt/user-data/workspace/slide-02-prompt.json \
   --reference-images /mnt/user-data/outputs/slide-01.jpg \
   --output-file /mnt/user-data/outputs/slide-02.jpg \
@@ -129,14 +129,14 @@ python /mnt/skills/public/image-generation/scripts/generate.py \
 
 ```bash
 # Slide 3 references slide 2
-python /mnt/skills/public/image-generation/scripts/generate.py \
+python /mnt/skills/image-generation/scripts/generate.py \
   --prompt-file /mnt/user-data/workspace/slide-03-prompt.json \
   --reference-images /mnt/user-data/outputs/slide-02.jpg \
   --output-file /mnt/user-data/outputs/slide-03.jpg \
   --aspect-ratio 16:9
 
 # Slide 4 references slide 3
-python /mnt/skills/public/image-generation/scripts/generate.py \
+python /mnt/skills/image-generation/scripts/generate.py \
   --prompt-file /mnt/user-data/workspace/slide-04-prompt.json \
   --reference-images /mnt/user-data/outputs/slide-03.jpg \
   --output-file /mnt/user-data/outputs/slide-04.jpg \
@@ -148,7 +148,7 @@ python /mnt/skills/public/image-generation/scripts/generate.py \
 After all slide images are generated, call the composition script:
 
 ```bash
-python /mnt/skills/public/ppt-generation/scripts/generate.py \
+python /mnt/skills/ppt-generation/scripts/generate.py \
   --plan-file /mnt/user-data/workspace/presentation-plan.json \
   --slide-images /mnt/user-data/outputs/slide-01.jpg /mnt/user-data/outputs/slide-02.jpg /mnt/user-data/outputs/slide-03.jpg \
   --output-file /mnt/user-data/outputs/presentation.pptx
@@ -225,7 +225,7 @@ Create `/mnt/user-data/workspace/ai-product-plan.json`:
 
 ### Step 2: Read image-generation skill
 
-Read `/mnt/skills/public/image-generation/SKILL.md` to understand how to generate images.
+Read `/mnt/skills/image-generation/SKILL.md` to understand how to generate images.
 
 ### Step 3: Generate slide images sequentially with reference chaining
 
@@ -244,7 +244,7 @@ Create `/mnt/user-data/workspace/nova-slide-01.json`:
 ```
 
 ```bash
-python /mnt/skills/public/image-generation/scripts/generate.py \
+python /mnt/skills/image-generation/scripts/generate.py \
   --prompt-file /mnt/user-data/workspace/nova-slide-01.json \
   --output-file /mnt/user-data/outputs/nova-slide-01.jpg \
   --aspect-ratio 16:9
@@ -264,7 +264,7 @@ Create `/mnt/user-data/workspace/nova-slide-02.json`:
 ```
 
 ```bash
-python /mnt/skills/public/image-generation/scripts/generate.py \
+python /mnt/skills/image-generation/scripts/generate.py \
   --prompt-file /mnt/user-data/workspace/nova-slide-02.json \
   --reference-images /mnt/user-data/outputs/nova-slide-01.jpg \
   --output-file /mnt/user-data/outputs/nova-slide-02.jpg \
@@ -282,7 +282,7 @@ Key consistency rules for subsequent slides:
 ### Step 4: Compose final PPT
 
 ```bash
-python /mnt/skills/public/ppt-generation/scripts/generate.py \
+python /mnt/skills/ppt-generation/scripts/generate.py \
   --plan-file /mnt/user-data/workspace/nova-plan.json \
   --slide-images /mnt/user-data/outputs/nova-slide-01.jpg /mnt/user-data/outputs/nova-slide-02.jpg /mnt/user-data/outputs/nova-slide-03.jpg /mnt/user-data/outputs/nova-slide-04.jpg /mnt/user-data/outputs/nova-slide-05.jpg \
   --output-file /mnt/user-data/outputs/nova-presentation.pptx

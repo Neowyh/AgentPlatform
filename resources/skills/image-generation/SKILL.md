@@ -38,7 +38,7 @@ Generate a structured JSON file in `/mnt/user-data/workspace/` with naming patte
 
 Call the Python script:
 ```bash
-python /mnt/skills/public/image-generation/scripts/generate.py \
+python /mnt/skills/image-generation/scripts/generate.py \
   --prompt-file /mnt/user-data/workspace/prompt-file.json \
   --reference-images /path/to/ref1.jpg /path/to/ref2.png \
   --output-file /mnt/user-data/outputs/generated-image.jpg
@@ -82,7 +82,7 @@ Create prompt file: `/mnt/user-data/workspace/asian-woman.json`
 
 Execute generation:
 ```bash
-python /mnt/skills/public/image-generation/scripts/generate.py \
+python /mnt/skills/image-generation/scripts/generate.py \
   --prompt-file /mnt/user-data/workspace/cyberpunk-hacker.json \
   --output-file /mnt/user-data/outputs/cyberpunk-hacker-01.jpg \
   --aspect-ratio 2:3
@@ -115,7 +115,7 @@ With reference images:
 }
 ```
 ```bash
-python /mnt/skills/public/image-generation/scripts/generate.py \
+python /mnt/skills/image-generation/scripts/generate.py \
   --prompt-file /mnt/user-data/workspace/star-wars-scene.json \
   --reference-images /mnt/user-data/uploads/character-ref.jpg /mnt/user-data/uploads/vehicle-ref.jpg \
   --output-file /mnt/user-data/outputs/star-wars-scene-01.jpg \

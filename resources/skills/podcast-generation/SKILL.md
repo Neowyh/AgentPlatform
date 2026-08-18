@@ -49,7 +49,7 @@ The JSON structure:
 
 Call the Python script:
 ```bash
-python /mnt/skills/public/podcast-generation/scripts/generate.py \
+python /mnt/skills/podcast-generation/scripts/generate.py \
   --script-file /mnt/user-data/workspace/script-file.json \
   --output-file /mnt/user-data/outputs/generated-podcast.mp3 \
   --transcript-file /mnt/user-data/outputs/generated-podcast-transcript.md
@@ -137,7 +137,7 @@ Step 1: Create script file `/mnt/user-data/workspace/ai-history-script.json`:
 
 Step 2: Execute generation:
 ```bash
-python /mnt/skills/public/podcast-generation/scripts/generate.py \
+python /mnt/skills/podcast-generation/scripts/generate.py \
   --script-file /mnt/user-data/workspace/ai-history-script.json \
   --output-file /mnt/user-data/outputs/ai-history-podcast.mp3 \
   --transcript-file /mnt/user-data/outputs/ai-history-transcript.md
