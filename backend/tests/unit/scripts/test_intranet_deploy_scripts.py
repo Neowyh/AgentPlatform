@@ -475,6 +475,70 @@ def test_package_source_archive_includes_runtime_seed_templates(tmp_path: Path):
     assert "env.intranet.example" not in sha256sums
 
 
+def test_package_script_fails_when_skills_manifest_skill_missing(tmp_path: Path):
+    output_dir = tmp_path / "bundle"
+    env = _env_with_fake_docker(tmp_path)
+
+    proc = subprocess.run(
+        [
+            "bash",
+            str(PACKAGE_SCRIPT),
+            "--version",
+            "test",
+            "--output-dir",
+            str(output_dir),
+            "--skills-manifest",
+            "fault-zeroing,definitely-missing-skill",
+        ],
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode != 0
+    assert "skills-manifest lists missing custom skill" in proc.stderr
+    assert "definitely-missing-skill" in proc.stderr
+
+
+def test_package_manifest_records_custom_skills_and_exclusion(tmp_path: Path):
+    output_dir = tmp_path / "bundle"
+    env = _env_with_fake_docker(tmp_path)
+
+    proc = subprocess.run(
+        [
+            "bash",
+            str(PACKAGE_SCRIPT),
+            "--version",
+            "test",
+            "--output-dir",
+            str(output_dir),
+            "--skills-manifest",
+            "fault-zeroing",
+            "--exclude-skills",
+            "fault-zeroing",
+        ],
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert "both in --skills-manifest and --exclude-skills" in proc.stdout
+
+    manifest = (output_dir / "MANIFEST.txt").read_text(encoding="utf-8")
+    assert "Custom Skills (skills/custom bundled in the source archive):" in manifest
+    assert "Excluded: fault-zeroing" in manifest
+    assert "  - fault-zeroing" not in manifest
+
+    with tarfile.open(output_dir / "ideer-source-test.tar.gz", "r:gz") as tar:
+        names = set(tar.getnames())
+    assert "skills/custom/fault-zeroing/SKILL.md" not in names
+
+
 def test_intranet_compose_uses_runtime_env_contract_and_internal_token():
     compose = COMPOSE_FILE.read_text(encoding="utf-8")
 
