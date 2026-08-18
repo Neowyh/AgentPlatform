@@ -206,7 +206,7 @@ def test_v2_parser_rejects_fork_join_mismatch() -> None:
 
 
 def test_v2_parser_accepts_fault_zeroing_workflow() -> None:
-    workflow = parse_workflow_v2_file(REPO_ROOT / "workflows" / "fault-zeroing.yaml")
+    workflow = parse_workflow_v2_file(REPO_ROOT / "resources" / "workflows" / "fault-zeroing.yaml")
 
     assert workflow.schema_version == 2
     assert workflow.name == "fault-zeroing"

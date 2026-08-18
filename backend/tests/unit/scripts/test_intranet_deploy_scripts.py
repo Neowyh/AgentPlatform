@@ -212,14 +212,11 @@ def test_packaged_deploy_script_defaults_to_its_bundle_directory(tmp_path: Path)
     assert (bundle_root / "env.intranet").is_file()
 
 
-def test_bundled_skill_seed_runs_inside_gateway_container(tmp_path: Path):
+def test_bundled_resource_seed_runs_inside_gateway_container(tmp_path: Path):
     script = DEPLOY_SCRIPT.read_text(encoding="utf-8")
 
-    assert 'docker cp "$SOURCE_DIR/scripts/seed_custom_skill_owners.py" ideer-gateway:/tmp/seed_custom_skill_owners.py' in script
-    assert "--db /app/backend/.ideer/data/ideer.db" in script
-    assert "--skills-dir /app/skills/custom" in script
-    assert "--agent fault-zeroing" in script
-    assert "--agent srs-writing" in script
+    assert "seed_custom_skill_owners.py" not in script
+    assert "--skills-dir" not in script
     assert 'docker compose -p ideer -f "$COMPOSE_FILE" --env-file "$ENV_FILE" exec -T gateway' in script
     assert '--db "$runtime_home/data/ideer.db"' not in script
     assert 'docker cp "$SOURCE_DIR/scripts/seed_bundled_resources.py" ideer-gateway:/tmp/seed_bundled_resources.py' in script
@@ -355,7 +352,7 @@ def test_deploy_script_wires_admin_bootstrap_and_bundled_resource_steps():
     assert "install_agent.py" in script
     assert "install_srs_writing_agent.py" in script
     assert "--owner super-admin" in script
-    assert "seed_custom_skill_owners.py" in script
+    assert "seed_custom_skill_owners.py" not in script
     assert "cleanup_legacy_shared_agent" in script
     assert "removing legacy shared agent copy" in script
     assert "--created-by" in script
@@ -463,10 +460,10 @@ def test_package_source_archive_includes_runtime_seed_templates(tmp_path: Path):
     assert "extensions_config.example.json" in names
     assert "frontend/.env.example" in names
     assert "frontend/.env" not in names
-    assert "workflows/fault-zeroing.yaml" in names
+    assert "resources/workflows/fault-zeroing.yaml" in names
     assert "bundled-resources.json" in names
     assert "scripts/seed_bundled_resources.py" in names
-    assert "skills/custom/fault-zeroing/templates/corrective_actions.schema.json" in names
+    assert "resources/skills/fault-zeroing/templates/corrective_actions.schema.json" in names
     assert not (output_dir / "docker-compose.intranet.yaml").exists()
     assert not (output_dir / "env.intranet.example").exists()
 
@@ -533,13 +530,13 @@ def test_package_manifest_records_custom_skills_and_exclusion(tmp_path: Path):
     assert "both in --skills-manifest and --exclude-skills" in proc.stdout
 
     manifest = (output_dir / "MANIFEST.txt").read_text(encoding="utf-8")
-    assert "Custom Skills (skills/custom bundled in the source archive):" in manifest
+    assert "Custom Skills (resources/skills bundled in the source archive):" in manifest
     assert "Excluded: fault-zeroing" in manifest
     assert "  - fault-zeroing" not in manifest
 
     with tarfile.open(output_dir / "ideer-source-test.tar.gz", "r:gz") as tar:
         names = set(tar.getnames())
-    assert "skills/custom/fault-zeroing/SKILL.md" not in names
+    assert "resources/skills/fault-zeroing/SKILL.md" not in names
 
 
 def test_intranet_compose_uses_runtime_env_contract_and_internal_token():

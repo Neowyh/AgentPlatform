@@ -32,7 +32,7 @@ REMOVED_WORKFLOW_PHRASES = [
 
 
 def test_fault_zeroing_skill_requires_visual_outputs() -> None:
-    content = (REPO_ROOT / "skills" / "custom" / "fault-zeroing" / "SKILL.md").read_text(encoding="utf-8")
+    content = (REPO_ROOT / "resources" / "skills" / "fault-zeroing" / "SKILL.md").read_text(encoding="utf-8")
 
     for output in REQUIRED_OUTPUTS:
         assert output in content
@@ -57,7 +57,7 @@ def test_fault_zeroing_skill_requires_visual_outputs() -> None:
 
 
 def test_fault_zeroing_soul_requires_visual_outputs() -> None:
-    content = (REPO_ROOT / "docs" / "fault-zeroing-agent" / "agent" / "SOUL.md").read_text(encoding="utf-8")
+    content = (REPO_ROOT / "resources" / "agents" / "fault-zeroing" / "SOUL.md").read_text(encoding="utf-8")
 
     for output in REQUIRED_OUTPUTS:
         assert output in content

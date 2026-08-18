@@ -36,13 +36,13 @@ def test_default_runtime_paths_resolve_from_current_project(tmp_path: Path, monk
         encoding="utf-8",
     )
     (tmp_path / "extensions_config.json").write_text('{"mcpServers": {}, "skills": {}}', encoding="utf-8")
-    (tmp_path / "skills").mkdir()
+    (tmp_path / "resources" / "skills").mkdir(parents=True)
 
     assert AppConfig.resolve_config_path() == tmp_path / "config.yaml"
     assert ExtensionsConfig.resolve_config_path() == tmp_path / "extensions_config.json"
     assert Paths().base_dir == tmp_path / ".ideer"
-    assert SkillsConfig().get_skills_path() == tmp_path / "skills"
-    assert get_or_new_skill_storage(skills_path=SkillsConfig().get_skills_path()).get_skills_root_path() == tmp_path / "skills"
+    assert SkillsConfig().get_skills_path() == tmp_path / "resources" / "skills"
+    assert get_or_new_skill_storage(skills_path=SkillsConfig().get_skills_path()).get_skills_root_path() == tmp_path / "resources" / "skills"
 
 
 def test_deer_flow_project_root_overrides_current_directory(tmp_path: Path, monkeypatch):
@@ -154,7 +154,7 @@ def test_skills_config_returns_project_default_when_neither_exists(tmp_path: Pat
 
     monkeypatch.setattr(skills_config_module, "_legacy_skills_candidates", lambda: ())
 
-    assert SkillsConfig().get_skills_path() == cwd / "skills"
+    assert SkillsConfig().get_skills_path() == cwd / "resources" / "skills"
 
 
 def test_extensions_config_falls_back_to_legacy_when_project_root_lacks_file(tmp_path: Path, monkeypatch):
