@@ -372,7 +372,7 @@ for t in get_cached_mcp_tools():
 "
 ```
 
-将输出的工具名写入 `skills/custom/your-skill/SKILL.md`：
+将输出的工具名写入 `resources/skills/your-skill/SKILL.md`：
 
 ```yaml
 allowed-tools:

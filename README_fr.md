@@ -456,14 +456,14 @@ Les suggestions de suivi générées par le Gateway normalisent désormais aussi
 
 ```
 # Paths inside the sandbox container
-/mnt/skills/public
+/mnt/skills/
 ├── research/SKILL.md
 ├── report-generation/SKILL.md
 ├── slide-creation/SKILL.md
 ├── web-page/SKILL.md
 └── image-generation/SKILL.md
 
-/mnt/skills/custom
+/mnt/skills/
 └── your-custom-skill/SKILL.md      ← yours
 ```
 
@@ -494,7 +494,7 @@ DEERFLOW_GATEWAY_URL=http://localhost:2026    # Gateway API
 DEERFLOW_LANGGRAPH_URL=http://localhost:2026/api/langgraph  # LangGraph API
 ```
 
-Voir [`skills/public/claude-to-ideer/SKILL.md`](skills/public/claude-to-ideer/SKILL.md) pour la référence API complète.
+Voir [`resources/skills/claude-to-ideer/SKILL.md`](resources/skills/claude-to-ideer/SKILL.md) pour la référence API complète.
 
 ### Sub-Agents
 

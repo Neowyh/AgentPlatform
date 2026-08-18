@@ -671,7 +671,7 @@ export const enUS: Translations = {
       createSkill: "Create skill",
       emptyTitle: "No agent skill yet",
       emptyDescription:
-        "Put your agent skill folders under the `/skills/custom` folder under the root folder of iDeer.",
+        "Put your agent skill folders under the `/resources/skills` folder under the root folder of iDeer.",
       emptyButton: "Create Your First Skill",
       applyVisibility: "Apply Visibility Change",
       applyVisibilityDescription:

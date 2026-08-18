@@ -25,7 +25,7 @@ sandbox (file writes, bash execution) works offline. Override the source image
 with `--sandbox-image <image>` or skip it entirely with `--no-sandbox` (not
 recommended -- sandboxed tools will be unavailable).
 
-`skills/custom/` is only partially tracked in git, so the bundle contains
+`resources/skills/` is only partially tracked in git, so the bundle contains
 whatever custom skills exist on the build machine. For official releases pass
 `--skills-manifest <csv>` (expected custom skill names); packaging fails
 immediately if any listed skill is missing, and `MANIFEST.txt` records the
@@ -119,9 +119,9 @@ This will:
 3. Start all services
 4. Run health checks
 5. Auto-create the super admin account (`super_admin@test.com` / `super_admin@test.com` by default; override with `IDEER_ADMIN_EMAIL` / `IDEER_ADMIN_PASSWORD`; skipped when an admin already exists)
-6. Install the bundled agents (`fault-zeroing`, `srs-writing`) as **private resources of the super admin** (into `runtime/data/users/<admin-id>/agents/`), assign the bundled `skills/custom/` skills to the same private owner, and seed the bundled `fault-zeroing` workflow as the admin's private workflow once the gateway is healthy
+6. Install the bundled agents (`fault-zeroing`, `srs-writing`) as **private resources of the super admin** (into `runtime/data/users/<admin-id>/agents/`), assign the bundled `resources/skills/` skills to the same private owner, and seed the bundled `fault-zeroing` workflow as the admin's private workflow once the gateway is healthy
 
-Disable an agent for the session with `IDEER_INSTALL_FAULT_ZEROING=0` or `IDEER_INSTALL_SRS_WRITING=0`. The bundled `skills/public/` skills remain public templates for all users.
+Disable an agent for the session with `IDEER_INSTALL_FAULT_ZEROING=0` or `IDEER_INSTALL_SRS_WRITING=0`. The bundled `resources/skills/` skills remain public templates for all users.
 
 To preview what would happen without making changes:
 

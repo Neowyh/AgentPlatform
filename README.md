@@ -601,14 +601,14 @@ Gateway-generated follow-up suggestions now normalize both plain-string model ou
 
 ```
 # Paths inside the sandbox container
-/mnt/skills/public
+/mnt/skills/
 ├── research/SKILL.md
 ├── report-generation/SKILL.md
 ├── slide-creation/SKILL.md
 ├── web-page/SKILL.md
 └── image-generation/SKILL.md
 
-/mnt/skills/custom
+/mnt/skills/
 └── your-custom-skill/SKILL.md      ← yours
 ```
 
@@ -639,7 +639,7 @@ DEERFLOW_GATEWAY_URL=http://localhost:2026    # Gateway API
 DEERFLOW_LANGGRAPH_URL=http://localhost:2026/api/langgraph  # LangGraph API
 ```
 
-See [`skills/public/claude-to-ideer/SKILL.md`](skills/public/claude-to-ideer/SKILL.md) for the full API reference.
+See [`resources/skills/claude-to-ideer/SKILL.md`](resources/skills/claude-to-ideer/SKILL.md) for the full API reference.
 
 ### Sub-Agents
 

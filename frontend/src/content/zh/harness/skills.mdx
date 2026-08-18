@@ -16,7 +16,7 @@ import { Callout, Cards, FileTree, Steps } from "nextra/components";
 
 ## 技能包含什么
 
-每个技能位于 `skills/public/`（或用户创建技能的 `skills/custom/`）下自己的子目录中。目录包含一个 `SKILL.md` 文件，定义技能的元数据、指令和工作流。
+每个技能位于 `resources/skills/`（或用户创建技能的 `resources/skills/`）下自己的子目录中。目录包含一个 `SKILL.md` 文件，定义技能的元数据、指令和工作流。
 
 <FileTree>
   <FileTree.Folder name="skills/" defaultOpen>
@@ -129,7 +129,7 @@ skills:
 
 ## 技能进化
 
-iDeer 包含一个可选的**技能进化**功能，允许 Agent 在 `skills/custom/` 目录中自主创建和改进技能：
+iDeer 包含一个可选的**技能进化**功能，允许 Agent 在 `resources/skills/` 目录中自主创建和改进技能：
 
 ```yaml
 skill_evolution:
@@ -147,7 +147,7 @@ skill_evolution:
 
 要创建自定义技能：
 
-1. 在 `skills/custom/your-skill-name/` 下创建新目录
+1. 在 `resources/skills/your-skill-name/` 下创建新目录
 2. 添加定义技能元数据和指令的 `SKILL.md` 文件
 3. 技能将在下次 `load_skills()` 调用时自动被发现
 

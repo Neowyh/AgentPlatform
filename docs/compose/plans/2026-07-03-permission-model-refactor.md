@@ -920,7 +920,7 @@ def migrate_meta_json():
     meta_files = []
 
     # Skill .meta.json files
-    skills_dir = Path("skills/public") / "skills" / "custom"
+    skills_dir = Path("resources/skills/") / "skills" / "custom"
     if skills_dir.exists():
         for skill_dir in skills_dir.iterdir():
             meta_file = skill_dir / ".meta.json"

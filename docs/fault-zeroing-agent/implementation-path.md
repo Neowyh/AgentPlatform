@@ -13,7 +13,7 @@
 | 自定义智能体 | `backend/packages/harness/ideer/config/agents_config.py` 定义 `AgentConfig`，支持 `name`、`description`、`model`、`tool_groups`、`skills`；`SOUL.md` 通过 `load_agent_soul()` 读取 | 可直接用来定义“归零排故智能体”的身份、行为边界、模型和技能白名单 |
 | 智能体管理 API | `backend/app/gateway/routers/agents.py` 提供 `/api/agents` CRUD；创建时写入 `config.yaml` 和 `SOUL.md` | 可作为配置入口，但默认受 `agents_api.enabled` 控制，生产启用前要加权限边界 |
 | 运行时加载 | `backend/packages/harness/ideer/agents/lead_agent/agent.py` 的 `_make_lead_agent()` 读取 `agent_name`、加载 agent config、选择模型、限制 skill、装配工具和中间件 | 归零智能体可以作为现有 lead agent 的一个配置实例运行 |
-| Skill | `SkillStorage.load_skills()` 扫描 `skills/public` 与 `skills/custom`，按 `extensions_config.json` 合并启用状态；`parse_skill_file()` 解析 frontmatter 和 `allowed-tools` | 归零流程、故障树构建规则、报告模板说明可以先用 Skill 固化 |
+| Skill | `SkillStorage.load_skills()` 扫描 `resources/skills/` 与 `resources/skills/`，按 `extensions_config.json` 合并启用状态；`parse_skill_file()` 解析 frontmatter 和 `allowed-tools` | 归零流程、故障树构建规则、报告模板说明可以先用 Skill 固化 |
 | 文件资料访问 | `UploadsMiddleware` 将上传文件、Markdown 提纲、路径注入对话；sandbox 提供 `glob`、`grep`、`read_file`、`write_file`、`str_replace` | 支持按需读取用户上传资料、日志、试验记录和模板文件 |
 | 路径与安全 | `validate_local_tool_path()` 限制本地沙箱访问 `/mnt/user-data`、`/mnt/skills`、`/mnt/acp-workspace` 和配置挂载；写入 skill 路径默认禁止 | 适合处理项目资料，但企业知识库/共享目录需要通过 mount 或 MCP 明确配置 |
 | 子智能体 | `subagents_config.py` 支持 `custom_agents`，可配置 `system_prompt`、工具白名单、skill 白名单、模型、超时；`task_tool` 负责委托执行 | 可拆出日志分析、资料检索、概率评估、报告审查等专业子智能体 |
@@ -30,7 +30,7 @@
 实现方式：
 - 创建归零排故 custom agent，例如 `fault-zeroing`。
 - 在 agent 的 `config.yaml` 中限制 `skills` 和 `tool_groups`。
-- 创建 `skills/custom/fault-zeroing/SKILL.md`，固化：
+- 创建 `resources/skills/fault-zeroing/SKILL.md`，固化：
   - 归零排故角色边界；
   - 信息补全问题清单；
   - 故障树构建步骤；
@@ -76,7 +76,7 @@
 
 可行。
 
-当前 `write_file` 可写报告到 `/mnt/user-data/outputs`，`present_files` 可将报告暴露给前端。建议 Skill 中放模板，或在 `skills/custom/fault-zeroing/templates/` 放：
+当前 `write_file` 可写报告到 `/mnt/user-data/outputs`，`present_files` 可将报告暴露给前端。建议 Skill 中放模板，或在 `resources/skills/fault-zeroing/templates/` 放：
 - `fault_zeroing_report.md`
 - `fault_tree.schema.json`
 - `bottom_event_assessment.schema.json`

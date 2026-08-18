@@ -746,7 +746,7 @@ tools:
 
 ### 5.5 新技能开发
 
-1. **创建 SKILL.md**: `skills/custom/my-skill/SKILL.md`
+1. **创建 SKILL.md**: `resources/skills/my-skill/SKILL.md`
 
 ```markdown
 ---

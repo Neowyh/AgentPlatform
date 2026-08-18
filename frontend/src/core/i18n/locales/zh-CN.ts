@@ -638,7 +638,7 @@ export const zhCN: Translations = {
       createSkill: "新建技能",
       emptyTitle: "还没有技能",
       emptyDescription:
-        "将你的 Agent Skill 文件夹放在 iDeer 根目录下的 `/skills/custom` 文件夹中。",
+        "将你的 Agent Skill 文件夹放在 iDeer 根目录下的 `/resources/skills` 文件夹中。",
       emptyButton: "创建你的第一个技能",
       applyVisibility: "申请变更可见性",
       applyVisibilityDescription: "提交申请以变更此技能的可见性级别",

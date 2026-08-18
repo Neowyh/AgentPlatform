@@ -436,14 +436,14 @@ Gateway 生成后续建议时，现在会先把普通字符串输出和 block/li
 
 ```text
 # sandbox 容器内的路径
-/mnt/skills/public
+/mnt/skills/
 ├── research/SKILL.md
 ├── report-generation/SKILL.md
 ├── slide-creation/SKILL.md
 ├── web-page/SKILL.md
 └── image-generation/SKILL.md
 
-/mnt/skills/custom
+/mnt/skills/
 └── your-custom-skill/SKILL.md      ← 你的 skill
 ```
 
@@ -474,7 +474,7 @@ DEERFLOW_GATEWAY_URL=http://localhost:2026    # Gateway API
 DEERFLOW_LANGGRAPH_URL=http://localhost:2026/api/langgraph  # LangGraph API
 ```
 
-完整 API 说明见 [`skills/public/claude-to-ideer/SKILL.md`](skills/public/claude-to-ideer/SKILL.md)。
+完整 API 说明见 [`resources/skills/claude-to-ideer/SKILL.md`](resources/skills/claude-to-ideer/SKILL.md)。
 
 ### Sub-Agents
 

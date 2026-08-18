@@ -352,14 +352,14 @@ Skills загружаются по мере необходимости, толь
 
 ```
 # Пути внутри контейнера sandbox
-/mnt/skills/public
+/mnt/skills/
 ├── research/SKILL.md
 ├── report-generation/SKILL.md
 ├── slide-creation/SKILL.md
 ├── web-page/SKILL.md
 └── image-generation/SKILL.md
 
-/mnt/skills/custom
+/mnt/skills/
 └── your-custom-skill/SKILL.md      ← ваш skill
 ```
 
@@ -380,7 +380,7 @@ npx skills add https://github.com/bytedance/ideer --skill claude-to-ideer
 - Управлять тредами и историей диалога
 - Загружать файлы для анализа
 
-Полный справочник API в [`skills/public/claude-to-ideer/SKILL.md`](skills/public/claude-to-ideer/SKILL.md).
+Полный справочник API в [`resources/skills/claude-to-ideer/SKILL.md`](resources/skills/claude-to-ideer/SKILL.md).
 
 ### Sub-Agents
 

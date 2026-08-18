@@ -33,8 +33,8 @@
 
 | 阶段 | 触发动作 | 智能体/工具 | 输入资料 | 关键处理 | 中间产出 | 评价 |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1. 读取工作流规则 | 主智能体先读取归零 skill | 主智能体 + `read_file` | `/mnt/skills/custom/fault-zeroing/SKILL.md` | 获取归零流程、证据规则、输出文件要求、子智能体分工规则 | 明确必须输出 `fault_tree.json`、`bottom_event_assessment.md`、`zeroing_report.md` | 合理。先读业务流程规则，避免直接自由分析 |
-| 2. 读取证据规范 | 主智能体读取 evidence rules | 主智能体 + `read_file` | `/mnt/skills/custom/fault-zeroing/references/evidence_rules.md` | 确认证据等级、引用格式、待验证规则、概率约束 | 明确 A/B/C/D 证据约束和“无统计依据不写数值概率” | 合理。后续报告遵守了该规则 |
+| 1. 读取工作流规则 | 主智能体先读取归零 skill | 主智能体 + `read_file` | `/mnt/skills/fault-zeroing/SKILL.md` | 获取归零流程、证据规则、输出文件要求、子智能体分工规则 | 明确必须输出 `fault_tree.json`、`bottom_event_assessment.md`、`zeroing_report.md` | 合理。先读业务流程规则，避免直接自由分析 |
+| 2. 读取证据规范 | 主智能体读取 evidence rules | 主智能体 + `read_file` | `/mnt/skills/fault-zeroing/references/evidence_rules.md` | 确认证据等级、引用格式、待验证规则、概率约束 | 明确 A/B/C/D 证据约束和“无统计依据不写数值概率” | 合理。后续报告遵守了该规则 |
 | 3. 确认资料范围 | 主智能体按用户指定目录读取资料 | 主智能体 | 00-06 文件 | 识别问题描述、设计方案、试验大纲、总结报告、CSV数据、历史复核记录、人工期望分析 | 报告中列出全部输入资料 | 合理。资料覆盖现象、判据、数据、专家意见 |
 | 4. 子智能体证据抽取 | 委托 `evidence-reader` | 子智能体 `evidence-reader` | 00-05 为主，06 作为验收参考 | 抽取 HF-07 超限、邻近测点稳定、总压总温稳定、零点偏移、通道状态异常、专家复核意见 | 结构化证据摘要 | 合理。证据覆盖支持和反证两类信息 |
 | 5. 子智能体故障树构建 | 委托 `fault-tree-builder` | 子智能体 `fault-tree-builder` | 问题描述、设计方案、总结报告、CSV、历史记录 | 构建顶事件、中间事件和底事件，保留真实热环境、测量链路、贴装热接触三条主分支 | 故障树草案 | 合理。没有直接跳根因，结构覆盖主要可能路径 |
