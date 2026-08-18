@@ -385,9 +385,7 @@ async def list_resources(
         )
         favorites = await _favorite_ids(session, str(current_user.id), [item.id for item in page.items])
         storage = ResourceStorage(get_paths().base_dir)
-        descriptions = await asyncio.to_thread(
-            lambda: {item.id: _skill_description(item, storage) for item in page.items}
-        )
+        descriptions = await asyncio.to_thread(lambda: {item.id: _skill_description(item, storage) for item in page.items})
         return {
             "items": [
                 {
