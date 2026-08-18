@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import os
 import stat
 import subprocess
@@ -15,6 +16,8 @@ DEPLOY_SCRIPT = REPO_ROOT / "scripts" / "deploy-intranet.sh"
 PACKAGE_SCRIPT = REPO_ROOT / "scripts" / "package-intranet-offline.sh"
 CHECK_SCRIPT = REPO_ROOT / "scripts" / "check-intranet.sh"
 INSTALL_SCRIPT = REPO_ROOT / "scripts" / "install_fault_zeroing_agent.py"
+INSTALL_AGENT_SCRIPT = REPO_ROOT / "scripts" / "install_agent.py"
+INSTALL_SRS_SCRIPT = REPO_ROOT / "scripts" / "install_srs_writing_agent.py"
 COMPOSE_FILE = REPO_ROOT / "docker" / "docker-compose.intranet.yaml"
 GUIDE_FILE = REPO_ROOT / "docs" / "deployment" / "禁公网内网离线部署作业指导书.md"
 
@@ -635,3 +638,44 @@ def test_guide_documents_bundled_agent_and_workflow_hooks():
     assert "super_admin@test.com" in guide
     assert "公开" in guide
     assert "users/<" in guide or "users/" in guide
+
+
+def _signature_annotations(tree: ast.AST):
+    for node in tree.body:
+        # Module-level variable annotations are evaluated at import time;
+        # function-local ones are not (PEP 526).
+        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            yield node.annotation
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef):
+            for arg in node.args.posonlyargs + node.args.args + node.args.kwonlyargs:
+                if arg.annotation is not None:
+                    yield arg.annotation
+            if node.returns is not None:
+                yield node.returns
+
+
+def test_installer_scripts_remain_python36_parseable() -> None:
+    """Bundled-agent installers run with the HOST python3, which on older
+    intranet servers (e.g. CentOS 7) is 3.6. They must not use 3.7+ syntax:
+    walrus, the future-annotations import, PEP 604 unions, or builtin generic
+    annotations, nor the 3.7+ subprocess.run(capture_output=) parameter."""
+    for script in (INSTALL_AGENT_SCRIPT, INSTALL_SRS_SCRIPT):
+        source = script.read_text(encoding="utf-8")
+        ast.parse(source, filename=str(script), feature_version=(3, 6))
+        assert "from __future__ import annotations" not in source
+        assert ":=" not in source
+        tree = ast.parse(source, filename=str(script))
+        for annotation in _signature_annotations(tree):
+            assert not isinstance(annotation, ast.BinOp), f"{script}: PEP 604 union in annotation"
+            if isinstance(annotation, ast.Subscript):
+                assert not isinstance(annotation.value, ast.Name) or annotation.value.id not in (
+                    "list",
+                    "dict",
+                    "tuple",
+                    "set",
+                ), f"{script}: builtin generic annotation"
+
+    srs_source = INSTALL_SRS_SCRIPT.read_text(encoding="utf-8")
+    assert "capture_output" not in srs_source
+    assert "stdout=subprocess.PIPE" in srs_source

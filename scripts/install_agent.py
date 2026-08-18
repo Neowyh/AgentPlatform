@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Install a bundled iDeer agent into the runtime agent directory (stdlib-only)."""
 
-from __future__ import annotations
-
 import argparse
 from datetime import datetime, timezone
 import os
@@ -11,6 +9,7 @@ import sqlite3
 import shutil
 import sys
 from pathlib import Path
+from typing import Dict, List, Optional, Tuple
 from uuid import uuid4
 
 AGENT_NAME = "fault-zeroing"
@@ -46,14 +45,15 @@ def default_subagents_file(agent_name: str = AGENT_NAME) -> Path:
 
 
 def default_base_dir() -> Path:
-    if deer_flow_home := os.environ.get("IDEER_HOME"):
+    deer_flow_home = os.environ.get("IDEER_HOME")
+    if deer_flow_home:
         return Path(deer_flow_home).resolve()
     return repo_root() / "backend" / ".ideer"
 
 
 def _find_super_admin_id(db_path: Path) -> str:
     try:
-        with sqlite3.connect(db_path) as connection:
+        with sqlite3.connect(str(db_path)) as connection:
             row = connection.execute(
                 "SELECT id FROM users_ext WHERE role='super_admin' AND disabled=0 LIMIT 1"
             ).fetchone()
@@ -68,7 +68,7 @@ def _find_super_admin_id(db_path: Path) -> str:
 def _upsert_agent_metadata(db_path: Path, agent_name: str, owner_id: str) -> None:
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     try:
-        with sqlite3.connect(db_path) as connection:
+        with sqlite3.connect(str(db_path)) as connection:
             connection.execute(
                 """
                 INSERT INTO resource_metadata (
@@ -86,7 +86,8 @@ def _upsert_agent_metadata(db_path: Path, agent_name: str, owner_id: str) -> Non
 
 
 def resolve_config_path() -> Path:
-    if config_path := os.environ.get("IDEER_CONFIG_PATH"):
+    config_path = os.environ.get("IDEER_CONFIG_PATH")
+    if config_path:
         path = Path(config_path).resolve()
         if path.is_file():
             return path
@@ -123,10 +124,10 @@ def files_match(source: Path, target: Path) -> bool:
 def install_agent_files(
     agent_name: str,
     *,
-    user_id: str | None = None,
+    user_id: Optional[str] = None,
     source_dir: Path,
     base_dir: Path,
-) -> tuple[Path, str]:
+) -> Tuple[Path, str]:
     """Install bundled agent files, preserving existing matching installs."""
     source = source_dir.resolve()
     runtime_base = base_dir.resolve()
@@ -168,10 +169,10 @@ def install_agent_files(
 def install_agent(
     *,
     agent_name: str,
-    user_id: str | None = None,
-    source_dir: Path | None = None,
-    base_dir: Path | None = None,
-) -> tuple[Path, str]:
+    user_id: Optional[str] = None,
+    source_dir: Optional[Path] = None,
+    base_dir: Optional[Path] = None,
+) -> Tuple[Path, str]:
     """Copy a bundled agent into the runtime agent directory."""
     return install_agent_files(
         agent_name,
@@ -183,10 +184,10 @@ def install_agent(
 
 def install_fault_zeroing_agent(
     *,
-    user_id: str | None = None,
-    source_dir: Path | None = None,
-    base_dir: Path | None = None,
-) -> tuple[Path, str]:
+    user_id: Optional[str] = None,
+    source_dir: Optional[Path] = None,
+    base_dir: Optional[Path] = None,
+) -> Tuple[Path, str]:
     """Copy the bundled fault-zeroing agent into the runtime agent directory."""
     return install_agent(
         agent_name=AGENT_NAME,
@@ -208,7 +209,7 @@ def _validate_bundled_workflow_files(repo_root_path: Path) -> None:
         )
 
 
-def _extract_agent_blocks(subagents_file: Path) -> dict[str, list[str]]:
+def _extract_agent_blocks(subagents_file: Path) -> Dict[str, List[str]]:
     lines = subagents_file.read_text(encoding="utf-8").splitlines(keepends=True)
     blocks: dict[str, list[str]] = {}
     index = 0
@@ -232,12 +233,12 @@ def _extract_agent_blocks(subagents_file: Path) -> dict[str, list[str]]:
     return {name: blocks[name] for name in REQUIRED_SUBAGENTS}
 
 
-def _has_subagent(lines: list[str], name: str) -> bool:
+def _has_subagent(lines: List[str], name: str) -> bool:
     pattern = re.compile(rf"^    {re.escape(name)}:\s*$")
     return any(pattern.match(line) for line in lines)
 
 
-def _subagent_description(lines: list[str], name: str) -> str | None:
+def _subagent_description(lines: List[str], name: str) -> Optional[str]:
     pattern = re.compile(rf"^    {re.escape(name)}:\s*$")
     start: int | None = None
     for index, line in enumerate(lines):
@@ -256,7 +257,7 @@ def _subagent_description(lines: list[str], name: str) -> str | None:
     return None
 
 
-def _find_top_level_block(lines: list[str], key: str) -> tuple[int | None, int]:
+def _find_top_level_block(lines: List[str], key: str) -> Tuple[Optional[int], int]:
     start: int | None = None
     end = len(lines)
     for index, line in enumerate(lines):
@@ -269,14 +270,14 @@ def _find_top_level_block(lines: list[str], key: str) -> tuple[int | None, int]:
     return start, end
 
 
-def _find_custom_agents_line(lines: list[str], start: int, end: int) -> int | None:
+def _find_custom_agents_line(lines: List[str], start: int, end: int) -> Optional[int]:
     for index in range(start + 1, end):
         if re.match(r"^  custom_agents:\s*$", lines[index]):
             return index
     return None
 
 
-def _find_custom_agents_end(lines: list[str], start: int, end: int) -> int:
+def _find_custom_agents_end(lines: List[str], start: int, end: int) -> int:
     index = start + 1
     while index < end:
         line = lines[index]
@@ -335,7 +336,7 @@ def merge_fault_zeroing_subagents(config_path: Path, subagents_file: Path) -> di
     return summary
 
 
-def validate_fault_zeroing_subagent_registry(config_path: Path) -> list[str]:
+def validate_fault_zeroing_subagent_registry(config_path: Path) -> List[str]:
     lines = config_path.read_text(encoding="utf-8").splitlines(keepends=True)
     missing = [name for name in REQUIRED_SUBAGENTS if not _has_subagent(lines, name)]
     if missing:
@@ -344,7 +345,7 @@ def validate_fault_zeroing_subagent_registry(config_path: Path) -> list[str]:
     return REQUIRED_SUBAGENTS.copy()
 
 
-def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Install a bundled iDeer agent (default: fault-zeroing).")
     parser.add_argument(
         "--agent",
@@ -364,7 +365,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: Optional[List[str]] = None) -> int:
     args = parse_args(argv)
     agent_name = args.agent
     try:
@@ -393,7 +394,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Agent directory: {target_dir}")
     print(f"Agent files: {file_status}")
     print(f"Config path: {merge_summary['config_path']}")
-    if backup_path := merge_summary.get("backup_path"):
+    backup_path = merge_summary.get("backup_path")
+    if backup_path:
         print(f"Config backup: {backup_path}")
     print(f"Subagents added: {', '.join(merge_summary['added']) or '(none)'}")
     print(f"Subagents skipped: {', '.join(merge_summary['skipped']) or '(none)'}")
