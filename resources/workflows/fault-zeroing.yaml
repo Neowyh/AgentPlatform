@@ -55,8 +55,8 @@ nodes:
       file_access:
         read:
           - "{{inputs.upload_dir}}"
-          - "/mnt/skills/custom/fault-zeroing"
-          - "/mnt/skills/custom/fault-zeroing/references"
+          - "/mnt/skills/fault-zeroing"
+          - "/mnt/skills/fault-zeroing/references"
         write:
           - "{{inputs.output_base_dir}}/artifacts/evidence/evidence_table.json"
           - "{{inputs.output_base_dir}}/artifacts/evidence/coverage_matrix.md"
@@ -68,7 +68,7 @@ nodes:
           任务：读取归零资料，提取证据，形成证据台账。
 
           执行前先读取证据规则：
-          /mnt/skills/custom/fault-zeroing/references/evidence_rules.md
+          /mnt/skills/fault-zeroing/references/evidence_rules.md
 
           上传目录：{{inputs.upload_dir}}
           问题描述：{{inputs.problem_description}}
@@ -99,8 +99,8 @@ nodes:
       name: fault-zeroing
       file_access:
         read:
-          - "/mnt/skills/custom/fault-zeroing"
-          - "/mnt/skills/custom/fault-zeroing/templates"
+          - "/mnt/skills/fault-zeroing"
+          - "/mnt/skills/fault-zeroing/templates"
         write:
           - "{{inputs.output_base_dir}}/artifacts/tree/fault_tree_structure.json"
       params:
@@ -126,7 +126,7 @@ nodes:
           - 列出所有理论上可能的路径
 
           输出：写入 {{inputs.output_base_dir}}/artifacts/tree/fault_tree_structure.json
-          参考 /mnt/skills/custom/fault-zeroing/templates/fault_tree.schema.json 格式，
+          参考 /mnt/skills/fault-zeroing/templates/fault_tree.schema.json 格式，
           但不填充 evidence_ids、probability、
           probability_basis、confidence、status 字段（留 null 或空数组）
           失败契约：若无法完成任务，回复必须以 FAILED: 开头说明原因；
@@ -147,7 +147,7 @@ nodes:
       name: fault-zeroing
       file_access:
         read:
-          - "/mnt/skills/custom/fault-zeroing"
+          - "/mnt/skills/fault-zeroing"
           - "{{inputs.output_base_dir}}/artifacts/tree/fault_tree_structure.json"
           - "{{inputs.output_base_dir}}/artifacts/evidence/evidence_table.json"
         write: []
@@ -201,7 +201,7 @@ nodes:
       name: fault-zeroing
       file_access:
         read:
-          - "/mnt/skills/custom/fault-zeroing"
+          - "/mnt/skills/fault-zeroing"
           - "{{inputs.output_base_dir}}/artifacts/tree/"
           - "{{inputs.output_base_dir}}/artifacts/evidence/"
         write:
@@ -246,7 +246,7 @@ nodes:
       name: fault-zeroing
       file_access:
         read:
-          - "/mnt/skills/custom/fault-zeroing"
+          - "/mnt/skills/fault-zeroing"
           - "{{inputs.output_base_dir}}/artifacts/tree/fault_tree_structure.json"
           - "{{inputs.output_base_dir}}/artifacts/evidence/evidence_table.json"
           - "{{inputs.output_base_dir}}/artifacts/evidence/coverage_matrix.md"
@@ -260,7 +260,7 @@ nodes:
           任务：对照证据评估每个底事件，确定根因，生成验证计划。
 
           执行前先读取输出格式 schema：
-          /mnt/skills/custom/fault-zeroing/templates/fault_tree.schema.json
+          /mnt/skills/fault-zeroing/templates/fault_tree.schema.json
           写入前必须按该 schema 逐字段自检，确保字段齐全、枚举合法。
 
           读取：
@@ -298,7 +298,7 @@ nodes:
           严禁写入占位文件或空文件。
     schemas:
       - file: "{{inputs.output_base_dir}}/fault_tree.json"
-        schema_file: "/mnt/skills/custom/fault-zeroing/templates/fault_tree.schema.json"
+        schema_file: "/mnt/skills/fault-zeroing/templates/fault_tree.schema.json"
     writes:
       - "$.state.assessment_summary"
     retry:
@@ -313,7 +313,7 @@ nodes:
       name: fault-zeroing
       file_access:
         read:
-          - "/mnt/skills/custom/fault-zeroing"
+          - "/mnt/skills/fault-zeroing"
           - "{{inputs.upload_dir}}"
           - "{{inputs.output_base_dir}}/artifacts/tree/"
           - "{{inputs.output_base_dir}}/artifacts/evidence/"
@@ -358,7 +358,7 @@ nodes:
       name: fault-zeroing
       file_access:
         read:
-          - "/mnt/skills/custom/fault-zeroing"
+          - "/mnt/skills/fault-zeroing"
           - "{{inputs.output_base_dir}}/fault_tree.json"
         write:
           - "{{inputs.output_base_dir}}/fault_tree.json"
@@ -388,7 +388,7 @@ nodes:
       name: fault-zeroing
       file_access:
         read:
-          - "/mnt/skills/custom/fault-zeroing"
+          - "/mnt/skills/fault-zeroing"
           - "{{inputs.output_base_dir}}/fault_tree.json"
         write:
           - "{{inputs.output_base_dir}}/artifacts/corrective_actions.json"
@@ -424,7 +424,7 @@ nodes:
           严禁写入占位文件。
     schemas:
       - file: "{{inputs.output_base_dir}}/artifacts/corrective_actions.json"
-        schema_file: "/mnt/skills/custom/fault-zeroing/templates/corrective_actions.schema.json"
+        schema_file: "/mnt/skills/fault-zeroing/templates/corrective_actions.schema.json"
     preconditions:
       - file: "{{inputs.output_base_dir}}/fault_tree.json"
         non_empty: true
@@ -442,8 +442,8 @@ nodes:
       name: fault-zeroing
       file_access:
         read:
-          - "/mnt/skills/custom/fault-zeroing"
-          - "/mnt/skills/custom/fault-zeroing/templates"
+          - "/mnt/skills/fault-zeroing"
+          - "/mnt/skills/fault-zeroing/templates"
           - "{{inputs.output_base_dir}}/fault_tree.json"
           - "{{inputs.output_base_dir}}/artifacts/evidence/evidence_table.json"
           - "{{inputs.output_base_dir}}/artifacts/evidence/coverage_matrix.md"
@@ -475,7 +475,7 @@ nodes:
              不含 script/event handler/external URL
 
           2. bottom_event_assessment.md
-              格式参考 /mnt/skills/custom/fault-zeroing/templates/bottom_event_assessment.md
+              格式参考 /mnt/skills/fault-zeroing/templates/bottom_event_assessment.md
 
           3. analysis_process.svg
              静态 SVG：证据提取→故障树构建→底事件评估→根因归因→纠正措施→文档生产
@@ -497,7 +497,7 @@ nodes:
              和“检查结果（或覆盖状态/覆盖情况）”，并列出五类资料、来源和缺失影响。
              报告中的验证计划必须逐项列出 fault_tree.json verification_plan 中的全部 ID
              （例如 VP-01）；每个验证项的 item 可以润色，但必须保留对应 ID 和完整语义。
-             请参考 /mnt/skills/custom/fault-zeroing/templates/zeroing_report.md 的表格结构。
+             请参考 /mnt/skills/fault-zeroing/templates/zeroing_report.md 的表格结构。
 
           质量自检：
           - 4 个文件全部存在且非空

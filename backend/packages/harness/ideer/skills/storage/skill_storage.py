@@ -187,15 +187,15 @@ class SkillStorage(ABC):
         return self._container_root
 
     def get_custom_skill_dir(self, name: str) -> Path:
-        """Path to ``custom/<name>``. Does not create the directory.
+        """Path to ``<name>``. Does not create the directory.
 
         Origin: ``ideer.skills.manager.get_custom_skill_dir``.
         """
         normalized_name = self.validate_skill_name(name)
-        return self.get_skills_root_path() / SkillCategory.CUSTOM.value / normalized_name
+        return self.get_skills_root_path() / normalized_name
 
     def get_custom_skill_file(self, name: str) -> Path:
-        """Path to ``custom/<name>/SKILL.md``.
+        """Path to ``<name>/SKILL.md``.
 
         Origin: ``ideer.skills.manager.get_custom_skill_file``.
         """
@@ -203,12 +203,12 @@ class SkillStorage(ABC):
         return self.get_custom_skill_dir(normalized_name) / SKILL_MD_FILE
 
     def get_skill_history_file(self, name: str) -> Path:
-        """Path to ``custom/.history/<name>.jsonl``. Does not create parents.
+        """Path to ``.history/<name>.jsonl``. Does not create parents.
 
         Origin: ``ideer.skills.manager.get_skill_history_file``.
         """
         normalized_name = self.validate_skill_name(name)
-        return self.get_skills_root_path() / SkillCategory.CUSTOM.value / ".history" / f"{normalized_name}.jsonl"
+        return self.get_skills_root_path() / ".history" / f"{normalized_name}.jsonl"
 
     # ------------------------------------------------------------------
     # Final template-method flows

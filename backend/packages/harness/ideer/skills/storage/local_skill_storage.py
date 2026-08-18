@@ -26,9 +26,8 @@ class LocalSkillStorage(SkillStorage):
 
     Layout::
 
-        <root>/public/<name>/SKILL.md
-        <root>/custom/<name>/SKILL.md
-        <root>/custom/.history/<name>.jsonl
+        <root>/<name>/SKILL.md
+        <root>/.history/<name>.jsonl
     """
 
     def __init__(
@@ -58,20 +57,16 @@ class LocalSkillStorage(SkillStorage):
 
     def public_skill_exists(self, name: str) -> bool:
         normalized_name = self.validate_skill_name(name)
-        return (self._host_root / SkillCategory.PUBLIC.value / normalized_name / SKILL_MD_FILE).exists()
+        return (self._host_root / normalized_name / SKILL_MD_FILE).exists()
 
     def _iter_skill_files(self) -> Iterable[tuple[SkillCategory, Path, Path]]:
         if not self._host_root.exists():
             return
-        for category in SkillCategory:
-            category_path = self._host_root / category.value
-            if not category_path.exists() or not category_path.is_dir():
+        for current_root, dir_names, file_names in os.walk(self._host_root, followlinks=True):
+            dir_names[:] = sorted(name for name in dir_names if not name.startswith("."))
+            if SKILL_MD_FILE not in file_names:
                 continue
-            for current_root, dir_names, file_names in os.walk(category_path, followlinks=True):
-                dir_names[:] = sorted(name for name in dir_names if not name.startswith("."))
-                if SKILL_MD_FILE not in file_names:
-                    continue
-                yield category, category_path, Path(current_root) / SKILL_MD_FILE
+            yield SkillCategory.CUSTOM, self._host_root, Path(current_root) / SKILL_MD_FILE
 
     def read_custom_skill(self, name: str) -> str:
         if not self.custom_skill_exists(name):
@@ -112,8 +107,7 @@ class LocalSkillStorage(SkillStorage):
         if path.suffix != ".skill":
             raise ValueError("File must have .skill extension")
 
-        custom_dir = self._host_root / "custom"
-        custom_dir.mkdir(parents=True, exist_ok=True)
+        self._host_root.mkdir(parents=True, exist_ok=True)
 
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -136,13 +130,13 @@ class LocalSkillStorage(SkillStorage):
             if not skill_name or "/" in skill_name or "\\" in skill_name or ".." in skill_name:
                 raise ValueError(f"Invalid skill name: {skill_name}")
 
-            target = custom_dir / skill_name
+            target = self._host_root / skill_name
             if target.exists():
                 raise SkillAlreadyExistsError(f"Skill '{skill_name}' already exists")
 
             await _scan_skill_archive_contents_or_raise(skill_dir, skill_name)
 
-            with tempfile.TemporaryDirectory(prefix=f".installing-{skill_name}-", dir=custom_dir) as staging_root:
+            with tempfile.TemporaryDirectory(prefix=f".installing-{skill_name}-", dir=self._host_root) as staging_root:
                 staging_target = Path(staging_root) / skill_name
                 shutil.copytree(skill_dir, staging_target)
                 _move_staged_skill_into_reserved_target(staging_target, target)

@@ -145,7 +145,7 @@ def _resolve_skills_path(path: str) -> str:
     """Resolve a virtual skills path to a host filesystem path.
 
     Args:
-        path: Virtual skills path (e.g. /mnt/skills/public/bootstrap/SKILL.md)
+        path: Virtual skills path (e.g. /mnt/skills/bootstrap/SKILL.md)
 
     Returns:
         Resolved host path.

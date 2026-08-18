@@ -55,12 +55,11 @@ class Skill:
         Raises:
             ValueError: If the resolved path escapes the container base directory
         """
-        category_base = f"{container_base_path}/{self.category}"
         skill_path = self.skill_path
         if skill_path:
-            full_path = f"{category_base}/{skill_path}"
+            full_path = f"{container_base_path}/{skill_path}"
         else:
-            full_path = category_base
+            full_path = container_base_path
 
         # Prevent path traversal: resolve and verify the path stays under container_base_path
         resolved = Path(full_path).resolve()
