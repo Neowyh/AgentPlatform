@@ -27,8 +27,8 @@ class Skill:
     license: str | None
     skill_dir: Path
     skill_file: Path
-    relative_path: Path  # Relative path from category root to skill directory
-    category: SkillCategory  # 'public' or 'custom'
+    relative_path: Path  # Relative path from skills root to skill directory
+    category: SkillCategory
     allowed_tools: list[str] | None = None
     enabled: bool = False  # Whether this skill is enabled
     requires_internet: bool = False  # Whether this skill requires internet access
@@ -38,7 +38,7 @@ class Skill:
 
     @property
     def skill_path(self) -> str:
-        """Returns the relative path from the category root (skills/{category}) to this skill's directory"""
+        """Returns the relative path from the skills root to this skill's directory"""
         path = self.relative_path.as_posix()
         return "" if path == "." else path
 
