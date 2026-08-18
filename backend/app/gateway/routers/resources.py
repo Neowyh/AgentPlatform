@@ -29,6 +29,7 @@ from ideer.persistence.models.resource_catalog import (
     ResourceFavorite,
     ResourceNotification,
     ResourceVersion,
+    RunResourceSnapshot,
 )
 from ideer.persistence.models.user import UserModel, UserRole
 from ideer.persistence.models.workflow_v2 import WorkflowV2RunRow
@@ -1200,6 +1201,45 @@ def _run_write_roots(nodes: list[dict]) -> list[str]:
     return roots
 
 
+async def _run_definition(store: WorkflowV2Store, run) -> dict | None:
+    """Resolve the definition a Run actually executed.
+
+    Canonical Runs execute from the frozen resource snapshot taken at
+    creation (the same closure the worker loads), so their definition is
+    read from the resource catalog — the legacy workflow_definition_versions
+    table never tracks resource versions. Legacy Runs fall back to the
+    definition store, tolerating a missing exact version.
+    """
+    workflow_resource_id = getattr(run, "workflow_resource_id", None)
+    if workflow_resource_id:
+        async with store.session_factory() as session:
+            snapshot = (
+                await session.execute(
+                    select(RunResourceSnapshot).where(
+                        RunResourceSnapshot.run_id == run.run_id,
+                        RunResourceSnapshot.resource_id == workflow_resource_id,
+                    )
+                )
+            ).scalar_one_or_none()
+            if snapshot is not None:
+                version = (
+                    await session.execute(
+                        select(ResourceVersion).where(
+                            ResourceVersion.resource_id == workflow_resource_id,
+                            ResourceVersion.version == snapshot.version,
+                        )
+                    )
+                ).scalar_one_or_none()
+                if version is not None and isinstance(version.content, dict):
+                    return version.content
+    definition = await store.get_definition(run.workflow_name, run.definition_version)
+    if definition is None:
+        definition = await store.get_latest_definition(run.workflow_name)
+    if definition is None:
+        return None
+    return definition.definition if isinstance(definition.definition, dict) else None
+
+
 async def _run_artifacts(store: WorkflowV2Store, run) -> list[dict]:
     """List the files a run produced under its declared write roots.
 
@@ -1207,10 +1247,10 @@ async def _run_artifacts(store: WorkflowV2Store, run) -> list[dict]:
     artifacts can be browsed after completion; virtual paths are returned so
     host paths never leak to the client.
     """
-    definition = await store.get_definition(run.workflow_name, run.definition_version)
+    definition = await _run_definition(store, run)
     if definition is None:
         return []
-    nodes = definition.definition.get("nodes", []) if isinstance(definition.definition, dict) else []
+    nodes = definition.get("nodes", []) if isinstance(definition, dict) else []
     write_roots = _run_write_roots(nodes)
     if not write_roots:
         return []
