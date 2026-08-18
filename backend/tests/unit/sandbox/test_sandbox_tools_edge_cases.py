@@ -469,8 +469,8 @@ class TestMaskLocalPathsInOutput:
         """Skills host path with sub-path."""
         from ideer.sandbox.tools import mask_local_paths_in_output
 
-        result = mask_local_paths_in_output("File at /opt/skills/public/SKILL.md", None)
-        assert "/mnt/skills/public/SKILL.md" in result
+        result = mask_local_paths_in_output("File at /opt/skills/SKILL.md", None)
+        assert "/mnt/skills/SKILL.md" in result
 
     @patch("ideer.sandbox.tools._get_skills_host_path", return_value=None)
     @patch("ideer.sandbox.tools._get_skills_container_path", return_value="/mnt/skills")

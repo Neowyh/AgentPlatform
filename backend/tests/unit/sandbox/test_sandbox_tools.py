@@ -95,7 +95,7 @@ class TestPathChecks:
 
         with patch("ideer.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"):
             assert _is_skills_path("/mnt/skills") is True
-            assert _is_skills_path("/mnt/skills/public/bootstrap") is True
+            assert _is_skills_path("/mnt/skills/bootstrap") is True
             assert _is_skills_path("/mnt/user-data/workspace") is False
 
     def test_is_acp_workspace_path(self):
@@ -2718,8 +2718,8 @@ class TestResolveSkillsPath:
 
         with patch("ideer.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"):
             with patch("ideer.sandbox.tools._get_skills_host_path", return_value="/opt/skills"):
-                result = _resolve_skills_path("/mnt/skills/public/SKILL.md")
-                assert result == "/opt/skills/public/SKILL.md"
+                result = _resolve_skills_path("/mnt/skills/SKILL.md")
+                assert result == "/opt/skills/SKILL.md"
 
     def test_no_host_path_raises(self):
         from ideer.sandbox.tools import _resolve_skills_path

@@ -99,12 +99,12 @@ class TestValidateRoots:
     def test_write_to_readonly_areas_is_rejected(self, custom_mounts) -> None:
         invalid = validate_roots(
             {
-                "read": ["/mnt/skills/custom/fault-zeroing", "/mnt/acp-workspace/x"],
-                "write": ["/mnt/skills/custom/x.json", "/mnt/acp-workspace/y", "/mnt/eval-cases/z.json"],
+                "read": ["/mnt/skills/fault-zeroing", "/mnt/acp-workspace/x"],
+                "write": ["/mnt/skills/x.json", "/mnt/acp-workspace/y", "/mnt/eval-cases/z.json"],
             }
         )
         assert invalid == [
-            {"access": "write", "path": "/mnt/skills/custom/x.json"},
+            {"access": "write", "path": "/mnt/skills/x.json"},
             {"access": "write", "path": "/mnt/acp-workspace/y"},
             {"access": "write", "path": "/mnt/eval-cases/z.json"},
         ]
@@ -238,7 +238,7 @@ class TestValidateReadRoots:
             "/mnt/fault-zeroing-outputs/artifacts/a.json",  # writable mount (produced artifact)
             "/mnt/user-data/outputs/artifacts/b.json",  # outputs dir
             "/mnt/user-data/workspace/c.md",  # workspace
-            "/mnt/skills/custom/fault-zeroing",  # skills
+            "/mnt/skills/fault-zeroing",  # skills
         ]
         assert validate_read_roots([_Node("read", roots)], {}, resolver) == []
 

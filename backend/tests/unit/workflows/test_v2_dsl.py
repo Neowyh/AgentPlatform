@@ -256,8 +256,8 @@ def test_v2_parser_accepts_fault_zeroing_workflow() -> None:
     }
     assert policies["deductive_tree"] == {
         "read": [
-            "/mnt/skills/custom/fault-zeroing",
-            "/mnt/skills/custom/fault-zeroing/templates",
+            "/mnt/skills/fault-zeroing",
+            "/mnt/skills/fault-zeroing/templates",
         ],
         "write": ["{{inputs.output_base_dir}}/artifacts/tree/fault_tree_structure.json"],
     }
@@ -265,7 +265,7 @@ def test_v2_parser_accepts_fault_zeroing_workflow() -> None:
 
     integrate_tree = next(node for node in workflow.nodes if node.id == "integrate_tree")
     assert integrate_tree.action.file_access.model_dump()["read"] == [
-        "/mnt/skills/custom/fault-zeroing",
+        "/mnt/skills/fault-zeroing",
         "{{inputs.output_base_dir}}/artifacts/tree/",
         "{{inputs.output_base_dir}}/artifacts/evidence/",
     ]

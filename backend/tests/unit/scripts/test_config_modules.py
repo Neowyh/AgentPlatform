@@ -1362,8 +1362,8 @@ class TestSkillsConfig:
 
     def test_get_skill_container_path(self):
         cfg = SkillsConfig(container_path="/mnt/skills")
-        assert cfg.get_skill_container_path("my-skill") == "/mnt/skills/public/my-skill"
-        assert cfg.get_skill_container_path("custom-skill", category="custom") == "/mnt/skills/custom/custom-skill"
+        assert cfg.get_skill_container_path("my-skill") == "/mnt/skills/my-skill"
+        assert cfg.get_skill_container_path("custom-skill") == "/mnt/skills/custom-skill"
 
     def test_get_skills_path_with_explicit_path(self, tmp_path):
         cfg = SkillsConfig(path=str(tmp_path))

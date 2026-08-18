@@ -73,7 +73,7 @@ def test_get_skills_prompt_section_uses_only_frozen_run_skills_without_global_sc
     )
 
     assert "frozen-skill" in result
-    assert "/mnt/run-skills/public/frozen-skill/SKILL.md" in result
+    assert "/mnt/run-skills/frozen-skill/SKILL.md" in result
 
 
 def test_get_skills_prompt_section_includes_self_evolution_rules(monkeypatch):
