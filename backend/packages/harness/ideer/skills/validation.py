@@ -12,7 +12,32 @@ from ideer.skills.parser import parse_allowed_tools
 from ideer.skills.types import SKILL_MD_FILE
 
 # Allowed properties in SKILL.md frontmatter
-ALLOWED_FRONTMATTER_PROPERTIES = {"name", "description", "license", "allowed-tools", "metadata", "compatibility", "version", "author", "requires-internet"}
+ALLOWED_FRONTMATTER_PROPERTIES = {
+    "name",
+    "description",
+    "description_zh",
+    "description_en",
+    "license",
+    "allowed-tools",
+    "metadata",
+    "compatibility",
+    "version",
+    "author",
+    "requires-internet",
+    "display_name",
+    "display_name_en",
+    "homepage",
+    "visibility",
+    "enabled_at",
+    "install_method",
+    "install_source",
+    "name_zh",
+    "skill_id",
+    "category",
+    "icon",
+    "permission_notes_zh",
+    "permissions",
+}
 
 
 def _validate_skill_frontmatter(skill_dir: Path) -> tuple[bool, str, str | None]:

@@ -1,6 +1,7 @@
 ---
 name: claude-to-ideer
 description: "Interact with iDeer AI agent platform via its HTTP API. Use this skill when the user wants to send messages or questions to iDeer for research/analysis, start a iDeer conversation thread, check iDeer status or health, list available models/skills/agents in iDeer, manage iDeer memory, upload files to iDeer threads, or delegate complex research tasks to iDeer. Also use when the user mentions ideer, deer flow, or wants to run a deep research task that iDeer can handle."
+description_zh: "通过 HTTP API 与 iDeer AI 智能体平台交互。当用户想要向 iDeer 发送消息或问题以进行研究或分析、发起 iDeer 会话线程、检查 iDeer 状态或健康度、列出 iDeer 中的可用模型或技能或智能体、管理 iDeer 记忆、向 iDeer 线程上传文件,或将复杂研究任务委托给 iDeer 时使用本技能。当用户提及 ideer、deer flow,或想要运行 iDeer 可处理的深度研究任务时也使用。"
 ---
 
 # iDeer Skill

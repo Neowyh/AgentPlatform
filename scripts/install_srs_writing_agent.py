@@ -4,7 +4,7 @@
 Composes the generic ``install_agent`` flow with the functional wiring the
 agent needs on a local (host-sandbox) deployment:
 
-  1. Install agent files (docs/srs-writing-agent/agent) into the runtime
+  1. Install agent files (resources/agents/srs-writing) into the runtime
      per-user agent directory and upsert resource_metadata (agent/public).
   2. Register the ``document`` tool group and ``read_document`` tool in
      config.yaml so docx/pdf 任务书 can be parsed.
@@ -29,7 +29,12 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 
-from install_agent import _find_super_admin_id, _find_top_level_block, default_base_dir, resolve_config_path
+from install_agent import (
+    _find_super_admin_id,
+    _find_top_level_block,
+    default_base_dir,
+    resolve_config_path,
+)
 from install_agent import main as install_agent_main
 
 SRS_AGENT = "srs-writing"
@@ -74,7 +79,9 @@ def resolve_owner_id(args: argparse.Namespace) -> Tuple[Optional[str], str]:
         try:
             return _find_super_admin_id(db_path), "super-admin"
         except RuntimeError as exc:
-            raise RuntimeError(f"{exc}; run /initialize first or use --user-id to install for a specific user.") from exc
+            raise RuntimeError(
+                f"{exc}; run /initialize first or use --user-id to install for a specific user."
+            ) from exc
     if args.user_id:
         return args.user_id, "user"
     return None, "shared"
@@ -235,24 +242,44 @@ def provision_officecli(
     source = Path(repo_root_path) / "vendor" / "officecli" / "officecli"
     destination = Path(bin_path) if bin_path else default_officecli_bin()
     if not source.is_file():
-        return {"status": "missing_source", "source": str(source), "bin": str(destination)}
+        return {
+            "status": "missing_source",
+            "source": str(source),
+            "bin": str(destination),
+        }
 
     if destination.is_symlink() and destination.resolve() == source.resolve():
         return {"status": "linked", "source": str(source), "bin": str(destination)}
     if destination.is_symlink() and not destination.exists():
         if dry_run:
-            return {"status": "will_replace", "source": str(source), "bin": str(destination)}
+            return {
+                "status": "will_replace",
+                "source": str(source),
+                "bin": str(destination),
+            }
         destination.unlink()
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.symlink_to(source)
         return {"status": "replaced", "source": str(source), "bin": str(destination)}
     if destination.exists():
         if _same_file_content(destination, source):
-            return {"status": "equivalent", "source": str(source), "bin": str(destination)}
+            return {
+                "status": "equivalent",
+                "source": str(source),
+                "bin": str(destination),
+            }
         if not force:
-            return {"status": "conflict", "source": str(source), "bin": str(destination)}
+            return {
+                "status": "conflict",
+                "source": str(source),
+                "bin": str(destination),
+            }
         if dry_run:
-            return {"status": "will_replace", "source": str(source), "bin": str(destination)}
+            return {
+                "status": "will_replace",
+                "source": str(source),
+                "bin": str(destination),
+            }
         destination.unlink()
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.symlink_to(source)
@@ -350,18 +377,52 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Install the bundled SRS 撰写智能体 (srs-writing) end-to-end (agent files + read_document tool + host bash + officecli).",
     )
-    parser.add_argument("--agent", default=SRS_AGENT, help="Bundled agent name to install.")
+    parser.add_argument(
+        "--agent", default=SRS_AGENT, help="Bundled agent name to install."
+    )
     owner = parser.add_mutually_exclusive_group()
-    owner.add_argument("--owner", choices=("super-admin",), help="Install as the active super_admin.")
-    owner.add_argument("--user-id", help="Install into this iDeer user's agent directory.")
-    parser.add_argument("--skip-agent", action="store_true", help="Only wire config/officecli (skip the agent file install).")
-    parser.add_argument("--no-doc-tools", action="store_true", help="Do not register the document/read_document tool.")
-    parser.add_argument("--no-host-bash", action="store_true", help="Do not enable sandbox.allow_host_bash.")
-    parser.add_argument("--no-officecli", action="store_true", help="Do not provision the officecli binary.")
-    parser.add_argument("--force", action="store_true", help="Overwrite a conflicting ~/.local/bin/officecli.")
-    parser.add_argument("--dry-run", action="store_true", help="Report planned changes without writing.")
-    parser.add_argument("--verify-only", action="store_true", help="Only inspect the current state.")
-    parser.add_argument("--restart", action="store_true", help="Restart local services after a successful install.")
+    owner.add_argument(
+        "--owner", choices=("super-admin",), help="Install as the active super_admin."
+    )
+    owner.add_argument(
+        "--user-id", help="Install into this iDeer user's agent directory."
+    )
+    parser.add_argument(
+        "--skip-agent",
+        action="store_true",
+        help="Only wire config/officecli (skip the agent file install).",
+    )
+    parser.add_argument(
+        "--no-doc-tools",
+        action="store_true",
+        help="Do not register the document/read_document tool.",
+    )
+    parser.add_argument(
+        "--no-host-bash",
+        action="store_true",
+        help="Do not enable sandbox.allow_host_bash.",
+    )
+    parser.add_argument(
+        "--no-officecli",
+        action="store_true",
+        help="Do not provision the officecli binary.",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite a conflicting ~/.local/bin/officecli.",
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Report planned changes without writing."
+    )
+    parser.add_argument(
+        "--verify-only", action="store_true", help="Only inspect the current state."
+    )
+    parser.add_argument(
+        "--restart",
+        action="store_true",
+        help="Restart local services after a successful install.",
+    )
     return parser.parse_args(argv)
 
 
@@ -390,7 +451,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     want_officecli = not args.no_officecli
 
     if args.verify_only:
-        report = verify_install(config_path, owner_id=owner_id, require_officecli=want_officecli)
+        report = verify_install(
+            config_path, owner_id=owner_id, require_officecli=want_officecli
+        )
         print_verify_report(report)
         return 0 if all(report["checks"].values()) else 1
 
@@ -402,7 +465,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         if not args.skip_agent:
             print(f"   - copy agent files -> {expected_agent_dir(owner_id)}")
         if want_doc:
-            print("   - register document tool group + read_document tool in config.yaml")
+            print(
+                "   - register document tool group + read_document tool in config.yaml"
+            )
         if want_host_bash:
             print("   - set sandbox.allow_host_bash = true")
         if want_officecli:
@@ -432,24 +497,35 @@ def main(argv: Optional[List[str]] = None) -> int:
         result = provision_officecli(repo_root(), force=args.force)
         officecli_status = result["status"]
         if officecli_status == "conflict":
-            print(f"Error: {result['bin']} already exists and is not the bundled officecli. Use --force to overwrite it.", file=sys.stderr)
+            print(
+                f"Error: {result['bin']} already exists and is not the bundled officecli. Use --force to overwrite it.",
+                file=sys.stderr,
+            )
             return 1
 
     _print_config_summary(wire, officecli_status)
 
-    report = verify_install(config_path, owner_id=owner_id, require_officecli=want_officecli)
+    report = verify_install(
+        config_path, owner_id=owner_id, require_officecli=want_officecli
+    )
     print_verify_report(report)
 
     ok = all(report["checks"].values())
     if not ok:
-        print("Some checks are incomplete; review the MISSING items above.", file=sys.stderr)
+        print(
+            "Some checks are incomplete; review the MISSING items above.",
+            file=sys.stderr,
+        )
     elif args.restart:
         restart_command = repo_root() / "scripts" / "run-local-services.sh"
         if restart_command.is_file():
             print("== Restarting local services (per --restart)")
             subprocess.run([str(restart_command), "restart"], check=False)
         else:
-            print("--restart requested but scripts/run-local-services.sh is missing.", file=sys.stderr)
+            print(
+                "--restart requested but scripts/run-local-services.sh is missing.",
+                file=sys.stderr,
+            )
     return 0 if ok else 1
 
 

@@ -1,6 +1,7 @@
 ---
 name: academic-paper-review
 description: Use this skill when the user requests to review, analyze, critique, or summarize academic papers, research articles, preprints, or scientific publications. Supports comprehensive structured reviews covering methodology assessment, contribution evaluation, literature positioning, and constructive feedback generation. Trigger on queries involving paper URLs, uploaded PDFs, arXiv links, or requests like "review this paper", "analyze this research", "summarize this study", or "write a peer review".
+description_zh: "当用户要求评审、分析、批判或总结学术论文、研究文章、预印本或科学出版物时使用本技能。支持覆盖方法论评估、贡献评价、文献定位与建设性反馈生成的全面结构化评审。当涉及论文链接、上传的 PDF、arXiv 链接,或用户提出“评审这篇论文”“分析这项研究”“总结这项研究”“写一份同行评审”等请求时触发。"
 ---
 
 # Academic Paper Review Skill

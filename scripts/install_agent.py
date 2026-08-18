@@ -15,8 +15,8 @@ from uuid import uuid4
 AGENT_NAME = "fault-zeroing"
 REQUIRED_FILES = ("config.yaml", "SOUL.md")
 BUNDLED_WORKFLOW_FILES = (
-    "workflows/fault-zeroing.yaml",
-    "skills/custom/fault-zeroing/templates/corrective_actions.schema.json",
+    "resources/workflows/fault-zeroing.yaml",
+    "resources/skills/fault-zeroing/templates/corrective_actions.schema.json",
 )
 REQUIRED_SUBAGENTS = [
     "evidence-reader",
@@ -37,7 +37,7 @@ def agent_docs_dir(agent_name: str) -> Path:
 
 
 def default_source_dir(agent_name: str = AGENT_NAME) -> Path:
-    return agent_docs_dir(agent_name) / "agent"
+    return repo_root() / "resources" / "agents" / agent_name
 
 
 def default_subagents_file(agent_name: str = AGENT_NAME) -> Path:
@@ -58,7 +58,9 @@ def _find_super_admin_id(db_path: Path) -> str:
                 "SELECT id FROM users_ext WHERE role='super_admin' AND disabled=0 LIMIT 1"
             ).fetchone()
     except sqlite3.Error as exc:
-        raise RuntimeError(f"super_admin not found in {db_path}; run /initialize first") from exc
+        raise RuntimeError(
+            f"super_admin not found in {db_path}; run /initialize first"
+        ) from exc
 
     if row is None:
         raise RuntimeError(f"super_admin not found in {db_path}; run /initialize first")
@@ -91,7 +93,9 @@ def resolve_config_path() -> Path:
         path = Path(config_path).resolve()
         if path.is_file():
             return path
-        raise FileNotFoundError(f"Config file specified by IDEER_CONFIG_PATH does not exist: {path}")
+        raise FileNotFoundError(
+            f"Config file specified by IDEER_CONFIG_PATH does not exist: {path}"
+        )
 
     for path in (repo_root() / "config.yaml", repo_root() / "backend" / "config.yaml"):
         if path.is_file():
@@ -104,7 +108,9 @@ def resolve_config_path() -> Path:
 
 def _validate_user_id(user_id: str) -> str:
     if not SAFE_USER_ID_RE.fullmatch(user_id):
-        raise ValueError("Invalid user_id: only letters, numbers, hyphens, and underscores are allowed.")
+        raise ValueError(
+            "Invalid user_id: only letters, numbers, hyphens, and underscores are allowed."
+        )
     return user_id
 
 
@@ -222,14 +228,18 @@ def _extract_agent_blocks(subagents_file: Path) -> Dict[str, List[str]]:
         name = match.group(1)
         start = index
         index += 1
-        while index < len(lines) and not re.match(r"^    [A-Za-z0-9_-]+:\s*$", lines[index]):
+        while index < len(lines) and not re.match(
+            r"^    [A-Za-z0-9_-]+:\s*$", lines[index]
+        ):
             index += 1
         blocks[name] = lines[start:index]
 
     missing = [name for name in REQUIRED_SUBAGENTS if name not in blocks]
     if missing:
         missing_list = ", ".join(missing)
-        raise ValueError(f"subagents.yaml is missing required custom subagent(s): {missing_list}")
+        raise ValueError(
+            f"subagents.yaml is missing required custom subagent(s): {missing_list}"
+        )
     return {name: blocks[name] for name in REQUIRED_SUBAGENTS}
 
 
@@ -292,7 +302,11 @@ def merge_fault_zeroing_subagents(config_path: Path, subagents_file: Path) -> di
     subagents_file = subagents_file.resolve()
     source_blocks = _extract_agent_blocks(subagents_file)
     config_text = config_path.read_text(encoding="utf-8")
-    lines = [] if config_text.strip() in {"", "{}", "null"} else config_text.splitlines(keepends=True)
+    lines = (
+        []
+        if config_text.strip() in {"", "{}", "null"}
+        else config_text.splitlines(keepends=True)
+    )
 
     added: list[str] = []
     skipped: list[str] = []
@@ -300,7 +314,11 @@ def merge_fault_zeroing_subagents(config_path: Path, subagents_file: Path) -> di
         if _has_subagent(lines, name):
             source_description = _subagent_description(source_blocks[name], name)
             target_description = _subagent_description(lines, name)
-            if source_description and target_description and source_description != target_description:
+            if (
+                source_description
+                and target_description
+                and source_description != target_description
+            ):
                 raise ValueError(
                     f"Conflicting custom subagent definition(s) in {config_path}: {name}"
                 )
@@ -325,11 +343,18 @@ def merge_fault_zeroing_subagents(config_path: Path, subagents_file: Path) -> di
             lines[-1] = f"{lines[-1]}\n"
         lines.extend(["subagents:\n", "  custom_agents:\n", *insert_lines])
     else:
-        custom_agents_index = _find_custom_agents_line(lines, subagents_start, subagents_end)
+        custom_agents_index = _find_custom_agents_line(
+            lines, subagents_start, subagents_end
+        )
         if custom_agents_index is None:
-            lines[subagents_start + 1 : subagents_start + 1] = ["  custom_agents:\n", *insert_lines]
+            lines[subagents_start + 1 : subagents_start + 1] = [
+                "  custom_agents:\n",
+                *insert_lines,
+            ]
         else:
-            custom_agents_end = _find_custom_agents_end(lines, custom_agents_index, subagents_end)
+            custom_agents_end = _find_custom_agents_end(
+                lines, custom_agents_index, subagents_end
+            )
             lines[custom_agents_end:custom_agents_end] = insert_lines
     config_path.write_text("".join(lines), encoding="utf-8")
     summary["backup_path"] = backup_path
@@ -341,12 +366,16 @@ def validate_fault_zeroing_subagent_registry(config_path: Path) -> List[str]:
     missing = [name for name in REQUIRED_SUBAGENTS if not _has_subagent(lines, name)]
     if missing:
         missing_list = ", ".join(missing)
-        raise RuntimeError(f"Fault-zeroing custom subagent config check failed; missing: {missing_list}")
+        raise RuntimeError(
+            f"Fault-zeroing custom subagent config check failed; missing: {missing_list}"
+        )
     return REQUIRED_SUBAGENTS.copy()
 
 
 def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Install a bundled iDeer agent (default: fault-zeroing).")
+    parser = argparse.ArgumentParser(
+        description="Install a bundled iDeer agent (default: fault-zeroing)."
+    )
     parser.add_argument(
         "--agent",
         default=AGENT_NAME,
@@ -377,7 +406,9 @@ def main(argv: Optional[List[str]] = None) -> int:
             user_id=owner_id or args.user_id,
         )
         if owner_id:
-            _upsert_agent_metadata(default_base_dir() / "data" / "ideer.db", agent_name, owner_id)
+            _upsert_agent_metadata(
+                default_base_dir() / "data" / "ideer.db", agent_name, owner_id
+            )
         subagents_file = default_subagents_file(agent_name)
         if not subagents_file.is_file():
             print(f"Agent directory: {target_dir}")

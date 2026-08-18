@@ -34,7 +34,7 @@ services:
       # On Docker Desktop/OrbStack, use your actual host paths like /Users/username/...
       # Set these in your shell before running docker-compose:
       #   export IDEER_ROOT=/absolute/path/to/ideer
-      - SKILLS_HOST_PATH=${IDEER_ROOT}/skills
+      - SKILLS_HOST_PATH=${IDEER_ROOT}/resources/skills
       - THREADS_HOST_PATH=${IDEER_ROOT}/backend/.ideer/threads
       # Production: use PVC instead of hostPath to avoid data loss on node failure.
       # When set, hostPath vars above are ignored for the corresponding volume.
@@ -141,7 +141,8 @@ services:
       - gateway-venv:/app/backend/.venv
       - ../config.yaml:/app/config.yaml
       - ../extensions_config.json:/app/extensions_config.json
-      - ../skills:/app/skills
+      - ../resources/skills:/app/skills
+      - ../resources:/app/resources
       - ../logs:/app/logs
       # Use a Docker-managed uv cache volume instead of a host bind mount.
       # On macOS/Docker Desktop, uv may fail to create symlinks inside shared
@@ -171,7 +172,7 @@ services:
       - IDEER_CHANNELS_GATEWAY_URL=${IDEER_CHANNELS_GATEWAY_URL:-http://gateway:8001}
       - IDEER_INTERNAL_AUTH_TOKEN=${IDEER_INTERNAL_AUTH_TOKEN:-}
       - IDEER_HOST_BASE_DIR=${IDEER_ROOT}/backend/.ideer
-      - IDEER_HOST_SKILLS_PATH=${IDEER_ROOT}/skills
+      - IDEER_HOST_SKILLS_PATH=${IDEER_ROOT}/resources/skills
       - IDEER_SANDBOX_HOST=host.docker.internal
     env_file:
       - ../.env
@@ -200,7 +201,8 @@ services:
       - workflow-worker-venv:/app/backend/.venv
       - ../config.yaml:/app/config.yaml
       - ../extensions_config.json:/app/extensions_config.json
-      - ../skills:/app/skills
+      - ../resources/skills:/app/skills
+      - ../resources:/app/resources
       - ../logs:/app/logs
       - workflow-worker-uv-cache:/root/.cache/uv
       - /var/run/docker.sock:/var/run/docker.sock
@@ -223,7 +225,7 @@ services:
       - IDEER_HOME=/app/backend/.ideer
       - IDEER_INTERNAL_AUTH_TOKEN=${IDEER_INTERNAL_AUTH_TOKEN:-}
       - IDEER_HOST_BASE_DIR=${IDEER_ROOT}/backend/.ideer
-      - IDEER_HOST_SKILLS_PATH=${IDEER_ROOT}/skills
+      - IDEER_HOST_SKILLS_PATH=${IDEER_ROOT}/resources/skills
       - IDEER_SANDBOX_HOST=host.docker.internal
     env_file:
       - ../.env

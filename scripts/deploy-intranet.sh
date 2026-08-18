@@ -647,14 +647,14 @@ install_admin_bundled_resources() {
 
     if [ "${IDEER_INSTALL_FAULT_ZEROING:-1}" = "0" ]; then
         log "skipping fault-zeroing agent install"
-    elif [ -d "$SOURCE_DIR/docs/fault-zeroing-agent/agent" ] && [ -f "$SOURCE_DIR/scripts/install_agent.py" ]; then
+    elif [ -d "$SOURCE_DIR/resources/agents/fault-zeroing" ] && [ -f "$SOURCE_DIR/scripts/install_agent.py" ]; then
         log "installing bundled fault-zeroing agent for super admin (public)..."
         if ! run_cmd env IDEER_HOME="$runtime_home" IDEER_CONFIG_PATH="$config_path" \
             python3 "$SOURCE_DIR/scripts/install_agent.py" --agent fault-zeroing --owner super-admin
         then
             resource_install_failed=1
         fi
-        cleanup_legacy_shared_agent fault-zeroing "$SOURCE_DIR/docs/fault-zeroing-agent/agent"
+        cleanup_legacy_shared_agent fault-zeroing "$SOURCE_DIR/resources/agents/fault-zeroing"
     else
         warn "fault-zeroing agent source not found in bundle"
         resource_install_failed=1
@@ -662,39 +662,16 @@ install_admin_bundled_resources() {
 
     if [ "${IDEER_INSTALL_SRS_WRITING:-1}" = "0" ]; then
         log "skipping srs-writing agent install"
-    elif [ -d "$SOURCE_DIR/docs/srs-writing-agent/agent" ] && [ -f "$SOURCE_DIR/scripts/install_srs_writing_agent.py" ]; then
+    elif [ -d "$SOURCE_DIR/resources/agents/srs-writing" ] && [ -f "$SOURCE_DIR/scripts/install_srs_writing_agent.py" ]; then
         log "installing bundled srs-writing agent for super admin (public)..."
         if ! run_cmd env IDEER_HOME="$runtime_home" IDEER_CONFIG_PATH="$config_path" \
             python3 "$SOURCE_DIR/scripts/install_srs_writing_agent.py" --owner super-admin; then
             warn "srs-writing agent install failed (see output above)"
             resource_install_failed=1
         fi
-        cleanup_legacy_shared_agent srs-writing "$SOURCE_DIR/docs/srs-writing-agent/agent"
+        cleanup_legacy_shared_agent srs-writing "$SOURCE_DIR/resources/agents/srs-writing"
     else
         warn "srs-writing agent source not found in bundle"
-        resource_install_failed=1
-    fi
-
-    if [ -f "$SOURCE_DIR/scripts/seed_custom_skill_owners.py" ]; then
-        log "assigning bundled custom skills to the super admin (public)..."
-        local agent_seed_args=""
-        if [ "${IDEER_INSTALL_FAULT_ZEROING:-1}" != "0" ]; then
-            agent_seed_args="$agent_seed_args --agent fault-zeroing"
-        fi
-        if [ "${IDEER_INSTALL_SRS_WRITING:-1}" != "0" ]; then
-            agent_seed_args="$agent_seed_args --agent srs-writing"
-        fi
-        if ! docker container inspect ideer-gateway >/dev/null 2>&1; then
-            warn "gateway container not running; cannot seed custom skill ownership"
-            resource_install_failed=1
-        elif ! run_cmd docker cp "$SOURCE_DIR/scripts/seed_custom_skill_owners.py" ideer-gateway:/tmp/seed_custom_skill_owners.py \
-            || ! run_cmd docker compose -p ideer -f "$COMPOSE_FILE" --env-file "$ENV_FILE" exec -T gateway \
-                sh -c 'cd /app/backend && PYTHONPATH=. uv run --no-sync python /tmp/seed_custom_skill_owners.py --db /app/backend/.ideer/data/ideer.db --skills-dir /app/skills/custom --owner '"$admin_id$agent_seed_args"; then
-            warn "custom skill ownership seeding failed"
-            resource_install_failed=1
-        fi
-    else
-        warn "scripts/seed_custom_skill_owners.py not found in bundle"
         resource_install_failed=1
     fi
 

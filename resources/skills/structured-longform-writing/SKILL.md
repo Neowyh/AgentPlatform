@@ -1,6 +1,7 @@
 ---
 name: structured-longform-writing
 description: Use for structured long-form writing, including blogs, reports, proposals, plans, PRDs, competitive analyses, research summaries, technical design docs, internal briefings, and decision documents. Trigger when the user asks to write, draft, expand, organize, polish into, or turn rough notes, attachments, webpages, or gathered materials into a complete long-form document. Do not use for simple rewriting, one-paragraph summaries, title brainstorming, short messages, translation-only tasks, or purely creative fiction.
+description_zh: "用于结构化长文写作,包括博客、报告、提案、计划、PRD、竞品分析、研究摘要、技术设计文档、内部简报与决策文档。当用户要求将粗糙笔记、附件、网页或收集的材料撰写、起草、扩写、整理、润色成完整长文档时触发。不用于简单改写、一段式摘要、标题头脑风暴、短消息、纯翻译任务或纯粹创意小说。"
 install_source: official
 install_method: download
 skill_id: official_42WXRNi8

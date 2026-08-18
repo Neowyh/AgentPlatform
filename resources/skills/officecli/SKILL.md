@@ -1,6 +1,7 @@
 ---
 name: officecli
 description: Use this skill when the user asks to create, read, edit, or render previews of Office documents — Word (.docx), Excel (.xlsx), or PowerPoint (.pptx) — using the OfficeCLI command-line tool. Covers generating reports, editing contracts, producing slides, merging templates, formula evaluation in Excel, and rendering documents to HTML/PNG for visual verification. Prefer this over python-docx/openpyxl/python-pptx when the operation involves styling, layout, formulas, or rendering.
+description_zh: "当用户要求使用 OfficeCLI 命令行工具创建、读取、编辑或渲染 Office 文档预览,即 Word(.docx)、Excel(.xlsx)或 PowerPoint(.pptx)时使用本技能。涵盖生成报告、编辑合同、制作幻灯片、合并模板、Excel 公式计算,以及将文档渲染为 HTML/PNG 以便视觉验证。当操作涉及样式、布局、公式或渲染时,优先使用本技能而非 python-docx/openpyxl/python-pptx。"
 allowed-tools:
   - bash
   - read_file

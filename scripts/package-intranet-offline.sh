@@ -16,11 +16,11 @@ Options:
                           Retagged as ideer-sandbox:<version> inside the bundle.
   --no-sandbox            Skip bundling the sandbox image (deploy steps will
                           warn unless a sandbox image is provided separately)
-  --exclude-skills <csv>  Comma-separated skill names under skills/custom to
+  --exclude-skills <csv>  Comma-separated skill names under resources/skills to
                           exclude from the source archive
   --skills-manifest <csv> Comma-separated expected skill names under
-                          skills/custom; packaging fails if any is missing
-                          from the build machine (skills/custom is not fully
+                          resources/skills; packaging fails if any is missing
+                          from the build machine (resources/skills is not fully
                           tracked in git, so a fresh machine may lack skills)
   --force                 Remove the output directory if it already exists
   --no-cache              Rebuild Docker images without using cache
@@ -256,20 +256,20 @@ if [ -n "$EXCLUDE_SKILLS" ]; then
     IFS=',' read -r -a EXCLUDED_SKILLS <<< "$EXCLUDE_SKILLS"
     for skill in "${EXCLUDED_SKILLS[@]}"; do
         [ -n "$skill" ] || continue
-        TAR_EXCLUDES+=(--exclude="skills/custom/${skill}")
+        TAR_EXCLUDES+=(--exclude="resources/skills/${skill}")
     done
     log "  excluding custom skills: ${EXCLUDED_SKILLS[*]}"
 fi
 
 # --skills-manifest: fail fast when a listed custom skill is missing from the
-# build machine.  skills/custom is mostly git-ignored and machine-local, so a
+# build machine.  resources/skills is mostly git-ignored and machine-local, so a
 # fresh build machine may silently produce a bundle without custom skills.
 if [ -n "$SKILLS_MANIFEST" ]; then
     IFS=',' read -r -a EXPECTED_SKILLS <<< "$SKILLS_MANIFEST"
     for skill in "${EXPECTED_SKILLS[@]}"; do
         [ -n "$skill" ] || continue
-        if [ ! -d "$REPO_ROOT/skills/custom/$skill" ]; then
-            die "skills-manifest lists missing custom skill: skills/custom/$skill (not present on this build machine)"
+        if [ ! -d "$REPO_ROOT/resources/skills/$skill" ]; then
+            die "skills-manifest lists missing custom skill: resources/skills/$skill (not present on this build machine)"
         fi
         if [[ " ${EXCLUDED_SKILLS[*]:-} " == *" $skill "* ]]; then
             log "  warning: skill '$skill' is both in --skills-manifest and --exclude-skills; exclusion wins"
@@ -280,8 +280,8 @@ fi
 
 # Actual bundled skills (excluding any exclusions) for the MANIFEST record.
 BUNDLED_SKILLS=()
-if [ -d "$REPO_ROOT/skills/custom" ]; then
-    for entry in "$REPO_ROOT"/skills/custom/*/; do
+if [ -d "$REPO_ROOT/resources/skills" ]; then
+    for entry in "$REPO_ROOT"/resources/skills/*/; do
         [ -d "$entry" ] || continue
         name="$(basename "$entry")"
         if [[ " ${EXCLUDED_SKILLS[*]:-} " == *" $name "* ]]; then
@@ -340,8 +340,8 @@ tar \
     docs \
     extensions_config.example.json \
     frontend \
+    resources \
     scripts \
-    skills \
     vendor \
     workflows
 
@@ -397,7 +397,7 @@ Files:
   - $(basename "$MANIFEST_FILE")        (This manifest)
   - $(basename "$SHA_FILE")          (SHA256 checksums)
 
-Custom Skills (skills/custom bundled in the source archive):
+Custom Skills (resources/skills bundled in the source archive):
 $SKILLS_MANIFEST_TEXT$EXCLUDED_SKILLS_TEXT
 Deployment Steps:
   1. Copy this entire bundle to the target intranet machine

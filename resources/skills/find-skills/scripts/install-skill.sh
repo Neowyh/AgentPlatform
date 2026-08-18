@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Install a skill and link it to the project's skills/custom directory
+# Install a skill and link it to the project's resources/skills directory
 # Usage: ./skills/install-skill.sh <owner/repo@skill-name>
 # Example: ./skills/install-skill.sh vercel-labs/agent-skills@vercel-react-best-practices
 
@@ -44,7 +44,7 @@ if [[ -z "$PROJECT_ROOT" ]]; then
 fi
 
 SKILL_SOURCE="$HOME/.agents/skills/$SKILL_NAME"
-SKILL_TARGET="$PROJECT_ROOT/skills/custom"
+SKILL_TARGET="$PROJECT_ROOT/resources/skills"
 
 # Step 1: Install the skill using npx
 npx skills add "$FULL_SKILL_NAME" -g -y > /dev/null 2>&1

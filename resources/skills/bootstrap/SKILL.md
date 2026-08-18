@@ -7,6 +7,7 @@ description: >-
   partner", "define who you are", "let's do onboarding", "personalize this AI",
   "make you mine", or when a SOUL.md is missing. Also trigger for updates:
   "update my SOUL.md", "change my AI's personality", "tweak the soul".
+description_zh: "通过温暖、适应性强的入职对话生成个性化的 SOUL.md。当用户想要创建、设置或初始化其 AI 伙伴的身份时触发,例如“创建我的 SOUL.md”“初始化我的智能体”“设置我的 AI 伙伴”“定义你是谁”“开始入职”“让 AI 个性化”“让你成为我的”,或当 SOUL.md 缺失时。也适用于更新场景:“更新我的 SOUL.md”“改变我 AI 的性格”“微调灵魂”。"
 ---
 
 # Bootstrap Soul

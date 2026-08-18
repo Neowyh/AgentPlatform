@@ -268,7 +268,7 @@ class SkillStorage(ABC):
         if self.custom_skill_exists(name):
             return
         if self.public_skill_exists(name):
-            raise ValueError(f"'{name}' is a built-in skill. To customise it, create a new skill under skills/custom/.")
+            raise ValueError(f"'{name}' is a built-in skill. To customise it, create a new skill under resources/skills/.")
         raise FileNotFoundError(f"Custom skill '{name}' not found.")
 
     async def load_skills_for_user(self, user_id: str, department_id: str | None = None, role: str | None = None) -> list[Skill]:

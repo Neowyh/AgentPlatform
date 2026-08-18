@@ -15,7 +15,7 @@ def repo_root() -> Path:
 
 
 def default_workflow_path() -> Path:
-    return repo_root() / "workflows" / "fault-zeroing.yaml"
+    return repo_root() / "resources" / "workflows" / "fault-zeroing.yaml"
 
 
 def content_hash(path: Path) -> str:

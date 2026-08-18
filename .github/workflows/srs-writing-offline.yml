@@ -4,7 +4,7 @@ on:
   push:
     branches: [ 'main' ]
     paths:
-      - "skills/custom/srs-writing/**"
+      - "resources/skills/srs-writing/**"
       - "scripts/smoke_srs_flow.py"
       - "scripts/validate_srs_outputs.py"
       - "vendor/officecli/**"
@@ -13,7 +13,7 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
-      - "skills/custom/srs-writing/**"
+      - "resources/skills/srs-writing/**"
       - "scripts/smoke_srs_flow.py"
       - "scripts/validate_srs_outputs.py"
       - "vendor/officecli/**"
