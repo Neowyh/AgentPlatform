@@ -16,7 +16,7 @@ from pathlib import Path
 from jsonschema import Draft202012Validator
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
-TEMPLATES_DIR = REPO_ROOT / "skills" / "custom" / "fault-zeroing" / "templates"
+TEMPLATES_DIR = REPO_ROOT / "resources" / "skills" / "fault-zeroing" / "templates"
 
 
 def _violations(instance: object, schema: dict) -> list[str]:

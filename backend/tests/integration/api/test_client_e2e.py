@@ -562,8 +562,7 @@ class TestSkillInstallation:
     def _isolate_skills_dir(self, tmp_path, monkeypatch):
         """Redirect skill installation to a temp directory."""
         skills_root = tmp_path / "skills"
-        (skills_root / "public").mkdir(parents=True)
-        (skills_root / "custom").mkdir(parents=True)
+        skills_root.mkdir(parents=True)
         from ideer.skills.storage.local_skill_storage import LocalSkillStorage
 
         monkeypatch.setattr(
@@ -585,14 +584,14 @@ class TestSkillInstallation:
         return archive_path
 
     def test_install_skill_success(self, e2e_env, tmp_path):
-        """A valid .skill archive installs to the custom skills directory."""
+        """A valid .skill archive installs to the skills directory."""
         archive = self._make_skill_zip(tmp_path)
         c = IDeerClient(checkpointer=None, thinking_enabled=False)
 
         result = c.install_skill(archive)
         assert result["success"] is True
         assert result["skill_name"] == "test-e2e-skill"
-        assert (self._skills_root / "custom" / "test-e2e-skill" / "SKILL.md").exists()
+        assert (self._skills_root / "test-e2e-skill" / "SKILL.md").exists()
 
     def test_install_skill_duplicate_rejected(self, e2e_env, tmp_path):
         """Installing the same skill twice raises ValueError."""

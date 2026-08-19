@@ -21,7 +21,7 @@ from ideer.workflows.v2.store import WorkflowV2Store
 from ideer.workflows.v2.worker import WorkflowWorker
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
-WORKFLOW_PATH = REPO_ROOT / "workflows" / "fault-zeroing.yaml"
+WORKFLOW_PATH = REPO_ROOT / "resources" / "workflows" / "fault-zeroing.yaml"
 
 
 @pytest_asyncio.fixture
@@ -191,7 +191,7 @@ async def test_production_worker_task_path_persists_all_fault_zeroing_events(
     monkeypatch.setattr("ideer.workflows.v2.file_roots.get_paths", lambda: Paths(str(tmp_path / "base")))
     monkeypatch.setattr(
         "ideer.workflows.v2.file_roots._get_skills_host_path",
-        lambda: str(REPO_ROOT / "skills"),
+        lambda: str(REPO_ROOT / "resources" / "skills"),
     )
     calls: list[str] = []
     await _run_worker_once(

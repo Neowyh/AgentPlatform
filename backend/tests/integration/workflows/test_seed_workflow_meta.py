@@ -20,7 +20,7 @@ from ideer.persistence.models.resource_metadata import ResourceMetadata
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 SEED_PATH = REPO_ROOT / "scripts" / "seed_fault_zeroing_workflow.py"
-BUNDLED_YAML = REPO_ROOT / "workflows" / "fault-zeroing.yaml"
+BUNDLED_YAML = REPO_ROOT / "resources" / "workflows" / "fault-zeroing.yaml"
 
 
 def load_seed_script():
@@ -73,7 +73,7 @@ async def test_seed_creates_resource_metadata_for_owner(seed_env) -> None:
             )
         ).scalar_one()
         assert meta.owner_id == "user-1"
-        assert meta.visibility == "private"
+        assert meta.visibility == "public"
 
 
 @pytest.mark.asyncio

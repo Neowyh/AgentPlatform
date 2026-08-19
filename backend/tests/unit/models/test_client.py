@@ -1311,7 +1311,7 @@ class TestSkillsManagement:
 
             assert result["success"] is True
             assert result["skill_name"] == "my-skill"
-            assert (skills_root /  "my-skill").exists()
+            assert (skills_root / "my-skill").exists()
 
     def test_install_skill_not_found(self, client):
         with pytest.raises(FileNotFoundError):
@@ -2150,7 +2150,7 @@ class TestScenarioSkillInstallAndUse:
             with patch("ideer.skills.storage._default_skill_storage", LocalSkillStorage(host_path=str(skills_root))):
                 result = client.install_skill(archive)
             assert result["success"] is True
-            assert (skills_root /  "my-analyzer" / "SKILL.md").exists()
+            assert (skills_root / "my-analyzer" / "SKILL.md").exists()
 
             # Step 2: List and find it
             installed_skill = MagicMock()
@@ -2603,7 +2603,7 @@ class TestInstallSkillSecurity:
                 result = client.install_skill(archive)
 
             assert result["success"] is True
-            installed = skills_root /  "sym-skill"
+            installed = skills_root / "sym-skill"
             assert (installed / "SKILL.md").exists()
             assert not (installed / "sneaky_link").exists()
 
@@ -2646,7 +2646,7 @@ class TestInstallSkillSecurity:
                 zf.write(skill_dir / "SKILL.md", "dupe-skill/SKILL.md")
 
             skills_root = tmp_path / "skills"
-            (skills_root /  "dupe-skill").mkdir(parents=True)
+            (skills_root / "dupe-skill").mkdir(parents=True)
 
             from ideer.skills.storage.local_skill_storage import LocalSkillStorage
 
