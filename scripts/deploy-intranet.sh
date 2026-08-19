@@ -15,6 +15,8 @@ Commands:
   down      Alias of stop
   status    Show docker compose status
   logs      Follow service logs
+  prune-old Remove old ideer-gateway:* / ideer-frontend:* image tags, keeping
+            the current version plus --keep-versions recent versions
 
 Options:
   --version <value>   Use a specific bundle version
@@ -24,6 +26,10 @@ Options:
                     on upgrade: keep (default) preserves user changes and
                     skips the bundled update, override publishes the bundled
                     content as a new version
+  --keep-versions <n> Number of recent versions to keep when pruning old
+                      images (default: 2, 0 = keep only the current version)
+  --prune-old         After a successful up/restart, remove old
+                      ideer-gateway:* / ideer-frontend:* image tags
   --no-load           Skip docker load when running up/start/restart
   --skip-check        Skip the pre-deployment environment check
   --dry-run           Show what would be done without executing
@@ -64,6 +70,8 @@ NO_LOAD="${IDEER_NO_LOAD:-0}"
 COMMAND="up"
 SKIP_CHECK=0
 DRY_RUN=0
+PRUNE_OLD=0
+KEEP_VERSIONS=2
 BUNDLED_CONFLICT="${IDEER_BUNDLED_CONFLICT:-keep}"
 
 while [ "$#" -gt 0 ]; do
@@ -87,6 +95,15 @@ while [ "$#" -gt 0 ]; do
             NO_LOAD=1
             shift
             ;;
+        --prune-old)
+            PRUNE_OLD=1
+            shift
+            ;;
+        --keep-versions)
+            [ "$#" -ge 2 ] || die "--keep-versions requires a value"
+            KEEP_VERSIONS="$2"
+            shift 2
+            ;;
         --skip-check)
             SKIP_CHECK=1
             shift
@@ -99,7 +116,7 @@ while [ "$#" -gt 0 ]; do
             usage
             exit 0
             ;;
-        up|start|prepare|load|restart|stop|down|status|logs)
+        up|start|prepare|load|restart|stop|down|status|logs|prune-old)
             COMMAND="$1"
             shift
             if [ "$COMMAND" = "logs" ] && [ "$#" -gt 0 ]; then
@@ -120,6 +137,10 @@ BUNDLE_ROOT="$(cd "$BUNDLE_ROOT" && pwd)"
 case "$BUNDLED_CONFLICT" in
     keep|override) ;;
     *) die "--bundled-conflict must be keep or override" ;;
+esac
+
+case "$KEEP_VERSIONS" in
+    ''|*[!0-9]*) die "--keep-versions must be a non-negative integer (got '$KEEP_VERSIONS')" ;;
 esac
 
 # ---------------------------------------------------------------------------
@@ -224,14 +245,19 @@ IMAGES_BASENAME="$(basename "$IMAGES_TAR")"
 SOURCE_BASENAME="$(basename "$SOURCE_TAR")"
 
 extract_source() {
+    local marker="$SOURCE_DIR/.bundle-version"
     if [ -d "$SOURCE_DIR/backend" ] && [ -d "$SOURCE_DIR/frontend" ] && [ -d "$SOURCE_DIR/docker" ]; then
-        return 0
+        if [ -f "$marker" ] && [ "$(cat "$marker")" = "$VERSION" ]; then
+            return 0
+        fi
+        log "source tree is from bundle version $(cat "$marker" 2>/dev/null || echo unknown); extracting $VERSION"
     fi
 
     log "extracting source tar..."
     run_cmd rm -rf "$SOURCE_DIR"
     run_cmd mkdir -p "$SOURCE_DIR"
     run_cmd tar -xzf "$SOURCE_TAR" -C "$SOURCE_DIR"
+    run_cmd printf '%s\n' "$VERSION" > "$marker"
 }
 
 seed_file() {
@@ -453,6 +479,28 @@ append_env_if_missing() {
     printf '%s=%s\n' "$key" "$value" >> "$ENV_FILE"
 }
 
+# On upgrade, env.intranet already exists with image tags from the previous
+# bundle version.  Refresh them to the current bundle version so restart
+# actually switches images; a value that does not look like a bundle image
+# (e.g. a custom registry image) is left untouched.
+refresh_image_tags() {
+    [ -f "$ENV_FILE" ] || return 0
+    local entry key value current
+    for entry in \
+        "IDEER_GATEWAY_IMAGE=ideer-gateway:$VERSION" \
+        "IDEER_FRONTEND_IMAGE=ideer-frontend:$VERSION"; do
+        key="${entry%%=*}"
+        value="${entry#*=}"
+        current="$(grep -E "^${key}=" "$ENV_FILE" | tail -1 | cut -d= -f2- || true)"
+        if [ -z "$current" ]; then
+            append_env_if_missing "$key" "$value"
+        elif [ "$current" != "$value" ] && [[ "$current" == ideer-gateway:* || "$current" == ideer-frontend:* ]]; then
+            log "refreshing $key: $current -> $value"
+            run_cmd sed -i "s|^${key}=.*|${key}=${value}|" "$ENV_FILE"
+        fi
+    done
+}
+
 seed_runtime() {
     run_cmd mkdir -p "$RUNTIME_DIR/data"
 
@@ -503,7 +551,26 @@ EOF
     append_env_if_missing "IDEER_INTERNAL_AUTH_TOKEN" "$IDEER_INTERNAL_AUTH_TOKEN_VALUE"
     append_env_if_missing "IDEER_NETWORK_MODE" "offline"
 
+    refresh_image_tags
+
     patch_sandbox_image
+}
+
+# Incremental bundles do not ship the sandbox image (it is a stable retag of
+# the upstream sandbox, so it never needs re-transferring between versions).
+# When the versioned sandbox tag is missing after load, reuse a local
+# ideer-sandbox:* tag so sandbox config patching still works.
+ensure_sandbox_tag() {
+    local image="ideer-sandbox:$VERSION"
+    if docker image inspect "$image" >/dev/null 2>&1; then
+        return 0
+    fi
+    local existing
+    existing="$(docker images --format '{{.Repository}}:{{.Tag}}' | grep '^ideer-sandbox:' | grep -v '<none>' | head -1 || true)"
+    [ -n "$existing" ] || return 0
+    log "sandbox image $image not in this bundle; retagging local $existing"
+    run_cmd docker tag "$existing" "$image"
+    warn "reusing local $existing for $image; use a full bundle to update the sandbox image"
 }
 
 load_images() {
@@ -514,6 +581,73 @@ load_images() {
 
     log "loading docker images..."
     run_cmd docker load -i "$IMAGES_TAR"
+    ensure_sandbox_tag
+}
+
+# Remove ideer-gateway:* / ideer-frontend:* image tags older than the current
+# version plus --keep-versions recent versions, so repeated upgrades do not
+# grow the Docker daemon without bound.  The current version is always kept;
+# nginx:alpine and ideer-sandbox:* are never touched (the sandbox tag shares
+# its image with every version, so removing old tags frees no space).
+prune_old_images() {
+    # shellcheck disable=SC1090
+    . "$ENV_FILE"
+
+    local current_version=""
+    local img
+    img="$(grep -E '^IDEER_GATEWAY_IMAGE=' "$ENV_FILE" | tail -1 | cut -d= -f2- || true)"
+    case "$img" in
+        ideer-gateway:*) current_version="${img#ideer-gateway:}" ;;
+    esac
+    [ -n "$current_version" ] || {
+        warn "cannot resolve the current bundle version from $ENV_FILE; keeping all images"
+        return 0
+    }
+
+    local -a versions=()
+    mapfile -t versions < <(docker images --format '{{.Repository}}:{{.Tag}}' | sed -n 's/^ideer-gateway://p' | sort -V || true)
+    [ "${#versions[@]}" -gt 0 ] || {
+        log "no ideer-gateway images found; nothing to prune"
+        return 0
+    }
+
+    local -a keep_versions=()
+    local i v
+    keep_versions+=("$current_version")
+    local added=0
+    for ((i = ${#versions[@]} - 1; i >= 0; i--)); do
+        v="${versions[$i]}"
+        [ "$v" = "$current_version" ] && continue
+        [ "$added" -ge "$KEEP_VERSIONS" ] && break
+        keep_versions+=("$v")
+        added=$((added + 1))
+    done
+
+    if [ "${#versions[@]}" -le 1 ]; then
+        log "only the current version ($current_version) is present; nothing to prune"
+        return 0
+    fi
+
+    local removed=0 repo
+    for v in "${versions[@]}"; do
+        if [[ " ${keep_versions[*]} " == *" $v "* ]]; then
+            continue
+        fi
+        for repo in ideer-gateway ideer-frontend; do
+            if docker image inspect "$repo:$v" >/dev/null 2>&1; then
+                log "removing old image: $repo:$v"
+                if ! run_cmd docker image rm "$repo:$v"; then
+                    warn "failed to remove $repo:$v (may still be in use by a container)"
+                fi
+                removed=1
+            fi
+        done
+    done
+    if [ "$removed" -eq 1 ]; then
+        log "image pruning complete; kept $(printf '%s, ' "${keep_versions[@]}" | sed 's/, $//')"
+    else
+        log "no old images to prune"
+    fi
 }
 
 compose_cmd() {
@@ -843,6 +977,10 @@ case "$COMMAND" in
     load)
         load_images
         ;;
+    prune-old)
+        prepare_bundle
+        prune_old_images
+        ;;
     up|start)
         if ! prepare_bundle; then
             print_rollback_instructions
@@ -863,6 +1001,9 @@ case "$COMMAND" in
             if ! seed_bundled_workflows; then
                 die "bundled workflow initialization failed"
             fi
+        fi
+        if [ "$PRUNE_OLD" -eq 1 ]; then
+            prune_old_images
         fi
         log "deployment complete"
         ;;
@@ -886,6 +1027,9 @@ case "$COMMAND" in
             if ! seed_bundled_workflows; then
                 die "bundled workflow initialization failed"
             fi
+        fi
+        if [ "$PRUNE_OLD" -eq 1 ]; then
+            prune_old_images
         fi
         log "restart complete"
         ;;

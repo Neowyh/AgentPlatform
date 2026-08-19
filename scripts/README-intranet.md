@@ -135,6 +135,36 @@ To skip the pre-check (not recommended):
 ./deploy-intranet.sh --skip-check up
 ```
 
+### Upgrading and incremental bundles
+
+Copy the new bundle over the deployment directory, then:
+
+```bash
+docker load -i ideer-images-<new-version>.tar
+./deploy-intranet.sh --version <new-version> restart
+```
+
+Upgrades re-extract the bundled source and refresh the `env.intranet` image
+tags to the new version automatically. To remove old image tags after a
+successful upgrade, either run `./deploy-intranet.sh prune-old` or add
+`--prune-old` to the restart command (runs only after all health checks
+pass). Only `ideer-gateway:*` / `ideer-frontend:*` tags are pruned; keep
+`--keep-versions <n>` recent versions for rollback (default 2, 0 = current
+version only).
+
+To save transfer size when upgrading an existing deployment, build an
+incremental bundle on the build machine:
+
+```bash
+scripts/package-intranet-offline.sh --version <new-version> --incremental --incremental-from <old-version> --force
+```
+
+The images tar then contains only the gateway and frontend images; the target
+machine reuses its local `nginx:alpine` and `ideer-sandbox` image (the deploy
+script retags a local `ideer-sandbox:*` to the new version automatically).
+Incremental bundles are for upgrades only -- fresh installs must use a full
+bundle.
+
 ### 5. Verify
 
 After deployment, access iDeer at `http://localhost:2026` (or the port configured in `env.intranet`).
@@ -164,6 +194,7 @@ View logs:
 | `./deploy-intranet.sh logs` | Follow all logs |
 | `./deploy-intranet.sh logs gateway` | Follow gateway logs |
 | `./deploy-intranet.sh prepare` | Extract and seed config only |
+| `./deploy-intranet.sh prune-old` | Remove old `ideer-gateway:*` / `ideer-frontend:*` image tags (keeps the current version plus `--keep-versions` recent versions, default 2) |
 
 ## Troubleshooting
 

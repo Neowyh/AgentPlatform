@@ -16,6 +16,15 @@ Options:
                           Retagged as ideer-sandbox:<version> inside the bundle.
   --no-sandbox            Skip bundling the sandbox image (deploy steps will
                           warn unless a sandbox image is provided separately)
+  --incremental           Build an incremental bundle for upgrading an existing
+                          deployment: the images tar contains only
+                          ideer-gateway:<version> and ideer-frontend:<version>.
+                          nginx:alpine and the sandbox image are NOT included;
+                          the target machine reuses the ones it already has.
+                          Use a full bundle for fresh installs or to update
+                          the nginx/sandbox images.
+  --incremental-from <v>  Record the previous bundle version in the manifest
+                          (informational only, used with --incremental)
   --exclude-skills <csv>  Comma-separated skill names under resources/skills to
                           exclude from the source archive
   --skills-manifest <csv> Comma-separated expected skill names under
@@ -46,6 +55,8 @@ OUTPUT_DIR=""
 PLATFORM="linux/amd64"
 SANDBOX_IMAGE=""
 NO_SANDBOX=0
+INCREMENTAL=0
+INCREMENTAL_FROM=""
 FORCE=0
 NO_CACHE=0
 REQUIRE_CLEAN=0
@@ -80,6 +91,15 @@ while [ "$#" -gt 0 ]; do
         --no-sandbox)
             NO_SANDBOX=1
             shift
+            ;;
+        --incremental)
+            INCREMENTAL=1
+            shift
+            ;;
+        --incremental-from)
+            [ "$#" -ge 2 ] || die "--incremental-from requires a value"
+            INCREMENTAL_FROM="$2"
+            shift 2
             ;;
         --exclude-skills)
             [ "$#" -ge 2 ] || die "--exclude-skills requires a value"
@@ -224,10 +244,16 @@ docker build \
     "$REPO_ROOT"
 
 log "[3/7] pulling nginx image..."
-docker pull "$NGINX_IMAGE"
+if [ "$INCREMENTAL" -eq 1 ]; then
+    log "  incremental bundle: skipping nginx pull (target machine reuses its local nginx:alpine)"
+else
+    docker pull "$NGINX_IMAGE"
+fi
 
 log "[4/7] preparing sandbox image..."
-if [ "$NO_SANDBOX" -eq 1 ]; then
+if [ "$INCREMENTAL" -eq 1 ]; then
+    log "  incremental bundle: sandbox image not included (target machine reuses its local ideer-sandbox tag)"
+elif [ "$NO_SANDBOX" -eq 1 ]; then
     log "  sandbox image disabled (--no-sandbox); bundle will not include a sandbox image"
 else
     SANDBOX_IMAGE="${SANDBOX_IMAGE:-$DEFAULT_SANDBOX_IMAGE}"
@@ -244,9 +270,14 @@ else
 fi
 
 log "[5/7] saving docker images..."
-IMAGES_TO_SAVE=("$GATEWAY_IMAGE" "$FRONTEND_IMAGE" "$NGINX_IMAGE")
-if [ "$INCLUDE_SANDBOX" -eq 1 ]; then
-    IMAGES_TO_SAVE+=("$BUNDLED_SANDBOX_TAG")
+if [ "$INCREMENTAL" -eq 1 ]; then
+    log "  incremental bundle: saving ideer-gateway:$VERSION and ideer-frontend:$VERSION only"
+    IMAGES_TO_SAVE=("$GATEWAY_IMAGE" "$FRONTEND_IMAGE")
+else
+    IMAGES_TO_SAVE=("$GATEWAY_IMAGE" "$FRONTEND_IMAGE" "$NGINX_IMAGE")
+    if [ "$INCLUDE_SANDBOX" -eq 1 ]; then
+        IMAGES_TO_SAVE+=("$BUNDLED_SANDBOX_TAG")
+    fi
 fi
 docker save -o "$IMAGES_TAR" "${IMAGES_TO_SAVE[@]}"
 
@@ -361,30 +392,64 @@ fi
 # Collect image digests for the manifest
 GATEWAY_DIGEST="$(docker image inspect "$GATEWAY_IMAGE" --format '{{.Id}}' 2>/dev/null | cut -c8-19 || echo 'unknown')"
 FRONTEND_DIGEST="$(docker image inspect "$FRONTEND_IMAGE" --format '{{.Id}}' 2>/dev/null | cut -c8-19 || echo 'unknown')"
-NGINX_DIGEST="$(docker image inspect "$NGINX_IMAGE" --format '{{.Id}}' 2>/dev/null | cut -c8-19 || echo 'unknown')"
-if [ "$INCLUDE_SANDBOX" -eq 1 ]; then
-    SANDBOX_DIGEST="$(docker image inspect "$BUNDLED_SANDBOX_TAG" --format '{{.Id}}' 2>/dev/null | cut -c8-19 || echo 'unknown')"
-    SANDBOX_SOURCE_NOTE=" (source: $SANDBOX_IMAGE)"
-    SANDBOX_SOURCE_LINE="  - Source image for the sandbox: $SANDBOX_IMAGE"
-else
-    SANDBOX_DIGEST="not bundled"
-    SANDBOX_SOURCE_NOTE=" (not bundled; deployment must supply a sandbox image or use a local provider)"
+if [ "$INCREMENTAL" -eq 1 ]; then
+    NGINX_DIGEST="not included (incremental)"
+    SANDBOX_DIGEST="not included (incremental)"
+    SANDBOX_SOURCE_NOTE=""
     SANDBOX_SOURCE_LINE=""
+else
+    NGINX_DIGEST="$(docker image inspect "$NGINX_IMAGE" --format '{{.Id}}' 2>/dev/null | cut -c8-19 || echo 'unknown')"
+    if [ "$INCLUDE_SANDBOX" -eq 1 ]; then
+        SANDBOX_DIGEST="$(docker image inspect "$BUNDLED_SANDBOX_TAG" --format '{{.Id}}' 2>/dev/null | cut -c8-19 || echo 'unknown')"
+        SANDBOX_SOURCE_NOTE=" (source: $SANDBOX_IMAGE)"
+        SANDBOX_SOURCE_LINE="  - Source image for the sandbox: $SANDBOX_IMAGE"
+    else
+        SANDBOX_DIGEST="not bundled"
+        SANDBOX_SOURCE_NOTE=" (not bundled; deployment must supply a sandbox image or use a local provider)"
+        SANDBOX_SOURCE_LINE=""
+    fi
+fi
+
+BUNDLE_TYPE="full"
+if [ "$INCREMENTAL" -eq 1 ]; then
+    BUNDLE_TYPE="incremental"
+fi
+INCREMENTAL_FROM_LINE=""
+if [ "$INCREMENTAL" -eq 1 ] && [ -n "$INCREMENTAL_FROM" ]; then
+    INCREMENTAL_FROM_LINE="Incremental from: $INCREMENTAL_FROM"
+fi
+
+MANIFEST_IMAGES="  - $GATEWAY_IMAGE (digest: $GATEWAY_DIGEST)
+  - $FRONTEND_IMAGE (digest: $FRONTEND_DIGEST)"
+if [ "$INCREMENTAL" -eq 1 ]; then
+    MANIFEST_IMAGES+="
+  - $NGINX_IMAGE (not included; the target machine reuses its local nginx:alpine)
+  - $BUNDLED_SANDBOX_TAG (not included; the target machine reuses its local ideer-sandbox tag)"
+else
+    MANIFEST_IMAGES+="
+  - $NGINX_IMAGE (digest: $NGINX_DIGEST)
+  - $BUNDLED_SANDBOX_TAG (digest: $SANDBOX_DIGEST)$SANDBOX_SOURCE_NOTE"
+fi
+
+INCREMENTAL_NOTES_LINE=""
+if [ "$INCREMENTAL" -eq 1 ]; then
+    INCREMENTAL_NOTES_LINE="  - Incremental bundles are for upgrading an existing deployment only: the
+    images tar carries just the gateway and frontend images. Fresh installs
+    must use a full bundle; use a full bundle to update the nginx or sandbox
+    images as well."
 fi
 
 cat > "$MANIFEST_FILE" <<EOF
 iDeer Intranet Offline Bundle
 =============================
 Version: $VERSION
+Bundle type: $BUNDLE_TYPE
 Platform: $PLATFORM
 Created at: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
 Git commit: $(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || echo 'unknown')
-
+$INCREMENTAL_FROM_LINE
 Docker Images:
-  - $GATEWAY_IMAGE (digest: $GATEWAY_DIGEST)
-  - $FRONTEND_IMAGE (digest: $FRONTEND_DIGEST)
-  - $NGINX_IMAGE (digest: $NGINX_DIGEST)
-  - $BUNDLED_SANDBOX_TAG (digest: $SANDBOX_DIGEST)$SANDBOX_SOURCE_NOTE
+$MANIFEST_IMAGES
 
 Files:
   - $(basename "$IMAGES_TAR")        (Docker images archive)
@@ -413,6 +478,7 @@ Notes:
     manually and set sandbox.image to a locally present name, or switch
     sandbox.use to a provider that needs no image (local).
 $SANDBOX_SOURCE_LINE
+$INCREMENTAL_NOTES_LINE
 For details, see the deployment guide included in this bundle.
 EOF
 
