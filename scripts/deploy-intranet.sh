@@ -834,7 +834,7 @@ install_admin_bundled_resources() {
 # the active super admin (falling back to "system" when none exists).
 # Idempotent; a missing or failed seed aborts deployment initialization.
 seed_bundled_workflows() {
-    [ -f "$SOURCE_DIR/workflows/fault-zeroing.yaml" ] || return 1
+    [ -f "$SOURCE_DIR/resources/workflows/fault-zeroing.yaml" ] || return 1
     [ -f "$SOURCE_DIR/scripts/seed_fault_zeroing_workflow.py" ] || return 1
 
     if ! docker container inspect ideer-gateway >/dev/null 2>&1; then
@@ -850,7 +850,7 @@ seed_bundled_workflows() {
     fi
 
     log "seeding bundled fault-zeroing workflow (owner: $created_by)..."
-    if run_cmd docker cp "$SOURCE_DIR/workflows/fault-zeroing.yaml" ideer-gateway:/tmp/fault-zeroing.yaml \
+    if run_cmd docker cp "$SOURCE_DIR/resources/workflows/fault-zeroing.yaml" ideer-gateway:/tmp/fault-zeroing.yaml \
         && run_cmd docker cp "$SOURCE_DIR/scripts/seed_fault_zeroing_workflow.py" ideer-gateway:/tmp/seed_fault_zeroing_workflow.py \
         && run_cmd docker compose -p ideer -f "$COMPOSE_FILE" --env-file "$ENV_FILE" exec -T gateway \
             sh -c 'cd /app/backend && PYTHONPATH=. uv run --no-sync python /tmp/seed_fault_zeroing_workflow.py --workflow-path /tmp/fault-zeroing.yaml --created-by '"$created_by"; then
