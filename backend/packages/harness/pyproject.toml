@@ -22,6 +22,7 @@ dependencies = [
     "langgraph-runtime-inmem>=0.28.0",
     "markdownify>=1.2.2",
     "markitdown[all,xlsx]>=0.0.1a2",
+    "pymupdf4llm>=0.0.17",
     "pydantic>=2.12.5",
     "pyyaml>=6.0.3",
     "readabilipy>=0.3.0",
@@ -47,7 +48,6 @@ postgres = [
     "psycopg[binary]>=3.3.3",
     "psycopg-pool>=3.3.0",
 ]
-pymupdf = ["pymupdf4llm>=0.0.17"]
 
 [build-system]
 requires = ["hatchling"]

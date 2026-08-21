@@ -52,6 +52,14 @@ def test_fault_zeroing_skill_requires_visual_outputs() -> None:
     assert "展示五份文件" in content
     assert "不写脚本和外链资源" in content
 
+    assert "read_document" in content
+    for phrase in [
+        ".doc` / `.docx` / `.pdf`",
+        "page_range",
+        "疑似扫描件",
+    ]:
+        assert phrase in content
+
     for phrase in REMOVED_WORKFLOW_PHRASES:
         assert phrase not in content
 

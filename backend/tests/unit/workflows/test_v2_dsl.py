@@ -284,3 +284,8 @@ def test_v2_parser_accepts_fault_zeroing_workflow() -> None:
     }
     agent_nodes = {node.id: node.action.params.get("max_turns") for node in workflow.nodes if node.action is not None}
     assert agent_nodes == expected_max_turns
+
+    prompts = {node.id: (node.action.params.get("prompt") or "") + (node.action.params.get("system_prompt") or "") for node in workflow.nodes if node.action is not None}
+    assert "read_document" in prompts["evidence_collection"]
+    assert "page_range" in prompts["evidence_collection"]
+    assert "read_document" in prompts["assessment_review"]

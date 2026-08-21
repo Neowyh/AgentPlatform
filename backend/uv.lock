@@ -1582,6 +1582,7 @@ dependencies = [
     { name = "markdownify" },
     { name = "markitdown", extra = ["all", "xlsx"] },
     { name = "pydantic" },
+    { name = "pymupdf4llm" },
     { name = "pyyaml" },
     { name = "readabilipy" },
     { name = "sqlalchemy", extra = ["asyncio"] },
@@ -1598,9 +1599,6 @@ postgres = [
     { name = "langgraph-checkpoint-postgres" },
     { name = "psycopg", extra = ["binary"] },
     { name = "psycopg-pool" },
-]
-pymupdf = [
-    { name = "pymupdf4llm" },
 ]
 
 [package.metadata]
@@ -1638,14 +1636,14 @@ requires-dist = [
     { name = "psycopg", extras = ["binary"], marker = "extra == 'postgres'", specifier = ">=3.3.3" },
     { name = "psycopg-pool", marker = "extra == 'postgres'", specifier = ">=3.3.0" },
     { name = "pydantic", specifier = ">=2.12.5" },
-    { name = "pymupdf4llm", marker = "extra == 'pymupdf'", specifier = ">=0.0.17" },
+    { name = "pymupdf4llm", specifier = ">=0.0.17" },
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "readabilipy", specifier = ">=0.3.0" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0,<3.0" },
     { name = "tavily-python", specifier = ">=0.7.17" },
     { name = "tiktoken", specifier = ">=0.8.0" },
 ]
-provides-extras = ["ollama", "postgres", "pymupdf"]
+provides-extras = ["ollama", "postgres"]
 
 [[package]]
 name = "idna"
