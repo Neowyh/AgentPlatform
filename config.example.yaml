@@ -634,6 +634,11 @@ sandbox:
   allow_host_bash: false
   # Optional: Mount additional host directories into the sandbox.
   # Each mount maps a host path to a virtual container path accessible by the agent.
+  # Agents can read text files under mounted paths with read_file, and
+  # read_document (PDF/Word/Excel/PowerPoint) resolves mounted paths too.
+  # Note for Docker/K8s deployments: the gateway and workflow-worker containers
+  # must also see the same host_path, or document reading under mounts is
+  # rejected with an actionable deployment hint.
   # mounts:
   #   - host_path: /home/user/my-project    # Absolute path on the host machine
   #     container_path: /mnt/my-project     # Virtual path inside the sandbox

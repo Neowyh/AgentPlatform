@@ -21,7 +21,7 @@ allowed-tools:
 ## 输入资料读取规则
 
 1. 先确认顶事件、故障现象、发生条件、影响范围和已有资料清单。
-2. 优先读取 `/mnt/user-data/uploads/`，其次读取 `/mnt/user-data/workspace/`。
+2. 优先读取 `/mnt/user-data/uploads/`，其次读取 `/mnt/user-data/workspace/`。配置在 `sandbox.mounts` 中的挂载目录（如 `/mnt/eval-case/`）同样可读：把挂载下的子目录作为资料目录传入即可，其中的 `.docx`/`.pdf` 等办公文档也可用 `read_document` 打开。
 3. 不确定文件位置时，先用 `glob` 获取目录结构，再用 `grep` 定位关键词。
 4. 按文件格式选择读取方式：
    - `.docx` / `.pdf` / `.xls` / `.xlsx` / `.ppt` / `.pptx`：调用 `read_document` 工具转 Markdown 后读取（分段读取，遇截断标记用 `page_range` 或分段继续）。不支持 legacy 二进制 `.doc`：遇到 `.doc` 文件时在报告“输入资料”中记为缺失（建议用户提供 .docx 版本），不得猜测内容。

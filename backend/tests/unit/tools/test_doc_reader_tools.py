@@ -10,7 +10,7 @@ import json
 import os
 import tempfile
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -23,6 +23,7 @@ from packages.harness.ideer.community.doc_reader.tools import (
     _extract_pdf_pages,
     _get_page_count,
     _parse_page_range,
+    _resolve_mounted_path,
     _resolve_virtual_path,
     _truncate_output,
     _validate_path,
@@ -1051,6 +1052,162 @@ class TestVirtualPathResolution:
         assert _resolve_virtual_path("/tmp/x.pdf", runtime) == "/tmp/x.pdf"
         assert _resolve_virtual_path("/mnt/user-data/uploads/a.pdf", None) == "/mnt/user-data/uploads/a.pdf"
         assert _resolve_virtual_path("/mnt/user-data/uploads/a.pdf", runtime) == "/host/uploads/a.pdf"
+
+
+# ============================================================================
+# read_document_tool — configured sandbox.mounts (custom mount) resolution
+# ============================================================================
+
+
+class TestCustomMountResolution:
+    """Paths under configured ``sandbox.mounts`` resolve container_path -> host_path.
+
+    The resolution chain is: thread_data virtual paths, then registered custom
+    mounts (shared source of truth with sandbox tools and the workflow engine),
+    then the literal whitelist fallback.
+    """
+
+    @pytest.fixture()
+    def mounted_env(self, tmp_path: Path, monkeypatch):
+        """Register a real tmp-dir mount via the shared _get_custom_mounts cache.
+
+        The ideer package is importable under two module identities
+        (``ideer.*`` used by production code and ``packages.harness.ideer.*``
+        used by tests), so both module objects must be patched.
+        """
+        host_dir = tmp_path / "eval-host"
+        host_dir.mkdir()
+        mounts = [SimpleNamespace(host_path=str(host_dir), container_path="/mnt/eval-case", read_only=True)]
+        import packages.harness.ideer.sandbox.tools as _sbx_alt
+
+        for sbx in {_get_sandbox_tools_module(), _sbx_alt}:
+            monkeypatch.setattr(sbx, "_get_custom_mounts", lambda mounts=mounts: mounts)
+        yield host_dir
+
+    def _patch_conversion(self, md_path: Path):
+        return (
+            patch(
+                "packages.harness.ideer.community.doc_reader.tools.convert_file_to_markdown",
+                new_callable=AsyncMock,
+                return_value=md_path,
+            ),
+            patch(
+                "packages.harness.ideer.community.doc_reader.tools._get_page_count",
+                return_value=None,
+            ),
+        )
+
+    @pytest.mark.asyncio
+    async def test_mounted_docx_resolves_and_reads(self, mounted_env, tmp_path: Path):
+        doc = mounted_env / "case-01" / "report.docx"
+        doc.parent.mkdir(parents=True)
+        doc.write_bytes(b"fake-docx")
+        md_path = tmp_path / "report.md"
+        md_path.write_text("# 挂载目录内容", encoding="utf-8")
+        conv, page = self._patch_conversion(md_path)
+        with conv, page:
+            result = await read_document_tool.ainvoke({"file_path": "/mnt/eval-case/case-01/report.docx"})
+        assert "挂载目录内容" in result
+
+    @pytest.mark.asyncio
+    async def test_unregistered_mount_prefix_still_rejected(self):
+        result = await read_document_tool.ainvoke({"file_path": "/mnt/not-registered/secret.pdf"})
+        data = json.loads(result)
+        assert data["error"].startswith("Access denied")
+
+    @pytest.mark.asyncio
+    async def test_invisible_mount_gets_deployment_hint(self, tmp_path: Path):
+        """A declared mount whose host_path is invisible to this process gets an
+        actionable error instead of the generic whitelist message."""
+        from ideer.config import get_app_config as _real  # noqa: F401
+
+        fake_config = SimpleNamespace(
+            sandbox=SimpleNamespace(
+                mounts=[
+                    SimpleNamespace(
+                        host_path="/nonexistent/host/eval",
+                        container_path="/mnt/invisible-case",
+                        read_only=True,
+                    )
+                ]
+            )
+        )
+        # Ensure the shared cache does not know this mount either.
+        with (
+            patch(
+                "packages.harness.ideer.sandbox.tools._get_custom_mounts",
+                return_value=[],
+            ),
+            patch(
+                "ideer.config.get_app_config",
+                return_value=fake_config,
+            ),
+        ):
+            result = await read_document_tool.ainvoke({"file_path": "/mnt/invisible-case/report.pdf"})
+        data = json.loads(result)
+        assert "/mnt/invisible-case" in data["error"]
+        assert "gateway/worker" in data["error"]
+
+    @pytest.mark.asyncio
+    async def test_nested_mount_longest_prefix_wins(self, tmp_path: Path, monkeypatch):
+        parent_host = tmp_path / "parent-host"
+        child_host = tmp_path / "child-host"
+        parent_host.mkdir()
+        child_host.mkdir()
+        mounts = [
+            SimpleNamespace(host_path=str(parent_host), container_path="/mnt/data", read_only=True),
+            SimpleNamespace(host_path=str(child_host), container_path="/mnt/data/sub", read_only=True),
+        ]
+        import packages.harness.ideer.sandbox.tools as _sbx_alt
+
+        for sbx in {_get_sandbox_tools_module(), _sbx_alt}:
+            monkeypatch.setattr(sbx, "_get_custom_mounts", lambda mounts=mounts: mounts)
+        resolved_child = _resolve_mounted_path("/mnt/data/sub/a.pdf")
+        resolved_parent = _resolve_mounted_path("/mnt/data/other/b.pdf")
+        assert str(child_host / "a.pdf") == resolved_child
+        assert str(parent_host / "other/b.pdf") == resolved_parent
+
+
+def _get_sandbox_tools_module():
+    """Return the ``ideer.sandbox.tools`` module object production code uses."""
+    import ideer.sandbox.tools as sbx
+
+    return sbx
+
+
+class TestMcpServerMountWhitelist:
+    """The MCP variant accepts configured mount container paths too.
+
+    Skipped when the module cannot be imported: the installed ``mcp`` library
+    lacks ``Server.tool``, which breaks this module at decoration time — a
+    pre-existing incompatibility unrelated to the whitelist change.
+    """
+
+    def _import_mcp_server(self):
+        try:
+            from packages.harness.ideer.community.doc_reader import mcp_server
+        except AttributeError as exc:
+            pytest.skip(f"installed mcp library incompatible with this module: {exc}")
+        return mcp_server
+
+    def test_validate_path_accepts_registered_mount(self, tmp_path: Path, monkeypatch):
+        mcp_server = self._import_mcp_server()
+
+        host_dir = tmp_path / "mcp-host"
+        host_dir.mkdir()
+        mounts = [SimpleNamespace(host_path=str(host_dir), container_path="/mnt/mcp-case", read_only=True)]
+        import packages.harness.ideer.sandbox.tools as _sbx_alt
+
+        for sbx in {_get_sandbox_tools_module(), _sbx_alt}:
+            monkeypatch.setattr(sbx, "_get_custom_mounts", lambda mounts=mounts: mounts)
+        resolved = mcp_server._validate_path("/mnt/mcp-case/doc.pdf")
+        assert isinstance(resolved, Path)
+
+    def test_validate_path_rejects_unknown_prefix(self):
+        mcp_server = self._import_mcp_server()
+
+        with pytest.raises(PermissionError):
+            mcp_server._validate_path("/mnt/nowhere/doc.pdf")
 
 
 # ============================================================================

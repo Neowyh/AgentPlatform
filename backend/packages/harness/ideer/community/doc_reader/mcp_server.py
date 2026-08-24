@@ -35,10 +35,22 @@ _ALLOWED_PATH_PREFIXES = ["/mnt/user-data", "/tmp"]
 
 
 def _validate_path(file_path: str) -> Path:
-    """Validate and resolve file path, ensuring it is within allowed directories."""
+    """Validate and resolve file path, ensuring it is within allowed directories.
+
+    Inside the sandbox, configured custom mounts (``sandbox.mounts``) exist at
+    their literal ``container_path``, so they are accepted in addition to the
+    static whitelist. The mount lookup reuses the shared registration source
+    so this variant stays consistent with the in-process tool.
+    """
     path = Path(file_path).resolve()
     if not any(str(path).startswith(prefix) for prefix in _ALLOWED_PATH_PREFIXES):
-        raise PermissionError(f"Access denied: file must be under one of {_ALLOWED_PATH_PREFIXES}, got: {file_path}")
+        try:
+            from ideer.sandbox.tools import _is_custom_mount_path
+
+            if not _is_custom_mount_path(str(path)):
+                raise PermissionError(f"Access denied: file must be under one of {_ALLOWED_PATH_PREFIXES} or a configured sandbox mount, got: {file_path}")
+        except ImportError:  # pragma: no cover - standalone MCP install
+            raise PermissionError(f"Access denied: file must be under one of {_ALLOWED_PATH_PREFIXES}, got: {file_path}") from None
     return path
 
 

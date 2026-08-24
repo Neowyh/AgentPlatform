@@ -60,6 +60,10 @@ def test_fault_zeroing_skill_requires_visual_outputs() -> None:
     ]:
         assert phrase in content
 
+    # Custom sandbox.mounts directories are readable, including office docs.
+    assert "sandbox.mounts" in content
+    assert "read_document` 打开" in content
+
     # Legacy .doc is unsupported: the skill must not advertise it as readable
     # and must instruct recording it as missing material instead.
     assert ".doc` / `.docx" not in content

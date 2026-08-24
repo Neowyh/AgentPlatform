@@ -57,6 +57,67 @@ def _resolve_virtual_path(file_path: str, runtime: Any) -> str:
     return resolved
 
 
+def _resolve_mounted_path(file_path: str) -> str | None:
+    """Resolve a configured custom-mount container path to its host path.
+
+    Custom mounts are declared in config.yaml under ``sandbox.mounts``
+    (``host_path`` ↔ ``container_path``) and are already honoured by sandbox
+    tools and the workflow engine's artifact resolver. This reuses the exact
+    same registration source (:func:`ideer.sandbox.tools._get_custom_mount_for_path`,
+    longest container_path prefix first) so all three surfaces agree on what
+    is readable.
+
+    Returns the host path, or ``None`` when the path is not under any
+    registered mount visible to this process.
+    """
+    try:
+        from ideer.sandbox.tools import _get_custom_mount_for_path, _is_custom_mount_path
+
+        if not _is_custom_mount_path(file_path):
+            return None
+        mount = _get_custom_mount_for_path(file_path)
+    except Exception as exc:  # pragma: no cover - defensive, config must exist
+        logger.warning("Custom mount lookup failed for %s: %s", file_path, exc)
+        return None
+    if mount is None or not mount.host_path:
+        return None
+    rest = file_path[len(mount.container_path) :].lstrip("/")
+    host = mount.host_path.rstrip("/")
+    resolved = f"{host}/{rest}" if rest else host
+    logger.debug("Resolved mounted path %s -> %s", file_path, resolved)
+    return resolved
+
+
+def _invisible_mount_hint(file_path: str) -> str | None:
+    """Explain rejections caused by mounts whose host path this process cannot see.
+
+    ``_get_custom_mounts()`` filters configured mounts by
+    ``Path(host_path).exists()``, so a mount declared in config.yaml but not
+    visible to the gateway/worker process silently disappears from resolution.
+    When a rejected path matches such a declaration, surface an actionable
+    deployment hint instead of the generic whitelist message.
+    """
+    try:
+        from ideer.config import get_app_config
+
+        config = get_app_config()
+        mounts = getattr(config.sandbox, "mounts", None) if config.sandbox else None
+    except Exception:  # pragma: no cover - config unavailable, skip hinting
+        return None
+    for mount in mounts or []:
+        container = mount.container_path.rstrip("/")
+        if file_path == container or file_path.startswith(f"{container}/"):
+            if not Path(mount.host_path).exists():
+                return (
+                    f"Access denied: {file_path} belongs to a configured mount "
+                    f"({mount.container_path} -> {mount.host_path}), but the host "
+                    "path is not visible to this process. Mount the same host_path "
+                    "into the gateway/worker container to enable document reading."
+                )
+            return None
+    return None
+
+
 def _validate_path(file_path: str) -> Path:
     """Validate and resolve file path, ensuring it is within allowed directories.
 
@@ -176,18 +237,25 @@ async def read_document_tool(
         file_path: Path to the document file. Supports virtual paths like /mnt/user-data/uploads/xxx.
         page_range: Page range for PDF files, e.g. "1-5" or "3". If not specified, reads all pages.
     """
-    # Virtual /mnt/user-data paths are resolved through the injected runtime
-    # (thread_data mapping). When resolved, containment is already guaranteed
-    # by the mapping itself; only unresolved literal paths go through the
-    # prefix whitelist.
+    # Path resolution order:
+    #   1. /mnt/user-data virtual paths -> host paths via injected thread_data
+    #   2. configured custom mounts (sandbox.mounts) -> declared host_path
+    #   3. literal whitelist (/mnt/user-data, /tmp) — unchanged fallback
     resolved_input = _resolve_virtual_path(file_path, runtime)
     if resolved_input != file_path:
         path = Path(resolved_input).resolve()
     else:
-        try:
-            path = _validate_path(file_path)
-        except PermissionError as e:
-            return json.dumps({"error": str(e)}, ensure_ascii=False)
+        mounted = _resolve_mounted_path(file_path)
+        if mounted is not None:
+            path = Path(mounted).resolve()
+        else:
+            try:
+                path = _validate_path(file_path)
+            except PermissionError as e:
+                hint = _invisible_mount_hint(file_path)
+                if hint is not None:
+                    return json.dumps({"error": hint}, ensure_ascii=False)
+                return json.dumps({"error": str(e)}, ensure_ascii=False)
 
     # --- Validate path existence ---
     if not path.exists():
