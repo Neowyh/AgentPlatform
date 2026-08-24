@@ -77,10 +77,12 @@ nodes:
           使用 ls / glob / grep 枚举目录内容（注意：不要枚举上级目录，上级目录不在权限内）。
 
           1. 使用 glob 扫描 {{inputs.upload_dir}}，了解文件结构
-          2. 按格式读取关键文件：
-             - .doc/.docx/.pdf/.xls/.xlsx/.ppt/.pptx 调用 read_document 转 Markdown 后读取
-               （遇截断标记用 page_range 分段继续；转换结果为空疑似扫描件时按失败契约处理）
-             - .md/.txt/.log 等纯文本直接用 read_file 读取
+           2. 按格式读取关键文件：
+              - .docx/.pdf/.xls/.xlsx/.ppt/.pptx 调用 read_document 转 Markdown 后读取
+                （遇截断标记用 page_range 分段继续；转换结果为空疑似扫描件时按失败契约处理；
+                read_document 返回 JSON 错误时同样按失败契约处理，不得把错误信息当作内容；
+                legacy 二进制 .doc 不支持——记入覆盖矩阵缺失项并建议用户提供 .docx）
+              - .md/.txt/.log 等纯文本直接用 read_file 读取
           3. 读取文件内容，抽取每一条证据
           4. 检查五类资料覆盖情况：问题描述、设计约束、试验记录或日志、总结报告、历史或复核记录
           5. 生成证据台账
@@ -93,6 +95,9 @@ nodes:
           c) 输出摘要：总证据数、A/B/C/D 各级分布、覆盖情况
           失败契约：若无法完成任务，回复必须以 FAILED: 开头说明原因；
           严禁写入占位文件或空文件。
+    retry:
+      max_attempts: 2
+      backoff_seconds: 30
     writes:
       - "$.state.evidence_summary"
 
@@ -135,6 +140,12 @@ nodes:
           probability_basis、confidence、status 字段（留 null 或空数组）
           失败契约：若无法完成任务，回复必须以 FAILED: 开头说明原因；
           严禁写入占位文件或空文件。
+    schemas:
+      - file: "{{inputs.output_base_dir}}/artifacts/tree/fault_tree_structure.json"
+        schema_file: "/mnt/skills/fault-zeroing/templates/fault_tree_structure.schema.json"
+    retry:
+      max_attempts: 2
+      backoff_seconds: 30
     writes:
       - "$.state.tree_structure"
 
@@ -194,6 +205,14 @@ nodes:
 
           失败契约：若无法完成任务，回复必须以 FAILED: 开头说明原因；
           严禁编造审查结论。
+    preconditions:
+      - file: "{{inputs.output_base_dir}}/artifacts/tree/fault_tree_structure.json"
+        non_empty: true
+      - file: "{{inputs.output_base_dir}}/artifacts/evidence/evidence_table.json"
+        non_empty: true
+    retry:
+      max_attempts: 2
+      backoff_seconds: 30
     writes:
       - "$.state.all_findings"
 
@@ -239,6 +258,15 @@ nodes:
           输出：覆盖写入 {{inputs.output_base_dir}}/artifacts/tree/fault_tree_structure.json
           失败契约：若无法完成任务，回复必须以 FAILED: 开头说明原因；
           严禁写入占位文件或空文件。
+    schemas:
+      - file: "{{inputs.output_base_dir}}/artifacts/tree/fault_tree_structure.json"
+        schema_file: "/mnt/skills/fault-zeroing/templates/fault_tree_structure.schema.json"
+    preconditions:
+      - file: "{{inputs.output_base_dir}}/artifacts/tree/fault_tree_structure.json"
+        non_empty: true
+    retry:
+      max_attempts: 2
+      backoff_seconds: 30
     writes:
       - "$.state.tree_structure"
 
@@ -303,6 +331,13 @@ nodes:
     schemas:
       - file: "{{inputs.output_base_dir}}/fault_tree.json"
         schema_file: "/mnt/skills/fault-zeroing/templates/fault_tree.schema.json"
+    preconditions:
+      - file: "{{inputs.output_base_dir}}/artifacts/tree/fault_tree_structure.json"
+        non_empty: true
+      - file: "{{inputs.output_base_dir}}/artifacts/evidence/evidence_table.json"
+        non_empty: true
+      - file: "{{inputs.output_base_dir}}/artifacts/evidence/coverage_matrix.md"
+        non_empty: true
     writes:
       - "$.state.assessment_summary"
     retry:
@@ -338,8 +373,9 @@ nodes:
           - 验证计划可行性
 
           如需回查上传资料原文核对证据来源：
-          - .doc/.docx/.pdf/.xls/.xlsx/.ppt/.pptx 用 read_document 转 Markdown 后读取
-            （遇截断标记用 page_range 分段继续）
+          - .docx/.pdf/.xls/.xlsx/.ppt/.pptx 用 read_document 转 Markdown 后读取
+            （遇截断标记用 page_range 分段继续；read_document 返回 JSON 错误时
+            在问题清单中记录"来源无法回查"，不得编造核对结论）
           - .md/.txt/.log 等纯文本直接用 read_file 读取
 
           输出：
@@ -356,6 +392,9 @@ nodes:
 
           失败契约：若无法完成任务，回复必须以 FAILED: 开头说明原因；
           严禁输出推测性结论。
+    retry:
+      max_attempts: 2
+      backoff_seconds: 30
     writes:
       - "$.state.assessment_review"
 
@@ -386,6 +425,12 @@ nodes:
           - 不同意 → 说明理由
 
           输出：覆盖写入 {{inputs.output_base_dir}}/fault_tree.json
+    preconditions:
+      - file: "{{inputs.output_base_dir}}/fault_tree.json"
+        non_empty: true
+    retry:
+      max_attempts: 2
+      backoff_seconds: 30
     writes:
       - "$.state.assessment_summary"
 
@@ -440,6 +485,9 @@ nodes:
         json_path: "$.root_causes[*].status"
         some_equals: confirmed
     on_precondition_failure: skip
+    retry:
+      max_attempts: 2
+      backoff_seconds: 30
     writes:
       - "$.state.corrective_actions_summary"
 

@@ -28,7 +28,7 @@ server = Server("doc-reader")
 
 _DEFAULT_MAX_CHARS = 50_000
 _MAX_FILE_SIZE = 100_000_000  # 100 MB
-_SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt"}
+_SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".xlsx", ".xls", ".pptx", ".ppt"}
 
 # Security: only allow reading files under these prefixes
 _ALLOWED_PATH_PREFIXES = ["/mnt/user-data", "/tmp"]
@@ -130,7 +130,8 @@ async def read_document(file_path: str, page_range: str | None = None) -> str:
     """Read and extract text content from documents (PDF, Word, Excel, PowerPoint).
 
     Converts documents to Markdown format for easy reading. Supports .pdf, .docx,
-    .xlsx, .pptx and other common office formats.
+    .xlsx, .pptx and other common office formats. Legacy binary .doc files are
+    not supported — convert them to .docx first.
 
     Args:
         file_path: Path to the document file. Supports virtual paths like /mnt/user-data/uploads/xxx.

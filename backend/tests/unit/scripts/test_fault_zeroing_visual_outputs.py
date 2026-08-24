@@ -54,11 +54,19 @@ def test_fault_zeroing_skill_requires_visual_outputs() -> None:
 
     assert "read_document" in content
     for phrase in [
-        ".doc` / `.docx` / `.pdf`",
+        ".docx` / `.pdf",
         "page_range",
         "疑似扫描件",
     ]:
         assert phrase in content
+
+    # Legacy .doc is unsupported: the skill must not advertise it as readable
+    # and must instruct recording it as missing material instead.
+    assert ".doc` / `.docx" not in content
+    assert "不支持 legacy 二进制 `.doc`" in content
+    # Tool error responses (e.g. read_document JSON errors) must be treated
+    # under the failure contract, never ingested as document content.
+    assert "JSON 错误" in content
 
     for phrase in REMOVED_WORKFLOW_PHRASES:
         assert phrase not in content
@@ -82,6 +90,13 @@ def test_fault_zeroing_soul_requires_visual_outputs() -> None:
         assert phrase in content
 
     assert "SVG 不得包含脚本、外链资源或动态交互代码" in content
+
+    # Drift guards: conclusion status enum must match fault_tree.schema.json
+    # (conclusion_status), and the schema path must be the runtime mount path.
+    assert "`in_progress`、`not_applicable`" not in content
+    assert "skills/custom/fault-zeroing" not in content
+    assert "/mnt/skills/fault-zeroing/templates/fault_tree.schema.json" in content
+    assert "不得用于结论状态" in content
 
     for phrase in REMOVED_WORKFLOW_PHRASES:
         assert phrase not in content

@@ -23,6 +23,7 @@ from packages.harness.ideer.community.doc_reader.tools import (
     _extract_pdf_pages,
     _get_page_count,
     _parse_page_range,
+    _resolve_virtual_path,
     _truncate_output,
     _validate_path,
     read_document_tool,
@@ -875,7 +876,7 @@ class TestSupportedExtensions:
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
         "suffix",
-        [".pdf", ".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt"],
+        [".pdf", ".docx", ".xlsx", ".xls", ".pptx", ".ppt"],
     )
     async def test_each_supported_extension(self, suffix: str):
         path = _make_tmp_file(suffix=suffix)
@@ -907,9 +908,22 @@ class TestSupportedExtensions:
                 pass
 
     def test_supported_extensions_set(self):
-        """Module constant contains expected extensions."""
-        expected = {".pdf", ".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt"}
+        """Module constant contains expected extensions (legacy .doc excluded)."""
+        expected = {".pdf", ".docx", ".xlsx", ".xls", ".pptx", ".ppt"}
         assert _SUPPORTED_EXTENSIONS == expected
+
+    @pytest.mark.asyncio
+    async def test_legacy_doc_rejected_with_conversion_hint(self):
+        """Legacy .doc files get a dedicated error telling users to convert."""
+        path = _make_tmp_file(suffix=".doc")
+        try:
+            result = await read_document_tool.ainvoke({"file_path": path})
+            data = json.loads(result)
+            assert "error" in data
+            assert ".docx" in data["error"]
+            assert "convert" in data["error"].lower()
+        finally:
+            _cleanup(path)
 
     def test_allowed_path_prefixes(self):
         """Module constant for allowed prefixes."""
@@ -921,6 +935,122 @@ class TestSupportedExtensions:
 
     def test_max_file_size(self):
         assert _MAX_FILE_SIZE == 100_000_000
+
+
+# ============================================================================
+# read_document_tool — virtual /mnt/user-data path resolution
+# ============================================================================
+
+
+class TestVirtualPathResolution:
+    """Virtual /mnt/user-data paths resolve to host paths via runtime thread_data.
+
+    Regression coverage for the workflow gap: agent nodes receive sandbox
+    virtual paths (``/mnt/user-data/uploads/<case>/x.docx``) which previously
+    failed with "File not found" because read_document never resolved them.
+    """
+
+    @pytest.fixture()
+    def thread_env(self, tmp_path: Path):
+        """Create a host uploads dir + a real ToolRuntime carrying thread_data."""
+        from langchain.tools import ToolRuntime
+
+        uploads = tmp_path / "user-data" / "uploads"
+        uploads.mkdir(parents=True)
+        runtime = ToolRuntime(
+            state={
+                "thread_data": {
+                    "workspace_path": str(tmp_path / "user-data" / "workspace"),
+                    "uploads_path": str(uploads),
+                    "outputs_path": str(tmp_path / "user-data" / "outputs"),
+                }
+            },
+            context={"thread_id": "probe-thread"},
+            config={"configurable": {"thread_id": "probe-thread"}},
+            stream_writer=lambda _update: None,
+            tools=[],
+            tool_call_id=None,
+            store=None,
+        )
+        return runtime, uploads
+
+    @pytest.mark.asyncio
+    async def test_virtual_upload_path_resolves_and_reads(self, thread_env, tmp_path: Path):
+        runtime, uploads = thread_env
+        doc = uploads / "case" / "report.docx"
+        doc.parent.mkdir(parents=True)
+        doc.write_bytes(b"fake-docx")
+        md_path = tmp_path / "report.md"
+        md_path.write_text("# 转换后的内容", encoding="utf-8")
+
+        with (
+            patch(
+                "packages.harness.ideer.community.doc_reader.tools.convert_file_to_markdown",
+                new_callable=AsyncMock,
+                return_value=md_path,
+            ),
+            patch(
+                "packages.harness.ideer.community.doc_reader.tools._get_page_count",
+                return_value=None,
+            ),
+        ):
+            result = await read_document_tool.ainvoke({"runtime": runtime, "file_path": "/mnt/user-data/uploads/case/report.docx"})
+        assert "转换后的内容" in result
+
+    @pytest.mark.asyncio
+    async def test_virtual_output_path_reads(self, thread_env):
+        runtime, _uploads = thread_env
+        outputs = Path(runtime.state["thread_data"]["outputs_path"])
+        outputs.mkdir(parents=True, exist_ok=True)
+        doc = outputs / "brief.pdf"
+        doc.write_bytes(b"%PDF-1.4 fake")
+        # page-range extraction path avoids convert_file_to_markdown entirely.
+        with patch(
+            "packages.harness.ideer.community.doc_reader.tools._extract_pdf_pages",
+            return_value="# 页面内容",
+        ):
+            result = await read_document_tool.ainvoke(
+                {
+                    "runtime": runtime,
+                    "file_path": "/mnt/user-data/outputs/brief.pdf",
+                    "page_range": "1",
+                }
+            )
+        assert "# 页面内容" in result
+
+    @pytest.mark.asyncio
+    async def test_virtual_path_missing_file_reports_original_name(self, thread_env):
+        runtime, _uploads = thread_env
+        result = await read_document_tool.ainvoke({"runtime": runtime, "file_path": "/mnt/user-data/uploads/nope.docx"})
+        data = json.loads(result)
+        assert data["error"] == "File not found: /mnt/user-data/uploads/nope.docx"
+
+    @pytest.mark.asyncio
+    async def test_no_runtime_keeps_literal_prefix_whitelist(self):
+        """Without a runtime, literal /mnt/user-data paths behave as before."""
+        result = await read_document_tool.ainvoke({"file_path": "/mnt/user-data/uploads/definitely_missing_12345.docx"})
+        assert json.loads(result)["error"].startswith("File not found")
+
+    def test_unresolved_escape_still_blocked(self):
+        with pytest.raises(PermissionError):
+            _validate_path("/mnt/user-data/../../../etc/passwd")
+
+    def test_resolve_virtual_path_noop_cases(self):
+        assert _resolve_virtual_path("/tmp/x.pdf", None) == "/tmp/x.pdf"
+        from langchain.tools import ToolRuntime
+
+        runtime = ToolRuntime(
+            state={"thread_data": {"uploads_path": "/host/uploads"}},
+            context={},
+            config={},
+            stream_writer=lambda _update: None,
+            tools=[],
+            tool_call_id=None,
+            store=None,
+        )
+        assert _resolve_virtual_path("/tmp/x.pdf", runtime) == "/tmp/x.pdf"
+        assert _resolve_virtual_path("/mnt/user-data/uploads/a.pdf", None) == "/mnt/user-data/uploads/a.pdf"
+        assert _resolve_virtual_path("/mnt/user-data/uploads/a.pdf", runtime) == "/host/uploads/a.pdf"
 
 
 # ============================================================================

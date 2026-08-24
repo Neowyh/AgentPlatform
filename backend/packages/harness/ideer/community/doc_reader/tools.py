@@ -8,8 +8,9 @@ by agents.  Leverages the existing file-conversion infrastructure in
 import json
 import logging
 from pathlib import Path
+from typing import Any
 
-from langchain.tools import tool
+from langchain.tools import ToolRuntime, tool
 
 from ideer.utils.file_conversion import convert_file_to_markdown
 
@@ -18,10 +19,42 @@ logger = logging.getLogger(__name__)
 _DEFAULT_MAX_CHARS = 50_000
 _MAX_FILE_SIZE = 100_000_000  # 100 MB
 
-_SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt"}
+# Legacy binary ``.doc`` is deliberately unsupported: MarkItDown ships no .doc
+# converter, so conversion would fail (or emit garbage) at runtime. Callers are
+# told to re-upload as .docx instead.
+_SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".xlsx", ".xls", ".pptx", ".ppt"}
+
+_LEGACY_DOC_ERROR = {
+    "error": "Unsupported file format: legacy .doc is not supported. Please convert the document to .docx (open it in Word/WPS and save as .docx), then upload again.",
+}
 
 # Security: only allow reading files under these prefixes
 _ALLOWED_PATH_PREFIXES = ["/mnt/user-data", "/tmp"]
+
+
+def _resolve_virtual_path(file_path: str, runtime: Any) -> str:
+    """Resolve a ``/mnt/user-data`` virtual path to its host path.
+
+    Agent runs expose uploads/outputs under the virtual ``/mnt/user-data``
+    prefix; the actual location is per-thread and only known through the
+    injected runtime state (``thread_data``). Sandbox tools share the same
+    mapping via :func:`ideer.sandbox.tools.replace_virtual_path`.
+
+    Returns the input unchanged when there is no runtime, no thread_data, or
+    the path is not a ``/mnt/user-data`` path.
+    """
+    if runtime is None or not file_path.startswith("/mnt/user-data"):
+        return file_path
+    try:
+        from ideer.sandbox.tools import get_thread_data, replace_virtual_path
+
+        resolved = replace_virtual_path(file_path, get_thread_data(runtime))
+    except Exception as exc:  # pragma: no cover - defensive, mapping must exist
+        logger.warning("Virtual path resolution failed for %s: %s", file_path, exc)
+        return file_path
+    if resolved != file_path:
+        logger.debug("Resolved virtual path %s -> %s", file_path, resolved)
+    return resolved
 
 
 def _validate_path(file_path: str) -> Path:
@@ -128,20 +161,33 @@ def _parse_page_range(page_range: str) -> list[int] | None:
 
 
 @tool("read_document", parse_docstring=True)
-async def read_document_tool(file_path: str, page_range: str | None = None) -> str:
+async def read_document_tool(
+    runtime: ToolRuntime[dict[str, Any], Any] = None,
+    file_path: str = "",
+    page_range: str | None = None,
+) -> str:
     """Read and extract text content from documents (PDF, Word, Excel, PowerPoint).
 
     Converts documents to Markdown format for easy reading. Supports .pdf, .docx,
-    .xlsx, .pptx and other common office formats.
+    .xlsx, .pptx and other common office formats. Legacy binary .doc files are
+    not supported — convert them to .docx first.
 
     Args:
         file_path: Path to the document file. Supports virtual paths like /mnt/user-data/uploads/xxx.
         page_range: Page range for PDF files, e.g. "1-5" or "3". If not specified, reads all pages.
     """
-    try:
-        path = _validate_path(file_path)
-    except PermissionError as e:
-        return json.dumps({"error": str(e)}, ensure_ascii=False)
+    # Virtual /mnt/user-data paths are resolved through the injected runtime
+    # (thread_data mapping). When resolved, containment is already guaranteed
+    # by the mapping itself; only unresolved literal paths go through the
+    # prefix whitelist.
+    resolved_input = _resolve_virtual_path(file_path, runtime)
+    if resolved_input != file_path:
+        path = Path(resolved_input).resolve()
+    else:
+        try:
+            path = _validate_path(file_path)
+        except PermissionError as e:
+            return json.dumps({"error": str(e)}, ensure_ascii=False)
 
     # --- Validate path existence ---
     if not path.exists():
@@ -158,6 +204,8 @@ async def read_document_tool(file_path: str, page_range: str | None = None) -> s
 
     # --- Validate extension ---
     suffix = path.suffix.lower()
+    if suffix == ".doc":
+        return json.dumps(dict(_LEGACY_DOC_ERROR), ensure_ascii=False)
     if suffix not in _SUPPORTED_EXTENSIONS:
         return json.dumps(
             {
