@@ -7,11 +7,14 @@ import sys
 from types import ModuleType
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from ideer.utils.file_conversion import (
     _ASYNC_THRESHOLD_BYTES,
     _MIN_CHARS_PER_PAGE,
     MAX_OUTLINE_ENTRIES,
     _do_convert,
+    _get_docx_converter,
     _get_pdf_converter,
     _pymupdf_output_too_sparse,
     convert_file_to_markdown,
@@ -97,19 +100,100 @@ class TestPymupdfOutputTooSparse:
 class TestDoConvert:
     """Verify that _do_convert routes to the right sub-converter."""
 
-    def test_non_pdf_always_uses_markitdown(self, tmp_path):
-        """DOCX / XLSX / PPTX always go through MarkItDown regardless of setting."""
+    def test_xlsx_pptx_always_use_markitdown(self, tmp_path):
+        """XLSX / PPTX always go through MarkItDown regardless of setting."""
+        xlsx = tmp_path / "book.xlsx"
+        xlsx.write_bytes(b"PK fake xlsx")
+
+        with (
+            patch("ideer.utils.file_conversion._convert_word_with_rich") as mock_rich,
+            patch(
+                "ideer.utils.file_conversion._convert_with_markitdown",
+                return_value="# Markdown from MarkItDown",
+            ) as mock_md,
+        ):
+            result = _do_convert(xlsx, "auto", "auto")
+
+        mock_rich.assert_not_called()
+        mock_md.assert_called_once_with(xlsx)
+        assert result == "# Markdown from MarkItDown"
+
+    def test_docx_markitdown_mode_skips_rich(self, tmp_path):
+        """docx_converter='markitdown': legacy behaviour, rich parser never invoked."""
         docx = tmp_path / "report.docx"
         docx.write_bytes(b"PK fake docx")
 
-        with patch(
-            "ideer.utils.file_conversion._convert_with_markitdown",
-            return_value="# Markdown from MarkItDown",
-        ) as mock_md:
-            result = _do_convert(docx, "auto")
+        with (
+            patch("ideer.utils.file_conversion._convert_word_with_rich") as mock_rich,
+            patch(
+                "ideer.utils.file_conversion._convert_with_markitdown",
+                return_value="# Markdown from MarkItDown",
+            ) as mock_md,
+        ):
+            result = _do_convert(docx, "auto", "markitdown")
 
+        mock_rich.assert_not_called()
         mock_md.assert_called_once_with(docx)
         assert result == "# Markdown from MarkItDown"
+
+    def test_docx_auto_prefers_rich(self, tmp_path):
+        """auto mode: rich Word parser wins when it succeeds."""
+        docx = tmp_path / "report.docx"
+        docx.write_bytes(b"PK fake docx")
+
+        with (
+            patch(
+                "ideer.utils.file_conversion._convert_word_with_rich",
+                return_value="# Rich Heading\n",
+            ) as mock_rich,
+            patch("ideer.utils.file_conversion._convert_with_markitdown") as mock_md,
+        ):
+            result = _do_convert(docx, "auto", "auto")
+
+        mock_rich.assert_called_once_with(docx)
+        mock_md.assert_not_called()
+        assert result == "# Rich Heading\n"
+
+    def test_docx_auto_falls_back_when_rich_unavailable(self, tmp_path):
+        """auto mode: fall back to MarkItDown when rich parsing is unavailable."""
+        docx = tmp_path / "report.docx"
+        docx.write_bytes(b"PK fake docx")
+
+        with (
+            patch(
+                "ideer.utils.file_conversion._convert_word_with_rich",
+                return_value=None,
+            ),
+            patch(
+                "ideer.utils.file_conversion._convert_with_markitdown",
+                return_value="MarkItDown fallback",
+            ) as mock_md,
+        ):
+            result = _do_convert(docx, "auto", "auto")
+
+        mock_md.assert_called_once_with(docx)
+        assert result == "MarkItDown fallback"
+
+    def test_docx_rich_mode_raises_when_unavailable(self, tmp_path):
+        """'rich' mode: failure surfaces instead of silently degrading."""
+        docx = tmp_path / "report.docx"
+        docx.write_bytes(b"PK fake docx")
+
+        with (
+            patch(
+                "ideer.utils.file_conversion._convert_word_with_rich",
+                return_value=None,
+            ),
+            patch("ideer.utils.file_conversion._convert_with_markitdown") as mock_md,
+        ):
+            try:
+                _do_convert(docx, "auto", "rich")
+                raised = False
+            except RuntimeError:
+                raised = True
+
+        assert raised
+        mock_md.assert_not_called()
 
     def test_pdf_auto_uses_pymupdf4llm_when_dense(self, tmp_path):
         """auto mode: use pymupdf4llm output when it's dense enough."""
@@ -236,6 +320,94 @@ class TestGetPdfConverter:
 
         with patch("ideer.utils.file_conversion.get_app_config", return_value=cfg):
             assert _get_pdf_converter() == "auto"
+
+
+class TestGetDocxConverter:
+    def test_reads_dict_backed_uploads_config(self):
+        cfg = MagicMock()
+        cfg.uploads = {"docx_converter": "markitdown"}
+
+        with patch("ideer.utils.file_conversion.get_app_config", return_value=cfg):
+            assert _get_docx_converter() == "markitdown"
+
+    def test_reads_attribute_backed_uploads_config(self):
+        cfg = MagicMock()
+        cfg.uploads = MagicMock(docx_converter="rich")
+
+        with patch("ideer.utils.file_conversion.get_app_config", return_value=cfg):
+            assert _get_docx_converter() == "rich"
+
+    def test_invalid_value_falls_back_to_auto(self):
+        cfg = MagicMock()
+        cfg.uploads = {"docx_converter": "not-a-real-converter"}
+
+        with patch("ideer.utils.file_conversion.get_app_config", return_value=cfg):
+            assert _get_docx_converter() == "auto"
+
+
+class TestConvertWordWithRich:
+    """Integration-style tests for the rich Word branch (real .docx fixtures)."""
+
+    @staticmethod
+    def _build_docx_with_image_and_prose(path):
+        """docx with an embedded image AND prose text containing '(images/'."""
+        import io
+        import struct
+        import zlib
+
+        from docx import Document
+        from docx.shared import Inches
+
+        # Minimal valid 1x1 red PNG
+        def chunk(tag, data):
+            payload = tag + data
+            return struct.pack(">I", len(data)) + payload + struct.pack(">I", zlib.crc32(payload))
+
+        ihdr = struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0)
+        png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + chunk(b"IDAT", zlib.compress(b"\x00\xff\x00\x00")) + chunk(b"IEND", b"")
+
+        doc = Document()
+        doc.add_paragraph("标题一", style="Heading 1")
+        para = doc.add_paragraph()
+        para.add_run().add_picture(io.BytesIO(png), width=Inches(0.5))
+        # Prose that literally contains "(images/" — must NOT be rewritten
+        doc.add_paragraph("参见路径 (images/keep.png 获取原图)")
+        doc.save(str(path))
+
+    def test_relocates_artifacts_and_rewrites_refs(self, tmp_path):
+        from ideer.utils.file_conversion import _convert_word_with_rich
+
+        src = tmp_path / "report.docx"
+        self._build_docx_with_image_and_prose(src)
+
+        text = _convert_word_with_rich(src)
+
+        assert text is not None
+        # Image reference rewritten to the relocated directory
+        assert "](report_files/images/" in text
+        assert "](images/" not in text
+        # Prose containing "(images/" is left untouched
+        assert "(images/keep.png" in text
+        # Intermediate markdown removed; artifacts live under <stem>_files/
+        assert not (tmp_path / "report_files" / "report.md").exists()
+        assert (tmp_path / "report_files" / "images").is_dir()
+
+    def test_guard_rail_runtime_error_propagates(self, tmp_path):
+        """Deliberate RuntimeErrors (e.g. .doc without soffice) are not masked."""
+        from ideer.utils.file_conversion import _convert_word_with_rich
+
+        src = tmp_path / "legacy.doc"
+        src.write_bytes(b"\xd0\xcf\x11\xe0 fake OLE")
+
+        with (
+            patch("ideer.utils.docx_rich.is_available", return_value=True),
+            patch(
+                "ideer.utils.docx_rich.convert_docx",
+                side_effect=RuntimeError("LibreOffice (soffice) is required"),
+            ),
+        ):
+            with pytest.raises(RuntimeError, match="LibreOffice"):
+                _convert_word_with_rich(src)
 
 
 class TestConvertFileToMarkdown:

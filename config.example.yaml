@@ -625,6 +625,16 @@ uploads:
   #               Better heading/table extraction; faster on most files.
   # markitdown  — always use MarkItDown (original behaviour, no extra dependency).
   pdf_converter: auto
+  # Controls which Word (.docx/.doc)-to-Markdown converter is used whenever Word
+  # conversion runs. Automatic upload conversion is gated separately by
+  # auto_convert_documents.
+  # auto        — prefer the rich python-docx parser: preserves heading levels,
+  #               formatting, tables, images, MathType formulas (LaTeX) and Visio
+  #               drawings; falls back to MarkItDown on failure (recommended).
+  # rich        — always use the rich parser, no fallback. Legacy .doc support
+  #               requires LibreOffice (soffice) on the host.
+  # markitdown  — always use MarkItDown (original behaviour).
+  docx_converter: auto
 
 sandbox:
   use: ideer.sandbox.local:LocalSandboxProvider
