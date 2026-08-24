@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from packages.harness.ideer.community.doc_reader.tools import (
+from ideer.community.doc_reader.tools import (
     _ALLOWED_PATH_PREFIXES,
     _DEFAULT_MAX_CHARS,
     _MAX_FILE_SIZE,
@@ -334,7 +334,7 @@ class TestReadDocumentToolErrors:
         try:
             import stat as stat_mod
 
-            with patch("packages.harness.ideer.community.doc_reader.tools.Path.stat") as mock_stat:
+            with patch("ideer.community.doc_reader.tools.Path.stat") as mock_stat:
                 mock_stat_result = MagicMock()
                 mock_stat_result.st_size = _MAX_FILE_SIZE + 1
                 # is_file() also calls stat() and checks S_ISREG(st_mode)
@@ -353,7 +353,7 @@ class TestReadDocumentToolErrors:
         path = _make_tmp_file(suffix=".docx")
         try:
             with patch(
-                "packages.harness.ideer.community.doc_reader.tools.convert_file_to_markdown",
+                "ideer.community.doc_reader.tools.convert_file_to_markdown",
                 new_callable=AsyncMock,
                 side_effect=RuntimeError("boom"),
             ):
@@ -369,7 +369,7 @@ class TestReadDocumentToolErrors:
         path = _make_tmp_file(suffix=".docx")
         try:
             with patch(
-                "packages.harness.ideer.community.doc_reader.tools.convert_file_to_markdown",
+                "ideer.community.doc_reader.tools.convert_file_to_markdown",
                 new_callable=AsyncMock,
                 return_value=None,
             ):
@@ -386,7 +386,7 @@ class TestReadDocumentToolErrors:
         try:
             fake_md_path = Path("/tmp/nonexistent_output.md")
             with patch(
-                "packages.harness.ideer.community.doc_reader.tools.convert_file_to_markdown",
+                "ideer.community.doc_reader.tools.convert_file_to_markdown",
                 new_callable=AsyncMock,
                 return_value=fake_md_path,
             ):
@@ -406,7 +406,7 @@ class TestReadDocumentToolErrors:
             md_path.write_text("placeholder", encoding="utf-8")
             with (
                 patch(
-                    "packages.harness.ideer.community.doc_reader.tools.convert_file_to_markdown",
+                    "ideer.community.doc_reader.tools.convert_file_to_markdown",
                     new_callable=AsyncMock,
                     return_value=md_path,
                 ),
@@ -430,7 +430,7 @@ class TestReadDocumentToolErrors:
         try:
             md_path.write_text("   \n  ", encoding="utf-8")
             with patch(
-                "packages.harness.ideer.community.doc_reader.tools.convert_file_to_markdown",
+                "ideer.community.doc_reader.tools.convert_file_to_markdown",
                 new_callable=AsyncMock,
                 return_value=md_path,
             ):
@@ -463,12 +463,12 @@ class TestReadDocumentToolSuccess:
             md_path.write_text("# Hello World\n\nSome content.", encoding="utf-8")
             with (
                 patch(
-                    "packages.harness.ideer.community.doc_reader.tools.convert_file_to_markdown",
+                    "ideer.community.doc_reader.tools.convert_file_to_markdown",
                     new_callable=AsyncMock,
                     return_value=md_path,
                 ),
                 patch(
-                    "packages.harness.ideer.community.doc_reader.tools._get_page_count",
+                    "ideer.community.doc_reader.tools._get_page_count",
                     return_value=None,
                 ),
             ):
@@ -493,12 +493,12 @@ class TestReadDocumentToolSuccess:
             md_path.write_text("# PDF Content\n\nSome text.", encoding="utf-8")
             with (
                 patch(
-                    "packages.harness.ideer.community.doc_reader.tools.convert_file_to_markdown",
+                    "ideer.community.doc_reader.tools.convert_file_to_markdown",
                     new_callable=AsyncMock,
                     return_value=md_path,
                 ),
                 patch(
-                    "packages.harness.ideer.community.doc_reader.tools._get_page_count",
+                    "ideer.community.doc_reader.tools._get_page_count",
                     return_value=10,
                 ),
             ):
@@ -521,7 +521,7 @@ class TestReadDocumentToolSuccess:
         try:
             md_path.write_text("| Col1 | Col2 |\n|---|---|\n| A | B |", encoding="utf-8")
             with patch(
-                "packages.harness.ideer.community.doc_reader.tools.convert_file_to_markdown",
+                "ideer.community.doc_reader.tools.convert_file_to_markdown",
                 new_callable=AsyncMock,
                 return_value=md_path,
             ):
@@ -542,7 +542,7 @@ class TestReadDocumentToolSuccess:
         try:
             md_path.write_text("# Slide 1\n\nContent here.", encoding="utf-8")
             with patch(
-                "packages.harness.ideer.community.doc_reader.tools.convert_file_to_markdown",
+                "ideer.community.doc_reader.tools.convert_file_to_markdown",
                 new_callable=AsyncMock,
                 return_value=md_path,
             ):
@@ -563,7 +563,7 @@ class TestReadDocumentToolSuccess:
         try:
             md_path.write_text("Body text.", encoding="utf-8")
             with patch(
-                "packages.harness.ideer.community.doc_reader.tools.convert_file_to_markdown",
+                "ideer.community.doc_reader.tools.convert_file_to_markdown",
                 new_callable=AsyncMock,
                 return_value=md_path,
             ):
@@ -591,7 +591,7 @@ class TestReadDocumentToolSuccess:
         try:
             md_path.write_text("Body.", encoding="utf-8")
             with patch(
-                "packages.harness.ideer.community.doc_reader.tools.convert_file_to_markdown",
+                "ideer.community.doc_reader.tools.convert_file_to_markdown",
                 new_callable=AsyncMock,
                 return_value=md_path,
             ):
@@ -618,7 +618,7 @@ class TestReadDocumentToolSuccess:
             large_content = "x" * (_DEFAULT_MAX_CHARS + 10000)
             md_path.write_text(large_content, encoding="utf-8")
             with patch(
-                "packages.harness.ideer.community.doc_reader.tools.convert_file_to_markdown",
+                "ideer.community.doc_reader.tools.convert_file_to_markdown",
                 new_callable=AsyncMock,
                 return_value=md_path,
             ):
@@ -640,7 +640,7 @@ class TestReadDocumentToolSuccess:
         try:
             md_path.write_text("Content.", encoding="utf-8")
             with patch(
-                "packages.harness.ideer.community.doc_reader.tools.convert_file_to_markdown",
+                "ideer.community.doc_reader.tools.convert_file_to_markdown",
                 new_callable=AsyncMock,
                 return_value=md_path,
             ):
@@ -670,11 +670,11 @@ class TestReadDocumentToolPdfPageRange:
         try:
             with (
                 patch(
-                    "packages.harness.ideer.community.doc_reader.tools._extract_pdf_pages",
+                    "ideer.community.doc_reader.tools._extract_pdf_pages",
                     return_value="# Pages 1-3 content",
                 ),
                 patch(
-                    "packages.harness.ideer.community.doc_reader.tools._get_page_count",
+                    "ideer.community.doc_reader.tools._get_page_count",
                     return_value=10,
                 ),
             ):
@@ -692,11 +692,11 @@ class TestReadDocumentToolPdfPageRange:
         try:
             with (
                 patch(
-                    "packages.harness.ideer.community.doc_reader.tools._extract_pdf_pages",
+                    "ideer.community.doc_reader.tools._extract_pdf_pages",
                     return_value="# Extracted pages",
                 ),
                 patch(
-                    "packages.harness.ideer.community.doc_reader.tools._get_page_count",
+                    "ideer.community.doc_reader.tools._get_page_count",
                     return_value=None,
                 ),
             ):
@@ -715,16 +715,16 @@ class TestReadDocumentToolPdfPageRange:
             md_path.write_text("# Full Document Content", encoding="utf-8")
             with (
                 patch(
-                    "packages.harness.ideer.community.doc_reader.tools._extract_pdf_pages",
+                    "ideer.community.doc_reader.tools._extract_pdf_pages",
                     return_value=None,
                 ),
                 patch(
-                    "packages.harness.ideer.community.doc_reader.tools.convert_file_to_markdown",
+                    "ideer.community.doc_reader.tools.convert_file_to_markdown",
                     new_callable=AsyncMock,
                     return_value=md_path,
                 ),
                 patch(
-                    "packages.harness.ideer.community.doc_reader.tools._get_page_count",
+                    "ideer.community.doc_reader.tools._get_page_count",
                     return_value=5,
                 ),
             ):
@@ -746,11 +746,11 @@ class TestReadDocumentToolPdfPageRange:
             large_text = "x" * (_DEFAULT_MAX_CHARS + 5000)
             with (
                 patch(
-                    "packages.harness.ideer.community.doc_reader.tools._extract_pdf_pages",
+                    "ideer.community.doc_reader.tools._extract_pdf_pages",
                     return_value=large_text,
                 ),
                 patch(
-                    "packages.harness.ideer.community.doc_reader.tools._get_page_count",
+                    "ideer.community.doc_reader.tools._get_page_count",
                     return_value=100,
                 ),
             ):
@@ -769,10 +769,10 @@ class TestReadDocumentToolPdfPageRange:
             md_path.write_text("Word content.", encoding="utf-8")
             with (
                 patch(
-                    "packages.harness.ideer.community.doc_reader.tools._extract_pdf_pages",
+                    "ideer.community.doc_reader.tools._extract_pdf_pages",
                 ) as mock_extract,
                 patch(
-                    "packages.harness.ideer.community.doc_reader.tools.convert_file_to_markdown",
+                    "ideer.community.doc_reader.tools.convert_file_to_markdown",
                     new_callable=AsyncMock,
                     return_value=md_path,
                 ),
@@ -796,12 +796,12 @@ class TestReadDocumentToolPdfPageRange:
             md_path.write_text("# Full PDF Content", encoding="utf-8")
             with (
                 patch(
-                    "packages.harness.ideer.community.doc_reader.tools.convert_file_to_markdown",
+                    "ideer.community.doc_reader.tools.convert_file_to_markdown",
                     new_callable=AsyncMock,
                     return_value=md_path,
                 ),
                 patch(
-                    "packages.harness.ideer.community.doc_reader.tools._get_page_count",
+                    "ideer.community.doc_reader.tools._get_page_count",
                     return_value=20,
                 ),
             ):
@@ -833,7 +833,7 @@ class TestReadDocumentToolCleanup:
             md_path.write_text("Content.", encoding="utf-8")
             with (
                 patch(
-                    "packages.harness.ideer.community.doc_reader.tools.convert_file_to_markdown",
+                    "ideer.community.doc_reader.tools.convert_file_to_markdown",
                     new_callable=AsyncMock,
                     return_value=md_path,
                 ),
@@ -855,7 +855,7 @@ class TestReadDocumentToolCleanup:
         path = _make_tmp_file(suffix=".docx")
         try:
             with patch(
-                "packages.harness.ideer.community.doc_reader.tools.convert_file_to_markdown",
+                "ideer.community.doc_reader.tools.convert_file_to_markdown",
                 new_callable=AsyncMock,
                 side_effect=RuntimeError("fail"),
             ):
@@ -886,12 +886,12 @@ class TestSupportedExtensions:
             md_path.write_text("Content.", encoding="utf-8")
             with (
                 patch(
-                    "packages.harness.ideer.community.doc_reader.tools.convert_file_to_markdown",
+                    "ideer.community.doc_reader.tools.convert_file_to_markdown",
                     new_callable=AsyncMock,
                     return_value=md_path,
                 ),
                 patch(
-                    "packages.harness.ideer.community.doc_reader.tools._get_page_count",
+                    "ideer.community.doc_reader.tools._get_page_count",
                     return_value=None,
                 ),
             ):
@@ -986,12 +986,12 @@ class TestVirtualPathResolution:
 
         with (
             patch(
-                "packages.harness.ideer.community.doc_reader.tools.convert_file_to_markdown",
+                "ideer.community.doc_reader.tools.convert_file_to_markdown",
                 new_callable=AsyncMock,
                 return_value=md_path,
             ),
             patch(
-                "packages.harness.ideer.community.doc_reader.tools._get_page_count",
+                "ideer.community.doc_reader.tools._get_page_count",
                 return_value=None,
             ),
         ):
@@ -1007,7 +1007,7 @@ class TestVirtualPathResolution:
         doc.write_bytes(b"%PDF-1.4 fake")
         # page-range extraction path avoids convert_file_to_markdown entirely.
         with patch(
-            "packages.harness.ideer.community.doc_reader.tools._extract_pdf_pages",
+            "ideer.community.doc_reader.tools._extract_pdf_pages",
             return_value="# 页面内容",
         ):
             result = await read_document_tool.ainvoke(
@@ -1069,30 +1069,24 @@ class TestCustomMountResolution:
 
     @pytest.fixture()
     def mounted_env(self, tmp_path: Path, monkeypatch):
-        """Register a real tmp-dir mount via the shared _get_custom_mounts cache.
-
-        The ideer package is importable under two module identities
-        (``ideer.*`` used by production code and ``packages.harness.ideer.*``
-        used by tests), so both module objects must be patched.
-        """
+        """Register a real tmp-dir mount via the shared _get_custom_mounts cache."""
         host_dir = tmp_path / "eval-host"
         host_dir.mkdir()
         mounts = [SimpleNamespace(host_path=str(host_dir), container_path="/mnt/eval-case", read_only=True)]
-        import packages.harness.ideer.sandbox.tools as _sbx_alt
+        import ideer.sandbox.tools as sandbox_tools
 
-        for sbx in {_get_sandbox_tools_module(), _sbx_alt}:
-            monkeypatch.setattr(sbx, "_get_custom_mounts", lambda mounts=mounts: mounts)
+        monkeypatch.setattr(sandbox_tools, "_get_custom_mounts", lambda mounts=mounts: mounts)
         yield host_dir
 
     def _patch_conversion(self, md_path: Path):
         return (
             patch(
-                "packages.harness.ideer.community.doc_reader.tools.convert_file_to_markdown",
+                "ideer.community.doc_reader.tools.convert_file_to_markdown",
                 new_callable=AsyncMock,
                 return_value=md_path,
             ),
             patch(
-                "packages.harness.ideer.community.doc_reader.tools._get_page_count",
+                "ideer.community.doc_reader.tools._get_page_count",
                 return_value=None,
             ),
         )
@@ -1135,7 +1129,7 @@ class TestCustomMountResolution:
         # Ensure the shared cache does not know this mount either.
         with (
             patch(
-                "packages.harness.ideer.sandbox.tools._get_custom_mounts",
+                "ideer.sandbox.tools._get_custom_mounts",
                 return_value=[],
             ),
             patch(
@@ -1158,21 +1152,13 @@ class TestCustomMountResolution:
             SimpleNamespace(host_path=str(parent_host), container_path="/mnt/data", read_only=True),
             SimpleNamespace(host_path=str(child_host), container_path="/mnt/data/sub", read_only=True),
         ]
-        import packages.harness.ideer.sandbox.tools as _sbx_alt
+        import ideer.sandbox.tools as sandbox_tools
 
-        for sbx in {_get_sandbox_tools_module(), _sbx_alt}:
-            monkeypatch.setattr(sbx, "_get_custom_mounts", lambda mounts=mounts: mounts)
+        monkeypatch.setattr(sandbox_tools, "_get_custom_mounts", lambda mounts=mounts: mounts)
         resolved_child = _resolve_mounted_path("/mnt/data/sub/a.pdf")
         resolved_parent = _resolve_mounted_path("/mnt/data/other/b.pdf")
         assert str(child_host / "a.pdf") == resolved_child
         assert str(parent_host / "other/b.pdf") == resolved_parent
-
-
-def _get_sandbox_tools_module():
-    """Return the ``ideer.sandbox.tools`` module object production code uses."""
-    import ideer.sandbox.tools as sbx
-
-    return sbx
 
 
 class TestMcpServerMountWhitelist:
@@ -1185,7 +1171,7 @@ class TestMcpServerMountWhitelist:
 
     def _import_mcp_server(self):
         try:
-            from packages.harness.ideer.community.doc_reader import mcp_server
+            from ideer.community.doc_reader import mcp_server
         except AttributeError as exc:
             pytest.skip(f"installed mcp library incompatible with this module: {exc}")
         return mcp_server
@@ -1196,10 +1182,9 @@ class TestMcpServerMountWhitelist:
         host_dir = tmp_path / "mcp-host"
         host_dir.mkdir()
         mounts = [SimpleNamespace(host_path=str(host_dir), container_path="/mnt/mcp-case", read_only=True)]
-        import packages.harness.ideer.sandbox.tools as _sbx_alt
+        import ideer.sandbox.tools as sandbox_tools
 
-        for sbx in {_get_sandbox_tools_module(), _sbx_alt}:
-            monkeypatch.setattr(sbx, "_get_custom_mounts", lambda mounts=mounts: mounts)
+        monkeypatch.setattr(sandbox_tools, "_get_custom_mounts", lambda mounts=mounts: mounts)
         resolved = mcp_server._validate_path("/mnt/mcp-case/doc.pdf")
         assert isinstance(resolved, Path)
 

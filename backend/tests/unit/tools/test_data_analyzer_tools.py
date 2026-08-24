@@ -10,7 +10,7 @@ from unittest.mock import patch
 import pandas as pd
 import pytest
 
-from packages.harness.ideer.community.data_analyzer.tools import (
+from ideer.community.data_analyzer.tools import (
     _MAX_FILE_SIZE,
     _MAX_MEMORY_BYTES,
     _MAX_OUTPUT_CHARS,
@@ -77,7 +77,7 @@ class TestCheckPandas:
         assert _check_pandas() is None
 
     def test_returns_error_when_pandas_none(self):
-        with patch("packages.harness.ideer.community.data_analyzer.tools.pd", None):
+        with patch("ideer.community.data_analyzer.tools.pd", None):
             result = _check_pandas()
             assert result is not None
             assert "pandas" in result.lower()
@@ -88,7 +88,7 @@ class TestCheckPandas:
 
 class TestReadFile:
     def test_pandas_not_installed(self):
-        with patch("packages.harness.ideer.community.data_analyzer.tools.pd", None):
+        with patch("ideer.community.data_analyzer.tools.pd", None):
             df, err = _read_file("/tmp/test.csv")
             assert df is None
             assert "pandas" in err.lower()
@@ -107,7 +107,7 @@ class TestReadFile:
         path = _tmp_csv("a,b\n1,2\n")
         try:
             with patch(
-                "packages.harness.ideer.community.data_analyzer.tools.os.path.getsize",
+                "ideer.community.data_analyzer.tools.os.path.getsize",
                 return_value=_MAX_FILE_SIZE + 1,
             ):
                 df, err = _read_file(path)
@@ -188,13 +188,13 @@ class TestReadFile:
                     raise ValueError("fail")
                 return original_read_json(*args, **kwargs)
 
-            with patch("packages.harness.ideer.community.data_analyzer.tools.pd.read_json", side_effect=mock_read_json):
-                with patch("packages.harness.ideer.community.data_analyzer.tools.pd", pd):
+            with patch("ideer.community.data_analyzer.tools.pd.read_json", side_effect=mock_read_json):
+                with patch("ideer.community.data_analyzer.tools.pd", pd):
                     # Force re-import side effect: just call _read_file with the mock active
                     pass
 
             # Instead, directly test the chunked fallback path by mocking
-            with patch("packages.harness.ideer.community.data_analyzer.tools.pd") as mock_pd:
+            with patch("ideer.community.data_analyzer.tools.pd") as mock_pd:
                 mock_pd.read_json.side_effect = [
                     ValueError("fail1"),  # first call
                     ValueError("fail2"),  # lines=True call
@@ -231,7 +231,7 @@ class TestReadFile:
     def test_generic_exception_during_read(self):
         path = _tmp_csv("a,b\n1,2\n")
         try:
-            with patch("packages.harness.ideer.community.data_analyzer.tools.pd.read_csv", side_effect=RuntimeError("boom")):
+            with patch("ideer.community.data_analyzer.tools.pd.read_csv", side_effect=RuntimeError("boom")):
                 df, err = _read_file(path)
                 assert df is None
                 assert "failed to read file" in err.lower()
@@ -243,7 +243,7 @@ class TestReadFile:
         path = _tmp_csv("a,b\n1,2\n")
         try:
             fake_df = pd.DataFrame({"a": [1], "b": [2]})
-            with patch("packages.harness.ideer.community.data_analyzer.tools.pd.read_csv", return_value=fake_df):
+            with patch("ideer.community.data_analyzer.tools.pd.read_csv", return_value=fake_df):
                 with patch.object(pd.DataFrame, "memory_usage", return_value=pd.Series([_MAX_MEMORY_BYTES + 1])):
                     df, err = _read_file(path)
                     assert df is None
@@ -257,7 +257,7 @@ class TestReadFile:
         try:
             # Create a mock df that reports more rows than _MAX_ROWS
             big_df = pd.DataFrame({"a": range(_MAX_ROWS + 100)})
-            with patch("packages.harness.ideer.community.data_analyzer.tools.pd.read_csv", return_value=big_df):
+            with patch("ideer.community.data_analyzer.tools.pd.read_csv", return_value=big_df):
                 with patch.object(pd.DataFrame, "memory_usage", return_value=pd.Series([100])):
                     df, err = _read_file(path)
                     assert err is None
@@ -419,7 +419,7 @@ class TestDataAnalyzerTool:
         assert hasattr(data_analyzer_tool, "invoke")
 
     def test_pandas_not_installed(self):
-        with patch("packages.harness.ideer.community.data_analyzer.tools.pd", None):
+        with patch("ideer.community.data_analyzer.tools.pd", None):
             result = data_analyzer_tool.invoke({"file_path": "/tmp/test.csv"})
             data = json.loads(result)
             assert "error" in data
@@ -477,7 +477,7 @@ class TestDataAnalyzerTool:
         path = _tmp_csv("a,b\n1,2\n3,4\n")
         try:
             with patch(
-                "packages.harness.ideer.community.data_analyzer.tools._analyze_summary",
+                "ideer.community.data_analyzer.tools._analyze_summary",
                 side_effect=RuntimeError("analysis boom"),
             ):
                 result = data_analyzer_tool.invoke({"file_path": path, "analysis_type": "summary"})
@@ -494,7 +494,7 @@ class TestDataAnalyzerTool:
             # Create a result that would produce very long output
             huge_result = {"data": "x" * (_MAX_OUTPUT_CHARS + 5000)}
             with patch(
-                "packages.harness.ideer.community.data_analyzer.tools._analyze_summary",
+                "ideer.community.data_analyzer.tools._analyze_summary",
                 return_value=huge_result,
             ):
                 result = data_analyzer_tool.invoke({"file_path": path, "analysis_type": "summary"})
@@ -513,7 +513,7 @@ class TestDataAnalyzerTool:
             # Moderate size result that triggers truncation but binary search finds fit
             huge_result = {"data": "abcdefghij" * 2000}
             with patch(
-                "packages.harness.ideer.community.data_analyzer.tools._analyze_summary",
+                "ideer.community.data_analyzer.tools._analyze_summary",
                 return_value=huge_result,
             ):
                 result = data_analyzer_tool.invoke({"file_path": path, "analysis_type": "summary"})

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from packages.harness.ideer.tools.registry import ToolInfo, ToolRegistry
+from ideer.tools.registry import ToolInfo, ToolRegistry
 
 
 class TestToolRegistry:

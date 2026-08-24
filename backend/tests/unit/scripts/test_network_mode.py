@@ -12,7 +12,7 @@ from __future__ import annotations
 import os
 from unittest.mock import patch
 
-from packages.harness.ideer.config.network_mode import NetworkMode, get_network_mode, is_offline
+from ideer.config.network_mode import NetworkMode, get_network_mode, is_offline
 
 
 class TestNetworkModeEnum:

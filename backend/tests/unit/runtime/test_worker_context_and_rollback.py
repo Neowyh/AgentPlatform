@@ -6,8 +6,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from packages.harness.ideer.runtime.runs.schemas import RunStatus
-from packages.harness.ideer.runtime.runs.worker import (
+from ideer.runtime.runs.schemas import RunStatus
+from ideer.runtime.runs.worker import (
     RunContext,
     _rollback_to_pre_run_checkpoint,
     run_agent,
@@ -59,10 +59,10 @@ class TestRunWithAppConfig:
             factory_calls["app_config"] = app_config
             return mock_agent
 
-        with patch("packages.harness.ideer.runtime.runs.worker.inject_langfuse_metadata"):
-            with patch("packages.harness.ideer.runtime.runs.worker.get_effective_user_id", return_value="user_1"):
-                with patch("packages.harness.ideer.runtime.runs.worker.os.environ", {}):
-                    with patch("packages.harness.ideer.runtime.runs.worker.resolve_root_run_name", return_value="test"):
+        with patch("ideer.runtime.runs.worker.inject_langfuse_metadata"):
+            with patch("ideer.runtime.runs.worker.get_effective_user_id", return_value="user_1"):
+                with patch("ideer.runtime.runs.worker.os.environ", {}):
+                    with patch("ideer.runtime.runs.worker.resolve_root_run_name", return_value="test"):
                         await run_agent(
                             bridge,
                             run_manager,
@@ -118,10 +118,10 @@ class TestRunWithStore:
         def agent_factory(config=None):
             return mock_agent
 
-        with patch("packages.harness.ideer.runtime.runs.worker.inject_langfuse_metadata"):
-            with patch("packages.harness.ideer.runtime.runs.worker.get_effective_user_id", return_value="user_1"):
-                with patch("packages.harness.ideer.runtime.runs.worker.os.environ", {}):
-                    with patch("packages.harness.ideer.runtime.runs.worker.resolve_root_run_name", return_value="test"):
+        with patch("ideer.runtime.runs.worker.inject_langfuse_metadata"):
+            with patch("ideer.runtime.runs.worker.get_effective_user_id", return_value="user_1"):
+                with patch("ideer.runtime.runs.worker.os.environ", {}):
+                    with patch("ideer.runtime.runs.worker.resolve_root_run_name", return_value="test"):
                         await run_agent(
                             bridge,
                             run_manager,
@@ -178,10 +178,10 @@ class TestMultiModeStreamNoneMode:
         def agent_factory(config=None):
             return mock_agent
 
-        with patch("packages.harness.ideer.runtime.runs.worker.inject_langfuse_metadata"):
-            with patch("packages.harness.ideer.runtime.runs.worker.get_effective_user_id", return_value="user_1"):
-                with patch("packages.harness.ideer.runtime.runs.worker.os.environ", {}):
-                    with patch("packages.harness.ideer.runtime.runs.worker.resolve_root_run_name", return_value="test"):
+        with patch("ideer.runtime.runs.worker.inject_langfuse_metadata"):
+            with patch("ideer.runtime.runs.worker.get_effective_user_id", return_value="user_1"):
+                with patch("ideer.runtime.runs.worker.os.environ", {}):
+                    with patch("ideer.runtime.runs.worker.resolve_root_run_name", return_value="test"):
                         await run_agent(
                             bridge,
                             run_manager,
@@ -309,10 +309,10 @@ class TestAgentFactoryWithoutAppConfig:
         def agent_factory(config=None):
             return mock_agent
 
-        with patch("packages.harness.ideer.runtime.runs.worker.inject_langfuse_metadata"):
-            with patch("packages.harness.ideer.runtime.runs.worker.get_effective_user_id", return_value="user_1"):
-                with patch("packages.harness.ideer.runtime.runs.worker.os.environ", {}):
-                    with patch("packages.harness.ideer.runtime.runs.worker.resolve_root_run_name", return_value="test"):
+        with patch("ideer.runtime.runs.worker.inject_langfuse_metadata"):
+            with patch("ideer.runtime.runs.worker.get_effective_user_id", return_value="user_1"):
+                with patch("ideer.runtime.runs.worker.os.environ", {}):
+                    with patch("ideer.runtime.runs.worker.resolve_root_run_name", return_value="test"):
                         await run_agent(
                             bridge,
                             run_manager,
@@ -375,10 +375,10 @@ class TestMultiModeStreamAbort:
         def agent_factory(config=None):
             return mock_agent
 
-        with patch("packages.harness.ideer.runtime.runs.worker.inject_langfuse_metadata"):
-            with patch("packages.harness.ideer.runtime.runs.worker.get_effective_user_id", return_value="user_1"):
-                with patch("packages.harness.ideer.runtime.runs.worker.os.environ", {}):
-                    with patch("packages.harness.ideer.runtime.runs.worker.resolve_root_run_name", return_value="test"):
+        with patch("ideer.runtime.runs.worker.inject_langfuse_metadata"):
+            with patch("ideer.runtime.runs.worker.get_effective_user_id", return_value="user_1"):
+                with patch("ideer.runtime.runs.worker.os.environ", {}):
+                    with patch("ideer.runtime.runs.worker.resolve_root_run_name", return_value="test"):
                         await run_agent(
                             bridge,
                             run_manager,
@@ -431,10 +431,10 @@ class TestMultiModeStreamNoneModeExtra:
         def agent_factory(config=None):
             return mock_agent
 
-        with patch("packages.harness.ideer.runtime.runs.worker.inject_langfuse_metadata"):
-            with patch("packages.harness.ideer.runtime.runs.worker.get_effective_user_id", return_value="user_1"):
-                with patch("packages.harness.ideer.runtime.runs.worker.os.environ", {}):
-                    with patch("packages.harness.ideer.runtime.runs.worker.resolve_root_run_name", return_value="test"):
+        with patch("ideer.runtime.runs.worker.inject_langfuse_metadata"):
+            with patch("ideer.runtime.runs.worker.get_effective_user_id", return_value="user_1"):
+                with patch("ideer.runtime.runs.worker.os.environ", {}):
+                    with patch("ideer.runtime.runs.worker.resolve_root_run_name", return_value="test"):
                         await run_agent(
                             bridge,
                             run_manager,

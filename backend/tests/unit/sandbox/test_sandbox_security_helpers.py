@@ -11,7 +11,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from packages.harness.ideer.sandbox.security import (
+from ideer.sandbox.security import (
     LOCAL_BASH_SUBAGENT_DISABLED_MESSAGE,
     LOCAL_HOST_BASH_DISABLED_MESSAGE,
     is_host_bash_allowed,

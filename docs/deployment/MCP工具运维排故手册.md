@@ -447,7 +447,7 @@ docker exec ideer-gateway ls -la /app/backend/extensions_config.json
 
 # 模拟配置加载
 docker exec -w /app/backend ideer-gateway /app/backend/.venv/bin/python3 -c "
-from packages.harness.ideer.config.extensions_config import ExtensionsConfig
+from ideer.config.extensions_config import ExtensionsConfig
 c=ExtensionsConfig.from_file()
 print(list(c.mcp_servers.keys()), [(s.enabled,s.type,s.url) for s in c.mcp_servers.values()])
 "
@@ -740,7 +740,7 @@ docker exec ideer-gateway cat /app/backend/extensions_config.json
 
 # 模拟配置加载
 docker exec -w /app/backend ideer-gateway /app/backend/.venv/bin/python3 -c "
-from packages.harness.ideer.config.extensions_config import ExtensionsConfig
+from ideer.config.extensions_config import ExtensionsConfig
 c=ExtensionsConfig.from_file()
 print(list(c.mcp_servers.keys()), [(s.enabled,s.type,s.url) for s in c.mcp_servers.values()])
 "
