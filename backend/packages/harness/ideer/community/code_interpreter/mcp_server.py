@@ -22,6 +22,12 @@ import tempfile
 
 from mcp.server.fastmcp import FastMCP
 
+# NOTE: execution intentionally differs from tools.py — the in-process tool
+# runs code inside the platform sandbox (Runtime-injected), while this MCP
+# variant executes locally via subprocess with its own resource limits.
+# Only output truncation is shared, imported from the canonical source.
+from ideer.community.code_interpreter.tools import _truncate_output
+
 logger = logging.getLogger(__name__)
 
 # FastMCP exposes the ``.tool`` decorator; the low-level Server does not.
@@ -53,28 +59,6 @@ def _set_resource_limits() -> None:
         resource.setrlimit(resource.RLIMIT_NPROC, (64, 64))
     except (ValueError, OSError):
         pass  # Resource limits not available on this platform
-
-
-def _truncate_output(output: str, max_chars: int = _MAX_OUTPUT_CHARS) -> str:
-    """Middle-truncate output, preserving head and tail (50/50 split).
-
-    The returned string (including the truncation marker) is guaranteed to be
-    no longer than max_chars characters. Pass max_chars=0 to disable truncation.
-    """
-    if max_chars == 0:
-        return output
-    if len(output) <= max_chars:
-        return output
-    total_len = len(output)
-    marker_max_len = len(f"\n... [middle truncated: {total_len} chars skipped] ...\n")
-    kept = max(0, max_chars - marker_max_len)
-    if kept == 0:
-        return output[:max_chars]
-    head_len = kept // 2
-    tail_len = kept - head_len
-    skipped = total_len - kept
-    marker = f"\n... [middle truncated: {skipped} chars skipped] ...\n"
-    return f"{output[:head_len]}{marker}{output[-tail_len:] if tail_len > 0 else ''}"
 
 
 @server.tool("code_interpreter")

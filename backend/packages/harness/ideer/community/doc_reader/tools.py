@@ -221,21 +221,16 @@ def _parse_page_range(page_range: str) -> list[int] | None:
     return pages if pages else None
 
 
-@tool("read_document", parse_docstring=True)
-async def read_document_tool(
-    runtime: ToolRuntime[dict[str, Any], Any] = None,
-    file_path: str = "",
+async def read_document_async(
+    file_path: str,
     page_range: str | None = None,
+    runtime: ToolRuntime[dict[str, Any], Any] | None = None,
 ) -> str:
-    """Read and extract text content from documents (PDF, Word, Excel, PowerPoint).
+    """Single-source implementation of the read_document capability.
 
-    Converts documents to Markdown format for easy reading. Supports .pdf, .docx,
-    .xlsx, .pptx and other common office formats. Legacy binary .doc files are
-    not supported — convert them to .docx first.
-
-    Args:
-        file_path: Path to the document file. Supports virtual paths like /mnt/user-data/uploads/xxx.
-        page_range: Page range for PDF files, e.g. "1-5" or "3". If not specified, reads all pages.
+    Both the in-process langchain tool (:func:`read_document_tool`) and the
+    standalone FastMCP server (``mcp_server.py``) delegate here so validation,
+    conversion, and truncation behaviour cannot drift apart.
     """
     # Path resolution order:
     #   1. /mnt/user-data virtual paths -> host paths via injected thread_data
@@ -366,3 +361,22 @@ async def read_document_tool(
 
     result = header + content
     return _truncate_output(result, _DEFAULT_MAX_CHARS)
+
+
+@tool("read_document", parse_docstring=True)
+async def read_document_tool(
+    runtime: ToolRuntime[dict[str, Any], Any] = None,
+    file_path: str = "",
+    page_range: str | None = None,
+) -> str:
+    """Read and extract text content from documents (PDF, Word, Excel, PowerPoint).
+
+    Converts documents to Markdown format for easy reading. Supports .pdf, .docx,
+    .xlsx, .pptx and other common office formats. Legacy binary .doc files are
+    not supported — convert them to .docx first.
+
+    Args:
+        file_path: Path to the document file. Supports virtual paths like /mnt/user-data/uploads/xxx.
+        page_range: Page range for PDF files, e.g. "1-5" or "3". If not specified, reads all pages.
+    """
+    return await read_document_async(file_path, page_range=page_range, runtime=runtime)

@@ -1163,24 +1163,43 @@ class TestCustomMountResolution:
 
 
 class TestMcpServerMountWhitelist:
-    """The MCP variant accepts configured mount container paths too."""
+    """The MCP variant inherits tools.py behaviour, including mount support.
+
+    After the dedup, ``mcp_server.py`` delegates to
+    :func:`tools.read_document_async`; mounted-path acceptance therefore flows
+    through the same three-stage resolution chain as the in-process tool.
+    """
 
     def _import_mcp_server(self):
         from ideer.community.doc_reader import mcp_server
 
         return mcp_server
 
-    def test_validate_path_accepts_registered_mount(self, tmp_path: Path, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_mounted_docx_reads_through_mcp_wrapper(self, tmp_path: Path, monkeypatch):
         mcp_server = self._import_mcp_server()
 
         host_dir = tmp_path / "mcp-host"
-        host_dir.mkdir()
+        uploads = host_dir / "case"
+        uploads.mkdir(parents=True)
+        doc = uploads / "report.docx"
+        doc.write_bytes(b"fake-docx")
+        md_path = tmp_path / "report.md"
+        md_path.write_text("# 经由 MCP 包装读取", encoding="utf-8")
         mounts = [SimpleNamespace(host_path=str(host_dir), container_path="/mnt/mcp-case", read_only=True)]
         import ideer.sandbox.tools as sandbox_tools
 
         monkeypatch.setattr(sandbox_tools, "_get_custom_mounts", lambda mounts=mounts: mounts)
-        resolved = mcp_server._validate_path("/mnt/mcp-case/doc.pdf")
-        assert isinstance(resolved, Path)
+        with (
+            patch(
+                "ideer.community.doc_reader.tools.convert_file_to_markdown",
+                new_callable=AsyncMock,
+                return_value=md_path,
+            ),
+            patch("ideer.community.doc_reader.tools._get_page_count", return_value=None),
+        ):
+            result = await mcp_server.read_document(file_path="/mnt/mcp-case/case/report.docx")
+        assert "经由 MCP 包装读取" in result
 
     def test_validate_path_rejects_unknown_prefix(self):
         mcp_server = self._import_mcp_server()

@@ -199,6 +199,16 @@ def data_analyzer_tool(file_path: str, analysis_type: str = "summary") -> str:
             "describe" (statistical summary of numeric columns),
             "correlation" (correlation matrix for numeric columns).
     """
+    return data_analyzer_sync(file_path, analysis_type)
+
+
+def data_analyzer_sync(file_path: str, analysis_type: str) -> str:
+    """Single-source implementation of the data_analyzer capability.
+
+    Both the in-process langchain tool (:func:`data_analyzer_tool`) and the
+    standalone FastMCP server (``mcp_server.py``) delegate here so validation,
+    reading, and truncation behaviour cannot drift apart.
+    """
     # Check pandas availability
     pandas_err = _check_pandas()
     if pandas_err:
