@@ -6,6 +6,7 @@ Covers every function and branch in
 
 from __future__ import annotations
 
+import importlib
 import json
 import os
 import tempfile
@@ -1162,18 +1163,11 @@ class TestCustomMountResolution:
 
 
 class TestMcpServerMountWhitelist:
-    """The MCP variant accepts configured mount container paths too.
-
-    Skipped when the module cannot be imported: the installed ``mcp`` library
-    lacks ``Server.tool``, which breaks this module at decoration time — a
-    pre-existing incompatibility unrelated to the whitelist change.
-    """
+    """The MCP variant accepts configured mount container paths too."""
 
     def _import_mcp_server(self):
-        try:
-            from ideer.community.doc_reader import mcp_server
-        except AttributeError as exc:
-            pytest.skip(f"installed mcp library incompatible with this module: {exc}")
+        from ideer.community.doc_reader import mcp_server
+
         return mcp_server
 
     def test_validate_path_accepts_registered_mount(self, tmp_path: Path, monkeypatch):
@@ -1193,6 +1187,33 @@ class TestMcpServerMountWhitelist:
 
         with pytest.raises(PermissionError):
             mcp_server._validate_path("/mnt/nowhere/doc.pdf")
+
+
+class TestCommunityMcpServersSmoke:
+    """All community MCP servers must boot and expose their expected tools.
+
+    Regression guard for the ``@server.tool`` misuse that left every
+    community MCP server crashing at import time since introduction
+    (low-level ``Server`` has no ``.tool`` decorator; FastMCP does).
+    """
+
+    @pytest.mark.parametrize(
+        ("module_name", "expected_tool"),
+        [
+            ("ideer.community.doc_reader.mcp_server", "read_document"),
+            ("ideer.community.data_analyzer.mcp_server", "data_analyzer"),
+            ("ideer.community.code_interpreter.mcp_server", "code_interpreter"),
+        ],
+    )
+    def test_server_boots_with_expected_tool(self, module_name: str, expected_tool: str):
+        import anyio
+
+        module = importlib.import_module(module_name)
+        tool_names = anyio.run(module.server.list_tools)
+
+        assert [t.name for t in tool_names] == [expected_tool]
+        # FastMCP servers expose run_stdio_async for stdio transport.
+        assert hasattr(module.server, "run_stdio_async")
 
 
 # ============================================================================

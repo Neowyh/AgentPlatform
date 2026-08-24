@@ -17,8 +17,7 @@ import json
 import logging
 import os
 
-from mcp.server import Server
-from mcp.server.stdio import stdio_server
+from mcp.server.fastmcp import FastMCP
 
 try:
     import pandas as pd
@@ -27,7 +26,8 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-server = Server("data-analyzer")
+# FastMCP exposes the ``.tool`` decorator; the low-level Server does not.
+server = FastMCP("data-analyzer")
 
 _MAX_OUTPUT_CHARS = 10000
 _MAX_FILE_SIZE = 200_000_000  # 200 MB
@@ -277,12 +277,7 @@ def _data_analyzer_sync(file_path: str, analysis_type: str) -> str:
 
 
 async def main():
-    async with stdio_server() as (read_stream, write_stream):
-        await server.run(
-            read_stream,
-            write_stream,
-            server.create_initialization_options(),
-        )
+    await server.run_stdio_async()
 
 
 if __name__ == "__main__":

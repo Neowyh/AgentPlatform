@@ -20,12 +20,12 @@ import resource
 import subprocess
 import tempfile
 
-from mcp.server import Server
-from mcp.server.stdio import stdio_server
+from mcp.server.fastmcp import FastMCP
 
 logger = logging.getLogger(__name__)
 
-server = Server("code-interpreter")
+# FastMCP exposes the ``.tool`` decorator; the low-level Server does not.
+server = FastMCP("code-interpreter")
 
 _MAX_TIMEOUT = 300
 _DEFAULT_TIMEOUT = 60
@@ -184,12 +184,7 @@ async def code_interpreter(code: str, language: str = "python", timeout: int = 6
 
 
 async def main():
-    async with stdio_server() as (read_stream, write_stream):
-        await server.run(
-            read_stream,
-            write_stream,
-            server.create_initialization_options(),
-        )
+    await server.run_stdio_async()
 
 
 if __name__ == "__main__":

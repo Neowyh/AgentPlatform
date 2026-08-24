@@ -17,14 +17,16 @@ import json
 import logging
 from pathlib import Path
 
-from mcp.server import Server
-from mcp.server.stdio import stdio_server
+from mcp.server.fastmcp import FastMCP
 
 from ideer.utils.file_conversion import convert_file_to_markdown
 
 logger = logging.getLogger(__name__)
 
-server = Server("doc-reader")
+# FastMCP is the high-level server API: its ``.tool`` decorator registers
+# handlers directly. The low-level ``mcp.server.Server`` has no such decorator,
+# which broke this module at import time (see dev-log findings 2026-08-24).
+server = FastMCP("doc-reader")
 
 _DEFAULT_MAX_CHARS = 50_000
 _MAX_FILE_SIZE = 100_000_000  # 100 MB
@@ -264,12 +266,7 @@ async def read_document(file_path: str, page_range: str | None = None) -> str:
 
 
 async def main():
-    async with stdio_server() as (read_stream, write_stream):
-        await server.run(
-            read_stream,
-            write_stream,
-            server.create_initialization_options(),
-        )
+    await server.run_stdio_async()
 
 
 if __name__ == "__main__":
