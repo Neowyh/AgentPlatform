@@ -19,7 +19,7 @@ class ActionResolutionError(RuntimeError):
     pass
 
 
-@dataclass(frozen=True)
+@dataclass
 class ActionContext:
     workflow_name: str
     run_id: str
@@ -28,6 +28,7 @@ class ActionContext:
     state: dict[str, Any]
     outputs: dict[str, Any]
     file_access: dict[str, list[str]] | None = None
+    model_name: str | None = None
 
     @property
     def idempotency_key(self) -> str:
@@ -124,10 +125,10 @@ class _AgentAdapter:
         # runner.
         self.owner_id = owner_id
 
-    async def _build_executor(self, context: ActionContext, params: dict[str, Any]):
-        return await self._build_canonical_executor(context, params)
+    async def _build_executor(self, context: ActionContext, params: dict[str, Any], model_name: str | None = None):
+        return await self._build_canonical_executor(context, params, model_name=model_name)
 
-    async def _build_canonical_executor(self, context: ActionContext, params: dict[str, Any]):
+    async def _build_canonical_executor(self, context: ActionContext, params: dict[str, Any], *, model_name: str | None = None):
         import yaml
         from sqlalchemy import select
 
@@ -198,7 +199,7 @@ class _AgentAdapter:
             description=f"Workflow node: {context.node_id}",
             system_prompt=system_prompt,
             skills=skill_names,
-            model=config_yaml.get("model") or "inherit",
+            model=model_name or config_yaml.get("model") or "inherit",
             max_turns=params.get("max_turns", 50),
             file_access=context.file_access,
         )
@@ -224,21 +225,38 @@ class _AgentAdapter:
         raise RuntimeError(result.error or f"agent '{self.name}' failed with status {result.status}")
 
     async def run(self, context: ActionContext, params: dict[str, Any]) -> Any:
+        from ideer.config import get_app_config
         from ideer.runtime.user_context import reset_current_user, set_current_user
+        from ideer.workflows.v2.compiler import WorkflowTransientError
 
-        executor, prompt = await self._build_executor(context, params)
-        user_token = set_current_user(SimpleNamespace(id=self.user_id))
-        try:
-            result = await executor._aexecute(prompt)
-        finally:
-            reset_current_user(user_token)
-        return self._finalize_result(result)
+        configured_models = [model.name for model in getattr(get_app_config(), "models", [])]
+        candidates = [context.model_name] if context.model_name else [None]
+        candidates.extend(model for model in configured_models if model not in candidates)
+        last_error: Any = None
+        for candidate in candidates:
+            executor, prompt = await self._build_executor(context, params, model_name=candidate)
+            user_token = set_current_user(SimpleNamespace(id=self.user_id))
+            try:
+                result = await executor._aexecute(prompt)
+            finally:
+                reset_current_user(user_token)
+            try:
+                value = self._finalize_result(result)
+                context.model_name = candidate or getattr(executor, "model_name", None) or context.model_name
+                return value
+            except WorkflowTransientError as exc:
+                last_error = exc
+        raise last_error or WorkflowTransientError(f"agent '{self.name}' failed: LLM provider unavailable")
 
     async def astream(self, context: ActionContext, params: dict[str, Any]) -> AsyncIterator[dict[str, Any]]:
+        from ideer.config import get_app_config
         from ideer.runtime.user_context import reset_current_user, set_current_user
+        from ideer.workflows.v2.compiler import WorkflowTransientError
 
         yield {"type": "progress", "message": "started"}
-        executor, prompt = await self._build_executor(context, params)
+        configured_models = [model.name for model in getattr(get_app_config(), "models", [])]
+        candidates = [context.model_name] if context.model_name else [None]
+        candidates.extend(model for model in configured_models if model not in candidates)
         queue: asyncio.Queue[Any] = asyncio.Queue()
 
         async def produce() -> Any:
@@ -246,23 +264,32 @@ class _AgentAdapter:
             await queue.put(_STREAM_END)
             return result
 
-        user_token = set_current_user(SimpleNamespace(id=self.user_id))
-        producer = asyncio.create_task(produce())
-        try:
-            while True:
-                update = await queue.get()
-                if update is _STREAM_END:
-                    break
-                if update.get("type") == "tool_call":
-                    tool = update.get("tool", "?")
-                    args = update.get("args_summary", "")
-                    yield {"type": "progress", "message": f"[回合 {update.get('turn', '-')}] 调用工具 {tool} → {args}"}
-        except BaseException:
-            producer.cancel()
-            raise
-        finally:
-            reset_current_user(user_token)
-        yield {"type": "result", "value": self._finalize_result(await producer)}
+        for candidate in candidates:
+            executor, prompt = await self._build_executor(context, params, model_name=candidate)
+            user_token = set_current_user(SimpleNamespace(id=self.user_id))
+            producer = asyncio.create_task(produce())
+            try:
+                while True:
+                    update = await queue.get()
+                    if update is _STREAM_END:
+                        break
+                    if update.get("type") == "tool_call":
+                        tool = update.get("tool", "?")
+                        args = update.get("args_summary", "")
+                        yield {"type": "progress", "message": f"[回合 {update.get('turn', '-')}] 调用工具 {tool} → {args}"}
+                try:
+                    value = self._finalize_result(await producer)
+                except WorkflowTransientError:
+                    continue
+                context.model_name = candidate or getattr(executor, "model_name", None) or context.model_name
+                yield {"type": "result", "value": value}
+                return
+            except BaseException:
+                producer.cancel()
+                raise
+            finally:
+                reset_current_user(user_token)
+        raise WorkflowTransientError(f"agent '{self.name}' failed: LLM provider unavailable")
 
 
 class _CanonicalAgentAdapter(_AgentAdapter):
@@ -274,7 +301,7 @@ class _CanonicalAgentAdapter(_AgentAdapter):
         self.skills = list(skills)
         self.allowed_tool_groups = allowed_tool_groups
 
-    async def _build_executor(self, context: ActionContext, params: dict[str, Any]):
+    async def _build_executor(self, context: ActionContext, params: dict[str, Any], model_name: str | None = None):
         from ideer.config import get_app_config
         from ideer.resources.runtime import intersect_tool_groups
         from ideer.subagents.config import SubagentConfig
@@ -289,7 +316,7 @@ class _CanonicalAgentAdapter(_AgentAdapter):
             description=f"Workflow node: {context.node_id}",
             system_prompt=system_prompt,
             skills=[skill.name for skill in self.skills],
-            model=config.model or "inherit",
+            model=model_name or config.model or "inherit",
             max_turns=params.get("max_turns", 50),
             file_access=context.file_access,
         )

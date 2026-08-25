@@ -206,6 +206,7 @@ class WorkflowV2Store:
         inputs: dict,
         actor,
         *,
+        model_name: str | None = None,
         user_concurrency: int | None = None,
         department_concurrency: int | None = None,
     ) -> WorkflowV2RunRow:
@@ -279,6 +280,7 @@ class WorkflowV2Store:
                 checkpoint_thread_id=f"wf-{run_id}",
                 status="queued",
                 inputs=inputs,
+                model_name=model_name,
                 snapshot={},
                 runner_tool_groups=sorted(actor.tool_groups) if actor.tool_groups is not None else None,
                 created_by=actor.user_id,

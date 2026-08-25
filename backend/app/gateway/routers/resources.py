@@ -160,6 +160,7 @@ class TransferRequest(BaseModel):
 
 class WorkflowRunRequest(BaseModel):
     inputs: dict[str, Any] = Field(default_factory=dict)
+    model_name: str | None = Field(default=None, min_length=1, max_length=128)
 
 
 class WorkflowCommandRequest(BaseModel):
@@ -344,6 +345,7 @@ def _run_payload(run: WorkflowV2RunRow, resource_id: str) -> dict[str, Any]:
         "workflow": resource_id,
         "workflow_resource_id": run.workflow_resource_id,
         "status": run.status,
+        "model_name": run.model_name,
         "definition_version": run.definition_version,
         "snapshot": run.snapshot,
         "error": run.error,
@@ -1138,12 +1140,16 @@ async def create_workflow_run(
     current_user: UserModel = Depends(get_current_rbac_user),
 ) -> dict[str, Any]:
     runtime = get_app_config().workflow_runtime
+    config = get_app_config()
+    if body.model_name is not None and config.get_model_config(body.model_name) is None:
+        raise HTTPException(400, f"Model {body.model_name!r} is not in the configured model allowlist")
     try:
         run = await WorkflowV2Store(_factory()).create_canonical_run(
             str(uuid.uuid4()),
             resource_id,
             body.inputs,
             _resource_actor(current_user),
+            model_name=body.model_name,
             user_concurrency=runtime.user_concurrency,
             department_concurrency=runtime.department_concurrency,
         )
@@ -1151,7 +1157,12 @@ async def create_workflow_run(
         if str(exc) in {"workflow_user_concurrency_exceeded", "workflow_department_concurrency_exceeded"}:
             raise HTTPException(429, str(exc)) from exc
         raise
-    return {"run_id": run.run_id, "status": run.status, "workflow_resource_id": run.workflow_resource_id}
+    return {
+        "run_id": run.run_id,
+        "status": run.status,
+        "workflow_resource_id": run.workflow_resource_id,
+        "model_name": run.model_name,
+    }
 
 
 @router.get("/{resource_id}/workflow-runs")

@@ -255,6 +255,8 @@ export interface Translations {
     // Run Dialog
     runDialog: string;
     runDialogDescription: string;
+    model: string;
+    modelPlaceholder: string;
     defaultPrefix: string;
     enterInput: (key: string) => string;
     noInputs: string;

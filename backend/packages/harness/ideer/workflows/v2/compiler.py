@@ -120,6 +120,7 @@ def _merge_maps(left: dict[str, Any] | None, right: dict[str, Any] | None) -> di
 
 class _GraphState(TypedDict, total=False):
     run_id: str
+    model_name: str | None
     inputs: dict[str, Any]
     state: Annotated[dict[str, Any], _merge_maps]
     outputs: Annotated[dict[str, Any], _merge_maps]
@@ -254,9 +255,18 @@ class WorkflowGraphCompiler:
                 state=context_state,
                 outputs=dict(state.get("outputs", {})),
                 file_access=file_access,
+                model_name=state.get("model_name"),
             )
             params = render_template(node.action.params, render_state)  # type: ignore[union-attr]
-            await self._emit("node_started", {"node_id": node.id, "idempotency_key": context.idempotency_key, "started_at": _now_iso()})
+            await self._emit(
+                "node_started",
+                {
+                    "node_id": node.id,
+                    "idempotency_key": context.idempotency_key,
+                    "model_name": context.model_name,
+                    "started_at": _now_iso(),
+                },
+            )
             violations = self._check_preconditions(node, render_state)
             if violations and node.on_precondition_failure == "skip":
                 await self._emit(
@@ -342,7 +352,13 @@ class WorkflowGraphCompiler:
                 raise
             await self._emit(
                 "node_completed",
-                {"node_id": node.id, "idempotency_key": context.idempotency_key, "result": result, "finished_at": _now_iso()},
+                {
+                    "node_id": node.id,
+                    "idempotency_key": context.idempotency_key,
+                    "result": result,
+                    "model_name": context.model_name,
+                    "finished_at": _now_iso(),
+                },
             )
             outputs = dict(state.get("outputs", {}))
             outputs[node.id] = result

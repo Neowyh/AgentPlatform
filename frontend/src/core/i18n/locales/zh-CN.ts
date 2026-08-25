@@ -309,6 +309,8 @@ export const zhCN: Translations = {
     // Run Dialog
     runDialog: "运行工作流",
     runDialogDescription: "为工作流执行提供输入值。",
+    model: "运行模型",
+    modelPlaceholder: "选择模型",
     defaultPrefix: "默认值：",
     enterInput: (key: string) => `输入 ${key}...`,
     noInputs: "此工作流没有输入参数。",

@@ -49,6 +49,7 @@ class FakeExecutor:
 
     def __init__(self, subagent, tools, app_config=None, thread_id=None) -> None:
         FakeExecutor.captured.append(subagent)
+        self.config = subagent
         FakeExecutor.thread_ids.append(thread_id)
 
     async def _aexecute(self, prompt: str) -> SimpleNamespace:
@@ -354,6 +355,46 @@ async def test_agent_adapter_fails_when_llm_unavailable(env: pytest.MonkeyPatch,
     )
     with pytest.raises(WorkflowTransientError, match="LLM provider unavailable"):
         await adapter.run(context, {"prompt": "执行任务"})
+
+
+@pytest.mark.asyncio
+async def test_agent_adapter_fails_over_to_next_configured_model(env: pytest.MonkeyPatch, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    class FailoverExecutor(FakeExecutor):
+        async def _aexecute(self, prompt: str) -> SimpleNamespace:
+            if self.config.model == "model-a":
+                return SimpleNamespace(
+                    status=_Status.COMPLETED,
+                    result="The configured LLM provider is temporarily unavailable after multiple retries. Please wait a moment and continue the conversation.",
+                    error=None,
+                )
+            return SimpleNamespace(status=_Status.COMPLETED, result={"model": self.config.model}, error=None)
+
+    env.setattr(executor_module, "SubagentExecutor", FailoverExecutor)
+    _canonical_env(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        ideer.config,
+        "get_app_config",
+        lambda: SimpleNamespace(
+            models=[SimpleNamespace(name="model-a"), SimpleNamespace(name="model-b")],
+        ),
+    )
+
+    adapter = _AgentAdapter("fault-zeroing", "user-1")
+    context = ActionContext(
+        workflow_name="fault-zeroing",
+        run_id="run-failover",
+        node_id="evidence_collection",
+        inputs={},
+        state={},
+        outputs={},
+        model_name="model-a",
+    )
+
+    result = await adapter.run(context, {"prompt": "执行任务"})
+
+    assert result == {"model": "model-b"}
+    assert [config.model for config in FakeExecutor.captured] == ["model-a", "model-b"]
+    assert context.model_name == "model-b"
 
 
 @pytest.mark.asyncio

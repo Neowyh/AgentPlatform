@@ -225,12 +225,16 @@ export async function deleteWorkflow(name: string): Promise<void> {
 export async function runWorkflow(
   name: string,
   inputs: Record<string, unknown>,
+  modelName?: string,
 ): Promise<WorkflowRunResult> {
   const path = `/api/resources/${encodeURIComponent(name)}/workflow-runs`;
   const res = await fetch(`${getBackendBaseURL()}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ inputs }),
+    body: JSON.stringify({
+      inputs,
+      ...(modelName ? { model_name: modelName } : {}),
+    }),
   });
   if (!res.ok) return extractError(res, "Failed to run workflow");
   const result = (await res.json()) as WorkflowRunResult;

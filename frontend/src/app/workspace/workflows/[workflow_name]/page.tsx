@@ -42,6 +42,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { VisibilityImpactPanel } from "@/components/workspace/resources/visibility-impact-panel";
 import { WorkspaceBreadcrumb } from "@/components/workspace/workspace-breadcrumb";
 import { useI18n } from "@/core/i18n/hooks";
+import { useModels } from "@/core/models/hooks";
 import {
   changeResourceVisibility,
   createVisibilityApplication,
@@ -54,11 +55,15 @@ export default function WorkflowDetailPage() {
   const { workflow_name } = useParams<{ workflow_name: string }>();
   const { workflow, isLoading, error } = useWorkflow(workflow_name);
   const runWorkflowMutation = useRunWorkflow();
+  const { models } = useModels();
   const { t } = useI18n();
 
   const [runDialogOpen, setRunDialogOpen] = useState(false);
   const [visibilityDialogOpen, setVisibilityDialogOpen] = useState(false);
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
+  const [selectedModelName, setSelectedModelName] = useState<
+    string | undefined
+  >();
   const [targetVisibility, setTargetVisibility] = useState("department");
   const [visibilityReason, setVisibilityReason] = useState("");
   const [submittingApplication, setSubmittingApplication] = useState(false);
@@ -78,6 +83,16 @@ export default function WorkflowDetailPage() {
       setConfirmingDowngrade(false);
     }
   }, [workflow]);
+
+  useEffect(() => {
+    if (
+      models.length > 0 &&
+      (!selectedModelName ||
+        !models.some((model) => model.name === selectedModelName))
+    ) {
+      setSelectedModelName(models[0]?.name);
+    }
+  }, [models, selectedModelName]);
 
   const { runs } = useWorkflowRuns(workflow_name);
 
@@ -130,6 +145,7 @@ export default function WorkflowDetailPage() {
       const result = await runWorkflowMutation.mutateAsync({
         name: workflow_name,
         inputs,
+        modelName: selectedModelName,
       });
       setRunDialogOpen(false);
       toast.success(t.workflows.started);
@@ -617,6 +633,24 @@ export default function WorkflowDetailPage() {
                 {t.workflows.noInputs}
               </p>
             )}
+            <div className="space-y-2">
+              <Label htmlFor="workflow-model">{t.workflows.model}</Label>
+              <Select
+                value={selectedModelName ?? ""}
+                onValueChange={setSelectedModelName}
+              >
+                <SelectTrigger id="workflow-model">
+                  <SelectValue placeholder={t.workflows.modelPlaceholder} />
+                </SelectTrigger>
+                <SelectContent>
+                  {models.map((model) => (
+                    <SelectItem key={model.name} value={model.name}>
+                      {model.display_name || model.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setRunDialogOpen(false)}>

@@ -65,6 +65,40 @@ edges: []
 
 
 @pytest.mark.asyncio
+async def test_compiler_passes_run_model_to_agent_context() -> None:
+    definition = parse_workflow_v2(
+        """
+schema_version: 2
+name: model-choice
+inputs: {}
+state: {}
+entrypoint: run
+nodes:
+  - id: run
+    type: action
+    action:
+      kind: agent
+      name: worker
+edges: []
+"""
+    )
+    seen: list[str | None] = []
+
+    class Adapter:
+        async def run(self, context, params):
+            seen.append(context.model_name)
+            return {"ok": True}
+
+    graph = WorkflowGraphCompiler(definition, ActionAdapterRegistry({("agent", "worker"): Adapter()})).compile()
+    await graph.ainvoke(
+        {"inputs": {}, "state": {}, "outputs": {}, "model_name": "model-b"},
+        config={"configurable": {"thread_id": "wf:model-choice"}},
+    )
+
+    assert seen == ["model-b"]
+
+
+@pytest.mark.asyncio
 async def test_compiler_renders_agent_file_access_into_action_context() -> None:
     definition = parse_workflow_v2(
         """

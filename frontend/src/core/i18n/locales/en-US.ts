@@ -325,6 +325,8 @@ export const enUS: Translations = {
     // Run Dialog
     runDialog: "Run Workflow",
     runDialogDescription: "Provide input values for the workflow execution.",
+    model: "Model",
+    modelPlaceholder: "Select a model",
     defaultPrefix: "Default: ",
     enterInput: (key: string) => `Enter ${key}...`,
     noInputs: "This workflow has no input parameters.",

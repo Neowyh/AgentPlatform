@@ -35,6 +35,7 @@ class WorkflowV2RunRow(Base):
     checkpoint_thread_id: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
     status: Mapped[str] = mapped_column(String(24), nullable=False, default="queued")
     inputs: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    model_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     snapshot: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     runner_tool_groups: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     event_seq: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

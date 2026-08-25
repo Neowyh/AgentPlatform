@@ -10,6 +10,7 @@ import yaml
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.gateway.routers import resources
+from app.gateway.routers.resources import WorkflowRunRequest
 from ideer.persistence.base import Base
 from ideer.persistence.models.resource_catalog import (
     Resource,
@@ -98,6 +99,12 @@ def test_actor_mapping_separates_read_use_write_and_admin_governance() -> None:
     assert ResourceAction.APPROVE in department_admin.permissions
     assert ResourceAction.SUSPEND not in department_admin.permissions
     assert super_admin.permissions == frozenset(ResourceAction)
+
+
+def test_workflow_run_request_accepts_optional_model_name() -> None:
+    request = WorkflowRunRequest(inputs={"topic": "test"}, model_name="model-b")
+
+    assert request.model_name == "model-b"
 
 
 def test_router_exposes_uuid_first_workflow_lifecycle() -> None:
