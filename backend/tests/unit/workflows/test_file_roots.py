@@ -13,6 +13,7 @@ from ideer.workflows.v2.file_roots import (
     missing_written_artifacts,
     render_roots,
     render_template,
+    unparsable_json_artifacts,
     validate_read_roots,
     validate_roots,
     workflow_state_path,
@@ -152,9 +153,27 @@ class TestMissingWrittenArtifacts:
         )
         assert missing == [str(tmp_path / "out" / "gone.json"), str(tmp_path / "out" / "empty.json")]
 
-    def test_invalid_json_is_reported_missing(self, tmp_path: Path) -> None:
-        self._write(tmp_path / "out" / "bad.json", "{not valid json")
-        assert missing_written_artifacts([str(tmp_path / "out" / "bad.json")], lambda p: p) == [str(tmp_path / "out" / "bad.json")]
+    def test_invalid_json_is_not_missing_but_reported_unparsable(self, tmp_path: Path) -> None:
+        bad = self._write(tmp_path / "out" / "bad.json", '{"name":xxx}')
+        assert missing_written_artifacts([str(bad)], lambda p: p) == []
+        invalid = unparsable_json_artifacts([str(bad)], lambda p: p)
+        assert invalid == [(str(bad), invalid[0][1])]
+        assert "Expecting value" in invalid[0][1]
+
+    def test_unparsable_json_ignores_missing_empty_and_non_json_roots(self, tmp_path: Path) -> None:
+        self._write(tmp_path / "out" / "empty.json", "")
+        self._write(tmp_path / "out" / "note.md", "{not json")
+        assert (
+            unparsable_json_artifacts(
+                [
+                    str(tmp_path / "out" / "gone.json"),
+                    str(tmp_path / "out" / "empty.json"),
+                    str(tmp_path / "out" / "note.md"),
+                ],
+                lambda p: p,
+            )
+            == []
+        )
 
     def test_placeholder_marker_is_reported_missing(self, tmp_path: Path) -> None:
         self._write(tmp_path / "out" / "stub.json", '{"status": "file_missing", "note": "占位文件"}')

@@ -231,9 +231,11 @@ def make_host_resolver(run_id: str, user_id: str | None) -> Callable[[str], str 
 def missing_written_artifacts(write_roots: list[str], resolver: Callable[[str], str | None]) -> list[str]:
     """Return the declared write roots that produced no usable data.
 
-    File roots must exist and be non-empty; JSON file roots must also parse
-    and must not contain placeholder markers (agents sometimes write a
-    ``{"status": "file_missing"}`` stub instead of failing).  Directory roots
+    File roots must exist and be non-empty; JSON file roots must not contain
+    placeholder markers (agents sometimes write a ``{"status": "file_missing"}``
+    stub instead of failing).  A JSON file that exists but does not parse is
+    reported by :func:`unparsable_json_artifacts` instead, so the retry loop
+    can feed the concrete syntax error back to the agent.  Directory roots
     (trailing ``/``) must exist.  Roots that cannot be resolved are reported
     as missing so a misconfigured definition fails loudly instead of silently
     passing.
@@ -252,31 +254,56 @@ def missing_written_artifacts(write_roots: list[str], resolver: Callable[[str], 
         if not path.is_file() or path.stat().st_size == 0:
             missing.append(root)
             continue
-        if _is_placeholder_output(path):
+        if _has_placeholder_marker(path):
             missing.append(root)
     return missing
 
 
-def _is_placeholder_output(path: Path) -> bool:
-    """True when a file exists but looks like a fabricated placeholder.
+def unparsable_json_artifacts(write_roots: list[str], resolver: Callable[[str], str | None]) -> list[tuple[str, str]]:
+    """Return ``(root, error)`` for declared write roots holding invalid JSON.
 
-    JSON outputs must parse; any output containing a placeholder marker
-    (``file_missing``, ``占位``, ``placeholder``) is treated as missing so a
-    stubbed result cannot silently poison downstream nodes.
+    A root qualifies when it names a ``.json`` file that exists, is non-empty
+    and free of placeholder markers, but fails ``json.loads``.  Callers turn
+    these into schema violations so the node's retry policy carries the
+    concrete syntax error back to the agent instead of reporting the file as
+    missing.
+    """
+    invalid: list[tuple[str, str]] = []
+    for root in write_roots:
+        if not root.endswith(".json"):
+            continue
+        host = resolver(root)
+        if host is None:
+            continue
+        path = Path(host)
+        if not path.is_file() or path.stat().st_size == 0:
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        if any(marker in text.lower() for marker in _PLACEHOLDER_MARKERS):
+            continue
+        try:
+            json.loads(text)
+        except json.JSONDecodeError as exc:
+            invalid.append((root, str(exc)))
+    return invalid
+
+
+def _has_placeholder_marker(path: Path) -> bool:
+    """True when an existing output contains a placeholder marker.
+
+    Outputs containing ``file_missing``, ``占位`` or ``placeholder`` are
+    treated as missing so a stubbed result cannot silently poison downstream
+    nodes.
     """
     try:
         text = path.read_text(encoding="utf-8")
     except OSError:
         return True
     lowered = text.lower()
-    if any(marker in lowered for marker in _PLACEHOLDER_MARKERS):
-        return True
-    if path.name.endswith(".json"):
-        try:
-            json.loads(text)
-        except json.JSONDecodeError:
-            return True
-    return False
+    return any(marker in lowered for marker in _PLACEHOLDER_MARKERS)
 
 
 def _is_input_read_root(path: str) -> bool:
