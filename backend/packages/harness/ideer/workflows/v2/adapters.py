@@ -191,10 +191,7 @@ class _AgentAdapter:
             skill_names = [target.slug for target in selected]
 
         override = params.get("system_prompt", "")
-        if soul and override:
-            system_prompt = f"{soul}\n\n## 当前阶段指令\n\n{override}"
-        else:
-            system_prompt = soul or override
+        system_prompt = _compose_system_prompt(soul, override, context)
 
         subagent = SubagentConfig(
             name=self.name,
@@ -286,10 +283,7 @@ class _CanonicalAgentAdapter(_AgentAdapter):
 
         config = self.definition.config
         override = params.get("system_prompt", "")
-        if self.definition.soul and override:
-            system_prompt = f"{self.definition.soul}\n\n## 当前阶段指令\n\n{override}"
-        else:
-            system_prompt = self.definition.soul or override
+        system_prompt = _compose_system_prompt(self.definition.soul, override, context)
         subagent = SubagentConfig(
             name=self.definition.resource_id,
             description=f"Workflow node: {context.node_id}",
@@ -320,6 +314,26 @@ class _CanonicalAgentAdapter(_AgentAdapter):
 
 class _STREAM_END:
     """Sentinel that closes an agent progress stream."""
+
+
+def _compose_system_prompt(soul: str, override: str, context: ActionContext) -> str:
+    """Compose SOUL + explicit workflow-node marker + per-node instructions.
+
+    The marker gives the model a deterministic signal that it is running as a
+    workflow node (never present in standalone agent chats), so persona-level
+    deliverable lists in SOUL.md/SKILL.md defer to the node's own instructions.
+    """
+    mode_header = (
+        f"## 运行模式：工作流节点\n\n"
+        f"当前以工作流「{context.workflow_name}」的节点「{context.node_id}」身份运行。"
+        "只读取、只写入本节点任务指令中声明的文件；全局输出要求中与本节点无关的交付物"
+        "（如其他阶段负责的图表或报告）不适用。写入被文件访问策略拒绝时，不要更换路径重试，"
+        "继续完成本节点声明的工作。"
+    )
+    sections = [soul.strip(), mode_header]
+    if override:
+        sections.append(f"## 当前阶段指令\n\n{override}")
+    return "\n\n".join(section for section in sections if section)
 
 
 def _is_llm_unavailable_text(result: Any) -> bool:

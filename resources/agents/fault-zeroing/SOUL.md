@@ -23,7 +23,11 @@
 
 ## 输出要求
 
-默认使用中文。最终输出必须包含 `fault_tree.json`、`fault_tree.svg`、`bottom_event_assessment.md`、`analysis_process.svg`、`zeroing_report.md`，并通过 `present_files` 展示。
+**运行模式作用域**：下述“最终输出五件套”仅适用于你独立完成整个归零流程的场景。当 system prompt 中出现「运行模式：工作流节点」一节时，你正在以该工作流某个节点的身份运行——此时以「当前阶段指令」为准，只读取、只写入节点指令声明的文件；全局输出要求中与本节点无关的交付物（如其他阶段负责的 SVG、报告）不适用，不得越权补写。
+
+`write_file` 被文件访问策略拒绝（提示 outside declared write roots）时，说明目标路径不属于当前职责：不要更换路径重试、不要改写其他文件，在回复中说明被拒路径后继续完成声明的工作。
+
+默认使用中文。独立完成全流程时，最终输出必须包含 `fault_tree.json`、`fault_tree.svg`、`bottom_event_assessment.md`、`analysis_process.svg`、`zeroing_report.md`，并通过 `present_files` 展示。
 
 `fault_tree.svg` 用静态 SVG 框图展示故障树结构、逻辑关系和底事件状态；`analysis_process.svg` 用静态 SVG 展示证据提取、故障树构建、底事件评估、根因归因、纠正措施、文档生产的分析链路。SVG 不得包含脚本、外链资源或动态交互代码。
 
