@@ -95,6 +95,7 @@ nodes:
           c) 输出摘要：总证据数、A/B/C/D 各级分布、覆盖情况
           失败契约：若无法完成任务，回复必须以 FAILED: 开头说明原因；
           严禁写入占位文件或空文件。
+    on_missing_artifact: pause
     retry:
       max_attempts: 2
       backoff_seconds: 30
@@ -143,6 +144,7 @@ nodes:
     schemas:
       - file: "{{inputs.output_base_dir}}/artifacts/tree/fault_tree_structure.json"
         schema_file: "/mnt/skills/fault-zeroing/templates/fault_tree_structure.schema.json"
+    on_missing_artifact: pause
     retry:
       max_attempts: 2
       backoff_seconds: 30
@@ -264,6 +266,7 @@ nodes:
     preconditions:
       - file: "{{inputs.output_base_dir}}/artifacts/tree/fault_tree_structure.json"
         non_empty: true
+    on_missing_artifact: pause
     retry:
       max_attempts: 2
       backoff_seconds: 30
@@ -338,6 +341,7 @@ nodes:
         non_empty: true
       - file: "{{inputs.output_base_dir}}/artifacts/evidence/coverage_matrix.md"
         non_empty: true
+    on_missing_artifact: pause
     writes:
       - "$.state.assessment_summary"
     retry:
@@ -485,6 +489,7 @@ nodes:
         json_path: "$.root_causes[*].status"
         some_equals: confirmed
     on_precondition_failure: skip
+    on_missing_artifact: pause
     retry:
       max_attempts: 2
       backoff_seconds: 30
@@ -570,6 +575,7 @@ nodes:
         non_empty: true
       - file: "{{inputs.output_base_dir}}/artifacts/evidence/evidence_table.json"
         non_empty: true
+    on_missing_artifact: pause
     retry:
       max_attempts: 2
       backoff_seconds: 30
