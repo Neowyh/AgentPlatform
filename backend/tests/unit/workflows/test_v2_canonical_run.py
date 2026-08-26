@@ -111,6 +111,20 @@ async def test_create_canonical_run_persists_snapshot_run_and_task_in_one_contra
         assert {row.resource_id for row in snapshots} == {workflow.id, agent.id}
         assert task.status == "queued"
         assert persisted is not None and persisted.status == "queued"
+        assert persisted.model_name is None
+
+    modelled_run = await store.create_canonical_run(
+        "run-uuid-model",
+        workflow.id,
+        {"request": "x"},
+        actor,
+        model_name="gpt-test",
+    )
+    assert modelled_run.model_name == "gpt-test"
+    async with factory() as session:
+        persisted_modelled = await session.get(WorkflowV2RunRow, "run-uuid-model")
+        assert persisted_modelled is not None
+        assert persisted_modelled.model_name == "gpt-test"
 
     with pytest.raises(ValueError, match="Input 'count' expects integer"):
         await store.create_canonical_run(

@@ -115,6 +115,7 @@ class TransferRequest(BaseModel):
 
 class WorkflowRunRequest(BaseModel):
     inputs: dict[str, Any] = Field(default_factory=dict)
+    model_name: str | None = Field(default=None, max_length=128)
 
 
 class WorkflowCommandRequest(BaseModel):
@@ -301,6 +302,7 @@ def _run_payload(run: WorkflowV2RunRow, resource_id: str) -> dict[str, Any]:
         "definition_version": run.definition_version,
         "snapshot": run.snapshot,
         "error": run.error,
+        "model_name": run.model_name,
     }
 
 
@@ -1023,6 +1025,7 @@ async def create_workflow_run(
             resource_id,
             body.inputs,
             _resource_actor(current_user),
+            model_name=body.model_name,
             user_concurrency=runtime.user_concurrency,
             department_concurrency=runtime.department_concurrency,
         )
@@ -1030,7 +1033,12 @@ async def create_workflow_run(
         if str(exc) in {"workflow_user_concurrency_exceeded", "workflow_department_concurrency_exceeded"}:
             raise HTTPException(429, str(exc)) from exc
         raise
-    return {"run_id": run.run_id, "status": run.status, "workflow_resource_id": run.workflow_resource_id}
+    return {
+        "run_id": run.run_id,
+        "status": run.status,
+        "workflow_resource_id": run.workflow_resource_id,
+        "model_name": run.model_name,
+    }
 
 
 @router.get("/{resource_id}/workflow-runs")

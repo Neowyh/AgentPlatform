@@ -1014,3 +1014,90 @@ edges:
         ("node_started", "review"),
         ("node_completed", "review"),
     ]
+
+
+@pytest.mark.asyncio
+async def test_compiler_propagates_model_name_into_context_and_events() -> None:
+    definition = parse_workflow_v2(
+        """
+schema_version: 2
+name: modelled
+inputs: {}
+state: {}
+entrypoint: hello
+nodes:
+  - id: hello
+    type: action
+    action:
+      kind: tool
+      name: echo
+edges: []
+"""
+    )
+    contexts: list = []
+    events: list[tuple[str, dict]] = []
+
+    async def emit(event_type: str, payload: dict) -> None:
+        events.append((event_type, payload))
+
+    class Adapter:
+        async def run(self, context, params):
+            contexts.append(context)
+            return {"ok": True}
+
+    graph = WorkflowGraphCompiler(
+        definition,
+        ActionAdapterRegistry({("tool", "echo"): Adapter()}),
+        emit_event=emit,
+    ).compile()
+
+    await graph.ainvoke(
+        {"run_id": "run-1", "model_name": "gpt-test", "inputs": {}, "state": {}, "outputs": {}},
+        config={"configurable": {"thread_id": "wf:model-name"}},
+    )
+
+    assert [context.model_name for context in contexts] == ["gpt-test"]
+    started = [payload for event_type, payload in events if event_type == "node_started"]
+    assert started and all(payload.get("model_name") == "gpt-test" for payload in started)
+
+
+@pytest.mark.asyncio
+async def test_compiler_tolerates_missing_model_name() -> None:
+    definition = parse_workflow_v2(
+        """
+schema_version: 2
+name: unmodelled
+inputs: {}
+state: {}
+entrypoint: hello
+nodes:
+  - id: hello
+    type: action
+    action:
+      kind: tool
+      name: echo
+edges: []
+"""
+    )
+    events: list[tuple[str, dict]] = []
+
+    async def emit(event_type: str, payload: dict) -> None:
+        events.append((event_type, payload))
+
+    class Adapter:
+        async def run(self, context, params):
+            return {"ok": True}
+
+    graph = WorkflowGraphCompiler(
+        definition,
+        ActionAdapterRegistry({("tool", "echo"): Adapter()}),
+        emit_event=emit,
+    ).compile()
+
+    result = await graph.ainvoke(
+        {"run_id": "run-1", "inputs": {}, "state": {}, "outputs": {}},
+        config={"configurable": {"thread_id": "wf:no-model"}},
+    )
+    assert result["outputs"]["hello"] == {"ok": True}
+    started = [payload for event_type, payload in events if event_type == "node_started"]
+    assert started and all(payload.get("model_name") is None for payload in started)

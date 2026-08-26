@@ -135,10 +135,12 @@ export function useRunWorkflow() {
     mutationFn: ({
       name,
       inputs,
+      modelName,
     }: {
       name: string;
       inputs: Record<string, unknown>;
-    }) => runWorkflow(name, inputs),
+      modelName?: string;
+    }) => runWorkflow(name, inputs, modelName),
   });
 }
 

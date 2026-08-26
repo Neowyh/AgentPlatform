@@ -41,6 +41,8 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { WorkspaceBreadcrumb } from "@/components/workspace/workspace-breadcrumb";
 import { useI18n } from "@/core/i18n/hooks";
+import { useModels } from "@/core/models/hooks";
+import { useLocalSettings } from "@/core/settings";
 import {
   changeResourceVisibility,
   createVisibilityApplication,
@@ -56,6 +58,16 @@ export default function WorkflowDetailPage() {
   const { t } = useI18n();
 
   const [runDialogOpen, setRunDialogOpen] = useState(false);
+  const [selectedModel, setSelectedModel] = useState<string>("");
+  const { models } = useModels({ enabled: runDialogOpen });
+  const [settings] = useLocalSettings();
+  useEffect(() => {
+    if (!runDialogOpen) return;
+    const current = settings.context.model_name;
+    setSelectedModel(
+      current && models.some((m) => m.name === current) ? current : "",
+    );
+  }, [runDialogOpen, settings.context.model_name, models]);
   const [visibilityDialogOpen, setVisibilityDialogOpen] = useState(false);
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
   const [targetVisibility, setTargetVisibility] = useState("department");
@@ -128,6 +140,7 @@ export default function WorkflowDetailPage() {
       const result = await runWorkflowMutation.mutateAsync({
         name: workflow_name,
         inputs,
+        modelName: selectedModel || undefined,
       });
       setRunDialogOpen(false);
       toast.success(t.workflows.started);
@@ -400,6 +413,14 @@ export default function WorkflowDetailPage() {
                         )}
                       </div>
                       <div className="ml-3 flex shrink-0 items-center gap-2">
+                        {run.model_name && (
+                          <Badge
+                            variant="secondary"
+                            title={t.workflows.modelLabel}
+                          >
+                            {run.model_name}
+                          </Badge>
+                        )}
                         <Badge variant="secondary">
                           v{run.definition_version ?? "-"}
                         </Badge>
@@ -605,6 +626,29 @@ export default function WorkflowDetailPage() {
                 {t.workflows.noInputs}
               </p>
             )}
+            <div className="space-y-2">
+              <Label htmlFor="run-model">{t.workflows.modelLabel}</Label>
+              <Select
+                value={selectedModel}
+                onValueChange={(value) =>
+                  setSelectedModel(value === "__system__" ? "" : value)
+                }
+              >
+                <SelectTrigger id="run-model">
+                  <SelectValue placeholder={t.workflows.followSystemModel} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__system__">
+                    {t.workflows.followSystemModel}
+                  </SelectItem>
+                  {models.map((model) => (
+                    <SelectItem key={model.name} value={model.name}>
+                      {model.display_name || model.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setRunDialogOpen(false)}>

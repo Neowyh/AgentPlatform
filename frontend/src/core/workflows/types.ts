@@ -63,6 +63,7 @@ export interface WorkflowRunResult {
   run_id: string;
   status: string;
   workflow: string;
+  model_name?: string | null;
 }
 
 export interface StepStatus {
@@ -82,6 +83,7 @@ export interface RunStatus {
   definition_version?: number;
   snapshot?: Record<string, unknown>;
   error: string | null;
+  model_name?: string | null;
   error_code?: string | null;
   current_step?: string | null;
   steps?: Record<string, StepStatus>;

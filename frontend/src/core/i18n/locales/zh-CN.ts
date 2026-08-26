@@ -312,6 +312,8 @@ export const zhCN: Translations = {
     defaultPrefix: "默认值：",
     enterInput: (key: string) => `输入 ${key}...`,
     noInputs: "此工作流没有输入参数。",
+    modelLabel: "模型",
+    followSystemModel: "跟随系统默认",
     starting: "启动中...",
     // Create/Edit
     createSubtitle: "用 YAML 定义新的工作流",

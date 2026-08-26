@@ -28,6 +28,7 @@ class ActionContext:
     state: dict[str, Any]
     outputs: dict[str, Any]
     file_access: dict[str, list[str]] | None = None
+    model_name: str | None = None
 
     @property
     def idempotency_key(self) -> str:
