@@ -46,6 +46,7 @@ vi.mock("@/core/agents", () => ({
 vi.mock("@/components/workspace/chats", () => ({
   ChatBox: ({ children }: any) => <div data-testid="chat-box">{children}</div>,
   useThreadChat: () => mockUseThreadChat(),
+  useSpecificChatMode: () => {},
 }));
 
 vi.mock("@/components/ai-elements/prompt-input", () => ({

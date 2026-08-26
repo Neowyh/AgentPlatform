@@ -55,8 +55,10 @@ export function MessageGroup({
   showTokenDebugSummaries?: boolean;
 }) {
   const { t } = useI18n();
-  const [showAbove, setShowAbove] = useState(true);
-  const [showLastThinking, setShowLastThinking] = useState(true);
+  // Intermediate steps are collapsed by default so that during execution the
+  // user only sees the current activity; details expand on demand.
+  const [showAbove, setShowAbove] = useState(false);
+  const [showLastThinking, setShowLastThinking] = useState(false);
   const steps = useMemo(() => convertToSteps(messages), [messages]);
   const debugStepByMessageId = useMemo(
     () =>
@@ -231,6 +233,7 @@ export function MessageGroup({
           className="w-full items-start justify-start text-left"
           variant="ghost"
           onClick={() => setShowAbove(!showAbove)}
+          aria-expanded={showAbove}
         >
           <ChainOfThoughtStep
             label={
@@ -299,6 +302,7 @@ export function MessageGroup({
             className="w-full items-start justify-start text-left"
             variant="ghost"
             onClick={() => setShowLastThinking(!showLastThinking)}
+            aria-expanded={showLastThinking}
           >
             <div className="flex w-full items-center justify-between">
               <ChainOfThoughtStep
@@ -319,7 +323,15 @@ export function MessageGroup({
                     })}
                   />
                 }
-                icon={LightbulbIcon}
+                icon={
+                  <span
+                    className={cn(
+                      isLoading && "pointer-events-none animate-pulse",
+                    )}
+                  >
+                    <LightbulbIcon />
+                  </span>
+                }
               ></ChainOfThoughtStep>
               <div>
                 <ChevronUp

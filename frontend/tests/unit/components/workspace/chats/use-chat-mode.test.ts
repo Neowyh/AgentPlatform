@@ -89,6 +89,20 @@ describe("useSpecificChatMode", () => {
     expect(mockSetInput).not.toHaveBeenCalled();
   });
 
+  test("sets initial prompt from '?prompt=' param when thread_id is 'new'", () => {
+    vi.mocked(useParams).mockReturnValue({ thread_id: "new" });
+    vi.mocked(useSearchParams).mockReturnValue(
+      new URLSearchParams("prompt=hello%20world") as unknown as ReturnType<
+        typeof useSearchParams
+      >,
+    );
+
+    renderHook(() => useSpecificChatMode());
+
+    vi.advanceTimersByTime(150);
+    expect(mockSetInput).toHaveBeenCalledWith("hello world");
+  });
+
   test("does not set initial prompt when there are no search params", () => {
     vi.mocked(useParams).mockReturnValue({ thread_id: "new" });
     vi.mocked(useSearchParams).mockReturnValue(
@@ -113,6 +127,41 @@ describe("useSpecificChatMode", () => {
     document.querySelector = vi.fn().mockImplementation((selector: string) => {
       if (selector === "textarea") return mockTextarea as unknown as Element;
       return originalQuerySelector(selector);
+      test("re-prefills when the same prompt param reappears after being cleared", () => {
+        vi.mocked(useParams).mockReturnValue({ thread_id: "new" });
+
+        // First: prompt present
+        vi.mocked(useSearchParams).mockReturnValue(
+          new URLSearchParams("prompt=hello") as unknown as ReturnType<
+            typeof useSearchParams
+          >,
+        );
+
+        const { rerender } = renderHook(() => useSpecificChatMode());
+        vi.advanceTimersByTime(150);
+        expect(mockSetInput).toHaveBeenCalledWith("hello");
+
+        // Then: navigate to same route without prompt (component does NOT remount)
+        vi.mocked(useSearchParams).mockReturnValue(
+          new URLSearchParams("") as unknown as ReturnType<
+            typeof useSearchParams
+          >,
+        );
+        rerender();
+        vi.advanceTimersByTime(150);
+        expect(mockSetInput).toHaveBeenCalledTimes(1);
+
+        // Back to the same prompt URL — should fire again
+        vi.mocked(useSearchParams).mockReturnValue(
+          new URLSearchParams("prompt=hello") as unknown as ReturnType<
+            typeof useSearchParams
+          >,
+        );
+        rerender();
+        vi.advanceTimersByTime(150);
+        expect(mockSetInput).toHaveBeenCalledTimes(2);
+        expect(mockSetInput).toHaveBeenLastCalledWith("hello");
+      });
     });
 
     vi.mocked(useParams).mockReturnValue({ thread_id: "new" });

@@ -39,7 +39,9 @@ export function SubtaskCard({
   isLoading: boolean;
 }) {
   const { t } = useI18n();
-  const [collapsed, setCollapsed] = useState(false);
+  // Subtask details are collapsed by default; the header line keeps showing
+  // live status (spinner / result summary).
+  const [collapsed, setCollapsed] = useState(true);
   const rehypePlugins = useRehypeSplitWordsIntoSpans(isLoading);
   const task = useSubtask(taskId)!;
   const icon = useMemo(() => {
@@ -76,6 +78,7 @@ export function SubtaskCard({
             className="w-full items-start justify-start text-left"
             variant="ghost"
             onClick={() => setCollapsed(!collapsed)}
+            aria-expanded={!collapsed}
           >
             <div className="flex w-full items-center justify-between">
               <ChainOfThoughtStep

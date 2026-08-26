@@ -110,6 +110,10 @@ vi.mock("@/components/workspace/welcome", () => ({
   Welcome: (props: any) => <div data-testid="welcome" />,
 }));
 
+vi.mock("@/components/workspace/workbench", () => ({
+  WorkbenchHome: () => <div data-testid="workbench-home" />,
+}));
+
 vi.mock("@/core/models/hooks", () => ({
   useModels: () => ({ tokenUsageEnabled: false }),
 }));
@@ -732,6 +736,34 @@ describe("ChatPage", () => {
     const { rerender } = render(<ChatPage />);
     rerender(<ChatPage />);
     expect(mockLastInputBoxProps.current.disabled).toBe(true);
+  });
+
+  test("renders WorkbenchHome in welcome mode", () => {
+    mockUseThreadChat.mockReturnValue({
+      threadId: "test-thread",
+      setThreadId: vi.fn(),
+      isNewThread: true,
+      setIsNewThread: vi.fn(),
+      isMock: false,
+    });
+
+    const { rerender } = render(<ChatPage />);
+    rerender(<ChatPage />);
+    expect(screen.getByTestId("workbench-home")).toBeInTheDocument();
+  });
+
+  test("does not render WorkbenchHome after send", () => {
+    mockUseThreadChat.mockReturnValue({
+      threadId: "test-thread",
+      setThreadId: vi.fn(),
+      isNewThread: false,
+      setIsNewThread: vi.fn(),
+      isMock: false,
+    });
+
+    const { rerender } = render(<ChatPage />);
+    rerender(<ChatPage />);
+    expect(screen.queryByTestId("workbench-home")).not.toBeInTheDocument();
   });
 
   test("renders Welcome component as extraHeader in welcome mode", () => {

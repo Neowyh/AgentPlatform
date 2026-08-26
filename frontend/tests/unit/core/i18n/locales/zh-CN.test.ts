@@ -283,7 +283,7 @@ describe("zhCN locale", () => {
   describe("agents", () => {
     const expected: Record<string, string> = {
       title: "智能体",
-      description: "创建和管理具有专属 Prompt 与能力的自定义智能体。",
+      description: "创建和管理你的专属智能体，为它设定职责和能力。",
       newAgent: "新建智能体",
       emptyTitle: "还没有自定义智能体",
       emptyDescription: "创建你的第一个自定义智能体，设置专属系统提示词。",
@@ -353,10 +353,10 @@ describe("zhCN locale", () => {
     describe("string properties", () => {
       const expected: Record<string, string> = {
         title: "工作流",
-        description: "管理和运行工作流定义",
+        description: "把固定流程交给 iDeer 自动执行，适合可重复的任务。",
         newWorkflow: "新建工作流",
         emptyTitle: "还没有工作流",
-        emptyDescription: "创建你的第一个工作流以开始使用",
+        emptyDescription: "创建你的第一个工作流，让重复性任务自动跑起来。",
         view: "查看",
         deleteTitle: "删除工作流",
         deleteSuccess: "工作流已删除",
@@ -372,7 +372,7 @@ describe("zhCN locale", () => {
         inputsDescription: "必填和可选的输入参数",
         required: "必填",
         runStatus: "运行状态",
-        runId: "运行 ID：",
+        runId: "运行编号：",
         yamlDefinition: "YAML 定义",
         runDialog: "运行工作流",
         runDialogDescription: "为工作流执行提供输入值。",
@@ -665,10 +665,9 @@ describe("zhCN locale", () => {
       output: "输出",
       total: "总计",
       view: "显示方式",
-      unavailable:
-        "暂无 Token 用量。只有模型成功返回且供应商提供 usage_metadata 时才会显示。",
+      unavailable: "暂无用量数据，模型成功回复后才会显示。",
       unavailableShort: "未返回用量",
-      note: "顶部总量优先使用后端持久化的线程用量；当当前回复仍在流式返回时，还会叠加可见的进行中用量。每轮和调试用量只来自当前可见消息，可能与平台账单页不完全一致。",
+      note: "顶部总量以后端保存的数据为准；回复还在生成时，会同时叠加正在进行的用量。每轮和调试用量只统计当前可见消息，可能与账单页不完全一致。",
       finalAnswer: "最终回复",
       stepTotal: "步骤总计",
       sharedAttribution: "该 token 由此步骤中的多个动作共同消耗",

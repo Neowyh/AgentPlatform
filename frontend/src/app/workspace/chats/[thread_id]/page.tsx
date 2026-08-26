@@ -20,6 +20,7 @@ import { ThreadTitle } from "@/components/workspace/thread-title";
 import { TodoList } from "@/components/workspace/todo-list";
 import { TokenUsageIndicator } from "@/components/workspace/token-usage-indicator";
 import { Welcome } from "@/components/workspace/welcome";
+import { WorkbenchHome } from "@/components/workspace/workbench";
 import { useI18n } from "@/core/i18n/hooks";
 import { useModels } from "@/core/models/hooks";
 import { useNotification } from "@/core/notification/hooks";
@@ -253,6 +254,11 @@ export default function ChatPage() {
                 )}
               </div>
             </div>
+            {isWelcomeMode && (
+              <div className="mx-auto max-h-[calc(50vh-8rem)] w-full max-w-(--container-width-md) overflow-y-auto px-4 pb-6">
+                <WorkbenchHome />
+              </div>
+            )}
           </main>
         </div>
       </ChatBox>
