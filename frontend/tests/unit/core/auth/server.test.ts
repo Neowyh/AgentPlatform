@@ -4,6 +4,7 @@ import { STATIC_WEBSITE_USER } from "@/core/auth/static-user";
 
 vi.mock("next/headers", () => ({
   cookies: vi.fn(),
+  headers: vi.fn(),
 }));
 
 const ENV_KEYS = [
@@ -118,10 +119,14 @@ describe("getServerSideUser", () => {
 
   test("returns config_error when getGatewayConfig throws", async () => {
     // Mock cookies first since it is called before getGatewayConfig
-    const { cookies } = await import("next/headers");
-    vi.mocked(cookies).mockResolvedValue({
-      get: vi.fn().mockReturnValue({ value: "tok_abc" }),
-    } as unknown as Awaited<ReturnType<typeof cookies>>);
+    const { headers } = await import("next/headers");
+    vi.mocked(headers).mockResolvedValue({
+      get: vi
+        .fn()
+        .mockImplementation((name: string) =>
+          name === "cookie" ? "access_token=tok_abc" : null,
+        ),
+    } as unknown as Awaited<ReturnType<typeof headers>>);
 
     // Set an invalid gateway URL so getGatewayConfig throws during parse
     setEnv("IDEER_INTERNAL_GATEWAY_BASE_URL", "not-a-valid-url");
@@ -138,10 +143,14 @@ describe("getServerSideUser", () => {
   // ── No session cookie ───────────────────────────────────────────
 
   test("returns system_setup_required when setup-status says needs_setup=true", async () => {
-    const { cookies } = await import("next/headers");
-    vi.mocked(cookies).mockResolvedValue({
-      get: vi.fn().mockReturnValue(undefined),
-    } as unknown as Awaited<ReturnType<typeof cookies>>);
+    const { headers } = await import("next/headers");
+    vi.mocked(headers).mockResolvedValue({
+      get: vi
+        .fn()
+        .mockImplementation((name: string) =>
+          name === "cookie" ? null : null,
+        ),
+    } as unknown as Awaited<ReturnType<typeof headers>>);
 
     vi.stubGlobal(
       "fetch",
@@ -159,10 +168,14 @@ describe("getServerSideUser", () => {
   });
 
   test("returns unauthenticated when setup-status says needs_setup=false", async () => {
-    const { cookies } = await import("next/headers");
-    vi.mocked(cookies).mockResolvedValue({
-      get: vi.fn().mockReturnValue(undefined),
-    } as unknown as Awaited<ReturnType<typeof cookies>>);
+    const { headers } = await import("next/headers");
+    vi.mocked(headers).mockResolvedValue({
+      get: vi
+        .fn()
+        .mockImplementation((name: string) =>
+          name === "cookie" ? null : null,
+        ),
+    } as unknown as Awaited<ReturnType<typeof headers>>);
 
     vi.stubGlobal(
       "fetch",
@@ -180,10 +193,14 @@ describe("getServerSideUser", () => {
   });
 
   test("returns unauthenticated when setup-status returns non-ok response", async () => {
-    const { cookies } = await import("next/headers");
-    vi.mocked(cookies).mockResolvedValue({
-      get: vi.fn().mockReturnValue(undefined),
-    } as unknown as Awaited<ReturnType<typeof cookies>>);
+    const { headers } = await import("next/headers");
+    vi.mocked(headers).mockResolvedValue({
+      get: vi
+        .fn()
+        .mockImplementation((name: string) =>
+          name === "cookie" ? null : null,
+        ),
+    } as unknown as Awaited<ReturnType<typeof headers>>);
 
     vi.stubGlobal(
       "fetch",
@@ -201,10 +218,14 @@ describe("getServerSideUser", () => {
   });
 
   test("returns unauthenticated when setup-status fetch throws", async () => {
-    const { cookies } = await import("next/headers");
-    vi.mocked(cookies).mockResolvedValue({
-      get: vi.fn().mockReturnValue(undefined),
-    } as unknown as Awaited<ReturnType<typeof cookies>>);
+    const { headers } = await import("next/headers");
+    vi.mocked(headers).mockResolvedValue({
+      get: vi
+        .fn()
+        .mockImplementation((name: string) =>
+          name === "cookie" ? null : null,
+        ),
+    } as unknown as Awaited<ReturnType<typeof headers>>);
 
     vi.stubGlobal(
       "fetch",
@@ -219,10 +240,14 @@ describe("getServerSideUser", () => {
   });
 
   test("returns unauthenticated when no session cookie and setup-status body lacks needs_setup", async () => {
-    const { cookies } = await import("next/headers");
-    vi.mocked(cookies).mockResolvedValue({
-      get: vi.fn().mockReturnValue(undefined),
-    } as unknown as Awaited<ReturnType<typeof cookies>>);
+    const { headers } = await import("next/headers");
+    vi.mocked(headers).mockResolvedValue({
+      get: vi
+        .fn()
+        .mockImplementation((name: string) =>
+          name === "cookie" ? null : null,
+        ),
+    } as unknown as Awaited<ReturnType<typeof headers>>);
 
     vi.stubGlobal(
       "fetch",
@@ -242,10 +267,14 @@ describe("getServerSideUser", () => {
   // ── With session cookie: /auth/me responses ─────────────────────
 
   test("returns authenticated for a valid user response", async () => {
-    const { cookies } = await import("next/headers");
-    vi.mocked(cookies).mockResolvedValue({
-      get: vi.fn().mockReturnValue({ value: "tok_abc" }),
-    } as unknown as Awaited<ReturnType<typeof cookies>>);
+    const { headers } = await import("next/headers");
+    vi.mocked(headers).mockResolvedValue({
+      get: vi
+        .fn()
+        .mockImplementation((name: string) =>
+          name === "cookie" ? "access_token=tok_abc" : null,
+        ),
+    } as unknown as Awaited<ReturnType<typeof headers>>);
 
     vi.stubGlobal(
       "fetch",
@@ -266,10 +295,14 @@ describe("getServerSideUser", () => {
   });
 
   test("returns needs_setup when user has needs_setup=true", async () => {
-    const { cookies } = await import("next/headers");
-    vi.mocked(cookies).mockResolvedValue({
-      get: vi.fn().mockReturnValue({ value: "tok_abc" }),
-    } as unknown as Awaited<ReturnType<typeof cookies>>);
+    const { headers } = await import("next/headers");
+    vi.mocked(headers).mockResolvedValue({
+      get: vi
+        .fn()
+        .mockImplementation((name: string) =>
+          name === "cookie" ? "access_token=tok_abc" : null,
+        ),
+    } as unknown as Awaited<ReturnType<typeof headers>>);
 
     vi.stubGlobal(
       "fetch",
@@ -289,10 +322,14 @@ describe("getServerSideUser", () => {
   });
 
   test("returns gateway_unavailable when /auth/me returns malformed JSON", async () => {
-    const { cookies } = await import("next/headers");
-    vi.mocked(cookies).mockResolvedValue({
-      get: vi.fn().mockReturnValue({ value: "tok_abc" }),
-    } as unknown as Awaited<ReturnType<typeof cookies>>);
+    const { headers } = await import("next/headers");
+    vi.mocked(headers).mockResolvedValue({
+      get: vi
+        .fn()
+        .mockImplementation((name: string) =>
+          name === "cookie" ? "access_token=tok_abc" : null,
+        ),
+    } as unknown as Awaited<ReturnType<typeof headers>>);
 
     vi.stubGlobal(
       "fetch",
@@ -317,10 +354,14 @@ describe("getServerSideUser", () => {
   });
 
   test("returns gateway_unavailable when /auth/me returns user with invalid email", async () => {
-    const { cookies } = await import("next/headers");
-    vi.mocked(cookies).mockResolvedValue({
-      get: vi.fn().mockReturnValue({ value: "tok_abc" }),
-    } as unknown as Awaited<ReturnType<typeof cookies>>);
+    const { headers } = await import("next/headers");
+    vi.mocked(headers).mockResolvedValue({
+      get: vi
+        .fn()
+        .mockImplementation((name: string) =>
+          name === "cookie" ? "access_token=tok_abc" : null,
+        ),
+    } as unknown as Awaited<ReturnType<typeof headers>>);
 
     vi.stubGlobal(
       "fetch",
@@ -346,10 +387,14 @@ describe("getServerSideUser", () => {
   });
 
   test("returns gateway_unavailable when /auth/me returns user with invalid role", async () => {
-    const { cookies } = await import("next/headers");
-    vi.mocked(cookies).mockResolvedValue({
-      get: vi.fn().mockReturnValue({ value: "tok_abc" }),
-    } as unknown as Awaited<ReturnType<typeof cookies>>);
+    const { headers } = await import("next/headers");
+    vi.mocked(headers).mockResolvedValue({
+      get: vi
+        .fn()
+        .mockImplementation((name: string) =>
+          name === "cookie" ? "access_token=tok_abc" : null,
+        ),
+    } as unknown as Awaited<ReturnType<typeof headers>>);
 
     vi.stubGlobal(
       "fetch",
@@ -375,10 +420,14 @@ describe("getServerSideUser", () => {
   });
 
   test("returns unauthenticated on 401 from /auth/me", async () => {
-    const { cookies } = await import("next/headers");
-    vi.mocked(cookies).mockResolvedValue({
-      get: vi.fn().mockReturnValue({ value: "tok_expired" }),
-    } as unknown as Awaited<ReturnType<typeof cookies>>);
+    const { headers } = await import("next/headers");
+    vi.mocked(headers).mockResolvedValue({
+      get: vi
+        .fn()
+        .mockImplementation((name: string) =>
+          name === "cookie" ? "access_token=tok_expired" : null,
+        ),
+    } as unknown as Awaited<ReturnType<typeof headers>>);
 
     vi.stubGlobal(
       "fetch",
@@ -396,10 +445,14 @@ describe("getServerSideUser", () => {
   });
 
   test("returns unauthenticated on 403 from /auth/me", async () => {
-    const { cookies } = await import("next/headers");
-    vi.mocked(cookies).mockResolvedValue({
-      get: vi.fn().mockReturnValue({ value: "tok_forbidden" }),
-    } as unknown as Awaited<ReturnType<typeof cookies>>);
+    const { headers } = await import("next/headers");
+    vi.mocked(headers).mockResolvedValue({
+      get: vi
+        .fn()
+        .mockImplementation((name: string) =>
+          name === "cookie" ? "access_token=tok_forbidden" : null,
+        ),
+    } as unknown as Awaited<ReturnType<typeof headers>>);
 
     vi.stubGlobal(
       "fetch",
@@ -417,10 +470,14 @@ describe("getServerSideUser", () => {
   });
 
   test("returns gateway_unavailable on 500 from /auth/me", async () => {
-    const { cookies } = await import("next/headers");
-    vi.mocked(cookies).mockResolvedValue({
-      get: vi.fn().mockReturnValue({ value: "tok_abc" }),
-    } as unknown as Awaited<ReturnType<typeof cookies>>);
+    const { headers } = await import("next/headers");
+    vi.mocked(headers).mockResolvedValue({
+      get: vi
+        .fn()
+        .mockImplementation((name: string) =>
+          name === "cookie" ? "access_token=tok_abc" : null,
+        ),
+    } as unknown as Awaited<ReturnType<typeof headers>>);
 
     vi.stubGlobal(
       "fetch",
@@ -444,10 +501,14 @@ describe("getServerSideUser", () => {
   });
 
   test("returns gateway_unavailable when /auth/me fetch throws", async () => {
-    const { cookies } = await import("next/headers");
-    vi.mocked(cookies).mockResolvedValue({
-      get: vi.fn().mockReturnValue({ value: "tok_abc" }),
-    } as unknown as Awaited<ReturnType<typeof cookies>>);
+    const { headers } = await import("next/headers");
+    vi.mocked(headers).mockResolvedValue({
+      get: vi
+        .fn()
+        .mockImplementation((name: string) =>
+          name === "cookie" ? "access_token=tok_abc" : null,
+        ),
+    } as unknown as Awaited<ReturnType<typeof headers>>);
 
     vi.stubGlobal(
       "fetch",
@@ -471,10 +532,14 @@ describe("getServerSideUser", () => {
   // ── Cookie forwarding ───────────────────────────────────────────
 
   test("forwards access_token cookie value to /auth/me", async () => {
-    const { cookies } = await import("next/headers");
-    vi.mocked(cookies).mockResolvedValue({
-      get: vi.fn().mockReturnValue({ value: "my_secret_token" }),
-    } as unknown as Awaited<ReturnType<typeof cookies>>);
+    const { headers } = await import("next/headers");
+    vi.mocked(headers).mockResolvedValue({
+      get: vi
+        .fn()
+        .mockImplementation((name: string) =>
+          name === "cookie" ? "access_token=my_secret_token" : null,
+        ),
+    } as unknown as Awaited<ReturnType<typeof headers>>);
 
     const fetchSpy = vi.fn().mockResolvedValue({
       ok: true,
@@ -500,10 +565,14 @@ describe("getServerSideUser", () => {
 
   test("uses internalGatewayUrl from config for auth endpoints", async () => {
     setEnv("IDEER_INTERNAL_GATEWAY_BASE_URL", "http://custom-gw:8080");
-    const { cookies } = await import("next/headers");
-    vi.mocked(cookies).mockResolvedValue({
-      get: vi.fn().mockReturnValue(undefined),
-    } as unknown as Awaited<ReturnType<typeof cookies>>);
+    const { headers } = await import("next/headers");
+    vi.mocked(headers).mockResolvedValue({
+      get: vi
+        .fn()
+        .mockImplementation((name: string) =>
+          name === "cookie" ? null : null,
+        ),
+    } as unknown as Awaited<ReturnType<typeof headers>>);
 
     const fetchSpy = vi.fn().mockResolvedValue({
       ok: true,
@@ -561,10 +630,14 @@ describe("getServerSideUser - setup-status timeout/abort", () => {
   });
 
   test("returns unauthenticated when setup-status fetch times out (AbortError)", async () => {
-    const { cookies } = await import("next/headers");
-    vi.mocked(cookies).mockResolvedValue({
-      get: vi.fn().mockReturnValue(undefined),
-    } as unknown as Awaited<ReturnType<typeof cookies>>);
+    const { headers } = await import("next/headers");
+    vi.mocked(headers).mockResolvedValue({
+      get: vi
+        .fn()
+        .mockImplementation((name: string) =>
+          name === "cookie" ? null : null,
+        ),
+    } as unknown as Awaited<ReturnType<typeof headers>>);
 
     const abortError = new DOMException(
       "The operation was aborted.",
@@ -580,10 +653,14 @@ describe("getServerSideUser - setup-status timeout/abort", () => {
   });
 
   test("returns unauthenticated when setup-status returns non-JSON body", async () => {
-    const { cookies } = await import("next/headers");
-    vi.mocked(cookies).mockResolvedValue({
-      get: vi.fn().mockReturnValue(undefined),
-    } as unknown as Awaited<ReturnType<typeof cookies>>);
+    const { headers } = await import("next/headers");
+    vi.mocked(headers).mockResolvedValue({
+      get: vi
+        .fn()
+        .mockImplementation((name: string) =>
+          name === "cookie" ? null : null,
+        ),
+    } as unknown as Awaited<ReturnType<typeof headers>>);
 
     vi.stubGlobal(
       "fetch",
@@ -601,10 +678,14 @@ describe("getServerSideUser - setup-status timeout/abort", () => {
   });
 
   test("returns unauthenticated when setup-status ok but body has needs_setup=undefined", async () => {
-    const { cookies } = await import("next/headers");
-    vi.mocked(cookies).mockResolvedValue({
-      get: vi.fn().mockReturnValue(undefined),
-    } as unknown as Awaited<ReturnType<typeof cookies>>);
+    const { headers } = await import("next/headers");
+    vi.mocked(headers).mockResolvedValue({
+      get: vi
+        .fn()
+        .mockImplementation((name: string) =>
+          name === "cookie" ? null : null,
+        ),
+    } as unknown as Awaited<ReturnType<typeof headers>>);
 
     vi.stubGlobal(
       "fetch",
@@ -638,10 +719,14 @@ describe("getServerSideUser - /auth/me edge cases", () => {
   });
 
   test("returns gateway_unavailable on non-401/403/ok status (e.g. 404)", async () => {
-    const { cookies } = await import("next/headers");
-    vi.mocked(cookies).mockResolvedValue({
-      get: vi.fn().mockReturnValue({ value: "tok_abc" }),
-    } as unknown as Awaited<ReturnType<typeof cookies>>);
+    const { headers } = await import("next/headers");
+    vi.mocked(headers).mockResolvedValue({
+      get: vi
+        .fn()
+        .mockImplementation((name: string) =>
+          name === "cookie" ? "access_token=tok_abc" : null,
+        ),
+    } as unknown as Awaited<ReturnType<typeof headers>>);
 
     vi.stubGlobal(
       "fetch",
@@ -664,10 +749,14 @@ describe("getServerSideUser - /auth/me edge cases", () => {
   });
 
   test("returns gateway_unavailable on 429 status", async () => {
-    const { cookies } = await import("next/headers");
-    vi.mocked(cookies).mockResolvedValue({
-      get: vi.fn().mockReturnValue({ value: "tok_abc" }),
-    } as unknown as Awaited<ReturnType<typeof cookies>>);
+    const { headers } = await import("next/headers");
+    vi.mocked(headers).mockResolvedValue({
+      get: vi
+        .fn()
+        .mockImplementation((name: string) =>
+          name === "cookie" ? "access_token=tok_abc" : null,
+        ),
+    } as unknown as Awaited<ReturnType<typeof headers>>);
 
     vi.stubGlobal(
       "fetch",
@@ -687,10 +776,14 @@ describe("getServerSideUser - /auth/me edge cases", () => {
   });
 
   test("returns authenticated when needs_setup is missing from user (defaults to false)", async () => {
-    const { cookies } = await import("next/headers");
-    vi.mocked(cookies).mockResolvedValue({
-      get: vi.fn().mockReturnValue({ value: "tok_abc" }),
-    } as unknown as Awaited<ReturnType<typeof cookies>>);
+    const { headers } = await import("next/headers");
+    vi.mocked(headers).mockResolvedValue({
+      get: vi
+        .fn()
+        .mockImplementation((name: string) =>
+          name === "cookie" ? "access_token=tok_abc" : null,
+        ),
+    } as unknown as Awaited<ReturnType<typeof headers>>);
 
     // Return a user without needs_setup — the zod schema defaults it to false
     vi.stubGlobal(
@@ -717,10 +810,14 @@ describe("getServerSideUser - /auth/me edge cases", () => {
   });
 
   test("returns gateway_unavailable when /auth/me throws with AbortError (timeout)", async () => {
-    const { cookies } = await import("next/headers");
-    vi.mocked(cookies).mockResolvedValue({
-      get: vi.fn().mockReturnValue({ value: "tok_abc" }),
-    } as unknown as Awaited<ReturnType<typeof cookies>>);
+    const { headers } = await import("next/headers");
+    vi.mocked(headers).mockResolvedValue({
+      get: vi
+        .fn()
+        .mockImplementation((name: string) =>
+          name === "cookie" ? "access_token=tok_abc" : null,
+        ),
+    } as unknown as Awaited<ReturnType<typeof headers>>);
 
     const abortError = new DOMException(
       "The operation was aborted.",
@@ -742,10 +839,14 @@ describe("getServerSideUser - /auth/me edge cases", () => {
   });
 
   test("returns unauthenticated when access_token cookie has empty value", async () => {
-    const { cookies } = await import("next/headers");
-    vi.mocked(cookies).mockResolvedValue({
-      get: vi.fn().mockReturnValue({ value: "" }),
-    } as unknown as Awaited<ReturnType<typeof cookies>>);
+    const { headers } = await import("next/headers");
+    vi.mocked(headers).mockResolvedValue({
+      get: vi
+        .fn()
+        .mockImplementation((name: string) =>
+          name === "cookie" ? "access_token=" : null,
+        ),
+    } as unknown as Awaited<ReturnType<typeof headers>>);
 
     vi.stubGlobal(
       "fetch",
@@ -754,6 +855,72 @@ describe("getServerSideUser - /auth/me edge cases", () => {
         status: 401,
       }),
     );
+
+    const { getServerSideUser } = await loadFreshServerAuth();
+    const result = await getServerSideUser();
+
+    expect(result.tag).toBe("unauthenticated");
+  });
+});
+
+describe("getServerSideUser - duplicate access_token cookies", () => {
+  let saved: EnvSnapshot;
+
+  beforeEach(() => {
+    saved = snapshotEnv();
+    setEnv("IDEER_AUTH_DISABLED", undefined);
+    setEnv("NEXT_PUBLIC_STATIC_WEBSITE_ONLY", undefined);
+    setEnv("IDEER_INTERNAL_GATEWAY_BASE_URL", "http://localhost:9999");
+  });
+
+  afterEach(() => {
+    restoreEnv(saved);
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  function mockRawCookieHeader(cookieHeader: string | null) {
+    return import("next/headers").then(({ headers }) => {
+      vi.mocked(headers).mockResolvedValue({
+        get: vi
+          .fn()
+          .mockImplementation((name: string) =>
+            name === "cookie" && cookieHeader !== null ? cookieHeader : null,
+          ),
+      } as unknown as Awaited<ReturnType<typeof headers>>);
+    });
+  }
+
+  test("uses the LAST access_token occurrence (gateway last-wins semantics)", async () => {
+    await mockRawCookieHeader(
+      "access_token=STALE_LEFTOVER; csrf_token=abc; access_token=tok_fresh",
+    );
+
+    const fetchSpy = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(JSON.stringify(validUser()), { status: 200 }),
+      );
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const { getServerSideUser } = await loadFreshServerAuth();
+    const result = await getServerSideUser();
+
+    expect(result.tag).toBe("authenticated");
+    const forwarded = JSON.stringify(fetchSpy.mock.calls[0]?.[1]?.headers);
+    expect(forwarded).toContain("tok_fresh");
+    expect(forwarded).not.toContain("STALE_LEFTOVER");
+  });
+
+  test("falls back to unauthenticated when only a stale cookie exists and gateway rejects it", async () => {
+    await mockRawCookieHeader(
+      "access_token=STALE_LEFTOVER; csrf_token=abc; access_token=tok_stale_too",
+    );
+
+    const fetchSpy = vi
+      .fn()
+      .mockResolvedValue(new Response("unauthorized", { status: 401 }));
+    vi.stubGlobal("fetch", fetchSpy);
 
     const { getServerSideUser } = await loadFreshServerAuth();
     const result = await getServerSideUser();

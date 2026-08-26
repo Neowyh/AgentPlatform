@@ -1,4 +1,4 @@
-import { cookies } from "next/headers";
+import { headers } from "next/headers";
 
 import { isStaticWebsiteOnly } from "../static-mode";
 
@@ -7,6 +7,31 @@ import { STATIC_WEBSITE_USER } from "./static-user";
 import { type AuthResult, userSchema } from "./types";
 
 const SSR_AUTH_TIMEOUT_MS = 5_000;
+
+/**
+ * Extract the access_token from the raw Cookie header using LAST-WINS
+ * semantics, matching the gateway's (Starlette) cookie parser.
+ *
+ * Browsers send same-named cookies oldest-first (RFC 6265 §5.4), so the last
+ * occurrence is the one the gateway itself would honor. Next.js' built-in
+ * `cookies().get()` is FIRST-wins and silently picks up a stale leftover
+ * access_token from an earlier deployment on the same origin — the login then
+ * succeeds server-side but the SSR workspace guard bounces straight back to
+ * /login. See: login loop requiring multiple credential entries.
+ */
+async function readSessionToken(): Promise<string | null> {
+  const headerStore = await headers();
+  const cookieHeader = headerStore.get("cookie");
+  if (!cookieHeader) return null;
+  let token: string | null = null;
+  for (const part of cookieHeader.split(";")) {
+    const eq = part.indexOf("=");
+    if (eq === -1) continue;
+    if (part.slice(0, eq).trim() !== "access_token") continue;
+    token = part.slice(eq + 1).trim();
+  }
+  return token;
+}
 
 /**
  * Fetch the authenticated user from the gateway using the request's cookies.
@@ -32,8 +57,7 @@ export async function getServerSideUser(): Promise<AuthResult> {
     };
   }
 
-  const cookieStore = await cookies();
-  const sessionCookie = cookieStore.get("access_token");
+  const sessionToken = await readSessionToken();
 
   let internalGatewayUrl: string;
   try {
@@ -42,7 +66,7 @@ export async function getServerSideUser(): Promise<AuthResult> {
     return { tag: "config_error", message: String(err) };
   }
 
-  if (!sessionCookie) {
+  if (!sessionToken) {
     // No session — check whether the system has been initialised yet.
     const setupController = new AbortController();
     const setupTimeout = setTimeout(
@@ -64,7 +88,9 @@ export async function getServerSideUser(): Promise<AuthResult> {
           return { tag: "system_setup_required" };
         }
         if (setupData.needs_setup === false) {
-          console.debug("[SSR auth] System is already set up (needs_setup=false)");
+          console.debug(
+            "[SSR auth] System is already set up (needs_setup=false)",
+          );
         }
       }
     } catch {
@@ -79,7 +105,7 @@ export async function getServerSideUser(): Promise<AuthResult> {
 
   try {
     const res = await fetch(`${internalGatewayUrl}/api/v1/auth/me`, {
-      headers: { Cookie: `access_token=${sessionCookie.value}` },
+      headers: { Cookie: `access_token=${sessionToken}` },
       cache: "no-store",
       signal: controller.signal,
     });
