@@ -1,10 +1,29 @@
 import json
 import os
+import sys
 from io import BytesIO
 
-from PIL import Image
-from pptx import Presentation
-from pptx.util import Inches
+
+def _require(module_name: str) -> None:
+    """Fail fast with an actionable message when a dependency is missing."""
+    try:
+        __import__(module_name)
+    except ImportError:
+        print(
+            f"缺少依赖模块 '{module_name}'，且当前环境禁止联网安装。\n"
+            f"请在内网 Python 环境预装后重试：pip install --no-index --find-links <离线wheel目录> "
+            f"python-pptx pillow",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+
+_require("pptx")
+_require("PIL")
+
+from PIL import Image  # noqa: E402
+from pptx import Presentation  # noqa: E402
+from pptx.util import Inches  # noqa: E402
 
 
 def generate_ppt(

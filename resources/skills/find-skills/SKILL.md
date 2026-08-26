@@ -2,6 +2,7 @@
 name: find-skills
 description: Helps users discover and install agent skills when they ask questions like "how do I do X", "find a skill for X", "is there a skill that can...", or express interest in extending capabilities. This skill should be used when the user is looking for functionality that might exist as an installable skill.
 description_zh: "帮助用户发现并安装智能体技能。当用户提出“我该怎么做 X”“找一个做 X 的技能”“有没有技能可以……”等问题,或表达扩展能力兴趣时使用。当用户正在寻找可能以可安装技能形式存在的功能时,应使用本技能。"
+requires-internet: true
 ---
 
 # Find Skills

@@ -47,6 +47,10 @@ log() {
     printf '[%s] %s\n' "$(date '+%H:%M:%S')" "$1"
 }
 
+warn() {
+    printf '[%s] warning: %s\n' "$(date '+%H:%M:%S')" "$1" >&2
+}
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
@@ -377,6 +381,35 @@ tar \
     workflows
 
 log "[7/7] assembling bundle..."
+
+# Collect offline wheels for skill runtime dependencies so intranet machines can
+# install them without network access (used by deploy-intranet.sh).
+SKILL_WHEELS_DIR="$OUTPUT_DIR/wheels"
+WHEEL_PY_VERSION="${SKILL_WHEELS_PYTHON_VERSION:-3.12}"
+case "$PLATFORM" in
+    linux/arm64) WHEEL_PLATFORM_ARGS=(--platform manylinux2014_aarch64 --platform manylinux_2_28_aarch64) ;;
+    *)           WHEEL_PLATFORM_ARGS=(--platform manylinux2014_x86_64 --platform manylinux_2_28_x86_64) ;;
+esac
+if python3 -m pip --version >/dev/null 2>&1; then
+    mkdir -p "$SKILL_WHEELS_DIR"
+    log "  collecting skill runtime wheels ($PLATFORM, py$WHEEL_PY_VERSION)..."
+    if python3 -m pip download \
+        --dest "$SKILL_WHEELS_DIR" \
+        "${WHEEL_PLATFORM_ARGS[@]}" \
+        --only-binary=:all: \
+        --implementation cp \
+        --python-version "$WHEEL_PY_VERSION" \
+        duckdb openpyxl python-pptx pillow > /dev/null 2>&1; then
+        SKILL_WHEEL_COUNT="$(ls "$SKILL_WHEELS_DIR" | wc -l)"
+        log "  collected $SKILL_WHEEL_COUNT wheel(s) into wheels/"
+    else
+        rm -rf "$SKILL_WHEELS_DIR"
+        warn "failed to collect skill runtime wheels; the bundle will lack offline deps for data-analysis/ppt-generation"
+    fi
+else
+    warn "python3/pip not found on build machine; skipping skill runtime wheel collection"
+fi
+
 cp "$GUIDE_FILE" "$OUTPUT_DIR/$GUIDE_BASENAME"
 cp "$DEPLOY_SCRIPT_FILE" "$OUTPUT_DIR/$DEPLOY_BASENAME"
 cp "$CHECK_SCRIPT_FILE" "$OUTPUT_DIR/$CHECK_BASENAME"
@@ -461,6 +494,9 @@ Files:
   - .env.intranet         (Intranet environment template)
   - $(basename "$MANIFEST_FILE")        (This manifest)
   - $(basename "$SHA_FILE")          (SHA256 checksums)
+
+Skill Runtime Wheels:
+$([ -d "$SKILL_WHEELS_DIR" ] && printf '  - wheels/ (%s wheel(s), platform %s, python %s; installed offline by deploy-intranet.sh for data-analysis/ppt-generation)\n' "$(ls "$SKILL_WHEELS_DIR" | wc -l)" "$PLATFORM" "$WHEEL_PY_VERSION" || echo "  (none collected)")
 
 Custom Skills (resources/skills bundled in the source archive):
 $SKILLS_MANIFEST_TEXT$EXCLUDED_SKILLS_TEXT

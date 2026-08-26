@@ -11,24 +11,30 @@ import json
 import logging
 import os
 import re
-import subprocess
 import sys
 import tempfile
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
 
-try:
-    import duckdb
-except ImportError:
-    logger.error("duckdb is not installed. Installing...")
-    subprocess.run([sys.executable, "-m", "pip", "install", "duckdb", "openpyxl", "-q"], check=True)
-    import duckdb
+def _require(module_name: str) -> None:
+    """Fail fast with an actionable message when a dependency is missing."""
+    try:
+        __import__(module_name)
+    except ImportError:
+        logger.error(
+            f"缺少依赖模块 '{module_name}'，且当前环境禁止联网安装。\n"
+            f"请在内网 Python 环境预装后重试：pip install --no-index --find-links <离线wheel目录> "
+            f"duckdb openpyxl"
+        )
+        sys.exit(1)
 
-try:
-    import openpyxl  # noqa: F401
-except ImportError:
-    subprocess.run([sys.executable, "-m", "pip", "install", "openpyxl", "-q"], check=True)
+
+_require("duckdb")
+_require("openpyxl")
+
+import duckdb  # noqa: E402
+import openpyxl  # noqa: E402
 
 # Cache directory for persistent DuckDB databases
 CACHE_DIR = os.path.join(tempfile.gettempdir(), ".data-analysis-cache")
@@ -92,8 +98,10 @@ def load_files(con: duckdb.DuckDBPyConnection, files: list[str]) -> dict[str, st
     Load Excel/CSV files into DuckDB tables.
 
     Returns a mapping of original_name -> sanitized_table_name.
+
+    Fully offline: no DuckDB extensions are downloaded; Excel sheets are read
+    with openpyxl and inserted directly.
     """
-    con.execute("INSTALL spatial; LOAD spatial;")
     table_map: dict[str, str] = {}
 
     for file_path in files:
@@ -113,17 +121,52 @@ def load_files(con: duckdb.DuckDBPyConnection, files: list[str]) -> dict[str, st
     return table_map
 
 
+def _normalize_cell(value: object) -> object:
+    """Convert openpyxl cell values into DuckDB-compatible Python values."""
+    if value is None:
+        return None
+    if isinstance(value, (str, int, float, bool)):
+        return value
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return str(value)
+
+
+def _infer_column_types(rows: list[tuple], num_cols: int) -> list[str]:
+    """Infer a DuckDB type per column from sample values."""
+    types = ["VARCHAR"] * num_cols
+    for col in range(num_cols):
+        values = [row[col] for row in rows if row[col] is not None]
+        if not values:
+            continue
+        if all(isinstance(v, bool) for v in values):
+            types[col] = "BOOLEAN"
+        elif all(isinstance(v, int) and not isinstance(v, bool) for v in values):
+            types[col] = "BIGINT"
+        elif all(
+            isinstance(v, (int, float)) and not isinstance(v, bool) for v in values
+        ):
+            types[col] = "DOUBLE"
+    return types
+
+
 def _load_excel(
     con: duckdb.DuckDBPyConnection, file_path: str, table_map: dict[str, str]
 ) -> None:
-    """Load all sheets from an Excel file into DuckDB tables."""
-    import openpyxl
-
+    """Load all sheets from an Excel file into DuckDB tables via openpyxl."""
     wb = openpyxl.load_workbook(file_path, read_only=True, data_only=True)
-    sheet_names = wb.sheetnames
-    wb.close()
+    try:
+        sheet_rows = {
+            sheet_name: [
+                tuple(_normalize_cell(v) for v in row)
+                for row in wb[sheet_name].iter_rows(values_only=True)
+            ]
+            for sheet_name in wb.sheetnames
+        }
+    finally:
+        wb.close()
 
-    for sheet_name in sheet_names:
+    for sheet_name, rows in sheet_rows.items():
         table_name = sanitize_table_name(sheet_name)
 
         # Handle duplicate table names
@@ -134,22 +177,26 @@ def _load_excel(
             counter += 1
 
         try:
-            con.execute(
-                f"""
-                CREATE TABLE "{table_name}" AS
-                SELECT * FROM st_read(
-                    '{file_path}',
-                    layer = '{sheet_name}',
-                    open_options = ['HEADERS=FORCE', 'FIELD_TYPES=AUTO']
-                )
-            """
+            if not rows:
+                logger.warning(f"  Sheet '{sheet_name}' is empty, skipped")
+                continue
+
+            header = [str(c) if c is not None else f"col_{i}" for i, c in enumerate(rows[0])]
+            data_rows = rows[1:]
+            col_types = _infer_column_types(data_rows, len(header))
+
+            cols_sql = ", ".join(
+                f'"{name}" {ctype}' for name, ctype in zip(header, col_types)
+            )
+            con.execute(f'CREATE TABLE "{table_name}" ({cols_sql})')
+            placeholders = ", ".join("?" for _ in header)
+            con.executemany(
+                f'INSERT INTO "{table_name}" VALUES ({placeholders})', data_rows
             )
             table_map[sheet_name] = table_name
-            row_count = con.execute(f'SELECT COUNT(*) FROM "{table_name}"').fetchone()[
-                0
-            ]
             logger.info(
-                f"  Loaded sheet '{sheet_name}' -> table '{table_name}' ({row_count} rows)"
+                f"  Loaded sheet '{sheet_name}' -> table '{table_name}' "
+                f"({len(data_rows)} rows)"
             )
         except Exception as e:
             logger.warning(f"  Failed to load sheet '{sheet_name}': {e}")
@@ -224,14 +271,13 @@ def action_inspect(con: duckdb.DuckDBPyConnection, table_map: dict[str, str]) ->
         # Sample data (first 5 rows)
         output_parts.append("\nSample data (first 5 rows):")
         try:
-            sample = con.execute(f'SELECT * FROM "{table_name}" LIMIT 5').fetchdf()
-            output_parts.append(sample.to_string(index=False))
-        except Exception:
             sample = con.execute(f'SELECT * FROM "{table_name}" LIMIT 5').fetchall()
             header = [col[0] for col in columns]
             output_parts.append("  " + " | ".join(header))
             for row in sample:
                 output_parts.append("  " + " | ".join(str(v) for v in row))
+        except Exception as e:
+            output_parts.append(f"  Failed to fetch sample rows: {e}")
 
     result = "\n".join(output_parts)
     print(result)

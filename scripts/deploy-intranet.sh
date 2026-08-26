@@ -944,9 +944,32 @@ If the deployment failed, you can recover using these steps:
 EOF
 }
 
+# Install offline Python wheels for skill runtime dependencies (data-analysis,
+# ppt-generation) into the interpreter used by local-sandbox skill scripts.
+# Missing wheels/ or pip is non-fatal: the affected skills fail with a clear
+# message instead of attempting network installs.
+install_skill_wheels() {
+    local wheels_dir="$BUNDLE_ROOT/wheels"
+    [ -d "$wheels_dir" ] || {
+        log "no wheels/ in bundle; skipping skill runtime dependency install"
+        return 0
+    }
+    if ! command -v python3 >/dev/null 2>&1; then
+        warn "python3 not found; cannot install skill runtime wheels"
+        return 0
+    fi
+    log "installing skill runtime dependencies from offline wheels..."
+    if ! run_cmd python3 -m pip install --no-index --find-links "$wheels_dir" \
+        duckdb openpyxl python-pptx pillow; then
+        warn "skill runtime wheel install failed; data-analysis/ppt-generation may be unavailable"
+        warn "verify bundled wheels match this machine's architecture and python3 version"
+    fi
+}
+
 prepare_bundle() {
     extract_source
     seed_runtime
+    install_skill_wheels
     validate_runtime
 }
 
