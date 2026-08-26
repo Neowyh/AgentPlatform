@@ -63,6 +63,7 @@ export interface Translations {
     recentChatsTitle: string;
     viewAllAgents: string;
     emptyAgents: string;
+    loadError: string;
     promptTemplate: string;
   };
 

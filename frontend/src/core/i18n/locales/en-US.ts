@@ -78,6 +78,7 @@ export const enUS: Translations = {
     recentChatsTitle: "Recent chats",
     viewAllAgents: "View all",
     emptyAgents: "No agents available yet",
+    loadError: "Failed to load agents, please try again later",
     promptTemplate: "Hi, I'd like {name} to help me with: ",
   },
 

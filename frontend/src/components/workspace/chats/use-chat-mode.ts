@@ -19,6 +19,8 @@ export function useSpecificChatMode() {
     if (searchParams.get("mode") === "skill") {
       return t.inputBox.createSkillPrompt;
     }
+    // skill mode takes precedence over ?prompt= (designed so skill selectors
+    // never lose the synthetic prompt text from a stray URL param).
     return searchParams.get("prompt") ?? undefined;
   }, [threadIdFromPath, searchParams, t.inputBox.createSkillPrompt]);
   const lastInitialValueRef = useRef<string | undefined>(undefined);
@@ -39,6 +41,11 @@ export function useSpecificChatMode() {
           textarea.selectionEnd = textarea.value.length;
         }
       }, 100);
+    } else if (!inputInitialValue) {
+      // Allow a later navigation to the same URL (e.g. back/forward within
+      // the same route, where the component does not remount) to prefill
+      // again instead of being swallowed by the dedup ref above.
+      lastInitialValueRef.current = undefined;
     }
   }, [inputInitialValue]);
 }

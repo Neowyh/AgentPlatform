@@ -10,7 +10,22 @@ import { agentRouteIdentity } from "./scene-suggestion-cards";
 
 export function AgentShowcase({ max = 6 }: { max?: number }) {
   const { t } = useI18n();
-  const { agents = [] } = useAgents();
+  const { agents = [], isLoading, error } = useAgents();
+
+  if (isLoading) {
+    return null;
+  }
+
+  if (error && agents.length === 0) {
+    return (
+      <section className="space-y-2">
+        <h2 className="text-muted-foreground text-sm font-medium">
+          {t.workbench.agentsTitle}
+        </h2>
+        <p className="text-muted-foreground text-xs">{t.workbench.loadError}</p>
+      </section>
+    );
+  }
 
   if (agents.length === 0) {
     return (

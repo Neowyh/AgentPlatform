@@ -78,6 +78,7 @@ export const zhCN: Translations = {
     recentChatsTitle: "最近的对话",
     viewAllAgents: "查看全部",
     emptyAgents: "还没有可用的智能体",
+    loadError: "智能体加载失败，请稍后重试",
     promptTemplate: "你好，我想让「{name}」帮我：",
   },
 

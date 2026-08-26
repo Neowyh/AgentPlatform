@@ -20,6 +20,7 @@ vi.mock("@/core/i18n/hooks", () => ({
         recentChatsTitle: "Recent chats",
         viewAllAgents: "View all",
         emptyAgents: "No agents available yet",
+        loadError: "Load failed",
         promptTemplate: "Hi, I'd like {name} to help me with: ",
       },
     },
@@ -40,7 +41,11 @@ const mockAgents: Agent[] = [
 ];
 
 vi.mock("@/core/agents", () => ({
-  useAgents: () => ({ agents: mockAgentsData }),
+  useAgents: () => ({
+    agents: mockAgentsData,
+    isLoading: mockAgentsLoading,
+    error: mockAgentsError,
+  }),
 }));
 
 vi.mock("@/core/threads/hooks", () => ({
@@ -48,6 +53,8 @@ vi.mock("@/core/threads/hooks", () => ({
 }));
 
 let mockAgentsData: Agent[] = mockAgents;
+let mockAgentsLoading = false;
+let mockAgentsError: null | Error = null;
 let mockThreadsData: AgentThread[] = [];
 
 describe("SceneSuggestionCards", () => {
@@ -81,6 +88,8 @@ describe("SceneSuggestionCards", () => {
 describe("AgentShowcase", () => {
   beforeEach(() => {
     mockAgentsData = mockAgents;
+    mockAgentsLoading = false;
+    mockAgentsError = null;
   });
 
   test("renders agent items and view-all link", () => {
@@ -92,7 +101,21 @@ describe("AgentShowcase", () => {
     );
   });
 
-  test("renders empty state when no agents are available", () => {
+  test("renders nothing while loading", () => {
+    mockAgentsLoading = true;
+    mockAgentsData = [];
+    const { container } = render(<AgentShowcase />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  test("renders error state when fetch fails and list is empty", () => {
+    mockAgentsData = [];
+    mockAgentsError = new Error("Network");
+    render(<AgentShowcase />);
+    expect(screen.getByText("Load failed")).toBeInTheDocument();
+  });
+
+  test("renders empty state when list is confirmed empty", () => {
     mockAgentsData = [];
     render(<AgentShowcase />);
     expect(screen.getByText("No agents available yet")).toBeInTheDocument();
