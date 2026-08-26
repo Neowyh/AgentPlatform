@@ -8,8 +8,7 @@ category: Design Tools
 author: op7418
 permissions:
   - file_write
-  - optional_network_assets
-permission_notes_zh: 本 Skill 会在用户指定项目目录复制模板、创建 images 目录并写入 HTML 文件;模板预览时可能加载公开字体、图标或动效 CDN,如需离线可替换为本地资源。
+permission_notes_zh: 本 Skill 会在用户指定项目目录复制模板与 assets 资源目录、创建 images 目录并写入 HTML 文件;字体、图标、动效全部本地加载,完全离线可用。
 display_name: "Magazine Web PPT"
 display_name_en: "Guizang Ppt Skill"
 visibility: "public"
@@ -138,7 +137,7 @@ icon: "https://codebuddy-platform-1258344699.cos.accelerate.myqcloud.com/public/
 
 ### Step 2 · 拷贝模板
 
-**根据 Step 1 选定的风格,拷贝对应的模板**到目标位置（通常是 `项目/XXX/ppt/index.html`），同时在同级建一个 `images/` 文件夹准备接图片。
+**根据 Step 1 选定的风格,拷贝对应的模板**到目标位置（通常是 `项目/XXX/ppt/index.html`），**同时把 `assets/` 目录整体拷贝到同级**（字体、图标、动效引擎都在里面，离线运行必需），再建一个 `images/` 文件夹准备接图片。
 
 ```bash
 mkdir -p "项目/XXX/ppt/images"
@@ -148,9 +147,12 @@ cp "<SKILL_ROOT>/assets/template.html" "项目/XXX/ppt/index.html"
 
 # 或 风格 B · 瑞士国际主义风
 cp "<SKILL_ROOT>/assets/template-swiss.html" "项目/XXX/ppt/index.html"
+
+# 字体/图标/动效资源（两套模板共用,离线必需）
+cp -r "<SKILL_ROOT>/assets" "项目/XXX/ppt/assets"
 ```
 
-两个 `template*.html` 都是**完整可运行**的文件——CSS、WebGL shader、翻页 JS、字体/图标 CDN 全已预设好,只有 `<!-- SLIDES_HERE -->` 占位符等待你填充 slide 内容。
+两个 `template*.html` 都是**完整可运行**的文件——CSS、WebGL shader、翻页 JS 已预设好,字体(lucide 图标、woff2 子集)与动效引擎(motion)全部从本地 `./assets/` 加载,**完全离线可用**,只有 `<!-- SLIDES_HERE -->` 占位符等待你填充 slide 内容。
 
 **注意**:风格 A 和 B **不能混用**。layouts.md 里的类（如 `.h-hero` 衬线大标题、`.display-zh` 等）只在 template.html 有定义；layouts-swiss.md 里的类（如 `.kpi-hero`、`.accent-block`、`.span-N`、`.dots` 等）只在 template-swiss.html 有定义。一份 deck 只能选一套。
 

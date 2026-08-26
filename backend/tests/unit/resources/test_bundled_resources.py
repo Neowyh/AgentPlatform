@@ -82,7 +82,7 @@ def test_repository_bundled_manifest_has_unique_stable_ids_and_existing_sources(
     manifest = load_bundled_manifest(REPO_ROOT / "bundled-resources.json")
 
     assert manifest.schema_version == 1
-    assert len(manifest.resources) == 34
+    assert len(manifest.resources) == 23
     assert len({item.id for item in manifest.resources}) == len(manifest.resources)
     assert len({(item.type, item.slug) for item in manifest.resources}) == len(manifest.resources)
     assert {(item.type, item.slug): item.id for item in manifest.resources}[("workflow", "fault-zeroing")] == "018ce2c1-4d43-5db4-b4e3-d8d40624260d"
@@ -244,10 +244,10 @@ async def test_repository_bundle_can_be_seeded_offline_as_one_complete_set(
         owner_id="system-owner",
     )
 
-    assert report.created == 34
+    assert report.created == 23
     async with factory() as session:
-        assert await session.scalar(select(func.count()).select_from(Resource)) == 34
-        assert await session.scalar(select(func.count()).select_from(ResourceVersion)) == 34
+        assert await session.scalar(select(func.count()).select_from(Resource)) == 23
+        assert await session.scalar(select(func.count()).select_from(ResourceVersion)) == 23
     await engine.dispose()
 
 

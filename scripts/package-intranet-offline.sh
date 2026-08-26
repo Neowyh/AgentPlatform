@@ -31,6 +31,9 @@ Options:
                           resources/skills; packaging fails if any is missing
                           from the build machine (resources/skills is not fully
                           tracked in git, so a fresh machine may lack skills)
+  --all-skills            Bundle every skill directory under resources/skills
+                          instead of the default preinstall whitelist
+                          (bundled-skills.txt)
   --force                 Remove the output directory if it already exists
   --no-cache              Rebuild Docker images without using cache
   --require-clean         Fail if the git worktree contains uncommitted changes
@@ -66,9 +69,12 @@ NO_CACHE=0
 REQUIRE_CLEAN=0
 EXCLUDE_SKILLS=""
 SKILLS_MANIFEST=""
+ALL_SKILLS=0
 EXCLUDED_SKILLS=()
 
 DEFAULT_SANDBOX_IMAGE="enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:latest"
+PREINSTALL_SKILLS_FILE="$REPO_ROOT/bundled-skills.txt"
+BUNDLED_RESOURCES_FILE="$REPO_ROOT/bundled-resources.json"
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -114,6 +120,10 @@ while [ "$#" -gt 0 ]; do
             [ "$#" -ge 2 ] || die "--skills-manifest requires a value"
             SKILLS_MANIFEST="$2"
             shift 2
+            ;;
+        --all-skills)
+            ALL_SKILLS=1
+            shift
             ;;
         --force)
             FORCE=1
@@ -197,6 +207,67 @@ if [ -e "$OUTPUT_DIR" ]; then
 fi
 
 mkdir -p "$OUTPUT_DIR"
+
+# ---------------------------------------------------------------------------
+# Skill packaging mode (fail fast BEFORE the long image builds).
+#
+# Default: whitelist mode — bundle exactly the skills listed in
+# bundled-skills.txt, which must stay in sync with the "skill" entries in
+# bundled-resources.json (the deployment seed manifest). --all-skills opts out.
+# ---------------------------------------------------------------------------
+PREINSTALL_SKILLS=()
+SKILL_TAR_EXCLUDES=()
+if [ "$ALL_SKILLS" -eq 1 ]; then
+    log "skill mode: bundling ALL skills under resources/skills (--all-skills)"
+else
+    [ -f "$PREINSTALL_SKILLS_FILE" ] || die "preinstall skills file not found: bundled-skills.txt (pass --all-skills to bundle everything)"
+    while IFS= read -r line || [ -n "$line" ]; do
+        line="${line%%#*}"
+        line="$(printf '%s' "$line" | tr -d '[:space:]')"
+        [ -n "$line" ] || continue
+        PREINSTALL_SKILLS+=("$line")
+    done < "$PREINSTALL_SKILLS_FILE"
+    [ "${#PREINSTALL_SKILLS[@]}" -gt 0 ] || die "bundled-skills.txt contains no skills"
+    for skill in "${PREINSTALL_SKILLS[@]}"; do
+        if [ ! -d "$REPO_ROOT/resources/skills/$skill" ]; then
+            die "bundled-skills.txt lists missing skill: resources/skills/$skill"
+        fi
+        if [[ " ${EXCLUDED_SKILLS[*]:-} " == *" $skill "* ]]; then
+            log "  warning: skill '$skill' is both preinstall-listed and --exclude-skills; exclusion wins"
+        fi
+    done
+    if ! CONSISTENCY_OUT="$(python3 - "$BUNDLED_RESOURCES_FILE" "${PREINSTALL_SKILLS[@]}" <<'PY'
+import json
+import sys
+
+manifest_path, listed = sys.argv[1], set(sys.argv[2:])
+with open(manifest_path, encoding="utf-8") as fh:
+    resources = json.load(fh).get("resources", [])
+seeded = {r["slug"] for r in resources if r.get("type") == "skill"}
+missing = sorted(listed - seeded)
+extra = sorted(seeded - listed)
+if missing:
+    print(f"in bundled-resources.json but not preinstall-listed: {', '.join(missing)}")
+if extra:
+    print(f"preinstall-listed but not seeded by bundled-resources.json: {', '.join(extra)}")
+if missing or extra:
+    sys.exit(1)
+PY
+)"; then
+    printf '%s\n' "$CONSISTENCY_OUT" >&2
+    die "bundled-skills.txt and bundled-resources.json disagree (see above); keep both manifests in sync"
+    fi
+    # Exclude every skill directory that is not on the preinstall list.
+    for entry in "$REPO_ROOT"/resources/skills/*/; do
+        [ -d "$entry" ] || continue
+        name="$(basename "$entry")"
+        if [[ " ${PREINSTALL_SKILLS[*]:-} " != *" $name "* ]]; then
+            SKILL_TAR_EXCLUDES+=(--exclude="resources/skills/${name}")
+        fi
+    done
+    log "skill mode: whitelist (${#PREINSTALL_SKILLS[@]} skills from bundled-skills.txt), excluding ${#SKILL_TAR_EXCLUDES[@]} non-preinstalled skill dir(s)"
+fi
+
 
 GATEWAY_IMAGE="ideer-gateway:$VERSION"
 FRONTEND_IMAGE="ideer-frontend:$VERSION"
@@ -313,9 +384,18 @@ if [ -n "$SKILLS_MANIFEST" ]; then
     log "  verifying custom skills manifest: ${EXPECTED_SKILLS[*]}"
 fi
 
-# Actual bundled skills (excluding any exclusions) for the MANIFEST record.
+# Actual bundled skills for the MANIFEST record:
+#   whitelist mode -> the preinstall list minus explicit --exclude-skills
+#   --all-skills   -> every skill directory minus exclusions
 BUNDLED_SKILLS=()
-if [ -d "$REPO_ROOT/resources/skills" ]; then
+if [ "$ALL_SKILLS" -eq 0 ]; then
+    for name in "${PREINSTALL_SKILLS[@]}"; do
+        if [[ " ${EXCLUDED_SKILLS[*]:-} " == *" $name "* ]]; then
+            continue
+        fi
+        BUNDLED_SKILLS+=("$name")
+    done
+elif [ -d "$REPO_ROOT/resources/skills" ]; then
     for entry in "$REPO_ROOT"/resources/skills/*/; do
         [ -d "$entry" ] || continue
         name="$(basename "$entry")"
@@ -324,9 +404,6 @@ if [ -d "$REPO_ROOT/resources/skills" ]; then
         fi
         BUNDLED_SKILLS+=("$name")
     done
-    if [ "${#BUNDLED_SKILLS[@]}" -gt 0 ]; then
-        mapfile -t BUNDLED_SKILLS < <(printf '%s\n' "${BUNDLED_SKILLS[@]}" | sort)
-    fi
 fi
 SKILLS_MANIFEST_TEXT=""
 if [ "${#BUNDLED_SKILLS[@]}" -gt 0 ]; then
@@ -339,6 +416,14 @@ fi
 EXCLUDED_SKILLS_TEXT=""
 if [ "${#EXCLUDED_SKILLS[@]}" -gt 0 ]; then
     EXCLUDED_SKILLS_TEXT="Excluded: ${EXCLUDED_SKILLS[*]}"
+fi
+if [ "$ALL_SKILLS" -eq 0 ]; then
+    NON_PREINSTALL_TEXT="Non-preinstall skills (not in bundled-skills.txt) are excluded from this bundle"
+    if [ -n "$EXCLUDED_SKILLS_TEXT" ]; then
+        EXCLUDED_SKILLS_TEXT="$EXCLUDED_SKILLS_TEXT; $NON_PREINSTALL_TEXT"
+    else
+        EXCLUDED_SKILLS_TEXT="$NON_PREINSTALL_TEXT"
+    fi
 fi
 log "  bundled custom skills: ${BUNDLED_SKILLS[*]:-(none)}"
 tar \
@@ -363,12 +448,14 @@ tar \
     --exclude='logs' \
     --exclude='*.log' \
     "${TAR_EXCLUDES[@]}" \
+    "${SKILL_TAR_EXCLUDES[@]}" \
     -czf "$SOURCE_TAR" \
     .env.example \
     Makefile \
     README.md \
     backend \
     bundled-resources.json \
+    bundled-skills.txt \
     config.example.yaml \
     config.intranet.yaml \
     docker \
@@ -404,7 +491,7 @@ if python3 -m pip --version >/dev/null 2>&1; then
         log "  collected $SKILL_WHEEL_COUNT wheel(s) into wheels/"
     else
         rm -rf "$SKILL_WHEELS_DIR"
-        warn "failed to collect skill runtime wheels; the bundle will lack offline deps for data-analysis/ppt-generation"
+        warn "failed to collect skill runtime wheels; the bundle will lack offline deps for data-analysis"
     fi
 else
     warn "python3/pip not found on build machine; skipping skill runtime wheel collection"
@@ -496,7 +583,7 @@ Files:
   - $(basename "$SHA_FILE")          (SHA256 checksums)
 
 Skill Runtime Wheels:
-$([ -d "$SKILL_WHEELS_DIR" ] && printf '  - wheels/ (%s wheel(s), platform %s, python %s; installed offline by deploy-intranet.sh for data-analysis/ppt-generation)\n' "$(ls "$SKILL_WHEELS_DIR" | wc -l)" "$PLATFORM" "$WHEEL_PY_VERSION" || echo "  (none collected)")
+$([ -d "$SKILL_WHEELS_DIR" ] && printf '  - wheels/ (%s wheel(s), platform %s, python %s; installed offline by deploy-intranet.sh for data-analysis)\n' "$(ls "$SKILL_WHEELS_DIR" | wc -l)" "$PLATFORM" "$WHEEL_PY_VERSION" || echo "  (none collected)")
 
 Custom Skills (resources/skills bundled in the source archive):
 $SKILLS_MANIFEST_TEXT$EXCLUDED_SKILLS_TEXT

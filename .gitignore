@@ -64,25 +64,6 @@ coverage.xml
 coverage/
 .ideer/
 .claude/
-resources/skills/*
-!resources/skills/fault-zeroing/
-!resources/skills/fault-zeroing/**
-!resources/skills/srs-writing/
-!resources/skills/srs-writing/**
-!resources/skills/caveman/
-!resources/skills/caveman/**
-!resources/skills/data-report/
-!resources/skills/data-report/**
-!resources/skills/grill-me/
-!resources/skills/grill-me/**
-!resources/skills/guizang-ppt-skill/
-!resources/skills/guizang-ppt-skill/**
-!resources/skills/humanizer-zh/
-!resources/skills/humanizer-zh/**
-!resources/skills/structured-longform-writing/
-!resources/skills/structured-longform-writing/**
-!resources/skills/translate/
-!resources/skills/translate/**
 # Windows ADS junk copied alongside skills (never track)
 *:Zone.Identifier*
 logs/

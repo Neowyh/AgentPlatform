@@ -18,108 +18,12 @@
       "source": "resources/skills/bootstrap"
     },
     {
-      "id": "3a51041d-9e6b-570d-ad1e-822c3d1560ce",
-      "type": "skill",
-      "slug": "chart-visualization",
-      "display_name": "图表可视化",
-      "visibility": "public",
-      "source": "resources/skills/chart-visualization"
-    },
-    {
-      "id": "ee46a05e-ad0d-5ce2-ad7e-8d38b13e6c20",
-      "type": "skill",
-      "slug": "claude-to-ideer",
-      "display_name": "iDeer API 接入",
-      "visibility": "public",
-      "source": "resources/skills/claude-to-ideer"
-    },
-    {
-      "id": "b23511a5-41a1-5081-9983-51398faa31cf",
-      "type": "skill",
-      "slug": "code-documentation",
-      "display_name": "代码文档生成",
-      "visibility": "public",
-      "source": "resources/skills/code-documentation"
-    },
-    {
-      "id": "30188f26-f215-575d-8738-1da440c9607a",
-      "type": "skill",
-      "slug": "consulting-analysis",
-      "display_name": "咨询分析",
-      "visibility": "public",
-      "source": "resources/skills/consulting-analysis"
-    },
-    {
       "id": "4451bc3c-8252-5e06-b53e-5b47b6083500",
       "type": "skill",
       "slug": "data-analysis",
       "display_name": "数据分析",
       "visibility": "public",
       "source": "resources/skills/data-analysis"
-    },
-    {
-      "id": "4befeeda-b2fb-5c91-962d-4ff207abdce7",
-      "type": "skill",
-      "slug": "deep-research",
-      "display_name": "深度研究",
-      "visibility": "public",
-      "source": "resources/skills/deep-research"
-    },
-    {
-      "id": "5c36cca5-dff7-5bd6-a031-13fbc56cfa3f",
-      "type": "skill",
-      "slug": "find-skills",
-      "display_name": "技能发现与安装",
-      "visibility": "public",
-      "source": "resources/skills/find-skills"
-    },
-    {
-      "id": "68602677-c8db-5ba2-ade8-f540d027a33a",
-      "type": "skill",
-      "slug": "frontend-design",
-      "display_name": "前端设计",
-      "visibility": "public",
-      "source": "resources/skills/frontend-design"
-    },
-    {
-      "id": "3f2bba94-a068-5dae-96af-355f5ed7959e",
-      "type": "skill",
-      "slug": "github-deep-research",
-      "display_name": "GitHub 深度研究",
-      "visibility": "public",
-      "source": "resources/skills/github-deep-research"
-    },
-    {
-      "id": "baf9a84d-37e3-55e2-a157-79655f41e113",
-      "type": "skill",
-      "slug": "image-generation",
-      "display_name": "图像生成",
-      "visibility": "public",
-      "source": "resources/skills/image-generation"
-    },
-    {
-      "id": "16cc8a98-e817-52fa-9b78-781b6c5de0f1",
-      "type": "skill",
-      "slug": "newsletter-generation",
-      "display_name": "资讯简报生成",
-      "visibility": "public",
-      "source": "resources/skills/newsletter-generation"
-    },
-    {
-      "id": "9fb592e4-b3b8-5df9-8a70-0948cd29a103",
-      "type": "skill",
-      "slug": "podcast-generation",
-      "display_name": "播客生成",
-      "visibility": "public",
-      "source": "resources/skills/podcast-generation"
-    },
-    {
-      "id": "23f5210a-7a22-547f-b562-5862a0de8db5",
-      "type": "skill",
-      "slug": "ppt-generation",
-      "display_name": "PPT 生成",
-      "visibility": "public",
-      "source": "resources/skills/ppt-generation"
     },
     {
       "id": "f6d20629-ce42-5807-ad5c-ea1935a10473",
@@ -136,38 +40,6 @@
       "display_name": "惊喜互动",
       "visibility": "public",
       "source": "resources/skills/surprise-me"
-    },
-    {
-      "id": "fc0299ac-9825-5055-99c1-51810bc96834",
-      "type": "skill",
-      "slug": "systematic-literature-review",
-      "display_name": "系统性文献综述",
-      "visibility": "public",
-      "source": "resources/skills/systematic-literature-review"
-    },
-    {
-      "id": "e9fea0cb-f28b-584d-b3fb-8644a61a8d38",
-      "type": "skill",
-      "slug": "vercel-deploy-claimable",
-      "display_name": "Vercel 部署",
-      "visibility": "public",
-      "source": "resources/skills/vercel-deploy-claimable"
-    },
-    {
-      "id": "6f87332e-8cc7-5cc5-b252-c0c8dc10fed2",
-      "type": "skill",
-      "slug": "video-generation",
-      "display_name": "视频生成",
-      "visibility": "public",
-      "source": "resources/skills/video-generation"
-    },
-    {
-      "id": "e8232bc7-d592-5d7f-814e-d13ddea44193",
-      "type": "skill",
-      "slug": "web-design-guidelines",
-      "display_name": "Web 设计规范审查",
-      "visibility": "public",
-      "source": "resources/skills/web-design-guidelines"
     },
     {
       "id": "f258c030-0aa2-5ca4-9072-c28fa9fdadbd",
@@ -200,14 +72,6 @@
       "display_name": "穴居人模式",
       "visibility": "public",
       "source": "resources/skills/caveman"
-    },
-    {
-      "id": "0c74d13b-06a8-5327-a178-fc65ce1bd446",
-      "type": "skill",
-      "slug": "data-report",
-      "display_name": "数据分析报告",
-      "visibility": "public",
-      "source": "resources/skills/data-report"
     },
     {
       "id": "5429c61f-89a3-5a37-a782-9fa9e0619c3a",
@@ -248,6 +112,54 @@
       "display_name": "多语言翻译工具",
       "visibility": "public",
       "source": "resources/skills/translate"
+    },
+    {
+      "id": "1f4fb421-90b9-40bc-8b91-59d0d795f834",
+      "type": "skill",
+      "slug": "anthropic-docx",
+      "display_name": "Anthropic Word 文档处理",
+      "visibility": "public",
+      "source": "resources/skills/anthropic-docx"
+    },
+    {
+      "id": "c7860af7-51fb-4d63-b865-8081944e165f",
+      "type": "skill",
+      "slug": "anthropic-pdf",
+      "display_name": "Anthropic PDF 处理",
+      "visibility": "public",
+      "source": "resources/skills/anthropic-pdf"
+    },
+    {
+      "id": "de48df01-f794-4a1a-a3d7-bedf38256ffb",
+      "type": "skill",
+      "slug": "anthropic-pptx",
+      "display_name": "Anthropic PPT 处理",
+      "visibility": "public",
+      "source": "resources/skills/anthropic-pptx"
+    },
+    {
+      "id": "6ed782a2-30e4-4c62-854f-864ef0e71a4f",
+      "type": "skill",
+      "slug": "anthropic-xlsx",
+      "display_name": "Anthropic Excel 处理",
+      "visibility": "public",
+      "source": "resources/skills/anthropic-xlsx"
+    },
+    {
+      "id": "4e3bf1ef-0ac1-4572-a180-793a276dc8e8",
+      "type": "skill",
+      "slug": "wps-gongwen",
+      "display_name": "公文格式生成",
+      "visibility": "public",
+      "source": "resources/skills/wps-gongwen"
+    },
+    {
+      "id": "d2413560-34bf-481b-83ee-febece65cc64",
+      "type": "skill",
+      "slug": "wps-proofread",
+      "display_name": "中文校对",
+      "visibility": "public",
+      "source": "resources/skills/wps-proofread"
     },
     {
       "id": "56e2423d-37c3-52cb-a05f-d32677e6abcb",

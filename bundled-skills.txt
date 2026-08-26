@@ -1,0 +1,46 @@
+# iDeer 离线内网部署默认预装技能清单
+#
+# 用途：
+#   * scripts/package-intranet-offline.sh 默认只打包本清单内的技能（--all-skills 可回退全量打包）
+#   * bundled-resources.json 中 <type>=skill 的条目应与本清单保持一致（打包时自动校验）
+#
+# 维护约定：
+#   * 每行一个技能 slug（resources/skills/ 下的目录名），支持 # 注释
+#   * 只收录满足「离线内网 + 轻度办公」场景的技能；依赖公网 API 的技能不得加入
+#   * 新增前请确认：SKILL.md 无联网触发词、scripts 无外网请求、assets 无 CDN 依赖
+
+# —— 办公文档 ——
+officecli                    # Word/Excel/PPT 读写与渲染，离线二进制，办公核心
+data-analysis                # Excel/CSV 本地数据分析（pandas）
+
+# —— Anthropic 文档四件套 ——
+anthropic-docx               # Word 创建/编辑/批注/修订（Anthropic 官方）
+anthropic-pdf                # PDF 读取/合并/拆分/表单填充（Anthropic 官方）
+anthropic-pptx               # PPT 创建/编辑/设计规范（Anthropic 官方）
+anthropic-xlsx               # Excel 创建/编辑/公式验证（Anthropic 官方）
+
+# —— 中文办公场景 ——
+wps-gongwen                  # GB/T 9704 公文格式生成（python-docx）
+wps-proofread                # 中文错别字/标点/语病校对（纯 LLM）
+
+# —— 写作与翻译 ——
+structured-longform-writing  # 报告/PRD/公文等结构化长文写作方法论
+humanizer-zh                 # 中文文本去 AI 味
+translate                    # 多语言互译，格式约束自检，纯 LLM 方法论
+
+# —— 行业场景 ——
+srs-writing                  # GJB438C 软件需求规格说明生成
+fault-zeroing                # 归零排故/故障树构建与归零报告
+
+# —— 学术（已改造为仅上传 PDF 模式） ——
+academic-paper-review        # 学术论文评审，仅基于上传 PDF 离线工作
+
+# —— 演示 ——
+guizang-ppt-skill            # 单 HTML 网页 PPT（字体/图标/动效已本地化，完全离线）
+
+# —— 元技能 ——
+bootstrap                    # 智能体初始化
+caveman                      # 极简沟通模式
+grill-me                     # 方案深度追问
+surprise-me                  # 技能创意组合
+skill-creator                # 技能创建与优化
