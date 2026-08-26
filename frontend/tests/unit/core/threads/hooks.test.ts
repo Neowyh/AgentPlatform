@@ -965,6 +965,66 @@ describe("useThreadHistory", () => {
     );
   });
 
+  it("paginates through all pages of a run via before_seq", async () => {
+    const runs = [{ run_id: "r1", created_at: "2024-01-01" }];
+    const mockListRuns = vi.fn().mockResolvedValue(runs);
+    mockGetAPIClient.mockReturnValue({ runs: { list: mockListRuns } });
+
+    const mkRunMessage = (seq: number) => ({
+      run_id: "r1",
+      seq,
+      content: { id: `m${seq}`, type: "human", content: `msg ${seq}` },
+      metadata: { caller: "user" },
+    });
+
+    mockFetchFn.mockImplementation((url: string) => {
+      if (url.includes("before_seq=41")) {
+        return Promise.resolve({
+          json: async () => ({
+            data: [mkRunMessage(31), mkRunMessage(32)],
+            has_more: true,
+          }),
+        });
+      }
+      if (url.includes("before_seq=31")) {
+        return Promise.resolve({
+          json: async () => ({
+            data: [mkRunMessage(21), mkRunMessage(22)],
+            has_more: false,
+          }),
+        });
+      }
+      return Promise.resolve({
+        json: async () => ({
+          data: [mkRunMessage(41), mkRunMessage(42)],
+          has_more: true,
+        }),
+      });
+    });
+
+    const { wrapper } = createWrapper();
+    const { result } = renderHook(() => useThreadHistory("thread-1"), {
+      wrapper,
+    });
+
+    await waitFor(() => expect(result.current.messages).toHaveLength(6));
+
+    expect(mockFetchFn).toHaveBeenCalledTimes(3);
+    expect(mockFetchFn.mock.calls.map(([url]) => String(url))).toEqual([
+      expect.stringContaining("/runs/r1/messages"),
+      expect.stringContaining("/runs/r1/messages?before_seq=41"),
+      expect.stringContaining("/runs/r1/messages?before_seq=31"),
+    ]);
+    expect(result.current.messages.map((m) => m.id)).toEqual([
+      "m21",
+      "m22",
+      "m31",
+      "m32",
+      "m41",
+      "m42",
+    ]);
+  });
+
   it("resets state when threadId changes", async () => {
     const runs = [{ run_id: "r1", created_at: "2024-01-01" }];
     const mockListRuns = vi.fn().mockResolvedValue(runs);

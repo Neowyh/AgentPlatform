@@ -39,7 +39,7 @@ export function SubtaskCard({
   isLoading: boolean;
 }) {
   const { t } = useI18n();
-  const [collapsed, setCollapsed] = useState(true);
+  const [collapsed, setCollapsed] = useState(false);
   const rehypePlugins = useRehypeSplitWordsIntoSpans(isLoading);
   const task = useSubtask(taskId)!;
   const icon = useMemo(() => {

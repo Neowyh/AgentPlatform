@@ -322,7 +322,7 @@ describe("Reasoning duration tracking", () => {
 });
 
 describe("Reasoning auto-close", () => {
-  test("auto-closes after streaming ends with defaultOpen=true", async () => {
+  test("stays open after streaming ends with defaultOpen=true", async () => {
     const { rerender } = render(
       <Reasoning isStreaming={true} defaultOpen={true} data-testid="reasoning">
         <ReasoningTrigger data-testid="trigger" />
@@ -332,7 +332,7 @@ describe("Reasoning auto-close", () => {
       </Reasoning>,
     );
 
-    // Stop streaming - this triggers the auto-close useEffect
+    // Stop streaming - the content must remain open (no auto-close)
     rerender(
       <Reasoning isStreaming={false} defaultOpen={true} data-testid="reasoning">
         <ReasoningTrigger data-testid="trigger" />
@@ -342,11 +342,10 @@ describe("Reasoning auto-close", () => {
       </Reasoning>,
     );
 
-    // Wait for the auto-close timer (1000ms) to fire
     await vi.waitFor(
       () => {
         const content = screen.getByTestId("content");
-        expect(content).toHaveAttribute("data-state", "closed");
+        expect(content).toHaveAttribute("data-state", "open");
       },
       { timeout: 3000 },
     );

@@ -770,19 +770,41 @@ export function useThreadHistory(threadId: string) {
 
         const requestThreadId = threadIdRef.current;
         loadingRunIdRef.current = run.run_id;
-        const result: { data: RunMessage[]; hasMore: boolean } = await fetch(
-          `${getBackendBaseURL()}/api/threads/${encodeURIComponent(requestThreadId)}/runs/${encodeURIComponent(run.run_id)}/messages`,
-          {
-            method: "GET",
-            headers: {
-              "Content-Type": "application/json",
+        const runMessages: RunMessage[] = [];
+        let beforeSeq: number | undefined;
+        while (true) {
+          const query =
+            beforeSeq === undefined ? "" : `?before_seq=${beforeSeq}`;
+          const result: {
+            data: RunMessage[];
+            has_more?: boolean;
+            hasMore?: boolean;
+          } = await fetch(
+            `${getBackendBaseURL()}/api/threads/${encodeURIComponent(requestThreadId)}/runs/${encodeURIComponent(run.run_id)}/messages${query}`,
+            {
+              method: "GET",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              credentials: "include",
             },
-            credentials: "include",
-          },
-        ).then((res) => {
-          return res.json();
-        });
-        const _messages = result.data
+          ).then((res) => {
+            return res.json();
+          });
+          if (threadIdRef.current !== requestThreadId) {
+            return;
+          }
+          runMessages.unshift(...result.data);
+          if (
+            !(result.has_more ?? result.hasMore) ||
+            result.data.length === 0 ||
+            typeof result.data[0]?.seq !== "number"
+          ) {
+            break;
+          }
+          beforeSeq = result.data[0].seq;
+        }
+        const _messages = runMessages
           .filter((m) => !m.metadata.caller?.startsWith("middleware:"))
           .map((m) => m.content);
         if (threadIdRef.current !== requestThreadId) {

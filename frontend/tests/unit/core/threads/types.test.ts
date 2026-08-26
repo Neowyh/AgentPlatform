@@ -84,6 +84,7 @@ describe("RunMessage", () => {
   it("can be constructed with metadata", () => {
     const msg: RunMessage = {
       run_id: "run-1",
+      seq: 1,
       content: { type: "human", content: "Hello" } as Message,
       metadata: { caller: "lead_agent" },
       created_at: "2024-01-01T00:00:00Z",
