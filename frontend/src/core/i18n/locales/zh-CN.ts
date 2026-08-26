@@ -185,7 +185,7 @@ export const zhCN: Translations = {
   // Agents
   agents: {
     title: "智能体",
-    description: "创建和管理具有专属 Prompt 与能力的自定义智能体。",
+    description: "创建和管理你的专属智能体，为它设定职责和能力。",
     newAgent: "新建智能体",
     emptyTitle: "还没有自定义智能体",
     emptyDescription: "创建你的第一个自定义智能体，设置专属系统提示词。",
@@ -267,10 +267,10 @@ export const zhCN: Translations = {
   workflows: {
     // Gallery
     title: "工作流",
-    description: "管理和运行工作流定义",
+    description: "把固定流程交给 iDeer 自动执行，适合可重复的任务。",
     newWorkflow: "新建工作流",
     emptyTitle: "还没有工作流",
-    emptyDescription: "创建你的第一个工作流以开始使用",
+    emptyDescription: "创建你的第一个工作流，让重复性任务自动跑起来。",
     // Card
     view: "查看",
     deleteTitle: "删除工作流",
@@ -293,7 +293,7 @@ export const zhCN: Translations = {
     inputsDescription: "必填和可选的输入参数",
     required: "必填",
     runStatus: "运行状态",
-    runId: "运行 ID：",
+    runId: "运行编号：",
     runHistory: "运行历史",
     noRuns: "暂无运行记录",
     definitionVersion: "定义版本",
@@ -306,14 +306,14 @@ export const zhCN: Translations = {
     nodeDetailTitle: "节点详情",
     nodeNotStarted: "该节点尚未开始执行。",
     duration: "耗时",
-    tokenStream: "Token 流",
+    tokenStream: "生成过程",
     definitionMismatchHint:
       "图为当前定义，可能与本次运行所使用的版本存在差异。",
     artifacts: "产物文件",
     noArtifacts: "暂无产物文件",
     artifactLoadError: "产物加载失败",
     artifactSize: "大小",
-    actionOutput: "Action 输出",
+    actionOutput: "执行输出",
     runNotFound: "运行未找到",
     yamlDefinition: "YAML 定义",
     // Run Dialog
@@ -458,10 +458,9 @@ export const zhCN: Translations = {
     output: "输出",
     total: "总计",
     view: "显示方式",
-    unavailable:
-      "暂无 Token 用量。只有模型成功返回且供应商提供 usage_metadata 时才会显示。",
+    unavailable: "暂无用量数据，模型成功回复后才会显示。",
     unavailableShort: "未返回用量",
-    note: "顶部总量优先使用后端持久化的线程用量；当当前回复仍在流式返回时，还会叠加可见的进行中用量。每轮和调试用量只来自当前可见消息，可能与平台账单页不完全一致。",
+    note: "顶部总量以后端保存的数据为准；回复还在生成时，会同时叠加正在进行的用量。每轮和调试用量只统计当前可见消息，可能与账单页不完全一致。",
     presets: {
       off: "关闭",
       summary: "总览",

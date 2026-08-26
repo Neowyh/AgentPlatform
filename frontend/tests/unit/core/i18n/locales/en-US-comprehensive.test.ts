@@ -334,7 +334,7 @@ describe("enUS locale comprehensive", () => {
     const expected: Record<string, string> = {
       title: "Agents",
       description:
-        "Create and manage custom agents with specialized prompts and capabilities.",
+        "Create and manage your own agents with dedicated responsibilities and capabilities.",
       newAgent: "New Agent",
       emptyTitle: "No custom agents yet",
       emptyDescription:
@@ -433,10 +433,11 @@ describe("enUS locale comprehensive", () => {
     describe("string properties", () => {
       const expected: Record<string, string> = {
         title: "Workflows",
-        description: "Manage and run your workflow definitions",
+        description: "Automate repeatable, step-by-step tasks with iDeer.",
         newWorkflow: "New Workflow",
         emptyTitle: "No workflows yet",
-        emptyDescription: "Create your first workflow to get started",
+        emptyDescription:
+          "Create your first workflow to automate a routine task",
         view: "View",
         deleteTitle: "Delete Workflow",
         deleteSuccess: "Workflow deleted",
@@ -779,7 +780,7 @@ describe("enUS locale comprehensive", () => {
     }
 
     it("tokenUsage.unavailable contains usage_metadata", () => {
-      expect(enUS.tokenUsage.unavailable).toContain("usage_metadata");
+      expect(enUS.tokenUsage.unavailable).toContain("No usage data yet");
     });
 
     it("tokenUsage.unavailableShort", () => {

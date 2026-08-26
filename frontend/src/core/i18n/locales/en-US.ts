@@ -192,7 +192,7 @@ export const enUS: Translations = {
   agents: {
     title: "Agents",
     description:
-      "Create and manage custom agents with specialized prompts and capabilities.",
+      "Create and manage your own agents with dedicated responsibilities and capabilities.",
     newAgent: "New Agent",
     emptyTitle: "No custom agents yet",
     emptyDescription:
@@ -283,10 +283,10 @@ export const enUS: Translations = {
   },
   workflows: {
     title: "Workflows",
-    description: "Manage and run your workflow definitions",
+    description: "Automate repeatable, step-by-step tasks with iDeer.",
     newWorkflow: "New Workflow",
     emptyTitle: "No workflows yet",
-    emptyDescription: "Create your first workflow to get started",
+    emptyDescription: "Create your first workflow to automate a routine task",
     // Card
     view: "View",
     deleteTitle: "Delete Workflow",
@@ -481,9 +481,9 @@ export const enUS: Translations = {
     total: "Total",
     view: "Display",
     unavailable:
-      "No token usage yet. Usage appears only after a successful model response when the provider returns usage_metadata.",
+      "No usage data yet. Usage appears only after a successful model response.",
     unavailableShort: "No usage returned",
-    note: "Header totals use persisted thread usage, plus visible in-flight usage while a run is still streaming. Per-turn and debug usage come from currently visible messages only. Totals may differ from provider billing pages.",
+    note: "Header totals use saved backend data, plus visible in-flight usage while a response is still streaming. Per-turn and debug usage come from currently visible messages only. Totals may differ from billing pages.",
     presets: {
       off: "Off",
       summary: "Summary",
