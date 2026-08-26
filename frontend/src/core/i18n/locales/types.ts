@@ -56,6 +56,16 @@ export interface Translations {
     createYourOwnSkillDescription: string;
   };
 
+  // Workbench home (welcome state)
+  workbench: {
+    tryAsking: string;
+    agentsTitle: string;
+    recentChatsTitle: string;
+    viewAllAgents: string;
+    emptyAgents: string;
+    promptTemplate: string;
+  };
+
   // Clipboard
   clipboard: {
     copyToClipboard: string;

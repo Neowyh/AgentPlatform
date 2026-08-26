@@ -71,6 +71,16 @@ export const enUS: Translations = {
       "Create your own skill to release the power of iDeer. With customized skills,\niDeer can help you search on the web, analyze data, and generate\n artifacts like slides, web pages and do almost anything.",
   },
 
+  // Workbench home (welcome state)
+  workbench: {
+    tryAsking: "Try asking",
+    agentsTitle: "Pick an agent",
+    recentChatsTitle: "Recent chats",
+    viewAllAgents: "View all",
+    emptyAgents: "No agents available yet",
+    promptTemplate: "Hi, I'd like {name} to help me with: ",
+  },
+
   // Clipboard
   clipboard: {
     copyToClipboard: "Copy to clipboard",

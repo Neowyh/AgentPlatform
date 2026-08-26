@@ -89,6 +89,20 @@ describe("useSpecificChatMode", () => {
     expect(mockSetInput).not.toHaveBeenCalled();
   });
 
+  test("sets initial prompt from '?prompt=' param when thread_id is 'new'", () => {
+    vi.mocked(useParams).mockReturnValue({ thread_id: "new" });
+    vi.mocked(useSearchParams).mockReturnValue(
+      new URLSearchParams("prompt=hello%20world") as unknown as ReturnType<
+        typeof useSearchParams
+      >,
+    );
+
+    renderHook(() => useSpecificChatMode());
+
+    vi.advanceTimersByTime(150);
+    expect(mockSetInput).toHaveBeenCalledWith("hello world");
+  });
+
   test("does not set initial prompt when there are no search params", () => {
     vi.mocked(useParams).mockReturnValue({ thread_id: "new" });
     vi.mocked(useSearchParams).mockReturnValue(

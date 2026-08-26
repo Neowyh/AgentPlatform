@@ -71,6 +71,16 @@ export const zhCN: Translations = {
       "创建你的 Agent Skill 来释放 iDeer 的潜力。通过自定义技能，iDeer\n可以帮你搜索网络、分析数据，还能为你生成幻灯片、\n网页等作品，几乎可以做任何事情。",
   },
 
+  // Workbench home (welcome state)
+  workbench: {
+    tryAsking: "试试这样问",
+    agentsTitle: "选择一个智能体",
+    recentChatsTitle: "最近的对话",
+    viewAllAgents: "查看全部",
+    emptyAgents: "还没有可用的智能体",
+    promptTemplate: "你好，我想让「{name}」帮我：",
+  },
+
   // Clipboard
   clipboard: {
     copyToClipboard: "复制到剪贴板",

@@ -110,6 +110,10 @@ vi.mock("@/components/workspace/welcome", () => ({
   Welcome: (props: any) => <div data-testid="welcome" />,
 }));
 
+vi.mock("@/components/workspace/workbench", () => ({
+  WorkbenchHome: () => <div data-testid="workbench-home" />,
+}));
+
 vi.mock("@/core/models/hooks", () => ({
   useModels: () => ({ tokenUsageEnabled: false }),
 }));
