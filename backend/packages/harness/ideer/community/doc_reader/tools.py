@@ -19,14 +19,11 @@ logger = logging.getLogger(__name__)
 _DEFAULT_MAX_CHARS = 50_000
 _MAX_FILE_SIZE = 100_000_000  # 100 MB
 
-# Legacy binary ``.doc`` is deliberately unsupported: MarkItDown ships no .doc
-# converter, so conversion would fail (or emit garbage) at runtime. Callers are
-# told to re-upload as .docx instead.
-_SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".xlsx", ".xls", ".pptx", ".ppt"}
-
-_LEGACY_DOC_ERROR = {
-    "error": "Unsupported file format: legacy .doc is not supported. Please convert the document to .docx (open it in Word/WPS and save as .docx), then upload again.",
-}
+# Legacy binary ``.doc`` is converted through the rich Word parser, which
+# shells out to LibreOffice (``soffice``) first; MarkItDown alone cannot handle
+# it. When LibreOffice is missing the conversion fails with an actionable hint
+# in the error payload.
+_SUPPORTED_EXTENSIONS = {".pdf", ".doc", ".docx", ".xlsx", ".xls", ".pptx", ".ppt"}
 
 # Security: only allow reading files under these prefixes
 _ALLOWED_PATH_PREFIXES = ["/mnt/user-data", "/tmp"]
@@ -267,8 +264,6 @@ async def read_document_async(
 
     # --- Validate extension ---
     suffix = path.suffix.lower()
-    if suffix == ".doc":
-        return json.dumps(dict(_LEGACY_DOC_ERROR), ensure_ascii=False)
     if suffix not in _SUPPORTED_EXTENSIONS:
         return json.dumps(
             {
@@ -319,8 +314,11 @@ async def read_document_async(
         )
 
     if md_path is None:
+        error = f"Failed to convert document: {path.name}"
+        if suffix == ".doc":
+            error += " (legacy .doc conversion requires LibreOffice/soffice on the gateway host; alternatively convert the document to .docx and upload again)"
         return json.dumps(
-            {"error": f"Failed to convert document: {path.name}"},
+            {"error": error},
             ensure_ascii=False,
         )
 
@@ -371,9 +369,9 @@ async def read_document_tool(
 ) -> str:
     """Read and extract text content from documents (PDF, Word, Excel, PowerPoint).
 
-    Converts documents to Markdown format for easy reading. Supports .pdf, .docx,
-    .xlsx, .pptx and other common office formats. Legacy binary .doc files are
-    not supported — convert them to .docx first.
+    Converts documents to Markdown format for easy reading. Supports .pdf, .doc,
+    .docx, .xlsx, .pptx and other common office formats. Legacy binary .doc
+    conversion requires LibreOffice (soffice) on the gateway host.
 
     Args:
         file_path: Path to the document file. Supports virtual paths like /mnt/user-data/uploads/xxx.

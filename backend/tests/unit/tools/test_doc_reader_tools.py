@@ -878,7 +878,7 @@ class TestSupportedExtensions:
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
         "suffix",
-        [".pdf", ".docx", ".xlsx", ".xls", ".pptx", ".ppt"],
+        [".pdf", ".doc", ".docx", ".xlsx", ".xls", ".pptx", ".ppt"],
     )
     async def test_each_supported_extension(self, suffix: str):
         path = _make_tmp_file(suffix=suffix)
@@ -910,20 +910,51 @@ class TestSupportedExtensions:
                 pass
 
     def test_supported_extensions_set(self):
-        """Module constant contains expected extensions (legacy .doc excluded)."""
-        expected = {".pdf", ".docx", ".xlsx", ".xls", ".pptx", ".ppt"}
+        """Module constant contains expected extensions (legacy .doc included)."""
+        expected = {".pdf", ".doc", ".docx", ".xlsx", ".xls", ".pptx", ".ppt"}
         assert _SUPPORTED_EXTENSIONS == expected
 
     @pytest.mark.asyncio
-    async def test_legacy_doc_rejected_with_conversion_hint(self):
-        """Legacy .doc files get a dedicated error telling users to convert."""
+    async def test_legacy_doc_converted_via_rich_parser(self):
+        """Legacy .doc files are accepted and converted through the conversion chain."""
+        path = _make_tmp_file(suffix=".doc")
+        md_path = Path(path).with_suffix(".md")
+        try:
+            md_path.write_text("Legacy doc content.", encoding="utf-8")
+            with (
+                patch(
+                    "ideer.community.doc_reader.tools.convert_file_to_markdown",
+                    new_callable=AsyncMock,
+                    return_value=md_path,
+                ),
+                patch(
+                    "ideer.community.doc_reader.tools._get_page_count",
+                    return_value=None,
+                ),
+            ):
+                result = await read_document_tool.ainvoke({"file_path": path})
+                data = json.loads(result) if result.startswith("{") else None
+                assert data is None or "error" not in data
+                assert "Legacy doc content." in result
+        finally:
+            _cleanup(path)
+            md_path.unlink(missing_ok=True)
+
+    @pytest.mark.asyncio
+    async def test_legacy_doc_conversion_failure_includes_libreoffice_hint(self):
+        """A .doc whose conversion fails reports the LibreOffice requirement."""
         path = _make_tmp_file(suffix=".doc")
         try:
-            result = await read_document_tool.ainvoke({"file_path": path})
+            with patch(
+                "ideer.community.doc_reader.tools.convert_file_to_markdown",
+                new_callable=AsyncMock,
+                return_value=None,
+            ):
+                result = await read_document_tool.ainvoke({"file_path": path})
             data = json.loads(result)
             assert "error" in data
+            assert "LibreOffice" in data["error"]
             assert ".docx" in data["error"]
-            assert "convert" in data["error"].lower()
         finally:
             _cleanup(path)
 

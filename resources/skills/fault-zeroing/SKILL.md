@@ -24,7 +24,7 @@ allowed-tools:
 2. 优先读取 `/mnt/user-data/uploads/`，其次读取 `/mnt/user-data/workspace/`。配置在 `sandbox.mounts` 中的挂载目录（如 `/mnt/eval-case/`）同样可读：把挂载下的子目录作为资料目录传入即可，其中的 `.docx`/`.pdf` 等办公文档也可用 `read_document` 打开。
 3. 不确定文件位置时，先用 `glob` 获取目录结构，再用 `grep` 定位关键词。
 4. 按文件格式选择读取方式：
-   - `.docx` / `.pdf` / `.xls` / `.xlsx` / `.ppt` / `.pptx`：调用 `read_document` 工具转 Markdown 后读取（分段读取，遇截断标记用 `page_range` 或分段继续）。不支持 legacy 二进制 `.doc`：遇到 `.doc` 文件时在报告“输入资料”中记为缺失（建议用户提供 .docx 版本），不得猜测内容。
+   - `.doc` / `.docx` / `.pdf` / `.xls` / `.xlsx` / `.ppt` / `.pptx`：调用 `read_document` 工具转 Markdown 后读取（分段读取，遇截断标记用 `page_range` 或分段继续）。`read_document` 返回转换失败错误时按失败契约处理并如实记录，不得猜测内容。
    - `.md` / `.txt` / `.log` 等纯文本：直接用 `read_file` 读取。
 5. 文档读取后检测空文本与工具错误：`read_document` 返回 JSON 错误（文件不存在、转换失败、疑似扫描件等）时按失败契约处理——PDF 转换结果被判定为扫描件（空白或无正文）时回复 `FAILED: 资料无法解析，疑似扫描件，请提供电子版` 并停止；非关键资料可记入覆盖矩阵缺失项后继续，不得把错误 JSON 当作文档内容或猜测内容。
 6. 长文档按章节或行号范围读取，不一次性吞入无关内容。

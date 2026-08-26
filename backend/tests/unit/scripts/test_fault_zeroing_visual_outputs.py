@@ -54,7 +54,7 @@ def test_fault_zeroing_skill_requires_visual_outputs() -> None:
 
     assert "read_document" in content
     for phrase in [
-        ".docx` / `.pdf",
+        ".doc` / `.docx` / `.pdf",
         "page_range",
         "疑似扫描件",
     ]:
@@ -64,10 +64,10 @@ def test_fault_zeroing_skill_requires_visual_outputs() -> None:
     assert "sandbox.mounts" in content
     assert "read_document` 打开" in content
 
-    # Legacy .doc is unsupported: the skill must not advertise it as readable
-    # and must instruct recording it as missing material instead.
-    assert ".doc` / `.docx" not in content
-    assert "不支持 legacy 二进制 `.doc`" in content
+    # Legacy .doc is readable via read_document (LibreOffice-backed conversion);
+    # the skill must advertise it as a supported format.
+    assert ".doc` / `.docx` / `.pdf` / `.xls`" in content
+    assert "不支持 legacy" not in content
     # Tool error responses (e.g. read_document JSON errors) must be treated
     # under the failure contract, never ingested as document content.
     assert "JSON 错误" in content
