@@ -109,6 +109,10 @@ vi.mock("@/core/workflows", () => ({
   useWorkflowRuns: (...args: any[]) => (mockUseWorkflowRuns as any)(...args),
 }));
 
+vi.mock("@/core/models/hooks", () => ({
+  useModels: () => ({ models: [] }),
+}));
+
 vi.mock("@/components/ui/badge", () => ({
   Badge: ({ children, variant }: any) => (
     <span data-testid="badge" data-variant={variant}>
