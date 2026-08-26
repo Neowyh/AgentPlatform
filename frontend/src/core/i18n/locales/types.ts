@@ -260,6 +260,8 @@ export interface Translations {
     defaultPrefix: string;
     enterInput: (key: string) => string;
     noInputs: string;
+    modelLabel: string;
+    followSystemModel: string;
     starting: string;
     // Create/Edit
     createSubtitle: string;

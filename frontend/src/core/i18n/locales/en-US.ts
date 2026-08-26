@@ -330,6 +330,8 @@ export const enUS: Translations = {
     defaultPrefix: "Default: ",
     enterInput: (key: string) => `Enter ${key}...`,
     noInputs: "This workflow has no input parameters.",
+    modelLabel: "Model",
+    followSystemModel: "Follow system default",
     starting: "Starting...",
     // Create/Edit
     createSubtitle: "Define a new workflow in YAML",

@@ -213,6 +213,11 @@ export default function WorkflowRunDetailPage() {
             {t.workflows.definitionVersion}: v
             {runStatus.definition_version ?? "-"}
           </Badge>
+          {runStatus.model_name && (
+            <Badge variant="secondary" title={t.workflows.modelLabel}>
+              {runStatus.model_name}
+            </Badge>
+          )}
           <Badge variant="outline" className={statusClass(runStatus.status)}>
             {runStatus.status}
           </Badge>

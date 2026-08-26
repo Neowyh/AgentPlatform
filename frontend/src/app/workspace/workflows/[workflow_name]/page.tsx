@@ -43,6 +43,7 @@ import { VisibilityImpactPanel } from "@/components/workspace/resources/visibili
 import { WorkspaceBreadcrumb } from "@/components/workspace/workspace-breadcrumb";
 import { useI18n } from "@/core/i18n/hooks";
 import { useModels } from "@/core/models/hooks";
+import { useLocalSettings } from "@/core/settings";
 import {
   changeResourceVisibility,
   createVisibilityApplication,
@@ -55,15 +56,21 @@ export default function WorkflowDetailPage() {
   const { workflow_name } = useParams<{ workflow_name: string }>();
   const { workflow, isLoading, error } = useWorkflow(workflow_name);
   const runWorkflowMutation = useRunWorkflow();
-  const { models } = useModels();
   const { t } = useI18n();
 
   const [runDialogOpen, setRunDialogOpen] = useState(false);
+  const [selectedModel, setSelectedModel] = useState<string>("");
+  const { models } = useModels({ enabled: runDialogOpen });
+  const [settings] = useLocalSettings();
+  useEffect(() => {
+    if (!runDialogOpen) return;
+    const current = settings.context.model_name;
+    setSelectedModel(
+      current && models.some((m) => m.name === current) ? current : "",
+    );
+  }, [runDialogOpen, settings.context.model_name, models]);
   const [visibilityDialogOpen, setVisibilityDialogOpen] = useState(false);
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
-  const [selectedModelName, setSelectedModelName] = useState<
-    string | undefined
-  >();
   const [targetVisibility, setTargetVisibility] = useState("department");
   const [visibilityReason, setVisibilityReason] = useState("");
   const [submittingApplication, setSubmittingApplication] = useState(false);
@@ -83,16 +90,6 @@ export default function WorkflowDetailPage() {
       setConfirmingDowngrade(false);
     }
   }, [workflow]);
-
-  useEffect(() => {
-    if (
-      models.length > 0 &&
-      (!selectedModelName ||
-        !models.some((model) => model.name === selectedModelName))
-    ) {
-      setSelectedModelName(models[0]?.name);
-    }
-  }, [models, selectedModelName]);
 
   const { runs } = useWorkflowRuns(workflow_name);
 
@@ -145,7 +142,7 @@ export default function WorkflowDetailPage() {
       const result = await runWorkflowMutation.mutateAsync({
         name: workflow_name,
         inputs,
-        modelName: selectedModelName,
+        modelName: selectedModel || undefined,
       });
       setRunDialogOpen(false);
       toast.success(t.workflows.started);
@@ -420,6 +417,14 @@ export default function WorkflowDetailPage() {
                         )}
                       </div>
                       <div className="ml-3 flex shrink-0 items-center gap-2">
+                        {run.model_name && (
+                          <Badge
+                            variant="secondary"
+                            title={t.workflows.modelLabel}
+                          >
+                            {run.model_name}
+                          </Badge>
+                        )}
                         <Badge variant="secondary">
                           v{run.definition_version ?? "-"}
                         </Badge>
@@ -634,15 +639,20 @@ export default function WorkflowDetailPage() {
               </p>
             )}
             <div className="space-y-2">
-              <Label htmlFor="workflow-model">{t.workflows.model}</Label>
+              <Label htmlFor="run-model">{t.workflows.modelLabel}</Label>
               <Select
-                value={selectedModelName ?? ""}
-                onValueChange={setSelectedModelName}
+                value={selectedModel}
+                onValueChange={(value) =>
+                  setSelectedModel(value === "__system__" ? "" : value)
+                }
               >
-                <SelectTrigger id="workflow-model">
-                  <SelectValue placeholder={t.workflows.modelPlaceholder} />
+                <SelectTrigger id="run-model">
+                  <SelectValue placeholder={t.workflows.followSystemModel} />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="__system__">
+                    {t.workflows.followSystemModel}
+                  </SelectItem>
                   {models.map((model) => (
                     <SelectItem key={model.name} value={model.name}>
                       {model.display_name || model.name}

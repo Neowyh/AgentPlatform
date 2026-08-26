@@ -122,6 +122,7 @@ class _GraphState(TypedDict, total=False):
     run_id: str
     model_name: str | None
     inputs: dict[str, Any]
+    model_name: str | None
     state: Annotated[dict[str, Any], _merge_maps]
     outputs: Annotated[dict[str, Any], _merge_maps]
     edge_iterations: Annotated[dict[str, int], _merge_maps]
