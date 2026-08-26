@@ -73,12 +73,13 @@ vi.mock("@/components/ai-elements/shimmer", () => ({
 }));
 
 vi.mock("@/components/ui/button", () => ({
-  Button: ({ children, onClick, variant, className }: any) => (
+  Button: ({ children, onClick, variant, className, ...rest }: any) => (
     <button
       onClick={onClick}
       data-variant={variant}
       className={className}
       data-testid="button"
+      {...rest}
     >
       {children}
     </button>
@@ -176,14 +177,18 @@ describe("SubtaskCard", () => {
     });
     render(<SubtaskCard taskId="task-1" isLoading={false} />);
 
-    // Initially collapsed, content should be visible in chain-of-thought-content
-    expect(screen.getByTestId("chain-of-thought-content")).toBeInTheDocument();
+    // Initially collapsed: header + status text visible, button reports collapsed
+    const button = screen.getByTestId("button");
+    expect(button).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByText("Task")).toBeInTheDocument();
 
-    // Click to toggle
-    fireEvent.click(screen.getByTestId("button"));
+    // Click to expand
+    fireEvent.click(button);
+    expect(button).toHaveAttribute("aria-expanded", "true");
 
-    // Should still render (just toggled state)
-    expect(screen.getByTestId("chain-of-thought")).toBeInTheDocument();
+    // Click again to collapse
+    fireEvent.click(button);
+    expect(button).toHaveAttribute("aria-expanded", "false");
   });
 
   test("renders in_progress status icon", () => {

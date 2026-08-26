@@ -233,6 +233,7 @@ export function MessageGroup({
           className="w-full items-start justify-start text-left"
           variant="ghost"
           onClick={() => setShowAbove(!showAbove)}
+          aria-expanded={showAbove}
         >
           <ChainOfThoughtStep
             label={
@@ -301,6 +302,7 @@ export function MessageGroup({
             className="w-full items-start justify-start text-left"
             variant="ghost"
             onClick={() => setShowLastThinking(!showLastThinking)}
+            aria-expanded={showLastThinking}
           >
             <div className="flex w-full items-center justify-between">
               <ChainOfThoughtStep
@@ -321,7 +323,15 @@ export function MessageGroup({
                     })}
                   />
                 }
-                icon={LightbulbIcon}
+                icon={
+                  <span
+                    className={cn(
+                      isLoading && "pointer-events-none animate-pulse",
+                    )}
+                  >
+                    <LightbulbIcon />
+                  </span>
+                }
               ></ChainOfThoughtStep>
               <div>
                 <ChevronUp

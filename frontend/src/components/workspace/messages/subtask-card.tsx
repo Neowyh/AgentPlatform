@@ -78,6 +78,7 @@ export function SubtaskCard({
             className="w-full items-start justify-start text-left"
             variant="ghost"
             onClick={() => setCollapsed(!collapsed)}
+            aria-expanded={!collapsed}
           >
             <div className="flex w-full items-center justify-between">
               <ChainOfThoughtStep
