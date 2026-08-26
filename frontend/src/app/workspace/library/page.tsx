@@ -1,3 +1,5 @@
+import { LibraryGallery } from "@/components/workspace/library/library-gallery";
+
 export default function LibraryPage() {
-  return <div>资料库页面（待实现）</div>;
+  return <LibraryGallery />;
 }
