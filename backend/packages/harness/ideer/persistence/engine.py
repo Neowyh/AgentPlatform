@@ -35,55 +35,37 @@ async def _stamp_alembic_head(conn, backend: str) -> None:
     with "table already exists" errors.
 
     Uses direct SQL to avoid async issues with alembic command.
+    Head resolution goes through alembic's ScriptDirectory so merge
+    revisions and branches are handled exactly like ``alembic upgrade head``.
     """
     try:
         import os
 
+        from alembic.config import Config
+        from alembic.script import ScriptDirectory
         from sqlalchemy import text
 
-        # Find the latest migration revision by scanning the versions directory
         persistence_dir = os.path.dirname(os.path.abspath(__file__))
-        versions_dir = os.path.join(persistence_dir, "migrations", "versions")
+        script_location = os.path.join(persistence_dir, "migrations")
 
-        if not os.path.exists(versions_dir):
+        if not os.path.exists(os.path.join(script_location, "versions")):
             logger.warning("Migrations versions directory not found; skipping stamp")
             return
 
-        # Find the head revision by looking at migration files
-        # The head is the one that no other migration depends on
-        all_revisions = set()
-        all_down_revisions = set()
-
-        for filename in os.listdir(versions_dir):
-            if not filename.endswith(".py") or filename.startswith("__"):
-                continue
-            filepath = os.path.join(versions_dir, filename)
-            with open(filepath) as f:
-                content = f.read()
-                # Extract revision and down_revision
-                for line in content.split("\n"):
-                    if line.startswith("revision:"):
-                        rev = line.split("=")[1].strip().strip('"').strip("'")
-                        all_revisions.add(rev)
-                    elif line.startswith("down_revision:"):
-                        down = line.split("=")[1].strip().strip('"').strip("'")
-                        if down != "None":
-                            all_down_revisions.add(down)
-
-        # Head revision is one that's not referenced as down_revision by any other
-        head_revisions = all_revisions - all_down_revisions
+        cfg = Config()
+        cfg.set_main_option("script_location", script_location)
+        head_revisions = ScriptDirectory.from_config(cfg).get_heads()
         if not head_revisions:
             logger.warning("Could not determine head revision; skipping stamp")
             return
 
-        head_revision = head_revisions.pop()  # Should be exactly one in a linear chain
-
-        # Create alembic_version table and insert the head revision
+        # Create alembic_version table and insert the head revision(s)
         await conn.execute(text("CREATE TABLE IF NOT EXISTS alembic_version (version_num VARCHAR(32) NOT NULL)"))
         await conn.execute(text("DELETE FROM alembic_version"))
-        await conn.execute(text("INSERT INTO alembic_version (version_num) VALUES (:rev)"), {"rev": head_revision})
+        for rev in head_revisions:
+            await conn.execute(text("INSERT INTO alembic_version (version_num) VALUES (:rev)"), {"rev": rev})
 
-        logger.info("Stamped alembic version to head: %s", head_revision)
+        logger.info("Stamped alembic version to head: %s", ", ".join(head_revisions))
     except Exception as exc:
         logger.warning("Failed to stamp alembic version: %s", exc)
 
