@@ -322,8 +322,8 @@ describe("enUS locale comprehensive", () => {
       });
     }
 
-    it("has 6 keys", () => {
-      expect(Object.keys(enUS.sidebar)).toHaveLength(6);
+    it("has 9 keys", () => {
+      expect(Object.keys(enUS.sidebar)).toHaveLength(9);
     });
   });
 
