@@ -186,6 +186,9 @@ export const enUS: Translations = {
     recentChats: "Recent chats",
     demoChats: "Demo chats",
     agents: "Agents",
+    resources: "Resources",
+    automations: "Automations",
+    library: "Library",
     workflows: "Workflows",
   },
 
