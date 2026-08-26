@@ -13,6 +13,16 @@
 officecli                    # Word/Excel/PPT 读写与渲染，离线二进制，办公核心
 data-analysis                # Excel/CSV 本地数据分析（pandas）
 
+# —— Anthropic 文档四件套 ——
+anthropic-docx               # Word 创建/编辑/批注/修订（Anthropic 官方）
+anthropic-pdf                # PDF 读取/合并/拆分/表单填充（Anthropic 官方）
+anthropic-pptx               # PPT 创建/编辑/设计规范（Anthropic 官方）
+anthropic-xlsx               # Excel 创建/编辑/公式验证（Anthropic 官方）
+
+# —— 中文办公场景 ——
+wps-gongwen                  # GB/T 9704 公文格式生成（python-docx）
+wps-proofread                # 中文错别字/标点/语病校对（纯 LLM）
+
 # —— 写作与翻译 ——
 structured-longform-writing  # 报告/PRD/公文等结构化长文写作方法论
 humanizer-zh                 # 中文文本去 AI 味

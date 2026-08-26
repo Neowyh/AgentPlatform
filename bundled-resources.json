@@ -114,6 +114,54 @@
       "source": "resources/skills/translate"
     },
     {
+      "id": "1f4fb421-90b9-40bc-8b91-59d0d795f834",
+      "type": "skill",
+      "slug": "anthropic-docx",
+      "display_name": "Anthropic Word 文档处理",
+      "visibility": "public",
+      "source": "resources/skills/anthropic-docx"
+    },
+    {
+      "id": "c7860af7-51fb-4d63-b865-8081944e165f",
+      "type": "skill",
+      "slug": "anthropic-pdf",
+      "display_name": "Anthropic PDF 处理",
+      "visibility": "public",
+      "source": "resources/skills/anthropic-pdf"
+    },
+    {
+      "id": "de48df01-f794-4a1a-a3d7-bedf38256ffb",
+      "type": "skill",
+      "slug": "anthropic-pptx",
+      "display_name": "Anthropic PPT 处理",
+      "visibility": "public",
+      "source": "resources/skills/anthropic-pptx"
+    },
+    {
+      "id": "6ed782a2-30e4-4c62-854f-864ef0e71a4f",
+      "type": "skill",
+      "slug": "anthropic-xlsx",
+      "display_name": "Anthropic Excel 处理",
+      "visibility": "public",
+      "source": "resources/skills/anthropic-xlsx"
+    },
+    {
+      "id": "4e3bf1ef-0ac1-4572-a180-793a276dc8e8",
+      "type": "skill",
+      "slug": "wps-gongwen",
+      "display_name": "公文格式生成",
+      "visibility": "public",
+      "source": "resources/skills/wps-gongwen"
+    },
+    {
+      "id": "d2413560-34bf-481b-83ee-febece65cc64",
+      "type": "skill",
+      "slug": "wps-proofread",
+      "display_name": "中文校对",
+      "visibility": "public",
+      "source": "resources/skills/wps-proofread"
+    },
+    {
       "id": "56e2423d-37c3-52cb-a05f-d32677e6abcb",
       "type": "agent",
       "slug": "fault-zeroing",
