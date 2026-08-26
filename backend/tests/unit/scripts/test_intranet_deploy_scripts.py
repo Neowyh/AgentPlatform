@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import os
 import stat
 import subprocess
@@ -15,6 +16,8 @@ DEPLOY_SCRIPT = REPO_ROOT / "scripts" / "deploy-intranet.sh"
 PACKAGE_SCRIPT = REPO_ROOT / "scripts" / "package-intranet-offline.sh"
 CHECK_SCRIPT = REPO_ROOT / "scripts" / "check-intranet.sh"
 INSTALL_SCRIPT = REPO_ROOT / "scripts" / "install_fault_zeroing_agent.py"
+INSTALL_AGENT_SCRIPT = REPO_ROOT / "scripts" / "install_agent.py"
+INSTALL_SRS_SCRIPT = REPO_ROOT / "scripts" / "install_srs_writing_agent.py"
 COMPOSE_FILE = REPO_ROOT / "docker" / "docker-compose.intranet.yaml"
 GUIDE_FILE = REPO_ROOT / "docs" / "deployment" / "禁公网内网离线部署作业指导书.md"
 
@@ -48,9 +51,33 @@ fi
 if [ "$1" = "image" ]; then
   shift
   case "$1" in
-    inspect) exit 0 ;;
+    inspect)
+      shift
+      img=""
+      while [ "$#" -gt 0 ]; do
+        case "$1" in
+          --format) shift 2 ;;
+          -*) shift ;;
+          *) img="$1"; shift ;;
+        esac
+      done
+      if [ -z "${FAKE_DOCKER_INSPECTABLE:-}" ]; then
+        exit 0
+      fi
+      printf '%s\n' "$FAKE_DOCKER_INSPECTABLE" | grep -qxF "$img"
+      exit $?
+      ;;
+    rm)
+      shift
+      echo "rm $*" >> "${FAKE_DOCKER_LOG:-/dev/null}"
+      exit 0
+      ;;
     *) echo "unexpected docker image: $*" >&2; exit 99 ;;
   esac
+fi
+if [ "$1" = "images" ]; then
+  printf '%s\n' ${FAKE_DOCKER_IMAGES:-"ideer-gateway:test ideer-frontend:test nginx:alpine ideer-sandbox:test"}
+  exit 0
 fi
 if [ "$1" = "build" ]; then
   exit 0
@@ -63,15 +90,18 @@ if [ "$1" = "tag" ]; then
 fi
 if [ "$1" = "save" ]; then
   out=""
+  images=""
   while [ "$#" -gt 0 ]; do
     if [ "$1" = "-o" ]; then
       out="$2"
       shift 2
       continue
     fi
+    images="$images $1"
     shift
   done
   [ -n "$out" ] || exit 2
+  echo "FAKE-SAVE:${images}"
   printf 'fake image tar\\n' > "$out"
   exit 0
 fi
@@ -179,9 +209,9 @@ def _make_bundle(tmp_path: Path, *, version: str = "test", include_frontend_env:
     return bundle_root
 
 
-def _run_deploy(bundle_root: Path, *args: str, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+def _run_deploy(bundle_root: Path, *args: str, env: dict[str, str], version: str = "test") -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        ["bash", str(DEPLOY_SCRIPT), "--bundle-root", str(bundle_root), "--version", "test", "--skip-check", *args],
+        ["bash", str(DEPLOY_SCRIPT), "--bundle-root", str(bundle_root), "--version", version, "--skip-check", *args],
         cwd=REPO_ROOT,
         env=env,
         capture_output=True,
@@ -209,14 +239,11 @@ def test_packaged_deploy_script_defaults_to_its_bundle_directory(tmp_path: Path)
     assert (bundle_root / "env.intranet").is_file()
 
 
-def test_bundled_skill_seed_runs_inside_gateway_container(tmp_path: Path):
+def test_bundled_resource_seed_runs_inside_gateway_container(tmp_path: Path):
     script = DEPLOY_SCRIPT.read_text(encoding="utf-8")
 
-    assert 'docker cp "$SOURCE_DIR/scripts/seed_custom_skill_owners.py" ideer-gateway:/tmp/seed_custom_skill_owners.py' in script
-    assert "--db /app/backend/.ideer/data/ideer.db" in script
-    assert "--skills-dir /app/skills/custom" in script
-    assert "--agent fault-zeroing" in script
-    assert "--agent srs-writing" in script
+    assert "seed_custom_skill_owners.py" not in script
+    assert "--skills-dir" not in script
     assert 'docker compose -p ideer -f "$COMPOSE_FILE" --env-file "$ENV_FILE" exec -T gateway' in script
     assert '--db "$runtime_home/data/ideer.db"' not in script
     assert 'docker cp "$SOURCE_DIR/scripts/seed_bundled_resources.py" ideer-gateway:/tmp/seed_bundled_resources.py' in script
@@ -352,7 +379,7 @@ def test_deploy_script_wires_admin_bootstrap_and_bundled_resource_steps():
     assert "install_agent.py" in script
     assert "install_srs_writing_agent.py" in script
     assert "--owner super-admin" in script
-    assert "seed_custom_skill_owners.py" in script
+    assert "seed_custom_skill_owners.py" not in script
     assert "cleanup_legacy_shared_agent" in script
     assert "removing legacy shared agent copy" in script
     assert "--created-by" in script
@@ -402,7 +429,8 @@ NGINX_IMAGE=nginx:alpine
     internal_token = (runtime_dir / "data" / ".internal-auth-token").read_text(encoding="utf-8").strip()
     env_text = (bundle_root / "env.intranet").read_text(encoding="utf-8")
     assert "PORT=3001" in env_text
-    assert "IDEER_GATEWAY_IMAGE=ideer-gateway:old" in env_text
+    assert "IDEER_GATEWAY_IMAGE=ideer-gateway:test" in env_text
+    assert "IDEER_FRONTEND_IMAGE=ideer-frontend:test" in env_text
     assert f"BETTER_AUTH_SECRET={better_secret}" in env_text
     assert f"IDEER_INTERNAL_AUTH_TOKEN={internal_token}" in env_text
     assert env_text.count("BETTER_AUTH_SECRET=") == 1
@@ -460,10 +488,10 @@ def test_package_source_archive_includes_runtime_seed_templates(tmp_path: Path):
     assert "extensions_config.example.json" in names
     assert "frontend/.env.example" in names
     assert "frontend/.env" not in names
-    assert "workflows/fault-zeroing.yaml" in names
+    assert "resources/workflows/fault-zeroing.yaml" in names
     assert "bundled-resources.json" in names
     assert "scripts/seed_bundled_resources.py" in names
-    assert "skills/custom/fault-zeroing/templates/corrective_actions.schema.json" in names
+    assert "resources/skills/fault-zeroing/templates/corrective_actions.schema.json" in names
     assert not (output_dir / "docker-compose.intranet.yaml").exists()
     assert not (output_dir / "env.intranet.example").exists()
 
@@ -473,6 +501,70 @@ def test_package_source_archive_includes_runtime_seed_templates(tmp_path: Path):
     assert "env.intranet.example" not in manifest
     assert "docker-compose.intranet.yaml" not in sha256sums
     assert "env.intranet.example" not in sha256sums
+
+
+def test_package_script_fails_when_skills_manifest_skill_missing(tmp_path: Path):
+    output_dir = tmp_path / "bundle"
+    env = _env_with_fake_docker(tmp_path)
+
+    proc = subprocess.run(
+        [
+            "bash",
+            str(PACKAGE_SCRIPT),
+            "--version",
+            "test",
+            "--output-dir",
+            str(output_dir),
+            "--skills-manifest",
+            "fault-zeroing,definitely-missing-skill",
+        ],
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode != 0
+    assert "skills-manifest lists missing custom skill" in proc.stderr
+    assert "definitely-missing-skill" in proc.stderr
+
+
+def test_package_manifest_records_custom_skills_and_exclusion(tmp_path: Path):
+    output_dir = tmp_path / "bundle"
+    env = _env_with_fake_docker(tmp_path)
+
+    proc = subprocess.run(
+        [
+            "bash",
+            str(PACKAGE_SCRIPT),
+            "--version",
+            "test",
+            "--output-dir",
+            str(output_dir),
+            "--skills-manifest",
+            "fault-zeroing",
+            "--exclude-skills",
+            "fault-zeroing",
+        ],
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert "both in --skills-manifest and --exclude-skills" in proc.stdout
+
+    manifest = (output_dir / "MANIFEST.txt").read_text(encoding="utf-8")
+    assert "Custom Skills (resources/skills bundled in the source archive):" in manifest
+    assert "Excluded: fault-zeroing" in manifest
+    assert "  - fault-zeroing" not in manifest
+
+    with tarfile.open(output_dir / "ideer-source-test.tar.gz", "r:gz") as tar:
+        names = set(tar.getnames())
+    assert "resources/skills/fault-zeroing/SKILL.md" not in names
 
 
 def test_intranet_compose_uses_runtime_env_contract_and_internal_token():
@@ -571,3 +663,244 @@ def test_guide_documents_bundled_agent_and_workflow_hooks():
     assert "super_admin@test.com" in guide
     assert "公开" in guide
     assert "users/<" in guide or "users/" in guide
+
+
+def _signature_annotations(tree: ast.AST):
+    for node in tree.body:
+        # Module-level variable annotations are evaluated at import time;
+        # function-local ones are not (PEP 526).
+        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            yield node.annotation
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef):
+            for arg in node.args.posonlyargs + node.args.args + node.args.kwonlyargs:
+                if arg.annotation is not None:
+                    yield arg.annotation
+            if node.returns is not None:
+                yield node.returns
+
+
+def test_installer_scripts_remain_python36_parseable() -> None:
+    """Bundled-agent installers run with the HOST python3, which on older
+    intranet servers (e.g. CentOS 7) is 3.6. They must not use 3.7+ syntax:
+    walrus, the future-annotations import, PEP 604 unions, or builtin generic
+    annotations, nor the 3.7+ subprocess.run(capture_output=) parameter."""
+    for script in (INSTALL_AGENT_SCRIPT, INSTALL_SRS_SCRIPT):
+        source = script.read_text(encoding="utf-8")
+        ast.parse(source, filename=str(script), feature_version=(3, 6))
+        assert "from __future__ import annotations" not in source
+        assert ":=" not in source
+        tree = ast.parse(source, filename=str(script))
+        for annotation in _signature_annotations(tree):
+            assert not isinstance(annotation, ast.BinOp), f"{script}: PEP 604 union in annotation"
+            if isinstance(annotation, ast.Subscript):
+                assert not isinstance(annotation.value, ast.Name) or annotation.value.id not in (
+                    "list",
+                    "dict",
+                    "tuple",
+                    "set",
+                ), f"{script}: builtin generic annotation"
+
+    srs_source = INSTALL_SRS_SCRIPT.read_text(encoding="utf-8")
+    assert "capture_output" not in srs_source
+    assert "stdout=subprocess.PIPE" in srs_source
+
+
+def test_upgrade_refreshes_env_image_tags_and_reextracts_source(tmp_path: Path):
+    """Re-running prepare with a new bundle version must switch env.intranet to
+    the new image tags and replace the extracted source tree (C0)."""
+    bundle_root = _make_bundle(tmp_path, version="v1")
+    env = _env_with_fake_docker(tmp_path)
+
+    first = _run_deploy(bundle_root, "prepare", env=env, version="v1")
+    assert first.returncode == 0, first.stderr
+    env_text = (bundle_root / "env.intranet").read_text(encoding="utf-8")
+    assert "IDEER_GATEWAY_IMAGE=ideer-gateway:v1" in env_text
+    assert "IDEER_FRONTEND_IMAGE=ideer-frontend:v1" in env_text
+    assert (bundle_root / "source" / ".bundle-version").read_text(encoding="utf-8").strip() == "v1"
+
+    source_input = tmp_path / "source-input"
+    (source_input / "frontend" / "version-marker.txt").write_text("v2\n", encoding="utf-8")
+    with tarfile.open(bundle_root / "ideer-source-v2.tar.gz", "w:gz") as tar:
+        for child in source_input.iterdir():
+            tar.add(child, arcname=child.name)
+    (bundle_root / "ideer-images-v2.tar").write_text("fake images v2\n", encoding="utf-8")
+
+    second = _run_deploy(bundle_root, "prepare", env=env, version="v2")
+    assert second.returncode == 0, second.stderr
+    env_text = (bundle_root / "env.intranet").read_text(encoding="utf-8")
+    assert "IDEER_GATEWAY_IMAGE=ideer-gateway:v2" in env_text
+    assert "IDEER_FRONTEND_IMAGE=ideer-frontend:v2" in env_text
+    assert (bundle_root / "source" / ".bundle-version").read_text(encoding="utf-8").strip() == "v2"
+    assert (bundle_root / "source" / "frontend" / "version-marker.txt").read_text(encoding="utf-8").strip() == "v2"
+
+
+def test_upgrade_preserves_custom_image_values(tmp_path: Path):
+    """Image tags that do not look like a bundle image (custom registry) must
+    survive prepare untouched."""
+    bundle_root = _make_bundle(tmp_path)
+    (bundle_root / "env.intranet").write_text(
+        "IDEER_GATEWAY_IMAGE=harbor.internal.com/ideer/gateway:custom\n",
+        encoding="utf-8",
+    )
+
+    proc = _run_deploy(bundle_root, "prepare", env=_env_with_fake_docker(tmp_path))
+
+    assert proc.returncode == 0, proc.stderr
+    env_text = (bundle_root / "env.intranet").read_text(encoding="utf-8")
+    assert "IDEER_GATEWAY_IMAGE=harbor.internal.com/ideer/gateway:custom" in env_text
+    assert "ideer-gateway:test" not in env_text
+
+
+def _prune_env(tmp_path: Path, env: dict[str, str], versions: list[str]) -> dict[str, str]:
+    images = []
+    for v in versions:
+        images += [f"ideer-gateway:{v}", f"ideer-frontend:{v}"]
+    images += ["nginx:alpine", "ideer-sandbox:v1", "ideer-sandbox:v2"]
+    env["FAKE_DOCKER_IMAGES"] = "\n".join(images)
+    env["FAKE_DOCKER_LOG"] = str(tmp_path / "docker-calls.log")
+    (tmp_path / "docker-calls.log").write_text("", encoding="utf-8")
+    return env
+
+
+def test_prune_old_removes_only_stale_gateway_and_frontend_tags(tmp_path: Path):
+    bundle_root = _make_bundle(tmp_path, version="v4")
+    env = _prune_env(tmp_path, _env_with_fake_docker(tmp_path), ["v1", "v2", "v3", "v4"])
+
+    proc = _run_deploy(bundle_root, "prune-old", env=env, version="v4")
+
+    assert proc.returncode == 0, proc.stderr
+    out = proc.stdout
+    assert "removing old image: ideer-gateway:v1" in out
+    assert "removing old image: ideer-frontend:v1" in out
+    assert "removing old image: ideer-gateway:v2" not in out
+    assert "removing old image: ideer-frontend:v2" not in out
+    assert "removing old image: ideer-sandbox" not in out
+    assert "removing old image: nginx" not in out
+    assert "image pruning complete" in out
+
+    calls = (tmp_path / "docker-calls.log").read_text(encoding="utf-8")
+    assert "rm ideer-gateway:v1" in calls
+    assert "rm ideer-frontend:v1" in calls
+    assert "ideer-gateway:v2" not in calls
+    assert "ideer-sandbox" not in calls
+    assert "nginx" not in calls
+
+
+def test_prune_old_dry_run_previews_without_removing(tmp_path: Path):
+    bundle_root = _make_bundle(tmp_path, version="v4")
+    env = _prune_env(tmp_path, _env_with_fake_docker(tmp_path), ["v1", "v2", "v3", "v4"])
+
+    prepared = _run_deploy(bundle_root, "prepare", env=env, version="v4")
+    assert prepared.returncode == 0, prepared.stderr
+    log = (tmp_path / "docker-calls.log").read_text(encoding="utf-8")
+
+    dry = _run_deploy(bundle_root, "--dry-run", "prune-old", env=env, version="v4")
+
+    assert dry.returncode == 0, dry.stderr
+    assert "[dry-run] docker image rm ideer-gateway:v1" in dry.stdout
+    assert (tmp_path / "docker-calls.log").read_text(encoding="utf-8") == log
+
+
+def test_prune_old_rejects_invalid_keep_versions(tmp_path: Path):
+    bundle_root = _make_bundle(tmp_path)
+    env = _env_with_fake_docker(tmp_path)
+
+    proc = _run_deploy(bundle_root, "--keep-versions", "abc", "prune-old", env=env)
+
+    assert proc.returncode != 0
+    assert "--keep-versions must be a non-negative integer" in proc.stderr
+
+
+def test_prune_old_keep_zero_removes_all_but_current(tmp_path: Path):
+    bundle_root = _make_bundle(tmp_path, version="v4")
+    env = _prune_env(tmp_path, _env_with_fake_docker(tmp_path), ["v1", "v2", "v3", "v4"])
+
+    proc = _run_deploy(bundle_root, "--keep-versions", "0", "prune-old", env=env, version="v4")
+
+    assert proc.returncode == 0, proc.stderr
+    out = proc.stdout
+    assert "removing old image: ideer-gateway:v1" in out
+    assert "removing old image: ideer-gateway:v3" in out
+    assert "removing old image: ideer-gateway:v4" not in out
+
+
+def test_load_reuses_local_sandbox_tag_for_incremental_bundle(tmp_path: Path):
+    """When the versioned sandbox tag is absent (incremental bundle), deploy
+    must retag a locally present ideer-sandbox:* and warn."""
+    bundle_root = _make_bundle(tmp_path, version="v2")
+    env = _env_with_fake_docker(tmp_path)
+    env["FAKE_DOCKER_IMAGES"] = "\n".join(["ideer-gateway:v2", "ideer-frontend:v2", "nginx:alpine", "ideer-sandbox:v1"])
+    env["FAKE_DOCKER_INSPECTABLE"] = "ideer-gateway:v2\nideer-frontend:v2\nnginx:alpine\nideer-sandbox:v1"
+
+    proc = _run_deploy(bundle_root, "load", env=env, version="v2")
+
+    assert proc.returncode == 0, proc.stderr
+    assert "retagging local ideer-sandbox:v1" in proc.stdout
+    assert "reusing local ideer-sandbox:v1" in proc.stderr
+
+
+def test_package_incremental_bundle_saves_only_gateway_and_frontend(tmp_path: Path):
+    output_dir = tmp_path / "bundle"
+    env = _env_with_fake_docker(tmp_path)
+
+    proc = subprocess.run(
+        [
+            "bash",
+            str(PACKAGE_SCRIPT),
+            "--version",
+            "v2",
+            "--output-dir",
+            str(output_dir),
+            "--incremental",
+            "--incremental-from",
+            "v1",
+        ],
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    save_line = [line for line in proc.stdout.splitlines() if line.startswith("FAKE-SAVE:")]
+    assert save_line, proc.stdout
+    saved = save_line[0]
+    assert "ideer-gateway:v2" in saved
+    assert "ideer-frontend:v2" in saved
+    assert "nginx:alpine" not in saved
+    assert "ideer-sandbox" not in saved
+
+    manifest = (output_dir / "MANIFEST.txt").read_text(encoding="utf-8")
+    assert "Bundle type: incremental" in manifest
+    assert "Incremental from: v1" in manifest
+    assert "not included" in manifest
+    assert "Incremental bundles are for upgrading an existing deployment only" in manifest
+
+
+def test_package_full_bundle_manifest_marks_bundle_type_full(tmp_path: Path):
+    output_dir = tmp_path / "bundle"
+    env = _env_with_fake_docker(tmp_path)
+
+    proc = subprocess.run(
+        [
+            "bash",
+            str(PACKAGE_SCRIPT),
+            "--version",
+            "test",
+            "--output-dir",
+            str(output_dir),
+        ],
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    manifest = (output_dir / "MANIFEST.txt").read_text(encoding="utf-8")
+    assert "Bundle type: full" in manifest
+    assert "Bundle type: incremental" not in manifest
+    assert "Incremental bundles are for upgrading an existing deployment only" not in manifest

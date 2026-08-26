@@ -60,6 +60,29 @@ _SCHEMA = json.dumps(
     ensure_ascii=False,
 )
 
+_JSON_ONLY_WORKFLOW = """
+schema_version: 2
+name: json-gated
+inputs: {}
+state: {}
+entrypoint: produce
+nodes:
+  - id: produce
+    type: action
+    action:
+      kind: agent
+      name: record
+      file_access:
+        read:
+          - "/mnt/user-data/outputs"
+        write:
+          - "/mnt/user-data/outputs/artifact.json"
+    retry:
+      max_attempts: 2
+      backoff_seconds: 0
+edges: []
+"""
+
 
 @pytest_asyncio.fixture
 async def durable_store(tmp_path: Path):
@@ -324,3 +347,49 @@ async def test_schema_violations_aggregated_in_error(
     events = await durable_store.list_events("run-agg-schema")
     details = [event.payload.get("error", "") for event in events if event.event_type == "node_failed"]
     assert details and "to_verify" in details[0] and "'Z'" in details[0]
+
+
+@pytest.mark.asyncio
+async def test_unparsable_json_write_feeds_syntax_error_back_on_retry(
+    durable_store: WorkflowV2Store,
+    tmp_path: Path,
+) -> None:
+    """A write root holding syntactically invalid JSON is a schema violation.
+
+    The file exists, so the node must not be told it produced nothing; instead
+    the concrete JSON syntax error is injected into the next attempt's prompt
+    so the agent can repair the file.
+    """
+    import ideer.workflows.v2.file_roots as file_roots
+    from ideer.config.paths import Paths
+
+    file_roots.get_paths = lambda: Paths(str(tmp_path))
+    await durable_store.save_definition("json-gated", {}, "hash", "user-1")
+    await durable_store.create_run("run-bad-json-feedback", "json-gated", 1, {}, "user-1")
+
+    calls: list[str] = []
+    prompts: list[str] = []
+    execute = _executor(
+        durable_store,
+        tmp_path / "checkpoints.db",
+        calls,
+        base_dir=tmp_path,
+        payload="",
+        prompts=prompts,
+        workflow_text=_JSON_ONLY_WORKFLOW,
+        payload_factory=lambda attempt: '{"name":xxx}' if attempt == 0 else json.dumps({"ok": True}),
+    )
+    assert await WorkflowWorker(durable_store, execute).run_once() is True
+
+    completed = await durable_store.get_run("run-bad-json-feedback")
+    assert completed is not None and completed.status == "completed"
+    assert len(calls) == 2
+
+    assert "not valid JSON" in prompts[1]
+    assert "Expecting value" in prompts[1]
+
+    events = await durable_store.list_events("run-bad-json-feedback")
+    progress = [event.payload.get("message", "") for event in events if event.event_type == "action_progress"]
+    assert progress and "not valid JSON" in progress[0]
+    failed_events = [event.payload.get("error", "") for event in events if event.event_type == "node_failed"]
+    assert failed_events == []

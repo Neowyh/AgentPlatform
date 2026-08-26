@@ -16,8 +16,21 @@ Options:
                           Retagged as ideer-sandbox:<version> inside the bundle.
   --no-sandbox            Skip bundling the sandbox image (deploy steps will
                           warn unless a sandbox image is provided separately)
-  --exclude-skills <csv>  Comma-separated skill names under skills/custom to
+  --incremental           Build an incremental bundle for upgrading an existing
+                          deployment: the images tar contains only
+                          ideer-gateway:<version> and ideer-frontend:<version>.
+                          nginx:alpine and the sandbox image are NOT included;
+                          the target machine reuses the ones it already has.
+                          Use a full bundle for fresh installs or to update
+                          the nginx/sandbox images.
+  --incremental-from <v>  Record the previous bundle version in the manifest
+                          (informational only, used with --incremental)
+  --exclude-skills <csv>  Comma-separated skill names under resources/skills to
                           exclude from the source archive
+  --skills-manifest <csv> Comma-separated expected skill names under
+                          resources/skills; packaging fails if any is missing
+                          from the build machine (resources/skills is not fully
+                          tracked in git, so a fresh machine may lack skills)
   --force                 Remove the output directory if it already exists
   --no-cache              Rebuild Docker images without using cache
   --require-clean         Fail if the git worktree contains uncommitted changes
@@ -34,6 +47,10 @@ log() {
     printf '[%s] %s\n' "$(date '+%H:%M:%S')" "$1"
 }
 
+warn() {
+    printf '[%s] warning: %s\n' "$(date '+%H:%M:%S')" "$1" >&2
+}
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
@@ -42,10 +59,14 @@ OUTPUT_DIR=""
 PLATFORM="linux/amd64"
 SANDBOX_IMAGE=""
 NO_SANDBOX=0
+INCREMENTAL=0
+INCREMENTAL_FROM=""
 FORCE=0
 NO_CACHE=0
 REQUIRE_CLEAN=0
 EXCLUDE_SKILLS=""
+SKILLS_MANIFEST=""
+EXCLUDED_SKILLS=()
 
 DEFAULT_SANDBOX_IMAGE="enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:latest"
 
@@ -75,9 +96,23 @@ while [ "$#" -gt 0 ]; do
             NO_SANDBOX=1
             shift
             ;;
+        --incremental)
+            INCREMENTAL=1
+            shift
+            ;;
+        --incremental-from)
+            [ "$#" -ge 2 ] || die "--incremental-from requires a value"
+            INCREMENTAL_FROM="$2"
+            shift 2
+            ;;
         --exclude-skills)
             [ "$#" -ge 2 ] || die "--exclude-skills requires a value"
             EXCLUDE_SKILLS="$2"
+            shift 2
+            ;;
+        --skills-manifest)
+            [ "$#" -ge 2 ] || die "--skills-manifest requires a value"
+            SKILLS_MANIFEST="$2"
             shift 2
             ;;
         --force)
@@ -213,10 +248,16 @@ docker build \
     "$REPO_ROOT"
 
 log "[3/7] pulling nginx image..."
-docker pull "$NGINX_IMAGE"
+if [ "$INCREMENTAL" -eq 1 ]; then
+    log "  incremental bundle: skipping nginx pull (target machine reuses its local nginx:alpine)"
+else
+    docker pull "$NGINX_IMAGE"
+fi
 
 log "[4/7] preparing sandbox image..."
-if [ "$NO_SANDBOX" -eq 1 ]; then
+if [ "$INCREMENTAL" -eq 1 ]; then
+    log "  incremental bundle: sandbox image not included (target machine reuses its local ideer-sandbox tag)"
+elif [ "$NO_SANDBOX" -eq 1 ]; then
     log "  sandbox image disabled (--no-sandbox); bundle will not include a sandbox image"
 else
     SANDBOX_IMAGE="${SANDBOX_IMAGE:-$DEFAULT_SANDBOX_IMAGE}"
@@ -233,9 +274,14 @@ else
 fi
 
 log "[5/7] saving docker images..."
-IMAGES_TO_SAVE=("$GATEWAY_IMAGE" "$FRONTEND_IMAGE" "$NGINX_IMAGE")
-if [ "$INCLUDE_SANDBOX" -eq 1 ]; then
-    IMAGES_TO_SAVE+=("$BUNDLED_SANDBOX_TAG")
+if [ "$INCREMENTAL" -eq 1 ]; then
+    log "  incremental bundle: saving ideer-gateway:$VERSION and ideer-frontend:$VERSION only"
+    IMAGES_TO_SAVE=("$GATEWAY_IMAGE" "$FRONTEND_IMAGE")
+else
+    IMAGES_TO_SAVE=("$GATEWAY_IMAGE" "$FRONTEND_IMAGE" "$NGINX_IMAGE")
+    if [ "$INCLUDE_SANDBOX" -eq 1 ]; then
+        IMAGES_TO_SAVE+=("$BUNDLED_SANDBOX_TAG")
+    fi
 fi
 docker save -o "$IMAGES_TAR" "${IMAGES_TO_SAVE[@]}"
 
@@ -245,10 +291,56 @@ if [ -n "$EXCLUDE_SKILLS" ]; then
     IFS=',' read -r -a EXCLUDED_SKILLS <<< "$EXCLUDE_SKILLS"
     for skill in "${EXCLUDED_SKILLS[@]}"; do
         [ -n "$skill" ] || continue
-        TAR_EXCLUDES+=(--exclude="skills/custom/${skill}")
+        TAR_EXCLUDES+=(--exclude="resources/skills/${skill}")
     done
     log "  excluding custom skills: ${EXCLUDED_SKILLS[*]}"
 fi
+
+# --skills-manifest: fail fast when a listed custom skill is missing from the
+# build machine.  resources/skills is mostly git-ignored and machine-local, so a
+# fresh build machine may silently produce a bundle without custom skills.
+if [ -n "$SKILLS_MANIFEST" ]; then
+    IFS=',' read -r -a EXPECTED_SKILLS <<< "$SKILLS_MANIFEST"
+    for skill in "${EXPECTED_SKILLS[@]}"; do
+        [ -n "$skill" ] || continue
+        if [ ! -d "$REPO_ROOT/resources/skills/$skill" ]; then
+            die "skills-manifest lists missing custom skill: resources/skills/$skill (not present on this build machine)"
+        fi
+        if [[ " ${EXCLUDED_SKILLS[*]:-} " == *" $skill "* ]]; then
+            log "  warning: skill '$skill' is both in --skills-manifest and --exclude-skills; exclusion wins"
+        fi
+    done
+    log "  verifying custom skills manifest: ${EXPECTED_SKILLS[*]}"
+fi
+
+# Actual bundled skills (excluding any exclusions) for the MANIFEST record.
+BUNDLED_SKILLS=()
+if [ -d "$REPO_ROOT/resources/skills" ]; then
+    for entry in "$REPO_ROOT"/resources/skills/*/; do
+        [ -d "$entry" ] || continue
+        name="$(basename "$entry")"
+        if [[ " ${EXCLUDED_SKILLS[*]:-} " == *" $name "* ]]; then
+            continue
+        fi
+        BUNDLED_SKILLS+=("$name")
+    done
+    if [ "${#BUNDLED_SKILLS[@]}" -gt 0 ]; then
+        mapfile -t BUNDLED_SKILLS < <(printf '%s\n' "${BUNDLED_SKILLS[@]}" | sort)
+    fi
+fi
+SKILLS_MANIFEST_TEXT=""
+if [ "${#BUNDLED_SKILLS[@]}" -gt 0 ]; then
+    for skill in "${BUNDLED_SKILLS[@]}"; do
+        SKILLS_MANIFEST_TEXT+="  - $skill"$'\n'
+    done
+else
+    SKILLS_MANIFEST_TEXT="  (none)"
+fi
+EXCLUDED_SKILLS_TEXT=""
+if [ "${#EXCLUDED_SKILLS[@]}" -gt 0 ]; then
+    EXCLUDED_SKILLS_TEXT="Excluded: ${EXCLUDED_SKILLS[*]}"
+fi
+log "  bundled custom skills: ${BUNDLED_SKILLS[*]:-(none)}"
 tar \
     -C "$REPO_ROOT" \
     --exclude='.git' \
@@ -283,12 +375,41 @@ tar \
     docs \
     extensions_config.example.json \
     frontend \
+    resources \
     scripts \
-    skills \
     vendor \
     workflows
 
 log "[7/7] assembling bundle..."
+
+# Collect offline wheels for skill runtime dependencies so intranet machines can
+# install them without network access (used by deploy-intranet.sh).
+SKILL_WHEELS_DIR="$OUTPUT_DIR/wheels"
+WHEEL_PY_VERSION="${SKILL_WHEELS_PYTHON_VERSION:-3.12}"
+case "$PLATFORM" in
+    linux/arm64) WHEEL_PLATFORM_ARGS=(--platform manylinux2014_aarch64 --platform manylinux_2_28_aarch64) ;;
+    *)           WHEEL_PLATFORM_ARGS=(--platform manylinux2014_x86_64 --platform manylinux_2_28_x86_64) ;;
+esac
+if python3 -m pip --version >/dev/null 2>&1; then
+    mkdir -p "$SKILL_WHEELS_DIR"
+    log "  collecting skill runtime wheels ($PLATFORM, py$WHEEL_PY_VERSION)..."
+    if python3 -m pip download \
+        --dest "$SKILL_WHEELS_DIR" \
+        "${WHEEL_PLATFORM_ARGS[@]}" \
+        --only-binary=:all: \
+        --implementation cp \
+        --python-version "$WHEEL_PY_VERSION" \
+        duckdb openpyxl python-pptx pillow > /dev/null 2>&1; then
+        SKILL_WHEEL_COUNT="$(ls "$SKILL_WHEELS_DIR" | wc -l)"
+        log "  collected $SKILL_WHEEL_COUNT wheel(s) into wheels/"
+    else
+        rm -rf "$SKILL_WHEELS_DIR"
+        warn "failed to collect skill runtime wheels; the bundle will lack offline deps for data-analysis/ppt-generation"
+    fi
+else
+    warn "python3/pip not found on build machine; skipping skill runtime wheel collection"
+fi
+
 cp "$GUIDE_FILE" "$OUTPUT_DIR/$GUIDE_BASENAME"
 cp "$DEPLOY_SCRIPT_FILE" "$OUTPUT_DIR/$DEPLOY_BASENAME"
 cp "$CHECK_SCRIPT_FILE" "$OUTPUT_DIR/$CHECK_BASENAME"
@@ -304,30 +425,64 @@ fi
 # Collect image digests for the manifest
 GATEWAY_DIGEST="$(docker image inspect "$GATEWAY_IMAGE" --format '{{.Id}}' 2>/dev/null | cut -c8-19 || echo 'unknown')"
 FRONTEND_DIGEST="$(docker image inspect "$FRONTEND_IMAGE" --format '{{.Id}}' 2>/dev/null | cut -c8-19 || echo 'unknown')"
-NGINX_DIGEST="$(docker image inspect "$NGINX_IMAGE" --format '{{.Id}}' 2>/dev/null | cut -c8-19 || echo 'unknown')"
-if [ "$INCLUDE_SANDBOX" -eq 1 ]; then
-    SANDBOX_DIGEST="$(docker image inspect "$BUNDLED_SANDBOX_TAG" --format '{{.Id}}' 2>/dev/null | cut -c8-19 || echo 'unknown')"
-    SANDBOX_SOURCE_NOTE=" (source: $SANDBOX_IMAGE)"
-    SANDBOX_SOURCE_LINE="  - Source image for the sandbox: $SANDBOX_IMAGE"
-else
-    SANDBOX_DIGEST="not bundled"
-    SANDBOX_SOURCE_NOTE=" (not bundled; deployment must supply a sandbox image or use a local provider)"
+if [ "$INCREMENTAL" -eq 1 ]; then
+    NGINX_DIGEST="not included (incremental)"
+    SANDBOX_DIGEST="not included (incremental)"
+    SANDBOX_SOURCE_NOTE=""
     SANDBOX_SOURCE_LINE=""
+else
+    NGINX_DIGEST="$(docker image inspect "$NGINX_IMAGE" --format '{{.Id}}' 2>/dev/null | cut -c8-19 || echo 'unknown')"
+    if [ "$INCLUDE_SANDBOX" -eq 1 ]; then
+        SANDBOX_DIGEST="$(docker image inspect "$BUNDLED_SANDBOX_TAG" --format '{{.Id}}' 2>/dev/null | cut -c8-19 || echo 'unknown')"
+        SANDBOX_SOURCE_NOTE=" (source: $SANDBOX_IMAGE)"
+        SANDBOX_SOURCE_LINE="  - Source image for the sandbox: $SANDBOX_IMAGE"
+    else
+        SANDBOX_DIGEST="not bundled"
+        SANDBOX_SOURCE_NOTE=" (not bundled; deployment must supply a sandbox image or use a local provider)"
+        SANDBOX_SOURCE_LINE=""
+    fi
+fi
+
+BUNDLE_TYPE="full"
+if [ "$INCREMENTAL" -eq 1 ]; then
+    BUNDLE_TYPE="incremental"
+fi
+INCREMENTAL_FROM_LINE=""
+if [ "$INCREMENTAL" -eq 1 ] && [ -n "$INCREMENTAL_FROM" ]; then
+    INCREMENTAL_FROM_LINE="Incremental from: $INCREMENTAL_FROM"
+fi
+
+MANIFEST_IMAGES="  - $GATEWAY_IMAGE (digest: $GATEWAY_DIGEST)
+  - $FRONTEND_IMAGE (digest: $FRONTEND_DIGEST)"
+if [ "$INCREMENTAL" -eq 1 ]; then
+    MANIFEST_IMAGES+="
+  - $NGINX_IMAGE (not included; the target machine reuses its local nginx:alpine)
+  - $BUNDLED_SANDBOX_TAG (not included; the target machine reuses its local ideer-sandbox tag)"
+else
+    MANIFEST_IMAGES+="
+  - $NGINX_IMAGE (digest: $NGINX_DIGEST)
+  - $BUNDLED_SANDBOX_TAG (digest: $SANDBOX_DIGEST)$SANDBOX_SOURCE_NOTE"
+fi
+
+INCREMENTAL_NOTES_LINE=""
+if [ "$INCREMENTAL" -eq 1 ]; then
+    INCREMENTAL_NOTES_LINE="  - Incremental bundles are for upgrading an existing deployment only: the
+    images tar carries just the gateway and frontend images. Fresh installs
+    must use a full bundle; use a full bundle to update the nginx or sandbox
+    images as well."
 fi
 
 cat > "$MANIFEST_FILE" <<EOF
 iDeer Intranet Offline Bundle
 =============================
 Version: $VERSION
+Bundle type: $BUNDLE_TYPE
 Platform: $PLATFORM
 Created at: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
 Git commit: $(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || echo 'unknown')
-
+$INCREMENTAL_FROM_LINE
 Docker Images:
-  - $GATEWAY_IMAGE (digest: $GATEWAY_DIGEST)
-  - $FRONTEND_IMAGE (digest: $FRONTEND_DIGEST)
-  - $NGINX_IMAGE (digest: $NGINX_DIGEST)
-  - $BUNDLED_SANDBOX_TAG (digest: $SANDBOX_DIGEST)$SANDBOX_SOURCE_NOTE
+$MANIFEST_IMAGES
 
 Files:
   - $(basename "$IMAGES_TAR")        (Docker images archive)
@@ -340,6 +495,11 @@ Files:
   - $(basename "$MANIFEST_FILE")        (This manifest)
   - $(basename "$SHA_FILE")          (SHA256 checksums)
 
+Skill Runtime Wheels:
+$([ -d "$SKILL_WHEELS_DIR" ] && printf '  - wheels/ (%s wheel(s), platform %s, python %s; installed offline by deploy-intranet.sh for data-analysis/ppt-generation)\n' "$(ls "$SKILL_WHEELS_DIR" | wc -l)" "$PLATFORM" "$WHEEL_PY_VERSION" || echo "  (none collected)")
+
+Custom Skills (resources/skills bundled in the source archive):
+$SKILLS_MANIFEST_TEXT$EXCLUDED_SKILLS_TEXT
 Deployment Steps:
   1. Copy this entire bundle to the target intranet machine
   2. Run: ./check-intranet.sh     (verify prerequisites)
@@ -354,6 +514,7 @@ Notes:
     manually and set sandbox.image to a locally present name, or switch
     sandbox.use to a provider that needs no image (local).
 $SANDBOX_SOURCE_LINE
+$INCREMENTAL_NOTES_LINE
 For details, see the deployment guide included in this bundle.
 EOF
 

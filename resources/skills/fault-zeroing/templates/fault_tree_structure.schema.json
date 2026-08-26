@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Fault Zeroing Fault Tree Structure (intermediate)",
+  "description": "Loose schema for the deductive/integrated tree before evidence assessment. Structural fields are required; assessment fields (evidence/probability/status) may be null or absent because they are only filled by evidence_assessment.",
+  "type": "object",
+  "required": [
+    "top_event",
+    "intermediate_events",
+    "bottom_events",
+    "logic"
+  ],
+  "properties": {
+    "top_event": {
+      "type": "string",
+      "minLength": 1
+    },
+    "intermediate_events": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/event_node" }
+    },
+    "bottom_events": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/bottom_event_structure" }
+    },
+    "logic": {
+      "type": "array"
+    },
+    "evidence": {
+      "type": "array"
+    },
+    "root_causes": {
+      "type": "array"
+    },
+    "verification_plan": {
+      "type": "array"
+    }
+  },
+  "$defs": {
+    "event_node": {
+      "type": "object",
+      "required": ["id", "name", "parent_ids"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "description": { "type": ["string", "null"] },
+        "parent_ids": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "logic": { "enum": ["AND", "OR", "NONE", null] }
+      }
+    },
+    "bottom_event_structure": {
+      "type": "object",
+      "required": ["id", "name", "parent_ids"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "description": { "type": ["string", "null"] },
+        "parent_ids": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "evidence_ids": { "type": ["array", "null"] },
+        "probability": { "type": ["string", "number", "null"] },
+        "probability_basis": { "type": ["string", "null"] },
+        "confidence": { "type": ["string", "null"] },
+        "status": { "type": ["string", "null"] },
+        "verification_suggestion": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

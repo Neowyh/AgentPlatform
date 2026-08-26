@@ -8,6 +8,8 @@ import { toast } from "sonner";
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
 
 import { getAPIClient } from "../api";
+import { formatVisibilityClosureViolations } from "../api/errors";
+import type { VisibilityClosureViolation } from "../api/errors";
 import { fetch } from "../api/fetcher";
 import { getBackendBaseURL } from "../config";
 import { useI18n } from "../i18n/hooks";
@@ -170,6 +172,43 @@ function getStreamErrorMessage(error: unknown): string {
     }
   }
   return "Request failed.";
+}
+
+/**
+ * Extract a structured visibility closure violation payload from a
+ * failed run-start request. The LangGraph SDK surfaces HTTP errors as
+ * `HTTPError` with `status` set and `message` containing the raw JSON
+ * body, so we parse it defensively to render a readable, actionable
+ * message instead of the raw body text.
+ */
+function extractVisibilityClosureDetail(
+  error: unknown,
+): { message?: string; violations?: VisibilityClosureViolation[] } | undefined {
+  if (typeof error !== "object" || error === null) {
+    return undefined;
+  }
+  if (Reflect.get(error, "status") !== 409) {
+    return undefined;
+  }
+  const raw = Reflect.get(error, "message");
+  if (typeof raw !== "string") {
+    return undefined;
+  }
+  try {
+    const body = JSON.parse(raw) as {
+      detail?: {
+        code?: string;
+        message?: string;
+        violations?: VisibilityClosureViolation[];
+      };
+    };
+    if (body.detail?.code === "visibility_closure_violation") {
+      return body.detail;
+    }
+  } catch {
+    // Not a JSON payload — fall back to the generic error message.
+  }
+  return undefined;
 }
 
 export function useThreadStream({
@@ -345,7 +384,12 @@ export function useThreadStream({
     },
     onError(error) {
       setOptimisticMessages([]);
-      toast.error(getStreamErrorMessage(error));
+      const closureDetail = extractVisibilityClosureDetail(error);
+      if (closureDetail) {
+        toast.error(formatVisibilityClosureViolations(closureDetail));
+      } else {
+        toast.error(getStreamErrorMessage(error));
+      }
       pendingUsageBaselineMessageIdsRef.current = new Set(
         messagesRef.current
           .map(messageIdentity)

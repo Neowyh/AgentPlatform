@@ -152,7 +152,7 @@ class TestReadOnlyMountEnforcement:
         skills_dir = tmp_workspace.root / "skills"
         skills_dir.mkdir(exist_ok=True)
         with pytest.raises(OSError) as exc_info:
-            sandbox_with_mappings.write_file("/mnt/skills/public/SKILL.md", "malicious content")
+            sandbox_with_mappings.write_file("/mnt/skills/SKILL.md", "malicious content")
         assert exc_info.value.errno == errno.EROFS
 
     def test_update_file_to_read_only_mount_raises(self, sandbox_with_mappings, tmp_workspace):
@@ -160,7 +160,7 @@ class TestReadOnlyMountEnforcement:
         skills_dir = tmp_workspace.root / "skills"
         skills_dir.mkdir(exist_ok=True)
         with pytest.raises(OSError) as exc_info:
-            sandbox_with_mappings.update_file("/mnt/skills/public/binary.dat", b"\x00\x01")
+            sandbox_with_mappings.update_file("/mnt/skills/binary.dat", b"\x00\x01")
         assert exc_info.value.errno == errno.EROFS
 
     def test_write_to_writable_mount_succeeds(self, sandbox_with_mappings, tmp_workspace):
@@ -255,11 +255,11 @@ class TestHostPathMasking:
             patch("ideer.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"),
             patch("ideer.sandbox.tools._get_skills_host_path", return_value="/opt/app/skills"),
         ):
-            output = "Reading /opt/app/skills/public/bootstrap/SKILL.md"
+            output = "Reading /opt/app/skills/bootstrap/SKILL.md"
             masked = mask_local_paths_in_output(output, thread_data)
 
             assert "/opt/app/skills" not in masked
-            assert "/mnt/skills/public/bootstrap/SKILL.md" in masked
+            assert "/mnt/skills/bootstrap/SKILL.md" in masked
 
     def test_host_acp_workspace_paths_masked(self, thread_data):
         """ACP workspace host paths must be replaced with /mnt/acp-workspace."""
@@ -648,14 +648,14 @@ class TestPathValidationGate:
 
         with patch("ideer.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"):
             with pytest.raises(PermissionError, match="Write access to skills"):
-                validate_local_tool_path("/mnt/skills/public/SKILL.md", thread_data, read_only=False)
+                validate_local_tool_path("/mnt/skills/SKILL.md", thread_data, read_only=False)
 
     def test_skills_path_read_allowed(self, thread_data):
         """Read access to /mnt/skills must be allowed."""
         from ideer.sandbox.tools import validate_local_tool_path
 
         with patch("ideer.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"):
-            validate_local_tool_path("/mnt/skills/public/SKILL.md", thread_data, read_only=True)
+            validate_local_tool_path("/mnt/skills/SKILL.md", thread_data, read_only=True)
 
     def test_acp_workspace_write_blocked(self, thread_data):
         """Write access to /mnt/acp-workspace must be rejected."""

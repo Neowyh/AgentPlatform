@@ -212,43 +212,39 @@ class TestReconcileAgentMetadata:
 
 
 @pytest.mark.asyncio
-class TestReconcileResourceMetadata:
-    async def test_invokes_workflow_and_agent_reconciliation(self, tmp_path):
-        from app.gateway.app import _reconcile_resource_metadata
+class TestReconcileWorkflowAndAgentMetadata:
+    async def test_invokes_workflow_and_agent_reconciliation(self):
+        from app.gateway.app import _reconcile_workflow_and_agent_metadata
 
         session = MagicMock()
         session.execute = AsyncMock(return_value=_Result(_user("admin-1")))
         sf = _session_factory(session)
-        startup_config = MagicMock()
-        startup_config.skills.get_skills_path.return_value = tmp_path
 
         with patch("ideer.persistence.engine.get_session_factory", return_value=sf):
             with patch("app.gateway.app._reconcile_workflow_metadata") as wf:
                 with patch("app.gateway.app._reconcile_agent_metadata") as ag:
-                    await _reconcile_resource_metadata(startup_config)
+                    await _reconcile_workflow_and_agent_metadata()
 
         wf.assert_awaited_once()
         ag.assert_awaited_once()
 
-    async def test_skips_when_no_active_super_admin(self, tmp_path):
-        from app.gateway.app import _reconcile_resource_metadata
+    async def test_skips_when_no_active_super_admin(self):
+        from app.gateway.app import _reconcile_workflow_and_agent_metadata
 
         session = MagicMock()
         session.execute = AsyncMock(return_value=_Result(None))
         sf = _session_factory(session)
-        startup_config = MagicMock()
-        startup_config.skills.get_skills_path.return_value = tmp_path
 
         with patch("ideer.persistence.engine.get_session_factory", return_value=sf):
             with patch("app.gateway.app._reconcile_workflow_metadata") as wf:
                 with patch("app.gateway.app._reconcile_agent_metadata") as ag:
-                    await _reconcile_resource_metadata(startup_config)
+                    await _reconcile_workflow_and_agent_metadata()
 
         wf.assert_not_awaited()
         ag.assert_not_awaited()
 
     async def test_skips_when_database_unavailable(self):
-        from app.gateway.app import _reconcile_resource_metadata
+        from app.gateway.app import _reconcile_workflow_and_agent_metadata
 
         with patch("ideer.persistence.engine.get_session_factory", return_value=None):
-            await _reconcile_resource_metadata(MagicMock())
+            await _reconcile_workflow_and_agent_metadata()

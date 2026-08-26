@@ -80,7 +80,8 @@ services:
     volumes:
       - ${IDEER_CONFIG_PATH}:/app/backend/config.yaml:ro
       - ${IDEER_EXTENSIONS_CONFIG_PATH}:/app/backend/extensions_config.json:ro
-      - ../skills:/app/skills:ro
+      - ../resources/skills:/app/skills:ro
+      - ../resources:/app/resources:ro
       - ${IDEER_HOME}:/app/backend/.ideer
       # DooD: AioSandboxProvider starts sandbox containers via host Docker daemon
       - ${IDEER_DOCKER_SOCKET}:/var/run/docker.sock
@@ -109,7 +110,7 @@ services:
       - IDEER_INTERNAL_AUTH_TOKEN=${IDEER_INTERNAL_AUTH_TOKEN}
       # DooD path/network translation
       - IDEER_HOST_BASE_DIR=${IDEER_HOME}
-      - IDEER_HOST_SKILLS_PATH=${IDEER_REPO_ROOT}/skills
+      - IDEER_HOST_SKILLS_PATH=${IDEER_REPO_ROOT}/resources/skills
       - IDEER_SANDBOX_HOST=host.docker.internal
     env_file:
       - ../.env
@@ -133,7 +134,8 @@ services:
     volumes:
       - ${IDEER_CONFIG_PATH}:/app/backend/config.yaml:ro
       - ${IDEER_EXTENSIONS_CONFIG_PATH}:/app/backend/extensions_config.json:ro
-      - ../skills:/app/skills:ro
+      - ../resources/skills:/app/skills:ro
+      - ../resources:/app/resources:ro
       - ${IDEER_HOME}:/app/backend/.ideer
     working_dir: /app
     environment:
@@ -162,7 +164,7 @@ services:
     environment:
       - K8S_NAMESPACE=ideer
       - SANDBOX_IMAGE=enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:latest
-      - SKILLS_HOST_PATH=${IDEER_REPO_ROOT}/skills
+      - SKILLS_HOST_PATH=${IDEER_REPO_ROOT}/resources/skills
       - THREADS_HOST_PATH=${IDEER_HOME}/threads
       - KUBECONFIG_PATH=/root/.kube/config
       - NODE_HOST=host.docker.internal

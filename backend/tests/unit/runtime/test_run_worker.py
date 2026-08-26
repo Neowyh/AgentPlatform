@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from packages.harness.ideer.runtime.runs.worker import (
+from ideer.runtime.runs.worker import (
     RunContext,
     _agent_factory_supports_app_config,
     _build_runtime_context,
@@ -534,8 +534,8 @@ class TestRunAgent:
     @pytest.mark.asyncio
     async def test_successful_run(self):
         """Test a complete successful agent run."""
-        from packages.harness.ideer.runtime.runs.schemas import RunStatus
-        from packages.harness.ideer.runtime.runs.worker import run_agent
+        from ideer.runtime.runs.schemas import RunStatus
+        from ideer.runtime.runs.worker import run_agent
 
         # Set up mocks
         bridge = MagicMock()
@@ -572,10 +572,10 @@ class TestRunAgent:
         def agent_factory(config=None, app_config=None):
             return mock_agent
 
-        with patch("packages.harness.ideer.runtime.runs.worker.inject_langfuse_metadata"):
-            with patch("packages.harness.ideer.runtime.runs.worker.get_effective_user_id", return_value="user_1"):
-                with patch("packages.harness.ideer.runtime.runs.worker.os.environ", {}):
-                    with patch("packages.harness.ideer.runtime.runs.worker.resolve_root_run_name", return_value="test_run"):
+        with patch("ideer.runtime.runs.worker.inject_langfuse_metadata"):
+            with patch("ideer.runtime.runs.worker.get_effective_user_id", return_value="user_1"):
+                with patch("ideer.runtime.runs.worker.os.environ", {}):
+                    with patch("ideer.runtime.runs.worker.resolve_root_run_name", return_value="test_run"):
                         await run_agent(
                             bridge,
                             run_manager,
@@ -592,8 +592,8 @@ class TestRunAgent:
     @pytest.mark.asyncio
     async def test_run_with_error(self):
         """Test agent run that raises an exception."""
-        from packages.harness.ideer.runtime.runs.schemas import RunStatus
-        from packages.harness.ideer.runtime.runs.worker import run_agent
+        from ideer.runtime.runs.schemas import RunStatus
+        from ideer.runtime.runs.worker import run_agent
 
         bridge = MagicMock()
         bridge.publish = AsyncMock()
@@ -617,10 +617,10 @@ class TestRunAgent:
         def agent_factory(config=None):
             raise RuntimeError("agent build failed")
 
-        with patch("packages.harness.ideer.runtime.runs.worker.inject_langfuse_metadata"):
-            with patch("packages.harness.ideer.runtime.runs.worker.get_effective_user_id", return_value="user_1"):
-                with patch("packages.harness.ideer.runtime.runs.worker.os.environ", {}):
-                    with patch("packages.harness.ideer.runtime.runs.worker.resolve_root_run_name", return_value="test"):
+        with patch("ideer.runtime.runs.worker.inject_langfuse_metadata"):
+            with patch("ideer.runtime.runs.worker.get_effective_user_id", return_value="user_1"):
+                with patch("ideer.runtime.runs.worker.os.environ", {}):
+                    with patch("ideer.runtime.runs.worker.resolve_root_run_name", return_value="test"):
                         await run_agent(
                             bridge,
                             run_manager,
@@ -637,8 +637,8 @@ class TestRunAgent:
     @pytest.mark.asyncio
     async def test_run_aborted(self):
         """Test agent run that gets aborted."""
-        from packages.harness.ideer.runtime.runs.schemas import RunStatus
-        from packages.harness.ideer.runtime.runs.worker import run_agent
+        from ideer.runtime.runs.schemas import RunStatus
+        from ideer.runtime.runs.worker import run_agent
 
         bridge = MagicMock()
         bridge.publish = AsyncMock()
@@ -671,10 +671,10 @@ class TestRunAgent:
         def agent_factory(config=None):
             return mock_agent
 
-        with patch("packages.harness.ideer.runtime.runs.worker.inject_langfuse_metadata"):
-            with patch("packages.harness.ideer.runtime.runs.worker.get_effective_user_id", return_value="user_1"):
-                with patch("packages.harness.ideer.runtime.runs.worker.os.environ", {}):
-                    with patch("packages.harness.ideer.runtime.runs.worker.resolve_root_run_name", return_value="test"):
+        with patch("ideer.runtime.runs.worker.inject_langfuse_metadata"):
+            with patch("ideer.runtime.runs.worker.get_effective_user_id", return_value="user_1"):
+                with patch("ideer.runtime.runs.worker.os.environ", {}):
+                    with patch("ideer.runtime.runs.worker.resolve_root_run_name", return_value="test"):
                         await run_agent(
                             bridge,
                             run_manager,
@@ -690,8 +690,8 @@ class TestRunAgent:
     @pytest.mark.asyncio
     async def test_run_cancelled(self):
         """Test agent run that gets cancelled (CancelledError)."""
-        from packages.harness.ideer.runtime.runs.schemas import RunStatus
-        from packages.harness.ideer.runtime.runs.worker import run_agent
+        from ideer.runtime.runs.schemas import RunStatus
+        from ideer.runtime.runs.worker import run_agent
 
         bridge = MagicMock()
         bridge.publish = AsyncMock()
@@ -722,10 +722,10 @@ class TestRunAgent:
         def agent_factory(config=None):
             return mock_agent
 
-        with patch("packages.harness.ideer.runtime.runs.worker.inject_langfuse_metadata"):
-            with patch("packages.harness.ideer.runtime.runs.worker.get_effective_user_id", return_value="user_1"):
-                with patch("packages.harness.ideer.runtime.runs.worker.os.environ", {}):
-                    with patch("packages.harness.ideer.runtime.runs.worker.resolve_root_run_name", return_value="test"):
+        with patch("ideer.runtime.runs.worker.inject_langfuse_metadata"):
+            with patch("ideer.runtime.runs.worker.get_effective_user_id", return_value="user_1"):
+                with patch("ideer.runtime.runs.worker.os.environ", {}):
+                    with patch("ideer.runtime.runs.worker.resolve_root_run_name", return_value="test"):
                         await run_agent(
                             bridge,
                             run_manager,
@@ -741,8 +741,8 @@ class TestRunAgent:
     @pytest.mark.asyncio
     async def test_run_with_checkpointer(self):
         """Test run with checkpointer snapshotting."""
-        from packages.harness.ideer.runtime.runs.schemas import RunStatus
-        from packages.harness.ideer.runtime.runs.worker import run_agent
+        from ideer.runtime.runs.schemas import RunStatus
+        from ideer.runtime.runs.worker import run_agent
 
         bridge = MagicMock()
         bridge.publish = AsyncMock()
@@ -788,10 +788,10 @@ class TestRunAgent:
         def agent_factory(config=None):
             return mock_agent
 
-        with patch("packages.harness.ideer.runtime.runs.worker.inject_langfuse_metadata"):
-            with patch("packages.harness.ideer.runtime.runs.worker.get_effective_user_id", return_value="user_1"):
-                with patch("packages.harness.ideer.runtime.runs.worker.os.environ", {}):
-                    with patch("packages.harness.ideer.runtime.runs.worker.resolve_root_run_name", return_value="test"):
+        with patch("ideer.runtime.runs.worker.inject_langfuse_metadata"):
+            with patch("ideer.runtime.runs.worker.get_effective_user_id", return_value="user_1"):
+                with patch("ideer.runtime.runs.worker.os.environ", {}):
+                    with patch("ideer.runtime.runs.worker.resolve_root_run_name", return_value="test"):
                         await run_agent(
                             bridge,
                             run_manager,
@@ -810,8 +810,8 @@ class TestRunAgent:
     @pytest.mark.asyncio
     async def test_run_with_journal(self):
         """Test run with event store / journal."""
-        from packages.harness.ideer.runtime.runs.schemas import RunStatus
-        from packages.harness.ideer.runtime.runs.worker import run_agent
+        from ideer.runtime.runs.schemas import RunStatus
+        from ideer.runtime.runs.worker import run_agent
 
         bridge = MagicMock()
         bridge.publish = AsyncMock()
@@ -856,10 +856,10 @@ class TestRunAgent:
         mock_journal.flush = AsyncMock()
         mock_journal.get_completion_data.return_value = {}
 
-        with patch("packages.harness.ideer.runtime.runs.worker.inject_langfuse_metadata"):
-            with patch("packages.harness.ideer.runtime.runs.worker.get_effective_user_id", return_value="user_1"):
-                with patch("packages.harness.ideer.runtime.runs.worker.os.environ", {}):
-                    with patch("packages.harness.ideer.runtime.runs.worker.resolve_root_run_name", return_value="test"):
+        with patch("ideer.runtime.runs.worker.inject_langfuse_metadata"):
+            with patch("ideer.runtime.runs.worker.get_effective_user_id", return_value="user_1"):
+                with patch("ideer.runtime.runs.worker.os.environ", {}):
+                    with patch("ideer.runtime.runs.worker.resolve_root_run_name", return_value="test"):
                         with patch("ideer.runtime.journal.RunJournal", return_value=mock_journal):
                             await run_agent(
                                 bridge,
@@ -876,8 +876,8 @@ class TestRunAgent:
     @pytest.mark.asyncio
     async def test_run_with_streaming_events(self):
         """Test run that streams events."""
-        from packages.harness.ideer.runtime.runs.schemas import RunStatus
-        from packages.harness.ideer.runtime.runs.worker import run_agent
+        from ideer.runtime.runs.schemas import RunStatus
+        from ideer.runtime.runs.worker import run_agent
 
         bridge = MagicMock()
         bridge.publish = AsyncMock()
@@ -909,10 +909,10 @@ class TestRunAgent:
         def agent_factory(config=None):
             return mock_agent
 
-        with patch("packages.harness.ideer.runtime.runs.worker.inject_langfuse_metadata"):
-            with patch("packages.harness.ideer.runtime.runs.worker.get_effective_user_id", return_value="user_1"):
-                with patch("packages.harness.ideer.runtime.runs.worker.os.environ", {}):
-                    with patch("packages.harness.ideer.runtime.runs.worker.resolve_root_run_name", return_value="test"):
+        with patch("ideer.runtime.runs.worker.inject_langfuse_metadata"):
+            with patch("ideer.runtime.runs.worker.get_effective_user_id", return_value="user_1"):
+                with patch("ideer.runtime.runs.worker.os.environ", {}):
+                    with patch("ideer.runtime.runs.worker.resolve_root_run_name", return_value="test"):
                         await run_agent(
                             bridge,
                             run_manager,
@@ -929,8 +929,8 @@ class TestRunAgent:
     @pytest.mark.asyncio
     async def test_run_with_multiple_modes(self):
         """Test run with multiple stream modes."""
-        from packages.harness.ideer.runtime.runs.schemas import RunStatus
-        from packages.harness.ideer.runtime.runs.worker import run_agent
+        from ideer.runtime.runs.schemas import RunStatus
+        from ideer.runtime.runs.worker import run_agent
 
         bridge = MagicMock()
         bridge.publish = AsyncMock()
@@ -963,10 +963,10 @@ class TestRunAgent:
         def agent_factory(config=None):
             return mock_agent
 
-        with patch("packages.harness.ideer.runtime.runs.worker.inject_langfuse_metadata"):
-            with patch("packages.harness.ideer.runtime.runs.worker.get_effective_user_id", return_value="user_1"):
-                with patch("packages.harness.ideer.runtime.runs.worker.os.environ", {}):
-                    with patch("packages.harness.ideer.runtime.runs.worker.resolve_root_run_name", return_value="test"):
+        with patch("ideer.runtime.runs.worker.inject_langfuse_metadata"):
+            with patch("ideer.runtime.runs.worker.get_effective_user_id", return_value="user_1"):
+                with patch("ideer.runtime.runs.worker.os.environ", {}):
+                    with patch("ideer.runtime.runs.worker.resolve_root_run_name", return_value="test"):
                         await run_agent(
                             bridge,
                             run_manager,
@@ -983,8 +983,8 @@ class TestRunAgent:
     @pytest.mark.asyncio
     async def test_run_events_mode_skipped(self):
         """Test that 'events' mode is skipped."""
-        from packages.harness.ideer.runtime.runs.schemas import RunStatus
-        from packages.harness.ideer.runtime.runs.worker import run_agent
+        from ideer.runtime.runs.schemas import RunStatus
+        from ideer.runtime.runs.worker import run_agent
 
         bridge = MagicMock()
         bridge.publish = AsyncMock()
@@ -1016,10 +1016,10 @@ class TestRunAgent:
         def agent_factory(config=None):
             return mock_agent
 
-        with patch("packages.harness.ideer.runtime.runs.worker.inject_langfuse_metadata"):
-            with patch("packages.harness.ideer.runtime.runs.worker.get_effective_user_id", return_value="user_1"):
-                with patch("packages.harness.ideer.runtime.runs.worker.os.environ", {}):
-                    with patch("packages.harness.ideer.runtime.runs.worker.resolve_root_run_name", return_value="test"):
+        with patch("ideer.runtime.runs.worker.inject_langfuse_metadata"):
+            with patch("ideer.runtime.runs.worker.get_effective_user_id", return_value="user_1"):
+                with patch("ideer.runtime.runs.worker.os.environ", {}):
+                    with patch("ideer.runtime.runs.worker.resolve_root_run_name", return_value="test"):
                         await run_agent(
                             bridge,
                             run_manager,

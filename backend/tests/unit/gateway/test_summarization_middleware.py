@@ -80,7 +80,7 @@ def _skill_read_call(tool_id: str, skill: str) -> dict:
     return {
         "name": "read_file",
         "id": tool_id,
-        "args": {"path": f"/mnt/skills/public/{skill}/SKILL.md"},
+        "args": {"path": f"/mnt/skills/{skill}/SKILL.md"},
     }
 
 
@@ -355,7 +355,7 @@ def test_fire_hooks_hook_with_no_name() -> None:
 
 def test_is_skill_tool_call_non_read_tool() -> None:
     middleware = _middleware()
-    tc = {"name": "write_file", "args": {"path": "/mnt/skills/public/foo/SKILL.md"}}
+    tc = {"name": "write_file", "args": {"path": "/mnt/skills/foo/SKILL.md"}}
     assert middleware._is_skill_tool_call(tc, "/mnt/skills") is False
 
 
@@ -373,13 +373,13 @@ def test_is_skill_tool_call_path_at_root() -> None:
 
 def test_is_skill_tool_call_path_under_root() -> None:
     middleware = _middleware()
-    tc = {"name": "read_file", "args": {"path": "/mnt/skills/public/foo/SKILL.md"}}
+    tc = {"name": "read_file", "args": {"path": "/mnt/skills/foo/SKILL.md"}}
     assert middleware._is_skill_tool_call(tc, "/mnt/skills") is True
 
 
 def test_is_skill_tool_call_custom_tool_name() -> None:
     middleware = _middleware(skill_file_read_tool_names=["my_reader"])
-    tc = {"name": "my_reader", "args": {"path": "/mnt/skills/public/foo/SKILL.md"}}
+    tc = {"name": "my_reader", "args": {"path": "/mnt/skills/foo/SKILL.md"}}
     assert middleware._is_skill_tool_call(tc, "/mnt/skills") is True
 
 

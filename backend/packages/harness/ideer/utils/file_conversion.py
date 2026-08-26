@@ -8,6 +8,13 @@ PDF conversion strategy (auto mode):
      total when page count is unavailable), treat as image-based and fall back to MarkItDown.
   3. If pymupdf4llm is not installed, use MarkItDown directly (existing behaviour).
 
+Word (.docx/.doc) conversion strategy (auto mode):
+  1. Try the rich parser (``ideer.utils.docx_rich``, python-docx based) — preserves
+     heading levels, inline formatting, tables, images, MathType formulas (LaTeX)
+     and Visio drawings. Extracted images land under ``<stem>_files/images/``.
+  2. On failure or missing python-docx, fall back to MarkItDown.
+  3. ``docx_converter: rich`` disables the fallback; ``markitdown`` keeps legacy behaviour.
+
 Large files (> ASYNC_THRESHOLD_BYTES) are converted in a thread pool via
 asyncio.to_thread() to avoid blocking the event loop (fixes #1569).
 
@@ -17,6 +24,7 @@ No FastAPI or HTTP dependencies — pure utility functions.
 import asyncio
 import logging
 import re
+import shutil
 from pathlib import Path
 
 from ideer.config.app_config import get_app_config
@@ -102,16 +110,72 @@ def _convert_with_markitdown(file_path: Path) -> str:
     return md.convert(str(file_path)).text_content
 
 
-def _do_convert(file_path: Path, pdf_converter: str) -> str:
+def _convert_word_with_rich(file_path: Path) -> str | None:
+    """Attempt high-fidelity Word conversion (ideer.utils.docx_rich).
+
+    Preserves headings, formatting, tables, images, MathType formulas (LaTeX)
+    and Visio drawings. Extracted images are stored under ``<stem>_files/images``
+    next to the source file; Markdown references are rewritten accordingly.
+
+    Returns None when python-docx is missing or conversion fails, letting the
+    caller fall back to MarkItDown (auto mode).
+    """
+    try:
+        from ideer.utils.docx_rich import convert_docx, is_available
+
+        if not is_available():
+            logger.warning("python-docx not installed; skipping rich docx conversion")
+            return None
+    except ImportError:
+        return None
+
+    try:
+        text, extra_info = convert_docx(file_path, file_path.parent)
+        if not text.strip():
+            logger.warning("Rich docx conversion produced empty output for %s", file_path.name)
+            return None
+
+        # Relocate artifacts to the platform layout:
+        #   <parent>/<stem>_docx/<stem>.md + images/  ->  <parent>/<stem>.md + <stem>_files/images/
+        stem = file_path.stem
+        src_subdir = Path(extra_info["output_subdir"])
+        dest_subdir = file_path.parent / f"{stem}_files"
+
+        if dest_subdir.exists():
+            shutil.rmtree(dest_subdir)
+        if src_subdir.exists():
+            src_subdir.rename(dest_subdir)
+
+        # Rewrite image references from "](images/..." to "](<stem>_files/images/..."
+        # (bracket-anchored so prose containing "(images/" is left untouched)
+        text = text.replace("](images/", f"]({dest_subdir.name}/images/")
+
+        # Remove the now-redundant intermediate markdown inside the relocated dir
+        inner_md = dest_subdir / f"{file_path.stem}.md"
+        if inner_md.exists():
+            inner_md.unlink()
+
+        return text
+    except RuntimeError:
+        # Deliberate guard-rail errors (e.g. legacy .doc without LibreOffice)
+        # carry actionable messages — propagate them instead of masking.
+        raise
+    except Exception:
+        logger.exception("Rich docx conversion failed for %s; falling back to MarkItDown", file_path.name)
+        return None
+
+
+def _do_convert(file_path: Path, pdf_converter: str, docx_converter: str = "auto") -> str:
     """Synchronous conversion — called directly or via asyncio.to_thread.
 
     Args:
         file_path: Path to the file.
         pdf_converter: "auto" | "pymupdf4llm" | "markitdown"
+        docx_converter: "auto" | "rich" | "markitdown"
     """
-    is_pdf = file_path.suffix.lower() == ".pdf"
+    suffix = file_path.suffix.lower()
 
-    if is_pdf and pdf_converter != "markitdown":
+    if suffix == ".pdf" and pdf_converter != "markitdown":
         # Try pymupdf4llm first (auto or explicit)
         pymupdf_text = _convert_pdf_with_pymupdf4llm(file_path)
 
@@ -132,6 +196,15 @@ def _do_convert(file_path: Path, pdf_converter: str) -> str:
             )
         # pymupdf4llm not installed or fallback triggered → use MarkItDown
 
+    if suffix in {".docx", ".doc"} and docx_converter != "markitdown":
+        rich_text = _convert_word_with_rich(file_path)
+        if rich_text is not None:
+            return rich_text
+        if docx_converter == "rich":
+            # Explicit mode: no silent fallback, surface the failure.
+            raise RuntimeError(f"Rich Word conversion failed for {file_path.name} (docx_converter='rich' disables the MarkItDown fallback)")
+        # auto mode → fall back to MarkItDown below
+
     return _convert_with_markitdown(file_path)
 
 
@@ -150,12 +223,13 @@ async def convert_file_to_markdown(file_path: Path) -> Path | None:
     """
     try:
         pdf_converter = _get_pdf_converter()
+        docx_converter = _get_docx_converter()
         file_size = file_path.stat().st_size
 
         if file_size > _ASYNC_THRESHOLD_BYTES:
-            text = await asyncio.to_thread(_do_convert, file_path, pdf_converter)
+            text = await asyncio.to_thread(_do_convert, file_path, pdf_converter, docx_converter)
         else:
-            text = _do_convert(file_path, pdf_converter)
+            text = _do_convert(file_path, pdf_converter, docx_converter)
 
         md_path = file_path.with_suffix(".md")
         md_path.write_text(text, encoding="utf-8")
@@ -202,6 +276,7 @@ _SPLIT_BOLD_HEADING_RE = re.compile(r"^\*\*[\dA-Z][\d\.]*\*\*\s+\*\*(?!\d[\d\s.,
 MAX_OUTLINE_ENTRIES = 50
 
 _ALLOWED_PDF_CONVERTERS = {"auto", "pymupdf4llm", "markitdown"}
+_ALLOWED_DOCX_CONVERTERS = {"auto", "rich", "markitdown"}
 
 
 def _clean_bold_title(raw: str) -> str:
@@ -312,4 +387,22 @@ def _get_pdf_converter() -> str:
         return raw
     except Exception:
         logger.warning("Failed to get pdf_converter config, falling back to 'auto'", exc_info=True)
+    return "auto"
+
+
+def _get_docx_converter() -> str:
+    """Read docx_converter setting from app config, defaulting to 'auto'.
+
+    "auto" prefers the rich Word parser (headings/formulas/images) and falls
+    back to MarkItDown on failure; "rich" disables the fallback; "markitdown"
+    keeps the legacy behaviour only.
+    """
+    try:
+        raw = str(_get_uploads_config_value("docx_converter", "auto")).strip().lower()
+        if raw not in _ALLOWED_DOCX_CONVERTERS:
+            logger.warning("Invalid docx_converter value %r; falling back to 'auto'", raw)
+            return "auto"
+        return raw
+    except Exception:
+        logger.warning("Failed to get docx_converter config, falling back to 'auto'", exc_info=True)
     return "auto"

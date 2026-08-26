@@ -168,8 +168,8 @@ def test_provision_officecli_missing_source(tmp_path: Path) -> None:
 def test_bundled_agent_and_officecli_present_in_repo() -> None:
     repo_root = install_script.repo_root()
     for path in (
-        repo_root / "docs" / "srs-writing-agent" / "agent" / "config.yaml",
-        repo_root / "docs" / "srs-writing-agent" / "agent" / "SOUL.md",
+        repo_root / "resources" / "agents" / "srs-writing" / "config.yaml",
+        repo_root / "resources" / "agents" / "srs-writing" / "SOUL.md",
         repo_root / "vendor" / "officecli" / "officecli",
     ):
         assert path.is_file(), f"Bundled path missing: {path}"

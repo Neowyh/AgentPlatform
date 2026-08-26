@@ -196,7 +196,7 @@ class TestInstallSkillFromArchive:
         result = get_or_new_skill_storage(skills_path=skills_root).install_skill_from_archive(zip_path)
         assert result["success"] is True
         assert result["skill_name"] == "test-skill"
-        assert (skills_root / "custom" / "test-skill" / "SKILL.md").exists()
+        assert (skills_root / "test-skill" / "SKILL.md").exists()
 
     def test_scans_skill_markdown_before_install(self, tmp_path, monkeypatch):
         zip_path = self._make_skill_zip(tmp_path)
@@ -277,7 +277,7 @@ class TestInstallSkillFromArchive:
         with pytest.raises(SkillSecurityScanError, match="nested SKILL.md"):
             get_or_new_skill_storage(skills_path=skills_root).install_skill_from_archive(zip_path)
 
-        assert not (skills_root / "custom" / "test-skill").exists()
+        assert not (skills_root / "test-skill").exists()
 
     def test_script_warn_prevents_install(self, tmp_path, monkeypatch):
         zip_path = tmp_path / "test-skill.skill"
@@ -297,7 +297,7 @@ class TestInstallSkillFromArchive:
         with pytest.raises(SkillSecurityScanError, match="rejected executable.*script needs review"):
             get_or_new_skill_storage(skills_path=skills_root).install_skill_from_archive(zip_path)
 
-        assert not (skills_root / "custom" / "test-skill").exists()
+        assert not (skills_root / "test-skill").exists()
 
     def test_security_scan_block_prevents_install(self, tmp_path, monkeypatch):
         zip_path = self._make_skill_zip(tmp_path, skill_name="blocked-skill")
@@ -312,7 +312,7 @@ class TestInstallSkillFromArchive:
         with pytest.raises(SkillSecurityScanError, match="Security scan blocked.*prompt injection"):
             get_or_new_skill_storage(skills_path=skills_root).install_skill_from_archive(zip_path)
 
-        assert not (skills_root / "custom" / "blocked-skill").exists()
+        assert not (skills_root / "blocked-skill").exists()
 
     def test_copy_failure_does_not_leave_partial_install(self, tmp_path, monkeypatch):
         zip_path = self._make_skill_zip(tmp_path)
@@ -330,15 +330,14 @@ class TestInstallSkillFromArchive:
         with pytest.raises(OSError, match="copy failed"):
             get_or_new_skill_storage(skills_path=skills_root).install_skill_from_archive(zip_path)
 
-        custom_dir = skills_root / "custom"
-        assert not (custom_dir / "test-skill").exists()
-        assert not [path for path in custom_dir.iterdir() if path.name.startswith(".installing-test-skill-")]
+        assert not (skills_root / "test-skill").exists()
+        assert not [path for path in skills_root.iterdir() if path.name.startswith(".installing-test-skill-")]
 
     def test_concurrent_target_creation_does_not_get_clobbered(self, tmp_path, monkeypatch):
         zip_path = self._make_skill_zip(tmp_path)
         skills_root = tmp_path / "skills"
         skills_root.mkdir()
-        target = skills_root / "custom" / "test-skill"
+        target = skills_root / "test-skill"
         original_copytree = shutil.copytree
 
         def _copytree(src, dst):
@@ -368,12 +367,12 @@ class TestInstallSkillFromArchive:
         with pytest.raises(OSError, match="move failed"):
             get_or_new_skill_storage(skills_path=skills_root).install_skill_from_archive(zip_path)
 
-        assert not (skills_root / "custom" / "test-skill").exists()
+        assert not (skills_root / "test-skill").exists()
 
     def test_duplicate_raises(self, tmp_path):
         zip_path = self._make_skill_zip(tmp_path)
         skills_root = tmp_path / "skills"
-        (skills_root / "custom" / "test-skill").mkdir(parents=True)
+        (skills_root / "test-skill").mkdir(parents=True)
         with pytest.raises(ValueError, match="already exists"):
             get_or_new_skill_storage(skills_path=skills_root).install_skill_from_archive(zip_path)
 

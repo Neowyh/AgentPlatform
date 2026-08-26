@@ -255,6 +255,8 @@ export interface Translations {
     // Run Dialog
     runDialog: string;
     runDialogDescription: string;
+    model: string;
+    modelPlaceholder: string;
     defaultPrefix: string;
     enterInput: (key: string) => string;
     noInputs: string;
@@ -429,6 +431,35 @@ export interface Translations {
     keyboardShortcutsDescription: string;
     openCommandPalette: string;
     toggleSidebar: string;
+  };
+
+  // Resource governance
+  resources: {
+    impactTitle: string;
+    impactSummary: (
+      total: number,
+      direct: number,
+      transitive: number,
+    ) => string;
+    impactBlockedSummary: (count: number) => string;
+    impactCascadeLabel: string;
+    impactLoadError: string;
+    resourceTypeAgent: string;
+    resourceTypeSkill: string;
+    resourceTypeWorkflow: string;
+    resourceTypeTool: string;
+    visibilityPrivate: string;
+    visibilityDepartment: string;
+    visibilityPublic: string;
+    notificationsTitle: string;
+    notificationsEmpty: string;
+    notificationsMarkAllRead: string;
+    notificationsMarkAllReadDone: string;
+    notificationsVisibilityReduced: (name: string) => string;
+    notificationsVisibilityReducedCascade: (name: string) => string;
+    notificationsAdminVisibilityReduced: (count: number) => string;
+    notificationsUnknownEvent: string;
+    notificationsLoadFailed: string;
   };
 
   // Settings

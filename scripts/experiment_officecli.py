@@ -60,7 +60,7 @@ def main() -> int:
         ),
         (
             "G4: officecli skill visible at /mnt/skills",
-            "ls -la /mnt/skills/custom/officecli/SKILL.md",
+            "ls -la /mnt/skills/officecli/SKILL.md",
             ["SKILL.md"],
         ),
     ]

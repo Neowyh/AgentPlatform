@@ -231,9 +231,10 @@ export async function runWorkflow(
   const res = await fetch(`${getBackendBaseURL()}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(
-      modelName ? { inputs, model_name: modelName } : { inputs },
-    ),
+    body: JSON.stringify({
+      inputs,
+      ...(modelName ? { model_name: modelName } : {}),
+    }),
   });
   if (!res.ok) return extractError(res, "Failed to run workflow");
   const result = (await res.json()) as WorkflowRunResult;

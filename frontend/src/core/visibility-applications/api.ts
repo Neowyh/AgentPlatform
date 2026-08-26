@@ -66,14 +66,20 @@ export async function createVisibilityApplication(
 export interface ChangeVisibilityRequest {
   resource_id: string;
   visibility: string;
+  cascade?: boolean;
 }
 
 export async function changeResourceVisibility(
   request: ChangeVisibilityRequest,
 ): Promise<{ success: boolean }> {
   const baseURL = getBackendBaseURL();
+  const searchParams = new URLSearchParams();
+  if (request.cascade) {
+    searchParams.set("cascade", "true");
+  }
+  const queryString = searchParams.toString();
   const res = await fetch(
-    `${baseURL}/api/resources/${encodeURIComponent(request.resource_id)}/visibility`,
+    `${baseURL}/api/resources/${encodeURIComponent(request.resource_id)}/visibility${queryString ? `?${queryString}` : ""}`,
     {
       method: "PUT",
       headers: { "Content-Type": "application/json" },

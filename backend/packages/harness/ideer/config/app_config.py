@@ -58,6 +58,10 @@ class UploadsConfig(BaseModel):
     max_total_size: int = Field(default=209715200, description="Maximum total upload size in bytes (200MB)")
     auto_convert_documents: bool = Field(default=True, description="Automatically convert documents to markdown")
     pdf_converter: str = Field(default="default", description="PDF converter to use")
+    docx_converter: str = Field(
+        default="auto",
+        description="Word converter: auto (rich parser with MarkItDown fallback), rich (no fallback), or markitdown (legacy only)",
+    )
 
 
 def _legacy_config_candidates() -> tuple[Path, ...]:

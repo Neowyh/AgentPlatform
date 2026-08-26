@@ -25,6 +25,12 @@ sandbox (file writes, bash execution) works offline. Override the source image
 with `--sandbox-image <image>` or skip it entirely with `--no-sandbox` (not
 recommended -- sandboxed tools will be unavailable).
 
+`resources/skills/` is only partially tracked in git, so the bundle contains
+whatever custom skills exist on the build machine. For official releases pass
+`--skills-manifest <csv>` (expected custom skill names); packaging fails
+immediately if any listed skill is missing, and `MANIFEST.txt` records the
+actual `Custom Skills` list so the delivered bundle can be audited against it.
+
 ### On the Intranet Target Machine
 
 1. Docker and Docker Compose v2 installed
@@ -113,9 +119,9 @@ This will:
 3. Start all services
 4. Run health checks
 5. Auto-create the super admin account (`super_admin@test.com` / `super_admin@test.com` by default; override with `IDEER_ADMIN_EMAIL` / `IDEER_ADMIN_PASSWORD`; skipped when an admin already exists)
-6. Install the bundled agents (`fault-zeroing`, `srs-writing`) as **private resources of the super admin** (into `runtime/data/users/<admin-id>/agents/`), assign the bundled `skills/custom/` skills to the same private owner, and seed the bundled `fault-zeroing` workflow as the admin's private workflow once the gateway is healthy
+6. Install the bundled agents (`fault-zeroing`, `srs-writing`) as **private resources of the super admin** (into `runtime/data/users/<admin-id>/agents/`), assign the bundled `resources/skills/` skills to the same private owner, and seed the bundled `fault-zeroing` workflow as the admin's private workflow once the gateway is healthy
 
-Disable an agent for the session with `IDEER_INSTALL_FAULT_ZEROING=0` or `IDEER_INSTALL_SRS_WRITING=0`. The bundled `skills/public/` skills remain public templates for all users.
+Disable an agent for the session with `IDEER_INSTALL_FAULT_ZEROING=0` or `IDEER_INSTALL_SRS_WRITING=0`. The bundled `resources/skills/` skills remain public templates for all users.
 
 To preview what would happen without making changes:
 
@@ -128,6 +134,36 @@ To skip the pre-check (not recommended):
 ```bash
 ./deploy-intranet.sh --skip-check up
 ```
+
+### Upgrading and incremental bundles
+
+Copy the new bundle over the deployment directory, then:
+
+```bash
+docker load -i ideer-images-<new-version>.tar
+./deploy-intranet.sh --version <new-version> restart
+```
+
+Upgrades re-extract the bundled source and refresh the `env.intranet` image
+tags to the new version automatically. To remove old image tags after a
+successful upgrade, either run `./deploy-intranet.sh prune-old` or add
+`--prune-old` to the restart command (runs only after all health checks
+pass). Only `ideer-gateway:*` / `ideer-frontend:*` tags are pruned; keep
+`--keep-versions <n>` recent versions for rollback (default 2, 0 = current
+version only).
+
+To save transfer size when upgrading an existing deployment, build an
+incremental bundle on the build machine:
+
+```bash
+scripts/package-intranet-offline.sh --version <new-version> --incremental --incremental-from <old-version> --force
+```
+
+The images tar then contains only the gateway and frontend images; the target
+machine reuses its local `nginx:alpine` and `ideer-sandbox` image (the deploy
+script retags a local `ideer-sandbox:*` to the new version automatically).
+Incremental bundles are for upgrades only -- fresh installs must use a full
+bundle.
 
 ### 5. Verify
 
@@ -158,6 +194,7 @@ View logs:
 | `./deploy-intranet.sh logs` | Follow all logs |
 | `./deploy-intranet.sh logs gateway` | Follow gateway logs |
 | `./deploy-intranet.sh prepare` | Extract and seed config only |
+| `./deploy-intranet.sh prune-old` | Remove old `ideer-gateway:*` / `ideer-frontend:*` image tags (keeps the current version plus `--keep-versions` recent versions, default 2) |
 
 ## Troubleshooting
 

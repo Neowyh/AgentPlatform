@@ -30,6 +30,10 @@ class ResourceLifecycleStatus(StrEnum):
 class ResourceStorageKind(StrEnum):
     FILESYSTEM = "filesystem"
     DATABASE = "database"
+
+
+class ResourceProvenance(StrEnum):
+    USER = "user"
     BUNDLED = "bundled"
 
 
@@ -48,6 +52,7 @@ class Resource(Base):
     draft_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     storage_kind: Mapped[str] = mapped_column(String(16), nullable=False)
     storage_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    provenance: Mapped[str] = mapped_column(String(16), nullable=False, default=ResourceProvenance.USER)
     system_owned: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     authz_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
@@ -58,7 +63,8 @@ class Resource(Base):
         CheckConstraint("type IN ('skill', 'agent', 'workflow')", name="ck_resources_type"),
         CheckConstraint("visibility IN ('private', 'department', 'public')", name="ck_resources_visibility"),
         CheckConstraint("lifecycle_status IN ('active', 'archived', 'suspended')", name="ck_resources_lifecycle"),
-        CheckConstraint("storage_kind IN ('filesystem', 'database', 'bundled')", name="ck_resources_storage_kind"),
+        CheckConstraint("storage_kind IN ('filesystem', 'database')", name="ck_resources_storage_kind"),
+        CheckConstraint("provenance IN ('user', 'bundled')", name="ck_resources_provenance"),
         CheckConstraint("latest_version >= 0", name="ck_resources_latest_version"),
         CheckConstraint("draft_revision >= 0", name="ck_resources_draft_revision"),
         CheckConstraint("authz_revision >= 1", name="ck_resources_authz_revision"),

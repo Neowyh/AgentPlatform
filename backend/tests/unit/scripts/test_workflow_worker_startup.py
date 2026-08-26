@@ -32,7 +32,7 @@ def test_production_worker_has_the_same_runtime_inputs_as_gateway() -> None:
 
     worker = compose.split("  workflow-worker:", 1)[1].split("  # ── Sandbox", 1)[0]
     assert "extensions_config.json" in worker
-    assert "../skills:/app/skills:ro" in worker
+    assert "../resources/skills:/app/skills:ro" in worker
     assert "WORKFLOW_WORKER_ID" in worker
 
 

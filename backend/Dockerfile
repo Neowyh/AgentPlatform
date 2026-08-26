@@ -72,9 +72,26 @@ CMD ["sh", "-c", "cd backend && PYTHONPATH=. uv run uvicorn app.gateway.app:app 
 # Clean image without build-essential — reduces size (~200 MB) and attack surface.
 FROM python:3.12-slim-bookworm
 
+# Optional LibreOffice install for rich Word parsing (.doc conversion, Visio -> PNG).
+# Adds ~400 MB; disable with --build-arg INSTALL_LIBREOFFICE=false for minimal images.
+ARG INSTALL_LIBREOFFICE=true
+ARG APT_MIRROR
+
 ENV LANG=C.UTF-8
 ENV LC_ALL=C.UTF-8
 ENV PYTHONIOENCODING=utf-8
+
+RUN if [ "$INSTALL_LIBREOFFICE" = "true" ]; then \
+      if [ -n "$APT_MIRROR" ]; then \
+        sed -i "s|deb.debian.org|$APT_MIRROR|g" /etc/apt/sources.list.d/debian.sources 2>/dev/null || true; \
+        sed -i "s|deb.debian.org|$APT_MIRROR|g" /etc/apt/sources.list 2>/dev/null || true; \
+      fi; \
+      apt-get update && apt-get install -y --no-install-recommends \
+        libreoffice-writer \
+        libreoffice-draw \
+        fonts-noto-cjk \
+        && rm -rf /var/lib/apt/lists/*; \
+    fi
 
 # Copy Node.js runtime from builder (provides npx for MCP servers)
 COPY --from=builder /usr/bin/node /usr/bin/node

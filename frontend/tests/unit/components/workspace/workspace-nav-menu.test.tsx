@@ -55,12 +55,37 @@ const mockT = {
   common: {
     settings: "Settings",
   },
+  resources: {
+    notificationsTitle: "Resource notifications",
+    notificationsEmpty: "No notifications",
+    notificationsMarkAllRead: "Mark all read",
+  },
 };
 vi.mock("@/core/i18n/hooks", () => ({
   useI18n: () => ({
     locale: "en-US",
     t: mockT,
     changeLocale: vi.fn(),
+  }),
+}));
+
+// Resource notification hooks – mutable for badge tests (no QueryClient in scope)
+let mockNotifications: { unread_count: number; items: unknown[] } = {
+  unread_count: 0,
+  items: [],
+};
+vi.mock("@/core/resources/hooks", () => ({
+  useResourceNotifications: () => ({
+    data: mockNotifications,
+    isLoading: false,
+  }),
+  useMarkResourceNotificationRead: () => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
+  useMarkAllResourceNotificationsRead: () => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
   }),
 }));
 
@@ -143,6 +168,9 @@ vi.mock("@/components/ui/dropdown-menu", () => {
       </div>
     ),
     DropdownMenuSeparator: () => <hr data-testid="separator" />,
+    DropdownMenuLabel: ({ children }: { children: React.ReactNode }) => (
+      <div>{children}</div>
+    ),
   };
 });
 
@@ -154,6 +182,7 @@ beforeEach(async () => {
   vi.clearAllMocks();
   mockUser = null;
   capturedSettingsProps = null;
+  mockNotifications = { unread_count: 0, items: [] };
   const mod = await import("@/components/workspace/workspace-nav-menu");
   WorkspaceNavMenu = mod.WorkspaceNavMenu;
 });
@@ -184,7 +213,7 @@ describe("WorkspaceNavMenu", () => {
     // so the "mounted" state is true. We verify the mounted path instead.
     render(<WorkspaceNavMenu />);
     // After mount, the dropdown trigger should be present
-    expect(screen.getByTestId("dropdown-trigger")).toBeInTheDocument();
+    expect(screen.getAllByTestId("dropdown-trigger").length).toBe(2);
   });
 
   test("renders the SettingsDialog component", () => {
@@ -205,6 +234,23 @@ describe("WorkspaceNavMenu", () => {
     mockSidebarOpen.open = false;
     render(<WorkspaceNavMenu />);
     expect(screen.queryByText("Settings and more")).not.toBeInTheDocument();
+  });
+
+  // ── Resource notification bell ─────────────────────────────────────────
+
+  test("renders notification bell without badge when nothing is unread", () => {
+    mockNotifications = { unread_count: 0, items: [] };
+    render(<WorkspaceNavMenu />);
+    expect(
+      screen.getByTestId("resource-notification-trigger"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("3")).not.toBeInTheDocument();
+  });
+
+  test("shows unread badge when notifications are unread", () => {
+    mockNotifications = { unread_count: 3, items: [] };
+    render(<WorkspaceNavMenu />);
+    expect(screen.getByText("3")).toBeInTheDocument();
   });
 
   // ── Settings menu item ───────────────────────────────────────────────────
@@ -427,7 +473,7 @@ describe("WorkspaceNavMenu", () => {
   test("renders both SettingsDialog and SidebarMenu", () => {
     render(<WorkspaceNavMenu />);
     // SidebarMenu wrapper
-    expect(screen.getByTestId("dropdown-trigger")).toBeInTheDocument();
+    expect(screen.getAllByTestId("dropdown-trigger").length).toBe(2);
     // Settings and About items confirm the menu content
     expect(screen.getByText("Settings")).toBeInTheDocument();
     expect(screen.getByText("About iDeer")).toBeInTheDocument();

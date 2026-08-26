@@ -1109,7 +1109,7 @@ CREATE INDEX ix_resource_metadata_deleted ON resource_metadata(deleted_at) WHERE
 ```
 --- 步骤 A：.meta.json → resource_metadata（Skill/Agent）---
 1. 读取所有 skill 目录下的 .meta.json 文件
-    - 路径：skills/public/*/meta.json, skills/private/*/meta.json
+    - 路径：resources/skills/*/meta.json, skills/private/*/meta.json
 2. 读取所有 agent 目录下的 .meta.json 文件
     - 路径：agents/*/meta.json
 3. 为每条记录生成 resource_metadata 行：

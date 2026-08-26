@@ -65,6 +65,7 @@ let mockError: Error | null = null;
 let mockMutateAsync: ReturnType<typeof vi.fn>;
 let mockIsPending = false;
 let mockRuns: RunStatus[] = [];
+const mockModels = [{ name: "model-a", display_name: "Model A" }];
 let mockPush: ReturnType<typeof vi.fn>;
 const mockCreateVisibilityApplication = vi.fn();
 const mockChangeResourceVisibility = vi.fn();
@@ -119,6 +120,8 @@ vi.mock("@/core/i18n/hooks", () => ({
         run: "Run",
         runDialog: "Run Workflow",
         runDialogDescription: "Configure inputs",
+        model: "Model",
+        modelPlaceholder: "Select a model",
         stepsTitle: (n: number) => `${n} Steps`,
         stepsDescription: "Workflow steps",
         noSteps: "No steps",
@@ -179,6 +182,10 @@ vi.mock("@/core/workflows", () => ({
     isPending: mockIsPending,
   }),
   useWorkflowRuns: () => ({ runs: mockRuns }),
+}));
+
+vi.mock("@/core/models/hooks", () => ({
+  useModels: () => ({ models: mockModels }),
 }));
 
 vi.mock("@/components/workspace/workspace-breadcrumb", () => ({
@@ -609,6 +616,7 @@ describe("WorkflowDetailPage", () => {
         expect(mockChangeResourceVisibility).toHaveBeenCalledWith({
           resource_id: "test-workflow",
           visibility: "private",
+          cascade: false,
         });
         expect(toast.success).toHaveBeenCalledWith("Visibility updated");
       });
@@ -1023,6 +1031,7 @@ describe("WorkflowDetailPage", () => {
       expect(mockMutateAsync).toHaveBeenCalledWith({
         name: "test-workflow",
         inputs: { topic: { key: "value" } },
+        modelName: "model-a",
       });
     });
 
@@ -1041,6 +1050,7 @@ describe("WorkflowDetailPage", () => {
       expect(mockMutateAsync).toHaveBeenCalledWith({
         name: "test-workflow",
         inputs: { topic: "plain text input" },
+        modelName: "model-a",
       });
     });
 
@@ -1077,6 +1087,7 @@ describe("WorkflowDetailPage", () => {
       expect(mockMutateAsync).toHaveBeenCalledWith({
         name: "test-workflow",
         inputs: { topic: "hello" },
+        modelName: "model-a",
       });
     });
 

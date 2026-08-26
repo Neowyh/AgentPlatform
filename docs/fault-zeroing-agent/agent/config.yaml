@@ -1,8 +1,0 @@
-name: fault-zeroing
-description: 归零排故智能体，用于基于资料证据构建故障树、评估底事件并生成归零报告
-tool_groups:
-  - file:read
-  - file:write
-  - web
-skills:
-  - fault-zeroing

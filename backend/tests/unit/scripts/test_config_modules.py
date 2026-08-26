@@ -1362,8 +1362,8 @@ class TestSkillsConfig:
 
     def test_get_skill_container_path(self):
         cfg = SkillsConfig(container_path="/mnt/skills")
-        assert cfg.get_skill_container_path("my-skill") == "/mnt/skills/public/my-skill"
-        assert cfg.get_skill_container_path("custom-skill", category="custom") == "/mnt/skills/custom/custom-skill"
+        assert cfg.get_skill_container_path("my-skill") == "/mnt/skills/my-skill"
+        assert cfg.get_skill_container_path("custom-skill") == "/mnt/skills/custom-skill"
 
     def test_get_skills_path_with_explicit_path(self, tmp_path):
         cfg = SkillsConfig(path=str(tmp_path))
@@ -1381,12 +1381,12 @@ class TestSkillsConfig:
         # Create a fake project root with a skills directory so project_default.is_dir() is True
         fake_root = tmp_path / "project"
         fake_root.mkdir()
-        (fake_root / "skills").mkdir()
+        (fake_root / "resources" / "skills").mkdir(parents=True)
         monkeypatch.setattr("ideer.config.runtime_paths.project_root", lambda: fake_root)
         monkeypatch.setattr("ideer.config.skills_config.project_root", lambda: fake_root)
         cfg = SkillsConfig()
         result = cfg.get_skills_path()
-        assert result == (fake_root / "skills").resolve()
+        assert result == (fake_root / "resources" / "skills").resolve()
 
 
 # ===================================================================

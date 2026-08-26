@@ -78,8 +78,8 @@ def _repo_root() -> Path:
 def _default_schema_path() -> Path:
     return (
         _repo_root()
+        / "resources"
         / "skills"
-        / "custom"
         / "fault-zeroing"
         / "templates"
         / "fault_tree.schema.json"
@@ -89,8 +89,8 @@ def _default_schema_path() -> Path:
 def _default_corrective_schema_path() -> Path:
     return (
         _repo_root()
+        / "resources"
         / "skills"
-        / "custom"
         / "fault-zeroing"
         / "templates"
         / "corrective_actions.schema.json"

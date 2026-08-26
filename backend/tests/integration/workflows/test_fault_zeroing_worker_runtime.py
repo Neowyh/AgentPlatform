@@ -21,7 +21,7 @@ from ideer.workflows.v2.store import WorkflowV2Store
 from ideer.workflows.v2.worker import WorkflowWorker
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
-WORKFLOW_PATH = REPO_ROOT / "workflows" / "fault-zeroing.yaml"
+WORKFLOW_PATH = REPO_ROOT / "resources" / "workflows" / "fault-zeroing.yaml"
 
 
 @pytest_asyncio.fixture
@@ -127,6 +127,11 @@ class RecordingAgent:
                         f'"verification_plan": []}}',
                         encoding="utf-8",
                     )
+                elif path.name == "fault_tree_structure.json":
+                    path.write_text(
+                        '{"top_event": "top", "intermediate_events": [], "bottom_events": [], "logic": [], "evidence": [], "root_causes": [], "verification_plan": []}',
+                        encoding="utf-8",
+                    )
                 elif path.name == "corrective_actions.json":
                     path.write_text(
                         '{"corrective_actions": [{"id": "CA-01", "name": "fix", "description": "desc", "target_root_cause_id": "RC-01", "completion_criteria": "done"}]}',
@@ -191,7 +196,7 @@ async def test_production_worker_task_path_persists_all_fault_zeroing_events(
     monkeypatch.setattr("ideer.workflows.v2.file_roots.get_paths", lambda: Paths(str(tmp_path / "base")))
     monkeypatch.setattr(
         "ideer.workflows.v2.file_roots._get_skills_host_path",
-        lambda: str(REPO_ROOT / "skills"),
+        lambda: str(REPO_ROOT / "resources" / "skills"),
     )
     calls: list[str] = []
     await _run_worker_once(
@@ -244,13 +249,15 @@ async def test_host_path_inputs_fail_the_run_instead_of_completing(
 
 
 @pytest.mark.asyncio
-async def test_missing_artifacts_fail_the_run_instead_of_completing(
+async def test_missing_artifacts_pause_the_run_for_manual_resume(
     durable_store: WorkflowV2Store,
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    """Missing artifacts are a hard failure by default — the run must not
-    complete with a fabricated/stub output and does not pause."""
+    """The bundled workflow opts into ``on_missing_artifact: pause`` — a node
+    whose declared write roots produced no usable data must park the run as
+    ``paused`` with an ``artifacts_missing`` interrupt instead of failing it,
+    so an operator can fix the files and resume from the checkpoint."""
     monkeypatch.setattr("ideer.workflows.v2.file_roots.get_paths", lambda: Paths(str(tmp_path / "base")))
     calls: list[str] = []
     await _run_worker_once(
@@ -262,11 +269,15 @@ async def test_missing_artifacts_fail_the_run_instead_of_completing(
     )
 
     run = await durable_store.get_run("run-worker-missing-artifacts")
-    assert run is not None and run.status == "failed"
-    assert run.error is not None and "未产出声明的工作文件" in run.error
+    assert run is not None and run.status == "paused"
     events = await durable_store.list_events(run.run_id)
-    assert "interrupted" not in {event.event_type for event in events}
-    assert any(event.event_type == "node_failed" for event in events)
+    assert not any(event.event_type == "node_failed" for event in events)
+
+    interrupts = run.snapshot.get("interrupt", [])
+    assert interrupts and interrupts[0]["type"] == "artifacts_missing"
+    # both fork branches race without artifacts; whichever pauses first wins
+    assert interrupts[0]["node_id"] in {"evidence_collection", "deductive_tree"}
+    assert interrupts[0]["missing"]
 
 
 @pytest.mark.asyncio

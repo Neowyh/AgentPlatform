@@ -242,4 +242,26 @@ describe("canonical Workflow API facade", () => {
       `http://localhost:8000/api/resources/${resourceId}/workflow-runs/run-1/record?format=jsonl`,
     );
   });
+
+  test("sends an optional model choice when starting a workflow", async () => {
+    mockFetch.mockResolvedValueOnce(
+      response({
+        run_id: "run-model",
+        status: "queued",
+        workflow_resource_id: resourceId,
+      }),
+    );
+
+    await runWorkflow(resourceId, { topic: "test" }, "model-b");
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      `http://localhost:8000/api/resources/${resourceId}/workflow-runs`,
+      expect.objectContaining({
+        body: JSON.stringify({
+          inputs: { topic: "test" },
+          model_name: "model-b",
+        }),
+      }),
+    );
+  });
 });

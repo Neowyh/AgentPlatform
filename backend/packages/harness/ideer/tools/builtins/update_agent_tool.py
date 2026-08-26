@@ -119,6 +119,7 @@ def _update_canonical_agent(
                     if target.type != "skill":
                         raise ValueError(f"Agent dependency {identity} is not a Skill")
                     dependencies.append(target.id)
+                dependencies = list(dict.fromkeys(dependencies))
                 config["skills"] = dependencies
             await service.replace_dependencies(resource.id, dependencies)
             with TemporaryDirectory(prefix="ideer-update-agent-") as temporary:

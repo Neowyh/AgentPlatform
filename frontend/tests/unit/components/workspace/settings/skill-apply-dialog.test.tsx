@@ -258,7 +258,7 @@ describe("SkillApplyDialog", () => {
 
     await user.click(screen.getByTestId("button-confirm"));
 
-    expect(mockOnChange).toHaveBeenCalledWith("private");
+    expect(mockOnChange).toHaveBeenCalledWith("private", false);
     expect(mockOnSubmit).not.toHaveBeenCalled();
     expect(mockOnOpenChange).toHaveBeenCalledWith(false);
   });

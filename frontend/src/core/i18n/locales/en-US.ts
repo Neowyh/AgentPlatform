@@ -325,6 +325,8 @@ export const enUS: Translations = {
     // Run Dialog
     runDialog: "Run Workflow",
     runDialogDescription: "Provide input values for the workflow execution.",
+    model: "Model",
+    modelPlaceholder: "Select a model",
     defaultPrefix: "Default: ",
     enterInput: (key: string) => `Enter ${key}...`,
     noInputs: "This workflow has no input parameters.",
@@ -507,6 +509,37 @@ export const enUS: Translations = {
     toggleSidebar: "Toggle Sidebar",
   },
 
+  // Resource governance
+  resources: {
+    impactTitle: "Downgrade impact",
+    impactSummary: (total, direct, transitive) =>
+      `This change will affect ${total} resource(s) (${direct} direct, ${transitive} transitive).`,
+    impactBlockedSummary: (count) =>
+      `${count} of them are built-in resources that cannot be auto-repaired.`,
+    impactCascadeLabel:
+      "Also downgrade repairable affected resources to private",
+    impactLoadError: "Failed to load impact analysis. Please retry.",
+    resourceTypeAgent: "Agent",
+    resourceTypeSkill: "Skill",
+    resourceTypeWorkflow: "Workflow",
+    resourceTypeTool: "Tool",
+    visibilityPrivate: "Private",
+    visibilityDepartment: "Department",
+    visibilityPublic: "Public",
+    notificationsTitle: "Resource notifications",
+    notificationsEmpty: "No notifications",
+    notificationsMarkAllRead: "Mark all read",
+    notificationsMarkAllReadDone: "All notifications marked as read",
+    notificationsVisibilityReduced: (name) =>
+      `Visibility of "${name}" was reduced`,
+    notificationsVisibilityReducedCascade: (name) =>
+      `Visibility of "${name}" was reduced and dependents were cascaded`,
+    notificationsAdminVisibilityReduced: (count) =>
+      `An admin reduced a resource's visibility, affecting ${count} resource(s)`,
+    notificationsUnknownEvent: "New resource notification",
+    notificationsLoadFailed: "Failed to load notifications",
+  },
+
   // Settings
   settings: {
     title: "Settings",
@@ -642,7 +675,7 @@ export const enUS: Translations = {
       createSkill: "Create skill",
       emptyTitle: "No agent skill yet",
       emptyDescription:
-        "Put your agent skill folders under the `/skills/custom` folder under the root folder of iDeer.",
+        "Put your agent skill folders under the `/resources/skills` folder under the root folder of iDeer.",
       emptyButton: "Create Your First Skill",
       applyVisibility: "Apply Visibility Change",
       applyVisibilityDescription:

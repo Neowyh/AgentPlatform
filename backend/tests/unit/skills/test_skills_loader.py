@@ -19,11 +19,11 @@ def test_get_skills_root_path_points_to_current_project_skills(tmp_path: Path, m
     monkeypatch.delenv("IDEER_SKILLS_PATH", raising=False)
     monkeypatch.delenv("IDEER_PROJECT_ROOT", raising=False)
     monkeypatch.chdir(tmp_path)
-    (tmp_path / "skills").mkdir()
+    (tmp_path / "resources" / "skills").mkdir(parents=True)
 
     app_config = SimpleNamespace(skills=SkillsConfig())
     path = get_or_new_skill_storage(app_config=app_config).get_skills_root_path()
-    assert path == tmp_path / "skills"
+    assert path == tmp_path / "resources" / "skills"
 
 
 def test_get_skills_root_path_honors_env_override(tmp_path: Path, monkeypatch):
@@ -40,9 +40,9 @@ def test_load_skills_discovers_nested_skills_and_sets_container_paths(tmp_path: 
     """Nested skills should be discovered recursively with correct container paths."""
     skills_root = tmp_path / "skills"
 
-    _write_skill(skills_root / "public" / "root-skill", "root-skill", "Root skill")
-    _write_skill(skills_root / "public" / "parent" / "child-skill", "child-skill", "Child skill")
-    _write_skill(skills_root / "custom" / "team" / "helper", "team-helper", "Team helper")
+    _write_skill(skills_root / "root-skill", "root-skill", "Root skill")
+    _write_skill(skills_root / "parent" / "child-skill", "child-skill", "Child skill")
+    _write_skill(skills_root / "team" / "helper", "team-helper", "Team helper")
 
     skills = get_or_new_skill_storage(skills_path=skills_root).load_skills(enabled_only=False)
     by_name = {skill.name: skill for skill in skills}
@@ -54,22 +54,22 @@ def test_load_skills_discovers_nested_skills_and_sets_container_paths(tmp_path: 
     team_skill = by_name["team-helper"]
 
     assert root_skill.skill_path == "root-skill"
-    assert root_skill.get_container_file_path() == "/mnt/skills/public/root-skill/SKILL.md"
+    assert root_skill.get_container_file_path() == "/mnt/skills/root-skill/SKILL.md"
 
     assert child_skill.skill_path == "parent/child-skill"
-    assert child_skill.get_container_file_path() == "/mnt/skills/public/parent/child-skill/SKILL.md"
+    assert child_skill.get_container_file_path() == "/mnt/skills/parent/child-skill/SKILL.md"
 
     assert team_skill.skill_path == "team/helper"
-    assert team_skill.get_container_file_path() == "/mnt/skills/custom/team/helper/SKILL.md"
+    assert team_skill.get_container_file_path() == "/mnt/skills/team/helper/SKILL.md"
 
 
 def test_load_skills_skips_hidden_directories(tmp_path: Path):
     """Hidden directories should be excluded from recursive discovery."""
     skills_root = tmp_path / "skills"
 
-    _write_skill(skills_root / "public" / "visible" / "ok-skill", "ok-skill", "Visible skill")
+    _write_skill(skills_root / "visible" / "ok-skill", "ok-skill", "Visible skill")
     _write_skill(
-        skills_root / "public" / "visible" / ".hidden" / "secret-skill",
+        skills_root / "visible" / ".hidden" / "secret-skill",
         "secret-skill",
         "Hidden skill",
     )
@@ -81,13 +81,12 @@ def test_load_skills_skips_hidden_directories(tmp_path: Path):
     assert "secret-skill" not in names
 
 
-def test_load_skills_prefers_custom_over_public_with_same_name(tmp_path: Path):
+def test_load_skills_deduplicates_by_name_within_flat_root(tmp_path: Path):
     skills_root = tmp_path / "skills"
-    _write_skill(skills_root / "public" / "shared-skill", "shared-skill", "Public version")
-    _write_skill(skills_root / "custom" / "shared-skill", "shared-skill", "Custom version")
+    _write_skill(skills_root / "shared-skill", "shared-skill", "Flat version")
+    _write_skill(skills_root / "nested" / "shared-skill", "shared-skill", "Nested version")
 
     skills = get_or_new_skill_storage(skills_path=skills_root).load_skills(enabled_only=False)
-    shared = next(skill for skill in skills if skill.name == "shared-skill")
+    shared = [skill for skill in skills if skill.name == "shared-skill"]
 
-    assert shared.category == "custom"
-    assert shared.description == "Custom version"
+    assert len(shared) == 1

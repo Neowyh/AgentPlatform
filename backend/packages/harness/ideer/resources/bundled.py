@@ -16,6 +16,7 @@ from sqlalchemy import delete, select
 from ideer.persistence.models.resource_catalog import (
     Resource,
     ResourceDependency,
+    ResourceProvenance,
     ResourceVersion,
 )
 from ideer.resources.storage import ResourceStorage, StorageConflict
@@ -27,6 +28,7 @@ class BundledResource:
     id: str
     type: str
     slug: str
+    display_name: str
     visibility: str
     source: str
     system_owned: bool = False
@@ -67,6 +69,7 @@ def load_bundled_manifest(path: str | Path) -> BundledManifest:
             id=str(raw_item.get("id", "")),
             type=str(raw_item.get("type", "")),
             slug=str(raw_item.get("slug", "")),
+            display_name=str(raw_item.get("display_name", "")),
             visibility=str(raw_item.get("visibility", "")),
             source=str(raw_item.get("source", "")),
             system_owned=system_owned,
@@ -83,6 +86,8 @@ def load_bundled_manifest(path: str | Path) -> BundledManifest:
             raise ValueError(f"Invalid bundled resource visibility: {item.visibility}")
         if not item.slug or len(item.slug) > 128:
             raise ValueError("Bundled resource slug is empty or too long")
+        if not item.display_name or len(item.display_name) > 255:
+            raise ValueError(f"Bundled resource display_name is empty or too long: {item.slug}")
         relative = PurePosixPath(item.source)
         if relative.is_absolute() or ".." in relative.parts or "\\" in item.source:
             raise ValueError(f"Invalid bundled resource source: {item.source}")
@@ -297,24 +302,27 @@ async def seed_bundled_resources(
                         id=item.id,
                         type=item.type,
                         slug=item.slug,
-                        display_name=item.slug,
+                        display_name=item.display_name,
                         owner_id=owner_id,
                         visibility=item.visibility,
                         lifecycle_status="active",
                         latest_version=0,
                         draft_revision=0,
-                        storage_kind="bundled",
+                        storage_kind="database" if item.type == "workflow" else "filesystem",
                         storage_key=f"{directory}/{item.id}",
+                        provenance=ResourceProvenance.BUNDLED.value,
                         system_owned=item.system_owned,
                         authz_revision=1,
                     )
                     session.add(resource)
                     await session.flush()
                     created += 1
-                elif resource.type != item.type or resource.slug != item.slug or resource.storage_kind != "bundled":
+                elif resource.type != item.type or resource.slug != item.slug or resource.provenance != ResourceProvenance.BUNDLED.value:
                     raise StorageConflict(f"Bundled UUID {item.id} is occupied by incompatible resource")
                 if resource.system_owned != item.system_owned:
                     resource.system_owned = item.system_owned
+                if resource.display_name != item.display_name:
+                    resource.display_name = item.display_name
                 latest = None
                 if resource.latest_version:
                     latest = await session.scalar(

@@ -17,6 +17,7 @@ from ideer.persistence.models.resource_catalog import (
     ResourceDraft,
     ResourceFavorite,
     ResourceNotification,
+    ResourceProvenance,
     ResourceStorageKind,
     ResourceType,
     ResourceVersion,
@@ -167,6 +168,7 @@ class ResourceService:
             draft_revision=0,
             storage_kind=canonical_storage.value,
             storage_key=f"{directory}/{resource_id}",
+            provenance=ResourceProvenance.USER.value,
             system_owned=False,
             authz_revision=1,
         )
@@ -275,24 +277,27 @@ class ResourceService:
         *,
         event: str,
         detail: dict,
+        exclude_resource_ids: set[str] | None = None,
     ) -> None:
-        rows = (
-            await self.session.execute(
-                select(Resource.owner_id, Resource.id)
-                .join(
-                    ResourceDependency,
-                    ResourceDependency.source_resource_id == Resource.id,
-                )
-                .where(
-                    ResourceDependency.target_resource_id == resource.id,
-                    Resource.owner_id != self.actor.user_id,
-                )
+        query = (
+            select(Resource.owner_id, Resource.id, Resource.display_name)
+            .join(
+                ResourceDependency,
+                ResourceDependency.source_resource_id == Resource.id,
             )
-        ).all()
-        by_owner: dict[str, list[str]] = {}
-        for owner_id, dependent_resource_id in rows:
-            by_owner.setdefault(owner_id, []).append(dependent_resource_id)
-        for owner_id, dependent_resource_ids in by_owner.items():
+            .where(
+                ResourceDependency.target_resource_id == resource.id,
+                Resource.owner_id != self.actor.user_id,
+            )
+        )
+        if exclude_resource_ids:
+            query = query.where(Resource.id.not_in(exclude_resource_ids))
+        rows = (await self.session.execute(query)).all()
+        by_owner: dict[str, list[tuple[str, str]]] = {}
+        for owner_id, dependent_resource_id, dependent_display_name in rows:
+            by_owner.setdefault(owner_id, []).append((dependent_resource_id, dependent_display_name))
+        for owner_id, dependents in by_owner.items():
+            dependents = sorted(dependents)
             self.session.add(
                 ResourceNotification(
                     id=str(uuid.uuid4()),
@@ -301,7 +306,11 @@ class ResourceService:
                     event=event,
                     detail={
                         **detail,
-                        "dependent_resource_ids": sorted(dependent_resource_ids),
+                        "resource_slug": resource.slug,
+                        "resource_display_name": resource.display_name,
+                        "resource_type": resource.type,
+                        "dependent_resource_ids": [item[0] for item in dependents],
+                        "dependent_display_names": [item[1] for item in dependents],
                     },
                 )
             )
@@ -312,6 +321,7 @@ class ResourceService:
         visibility: str,
         *,
         scope_department_id: str | None = None,
+        cascade: bool = False,
     ) -> Resource:
         resource = await self._get_visible(resource_id)
         self.assert_modify(resource)
@@ -326,6 +336,20 @@ class ResourceService:
         changed = resource.visibility != visibility or (visibility == "department" and resource.scope_department_id != scope_department_id)
         if not changed:
             return resource
+
+        previous_visibility = resource.visibility
+        reduction = ranks[visibility] < ranks[resource.visibility]
+        impact: dict[str, object] = {}
+        repaired_ids: set[str] = set()
+        if reduction:
+            impact = await self.visibility_reduction_impact(
+                resource.id,
+                visibility,
+                scope_department_id=scope_department_id,
+            )
+            if cascade:
+                repaired_ids = await self._repair_cascade_dependents(resource.id, impact)
+
         resource.visibility = visibility
         resource.scope_department_id = scope_department_id if visibility == "department" else None
         resource.authz_revision += 1
@@ -335,11 +359,196 @@ class ResourceService:
             event="visibility_reduced",
             detail={
                 "visibility": visibility,
+                "previous_visibility": previous_visibility,
                 "scope_department_id": resource.scope_department_id,
             },
+            exclude_resource_ids=repaired_ids,
         )
+        if reduction:
+            impacted = impact.get("impacted", [])
+            if any(item.get("owner_id") != self.actor.user_id for item in impacted):
+                await self._notify_super_admins(
+                    resource.id,
+                    event="admin_visibility_reduced",
+                    detail={
+                        "operator_id": self.actor.user_id,
+                        "resource_slug": resource.slug,
+                        "resource_type": resource.type,
+                        "previous_visibility": previous_visibility,
+                        "visibility": visibility,
+                        "impacted_count": len(impacted),
+                        "blocked_count": impact.get("blocked_count", 0),
+                        "cascade": cascade,
+                    },
+                )
         await self.session.flush()
         return resource
+
+    async def visibility_reduction_impact(
+        self,
+        resource_id: str,
+        target_visibility: str,
+        *,
+        scope_department_id: str | None = None,
+    ) -> dict[str, object]:
+        """Preview which dependents would violate the visibility closure if the
+        resource were reduced to *target_visibility*.
+
+        Simulates the cascade: a dependent whose dependency edge would violate
+        closure is treated as repaired to ``private``, so transitive dependents
+        are reported as impacted only when they actually would be affected.
+        System-owned (bundled) dependents cannot be auto-repaired and are
+        marked ``blocked``.
+        """
+        resource = await self._get_visible(resource_id)
+        self.assert_modify(resource)
+        ranks = {"private": 0, "department": 1, "public": 2}
+        if target_visibility not in ranks:
+            raise ValueError(f"Invalid visibility: {target_visibility}")
+        if target_visibility == "department" and scope_department_id is None:
+            raise ValueError("scope_department_id is required for department visibility")
+        empty = {"resource_id": resource.id, "target_visibility": target_visibility, "direct": [], "transitive": [], "impacted": [], "total": 0, "blocked_count": 0}
+        if ranks[target_visibility] >= ranks[resource.visibility]:
+            return empty
+
+        resources_by_id: dict[str, Resource] = {resource.id: resource}
+        edges: list[tuple[Resource, str]] = []
+        visited: set[str] = set()
+        queue: list[str] = [resource.id]
+        while queue:
+            current_id = queue.pop(0)
+            if current_id in visited:
+                continue
+            visited.add(current_id)
+            dependents = list((await self.session.execute(select(Resource).join(ResourceDependency, ResourceDependency.source_resource_id == Resource.id).where(ResourceDependency.target_resource_id == current_id))).scalars())
+            for dependent in dependents:
+                edges.append((dependent, current_id))
+                resources_by_id[dependent.id] = dependent
+                if dependent.id not in visited:
+                    queue.append(dependent.id)
+
+        planned_visibility: dict[str, str] = {resource.id: target_visibility}
+        planned_department: dict[str, str | None] = {resource.id: scope_department_id}
+        impacted: dict[str, dict[str, object]] = {}
+        changed = True
+        while changed:
+            changed = False
+            for dependent, parent_id in edges:
+                if dependent.id in impacted or parent_id not in planned_visibility:
+                    continue
+                parent = resources_by_id[parent_id]
+                violation = self._visibility_closure_violation(
+                    dependent,
+                    parent,
+                    source_visibility=dependent.visibility,
+                    source_department_id=dependent.scope_department_id,
+                    target_visibility=planned_visibility[parent_id],
+                    target_department_id=planned_department.get(parent_id),
+                    actor_user_id=self.actor.user_id,
+                )
+                if violation is None:
+                    continue
+                blocked = dependent.system_owned
+                impacted[dependent.id] = {
+                    "resource_id": dependent.id,
+                    "slug": dependent.slug,
+                    "display_name": dependent.display_name,
+                    "type": dependent.type,
+                    "owner_id": dependent.owner_id,
+                    "current_visibility": dependent.visibility,
+                    "proposed_visibility": dependent.visibility if blocked else "private",
+                    "system_owned": blocked,
+                    "blocked": blocked,
+                    "owned_by_actor": dependent.owner_id == self.actor.user_id,
+                }
+                if not blocked:
+                    planned_visibility[dependent.id] = "private"
+                    planned_department[dependent.id] = None
+                changed = True
+
+        direct_ids = {dependent.id for dependent, parent_id in edges if parent_id == resource.id}
+        direct = [impacted[item] for item in direct_ids if item in impacted]
+        transitive = [impacted[item] for item in impacted if item not in direct_ids]
+        return {
+            "resource_id": resource.id,
+            "target_visibility": target_visibility,
+            "direct": direct,
+            "transitive": transitive,
+            "impacted": direct + transitive,
+            "total": len(direct) + len(transitive),
+            "blocked_count": sum(1 for item in impacted.values() if item.get("blocked")),
+        }
+
+    async def _repair_cascade_dependents(self, resource_id: str, impact: dict[str, object]) -> set[str]:
+        """Reduce every non-system-owned impacted dependent to ``private`` so
+        the visibility closure invariant holds again. Each repaired resource
+        notifies its own dependents with ``visibility_reduced_cascade``."""
+        root = await self.session.get(Resource, resource_id)
+        if root is None:
+            return set()
+        repaired_ids: set[str] = set()
+        repaired_rows: list[tuple[Resource, str]] = []
+        for item in impact.get("impacted", []):
+            if item.get("blocked"):
+                continue
+            dependent = await self.session.get(Resource, item["resource_id"])
+            if dependent is None or dependent.lifecycle_status != "active":
+                continue
+            if dependent.visibility == "private" and dependent.scope_department_id is None:
+                continue
+            previous_visibility = dependent.visibility
+            dependent.visibility = "private"
+            dependent.scope_department_id = None
+            dependent.authz_revision += 1
+            await self._withdraw_pending_applications(dependent.id)
+            repaired_ids.add(dependent.id)
+            repaired_rows.append((dependent, previous_visibility))
+        for dependent, previous_visibility in repaired_rows:
+            cause = {
+                "source_resource_id": root.id,
+                "source_slug": root.slug,
+                "source_type": root.type,
+                "visibility": "private",
+                "previous_visibility": previous_visibility,
+            }
+            if dependent.owner_id != self.actor.user_id:
+                self.session.add(
+                    ResourceNotification(
+                        id=str(uuid.uuid4()),
+                        recipient_id=dependent.owner_id,
+                        resource_id=dependent.id,
+                        event="visibility_reduced_cascade",
+                        detail={
+                            **cause,
+                            "resource_slug": dependent.slug,
+                            "resource_display_name": dependent.display_name,
+                            "resource_type": dependent.type,
+                        },
+                    )
+                )
+            await self._notify_dependent_owners(
+                dependent,
+                event="visibility_reduced_cascade",
+                detail=cause,
+            )
+        return repaired_ids
+
+    async def _notify_super_admins(self, resource_id: str, *, event: str, detail: dict) -> None:
+        from ideer.persistence.models.user import UserModel, UserRole
+
+        admins = list((await self.session.execute(select(UserModel.id).where(UserModel.role == UserRole.SUPER_ADMIN.value))).scalars())
+        for admin_id in admins:
+            if admin_id == self.actor.user_id:
+                continue
+            self.session.add(
+                ResourceNotification(
+                    id=str(uuid.uuid4()),
+                    recipient_id=admin_id,
+                    resource_id=resource_id,
+                    event=event,
+                    detail=dict(detail),
+                )
+            )
 
     async def request_visibility(
         self,
@@ -872,10 +1081,14 @@ class ResourceService:
         *,
         source_visibility: str | None = None,
         source_department_id: str | None = None,
+        target_visibility: str | None = None,
+        target_department_id: str | None = None,
         actor_user_id: str | None = None,
     ) -> dict[str, object] | None:
         visibility = source.visibility if source_visibility is None else source_visibility
         department_id = source.scope_department_id if source_department_id is None else source_department_id
+        resolved_target_visibility = target.visibility if target_visibility is None else target_visibility
+        resolved_target_department_id = target.scope_department_id if target_department_id is None else target_department_id
 
         def _violation(required_visibility: str) -> dict[str, object]:
             violation: dict[str, object] = {
@@ -884,7 +1097,7 @@ class ResourceService:
                     "slug": target.slug,
                     "display_name": target.display_name,
                     "type": target.type,
-                    "visibility": target.visibility,
+                    "visibility": resolved_target_visibility,
                 },
                 "required_visibility": required_visibility,
             }
@@ -892,11 +1105,11 @@ class ResourceService:
                 violation["owned_by_actor"] = target.owner_id == actor_user_id
             return violation
 
-        if visibility == "public" and target.visibility != "public":
+        if visibility == "public" and resolved_target_visibility != "public":
             return _violation("public")
         if visibility == "department":
-            valid_department = target.visibility == "department" and target.scope_department_id == department_id
-            if target.visibility != "public" and not valid_department:
+            valid_department = resolved_target_visibility == "department" and resolved_target_department_id == department_id
+            if resolved_target_visibility != "public" and not valid_department:
                 return _violation("department")
         return None
 
@@ -1096,6 +1309,7 @@ class ResourceService:
             draft_revision=0,
             storage_kind=source.storage_kind,
             storage_key=copied_storage_key,
+            provenance=ResourceProvenance.USER.value,
             system_owned=False,
             authz_revision=1,
         )

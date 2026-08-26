@@ -17,7 +17,7 @@ def storage(tmp_path):
 @pytest.fixture()
 def skill_dir(tmp_path, storage):
     """Pre-create the skill directory so symlink tests can plant files inside."""
-    d = tmp_path / "custom" / "demo-skill"
+    d = tmp_path / "demo-skill"
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -29,18 +29,18 @@ def skill_dir(tmp_path, storage):
 
 def test_write_creates_file(tmp_path, storage):
     storage.write_custom_skill("demo-skill", "SKILL.md", "# hello")
-    assert (tmp_path / "custom" / "demo-skill" / "SKILL.md").read_text() == "# hello"
+    assert (tmp_path / "demo-skill" / "SKILL.md").read_text() == "# hello"
 
 
 def test_write_creates_subdirectory(tmp_path, storage):
     storage.write_custom_skill("demo-skill", "references/ref.md", "# ref")
-    assert (tmp_path / "custom" / "demo-skill" / "references" / "ref.md").exists()
+    assert (tmp_path / "demo-skill" / "references" / "ref.md").exists()
 
 
 def test_write_is_atomic_overwrite(tmp_path, storage):
     storage.write_custom_skill("demo-skill", "SKILL.md", "first")
     storage.write_custom_skill("demo-skill", "SKILL.md", "second")
-    assert (tmp_path / "custom" / "demo-skill" / "SKILL.md").read_text() == "second"
+    assert (tmp_path / "demo-skill" / "SKILL.md").read_text() == "second"
 
 
 # ---------------------------------------------------------------------------
@@ -70,10 +70,10 @@ def test_rejects_absolute_path_with_skill_prefix(tmp_path, storage):
     If that absolute path resolves within skill_dir, the write succeeds.
     This is not an escape — the file lands in the correct location.
     """
-    absolute = str(tmp_path / "custom" / "demo-skill" / "SKILL.md")
+    absolute = str(tmp_path / "demo-skill" / "SKILL.md")
     # Does not raise; the write goes to the expected place
     storage.write_custom_skill("demo-skill", absolute, "# ok")
-    assert (tmp_path / "custom" / "demo-skill" / "SKILL.md").read_text() == "# ok"
+    assert (tmp_path / "demo-skill" / "SKILL.md").read_text() == "# ok"
 
 
 # ---------------------------------------------------------------------------

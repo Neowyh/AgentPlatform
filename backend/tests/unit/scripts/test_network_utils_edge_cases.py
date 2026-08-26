@@ -1,4 +1,4 @@
-"""Additional tests for packages.harness.ideer.utils.network — PortAllocator."""
+"""Additional tests for ideer.utils.network — PortAllocator."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import threading
 
 import pytest
 
-from packages.harness.ideer.utils.network import (
+from ideer.utils.network import (
     PortAllocator,
     get_free_port,
     release_port,

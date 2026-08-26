@@ -1,6 +1,6 @@
 """Full-chain integration coverage for the fault-zeroing workflow v2 graph.
 
-Uses the real ``workflows/fault-zeroing.yaml`` definition through the real
+Uses the real ``resources/workflows/fault-zeroing.yaml`` definition through the real
 parser and compiler, with stub adapters standing in for the LLM agent nodes.
 The stubs write realistic artifacts to disk so the acceptance boundary is the
 production graph wiring, not any one node's content.
@@ -19,7 +19,7 @@ from ideer.workflows.v2.compiler import WorkflowGraphCompiler
 from ideer.workflows.v2.parser import parse_workflow_v2_file
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
-WORKFLOW_PATH = REPO_ROOT / "workflows" / "fault-zeroing.yaml"
+WORKFLOW_PATH = REPO_ROOT / "resources" / "workflows" / "fault-zeroing.yaml"
 
 TOP_EVENT = "热流传感器 HF-07 测值超过试验允许上限"
 

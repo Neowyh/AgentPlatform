@@ -83,7 +83,7 @@ async def build_retention_report(
         blockers: list[str] = []
         updated_at = resource.updated_at
         published_at = version.published_at
-        if resource.storage_kind == "bundled":
+        if resource.provenance == "bundled":
             blockers.append("bundled")
         if resource.system_owned:
             blockers.append("system_owned")

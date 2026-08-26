@@ -187,15 +187,15 @@ class SkillStorage(ABC):
         return self._container_root
 
     def get_custom_skill_dir(self, name: str) -> Path:
-        """Path to ``custom/<name>``. Does not create the directory.
+        """Path to ``<name>``. Does not create the directory.
 
         Origin: ``ideer.skills.manager.get_custom_skill_dir``.
         """
         normalized_name = self.validate_skill_name(name)
-        return self.get_skills_root_path() / SkillCategory.CUSTOM.value / normalized_name
+        return self.get_skills_root_path() / normalized_name
 
     def get_custom_skill_file(self, name: str) -> Path:
-        """Path to ``custom/<name>/SKILL.md``.
+        """Path to ``<name>/SKILL.md``.
 
         Origin: ``ideer.skills.manager.get_custom_skill_file``.
         """
@@ -203,12 +203,12 @@ class SkillStorage(ABC):
         return self.get_custom_skill_dir(normalized_name) / SKILL_MD_FILE
 
     def get_skill_history_file(self, name: str) -> Path:
-        """Path to ``custom/.history/<name>.jsonl``. Does not create parents.
+        """Path to ``.history/<name>.jsonl``. Does not create parents.
 
         Origin: ``ideer.skills.manager.get_skill_history_file``.
         """
         normalized_name = self.validate_skill_name(name)
-        return self.get_skills_root_path() / SkillCategory.CUSTOM.value / ".history" / f"{normalized_name}.jsonl"
+        return self.get_skills_root_path() / ".history" / f"{normalized_name}.jsonl"
 
     # ------------------------------------------------------------------
     # Final template-method flows
@@ -268,69 +268,8 @@ class SkillStorage(ABC):
         if self.custom_skill_exists(name):
             return
         if self.public_skill_exists(name):
-            raise ValueError(f"'{name}' is a built-in skill. To customise it, create a new skill under skills/custom/.")
+            raise ValueError(f"'{name}' is a built-in skill. To customise it, create a new skill under resources/skills/.")
         raise FileNotFoundError(f"Custom skill '{name}' not found.")
-
-    async def load_skills_for_user(self, user_id: str, department_id: str | None = None, role: str | None = None) -> list[Skill]:
-        """Load skills for a specific user based on RBAC access control.
-
-        Args:
-            user_id: The user ID to load skills for
-            department_id: The user's department ID (optional)
-            role: The user's role (optional, e.g. "super_admin", "department_admin")
-
-        Returns:
-            List of skills that are enabled and accessible for this user
-        """
-        # Get all skills the user has access to, filtered by enabled state
-        accessible_skills = self._get_accessible_skills(user_id, department_id, role)
-        return [s for s in accessible_skills if s.enabled]
-
-    def _get_accessible_skills(self, user_id: str, department_id: str | None, role: str | None = None) -> list[Skill]:
-        """Get skills that the user has permission to access."""
-        all_skills = self.load_skills(enabled_only=False)
-
-        accessible = []
-        for skill in all_skills:
-            if self._is_skill_accessible(skill, user_id, department_id, role):
-                accessible.append(skill)
-
-        return accessible
-
-    def _is_skill_accessible(self, skill: Skill, user_id: str, department_id: str | None, role: str | None = None) -> bool:
-        """Check if user has permission to access the skill."""
-        # Public skills are accessible to everyone
-        if skill.category == SkillCategory.PUBLIC:
-            return True
-
-        # Super admin can access everything
-        if role == "super_admin":
-            return True
-
-        # For custom skills, check visibility
-        visibility = getattr(skill, "visibility", "private")
-        owner_id = getattr(skill, "owner_id", None)
-        skill_department_id = getattr(skill, "department_id", None)
-
-        # Public custom skills are accessible to everyone
-        if visibility == "public":
-            return True
-
-        # Department custom skills are accessible to same department users
-        if visibility == "department":
-            if department_id and skill_department_id and department_id == skill_department_id:
-                return True
-
-        # Department admin can access any skill in their own department
-        if role == "department_admin":
-            if department_id and skill_department_id and department_id == skill_department_id:
-                return True
-
-        # Private custom skills are only accessible to the owner
-        if owner_id and owner_id == user_id:
-            return True
-
-        return False
 
     def _resolve_skill_enabled(
         self,

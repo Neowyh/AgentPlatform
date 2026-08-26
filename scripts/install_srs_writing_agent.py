@@ -4,7 +4,7 @@
 Composes the generic ``install_agent`` flow with the functional wiring the
 agent needs on a local (host-sandbox) deployment:
 
-  1. Install agent files (docs/srs-writing-agent/agent) into the runtime
+  1. Install agent files (resources/agents/srs-writing) into the runtime
      per-user agent directory and upsert resource_metadata (agent/public).
   2. Register the ``document`` tool group and ``read_document`` tool in
      config.yaml so docx/pdf 任务书 can be parsed.
@@ -19,8 +19,6 @@ first change), and the officecli symlink never overwrites an unrelated file
 unless ``--force`` is given.
 """
 
-from __future__ import annotations
-
 import argparse
 import hashlib
 import importlib.util
@@ -29,8 +27,14 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Dict, List, Optional, Tuple, Union
 
-from install_agent import _find_super_admin_id, _find_top_level_block, default_base_dir, resolve_config_path
+from install_agent import (
+    _find_super_admin_id,
+    _find_top_level_block,
+    default_base_dir,
+    resolve_config_path,
+)
 from install_agent import main as install_agent_main
 
 SRS_AGENT = "srs-writing"
@@ -68,35 +72,37 @@ def _same_file_content(first: Path, second: Path) -> bool:
         return False
 
 
-def resolve_owner_id(args: argparse.Namespace) -> tuple[str | None, str]:
+def resolve_owner_id(args: argparse.Namespace) -> Tuple[Optional[str], str]:
     """Return ``(owner_id, install_style)`` with style ``super-admin``/``user``/``shared``."""
     if args.owner == "super-admin":
         db_path = default_base_dir() / "data" / "ideer.db"
         try:
             return _find_super_admin_id(db_path), "super-admin"
         except RuntimeError as exc:
-            raise RuntimeError(f"{exc}; run /initialize first or use --user-id to install for a specific user.") from exc
+            raise RuntimeError(
+                f"{exc}; run /initialize first or use --user-id to install for a specific user."
+            ) from exc
     if args.user_id:
         return args.user_id, "user"
     return None, "shared"
 
 
-def expected_agent_dir(owner_id: str | None) -> Path:
+def expected_agent_dir(owner_id: Optional[str]) -> Path:
     base = Path(default_base_dir())
     if owner_id is None:
         return base / "agents" / SRS_AGENT
     return base / "users" / owner_id / "agents" / SRS_AGENT
 
 
-def _has_document_tool_group(lines: list[str]) -> bool:
+def _has_document_tool_group(lines: List[str]) -> bool:
     return any(re.match(r"^\s*- name: document\s*$", line) for line in lines)
 
 
-def _has_read_document_tool(lines: list[str]) -> bool:
+def _has_read_document_tool(lines: List[str]) -> bool:
     return any(re.match(r"^\s*- name: read_document\s*$", line) for line in lines)
 
 
-def _set_allow_host_bash(lines: list[str], value: bool) -> list[str]:
+def _set_allow_host_bash(lines: List[str], value: bool) -> List[str]:
     new_line = f"  allow_host_bash: {str(value).lower()}\n"
     start, end = _find_top_level_block(lines, "sandbox")
     if start is None:
@@ -112,7 +118,7 @@ def _set_allow_host_bash(lines: list[str], value: bool) -> list[str]:
     return lines
 
 
-def allow_host_bash_value(lines: list[str]) -> bool | None:
+def allow_host_bash_value(lines: List[str]) -> Optional[bool]:
     start, end = _find_top_level_block(lines, "sandbox")
     if start is None:
         return None
@@ -123,7 +129,7 @@ def allow_host_bash_value(lines: list[str]) -> bool | None:
     return None
 
 
-def _list_indent(lines: list[str], start: int, end: int) -> str:
+def _list_indent(lines: List[str], start: int, end: int) -> str:
     """Indentation (whitespace prefix) of the first ``- item`` in a block.
 
     Defaults to two spaces so inserts stay valid YAML even when the block has
@@ -136,7 +142,7 @@ def _list_indent(lines: list[str], start: int, end: int) -> str:
     return "  "
 
 
-def _add_document_tool_group(lines: list[str]) -> list[str]:
+def _add_document_tool_group(lines: List[str]) -> List[str]:
     start, end = _find_top_level_block(lines, "tool_groups")
     indent = _list_indent(lines, start, end) if start is not None else "  "
     if start is None:
@@ -151,7 +157,7 @@ def _add_document_tool_group(lines: list[str]) -> list[str]:
     return lines
 
 
-def _add_read_document_tool(lines: list[str]) -> list[str]:
+def _add_read_document_tool(lines: List[str]) -> List[str]:
     start, end = _find_top_level_block(lines, "tools")
     indent = _list_indent(lines, start, end) if start is not None else "  "
     block = [
@@ -170,7 +176,7 @@ def _add_read_document_tool(lines: list[str]) -> list[str]:
 
 
 def wire_srs_config(
-    config_path: str | Path,
+    config_path: Union[str, Path],
     *,
     enable_doc_tools: bool = True,
     enable_host_bash: bool = True,
@@ -226,9 +232,9 @@ def wire_srs_config(
 
 
 def provision_officecli(
-    repo_root_path: str | Path,
+    repo_root_path: Union[str, Path],
     *,
-    bin_path: str | Path | None = None,
+    bin_path: Optional[Union[str, Path]] = None,
     dry_run: bool = False,
     force: bool = False,
 ) -> dict:
@@ -236,24 +242,44 @@ def provision_officecli(
     source = Path(repo_root_path) / "vendor" / "officecli" / "officecli"
     destination = Path(bin_path) if bin_path else default_officecli_bin()
     if not source.is_file():
-        return {"status": "missing_source", "source": str(source), "bin": str(destination)}
+        return {
+            "status": "missing_source",
+            "source": str(source),
+            "bin": str(destination),
+        }
 
     if destination.is_symlink() and destination.resolve() == source.resolve():
         return {"status": "linked", "source": str(source), "bin": str(destination)}
     if destination.is_symlink() and not destination.exists():
         if dry_run:
-            return {"status": "will_replace", "source": str(source), "bin": str(destination)}
+            return {
+                "status": "will_replace",
+                "source": str(source),
+                "bin": str(destination),
+            }
         destination.unlink()
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.symlink_to(source)
         return {"status": "replaced", "source": str(source), "bin": str(destination)}
     if destination.exists():
         if _same_file_content(destination, source):
-            return {"status": "equivalent", "source": str(source), "bin": str(destination)}
+            return {
+                "status": "equivalent",
+                "source": str(source),
+                "bin": str(destination),
+            }
         if not force:
-            return {"status": "conflict", "source": str(source), "bin": str(destination)}
+            return {
+                "status": "conflict",
+                "source": str(source),
+                "bin": str(destination),
+            }
         if dry_run:
-            return {"status": "will_replace", "source": str(source), "bin": str(destination)}
+            return {
+                "status": "will_replace",
+                "source": str(source),
+                "bin": str(destination),
+            }
         destination.unlink()
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.symlink_to(source)
@@ -274,13 +300,18 @@ def yaml_parse_ok(path: Path) -> bool:
         return True
     code = "import sys; import yaml\ntry:\n    with open(sys.argv[1], encoding='utf-8') as fh:\n        yaml.safe_load(fh)\nexcept Exception:\n    sys.exit(1)\n"
     try:
-        result = subprocess.run([sys.executable, "-c", code, str(path)], capture_output=True, timeout=60)
+        result = subprocess.run(
+            [sys.executable, "-c", code, str(path)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=60,
+        )
         return result.returncode == 0
     except (OSError, subprocess.TimeoutExpired):
         return False
 
 
-def officecli_available(bin_path: Path, *, bundled: Path | None = None) -> bool:
+def officecli_available(bin_path: Path, *, bundled: Optional[Path] = None) -> bool:
     reference = bundled if bundled is not None else bundled_officecli()
     if bin_path.is_symlink():
         try:
@@ -292,10 +323,10 @@ def officecli_available(bin_path: Path, *, bundled: Path | None = None) -> bool:
 
 
 def verify_install(
-    config_path: str | Path,
+    config_path: Union[str, Path],
     *,
-    owner_id: str | None,
-    bin_path: str | Path | None = None,
+    owner_id: Optional[str],
+    bin_path: Optional[Union[str, Path]] = None,
     require_officecli: bool = True,
 ) -> dict:
     """Inspect the current runtime state and report what is present.
@@ -342,26 +373,60 @@ def print_verify_report(report: dict) -> None:
         print(f"  - {key:.<20} {'OK' if status else 'MISSING'}")
 
 
-def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Install the bundled SRS 撰写智能体 (srs-writing) end-to-end (agent files + read_document tool + host bash + officecli).",
     )
-    parser.add_argument("--agent", default=SRS_AGENT, help="Bundled agent name to install.")
+    parser.add_argument(
+        "--agent", default=SRS_AGENT, help="Bundled agent name to install."
+    )
     owner = parser.add_mutually_exclusive_group()
-    owner.add_argument("--owner", choices=("super-admin",), help="Install as the active super_admin.")
-    owner.add_argument("--user-id", help="Install into this iDeer user's agent directory.")
-    parser.add_argument("--skip-agent", action="store_true", help="Only wire config/officecli (skip the agent file install).")
-    parser.add_argument("--no-doc-tools", action="store_true", help="Do not register the document/read_document tool.")
-    parser.add_argument("--no-host-bash", action="store_true", help="Do not enable sandbox.allow_host_bash.")
-    parser.add_argument("--no-officecli", action="store_true", help="Do not provision the officecli binary.")
-    parser.add_argument("--force", action="store_true", help="Overwrite a conflicting ~/.local/bin/officecli.")
-    parser.add_argument("--dry-run", action="store_true", help="Report planned changes without writing.")
-    parser.add_argument("--verify-only", action="store_true", help="Only inspect the current state.")
-    parser.add_argument("--restart", action="store_true", help="Restart local services after a successful install.")
+    owner.add_argument(
+        "--owner", choices=("super-admin",), help="Install as the active super_admin."
+    )
+    owner.add_argument(
+        "--user-id", help="Install into this iDeer user's agent directory."
+    )
+    parser.add_argument(
+        "--skip-agent",
+        action="store_true",
+        help="Only wire config/officecli (skip the agent file install).",
+    )
+    parser.add_argument(
+        "--no-doc-tools",
+        action="store_true",
+        help="Do not register the document/read_document tool.",
+    )
+    parser.add_argument(
+        "--no-host-bash",
+        action="store_true",
+        help="Do not enable sandbox.allow_host_bash.",
+    )
+    parser.add_argument(
+        "--no-officecli",
+        action="store_true",
+        help="Do not provision the officecli binary.",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite a conflicting ~/.local/bin/officecli.",
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Report planned changes without writing."
+    )
+    parser.add_argument(
+        "--verify-only", action="store_true", help="Only inspect the current state."
+    )
+    parser.add_argument(
+        "--restart",
+        action="store_true",
+        help="Restart local services after a successful install.",
+    )
     return parser.parse_args(argv)
 
 
-def _print_config_summary(wire: dict, officecli_status: str | None) -> None:
+def _print_config_summary(wire: dict, officecli_status: Optional[str]) -> None:
     for item, state in wire["actions"].items():
         print(f"Config : {item:24s} {state}")
     if wire["changed"]:
@@ -370,7 +435,7 @@ def _print_config_summary(wire: dict, officecli_status: str | None) -> None:
         print(f"officecli       : {officecli_status}")
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: Optional[List[str]] = None) -> int:
     args = parse_args(argv)
     if args.owner:
         owner_id, install_style = resolve_owner_id(args)
@@ -386,7 +451,9 @@ def main(argv: list[str] | None = None) -> int:
     want_officecli = not args.no_officecli
 
     if args.verify_only:
-        report = verify_install(config_path, owner_id=owner_id, require_officecli=want_officecli)
+        report = verify_install(
+            config_path, owner_id=owner_id, require_officecli=want_officecli
+        )
         print_verify_report(report)
         return 0 if all(report["checks"].values()) else 1
 
@@ -398,7 +465,9 @@ def main(argv: list[str] | None = None) -> int:
         if not args.skip_agent:
             print(f"   - copy agent files -> {expected_agent_dir(owner_id)}")
         if want_doc:
-            print("   - register document tool group + read_document tool in config.yaml")
+            print(
+                "   - register document tool group + read_document tool in config.yaml"
+            )
         if want_host_bash:
             print("   - set sandbox.allow_host_bash = true")
         if want_officecli:
@@ -428,24 +497,35 @@ def main(argv: list[str] | None = None) -> int:
         result = provision_officecli(repo_root(), force=args.force)
         officecli_status = result["status"]
         if officecli_status == "conflict":
-            print(f"Error: {result['bin']} already exists and is not the bundled officecli. Use --force to overwrite it.", file=sys.stderr)
+            print(
+                f"Error: {result['bin']} already exists and is not the bundled officecli. Use --force to overwrite it.",
+                file=sys.stderr,
+            )
             return 1
 
     _print_config_summary(wire, officecli_status)
 
-    report = verify_install(config_path, owner_id=owner_id, require_officecli=want_officecli)
+    report = verify_install(
+        config_path, owner_id=owner_id, require_officecli=want_officecli
+    )
     print_verify_report(report)
 
     ok = all(report["checks"].values())
     if not ok:
-        print("Some checks are incomplete; review the MISSING items above.", file=sys.stderr)
+        print(
+            "Some checks are incomplete; review the MISSING items above.",
+            file=sys.stderr,
+        )
     elif args.restart:
         restart_command = repo_root() / "scripts" / "run-local-services.sh"
         if restart_command.is_file():
             print("== Restarting local services (per --restart)")
             subprocess.run([str(restart_command), "restart"], check=False)
         else:
-            print("--restart requested but scripts/run-local-services.sh is missing.", file=sys.stderr)
+            print(
+                "--restart requested but scripts/run-local-services.sh is missing.",
+                file=sys.stderr,
+            )
     return 0 if ok else 1
 
 

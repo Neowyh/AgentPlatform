@@ -10,7 +10,7 @@ def _legacy_skills_candidates() -> tuple[Path, ...]:
     """Return source-tree skills locations for monorepo compatibility."""
     backend_dir = Path(__file__).resolve().parents[4]
     repo_root = backend_dir.parent
-    return (repo_root / "skills",)
+    return (repo_root / "resources" / "skills",)
 
 
 class SkillsConfig(BaseModel):
@@ -22,7 +22,7 @@ class SkillsConfig(BaseModel):
     )
     path: str | None = Field(
         default=None,
-        description=("Path to skills directory. If not specified, defaults to `skills` under the caller project root, falling back to the legacy repo-root location for monorepo compatibility."),
+        description=("Path to skills directory. If not specified, defaults to `resources/skills` under the caller project root, falling back to the legacy repo-root location for monorepo compatibility."),
     )
     container_path: str = Field(
         default="/mnt/skills",
@@ -36,7 +36,7 @@ class SkillsConfig(BaseModel):
         Resolution order:
             1. Explicit ``path`` field
             2. ``IDEER_SKILLS_PATH`` environment variable
-            3. ``skills`` under the caller project root (``project_root()``)
+            3. ``resources/skills`` under the caller project root (``project_root()``)
             4. Legacy repo-root candidates for monorepo compatibility (``_legacy_skills_candidates``)
 
         When none of (3) or (4) exist on disk, the project-root default is returned so callers
@@ -48,7 +48,7 @@ class SkillsConfig(BaseModel):
         if env_path := os.getenv("IDEER_SKILLS_PATH"):
             return resolve_path(env_path)
 
-        project_default = project_root() / "skills"
+        project_default = project_root() / "resources" / "skills"
         if project_default.is_dir():
             return project_default
 
@@ -58,15 +58,14 @@ class SkillsConfig(BaseModel):
 
         return project_default
 
-    def get_skill_container_path(self, skill_name: str, category: str = "public") -> str:
+    def get_skill_container_path(self, skill_name: str) -> str:
         """
         Get the full container path for a specific skill.
 
         Args:
             skill_name: Name of the skill (directory name)
-            category: Category of the skill (public or custom)
 
         Returns:
             Full path to the skill in the container
         """
-        return f"{self.container_path}/{category}/{skill_name}"
+        return f"{self.container_path}/{skill_name}"

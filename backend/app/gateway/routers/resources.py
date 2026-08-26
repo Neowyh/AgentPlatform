@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import uuid
 import zipfile
 from collections.abc import AsyncIterator
@@ -17,7 +18,7 @@ import yaml
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from starlette.background import BackgroundTask
 
 from app.gateway.audit import record_audit
@@ -29,6 +30,7 @@ from ideer.persistence.models.resource_catalog import (
     ResourceFavorite,
     ResourceNotification,
     ResourceVersion,
+    RunResourceSnapshot,
 )
 from ideer.persistence.models.user import UserModel, UserRole
 from ideer.persistence.models.workflow_v2 import WorkflowV2RunRow
@@ -57,6 +59,49 @@ from ideer.workflows.v2.parser import parse_workflow_v2
 from ideer.workflows.v2.store import WorkflowV2Store
 
 router = APIRouter(prefix="/api/resources", tags=["resources"])
+
+_skill_description_cache: dict[str, str | None] = {}
+
+
+def _skill_description(
+    resource: Resource,
+    storage: ResourceStorage,
+) -> str | None:
+    """Chinese display description from the published SKILL.md frontmatter.
+
+    Prefers the ``description_zh`` metadata field (kept in the source file
+    alongside the English ``description`` used by agents) and falls back to
+    ``description``. Cached per published version.
+    """
+    if resource.type != "skill" or resource.latest_version is None:
+        return None
+    key = f"{resource.id}:{resource.latest_version}"
+    if key in _skill_description_cache:
+        return _skill_description_cache[key]
+    source = storage.resources_root / f"skills/{resource.id}/versions/{resource.latest_version}/SKILL.md"
+    if not source.is_file():
+        _skill_description_cache[key] = None
+        return None
+    front_matter_match = re.match(r"\A---\s*\n(.*?)\n---", source.read_text(encoding="utf-8"), re.DOTALL)
+    if front_matter_match is None:
+        _skill_description_cache[key] = None
+        return None
+    try:
+        metadata = yaml.safe_load(front_matter_match.group(1))
+    except yaml.YAMLError:
+        _skill_description_cache[key] = None
+        return None
+    description = None
+    if isinstance(metadata, dict):
+        description_zh = metadata.get("description_zh")
+        if isinstance(description_zh, str) and description_zh.strip():
+            description = description_zh.strip()
+        else:
+            fallback = metadata.get("description")
+            if isinstance(fallback, str) and fallback.strip():
+                description = fallback.strip()
+    _skill_description_cache[key] = description
+    return description
 
 
 class ResourceCreateRequest(BaseModel):
@@ -115,7 +160,7 @@ class TransferRequest(BaseModel):
 
 class WorkflowRunRequest(BaseModel):
     inputs: dict[str, Any] = Field(default_factory=dict)
-    model_name: str | None = Field(default=None, max_length=128)
+    model_name: str | None = Field(default=None, min_length=1, max_length=128)
 
 
 class WorkflowCommandRequest(BaseModel):
@@ -201,6 +246,7 @@ def _resource_payload(
         "latest_version": resource.latest_version,
         "draft_revision": resource.draft_revision,
         "storage_kind": resource.storage_kind,
+        "provenance": resource.provenance,
         "system_owned": resource.system_owned,
         "authz_revision": resource.authz_revision,
         "can_modify": can_modify,
@@ -299,10 +345,10 @@ def _run_payload(run: WorkflowV2RunRow, resource_id: str) -> dict[str, Any]:
         "workflow": resource_id,
         "workflow_resource_id": run.workflow_resource_id,
         "status": run.status,
+        "model_name": run.model_name,
         "definition_version": run.definition_version,
         "snapshot": run.snapshot,
         "error": run.error,
-        "model_name": run.model_name,
     }
 
 
@@ -340,13 +386,18 @@ async def list_resources(
             limit=limit,
         )
         favorites = await _favorite_ids(session, str(current_user.id), [item.id for item in page.items])
+        storage = ResourceStorage(get_paths().base_dir)
+        descriptions = await asyncio.to_thread(lambda: {item.id: _skill_description(item, storage) for item in page.items})
         return {
             "items": [
-                _resource_payload(
-                    item,
-                    current_user=current_user,
-                    is_favorited=item.id in favorites,
-                )
+                {
+                    **_resource_payload(
+                        item,
+                        current_user=current_user,
+                        is_favorited=item.id in favorites,
+                    ),
+                    "description": descriptions.get(item.id),
+                }
                 for item in page.items
             ],
             "total": page.total,
@@ -364,6 +415,7 @@ async def list_resource_notifications(
     async with _factory()() as session:
         condition = ResourceNotification.recipient_id == str(current_user.id)
         total = int((await session.execute(select(func.count()).select_from(ResourceNotification).where(condition))).scalar_one())
+        unread = int((await session.execute(select(func.count()).select_from(ResourceNotification).where(condition, ResourceNotification.read_at.is_(None)))).scalar_one())
         rows = list(
             (
                 await session.execute(
@@ -393,7 +445,47 @@ async def list_resource_notifications(
             "total": total,
             "offset": offset,
             "limit": limit,
+            "unread_count": unread,
         }
+
+
+@router.put("/notifications/{notification_id}/read", status_code=204)
+async def mark_resource_notification_read(
+    notification_id: str,
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> Response:
+    async with _factory()() as session:
+        notification = (
+            await session.execute(
+                select(ResourceNotification).where(
+                    ResourceNotification.id == notification_id,
+                    ResourceNotification.recipient_id == str(current_user.id),
+                )
+            )
+        ).scalar_one_or_none()
+        if notification is None:
+            raise HTTPException(404, "Notification not found")
+        if notification.read_at is None:
+            notification.read_at = datetime.now(UTC)
+            await session.commit()
+        return Response(status_code=204)
+
+
+@router.put("/notifications/read-all", status_code=204)
+async def mark_all_resource_notifications_read(
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> Response:
+    async with _factory()() as session:
+        await session.execute(
+            update(ResourceNotification)
+            .where(
+                ResourceNotification.recipient_id == str(current_user.id),
+                ResourceNotification.read_at.is_(None),
+            )
+            .values(read_at=datetime.now(UTC))
+        )
+        await session.commit()
+        return Response(status_code=204)
 
 
 @router.post("/import/agent", status_code=201)
@@ -439,6 +531,7 @@ async def import_agent_resource(
                     if target.type != "skill":
                         raise ValueError(f"Agent dependency {identity} is not a Skill")
                     dependencies.append(target.id)
+                dependencies = list(dict.fromkeys(dependencies))
                 write_agent_draft_source(
                     source,
                     slug=config.name,
@@ -536,11 +629,18 @@ async def get_resource(
     async with _factory()() as session:
         resource = await ResourceService(session, _resource_actor(current_user)).get_visible(resource_id)
         favorites = await _favorite_ids(session, str(current_user.id), [resource.id])
-        return _resource_payload(
-            resource,
-            current_user=current_user,
-            is_favorited=resource.id in favorites,
-        )
+        return {
+            **_resource_payload(
+                resource,
+                current_user=current_user,
+                is_favorited=resource.id in favorites,
+            ),
+            "description": await asyncio.to_thread(
+                _skill_description,
+                resource,
+                ResourceStorage(get_paths().base_dir),
+            ),
+        }
 
 
 @router.get("/{resource_id}/published")
@@ -664,6 +764,7 @@ async def save_workflow_draft(
                 raise ValueError(f"Workflow dependency {identity} is not an Agent")
             node.action.name = target.id
             dependencies.append(target.id)
+        dependencies = list(dict.fromkeys(dependencies))
         content = workflow.model_dump(mode="json", by_alias=True)
         await service.replace_dependencies(resource_id, dependencies)
         draft = await ResourcePublisher(service, ResourceStorage(get_paths().base_dir)).save_database_draft(
@@ -704,6 +805,7 @@ async def save_agent_draft(
                     if target.type != "skill":
                         raise ValueError(f"Agent dependency {identity} is not a Skill")
                     dependencies.append(target.id)
+            dependencies = list(dict.fromkeys(dependencies))
             config = dict(body.config)
             if skills is not None:
                 config["skills"] = dependencies
@@ -877,11 +979,28 @@ async def request_visibility(
         return _visibility_application_payload(application)
 
 
+@router.get("/{resource_id}/visibility-impact")
+@_translate_resource_errors
+async def get_visibility_impact(
+    resource_id: str,
+    target_visibility: str = Query(pattern="^(private|department|public)$"),
+    scope_department_id: str | None = Query(default=None),
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> dict[str, Any]:
+    async with _factory()() as session:
+        return await ResourceService(session, _resource_actor(current_user)).visibility_reduction_impact(
+            resource_id,
+            target_visibility,
+            scope_department_id=scope_department_id,
+        )
+
+
 @router.put("/{resource_id}/visibility")
 @_translate_resource_errors
 async def change_visibility(
     resource_id: str,
     body: VisibilityRequest,
+    cascade: bool = Query(default=False),
     current_user: UserModel = Depends(get_current_rbac_user),
 ) -> dict[str, Any]:
     async with _factory()() as session:
@@ -889,6 +1008,7 @@ async def change_visibility(
             resource_id,
             body.visibility,
             scope_department_id=body.scope_department_id,
+            cascade=cascade,
         )
         await session.commit()
         await record_audit(
@@ -900,6 +1020,7 @@ async def change_visibility(
                 "visibility": resource.visibility,
                 "scope_department_id": resource.scope_department_id,
                 "authz_revision": resource.authz_revision,
+                "cascade": cascade,
             },
         )
         return _resource_payload(resource, current_user=current_user)
@@ -1019,6 +1140,9 @@ async def create_workflow_run(
     current_user: UserModel = Depends(get_current_rbac_user),
 ) -> dict[str, Any]:
     runtime = get_app_config().workflow_runtime
+    config = get_app_config()
+    if body.model_name is not None and config.get_model_config(body.model_name) is None:
+        raise HTTPException(400, f"Model {body.model_name!r} is not in the configured model allowlist")
     try:
         run = await WorkflowV2Store(_factory()).create_canonical_run(
             str(uuid.uuid4()),
@@ -1144,6 +1268,45 @@ def _run_write_roots(nodes: list[dict]) -> list[str]:
     return roots
 
 
+async def _run_definition(store: WorkflowV2Store, run) -> dict | None:
+    """Resolve the definition a Run actually executed.
+
+    Canonical Runs execute from the frozen resource snapshot taken at
+    creation (the same closure the worker loads), so their definition is
+    read from the resource catalog — the legacy workflow_definition_versions
+    table never tracks resource versions. Legacy Runs fall back to the
+    definition store, tolerating a missing exact version.
+    """
+    workflow_resource_id = getattr(run, "workflow_resource_id", None)
+    if workflow_resource_id:
+        async with store.session_factory() as session:
+            snapshot = (
+                await session.execute(
+                    select(RunResourceSnapshot).where(
+                        RunResourceSnapshot.run_id == run.run_id,
+                        RunResourceSnapshot.resource_id == workflow_resource_id,
+                    )
+                )
+            ).scalar_one_or_none()
+            if snapshot is not None:
+                version = (
+                    await session.execute(
+                        select(ResourceVersion).where(
+                            ResourceVersion.resource_id == workflow_resource_id,
+                            ResourceVersion.version == snapshot.version,
+                        )
+                    )
+                ).scalar_one_or_none()
+                if version is not None and isinstance(version.content, dict):
+                    return version.content
+    definition = await store.get_definition(run.workflow_name, run.definition_version)
+    if definition is None:
+        definition = await store.get_latest_definition(run.workflow_name)
+    if definition is None:
+        return None
+    return definition.definition if isinstance(definition.definition, dict) else None
+
+
 async def _run_artifacts(store: WorkflowV2Store, run) -> list[dict]:
     """List the files a run produced under its declared write roots.
 
@@ -1151,10 +1314,10 @@ async def _run_artifacts(store: WorkflowV2Store, run) -> list[dict]:
     artifacts can be browsed after completion; virtual paths are returned so
     host paths never leak to the client.
     """
-    definition = await store.get_definition(run.workflow_name, run.definition_version)
+    definition = await _run_definition(store, run)
     if definition is None:
         return []
-    nodes = definition.definition.get("nodes", []) if isinstance(definition.definition, dict) else []
+    nodes = definition.get("nodes", []) if isinstance(definition, dict) else []
     write_roots = _run_write_roots(nodes)
     if not write_roots:
         return []

@@ -625,6 +625,16 @@ uploads:
   #               Better heading/table extraction; faster on most files.
   # markitdown  — always use MarkItDown (original behaviour, no extra dependency).
   pdf_converter: auto
+  # Controls which Word (.docx/.doc)-to-Markdown converter is used whenever Word
+  # conversion runs. Automatic upload conversion is gated separately by
+  # auto_convert_documents.
+  # auto        — prefer the rich python-docx parser: preserves heading levels,
+  #               formatting, tables, images, MathType formulas (LaTeX) and Visio
+  #               drawings; falls back to MarkItDown on failure (recommended).
+  # rich        — always use the rich parser, no fallback. Legacy .doc support
+  #               requires LibreOffice (soffice) on the host.
+  # markitdown  — always use MarkItDown (original behaviour).
+  docx_converter: auto
 
 sandbox:
   use: ideer.sandbox.local:LocalSandboxProvider
@@ -634,6 +644,11 @@ sandbox:
   allow_host_bash: false
   # Optional: Mount additional host directories into the sandbox.
   # Each mount maps a host path to a virtual container path accessible by the agent.
+  # Agents can read text files under mounted paths with read_file, and
+  # read_document (PDF/Word/Excel/PowerPoint) resolves mounted paths too.
+  # Note for Docker/K8s deployments: the gateway and workflow-worker containers
+  # must also see the same host_path, or document reading under mounts is
+  # rejected with an actionable deployment hint.
   # mounts:
   #   - host_path: /home/user/my-project    # Absolute path on the host machine
   #     container_path: /mnt/my-project     # Virtual path inside the sandbox
@@ -899,7 +914,7 @@ memory:
 # ============================================================================
 # Skill Self-Evolution Configuration
 # ============================================================================
-# Allow the agent to autonomously create and improve skills in skills/custom/.
+# Allow the agent to autonomously create and improve skills in resources/skills/.
 skill_evolution:
   enabled: false # Set to true to allow agent-managed writes under skills/custom
   moderation_model_name: null # Model for LLM-based security scanning (null = use default model)

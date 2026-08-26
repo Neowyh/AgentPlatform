@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import uuid
 import zipfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -16,7 +17,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 import ideer.persistence.models  # noqa: F401
 from app.gateway.routers import resources
 from ideer.persistence.base import Base
-from ideer.persistence.models.resource_catalog import ResourceDependency, ResourceDraft
+from ideer.persistence.models.resource_catalog import Resource, ResourceDependency, ResourceDraft
 from ideer.persistence.models.user import UserModel, UserRole
 from ideer.resources.service import ResourceAction, ResourceActor, ResourceService
 
@@ -97,6 +98,82 @@ async def test_workflow_draft_resolves_agent_alias_and_persists_uuid_reference(
         assert draft is not None
         assert draft.content["nodes"][0]["action"]["name"] == agent_id
         assert dependency.target_resource_id == agent_id
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_workflow_draft_dedupes_agent_reuse_across_nodes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'resources-dedup.db'}")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    current_user = UserModel(
+        id="owner",
+        username="owner@test.com",
+        role=UserRole.USER,
+        department_id="dept-a",
+        disabled=False,
+    )
+    async with factory() as session:
+        session.add(current_user)
+        await session.commit()
+        service = ResourceService(session, _actor())
+        agent = await service.create_resource(
+            resource_type="agent",
+            slug="review-agent",
+            display_name="Review Agent",
+            storage_kind="filesystem",
+        )
+        workflow = await service.create_resource(
+            resource_type="workflow",
+            slug="review-flow",
+            display_name="Review Flow",
+            storage_kind="database",
+        )
+        await session.commit()
+        agent_id = agent.id
+        workflow_id = workflow.id
+
+    monkeypatch.setattr(resources, "get_session_factory", lambda: factory)
+    monkeypatch.setattr(resources, "get_paths", lambda: SimpleNamespace(base_dir=tmp_path))
+
+    result = await resources.save_workflow_draft(
+        workflow_id,
+        resources.WorkflowDraftRequest(
+            content={
+                "schema_version": 2,
+                "name": "review-flow",
+                "entrypoint": "review",
+                "nodes": [
+                    {
+                        "id": "review",
+                        "type": "action",
+                        "action": {"kind": "agent", "name": "review-agent"},
+                    },
+                    {
+                        "id": "summarize",
+                        "type": "action",
+                        "action": {"kind": "agent", "name": "review-agent"},
+                    },
+                ],
+                "edges": [{"from": "review", "to": "summarize"}],
+            },
+            expected_revision=0,
+        ),
+        current_user,
+    )
+
+    assert result["revision"] == 1
+    async with factory() as session:
+        draft = await session.get(ResourceDraft, workflow_id)
+        dependencies = list((await session.execute(select(ResourceDependency).where(ResourceDependency.source_resource_id == workflow_id))).scalars())
+        assert draft is not None
+        names = [node["action"]["name"] for node in draft.content["nodes"]]
+        assert names == [agent_id, agent_id]
+        assert [item.target_resource_id for item in dependencies] == [agent_id]
     await engine.dispose()
 
 
@@ -208,4 +285,92 @@ async def test_agent_draft_rewrites_skill_alias_to_uuid_content_and_dependency(
         assert config["skills"] == [skill_id]
         assert config["name"] == "review-agent"
         assert dependency.target_resource_id == skill_id
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_bundled_workflow_draft_save_succeeds_with_deduped_agent_reuse(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'bundled-draft.db'}")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    current_user = UserModel(
+        id="owner",
+        username="owner@test.com",
+        role=UserRole.USER,
+        department_id="dept-a",
+        disabled=False,
+    )
+    async with factory() as session:
+        session.add(current_user)
+        await session.commit()
+        service = ResourceService(session, _actor())
+        agent = await service.create_resource(
+            resource_type="agent",
+            slug="review-agent",
+            display_name="Review Agent",
+            storage_kind="filesystem",
+        )
+        await session.flush()
+        workflow = Resource(
+            id=str(uuid.uuid4()),
+            type="workflow",
+            slug="fault-zeroing",
+            display_name="Fault Zeroing",
+            owner_id="owner",
+            visibility="private",
+            lifecycle_status="active",
+            latest_version=0,
+            draft_revision=0,
+            storage_kind="database",
+            storage_key="workflows/bundled",
+            provenance="bundled",
+            system_owned=False,
+            authz_revision=1,
+        )
+        session.add(workflow)
+        await session.commit()
+        agent_id = agent.id
+        workflow_id = workflow.id
+
+    monkeypatch.setattr(resources, "get_session_factory", lambda: factory)
+    monkeypatch.setattr(resources, "get_paths", lambda: SimpleNamespace(base_dir=tmp_path))
+
+    result = await resources.save_workflow_draft(
+        workflow_id,
+        resources.WorkflowDraftRequest(
+            content={
+                "schema_version": 2,
+                "name": "fault-zeroing",
+                "entrypoint": "review",
+                "nodes": [
+                    {
+                        "id": "review",
+                        "type": "action",
+                        "action": {"kind": "agent", "name": "review-agent"},
+                    },
+                    {
+                        "id": "summarize",
+                        "type": "action",
+                        "action": {"kind": "agent", "name": "review-agent"},
+                    },
+                ],
+                "edges": [{"from": "review", "to": "summarize"}],
+            },
+            expected_revision=0,
+        ),
+        current_user,
+    )
+
+    assert result["revision"] == 1
+    async with factory() as session:
+        draft = await session.get(ResourceDraft, workflow_id)
+        dependencies = list((await session.execute(select(ResourceDependency).where(ResourceDependency.source_resource_id == workflow_id))).scalars())
+        assert draft is not None
+        names = [node["action"]["name"] for node in draft.content["nodes"]]
+        assert names == [agent_id, agent_id]
+        assert [item.target_resource_id for item in dependencies] == [agent_id]
     await engine.dispose()

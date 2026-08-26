@@ -6,7 +6,7 @@ import json
 import os
 import tempfile
 
-from packages.harness.ideer.community.data_analyzer.tools import data_analyzer_tool
+from ideer.community.data_analyzer.tools import data_analyzer_tool
 
 # ── Tool function basics ─────────────────────────────────────────────
 

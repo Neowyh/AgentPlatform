@@ -81,12 +81,16 @@ function SkillSettingsList({ skills }: { skills: Skill[] }) {
     }
   };
 
-  const handleApplyChange = async (targetVisibility: string) => {
+  const handleApplyChange = async (
+    targetVisibility: string,
+    cascade: boolean,
+  ) => {
     if (!applySkill) return;
     try {
       await changeResourceVisibility({
         resource_id: applySkill.resource_id ?? applySkill.name,
         visibility: targetVisibility,
+        cascade,
       });
       toast.success(t.settings.skills.visibilityUpdated);
       setApplySkill(null);

@@ -20,7 +20,7 @@ import ideer.tools.tools
 from ideer.config.agents_config import AgentConfig
 from ideer.resources.runtime import CanonicalAgentDefinition
 from ideer.runtime.user_context import get_effective_user_id
-from ideer.workflows.v2.adapters import ActionContext, ActionResolutionError, _AgentAdapter, _CanonicalAgentAdapter
+from ideer.workflows.v2.adapters import ActionContext, ActionResolutionError, _AgentAdapter, _CanonicalAgentAdapter, _compose_system_prompt
 from ideer.workflows.v2.compiler import WorkflowTransientError
 
 # conftest.py pre-injects a MagicMock for ideer.subagents.executor to dodge a
@@ -49,6 +49,7 @@ class FakeExecutor:
 
     def __init__(self, subagent, tools, app_config=None, thread_id=None) -> None:
         FakeExecutor.captured.append(subagent)
+        self.config = subagent
         FakeExecutor.thread_ids.append(thread_id)
 
     async def _aexecute(self, prompt: str) -> SimpleNamespace:
@@ -99,17 +100,21 @@ def _canonical_env(
     monkeypatch.setattr(ideer.config.paths, "get_paths", lambda: SimpleNamespace(base_dir=tmp_path / "runtime"))
 
 
+def _expected_prompt(soul: str | None, override: str, context: ActionContext) -> str:
+    return _compose_system_prompt(soul or "", override, context)
+
+
 @pytest.mark.parametrize(
-    ("soul", "override", "expected"),
+    ("soul", "override"),
     [
-        (SOUL, OVERRIDE, f"{SOUL}\n\n## 当前阶段指令\n\n{OVERRIDE}"),
-        (SOUL, "", SOUL),
-        (None, OVERRIDE, OVERRIDE),
+        (SOUL, OVERRIDE),
+        (SOUL, ""),
+        (None, OVERRIDE),
     ],
     ids=["soul-plus-override", "soul-only", "override-only"],
 )
 @pytest.mark.asyncio
-async def test_agent_adapter_system_prompt_composition(env: pytest.MonkeyPatch, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, soul: str | None, override: str, expected: str) -> None:
+async def test_agent_adapter_system_prompt_composition(env: pytest.MonkeyPatch, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, soul: str | None, override: str) -> None:
     _canonical_env(monkeypatch, tmp_path, soul=soul)
 
     adapter = _AgentAdapter("fault-zeroing", "user-1")
@@ -129,8 +134,37 @@ async def test_agent_adapter_system_prompt_composition(env: pytest.MonkeyPatch, 
 
     assert result == {"ok": True}
     assert len(FakeExecutor.captured) == 1
-    assert FakeExecutor.captured[0].system_prompt == expected
+    assert FakeExecutor.captured[0].system_prompt == _expected_prompt(soul, override, context)
     assert FakeExecutor.captured[0].description == "Workflow node: evidence_collection"
+
+
+@pytest.mark.asyncio
+async def test_agent_adapter_system_prompt_carries_explicit_workflow_node_marker(
+    env: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The composed prompt names the workflow/node and defers persona-level
+    deliverables to the node instructions, so the model can tell node runs
+    apart from standalone chats without relying on YAML authors."""
+    _canonical_env(monkeypatch, tmp_path, soul=SOUL)
+
+    adapter = _AgentAdapter("fault-zeroing", "user-1")
+    context = ActionContext(
+        workflow_name="fault-zeroing",
+        run_id="run-1",
+        node_id="evidence_collection",
+        inputs={},
+        state={},
+        outputs={},
+    )
+    await adapter.run(context, {"prompt": "执行任务", "system_prompt": OVERRIDE})
+
+    prompt = FakeExecutor.captured[0].system_prompt
+    assert prompt.index(SOUL.strip()) < prompt.index("## 运行模式：工作流节点") < prompt.index("## 当前阶段指令")
+    assert "工作流「fault-zeroing」的节点「evidence_collection」" in prompt
+    assert "不要更换路径重试" in prompt
+    assert prompt.endswith(f"## 当前阶段指令\n\n{OVERRIDE}")
 
 
 @pytest.mark.asyncio
@@ -321,6 +355,46 @@ async def test_agent_adapter_fails_when_llm_unavailable(env: pytest.MonkeyPatch,
     )
     with pytest.raises(WorkflowTransientError, match="LLM provider unavailable"):
         await adapter.run(context, {"prompt": "执行任务"})
+
+
+@pytest.mark.asyncio
+async def test_agent_adapter_fails_over_to_next_configured_model(env: pytest.MonkeyPatch, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    class FailoverExecutor(FakeExecutor):
+        async def _aexecute(self, prompt: str) -> SimpleNamespace:
+            if self.config.model == "model-a":
+                return SimpleNamespace(
+                    status=_Status.COMPLETED,
+                    result="The configured LLM provider is temporarily unavailable after multiple retries. Please wait a moment and continue the conversation.",
+                    error=None,
+                )
+            return SimpleNamespace(status=_Status.COMPLETED, result={"model": self.config.model}, error=None)
+
+    env.setattr(executor_module, "SubagentExecutor", FailoverExecutor)
+    _canonical_env(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        ideer.config,
+        "get_app_config",
+        lambda: SimpleNamespace(
+            models=[SimpleNamespace(name="model-a"), SimpleNamespace(name="model-b")],
+        ),
+    )
+
+    adapter = _AgentAdapter("fault-zeroing", "user-1")
+    context = ActionContext(
+        workflow_name="fault-zeroing",
+        run_id="run-failover",
+        node_id="evidence_collection",
+        inputs={},
+        state={},
+        outputs={},
+        model_name="model-a",
+    )
+
+    result = await adapter.run(context, {"prompt": "执行任务"})
+
+    assert result == {"model": "model-b"}
+    assert [config.model for config in FakeExecutor.captured] == ["model-a", "model-b"]
+    assert context.model_name == "model-b"
 
 
 @pytest.mark.asyncio
@@ -543,7 +617,7 @@ async def test_agent_adapter_canonical_branch_loads_published_agent_via_alias(
 
     assert result == {"ok": True}
     captured = FakeExecutor.captured[-1]
-    assert captured.system_prompt == f"{SOUL}\n\n## 当前阶段指令\n\n{OVERRIDE}"
+    assert captured.system_prompt == _expected_prompt(SOUL, OVERRIDE, context)
     assert captured.skills == ["fault-zeroing"]
     assert captured.model == "gpt-5"
 
@@ -584,7 +658,7 @@ async def test_agent_adapter_canonical_branch_resolves_dependency_subset_by_slug
 
     captured = FakeExecutor.captured[-1]
     assert captured.skills == ["evidence-reader"]
-    assert captured.system_prompt == SOUL
+    assert captured.system_prompt == _expected_prompt(SOUL, "", context)
     assert captured.model == "inherit"
 
 

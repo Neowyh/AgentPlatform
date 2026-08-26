@@ -126,7 +126,8 @@ describe("ResourcesPage", () => {
       expect(screen.getAllByTestId("resource-row")).toHaveLength(60);
     });
 
-    await user.click(screen.getByText("工作流"));
+    await user.click(screen.getAllByRole("combobox")[0]!);
+    await user.click(screen.getByRole("option", { name: "工作流" }));
 
     await waitFor(() => {
       expect(mockListResources).toHaveBeenLastCalledWith({
@@ -146,7 +147,7 @@ describe("ResourcesPage", () => {
       expect(screen.getAllByTestId("resource-row")).toHaveLength(60);
     });
 
-    await user.click(screen.getAllByRole("combobox")[0]!);
+    await user.click(screen.getAllByRole("combobox")[1]!);
     await user.click(screen.getByRole("option", { name: "私有" }));
 
     await waitFor(() => {
@@ -167,7 +168,7 @@ describe("ResourcesPage", () => {
       expect(screen.getAllByTestId("resource-row")).toHaveLength(60);
     });
 
-    await user.click(screen.getAllByRole("combobox")[1]!);
+    await user.click(screen.getAllByRole("combobox")[2]!);
     await user.click(screen.getByRole("option", { name: "已归档" }));
 
     await waitFor(() => {
@@ -188,7 +189,7 @@ describe("ResourcesPage", () => {
       expect(screen.getAllByTestId("resource-row")).toHaveLength(60);
     });
 
-    await user.click(screen.getAllByRole("combobox")[2]!);
+    await user.click(screen.getAllByRole("combobox")[3]!);
     await user.click(screen.getByRole("option", { name: "alice" }));
 
     await waitFor(() => {
@@ -209,12 +210,13 @@ describe("ResourcesPage", () => {
       expect(screen.getAllByTestId("resource-row")).toHaveLength(60);
     });
 
-    await user.click(screen.getByRole("button", { name: "智能体" }));
     await user.click(screen.getAllByRole("combobox")[0]!);
-    await user.click(screen.getByRole("option", { name: "部门" }));
+    await user.click(screen.getByRole("option", { name: "智能体" }));
     await user.click(screen.getAllByRole("combobox")[1]!);
-    await user.click(screen.getByRole("option", { name: "已下架" }));
+    await user.click(screen.getByRole("option", { name: "部门" }));
     await user.click(screen.getAllByRole("combobox")[2]!);
+    await user.click(screen.getByRole("option", { name: "已下架" }));
+    await user.click(screen.getAllByRole("combobox")[3]!);
     await user.click(screen.getByRole("option", { name: "alice" }));
 
     await waitFor(() => {
@@ -237,7 +239,7 @@ describe("ResourcesPage", () => {
     await user.click(screen.getByText("下一页"));
     await waitFor(() => expect(screen.getByText("2 / 2")).toBeInTheDocument());
 
-    await user.click(screen.getAllByRole("combobox")[0]!);
+    await user.click(screen.getAllByRole("combobox")[1]!);
     await user.click(screen.getByRole("option", { name: "公开" }));
 
     await waitFor(() => {

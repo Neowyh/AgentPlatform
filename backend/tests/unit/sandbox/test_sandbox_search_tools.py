@@ -54,8 +54,8 @@ def test_glob_tool_returns_virtual_paths_and_ignores_common_dirs(tmp_path, monke
 def test_glob_tool_supports_skills_virtual_paths(tmp_path, monkeypatch) -> None:
     runtime = _make_runtime(tmp_path)
     skills_dir = tmp_path / "skills"
-    (skills_dir / "public" / "demo").mkdir(parents=True)
-    (skills_dir / "public" / "demo" / "SKILL.md").write_text("# Demo\n", encoding="utf-8")
+    (skills_dir / "demo").mkdir(parents=True)
+    (skills_dir / "demo" / "SKILL.md").write_text("# Demo\n", encoding="utf-8")
 
     monkeypatch.setattr("ideer.sandbox.tools.ensure_sandbox_initialized", lambda runtime: LocalSandbox(id="local"))
 
@@ -70,7 +70,7 @@ def test_glob_tool_supports_skills_virtual_paths(tmp_path, monkeypatch) -> None:
             path="/mnt/skills",
         )
 
-    assert "/mnt/skills/public/demo/SKILL.md" in result
+    assert "/mnt/skills/demo/SKILL.md" in result
     assert str(skills_dir) not in result
 
 
@@ -424,8 +424,8 @@ def test_ls_tool_masks_skills_host_paths(tmp_path, monkeypatch) -> None:
     """ls_tool output must not leak host skills paths; they should be virtual."""
     runtime = _make_runtime(tmp_path)
     skills_dir = tmp_path / "skills"
-    (skills_dir / "public").mkdir(parents=True)
-    (skills_dir / "public" / "SKILL.md").write_text("# Skill\n", encoding="utf-8")
+    (skills_dir / "demo").mkdir(parents=True)
+    (skills_dir / "demo" / "SKILL.md").write_text("# Skill\n", encoding="utf-8")
 
     monkeypatch.setattr("ideer.sandbox.tools.ensure_sandbox_initialized", lambda runtime: LocalSandbox(id="local"))
 
@@ -440,7 +440,7 @@ def test_ls_tool_masks_skills_host_paths(tmp_path, monkeypatch) -> None:
         )
 
     # Virtual paths must be present
-    assert "/mnt/skills" in result
+    assert "/mnt/skills/demo/SKILL.md" in result
     # Host paths must NOT leak
     assert str(skills_dir) not in result
     assert str(tmp_path) not in result

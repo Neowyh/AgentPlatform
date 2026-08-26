@@ -33,6 +33,7 @@ import {
 import { useAuth } from "@/core/auth/AuthProvider";
 import { useI18n } from "@/core/i18n/hooks";
 
+import { ResourceNotificationCenter } from "./resource-notification-center";
 import { SettingsDialog } from "./settings";
 
 function NavMenuButtonContent({
@@ -81,6 +82,7 @@ export function WorkspaceNavMenu() {
         defaultSection={settingsDefaultSection}
       />
       <SidebarMenu className="w-full">
+        <ResourceNotificationCenter />
         <SidebarMenuItem>
           {mounted ? (
             <DropdownMenu>

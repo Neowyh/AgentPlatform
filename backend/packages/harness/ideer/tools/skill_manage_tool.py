@@ -290,7 +290,7 @@ async def skill_manage_tool(
     replace: str | None = None,
     expected_count: int | None = None,
 ) -> str:
-    """Manage custom skills under skills/custom/.
+    """Manage custom skills under resources/skills/.
 
     Args:
         action: One of create, patch, edit, delete, write_file, remove_file.

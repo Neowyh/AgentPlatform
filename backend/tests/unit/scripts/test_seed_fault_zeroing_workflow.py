@@ -9,7 +9,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 SEED_PATH = REPO_ROOT / "scripts" / "seed_fault_zeroing_workflow.py"
-BUNDLED_YAML = REPO_ROOT / "workflows" / "fault-zeroing.yaml"
+BUNDLED_YAML = REPO_ROOT / "resources" / "workflows" / "fault-zeroing.yaml"
 
 
 def load_seed_script():

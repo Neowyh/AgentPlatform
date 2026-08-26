@@ -387,10 +387,10 @@ To add support for a new MCP server:
 
 To create a new skill:
 
-1. Create directory in `skills/public/` or `skills/custom/`:
+1. Create directory in `resources/skills/` or `resources/skills/`:
 
 ```
-skills/public/my-skill/
+resources/skills/my-skill/
 └── SKILL.md
 ```
 

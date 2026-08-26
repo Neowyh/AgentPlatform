@@ -19,7 +19,7 @@ from langgraph.types import interrupt
 
 from .adapters import ActionAdapterRegistry, ActionContext
 from .errors import node_failure_payload
-from .file_roots import lookup_path, materialize_state, missing_written_artifacts, path_within_root, render_template, workflow_state_path, workflow_state_root
+from .file_roots import lookup_path, materialize_state, missing_written_artifacts, path_within_root, render_template, unparsable_json_artifacts, workflow_state_path, workflow_state_root
 from .schema import EdgeV2, NodeV2, WorkflowV2
 
 
@@ -120,6 +120,7 @@ def _merge_maps(left: dict[str, Any] | None, right: dict[str, Any] | None) -> di
 
 class _GraphState(TypedDict, total=False):
     run_id: str
+    model_name: str | None
     inputs: dict[str, Any]
     model_name: str | None
     state: Annotated[dict[str, Any], _merge_maps]
@@ -260,7 +261,12 @@ class WorkflowGraphCompiler:
             params = render_template(node.action.params, render_state)  # type: ignore[union-attr]
             await self._emit(
                 "node_started",
-                {"node_id": node.id, "idempotency_key": context.idempotency_key, "model_name": context.model_name, "started_at": _now_iso()},
+                {
+                    "node_id": node.id,
+                    "idempotency_key": context.idempotency_key,
+                    "model_name": context.model_name,
+                    "started_at": _now_iso(),
+                },
             )
             violations = self._check_preconditions(node, render_state)
             if violations and node.on_precondition_failure == "skip":
@@ -288,6 +294,12 @@ class WorkflowGraphCompiler:
                             if isinstance(result, str) and result.startswith("FAILED:"):
                                 raise WorkflowNodeFailed(f"node '{node.id}' reported failure: {result[:4000]}")
                             if self.artifact_resolver is not None and context.file_access is not None:
+                                invalid_json = unparsable_json_artifacts(context.file_access.get("write", []), self.artifact_resolver)
+                                if invalid_json:
+                                    raise WorkflowSchemaViolation(
+                                        node.id,
+                                        [f"write root '{root}' is not valid JSON: {error}" for root, error in invalid_json],
+                                    )
                                 missing = missing_written_artifacts(context.file_access.get("write", []), self.artifact_resolver)
                                 if missing:
                                     raise ArtifactsMissing(missing)
@@ -341,7 +353,13 @@ class WorkflowGraphCompiler:
                 raise
             await self._emit(
                 "node_completed",
-                {"node_id": node.id, "idempotency_key": context.idempotency_key, "result": result, "finished_at": _now_iso()},
+                {
+                    "node_id": node.id,
+                    "idempotency_key": context.idempotency_key,
+                    "result": result,
+                    "model_name": context.model_name,
+                    "finished_at": _now_iso(),
+                },
             )
             outputs = dict(state.get("outputs", {}))
             outputs[node.id] = result

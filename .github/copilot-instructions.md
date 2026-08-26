@@ -165,7 +165,7 @@ Frontend core:
 
 Skills and assets:
 
-- `skills/public/` - built-in skill packs loaded by agent runtime
+- `resources/skills/` - built-in skill packs loaded by agent runtime
 
 ## 6) Pre-Checkin / Validation Expectations
 

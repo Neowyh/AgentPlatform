@@ -193,7 +193,14 @@ class TestValidateSkillFrontmatter:
     def test_allowed_properties_constant(self):
         assert "name" in ALLOWED_FRONTMATTER_PROPERTIES
         assert "description" in ALLOWED_FRONTMATTER_PROPERTIES
+        assert "description_zh" in ALLOWED_FRONTMATTER_PROPERTIES
+        assert "description_en" in ALLOWED_FRONTMATTER_PROPERTIES
         assert "license" in ALLOWED_FRONTMATTER_PROPERTIES
+        assert "display_name" in ALLOWED_FRONTMATTER_PROPERTIES
+        assert "display_name_en" in ALLOWED_FRONTMATTER_PROPERTIES
+        assert "name_zh" in ALLOWED_FRONTMATTER_PROPERTIES
+        assert "visibility" in ALLOWED_FRONTMATTER_PROPERTIES
+        assert "skill_id" in ALLOWED_FRONTMATTER_PROPERTIES
 
     def test_reads_utf8_on_windows_locale(self, tmp_path, monkeypatch):
         skill_dir = _write_skill(

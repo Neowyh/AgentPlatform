@@ -48,7 +48,7 @@ edges:
 | 前缀 | 语义 | 可写 |
 |------|------|------|
 | `/mnt/user-data/{workspace,uploads,outputs}` | 该次运行专属数据目录 | 是 |
-| `/mnt/skills/custom/<skill>` | 公共技能目录 | 否 |
+| `/mnt/skills/<skill>` | 公共技能目录 | 否 |
 | `/mnt/acp-workspace` | ACP 工作区 | 否 |
 | 配置的自定义 mount 容器路径 | 按 `config.yaml` 的 `mount.read_only` | 视配置 |
 

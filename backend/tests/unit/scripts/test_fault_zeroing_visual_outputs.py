@@ -32,7 +32,7 @@ REMOVED_WORKFLOW_PHRASES = [
 
 
 def test_fault_zeroing_skill_requires_visual_outputs() -> None:
-    content = (REPO_ROOT / "skills" / "custom" / "fault-zeroing" / "SKILL.md").read_text(encoding="utf-8")
+    content = (REPO_ROOT / "resources" / "skills" / "fault-zeroing" / "SKILL.md").read_text(encoding="utf-8")
 
     for output in REQUIRED_OUTPUTS:
         assert output in content
@@ -52,12 +52,32 @@ def test_fault_zeroing_skill_requires_visual_outputs() -> None:
     assert "展示五份文件" in content
     assert "不写脚本和外链资源" in content
 
+    assert "read_document" in content
+    for phrase in [
+        ".doc` / `.docx` / `.pdf",
+        "page_range",
+        "疑似扫描件",
+    ]:
+        assert phrase in content
+
+    # Custom sandbox.mounts directories are readable, including office docs.
+    assert "sandbox.mounts" in content
+    assert "read_document` 打开" in content
+
+    # Legacy .doc is readable via read_document (LibreOffice-backed conversion);
+    # the skill must advertise it as a supported format.
+    assert ".doc` / `.docx` / `.pdf` / `.xls`" in content
+    assert "不支持 legacy" not in content
+    # Tool error responses (e.g. read_document JSON errors) must be treated
+    # under the failure contract, never ingested as document content.
+    assert "JSON 错误" in content
+
     for phrase in REMOVED_WORKFLOW_PHRASES:
         assert phrase not in content
 
 
 def test_fault_zeroing_soul_requires_visual_outputs() -> None:
-    content = (REPO_ROOT / "docs" / "fault-zeroing-agent" / "agent" / "SOUL.md").read_text(encoding="utf-8")
+    content = (REPO_ROOT / "resources" / "agents" / "fault-zeroing" / "SOUL.md").read_text(encoding="utf-8")
 
     for output in REQUIRED_OUTPUTS:
         assert output in content
@@ -74,6 +94,13 @@ def test_fault_zeroing_soul_requires_visual_outputs() -> None:
         assert phrase in content
 
     assert "SVG 不得包含脚本、外链资源或动态交互代码" in content
+
+    # Drift guards: conclusion status enum must match fault_tree.schema.json
+    # (conclusion_status), and the schema path must be the runtime mount path.
+    assert "`in_progress`、`not_applicable`" not in content
+    assert "skills/custom/fault-zeroing" not in content
+    assert "/mnt/skills/fault-zeroing/templates/fault_tree.schema.json" in content
+    assert "不得用于结论状态" in content
 
     for phrase in REMOVED_WORKFLOW_PHRASES:
         assert phrase not in content

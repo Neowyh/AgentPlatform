@@ -139,7 +139,7 @@ class TestValidateRelativePath:
 class TestEnsureSafeSupportPath:
     def test_valid_support_path(self, tmp_path):
         storage = _FakeSkillStorage(tmp_path)
-        skill_dir = tmp_path / "custom" / "my-skill"
+        skill_dir = tmp_path / "my-skill"
         (skill_dir / "references").mkdir(parents=True)
         result = storage.ensure_safe_support_path("my-skill", "references/doc.md")
         assert result == (skill_dir / "references" / "doc.md").resolve()
@@ -166,7 +166,7 @@ class TestEnsureSafeSupportPath:
 
     def test_disallowed_subdir_raises(self, tmp_path):
         storage = _FakeSkillStorage(tmp_path)
-        skill_dir = tmp_path / "custom" / "my-skill"
+        skill_dir = tmp_path / "my-skill"
         skill_dir.mkdir(parents=True)
         with pytest.raises(ValueError, match="must live under one of"):
             storage.ensure_safe_support_path("my-skill", "evil/file.txt")
@@ -174,7 +174,7 @@ class TestEnsureSafeSupportPath:
     def test_allowed_subdirs(self, tmp_path):
         storage = _FakeSkillStorage(tmp_path)
         for subdir in ("references", "templates", "scripts", "assets"):
-            skill_dir = tmp_path / "custom" / "my-skill" / subdir
+            skill_dir = tmp_path / "my-skill" / subdir
             skill_dir.mkdir(parents=True, exist_ok=True)
             result = storage.ensure_safe_support_path("my-skill", f"{subdir}/file.txt")
             assert result.name == "file.txt"
@@ -198,17 +198,17 @@ class TestPathHelpers:
     def test_get_custom_skill_dir(self, tmp_path):
         storage = _FakeSkillStorage(tmp_path)
         result = storage.get_custom_skill_dir("my-skill")
-        assert result == tmp_path / "custom" / "my-skill"
+        assert result == tmp_path / "my-skill"
 
     def test_get_custom_skill_file(self, tmp_path):
         storage = _FakeSkillStorage(tmp_path)
         result = storage.get_custom_skill_file("my-skill")
-        assert result == tmp_path / "custom" / "my-skill" / SKILL_MD_FILE
+        assert result == tmp_path / "my-skill" / SKILL_MD_FILE
 
     def test_get_skill_history_file(self, tmp_path):
         storage = _FakeSkillStorage(tmp_path)
         result = storage.get_skill_history_file("my-skill")
-        assert result == tmp_path / "custom" / ".history" / "my-skill.jsonl"
+        assert result == tmp_path / ".history" / "my-skill.jsonl"
 
     def test_path_helpers_validate_name(self, tmp_path):
         storage = _FakeSkillStorage(tmp_path)
@@ -269,7 +269,7 @@ class TestLoadSkills:
         storage._skills["test-skill"] = "name: test-skill\ndescription: test"
 
         # Create actual files for parse_skill_file
-        skill_dir = tmp_path / "custom" / "test-skill"
+        skill_dir = tmp_path / "test-skill"
         skill_dir.mkdir(parents=True)
         (skill_dir / SKILL_MD_FILE).write_text(
             "---\nname: test-skill\ndescription: A test skill\n---\n# Test\n",
@@ -304,9 +304,9 @@ class TestLoadSkills:
         storage._skills["skill-a"] = "content"
         storage._skills["skill-b"] = "content"
 
-        skill_dir_a = tmp_path / "custom" / "skill-a"
+        skill_dir_a = tmp_path / "skill-a"
         skill_dir_a.mkdir(parents=True)
-        skill_dir_b = tmp_path / "custom" / "skill-b"
+        skill_dir_b = tmp_path / "skill-b"
         skill_dir_b.mkdir(parents=True)
 
         with (
@@ -351,9 +351,9 @@ class TestLoadSkills:
         storage._skills["online-skill"] = "content"
         storage._skills["offline-skill"] = "content"
 
-        skill_dir_a = tmp_path / "custom" / "online-skill"
+        skill_dir_a = tmp_path / "online-skill"
         skill_dir_a.mkdir(parents=True)
-        skill_dir_b = tmp_path / "custom" / "offline-skill"
+        skill_dir_b = tmp_path / "offline-skill"
         skill_dir_b.mkdir(parents=True)
 
         with (
@@ -399,7 +399,7 @@ class TestLoadSkills:
         storage = _FakeSkillStorage(tmp_path)
         storage._skills["test-skill"] = "content"
 
-        skill_dir = tmp_path / "custom" / "test-skill"
+        skill_dir = tmp_path / "test-skill"
         skill_dir.mkdir(parents=True)
 
         with (
@@ -428,7 +428,7 @@ class TestLoadSkills:
         storage._skills["a-skill"] = "content"
 
         for name in ("z-skill", "a-skill"):
-            skill_dir = tmp_path / "custom" / name
+            skill_dir = tmp_path / name
             skill_dir.mkdir(parents=True, exist_ok=True)
 
         with (
@@ -438,7 +438,7 @@ class TestLoadSkills:
         ):
 
             def make_skill(name):
-                d = tmp_path / "custom" / name
+                d = tmp_path / name
                 return Skill(
                     name=name,
                     description="",
@@ -466,7 +466,7 @@ class TestLoadSkills:
         storage = _FakeSkillStorage(tmp_path)
         storage._skills["bad-skill"] = "content"
 
-        skill_dir = tmp_path / "custom" / "bad-skill"
+        skill_dir = tmp_path / "bad-skill"
         skill_dir.mkdir(parents=True)
 
         with (
@@ -481,145 +481,19 @@ class TestLoadSkills:
 
 
 # ---------------------------------------------------------------------------
-# RBAC access helpers
+# Skill enabled resolution
 # ---------------------------------------------------------------------------
 
 
 class TestSkillAccessHelpers:
-    @pytest.mark.asyncio
-    async def test_load_skills_for_user_returns_enabled_accessible_skills(self, tmp_path):
-        storage = _FakeSkillStorage(tmp_path)
-        enabled = Skill(
-            name="enabled",
-            description="",
-            license=None,
-            skill_dir=tmp_path / "custom" / "enabled",
-            skill_file=tmp_path / "custom" / "enabled" / SKILL_MD_FILE,
-            relative_path=Path("enabled"),
-            category=SkillCategory.CUSTOM,
-            enabled=True,
-        )
-        disabled = Skill(
-            name="disabled",
-            description="",
-            license=None,
-            skill_dir=tmp_path / "custom" / "disabled",
-            skill_file=tmp_path / "custom" / "disabled" / SKILL_MD_FILE,
-            relative_path=Path("disabled"),
-            category=SkillCategory.CUSTOM,
-            enabled=False,
-        )
-        storage._get_accessible_skills = MagicMock(return_value=[enabled, disabled])
-
-        result = await storage.load_skills_for_user("user-1", "dept-1", "user")
-
-        assert result == [enabled]
-        storage._get_accessible_skills.assert_called_once_with("user-1", "dept-1", "user")
-
-    def test_get_accessible_skills_filters_each_loaded_skill(self, tmp_path):
-        storage = _FakeSkillStorage(tmp_path)
-        public = Skill(
-            name="public",
-            description="",
-            license=None,
-            skill_dir=tmp_path / "public" / "public",
-            skill_file=tmp_path / "public" / "public" / SKILL_MD_FILE,
-            relative_path=Path("public"),
-            category=SkillCategory.PUBLIC,
-        )
-        private = Skill(
-            name="private",
-            description="",
-            license=None,
-            skill_dir=tmp_path / "custom" / "private",
-            skill_file=tmp_path / "custom" / "private" / SKILL_MD_FILE,
-            relative_path=Path("private"),
-            category=SkillCategory.CUSTOM,
-        )
-        storage.load_skills = MagicMock(return_value=[public, private])
-        storage._is_skill_accessible = MagicMock(side_effect=lambda skill, *_args: skill.name == "public")
-
-        assert storage._get_accessible_skills("user-1", "dept-1") == [public]
-        storage.load_skills.assert_called_once_with(enabled_only=False)
-
-    def test_is_skill_accessible_public_and_super_admin(self, tmp_path):
-        storage = _FakeSkillStorage(tmp_path)
-        public = Skill(
-            name="public-skill",
-            description="",
-            license=None,
-            skill_dir=tmp_path / "public" / "public-skill",
-            skill_file=tmp_path / "public" / "public-skill" / SKILL_MD_FILE,
-            relative_path=Path("public-skill"),
-            category=SkillCategory.PUBLIC,
-        )
-        custom = Skill(
-            name="custom-skill",
-            description="",
-            license=None,
-            skill_dir=tmp_path / "custom" / "custom-skill",
-            skill_file=tmp_path / "custom" / "custom-skill" / SKILL_MD_FILE,
-            relative_path=Path("custom-skill"),
-            category=SkillCategory.CUSTOM,
-        )
-
-        assert storage._is_skill_accessible(public, "user-1", None) is True
-        assert storage._is_skill_accessible(custom, "user-1", None, "super_admin") is True
-
-    def test_is_skill_accessible_visibility_rules(self, tmp_path):
-        storage = _FakeSkillStorage(tmp_path)
-
-        def skill(**attrs):
-            item = Skill(
-                name="custom-skill",
-                description="",
-                license=None,
-                skill_dir=tmp_path / "custom" / "custom-skill",
-                skill_file=tmp_path / "custom" / "custom-skill" / SKILL_MD_FILE,
-                relative_path=Path("custom-skill"),
-                category=SkillCategory.CUSTOM,
-            )
-            for key, value in attrs.items():
-                setattr(item, key, value)
-            return item
-
-        assert storage._is_skill_accessible(skill(visibility="public"), "user-1", None) is True
-        assert (
-            storage._is_skill_accessible(
-                skill(visibility="department", department_id="dept-1"),
-                "user-1",
-                "dept-1",
-            )
-            is True
-        )
-        assert (
-            storage._is_skill_accessible(
-                skill(visibility="private", department_id="dept-1"),
-                "admin-1",
-                "dept-1",
-                "department_admin",
-            )
-            is True
-        )
-        assert storage._is_skill_accessible(skill(owner_id="user-1"), "user-1", None) is True
-        assert (
-            storage._is_skill_accessible(
-                skill(visibility="private", owner_id="owner-1", department_id="dept-2"),
-                "user-1",
-                "dept-1",
-                "user",
-            )
-            is False
-        )
-
     def test_resolve_skill_enabled_priority(self, tmp_path):
         storage = _FakeSkillStorage(tmp_path)
         skill = Skill(
             name="custom-skill",
             description="",
             license=None,
-            skill_dir=tmp_path / "custom" / "custom-skill",
-            skill_file=tmp_path / "custom" / "custom-skill" / SKILL_MD_FILE,
+            skill_dir=tmp_path / "custom-skill",
+            skill_file=tmp_path / "custom-skill" / SKILL_MD_FILE,
             relative_path=Path("custom-skill"),
             category=SkillCategory.CUSTOM,
             enabled=False,

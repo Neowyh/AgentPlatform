@@ -176,16 +176,23 @@ describe("VisibilityApplicationsPage", () => {
     expect(screen.getByText("data-pipeline")).toBeInTheDocument();
   });
 
-  test("shows status filter buttons", async () => {
+  test("shows status filter select defaulting to pending", async () => {
+    const user = userEvent.setup();
     render(<VisibilityApplicationsPage />);
     await waitFor(() => {
       expect(screen.getByText("web-search")).toBeInTheDocument();
     });
-    expect(screen.getAllByText("待审批").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("已批准").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("已拒绝").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("已撤回").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("全部").length).toBeGreaterThanOrEqual(1);
+    expect(
+      screen.getAllByRole("combobox")[0]!.querySelector("span"),
+    ).toHaveTextContent("待审批");
+    await user.click(screen.getAllByRole("combobox")[0]!);
+    expect(screen.getByRole("option", { name: "待审批" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "已批准" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "已拒绝" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "已撤回" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: "全部状态" }),
+    ).toBeInTheDocument();
   });
 
   test("shows resource type filter", async () => {
@@ -360,7 +367,8 @@ describe("VisibilityApplicationsPage", () => {
     });
     mockFetchApplications.mockClear();
 
-    await user.click(screen.getByRole("button", { name: "已批准" }));
+    await user.click(screen.getAllByRole("combobox")[0]!);
+    await user.click(screen.getByRole("option", { name: "已批准" }));
     await waitFor(() => {
       expect(mockFetchApplications).toHaveBeenCalledWith({
         page: 1,
@@ -370,7 +378,7 @@ describe("VisibilityApplicationsPage", () => {
     });
 
     mockFetchApplications.mockClear();
-    await user.click(screen.getAllByRole("combobox")[0]!);
+    await user.click(screen.getAllByRole("combobox")[1]!);
     await user.click(screen.getByRole("option", { name: "工作流" }));
     await waitFor(() => {
       expect(mockFetchApplications).toHaveBeenCalledWith({
@@ -390,7 +398,7 @@ describe("VisibilityApplicationsPage", () => {
     });
     mockFetchApplications.mockClear();
 
-    await user.click(screen.getAllByRole("combobox")[1]!);
+    await user.click(screen.getAllByRole("combobox")[2]!);
     await user.click(screen.getByRole("option", { name: "部门" }));
     await waitFor(() => {
       expect(mockFetchApplications).toHaveBeenCalledWith({
@@ -410,7 +418,7 @@ describe("VisibilityApplicationsPage", () => {
     });
     mockFetchApplications.mockClear();
 
-    await user.click(screen.getAllByRole("combobox")[2]!);
+    await user.click(screen.getAllByRole("combobox")[3]!);
     await user.click(screen.getByRole("option", { name: "alice" }));
     await waitFor(() => {
       expect(mockFetchApplications).toHaveBeenCalledWith({
@@ -430,12 +438,13 @@ describe("VisibilityApplicationsPage", () => {
     });
     mockFetchApplications.mockClear();
 
-    await user.click(screen.getByRole("button", { name: "已批准" }));
     await user.click(screen.getAllByRole("combobox")[0]!);
-    await user.click(screen.getByRole("option", { name: "工作流" }));
+    await user.click(screen.getByRole("option", { name: "已批准" }));
     await user.click(screen.getAllByRole("combobox")[1]!);
-    await user.click(screen.getByRole("option", { name: "部门" }));
+    await user.click(screen.getByRole("option", { name: "工作流" }));
     await user.click(screen.getAllByRole("combobox")[2]!);
+    await user.click(screen.getByRole("option", { name: "部门" }));
+    await user.click(screen.getAllByRole("combobox")[3]!);
     await user.click(screen.getByRole("option", { name: "alice" }));
     await waitFor(() => {
       expect(mockFetchApplications).toHaveBeenCalledWith({
@@ -449,7 +458,7 @@ describe("VisibilityApplicationsPage", () => {
     });
   });
 
-  test("sends status=all when 全部 is selected", async () => {
+  test("sends status=all when 全部状态 is selected", async () => {
     const user = userEvent.setup();
     render(<VisibilityApplicationsPage />);
     await waitFor(() => {
@@ -457,7 +466,8 @@ describe("VisibilityApplicationsPage", () => {
     });
     mockFetchApplications.mockClear();
 
-    await user.click(screen.getByRole("button", { name: "全部" }));
+    await user.click(screen.getAllByRole("combobox")[0]!);
+    await user.click(screen.getByRole("option", { name: "全部状态" }));
     await waitFor(() => {
       expect(mockFetchApplications).toHaveBeenCalledWith({
         page: 1,
@@ -523,7 +533,8 @@ describe("VisibilityApplicationsPage", () => {
       expect(screen.getByText("没有待审批的申请")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: "全部" }));
+    await user.click(screen.getAllByRole("combobox")[0]!);
+    await user.click(screen.getByRole("option", { name: "全部状态" }));
     await waitFor(() => {
       expect(screen.getByText("没有找到申请记录")).toBeInTheDocument();
     });
@@ -691,7 +702,8 @@ describe("VisibilityApplicationsPage", () => {
     });
 
     mockFetchApplications.mockClear();
-    await user.click(screen.getByRole("button", { name: "已拒绝" }));
+    await user.click(screen.getAllByRole("combobox")[0]!);
+    await user.click(screen.getByRole("option", { name: "已拒绝" }));
     await waitFor(() => {
       expect(mockFetchApplications).toHaveBeenCalledWith({
         page: 1,
@@ -701,7 +713,8 @@ describe("VisibilityApplicationsPage", () => {
     });
 
     mockFetchApplications.mockClear();
-    await user.click(screen.getByRole("button", { name: "已撤回" }));
+    await user.click(screen.getAllByRole("combobox")[0]!);
+    await user.click(screen.getByRole("option", { name: "已撤回" }));
     await waitFor(() => {
       expect(mockFetchApplications).toHaveBeenCalledWith({
         page: 1,
@@ -718,7 +731,8 @@ describe("VisibilityApplicationsPage", () => {
       expect(screen.getByText("web-search")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: "已批准" }));
+    await user.click(screen.getAllByRole("combobox")[0]!);
+    await user.click(screen.getByRole("option", { name: "已批准" }));
     await waitFor(() => {
       expect(mockFetchApplications).toHaveBeenCalledWith({
         page: 1,
@@ -728,7 +742,8 @@ describe("VisibilityApplicationsPage", () => {
     });
 
     mockFetchApplications.mockClear();
-    await user.click(screen.getByRole("button", { name: "待审批" }));
+    await user.click(screen.getAllByRole("combobox")[0]!);
+    await user.click(screen.getByRole("option", { name: "待审批" }));
     await waitFor(() => {
       expect(mockFetchApplications).toHaveBeenCalledWith({
         page: 1,

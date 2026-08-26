@@ -409,14 +409,14 @@ Gatewayが生成するフォローアップ提案は、プレーン文字列の�
 
 ```
 # サンドボックスコンテナ内のパス
-/mnt/skills/public
+/mnt/skills/
 ├── research/SKILL.md
 ├── report-generation/SKILL.md
 ├── slide-creation/SKILL.md
 ├── web-page/SKILL.md
 └── image-generation/SKILL.md
 
-/mnt/skills/custom
+/mnt/skills/
 └── your-custom-skill/SKILL.md      ← あなたのカスタムスキル
 ```
 
@@ -447,7 +447,7 @@ DEERFLOW_GATEWAY_URL=http://localhost:2026    # Gateway API
 DEERFLOW_LANGGRAPH_URL=http://localhost:2026/api/langgraph  # LangGraph API
 ```
 
-完全なAPIリファレンスは[`skills/public/claude-to-ideer/SKILL.md`](skills/public/claude-to-ideer/SKILL.md)をご覧ください。
+完全なAPIリファレンスは[`resources/skills/claude-to-ideer/SKILL.md`](resources/skills/claude-to-ideer/SKILL.md)をご覧ください。
 
 ### サブエージェント
 
