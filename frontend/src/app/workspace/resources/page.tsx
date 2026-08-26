@@ -1,3 +1,5 @@
+import { ResourceGallery } from "@/components/workspace/resources/resource-gallery";
+
 export default function ResourcesPage() {
-  return <div>资源页面（待实现）</div>;
+  return <ResourceGallery />;
 }
