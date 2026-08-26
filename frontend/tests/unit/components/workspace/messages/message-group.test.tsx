@@ -947,9 +947,10 @@ describe("MessageGroup", () => {
       ],
     });
     render(<MessageGroup messages={[msg1, msg2]} isLoading={false} />);
-    // Steps are expanded by default - should show "Less steps" toggle
-    expect(screen.getByText("Less steps")).toBeInTheDocument();
-    expect(screen.getByText(/first/)).toBeInTheDocument();
+    // Steps are collapsed by default - should show "N more steps" toggle,
+    // hide the earlier step, and keep the current step visible
+    expect(screen.getByText("1 more steps")).toBeInTheDocument();
+    expect(screen.queryByText(/first/)).not.toBeInTheDocument();
     expect(screen.getByText("Run tests")).toBeInTheDocument();
   });
 
@@ -967,19 +968,23 @@ describe("MessageGroup", () => {
       ],
     });
     render(<MessageGroup messages={[msg1, msg2]} isLoading={false} />);
-    // Initially expanded - should show "Less steps"
-    expect(screen.getByText("Less steps")).toBeInTheDocument();
+    // Initially collapsed - should show "more steps"
+    expect(screen.getByText("1 more steps")).toBeInTheDocument();
 
-    // Click to collapse using fireEvent
-    const toggleStep = screen.getByText("Less steps");
+    // Click to expand using fireEvent
+    const toggleStep = screen.getByText("1 more steps");
     const toggleButton = toggleStep.closest("button")!;
     fireEvent.click(toggleButton);
 
-    // After collapsing, should show "more steps"
+    // After expanding, should show "Less steps"
+    expect(screen.getByText("Less steps")).toBeInTheDocument();
+
+    // Click again to re-collapse
+    fireEvent.click(screen.getByText("Less steps").closest("button")!);
     expect(screen.getByText("1 more steps")).toBeInTheDocument();
   });
 
-  test("above toggle shows expanded steps content by default", () => {
+  test("above toggle hides steps content by default", () => {
     const msg1 = makeAiMessage({
       id: "ai-1",
       tool_calls: [
@@ -993,8 +998,8 @@ describe("MessageGroup", () => {
       ],
     });
     render(<MessageGroup messages={[msg1, msg2]} isLoading={false} />);
-    // The above steps content is rendered without any click
-    expect(screen.getByText(/first query/)).toBeInTheDocument();
+    // The above steps content is not rendered without any click
+    expect(screen.queryByText(/first query/)).not.toBeInTheDocument();
   });
 
   // ── Last reasoning step toggle ────────────────────────────────────────────
@@ -1012,10 +1017,10 @@ describe("MessageGroup", () => {
       tool_calls: [],
     });
     render(<MessageGroup messages={[msg1, msg2]} isLoading={false} />);
-    // Reasoning content is visible initially (showLastThinking=true)
-    expect(screen.getByText("Deep thought here")).toBeInTheDocument();
+    // Reasoning content is hidden initially (showLastThinking=false)
+    expect(screen.queryByText("Deep thought here")).not.toBeInTheDocument();
 
-    // Click the thinking button to collapse it
+    // Click the thinking button to expand it
     const buttons = screen.getAllByTestId("button");
     const thinkingButton = buttons.find((btn) =>
       btn.textContent?.includes("Thinking"),
@@ -1023,11 +1028,11 @@ describe("MessageGroup", () => {
     expect(thinkingButton).toBeDefined();
     fireEvent.click(thinkingButton!);
 
-    // Now reasoning should be hidden
-    expect(screen.queryByText("Deep thought here")).not.toBeInTheDocument();
+    // Now reasoning should be visible
+    expect(screen.getByText("Deep thought here")).toBeInTheDocument();
   });
 
-  test("thinking button re-expands reasoning after second click", () => {
+  test("thinking button collapses and re-expands reasoning on subsequent clicks", () => {
     const msg1 = makeAiMessage({
       id: "ai-1",
       tool_calls: [{ id: "tc-1", name: "bash", args: { description: "Run" } }],
@@ -1042,14 +1047,14 @@ describe("MessageGroup", () => {
     const thinkingButton = buttons.find((btn) =>
       btn.textContent?.includes("Thinking"),
     );
-    // Initially expanded
+    // Initially collapsed
+    expect(screen.queryByText("Thought")).not.toBeInTheDocument();
+    // Click to expand
+    fireEvent.click(thinkingButton!);
     expect(screen.getByText("Thought")).toBeInTheDocument();
-    // Click to collapse
+    // Click again to collapse
     fireEvent.click(thinkingButton!);
     expect(screen.queryByText("Thought")).not.toBeInTheDocument();
-    // Click again to re-expand
-    fireEvent.click(thinkingButton!);
-    expect(screen.getByText("Thought")).toBeInTheDocument();
   });
 
   // ── shouldInlineThinkingToken tests ────────────────────────────────────────
@@ -1317,17 +1322,19 @@ describe("MessageGroup", () => {
 
   // ── Reasoning-only message (no tool calls) ────────────────────────────────
 
-  test("reasoning-only message shows expanded thinking content by default", () => {
+  test("reasoning-only message hides thinking content by default", () => {
     const msg = makeAiMessage({
       id: "ai-1",
       additional_kwargs: { reasoning: "Only reasoning, no tools" },
       tool_calls: [],
     });
     render(<MessageGroup messages={[msg]} isLoading={false} />);
-    // Expanded by default
-    expect(screen.getByText("Only reasoning, no tools")).toBeInTheDocument();
+    // Collapsed by default
+    expect(
+      screen.queryByText("Only reasoning, no tools"),
+    ).not.toBeInTheDocument();
 
-    // Click thinking button to collapse
+    // Click thinking button to expand
     const buttons = screen.getAllByTestId("button");
     const thinkingButton = buttons.find((btn) =>
       btn.textContent?.includes("Thinking"),
@@ -1335,9 +1342,7 @@ describe("MessageGroup", () => {
     expect(thinkingButton).toBeDefined();
     fireEvent.click(thinkingButton!);
 
-    expect(
-      screen.queryByText("Only reasoning, no tools"),
-    ).not.toBeInTheDocument();
+    expect(screen.getByText("Only reasoning, no tools")).toBeInTheDocument();
   });
 
   // ── Debug summary on reasoning step in aboveLastToolCallSteps ──────────────
@@ -1372,7 +1377,9 @@ describe("MessageGroup", () => {
         showTokenDebugSummaries={true}
       />,
     );
-    // The debug summary for ai-1 is visible without expanding (default expanded)
+    // Expand the collapsed above steps first
+    fireEvent.click(screen.getByText("1 more steps").closest("button")!);
+    // The debug summary for ai-1 is visible after expanding
     expect(screen.getByText("300 tokens")).toBeInTheDocument();
   });
 
@@ -2153,8 +2160,9 @@ describe("MessageGroup", () => {
         showTokenDebugSummaries={true}
       />,
     );
-    // The above steps are expanded by default; the debug summary renders once
+    // Expand the collapsed above steps first; the debug summary renders once
     // for the first occurrence of ai-1's messageId
+    fireEvent.click(screen.getByText("2 more steps").closest("button")!);
     expect(screen.getByText("100 tokens")).toBeInTheDocument();
   });
 
@@ -2175,7 +2183,9 @@ describe("MessageGroup", () => {
       ],
     });
     render(<MessageGroup messages={[msg1, msg2]} isLoading={false} />);
-    // The above steps are expanded by default, so msg1's reasoning is visible
+    // msg1's reasoning is hidden until the above steps are expanded
+    expect(screen.queryByText("Earlier thinking...")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText("2 more steps").closest("button")!);
     expect(screen.getByText("Earlier thinking...")).toBeInTheDocument();
   });
 

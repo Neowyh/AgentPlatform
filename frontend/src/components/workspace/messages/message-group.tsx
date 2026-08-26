@@ -55,8 +55,10 @@ export function MessageGroup({
   showTokenDebugSummaries?: boolean;
 }) {
   const { t } = useI18n();
-  const [showAbove, setShowAbove] = useState(true);
-  const [showLastThinking, setShowLastThinking] = useState(true);
+  // Intermediate steps are collapsed by default so that during execution the
+  // user only sees the current activity; details expand on demand.
+  const [showAbove, setShowAbove] = useState(false);
+  const [showLastThinking, setShowLastThinking] = useState(false);
   const steps = useMemo(() => convertToSteps(messages), [messages]);
   const debugStepByMessageId = useMemo(
     () =>
