@@ -1031,7 +1031,7 @@ describe("WorkflowDetailPage", () => {
       expect(mockMutateAsync).toHaveBeenCalledWith({
         name: "test-workflow",
         inputs: { topic: { key: "value" } },
-        modelName: "model-a",
+        modelName: undefined,
       });
     });
 
@@ -1050,7 +1050,7 @@ describe("WorkflowDetailPage", () => {
       expect(mockMutateAsync).toHaveBeenCalledWith({
         name: "test-workflow",
         inputs: { topic: "plain text input" },
-        modelName: "model-a",
+        modelName: undefined,
       });
     });
 
@@ -1087,7 +1087,7 @@ describe("WorkflowDetailPage", () => {
       expect(mockMutateAsync).toHaveBeenCalledWith({
         name: "test-workflow",
         inputs: { topic: "hello" },
-        modelName: "model-a",
+        modelName: undefined,
       });
     });
 
