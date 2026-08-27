@@ -12,6 +12,8 @@
 # —— 办公文档 ——
 officecli                    # Word/Excel/PPT 读写与渲染，离线二进制，办公核心
 data-analysis                # Excel/CSV 本地数据分析（pandas）
+frontend-design              # UI 设计质量提升（810K 安装，Anthropic 官方，纯 LLM）
+web-design-guidelines        # 无障碍/UX 审计（568K 安装，Vercel 官方，纯 LLM）
 
 # —— Anthropic 文档四件套 ——
 anthropic-docx               # Word 创建/编辑/批注/修订（Anthropic 官方）
@@ -28,9 +30,38 @@ structured-longform-writing  # 报告/PRD/公文等结构化长文写作方法�
 humanizer-zh                 # 中文文本去 AI 味
 translate                    # 多语言互译，格式约束自检，纯 LLM 方法论
 
+# —— 代码开发 ——
+tdd                          # 测试驱动开发方法论（750K 安装，mattpocock，纯 LLM）
+improve-codebase-architecture # 代码架构重构建议（776K 安装，mattpocock，纯 LLM）
+code-review                  # 代码审查方法论（397K 安装，mattpocock，纯 LLM）
+diagnosing-bugs              # Bug 诊断流程（457K 安装，mattpocock，纯 LLM）
+domain-modeling               # 领域建模（477K 安装，mattpocock，纯 LLM）
+
+# —— 智能体增强 ——
+proactive-agent              # 主动式智能体（235K 安装，WAL 协议 + 自主巡检，纯 LLM）
+
 # —— 行业场景 ——
 srs-writing                  # GJB438C 软件需求规格说明生成
 fault-zeroing                # 归零排故/故障树构建与归零报告
+abaqus-bc                    # Abaqus 边界条件审查（19 个 FEA 工作流技能之一）
+abaqus-dependency-preflight-validator # Abaqus 依赖预检验证
+abaqus-docs                  # Abaqus API 文档验证
+abaqus-export                # Abaqus 几何/结果导出规划
+abaqus-field                 # Abaqus 初始场/预定义场审查
+abaqus-geometry              # Abaqus 零件/装配/分区审查
+abaqus-interaction           # Abaqus 接触/绑定/连接器审查
+abaqus-load                  # Abaqus 载荷/压力/重力审查
+abaqus-mapped-load-provenance-auditor # Abaqus 映射载荷溯源审计
+abaqus-material              # Abaqus 材料/截面定义审查
+abaqus-mesh                  # Abaqus 单元/网格质量审查
+abaqus-odb                   # Abaqus 结果数据库检查
+abaqus-output                # Abaqus 场/历史输出设计
+abaqus-parametric-project-starter # Abaqus 参数化项目初始化
+abaqus-script-debugging-checklist # Abaqus 脚本调试清单
+abaqus-shared-naming-manifest-builder # Abaqus 命名契约构建
+abaqus-staged-construction-auditor # Abaqus 分阶段构建审计
+abaqus-step                  # Abaqus 分析步/增量审查
+abaqus-tunnel-local-mesh-rebuilder # Abaqus 隧道局部网格重建
 
 # —— 学术（已改造为仅上传 PDF 模式） ——
 academic-paper-review        # 学术论文评审，仅基于上传 PDF 离线工作
