@@ -32,7 +32,7 @@ export function Welcome({
   return (
     <div
       className={cn(
-        "pointer-events-auto mx-auto flex w-full flex-col items-center justify-center gap-2 px-8 py-4 text-center",
+        "mx-auto flex w-full flex-col items-center justify-center gap-2 px-8 py-4 text-center",
         className,
       )}
     >
