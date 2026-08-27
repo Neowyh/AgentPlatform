@@ -9,6 +9,7 @@ const {
   mockLastInputBoxProps,
   mockTextOfMessage,
   mockEnvValues,
+  mockLastScenarioCascadeProps,
 } = vi.hoisted(() => ({
   mockUseThreadChat: vi.fn().mockReturnValue({
     threadId: "test-thread",
@@ -39,6 +40,7 @@ const {
   mockLastInputBoxProps: { current: null as any },
   mockTextOfMessage: vi.fn().mockReturnValue(""),
   mockEnvValues: { NEXT_PUBLIC_STATIC_WEBSITE_ONLY: "false" },
+  mockLastScenarioCascadeProps: { current: null as any },
 }));
 
 vi.mock("@/core/i18n/hooks", () => ({
@@ -113,8 +115,11 @@ vi.mock("@/components/workspace/welcome", () => ({
   Welcome: (props: any) => <div data-testid="welcome" />,
 }));
 
-vi.mock("@/components/workspace/workbench", () => ({
-  WorkbenchHome: () => <div data-testid="workbench-home" />,
+vi.mock("@/components/workspace/scenario", () => ({
+  ScenarioCascadeBar: (props: any) => {
+    mockLastScenarioCascadeProps.current = props;
+    return <div data-testid="scenario-cascade-bar" />;
+  },
 }));
 
 vi.mock("@/core/models/hooks", () => ({
@@ -185,6 +190,7 @@ describe("ChatPage", () => {
       loadMoreHistory: vi.fn(),
     });
     mockLastInputBoxProps.current = null;
+    mockLastScenarioCascadeProps.current = null;
     mockTextOfMessage.mockReturnValue("");
   });
 
@@ -360,6 +366,22 @@ describe("ChatPage", () => {
       capturedOnSend!();
     });
     expect(mockLastInputBoxProps.current.isWelcomeMode).toBe(false);
+  });
+
+  test("new chat defaults the task workbench to the creative scenario", () => {
+    mockUseThreadChat.mockReturnValue({
+      threadId: "test-thread",
+      setThreadId: vi.fn(),
+      isNewThread: true,
+      setIsNewThread: vi.fn(),
+      isMock: false,
+    });
+
+    render(<ChatPage />);
+
+    expect(mockLastScenarioCascadeProps.current.selectedScenario).toBe(
+      "creative",
+    );
   });
 
   test("onStart callback sets threadId and updates URL", () => {
@@ -743,7 +765,7 @@ describe("ChatPage", () => {
     expect(mockLastInputBoxProps.current.disabled).toBe(true);
   });
 
-  test("renders WorkbenchHome in welcome mode", () => {
+  test("does not render the retired workbench content in welcome mode", () => {
     mockUseThreadChat.mockReturnValue({
       threadId: "test-thread",
       setThreadId: vi.fn(),
@@ -754,10 +776,10 @@ describe("ChatPage", () => {
 
     const { rerender } = render(<ChatPage />);
     rerender(<ChatPage />);
-    expect(screen.getByTestId("workbench-home")).toBeInTheDocument();
+    expect(screen.queryByTestId("workbench-home")).not.toBeInTheDocument();
   });
 
-  test("does not render WorkbenchHome after send", () => {
+  test("does not render retired workbench content after send", () => {
     mockUseThreadChat.mockReturnValue({
       threadId: "test-thread",
       setThreadId: vi.fn(),
@@ -771,7 +793,7 @@ describe("ChatPage", () => {
     expect(screen.queryByTestId("workbench-home")).not.toBeInTheDocument();
   });
 
-  test.skip("renders Welcome component in welcome mode", () => {
+  test("renders Welcome component in welcome mode", () => {
     mockUseThreadChat.mockReturnValue({
       threadId: "test-thread",
       setThreadId: vi.fn(),

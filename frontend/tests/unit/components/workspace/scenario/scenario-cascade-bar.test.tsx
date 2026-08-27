@@ -56,19 +56,40 @@ describe("ScenarioCascadeBar", () => {
     onInjectPrompt: vi.fn(),
   };
 
-  it("no selected scenario → only ScenarioTabs rendered", () => {
+  it("no selected scenario → no task entry is rendered", () => {
     render(<ScenarioCascadeBar {...defaultProps} />);
     expect(screen.getByTestId("scenario-cascade-bar")).toBeInTheDocument();
-    expect(screen.getByTestId("scenario-tabs")).toBeInTheDocument();
-    expect(screen.queryByTestId("feature-chip-bar")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("agent-pill-bar")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("task-chip-bar")).not.toBeInTheDocument();
   });
 
-  it("selected scenario → AgentOrSkillBar rendered", () => {
+  it("selected scenario → Agent pill entry is rendered", () => {
     mockGetPillsByScenario.mockReturnValue([
       { agentSlug: "agent-a", label: "Agent A", chips: [] },
     ]);
     render(<ScenarioCascadeBar {...defaultProps} selectedScenario="daily" />);
-    expect(screen.getByTestId("feature-chip-bar")).toBeInTheDocument();
+    expect(screen.getByTestId("agent-pill-bar")).toBeInTheDocument();
+    expect(screen.queryByTestId("task-chip-bar")).not.toBeInTheDocument();
+  });
+
+  it("selected Agent pill → replaces Agent entry with its Task pills", () => {
+    mockGetPillsByScenario.mockReturnValue([
+      { agentSlug: "agent-a", label: "Agent A", chips: [] },
+    ]);
+    mockGetChipsByPill.mockReturnValue([
+      { skillName: "s1", label: "Task A", promptTemplate: "t1" },
+    ]);
+
+    render(
+      <ScenarioCascadeBar
+        {...defaultProps}
+        selectedScenario="daily"
+        selectedPill={{ scenarioId: "daily", agentSlug: "agent-a" }}
+      />,
+    );
+
+    expect(screen.queryByTestId("agent-pill-bar")).not.toBeInTheDocument();
+    expect(screen.getByTestId("task-chip-bar")).toBeInTheDocument();
   });
 
   it("onInjectPrompt calls getTemplateForChip result", async () => {
@@ -184,15 +205,9 @@ describe("ScenarioCascadeBar", () => {
     expect(mockGetPillsByScenario).toHaveBeenCalledWith("creative");
   });
 
-  it("container has items-start class for left alignment", () => {
+  it("container reserves a fixed task-entry row", () => {
     render(<ScenarioCascadeBar {...defaultProps} />);
     const container = screen.getByTestId("scenario-cascade-bar");
-    expect(container.className).toContain("items-start");
-  });
-
-  it("container has gap-2 class for increased spacing", () => {
-    render(<ScenarioCascadeBar {...defaultProps} />);
-    const container = screen.getByTestId("scenario-cascade-bar");
-    expect(container.className).toContain("gap-2");
+    expect(container.className).toContain("min-h-10");
   });
 });
