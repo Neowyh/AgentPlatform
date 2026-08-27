@@ -62,7 +62,7 @@ export const zhCN: Translations = {
 
   // Welcome
   welcome: {
-    greeting: "你好，欢迎回来！",
+    greeting: "iDeer，实现你的idea",
     description:
       "欢迎使用 🦌 iDeer，一个完全开源的超级智能体。通过内置和自定义的 Skills，\niDeer 可以帮你搜索网络、分析数据，还能为你生成幻灯片、\n图片、视频、播客及网页等，几乎可以做任何事情。",
 

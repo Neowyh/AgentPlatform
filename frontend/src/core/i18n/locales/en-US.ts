@@ -62,7 +62,7 @@ export const enUS: Translations = {
 
   // Welcome
   welcome: {
-    greeting: "Hello, again!",
+    greeting: "iDeer, realize your idea",
     description:
       "Welcome to 🦌 iDeer, an open source super agent. With built-in and custom skills, iDeer helps you search on the web, analyze data, and generate artifacts like slides, web pages and do almost anything.",
 

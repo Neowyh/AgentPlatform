@@ -60,7 +60,7 @@ export function ScenarioTabs({ selected, onSelect }: ScenarioTabsProps) {
 
   return (
     <div
-      className="flex items-center justify-center gap-1"
+      className="bg-muted/50 flex items-center justify-center gap-2 rounded-full p-1"
       role="tablist"
       data-testid="scenario-tabs"
       onKeyDown={handleKeyDown}
@@ -79,14 +79,14 @@ export function ScenarioTabs({ selected, onSelect }: ScenarioTabsProps) {
             tabIndex={isActive ? 0 : -1}
             data-state={isActive ? "active" : "inactive"}
             className={cn(
-              "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-all",
+              "flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-medium transition-all",
               isActive
-                ? "bg-primary text-primary-foreground shadow-sm"
-                : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground",
+                ? "bg-foreground text-background shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
             )}
             onClick={() => onSelect(isActive ? null : id)}
           >
-            <Icon className="size-3.5" />
+            <Icon className="size-4" />
             {t.scenarios[id]}
           </button>
         );
