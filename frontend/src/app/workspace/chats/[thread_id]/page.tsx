@@ -327,11 +327,7 @@ export default function ChatPage() {
             </div>
             {isWelcomeMode && (
               <div className="mx-auto max-h-[calc(50vh-8rem)] w-full max-w-(--container-width-md) overflow-y-auto px-4 pb-6">
-                <WorkbenchHome
-                  hideSuggestions={
-                    selectedScenario !== null || selectedPill !== null
-                  }
-                />
+                <WorkbenchHome />
               </div>
             )}
           </main>

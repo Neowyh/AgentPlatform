@@ -14,8 +14,10 @@ vi.mock("@/core/i18n/hooks", () => ({
 }));
 
 const mockGetPillsByScenario = vi.fn();
+const mockGetChipsByPill = vi.fn();
 vi.mock("@/core/scenarios/config", () => ({
   getPillsByScenario: (...args: unknown[]) => mockGetPillsByScenario(...args),
+  getChipsByPill: (...args: unknown[]) => mockGetChipsByPill(...args),
 }));
 
 const mockGetTemplateForChip = vi.fn();
@@ -40,6 +42,7 @@ describe("ScenarioCascadeBar", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetPillsByScenario.mockReturnValue([]);
+    mockGetChipsByPill.mockReturnValue([]);
     mockGetTemplateForChip.mockReturnValue(undefined);
   });
 

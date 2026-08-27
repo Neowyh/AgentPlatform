@@ -73,13 +73,7 @@ export const zhCN: Translations = {
 
   // Workbench home (welcome state)
   workbench: {
-    tryAsking: "试试这样问",
-    agentsTitle: "选择一个智能体",
     recentChatsTitle: "最近的对话",
-    viewAllAgents: "查看全部",
-    emptyAgents: "还没有可用的智能体",
-    loadError: "智能体加载失败，请稍后重试",
-    promptTemplate: "你好，我想让「{name}」帮我：",
   },
 
   // Scenario cascade bar
@@ -99,7 +93,7 @@ export const zhCN: Translations = {
 
   // Input Box
   inputBox: {
-    placeholder: "今天我能为你做些什么？",
+    placeholder: "今天我能为你做些什么？ /调用技能",
     createSkillPrompt:
       "我们一起用 skill-creator 技能来创建一个技能吧。先问问我希望这个技能能做什么。",
     addAttachments: "添加附件",
