@@ -16,6 +16,7 @@ import {
   MESSAGE_LIST_DEFAULT_PADDING_BOTTOM,
 } from "@/components/workspace/messages";
 import { ThreadContext } from "@/components/workspace/messages/context";
+import { ScenarioCascadeBar } from "@/components/workspace/scenario";
 import { ThreadTitle } from "@/components/workspace/thread-title";
 import { TodoList } from "@/components/workspace/todo-list";
 import { TokenUsageIndicator } from "@/components/workspace/token-usage-indicator";
@@ -24,6 +25,7 @@ import { WorkbenchHome } from "@/components/workspace/workbench";
 import { useI18n } from "@/core/i18n/hooks";
 import { useModels } from "@/core/models/hooks";
 import { useNotification } from "@/core/notification/hooks";
+import { useScenarioSelection } from "@/core/scenarios/hooks";
 import { useLocalSettings, useThreadSettings } from "@/core/settings";
 import { useThreadStream, useThreadTokenUsage } from "@/core/threads/hooks";
 import { threadTokenUsageToTokenUsage } from "@/core/threads/token-usage";
@@ -44,6 +46,21 @@ export default function ChatPage() {
   const [settings, setSettings] = useThreadSettings(threadId);
   const [localSettings, setLocalSettings] = useLocalSettings();
   const { tokenUsageEnabled } = useModels();
+  const {
+    selectedScenario,
+    selectedPill,
+    selectedChip,
+    selectScenario,
+    togglePill,
+    toggleChip,
+    resetSelection,
+  } = useScenarioSelection();
+  const [pendingTemplate, setPendingTemplate] = useState<string | null>(null);
+
+  useEffect(() => {
+    resetSelection();
+    setPendingTemplate(null);
+  }, [threadId, resetSelection]);
   const threadTokenUsage = useThreadTokenUsage(
     isNewThread || isMock ? undefined : threadId,
     { enabled: tokenUsageEnabled && !isMock },
@@ -186,6 +203,15 @@ export default function ChatPage() {
                     : "max-w-(--container-width-md)",
                 )}
               >
+                <ScenarioCascadeBar
+                  selectedScenario={selectedScenario}
+                  selectedPill={selectedPill}
+                  selectedChip={selectedChip}
+                  onSelectScenario={selectScenario}
+                  onTogglePill={togglePill}
+                  onToggleChip={toggleChip}
+                  onInjectPrompt={(template) => setPendingTemplate(template)}
+                />
                 {hasTodos && (
                   <div
                     className={cn(
@@ -227,6 +253,8 @@ export default function ChatPage() {
                     extraHeader={
                       isWelcomeMode && <Welcome mode={settings.context.mode} />
                     }
+                    pendingTemplate={pendingTemplate}
+                    onPendingTemplateConsumed={() => setPendingTemplate(null)}
                     disabled={
                       isMock ||
                       env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true" ||
@@ -256,7 +284,11 @@ export default function ChatPage() {
             </div>
             {isWelcomeMode && (
               <div className="mx-auto max-h-[calc(50vh-8rem)] w-full max-w-(--container-width-md) overflow-y-auto px-4 pb-6">
-                <WorkbenchHome />
+                <WorkbenchHome
+                  hideSuggestions={
+                    selectedScenario !== null || selectedPill !== null
+                  }
+                />
               </div>
             )}
           </main>

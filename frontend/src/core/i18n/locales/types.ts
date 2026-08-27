@@ -67,6 +67,13 @@ export interface Translations {
     promptTemplate: string;
   };
 
+  // Scenario cascade bar
+  scenarios: {
+    daily: string;
+    creative: string;
+    professional: string;
+  };
+
   // Clipboard
   clipboard: {
     copyToClipboard: string;

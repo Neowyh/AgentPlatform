@@ -82,6 +82,13 @@ export const zhCN: Translations = {
     promptTemplate: "你好，我想让「{name}」帮我：",
   },
 
+  // Scenario cascade bar
+  scenarios: {
+    daily: "日常办公",
+    creative: "创意设计",
+    professional: "专业任务",
+  },
+
   // Clipboard
   clipboard: {
     copyToClipboard: "复制到剪贴板",

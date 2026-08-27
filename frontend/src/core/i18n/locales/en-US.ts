@@ -82,6 +82,13 @@ export const enUS: Translations = {
     promptTemplate: "Hi, I'd like {name} to help me with: ",
   },
 
+  // Scenario cascade bar
+  scenarios: {
+    daily: "Daily Office",
+    creative: "Creative Design",
+    professional: "Professional Tasks",
+  },
+
   // Clipboard
   clipboard: {
     copyToClipboard: "Copy to clipboard",

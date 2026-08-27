@@ -86,6 +86,18 @@ import { Tooltip } from "./tooltip";
 
 type InputMode = "flash" | "thinking" | "pro" | "ultra";
 
+function highlightPlaceholder(text: string, root: HTMLElement | null) {
+  if (!root) return;
+  const textarea = root.querySelector<HTMLTextAreaElement>("textarea");
+  if (!textarea) return;
+  const selEnd = text.lastIndexOf("]");
+  if (selEnd === -1) return;
+  const selStart = text.lastIndexOf("[", selEnd);
+  if (selStart === -1 || selStart > selEnd) return;
+  textarea.setSelectionRange(selStart, selEnd + 1);
+  textarea.focus();
+}
+
 function getResolvedMode(
   mode: InputMode | undefined,
   supportsThinking: boolean,
@@ -109,6 +121,8 @@ export function InputBox({
   isWelcomeMode,
   threadId,
   initialValue,
+  pendingTemplate,
+  onPendingTemplateConsumed,
   onContextChange,
   onFollowupsVisibilityChange,
   onSubmit,
@@ -134,6 +148,8 @@ export function InputBox({
   isWelcomeMode?: boolean;
   threadId: string;
   initialValue?: string;
+  pendingTemplate?: string | null;
+  onPendingTemplateConsumed?: () => void;
   onContextChange?: (
     context: Omit<
       AgentThreadContext,
@@ -166,6 +182,7 @@ export function InputBox({
   const [pendingSuggestion, setPendingSuggestion] = useState<string | null>(
     null,
   );
+  const pendingSourceRef = useRef<"followup" | "cascade">("followup");
 
   useEffect(() => {
     if (models.length === 0) {
@@ -308,6 +325,7 @@ export function InputBox({
       }
       const current = (textInput.value ?? "").trim();
       if (current) {
+        pendingSourceRef.current = "followup";
         setPendingSuggestion(suggestion);
         setConfirmOpen(true);
         return;
@@ -324,11 +342,19 @@ export function InputBox({
       setConfirmOpen(false);
       return;
     }
+    const isCascade = pendingSourceRef.current === "cascade";
     textInput.setInput(pendingSuggestion);
     setFollowupsHidden(true);
     setConfirmOpen(false);
     setPendingSuggestion(null);
-    setTimeout(() => requestFormSubmit(), 0);
+    pendingSourceRef.current = "followup";
+    if (isCascade) {
+      setTimeout(() => {
+        highlightPlaceholder(pendingSuggestion, promptRootRef.current);
+      }, 50);
+    } else {
+      setTimeout(() => requestFormSubmit(), 0);
+    }
   }, [pendingSuggestion, requestFormSubmit, textInput]);
 
   const confirmAppendAndSend = useCallback(() => {
@@ -336,6 +362,7 @@ export function InputBox({
       setConfirmOpen(false);
       return;
     }
+    const isCascade = pendingSourceRef.current === "cascade";
     const current = (textInput.value ?? "").trim();
     const next = current
       ? `${current}\n${pendingSuggestion}`
@@ -344,7 +371,14 @@ export function InputBox({
     setFollowupsHidden(true);
     setConfirmOpen(false);
     setPendingSuggestion(null);
-    setTimeout(() => requestFormSubmit(), 0);
+    pendingSourceRef.current = "followup";
+    if (isCascade) {
+      setTimeout(() => {
+        highlightPlaceholder(next, promptRootRef.current);
+      }, 50);
+    } else {
+      setTimeout(() => requestFormSubmit(), 0);
+    }
   }, [pendingSuggestion, requestFormSubmit, textInput]);
 
   const showFollowups =
@@ -360,6 +394,23 @@ export function InputBox({
   useEffect(() => {
     return () => onFollowupsVisibilityChange?.(false);
   }, [onFollowupsVisibilityChange]);
+
+  useEffect(() => {
+    if (!pendingTemplate) return;
+    const current = (textInput.value ?? "").trim();
+    if (!current) {
+      textInput.setInput(pendingTemplate);
+      onPendingTemplateConsumed?.();
+      setTimeout(() => {
+        highlightPlaceholder(pendingTemplate, promptRootRef.current);
+      }, 50);
+    } else {
+      pendingSourceRef.current = "cascade";
+      setPendingSuggestion(pendingTemplate);
+      setConfirmOpen(true);
+      onPendingTemplateConsumed?.();
+    }
+  }, [pendingTemplate, onPendingTemplateConsumed, textInput]);
 
   useEffect(() => {
     messagesRef.current = thread.messages;
