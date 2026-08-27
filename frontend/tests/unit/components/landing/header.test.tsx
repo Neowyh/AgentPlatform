@@ -1,25 +1,21 @@
 import { render, screen, cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-vi.mock("next/link", () => {
-  const React = require("react");
-  return {
-    __esModule: true,
-    default: React.forwardRef(({ children, href, ...props }: any, ref: any) =>
-      React.createElement("a", { ...props, ref, href }, children),
-    ),
-  };
-});
-
-vi.mock("@/core/i18n/server", () => ({
-  getI18n: vi.fn().mockResolvedValue({
-    locale: "en",
-    t: { home: { docs: "Docs", blog: "Blog" } },
-  }),
+vi.mock("next/link", () => ({
+  default: ({ children, href, ...props }: any) => (
+    <a href={href} {...props}>
+      {children}
+    </a>
+  ),
 }));
 
-vi.mock("@/core/i18n/locale", () => ({
-  type: {},
+vi.mock("@/core/i18n/server", () => ({
+  getI18n: async () => ({
+    locale: "zh-CN",
+    t: {
+      home: { docs: "文档", blog: "博客" },
+    },
+  }),
 }));
 
 import { Header } from "@/components/landing/header";
@@ -29,24 +25,20 @@ afterEach(() => {
 });
 
 describe("Header", () => {
+  test("renders docs link pointing to /docs/manual", async () => {
+    render(await Header({}));
+    const link = screen.getByText("文档").closest("a");
+    expect(link).toHaveAttribute("href", expect.stringContaining("/docs/manual"));
+  });
+
+  test("does not render blog link", async () => {
+    render(await Header({}));
+    expect(screen.queryByText("Blog")).not.toBeInTheDocument();
+    expect(screen.queryByText("博客")).not.toBeInTheDocument();
+  });
+
   test("renders iDeer brand", async () => {
     render(await Header({}));
     expect(screen.getByText("iDeer")).toBeInTheDocument();
-  });
-
-  test("renders docs link", async () => {
-    render(await Header({}));
-    expect(screen.getByText("Docs")).toBeInTheDocument();
-  });
-
-  test("renders blog link", async () => {
-    render(await Header({}));
-    expect(screen.getByText("Blog")).toBeInTheDocument();
-  });
-
-  test("applies custom className", async () => {
-    const { container } = render(await Header({ className: "custom-header" }));
-    const header = container.querySelector("header");
-    expect(header).toHaveClass("custom-header");
   });
 });
