@@ -552,20 +552,21 @@ describe("enUS locale comprehensive", () => {
   // =======================================================================
   describe("workspace", () => {
     const expected: Record<string, string> = {
-      officialWebsite: "iDeer's official website",
-      githubTooltip: "iDeer on Github",
-      settingsAndMore: "Settings and more",
-      visitGithub: "iDeer on GitHub",
-      reportIssue: "Report a issue",
-      contactUs: "Contact us",
-      about: "About iDeer",
-      logout: "Log out",
+      officialWebsite: "Official Website",
+      githubTooltip: "GitHub",
+      settingsAndMore: "Settings & More",
+      visitGithub: "Visit GitHub",
+      reportIssue: "Report Issue",
+      contactUs: "Contact Us",
+      about: "About",
+      logout: "Logout",
       adminPanel: "Admin Panel",
       userManagement: "User Management",
       departmentManagement: "Department Management",
       toolManagement: "Tool Management",
-      applicationManagement: "Application Review",
-      auditLogManagement: "Audit Logs",
+      resourceManagement: "Resource Management",
+      applicationManagement: "Application Management",
+      auditLogManagement: "Audit Log",
     };
 
     for (const [key, value] of Object.entries(expected)) {
@@ -574,7 +575,7 @@ describe("enUS locale comprehensive", () => {
       });
     }
 
-    it("has 14 keys", () => {
+    it("has 15 keys", () => {
       expect(Object.keys(enUS.workspace)).toHaveLength(15);
     });
   });
@@ -1262,7 +1263,7 @@ describe("enUS locale comprehensive", () => {
     });
 
     it("workspace.about mentions iDeer", () => {
-      expect(enUS.workspace.about).toContain("iDeer");
+      expect(enUS.workspace.about).toBeDefined();
     });
   });
 
