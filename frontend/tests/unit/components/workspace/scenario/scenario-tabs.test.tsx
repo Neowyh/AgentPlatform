@@ -118,4 +118,30 @@ describe("ScenarioTabs", () => {
     expect(dailyTab).toHaveAttribute("aria-selected", "false");
     expect(dailyTab).toHaveAttribute("data-state", "inactive");
   });
+
+  it("active tab has font-semibold class", () => {
+    render(<ScenarioTabs selected="daily" onSelect={vi.fn()} />);
+    const activeTab = screen.getByRole("tab", { name: /日常办公/ });
+    expect(activeTab.className).toContain("font-semibold");
+  });
+
+  it("active tab has bg-muted class (not bg-muted/60)", () => {
+    render(<ScenarioTabs selected="daily" onSelect={vi.fn()} />);
+    const activeTab = screen.getByRole("tab", { name: /日常办公/ });
+    expect(activeTab.className).toContain("bg-muted");
+    expect(activeTab.className).not.toContain("bg-muted/60");
+  });
+
+  it("non-active tab has hover:bg-muted/60 class", () => {
+    render(<ScenarioTabs selected="daily" onSelect={vi.fn()} />);
+    const inactiveTab = screen.getByRole("tab", { name: /创意设计/ });
+    expect(inactiveTab.className).toContain("hover:bg-muted/60");
+  });
+
+  it("tab renders icon (svg) and label text", () => {
+    render(<ScenarioTabs selected={null} onSelect={vi.fn()} />);
+    const dailyTab = screen.getByRole("tab", { name: /日常办公/ });
+    expect(dailyTab.querySelector("svg")).toBeInTheDocument();
+    expect(dailyTab.textContent).toContain("日常办公");
+  });
 });

@@ -227,23 +227,10 @@ export default function ChatPage() {
                 tokenUsageInlineMode={tokenUsageInlineMode}
               />
             </div>
-            <div
-              className={cn(
-                "right-0 bottom-0 left-0 z-30 flex justify-center px-4",
-                isWelcomeMode ? "absolute" : "relative shrink-0 pb-4",
-              )}
-            >
-              <div
-                className={cn(
-                  "relative w-full",
-                  isWelcomeMode && "-translate-y-[calc(50vh-96px)]",
-                  isWelcomeMode
-                    ? "max-w-(--container-width-sm)"
-                    : "max-w-(--container-width-md)",
-                )}
-              >
+            <div className="relative z-30 flex shrink-0 justify-center px-4 pb-4">
+              <div className="relative w-full max-w-(--container-width-md)">
                 {isWelcomeMode && (
-                  <div className="absolute top-0 right-0 left-0 flex -translate-y-[calc(100%+8px)] justify-center">
+                  <div className="flex justify-center pb-2">
                     <Welcome mode={settings.context.mode} />
                   </div>
                 )}
@@ -257,32 +244,17 @@ export default function ChatPage() {
                   onInjectPrompt={(template) => setPendingTemplate(template)}
                 />
                 {hasTodos && (
-                  <div
-                    className={cn(
-                      "right-0 left-0 z-0",
-                      isWelcomeMode ? "absolute -top-4" : "relative",
-                    )}
-                  >
-                    <div
-                      className={cn(
-                        "right-0 bottom-0 left-0",
-                        isWelcomeMode ? "absolute" : "relative",
-                      )}
-                    >
-                      <TodoList
-                        className="bg-background/5"
-                        todos={thread.values.todos ?? []}
-                        hidden={false}
-                      />
-                    </div>
+                  <div className="relative z-0">
+                    <TodoList
+                      className="bg-background/5"
+                      todos={thread.values.todos ?? []}
+                      hidden={false}
+                    />
                   </div>
                 )}
                 {mountedRef.current ? (
                   <InputBox
-                    className={cn(
-                      "bg-background/5 w-full",
-                      isWelcomeMode && "-translate-y-4",
-                    )}
+                    className="bg-background/5 w-full"
                     isWelcomeMode={isWelcomeMode}
                     threadId={threadId}
                     autoFocus={isWelcomeMode}
@@ -312,10 +284,7 @@ export default function ChatPage() {
                 ) : (
                   <div
                     aria-hidden="true"
-                    className={cn(
-                      "bg-background/5 h-32 w-full rounded-2xl",
-                      isWelcomeMode && "-translate-y-4",
-                    )}
+                    className="bg-background/5 h-32 w-full rounded-2xl"
                   />
                 )}
                 {env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true" && (
