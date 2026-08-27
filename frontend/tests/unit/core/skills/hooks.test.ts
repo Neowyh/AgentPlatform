@@ -3,18 +3,16 @@ import { renderHook, waitFor } from "@testing-library/react";
 import React from "react";
 import { describe, test, expect, vi, afterEach } from "vitest";
 
+const mockLoadSkills = vi.fn();
 vi.mock("@/core/skills/api", () => ({
+  loadSkills: mockLoadSkills,
   enableSkill: vi.fn(),
 }));
 
-const mockLoadSkills = vi.fn();
-vi.mock("@/core/skills", async (importOriginal) => {
-  const actual = await importOriginal();
-  return {
-    ...actual,
-    loadSkills: mockLoadSkills,
-  };
-});
+vi.mock("@/core/skills", () => ({
+  loadSkills: mockLoadSkills,
+  enableSkill: vi.fn(),
+}));
 
 vi.mock("@/env", () => ({
   env: {
