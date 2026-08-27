@@ -75,18 +75,16 @@ export default function ChatPage() {
   const selectedTags: SelectedTag[] = useMemo(() => {
     if (!selectedPill) return [];
     const { agentSlug } = selectedPill;
-    const label = agentSlug
-      .split("-")
-      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-      .join(" ");
+    const pillLabel = t.scenarios.pills[agentSlug] ?? agentSlug;
+    const scenarioLabel = selectedScenario ? t.scenarios[selectedScenario] : "";
     return [
       {
         id: agentSlug,
-        label,
+        label: scenarioLabel ? `${scenarioLabel} / ${pillLabel}` : pillLabel,
         icon: selectedScenario ? SCENARIO_ICONS[selectedScenario] : undefined,
       },
     ];
-  }, [selectedPill, selectedScenario, SCENARIO_ICONS]);
+  }, [selectedPill, selectedScenario, SCENARIO_ICONS, t]);
 
   const handleRemoveTag = useCallback(
     (id: string) => {
@@ -244,6 +242,11 @@ export default function ChatPage() {
                     : "max-w-(--container-width-md)",
                 )}
               >
+                {isWelcomeMode && (
+                  <div className="absolute top-0 right-0 left-0 flex -translate-y-[calc(100%+8px)] justify-center">
+                    <Welcome mode={settings.context.mode} />
+                  </div>
+                )}
                 <ScenarioCascadeBar
                   selectedScenario={selectedScenario}
                   selectedPill={selectedPill}
@@ -253,11 +256,6 @@ export default function ChatPage() {
                   onToggleChip={toggleChip}
                   onInjectPrompt={(template) => setPendingTemplate(template)}
                 />
-                {isWelcomeMode && (
-                  <div className="flex justify-center py-2">
-                    <Welcome mode={settings.context.mode} />
-                  </div>
-                )}
                 {hasTodos && (
                   <div
                     className={cn(

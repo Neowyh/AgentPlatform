@@ -65,7 +65,7 @@ export function FeatureChipBar({
   return (
     <div
       className={cn(
-        "flex items-center gap-2 overflow-x-auto py-2 [&::-webkit-scrollbar]:hidden",
+        "flex items-center gap-2 overflow-x-auto py-1.5 [&::-webkit-scrollbar]:hidden",
         className,
       )}
       role="tablist"

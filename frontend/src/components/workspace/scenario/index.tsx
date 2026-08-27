@@ -62,7 +62,7 @@ export function ScenarioCascadeBar({
 
   return (
     <div
-      className="flex flex-col items-center gap-2"
+      className="flex flex-col items-center gap-1"
       data-testid="scenario-cascade-bar"
     >
       <ScenarioTabs selected={selectedScenario} onSelect={onSelectScenario} />
