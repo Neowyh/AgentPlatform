@@ -76,7 +76,7 @@ export function AgentPillBar({
             tabIndex={isActive ? 0 : -1}
             data-state={isActive ? "active" : "inactive"}
             className={cn(
-              "shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-all",
+              "shrink-0 rounded-full border px-4 py-2 text-sm font-medium transition-all",
               isActive
                 ? "border-primary bg-primary/10 text-primary"
                 : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground border-transparent",

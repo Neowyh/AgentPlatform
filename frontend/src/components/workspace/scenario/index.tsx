@@ -8,14 +8,13 @@ import type {
   ScenarioId,
 } from "@/core/scenarios/types";
 
-import { FeatureChipBar } from "./feature-chip-bar";
-import { ScenarioTabs } from "./scenario-tabs";
+import { AgentPillBar } from "./agent-pill-bar";
+import { TaskChipBar } from "./task-chip-bar";
 
 interface ScenarioCascadeBarProps {
   selectedScenario: ScenarioId | null;
   selectedPill: PillSelection;
   selectedChip: ChipSelection;
-  onSelectScenario: (id: ScenarioId | null) => void;
   onTogglePill: (scenarioId: ScenarioId, agentSlug: string) => void;
   onToggleChip: (
     scenarioId: ScenarioId,
@@ -29,7 +28,6 @@ export function ScenarioCascadeBar({
   selectedScenario,
   selectedPill,
   selectedChip,
-  onSelectScenario,
   onTogglePill,
   onToggleChip,
   onInjectPrompt,
@@ -61,28 +59,24 @@ export function ScenarioCascadeBar({
   };
 
   return (
-    <div
-      className="flex flex-col items-start gap-2"
-      data-testid="scenario-cascade-bar"
-    >
-      <ScenarioTabs selected={selectedScenario} onSelect={onSelectScenario} />
+    <div className="min-h-10 w-full" data-testid="scenario-cascade-bar">
       {selectedScenario && !selectedPill && pills.length > 0 && (
-        <FeatureChipBar
-          items={pills.map((p) => ({
-            id: p.agentSlug,
-            label: p.label,
-          }))}
-          onSelect={(id) => onTogglePill(selectedScenario, id)}
+        <AgentPillBar
+          pills={pills}
+          selectedSlug={null}
+          onSelect={(agentSlug) => onTogglePill(selectedScenario, agentSlug)}
         />
       )}
       {selectedPill && chips.length > 0 && (
-        <FeatureChipBar
-          items={chips.map((c) => ({
-            id: c.skillName,
-            label: c.label,
-          }))}
-          onSelect={(id) =>
-            handleToggleChip(selectedScenario!, selectedPill.agentSlug, id)
+        <TaskChipBar
+          chips={chips}
+          selectedSkillName={selectedChip?.skillName ?? null}
+          onSelect={(skillName) =>
+            handleToggleChip(
+              selectedScenario!,
+              selectedPill.agentSlug,
+              skillName,
+            )
           }
         />
       )}
