@@ -21,7 +21,7 @@ vi.mock("@/core/i18n/hooks", () => ({
         create: "Create",
       },
       inputBox: {
-        placeholder: "How can I assist you today?",
+        placeholder: "How can I assist you today? /invoke skill",
         addAttachments: "Add attachments",
         mode: "Mode",
         flashMode: "Flash",
@@ -49,28 +49,6 @@ vi.mock("@/core/i18n/hooks", () => ({
         followupConfirmDescription: "You already have text in the input.",
         followupConfirmAppend: "Append & send",
         followupConfirmReplace: "Replace & send",
-        suggestions: [
-          {
-            suggestion: "Write",
-            prompt: "Write a blog post about [topic]",
-            icon: () => null,
-          },
-          {
-            suggestion: "No Prompt Suggestion",
-            prompt: undefined,
-            icon: () => null,
-          },
-        ],
-        suggestionsCreate: [
-          {
-            type: "separator" as const,
-          },
-          {
-            suggestion: "Webpage",
-            prompt: "Create a webpage about [topic]",
-            icon: () => null,
-          },
-        ],
       },
     },
   }),
@@ -138,14 +116,6 @@ vi.mock("@/components/ai-elements/suggestion", () => ({
     <div data-testid="suggestions" {...props}>
       {children}
     </div>
-  ),
-}));
-
-vi.mock("@/components/ui/confetti-button", () => ({
-  ConfettiButton: ({ children, onClick, ...props }: any) => (
-    <button data-testid="confetti-button" onClick={onClick} {...props}>
-      {children}
-    </button>
   ),
 }));
 
@@ -400,7 +370,7 @@ describe("InputBox", () => {
       expect(textarea).toBeInTheDocument();
       expect(textarea).toHaveAttribute(
         "placeholder",
-        "How can I assist you today?",
+        "How can I assist you today? /invoke skill",
       );
     });
 
@@ -1408,26 +1378,6 @@ describe("InputBox", () => {
       const container = screen.getByTestId("input-box");
       expect(container.className).toContain("gap-2");
     });
-
-    test("renders SuggestionList in welcome mode", () => {
-      render(<InputBox {...defaultProps()} isWelcomeMode />);
-      // SuggestionList renders a Suggestions component
-      expect(screen.getByTestId("suggestions")).toBeInTheDocument();
-    });
-
-    test("does not render SuggestionList when not in welcome mode", () => {
-      render(<InputBox {...defaultProps()} isWelcomeMode={false} />);
-      expect(screen.queryByTestId("suggestions")).not.toBeInTheDocument();
-    });
-
-    test("hides SuggestionList when URL has mode=skill", () => {
-      (useSearchParams as unknown as ReturnType<typeof vi.fn>).mockReturnValue(
-        new URLSearchParams("mode=skill"),
-      );
-
-      render(<InputBox {...defaultProps()} isWelcomeMode />);
-      expect(screen.queryByTestId("suggestions")).not.toBeInTheDocument();
-    });
   });
 
   // ----- onFollowupsVisibilityChange callback -----
@@ -1648,26 +1598,6 @@ describe("InputBox", () => {
       expect(attachButton).toBeTruthy();
       await user.click(attachButton!);
       expect(mockOpenFileDialog).toHaveBeenCalledOnce();
-    });
-  });
-
-  // ----- SuggestionList in welcome mode -----
-
-  describe("SuggestionList", () => {
-    test("renders surprise me button in welcome mode", () => {
-      render(<InputBox {...defaultProps()} isWelcomeMode />);
-      expect(screen.getByTestId("confetti-button")).toBeInTheDocument();
-      expect(screen.getByText("Surprise")).toBeInTheDocument();
-    });
-
-    test("renders suggestion items in welcome mode", () => {
-      render(<InputBox {...defaultProps()} isWelcomeMode />);
-      expect(screen.getByText("Write")).toBeInTheDocument();
-    });
-
-    test("renders create dropdown in welcome mode", () => {
-      render(<InputBox {...defaultProps()} isWelcomeMode />);
-      expect(screen.getByText("Create")).toBeInTheDocument();
     });
   });
 
@@ -2239,98 +2169,6 @@ describe("InputBox", () => {
       );
 
       expect(screen.getAllByText(/Reasoning Effort/).length).toBeGreaterThan(0);
-    });
-  });
-
-  // ----- SuggestionList handleSuggestionClick -----
-
-  describe("SuggestionList - handleSuggestionClick", () => {
-    test("clicking suggestion with undefined prompt is a no-op", async () => {
-      const user = userEvent.setup();
-      render(<InputBox {...defaultProps()} isWelcomeMode />);
-
-      // Click the suggestion with undefined prompt
-      const noPromptSuggestion = screen.getByText("No Prompt Suggestion");
-      expect(noPromptSuggestion).toBeInTheDocument();
-      await user.click(noPromptSuggestion);
-
-      // setInput should not have been called since prompt is undefined
-      expect(mockSetInput).not.toHaveBeenCalled();
-    });
-
-    test("clicking suggestion with valid prompt calls setInput", async () => {
-      const user = userEvent.setup();
-      render(<InputBox {...defaultProps()} isWelcomeMode />);
-
-      // Click the suggestion with a valid prompt
-      const writeSuggestion = screen.getByText("Write");
-      await user.click(writeSuggestion);
-
-      expect(mockSetInput).toHaveBeenCalledWith(
-        "Write a blog post about [topic]",
-      );
-    });
-
-    test("clicking surprise me button calls setInput with surpriseMePrompt", async () => {
-      const user = userEvent.setup();
-      render(<InputBox {...defaultProps()} isWelcomeMode />);
-
-      const surpriseButton = screen.getByText("Surprise");
-      await user.click(surpriseButton);
-
-      expect(mockSetInput).toHaveBeenCalledWith("Surprise me");
-    });
-  });
-
-  // ----- suggestionsCreate with separator type -----
-
-  describe("SuggestionList - suggestionsCreate with separator", () => {
-    test("renders separator in create dropdown", async () => {
-      const user = userEvent.setup();
-      render(<InputBox {...defaultProps()} isWelcomeMode />);
-
-      // Open the Create dropdown
-      const createButton = screen.getByText("Create");
-      await user.click(createButton);
-
-      // The separator should render as a separator element
-      // In Radix UI, DropdownMenuSeparator renders as a role="separator"
-      await waitFor(() => {
-        const separators = document.querySelectorAll('[role="separator"]');
-        expect(separators.length).toBeGreaterThan(0);
-      });
-    });
-
-    test("renders regular items after separator in create dropdown", async () => {
-      const user = userEvent.setup();
-      render(<InputBox {...defaultProps()} isWelcomeMode />);
-
-      // Open the Create dropdown
-      const createButton = screen.getByText("Create");
-      await user.click(createButton);
-
-      // The Webpage item should still be visible
-      await waitFor(() => {
-        expect(screen.getByText("Webpage")).toBeInTheDocument();
-      });
-    });
-
-    test("clicking create dropdown item calls setInput with prompt", async () => {
-      const user = userEvent.setup();
-      render(<InputBox {...defaultProps()} isWelcomeMode />);
-
-      const createButton = screen.getByText("Create");
-      await user.click(createButton);
-
-      await waitFor(() => {
-        expect(screen.getByText("Webpage")).toBeInTheDocument();
-      });
-
-      await user.click(screen.getByText("Webpage"));
-
-      expect(mockSetInput).toHaveBeenCalledWith(
-        "Create a webpage about [topic]",
-      );
     });
   });
 

@@ -58,13 +58,7 @@ export interface Translations {
 
   // Workbench home (welcome state)
   workbench: {
-    tryAsking: string;
-    agentsTitle: string;
     recentChatsTitle: string;
-    viewAllAgents: string;
-    emptyAgents: string;
-    loadError: string;
-    promptTemplate: string;
   };
 
   // Scenario cascade bar
