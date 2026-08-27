@@ -454,8 +454,13 @@ export interface Translations {
     toggleSidebar: string;
   };
 
-  // Resource governance
+  // Resources
   resources: {
+    title: string;
+    description: string;
+    experts: string;
+    skills: string;
+    connectors: string;
     impactTitle: string;
     impactSummary: (
       total: number,
@@ -481,6 +486,25 @@ export interface Translations {
     notificationsAdminVisibilityReduced: (count: number) => string;
     notificationsUnknownEvent: string;
     notificationsLoadFailed: string;
+  };
+
+  // Automations
+  automations: {
+    title: string;
+    description: string;
+    create: string;
+    templates: string;
+    myAutomations: string;
+  };
+
+  // Library
+  library: {
+    title: string;
+    description: string;
+    upload: string;
+    search: string;
+    documents: string;
+    knowledgeBases: string;
   };
 
   // Settings

@@ -1,8 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { enableSkill } from "./api";
-
-import { loadSkills } from ".";
+import { enableSkill, loadSkills } from "./api";
 
 export function useSkills() {
   const { data, isLoading, error } = useQuery({
