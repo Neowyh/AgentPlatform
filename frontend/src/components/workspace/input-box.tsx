@@ -547,7 +547,7 @@ export function InputBox({
         {...props}
       >
         {extraHeader && (
-          <div className="absolute top-0 right-0 left-0 z-10">
+          <div className="pointer-events-none absolute top-0 right-0 left-0 z-10">
             <div className="absolute right-0 bottom-0 left-0 flex items-center justify-center">
               {extraHeader}
             </div>
