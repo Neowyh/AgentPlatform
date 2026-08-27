@@ -1448,22 +1448,6 @@ describe("InputBox", () => {
     });
   });
 
-  // ----- Extra header -----
-
-  describe("extra header", () => {
-    test("renders extraHeader content when provided", () => {
-      render(
-        <InputBox {...defaultProps()} extraHeader={<div>Custom Header</div>} />,
-      );
-      expect(screen.getByText("Custom Header")).toBeInTheDocument();
-    });
-
-    test("does not render extra header area when not provided", () => {
-      const { container } = render(<InputBox {...defaultProps()} />);
-      expect(container.textContent).not.toContain("Custom Header");
-    });
-  });
-
   // ----- Suggestions API error handling -----
 
   describe("suggestions API error handling", () => {

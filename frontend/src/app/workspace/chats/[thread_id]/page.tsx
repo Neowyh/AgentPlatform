@@ -253,6 +253,11 @@ export default function ChatPage() {
                   onToggleChip={toggleChip}
                   onInjectPrompt={(template) => setPendingTemplate(template)}
                 />
+                {isWelcomeMode && (
+                  <div className="flex justify-center py-2">
+                    <Welcome mode={settings.context.mode} />
+                  </div>
+                )}
                 {hasTodos && (
                   <div
                     className={cn(
@@ -291,9 +296,6 @@ export default function ChatPage() {
                           : "ready"
                     }
                     context={settings.context}
-                    extraHeader={
-                      isWelcomeMode && <Welcome mode={settings.context.mode} />
-                    }
                     pendingTemplate={pendingTemplate}
                     onPendingTemplateConsumed={() => setPendingTemplate(null)}
                     selectedTags={selectedTags}
