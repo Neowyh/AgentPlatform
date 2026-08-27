@@ -60,7 +60,7 @@ export function ScenarioTabs({ selected, onSelect }: ScenarioTabsProps) {
 
   return (
     <div
-      className="bg-muted/50 flex items-center justify-center gap-2 rounded-full p-1"
+      className="bg-background/80 border-border/50 flex items-center justify-center gap-2 rounded-full border p-1 shadow-sm backdrop-blur-md"
       role="tablist"
       data-testid="scenario-tabs"
       onKeyDown={handleKeyDown}
