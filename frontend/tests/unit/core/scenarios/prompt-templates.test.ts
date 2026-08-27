@@ -5,10 +5,17 @@ import { getTemplateForChip } from "@/core/scenarios/prompt-templates";
 
 describe("getTemplateForChip", () => {
   it("returns the correct chip for daily/office-docs/anthropic-docx", () => {
-    const chip = getTemplateForChip("daily", "office-docs", "anthropic-docx");
+    const chip = getTemplateForChip("daily", "office-docs", "word-editor");
     expect(chip).toBeDefined();
     expect(chip?.skillName).toBe("anthropic-docx");
     expect(chip?.promptTemplate).toContain("[");
+  });
+
+  it("returns the meeting-minutes template when summary tasks share a skill", () => {
+    const chip = getTemplateForChip("daily", "summarize", "meeting-minutes");
+
+    expect(chip?.skillName).toBe("summarize");
+    expect(chip?.promptTemplate).toContain("会议记录");
   });
 
   it("returns undefined for non-existent skill", () => {
@@ -19,13 +26,13 @@ describe("getTemplateForChip", () => {
 
   it("returns undefined for non-existent scenario", () => {
     expect(
-      getTemplateForChip("nonexistent" as any, "office-docs", "anthropic-docx"),
+      getTemplateForChip("nonexistent" as any, "office-docs", "word-editor"),
     ).toBeUndefined();
   });
 
   it("returns undefined for non-existent agent slug", () => {
     expect(
-      getTemplateForChip("daily", "nonexistent", "anthropic-docx"),
+      getTemplateForChip("daily", "nonexistent", "word-editor"),
     ).toBeUndefined();
   });
 
@@ -36,7 +43,7 @@ describe("getTemplateForChip", () => {
           const result = getTemplateForChip(
             scenario.id,
             pill.agentSlug,
-            chip.skillName,
+            chip.taskId,
           );
           expect(result).toBeDefined();
           expect(typeof result!.promptTemplate).toBe("string");

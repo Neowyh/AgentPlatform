@@ -7,51 +7,51 @@ import { cn } from "@/lib/utils";
 
 interface TaskChipBarProps {
   chips: TaskChipType[];
-  selectedSkillName: string | null;
-  onSelect: (skillName: string) => void;
+  selectedTaskId: string | null;
+  onSelect: (taskId: string) => void;
 }
 
 export function TaskChipBar({
   chips,
-  selectedSkillName,
+  selectedTaskId,
   onSelect,
 }: TaskChipBarProps) {
   const buttonRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
 
-  const focusButton = useCallback((skillName: string) => {
-    buttonRefs.current.get(skillName)?.focus();
+  const focusButton = useCallback((taskId: string) => {
+    buttonRefs.current.get(taskId)?.focus();
   }, []);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (chips.length === 0) return;
-      const names = chips.map((c) => c.skillName);
-      const current = selectedSkillName ? names.indexOf(selectedSkillName) : 0;
+      const taskIds = chips.map((c) => c.taskId);
+      const current = selectedTaskId ? taskIds.indexOf(selectedTaskId) : 0;
       let next: number | null = null;
 
       switch (e.key) {
         case "ArrowRight":
-          next = (current + 1) % names.length;
+          next = (current + 1) % taskIds.length;
           break;
         case "ArrowLeft":
-          next = (current - 1 + names.length) % names.length;
+          next = (current - 1 + taskIds.length) % taskIds.length;
           break;
         case "Home":
           next = 0;
           break;
         case "End":
-          next = names.length - 1;
+          next = taskIds.length - 1;
           break;
         default:
           return;
       }
 
       e.preventDefault();
-      const nextName = names[next]!;
-      onSelect(nextName);
-      focusButton(nextName);
+      const nextTaskId = taskIds[next]!;
+      onSelect(nextTaskId);
+      focusButton(nextTaskId);
     },
-    [chips, selectedSkillName, onSelect, focusButton],
+    [chips, selectedTaskId, onSelect, focusButton],
   );
 
   if (chips.length === 0) return null;
@@ -64,24 +64,24 @@ export function TaskChipBar({
       onKeyDown={handleKeyDown}
     >
       {chips.map((chip) => {
-        const isActive = selectedSkillName === chip.skillName;
+        const isActive = selectedTaskId === chip.taskId;
         return (
           <button
-            key={chip.skillName}
+            key={chip.taskId}
             ref={(el) => {
-              if (el) buttonRefs.current.set(chip.skillName, el);
+              if (el) buttonRefs.current.set(chip.taskId, el);
             }}
             role="tab"
             aria-selected={isActive}
             tabIndex={isActive ? 0 : -1}
             data-state={isActive ? "active" : "inactive"}
             className={cn(
-              "shrink-0 rounded-full border px-4 py-2 text-sm font-medium transition-all",
+              "shrink-0 rounded-full border px-5 py-2.5 text-base font-medium transition-all",
               isActive
                 ? "border-accent bg-accent/10 text-accent-foreground"
                 : "bg-muted/30 text-muted-foreground hover:bg-muted/60 hover:text-foreground border-transparent",
             )}
-            onClick={() => onSelect(chip.skillName)}
+            onClick={() => onSelect(chip.taskId)}
           >
             {chip.label}
           </button>

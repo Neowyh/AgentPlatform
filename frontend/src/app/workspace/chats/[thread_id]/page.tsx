@@ -26,6 +26,7 @@ import { Welcome } from "@/components/workspace/welcome";
 import { useI18n } from "@/core/i18n/hooks";
 import { useModels } from "@/core/models/hooks";
 import { useNotification } from "@/core/notification/hooks";
+import { getPillsByScenario } from "@/core/scenarios/config";
 import { useScenarioSelection } from "@/core/scenarios/hooks";
 import type { ScenarioId } from "@/core/scenarios/types";
 import { useLocalSettings, useThreadSettings } from "@/core/settings";
@@ -67,15 +68,18 @@ export default function ChatPage() {
 
   const selectedTags: SelectedTag[] = useMemo(() => {
     if (!selectedPill) return [];
-    const { agentSlug } = selectedPill;
-    const pillLabel = t.scenarios.pills[agentSlug] ?? agentSlug;
+    const { agentSlug, scenarioId } = selectedPill;
+    const pillLabel =
+      getPillsByScenario(scenarioId).find(
+        (pill) => pill.agentSlug === agentSlug,
+      )?.label ?? agentSlug;
     return [
       {
         id: agentSlug,
         label: pillLabel,
       },
     ];
-  }, [selectedPill, t]);
+  }, [selectedPill]);
 
   const handleRemoveTag = useCallback(
     (id: string) => {

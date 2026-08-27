@@ -31,15 +31,15 @@ export function useScenarioSelection() {
   );
 
   const toggleChip = useCallback(
-    (scenarioId: ScenarioId, agentSlug: string, skillName: string) => {
+    (scenarioId: ScenarioId, agentSlug: string, taskId: string) => {
       if (
         selectedChip?.scenarioId === scenarioId &&
         selectedChip?.agentSlug === agentSlug &&
-        selectedChip?.skillName === skillName
+        selectedChip?.taskId === taskId
       ) {
         setSelectedChip(null);
       } else {
-        setSelectedChip({ scenarioId, agentSlug, skillName });
+        setSelectedChip({ scenarioId, agentSlug, taskId });
       }
     },
     [selectedChip],

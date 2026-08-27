@@ -22,6 +22,16 @@ describe("SCENARIOS config", () => {
       expect(scenario.agentPills.length).toBeGreaterThanOrEqual(1);
     }
   });
+
+  it("assigns a unique task ID to every task entry", () => {
+    const taskIds = SCENARIOS.flatMap((scenario) =>
+      scenario.agentPills.flatMap((pill) =>
+        (pill.chips ?? []).map((chip) => chip.taskId),
+      ),
+    );
+
+    expect(taskIds).toHaveLength(new Set(taskIds).size);
+  });
 });
 
 describe("getScenarioById", () => {

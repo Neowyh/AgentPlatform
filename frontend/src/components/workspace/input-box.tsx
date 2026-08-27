@@ -499,7 +499,7 @@ export function InputBox({
       data-testid="input-box"
       className={cn(
         "relative flex flex-col",
-        isWelcomeMode ? "gap-4" : "gap-2",
+        isWelcomeMode ? "gap-5" : "gap-2",
       )}
     >
       {showFollowups && (
@@ -551,7 +551,7 @@ export function InputBox({
         <PromptInputBody className="absolute top-0 right-0 left-0 z-3">
           <div className="relative">
             {selectedTags.length > 0 && onRemoveTag && (
-              <div className="absolute top-2.5 left-3 z-4 flex items-center gap-1">
+              <div className="absolute top-3 left-4 z-4 flex items-center gap-1">
                 {selectedTags.map((tag) => (
                   <InlineSelectedTag
                     key={tag.id}
@@ -563,8 +563,9 @@ export function InputBox({
             )}
             <PromptInputTextarea
               className={cn(
-                "size-full",
-                selectedTags.length > 0 && "pl-[120px]",
+                "size-full text-left placeholder:text-left",
+                isWelcomeMode && "min-h-40 text-base leading-7",
+                selectedTags.length > 0 && "pt-12",
               )}
               disabled={disabled}
               placeholder={t.inputBox.placeholder}
@@ -574,7 +575,12 @@ export function InputBox({
             />
           </div>
         </PromptInputBody>
-        <PromptInputFooter className="flex">
+        <PromptInputFooter
+          className={cn(
+            "flex",
+            isWelcomeMode && "min-h-12 [&_button]:min-h-10 [&_button]:text-sm",
+          )}
+        >
           <PromptInputTools>
             {/* TODO: Add more connectors here
           <PromptInputActionMenu>

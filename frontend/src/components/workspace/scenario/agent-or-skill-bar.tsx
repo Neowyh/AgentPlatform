@@ -18,7 +18,7 @@ interface AgentOrSkillBarProps {
   onToggleChip: (
     scenarioId: ScenarioId,
     agentSlug: string,
-    skillName: string,
+    taskId: string,
   ) => void;
   scenarioId: ScenarioId;
 }
@@ -45,9 +45,9 @@ export function AgentOrSkillBar({
           <div className="text-muted-foreground/40 h-4 w-px shrink-0 bg-current" />
           <TaskChipBar
             chips={activePill.chips}
-            selectedSkillName={selectedChip?.skillName ?? null}
-            onSelect={(skillName) =>
-              onToggleChip(scenarioId, activePill.agentSlug, skillName)
+            selectedTaskId={selectedChip?.taskId ?? null}
+            onSelect={(taskId) =>
+              onToggleChip(scenarioId, activePill.agentSlug, taskId)
             }
           />
         </>

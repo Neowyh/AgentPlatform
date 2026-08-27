@@ -42,13 +42,11 @@ describe("useScenarioSelection", () => {
     const { result } = renderHook(() => useScenarioSelection());
     act(() => result.current.selectScenario("daily"));
     act(() => result.current.togglePill("daily", "office-docs"));
-    act(() =>
-      result.current.toggleChip("daily", "office-docs", "anthropic-docx"),
-    );
+    act(() => result.current.toggleChip("daily", "office-docs", "word-editor"));
     expect(result.current.selectedChip).toEqual({
       scenarioId: "daily",
       agentSlug: "office-docs",
-      skillName: "anthropic-docx",
+      taskId: "word-editor",
     });
   });
 
@@ -56,12 +54,8 @@ describe("useScenarioSelection", () => {
     const { result } = renderHook(() => useScenarioSelection());
     act(() => result.current.selectScenario("daily"));
     act(() => result.current.togglePill("daily", "office-docs"));
-    act(() =>
-      result.current.toggleChip("daily", "office-docs", "anthropic-docx"),
-    );
-    act(() =>
-      result.current.toggleChip("daily", "office-docs", "anthropic-docx"),
-    );
+    act(() => result.current.toggleChip("daily", "office-docs", "word-editor"));
+    act(() => result.current.toggleChip("daily", "office-docs", "word-editor"));
     expect(result.current.selectedChip).toBeNull();
   });
 
