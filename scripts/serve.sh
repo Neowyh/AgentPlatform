@@ -66,7 +66,23 @@ done
 
 _is_repo_pid() {
     local pid=$1
-    lsof -p "$pid" 2>/dev/null | grep -F "$REPO_ROOT" >/dev/null
+    # 方法1：通过 lsof 检查进程打开的文件
+    if lsof -p "$pid" 2>/dev/null | grep -qF "$REPO_ROOT"; then
+        return 0
+    fi
+    # 方法2：通过 /proc 检查进程工作目录（Linux）
+    if [ -d "/proc/$pid/cwd" ]; then
+        local cwd
+        cwd=$(readlink -f "/proc/$pid/cwd" 2>/dev/null)
+        if [[ "$cwd" == "$REPO_ROOT"* ]]; then
+            return 0
+        fi
+    fi
+    # 方法3：通过 ps 检查进程命令行
+    if ps -p "$pid" -o args= 2>/dev/null | grep -qF "$REPO_ROOT"; then
+        return 0
+    fi
+    return 1
 }
 
 _kill_repo_processes() {
@@ -103,7 +119,19 @@ _kill_repo_port() {
     done < <(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null || true)
 
     if [ -n "$pids" ]; then
-        kill -9 $pids 2>/dev/null || true
+        # 优雅退出：先 SIGTERM，超时后 SIGKILL
+        kill $pids 2>/dev/null || true
+        sleep 2
+        # 检查是否还有存活的进程
+        local alive=""
+        for pid in $pids; do
+            if kill -0 "$pid" 2>/dev/null; then
+                alive="$alive $pid"
+            fi
+        done
+        if [ -n "$alive" ]; then
+            kill -9 $alive 2>/dev/null || true
+        fi
     fi
 }
 
@@ -177,6 +205,29 @@ _kill_repo_nginx() {
 
 stop_all() {
     echo "Stopping all services..."
+    
+    # 检查是否有本仓库的服务在运行
+    local has_services=false
+    
+    # 检查 workflow worker PID 文件
+    if [ -f "$WORKFLOW_WORKER_PID_FILE" ]; then
+        local worker_pid
+        worker_pid=$(cat "$WORKFLOW_WORKER_PID_FILE")
+        if [ -n "$worker_pid" ] && kill -0 "$worker_pid" 2>/dev/null; then
+            has_services=true
+        fi
+    fi
+    
+    # 检查端口是否有服务在监听
+    if _is_port_listening 8001 || _is_port_listening 3000 || _is_port_listening 2026; then
+        has_services=true
+    fi
+    
+    if [ "$has_services" = false ]; then
+        echo "  No services running, skipping cleanup."
+        return 0
+    fi
+    
     if [ -f "$WORKFLOW_WORKER_PID_FILE" ]; then
         worker_pid=$(cat "$WORKFLOW_WORKER_PID_FILE")
         if [ -n "$worker_pid" ] && kill -0 "$worker_pid" 2>/dev/null && _is_repo_pid "$worker_pid"; then
@@ -188,7 +239,7 @@ stop_all() {
     _kill_repo_processes "uvicorn app.gateway.app:app"
     _kill_repo_processes "next dev"
     _kill_repo_processes "next start"
-    _kill_repo_processes "next-server"
+    _kill_repo_processes "next-server (v"
     nginx -c "$REPO_ROOT/docker/nginx/nginx.local.conf" -p "$REPO_ROOT" -s quit 2>/dev/null || true
     sleep 1
     _kill_repo_nginx
@@ -336,8 +387,11 @@ cleanup() {
     exit "$status"
 }
 
-trap 'cleanup 130' INT
-trap 'cleanup 143' TERM
+# 仅在非 daemon 模式下设置陷阱，daemon 模式下进程已 detach，不需要陷阱
+if ! $DAEMON_MODE; then
+    trap 'cleanup 130' INT
+    trap 'cleanup 143' TERM
+fi
 
 # ── Helper: start a service ──────────────────────────────────────────────────
 
@@ -347,9 +401,14 @@ run_service() {
     local name="$1" cmd="$2" port="$3" timeout="$4"
 
     if _is_port_listening "$port"; then
-        echo "✗ $name cannot start because port $port is already in use."
-        echo "  If it belongs to this worktree, run 'make stop'; otherwise free the port manually."
-        cleanup 1
+        echo "  Port $port is in use, attempting to stop existing service..."
+        _kill_repo_port "$port"
+        sleep 1
+        if _is_port_listening "$port"; then
+            echo "✗ $name cannot start because port $port is still in use."
+            echo "  If it belongs to this worktree, run 'make stop'; otherwise free the port manually."
+            cleanup 1
+        fi
     fi
 
     echo "Starting $name..."
