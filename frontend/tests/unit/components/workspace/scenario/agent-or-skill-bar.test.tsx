@@ -24,8 +24,18 @@ const pills: AgentPill[] = [
     agentSlug: "agent-a",
     label: "Agent A",
     chips: [
-      { label: "Skill 1", skillName: "skill-1", promptTemplate: "t1" },
-      { label: "Skill 2", skillName: "skill-2", promptTemplate: "t2" },
+      {
+        taskId: "task-1",
+        label: "Skill 1",
+        skillName: "skill-1",
+        promptTemplate: "t1",
+      },
+      {
+        taskId: "task-2",
+        label: "Skill 2",
+        skillName: "skill-2",
+        promptTemplate: "t2",
+      },
     ],
   },
   {
@@ -102,6 +112,6 @@ describe("AgentOrSkillBar", () => {
     );
 
     await userEvent.setup().click(screen.getByRole("tab", { name: "Skill 1" }));
-    expect(onToggleChip).toHaveBeenCalledWith("daily", "agent-a", "skill-1");
+    expect(onToggleChip).toHaveBeenCalledWith("daily", "agent-a", "task-1");
   });
 });

@@ -20,14 +20,14 @@ test.describe("WorkBuddy cascade bar", () => {
     await page.getByRole("tab", { name: /日常办公/ }).click();
     await expect(page.getByTestId("agent-pill-bar")).toBeVisible();
     const pills = page.getByTestId("agent-pill-bar").getByRole("tab");
-    await expect(pills).toHaveCount(4);
+    await expect(pills).toHaveCount(5);
   });
 
   test("shows chips when pill is selected", async ({ page }) => {
     mockLangGraphAPI(page);
     await page.goto("/workspace/chats/new");
     await page.getByRole("tab", { name: /日常办公/ }).click();
-    await page.getByRole("tab", { name: /文档处理/ }).click();
+    await page.getByRole("tab", { name: /办公文档/ }).click();
     await expect(page.getByTestId("task-chip-bar")).toBeVisible();
     const chips = page.getByTestId("task-chip-bar").getByRole("tab");
     await expect(chips).toHaveCount(3);
@@ -37,11 +37,11 @@ test.describe("WorkBuddy cascade bar", () => {
     mockLangGraphAPI(page);
     await page.goto("/workspace/chats/new");
     await page.getByRole("tab", { name: /日常办公/ }).click();
-    await page.getByRole("tab", { name: /文档处理/ }).click();
+    await page.getByRole("tab", { name: /办公文档/ }).click();
     await page.getByRole("tab", { name: /Word 创建编辑/ }).click();
     const textarea = page.locator("textarea[name='message']");
     await expect(textarea).toBeVisible({ timeout: 15_000 });
-    await expect(textarea).toHaveValue(/请帮我处理以下文档/);
+    await expect(textarea).toHaveValue(/请帮我处理以下 Word 文档/);
     const selection = await textarea.evaluate((el: HTMLTextAreaElement) => ({
       start: el.selectionStart,
       end: el.selectionEnd,
@@ -50,11 +50,37 @@ test.describe("WorkBuddy cascade bar", () => {
     expect(selection.text).toBe("[描述需求]");
   });
 
+  test("selects the meeting-minutes summary template without duplicate keys", async ({
+    page,
+  }) => {
+    const consoleErrors: string[] = [];
+    page.on("console", (message) => {
+      if (message.type() === "error") consoleErrors.push(message.text());
+    });
+    mockLangGraphAPI(page);
+    await page.goto("/workspace/chats/new");
+    await page.getByRole("tab", { name: /日常办公/ }).click();
+    await page.getByRole("tab", { name: /智能摘要/ }).click();
+    await expect(
+      page.getByTestId("task-chip-bar").getByRole("tab"),
+    ).toHaveCount(3);
+    await page.getByRole("tab", { name: /会议纪要/ }).click();
+
+    await expect(page.locator("textarea[name='message']")).toHaveValue(
+      /会议记录/,
+    );
+    expect(
+      consoleErrors.some((error) =>
+        error.includes("two children with the same key"),
+      ),
+    ).toBe(false);
+  });
+
   test("deselects chip when clicked again", async ({ page }) => {
     mockLangGraphAPI(page);
     await page.goto("/workspace/chats/new");
     await page.getByRole("tab", { name: /日常办公/ }).click();
-    await page.getByRole("tab", { name: /文档处理/ }).click();
+    await page.getByRole("tab", { name: /办公文档/ }).click();
     await page.getByRole("tab", { name: /Word 创建编辑/ }).click();
     await page.getByRole("tab", { name: /Word 创建编辑/ }).click();
     await expect(
@@ -78,7 +104,7 @@ test.describe("WorkBuddy cascade bar", () => {
     const textarea = page.locator("textarea[name='message']");
     await textarea.fill("已有内容");
     await page.getByRole("tab", { name: /日常办公/ }).click();
-    await page.getByRole("tab", { name: /文档处理/ }).click();
+    await page.getByRole("tab", { name: /办公文档/ }).click();
     await page.getByRole("tab", { name: /Word 创建编辑/ }).click();
     await expect(page.getByRole("dialog")).toBeVisible();
     await expect(page.getByText("发送建议问题？")).toBeVisible();

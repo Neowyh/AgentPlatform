@@ -1,4 +1,5 @@
 export interface TaskChip {
+  taskId: string;
   label: string;
   skillName: string;
   promptTemplate: string;
@@ -27,5 +28,5 @@ export type PillSelection = {
 export type ChipSelection = {
   scenarioId: ScenarioId;
   agentSlug: string;
-  skillName: string;
+  taskId: string;
 } | null;

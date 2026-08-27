@@ -1370,7 +1370,16 @@ describe("InputBox", () => {
     test("renders with welcome mode layout", () => {
       render(<InputBox {...defaultProps()} isWelcomeMode />);
       const container = screen.getByTestId("input-box");
-      expect(container.className).toContain("gap-4");
+      expect(container.className).toContain("gap-5");
+    });
+
+    test("enlarges and left-aligns welcome input text", () => {
+      render(<InputBox {...defaultProps()} isWelcomeMode />);
+
+      const textarea = screen.getByTestId("chat-input");
+      expect(textarea.className).toContain("min-h-40");
+      expect(textarea.className).toContain("text-base");
+      expect(textarea.className).toContain("text-left");
     });
 
     test("renders with non-welcome mode layout", () => {

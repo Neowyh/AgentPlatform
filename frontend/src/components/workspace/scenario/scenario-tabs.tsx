@@ -60,7 +60,7 @@ export function ScenarioTabs({ selected, onSelect }: ScenarioTabsProps) {
 
   return (
     <div
-      className="bg-background/80 border-border/50 flex items-center justify-center gap-2 rounded-full border p-1 shadow-sm backdrop-blur-md"
+      className="bg-background/80 border-border/50 flex items-center justify-center gap-2 rounded-full border p-1.5 shadow-sm backdrop-blur-md"
       role="tablist"
       data-testid="scenario-tabs"
       onKeyDown={handleKeyDown}
@@ -79,7 +79,7 @@ export function ScenarioTabs({ selected, onSelect }: ScenarioTabsProps) {
             tabIndex={isActive ? 0 : -1}
             data-state={isActive ? "active" : "inactive"}
             className={cn(
-              "flex items-center gap-1.5 rounded-full border px-5 py-2.5 text-sm font-medium transition-all",
+              "flex items-center gap-2 rounded-full border px-6 py-3 text-base font-medium transition-all",
               isActive
                 ? "bg-muted text-foreground border-transparent font-semibold shadow-sm"
                 : "text-muted-foreground hover:bg-muted/60 hover:text-foreground border-transparent",
@@ -87,7 +87,7 @@ export function ScenarioTabs({ selected, onSelect }: ScenarioTabsProps) {
             )}
             onClick={() => onSelect(isActive ? null : id)}
           >
-            <Icon className="size-4" />
+            <Icon className="size-5" />
             {t.scenarios[id]}
           </button>
         );

@@ -19,7 +19,7 @@ interface ScenarioCascadeBarProps {
   onToggleChip: (
     scenarioId: ScenarioId,
     agentSlug: string,
-    skillName: string,
+    taskId: string,
   ) => void;
   onInjectPrompt: (template: string) => void;
 }
@@ -41,17 +41,17 @@ export function ScenarioCascadeBar({
   const handleToggleChip = (
     scenarioId: ScenarioId,
     agentSlug: string,
-    skillName: string,
+    taskId: string,
   ) => {
     const isDeselect =
       selectedChip?.scenarioId === scenarioId &&
       selectedChip?.agentSlug === agentSlug &&
-      selectedChip?.skillName === skillName;
+      selectedChip?.taskId === taskId;
 
-    onToggleChip(scenarioId, agentSlug, skillName);
+    onToggleChip(scenarioId, agentSlug, taskId);
 
     if (!isDeselect) {
-      const chip = getTemplateForChip(scenarioId, agentSlug, skillName);
+      const chip = getTemplateForChip(scenarioId, agentSlug, taskId);
       if (chip) {
         onInjectPrompt(chip.promptTemplate);
       }
@@ -70,13 +70,9 @@ export function ScenarioCascadeBar({
       {selectedPill && chips.length > 0 && (
         <TaskChipBar
           chips={chips}
-          selectedSkillName={selectedChip?.skillName ?? null}
-          onSelect={(skillName) =>
-            handleToggleChip(
-              selectedScenario!,
-              selectedPill.agentSlug,
-              skillName,
-            )
+          selectedTaskId={selectedChip?.taskId ?? null}
+          onSelect={(taskId) =>
+            handleToggleChip(selectedScenario!, selectedPill.agentSlug, taskId)
           }
         />
       )}

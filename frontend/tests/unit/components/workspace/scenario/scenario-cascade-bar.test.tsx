@@ -77,7 +77,12 @@ describe("ScenarioCascadeBar", () => {
       { agentSlug: "agent-a", label: "Agent A", chips: [] },
     ]);
     mockGetChipsByPill.mockReturnValue([
-      { skillName: "s1", label: "Task A", promptTemplate: "t1" },
+      {
+        taskId: "task-a",
+        skillName: "s1",
+        label: "Task A",
+        promptTemplate: "t1",
+      },
     ]);
 
     render(
@@ -98,10 +103,19 @@ describe("ScenarioCascadeBar", () => {
       {
         agentSlug: "agent-a",
         label: "Agent A",
-        chips: [{ label: "Skill", skillName: "s1", promptTemplate: "t1" }],
+        chips: [
+          {
+            taskId: "task-a",
+            label: "Skill",
+            skillName: "s1",
+            promptTemplate: "t1",
+          },
+        ],
       },
     ]);
-    mockGetChipsByPill.mockReturnValue([{ label: "Skill", skillName: "s1" }]);
+    mockGetChipsByPill.mockReturnValue([
+      { taskId: "task-a", label: "Skill", skillName: "s1" },
+    ]);
     mockGetTemplateForChip.mockReturnValue({
       promptTemplate: "prompt from template",
     });
@@ -120,11 +134,11 @@ describe("ScenarioCascadeBar", () => {
 
     await userEvent.setup().click(screen.getByRole("tab", { name: "Skill" }));
 
-    expect(onToggleChip).toHaveBeenCalledWith("daily", "agent-a", "s1");
+    expect(onToggleChip).toHaveBeenCalledWith("daily", "agent-a", "task-a");
     expect(mockGetTemplateForChip).toHaveBeenCalledWith(
       "daily",
       "agent-a",
-      "s1",
+      "task-a",
     );
     expect(onInjectPrompt).toHaveBeenCalledWith("prompt from template");
   });
@@ -135,10 +149,19 @@ describe("ScenarioCascadeBar", () => {
       {
         agentSlug: "agent-a",
         label: "Agent A",
-        chips: [{ label: "Skill", skillName: "s1", promptTemplate: "t1" }],
+        chips: [
+          {
+            taskId: "task-a",
+            label: "Skill",
+            skillName: "s1",
+            promptTemplate: "t1",
+          },
+        ],
       },
     ]);
-    mockGetChipsByPill.mockReturnValue([{ label: "Skill", skillName: "s1" }]);
+    mockGetChipsByPill.mockReturnValue([
+      { taskId: "task-a", label: "Skill", skillName: "s1" },
+    ]);
     mockGetTemplateForChip.mockReturnValue(undefined);
     const onInjectPrompt = vi.fn();
 
@@ -162,10 +185,19 @@ describe("ScenarioCascadeBar", () => {
       {
         agentSlug: "agent-a",
         label: "Agent A",
-        chips: [{ label: "Skill", skillName: "s1", promptTemplate: "t1" }],
+        chips: [
+          {
+            taskId: "task-a",
+            label: "Skill",
+            skillName: "s1",
+            promptTemplate: "t1",
+          },
+        ],
       },
     ]);
-    mockGetChipsByPill.mockReturnValue([{ label: "Skill", skillName: "s1" }]);
+    mockGetChipsByPill.mockReturnValue([
+      { taskId: "task-a", label: "Skill", skillName: "s1" },
+    ]);
     mockGetTemplateForChip.mockReturnValue(undefined);
     const onToggleChip = vi.fn();
 
@@ -180,7 +212,7 @@ describe("ScenarioCascadeBar", () => {
 
     await userEvent.setup().click(screen.getByRole("tab", { name: "Skill" }));
 
-    expect(onToggleChip).toHaveBeenCalledWith("daily", "agent-a", "s1");
+    expect(onToggleChip).toHaveBeenCalledWith("daily", "agent-a", "task-a");
   });
 
   it("scenario switch → pills refresh", () => {

@@ -58,7 +58,7 @@ export function AgentPillBar({
 
   return (
     <div
-      className="flex items-center gap-1.5 overflow-x-auto [&::-webkit-scrollbar]:hidden"
+      className="flex items-center gap-2 overflow-x-auto [&::-webkit-scrollbar]:hidden"
       role="tablist"
       data-testid="agent-pill-bar"
       onKeyDown={handleKeyDown}
@@ -76,7 +76,7 @@ export function AgentPillBar({
             tabIndex={isActive ? 0 : -1}
             data-state={isActive ? "active" : "inactive"}
             className={cn(
-              "shrink-0 rounded-full border px-4 py-2 text-sm font-medium transition-all",
+              "shrink-0 rounded-full border px-5 py-2.5 text-base font-medium transition-all",
               isActive
                 ? "border-primary bg-primary/10 text-primary"
                 : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground border-transparent",

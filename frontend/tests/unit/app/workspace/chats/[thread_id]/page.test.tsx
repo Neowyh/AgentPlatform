@@ -118,7 +118,12 @@ vi.mock("@/components/workspace/welcome", () => ({
 vi.mock("@/components/workspace/scenario", () => ({
   ScenarioCascadeBar: (props: any) => {
     mockLastScenarioCascadeProps.current = props;
-    return <div data-testid="scenario-cascade-bar" />;
+    return (
+      <button
+        data-testid="scenario-cascade-bar"
+        onClick={() => props.onTogglePill("daily", "office-docs")}
+      />
+    );
   },
 }));
 
@@ -382,6 +387,26 @@ describe("ChatPage", () => {
     expect(mockLastScenarioCascadeProps.current.selectedScenario).toBe(
       "creative",
     );
+  });
+
+  test("uses the selected Agent pill label inside the input", () => {
+    mockUseThreadChat.mockReturnValue({
+      threadId: "test-thread",
+      setThreadId: vi.fn(),
+      isNewThread: true,
+      setIsNewThread: vi.fn(),
+      isMock: false,
+    });
+
+    const { rerender } = render(<ChatPage />);
+    rerender(<ChatPage />);
+    act(() => {
+      screen.getByTestId("scenario-cascade-bar").click();
+    });
+
+    expect(mockLastInputBoxProps.current.selectedTags).toEqual([
+      { id: "office-docs", label: "办公文档" },
+    ]);
   });
 
   test("onStart callback sets threadId and updates URL", () => {
