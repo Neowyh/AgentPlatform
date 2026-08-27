@@ -60,7 +60,7 @@ describe("ScenarioCascadeBar", () => {
     render(<ScenarioCascadeBar {...defaultProps} />);
     expect(screen.getByTestId("scenario-cascade-bar")).toBeInTheDocument();
     expect(screen.getByTestId("scenario-tabs")).toBeInTheDocument();
-    expect(screen.queryByTestId("agent-or-skill-bar")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("feature-chip-bar")).not.toBeInTheDocument();
   });
 
   it("selected scenario → AgentOrSkillBar rendered", () => {
@@ -68,7 +68,7 @@ describe("ScenarioCascadeBar", () => {
       { agentSlug: "agent-a", label: "Agent A", chips: [] },
     ]);
     render(<ScenarioCascadeBar {...defaultProps} selectedScenario="daily" />);
-    expect(screen.getByTestId("agent-or-skill-bar")).toBeInTheDocument();
+    expect(screen.getByTestId("feature-chip-bar")).toBeInTheDocument();
   });
 
   it("onInjectPrompt calls getTemplateForChip result", async () => {
@@ -80,6 +80,7 @@ describe("ScenarioCascadeBar", () => {
         chips: [{ label: "Skill", skillName: "s1", promptTemplate: "t1" }],
       },
     ]);
+    mockGetChipsByPill.mockReturnValue([{ label: "Skill", skillName: "s1" }]);
     mockGetTemplateForChip.mockReturnValue({
       promptTemplate: "prompt from template",
     });
@@ -116,6 +117,7 @@ describe("ScenarioCascadeBar", () => {
         chips: [{ label: "Skill", skillName: "s1", promptTemplate: "t1" }],
       },
     ]);
+    mockGetChipsByPill.mockReturnValue([{ label: "Skill", skillName: "s1" }]);
     mockGetTemplateForChip.mockReturnValue(undefined);
     const onInjectPrompt = vi.fn();
 
@@ -142,6 +144,7 @@ describe("ScenarioCascadeBar", () => {
         chips: [{ label: "Skill", skillName: "s1", promptTemplate: "t1" }],
       },
     ]);
+    mockGetChipsByPill.mockReturnValue([{ label: "Skill", skillName: "s1" }]);
     mockGetTemplateForChip.mockReturnValue(undefined);
     const onToggleChip = vi.fn();
 
@@ -179,5 +182,17 @@ describe("ScenarioCascadeBar", () => {
     );
 
     expect(mockGetPillsByScenario).toHaveBeenCalledWith("creative");
+  });
+
+  it("container has items-start class for left alignment", () => {
+    render(<ScenarioCascadeBar {...defaultProps} />);
+    const container = screen.getByTestId("scenario-cascade-bar");
+    expect(container.className).toContain("items-start");
+  });
+
+  it("container has gap-2 class for increased spacing", () => {
+    render(<ScenarioCascadeBar {...defaultProps} />);
+    const container = screen.getByTestId("scenario-cascade-bar");
+    expect(container.className).toContain("gap-2");
   });
 });
