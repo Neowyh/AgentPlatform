@@ -13,6 +13,11 @@ vi.mock("@/core/i18n/hooks", () => ({
         notAvailableInDemoMode: "Not available in demo mode",
       },
       chats: { searchChats: "Search chats..." },
+      scenarios: {
+        daily: "Daily Office",
+        creative: "Creative Design",
+        professional: "Professional Tasks",
+      },
     },
   }),
 }));
@@ -102,6 +107,11 @@ vi.mock("@/core/i18n/hooks", () => ({
       common: {
         loading: "Loading...",
         notAvailableInDemoMode: "Not available in demo mode",
+      },
+      scenarios: {
+        daily: "Daily Office",
+        creative: "Creative Design",
+        professional: "Professional Tasks",
       },
     },
   }),
