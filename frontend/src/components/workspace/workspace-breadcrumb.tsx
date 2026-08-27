@@ -77,6 +77,45 @@ function getBreadcrumbSegments(
           segments.push({ label: t.breadcrumb.runs });
         }
       }
+    } else if (parts[1] === "resources") {
+      segments.push({
+        label: t.sidebar.resources,
+        href: "/workspace/resources",
+      });
+
+      if (parts[2]) {
+        const resourceId = parts[2];
+        segments.push({
+          label: resourceId,
+          href: `/workspace/resources/${resourceId}`,
+        });
+      }
+    } else if (parts[1] === "automations") {
+      segments.push({
+        label: t.sidebar.automations,
+        href: "/workspace/automations",
+      });
+
+      if (parts[2]) {
+        const automationId = parts[2];
+        segments.push({
+          label: automationId,
+          href: `/workspace/automations/${automationId}`,
+        });
+      }
+    } else if (parts[1] === "library") {
+      segments.push({
+        label: t.sidebar.library,
+        href: "/workspace/library",
+      });
+
+      if (parts[2]) {
+        const docId = parts[2];
+        segments.push({
+          label: docId,
+          href: `/workspace/library/${docId}`,
+        });
+      }
     } else if (parts[1] === "admin") {
       segments.push({
         label: t.workspace.adminPanel,
