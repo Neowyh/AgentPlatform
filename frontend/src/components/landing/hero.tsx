@@ -39,35 +39,22 @@ export function Hero({ className }: { className?: string }) {
         <h1 className="flex items-center gap-2 text-4xl font-bold md:text-6xl">
           <WordRotate
             words={[
-              "Deep Research",
-              "Collect Data",
-              "Analyze Data",
-              "Generate Webpages",
-              "Vibe Coding",
-              "Generate Slides",
-              "Generate Images",
-              "Generate Podcasts",
-              "Generate Videos",
-              "Generate Songs",
-              "Organize Emails",
-              "Do Anything",
-              "Learn Anything",
+              "文档处理",
+              "翻译润色",
+              "数据分析",
+              "前端设计",
+              "代码开发",
+              "专业设计",
             ]}
           />{" "}
           <div>with iDeer</div>
         </h1>
-        <p className="text-muted-foreground mt-8 scale-105 text-center text-2xl text-shadow-sm">
-          An open-source SuperAgent harness that researches, codes, and creates.
-          With
-          <br />
-          the help of sandboxes, memories, tools, skills and subagents, it
-          handles
-          <br />
-          different levels of tasks that could take minutes to hours.
+        <p className="text-muted-foreground mt-8 text-center text-2xl text-shadow-sm">
+          iDeer，实现你的idea
         </p>
         <Link href="/workspace">
           <Button className="size-lg mt-8 scale-108" size="lg">
-            <span className="text-md">Get Started with 2.0</span>
+            <span className="text-md">开始创造</span>
             <ChevronRightIcon className="size-4" />
           </Button>
         </Link>

@@ -9,32 +9,6 @@ vi.mock("@/components/landing/hero", () => ({
   Hero: () => <div data-testid="hero">Hero</div>,
 }));
 
-vi.mock("@/components/landing/footer", () => ({
-  Footer: () => <footer data-testid="footer">Footer</footer>,
-}));
-
-vi.mock("@/components/landing/sections/case-study-section", () => ({
-  CaseStudySection: () => (
-    <div data-testid="case-study-section">Case Studies</div>
-  ),
-}));
-
-vi.mock("@/components/landing/sections/community-section", () => ({
-  CommunitySection: () => <div data-testid="community-section">Community</div>,
-}));
-
-vi.mock("@/components/landing/sections/sandbox-section", () => ({
-  SandboxSection: () => <div data-testid="sandbox-section">Sandbox</div>,
-}));
-
-vi.mock("@/components/landing/sections/skills-section", () => ({
-  SkillsSection: () => <div data-testid="skills-section">Skills</div>,
-}));
-
-vi.mock("@/components/landing/sections/whats-new-section", () => ({
-  WhatsNewSection: () => <div data-testid="whats-new-section">Whats New</div>,
-}));
-
 import LandingPage from "@/app/page";
 
 afterEach(() => {
@@ -52,18 +26,34 @@ describe("LandingPage", () => {
     expect(screen.getByTestId("hero")).toBeInTheDocument();
   });
 
-  test("renders all sections", () => {
+  test("does not render footer", () => {
     render(<LandingPage />);
-    expect(screen.getByTestId("case-study-section")).toBeInTheDocument();
-    expect(screen.getByTestId("skills-section")).toBeInTheDocument();
-    expect(screen.getByTestId("sandbox-section")).toBeInTheDocument();
-    expect(screen.getByTestId("whats-new-section")).toBeInTheDocument();
-    expect(screen.getByTestId("community-section")).toBeInTheDocument();
+    expect(screen.queryByTestId("footer")).not.toBeInTheDocument();
   });
 
-  test("renders footer", () => {
+  test("does not render case study section", () => {
     render(<LandingPage />);
-    expect(screen.getByTestId("footer")).toBeInTheDocument();
+    expect(screen.queryByTestId("case-study-section")).not.toBeInTheDocument();
+  });
+
+  test("does not render skills section", () => {
+    render(<LandingPage />);
+    expect(screen.queryByTestId("skills-section")).not.toBeInTheDocument();
+  });
+
+  test("does not render sandbox section", () => {
+    render(<LandingPage />);
+    expect(screen.queryByTestId("sandbox-section")).not.toBeInTheDocument();
+  });
+
+  test("does not render whats-new section", () => {
+    render(<LandingPage />);
+    expect(screen.queryByTestId("whats-new-section")).not.toBeInTheDocument();
+  });
+
+  test("does not render community section", () => {
+    render(<LandingPage />);
+    expect(screen.queryByTestId("community-section")).not.toBeInTheDocument();
   });
 
   test("renders main content area", () => {

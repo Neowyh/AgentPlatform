@@ -19,6 +19,9 @@ const meta: MetaRecord = {
   reference: {
     title: "参考",
   },
+  manual: {
+    title: "用户手册",
+  },
   workspace: {
     type: "page",
   },

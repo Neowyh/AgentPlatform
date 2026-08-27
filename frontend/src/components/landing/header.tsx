@@ -32,16 +32,10 @@ export async function Header({ className, homeURL, locale }: HeaderProps) {
       </div>
       <nav className="mr-8 ml-auto flex items-center gap-8 text-sm font-medium">
         <Link
-          href={`/${lang}/docs`}
+          href={`/${lang}/docs/manual`}
           className="text-foreground hover:text-foreground/80 transition-colors"
         >
           {t.home.docs}
-        </Link>
-        <Link
-          href="/blog/posts"
-          className="text-foreground hover:text-foreground/80 transition-colors"
-        >
-          {t.home.blog}
         </Link>
       </nav>
       <hr className="from-border/0 via-border/70 to-border/0 absolute top-16 right-0 left-0 z-10 m-0 h-px w-full border-none bg-linear-to-r" />

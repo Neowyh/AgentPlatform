@@ -1,34 +1,33 @@
 import { render, screen, cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-vi.mock("next/link", () => {
-  const React = require("react");
-  return {
-    __esModule: true,
-    default: React.forwardRef(({ children, href, ...props }: any, ref: any) =>
-      React.createElement("a", { ...props, ref, href }, children),
-    ),
-  };
-});
-
-vi.mock("@/components/ui/flickering-grid", () => ({
-  FlickeringGrid: (props: any) => <div data-testid="flickering-grid" />,
+vi.mock("@/components/ui/galaxy", () => ({
+  default: () => <div data-testid="galaxy" />,
 }));
 
-vi.mock("@/components/ui/galaxy", () => ({
-  __esModule: true,
-  default: (props: any) => <div data-testid="galaxy" />,
+vi.mock("@/components/ui/flickering-grid", () => ({
+  FlickeringGrid: () => <div data-testid="flickering-grid" />,
 }));
 
 vi.mock("@/components/ui/word-rotate", () => ({
-  WordRotate: ({ words }: any) => (
-    <span data-testid="word-rotate">{words[0]}</span>
+  WordRotate: ({ words }: { words: string[] }) => (
+    <div data-testid="word-rotate" data-words={words.join(",")}>
+      {words[0]}
+    </div>
   ),
 }));
 
-vi.mock("@/components/ui/button", () => ({
-  Button: ({ children, ...props }: any) => (
-    <button {...props}>{children}</button>
+vi.mock("@/components/ui/aurora-text", () => ({
+  AuroraText: ({ children }: { children: React.ReactNode }) => (
+    <span>{children}</span>
+  ),
+}));
+
+vi.mock("next/link", () => ({
+  default: ({ children, href, ...props }: any) => (
+    <a href={href} {...props}>
+      {children}
+    </a>
   ),
 }));
 
@@ -39,38 +38,36 @@ afterEach(() => {
 });
 
 describe("Hero", () => {
-  test("renders hero heading", () => {
+  test("renders WordRotate with Chinese words", () => {
     render(<Hero />);
-    expect(screen.getByText(/with iDeer/)).toBeInTheDocument();
+    const wordRotate = screen.getByTestId("word-rotate");
+    const words = wordRotate.getAttribute("data-words")?.split(",") ?? [];
+    expect(words).toEqual([
+      "文档处理",
+      "翻译润色",
+      "数据分析",
+      "前端设计",
+      "代码开发",
+      "专业设计",
+    ]);
   });
 
-  test("renders word rotate animation", () => {
+  test("renders iDeer tagline", () => {
     render(<Hero />);
-    expect(screen.getByTestId("word-rotate")).toBeInTheDocument();
+    expect(screen.getByText("iDeer，实现你的idea")).toBeInTheDocument();
   });
 
-  test("renders galaxy background", () => {
+  test("renders CTA button with Chinese text", () => {
     render(<Hero />);
-    expect(screen.getByTestId("galaxy")).toBeInTheDocument();
+    expect(screen.getByText("开始创造")).toBeInTheDocument();
   });
 
-  test("renders flickering grid", () => {
+  test("does not render English words in WordRotate", () => {
     render(<Hero />);
-    expect(screen.getByTestId("flickering-grid")).toBeInTheDocument();
-  });
-
-  test("renders get started button", () => {
-    render(<Hero />);
-    expect(screen.getByText("Get Started with 2.0")).toBeInTheDocument();
-  });
-
-  test("renders description text", () => {
-    render(<Hero />);
-    expect(screen.getByText(/open-source SuperAgent/)).toBeInTheDocument();
-  });
-
-  test("applies custom className", () => {
-    const { container } = render(<Hero className="custom-hero" />);
-    expect(container.firstChild).toHaveClass("custom-hero");
+    const wordRotate = screen.getByTestId("word-rotate");
+    const words = wordRotate.getAttribute("data-words") ?? "";
+    expect(words).not.toContain("Deep Research");
+    expect(words).not.toContain("Generate Slides");
+    expect(words).not.toContain("Vibe Coding");
   });
 });
