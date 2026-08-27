@@ -20,6 +20,7 @@ from app.gateway.routers import (
     assistants_compat,
     audit_logs,
     auth,
+    automations,
     channels,
     feedback,
     mcp,
@@ -594,6 +595,9 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
 
     # UUID-first canonical Skill, Agent, and Workflow resources API
     app.include_router(resources.router)
+
+    # Automations API is mounted at /api/automations
+    app.include_router(automations.router)
 
     # MCP API is mounted at /api/mcp
     app.include_router(mcp.router)

@@ -1,6 +1,13 @@
 "use client";
 
-import { BotIcon, MessagesSquare, WorkflowIcon } from "lucide-react";
+import {
+  BotIcon,
+  BookOpenIcon,
+  LayersIcon,
+  MessagesSquare,
+  WorkflowIcon,
+  ZapIcon,
+} from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -34,6 +41,45 @@ export function WorkspaceNavChatList() {
             <Link className="text-sidebar-foreground" href="/workspace/agents">
               <BotIcon />
               <span>{t.sidebar.agents}</span>
+            </Link>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            isActive={pathname.startsWith("/workspace/resources")}
+            asChild
+          >
+            <Link
+              className="text-sidebar-foreground"
+              href="/workspace/resources"
+            >
+              <LayersIcon />
+              <span>{t.sidebar.resources}</span>
+            </Link>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            isActive={pathname.startsWith("/workspace/automations")}
+            asChild
+          >
+            <Link
+              className="text-sidebar-foreground"
+              href="/workspace/automations"
+            >
+              <ZapIcon />
+              <span>{t.sidebar.automations}</span>
+            </Link>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            isActive={pathname.startsWith("/workspace/library")}
+            asChild
+          >
+            <Link className="text-sidebar-foreground" href="/workspace/library">
+              <BookOpenIcon />
+              <span>{t.sidebar.library}</span>
             </Link>
           </SidebarMenuButton>
         </SidebarMenuItem>

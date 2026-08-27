@@ -130,6 +130,9 @@ export interface Translations {
     chats: string;
     demoChats: string;
     agents: string;
+    resources: string;
+    automations: string;
+    library: string;
     workflows: string;
   };
 

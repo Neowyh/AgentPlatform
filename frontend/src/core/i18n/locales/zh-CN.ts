@@ -180,6 +180,9 @@ export const zhCN: Translations = {
     recentChats: "最近的对话",
     demoChats: "演示对话",
     agents: "智能体",
+    resources: "资源",
+    automations: "自动化",
+    library: "资料库",
     workflows: "工作流",
   },
 
