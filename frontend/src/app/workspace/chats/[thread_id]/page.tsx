@@ -1,10 +1,5 @@
 "use client";
 
-import {
-  LucideBriefcase,
-  LucidePalette,
-  LucideShieldCheck,
-} from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { type PromptInputMessage } from "@/components/ai-elements/prompt-input";
@@ -22,16 +17,17 @@ import {
 } from "@/components/workspace/messages";
 import { ThreadContext } from "@/components/workspace/messages/context";
 import { ScenarioCascadeBar } from "@/components/workspace/scenario";
+import { ScenarioTabs } from "@/components/workspace/scenario/scenario-tabs";
 import type { SelectedTag } from "@/components/workspace/scenario/selected-tags";
 import { ThreadTitle } from "@/components/workspace/thread-title";
 import { TodoList } from "@/components/workspace/todo-list";
 import { TokenUsageIndicator } from "@/components/workspace/token-usage-indicator";
 import { Welcome } from "@/components/workspace/welcome";
-import { WorkbenchHome } from "@/components/workspace/workbench";
 import { useI18n } from "@/core/i18n/hooks";
 import { useModels } from "@/core/models/hooks";
 import { useNotification } from "@/core/notification/hooks";
 import { useScenarioSelection } from "@/core/scenarios/hooks";
+import type { ScenarioId } from "@/core/scenarios/types";
 import { useLocalSettings, useThreadSettings } from "@/core/settings";
 import { useThreadStream, useThreadTokenUsage } from "@/core/threads/hooks";
 import { threadTokenUsageToTokenUsage } from "@/core/threads/token-usage";
@@ -63,28 +59,23 @@ export default function ChatPage() {
   } = useScenarioSelection();
   const [pendingTemplate, setPendingTemplate] = useState<string | null>(null);
 
-  const SCENARIO_ICONS = useMemo(
-    () => ({
-      daily: <LucideBriefcase className="size-3" />,
-      creative: <LucidePalette className="size-3" />,
-      professional: <LucideShieldCheck className="size-3" />,
-    }),
-    [],
+  const activeScenario = selectedScenario ?? "creative";
+  const handleSelectScenario = useCallback(
+    (scenario: ScenarioId | null) => selectScenario(scenario ?? "creative"),
+    [selectScenario],
   );
 
   const selectedTags: SelectedTag[] = useMemo(() => {
     if (!selectedPill) return [];
     const { agentSlug } = selectedPill;
     const pillLabel = t.scenarios.pills[agentSlug] ?? agentSlug;
-    const scenarioLabel = selectedScenario ? t.scenarios[selectedScenario] : "";
     return [
       {
         id: agentSlug,
-        label: scenarioLabel ? `${scenarioLabel} / ${pillLabel}` : pillLabel,
-        icon: selectedScenario ? SCENARIO_ICONS[selectedScenario] : undefined,
+        label: pillLabel,
       },
     ];
-  }, [selectedPill, selectedScenario, SCENARIO_ICONS, t]);
+  }, [selectedPill, t]);
 
   const handleRemoveTag = useCallback(
     (id: string) => {
@@ -214,35 +205,56 @@ export default function ChatPage() {
               <ArtifactTrigger />
             </div>
           </header>
-          <main className="flex min-h-0 max-w-full grow flex-col">
-            <div className="flex min-h-0 flex-1 justify-center">
-              <MessageList
-                className={cn("size-full", !isWelcomeMode && "pt-10")}
-                threadId={threadId}
-                thread={thread}
-                paddingBottom={MESSAGE_LIST_DEFAULT_PADDING_BOTTOM}
-                hasMoreHistory={hasMoreHistory}
-                loadMoreHistory={loadMoreHistory}
-                isHistoryLoading={isHistoryLoading}
-                tokenUsageInlineMode={tokenUsageInlineMode}
-              />
-            </div>
-            <div className="relative z-30 flex shrink-0 justify-center px-4 pb-4">
+          <main
+            className={cn(
+              "flex min-h-0 max-w-full grow flex-col",
+              isWelcomeMode && "justify-center",
+            )}
+          >
+            {!isWelcomeMode && (
+              <div className="flex min-h-0 flex-1 justify-center">
+                <MessageList
+                  className="size-full pt-10"
+                  threadId={threadId}
+                  thread={thread}
+                  paddingBottom={MESSAGE_LIST_DEFAULT_PADDING_BOTTOM}
+                  hasMoreHistory={hasMoreHistory}
+                  loadMoreHistory={loadMoreHistory}
+                  isHistoryLoading={isHistoryLoading}
+                  tokenUsageInlineMode={tokenUsageInlineMode}
+                />
+              </div>
+            )}
+            <div
+              className={cn(
+                "relative z-30 flex shrink-0 justify-center px-4",
+                isWelcomeMode ? "pb-0" : "pb-4",
+              )}
+            >
               <div className="relative w-full max-w-(--container-width-md)">
                 {isWelcomeMode && (
-                  <div className="flex justify-center pb-2">
+                  <div className="flex flex-col items-center gap-2">
                     <Welcome mode={settings.context.mode} />
+                    <ScenarioTabs
+                      selected={activeScenario}
+                      onSelect={handleSelectScenario}
+                    />
                   </div>
                 )}
-                <ScenarioCascadeBar
-                  selectedScenario={selectedScenario}
-                  selectedPill={selectedPill}
-                  selectedChip={selectedChip}
-                  onSelectScenario={selectScenario}
-                  onTogglePill={togglePill}
-                  onToggleChip={toggleChip}
-                  onInjectPrompt={(template) => setPendingTemplate(template)}
-                />
+                {isWelcomeMode && (
+                  <div className="mt-12">
+                    <ScenarioCascadeBar
+                      selectedScenario={activeScenario}
+                      selectedPill={selectedPill}
+                      selectedChip={selectedChip}
+                      onTogglePill={togglePill}
+                      onToggleChip={toggleChip}
+                      onInjectPrompt={(template) =>
+                        setPendingTemplate(template)
+                      }
+                    />
+                  </div>
+                )}
                 {hasTodos && (
                   <div className="relative z-0">
                     <TodoList
@@ -294,11 +306,6 @@ export default function ChatPage() {
                 )}
               </div>
             </div>
-            {isWelcomeMode && (
-              <div className="mx-auto max-h-[calc(50vh-8rem)] w-full max-w-(--container-width-md) overflow-y-auto px-4 pb-6">
-                <WorkbenchHome />
-              </div>
-            )}
           </main>
         </div>
       </ChatBox>
