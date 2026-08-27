@@ -81,6 +81,30 @@ export const SCENARIOS: ScenarioTab[] = [
           },
         ],
       },
+      {
+        agentSlug: "summarize",
+        label: "智能摘要",
+        chips: [
+          {
+            label: "文档摘要",
+            skillName: "summarize",
+            promptTemplate:
+              "请用 summarize 技能对我上传的文档做 medium 长度摘要（markdown 输出，含 摘要/核心要点 5条/关键词 5个，标注来源页码）：[粘贴文本或上传附件]",
+          },
+          {
+            label: "会议纪要",
+            skillName: "summarize",
+            promptTemplate:
+              "请用 summarize 技能将以下会议记录整理为纪要（long 长度，分 摘要/决议/待办 三段，待办含责任人与截止日期）：[粘贴记录]",
+          },
+          {
+            label: "要点提炼",
+            skillName: "summarize",
+            promptTemplate:
+              "请用 summarize 技能对以下长文做 short 长度要点提炼（3-5 条，每条 ≤40 字，附关键词 5个）：[粘贴长文]",
+          },
+        ],
+      },
     ],
   },
   {

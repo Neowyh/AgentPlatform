@@ -75,3 +75,7 @@ caveman                      # 极简沟通模式
 grill-me                     # 方案深度追问
 surprise-me                  # 技能创意组合
 skill-creator                # 技能创建与优化
+
+# —— 离线日常办公 ——
+summarize                    # 长文本/本地文档离线摘要（LLM 分级，禁公网，日常办公 Pill）
+

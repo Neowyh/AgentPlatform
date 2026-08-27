@@ -184,6 +184,14 @@
       "display_name": "故障归零工作流",
       "visibility": "public",
       "source": "resources/workflows/fault-zeroing.yaml"
+    },
+    {
+      "id": "970cfa98-d2e5-5181-9b6b-f1b843bb97c7",
+      "type": "skill",
+      "slug": "summarize",
+      "display_name": "智能摘要",
+      "visibility": "public",
+      "source": "resources/skills/summarize"
     }
   ]
 }
