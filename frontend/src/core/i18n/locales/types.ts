@@ -67,6 +67,17 @@ export interface Translations {
     promptTemplate: string;
   };
 
+  // Scenario cascade bar
+  scenarios: {
+    daily: string;
+    creative: string;
+    professional: string;
+    // Pills
+    pills: Record<string, string>;
+    // Chips
+    chips: Record<string, string>;
+  };
+
   // Clipboard
   clipboard: {
     copyToClipboard: string;
