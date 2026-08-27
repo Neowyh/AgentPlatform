@@ -7,11 +7,12 @@ vi.mock("@/core/skills/api", () => ({
   enableSkill: vi.fn(),
 }));
 
+const mockLoadSkills = vi.fn();
 vi.mock("@/core/skills", async (importOriginal) => {
   const actual = await importOriginal();
   return {
-    ...({} as any).actual,
-    loadSkills: vi.fn(),
+    ...actual,
+    loadSkills: mockLoadSkills,
   };
 });
 
@@ -45,8 +46,7 @@ describe("useSkills", () => {
   });
 
   test("returns skills data on success", async () => {
-    const { loadSkills } = await import("@/core/skills");
-    vi.mocked(loadSkills).mockResolvedValue([
+    mockLoadSkills.mockResolvedValue([
       {
         name: "skill-1",
         description: "First skill",
@@ -76,8 +76,7 @@ describe("useSkills", () => {
   });
 
   test("returns empty array on error", async () => {
-    const { loadSkills } = await import("@/core/skills");
-    vi.mocked(loadSkills).mockRejectedValue(new Error("Network error"));
+    mockLoadSkills.mockRejectedValue(new Error("Network error"));
 
     const { useSkills } = await import("@/core/skills/hooks");
     const { result } = renderHook(() => useSkills(), {
