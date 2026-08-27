@@ -82,7 +82,7 @@ export function FeatureChipBar({
           tabIndex={0}
           data-state="inactive"
           className={cn(
-            "flex shrink-0 items-center gap-1.5 rounded-full border px-4 py-2 text-sm font-medium transition-all",
+            "flex shrink-0 items-center gap-1.5 rounded-full border px-5 py-2.5 text-sm font-medium transition-all",
             "bg-muted/30 text-muted-foreground hover:bg-muted/60 hover:text-foreground border-transparent",
             "hover:shadow-sm active:scale-95",
           )}
