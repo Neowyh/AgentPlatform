@@ -72,6 +72,10 @@ export interface Translations {
     daily: string;
     creative: string;
     professional: string;
+    // Pills
+    pills: Record<string, string>;
+    // Chips
+    chips: Record<string, string>;
   };
 
   // Clipboard
