@@ -118,7 +118,6 @@ export function InputBox({
   autoFocus,
   status = "ready",
   context,
-  extraHeader,
   isWelcomeMode,
   threadId,
   initialValue,
@@ -142,7 +141,6 @@ export function InputBox({
     mode: "flash" | "thinking" | "pro" | "ultra" | undefined;
     reasoning_effort?: "minimal" | "low" | "medium" | "high";
   };
-  extraHeader?: React.ReactNode;
   /**
    * Whether to render the input in welcome layout (vertically centered,
    * with hero + quick action suggestions).  This is purely a visual flag,
@@ -546,13 +544,6 @@ export function InputBox({
         onSubmit={handleSubmit}
         {...props}
       >
-        {extraHeader && (
-          <div className="pointer-events-none absolute top-0 right-0 left-0 z-10">
-            <div className="pointer-events-none absolute right-0 bottom-0 left-0 flex items-center justify-center">
-              {extraHeader}
-            </div>
-          </div>
-        )}
         <PromptInputAttachments>
           {(attachment) => <PromptInputAttachment data={attachment} />}
         </PromptInputAttachments>

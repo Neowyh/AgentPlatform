@@ -6,7 +6,6 @@ import { useCallback, useEffect, useState } from "react";
 
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import { Button } from "@/components/ui/button";
-import { AgentWelcome } from "@/components/workspace/agent-welcome";
 import { ArtifactTrigger } from "@/components/workspace/artifacts";
 import {
   ChatBox,
@@ -250,11 +249,6 @@ export default function AgentChatPage() {
                         : "ready"
                   }
                   context={settings.context}
-                  extraHeader={
-                    isWelcomeMode && (
-                      <AgentWelcome agent={agent} agentName={agent_name} />
-                    )
-                  }
                   disabled={
                     env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true" ||
                     isUploading
