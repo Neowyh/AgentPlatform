@@ -48,6 +48,11 @@ vi.mock("@/core/i18n/hooks", () => ({
         loading: "Loading...",
         notAvailableInDemoMode: "Not available in demo",
       },
+      scenarios: {
+        daily: "日常办公",
+        creative: "创意设计",
+        professional: "专业任务",
+      },
     },
   }),
 }));
@@ -303,11 +308,13 @@ describe("ChatPage", () => {
   test("renders InputBox after re-render when mounted", () => {
     const { rerender } = render(<ChatPage />);
     expect(screen.queryByTestId("input-box")).not.toBeInTheDocument();
-    expect(document.querySelector('[aria-hidden="true"]')).toBeInTheDocument();
+    expect(
+      document.querySelector('div[aria-hidden="true"]'),
+    ).toBeInTheDocument();
     rerender(<ChatPage />);
     expect(screen.getByTestId("input-box")).toBeInTheDocument();
     expect(
-      document.querySelector('[aria-hidden="true"]'),
+      document.querySelector('div[aria-hidden="true"]'),
     ).not.toBeInTheDocument();
   });
 
