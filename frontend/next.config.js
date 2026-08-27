@@ -21,10 +21,6 @@ const config = {
     process.env.NEXT_CONFIG_BUILD_OUTPUT === "standalone"
       ? "standalone"
       : undefined,
-  i18n: {
-    locales: ["en", "zh"],
-    defaultLocale: "en",
-  },
   devIndicators: false,
   async rewrites() {
     const rewrites = [];
