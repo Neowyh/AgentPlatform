@@ -1,6 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  LucideBriefcase,
+  LucidePalette,
+  LucideShieldCheck,
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { type PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import { ArtifactTrigger } from "@/components/workspace/artifacts";
@@ -17,6 +22,7 @@ import {
 } from "@/components/workspace/messages";
 import { ThreadContext } from "@/components/workspace/messages/context";
 import { ScenarioCascadeBar } from "@/components/workspace/scenario";
+import type { SelectedTag } from "@/components/workspace/scenario/selected-tags";
 import { ThreadTitle } from "@/components/workspace/thread-title";
 import { TodoList } from "@/components/workspace/todo-list";
 import { TokenUsageIndicator } from "@/components/workspace/token-usage-indicator";
@@ -56,6 +62,41 @@ export default function ChatPage() {
     resetSelection,
   } = useScenarioSelection();
   const [pendingTemplate, setPendingTemplate] = useState<string | null>(null);
+
+  const SCENARIO_ICONS = useMemo(
+    () => ({
+      daily: <LucideBriefcase className="size-3" />,
+      creative: <LucidePalette className="size-3" />,
+      professional: <LucideShieldCheck className="size-3" />,
+    }),
+    [],
+  );
+
+  const selectedTags: SelectedTag[] = useMemo(() => {
+    if (!selectedPill) return [];
+    const { agentSlug } = selectedPill;
+    const label = agentSlug
+      .split("-")
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(" ");
+    return [
+      {
+        id: agentSlug,
+        label,
+        icon: selectedScenario ? SCENARIO_ICONS[selectedScenario] : undefined,
+      },
+    ];
+  }, [selectedPill, selectedScenario, SCENARIO_ICONS]);
+
+  const handleRemoveTag = useCallback(
+    (id: string) => {
+      if (selectedPill?.agentSlug === id) {
+        togglePill(selectedPill.scenarioId, id);
+        setPendingTemplate(null);
+      }
+    },
+    [selectedPill, togglePill],
+  );
 
   useEffect(() => {
     resetSelection();
@@ -255,6 +296,8 @@ export default function ChatPage() {
                     }
                     pendingTemplate={pendingTemplate}
                     onPendingTemplateConsumed={() => setPendingTemplate(null)}
+                    selectedTags={selectedTags}
+                    onRemoveTag={handleRemoveTag}
                     disabled={
                       isMock ||
                       env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true" ||

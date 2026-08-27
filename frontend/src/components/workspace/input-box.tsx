@@ -82,6 +82,7 @@ import {
 
 import { useThread } from "./messages/context";
 import { ModeHoverGuide } from "./mode-hover-guide";
+import { SelectedTags, type SelectedTag } from "./scenario/selected-tags";
 import { Tooltip } from "./tooltip";
 
 type InputMode = "flash" | "thinking" | "pro" | "ultra";
@@ -122,9 +123,11 @@ export function InputBox({
   threadId,
   initialValue,
   pendingTemplate,
+  selectedTags = [],
   onPendingTemplateConsumed,
   onContextChange,
   onFollowupsVisibilityChange,
+  onRemoveTag,
   onSubmit,
   onStop,
   ...props
@@ -149,6 +152,7 @@ export function InputBox({
   threadId: string;
   initialValue?: string;
   pendingTemplate?: string | null;
+  selectedTags?: SelectedTag[];
   onPendingTemplateConsumed?: () => void;
   onContextChange?: (
     context: Omit<
@@ -160,6 +164,7 @@ export function InputBox({
     },
   ) => void;
   onFollowupsVisibilityChange?: (visible: boolean) => void;
+  onRemoveTag?: (id: string) => void;
   onSubmit?: (message: PromptInputMessage) => void | Promise<void>;
   onStop?: () => void;
 }) {
@@ -551,6 +556,13 @@ export function InputBox({
         <PromptInputAttachments>
           {(attachment) => <PromptInputAttachment data={attachment} />}
         </PromptInputAttachments>
+        {selectedTags.length > 0 && onRemoveTag && (
+          <SelectedTags
+            tags={selectedTags}
+            onRemove={onRemoveTag}
+            className="px-4 pt-3"
+          />
+        )}
         <PromptInputBody className="absolute top-0 right-0 left-0 z-3">
           <PromptInputTextarea
             className={cn("size-full")}
