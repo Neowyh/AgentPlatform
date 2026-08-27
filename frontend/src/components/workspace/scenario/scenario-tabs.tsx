@@ -81,8 +81,8 @@ export function ScenarioTabs({ selected, onSelect }: ScenarioTabsProps) {
             className={cn(
               "flex items-center gap-1.5 rounded-full border px-5 py-2.5 text-sm font-medium transition-all",
               isActive
-                ? "bg-muted/60 text-foreground border-transparent shadow-sm"
-                : "text-muted-foreground hover:bg-muted/40 hover:text-foreground border-transparent",
+                ? "bg-muted text-foreground border-transparent font-semibold shadow-sm"
+                : "text-muted-foreground hover:bg-muted/60 hover:text-foreground border-transparent",
               "hover:shadow-sm active:scale-95",
             )}
             onClick={() => onSelect(isActive ? null : id)}

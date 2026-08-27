@@ -72,7 +72,7 @@ import { Suggestion, Suggestions } from "../ai-elements/suggestion";
 
 import { useThread } from "./messages/context";
 import { ModeHoverGuide } from "./mode-hover-guide";
-import { SelectedTags, type SelectedTag } from "./scenario/selected-tags";
+import { InlineSelectedTag, type SelectedTag } from "./scenario/selected-tags";
 import { Tooltip } from "./tooltip";
 
 type InputMode = "flash" | "thinking" | "pro" | "ultra";
@@ -176,6 +176,17 @@ export function InputBox({
     null,
   );
   const pendingSourceRef = useRef<"followup" | "cascade">("followup");
+
+  useEffect(() => {
+    if (selectedTags.length > 0 && promptRootRef.current) {
+      const textarea =
+        promptRootRef.current.querySelector<HTMLTextAreaElement>("textarea");
+      if (textarea) {
+        textarea.focus();
+        textarea.setSelectionRange(0, 0);
+      }
+    }
+  }, [selectedTags]);
 
   useEffect(() => {
     if (models.length === 0) {
@@ -537,22 +548,31 @@ export function InputBox({
         <PromptInputAttachments>
           {(attachment) => <PromptInputAttachment data={attachment} />}
         </PromptInputAttachments>
-        {selectedTags.length > 0 && onRemoveTag && (
-          <SelectedTags
-            tags={selectedTags}
-            onRemove={onRemoveTag}
-            className="px-4 pt-3"
-          />
-        )}
         <PromptInputBody className="absolute top-0 right-0 left-0 z-3">
-          <PromptInputTextarea
-            className={cn("size-full")}
-            disabled={disabled}
-            placeholder={t.inputBox.placeholder}
-            autoFocus={autoFocus}
-            defaultValue={initialValue}
-            data-testid="chat-input"
-          />
+          <div className="relative">
+            {selectedTags.length > 0 && onRemoveTag && (
+              <div className="absolute top-2.5 left-3 z-4 flex items-center gap-1">
+                {selectedTags.map((tag) => (
+                  <InlineSelectedTag
+                    key={tag.id}
+                    tag={tag}
+                    onRemove={onRemoveTag}
+                  />
+                ))}
+              </div>
+            )}
+            <PromptInputTextarea
+              className={cn(
+                "size-full",
+                selectedTags.length > 0 && "pl-[120px]",
+              )}
+              disabled={disabled}
+              placeholder={t.inputBox.placeholder}
+              autoFocus={autoFocus}
+              defaultValue={initialValue}
+              data-testid="chat-input"
+            />
+          </div>
         </PromptInputBody>
         <PromptInputFooter className="flex">
           <PromptInputTools>

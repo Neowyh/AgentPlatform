@@ -55,3 +55,46 @@ export function SelectedTags({ tags, onRemove, className }: SelectedTagsProps) {
     </div>
   );
 }
+
+interface InlineSelectedTagProps {
+  tag: SelectedTag;
+  onRemove: (id: string) => void;
+}
+
+export function InlineSelectedTag({ tag, onRemove }: InlineSelectedTagProps) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium",
+        "bg-primary/15 text-primary shadow-sm",
+        "cursor-default select-none",
+      )}
+      contentEditable={false}
+      data-testid="inline-selected-tag"
+      role="group"
+      aria-label={`Scenario: ${tag.label}`}
+    >
+      {tag.icon && (
+        <span className="flex size-3 items-center justify-center">
+          {tag.icon}
+        </span>
+      )}
+      <span>{tag.label}</span>
+      <button
+        type="button"
+        className={cn(
+          "ml-0.5 flex size-3.5 items-center justify-center rounded-full",
+          "text-primary/60 hover:bg-primary/25 hover:text-primary",
+          "transition-colors",
+        )}
+        onClick={(e) => {
+          e.stopPropagation();
+          onRemove(tag.id);
+        }}
+        aria-label={`Remove ${tag.label}`}
+      >
+        <XIcon className="size-2.5" />
+      </button>
+    </span>
+  );
+}
