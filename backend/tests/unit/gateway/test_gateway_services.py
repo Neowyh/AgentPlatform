@@ -369,6 +369,21 @@ def test_merge_run_context_overrides_propagates_to_runtime_context():
     assert "thread_id" not in config["context"]
 
 
+def test_merge_run_context_overrides_skill_name_and_skill_names():
+    from app.gateway.services import build_run_config, merge_run_context_overrides
+
+    config = build_run_config("thread-1", None, None)
+    merge_run_context_overrides(
+        config,
+        {"skill_name": "anthropic-docx", "skill_names": ["s1", "s2"]},
+    )
+
+    assert config["configurable"]["skill_name"] == "anthropic-docx"
+    assert config["configurable"]["skill_names"] == ["s1", "s2"]
+    assert config["context"]["skill_name"] == "anthropic-docx"
+    assert config["context"]["skill_names"] == ["s1", "s2"]
+
+
 def test_merge_run_context_overrides_noop_for_empty_context():
     from app.gateway.services import build_run_config, merge_run_context_overrides
 
