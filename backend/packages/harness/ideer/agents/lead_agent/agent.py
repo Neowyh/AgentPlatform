@@ -362,6 +362,15 @@ def _available_skill_names(agent_config, is_bootstrap: bool) -> set[str] | None:
     return None
 
 
+def _resolve_requested_skills(
+    skills: list[Skill],
+    skill_name: str | None,
+) -> list[Skill]:
+    if not skill_name:
+        return skills
+    return [s for s in skills if s.name == skill_name]
+
+
 def _load_enabled_skills_for_tool_policy(available_skills: set[str] | None, *, app_config: AppConfig) -> list[Skill]:
     try:
         from ideer.agents.lead_agent.prompt import get_enabled_skills_for_config
@@ -495,6 +504,10 @@ def _make_lead_agent(
 
     skills_for_tool_policy = list(resolved_skills or []) if canonical_definition is not None else _load_enabled_skills_for_tool_policy(available_skills, app_config=resolved_app_config)
 
+    requested_skill_name: str | None = cfg.get("skill_name")
+    if requested_skill_name:
+        skills_for_tool_policy = _resolve_requested_skills(skills_for_tool_policy, requested_skill_name)
+
     if is_bootstrap:
         # Special bootstrap agent with minimal prompt for initial custom agent creation flow
         tools = get_available_tools(model_name=model_name, subagent_enabled=subagent_enabled, app_config=resolved_app_config) + [setup_agent]
@@ -532,6 +545,7 @@ def _make_lead_agent(
             skills_container_path="/mnt/run-skills" if canonical_definition else None,
             soul_override=canonical_definition.soul if canonical_definition else None,
             read_only=canonical_definition is not None,
+            requested_skill_name=requested_skill_name,
         ),
         state_schema=ThreadState,
     )

@@ -366,6 +366,7 @@ You are {agent_name}, an open-source super agent.
 
 {soul}
 {self_update_section}
+{requested_skill_section}
 <thinking_style>
 - Think concisely and strategically about the user's request BEFORE taking action
 - Break down the task: What is clear? What is ambiguous? What is missing?
@@ -777,6 +778,7 @@ def apply_prompt_template(
     skills_container_path: str | None = None,
     soul_override: str | None = None,
     read_only: bool = False,
+    requested_skill_name: str | None = None,
 ) -> str:
     # Include subagent section only if enabled (from runtime parameter)
     n = max_concurrent_subagents
@@ -808,6 +810,16 @@ def apply_prompt_template(
         container_base_path=skills_container_path,
     )
 
+    requested_skill_section = ""
+    if requested_skill_name:
+        requested_skill_section = (
+            f"<requested_skill>\n"
+            f"The user explicitly invoked skill **{requested_skill_name}**. "
+            f"You MUST load and follow this skill's SKILL.md file first before taking any action.\n"
+            f"Use `read_file` on the skill's main file located at the path provided in the <available_skills> section.\n"
+            f"</requested_skill>"
+        )
+
     # Get deferred tools section (tool_search)
     deferred_tools_section = get_deferred_tools_prompt_section(app_config=app_config)
 
@@ -825,6 +837,7 @@ def apply_prompt_template(
         agent_name=agent_name or "iDeer 2.0",
         soul=soul,
         self_update_section=_build_self_update_section(agent_name) if not agent_user_id and not read_only else "",
+        requested_skill_section=requested_skill_section,
         skills_section=skills_section,
         deferred_tools_section=deferred_tools_section,
         subagent_section=subagent_section,
