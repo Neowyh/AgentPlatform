@@ -66,6 +66,7 @@ import {
   type PropsWithChildren,
   type ReactNode,
   type RefObject,
+  forwardRef,
   useCallback,
   useContext,
   useEffect,
@@ -876,112 +877,135 @@ export const PromptInputBody = ({
   <div className={cn("contents", className)} {...props} />
 );
 
-export type PromptInputTextareaProps = ComponentProps<
-  typeof InputGroupTextarea
->;
+export type PromptInputTextareaProps = Omit<
+  ComponentProps<typeof InputGroupTextarea>,
+  "onSelect"
+> & {
+  onCursorChange?: (position: number) => void;
+  externalOnKeyDown?: KeyboardEventHandler<HTMLTextAreaElement>;
+};
 
-export const PromptInputTextarea = ({
-  onChange,
-  className,
-  placeholder = "What would you like to know?",
-  ...props
-}: PromptInputTextareaProps) => {
-  const controller = useOptionalPromptInputController();
-  const attachments = usePromptInputAttachments();
-  const sanitizeIncomingFiles = usePromptInputValidation();
-  const [isComposing, setIsComposing] = useState(false);
+export const PromptInputTextarea = forwardRef<
+  HTMLTextAreaElement,
+  PromptInputTextareaProps
+>(
+  (
+    {
+      onChange,
+      onKeyDown,
+      onCursorChange,
+      externalOnKeyDown,
+      className,
+      placeholder = "What would you like to know?",
+      ...props
+    },
+    ref,
+  ) => {
+    const controller = useOptionalPromptInputController();
+    const attachments = usePromptInputAttachments();
+    const sanitizeIncomingFiles = usePromptInputValidation();
+    const [isComposing, setIsComposing] = useState(false);
 
-  const handleKeyDown: KeyboardEventHandler<HTMLTextAreaElement> = (e) => {
-    if (e.key === "Enter") {
-      if (isIMEComposing(e, isComposing)) {
-        return;
+    const handleKeyDown: KeyboardEventHandler<HTMLTextAreaElement> = (e) => {
+      externalOnKeyDown?.(e);
+      if (e.defaultPrevented) return;
+
+      if (e.key === "Enter") {
+        if (isIMEComposing(e, isComposing)) {
+          return;
+        }
+        if (e.shiftKey) {
+          return;
+        }
+        e.preventDefault();
+
+        const form = e.currentTarget.form;
+        const submitButton = form?.querySelector(
+          'button[type="submit"]',
+        ) as HTMLButtonElement | null;
+        if (submitButton?.disabled) {
+          return;
+        }
+
+        form?.requestSubmit();
       }
-      if (e.shiftKey) {
-        return;
-      }
-      e.preventDefault();
 
-      // Check if the submit button is disabled before submitting
-      const form = e.currentTarget.form;
-      const submitButton = form?.querySelector(
-        'button[type="submit"]',
-      ) as HTMLButtonElement | null;
-      if (submitButton?.disabled) {
-        return;
-      }
-
-      form?.requestSubmit();
-    }
-
-    // Remove last attachment when Backspace is pressed and textarea is empty
-    if (
-      e.key === "Backspace" &&
-      e.currentTarget.value === "" &&
-      attachments.files.length > 0
-    ) {
-      e.preventDefault();
-      const lastAttachment = attachments.files.at(-1);
-      if (lastAttachment) {
-        attachments.remove(lastAttachment.id);
-      }
-    }
-  };
-
-  const handlePaste: ClipboardEventHandler<HTMLTextAreaElement> = (event) => {
-    const items = event.clipboardData?.items;
-
-    if (!items) {
-      return;
-    }
-
-    const files: File[] = [];
-
-    for (const item of items) {
-      if (item.kind === "file") {
-        const file = item.getAsFile();
-        if (file) {
-          files.push(file);
+      if (
+        e.key === "Backspace" &&
+        e.currentTarget.value === "" &&
+        attachments.files.length > 0
+      ) {
+        e.preventDefault();
+        const lastAttachment = attachments.files.at(-1);
+        if (lastAttachment) {
+          attachments.remove(lastAttachment.id);
         }
       }
-    }
+    };
 
-    if (files.length > 0) {
-      event.preventDefault();
-      const accepted = sanitizeIncomingFiles
-        ? sanitizeIncomingFiles(files)
-        : files;
-      if (accepted.length > 0) {
-        attachments.add(accepted);
+    const handlePaste: ClipboardEventHandler<HTMLTextAreaElement> = (event) => {
+      const items = event.clipboardData?.items;
+
+      if (!items) {
+        return;
       }
-    }
-  };
 
-  const controlledProps = controller
-    ? {
-        value: controller.textInput.value,
-        onChange: (e: ChangeEvent<HTMLTextAreaElement>) => {
-          controller.textInput.setInput(e.currentTarget.value);
-          onChange?.(e);
-        },
+      const files: File[] = [];
+
+      for (const item of items) {
+        if (item.kind === "file") {
+          const file = item.getAsFile();
+          if (file) {
+            files.push(file);
+          }
+        }
       }
-    : {
-        onChange,
-      };
 
-  return (
-    <InputGroupTextarea
-      className={cn("field-sizing-content max-h-48 min-h-16", className)}
-      name="message"
-      onCompositionEnd={() => setIsComposing(false)}
-      onCompositionStart={() => setIsComposing(true)}
-      onKeyDown={handleKeyDown}
-      onPaste={handlePaste}
-      placeholder={placeholder}
-      {...props}
-      {...controlledProps}
-    />
-  );
-};
+      if (files.length > 0) {
+        event.preventDefault();
+        const accepted = sanitizeIncomingFiles
+          ? sanitizeIncomingFiles(files)
+          : files;
+        if (accepted.length > 0) {
+          attachments.add(accepted);
+        }
+      }
+    };
+
+    const controlledProps = controller
+      ? {
+          value: controller.textInput.value,
+          onChange: (e: ChangeEvent<HTMLTextAreaElement>) => {
+            controller.textInput.setInput(e.currentTarget.value);
+            onChange?.(e);
+          },
+        }
+      : {
+          onChange,
+        };
+
+    return (
+      <InputGroupTextarea
+        ref={ref}
+        className={cn("field-sizing-content max-h-48 min-h-16", className)}
+        name="message"
+        onCompositionEnd={() => setIsComposing(false)}
+        onCompositionStart={() => setIsComposing(true)}
+        onKeyDown={handleKeyDown}
+        onPaste={handlePaste}
+        onSelect={(e) => {
+          onCursorChange?.(e.currentTarget.selectionStart ?? 0);
+        }}
+        onInput={(e) => {
+          onCursorChange?.(e.currentTarget.selectionStart ?? 0);
+        }}
+        placeholder={placeholder}
+        {...props}
+        {...controlledProps}
+      />
+    );
+  },
+);
 
 export type PromptInputHeaderProps = Omit<
   ComponentProps<typeof InputGroupAddon>,

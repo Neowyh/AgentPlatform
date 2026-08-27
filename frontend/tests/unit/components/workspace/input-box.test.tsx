@@ -166,6 +166,14 @@ vi.mock("@/components/workspace/tooltip", () => ({
   ),
 }));
 
+vi.mock("@/core/skills/hooks", () => ({
+  useSkills: () => ({
+    skills: [],
+    isLoading: false,
+    error: null,
+  }),
+}));
+
 // Mock the prompt-input hooks and provide simple renderable stubs for
 // the compound sub-components so we can test InputBox in isolation.
 let mockTextInputContext = {

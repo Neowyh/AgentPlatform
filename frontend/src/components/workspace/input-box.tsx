@@ -59,6 +59,7 @@ import { fetch } from "@/core/api/fetcher";
 import { getBackendBaseURL } from "@/core/config";
 import { useI18n } from "@/core/i18n/hooks";
 import { useModels } from "@/core/models/hooks";
+import { useSkills } from "@/core/skills/hooks";
 import type { AgentThreadContext } from "@/core/threads";
 import { textOfMessage } from "@/core/threads/utils";
 import { cn } from "@/lib/utils";
@@ -82,6 +83,11 @@ import {
 
 import { useThread } from "./messages/context";
 import { ModeHoverGuide } from "./mode-hover-guide";
+import { SlashOverlay } from "./slash-overlay";
+import {
+  getSlashAtCursor,
+  getMatchingSkillSuggestions,
+} from "./slash-suggestions";
 import { Tooltip } from "./tooltip";
 
 type InputMode = "flash" | "thinking" | "pro" | "ultra";
@@ -166,6 +172,7 @@ export function InputBox({
   const { t } = useI18n();
   const searchParams = useSearchParams();
   const [modelDialogOpen, setModelDialogOpen] = useState(false);
+  const [skillDialogOpen, setSkillDialogOpen] = useState(false);
   const { models } = useModels();
   const { thread, isMock } = useThread();
   const { textInput } = usePromptInputController();
@@ -183,6 +190,15 @@ export function InputBox({
     null,
   );
   const pendingSourceRef = useRef<"followup" | "cascade">("followup");
+
+  const { skills } = useSkills();
+  const [slashState, setSlashState] = useState<{
+    open: boolean;
+    query: string;
+    start: number;
+    end: number;
+    activeIndex: number;
+  }>({ open: false, query: "", start: 0, end: 0, activeIndex: 0 });
 
   useEffect(() => {
     if (models.length === 0) {
@@ -381,6 +397,100 @@ export function InputBox({
     }
   }, [pendingSuggestion, requestFormSubmit, textInput]);
 
+  const handleCursorChange = useCallback(
+    (pos: number) => {
+      const match = getSlashAtCursor(textInput.value ?? "", pos);
+      if (match) {
+        setSlashState({ open: true, ...match, activeIndex: 0 });
+      } else {
+        setSlashState((prev) => ({ ...prev, open: false }));
+      }
+    },
+    [textInput],
+  );
+
+  const handleSlashSelect = useCallback(
+    (skillName: string) => {
+      const value = textInput.value ?? "";
+      const before = value.slice(0, slashState.start);
+      const after = value.slice(slashState.end);
+      const newText = `${before}/${skillName} ${after}`;
+      textInput.setInput(newText);
+      setSlashState({
+        open: false,
+        query: "",
+        start: 0,
+        end: 0,
+        activeIndex: 0,
+      });
+      const textarea = promptRootRef.current?.querySelector("textarea");
+      if (textarea) {
+        const cursorPos = before.length + skillName.length + 2;
+        setTimeout(() => {
+          textarea.setSelectionRange(cursorPos, cursorPos);
+          textarea.focus();
+        }, 0);
+      }
+    },
+    [textInput, slashState.start, slashState.end],
+  );
+
+  const handleSlashKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (!slashState.open) return;
+      const suggestions = getMatchingSkillSuggestions(skills, slashState.query);
+      if (suggestions.length === 0) return;
+
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setSlashState((prev) => ({
+          ...prev,
+          activeIndex: (prev.activeIndex + 1) % suggestions.length,
+        }));
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setSlashState((prev) => ({
+          ...prev,
+          activeIndex:
+            (prev.activeIndex - 1 + suggestions.length) % suggestions.length,
+        }));
+        return;
+      }
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        handleSlashSelect(suggestions[slashState.activeIndex]!.name);
+        return;
+      }
+      if (e.key === "Tab") {
+        e.preventDefault();
+        handleSlashSelect(suggestions[slashState.activeIndex]!.name);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setSlashState((prev) => ({ ...prev, open: false }));
+        return;
+      }
+    },
+    [
+      slashState.open,
+      slashState.query,
+      slashState.activeIndex,
+      skills,
+      handleSlashSelect,
+    ],
+  );
+
+  const handleSkillSelect = useCallback(
+    (skillName: string) => {
+      handleSlashSelect(skillName);
+      setSkillDialogOpen(false);
+    },
+    [handleSlashSelect],
+  );
+
   const showFollowups =
     !disabled &&
     !isWelcomeMode &&
@@ -559,7 +669,20 @@ export function InputBox({
             autoFocus={autoFocus}
             defaultValue={initialValue}
             data-testid="chat-input"
+            onCursorChange={handleCursorChange}
+            externalOnKeyDown={handleSlashKeyDown}
           />
+          {slashState.open && (
+            <SlashOverlay
+              skills={skills}
+              query={slashState.query}
+              activeIndex={slashState.activeIndex}
+              onSelect={(skill) => handleSlashSelect(skill.name)}
+              onClose={() =>
+                setSlashState((prev) => ({ ...prev, open: false }))
+              }
+            />
+          )}
         </PromptInputBody>
         <PromptInputFooter className="flex">
           <PromptInputTools>
@@ -907,6 +1030,13 @@ export function InputBox({
                 </ModelSelectorList>
               </ModelSelectorContent>
             </ModelSelector>
+            <PromptInputButton
+              data-testid="skill-selector-trigger"
+              aria-label="Select skill"
+              onClick={() => setSkillDialogOpen(true)}
+            >
+              <SparklesIcon className="size-4" />
+            </PromptInputButton>
             <PromptInputSubmit
               className="rounded-full"
               disabled={disabled}
@@ -946,6 +1076,34 @@ export function InputBox({
               {t.inputBox.followupConfirmReplace}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={skillDialogOpen} onOpenChange={setSkillDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Select Skill</DialogTitle>
+            <DialogDescription>
+              Choose a skill to invoke with your message.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-60 overflow-y-auto">
+            {skills
+              .filter((s) => s.enabled)
+              .map((skill) => (
+                <button
+                  key={skill.name}
+                  type="button"
+                  className="hover:bg-accent flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm"
+                  onClick={() => handleSkillSelect(skill.name)}
+                >
+                  <span className="font-medium">{skill.name}</span>
+                  <span className="text-muted-foreground truncate text-xs">
+                    {skill.description}
+                  </span>
+                </button>
+              ))}
+          </div>
         </DialogContent>
       </Dialog>
     </div>
