@@ -601,8 +601,13 @@ export const enUS: Translations = {
     toggleSidebar: "Toggle Sidebar",
   },
 
-  // Resource governance
+  // Resources
   resources: {
+    title: "Resources",
+    description: "Manage your experts, skills, and connectors",
+    experts: "Experts",
+    skills: "Skills",
+    connectors: "Connectors",
     impactTitle: "Downgrade impact",
     impactSummary: (total, direct, transitive) =>
       `This change will affect ${total} resource(s) (${direct} direct, ${transitive} transitive).`,
@@ -630,6 +635,23 @@ export const enUS: Translations = {
       `An admin reduced a resource's visibility, affecting ${count} resource(s)`,
     notificationsUnknownEvent: "New resource notification",
     notificationsLoadFailed: "Failed to load notifications",
+  },
+
+  automations: {
+    title: "Automations",
+    description: "Manage your workflow automations",
+    create: "Create Automation",
+    templates: "Templates",
+    myAutomations: "My Automations",
+  },
+
+  library: {
+    title: "Library",
+    description: "Manage your knowledge base documents",
+    upload: "Upload Document",
+    search: "Search documents...",
+    documents: "Documents",
+    knowledgeBases: "Knowledge Bases",
   },
 
   // Settings

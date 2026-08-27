@@ -576,8 +576,13 @@ export const zhCN: Translations = {
     toggleSidebar: "切换侧边栏",
   },
 
-  // Settings
+  // Resources
   resources: {
+    title: "资源",
+    description: "管理你的专家、技能和连接器",
+    experts: "专家",
+    skills: "技能",
+    connectors: "连接器",
     impactTitle: "降级影响",
     impactSummary: (total, direct, transitive) =>
       `此变更将影响 ${total} 个资源（直接依赖 ${direct} 个，传递依赖 ${transitive} 个）。`,
@@ -604,6 +609,24 @@ export const zhCN: Translations = {
     notificationsUnknownEvent: "新的资源变更通知",
     notificationsLoadFailed: "加载通知失败",
   },
+
+  automations: {
+    title: "自动化",
+    description: "管理你的工作流自动化",
+    create: "创建自动化",
+    templates: "模板",
+    myAutomations: "我的自动化",
+  },
+
+  library: {
+    title: "资料库",
+    description: "管理你的知识库文档",
+    upload: "上传文档",
+    search: "搜索文档...",
+    documents: "文档",
+    knowledgeBases: "知识库",
+  },
+
   settings: {
     title: "设置",
     description: "根据你的偏好调整 iDeer 的界面和行为。",
