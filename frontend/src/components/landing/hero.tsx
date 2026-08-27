@@ -37,6 +37,7 @@ export function Hero({ className }: { className?: string }) {
       />
       <div className="container-md relative z-10 mx-auto flex h-screen flex-col items-center justify-center">
         <h1 className="flex items-center gap-2 text-4xl font-bold md:text-6xl">
+          <div>用iDeer完成</div>{" "}
           <WordRotate
             words={[
               "文档处理",
@@ -46,10 +47,9 @@ export function Hero({ className }: { className?: string }) {
               "代码开发",
               "专业设计",
             ]}
-          />{" "}
-          <div>with iDeer</div>
+          />
         </h1>
-        <p className="text-muted-foreground mt-8 text-center text-2xl text-shadow-sm">
+        <p className="text-muted-foreground mt-8 text-center text-3xl text-shadow-sm">
           iDeer，实现你的idea
         </p>
         <Link href="/workspace">
