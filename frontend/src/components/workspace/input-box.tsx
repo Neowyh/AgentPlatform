@@ -87,6 +87,7 @@ import { SlashOverlay } from "./slash-overlay";
 import {
   getSlashAtCursor,
   getMatchingSkillSuggestions,
+  parseSlashPrefix,
 } from "./slash-suggestions";
 import { Tooltip } from "./tooltip";
 
@@ -298,11 +299,18 @@ export function InputBox({
       setFollowupsHidden(false);
       setFollowupsLoading(false);
 
-      // Guard against submitting before the initial model auto-selection
-      // effect has flushed thread settings to storage/state.
+      const parsed = parseSlashPrefix(message.text);
+      const skillName = parsed?.skillName ?? null;
+      const cleanText = parsed ? parsed.rest : message.text;
+      const cleanMessage = { ...message, text: cleanText };
+
+      const contextWithSkill = skillName
+        ? { ...context, skill_name: skillName }
+        : context;
+
       if (resolvedModelName && context.model_name !== resolvedModelName) {
         onContextChange?.({
-          ...context,
+          ...contextWithSkill,
           model_name: resolvedModelName,
           mode: getResolvedMode(
             context.mode,
@@ -311,12 +319,14 @@ export function InputBox({
         });
         return new Promise<void>((resolve, reject) => {
           setTimeout(() => {
-            Promise.resolve(onSubmit?.(message)).then(resolve).catch(reject);
+            Promise.resolve(onSubmit?.(cleanMessage))
+              .then(resolve)
+              .catch(reject);
           }, 0);
         });
       }
 
-      return onSubmit?.(message);
+      return onSubmit?.(cleanMessage);
     },
     [
       context,
