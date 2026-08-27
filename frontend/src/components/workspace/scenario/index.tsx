@@ -1,6 +1,6 @@
 "use client";
 
-import { getPillsByScenario } from "@/core/scenarios/config";
+import { getPillsByScenario, getChipsByPill } from "@/core/scenarios/config";
 import { getTemplateForChip } from "@/core/scenarios/prompt-templates";
 import type {
   ChipSelection,
@@ -8,7 +8,7 @@ import type {
   ScenarioId,
 } from "@/core/scenarios/types";
 
-import { AgentOrSkillBar } from "./agent-or-skill-bar";
+import { FeatureChipBar } from "./feature-chip-bar";
 import { ScenarioTabs } from "./scenario-tabs";
 
 interface ScenarioCascadeBarProps {
@@ -35,6 +35,10 @@ export function ScenarioCascadeBar({
   onInjectPrompt,
 }: ScenarioCascadeBarProps) {
   const pills = selectedScenario ? getPillsByScenario(selectedScenario) : [];
+  const chips =
+    selectedPill && selectedScenario
+      ? getChipsByPill(selectedScenario, selectedPill.agentSlug)
+      : [];
 
   const handleToggleChip = (
     scenarioId: ScenarioId,
@@ -62,14 +66,24 @@ export function ScenarioCascadeBar({
       data-testid="scenario-cascade-bar"
     >
       <ScenarioTabs selected={selectedScenario} onSelect={onSelectScenario} />
-      {selectedScenario && pills.length > 0 && (
-        <AgentOrSkillBar
-          pills={pills}
-          selectedPill={selectedPill}
-          selectedChip={selectedChip}
-          onTogglePill={onTogglePill}
-          onToggleChip={handleToggleChip}
-          scenarioId={selectedScenario}
+      {selectedScenario && !selectedPill && pills.length > 0 && (
+        <FeatureChipBar
+          items={pills.map((p) => ({
+            id: p.agentSlug,
+            label: p.label,
+          }))}
+          onSelect={(id) => onTogglePill(selectedScenario, id)}
+        />
+      )}
+      {selectedPill && chips.length > 0 && (
+        <FeatureChipBar
+          items={chips.map((c) => ({
+            id: c.skillName,
+            label: c.label,
+          }))}
+          onSelect={(id) =>
+            handleToggleChip(selectedScenario!, selectedPill.agentSlug, id)
+          }
         />
       )}
     </div>
