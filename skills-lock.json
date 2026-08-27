@@ -6,6 +6,12 @@
       "sourceType": "github",
       "skillPath": "SKILL.md",
       "computedHash": "7bd195e3bcdcc24f078dfd4e3b3e37e8ac321c36f410a41241fc4175eab1825a"
+    },
+    "eli5": {
+      "source": "anthropics/claude-plugins-community",
+      "sourceType": "github",
+      "skillPath": "eli5/skills/eli5/SKILL.md",
+      "computedHash": "6a198947e1d7d5410962ece2aee8c65dddbf1ca378f42d575bf46b091d3d27b0"
     }
   }
 }

@@ -69,6 +69,9 @@ academic-paper-review        # 学术论文评审，仅基于上传 PDF 离线�
 # —— 演示 ——
 guizang-ppt-skill            # 单 HTML 网页 PPT（字体/图标/动效已本地化，完全离线）
 
+# —— 创意设计 ——
+eli5                         # 极简图文解释，HTML 大图少字，离线纯 LLM（Anthropic 官方）
+
 # —— 元技能 ——
 bootstrap                    # 智能体初始化
 caveman                      # 极简沟通模式

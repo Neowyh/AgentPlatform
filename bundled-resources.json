@@ -162,6 +162,14 @@
       "source": "resources/skills/wps-proofread"
     },
     {
+      "id": "383dcba3-b5c1-4d36-a825-fc08d1475564",
+      "type": "skill",
+      "slug": "eli5",
+      "display_name": "五岁也能懂",
+      "visibility": "public",
+      "source": "resources/skills/eli5"
+    },
+    {
       "id": "56e2423d-37c3-52cb-a05f-d32677e6abcb",
       "type": "agent",
       "slug": "fault-zeroing",
