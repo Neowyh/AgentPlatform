@@ -90,6 +90,23 @@ def test_apply_prompt_template_includes_custom_mounts(monkeypatch):
     assert "Custom Mounted Directories" in prompt
 
 
+def test_apply_prompt_template_treats_requested_skill_as_preferred(monkeypatch):
+    config = SimpleNamespace(
+        sandbox=SimpleNamespace(mounts=[]),
+        skills=SimpleNamespace(container_path="/mnt/skills"),
+    )
+    monkeypatch.setattr("ideer.config.get_app_config", lambda: config)
+    monkeypatch.setattr(prompt_module, "_get_enabled_skills", lambda: [])
+    monkeypatch.setattr(prompt_module, "get_deferred_tools_prompt_section", lambda **kwargs: "")
+    monkeypatch.setattr(prompt_module, "_build_acp_section", lambda **kwargs: "")
+    monkeypatch.setattr(prompt_module, "_get_memory_context", lambda agent_name=None, **kwargs: "")
+
+    prompt = prompt_module.apply_prompt_template(requested_skill_name="research")
+
+    assert "preferred skill" in prompt
+    assert "MUST load and follow" not in prompt
+
+
 def test_apply_prompt_template_includes_relative_path_guidance(monkeypatch):
     config = SimpleNamespace(
         sandbox=SimpleNamespace(mounts=[]),

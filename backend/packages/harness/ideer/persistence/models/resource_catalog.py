@@ -122,12 +122,14 @@ class RunResourceSnapshot(Base):
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     authz_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    selection_role: Mapped[str] = mapped_column(String(16), nullable=False, default="resolved")
     resolved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
 
     __table_args__ = (
         UniqueConstraint("run_id", "resource_id", name="uq_run_resource_snapshots_run_resource"),
         CheckConstraint("version >= 1", name="ck_run_resource_snapshots_version"),
         CheckConstraint("authz_revision >= 1", name="ck_run_resource_snapshots_authz_revision"),
+        CheckConstraint("selection_role IN ('root', 'resolved', 'preferred')", name="ck_run_resource_snapshots_selection_role"),
         Index("ix_run_resource_snapshots_resource", "resource_id", "run_id"),
     )
 

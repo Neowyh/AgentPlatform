@@ -8,6 +8,7 @@ frames, and consuming stream bridge events.  Router modules
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import re
@@ -37,6 +38,11 @@ from ideer.runtime import (
 from ideer.runtime.runs.naming import resolve_root_run_name
 
 logger = logging.getLogger(__name__)
+
+
+def prompt_template_hash(prompt_template: str) -> str:
+    """Return the stable content hash stored with a Task Chip selection."""
+    return hashlib.sha256(prompt_template.encode("utf-8")).hexdigest()
 
 
 # ---------------------------------------------------------------------------
@@ -356,6 +362,12 @@ async def _canonical_selection_metadata(
     for key in ("scenario_id", "agent_label", "task_id", "task_label", "prompt_template"):
         if key in body_context:
             selection[key] = body_context[key]
+    task_id = body_context.get("task_id")
+    if isinstance(task_id, str):
+        selection["prompt_template_id"] = task_id
+    prompt_template = body_context.get("prompt_template")
+    if isinstance(prompt_template, str):
+        selection["prompt_template_hash"] = prompt_template_hash(prompt_template)
     return {"selection_snapshot": selection}
 
 
