@@ -141,6 +141,14 @@ vi.mock("@/components/workspace/tooltip", () => ({
   ),
 }));
 
+vi.mock("@/core/skills/hooks", () => ({
+  useSkills: () => ({
+    skills: [],
+    isLoading: false,
+    error: null,
+  }),
+}));
+
 let mockTextInputContext = {
   value: "",
   setInput: mockSetInput,

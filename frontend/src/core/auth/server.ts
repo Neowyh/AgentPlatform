@@ -46,6 +46,9 @@ export async function getServerSideUser(): Promise<AuthResult> {
   }
 
   if (process.env.IDEER_AUTH_DISABLED === "1") {
+    console.info(
+      "[SSR auth] IDEER_AUTH_DISABLED=1 bypass — returning stub super_admin",
+    );
     return {
       tag: "authenticated",
       user: {
