@@ -17,6 +17,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import HTTPException
 
+
+def test_prompt_template_hash_is_stable_for_task_history() -> None:
+    from app.gateway.services import prompt_template_hash
+
+    assert prompt_template_hash("请帮我分析以下数据：[粘贴数据]") == ("f19ce523b2a8a0fd90a75333f0f615a720e817ae1849d832da888e8614758439")
+
+
 # ---------------------------------------------------------------------------
 # Line 110: normalize_input with non-dict, non-BaseMessage messages
 # ---------------------------------------------------------------------------

@@ -1271,6 +1271,7 @@ class ResourceService:
                 version=item.version.version,
                 content_hash=item.version.content_hash,
                 authz_revision=item.resource.authz_revision,
+                selection_role=("root" if item.resource.id == root_resource_id else "preferred" if item.resource.id == selected_resource_id else "resolved"),
             )
             for item in closure
         ]

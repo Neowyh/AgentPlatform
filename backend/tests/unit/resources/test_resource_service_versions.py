@@ -366,6 +366,7 @@ async def test_run_snapshot_rejects_selected_skill_outside_agent_closure(session
 
     snapshot = await service.create_run_snapshot("run-valid-selection", agent.id, selected_resource_id=allowed.id)
     assert [(row.resource_id, row.version) for row in snapshot] == [(agent.id, 1), (allowed.id, 1)]
+    assert [row.selection_role for row in snapshot] == ["root", "preferred"]
 
 
 @pytest.mark.asyncio

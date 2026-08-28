@@ -100,10 +100,11 @@ def test_dependency_and_snapshot_rows_use_resource_ids_and_actual_versions() -> 
         "version",
         "content_hash",
         "authz_revision",
+        "selection_role",
         "resolved_at",
     }
     assert ("run_id", "resource_id") in _unique_column_sets(RunResourceSnapshot)
-    assert {"version >= 1", "authz_revision >= 1"} <= _check_sql(RunResourceSnapshot)
+    assert {"version >= 1", "authz_revision >= 1", "selection_role IN ('root', 'resolved', 'preferred')"} <= _check_sql(RunResourceSnapshot)
 
 
 def test_favorites_and_drafts_are_user_and_resource_scoped() -> None:
