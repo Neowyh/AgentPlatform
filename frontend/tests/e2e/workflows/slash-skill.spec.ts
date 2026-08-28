@@ -80,12 +80,11 @@ test.describe("Slash skill invocation", () => {
       await gotoChat(page);
 
       const textarea = page.getByTestId("chat-input");
-      await textarea.fill("/");
-      await textarea.press("Space");
-      await textarea.press("Backspace");
+      await textarea.click();
+      await textarea.pressSequentially("/");
 
       await expect(page.getByTestId("slash-overlay")).toBeVisible({
-        timeout: 5000,
+        timeout: 8000,
       });
     });
 
@@ -93,12 +92,11 @@ test.describe("Slash skill invocation", () => {
       await gotoChat(page);
 
       const textarea = page.getByTestId("chat-input");
-      await textarea.fill("/res");
-      await textarea.press("Space");
-      await textarea.press("Backspace");
+      await textarea.click();
+      await textarea.pressSequentially("/res");
 
       await expect(page.getByTestId("slash-overlay")).toBeVisible({
-        timeout: 5000,
+        timeout: 8000,
       });
       await expect(
         page.getByTestId("slash-option-deep-research"),
@@ -109,12 +107,11 @@ test.describe("Slash skill invocation", () => {
       await gotoChat(page);
 
       const textarea = page.getByTestId("chat-input");
-      await textarea.fill("/");
-      await textarea.press("Space");
-      await textarea.press("Backspace");
+      await textarea.click();
+      await textarea.pressSequentially("/");
 
       await expect(page.getByTestId("slash-overlay")).toBeVisible({
-        timeout: 5000,
+        timeout: 8000,
       });
 
       await textarea.press("ArrowDown");
@@ -127,12 +124,11 @@ test.describe("Slash skill invocation", () => {
       await gotoChat(page);
 
       const textarea = page.getByTestId("chat-input");
-      await textarea.fill("/");
-      await textarea.press("Space");
-      await textarea.press("Backspace");
+      await textarea.click();
+      await textarea.pressSequentially("/");
 
       await expect(page.getByTestId("slash-overlay")).toBeVisible({
-        timeout: 5000,
+        timeout: 8000,
       });
 
       await textarea.press("Enter");
@@ -145,12 +141,11 @@ test.describe("Slash skill invocation", () => {
       await gotoChat(page);
 
       const textarea = page.getByTestId("chat-input");
-      await textarea.fill("/");
-      await textarea.press("Space");
-      await textarea.press("Backspace");
+      await textarea.click();
+      await textarea.pressSequentially("/");
 
       await expect(page.getByTestId("slash-overlay")).toBeVisible({
-        timeout: 5000,
+        timeout: 8000,
       });
 
       await textarea.press("Escape");

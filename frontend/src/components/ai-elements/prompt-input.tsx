@@ -978,6 +978,9 @@ export const PromptInputTextarea = forwardRef<
           onChange: (e: ChangeEvent<HTMLTextAreaElement>) => {
             controller.textInput.setInput(e.currentTarget.value);
             onChange?.(e);
+            // Ensure slash overlay reacts to programmatic fills (Playwright)
+            // where onInput may not fire with updated selectionStart yet.
+            onCursorChange?.(e.currentTarget.selectionStart ?? 0);
           },
         }
       : {
