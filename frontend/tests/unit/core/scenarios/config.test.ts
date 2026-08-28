@@ -23,6 +23,17 @@ describe("SCENARIOS config", () => {
     }
   });
 
+  it("keeps the complete scenario entry inventory aligned with the release", () => {
+    expect(SCENARIOS.flatMap((scenario) => scenario.agentPills)).toHaveLength(
+      14,
+    );
+    expect(
+      SCENARIOS.flatMap((scenario) =>
+        scenario.agentPills.flatMap((pill) => pill.chips ?? []),
+      ),
+    ).toHaveLength(43);
+  });
+
   it("assigns a unique task ID to every task entry", () => {
     const taskIds = SCENARIOS.flatMap((scenario) =>
       scenario.agentPills.flatMap((pill) =>
@@ -65,5 +76,20 @@ describe("getChipsByPill", () => {
 
   it("returns empty array for invalid pill", () => {
     expect(getChipsByPill("daily", "nonexistent")).toEqual([]);
+  });
+
+  it("exposes the approved code-development task labels", () => {
+    expect(
+      getChipsByPill("professional", "code-dev").map((chip) => chip.label),
+    ).toEqual([
+      "方案质询",
+      "需求规格化",
+      "拆分研发任务",
+      "按规格实现",
+      "代码变更评审",
+      "疑难故障诊断",
+      "代码库架构改进",
+      "需求规格说明撰写",
+    ]);
   });
 });

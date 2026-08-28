@@ -252,40 +252,52 @@ export const SCENARIOS: ScenarioTab[] = [
         label: "代码开发",
         chips: [
           {
-            taskId: "tdd-development",
-            label: "TDD 驱动",
-            skillName: "tdd",
-            promptTemplate: "请帮我用 TDD 方式实现以下功能：[描述功能需求]",
+            taskId: "plan-challenge",
+            label: "方案质询",
+            skillName: "grill-with-docs",
+            promptTemplate:
+              "请对以下方案进行质询并沉淀文档：[粘贴方案/PRD/计划]",
+          },
+          {
+            taskId: "requirements-specification",
+            label: "需求规格化",
+            skillName: "to-spec",
+            promptTemplate: "请将以下需求整理为完整规格：[描述需求或上下文]",
+          },
+          {
+            taskId: "development-tickets",
+            label: "拆分研发任务",
+            skillName: "to-tickets",
+            promptTemplate: "请将以下规格拆分为可执行的研发任务：[粘贴规格]",
+          },
+          {
+            taskId: "spec-implementation",
+            label: "按规格实现",
+            skillName: "implement",
+            promptTemplate: "请按以下规格实现需求：[粘贴规格或任务]",
           },
           {
             taskId: "code-review",
-            label: "代码评审",
+            label: "代码变更评审",
             skillName: "code-review",
             promptTemplate: "请帮我评审以下代码变更：[粘贴 diff 或描述变更]",
           },
           {
             taskId: "bug-diagnosis",
-            label: "排故诊断",
+            label: "疑难故障诊断",
             skillName: "diagnosing-bugs",
             promptTemplate: "请帮我诊断以下 Bug：[描述错误现象/堆栈信息]",
           },
           {
             taskId: "architecture-analysis",
-            label: "架构深潜",
+            label: "代码库架构改进",
             skillName: "improve-codebase-architecture",
             promptTemplate:
               "请帮我分析以下代码库的架构改进机会：[粘贴代码或描述模块]",
           },
           {
-            taskId: "domain-modeling",
-            label: "领域建模",
-            skillName: "domain-modeling",
-            promptTemplate:
-              "请帮我构建/梳理以下领域的领域模型：[描述业务领域/术语]",
-          },
-          {
             taskId: "srs-writing",
-            label: "SRS 撰写",
+            label: "需求规格说明撰写",
             skillName: "srs-writing",
             promptTemplate:
               "请帮我撰写以下项目的软件需求规格说明：[项目名称/背景]",

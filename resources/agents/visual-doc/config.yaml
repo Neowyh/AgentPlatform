@@ -1,0 +1,10 @@
+name: visual-doc
+description: 版式文档智能体，面向版式文档相关任务提供结构化协作能力
+tool_groups:
+- file:read
+- file:write
+- document
+- bash
+skills:
+- anthropic-docx
+- anthropic-pdf
