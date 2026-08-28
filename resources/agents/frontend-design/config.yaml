@@ -1,0 +1,10 @@
+name: frontend-design
+description: 前端设计智能体，面向前端设计相关任务提供结构化协作能力
+tool_groups:
+- file:read
+- file:write
+- document
+- bash
+skills:
+- frontend-design
+- web-design-guidelines

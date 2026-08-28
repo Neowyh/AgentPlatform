@@ -1,0 +1,15 @@
+name: abaqus
+description: 仿真分析智能体，面向仿真分析相关任务提供结构化协作能力
+tool_groups:
+- file:read
+- file:write
+- document
+- bash
+skills:
+- abaqus-geometry
+- abaqus-material
+- abaqus-mesh
+- abaqus-dependency-preflight-validator
+- abaqus-script-debugging-checklist
+- abaqus-odb
+- abaqus-export

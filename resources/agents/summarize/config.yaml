@@ -1,0 +1,9 @@
+name: summarize
+description: 智能摘要智能体，面向智能摘要相关任务提供结构化协作能力
+tool_groups:
+- file:read
+- file:write
+- document
+- bash
+skills:
+- summarize

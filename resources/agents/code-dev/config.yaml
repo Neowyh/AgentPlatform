@@ -1,0 +1,34 @@
+name: code-dev
+description: 代码开发智能体，面向代码开发相关任务提供结构化协作能力
+tool_groups:
+- file:read
+- file:write
+- document
+- bash
+skills:
+- ask-matt
+- code-review
+- codebase-design
+- diagnosing-bugs
+- domain-modeling
+- grill-me
+- grill-with-docs
+- grilling
+- handoff
+- implement
+- improve-codebase-architecture
+- prototype
+- research
+- resolving-merge-conflicts
+- setup-matt-pocock-skills
+- tdd
+- teach
+- to-questionnaire
+- to-spec
+- to-tickets
+- triage
+- wait-what
+- wayfinder
+- wizard
+- writing-for-agents
+- srs-writing
