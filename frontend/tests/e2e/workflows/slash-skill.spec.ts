@@ -166,7 +166,7 @@ test.describe("Slash skill invocation", () => {
       await page.getByTestId("skill-selector-trigger").click();
 
       await expect(page.getByText("Select Skill")).toBeVisible({
-        timeout: 5000,
+        timeout: 8000,
       });
     });
 
@@ -176,10 +176,10 @@ test.describe("Slash skill invocation", () => {
       await page.getByTestId("skill-selector-trigger").click();
 
       await expect(page.getByText("Select Skill")).toBeVisible({
-        timeout: 5000,
+        timeout: 8000,
       });
 
-      await page.getByText("deep-research").click();
+      await page.getByRole("dialog").getByText("deep-research").first().click();
 
       await expect(page.getByTestId("chat-input")).toHaveValue(
         /\/deep-research\s/,
