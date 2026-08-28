@@ -505,7 +505,10 @@ def _make_lead_agent(
     skills_for_tool_policy = list(resolved_skills or []) if canonical_definition is not None else _load_enabled_skills_for_tool_policy(available_skills, app_config=resolved_app_config)
 
     requested_skill_name: str | None = cfg.get("skill_name")
-    if requested_skill_name:
+    # A Task Chip selects a preferred Skill for a canonical Agent. It must not
+    # narrow the frozen closure or imply that the model must call that Skill.
+    # Slash commands retain their explicit single-skill behavior for legacy runs.
+    if requested_skill_name and canonical_definition is None:
         skills_for_tool_policy = _resolve_requested_skills(skills_for_tool_policy, requested_skill_name)
 
     if is_bootstrap:

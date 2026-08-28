@@ -814,7 +814,7 @@ def apply_prompt_template(
     if requested_skill_name:
         requested_skill_section = (
             f"<requested_skill>\n"
-            f"The user explicitly invoked skill **{requested_skill_name}**. "
+            f"The user selected **{requested_skill_name}** as the preferred skill for this task. "
             f"You MUST load and follow this skill's SKILL.md file first before taking any action.\n"
             f"Use `read_file` on the skill's main file located at the path provided in the <available_skills> section.\n"
             f"</requested_skill>"

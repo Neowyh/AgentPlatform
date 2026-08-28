@@ -201,6 +201,7 @@ async def _prepare_canonical_agent_run(
     resource_id: str,
     request: Request,
     run_id: str,
+    preferred_skill: str | None = None,
 ):
     """Freeze and load a canonical Agent closure before the Run is claimable."""
 
@@ -250,7 +251,18 @@ async def _prepare_canonical_agent_run(
                 permissions=frozenset(permissions),
                 tool_groups=None,
             )
-            await ResourceService(session, actor).create_run_snapshot(run_id, resource_id)
+            service = ResourceService(session, actor)
+            selected_skill_id = None
+            if preferred_skill:
+                closure = await service.resolve_dependency_closure(resource_id)
+                selected = next(
+                    (item.resource for item in closure if item.resource.id == preferred_skill or item.resource.slug == preferred_skill),
+                    None,
+                )
+                if selected is None or selected.type != "skill":
+                    raise ResourceConflict(f"Selected Skill {preferred_skill} is outside Agent {resource_id}'s dependency closure")
+                selected_skill_id = selected.id
+            await service.create_run_snapshot(run_id, resource_id, selected_resource_id=selected_skill_id)
             storage = ResourceStorage(get_paths().base_dir)
             loader = CanonicalResourceLoader(session, storage)
             definition = await loader.load_agent(run_id, resource_id)
@@ -282,6 +294,69 @@ async def _prepare_canonical_agent_run(
         ) from exc
     except (ResourceConflict, ResourceRuntimeError) as exc:
         raise HTTPException(409, str(exc)) from exc
+
+
+async def _canonical_selection_metadata(
+    run_id: str,
+    agent_resource_id: str,
+    body_context: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Return immutable resource identities alongside user-facing entry labels."""
+    from sqlalchemy import select
+
+    from ideer.persistence.engine import get_session_factory
+    from ideer.persistence.models.resource_catalog import Resource, ResourceVersion, RunResourceSnapshot
+
+    session_factory = get_session_factory()
+    if session_factory is None:
+        return {}
+    async with session_factory() as session:
+        rows = list(
+            (
+                await session.execute(
+                    select(Resource, ResourceVersion, RunResourceSnapshot)
+                    .join(RunResourceSnapshot, RunResourceSnapshot.resource_id == Resource.id)
+                    .join(
+                        ResourceVersion,
+                        (ResourceVersion.resource_id == Resource.id) & (ResourceVersion.version == RunResourceSnapshot.version),
+                    )
+                    .where(RunResourceSnapshot.run_id == run_id)
+                )
+            ).all()
+        )
+    by_id = {resource.id: (resource, version) for resource, version, _snapshot in rows}
+    agent, agent_version = by_id.get(agent_resource_id, (None, None))
+    if agent is None or agent_version is None:
+        return {}
+    selected_skill = body_context.get("skill_name")
+    skill_entry = None
+    if selected_skill:
+        for resource, version in by_id.values():
+            if resource.type == "skill" and (resource.id == selected_skill or resource.slug == selected_skill):
+                skill_entry = {
+                    "resource_id": resource.id,
+                    "display_name": resource.display_name,
+                    "slug": resource.slug,
+                    "version": version.version,
+                    "content_hash": version.content_hash,
+                }
+                break
+    selection: dict[str, Any] = {
+        "agent": {
+            "resource_id": agent.id,
+            "display_name": agent.display_name,
+            "slug": agent.slug,
+            "version": agent_version.version,
+            "content_hash": agent_version.content_hash,
+        },
+        "resolved_skill_ids": sorted(resource.id for resource, _version in by_id.values() if resource.type == "skill"),
+    }
+    if skill_entry is not None:
+        selection["preferred_skill"] = skill_entry
+    for key in ("scenario_id", "agent_label", "task_id", "task_label", "prompt_template"):
+        if key in body_context:
+            selection[key] = body_context[key]
+    return {"selection_snapshot": selection}
 
 
 async def _discard_canonical_run_snapshot(run_id: str) -> None:
@@ -498,12 +573,25 @@ async def start_run(
             )
 
     canonical_run_id = str(uuid.uuid4()) if canonical_resource_id else None
-    canonical_factory = await _prepare_canonical_agent_run(canonical_resource_id, request, canonical_run_id) if canonical_resource_id and canonical_run_id else None
+    canonical_factory = (
+        await _prepare_canonical_agent_run(
+            canonical_resource_id,
+            request,
+            canonical_run_id,
+            preferred_skill=body_context.get("skill_name"),
+        )
+        if canonical_resource_id and canonical_run_id
+        else None
+    )
+
+    run_metadata = dict(body.metadata or {})
+    if canonical_run_id and canonical_resource_id:
+        run_metadata.update(await _canonical_selection_metadata(canonical_run_id, canonical_resource_id, body_context))
 
     try:
         create_kwargs = {
             "on_disconnect": disconnect,
-            "metadata": body.metadata or {},
+            "metadata": run_metadata,
             "kwargs": {"input": body.input, "config": body.config},
             "multitask_strategy": body.multitask_strategy,
             "model_name": model_name,
@@ -533,7 +621,7 @@ async def start_run(
             await run_ctx.thread_store.create(
                 thread_id,
                 assistant_id=body.assistant_id,
-                metadata=body.metadata,
+                metadata=run_metadata,
             )
         else:
             await run_ctx.thread_store.update_status(thread_id, "running")

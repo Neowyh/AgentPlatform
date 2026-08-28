@@ -19,6 +19,11 @@ export interface AgentThreadContext extends Record<string, unknown> {
   agent_name?: string;
   skill_name?: string;
   skill_names?: string[];
+  scenario_id?: string;
+  agent_label?: string;
+  task_id?: string;
+  task_label?: string;
+  prompt_template?: string;
 }
 
 export interface AgentThread extends Thread<AgentThreadState> {

@@ -26,7 +26,7 @@ import { Welcome } from "@/components/workspace/welcome";
 import { useI18n } from "@/core/i18n/hooks";
 import { useModels } from "@/core/models/hooks";
 import { useNotification } from "@/core/notification/hooks";
-import { getPillsByScenario } from "@/core/scenarios/config";
+import { getChipsByPill, getPillsByScenario } from "@/core/scenarios/config";
 import { useScenarioSelection } from "@/core/scenarios/hooks";
 import type { ScenarioId } from "@/core/scenarios/types";
 import { useLocalSettings, useThreadSettings } from "@/core/settings";
@@ -81,6 +81,38 @@ export default function ChatPage() {
     ];
   }, [selectedPill]);
 
+  const selectionContext = useMemo(() => {
+    const context = { ...settings.context };
+    if (!selectedPill) {
+      delete context.agent_name;
+      delete context.skill_name;
+      delete context.scenario_id;
+      delete context.agent_label;
+      delete context.task_id;
+      delete context.task_label;
+      delete context.prompt_template;
+      return context;
+    }
+    const pill = getPillsByScenario(selectedPill.scenarioId).find(
+      (item) => item.agentSlug === selectedPill.agentSlug,
+    );
+    const chip = selectedChip
+      ? getChipsByPill(selectedChip.scenarioId, selectedChip.agentSlug).find(
+          (item) => item.taskId === selectedChip.taskId,
+        )
+      : undefined;
+    return {
+      ...context,
+      scenario_id: selectedPill.scenarioId,
+      agent_name: selectedPill.agentSlug,
+      agent_label: pill?.label,
+      skill_name: chip?.skillName,
+      task_id: chip?.taskId,
+      task_label: chip?.label,
+      prompt_template: chip?.promptTemplate,
+    };
+  }, [settings.context, selectedPill, selectedChip]);
+
   const handleRemoveTag = useCallback(
     (id: string) => {
       if (selectedPill?.agentSlug === id) {
@@ -127,7 +159,7 @@ export default function ChatPage() {
     loadMoreHistory,
   } = useThreadStream({
     threadId: isNewThread ? undefined : threadId,
-    context: settings.context,
+    context: selectionContext,
     isMock,
     // onSend only animates the UI; do NOT flip `isNewThread` here — the
     // LangGraph SDK eagerly fetches /history the moment it receives a
@@ -281,7 +313,7 @@ export default function ChatPage() {
                           ? "streaming"
                           : "ready"
                     }
-                    context={settings.context}
+                    context={selectionContext}
                     pendingTemplate={pendingTemplate}
                     onPendingTemplateConsumed={() => setPendingTemplate(null)}
                     selectedTags={selectedTags}

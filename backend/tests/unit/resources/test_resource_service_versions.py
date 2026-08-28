@@ -348,6 +348,27 @@ async def test_run_snapshot_freezes_latest_dependency_versions(session: AsyncSes
 
 
 @pytest.mark.asyncio
+async def test_run_snapshot_rejects_selected_skill_outside_agent_closure(session: AsyncSession) -> None:
+    agent = _resource("selected-agent")
+    allowed = _resource("allowed-skill", resource_type="skill")
+    unrelated = _resource("unrelated-skill", resource_type="skill")
+    session.add_all([agent, allowed, unrelated])
+    await session.commit()
+    service = ResourceService(session, _actor())
+    await _publish(service, agent.id, expected_revision=0, content_hash="a" * 64, storage_key="agents/selected-agent/versions/1")
+    await _publish(service, allowed.id, expected_revision=0, content_hash="s" * 64, storage_key="skills/allowed-skill/versions/1")
+    await _publish(service, unrelated.id, expected_revision=0, content_hash="u" * 64, storage_key="skills/unrelated-skill/versions/1")
+    await service.replace_dependencies(agent.id, [allowed.id])
+
+    with pytest.raises(ResourceConflict, match="outside the resource closure"):
+        await service.create_run_snapshot("run-invalid-selection", agent.id, selected_resource_id=unrelated.id)
+    assert not list((await session.execute(select(RunResourceSnapshot).where(RunResourceSnapshot.run_id == "run-invalid-selection"))).scalars())
+
+    snapshot = await service.create_run_snapshot("run-valid-selection", agent.id, selected_resource_id=allowed.id)
+    assert [(row.resource_id, row.version) for row in snapshot] == [(agent.id, 1), (allowed.id, 1)]
+
+
+@pytest.mark.asyncio
 async def test_new_run_revalidates_visibility_closure_after_dependency_shrinks(
     session: AsyncSession,
 ) -> None:
