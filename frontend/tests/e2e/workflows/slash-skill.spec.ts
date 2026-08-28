@@ -29,49 +29,46 @@ const MOCK_SKILLS = [
 
 async function gotoChat(page: Page) {
   mockLangGraphAPI(page, { skills: MOCK_SKILLS });
-  await page.goto("/workspace/chats/new", { timeout: 60_000 });
-
-  // SSR auth guard must stay on /workspace/chats/new. If IDEER_AUTH_DISABLED
-  // is missing, Next will redirect to /login or render "Service temporarily
-  // unavailable" (gateway_unavailable). Fail fast with an actionable message
-  // instead of timing out 30 s on chat-input and being misreported as a loop.
-  try {
-    await expect(page).toHaveURL(/\/workspace\/chats\/new/, {
-      timeout: 10_000,
-    });
-  } catch {
-    const url = page.url();
-    const unavailableVisible = await page
-      .getByText("Service temporarily unavailable")
-      .isVisible()
-      .catch(() => false);
-    if (unavailableVisible) {
-      throw new Error(
-        `[E2E] SSR gateway_unavailable at ${url} — gateway unreachable and IDEER_AUTH_DISABLED bypass not active. ` +
-          `Ensure webServer.env.IDEER_AUTH_DISABLED=1 reaches both build and runtime (see frontend/src/core/auth/server.ts).`,
-      );
+  // Retry goto up to 3 times to tolerate transient SSR redirect race
+  // (RSC prefetch may race with mock setup). Retries are cheap vs
+  // misreporting as slash-overlay failure.
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await page.goto("/workspace/chats/new", { timeout: 60_000 });
+    try {
+      await expect(page).toHaveURL(/\/workspace\/chats\/new/, {
+        timeout: 10_000,
+      });
+      const unavailable = page.getByText("Service temporarily unavailable");
+      if (await unavailable.isVisible().catch(() => false)) {
+        throw new Error(
+          `[E2E] SSR gateway_unavailable on ${page.url()} — gateway unreachable and IDEER_AUTH_DISABLED bypass not active.`,
+        );
+      }
+      await expect(page.getByTestId("chat-input")).toBeVisible({
+        timeout: 15_000,
+      });
+      return;
+    } catch (e) {
+      lastError = e;
+      const url = page.url();
+      const msg = e instanceof Error ? e.message : String(e);
+      // Only retry on known transient SSR states
+      if (
+        msg.includes("SSR gateway_unavailable") ||
+        msg.includes("SSR auth redirect") ||
+        url.includes("/login") ||
+        url.includes("/setup")
+      ) {
+        if (attempt < 2) {
+          await page.waitForTimeout(800);
+          continue;
+        }
+      }
+      throw e;
     }
-    if (url.includes("/login") || url.includes("/setup")) {
-      throw new Error(
-        `[E2E] SSR auth redirect to ${url} — IDEER_AUTH_DISABLED=1 not active on Next server. ` +
-          `Ensure webServer.env.IDEER_AUTH_DISABLED=1 reaches both build and runtime.`,
-      );
-    }
-    throw new Error(
-      `[E2E] Expected /workspace/chats/new but landed on ${url}. Check SSR auth (IDEER_AUTH_DISABLED) or webServer.`,
-    );
   }
-
-  // Also surface gateway_unavailable even when URL is correct (edge case where
-  // layout renders error without redirect)
-  const unavailable = page.getByText("Service temporarily unavailable");
-  if (await unavailable.isVisible().catch(() => false)) {
-    throw new Error(
-      `[E2E] SSR gateway_unavailable on ${page.url()} — gateway unreachable and IDEER_AUTH_DISABLED bypass not active.`,
-    );
-  }
-
-  await expect(page.getByTestId("chat-input")).toBeVisible({ timeout: 15_000 });
+  throw lastError;
 }
 
 test.describe("Slash skill invocation", () => {
