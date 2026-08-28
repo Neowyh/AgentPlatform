@@ -117,7 +117,7 @@ describe("zhCN locale", () => {
   // =======================================================================
   describe("welcome", () => {
     it("welcome.greeting", () => {
-      expect(zhCN.welcome.greeting).toBe("你好，欢迎回来！");
+      expect(zhCN.welcome.greeting).toBe("iDeer，实现你的idea");
     });
 
     it("welcome.description contains iDeer brand", () => {
@@ -164,7 +164,7 @@ describe("zhCN locale", () => {
   // =======================================================================
   describe("inputBox", () => {
     const stringKeys: Record<string, string> = {
-      placeholder: "今天我能为你做些什么？",
+      placeholder: "今天我能为你做些什么？ /调用技能",
       createSkillPrompt:
         "我们一起用 skill-creator 技能来创建一个技能吧。先问问我希望这个技能能做什么。",
       addAttachments: "添加附件",

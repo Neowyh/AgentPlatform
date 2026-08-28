@@ -156,7 +156,7 @@ describe("enUS locale comprehensive", () => {
   // =======================================================================
   describe("welcome", () => {
     it("welcome.greeting", () => {
-      expect(enUS.welcome.greeting).toBe("Hello, again!");
+      expect(enUS.welcome.greeting).toBe("iDeer, realize your idea");
     });
 
     it("welcome.description contains iDeer brand", () => {
@@ -203,7 +203,7 @@ describe("enUS locale comprehensive", () => {
   // =======================================================================
   describe("inputBox", () => {
     const stringKeys: Record<string, string> = {
-      placeholder: "How can I assist you today?",
+      placeholder: "How can I assist you today? /invoke skill",
       createSkillPrompt:
         "We're going to build a new skill step by step with `skill-creator`. To start, what do you want this skill to do?",
       addAttachments: "Add attachments",
@@ -552,21 +552,21 @@ describe("enUS locale comprehensive", () => {
   // =======================================================================
   describe("workspace", () => {
     const expected: Record<string, string> = {
-      officialWebsite: "Official Website",
-      githubTooltip: "GitHub",
-      settingsAndMore: "Settings & More",
-      visitGithub: "Visit GitHub",
-      reportIssue: "Report Issue",
-      contactUs: "Contact Us",
-      about: "About",
-      logout: "Logout",
+      officialWebsite: "iDeer's official website",
+      githubTooltip: "iDeer on Github",
+      settingsAndMore: "Settings and more",
+      visitGithub: "iDeer on GitHub",
+      reportIssue: "Report a issue",
+      contactUs: "Contact us",
+      about: "About iDeer",
+      logout: "Log out",
       adminPanel: "Admin Panel",
       userManagement: "User Management",
       departmentManagement: "Department Management",
       toolManagement: "Tool Management",
       resourceManagement: "Resource Management",
-      applicationManagement: "Application Management",
-      auditLogManagement: "Audit Log",
+      applicationManagement: "Application Review",
+      auditLogManagement: "Audit Logs",
     };
 
     for (const [key, value] of Object.entries(expected)) {
