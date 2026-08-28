@@ -424,32 +424,6 @@ export function InputBox({
     [textInput],
   );
 
-  // Sync slash overlay when value is set programmatically (e.g. Playwright fill
-  // or followup insertion) where onSelect/onInput may not fire with correct
-  // selectionStart. Reads live textarea selection when available.
-  useEffect(() => {
-    const textarea =
-      promptRootRef.current?.querySelector<HTMLTextAreaElement>("textarea");
-    const pos = textarea?.selectionStart ?? textInput.value?.length ?? 0;
-    const value = textInput.value ?? "";
-    const match = getSlashAtCursor(value, pos);
-    if (match) {
-      setSlashState((prev) => {
-        if (
-          prev.open &&
-          prev.query === match.query &&
-          prev.start === match.start &&
-          prev.end === match.end
-        ) {
-          return prev;
-        }
-        return { open: true, ...match, activeIndex: 0 };
-      });
-    } else {
-      setSlashState((prev) => (prev.open ? { ...prev, open: false } : prev));
-    }
-  }, [textInput.value]);
-
   const handleSlashSelect = useCallback(
     (skillName: string) => {
       const value = textInput.value ?? "";
