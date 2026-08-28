@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { type PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import { ArtifactTrigger } from "@/components/workspace/artifacts";
@@ -16,14 +16,19 @@ import {
   MESSAGE_LIST_DEFAULT_PADDING_BOTTOM,
 } from "@/components/workspace/messages";
 import { ThreadContext } from "@/components/workspace/messages/context";
+import { ScenarioCascadeBar } from "@/components/workspace/scenario";
+import { ScenarioTabs } from "@/components/workspace/scenario/scenario-tabs";
+import type { SelectedTag } from "@/components/workspace/scenario/selected-tags";
 import { ThreadTitle } from "@/components/workspace/thread-title";
 import { TodoList } from "@/components/workspace/todo-list";
 import { TokenUsageIndicator } from "@/components/workspace/token-usage-indicator";
 import { Welcome } from "@/components/workspace/welcome";
-import { WorkbenchHome } from "@/components/workspace/workbench";
 import { useI18n } from "@/core/i18n/hooks";
 import { useModels } from "@/core/models/hooks";
 import { useNotification } from "@/core/notification/hooks";
+import { getChipsByPill, getPillsByScenario } from "@/core/scenarios/config";
+import { useScenarioSelection } from "@/core/scenarios/hooks";
+import type { ScenarioId } from "@/core/scenarios/types";
 import { useLocalSettings, useThreadSettings } from "@/core/settings";
 import { useThreadStream, useThreadTokenUsage } from "@/core/threads/hooks";
 import { threadTokenUsageToTokenUsage } from "@/core/threads/token-usage";
@@ -44,6 +49,84 @@ export default function ChatPage() {
   const [settings, setSettings] = useThreadSettings(threadId);
   const [localSettings, setLocalSettings] = useLocalSettings();
   const { tokenUsageEnabled } = useModels();
+  const {
+    selectedScenario,
+    selectedPill,
+    selectedChip,
+    selectScenario,
+    togglePill,
+    toggleChip,
+    resetSelection,
+  } = useScenarioSelection();
+  const [pendingTemplate, setPendingTemplate] = useState<string | null>(null);
+
+  const activeScenario = selectedScenario ?? "creative";
+  const handleSelectScenario = useCallback(
+    (scenario: ScenarioId | null) => selectScenario(scenario ?? "creative"),
+    [selectScenario],
+  );
+
+  const selectedTags: SelectedTag[] = useMemo(() => {
+    if (!selectedPill) return [];
+    const { agentSlug, scenarioId } = selectedPill;
+    const pillLabel =
+      getPillsByScenario(scenarioId).find(
+        (pill) => pill.agentSlug === agentSlug,
+      )?.label ?? agentSlug;
+    return [
+      {
+        id: agentSlug,
+        label: pillLabel,
+      },
+    ];
+  }, [selectedPill]);
+
+  const selectionContext = useMemo(() => {
+    const context = { ...settings.context };
+    if (!selectedPill) {
+      delete context.agent_name;
+      delete context.skill_name;
+      delete context.scenario_id;
+      delete context.agent_label;
+      delete context.task_id;
+      delete context.task_label;
+      delete context.prompt_template;
+      return context;
+    }
+    const pill = getPillsByScenario(selectedPill.scenarioId).find(
+      (item) => item.agentSlug === selectedPill.agentSlug,
+    );
+    const chip = selectedChip
+      ? getChipsByPill(selectedChip.scenarioId, selectedChip.agentSlug).find(
+          (item) => item.taskId === selectedChip.taskId,
+        )
+      : undefined;
+    return {
+      ...context,
+      scenario_id: selectedPill.scenarioId,
+      agent_name: selectedPill.agentSlug,
+      agent_label: pill?.label,
+      skill_name: chip?.skillName,
+      task_id: chip?.taskId,
+      task_label: chip?.label,
+      prompt_template: chip?.promptTemplate,
+    };
+  }, [settings.context, selectedPill, selectedChip]);
+
+  const handleRemoveTag = useCallback(
+    (id: string) => {
+      if (selectedPill?.agentSlug === id) {
+        togglePill(selectedPill.scenarioId, id);
+        setPendingTemplate(null);
+      }
+    },
+    [selectedPill, togglePill],
+  );
+
+  useEffect(() => {
+    resetSelection();
+    setPendingTemplate(null);
+  }, [threadId, resetSelection]);
   const threadTokenUsage = useThreadTokenUsage(
     isNewThread || isMock ? undefined : threadId,
     { enabled: tokenUsageEnabled && !isMock },
@@ -76,7 +159,7 @@ export default function ChatPage() {
     loadMoreHistory,
   } = useThreadStream({
     threadId: isNewThread ? undefined : threadId,
-    context: settings.context,
+    context: selectionContext,
     isMock,
     // onSend only animates the UI; do NOT flip `isNewThread` here — the
     // LangGraph SDK eagerly fetches /history the moment it receives a
@@ -158,61 +241,68 @@ export default function ChatPage() {
               <ArtifactTrigger />
             </div>
           </header>
-          <main className="flex min-h-0 max-w-full grow flex-col">
-            <div className="flex min-h-0 flex-1 justify-center">
-              <MessageList
-                className={cn("size-full", !isWelcomeMode && "pt-10")}
-                threadId={threadId}
-                thread={thread}
-                paddingBottom={MESSAGE_LIST_DEFAULT_PADDING_BOTTOM}
-                hasMoreHistory={hasMoreHistory}
-                loadMoreHistory={loadMoreHistory}
-                isHistoryLoading={isHistoryLoading}
-                tokenUsageInlineMode={tokenUsageInlineMode}
-              />
-            </div>
+          <main
+            className={cn(
+              "flex min-h-0 max-w-full grow flex-col",
+              isWelcomeMode && "justify-center",
+            )}
+          >
+            {!isWelcomeMode && (
+              <div className="flex min-h-0 flex-1 justify-center">
+                <MessageList
+                  className="size-full pt-10"
+                  threadId={threadId}
+                  thread={thread}
+                  paddingBottom={MESSAGE_LIST_DEFAULT_PADDING_BOTTOM}
+                  hasMoreHistory={hasMoreHistory}
+                  loadMoreHistory={loadMoreHistory}
+                  isHistoryLoading={isHistoryLoading}
+                  tokenUsageInlineMode={tokenUsageInlineMode}
+                />
+              </div>
+            )}
             <div
               className={cn(
-                "right-0 bottom-0 left-0 z-30 flex justify-center px-4",
-                isWelcomeMode ? "absolute" : "relative shrink-0 pb-4",
+                "relative z-30 flex shrink-0 justify-center px-4",
+                isWelcomeMode ? "pb-0" : "pb-4",
               )}
             >
-              <div
-                className={cn(
-                  "relative w-full",
-                  isWelcomeMode && "-translate-y-[calc(50vh-96px)]",
-                  isWelcomeMode
-                    ? "max-w-(--container-width-sm)"
-                    : "max-w-(--container-width-md)",
+              <div className="relative w-full max-w-(--container-width-md)">
+                {isWelcomeMode && (
+                  <div className="flex flex-col items-center gap-2">
+                    <Welcome mode={settings.context.mode} />
+                    <ScenarioTabs
+                      selected={activeScenario}
+                      onSelect={handleSelectScenario}
+                    />
+                  </div>
                 )}
-              >
+                {isWelcomeMode && (
+                  <div className="mt-12">
+                    <ScenarioCascadeBar
+                      selectedScenario={activeScenario}
+                      selectedPill={selectedPill}
+                      selectedChip={selectedChip}
+                      onTogglePill={togglePill}
+                      onToggleChip={toggleChip}
+                      onInjectPrompt={(template) =>
+                        setPendingTemplate(template)
+                      }
+                    />
+                  </div>
+                )}
                 {hasTodos && (
-                  <div
-                    className={cn(
-                      "right-0 left-0 z-0",
-                      isWelcomeMode ? "absolute -top-4" : "relative",
-                    )}
-                  >
-                    <div
-                      className={cn(
-                        "right-0 bottom-0 left-0",
-                        isWelcomeMode ? "absolute" : "relative",
-                      )}
-                    >
-                      <TodoList
-                        className="bg-background/5"
-                        todos={thread.values.todos ?? []}
-                        hidden={false}
-                      />
-                    </div>
+                  <div className="relative z-0">
+                    <TodoList
+                      className="bg-background/5"
+                      todos={thread.values.todos ?? []}
+                      hidden={false}
+                    />
                   </div>
                 )}
                 {mountedRef.current ? (
                   <InputBox
-                    className={cn(
-                      "bg-background/5 w-full",
-                      isWelcomeMode && "-translate-y-4",
-                    )}
+                    className="bg-background/5 w-full"
                     isWelcomeMode={isWelcomeMode}
                     threadId={threadId}
                     autoFocus={isWelcomeMode}
@@ -223,10 +313,11 @@ export default function ChatPage() {
                           ? "streaming"
                           : "ready"
                     }
-                    context={settings.context}
-                    extraHeader={
-                      isWelcomeMode && <Welcome mode={settings.context.mode} />
-                    }
+                    context={selectionContext}
+                    pendingTemplate={pendingTemplate}
+                    onPendingTemplateConsumed={() => setPendingTemplate(null)}
+                    selectedTags={selectedTags}
+                    onRemoveTag={handleRemoveTag}
                     disabled={
                       isMock ||
                       env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true" ||
@@ -241,10 +332,7 @@ export default function ChatPage() {
                 ) : (
                   <div
                     aria-hidden="true"
-                    className={cn(
-                      "bg-background/5 h-32 w-full rounded-2xl",
-                      isWelcomeMode && "-translate-y-4",
-                    )}
+                    className="bg-background/5 h-32 w-full rounded-2xl"
                   />
                 )}
                 {env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true" && (
@@ -254,11 +342,6 @@ export default function ChatPage() {
                 )}
               </div>
             </div>
-            {isWelcomeMode && (
-              <div className="mx-auto max-h-[calc(50vh-8rem)] w-full max-w-(--container-width-md) overflow-y-auto px-4 pb-6">
-                <WorkbenchHome />
-              </div>
-            )}
           </main>
         </div>
       </ChatBox>

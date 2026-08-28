@@ -1247,11 +1247,21 @@ class ResourceService:
         await visit(root_resource_id)
         return resolved
 
-    async def create_run_snapshot(self, run_id: str, root_resource_id: str) -> list[RunResourceSnapshot]:
+    async def create_run_snapshot(
+        self,
+        run_id: str,
+        root_resource_id: str,
+        *,
+        selected_resource_id: str | None = None,
+    ) -> list[RunResourceSnapshot]:
         existing = (await self.session.execute(select(RunResourceSnapshot.id).where(RunResourceSnapshot.run_id == run_id).limit(1))).scalar_one_or_none()
         if existing is not None:
             raise ResourceConflict(f"Run {run_id} already has a resource snapshot")
         closure = await self.resolve_dependency_closure(root_resource_id)
+        if selected_resource_id is not None:
+            selected = next((item.resource for item in closure if item.resource.id == selected_resource_id), None)
+            if selected is None or selected.type != "skill":
+                raise ResourceConflict(f"Selected Skill {selected_resource_id} is outside the resource closure")
         snapshots = [
             RunResourceSnapshot(
                 id=str(uuid.uuid4()),
