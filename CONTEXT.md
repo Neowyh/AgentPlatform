@@ -1,6 +1,6 @@
 # iDeer
 
-iDeer is an agent application that composes conversation, Agent, Skill, and Workflow resources into executable runs.
+iDeer is an agent application that composes Thread, Agent, Skill, and Workflow resources into executable Runs.
 
 ## Scenario Entry
 
@@ -43,6 +43,48 @@ _Avoid_: Conversation, Session, Chat
 **Run**:
 A single execution attempt of an Agent or Workflow within one Thread, tracked through pending, running, success, error, timeout, or interrupted.
 _Avoid_: Execution, Job, Task
+
+## Access & Visibility
+
+**Resource**:
+A canonical catalog entry for a Skill, Agent, or Workflow with owner, visibility, lifecycle status, and versioned content.
+_Avoid_: ResourceVersion, ResourceDraft
+
+**Department**:
+An organizational unit that scopes users and department-visible Resources.
+_Avoid_: Team, Group
+
+**Visibility**:
+The access scope of a Resource: private (owner only), department (owner's department), or public (all users). A Resource cannot be more visible than its dependencies, and raising visibility may require approval via VisibilityApplication.
+_Avoid_: Permission, Scope
+
+**UserRole**:
+The platform role determining capabilities: viewer, user, department_admin, or super_admin.
+_Avoid_: Role, Permission level
+
+## Memory & Artifacts
+
+**Memory**:
+Per-user long-term memory comprising structured summaries (workContext, personalContext, topOfMind, history) and discrete MemoryFacts.
+_Avoid_: Chat history, Context
+
+**Artifact**:
+A file produced during a Run and attached to its Thread, addressable at /api/threads/{thread_id}/artifacts/{path}.
+_Avoid_: File, Attachment, Output
+
+**Todo**:
+A task item within a Thread's state, with status pending, in_progress, or completed.
+_Avoid_: Task, Checklist item
+
+## Workflow Internals
+
+**Workflow Node**:
+A step in a Workflow graph, typed as action, route, fork, join, or interrupt, declaring writes, preconditions, and retry policy.
+_Avoid_: Node, Step
+
+**Workflow Edge**:
+A directed connection between Workflow Nodes, optionally bounded by max_iterations.
+_Avoid_: Link, Transition
 
 ## Testing
 
