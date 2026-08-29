@@ -8,7 +8,6 @@
 
 import { test, expect } from "@playwright/test";
 
-
 // Auth E2E tests need IDEER_AUTH_DISABLED off.  When it's on (required for
 // non-auth E2E tests to pass SSR mocks), these tests can't run.
 // Run with: npx playwright test --project=auth
