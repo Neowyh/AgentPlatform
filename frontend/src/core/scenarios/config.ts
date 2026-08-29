@@ -283,17 +283,17 @@ export const SCENARIOS: ScenarioTab[] = [
             promptTemplate: "请帮我评审以下代码变更：[粘贴 diff 或描述变更]",
           },
           {
-            taskId: "bug-diagnosis",
-            label: "疑难故障诊断",
-            skillName: "diagnosing-bugs",
-            promptTemplate: "请帮我诊断以下 Bug：[描述错误现象/堆栈信息]",
-          },
-          {
             taskId: "architecture-analysis",
             label: "代码库架构改进",
             skillName: "improve-codebase-architecture",
             promptTemplate:
               "请帮我分析以下代码库的架构改进机会：[粘贴代码或描述模块]",
+          },
+          {
+            taskId: "bug-diagnosis",
+            label: "疑难故障诊断",
+            skillName: "diagnosing-bugs",
+            promptTemplate: "请帮我诊断以下 Bug：[描述错误现象/堆栈信息]",
           },
           {
             taskId: "srs-writing",
