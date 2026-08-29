@@ -95,7 +95,9 @@ export default function ChatPage() {
     const context = { ...settings.context };
     if (!selectedPill) {
       delete context.agent_name;
+      delete context.agent_resource_id;
       delete context.skill_name;
+      delete context.skill_resource_id;
       delete context.scenario_id;
       delete context.agent_label;
       delete context.task_id;
@@ -112,13 +114,20 @@ export default function ChatPage() {
       ...context,
       scenario_id: selectedPill.scenarioId,
       agent_name: selectedPill.agentSlug,
+      agent_resource_id: selectedAgent?.resource_id,
       agent_label: activeBinding?.agentName,
       skill_name: chip?.skillName,
       task_id: chip?.taskId,
       task_label: chip?.label,
       prompt_template: chip?.promptTemplate,
     };
-  }, [activeBinding, settings.context, selectedPill, selectedChip]);
+  }, [
+    activeBinding,
+    selectedAgent,
+    settings.context,
+    selectedPill,
+    selectedChip,
+  ]);
 
   const handleRemoveTag = useCallback(
     (id: string) => {
@@ -299,9 +308,6 @@ export default function ChatPage() {
                       selectedChip={selectedChip}
                       onTogglePill={togglePill}
                       onToggleChip={toggleChip}
-                      onInjectPrompt={(template) =>
-                        setPendingTemplate(template)
-                      }
                     />
                   </div>
                 )}
