@@ -9,6 +9,7 @@ import { getMatchingSkillSuggestions } from "./slash-suggestions";
 
 export type SlashOverlayProps = {
   skills: Skill[];
+  allowedSkillNames?: readonly string[];
   query: string;
   activeIndex: number;
   onSelect: (skill: Skill) => void;
@@ -17,13 +18,18 @@ export type SlashOverlayProps = {
 
 export function SlashOverlay({
   skills,
+  allowedSkillNames,
   query,
   activeIndex,
   onSelect,
   onClose,
 }: SlashOverlayProps) {
   const listRef = useRef<HTMLDivElement>(null);
-  const suggestions = getMatchingSkillSuggestions(skills, query);
+  const suggestions = getMatchingSkillSuggestions(
+    skills,
+    query,
+    allowedSkillNames,
+  );
 
   useEffect(() => {
     if (suggestions.length === 0) {

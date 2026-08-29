@@ -36,9 +36,20 @@ export function getSlashAtCursor(
 export function getMatchingSkillSuggestions(
   skills: Skill[],
   query: string,
+  allowedSkillNames?: readonly string[],
 ): Skill[] {
   const q = query.toLowerCase();
-  const enabled = skills.filter((s) => s.enabled);
+  const allowed =
+    allowedSkillNames === undefined
+      ? null
+      : new Set(allowedSkillNames.map((name) => name.toLowerCase()));
+  const enabled = skills.filter(
+    (s) =>
+      s.enabled &&
+      (allowed === null ||
+        allowed.has(s.name.toLowerCase()) ||
+        (s.slug !== undefined && allowed.has(s.slug.toLowerCase()))),
+  );
 
   const candidates = enabled
     .map((skill, index) => {

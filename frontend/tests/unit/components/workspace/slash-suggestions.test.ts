@@ -209,6 +209,14 @@ describe("getMatchingSkillSuggestions", () => {
   test("returns empty array when no match", () => {
     expect(getMatchingSkillSuggestions(SKILLS, "zzzzz")).toEqual([]);
   });
+
+  test("restricts suggestions to the selected Agent skill closure", () => {
+    expect(
+      getMatchingSkillSuggestions(SKILLS, "", ["anthropic-docx"]).map(
+        (skill) => skill.name,
+      ),
+    ).toEqual(["anthropic-docx"]);
+  });
 });
 
 describe("parseSlashPrefix", () => {

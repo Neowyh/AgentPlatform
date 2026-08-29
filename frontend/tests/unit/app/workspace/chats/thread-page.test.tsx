@@ -124,6 +124,11 @@ vi.mock("@/core/models/hooks", () => ({
   }),
 }));
 
+vi.mock("@/core/agents/hooks", () => ({
+  useAgents: () => ({ agents: [] }),
+  useAgent: () => ({ agent: null }),
+}));
+
 vi.mock("@/core/notification/hooks", () => ({
   useNotification: () => ({
     showNotification: vi.fn(),

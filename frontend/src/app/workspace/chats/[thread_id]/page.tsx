@@ -23,6 +23,7 @@ import { ThreadTitle } from "@/components/workspace/thread-title";
 import { TodoList } from "@/components/workspace/todo-list";
 import { TokenUsageIndicator } from "@/components/workspace/token-usage-indicator";
 import { Welcome } from "@/components/workspace/welcome";
+import { useAgent, useAgents } from "@/core/agents/hooks";
 import { useI18n } from "@/core/i18n/hooks";
 import { useModels } from "@/core/models/hooks";
 import { useNotification } from "@/core/notification/hooks";
@@ -49,6 +50,11 @@ export default function ChatPage() {
   const [settings, setSettings] = useThreadSettings(threadId);
   const [localSettings, setLocalSettings] = useLocalSettings();
   const { tokenUsageEnabled } = useModels();
+  const { agents } = useAgents();
+  const selectedAgent = agents.find(
+    (item) => (item.slug ?? item.name) === selectedPill?.agentSlug,
+  );
+  const { agent: selectedAgentDetails } = useAgent(selectedAgent?.resource_id);
   const {
     selectedScenario,
     selectedPill,
@@ -73,13 +79,33 @@ export default function ChatPage() {
       getPillsByScenario(scenarioId).find(
         (pill) => pill.agentSlug === agentSlug,
       )?.label ?? agentSlug;
-    return [
+    const tags: SelectedTag[] = [
       {
-        id: agentSlug,
+        id: `agent:${agentSlug}`,
         label: pillLabel,
       },
     ];
-  }, [selectedPill]);
+    const chip = selectedChip
+      ? getChipsByPill(selectedChip.scenarioId, selectedChip.agentSlug).find(
+          (item) => item.taskId === selectedChip.taskId,
+        )
+      : undefined;
+    if (chip) {
+      tags.push({ id: `task:${chip.taskId}`, label: chip.label });
+    }
+    return tags;
+  }, [selectedChip, selectedPill]);
+
+  const allowedSkillNames = useMemo(() => {
+    if (!selectedPill) return undefined;
+    const agent = selectedAgentDetails;
+    return (
+      agent?.skills ??
+      getChipsByPill(selectedPill.scenarioId, selectedPill.agentSlug).map(
+        (chip) => chip.skillName,
+      )
+    );
+  }, [selectedAgentDetails, selectedPill]);
 
   const selectionContext = useMemo(() => {
     const context = { ...settings.context };
@@ -115,12 +141,19 @@ export default function ChatPage() {
 
   const handleRemoveTag = useCallback(
     (id: string) => {
-      if (selectedPill?.agentSlug === id) {
-        togglePill(selectedPill.scenarioId, id);
+      if (id === `agent:${selectedPill?.agentSlug}` && selectedPill) {
+        togglePill(selectedPill.scenarioId, selectedPill.agentSlug);
+        setPendingTemplate(null);
+      } else if (id === `task:${selectedChip?.taskId}` && selectedChip) {
+        toggleChip(
+          selectedChip.scenarioId,
+          selectedChip.agentSlug,
+          selectedChip.taskId,
+        );
         setPendingTemplate(null);
       }
     },
-    [selectedPill, togglePill],
+    [selectedChip, selectedPill, toggleChip, togglePill],
   );
 
   useEffect(() => {
@@ -314,6 +347,7 @@ export default function ChatPage() {
                           : "ready"
                     }
                     context={selectionContext}
+                    allowedSkillNames={allowedSkillNames}
                     pendingTemplate={pendingTemplate}
                     onPendingTemplateConsumed={() => setPendingTemplate(null)}
                     selectedTags={selectedTags}
