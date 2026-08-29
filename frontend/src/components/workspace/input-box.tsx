@@ -78,6 +78,7 @@ import { InlineSelectedTag, type SelectedTag } from "./scenario/selected-tags";
 import { SlashOverlay } from "./slash-overlay";
 import {
   getSlashAtCursor,
+  filterSkillsByAllowedNames,
   getMatchingSkillSuggestions,
   parseSlashPrefix,
 } from "./slash-suggestions";
@@ -1120,17 +1121,8 @@ export function InputBox({
             </DialogDescription>
           </DialogHeader>
           <div className="max-h-60 overflow-y-auto">
-            {skills
-              .filter(
-                (skill) =>
-                  skill.enabled &&
-                  (allowedSkillNames === undefined ||
-                    allowedSkillNames.some(
-                      (name) =>
-                        name.toLowerCase() === skill.name.toLowerCase() ||
-                        name.toLowerCase() === skill.slug?.toLowerCase(),
-                    )),
-              )
+            {filterSkillsByAllowedNames(skills, allowedSkillNames)
+              .filter((skill) => skill.enabled)
               .map((skill) => (
                 <button
                   key={skill.name}
