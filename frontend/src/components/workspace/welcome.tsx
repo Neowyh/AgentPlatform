@@ -1,29 +1,20 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { useMemo } from "react";
 
 import { useI18n } from "@/core/i18n/hooks";
 import { cn } from "@/lib/utils";
 
-import { AuroraText } from "../ui/aurora-text";
-
 export function Welcome({
   className,
-  mode,
+  mode: _mode,
 }: {
   className?: string;
   mode?: "ultra" | "pro" | "thinking" | "flash";
 }) {
   const { t } = useI18n();
   const searchParams = useSearchParams();
-  const isUltra = useMemo(() => mode === "ultra", [mode]);
-  const colors = useMemo(() => {
-    if (isUltra) {
-      return ["#efefbb", "#e9c665", "#e3a812"];
-    }
-    return ["var(--color-foreground)"];
-  }, [isUltra]);
+  const isSkillMode = searchParams.get("mode") === "skill";
   return (
     <div
       className={cn(
@@ -31,14 +22,19 @@ export function Welcome({
         className,
       )}
     >
-      <div className="text-2xl font-bold">
-        {searchParams.get("mode") === "skill" ? (
+      <div className="[font-family:var(--font-display),var(--font-sans)] text-2xl font-bold tracking-[-0.04em]">
+        {isSkillMode ? (
           `✨ ${t.welcome.createYourOwnSkill} ✨`
         ) : (
-          <AuroraText colors={colors}>iDeer</AuroraText>
+          <>
+            <span className="text-foreground">iDeer</span>
+            <span className="font-semibold" style={{ color: "#2E4B3E" }}>
+              ，实现你的idea
+            </span>
+          </>
         )}
       </div>
-      {searchParams.get("mode") === "skill" && (
+      {isSkillMode ? (
         <div className="text-muted-foreground text-sm">
           {t.welcome.createYourOwnSkillDescription.includes("\n") ? (
             <pre className="font-sans whitespace-pre">
@@ -48,6 +44,18 @@ export function Welcome({
             <p>{t.welcome.createYourOwnSkillDescription}</p>
           )}
         </div>
+      ) : (
+        <p className="text-muted-foreground max-w-[520px] text-[13px] leading-6">
+          把一句话种进森林 — 对话留下
+          <span className="font-semibold" style={{ color: "#2E4B3E" }}>
+            踪迹
+          </span>
+          ，待办与产物在
+          <span className="font-semibold" style={{ color: "#2E4B3E" }}>
+            冷纸
+          </span>
+          上成形
+        </p>
       )}
     </div>
   );
