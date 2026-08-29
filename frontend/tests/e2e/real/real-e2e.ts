@@ -1,6 +1,7 @@
 import { execFileSync } from "child_process";
 import { existsSync, readFileSync } from "fs";
 import { join, resolve } from "path";
+
 import { expect, type Page } from "@playwright/test";
 
 type Manifest = { database_path: string; ideer_home: string };
@@ -167,7 +168,10 @@ export async function expectMemoryStorageToContain(
         const raw = readFileSync(memoryPath, "utf8");
         return { exists: true, found: raw.includes(content) };
       },
-      { timeout: 15_000, message: `memory.json ${expected ? "contains" : "excludes"} "${content}"` },
+      {
+        timeout: 15_000,
+        message: `memory.json ${expected ? "contains" : "excludes"} "${content}"`,
+      },
     )
     .toEqual({ exists: true, found: expected });
 }

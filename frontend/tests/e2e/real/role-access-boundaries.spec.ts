@@ -20,7 +20,6 @@ test.describe("real RBAC boundaries", () => {
     await page.goto("/workspace/admin");
     await expect(page.getByTestId("admin-dashboard")).toBeVisible();
     await expect(page.getByTestId("admin-stat-card").nth(0)).toBeVisible();
-
   });
 
   test("normal user is redirected away from admin dashboard", async ({
@@ -30,5 +29,4 @@ test.describe("real RBAC boundaries", () => {
     await page.goto("/workspace/admin");
     await expect(page).toHaveURL(/\/workspace(?:\/|$)(?!admin)/);
   });
-
 });

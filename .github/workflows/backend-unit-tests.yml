@@ -39,6 +39,17 @@ jobs:
         working-directory: backend
         run: uv sync --group dev
 
+      - name: Setup Node.js for start-local script checks
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Use pinned pnpm version
+        run: corepack prepare pnpm@10.26.2 --activate
+
       - name: Run tests (shard ${{ matrix.shard }}/4)
         working-directory: backend
         env:

@@ -1,0 +1,11 @@
+name: ppt-web
+description: PPT 制作智能体，面向PPT 制作相关任务提供结构化协作能力
+tool_groups:
+- file:read
+- file:write
+- document
+- bash
+skills:
+- guizang-ppt-skill
+- anthropic-pptx
+- officecli

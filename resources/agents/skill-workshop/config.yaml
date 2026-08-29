@@ -1,0 +1,11 @@
+name: skill-workshop
+description: 技能工坊智能体，面向技能工坊相关任务提供结构化协作能力
+tool_groups:
+- file:read
+- file:write
+- document
+- bash
+skills:
+- bootstrap
+- skill-creator
+- proactive-agent

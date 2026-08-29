@@ -4,9 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>[必填] 替换为 PPT 标题 · Deck Title</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700;800;900&family=JetBrains+Mono:wght@300;400;500;600&family=Noto+Sans+SC:wght@200;300;400;500;700;900&display=swap" rel="stylesheet">
+<!-- 字体本地化:woff2 子集随 skill 资源分发,离线可用;若 assets 缺失则回退系统字体 -->
+<link href="./assets/fonts-swiss.css" rel="stylesheet">
 <style>
   :root{
     /* ============ 主题色(默认: 🔵 克莱因蓝 IKB) ============
@@ -1595,8 +1594,16 @@ const initialSlideParam = new URLSearchParams(location.search).get('slide');
 const initialSlide = initialSlideParam ? Number(initialSlideParam) - 1 : 0;
 go(Number.isFinite(initialSlide) ? initialSlide : 0);
 </script>
-<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
-<script>lucide.createIcons();</script>
+<!-- Lucide 图标（本地优先,离线优雅降级,与原模板一致） -->
+<script>
+(function(){
+  var s=document.createElement('script');
+  s.src='./assets/lucide.min.js';
+  s.onload=function(){ if(window.lucide) lucide.createIcons(); };
+  s.onerror=function(){ console.warn('[lucide] local load failed, icons disabled'); };
+  document.head.appendChild(s);
+})();
+</script>
 
 <!-- Motion One 动效引擎 (与原模板一致) -->
 <script type="module">

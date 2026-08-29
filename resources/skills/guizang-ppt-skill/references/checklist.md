@@ -210,14 +210,11 @@ node <SKILL_ROOT>/scripts/validate-swiss-deck.mjs path/to/index.html
 
 **现象**：在中式杂志风格里用 emoji（🎯 💡 ✅）会立刻破坏格调。
 
-**做法**：用 Lucide 图标库，CDN 方式引用：
+**做法**：用 Lucide 图标库，本地资源方式引用（随模板 `assets/` 目录分发，离线可用）：
 
 ```html
-<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
-...
+<!-- 模板底部已内置加载器(不用改),只需确保 assets/lucide.min.js 存在 -->
 <i data-lucide="target" class="ico-md"></i>
-...
-<script>lucide.createIcons();</script>
 ```
 
 常用图标名：`target / palette / search-check / compass / share-2 / crown / check-circle / x-circle / plus / arrow-right / grid-2x2 / network`

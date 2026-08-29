@@ -1,7 +1,8 @@
 ---
 name: academic-paper-review
-description: Use this skill when the user requests to review, analyze, critique, or summarize academic papers, research articles, preprints, or scientific publications. Supports comprehensive structured reviews covering methodology assessment, contribution evaluation, literature positioning, and constructive feedback generation. Trigger on queries involving paper URLs, uploaded PDFs, arXiv links, or requests like "review this paper", "analyze this research", "summarize this study", or "write a peer review".
-description_zh: "当用户要求评审、分析、批判或总结学术论文、研究文章、预印本或科学出版物时使用本技能。支持覆盖方法论评估、贡献评价、文献定位与建设性反馈生成的全面结构化评审。当涉及论文链接、上传的 PDF、arXiv 链接,或用户提出“评审这篇论文”“分析这项研究”“总结这项研究”“写一份同行评审”等请求时触发。"
+description: Use this skill when the user uploads a PDF of an academic paper, research article, preprint, or scientific publication and requests a review, analysis, critique, or summary. Supports comprehensive structured reviews covering methodology assessment, contribution evaluation, literature positioning, and constructive feedback generation. Works fully offline on uploaded files only — it does not fetch paper URLs or arXiv links. Trigger on uploaded-PDF queries or requests like "review this paper", "analyze this research", "summarize this study", or "write a peer review".
+description_zh: "当用户上传学术论文、研究文章、预印本或科学出版物的 PDF,并要求评审、分析、批判或总结时使用本技能。支持覆盖方法论评估、贡献评价、文献定位与建设性反馈生成的全面结构化评审。仅基于上传文件离线工作——不抓取论文链接或 arXiv 链接。当用户上传 PDF,或提出“评审这篇论文”“分析这项研究”“总结这项研究”“写一份同行评审”等请求时触发。"
+requires-internet: false
 ---
 
 # Academic Paper Review Skill
@@ -14,11 +15,11 @@ The review covers **summary, strengths, weaknesses, methodology assessment, cont
 
 ## Core Capabilities
 
-- Parse and comprehend academic papers from uploaded PDFs or fetched URLs
+- Parse and comprehend academic papers from uploaded PDFs
 - Generate structured reviews following top-venue review templates
 - Assess methodology rigor (experimental design, statistical validity, reproducibility)
 - Evaluate novelty and significance of contributions
-- Position the work within the broader research landscape via targeted literature search
+- Position the work within the broader research landscape based on the paper's own citations and related-work section (no online search)
 - Identify limitations, gaps, and potential improvements
 - Produce both detailed review and concise executive summary formats
 - Support papers in any scientific domain (CS, biology, physics, social sciences, etc.)
@@ -27,9 +28,10 @@ The review covers **summary, strengths, weaknesses, methodology assessment, cont
 
 **Always load this skill when:**
 
-- User provides a paper URL (arXiv, DOI, conference proceedings, journal link)
 - User uploads a PDF of a research paper or preprint
-- User asks to "review", "analyze", "critique", "assess", or "summarize" a research paper
+- User asks to "review", "analyze", "critique", "assess", or "summarize" an uploaded research paper
+
+> **Note**: This skill works offline on the uploaded file only. If the user provides a paper URL (arXiv, DOI, etc.) instead of uploading the PDF, ask them to upload the PDF first — do not attempt to fetch it.
 - User wants to understand the strengths and weaknesses of a study
 - User requests a peer-review-style evaluation of academic work
 - User asks for help preparing a review for a conference or journal submission
@@ -79,20 +81,15 @@ Claim 2: [...]
 
 ### Phase 2: Critical Analysis
 
-#### Step 2.1: Literature Context Search
+#### Step 2.1: Offline Literature Context Analysis
 
-Use web search to understand the research landscape:
+Do NOT perform web searches — work only from the paper itself. Understand the research landscape using:
 
-```
-Search queries:
-- "[paper topic] state of the art [current year]"
-- "[key method name] comparison benchmark"
-- "[authors] previous work [topic]"
-- "[specific technique] limitations criticism"
-- "survey [research area] recent advances"
-```
+- The paper's **Related Work section**: how do the authors position their contribution relative to prior art?
+- The paper's **reference list**: which key works, methods, and research lines does it build on?
+- The paper's own claims of novelty: what does it assert is new, and is that claim supported by the related-work discussion?
 
-Use `web_fetch` on key related papers or surveys to understand where this work fits.
+If the broader landscape cannot be verified from the paper alone, state this explicitly as a limitation of the review (e.g., "literature positioning could not be independently verified without access to external sources").
 
 #### Step 2.2: Methodology Assessment
 
@@ -269,7 +266,7 @@ Before finalizing the review, verify:
 - [ ] At least 3 strengths and 3 weaknesses are provided with specific references
 - [ ] The methodology assessment table is complete with ratings and justifications
 - [ ] Questions for authors target genuine ambiguities, not rhetorical critiques
-- [ ] Literature search was conducted to contextualize the contribution
+- [ ] Literature positioning is grounded in the paper's own citations and related-work section (no online search)
 - [ ] Recommendations are actionable and constructive
 - [ ] The overall assessment is consistent with the identified strengths and weaknesses
 - [ ] The review tone is professional and respectful
@@ -283,8 +280,7 @@ Before finalizing the review, verify:
 
 ## Notes
 
-- This skill complements the `deep-research` skill — load both when the user wants the paper reviewed in the context of the broader field
-- For papers behind paywalls, work with whatever content is accessible (abstract, publicly available versions, preprint mirrors)
+- This skill is fully offline: it never fetches URLs or performs web searches; all analysis is based on the uploaded PDF
 - Adapt the review depth to the user's needs: a brief assessment for quick triage versus a full review for submission preparation
-- When reviewing multiple papers comparatively, maintain consistent criteria across all reviews
+- When reviewing multiple papers comparatively, ask the user to upload each PDF and maintain consistent criteria across all reviews
 - Always disclose limitations of your review (e.g., "I could not verify the proofs in Appendix B in detail")

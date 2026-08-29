@@ -18,108 +18,12 @@
       "source": "resources/skills/bootstrap"
     },
     {
-      "id": "3a51041d-9e6b-570d-ad1e-822c3d1560ce",
-      "type": "skill",
-      "slug": "chart-visualization",
-      "display_name": "图表可视化",
-      "visibility": "public",
-      "source": "resources/skills/chart-visualization"
-    },
-    {
-      "id": "ee46a05e-ad0d-5ce2-ad7e-8d38b13e6c20",
-      "type": "skill",
-      "slug": "claude-to-ideer",
-      "display_name": "iDeer API 接入",
-      "visibility": "public",
-      "source": "resources/skills/claude-to-ideer"
-    },
-    {
-      "id": "b23511a5-41a1-5081-9983-51398faa31cf",
-      "type": "skill",
-      "slug": "code-documentation",
-      "display_name": "代码文档生成",
-      "visibility": "public",
-      "source": "resources/skills/code-documentation"
-    },
-    {
-      "id": "30188f26-f215-575d-8738-1da440c9607a",
-      "type": "skill",
-      "slug": "consulting-analysis",
-      "display_name": "咨询分析",
-      "visibility": "public",
-      "source": "resources/skills/consulting-analysis"
-    },
-    {
       "id": "4451bc3c-8252-5e06-b53e-5b47b6083500",
       "type": "skill",
       "slug": "data-analysis",
       "display_name": "数据分析",
       "visibility": "public",
       "source": "resources/skills/data-analysis"
-    },
-    {
-      "id": "4befeeda-b2fb-5c91-962d-4ff207abdce7",
-      "type": "skill",
-      "slug": "deep-research",
-      "display_name": "深度研究",
-      "visibility": "public",
-      "source": "resources/skills/deep-research"
-    },
-    {
-      "id": "5c36cca5-dff7-5bd6-a031-13fbc56cfa3f",
-      "type": "skill",
-      "slug": "find-skills",
-      "display_name": "技能发现与安装",
-      "visibility": "public",
-      "source": "resources/skills/find-skills"
-    },
-    {
-      "id": "68602677-c8db-5ba2-ade8-f540d027a33a",
-      "type": "skill",
-      "slug": "frontend-design",
-      "display_name": "前端设计",
-      "visibility": "public",
-      "source": "resources/skills/frontend-design"
-    },
-    {
-      "id": "3f2bba94-a068-5dae-96af-355f5ed7959e",
-      "type": "skill",
-      "slug": "github-deep-research",
-      "display_name": "GitHub 深度研究",
-      "visibility": "public",
-      "source": "resources/skills/github-deep-research"
-    },
-    {
-      "id": "baf9a84d-37e3-55e2-a157-79655f41e113",
-      "type": "skill",
-      "slug": "image-generation",
-      "display_name": "图像生成",
-      "visibility": "public",
-      "source": "resources/skills/image-generation"
-    },
-    {
-      "id": "16cc8a98-e817-52fa-9b78-781b6c5de0f1",
-      "type": "skill",
-      "slug": "newsletter-generation",
-      "display_name": "资讯简报生成",
-      "visibility": "public",
-      "source": "resources/skills/newsletter-generation"
-    },
-    {
-      "id": "9fb592e4-b3b8-5df9-8a70-0948cd29a103",
-      "type": "skill",
-      "slug": "podcast-generation",
-      "display_name": "播客生成",
-      "visibility": "public",
-      "source": "resources/skills/podcast-generation"
-    },
-    {
-      "id": "23f5210a-7a22-547f-b562-5862a0de8db5",
-      "type": "skill",
-      "slug": "ppt-generation",
-      "display_name": "PPT 生成",
-      "visibility": "public",
-      "source": "resources/skills/ppt-generation"
     },
     {
       "id": "f6d20629-ce42-5807-ad5c-ea1935a10473",
@@ -136,38 +40,6 @@
       "display_name": "惊喜互动",
       "visibility": "public",
       "source": "resources/skills/surprise-me"
-    },
-    {
-      "id": "fc0299ac-9825-5055-99c1-51810bc96834",
-      "type": "skill",
-      "slug": "systematic-literature-review",
-      "display_name": "系统性文献综述",
-      "visibility": "public",
-      "source": "resources/skills/systematic-literature-review"
-    },
-    {
-      "id": "e9fea0cb-f28b-584d-b3fb-8644a61a8d38",
-      "type": "skill",
-      "slug": "vercel-deploy-claimable",
-      "display_name": "Vercel 部署",
-      "visibility": "public",
-      "source": "resources/skills/vercel-deploy-claimable"
-    },
-    {
-      "id": "6f87332e-8cc7-5cc5-b252-c0c8dc10fed2",
-      "type": "skill",
-      "slug": "video-generation",
-      "display_name": "视频生成",
-      "visibility": "public",
-      "source": "resources/skills/video-generation"
-    },
-    {
-      "id": "e8232bc7-d592-5d7f-814e-d13ddea44193",
-      "type": "skill",
-      "slug": "web-design-guidelines",
-      "display_name": "Web 设计规范审查",
-      "visibility": "public",
-      "source": "resources/skills/web-design-guidelines"
     },
     {
       "id": "f258c030-0aa2-5ca4-9072-c28fa9fdadbd",
@@ -200,14 +72,6 @@
       "display_name": "穴居人模式",
       "visibility": "public",
       "source": "resources/skills/caveman"
-    },
-    {
-      "id": "0c74d13b-06a8-5327-a178-fc65ce1bd446",
-      "type": "skill",
-      "slug": "data-report",
-      "display_name": "数据分析报告",
-      "visibility": "public",
-      "source": "resources/skills/data-report"
     },
     {
       "id": "5429c61f-89a3-5a37-a782-9fa9e0619c3a",
@@ -250,6 +114,62 @@
       "source": "resources/skills/translate"
     },
     {
+      "id": "1f4fb421-90b9-40bc-8b91-59d0d795f834",
+      "type": "skill",
+      "slug": "anthropic-docx",
+      "display_name": "Anthropic Word 文档处理",
+      "visibility": "public",
+      "source": "resources/skills/anthropic-docx"
+    },
+    {
+      "id": "c7860af7-51fb-4d63-b865-8081944e165f",
+      "type": "skill",
+      "slug": "anthropic-pdf",
+      "display_name": "Anthropic PDF 处理",
+      "visibility": "public",
+      "source": "resources/skills/anthropic-pdf"
+    },
+    {
+      "id": "de48df01-f794-4a1a-a3d7-bedf38256ffb",
+      "type": "skill",
+      "slug": "anthropic-pptx",
+      "display_name": "Anthropic PPT 处理",
+      "visibility": "public",
+      "source": "resources/skills/anthropic-pptx"
+    },
+    {
+      "id": "6ed782a2-30e4-4c62-854f-864ef0e71a4f",
+      "type": "skill",
+      "slug": "anthropic-xlsx",
+      "display_name": "Anthropic Excel 处理",
+      "visibility": "public",
+      "source": "resources/skills/anthropic-xlsx"
+    },
+    {
+      "id": "4e3bf1ef-0ac1-4572-a180-793a276dc8e8",
+      "type": "skill",
+      "slug": "wps-gongwen",
+      "display_name": "公文格式生成",
+      "visibility": "public",
+      "source": "resources/skills/wps-gongwen"
+    },
+    {
+      "id": "d2413560-34bf-481b-83ee-febece65cc64",
+      "type": "skill",
+      "slug": "wps-proofread",
+      "display_name": "中文校对",
+      "visibility": "public",
+      "source": "resources/skills/wps-proofread"
+    },
+    {
+      "id": "383dcba3-b5c1-4d36-a825-fc08d1475564",
+      "type": "skill",
+      "slug": "eli5",
+      "display_name": "五岁也能懂",
+      "visibility": "public",
+      "source": "resources/skills/eli5"
+    },
+    {
       "id": "56e2423d-37c3-52cb-a05f-d32677e6abcb",
       "type": "agent",
       "slug": "fault-zeroing",
@@ -272,6 +192,390 @@
       "display_name": "故障归零工作流",
       "visibility": "public",
       "source": "resources/workflows/fault-zeroing.yaml"
+    },
+    {
+      "id": "970cfa98-d2e5-5181-9b6b-f1b843bb97c7",
+      "type": "skill",
+      "slug": "summarize",
+      "display_name": "智能摘要",
+      "visibility": "public",
+      "source": "resources/skills/summarize"
+    },
+    {
+      "id": "9fe928ec-e79f-57fb-b393-981e0aba2cab",
+      "type": "skill",
+      "slug": "frontend-design",
+      "display_name": "前端设计",
+      "visibility": "public",
+      "source": "resources/skills/frontend-design"
+    },
+    {
+      "id": "578fb8d1-2c16-5ba6-938a-e6b0d94e0696",
+      "type": "skill",
+      "slug": "web-design-guidelines",
+      "display_name": "网页设计规范",
+      "visibility": "public",
+      "source": "resources/skills/web-design-guidelines"
+    },
+    {
+      "id": "33c6fcde-a015-50df-9854-bc49297c9b9f",
+      "type": "skill",
+      "slug": "proactive-agent",
+      "display_name": "主动巡检",
+      "visibility": "public",
+      "source": "resources/skills/proactive-agent"
+    },
+    {
+      "id": "306dedf9-229a-5040-8ae2-f53d9140b4a4",
+      "type": "skill",
+      "slug": "tdd",
+      "display_name": "测试驱动开发",
+      "visibility": "public",
+      "source": "resources/skills/tdd"
+    },
+    {
+      "id": "c6f46e69-4e04-54ee-840b-a9367bb8c2c2",
+      "type": "skill",
+      "slug": "code-review",
+      "display_name": "代码变更评审",
+      "visibility": "public",
+      "source": "resources/skills/code-review"
+    },
+    {
+      "id": "b420470d-f246-5e03-ab2f-66e5264d7ecf",
+      "type": "skill",
+      "slug": "diagnosing-bugs",
+      "display_name": "疑难故障诊断",
+      "visibility": "public",
+      "source": "resources/skills/diagnosing-bugs"
+    },
+    {
+      "id": "a1884516-c148-5cb0-967b-857c1a181c4f",
+      "type": "skill",
+      "slug": "improve-codebase-architecture",
+      "display_name": "代码库架构改进",
+      "visibility": "public",
+      "source": "resources/skills/improve-codebase-architecture"
+    },
+    {
+      "id": "cbd71980-3779-5865-8139-b24efa9dc540",
+      "type": "skill",
+      "slug": "domain-modeling",
+      "display_name": "领域建模",
+      "visibility": "public",
+      "source": "resources/skills/domain-modeling"
+    },
+    {
+      "id": "c0c2556f-2716-5e28-934a-d52d673bf88d",
+      "type": "skill",
+      "slug": "abaqus-geometry",
+      "display_name": "Abaqus 几何与装配",
+      "visibility": "public",
+      "source": "resources/skills/abaqus-geometry"
+    },
+    {
+      "id": "24cf9f5b-0691-535f-b78d-5065a565b1be",
+      "type": "skill",
+      "slug": "abaqus-material",
+      "display_name": "Abaqus 材料与截面",
+      "visibility": "public",
+      "source": "resources/skills/abaqus-material"
+    },
+    {
+      "id": "cd329541-573c-5231-9796-cf6289c51b8a",
+      "type": "skill",
+      "slug": "abaqus-mesh",
+      "display_name": "Abaqus 网格划分",
+      "visibility": "public",
+      "source": "resources/skills/abaqus-mesh"
+    },
+    {
+      "id": "8243c620-6fa6-529e-9516-b3b99b813cc7",
+      "type": "skill",
+      "slug": "abaqus-dependency-preflight-validator",
+      "display_name": "Abaqus 依赖预检",
+      "visibility": "public",
+      "source": "resources/skills/abaqus-dependency-preflight-validator"
+    },
+    {
+      "id": "4298894d-0479-595e-9cb5-7c2be9826bff",
+      "type": "skill",
+      "slug": "abaqus-script-debugging-checklist",
+      "display_name": "Abaqus 脚本调试",
+      "visibility": "public",
+      "source": "resources/skills/abaqus-script-debugging-checklist"
+    },
+    {
+      "id": "55ecbc41-ba70-55fe-a054-2affb32ad573",
+      "type": "skill",
+      "slug": "abaqus-odb",
+      "display_name": "Abaqus ODB 检查",
+      "visibility": "public",
+      "source": "resources/skills/abaqus-odb"
+    },
+    {
+      "id": "dd0ee0b9-6f71-50ff-8988-23259f8525d5",
+      "type": "skill",
+      "slug": "abaqus-export",
+      "display_name": "Abaqus 结果导出",
+      "visibility": "public",
+      "source": "resources/skills/abaqus-export"
+    },
+    {
+      "id": "6734d242-203e-5bcd-ad77-583431295842",
+      "type": "skill",
+      "slug": "ask-matt",
+      "display_name": "技能选择助手",
+      "visibility": "public",
+      "source": "resources/skills/ask-matt"
+    },
+    {
+      "id": "37363cb0-f788-55d6-b0d1-7381e862eef6",
+      "type": "skill",
+      "slug": "codebase-design",
+      "display_name": "代码库架构设计",
+      "visibility": "public",
+      "source": "resources/skills/codebase-design"
+    },
+    {
+      "id": "6f2c84cc-0837-509b-a8c1-41c0a7734aa2",
+      "type": "skill",
+      "slug": "grill-with-docs",
+      "display_name": "方案质询",
+      "visibility": "public",
+      "source": "resources/skills/grill-with-docs"
+    },
+    {
+      "id": "ae7ebc44-11aa-5f50-8886-7c0c47c16856",
+      "type": "skill",
+      "slug": "grilling",
+      "display_name": "方案质询",
+      "visibility": "public",
+      "source": "resources/skills/grilling"
+    },
+    {
+      "id": "0c355190-3a55-59d1-92d0-1e04ab0ff98f",
+      "type": "skill",
+      "slug": "handoff",
+      "display_name": "会话交接",
+      "visibility": "public",
+      "source": "resources/skills/handoff"
+    },
+    {
+      "id": "55f05c3f-554b-5a15-82e1-431a10df18bf",
+      "type": "skill",
+      "slug": "implement",
+      "display_name": "按规格实现",
+      "visibility": "public",
+      "source": "resources/skills/implement"
+    },
+    {
+      "id": "ad169df9-b595-5002-8e15-4c273ae2ade4",
+      "type": "skill",
+      "slug": "prototype",
+      "display_name": "原型验证",
+      "visibility": "public",
+      "source": "resources/skills/prototype"
+    },
+    {
+      "id": "f1b5b753-1709-5885-9f2a-45c728e6e47c",
+      "type": "skill",
+      "slug": "research",
+      "display_name": "技术研究",
+      "visibility": "public",
+      "source": "resources/skills/research"
+    },
+    {
+      "id": "7449709e-2aba-5f63-aba0-82c4481185aa",
+      "type": "skill",
+      "slug": "resolving-merge-conflicts",
+      "display_name": "解决合并冲突",
+      "visibility": "public",
+      "source": "resources/skills/resolving-merge-conflicts"
+    },
+    {
+      "id": "9d4f97f0-9279-53c8-b77e-e00988d7b92c",
+      "type": "skill",
+      "slug": "setup-matt-pocock-skills",
+      "display_name": "Matt Skills 配置",
+      "visibility": "public",
+      "source": "resources/skills/setup-matt-pocock-skills"
+    },
+    {
+      "id": "58e914a2-d80b-57b5-9c00-fb0a578c7b1a",
+      "type": "skill",
+      "slug": "teach",
+      "display_name": "技术教学",
+      "visibility": "public",
+      "source": "resources/skills/teach"
+    },
+    {
+      "id": "35ffbe7d-7078-5bae-94a6-0ab9e539cdb4",
+      "type": "skill",
+      "slug": "to-questionnaire",
+      "display_name": "生成决策问卷",
+      "visibility": "public",
+      "source": "resources/skills/to-questionnaire"
+    },
+    {
+      "id": "d6e4d63a-8ce9-567b-b9ae-840adcf919c9",
+      "type": "skill",
+      "slug": "to-spec",
+      "display_name": "需求规格化",
+      "visibility": "public",
+      "source": "resources/skills/to-spec"
+    },
+    {
+      "id": "bdc5138a-c602-5101-a985-bd233cd5015a",
+      "type": "skill",
+      "slug": "to-tickets",
+      "display_name": "研发任务拆分",
+      "visibility": "public",
+      "source": "resources/skills/to-tickets"
+    },
+    {
+      "id": "7d3155a3-6c27-5b86-b105-43c985025521",
+      "type": "skill",
+      "slug": "triage",
+      "display_name": "Issue 分诊",
+      "visibility": "public",
+      "source": "resources/skills/triage"
+    },
+    {
+      "id": "cbbc36c7-100a-5182-89dd-c35da6de986c",
+      "type": "skill",
+      "slug": "wait-what",
+      "display_name": "重新说明需求",
+      "visibility": "public",
+      "source": "resources/skills/wait-what"
+    },
+    {
+      "id": "e63f8349-1764-5a6d-a1f8-03c198ab4416",
+      "type": "skill",
+      "slug": "wayfinder",
+      "display_name": "复杂工作规划",
+      "visibility": "public",
+      "source": "resources/skills/wayfinder"
+    },
+    {
+      "id": "78443021-0258-5fc2-9479-73ac8a820c63",
+      "type": "skill",
+      "slug": "wizard",
+      "display_name": "交互式向导",
+      "visibility": "public",
+      "source": "resources/skills/wizard"
+    },
+    {
+      "id": "15f0af74-09a4-5728-a5b7-dc95b1ad6673",
+      "type": "skill",
+      "slug": "writing-for-agents",
+      "display_name": "Agent 文档编写",
+      "visibility": "public",
+      "source": "resources/skills/writing-for-agents"
+    },
+    {
+      "id": "6c465339-44e3-5c93-97ad-1c46421341d8",
+      "type": "agent",
+      "slug": "office-docs",
+      "display_name": "办公文档智能体",
+      "visibility": "public",
+      "source": "resources/agents/office-docs"
+    },
+    {
+      "id": "fa2b8af9-16e7-555f-8ede-81e148429406",
+      "type": "agent",
+      "slug": "data-analysis",
+      "display_name": "数据分析智能体",
+      "visibility": "public",
+      "source": "resources/agents/data-analysis"
+    },
+    {
+      "id": "3c3ce48d-56f9-54a0-85bc-b0530e07a95a",
+      "type": "agent",
+      "slug": "translation",
+      "display_name": "翻译润色智能体",
+      "visibility": "public",
+      "source": "resources/agents/translation"
+    },
+    {
+      "id": "8206fd59-9707-5a6f-b83f-69267e5f37ad",
+      "type": "agent",
+      "slug": "document-writing",
+      "display_name": "文书处理智能体",
+      "visibility": "public",
+      "source": "resources/agents/document-writing"
+    },
+    {
+      "id": "dd0b2c9c-3709-541a-a021-8c1078f7e823",
+      "type": "agent",
+      "slug": "summarize",
+      "display_name": "智能摘要智能体",
+      "visibility": "public",
+      "source": "resources/agents/summarize"
+    },
+    {
+      "id": "bc5ec8b0-cd80-5574-b2a0-aa4fd31dfb85",
+      "type": "agent",
+      "slug": "ppt-web",
+      "display_name": "PPT 制作智能体",
+      "visibility": "public",
+      "source": "resources/agents/ppt-web"
+    },
+    {
+      "id": "de7f5dc7-d602-5594-9c1d-b668c982e744",
+      "type": "agent",
+      "slug": "visual-doc",
+      "display_name": "版式文档智能体",
+      "visibility": "public",
+      "source": "resources/agents/visual-doc"
+    },
+    {
+      "id": "8d1ff9a0-c635-5498-a85c-fa4743097bf1",
+      "type": "agent",
+      "slug": "frontend-design",
+      "display_name": "前端设计智能体",
+      "visibility": "public",
+      "source": "resources/agents/frontend-design"
+    },
+    {
+      "id": "9d68a47e-f8cd-5487-8ba5-21b1bf531f92",
+      "type": "agent",
+      "slug": "creative-play",
+      "display_name": "创意探索智能体",
+      "visibility": "public",
+      "source": "resources/agents/creative-play"
+    },
+    {
+      "id": "f364045a-59df-567a-9268-f3360b72cb22",
+      "type": "agent",
+      "slug": "skill-workshop",
+      "display_name": "技能工坊智能体",
+      "visibility": "public",
+      "source": "resources/agents/skill-workshop"
+    },
+    {
+      "id": "4f6814a6-cd6c-58e4-a3f4-b8a6753981a5",
+      "type": "agent",
+      "slug": "code-dev",
+      "display_name": "代码开发智能体",
+      "visibility": "public",
+      "source": "resources/agents/code-dev"
+    },
+    {
+      "id": "24534a1b-e77f-5c6f-909c-e1ec7139598a",
+      "type": "agent",
+      "slug": "abaqus",
+      "display_name": "仿真分析智能体",
+      "visibility": "public",
+      "source": "resources/agents/abaqus"
+    },
+    {
+      "id": "836c0262-b657-51a6-b748-9249b58fa187",
+      "type": "agent",
+      "slug": "paper-review",
+      "display_name": "论文评审智能体",
+      "visibility": "public",
+      "source": "resources/agents/paper-review"
     }
   ]
 }
