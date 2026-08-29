@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from ideer.skills.catalog import SkillCatalog
+from ideer.skills.catalog import SkillCatalog, get_skill_catalog
 
 
 class _Source:
@@ -40,4 +40,15 @@ def test_catalog_invalidate_forces_reload(tmp_path: Path):
     catalog.invalidate()
     catalog.list_skills()
 
+    assert source.calls == 2
+
+
+def test_get_skill_catalog_reuses_catalog_and_keeps_policy_caches(tmp_path: Path):
+    source = _Source(tmp_path)
+    catalog = get_skill_catalog(source)
+
+    catalog.list_skills(enabled_only=True)
+    catalog.list_skills(enabled_only=False)
+
+    assert get_skill_catalog(source) is catalog
     assert source.calls == 2

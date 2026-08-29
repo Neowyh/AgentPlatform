@@ -7,6 +7,8 @@ from typing import Protocol
 
 from ideer.skills.types import Skill
 
+_CATALOGS: dict[int, tuple[object, SkillCatalog]] = {}
+
 
 class _SkillSource(Protocol):
     def load_skills(self, *, enabled_only: bool = False) -> list[Skill]: ...
@@ -31,7 +33,7 @@ class SkillCatalog:
         signature = self._root_signature()
         key = (enabled_only, signature)
         if key not in self._cache:
-            self._cache = {key: list(self._source.load_skills(enabled_only=enabled_only))}
+            self._cache[key] = list(self._source.load_skills(enabled_only=enabled_only))
         return list(self._cache[key])
 
     def invalidate(self) -> None:
@@ -56,7 +58,13 @@ def get_skill_catalog(source: _SkillSource | None = None) -> SkillCatalog:
         from ideer.skills.storage import get_or_new_skill_storage
 
         source = get_or_new_skill_storage()
-    return SkillCatalog(source)
+    source_key = id(source)
+    cached = _CATALOGS.get(source_key)
+    if cached is None or cached[0] is not source:
+        catalog = SkillCatalog(source)
+        _CATALOGS[source_key] = (source, catalog)
+        return catalog
+    return cached[1]
 
 
 __all__ = ["SkillCatalog", "get_skill_catalog"]
