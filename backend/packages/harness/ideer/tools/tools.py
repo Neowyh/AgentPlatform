@@ -7,6 +7,7 @@ from ideer.config.app_config import AppConfig
 from ideer.config.network_mode import is_offline
 from ideer.reflection import resolve_variable
 from ideer.sandbox.security import is_host_bash_allowed
+from ideer.tools.assembly import assemble_tools
 from ideer.tools.builtins import ask_clarification_tool, present_file_tool, task_tool, view_image_tool
 from ideer.tools.builtins.tool_search import get_deferred_registry
 from ideer.tools.sync import make_sync_tool_wrapper
@@ -231,15 +232,9 @@ def get_available_tools(
     # built-ins, MCP tools, and ACP tools.  Duplicate names cause the LLM to
     # receive ambiguous or concatenated function schemas (issue #1803).
     all_tools = [_ensure_sync_invocable_tool(t) for t in loaded_tools + builtin_tools + mcp_tools + acp_tools]
-    seen_names: set[str] = set()
-    unique_tools: list[BaseTool] = []
-    for t in all_tools:
-        if t.name not in seen_names:
-            unique_tools.append(t)
-            seen_names.add(t.name)
-        else:
-            logger.warning(
-                "Duplicate tool name %r detected and skipped — check your config.yaml and MCP server registrations (issue #1803).",
-                t.name,
-            )
-    return unique_tools
+    deferred_registry = get_deferred_registry() if config.tool_search.enabled else None
+    deferred_names = deferred_registry.deferred_names if deferred_registry else ()
+    assembled = assemble_tools(all_tools, deferred_names=deferred_names)
+    if len(assembled.active) + len(assembled.deferred) < len(all_tools):
+        logger.warning("Duplicate tool names detected and skipped — check your config.yaml and MCP server registrations (issue #1803).")
+    return [*assembled.active, *assembled.deferred]
