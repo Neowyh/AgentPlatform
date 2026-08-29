@@ -194,10 +194,13 @@ def get_available_tools(
                         existing_registry = get_deferred_registry()
                         if existing_registry is None:
                             registry = DeferredToolRegistry()
+                            priority_names = {tool.name for tool in loaded_tools + builtin_tools}
                             for t in mcp_tools:
+                                if t.name in priority_names:
+                                    continue
                                 registry.register(t)
                             set_deferred_registry(registry)
-                            logger.info(f"Tool search active: {len(mcp_tools)} tools deferred")
+                            logger.info(f"Tool search active: {len(registry)} tools deferred")
                         else:
                             mcp_tool_names = {t.name for t in mcp_tools}
                             still_deferred = len(existing_registry)
@@ -234,6 +237,8 @@ def get_available_tools(
     all_tools = [_ensure_sync_invocable_tool(t) for t in loaded_tools + builtin_tools + mcp_tools + acp_tools]
     deferred_registry = get_deferred_registry() if config.tool_search.enabled else None
     deferred_names = deferred_registry.deferred_names if deferred_registry else ()
+    priority_names = {tool.name for tool in loaded_tools + builtin_tools}
+    deferred_names = set(deferred_names) - priority_names
     assembled = assemble_tools(all_tools, deferred_names=deferred_names)
     if len(assembled.active) + len(assembled.deferred) < len(all_tools):
         logger.warning("Duplicate tool names detected and skipped — check your config.yaml and MCP server registrations (issue #1803).")

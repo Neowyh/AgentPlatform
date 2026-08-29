@@ -484,6 +484,8 @@ describe("ChatPage", () => {
     render(<ChatPage />);
     act(() => {
       screen.getByTestId("scenario-cascade-bar").click();
+    });
+    act(() => {
       mockLastScenarioCascadeProps.current.onToggleChip(
         "daily",
         "office-docs",

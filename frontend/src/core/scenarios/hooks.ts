@@ -41,6 +41,12 @@ export function useScenarioBinding(
 
   const toggleChip = useCallback(
     (scenarioId: ScenarioId, agentSlug: string, taskId: string) => {
+      if (
+        selectedPill?.scenarioId !== scenarioId ||
+        selectedPill.agentSlug !== agentSlug
+      ) {
+        return;
+      }
       const chip = getChipsByPill(scenarioId, agentSlug).find(
         (item) => item.taskId === taskId,
       );
@@ -53,7 +59,7 @@ export function useScenarioBinding(
           : { scenarioId, agentSlug, taskId },
       );
     },
-    [],
+    [selectedPill],
   );
 
   const clear = useCallback(() => {

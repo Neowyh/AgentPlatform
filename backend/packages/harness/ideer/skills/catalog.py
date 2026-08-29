@@ -33,6 +33,7 @@ class SkillCatalog:
         signature = self._root_signature()
         key = (enabled_only, signature)
         if key not in self._cache:
+            self._cache = {cached_key: cached_value for cached_key, cached_value in self._cache.items() if cached_key[1] == signature}
             self._cache[key] = list(self._source.load_skills(enabled_only=enabled_only))
         return list(self._cache[key])
 

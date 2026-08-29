@@ -48,4 +48,18 @@ describe("useScenarioBinding", () => {
     expect(result.current.selectedScenario).toBe("daily");
     expect(result.current.selectedChip).toBeNull();
   });
+
+  it("rejects a chip that does not belong to the selected Agent Pill", () => {
+    const { result } = renderHook(() => useScenarioBinding("daily"));
+    act(() => result.current.togglePill("daily", "office-docs"));
+    act(() =>
+      result.current.toggleChip(
+        "daily",
+        "data-analysis",
+        "excel-data-analysis",
+      ),
+    );
+
+    expect(result.current.selectedChip).toBeNull();
+  });
 });

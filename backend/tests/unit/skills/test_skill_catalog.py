@@ -32,6 +32,19 @@ def test_catalog_caches_by_enabled_policy_until_skill_files_change(tmp_path: Pat
     assert source.calls == 2
 
 
+def test_catalog_discards_old_root_signature_entries(tmp_path: Path):
+    source = _Source(tmp_path)
+    catalog = SkillCatalog(source)
+
+    catalog.list_skills()
+    skill = tmp_path / "example" / "SKILL.md"
+    skill.parent.mkdir()
+    skill.write_text("first", encoding="utf-8")
+    catalog.list_skills()
+
+    assert len(catalog._cache) == 1
+
+
 def test_catalog_invalidate_forces_reload(tmp_path: Path):
     source = _Source(tmp_path)
     catalog = SkillCatalog(source)
