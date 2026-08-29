@@ -1,14 +1,12 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 
 import { useI18n } from "@/core/i18n/hooks";
 import { cn } from "@/lib/utils";
 
 import { AuroraText } from "../ui/aurora-text";
-
-let waved = false;
 
 export function Welcome({
   className,
@@ -26,9 +24,6 @@ export function Welcome({
     }
     return ["var(--color-foreground)"];
   }, [isUltra]);
-  useEffect(() => {
-    waved = true;
-  }, []);
   return (
     <div
       className={cn(
@@ -40,12 +35,7 @@ export function Welcome({
         {searchParams.get("mode") === "skill" ? (
           `✨ ${t.welcome.createYourOwnSkill} ✨`
         ) : (
-          <div className="flex items-center gap-2">
-            <div className={cn("inline-block", !waved ? "animate-wave" : "")}>
-              {isUltra ? "🚀" : "👋"}
-            </div>
-            <AuroraText colors={colors}>{t.welcome.greeting}</AuroraText>
-          </div>
+          <AuroraText colors={colors}>iDeer</AuroraText>
         )}
       </div>
       {searchParams.get("mode") === "skill" && (
