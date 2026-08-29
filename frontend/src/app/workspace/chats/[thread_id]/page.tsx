@@ -31,6 +31,7 @@ import { getChipsByPill } from "@/core/scenarios/config";
 import { useScenarioBinding } from "@/core/scenarios/hooks";
 import type { ScenarioId } from "@/core/scenarios/types";
 import { useLocalSettings, useThreadSettings } from "@/core/settings";
+import { useSkills } from "@/core/skills/hooks";
 import { useThreadStream, useThreadTokenUsage } from "@/core/threads/hooks";
 import { threadTokenUsageToTokenUsage } from "@/core/threads/token-usage";
 import { textOfMessage } from "@/core/threads/utils";
@@ -65,6 +66,16 @@ export default function ChatPage() {
   const selectedAgent = agents.find(
     (item) => (item.slug ?? item.name) === selectedPill?.agentSlug,
   );
+  const { skills } = useSkills();
+  const selectedSkill = selectedChip
+    ? skills.find(
+        (skill) =>
+          (skill.slug ?? skill.name) ===
+          getChipsByPill(selectedChip.scenarioId, selectedChip.agentSlug).find(
+            (item) => item.taskId === selectedChip.taskId,
+          )?.skillName,
+      )
+    : undefined;
   const { agent: selectedAgentDetails } = useAgent(selectedAgent?.resource_id);
   const [pendingTemplate, setPendingTemplate] = useState<string | null>(null);
 
@@ -117,6 +128,7 @@ export default function ChatPage() {
       agent_resource_id: selectedAgent?.resource_id,
       agent_label: activeBinding?.agentName,
       skill_name: chip?.skillName,
+      skill_resource_id: selectedSkill?.resource_id,
       task_id: chip?.taskId,
       task_label: chip?.label,
       prompt_template: chip?.promptTemplate,
@@ -124,6 +136,7 @@ export default function ChatPage() {
   }, [
     activeBinding,
     selectedAgent,
+    selectedSkill,
     settings.context,
     selectedPill,
     selectedChip,
