@@ -1,6 +1,7 @@
+from .assembly import ToolSet, assemble_tools
 from .tools import get_available_tools
 
-__all__ = ["get_available_tools", "skill_manage_tool"]
+__all__ = ["ToolSet", "assemble_tools", "get_available_tools", "skill_manage_tool"]
 
 
 def __getattr__(name: str):

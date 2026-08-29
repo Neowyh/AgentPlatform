@@ -423,7 +423,7 @@ describe("ChatPage", () => {
 
     expect(mockLastInputBoxProps.current.selectedTags).toEqual([
       { id: "agent:office-docs", label: "办公文档" },
-      { id: "task:word-editor", label: "Word 创建编辑" },
+      { id: "task:word-editor", label: "anthropic-docx" },
     ]);
   });
 

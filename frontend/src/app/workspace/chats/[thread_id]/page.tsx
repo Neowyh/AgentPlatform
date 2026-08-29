@@ -27,8 +27,8 @@ import { useAgent, useAgents } from "@/core/agents/hooks";
 import { useI18n } from "@/core/i18n/hooks";
 import { useModels } from "@/core/models/hooks";
 import { useNotification } from "@/core/notification/hooks";
-import { getChipsByPill, getPillsByScenario } from "@/core/scenarios/config";
-import { useScenarioSelection } from "@/core/scenarios/hooks";
+import { getChipsByPill } from "@/core/scenarios/config";
+import { useScenarioBinding } from "@/core/scenarios/hooks";
 import type { ScenarioId } from "@/core/scenarios/types";
 import { useLocalSettings, useThreadSettings } from "@/core/settings";
 import { useThreadStream, useThreadTokenUsage } from "@/core/threads/hooks";
@@ -57,8 +57,10 @@ export default function ChatPage() {
     selectScenario,
     togglePill,
     toggleChip,
-    resetSelection,
-  } = useScenarioSelection();
+    activeBinding,
+    clear: resetSelection,
+    tags,
+  } = useScenarioBinding();
   const { agents } = useAgents();
   const selectedAgent = agents.find(
     (item) => (item.slug ?? item.name) === selectedPill?.agentSlug,
@@ -66,35 +68,17 @@ export default function ChatPage() {
   const { agent: selectedAgentDetails } = useAgent(selectedAgent?.resource_id);
   const [pendingTemplate, setPendingTemplate] = useState<string | null>(null);
 
-  const activeScenario = selectedScenario ?? "creative";
+  const activeScenario = selectedScenario;
   const handleSelectScenario = useCallback(
     (scenario: ScenarioId | null) => selectScenario(scenario ?? "creative"),
     [selectScenario],
   );
 
-  const selectedTags: SelectedTag[] = useMemo(() => {
-    if (!selectedPill) return [];
-    const { agentSlug, scenarioId } = selectedPill;
-    const pillLabel =
-      getPillsByScenario(scenarioId).find(
-        (pill) => pill.agentSlug === agentSlug,
-      )?.label ?? agentSlug;
-    const tags: SelectedTag[] = [
-      {
-        id: `agent:${agentSlug}`,
-        label: pillLabel,
-      },
-    ];
-    const chip = selectedChip
-      ? getChipsByPill(selectedChip.scenarioId, selectedChip.agentSlug).find(
-          (item) => item.taskId === selectedChip.taskId,
-        )
-      : undefined;
-    if (chip) {
-      tags.push({ id: `task:${chip.taskId}`, label: chip.label });
-    }
-    return tags;
-  }, [selectedChip, selectedPill]);
+  const selectedTags: SelectedTag[] = tags;
+
+  useEffect(() => {
+    setPendingTemplate(activeBinding?.promptTemplate ?? null);
+  }, [activeBinding?.promptTemplate]);
 
   const allowedSkillNames = useMemo(() => {
     if (!selectedPill) return undefined;
@@ -119,9 +103,6 @@ export default function ChatPage() {
       delete context.prompt_template;
       return context;
     }
-    const pill = getPillsByScenario(selectedPill.scenarioId).find(
-      (item) => item.agentSlug === selectedPill.agentSlug,
-    );
     const chip = selectedChip
       ? getChipsByPill(selectedChip.scenarioId, selectedChip.agentSlug).find(
           (item) => item.taskId === selectedChip.taskId,
@@ -131,13 +112,13 @@ export default function ChatPage() {
       ...context,
       scenario_id: selectedPill.scenarioId,
       agent_name: selectedPill.agentSlug,
-      agent_label: pill?.label,
+      agent_label: activeBinding?.agentName,
       skill_name: chip?.skillName,
       task_id: chip?.taskId,
       task_label: chip?.label,
       prompt_template: chip?.promptTemplate,
     };
-  }, [settings.context, selectedPill, selectedChip]);
+  }, [activeBinding, settings.context, selectedPill, selectedChip]);
 
   const handleRemoveTag = useCallback(
     (id: string) => {

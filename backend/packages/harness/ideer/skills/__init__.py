@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from .catalog import SkillCatalog, get_skill_catalog
 from .installer import SkillAlreadyExistsError, SkillSecurityScanError
 from .storage import LocalSkillStorage, SkillStorage, get_or_new_skill_storage
 from .types import Skill
@@ -11,6 +12,8 @@ __all__ = [
     "_validate_skill_frontmatter",
     "SkillAlreadyExistsError",
     "SkillSecurityScanError",
+    "SkillCatalog",
+    "get_skill_catalog",
     "SkillStorage",
     "LocalSkillStorage",
     "get_or_new_skill_storage",
