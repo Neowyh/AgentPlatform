@@ -427,6 +427,32 @@ describe("ChatPage", () => {
     ]);
   });
 
+  test("loads selected Agent details after the selection hook initializes", () => {
+    mockUseThreadChat.mockReturnValue({
+      threadId: "test-thread",
+      setThreadId: vi.fn(),
+      isNewThread: true,
+      setIsNewThread: vi.fn(),
+      isMock: false,
+    });
+    mockUseAgents.mockReturnValue({
+      agents: [{ slug: "office-docs", resource_id: "agent-resource-id" }],
+    });
+    mockUseAgent.mockReturnValue({
+      agent: { skills: ["skill-resource-id"] },
+    });
+
+    render(<ChatPage />);
+    act(() => {
+      screen.getByTestId("scenario-cascade-bar").click();
+    });
+
+    expect(mockUseAgent).toHaveBeenLastCalledWith("agent-resource-id");
+    expect(mockLastInputBoxProps.current.allowedSkillNames).toEqual([
+      "skill-resource-id",
+    ]);
+  });
+
   test("onStart callback sets threadId and updates URL", () => {
     const setThreadIdMock = vi.fn();
     const setIsNewThreadMock = vi.fn();

@@ -50,11 +50,6 @@ export default function ChatPage() {
   const [settings, setSettings] = useThreadSettings(threadId);
   const [localSettings, setLocalSettings] = useLocalSettings();
   const { tokenUsageEnabled } = useModels();
-  const { agents } = useAgents();
-  const selectedAgent = agents.find(
-    (item) => (item.slug ?? item.name) === selectedPill?.agentSlug,
-  );
-  const { agent: selectedAgentDetails } = useAgent(selectedAgent?.resource_id);
   const {
     selectedScenario,
     selectedPill,
@@ -64,6 +59,11 @@ export default function ChatPage() {
     toggleChip,
     resetSelection,
   } = useScenarioSelection();
+  const { agents } = useAgents();
+  const selectedAgent = agents.find(
+    (item) => (item.slug ?? item.name) === selectedPill?.agentSlug,
+  );
+  const { agent: selectedAgentDetails } = useAgent(selectedAgent?.resource_id);
   const [pendingTemplate, setPendingTemplate] = useState<string | null>(null);
 
   const activeScenario = selectedScenario ?? "creative";
