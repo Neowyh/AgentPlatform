@@ -1,0 +1,11 @@
+name: office-docs
+description: 办公文档智能体，面向办公文档相关任务提供结构化协作能力
+tool_groups:
+- file:read
+- file:write
+- document
+- bash
+skills:
+- anthropic-docx
+- anthropic-pdf
+- officecli

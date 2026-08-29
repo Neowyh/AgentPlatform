@@ -1,0 +1,22 @@
+{
+  "name": "五岁也能懂",
+  "installedAt": 1787811305970,
+  "source": "github",
+  "sourceUrl": "https://github.com/anthropics/claude-plugins-community",
+  "skillPath": "eli5/skills/eli5/SKILL.md",
+  "version": "1.0.0",
+  "skillId": "eli5_community",
+  "examples_zh": [
+    "/eli5 什么是 DNS",
+    "用最简单的方式解释区块链",
+    "给小白讲讲量子纠缠"
+  ],
+  "examples_en": [
+    "/eli5 how does DNS work",
+    "explain blockchain like I'm 5",
+    "ELI5 quantum entanglement"
+  ],
+  "description_zh": "用大图少字的 HTML 图文科普任意主题，像给 5 岁孩子讲明白",
+  "description_en": "Explain any topic like I'm 5 via a dead-simple HTML picture explainer",
+  "iconSource": "letter:auto"
+}
