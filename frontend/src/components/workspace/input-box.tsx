@@ -78,6 +78,7 @@ import { InlineSelectedTag, type SelectedTag } from "./scenario/selected-tags";
 import { SlashOverlay } from "./slash-overlay";
 import {
   getSlashAtCursor,
+  filterSkillsByAllowedNames,
   getMatchingSkillSuggestions,
   parseSlashPrefix,
 } from "./slash-suggestions";
@@ -120,6 +121,7 @@ export function InputBox({
   threadId,
   initialValue,
   pendingTemplate,
+  allowedSkillNames,
   selectedTags = [],
   onPendingTemplateConsumed,
   onContextChange,
@@ -148,6 +150,7 @@ export function InputBox({
   threadId: string;
   initialValue?: string;
   pendingTemplate?: string | null;
+  allowedSkillNames?: readonly string[];
   selectedTags?: SelectedTag[];
   onPendingTemplateConsumed?: () => void;
   onContextChange?: (
@@ -453,7 +456,11 @@ export function InputBox({
   const handleSlashKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
       if (!slashState.open) return;
-      const suggestions = getMatchingSkillSuggestions(skills, slashState.query);
+      const suggestions = getMatchingSkillSuggestions(
+        skills,
+        slashState.query,
+        allowedSkillNames,
+      );
       if (suggestions.length === 0) return;
 
       if (e.key === "ArrowDown") {
@@ -494,6 +501,7 @@ export function InputBox({
       slashState.query,
       slashState.activeIndex,
       skills,
+      allowedSkillNames,
       handleSlashSelect,
     ],
   );
@@ -699,6 +707,7 @@ export function InputBox({
             {slashState.open && (
               <SlashOverlay
                 skills={skills}
+                allowedSkillNames={allowedSkillNames}
                 query={slashState.query}
                 activeIndex={slashState.activeIndex}
                 onSelect={(skill) => handleSlashSelect(skill.name)}
@@ -1112,8 +1121,8 @@ export function InputBox({
             </DialogDescription>
           </DialogHeader>
           <div className="max-h-60 overflow-y-auto">
-            {skills
-              .filter((s) => s.enabled)
+            {filterSkillsByAllowedNames(skills, allowedSkillNames)
+              .filter((skill) => skill.enabled)
               .map((skill) => (
                 <button
                   key={skill.name}

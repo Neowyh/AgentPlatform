@@ -10,6 +10,8 @@ const {
   mockTextOfMessage,
   mockEnvValues,
   mockLastScenarioCascadeProps,
+  mockUseAgents,
+  mockUseAgent,
 } = vi.hoisted(() => ({
   mockUseThreadChat: vi.fn().mockReturnValue({
     threadId: "test-thread",
@@ -41,6 +43,8 @@ const {
   mockTextOfMessage: vi.fn().mockReturnValue(""),
   mockEnvValues: { NEXT_PUBLIC_STATIC_WEBSITE_ONLY: "false" },
   mockLastScenarioCascadeProps: { current: null as any },
+  mockUseAgents: vi.fn().mockReturnValue({ agents: [] }),
+  mockUseAgent: vi.fn().mockReturnValue({ agent: null }),
 }));
 
 vi.mock("@/core/i18n/hooks", () => ({
@@ -129,6 +133,11 @@ vi.mock("@/components/workspace/scenario", () => ({
 
 vi.mock("@/core/models/hooks", () => ({
   useModels: () => ({ tokenUsageEnabled: false }),
+}));
+
+vi.mock("@/core/agents/hooks", () => ({
+  useAgents: () => mockUseAgents(),
+  useAgent: (...args: unknown[]) => mockUseAgent(...args),
 }));
 
 vi.mock("@/core/notification/hooks", () => ({
@@ -404,8 +413,43 @@ describe("ChatPage", () => {
       screen.getByTestId("scenario-cascade-bar").click();
     });
 
+    act(() => {
+      mockLastScenarioCascadeProps.current.onToggleChip(
+        "daily",
+        "office-docs",
+        "word-editor",
+      );
+    });
+
     expect(mockLastInputBoxProps.current.selectedTags).toEqual([
-      { id: "office-docs", label: "办公文档" },
+      { id: "agent:office-docs", label: "办公文档" },
+      { id: "task:word-editor", label: "Word 创建编辑" },
+    ]);
+  });
+
+  test("loads selected Agent details after the selection hook initializes", () => {
+    mockUseThreadChat.mockReturnValue({
+      threadId: "test-thread",
+      setThreadId: vi.fn(),
+      isNewThread: true,
+      setIsNewThread: vi.fn(),
+      isMock: false,
+    });
+    mockUseAgents.mockReturnValue({
+      agents: [{ slug: "office-docs", resource_id: "agent-resource-id" }],
+    });
+    mockUseAgent.mockReturnValue({
+      agent: { skills: ["skill-resource-id"] },
+    });
+
+    render(<ChatPage />);
+    act(() => {
+      screen.getByTestId("scenario-cascade-bar").click();
+    });
+
+    expect(mockUseAgent).toHaveBeenLastCalledWith("agent-resource-id");
+    expect(mockLastInputBoxProps.current.allowedSkillNames).toEqual([
+      "skill-resource-id",
     ]);
   });
 

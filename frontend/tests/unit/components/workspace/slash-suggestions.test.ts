@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import {
   getSlashAtCursor,
+  filterSkillsByAllowedNames,
   getMatchingSkillSuggestions,
   parseSlashPrefix,
   RESERVED_SLASH_SKILL_NAMES,
@@ -208,6 +209,28 @@ describe("getMatchingSkillSuggestions", () => {
 
   test("returns empty array when no match", () => {
     expect(getMatchingSkillSuggestions(SKILLS, "zzzzz")).toEqual([]);
+  });
+
+  test("restricts suggestions to the selected Agent skill closure", () => {
+    expect(
+      getMatchingSkillSuggestions(SKILLS, "", ["anthropic-docx"]).map(
+        (skill) => skill.name,
+      ),
+    ).toEqual(["anthropic-docx"]);
+  });
+
+  test("matches Agent closure entries by resource id", () => {
+    const skill = {
+      ...makeSkill("officecli"),
+      resource_id: "skill-resource-id",
+    };
+
+    expect(filterSkillsByAllowedNames([skill], ["skill-resource-id"])).toEqual([
+      skill,
+    ]);
+    expect(
+      getMatchingSkillSuggestions([skill], "", ["skill-resource-id"]),
+    ).toEqual([skill]);
   });
 });
 

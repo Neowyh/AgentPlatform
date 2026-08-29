@@ -33,12 +33,31 @@ export function getSlashAtCursor(
   };
 }
 
+export function filterSkillsByAllowedNames(
+  skills: Skill[],
+  allowedSkillNames?: readonly string[],
+): Skill[] {
+  if (allowedSkillNames === undefined) return skills;
+
+  const allowed = new Set(allowedSkillNames.map((name) => name.toLowerCase()));
+  return skills.filter(
+    (skill) =>
+      allowed.has(skill.name.toLowerCase()) ||
+      (skill.slug !== undefined && allowed.has(skill.slug.toLowerCase())) ||
+      (skill.resource_id !== undefined &&
+        allowed.has(skill.resource_id.toLowerCase())),
+  );
+}
+
 export function getMatchingSkillSuggestions(
   skills: Skill[],
   query: string,
+  allowedSkillNames?: readonly string[],
 ): Skill[] {
   const q = query.toLowerCase();
-  const enabled = skills.filter((s) => s.enabled);
+  const enabled = filterSkillsByAllowedNames(skills, allowedSkillNames).filter(
+    (skill) => skill.enabled,
+  );
 
   const candidates = enabled
     .map((skill, index) => {
