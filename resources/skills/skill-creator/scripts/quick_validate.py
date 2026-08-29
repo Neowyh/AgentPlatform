@@ -3,10 +3,39 @@
 Quick validation script for skills - minimal version
 """
 
-import sys
 import re
-import yaml
+import sys
 from pathlib import Path
+
+import yaml
+
+ALLOWED_FRONTMATTER_PROPERTIES = {
+    "name",
+    "description",
+    "description_zh",
+    "description_en",
+    "license",
+    "allowed-tools",
+    "metadata",
+    "compatibility",
+    "version",
+    "author",
+    "requires-internet",
+    "display_name",
+    "display_name_en",
+    "homepage",
+    "visibility",
+    "enabled_at",
+    "install_method",
+    "install_source",
+    "name_zh",
+    "skill_id",
+    "category",
+    "icon",
+    "permission_notes_zh",
+    "permissions",
+}
+
 
 def validate_skill(skill_path):
     """Basic validation of a skill"""
@@ -38,14 +67,12 @@ def validate_skill(skill_path):
         return False, f"Invalid YAML in frontmatter: {e}"
 
     # Define allowed properties
-    ALLOWED_PROPERTIES = {'name', 'description', 'license', 'allowed-tools', 'metadata', 'compatibility'}
-
     # Check for unexpected properties (excluding nested keys under metadata)
-    unexpected_keys = set(frontmatter.keys()) - ALLOWED_PROPERTIES
+    unexpected_keys = set(frontmatter.keys()) - ALLOWED_FRONTMATTER_PROPERTIES
     if unexpected_keys:
         return False, (
             f"Unexpected key(s) in SKILL.md frontmatter: {', '.join(sorted(unexpected_keys))}. "
-            f"Allowed properties are: {', '.join(sorted(ALLOWED_PROPERTIES))}"
+            f"Allowed properties are: {', '.join(sorted(ALLOWED_FRONTMATTER_PROPERTIES))}"
         )
 
     # Check required fields
