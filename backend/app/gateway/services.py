@@ -587,16 +587,17 @@ async def start_run(
             )
 
     canonical_run_id = str(uuid.uuid4()) if canonical_resource_id else None
-    canonical_factory = (
-        await _prepare_canonical_agent_run(
+    preferred_skill = body_context.get("skill_resource_id") or body_context.get("skill_name")
+    if canonical_resource_id and canonical_run_id:
+        prepare_kwargs = {"preferred_skill": preferred_skill} if preferred_skill else {}
+        canonical_factory = await _prepare_canonical_agent_run(
             canonical_resource_id,
             request,
             canonical_run_id,
-            preferred_skill=body_context.get("skill_resource_id") or body_context.get("skill_name"),
+            **prepare_kwargs,
         )
-        if canonical_resource_id and canonical_run_id
-        else None
-    )
+    else:
+        canonical_factory = None
 
     run_metadata = dict(body.metadata or {})
     if canonical_run_id and canonical_resource_id:
