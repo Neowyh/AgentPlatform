@@ -13,6 +13,7 @@ vi.mock("@/core/i18n/hooks", () => ({
   useI18n: () => ({
     t: {
       welcome: {
+        greeting: "iDeer，实现你的idea",
         description: "How can I help you today?",
         createYourOwnSkill: "Create Your Own Skill",
         createYourOwnSkillDescription: "Build custom skills for your workflow",
@@ -53,9 +54,10 @@ afterEach(() => {
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe("Welcome", () => {
-  test("renders the iDeer title by default", () => {
+  test("renders the localized greeting by default", () => {
     render(<Welcome />);
     expect(screen.getByText("iDeer")).toBeInTheDocument();
+    expect(screen.getByText("，实现你的idea")).toBeInTheDocument();
   });
 
   test("does not render a description by default", () => {
@@ -79,10 +81,11 @@ describe("Welcome", () => {
     ).toBeInTheDocument();
   });
 
-  test("does not show the iDeer title in skill mode", () => {
+  test("does not show the localized greeting in skill mode", () => {
     mockSearchParams = new URLSearchParams("mode=skill");
     render(<Welcome />);
     expect(screen.queryByText("iDeer")).not.toBeInTheDocument();
+    expect(screen.queryByText("，实现你的idea")).not.toBeInTheDocument();
   });
 
   test("applies custom className", () => {
@@ -94,19 +97,17 @@ describe("Welcome", () => {
     );
   });
 
-  test("renders AuroraText with default colors in non-ultra mode", () => {
+  test("renders with display font in non-ultra mode", () => {
     render(<Welcome />);
-    const aurora = screen.getByTestId("aurora-text");
-    expect(aurora).toBeInTheDocument();
-    const colors = JSON.parse(aurora.getAttribute("data-colors") ?? "[]");
-    expect(colors).toEqual(["var(--color-foreground)"]);
+    expect(screen.getByText("iDeer")).toBeInTheDocument();
+    const title = screen.getByText("iDeer").closest("div");
+    expect(title?.className).toMatch(/tracking-\[-0\.04em\]/);
   });
 
-  test("renders AuroraText with ultra colors in ultra mode", () => {
+  test("renders same title in ultra mode (no AuroraText)", () => {
     render(<Welcome mode="ultra" />);
-    const aurora = screen.getByTestId("aurora-text");
-    const colors = JSON.parse(aurora.getAttribute("data-colors") ?? "[]");
-    expect(colors).toEqual(["#efefbb", "#e9c665", "#e3a812"]);
+    expect(screen.getByText("iDeer")).toBeInTheDocument();
+    expect(screen.getByText("，实现你的idea")).toBeInTheDocument();
   });
 
   test("does not render a greeting emoji", () => {
@@ -114,9 +115,10 @@ describe("Welcome", () => {
     expect(screen.queryByText("👋")).not.toBeInTheDocument();
   });
 
-  test("keeps the iDeer title in ultra mode", () => {
+  test("keeps the localized greeting in ultra mode", () => {
     render(<Welcome mode="ultra" />);
     expect(screen.getByText("iDeer")).toBeInTheDocument();
+    expect(screen.getByText("，实现你的idea")).toBeInTheDocument();
   });
 
   test("renders centered layout", () => {

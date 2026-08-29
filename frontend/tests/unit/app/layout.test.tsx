@@ -22,6 +22,10 @@ vi.mock("@/core/i18n/server", () => ({
   detectLocaleServer: vi.fn().mockResolvedValue("en"),
 }));
 
+vi.mock("next/font/google", () => ({
+  Space_Grotesk: () => ({ variable: "--font-display" }),
+}));
+
 afterEach(() => {
   cleanup();
 });
