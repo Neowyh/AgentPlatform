@@ -8,8 +8,6 @@ description: |
 description_zh: "按国标 GB/T 9704 格式生成公文 .docx（通知/请示/批复/函/纪要等15种文种），红头、版记、字体全自动。"
 license: MIT
 requires-internet: false
-user-invocable: true
-argument-hint: '[文种] [主题/内容描述]'
 allowed-tools:
   - Read
   - Grep
