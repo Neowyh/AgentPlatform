@@ -8,8 +8,6 @@ description: |
 description_zh: "中文文档校对：错别字、标点混用、语病、重复表述，三级分类输出。支持 .docx/.txt 和直接粘贴文本。"
 license: MIT
 requires-internet: false
-user-invocable: true
-argument-hint: '[文件路径或文本内容]'
 allowed-tools:
   - Read
   - Grep

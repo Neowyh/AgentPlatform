@@ -1,6 +1,6 @@
 ---
 name: eli5
-description: Explain any topic like I'm 5 — generate a dead-simple HTML picture explainer with big visuals and few words. Use when the user types /eli5 <topic> or asks for a beginner-friendly explainer.
+description: Explain any topic like I'm 5 — generate a dead-simple HTML picture explainer with big visuals and few words. Use when the user types /eli5 topic or asks for a beginner-friendly explainer.
 description_zh: 用“给 5 岁孩子讲明白”的方式解释任意主题，产出大图少字的单文件 HTML 图文科普。触发词：/eli5 <主题>、给我讲明白、通俗解释、小白也能懂。
 description_en: Explain any topic like I'm 5 via a dead-simple single-file HTML artifact with big visuals and few words.
 version: 1.0.0
