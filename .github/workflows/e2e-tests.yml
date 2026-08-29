@@ -53,15 +53,13 @@ jobs:
 
       - name: Run PR browser smoke
         if: ${{ github.event_name == 'pull_request' }}
-        working-directory: frontend
-        run: pnpm test:e2e:smoke
+        run: bash scripts/run-test-lane.sh frontend-smoke
         env:
           SKIP_ENV_VALIDATION: "1"
 
       - name: Run full mock E2E
         if: ${{ github.event_name != 'pull_request' }}
-        working-directory: frontend
-        run: pnpm test:e2e
+        run: bash scripts/run-test-lane.sh frontend-mock-e2e
         env:
           SKIP_ENV_VALIDATION: "1"
 
@@ -102,8 +100,7 @@ jobs:
         run: npx playwright install chromium --with-deps
 
       - name: Run visual regression tests
-        working-directory: frontend
-        run: pnpm test:e2e:visual
+        run: bash scripts/run-test-lane.sh frontend-visual
         env:
           SKIP_ENV_VALIDATION: "1"
 
@@ -144,8 +141,7 @@ jobs:
         run: npx playwright install chromium --with-deps
 
       - name: Run accessibility E2E tests
-        working-directory: frontend
-        run: pnpm test:e2e:a11y
+        run: bash scripts/run-test-lane.sh frontend-a11y
         env:
           SKIP_ENV_VALIDATION: "1"
 

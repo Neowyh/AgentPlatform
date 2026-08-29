@@ -32,6 +32,20 @@ This matrix is the manual guardrail for the test-suite reorganization. Update it
 
 ## Current Migration Rules
 
+- A Test Lane is the canonical verification level. `scripts/run-test-lane.sh`
+  owns lane selection; Make and GitHub Actions invoke it as adapters.
+- Standard PR verification runs parallel backend tests without coverage,
+  frontend Vitest without coverage, and mock browser smoke. Real E2E remains
+  selected only by high-risk paths.
+- Core deterministic full verification includes backend serial tests, frontend
+  coverage and static checks, and full mock E2E. Tests requiring a real LLM
+  stay in an explicit credentialed lane.
+- Blocking-I/O, visual regression, and accessibility remain nightly specialty
+  verification.
+- The PR standard lane is initially a non-blocking shadow job for two weeks.
+  After its coverage and timing are accepted, its workflow sets
+  `TEST_LANE_MAX_SECONDS=600` and removes `continue-on-error` to make the
+  10-minute test-execution budget a blocking gate.
 - Default backend tests include migrated `unit/`, `integration/`, and `contracts/`; the root `tests/*.py` transition glob has been removed.
 - Backend CI shards test execution and publishes a combined coverage report;
   it does not enforce a global percentage gate.

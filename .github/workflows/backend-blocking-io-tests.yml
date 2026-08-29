@@ -1,6 +1,9 @@
 name: Backend Blocking IO
 
 on:
+  schedule:
+    - cron: "30 2 * * *"
+  workflow_dispatch:
   push:
     branches: ["main"]
     paths:
@@ -42,5 +45,4 @@ jobs:
         run: uv sync --group dev
 
       - name: Run blocking IO regression tests
-        working-directory: backend
-        run: make test-blocking-io
+        run: bash scripts/run-test-lane.sh backend-blocking-io

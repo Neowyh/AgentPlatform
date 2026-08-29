@@ -91,7 +91,9 @@ make stop       # Stop all services
 make install            # Install backend dependencies
 make dev                # Run Gateway API with reload (port 8001)
 make gateway            # Run Gateway API only (port 8001)
-make test               # Run all backend tests
+make test               # Run the parallel standard backend lane
+make test-full          # Run deterministic backend tests, including serial tests
+make test-llm           # Run tests that require a real LLM credential
 make test-blocking-io   # Run strict Blockbuster runtime gate on tests/blocking_io/
 make lint               # Lint with ruff
 make format             # Format code with ruff
@@ -530,13 +532,14 @@ Both can be modified at runtime via Gateway API endpoints or `iDeerClient` metho
 **Every new feature or bug fix MUST be accompanied by unit tests. No exceptions.**
 
 - Write tests in `backend/tests/` following the existing naming convention `test_<feature>.py`
-- Run the full suite before and after your change: `make test`
+- Run the standard lane before and after your change: `make test`. Run
+  `make test-full` when deterministic serial coverage is required.
 - Tests must pass before a feature is considered complete
 - For lightweight config/utility modules, prefer pure unit tests with no external dependencies
 - If a module causes circular import issues in tests, add a `sys.modules` mock in `tests/conftest.py` (see existing example for `ideer.subagents.executor`)
 
 ```bash
-# Run all tests
+# Run the standard test lane
 make test
 
 # Run a specific test file

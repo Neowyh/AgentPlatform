@@ -15,7 +15,13 @@ DEFAULT_TEST_MARKERS := not serial and not requires_llm
 DEFAULT_TEST_OPTS := -p no:rerunfailures
 
 test:
-	PYTHONPATH=. PYTHONIOENCODING=utf-8 PYTHONUTF8=1 uv run pytest $(DEFAULT_TEST_OPTS) $(DEFAULT_TEST_PATHS) -v -m "$(DEFAULT_TEST_MARKERS)"
+	bash ../scripts/run-test-lane.sh backend-standard
+
+test-full:
+	bash ../scripts/run-test-lane.sh backend-full
+
+test-llm:
+	bash ../scripts/run-test-lane.sh backend-llm
 
 test-unit:
 	PYTHONPATH=. PYTHONIOENCODING=utf-8 PYTHONUTF8=1 uv run pytest $(DEFAULT_TEST_OPTS) tests/unit -v -m "$(DEFAULT_TEST_MARKERS)"
@@ -27,9 +33,7 @@ test-contracts:
 	PYTHONPATH=. PYTHONIOENCODING=utf-8 PYTHONUTF8=1 uv run pytest $(DEFAULT_TEST_OPTS) tests/contracts -v -m "$(DEFAULT_TEST_MARKERS)"
 
 test-parallel:
-	PYTHONPATH=. PYTHONIOENCODING=utf-8 PYTHONUTF8=1 \
-		uv run pytest $(DEFAULT_TEST_OPTS) $(DEFAULT_TEST_PATHS) -v -n auto \
-		-m "$(DEFAULT_TEST_MARKERS)"
+	bash ../scripts/run-test-lane.sh backend-standard
 
 test-coverage:
 	PYTHONPATH=. PYTHONIOENCODING=utf-8 PYTHONUTF8=1 uv run pytest $(DEFAULT_TEST_OPTS) $(DEFAULT_TEST_PATHS) -v -m "$(DEFAULT_TEST_MARKERS)" --cov=app --cov=packages --cov-report=term-missing --cov-report=html:htmlcov

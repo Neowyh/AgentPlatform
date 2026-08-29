@@ -53,6 +53,9 @@ pnpm lint
 # Run unit tests
 pnpm test
 
+# Run frontend coverage and static checks
+pnpm test:full
+
 # One-time setup: install Playwright Chromium browser
 pnpm exec playwright install chromium
 
@@ -132,6 +135,7 @@ src/
 | `pnpm build`        | Build for production                    |
 | `pnpm start`        | Start production server                 |
 | `pnpm test`         | Run unit tests with Vitest              |
+| `pnpm test:full`    | Run coverage and static checks          |
 | `pnpm test:e2e`     | Run E2E tests with Playwright           |
 | `pnpm format`       | Check formatting with Prettier          |
 | `pnpm format:write` | Apply formatting with Prettier          |
