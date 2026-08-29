@@ -38,6 +38,21 @@ export default defineConfig({
 
   use: {
     baseURL,
+    storageState: {
+      cookies: [
+        {
+          name: "locale",
+          value: "zh-CN",
+          domain: "localhost",
+          path: "/",
+          expires: -1,
+          httpOnly: false,
+          secure: false,
+          sameSite: "Lax",
+        },
+      ],
+      origins: [],
+    },
     trace: "on-first-retry",
   },
 
