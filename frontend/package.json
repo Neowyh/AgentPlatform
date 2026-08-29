@@ -15,6 +15,7 @@
     "preview": "next build && next start",
     "start": "next start",
     "test": "vitest run",
+    "test:full": "bash ../scripts/run-test-lane.sh frontend-core",
     "test:e2e": "E2E_FRONTEND_PORT=3000 playwright test --project=chromium",
     "test:e2e:a11y": "playwright test --config=playwright.a11y.config.ts",
     "test:e2e:auth": "E2E_FRONTEND_PORT=3003 playwright test --config=playwright.auth.config.ts",

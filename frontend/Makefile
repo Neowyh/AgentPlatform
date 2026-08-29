@@ -8,7 +8,10 @@ dev:
 	pnpm dev
 
 test:
-	pnpm test
+	bash ../scripts/run-test-lane.sh frontend-standard
+
+test-full:
+	bash ../scripts/run-test-lane.sh frontend-core
 
 test-e2e:
 	pnpm test:e2e

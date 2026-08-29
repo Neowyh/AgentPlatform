@@ -25,6 +25,35 @@ Backend code targets Python 3.12 and is formatted with ruff. Use snake_case for 
 
 Place backend tests in the relevant `backend/tests/unit/`, `backend/tests/integration/`, or `backend/tests/contracts/` package, using `test_*.py` filenames. Place frontend unit tests in `frontend/tests/unit/`, mirroring the relevant `src/` area, and E2E tests in `frontend/tests/e2e/`. Add focused tests for changed behavior and run the smallest relevant suite before broader checks.
 
+### Test Lane Selection
+
+After changing code, select the smallest Test Lane that covers the changed behavior. `scripts/run-test-lane.sh` is the canonical command definition.
+
+| Change or acceptance need | Run |
+| --- | --- |
+| Ordinary backend change | `cd backend && make test` |
+| Backend shared state, database, or deterministic serial coverage | `cd backend && make test-full` |
+| Ordinary frontend change | `cd frontend && pnpm test` |
+| Frontend routing, auth, build, or type-sensitive change | `cd frontend && pnpm test:full` |
+| Cross-stack pull-request validation | `bash scripts/run-test-lane.sh pr-standard` |
+| Release validation | `bash scripts/run-test-lane.sh core-full` |
+| Async backend I/O, visual UI, or accessibility acceptance | Run `backend-blocking-io`, `frontend-visual`, or `frontend-a11y` through `scripts/run-test-lane.sh` |
+| Real-model acceptance with configured credentials | `cd backend && make test-llm` |
+
+For auth, RBAC, persistence, memory, admin, Agent, Skill, or Workflow changes, run the matching standard lane and `pr-standard`. GitHub Actions selects Real E2E for the protected high-risk paths; report that selection when handing off a pull request.
+
+### Agent Implementation Test Protocol
+
+When an Agent implements or fixes code, use this sequence:
+
+1. **TDD slice**: identify the public seam, write one focused regression test, verify RED, implement the smallest change, then verify GREEN. Repeat one vertical slice at a time.
+2. **Local feedback**: after each slice, run the focused test file or test case and the narrowest applicable typecheck/lint. Do not run a repository-wide lane for every slice.
+3. **Implementation completion**: after all slices pass, run the applicable standard lane once. Use `UV_CACHE_DIR=/tmp/deer-flow-uv-cache` for backend commands in restricted environments.
+4. **PR completion**: run `pr-standard` when preparing a pull request or when the change crosses backend/frontend boundaries. Persistence, RBAC, memory, Agent, Skill, and Workflow changes require this lane in addition to their standard lane.
+5. **Delivery completion**: run `core-full` only for explicit release, delivery, or full-acceptance requests. It is not the default final step of an ordinary implementation task.
+
+For a focused test or lane that hangs or times out, report it as **incomplete**, including the exact command, elapsed time, and last observed test. Do not report it as passed and do not change production code solely to work around a restricted test environment. Distinguish focused results, standard-lane results, PR-lane results, and delivery-lane results in the handoff.
+
 ## Commit & Pull Request Guidelines
 
 Git history primarily uses Conventional Commit prefixes such as `fix(runs): ...`, `fix(frontend): ...`, and `fix(sandbox): ...`. Prefer `type(scope): summary` with a concise imperative summary. Pull requests should describe the user-visible change, list validation commands, link related issues, and include screenshots or before/after artifacts for visual changes.
