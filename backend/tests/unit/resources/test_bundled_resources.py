@@ -233,6 +233,7 @@ async def test_repository_bundle_can_be_seeded_offline_as_one_complete_set(
         )
         await session.commit()
 
+    manifest = load_bundled_manifest(REPO_ROOT / "bundled-resources.json")
     report = await seed_bundled_resources(
         factory,
         ResourceStorage(
@@ -245,9 +246,26 @@ async def test_repository_bundle_can_be_seeded_offline_as_one_complete_set(
     )
 
     assert report.created == 72
+    second_report = await seed_bundled_resources(
+        factory,
+        ResourceStorage(
+            tmp_path / "runtime",
+            allow_scanned_executables=True,
+        ),
+        manifest_path=REPO_ROOT / "bundled-resources.json",
+        source_root=REPO_ROOT,
+        owner_id="system-owner",
+    )
+    assert second_report.created == 0
+    assert second_report.updated == 0
+    assert second_report.unchanged == len(manifest.resources)
     async with factory() as session:
         assert await session.scalar(select(func.count()).select_from(Resource)) == 72
         assert await session.scalar(select(func.count()).select_from(ResourceVersion)) == 72
+        resources = {resource.id: resource for resource in (await session.execute(select(Resource))).scalars()}
+        assert set(resources) == {resource.id for resource in manifest.resources}
+        assert all(resource.visibility == "public" for resource in resources.values())
+        assert all(resource.latest_version == 1 for resource in resources.values())
     await engine.dispose()
 
 

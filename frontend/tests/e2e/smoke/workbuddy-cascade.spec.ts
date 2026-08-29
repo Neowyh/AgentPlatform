@@ -88,6 +88,39 @@ test.describe("WorkBuddy cascade bar", () => {
     ).toHaveAttribute("data-state", "inactive");
   });
 
+  test("submits the selected Agent and Task runtime context", async ({
+    page,
+  }) => {
+    let submittedContext: Record<string, unknown> | undefined;
+    page.on("request", (request) => {
+      if (
+        request.method() === "POST" &&
+        request.url().endsWith("/runs/stream")
+      ) {
+        submittedContext = request.postDataJSON()?.context;
+      }
+    });
+
+    mockLangGraphAPI(page);
+    await page.goto("/workspace/chats/new");
+    await page
+      .getByRole("tab", { name: /专业任务|Professional Tasks/ })
+      .click();
+    await page.getByRole("tab", { name: /代码开发|Code Development/ }).click();
+    await page.getByRole("tab", { name: /按规格实现/ }).click();
+
+    await page.locator("textarea[name='message']").press("Enter");
+
+    await expect
+      .poll(() => submittedContext)
+      .toMatchObject({
+        scenario_id: "professional",
+        agent_name: "code-dev",
+        skill_name: "implement",
+        task_id: "spec-implementation",
+      });
+  });
+
   test("creative tab shows 5 pills including meta skills", async ({ page }) => {
     mockLangGraphAPI(page);
     await page.goto("/workspace/chats/new");
