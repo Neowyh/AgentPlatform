@@ -13,7 +13,6 @@ vi.mock("@/core/i18n/hooks", () => ({
   useI18n: () => ({
     t: {
       welcome: {
-        greeting: "Hello!",
         description: "How can I help you today?",
         createYourOwnSkill: "Create Your Own Skill",
         createYourOwnSkillDescription: "Build custom skills for your workflow",
@@ -54,14 +53,16 @@ afterEach(() => {
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe("Welcome", () => {
-  test("renders greeting by default", () => {
+  test("renders the iDeer title by default", () => {
     render(<Welcome />);
-    expect(screen.getByText("Hello!")).toBeInTheDocument();
+    expect(screen.getByText("iDeer")).toBeInTheDocument();
   });
 
-  test("renders description", () => {
+  test("does not render a description by default", () => {
     render(<Welcome />);
-    expect(screen.getByText("How can I help you today?")).toBeInTheDocument();
+    expect(
+      screen.queryByText("How can I help you today?"),
+    ).not.toBeInTheDocument();
   });
 
   test("renders in skill mode when search param mode=skill", () => {
@@ -78,10 +79,10 @@ describe("Welcome", () => {
     ).toBeInTheDocument();
   });
 
-  test("does not show greeting in skill mode", () => {
+  test("does not show the iDeer title in skill mode", () => {
     mockSearchParams = new URLSearchParams("mode=skill");
     render(<Welcome />);
-    expect(screen.queryByText("Hello!")).not.toBeInTheDocument();
+    expect(screen.queryByText("iDeer")).not.toBeInTheDocument();
   });
 
   test("applies custom className", () => {
@@ -108,14 +109,14 @@ describe("Welcome", () => {
     expect(colors).toEqual(["#efefbb", "#e9c665", "#e3a812"]);
   });
 
-  test("renders wave emoji in non-ultra mode", () => {
+  test("does not render a greeting emoji", () => {
     render(<Welcome />);
-    expect(screen.getByText("👋")).toBeInTheDocument();
+    expect(screen.queryByText("👋")).not.toBeInTheDocument();
   });
 
-  test("renders rocket emoji in ultra mode", () => {
+  test("keeps the iDeer title in ultra mode", () => {
     render(<Welcome mode="ultra" />);
-    expect(screen.getByText("🚀")).toBeInTheDocument();
+    expect(screen.getByText("iDeer")).toBeInTheDocument();
   });
 
   test("renders centered layout", () => {
