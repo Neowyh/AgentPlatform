@@ -20,9 +20,12 @@ export function ConnectorList() {
   }
 
   return (
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+    <div className="workbench-resource-grid grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
       {servers.map(([name, server]) => (
-        <div key={name} className="rounded-lg border p-4">
+        <div
+          key={name}
+          className="workbench-resource-card rounded-lg border p-4"
+        >
           <h3 className="font-medium">{name}</h3>
           <p className="text-muted-foreground text-sm">{server.description}</p>
           <span

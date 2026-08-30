@@ -14,9 +14,12 @@ export function SkillList() {
   }
 
   return (
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+    <div className="workbench-resource-grid grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
       {skills.map((skill) => (
-        <div key={skill.name} className="rounded-lg border p-4">
+        <div
+          key={skill.name}
+          className="workbench-resource-card rounded-lg border p-4"
+        >
           <h3 className="font-medium">{skill.name}</h3>
           <p className="text-muted-foreground text-sm">{skill.description}</p>
         </div>

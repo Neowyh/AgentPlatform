@@ -458,6 +458,24 @@
     font-size: 0.875rem;
   }
 
+  .workbench-resource-surface {
+    background: var(--background);
+  }
+
+  .workbench-resource-surface > :is(div, header) {
+    border-color: var(--border);
+  }
+
+  .workbench-resource-card {
+    border-color: var(--border);
+    background: var(--card);
+    box-shadow: 0 4px 14px rgb(93 62 36 / 4%);
+  }
+
+  .workbench-resource-card:hover {
+    box-shadow: 0 8px 22px rgb(93 62 36 / 8%);
+  }
+
   @media (max-width: 640px) {
     .workbench-recent-grid {
       grid-template-columns: 1fr;

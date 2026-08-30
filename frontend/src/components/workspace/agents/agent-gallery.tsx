@@ -69,7 +69,7 @@ export function AgentGallery() {
   };
 
   return (
-    <div className="flex size-full flex-col">
+    <div className="workbench-resource-surface flex size-full flex-col">
       {/* Page header */}
       <div className="flex items-center justify-between border-b px-6 py-4">
         <div className="flex items-center gap-3">
@@ -148,7 +148,7 @@ export function AgentGallery() {
             </Button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="workbench-resource-grid grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {filteredAgents.map((agent) => (
               <AgentCard key={agent.name} agent={agent} />
             ))}

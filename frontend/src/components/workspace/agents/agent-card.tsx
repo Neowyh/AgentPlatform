@@ -100,7 +100,7 @@ export function AgentCard({ agent }: AgentCardProps) {
   return (
     <>
       <Card
-        className="group flex flex-col transition-shadow hover:shadow-md"
+        className="workbench-resource-card group flex flex-col transition-shadow hover:shadow-md"
         data-testid="agent-card"
       >
         <CardHeader className="pb-3">
