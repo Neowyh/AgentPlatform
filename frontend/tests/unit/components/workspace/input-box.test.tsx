@@ -1,4 +1,10 @@
-import { render, screen, cleanup, waitFor } from "@testing-library/react";
+import {
+  render,
+  screen,
+  cleanup,
+  fireEvent,
+  waitFor,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
@@ -1388,6 +1394,14 @@ describe("InputBox", () => {
       expect(textarea.className).toContain("min-h-40");
       expect(textarea.className).toContain("text-base");
       expect(textarea.className).toContain("text-left");
+    });
+
+    test("focuses the textarea when clicking the input surface", () => {
+      render(<InputBox {...defaultProps()} isWelcomeMode />);
+
+      fireEvent.click(screen.getByTestId("input-box"));
+
+      expect(screen.getByTestId("chat-input")).toHaveFocus();
     });
 
     test("renders with non-welcome mode layout", () => {

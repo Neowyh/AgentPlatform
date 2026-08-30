@@ -47,43 +47,6 @@ import {
 import { env } from "@/env";
 import { cn } from "@/lib/utils";
 
-const QUICK_ENTRIES = [
-  { label: "整理资料", template: "请帮我整理以下资料：[粘贴内容或上传附件]" },
-  { label: "形成观点", template: "请基于以下材料形成清晰观点：[粘贴内容]" },
-  { label: "推进项目", template: "请帮我推进这个项目：[项目目标与当前进展]" },
-];
-
-function HomeQuickEntries({
-  onSelect,
-}: {
-  onSelect: (template: string) => void;
-}) {
-  return (
-    <section
-      className="workbench-home-module"
-      aria-label="快捷入口"
-      data-testid="workbench-quick-entries"
-    >
-      <p className="workbench-module-guide">
-        <span className="workbench-guide-question">方向不明？</span>
-        <span className="workbench-guide-answer">iDeer帮你找对帮手</span>
-      </p>
-      <div className="workbench-quick-entries">
-        {QUICK_ENTRIES.map((entry) => (
-          <button
-            key={entry.label}
-            type="button"
-            className="workbench-quick-entry"
-            onClick={() => onSelect(entry.template)}
-          >
-            {entry.label}
-          </button>
-        ))}
-      </div>
-    </section>
-  );
-}
-
 function RecentTaskCards({
   threads,
 }: {
@@ -422,9 +385,6 @@ export default function ChatPage() {
                     data-testid="workbench-home"
                   >
                     <Welcome mode={settings.context.mode} />
-                    <HomeQuickEntries
-                      onSelect={(template) => setPendingTemplate(template)}
-                    />
                     <ScenarioTabs
                       selected={activeScenario}
                       onSelect={handleSelectScenario}
@@ -432,14 +392,16 @@ export default function ChatPage() {
                   </div>
                 )}
                 {isWelcomeMode && (
-                  <div className="mt-12">
-                    <ScenarioCascadeBar
-                      selectedScenario={activeScenario}
-                      selectedPill={selectedPill}
-                      selectedChip={selectedChip}
-                      onTogglePill={togglePill}
-                      onToggleChip={toggleChip}
-                    />
+                  <div className="workbench-input-module">
+                    <div className="workbench-scenario-cascade">
+                      <ScenarioCascadeBar
+                        selectedScenario={activeScenario}
+                        selectedPill={selectedPill}
+                        selectedChip={selectedChip}
+                        onTogglePill={togglePill}
+                        onToggleChip={toggleChip}
+                      />
+                    </div>
                   </div>
                 )}
                 {hasTodos && (

@@ -399,16 +399,23 @@
     line-height: 1.2;
   }
 
-  .workbench-home-module,
   .workbench-recent-tasks {
     width: min(100%, 52rem);
   }
 
-  .workbench-home-module {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.75rem;
+  .workbench-input-module {
+    width: 100%;
+    text-align: left;
+  }
+
+  .workbench-scenario-cascade {
+    width: 100%;
+    margin-top: 3rem;
+    text-align: left;
+  }
+
+  .workbench-scenario-cascade [role="tablist"] {
+    justify-content: flex-start;
   }
 
   .workbench-module-guide {
@@ -430,36 +437,38 @@
     font-weight: 600;
   }
 
-  .workbench-quick-entries {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 0.5rem;
-  }
-
-  .workbench-quick-entry {
-    border: 1px solid var(--border);
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--card) 80%, transparent);
-    color: var(--muted-foreground);
-    padding: 0.55rem 1rem;
-    font: inherit;
-    cursor: pointer;
-    transition:
-      border-color 150ms ease,
-      color 150ms ease,
-      background 150ms ease;
-  }
-
-  .workbench-quick-entry:hover,
-  .workbench-quick-entry:focus-visible {
-    border-color: #c98b68;
-    background: var(--card);
-    color: var(--foreground);
-  }
-
   .workbench-input-guide {
     margin: 1rem 0 0.5rem;
+    text-align: left;
+  }
+
+  .workbench-input-surface {
+    text-align: left;
+    cursor: text;
+  }
+
+  .workbench-slash-overlay {
+    min-width: 100%;
+  }
+
+  .workbench-skill-dialog {
+    width: min(52rem, calc(100vw - 2rem));
+  }
+
+  .workbench-welcome-footer {
+    font-size: 1rem;
+  }
+
+  .workbench-welcome-footer button {
+    font-size: 1rem;
+  }
+
+  .workbench-shell [data-slot="button"][data-variant="default"] {
+    color: var(--primary-foreground);
+  }
+
+  .workbench-shell [data-slot="button"][data-variant="destructive"] {
+    color: #fff;
   }
 
   .workbench-recent-tasks {

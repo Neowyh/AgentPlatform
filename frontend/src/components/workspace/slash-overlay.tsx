@@ -50,7 +50,7 @@ export function SlashOverlay({
     <div
       ref={listRef}
       data-testid="slash-overlay"
-      className="bg-popover absolute bottom-full left-0 z-50 mb-1 max-h-60 w-full overflow-y-auto rounded-md border p-1 shadow-md"
+      className="workbench-slash-overlay bg-popover absolute right-0 bottom-full left-0 z-50 mb-2 max-h-72 w-auto max-w-none overflow-y-auto rounded-md border p-1 shadow-md"
     >
       {suggestions.map((skill, i) => (
         <button

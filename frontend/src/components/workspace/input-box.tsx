@@ -520,6 +520,23 @@ export function InputBox({
     !followupsHidden &&
     (followupsLoading || followups.length > 0);
 
+  const handlePromptSurfaceClick = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      const target = event.target as HTMLElement;
+      if (
+        target.closest(
+          "button, textarea, input, [role='dialog'], [role='menu']",
+        )
+      ) {
+        return;
+      }
+      promptRootRef.current
+        ?.querySelector<HTMLTextAreaElement>("textarea")
+        ?.focus();
+    },
+    [],
+  );
+
   useEffect(() => {
     onFollowupsVisibilityChange?.(showFollowups);
   }, [onFollowupsVisibilityChange, showFollowups]);
@@ -626,6 +643,7 @@ export function InputBox({
     <div
       ref={promptRootRef}
       data-testid="input-box"
+      onClick={handlePromptSurfaceClick}
       className={cn(
         "relative flex flex-col",
         isWelcomeMode ? "gap-5" : "gap-2",
@@ -721,7 +739,8 @@ export function InputBox({
         <PromptInputFooter
           className={cn(
             "flex",
-            isWelcomeMode && "min-h-12 [&_button]:min-h-10 [&_button]:text-sm",
+            isWelcomeMode &&
+              "workbench-welcome-footer min-h-12 [&_button]:min-h-10",
           )}
         >
           <PromptInputTools>
@@ -1113,14 +1132,14 @@ export function InputBox({
       </Dialog>
 
       <Dialog open={skillDialogOpen} onOpenChange={setSkillDialogOpen}>
-        <DialogContent>
+        <DialogContent className="workbench-skill-dialog sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Select Skill</DialogTitle>
             <DialogDescription>
               Choose a skill to invoke with your message.
             </DialogDescription>
           </DialogHeader>
-          <div className="max-h-60 overflow-y-auto">
+          <div className="max-h-96 overflow-y-auto">
             {filterSkillsByAllowedNames(skills, allowedSkillNames)
               .filter((skill) => skill.enabled)
               .map((skill) => (

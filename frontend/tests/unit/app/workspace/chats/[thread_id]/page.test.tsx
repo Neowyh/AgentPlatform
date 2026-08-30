@@ -435,6 +435,14 @@ describe("ChatPage", () => {
     ]);
   });
 
+  test("does not render the retired quick-entry row", () => {
+    render(<ChatPage />);
+
+    expect(
+      screen.queryByTestId("workbench-quick-entries"),
+    ).not.toBeInTheDocument();
+  });
+
   test("loads selected Agent details after the selection hook initializes", () => {
     mockUseThreadChat.mockReturnValue({
       threadId: "test-thread",
