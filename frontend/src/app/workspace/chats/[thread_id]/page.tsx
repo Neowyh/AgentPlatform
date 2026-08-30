@@ -97,20 +97,53 @@ function RecentTaskCards({
         <span className="workbench-guide-answer">iDeer带你回到过去</span>
       </p>
       <div className="workbench-recent-grid">
-        {threads.slice(0, 3).map((thread) => (
-          <Link
-            key={thread.thread_id}
-            href={pathOfThread(thread)}
-            className="workbench-recent-card"
-          >
-            <span className="workbench-recent-summary">
-              {titleOfThread(thread)}
-            </span>
-            <span className="workbench-recent-meta">
-              对话{thread.updated_at ? ` · ${thread.updated_at}` : ""}
-            </span>
-          </Link>
-        ))}
+        {threads.slice(0, 3).map((thread) => {
+          const values = thread.values as Record<string, unknown> | undefined;
+          const metadata = thread.metadata as
+            | Record<string, unknown>
+            | undefined;
+          const context = thread.context;
+          const messages = Array.isArray(values?.messages)
+            ? values.messages
+            : [];
+          const latestSummary = [...messages]
+            .reverse()
+            .map((message) =>
+              textOfMessage(message as Parameters<typeof textOfMessage>[0]),
+            )
+            .find((text): text is string => Boolean(text?.trim()));
+          const taskType =
+            context?.task_label ??
+            (typeof metadata?.task_type === "string"
+              ? metadata.task_type
+              : undefined) ??
+            "对话任务";
+          const status =
+            (typeof metadata?.status === "string"
+              ? metadata.status
+              : undefined) ??
+            (typeof values?.status === "string" ? values.status : undefined) ??
+            "进行中";
+
+          return (
+            <Link
+              key={thread.thread_id}
+              href={pathOfThread(thread)}
+              className="workbench-recent-card"
+            >
+              <span className="workbench-recent-summary">
+                {titleOfThread(thread)}
+              </span>
+              <span className="workbench-recent-meta">
+                {taskType} · {status}
+                {thread.updated_at ? ` · ${thread.updated_at}` : ""}
+              </span>
+              {latestSummary && (
+                <span className="workbench-recent-detail">{latestSummary}</span>
+              )}
+            </Link>
+          );
+        })}
       </div>
     </section>
   );

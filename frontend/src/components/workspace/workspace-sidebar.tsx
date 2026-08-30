@@ -15,6 +15,7 @@ import { WorkspaceNavChatList } from "./workspace-nav-chat-list";
 import { WorkspaceNavMenu } from "./workspace-nav-menu";
 
 export function WorkspaceSidebar({
+  className,
   ...props
 }: React.ComponentProps<typeof Sidebar>) {
   const { open: isSidebarOpen } = useSidebar();
@@ -23,7 +24,7 @@ export function WorkspaceSidebar({
       <Sidebar
         variant="sidebar"
         collapsible="icon"
-        className="workbench-sidebar"
+        className={`${className ?? ""} workbench-sidebar`.trim()}
         {...props}
         data-testid="sidebar"
       >
