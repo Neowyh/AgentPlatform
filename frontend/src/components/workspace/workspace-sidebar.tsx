@@ -23,6 +23,7 @@ export function WorkspaceSidebar({
       <Sidebar
         variant="sidebar"
         collapsible="icon"
+        className="workbench-sidebar"
         {...props}
         data-testid="sidebar"
       >
