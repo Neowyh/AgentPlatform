@@ -134,7 +134,6 @@ export default function ChatPage() {
     toggleChip,
     activeBinding,
     clear: resetSelection,
-    tags,
   } = useScenarioBinding();
   const { agents } = useAgents();
   const { data: recentThreads = [] } = useThreads();
@@ -142,13 +141,14 @@ export default function ChatPage() {
     (item) => (item.slug ?? item.name) === selectedPill?.agentSlug,
   );
   const { skills } = useSkills();
+  const selectedTask = selectedChip
+    ? getChipsByPill(selectedChip.scenarioId, selectedChip.agentSlug).find(
+        (item) => item.taskId === selectedChip.taskId,
+      )
+    : undefined;
   const selectedSkill = selectedChip
     ? skills.find(
-        (skill) =>
-          (skill.slug ?? skill.name) ===
-          getChipsByPill(selectedChip.scenarioId, selectedChip.agentSlug).find(
-            (item) => item.taskId === selectedChip.taskId,
-          )?.skillName,
+        (skill) => (skill.slug ?? skill.name) === selectedTask?.skillName,
       )
     : undefined;
   const { agent: selectedAgentDetails } = useAgent(selectedAgent?.resource_id);
@@ -160,7 +160,13 @@ export default function ChatPage() {
     [selectScenario],
   );
 
-  const selectedTags: SelectedTag[] = tags;
+  const selectedTags: SelectedTag[] = activeBinding.tags.map((tag) => ({
+    id: tag.id,
+    label:
+      tag.kind === "task"
+        ? (selectedSkill?.name ?? selectedTask?.label ?? tag.text)
+        : tag.text,
+  }));
 
   useEffect(() => {
     setPendingTemplate(activeBinding?.promptTemplate ?? null);
@@ -393,6 +399,14 @@ export default function ChatPage() {
                 )}
                 {isWelcomeMode && (
                   <div className="workbench-input-module">
+                    <p className="workbench-module-guide workbench-scenario-guide">
+                      <span className="workbench-guide-question">
+                        方向不明？
+                      </span>
+                      <span className="workbench-guide-answer">
+                        iDeer帮你找对帮手
+                      </span>
+                    </p>
                     <div className="workbench-scenario-cascade">
                       <ScenarioCascadeBar
                         selectedScenario={activeScenario}

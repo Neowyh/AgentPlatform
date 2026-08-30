@@ -431,8 +431,45 @@ describe("ChatPage", () => {
 
     expect(mockLastInputBoxProps.current.selectedTags).toEqual([
       { id: "agent:office-docs", label: "办公文档" },
-      { id: "task:word-editor", label: "anthropic-docx" },
+      { id: "task:word-editor", label: "Word 创建编辑" },
     ]);
+  });
+
+  test("uses the skill display name for a selected task tag", () => {
+    mockUseThreadChat.mockReturnValue({
+      threadId: "test-thread",
+      setThreadId: vi.fn(),
+      isNewThread: true,
+      setIsNewThread: vi.fn(),
+      isMock: false,
+    });
+    mockUseSkills.mockReturnValue({
+      skills: [
+        {
+          slug: "anthropic-docx",
+          name: "Word 文档助手",
+          enabled: true,
+        },
+      ],
+    });
+
+    const { rerender } = render(<ChatPage />);
+    rerender(<ChatPage />);
+    act(() => {
+      screen.getByTestId("scenario-cascade-bar").click();
+    });
+    act(() => {
+      mockLastScenarioCascadeProps.current.onToggleChip(
+        "daily",
+        "office-docs",
+        "word-editor",
+      );
+    });
+
+    expect(mockLastInputBoxProps.current.selectedTags).toContainEqual({
+      id: "task:word-editor",
+      label: "Word 文档助手",
+    });
   });
 
   test("does not render the retired quick-entry row", () => {

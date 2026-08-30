@@ -22,7 +22,7 @@ export function Welcome({
         className,
       )}
     >
-      <div className="workbench-welcome-title text-2xl font-bold tracking-[-0.04em]">
+      <div className="workbench-welcome-title font-bold tracking-[-0.04em]">
         {isSkillMode
           ? `✨ ${t.welcome.createYourOwnSkill} ✨`
           : t.welcome.greeting}

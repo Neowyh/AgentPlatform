@@ -26,7 +26,8 @@ describe("useScenarioBinding", () => {
 
     expect(result.current.activeBinding).toMatchObject({
       skillName: "anthropic-docx",
-      promptTemplate: "请帮我处理以下 Word 文档：[描述需求]",
+      promptTemplate:
+        "请处理以下 Word 文档。目标：[要完成的事情]；材料：[上传文件或粘贴内容]；要求：[格式/语气/保留内容]。请先概括处理方案，再完成修改并列出变更点与待确认项。",
     });
     expect(result.current.tags.at(-1)).toEqual({
       id: "task:word-editor",

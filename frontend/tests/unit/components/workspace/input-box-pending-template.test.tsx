@@ -371,8 +371,7 @@ describe("InputBox pendingTemplate", () => {
     expect(textarea).toBeTruthy();
   });
 
-  it("pendingTemplate + non-empty input → confirmOpen=true (dialog opens)", async () => {
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+  it("pendingTemplate + non-empty input → replaces the current input", () => {
     mockTextInputContext.value = "existing text";
 
     render(
@@ -382,55 +381,13 @@ describe("InputBox pendingTemplate", () => {
         onPendingTemplateConsumed={vi.fn()}
       />,
     );
-
-    await waitFor(() => {
-      expect(screen.getByText("Send suggestion?")).toBeInTheDocument();
-    });
-  });
-
-  it("pendingTemplate + non-empty input → pendingSourceRef.current='cascade'", async () => {
-    mockTextInputContext.value = "existing text";
-
-    render(
-      <InputBox
-        {...defaultProps()}
-        pendingTemplate="请帮我处理以下文档：[描述需求]"
-        onPendingTemplateConsumed={vi.fn()}
-      />,
-    );
-
-    // Dialog should open, confirming cascade path was taken
-    await waitFor(() => {
-      expect(screen.getByText("Send suggestion?")).toBeInTheDocument();
-    });
-  });
-
-  it("confirmReplace(cascade) → setInput called, requestFormSubmit NOT called", async () => {
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-    mockTextInputContext.value = "existing text";
-
-    render(
-      <InputBox
-        {...defaultProps()}
-        pendingTemplate="请帮我处理以下文档：[描述需求]"
-        onPendingTemplateConsumed={vi.fn()}
-      />,
-    );
-
-    await waitFor(() => {
-      expect(screen.getByText("Send suggestion?")).toBeInTheDocument();
-    });
-
-    mockSetInput.mockClear();
-    await user.click(screen.getByText("Replace & send"));
 
     expect(mockSetInput).toHaveBeenCalledWith("请帮我处理以下文档：[描述需求]");
+    expect(screen.queryByText("Send suggestion?")).not.toBeInTheDocument();
   });
 
-  it("confirmReplace(cascade) → setTimeout then setSelectionRange", async () => {
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+  it("replaces a non-empty input and highlights the template placeholder", () => {
     mockTextInputContext.value = "existing text";
-
     render(
       <InputBox
         {...defaultProps()}
@@ -438,44 +395,6 @@ describe("InputBox pendingTemplate", () => {
         onPendingTemplateConsumed={vi.fn()}
       />,
     );
-
-    await waitFor(() => {
-      expect(screen.getByText("Send suggestion?")).toBeInTheDocument();
-    });
-
-    await user.click(screen.getByText("Replace & send"));
-
-    act(() => {
-      vi.advanceTimersByTime(50);
-    });
-
-    const textarea = document.querySelector("textarea[name='message']");
-    expect(textarea).toBeTruthy();
-  });
-
-  it("confirmAppend(cascade) → setInput + setSelectionRange, no submit", async () => {
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-    mockTextInputContext.value = "existing text";
-
-    render(
-      <InputBox
-        {...defaultProps()}
-        pendingTemplate="请帮我处理以下文档：[描述需求]"
-        onPendingTemplateConsumed={vi.fn()}
-      />,
-    );
-
-    await waitFor(() => {
-      expect(screen.getByText("Send suggestion?")).toBeInTheDocument();
-    });
-
-    mockSetInput.mockClear();
-    await user.click(screen.getByText("Append & send"));
-
-    expect(mockSetInput).toHaveBeenCalledWith(
-      "existing text\n请帮我处理以下文档：[描述需求]",
-    );
-
     act(() => {
       vi.advanceTimersByTime(50);
     });

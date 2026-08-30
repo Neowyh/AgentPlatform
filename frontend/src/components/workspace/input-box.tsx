@@ -15,6 +15,7 @@ import { useSearchParams } from "next/navigation";
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -175,6 +176,8 @@ export function InputBox({
   const { thread, isMock } = useThread();
   const { textInput } = usePromptInputController();
   const promptRootRef = useRef<HTMLDivElement | null>(null);
+  const selectedTagsRef = useRef<HTMLDivElement | null>(null);
+  const [selectedTagsOffset, setSelectedTagsOffset] = useState(0);
 
   const [followups, setFollowups] = useState<string[]>([]);
   const [followupsHidden, setFollowupsHidden] = useState(false);
@@ -207,6 +210,16 @@ export function InputBox({
         textarea.setSelectionRange(0, 0);
       }
     }
+  }, [selectedTags]);
+
+  useLayoutEffect(() => {
+    const element = selectedTagsRef.current;
+    if (!element || selectedTags.length === 0) {
+      setSelectedTagsOffset(0);
+      return;
+    }
+
+    setSelectedTagsOffset(element.offsetWidth + 12);
   }, [selectedTags]);
 
   useEffect(() => {
@@ -547,19 +560,11 @@ export function InputBox({
 
   useEffect(() => {
     if (!pendingTemplate) return;
-    const current = (textInput.value ?? "").trim();
-    if (!current) {
-      textInput.setInput(pendingTemplate);
-      onPendingTemplateConsumed?.();
-      setTimeout(() => {
-        highlightPlaceholder(pendingTemplate, promptRootRef.current);
-      }, 50);
-    } else {
-      pendingSourceRef.current = "cascade";
-      setPendingSuggestion(pendingTemplate);
-      setConfirmOpen(true);
-      onPendingTemplateConsumed?.();
-    }
+    textInput.setInput(pendingTemplate);
+    onPendingTemplateConsumed?.();
+    setTimeout(() => {
+      highlightPlaceholder(pendingTemplate, promptRootRef.current);
+    }, 50);
   }, [pendingTemplate, onPendingTemplateConsumed, textInput]);
 
   useEffect(() => {
@@ -698,7 +703,11 @@ export function InputBox({
         <PromptInputBody className="absolute top-0 right-0 left-0 z-3">
           <div className="relative">
             {selectedTags.length > 0 && onRemoveTag && (
-              <div className="absolute top-3 left-4 z-4 flex items-center gap-1">
+              <div
+                ref={selectedTagsRef}
+                className="absolute top-3 left-4 z-4 flex max-w-[calc(100%-2rem)] flex-nowrap items-center gap-1 overflow-x-auto pr-1 [&::-webkit-scrollbar]:hidden"
+                data-testid="inline-selected-tags"
+              >
                 {selectedTags.map((tag) => (
                   <InlineSelectedTag
                     key={tag.id}
@@ -712,8 +721,9 @@ export function InputBox({
               className={cn(
                 "size-full text-left placeholder:text-left",
                 isWelcomeMode && "min-h-40 text-base leading-7",
-                selectedTags.length > 0 && "pt-12",
+                "pt-3",
               )}
+              style={{ textIndent: selectedTagsOffset }}
               disabled={disabled}
               placeholder={t.inputBox.placeholder}
               autoFocus={autoFocus}
