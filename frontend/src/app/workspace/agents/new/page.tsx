@@ -271,7 +271,7 @@ export default function NewAgentPage() {
         >
           <ArrowLeftIcon className="h-4 w-4" />
         </Button>
-        <h1 className="text-sm font-semibold">{t.agents.createPageTitle}</h1>
+        <h1 className="text-base font-semibold">{t.agents.createPageTitle}</h1>
       </div>
 
       {step === "chat" ? (
@@ -312,10 +312,10 @@ export default function NewAgentPage() {
                 <BotIcon className="text-primary h-7 w-7" />
               </div>
               <div className="space-y-1">
-                <h2 className="text-xl font-semibold">
+                <h2 className="text-base font-semibold">
                   {t.agents.nameStepTitle}
                 </h2>
-                <p className="text-muted-foreground text-sm">
+                <p className="text-muted-foreground text-base">
                   {t.agents.nameStepHint}
                 </p>
               </div>
@@ -334,7 +334,7 @@ export default function NewAgentPage() {
                 className={cn(nameError && "border-destructive")}
               />
               {nameError ? (
-                <p className="text-destructive text-sm">{nameError}</p>
+                <p className="text-destructive text-base">{nameError}</p>
               ) : null}
 
               <div className="space-y-2">
@@ -359,7 +359,7 @@ export default function NewAgentPage() {
                   </SelectContent>
                 </Select>
                 {!isAdmin && (
-                  <p className="text-muted-foreground text-xs">
+                  <p className="text-muted-foreground text-base">
                     {t.agents.visibilityAdminOnly}
                   </p>
                 )}

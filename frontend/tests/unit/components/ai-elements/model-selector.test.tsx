@@ -323,11 +323,11 @@ describe("ModelSelectorName", () => {
     expect(screen.getByTestId("name")).toHaveClass("custom-name");
   });
 
-  test("has truncate and text-xs classes", () => {
+  test("has truncate and body text classes", () => {
     render(<ModelSelectorName data-testid="name">Model</ModelSelectorName>);
     const el = screen.getByTestId("name");
     expect(el.className).toContain("truncate");
-    expect(el.className).toContain("text-xs");
+    expect(el.className).toContain("text-base");
   });
 });
 

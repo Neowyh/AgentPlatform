@@ -94,8 +94,8 @@ export default function ToolsPage() {
             </Button>
           </Link>
           <div>
-            <h1 className="text-xl font-semibold">工具管理</h1>
-            <p className="text-muted-foreground mt-0.5 text-sm">
+            <h1 className="text-base font-semibold">工具管理</h1>
+            <p className="text-muted-foreground mt-0.5 text-base">
               查看和测试系统工具
             </p>
           </div>
@@ -105,17 +105,17 @@ export default function ToolsPage() {
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-6">
         {loading ? (
-          <div className="text-muted-foreground flex h-40 items-center justify-center text-sm">
+          <div className="text-muted-foreground flex h-40 items-center justify-center text-base">
             加载中...
           </div>
         ) : error ? (
-          <div className="text-destructive flex h-40 items-center justify-center text-sm">
+          <div className="text-destructive flex h-40 items-center justify-center text-base">
             {error}
           </div>
         ) : tools.length === 0 ? (
           <div className="flex h-64 flex-col items-center justify-center gap-3 text-center">
             <WrenchIcon className="text-muted-foreground h-10 w-10" />
-            <p className="text-muted-foreground text-sm">暂无工具</p>
+            <p className="text-muted-foreground text-base">暂无工具</p>
           </div>
         ) : (
           <div
@@ -162,7 +162,7 @@ export default function ToolsPage() {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <CardDescription className="line-clamp-2 text-sm">
+                  <CardDescription className="line-clamp-2 text-base">
                     {tool.description || "暂无描述"}
                   </CardDescription>
                 </CardContent>
@@ -203,9 +203,9 @@ export default function ToolsPage() {
               )}
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">测试输入 (JSON)</label>
+              <label className="text-base font-medium">测试输入 (JSON)</label>
               <Textarea
-                className="font-mono text-sm"
+                className="font-mono text-base"
                 rows={6}
                 value={testInput}
                 onChange={(e) => setTestInput(e.target.value)}
@@ -218,8 +218,8 @@ export default function ToolsPage() {
             </Button>
             {testResult !== null && (
               <div className="space-y-2">
-                <label className="text-sm font-medium">测试结果</label>
-                <pre className="bg-muted max-h-64 overflow-auto rounded-md p-4 text-sm">
+                <label className="text-base font-medium">测试结果</label>
+                <pre className="bg-muted max-h-64 overflow-auto rounded-md p-4 text-base">
                   {testResult}
                 </pre>
               </div>

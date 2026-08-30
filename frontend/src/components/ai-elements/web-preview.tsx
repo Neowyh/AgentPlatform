@@ -155,7 +155,7 @@ export const WebPreviewUrl = ({
 
   return (
     <Input
-      className="h-8 flex-1 text-sm"
+      className="h-8 flex-1 text-base"
       onChange={onChange ?? handleChange}
       onKeyDown={handleKeyDown}
       placeholder="Enter URL..."
@@ -209,7 +209,7 @@ export const WebPreviewConsole = ({
 
   return (
     <Collapsible
-      className={cn("bg-muted/50 border-t font-mono text-sm", className)}
+      className={cn("bg-muted/50 border-t font-mono text-base", className)}
       onOpenChange={setConsoleOpen}
       open={consoleOpen}
       {...props}
@@ -241,7 +241,7 @@ export const WebPreviewConsole = ({
             logs.map((log, index) => (
               <div
                 className={cn(
-                  "text-xs",
+                  "text-base",
                   log.level === "error" && "text-destructive",
                   log.level === "warn" && "text-yellow-600",
                   log.level === "log" && "text-foreground",

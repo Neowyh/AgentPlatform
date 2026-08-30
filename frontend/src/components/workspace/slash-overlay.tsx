@@ -58,7 +58,7 @@ export function SlashOverlay({
           type="button"
           data-testid={`slash-option-${skill.name}`}
           className={cn(
-            "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm outline-none",
+            "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-base outline-none",
             i === activeIndex
               ? "bg-accent text-accent-foreground"
               : "hover:bg-accent/50",
@@ -69,7 +69,7 @@ export function SlashOverlay({
           }}
         >
           <span className="font-medium">{skill.name}</span>
-          <span className="text-muted-foreground truncate text-xs">
+          <span className="text-muted-foreground truncate text-base">
             {skill.description}
           </span>
         </button>

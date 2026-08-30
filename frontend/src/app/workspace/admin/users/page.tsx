@@ -285,8 +285,8 @@ export default function UsersPage() {
             </Button>
           </Link>
           <div>
-            <h1 className="text-xl font-semibold">用户管理</h1>
-            <p className="text-muted-foreground mt-0.5 text-sm">
+            <h1 className="text-base font-semibold">用户管理</h1>
+            <p className="text-muted-foreground mt-0.5 text-base">
               {isSuperAdmin
                 ? "管理系统用户和角色权限"
                 : "管理本部门用户和角色权限"}
@@ -336,17 +336,17 @@ export default function UsersPage() {
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-6">
         {loading ? (
-          <div className="text-muted-foreground flex h-40 items-center justify-center text-sm">
+          <div className="text-muted-foreground flex h-40 items-center justify-center text-base">
             加载中...
           </div>
         ) : error ? (
-          <div className="text-destructive flex h-40 items-center justify-center text-sm">
+          <div className="text-destructive flex h-40 items-center justify-center text-base">
             {error}
           </div>
         ) : users.length === 0 ? (
           <div className="flex h-64 flex-col items-center justify-center gap-3 text-center">
             <UserIcon className="text-muted-foreground h-10 w-10" />
-            <p className="text-muted-foreground text-sm">暂无用户</p>
+            <p className="text-muted-foreground text-base">暂无用户</p>
           </div>
         ) : (
           <div className="grid gap-4" data-testid="user-list">
@@ -384,7 +384,7 @@ export default function UsersPage() {
                   </CardHeader>
                   <CardContent>
                     <div className="flex items-center justify-between">
-                      <div className="text-muted-foreground text-xs">
+                      <div className="text-muted-foreground text-base">
                         <span>
                           创建于{" "}
                           {new Date(user.created_at).toLocaleDateString()}
@@ -665,7 +665,7 @@ export default function UsersPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <p className="text-sm font-medium">资源处理方式</p>
+            <p className="text-base font-medium">资源处理方式</p>
 
             <label className="flex cursor-pointer items-start gap-3 rounded-md border p-3">
               <input
@@ -676,8 +676,8 @@ export default function UsersPage() {
                 className="mt-0.5"
               />
               <div className="space-y-0.5">
-                <p className="text-sm font-medium">仅标记删除</p>
-                <p className="text-muted-foreground text-xs">
+                <p className="text-base font-medium">仅标记删除</p>
+                <p className="text-muted-foreground text-base">
                   保留磁盘文件，可恢复
                 </p>
               </div>
@@ -692,8 +692,8 @@ export default function UsersPage() {
                 className="mt-0.5"
               />
               <div className="space-y-0.5">
-                <p className="text-sm font-medium">彻底删除</p>
-                <p className="text-muted-foreground text-xs">
+                <p className="text-base font-medium">彻底删除</p>
+                <p className="text-muted-foreground text-base">
                   清除所有磁盘文件，不可恢复
                 </p>
               </div>
@@ -711,15 +711,15 @@ export default function UsersPage() {
                 className="mt-0.5"
               />
               <div className="flex-1 space-y-0.5">
-                <p className="text-sm font-medium">转移资源</p>
-                <p className="text-muted-foreground text-xs">
+                <p className="text-base font-medium">转移资源</p>
+                <p className="text-muted-foreground text-base">
                   将所有资源转给其他用户
                 </p>
                 {deleteStrategy === "transfer" && (
                   <select
                     value={deleteTargetUserId}
                     onChange={(e) => setDeleteTargetUserId(e.target.value)}
-                    className="mt-2 h-9 w-full max-w-xs rounded-md border bg-transparent px-3 text-sm"
+                    className="mt-2 h-9 w-full max-w-xs rounded-md border bg-transparent px-3 text-base"
                   >
                     <option value="">请选择目标用户</option>
                     {users

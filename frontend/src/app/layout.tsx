@@ -2,15 +2,15 @@ import "@/styles/globals.css";
 import "katex/dist/katex.min.css";
 
 import { type Metadata } from "next";
-import { Space_Grotesk } from "next/font/google";
+import localFont from "next/font/local";
 
 import { ThemeProvider } from "@/components/theme-provider";
 import { I18nProvider } from "@/core/i18n/context";
 import { detectLocaleServer } from "@/core/i18n/server";
 
-const spaceGrotesk = Space_Grotesk({
-  subsets: ["latin"],
-  weight: ["500", "600", "700"],
+const spaceGrotesk = localFont({
+  src: "../assets/fonts/space-grotesk-latin.woff2",
+  weight: "500 700",
   variable: "--font-display",
   display: "swap",
 });

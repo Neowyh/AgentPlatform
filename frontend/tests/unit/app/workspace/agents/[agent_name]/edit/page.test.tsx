@@ -200,7 +200,7 @@ function getSkillCheckbox(skillName: string): HTMLInputElement {
   const match = checkboxes.find((cb) => {
     const label = cb.closest("label");
     if (!label) return false;
-    const nameDiv = label.querySelector(".truncate.text-sm.font-medium");
+    const nameDiv = label.querySelector(".truncate.text-base.font-medium");
     return nameDiv?.textContent === skillName;
   });
   if (!match) throw new Error(`No checkbox found for skill "${skillName}"`);

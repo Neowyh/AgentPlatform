@@ -146,15 +146,15 @@ function ThemePreviewCard({
           <Icon className="size-4" />
         </div>
         <div className="space-y-1">
-          <div className="text-sm leading-none font-semibold">{label}</div>
-          <p className="text-muted-foreground text-xs leading-snug">
+          <div className="text-base leading-none font-semibold">{label}</div>
+          <p className="text-muted-foreground text-base leading-snug">
             {description}
           </p>
         </div>
       </div>
       <div
         className={cn(
-          "relative overflow-hidden rounded-md border text-xs transition-colors",
+          "relative overflow-hidden rounded-md border text-base transition-colors",
           previewMode === "dark"
             ? "border-neutral-800 bg-neutral-900 text-neutral-200"
             : "border-slate-200 bg-white text-slate-900",

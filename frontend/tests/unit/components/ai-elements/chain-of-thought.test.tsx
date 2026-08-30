@@ -212,7 +212,7 @@ describe("ChainOfThoughtStep", () => {
     expect(screen.getByText("No desc step")).toBeInTheDocument();
     // Should not have a description div
     const step = screen.getByTestId("chain-of-thought-step");
-    const descDiv = step.querySelector(".text-muted-foreground.text-xs");
+    const descDiv = step.querySelector(".text-muted-foreground.text-base");
     expect(descDiv).not.toBeInTheDocument();
   });
 
@@ -616,7 +616,7 @@ describe("ChainOfThought composition", () => {
     const caption = screen.getByText("Test caption");
     expect(caption.tagName).toBe("P");
     expect(caption).toHaveClass("text-muted-foreground");
-    expect(caption).toHaveClass("text-xs");
+    expect(caption).toHaveClass("text-base");
   });
 
   test("controlled open=false hides content", () => {

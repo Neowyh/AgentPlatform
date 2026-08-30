@@ -226,7 +226,7 @@ describe("ReasoningContent", () => {
       </Reasoning>,
     );
     const el = screen.getByTestId("content");
-    expect(el.className).toContain("text-sm");
+    expect(el.className).toContain("text-base");
     expect(el.className).toContain("text-muted-foreground");
   });
 });

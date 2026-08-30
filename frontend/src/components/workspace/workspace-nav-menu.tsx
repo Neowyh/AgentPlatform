@@ -44,7 +44,7 @@ function NavMenuButtonContent({
   t: ReturnType<typeof useI18n>["t"];
 }) {
   return isSidebarOpen ? (
-    <div className="text-sidebar-foreground flex w-full items-center gap-2 text-left text-sm">
+    <div className="text-sidebar-foreground flex w-full items-center gap-2 text-left text-base">
       <SettingsIcon className="size-4" />
       <span>{t.workspace.settingsAndMore}</span>
       <ChevronsUpDown className="text-muted-foreground ml-auto size-4" />

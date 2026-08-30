@@ -157,8 +157,8 @@ export default function AuditLogsPage() {
             <ArrowLeftIcon className="h-5 w-5" />
           </Link>
           <div>
-            <h1 className="text-xl font-semibold">审计日志</h1>
-            <p className="text-muted-foreground mt-0.5 text-sm">
+            <h1 className="text-base font-semibold">审计日志</h1>
+            <p className="text-muted-foreground mt-0.5 text-base">
               浏览和查询系统操作审计记录
             </p>
           </div>
@@ -168,11 +168,11 @@ export default function AuditLogsPage() {
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-6">
         {loading ? (
-          <div className="text-muted-foreground flex h-40 items-center justify-center text-sm">
+          <div className="text-muted-foreground flex h-40 items-center justify-center text-base">
             加载中...
           </div>
         ) : error ? (
-          <div className="text-destructive flex h-40 items-center justify-center text-sm">
+          <div className="text-destructive flex h-40 items-center justify-center text-base">
             {error}
           </div>
         ) : (
@@ -180,7 +180,7 @@ export default function AuditLogsPage() {
             {/* Filters */}
             <div className="flex flex-wrap items-end gap-3">
               <div className="flex flex-col gap-1.5">
-                <Label className="text-xs">操作者</Label>
+                <Label className="text-base">操作者</Label>
                 <Input
                   placeholder="用户 ID"
                   value={filterActorId}
@@ -192,7 +192,7 @@ export default function AuditLogsPage() {
                 />
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label className="text-xs">操作类型</Label>
+                <Label className="text-base">操作类型</Label>
                 <Select
                   value={filterAction}
                   onValueChange={(v) => {
@@ -220,7 +220,7 @@ export default function AuditLogsPage() {
                 </Select>
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label className="text-xs">资源类型</Label>
+                <Label className="text-base">资源类型</Label>
                 <Select
                   value={filterResourceType}
                   onValueChange={(v) => {
@@ -241,7 +241,7 @@ export default function AuditLogsPage() {
                 </Select>
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label className="text-xs">开始时间</Label>
+                <Label className="text-base">开始时间</Label>
                 <Input
                   type="datetime-local"
                   value={filterStartDate}
@@ -253,7 +253,7 @@ export default function AuditLogsPage() {
                 />
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label className="text-xs">结束时间</Label>
+                <Label className="text-base">结束时间</Label>
                 <Input
                   type="datetime-local"
                   value={filterEndDate}
@@ -279,7 +279,7 @@ export default function AuditLogsPage() {
               >
                 重置
               </Button>
-              <span className="text-muted-foreground ml-auto text-sm">
+              <span className="text-muted-foreground ml-auto text-base">
                 共 {total} 条
               </span>
             </div>
@@ -288,7 +288,7 @@ export default function AuditLogsPage() {
             {logs.length === 0 ? (
               <Card>
                 <CardContent className="flex h-40 items-center justify-center">
-                  <p className="text-muted-foreground text-sm">
+                  <p className="text-muted-foreground text-base">
                     没有找到审计日志
                   </p>
                 </CardContent>
@@ -303,7 +303,7 @@ export default function AuditLogsPage() {
                   >
                     <CardHeader className="pb-2">
                       <div className="flex items-center justify-between">
-                        <CardTitle className="font-mono text-sm">
+                        <CardTitle className="font-mono text-base">
                           {log.id.slice(0, 8)}...
                         </CardTitle>
                         <div className="flex items-center gap-2">
@@ -324,7 +324,7 @@ export default function AuditLogsPage() {
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <p className="text-muted-foreground text-sm">
+                      <p className="text-muted-foreground text-base">
                         <span className="font-medium">操作者:</span>{" "}
                         {log.actor_id ?? "系统"}
                         {log.resource_id ? (
@@ -359,7 +359,7 @@ export default function AuditLogsPage() {
                 >
                   上一页
                 </Button>
-                <span className="text-muted-foreground text-sm">
+                <span className="text-muted-foreground text-base">
                   {page} / {totalPages}
                 </span>
                 <Button
@@ -389,7 +389,7 @@ export default function AuditLogsPage() {
           <div className="flex flex-col gap-4">
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label className="text-muted-foreground text-xs">
+                <Label className="text-muted-foreground text-base">
                   操作类型
                 </Label>
                 <p>
@@ -404,41 +404,49 @@ export default function AuditLogsPage() {
                 </p>
               </div>
               <div>
-                <Label className="text-muted-foreground text-xs">
+                <Label className="text-muted-foreground text-base">
                   操作时间
                 </Label>
-                <p className="text-sm">
+                <p className="text-base">
                   {detailLog?.created_at
                     ? new Date(detailLog.created_at).toLocaleString()
                     : "—"}
                 </p>
               </div>
               <div>
-                <Label className="text-muted-foreground text-xs">操作者</Label>
-                <p className="text-sm">{detailLog?.actor_id ?? "系统"}</p>
+                <Label className="text-muted-foreground text-base">
+                  操作者
+                </Label>
+                <p className="text-base">{detailLog?.actor_id ?? "系统"}</p>
               </div>
               <div>
-                <Label className="text-muted-foreground text-xs">IP 地址</Label>
-                <p className="text-sm">{detailLog?.ip_address ?? "—"}</p>
+                <Label className="text-muted-foreground text-base">
+                  IP 地址
+                </Label>
+                <p className="text-base">{detailLog?.ip_address ?? "—"}</p>
               </div>
               <div>
-                <Label className="text-muted-foreground text-xs">
+                <Label className="text-muted-foreground text-base">
                   资源类型
                 </Label>
-                <p className="text-sm">
+                <p className="text-base">
                   {RESOURCE_TYPE_LABELS[detailLog?.resource_type ?? ""] ??
                     detailLog?.resource_type ??
                     "—"}
                 </p>
               </div>
               <div>
-                <Label className="text-muted-foreground text-xs">资源 ID</Label>
-                <p className="text-sm">{detailLog?.resource_id ?? "—"}</p>
+                <Label className="text-muted-foreground text-base">
+                  资源 ID
+                </Label>
+                <p className="text-base">{detailLog?.resource_id ?? "—"}</p>
               </div>
             </div>
             <div>
-              <Label className="text-muted-foreground text-xs">详细内容</Label>
-              <pre className="bg-muted mt-1 max-h-60 overflow-auto rounded-md p-3 text-xs">
+              <Label className="text-muted-foreground text-base">
+                详细内容
+              </Label>
+              <pre className="bg-muted mt-1 max-h-60 overflow-auto rounded-md p-3 text-base">
                 {detailJson}
               </pre>
             </div>

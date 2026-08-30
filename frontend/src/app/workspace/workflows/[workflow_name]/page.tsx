@@ -96,7 +96,9 @@ export default function WorkflowDetailPage() {
   if (isLoading) {
     return (
       <div className="flex size-full items-center justify-center">
-        <div className="text-muted-foreground text-sm">{t.common.loading}</div>
+        <div className="text-muted-foreground text-base">
+          {t.common.loading}
+        </div>
       </div>
     );
   }
@@ -104,7 +106,7 @@ export default function WorkflowDetailPage() {
   if (error || !workflow) {
     return (
       <div className="flex size-full flex-col items-center justify-center gap-4">
-        <div className="text-destructive text-sm">
+        <div className="text-destructive text-base">
           {error?.message ?? t.workflows.notFound}
         </div>
         <Button
@@ -251,9 +253,9 @@ export default function WorkflowDetailPage() {
               <WorkflowIcon className="h-5 w-5" />
             </div>
             <div>
-              <h1 className="text-xl font-semibold">{workflow.name}</h1>
+              <h1 className="text-base font-semibold">{workflow.name}</h1>
               {workflow.description && (
-                <p className="text-muted-foreground mt-0.5 text-sm">
+                <p className="text-muted-foreground mt-0.5 text-base">
                   {workflow.description}
                 </p>
               )}
@@ -308,7 +310,7 @@ export default function WorkflowDetailPage() {
             </CardHeader>
             <CardContent>
               {workflow.steps.length === 0 ? (
-                <p className="text-muted-foreground text-sm">
+                <p className="text-muted-foreground text-base">
                   {t.workflows.noSteps}
                 </p>
               ) : (
@@ -318,23 +320,23 @@ export default function WorkflowDetailPage() {
                       key={step.id}
                       className="flex items-start gap-3 rounded-md border p-3"
                     >
-                      <div className="bg-muted flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-medium">
+                      <div className="bg-muted flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-base font-medium">
                         {index + 1}
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
                           <span className="font-medium">{step.id}</span>
-                          <Badge variant="outline" className="text-xs">
+                          <Badge variant="outline" className="text-base">
                             {step.type}
                           </Badge>
                           {step.action?.name && (
-                            <Badge variant="secondary" className="text-xs">
+                            <Badge variant="secondary" className="text-base">
                               {step.action.name}
                             </Badge>
                           )}
                         </div>
                         {typeof step.action?.params?.prompt === "string" && (
-                          <p className="text-muted-foreground mt-1 line-clamp-2 text-sm">
+                          <p className="text-muted-foreground mt-1 line-clamp-2 text-base">
                             {step.action.params.prompt}
                           </p>
                         )}
@@ -363,21 +365,21 @@ export default function WorkflowDetailPage() {
                       className="flex items-center justify-between rounded-md border p-3"
                     >
                       <div>
-                        <span className="font-mono text-sm font-medium">
+                        <span className="font-mono text-base font-medium">
                           {key}
                         </span>
                         {param.description && (
-                          <p className="text-muted-foreground text-xs">
+                          <p className="text-muted-foreground text-base">
                             {param.description}
                           </p>
                         )}
                       </div>
                       <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="text-xs">
+                        <Badge variant="outline" className="text-base">
                           {param.type}
                         </Badge>
                         {param.required && (
-                          <Badge variant="destructive" className="text-xs">
+                          <Badge variant="destructive" className="text-base">
                             {t.workflows.required}
                           </Badge>
                         )}
@@ -395,7 +397,7 @@ export default function WorkflowDetailPage() {
             </CardHeader>
             <CardContent>
               {runs.length === 0 ? (
-                <p className="text-muted-foreground text-sm">
+                <p className="text-muted-foreground text-base">
                   {t.workflows.noRuns}
                 </p>
               ) : (
@@ -407,11 +409,11 @@ export default function WorkflowDetailPage() {
                       className="hover:bg-muted/50 flex items-center justify-between rounded-md border p-3"
                     >
                       <div className="min-w-0">
-                        <p className="truncate font-mono text-sm">
+                        <p className="truncate font-mono text-base">
                           {run.run_id}
                         </p>
                         {run.error && (
-                          <p className="text-destructive truncate text-xs">
+                          <p className="text-destructive truncate text-base">
                             {run.error}
                           </p>
                         )}
@@ -443,7 +445,7 @@ export default function WorkflowDetailPage() {
               <CardTitle>{t.workflows.yamlDefinition}</CardTitle>
             </CardHeader>
             <CardContent>
-              <pre className="bg-muted max-h-96 overflow-auto rounded-md p-4 text-sm">
+              <pre className="bg-muted max-h-96 overflow-auto rounded-md p-4 text-base">
                 {workflow.yaml_content}
               </pre>
             </CardContent>
@@ -501,7 +503,7 @@ export default function WorkflowDetailPage() {
               <div className="space-y-4 py-4">
                 <div className="space-y-2">
                   <Label>{t.workflows.currentTargetVisibility}</Label>
-                  <p className="text-muted-foreground text-sm">
+                  <p className="text-muted-foreground text-base">
                     {workflow.visibility}
                   </p>
                 </div>
@@ -533,7 +535,7 @@ export default function WorkflowDetailPage() {
                   workflow.visibility,
                   targetVisibility,
                 ) === "upgrade" && (
-                  <p className="text-muted-foreground text-sm">
+                  <p className="text-muted-foreground text-base">
                     {t.workflows.visibilityUpgradeHint}
                   </p>
                 )}
@@ -541,7 +543,7 @@ export default function WorkflowDetailPage() {
                   workflow.visibility,
                   targetVisibility,
                 ) === "downgrade" && (
-                  <p className="text-muted-foreground text-sm">
+                  <p className="text-muted-foreground text-base">
                     {t.workflows.visibilityDowngradeHint}
                   </p>
                 )}
@@ -612,7 +614,7 @@ export default function WorkflowDetailPage() {
                   )}
                 </Label>
                 {param.description && (
-                  <p className="text-muted-foreground text-xs">
+                  <p className="text-muted-foreground text-base">
                     {param.description}
                   </p>
                 )}
@@ -634,7 +636,7 @@ export default function WorkflowDetailPage() {
               </div>
             ))}
             {Object.keys(workflow.inputs).length === 0 && (
-              <p className="text-muted-foreground text-sm">
+              <p className="text-muted-foreground text-base">
                 {t.workflows.noInputs}
               </p>
             )}

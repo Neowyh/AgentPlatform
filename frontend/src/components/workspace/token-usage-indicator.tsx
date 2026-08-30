@@ -73,7 +73,7 @@ export function TokenUsageIndicator({
           type="button"
           variant="ghost"
           className={cn(
-            "text-muted-foreground bg-background/70 hover:bg-background/90 flex h-auto items-center gap-1.5 rounded-full border px-2 py-1 text-xs font-normal",
+            "text-muted-foreground bg-background/70 hover:bg-background/90 flex h-auto items-center gap-1.5 rounded-full border px-2 py-1 text-base font-normal",
             className,
           )}
         >
@@ -91,7 +91,7 @@ export function TokenUsageIndicator({
       </DropdownMenuTrigger>
       <DropdownMenuContent side="bottom" align="end" className="w-80">
         <DropdownMenuLabel>{t.tokenUsage.title}</DropdownMenuLabel>
-        <div className="px-2 py-1 text-xs">
+        <div className="px-2 py-1 text-base">
           {usage ? (
             <div className="space-y-1">
               <div className="flex justify-between gap-4">
@@ -139,7 +139,7 @@ export function TokenUsageIndicator({
               <DropdownMenuRadioItem key={value} value={value}>
                 <div className="grid gap-0.5">
                   <span>{t.tokenUsage.presets[translationKey]}</span>
-                  <span className="text-muted-foreground text-xs">
+                  <span className="text-muted-foreground text-base">
                     {t.tokenUsage.presetDescriptions[translationKey]}
                   </span>
                 </div>
@@ -148,7 +148,7 @@ export function TokenUsageIndicator({
           })}
         </DropdownMenuRadioGroup>
         <DropdownMenuSeparator />
-        <div className="text-muted-foreground px-2 py-2 text-xs leading-relaxed">
+        <div className="text-muted-foreground px-2 py-2 text-base leading-relaxed">
           {t.tokenUsage.note}
         </div>
       </DropdownMenuContent>

@@ -118,7 +118,7 @@ export function AgentCard({ agent }: AgentCardProps) {
                     {agent.name}
                   </Link>
                   {agent.read_only && (
-                    <Badge variant="outline" className="ml-1.5 text-xs">
+                    <Badge variant="outline" className="ml-1.5 text-base">
                       <LockIcon className="mr-0.5 h-2.5 w-2.5" />
                       {t.agents.template}
                     </Badge>
@@ -126,7 +126,7 @@ export function AgentCard({ agent }: AgentCardProps) {
                 </CardTitle>
                 <div className="mt-0.5 flex items-center gap-1.5">
                   {agent.model && (
-                    <Badge variant="secondary" className="text-xs">
+                    <Badge variant="secondary" className="text-base">
                       {agent.model}
                     </Badge>
                   )}
@@ -161,7 +161,7 @@ export function AgentCard({ agent }: AgentCardProps) {
             </Button>
           </div>
           {agent.description && (
-            <CardDescription className="mt-2 line-clamp-2 text-sm">
+            <CardDescription className="mt-2 line-clamp-2 text-base">
               {agent.description}
             </CardDescription>
           )}
@@ -174,7 +174,7 @@ export function AgentCard({ agent }: AgentCardProps) {
                 <Badge
                   key={`tg:${group}`}
                   variant="outline"
-                  className="text-xs"
+                  className="text-base"
                 >
                   {group}
                 </Badge>
@@ -183,7 +183,7 @@ export function AgentCard({ agent }: AgentCardProps) {
                 <Badge
                   key={`sk:${skill}`}
                   variant="secondary"
-                  className="text-xs"
+                  className="text-base"
                 >
                   {skill}
                 </Badge>

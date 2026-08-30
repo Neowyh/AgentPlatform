@@ -277,7 +277,7 @@ function MessageContent_({
       <AIElementMessageContent className={className}>
         <Task defaultOpen={false}>
           <TaskTrigger title="">
-            <div className="text-muted-foreground flex w-full cursor-default items-center gap-2 text-sm select-none">
+            <div className="text-muted-foreground flex w-full cursor-default items-center gap-2 text-base select-none">
               <Loader className="size-4" />
               <span>{contentToDisplay}</span>
             </div>
@@ -433,7 +433,7 @@ function RichFileCard({
         <div className="flex items-start gap-2">
           <Loader2Icon className="text-muted-foreground mt-0.5 size-4 shrink-0 animate-spin" />
           <span
-            className="text-foreground truncate text-sm font-medium"
+            className="text-foreground truncate text-base font-medium"
             title={file.filename}
           >
             {file.filename}
@@ -480,7 +480,7 @@ function RichFileCard({
       <div className="flex items-start gap-2">
         <FileIcon className="text-muted-foreground mt-0.5 size-4 shrink-0" />
         <span
-          className="text-foreground truncate text-sm font-medium"
+          className="text-foreground truncate text-base font-medium"
           title={file.filename}
         >
           {file.filename}

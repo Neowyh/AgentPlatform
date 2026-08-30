@@ -36,7 +36,7 @@ export function Hero({ className }: { className?: string }) {
         flickerChance={0.25}
       />
       <div className="container-md relative z-10 mx-auto flex h-screen flex-col items-center justify-center">
-        <h1 className="flex items-center gap-2 text-4xl font-bold md:text-6xl">
+        <h1 className="flex items-center gap-2 text-base font-bold md:text-base">
           <div>用iDeer完成</div>{" "}
           <WordRotate
             words={[
@@ -49,7 +49,7 @@ export function Hero({ className }: { className?: string }) {
             ]}
           />
         </h1>
-        <p className="text-muted-foreground mt-8 text-center text-3xl text-shadow-sm">
+        <p className="text-muted-foreground mt-8 text-center text-base text-shadow-sm">
           iDeer，实现你的idea
         </p>
         <Link href="/workspace">

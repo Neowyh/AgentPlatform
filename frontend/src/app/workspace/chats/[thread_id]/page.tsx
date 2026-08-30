@@ -153,10 +153,14 @@ export default function ChatPage() {
     : undefined;
   const { agent: selectedAgentDetails } = useAgent(selectedAgent?.resource_id);
   const [pendingTemplate, setPendingTemplate] = useState<string | null>(null);
+  const [templateResetKey, setTemplateResetKey] = useState(0);
 
   const activeScenario = selectedScenario;
   const handleSelectScenario = useCallback(
-    (scenario: ScenarioId | null) => selectScenario(scenario ?? "creative"),
+    (scenario: ScenarioId | null) => {
+      selectScenario(scenario ?? "creative");
+      setTemplateResetKey((key) => key + 1);
+    },
     [selectScenario],
   );
 
@@ -339,7 +343,7 @@ export default function ChatPage() {
                 : "bg-background/80 shadow-xs backdrop-blur",
             )}
           >
-            <div className="flex w-full items-center text-sm font-medium">
+            <div className="flex w-full items-center text-base font-medium">
               <ThreadTitle threadId={threadId} thread={thread} />
             </div>
             <div className="flex items-center gap-2">
@@ -391,30 +395,31 @@ export default function ChatPage() {
                     data-testid="workbench-home"
                   >
                     <Welcome mode={settings.context.mode} />
-                    <ScenarioTabs
-                      selected={activeScenario}
-                      onSelect={handleSelectScenario}
-                    />
-                  </div>
-                )}
-                {isWelcomeMode && (
-                  <div className="workbench-input-module">
-                    <p className="workbench-module-guide workbench-scenario-guide">
-                      <span className="workbench-guide-question">
-                        方向不明？
-                      </span>
-                      <span className="workbench-guide-answer">
-                        iDeer帮你找对帮手
-                      </span>
-                    </p>
-                    <div className="workbench-scenario-cascade">
-                      <ScenarioCascadeBar
-                        selectedScenario={activeScenario}
-                        selectedPill={selectedPill}
-                        selectedChip={selectedChip}
-                        onTogglePill={togglePill}
-                        onToggleChip={toggleChip}
+                    <div
+                      className="workbench-quick-entry-module"
+                      data-testid="workbench-quick-entry-module"
+                    >
+                      <p className="workbench-module-guide workbench-scenario-guide">
+                        <span className="workbench-guide-question">
+                          方向不明？
+                        </span>
+                        <span className="workbench-guide-answer">
+                          iDeer帮你找对帮手
+                        </span>
+                      </p>
+                      <ScenarioTabs
+                        selected={activeScenario}
+                        onSelect={handleSelectScenario}
                       />
+                      <div className="workbench-scenario-cascade">
+                        <ScenarioCascadeBar
+                          selectedScenario={activeScenario}
+                          selectedPill={selectedPill}
+                          selectedChip={selectedChip}
+                          onTogglePill={togglePill}
+                          onToggleChip={toggleChip}
+                        />
+                      </div>
                     </div>
                   </div>
                 )}
@@ -454,6 +459,7 @@ export default function ChatPage() {
                       context={selectionContext}
                       allowedSkillNames={allowedSkillNames}
                       pendingTemplate={pendingTemplate}
+                      clearInjectedTemplateKey={templateResetKey}
                       onPendingTemplateConsumed={() => setPendingTemplate(null)}
                       selectedTags={selectedTags}
                       onRemoveTag={handleRemoveTag}
@@ -479,7 +485,7 @@ export default function ChatPage() {
                   />
                 )}
                 {env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true" && (
-                  <div className="text-muted-foreground/67 w-full translate-y-12 text-center text-xs">
+                  <div className="text-muted-foreground/67 w-full translate-y-12 text-center text-base">
                     {t.common.notAvailableInDemoMode}
                   </div>
                 )}

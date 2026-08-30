@@ -333,10 +333,10 @@ describe("AnimatedSpan", () => {
     expect(span.getAttribute("class")).toContain("grid");
   });
 
-  test("renders with text-sm class", () => {
+  test("renders with body text class", () => {
     render(<AnimatedSpan>Small text</AnimatedSpan>);
     const span = screen.getByText("Small text");
-    expect(span.getAttribute("class")).toContain("text-sm");
+    expect(span.getAttribute("class")).toContain("text-base");
   });
 });
 

@@ -161,7 +161,7 @@ export const ContextContentHeader = ({
     <div className={cn("w-full space-y-2 p-3", className)} {...props}>
       {children ?? (
         <>
-          <div className="flex items-center justify-between gap-3 text-xs">
+          <div className="flex items-center justify-between gap-3 text-base">
             <p>{displayPct}</p>
             <p className="text-muted-foreground font-mono">
               {used} / {total}
@@ -213,7 +213,7 @@ export const ContextContentFooter = ({
   return (
     <div
       className={cn(
-        "bg-secondary flex w-full items-center justify-between gap-3 p-3 text-xs",
+        "bg-secondary flex w-full items-center justify-between gap-3 p-3 text-base",
         className,
       )}
       {...props}
@@ -259,7 +259,7 @@ export const ContextInputUsage = ({
 
   return (
     <div
-      className={cn("flex items-center justify-between text-xs", className)}
+      className={cn("flex items-center justify-between text-base", className)}
       {...props}
     >
       <span className="text-muted-foreground">Input</span>
@@ -299,7 +299,7 @@ export const ContextOutputUsage = ({
 
   return (
     <div
-      className={cn("flex items-center justify-between text-xs", className)}
+      className={cn("flex items-center justify-between text-base", className)}
       {...props}
     >
       <span className="text-muted-foreground">Output</span>
@@ -339,7 +339,7 @@ export const ContextReasoningUsage = ({
 
   return (
     <div
-      className={cn("flex items-center justify-between text-xs", className)}
+      className={cn("flex items-center justify-between text-base", className)}
       {...props}
     >
       <span className="text-muted-foreground">Reasoning</span>
@@ -379,7 +379,7 @@ export const ContextCacheUsage = ({
 
   return (
     <div
-      className={cn("flex items-center justify-between text-xs", className)}
+      className={cn("flex items-center justify-between text-base", className)}
       {...props}
     >
       <span className="text-muted-foreground">Cache</span>

@@ -40,7 +40,9 @@ export function SkillSettingsPage() {
       description={t.settings.skills.description}
     >
       {isLoading ? (
-        <div className="text-muted-foreground text-sm">{t.common.loading}</div>
+        <div className="text-muted-foreground text-base">
+          {t.common.loading}
+        </div>
       ) : error ? (
         <div>Error: {error.message}</div>
       ) : (
@@ -125,7 +127,7 @@ function SkillSettingsList({ skills }: { skills: Skill[] }) {
               <ItemTitle>
                 <div className="flex items-center gap-2">
                   <span className="font-medium">{skill.name}</span>
-                  <Badge variant="outline" className="text-xs">
+                  <Badge variant="outline" className="text-base">
                     {skill.category}
                   </Badge>
                 </div>

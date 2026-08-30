@@ -23,7 +23,13 @@ vi.mock("@/core/i18n/server", () => ({
 }));
 
 vi.mock("next/font/google", () => ({
-  Space_Grotesk: () => ({ variable: "--font-display" }),
+  Space_Grotesk: () => {
+    throw new Error("Google fonts must not be loaded by RootLayout");
+  },
+}));
+
+vi.mock("next/font/local", () => ({
+  default: () => ({ variable: "--font-display" }),
 }));
 
 afterEach(() => {

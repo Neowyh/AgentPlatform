@@ -357,7 +357,7 @@ export default function ProgressiveSkillsAnimation() {
                   fill="white"
                 />
               </div>
-              <span className="text-lg font-medium text-white">
+              <span className="text-base font-medium text-white">
                 Click to play
               </span>
             </motion.button>
@@ -381,7 +381,7 @@ export default function ProgressiveSkillsAnimation() {
               <Play size={24} className="ml-0.5 text-white" fill="white" />
             )}
           </motion.button>
-          <span className="text-lg font-medium">
+          <span className="text-base font-medium">
             Click to {isPlaying ? "pause" : "play"}
           </span>
         </div>
@@ -391,7 +391,7 @@ export default function ProgressiveSkillsAnimation() {
         {/* Left: File Tree */}
         <div className="flex flex-1 flex-col">
           <motion.div
-            className="mb-4 font-mono text-sm text-zinc-500"
+            className="mb-4 font-mono text-base text-zinc-500"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
           >
@@ -402,7 +402,7 @@ export default function ProgressiveSkillsAnimation() {
             {getFileTree().map((item, index) => (
               <motion.div
                 key={`${item.name}-${index}`}
-                className={`flex items-center gap-3 text-lg font-medium transition-all duration-300 ${
+                className={`flex items-center gap-3 text-base font-medium transition-all duration-300 ${
                   item.done
                     ? "text-green-500"
                     : item.dragging
@@ -462,7 +462,7 @@ export default function ProgressiveSkillsAnimation() {
           <div className="border-b border-zinc-800 p-4">
             <div className="flex items-center gap-2">
               <div className="h-3 w-3 rounded-full bg-green-500" />
-              <span className="text-sm text-zinc-400">iDeer Agent</span>
+              <span className="text-base text-zinc-400">iDeer Agent</span>
             </div>
           </div>
 
@@ -574,7 +574,7 @@ export default function ProgressiveSkillsAnimation() {
                               key={i}
                               initial={{ opacity: 0, y: 10 }}
                               animate={{ opacity: 1, y: 0 }}
-                              className="flex items-center gap-2 text-sm text-zinc-500"
+                              className="flex items-center gap-2 text-base text-zinc-500"
                             >
                               {step.type === "search" ? (
                                 <Search size={14} className="text-blue-400" />
@@ -599,7 +599,7 @@ export default function ProgressiveSkillsAnimation() {
                               key={i}
                               initial={{ opacity: 0, y: 10 }}
                               animate={{ opacity: 1, y: 0 }}
-                              className="flex items-center gap-2 text-sm text-zinc-500"
+                              className="flex items-center gap-2 text-base text-zinc-500"
                             >
                               {step.type === "search" ? (
                                 <Search size={14} className="text-blue-400" />
@@ -635,7 +635,7 @@ export default function ProgressiveSkillsAnimation() {
                             key={file}
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
-                            className="flex items-center gap-2 text-sm text-green-500"
+                            className="flex items-center gap-2 text-base text-green-500"
                           >
                             <FileText size={14} />
                             <span>Generating {file}...</span>
@@ -677,7 +677,7 @@ export default function ProgressiveSkillsAnimation() {
                           animate={{ opacity: 1, scale: 1 }}
                           className="mt-4 rounded-xl border border-green-500/30 bg-green-500/10 p-4"
                         >
-                          <div className="text-lg font-medium text-green-500">
+                          <div className="text-base font-medium text-green-500">
                             ✅ Live at biotech-startup.vercel.app
                           </div>
                         </motion.div>
@@ -691,7 +691,7 @@ export default function ProgressiveSkillsAnimation() {
 
           {/* Chat Input (decorative) */}
           <div className="border-t border-zinc-800 p-4">
-            <div className="rounded-xl bg-zinc-800 px-4 py-3 text-sm text-zinc-500">
+            <div className="rounded-xl bg-zinc-800 px-4 py-3 text-base text-zinc-500">
               Ask iDeer anything...
             </div>
           </div>

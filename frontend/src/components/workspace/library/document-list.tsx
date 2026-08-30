@@ -18,10 +18,10 @@ export function DocumentList() {
       {documents.map((doc) => (
         <div key={doc.id} className="rounded-lg border p-4">
           <h3 className="font-medium">{doc.name}</h3>
-          <p className="text-muted-foreground text-sm">{doc.id}</p>
+          <p className="text-muted-foreground text-base">{doc.id}</p>
           <div className="mt-2 flex items-center justify-between">
             <span
-              className={`rounded-full px-2 py-1 text-xs ${
+              className={`rounded-full px-2 py-1 text-base ${
                 doc.status === "ready"
                   ? "bg-green-100 text-green-800"
                   : "bg-yellow-100 text-yellow-800"
@@ -29,7 +29,7 @@ export function DocumentList() {
             >
               {doc.status}
             </span>
-            <span className="text-muted-foreground text-xs">
+            <span className="text-muted-foreground text-base">
               {doc.created_at}
             </span>
           </div>

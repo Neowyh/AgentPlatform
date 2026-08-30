@@ -99,7 +99,7 @@ export function WorkflowCard({ workflow }: WorkflowCardProps) {
                   {workflow.name}
                 </CardTitle>
                 <div className="mt-0.5 flex items-center gap-1.5">
-                  <Badge variant="secondary" className="text-xs">
+                  <Badge variant="secondary" className="text-base">
                     v{workflow.version ?? t.workflows.unknown}
                   </Badge>
                   <span
@@ -136,7 +136,7 @@ export function WorkflowCard({ workflow }: WorkflowCardProps) {
             </Button>
           </div>
           {workflow.description && (
-            <CardDescription className="mt-2 line-clamp-2 text-sm">
+            <CardDescription className="mt-2 line-clamp-2 text-base">
               {workflow.description}
             </CardDescription>
           )}
@@ -144,11 +144,11 @@ export function WorkflowCard({ workflow }: WorkflowCardProps) {
 
         <CardContent className="pt-0 pb-3">
           <div className="flex flex-wrap gap-1">
-            <Badge variant="outline" className="text-xs">
+            <Badge variant="outline" className="text-base">
               {t.workflows.steps(workflow.steps_count ?? 0)}
             </Badge>
             {workflow.inputs && Object.keys(workflow.inputs).length > 0 && (
-              <Badge variant="outline" className="text-xs">
+              <Badge variant="outline" className="text-base">
                 {t.workflows.inputs(Object.keys(workflow.inputs).length)}
               </Badge>
             )}

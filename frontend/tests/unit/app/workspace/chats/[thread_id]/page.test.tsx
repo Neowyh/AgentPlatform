@@ -938,6 +938,11 @@ describe("ChatPage", () => {
     const { rerender } = render(<ChatPage />);
     rerender(<ChatPage />);
     expect(screen.getByTestId("workbench-home")).toBeInTheDocument();
+    const quickEntry = screen.getByTestId("workbench-quick-entry-module");
+    expect(quickEntry).toContainElement(screen.getByTestId("scenario-tabs"));
+    expect(quickEntry).toContainElement(
+      screen.getByTestId("scenario-cascade-bar"),
+    );
   });
 
   test("does not render retired workbench content after send", () => {

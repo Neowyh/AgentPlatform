@@ -42,7 +42,7 @@ describe("Sources", () => {
     const el = screen.getByTestId("sources-test");
     expect(el.className).toContain("not-prose");
     expect(el.className).toContain("text-primary");
-    expect(el.className).toContain("text-xs");
+    expect(el.className).toContain("text-base");
   });
 
   test("has default data-testid of sources-container", () => {

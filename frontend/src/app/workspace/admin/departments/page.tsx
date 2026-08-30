@@ -213,8 +213,8 @@ export default function DepartmentsPage() {
             </Button>
           </Link>
           <div>
-            <h1 className="text-xl font-semibold">部门管理</h1>
-            <p className="text-muted-foreground mt-0.5 text-sm">
+            <h1 className="text-base font-semibold">部门管理</h1>
+            <p className="text-muted-foreground mt-0.5 text-base">
               管理组织部门和资源分配
             </p>
           </div>
@@ -236,17 +236,17 @@ export default function DepartmentsPage() {
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-6">
         {loading ? (
-          <div className="text-muted-foreground flex h-40 items-center justify-center text-sm">
+          <div className="text-muted-foreground flex h-40 items-center justify-center text-base">
             加载中...
           </div>
         ) : error ? (
-          <div className="text-destructive flex h-40 items-center justify-center text-sm">
+          <div className="text-destructive flex h-40 items-center justify-center text-base">
             {error}
           </div>
         ) : departments.length === 0 ? (
           <div className="flex h-64 flex-col items-center justify-center gap-3 text-center">
             <Building2Icon className="text-muted-foreground h-10 w-10" />
-            <p className="text-muted-foreground text-sm">暂无部门</p>
+            <p className="text-muted-foreground text-base">暂无部门</p>
             <Button
               variant="outline"
               onClick={() => {
@@ -311,7 +311,7 @@ export default function DepartmentsPage() {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="flex items-center gap-4 text-sm">
+                  <div className="flex items-center gap-4 text-base">
                     <div className="flex items-center gap-1">
                       <UsersIcon className="text-muted-foreground h-4 w-4" />
                       <span>{dept.member_count} 成员</span>
@@ -325,7 +325,7 @@ export default function DepartmentsPage() {
                       <span>{dept.skill_count} 技能</span>
                     </div>
                   </div>
-                  <div className="text-muted-foreground mt-2 text-xs">
+                  <div className="text-muted-foreground mt-2 text-base">
                     创建于 {new Date(dept.created_at).toLocaleDateString()}
                   </div>
                 </CardContent>
@@ -344,7 +344,7 @@ export default function DepartmentsPage() {
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">部门名称</label>
+              <label className="text-base font-medium">部门名称</label>
               <Input
                 placeholder="请输入部门名称"
                 value={name}
@@ -352,7 +352,7 @@ export default function DepartmentsPage() {
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">部门描述</label>
+              <label className="text-base font-medium">部门描述</label>
               <Textarea
                 placeholder="请输入部门描述（可选）"
                 value={description}
@@ -380,7 +380,7 @@ export default function DepartmentsPage() {
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">部门名称</label>
+              <label className="text-base font-medium">部门名称</label>
               <Input
                 placeholder="请输入部门名称"
                 value={name}
@@ -388,7 +388,7 @@ export default function DepartmentsPage() {
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">部门描述</label>
+              <label className="text-base font-medium">部门描述</label>
               <Textarea
                 placeholder="请输入部门描述（可选）"
                 value={description}
@@ -419,21 +419,21 @@ export default function DepartmentsPage() {
           </DialogHeader>
 
           {reallocLoading ? (
-            <div className="text-muted-foreground py-8 text-center text-sm">
+            <div className="text-muted-foreground py-8 text-center text-base">
               加载资源列表中...
             </div>
           ) : (
             <div className="space-y-4">
               {/* Resource List */}
               <div className="space-y-2">
-                <label className="text-sm font-medium">受影响的资源</label>
+                <label className="text-base font-medium">受影响的资源</label>
                 <div className="max-h-60 overflow-y-auto rounded-md border p-2">
                   {reallocResources && reallocResources.length > 0 ? (
                     <div className="space-y-2">
                       {reallocResources.map((resource) => (
                         <div
                           key={resource.id}
-                          className="bg-muted/50 flex items-center justify-between rounded-md px-3 py-2 text-sm"
+                          className="bg-muted/50 flex items-center justify-between rounded-md px-3 py-2 text-base"
                         >
                           <div className="flex items-center gap-2">
                             <span className="font-medium">
@@ -443,7 +443,7 @@ export default function DepartmentsPage() {
                               ({resource.resource_type})
                             </span>
                           </div>
-                          <span className="text-muted-foreground text-xs">
+                          <span className="text-muted-foreground text-base">
                             {resource.visibility === "department"
                               ? "部门级"
                               : "私有"}
@@ -452,7 +452,7 @@ export default function DepartmentsPage() {
                       ))}
                     </div>
                   ) : (
-                    <div className="text-muted-foreground py-4 text-center text-sm">
+                    <div className="text-muted-foreground py-4 text-center text-base">
                       暂无资源
                     </div>
                   )}
@@ -461,7 +461,7 @@ export default function DepartmentsPage() {
 
               {/* Target Department Selection */}
               <div className="space-y-2">
-                <label className="text-sm font-medium">资源处理方式</label>
+                <label className="text-base font-medium">资源处理方式</label>
                 <div className="space-y-3">
                   <div className="flex items-center gap-2">
                     <input
@@ -481,7 +481,7 @@ export default function DepartmentsPage() {
                       }}
                       className="h-4 w-4"
                     />
-                    <label htmlFor="realloc-dept" className="text-sm">
+                    <label htmlFor="realloc-dept" className="text-base">
                       重分配到目标部门
                     </label>
                   </div>
@@ -490,7 +490,7 @@ export default function DepartmentsPage() {
                     <select
                       value={reallocTargetDeptId}
                       onChange={(e) => setReallocTargetDeptId(e.target.value)}
-                      className="ml-6 h-9 w-full max-w-xs rounded-md border bg-transparent px-3 text-sm"
+                      className="ml-6 h-9 w-full max-w-xs rounded-md border bg-transparent px-3 text-base"
                     >
                       <option value="">请选择目标部门</option>
                       {departments
@@ -512,7 +512,7 @@ export default function DepartmentsPage() {
                       onChange={() => setReallocTargetDeptId("")}
                       className="h-4 w-4"
                     />
-                    <label htmlFor="realloc-private" className="text-sm">
+                    <label htmlFor="realloc-private" className="text-base">
                       降级为私有（资源变为私有，部门关联清除）
                     </label>
                   </div>

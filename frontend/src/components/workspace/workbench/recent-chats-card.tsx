@@ -16,7 +16,7 @@ export function RecentChatsCard({ max = 5 }: { max?: number }) {
 
   return (
     <section className="space-y-2">
-      <h2 className="text-muted-foreground text-sm font-medium">
+      <h2 className="text-muted-foreground text-base font-medium">
         {t.workbench.recentChatsTitle}
       </h2>
       <div className="flex flex-col gap-1" data-testid="workbench-recent-chats">
@@ -24,7 +24,7 @@ export function RecentChatsCard({ max = 5 }: { max?: number }) {
           <Link
             key={thread.thread_id}
             href={pathOfThread(thread)}
-            className="hover:bg-background/10 text-foreground/90 truncate rounded-lg border px-3 py-2 text-sm transition-colors"
+            className="hover:bg-background/10 text-foreground/90 truncate rounded-lg border px-3 py-2 text-base transition-colors"
           >
             {titleOfThread(thread)}
           </Link>

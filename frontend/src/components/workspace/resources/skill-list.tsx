@@ -21,7 +21,7 @@ export function SkillList() {
           className="workbench-resource-card rounded-lg border p-4"
         >
           <h3 className="font-medium">{skill.name}</h3>
-          <p className="text-muted-foreground text-sm">{skill.description}</p>
+          <p className="text-muted-foreground text-base">{skill.description}</p>
         </div>
       ))}
     </div>

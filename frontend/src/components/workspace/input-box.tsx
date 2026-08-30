@@ -122,6 +122,7 @@ export function InputBox({
   threadId,
   initialValue,
   pendingTemplate,
+  clearInjectedTemplateKey,
   allowedSkillNames,
   selectedTags = [],
   onPendingTemplateConsumed,
@@ -151,6 +152,7 @@ export function InputBox({
   threadId: string;
   initialValue?: string;
   pendingTemplate?: string | null;
+  clearInjectedTemplateKey?: number;
   allowedSkillNames?: readonly string[];
   selectedTags?: SelectedTag[];
   onPendingTemplateConsumed?: () => void;
@@ -183,6 +185,8 @@ export function InputBox({
   const [followupsHidden, setFollowupsHidden] = useState(false);
   const [followupsLoading, setFollowupsLoading] = useState(false);
   const lastGeneratedForAiIdRef = useRef<string | null>(null);
+  const injectedTemplateRef = useRef<string | null>(null);
+  const lastTemplateResetKeyRef = useRef(clearInjectedTemplateKey);
   const wasStreamingRef = useRef(false);
   const messagesRef = useRef(thread.messages);
 
@@ -561,11 +565,22 @@ export function InputBox({
   useEffect(() => {
     if (!pendingTemplate) return;
     textInput.setInput(pendingTemplate);
+    injectedTemplateRef.current = pendingTemplate;
     onPendingTemplateConsumed?.();
     setTimeout(() => {
       highlightPlaceholder(pendingTemplate, promptRootRef.current);
     }, 50);
   }, [pendingTemplate, onPendingTemplateConsumed, textInput]);
+
+  useEffect(() => {
+    if (clearInjectedTemplateKey === undefined) return;
+    if (lastTemplateResetKeyRef.current === clearInjectedTemplateKey) return;
+    lastTemplateResetKeyRef.current = clearInjectedTemplateKey;
+    if (injectedTemplateRef.current === textInput.value) {
+      textInput.clear();
+    }
+    injectedTemplateRef.current = null;
+  }, [clearInjectedTemplateKey, textInput]);
 
   useEffect(() => {
     messagesRef.current = thread.messages;
@@ -658,7 +673,7 @@ export function InputBox({
         <div className="flex items-center justify-center pb-1">
           <div className="flex items-center gap-2">
             {followupsLoading ? (
-              <div className="text-muted-foreground bg-background/80 rounded-full border px-4 py-1.5 text-xs backdrop-blur-sm">
+              <div className="text-muted-foreground bg-background/80 rounded-full border px-4 py-1.5 text-base backdrop-blur-sm">
                 {t.inputBox.followupLoading}
               </div>
             ) : (
@@ -673,7 +688,7 @@ export function InputBox({
                 ))}
                 <Button
                   aria-label={t.common.close}
-                  className="text-muted-foreground h-auto cursor-pointer rounded-full px-2.5 py-1.5 text-xs font-normal"
+                  className="text-muted-foreground h-auto cursor-pointer rounded-full px-2.5 py-1.5 text-base font-normal"
                   variant="outline"
                   size="sm"
                   type="button"
@@ -688,7 +703,7 @@ export function InputBox({
       )}
       <PromptInput
         className={cn(
-          "bg-background/85 rounded-2xl backdrop-blur-sm transition-all duration-300 ease-out *:data-[slot='input-group']:rounded-2xl",
+          "bg-background/85 rounded-2xl backdrop-blur-sm transition-all duration-300 ease-out *:data-[slot='input-group']:items-start *:data-[slot='input-group']:rounded-2xl",
           className,
         )}
         disabled={disabled}
@@ -720,7 +735,8 @@ export function InputBox({
             <PromptInputTextarea
               className={cn(
                 "size-full text-left placeholder:text-left",
-                isWelcomeMode && "min-h-40 text-base leading-7",
+                isWelcomeMode &&
+                  "workbench-input-textarea min-h-40 text-base leading-7",
                 "pt-3",
               )}
               style={{ textIndent: selectedTagsOffset }}
@@ -794,7 +810,7 @@ export function InputBox({
                   </div>
                   <div
                     className={cn(
-                      "text-xs font-normal",
+                      "text-base font-normal",
                       context.mode === "ultra" ? "golden-text" : "",
                     )}
                   >
@@ -808,7 +824,7 @@ export function InputBox({
               </ModeHoverGuide>
               <PromptInputActionMenuContent className="w-80">
                 <DropdownMenuGroup>
-                  <DropdownMenuLabel className="text-muted-foreground text-xs">
+                  <DropdownMenuLabel className="text-muted-foreground text-base">
                     {t.inputBox.mode}
                   </DropdownMenuLabel>
                   <PromptInputActionMenu>
@@ -831,7 +847,7 @@ export function InputBox({
                           />
                           {t.inputBox.flashMode}
                         </div>
-                        <div className="pl-7 text-xs">
+                        <div className="pl-7 text-base">
                           {t.inputBox.flashModeDescription}
                         </div>
                       </div>
@@ -861,7 +877,7 @@ export function InputBox({
                             />
                             {t.inputBox.reasoningMode}
                           </div>
-                          <div className="pl-7 text-xs">
+                          <div className="pl-7 text-base">
                             {t.inputBox.reasoningModeDescription}
                           </div>
                         </div>
@@ -891,7 +907,7 @@ export function InputBox({
                           />
                           {t.inputBox.proMode}
                         </div>
-                        <div className="pl-7 text-xs">
+                        <div className="pl-7 text-base">
                           {t.inputBox.proModeDescription}
                         </div>
                       </div>
@@ -925,7 +941,7 @@ export function InputBox({
                             {t.inputBox.ultraMode}
                           </div>
                         </div>
-                        <div className="pl-7 text-xs">
+                        <div className="pl-7 text-base">
                           {t.inputBox.ultraModeDescription}
                         </div>
                       </div>
@@ -942,7 +958,7 @@ export function InputBox({
             {supportReasoningEffort && context.mode !== "flash" && (
               <PromptInputActionMenu>
                 <PromptInputActionMenuTrigger className="gap-1! px-2!">
-                  <div className="text-xs font-normal">
+                  <div className="text-base font-normal">
                     {t.inputBox.reasoningEffort}:
                     {context.reasoning_effort === "minimal" &&
                       " " + t.inputBox.reasoningEffortMinimal}
@@ -956,7 +972,7 @@ export function InputBox({
                 </PromptInputActionMenuTrigger>
                 <PromptInputActionMenuContent className="w-70">
                   <DropdownMenuGroup>
-                    <DropdownMenuLabel className="text-muted-foreground text-xs">
+                    <DropdownMenuLabel className="text-muted-foreground text-base">
                       {t.inputBox.reasoningEffort}
                     </DropdownMenuLabel>
                     <PromptInputActionMenu>
@@ -972,7 +988,7 @@ export function InputBox({
                           <div className="flex items-center gap-1 font-bold">
                             {t.inputBox.reasoningEffortMinimal}
                           </div>
-                          <div className="pl-2 text-xs">
+                          <div className="pl-2 text-base">
                             {t.inputBox.reasoningEffortMinimalDescription}
                           </div>
                         </div>
@@ -994,7 +1010,7 @@ export function InputBox({
                           <div className="flex items-center gap-1 font-bold">
                             {t.inputBox.reasoningEffortLow}
                           </div>
-                          <div className="pl-2 text-xs">
+                          <div className="pl-2 text-base">
                             {t.inputBox.reasoningEffortLowDescription}
                           </div>
                         </div>
@@ -1017,7 +1033,7 @@ export function InputBox({
                           <div className="flex items-center gap-1 font-bold">
                             {t.inputBox.reasoningEffortMedium}
                           </div>
-                          <div className="pl-2 text-xs">
+                          <div className="pl-2 text-base">
                             {t.inputBox.reasoningEffortMediumDescription}
                           </div>
                         </div>
@@ -1040,7 +1056,7 @@ export function InputBox({
                           <div className="flex items-center gap-1 font-bold">
                             {t.inputBox.reasoningEffortHigh}
                           </div>
-                          <div className="pl-2 text-xs">
+                          <div className="pl-2 text-base">
                             {t.inputBox.reasoningEffortHighDescription}
                           </div>
                         </div>
@@ -1067,7 +1083,7 @@ export function InputBox({
                   aria-label="Select model"
                 >
                   <div className="flex min-w-0 flex-col items-start text-left">
-                    <ModelSelectorName className="text-xs font-normal">
+                    <ModelSelectorName className="text-base font-normal">
                       {selectedModel?.display_name}
                     </ModelSelectorName>
                   </div>
@@ -1156,11 +1172,11 @@ export function InputBox({
                 <button
                   key={skill.name}
                   type="button"
-                  className="hover:bg-accent flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm"
+                  className="hover:bg-accent flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-base"
                   onClick={() => handleSkillSelect(skill.name)}
                 >
                   <span className="font-medium">{skill.name}</span>
-                  <span className="text-muted-foreground truncate text-xs">
+                  <span className="text-muted-foreground truncate text-base">
                     {skill.description}
                   </span>
                 </button>

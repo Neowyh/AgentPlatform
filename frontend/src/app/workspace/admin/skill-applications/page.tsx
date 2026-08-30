@@ -12,7 +12,9 @@ export default function SkillApplicationsPage() {
 
   return (
     <div className="flex size-full items-center justify-center">
-      <p className="text-muted-foreground text-sm">正在跳转到统一审批中心...</p>
+      <p className="text-muted-foreground text-base">
+        正在跳转到统一审批中心...
+      </p>
     </div>
   );
 }

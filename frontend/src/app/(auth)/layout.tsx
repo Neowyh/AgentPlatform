@@ -38,7 +38,7 @@ export default async function AuthLayout({
           </p>
           <Link
             href="/login"
-            className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-md px-4 py-2 text-sm"
+            className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-md px-4 py-2 text-base"
           >
             Retry
           </Link>

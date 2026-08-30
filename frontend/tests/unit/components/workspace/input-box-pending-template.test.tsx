@@ -386,6 +386,29 @@ describe("InputBox pendingTemplate", () => {
     expect(screen.queryByText("Send suggestion?")).not.toBeInTheDocument();
   });
 
+  it("clears an injected template when the scenario changes", () => {
+    const template = "请帮我处理以下文档：[描述需求]";
+    const { rerender } = render(
+      <InputBox
+        {...defaultProps()}
+        pendingTemplate={template}
+        onPendingTemplateConsumed={vi.fn()}
+        clearInjectedTemplateKey={0}
+      />,
+    );
+
+    mockTextInputContext.value = template;
+    rerender(
+      <InputBox
+        {...defaultProps()}
+        onPendingTemplateConsumed={vi.fn()}
+        clearInjectedTemplateKey={1}
+      />,
+    );
+
+    expect(mockTextInputContext.clear).toHaveBeenCalled();
+  });
+
   it("replaces a non-empty input and highlights the template placeholder", () => {
     mockTextInputContext.value = "existing text";
     render(

@@ -42,8 +42,8 @@ export function WorkflowGallery() {
       {/* Page header */}
       <div className="flex items-center justify-between border-b px-6 py-4">
         <div>
-          <h1 className="text-xl font-semibold">{t.workflows.title}</h1>
-          <p className="text-muted-foreground mt-0.5 text-sm">
+          <h1 className="text-base font-semibold">{t.workflows.title}</h1>
+          <p className="text-muted-foreground mt-0.5 text-base">
             {t.workflows.description}
           </p>
         </div>
@@ -54,7 +54,7 @@ export function WorkflowGallery() {
               placeholder={`${t.workflows.title}...`}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="h-9 w-48 pl-8 text-sm"
+              className="h-9 w-48 pl-8 text-base"
             />
           </div>
           <Button
@@ -75,11 +75,11 @@ export function WorkflowGallery() {
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-6">
         {isLoading ? (
-          <div className="text-muted-foreground flex h-40 items-center justify-center text-sm">
+          <div className="text-muted-foreground flex h-40 items-center justify-center text-base">
             {t.common.loading}
           </div>
         ) : error ? (
-          <div className="text-destructive flex h-40 items-center justify-center text-sm">
+          <div className="text-destructive flex h-40 items-center justify-center text-base">
             {error.message}
           </div>
         ) : workflows.length === 0 ? (
@@ -89,7 +89,7 @@ export function WorkflowGallery() {
             </div>
             <div>
               <p className="font-medium">{t.workflows.emptyTitle}</p>
-              <p className="text-muted-foreground mt-1 text-sm">
+              <p className="text-muted-foreground mt-1 text-base">
                 {t.workflows.emptyDescription}
               </p>
             </div>

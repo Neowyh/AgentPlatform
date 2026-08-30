@@ -164,13 +164,13 @@ describe("TaskItem", () => {
     expect(screen.getByTestId("item")).toHaveClass("custom-item");
   });
 
-  test("has text-sm class", () => {
+  test("has text-base class", () => {
     render(
       <TaskItem data-testid="item">
         <span>Item</span>
       </TaskItem>,
     );
-    expect(screen.getByTestId("item").className).toContain("text-sm");
+    expect(screen.getByTestId("item").className).toContain("text-base");
   });
 });
 

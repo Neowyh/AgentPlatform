@@ -111,7 +111,7 @@ export function MessageTokenUsageDebugList({
             className="bg-muted/30 border-border/50 flex items-start justify-between gap-3 rounded-md border px-3 py-2"
           >
             <div className="min-w-0 flex-1 space-y-1">
-              <div className="text-foreground flex items-center gap-2 text-xs font-medium">
+              <div className="text-foreground flex items-center gap-2 text-base font-medium">
                 <CoinsIcon className="text-muted-foreground size-3" />
                 <span className="truncate">{step.label}</span>
               </div>

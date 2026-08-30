@@ -98,7 +98,7 @@ export function SubtaskCard({
                 {collapsed && (
                   <div
                     className={cn(
-                      "text-muted-foreground flex items-center gap-1 text-xs font-normal",
+                      "text-muted-foreground flex items-center gap-1 text-base font-normal",
                       task.status === "failed" ? "text-red-500 opacity-67" : "",
                     )}
                   >

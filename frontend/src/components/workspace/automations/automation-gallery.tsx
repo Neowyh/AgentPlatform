@@ -13,7 +13,7 @@ export function AutomationGallery() {
     <div className="flex h-full flex-col gap-6 p-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">{t.automations.title}</h1>
+          <h1 className="text-base font-bold">{t.automations.title}</h1>
           <p className="text-muted-foreground">{t.automations.description}</p>
         </div>
         <button className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-md px-4 py-2">

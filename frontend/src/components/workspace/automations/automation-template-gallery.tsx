@@ -18,10 +18,10 @@ export function AutomationTemplateGallery() {
       {templates.map((template) => (
         <div key={template.id} className="rounded-lg border p-4">
           <h3 className="font-medium">{template.name}</h3>
-          <p className="text-muted-foreground text-sm">
+          <p className="text-muted-foreground text-base">
             {template.description}
           </p>
-          <span className="bg-secondary text-secondary-foreground mt-2 inline-block rounded-full px-2 py-1 text-xs">
+          <span className="bg-secondary text-secondary-foreground mt-2 inline-block rounded-full px-2 py-1 text-base">
             {template.category}
           </span>
         </div>

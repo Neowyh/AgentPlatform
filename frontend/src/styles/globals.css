@@ -71,6 +71,20 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme {
+  --text-body: 1rem;
+  --text-subtitle: 2.25rem;
+  --text-title: 2.75rem;
+  --text-xs: var(--text-body);
+  --text-sm: var(--text-body);
+  --text-base: var(--text-body);
+  --text-lg: var(--text-body);
+  --text-xl: var(--text-body);
+  --text-2xl: var(--text-body);
+  --text-3xl: var(--text-body);
+  --text-4xl: var(--text-body);
+  --text-5xl: var(--text-body);
+  --text-6xl: var(--text-body);
+
   --font-sans:
     ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji",
     "Segoe UI Symbol", "Noto Color Emoji";
@@ -298,6 +312,26 @@
   }
   body {
     @apply bg-background text-foreground font-sans antialiased;
+    font-size: var(--text-body);
+    line-height: 1.5;
+  }
+
+  h1 {
+    font-size: var(--text-title) !important;
+    line-height: 1.2;
+  }
+
+  h2,
+  h3 {
+    font-size: var(--text-subtitle) !important;
+    line-height: 1.25;
+  }
+
+  h4,
+  h5,
+  h6 {
+    font-size: var(--text-body) !important;
+    line-height: 1.5;
   }
 
   .workbench-shell {
@@ -358,7 +392,7 @@
   }
 
   .workbench-sidebar {
-    font-size: 0.875rem;
+    font-size: var(--text-body);
   }
 
   .workbench-header {
@@ -403,24 +437,26 @@
     width: min(100%, 52rem);
   }
 
-  .workbench-input-module {
-    width: 100%;
-    text-align: left;
+  .workbench-quick-entry-module {
+    display: flex;
+    width: min(100%, 52rem);
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
   }
 
   .workbench-scenario-cascade {
     width: 100%;
-    margin-top: 3rem;
-    text-align: left;
+    margin-top: 0.25rem;
+    text-align: center;
   }
 
   .workbench-scenario-guide {
-    margin-top: 2rem;
-    text-align: left;
+    margin-top: 0;
   }
 
   .workbench-scenario-cascade [role="tablist"] {
-    justify-content: flex-start;
+    justify-content: center;
   }
 
   .workbench-module-guide {
@@ -450,6 +486,14 @@
   .workbench-input-surface {
     text-align: left;
     cursor: text;
+  }
+
+  .workbench-input-surface [data-slot="input-group"] {
+    align-items: flex-start;
+  }
+
+  .workbench-input-textarea {
+    align-self: flex-start;
   }
 
   .dark .workbench-shell .workbench-input-surface {
@@ -535,7 +579,7 @@
 
   .workbench-recent-summary {
     overflow: hidden;
-    font-size: 0.875rem;
+    font-size: var(--text-body);
     font-weight: 600;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -543,7 +587,7 @@
 
   .workbench-recent-meta {
     color: var(--muted-foreground);
-    font-size: 0.875rem;
+    font-size: var(--text-body);
   }
 
   .workbench-resource-surface {
@@ -588,6 +632,15 @@
   }
 
   @media (max-width: 640px) {
+    h1 {
+      font-size: 2.25rem !important;
+    }
+
+    h2,
+    h3 {
+      font-size: 1.75rem !important;
+    }
+
     .workbench-recent-grid {
       grid-template-columns: 1fr;
     }

@@ -68,7 +68,7 @@ export function NodeDetailPanel({
 
   if (!node) {
     return (
-      <div className="text-muted-foreground flex h-full items-center justify-center p-6 text-center text-sm">
+      <div className="text-muted-foreground flex h-full items-center justify-center p-6 text-center text-base">
         {t.workflows.selectNodeHint}
       </div>
     );
@@ -80,28 +80,28 @@ export function NodeDetailPanel({
     <div className="flex h-full flex-col gap-4 overflow-y-auto p-4">
       <div>
         <div className="flex items-center justify-between gap-2">
-          <h3 className="truncate text-sm font-semibold">
+          <h3 className="truncate text-base font-semibold">
             {t.workflows.nodeDetailTitle}
           </h3>
-          <Badge variant="outline" className="shrink-0 text-xs">
+          <Badge variant="outline" className="shrink-0 text-base">
             {node.type}
           </Badge>
         </div>
-        <p className="mt-1 font-mono text-sm font-medium">{node.id}</p>
+        <p className="mt-1 font-mono text-base font-medium">{node.id}</p>
         {node.action?.name && (
-          <p className="text-muted-foreground text-xs">
+          <p className="text-muted-foreground text-base">
             {node.action.kind}: {node.action.name}
           </p>
         )}
       </div>
 
       {step && (
-        <div className="flex flex-wrap items-center gap-2 text-sm">
+        <div className="flex flex-wrap items-center gap-2 text-base">
           <Badge variant="outline" className={statusClass(step.status)}>
             {step.status}
           </Badge>
           {duration && (
-            <span className="text-muted-foreground text-xs">
+            <span className="text-muted-foreground text-base">
               {t.workflows.duration}: {duration}
             </span>
           )}
@@ -109,13 +109,13 @@ export function NodeDetailPanel({
       )}
 
       {step?.error && (
-        <div className="text-destructive rounded-md border border-red-200 bg-red-50 p-2 text-xs break-words dark:border-red-800 dark:bg-red-950/50">
+        <div className="text-destructive rounded-md border border-red-200 bg-red-50 p-2 text-base break-words dark:border-red-800 dark:bg-red-950/50">
           {formatWorkflowRunError(step.error, step.error_code)}
         </div>
       )}
 
       {progress && progress.length > 0 && (
-        <div className="text-muted-foreground max-h-48 space-y-1 overflow-y-auto text-xs">
+        <div className="text-muted-foreground max-h-48 space-y-1 overflow-y-auto text-base">
           {progress.slice(-50).map((message, index) => (
             <p key={index} className="break-words">
               {message}
@@ -126,7 +126,7 @@ export function NodeDetailPanel({
 
       {step?.output !== undefined && step.output !== null && (
         <Collapsible open={showOutput} onOpenChange={setShowOutput}>
-          <CollapsibleTrigger className="flex w-full items-center justify-between rounded-md border px-3 py-2 text-sm">
+          <CollapsibleTrigger className="flex w-full items-center justify-between rounded-md border px-3 py-2 text-base">
             <span>{t.workflows.actionOutput}</span>
             <ChevronDownIcon
               className={cn(
@@ -136,7 +136,7 @@ export function NodeDetailPanel({
             />
           </CollapsibleTrigger>
           <CollapsibleContent>
-            <pre className="bg-muted mt-2 max-h-64 overflow-auto rounded-md p-2 text-xs break-words whitespace-pre-wrap">
+            <pre className="bg-muted mt-2 max-h-64 overflow-auto rounded-md p-2 text-base break-words whitespace-pre-wrap">
               {formatOutput(step.output)}
             </pre>
           </CollapsibleContent>
@@ -145,7 +145,7 @@ export function NodeDetailPanel({
 
       {tokens && (
         <Collapsible open={showTokens} onOpenChange={setShowTokens}>
-          <CollapsibleTrigger className="flex w-full items-center justify-between rounded-md border px-3 py-2 text-sm">
+          <CollapsibleTrigger className="flex w-full items-center justify-between rounded-md border px-3 py-2 text-base">
             <span>{t.workflows.tokenStream}</span>
             <ChevronDownIcon
               className={cn(
@@ -155,7 +155,7 @@ export function NodeDetailPanel({
             />
           </CollapsibleTrigger>
           <CollapsibleContent>
-            <pre className="bg-muted mt-2 max-h-64 overflow-auto rounded-md p-2 text-xs break-words whitespace-pre-wrap">
+            <pre className="bg-muted mt-2 max-h-64 overflow-auto rounded-md p-2 text-base break-words whitespace-pre-wrap">
               {tokens}
             </pre>
           </CollapsibleContent>
@@ -163,7 +163,7 @@ export function NodeDetailPanel({
       )}
 
       {!step && (!progress || progress.length === 0) && !tokens && (
-        <p className="text-muted-foreground text-xs">
+        <p className="text-muted-foreground text-base">
           {t.workflows.nodeNotStarted}
         </p>
       )}

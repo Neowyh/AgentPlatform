@@ -123,7 +123,7 @@ export function ResourceNotificationCenter() {
             {unreadCount > 0 && (
               <button
                 type="button"
-                className="text-muted-foreground hover:text-foreground cursor-pointer text-xs"
+                className="text-muted-foreground hover:text-foreground cursor-pointer text-base"
                 onClick={handleMarkAllRead}
                 disabled={markAllRead.isPending}
               >
@@ -133,11 +133,11 @@ export function ResourceNotificationCenter() {
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
           {isLoading && items.length === 0 ? (
-            <p className="text-muted-foreground px-3 py-6 text-center text-sm">
+            <p className="text-muted-foreground px-3 py-6 text-center text-base">
               ...
             </p>
           ) : items.length === 0 ? (
-            <p className="text-muted-foreground px-3 py-6 text-center text-sm">
+            <p className="text-muted-foreground px-3 py-6 text-center text-base">
               {t.resources.notificationsEmpty}
             </p>
           ) : (
@@ -159,7 +159,7 @@ export function ResourceNotificationCenter() {
                   >
                     {titleFor(notification)}
                   </span>
-                  <span className="text-muted-foreground text-xs">
+                  <span className="text-muted-foreground text-base">
                     {subtitleFor(notification)}
                   </span>
                 </DropdownMenuItem>

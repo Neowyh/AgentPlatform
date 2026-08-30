@@ -216,8 +216,8 @@ export default function ResourcesPage() {
             </Button>
           </Link>
           <div>
-            <h1 className="text-xl font-semibold">资源管理</h1>
-            <p className="text-muted-foreground mt-0.5 text-sm">
+            <h1 className="text-base font-semibold">资源管理</h1>
+            <p className="text-muted-foreground mt-0.5 text-base">
               共 {total} 个资源
             </p>
           </div>
@@ -291,21 +291,21 @@ export default function ResourcesPage() {
         </div>
 
         {actionError && (
-          <div className="text-destructive mb-4 text-sm">{actionError}</div>
+          <div className="text-destructive mb-4 text-base">{actionError}</div>
         )}
 
         {loading ? (
-          <div className="text-muted-foreground flex h-40 items-center justify-center text-sm">
+          <div className="text-muted-foreground flex h-40 items-center justify-center text-base">
             加载中...
           </div>
         ) : error ? (
-          <div className="text-destructive flex h-40 items-center justify-center text-sm">
+          <div className="text-destructive flex h-40 items-center justify-center text-base">
             {error}
           </div>
         ) : resources.length === 0 ? (
           <div className="flex h-64 flex-col items-center justify-center gap-3 text-center">
             <BoxIcon className="text-muted-foreground h-10 w-10" />
-            <p className="text-muted-foreground text-sm">暂无资源</p>
+            <p className="text-muted-foreground text-base">暂无资源</p>
           </div>
         ) : (
           <>
@@ -313,7 +313,7 @@ export default function ResourcesPage() {
               className="overflow-x-auto rounded-md border"
               data-testid="resource-table"
             >
-              <table className="w-full text-sm">
+              <table className="w-full text-base">
                 <thead>
                   <tr className="bg-muted/50 border-b text-left">
                     <th className="px-4 py-3 font-medium">类型</th>
@@ -384,7 +384,7 @@ export default function ResourcesPage() {
                 >
                   上一页
                 </Button>
-                <span className="text-muted-foreground text-sm">
+                <span className="text-muted-foreground text-base">
                   {page} / {totalPages}
                 </span>
                 <Button
