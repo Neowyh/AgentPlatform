@@ -317,6 +317,24 @@
     background: var(--background);
   }
 
+  .workbench-conversation {
+    background: var(--background);
+  }
+
+  .workbench-conversation-header {
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  }
+
+  .workbench-input-surface {
+    border: 1px solid var(--border);
+    box-shadow: 0 10px 26px rgb(93 62 36 / 6%);
+  }
+
+  .workbench-input-surface:focus-within {
+    border-color: #c98b68;
+    box-shadow: 0 10px 26px rgb(93 62 36 / 10%);
+  }
+
   .workbench-home {
     gap: 1rem;
   }

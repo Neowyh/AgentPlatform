@@ -328,10 +328,10 @@ export default function ChatPage() {
   return (
     <ThreadContext.Provider value={{ thread, isMock }}>
       <ChatBox threadId={threadId}>
-        <div className="relative flex size-full min-h-0 justify-between">
+        <div className="workbench-conversation relative flex size-full min-h-0 justify-between">
           <header
             className={cn(
-              "absolute top-0 right-0 left-0 z-30 flex h-12 shrink-0 items-center px-4",
+              "workbench-conversation-header absolute top-0 right-0 left-0 z-30 flex h-12 shrink-0 items-center px-4",
               isWelcomeMode
                 ? "bg-background/0 backdrop-blur-none"
                 : "bg-background/80 shadow-xs backdrop-blur",
@@ -358,7 +358,7 @@ export default function ChatPage() {
           </header>
           <main
             className={cn(
-              "flex min-h-0 max-w-full grow flex-col",
+              "workbench-conversation-main flex min-h-0 max-w-full grow flex-col",
               isWelcomeMode && "justify-center",
             )}
           >
@@ -431,7 +431,7 @@ export default function ChatPage() {
                       </p>
                     )}
                     <InputBox
-                      className="bg-background/5 w-full"
+                      className="workbench-input-surface bg-background/5 w-full"
                       isWelcomeMode={isWelcomeMode}
                       threadId={threadId}
                       autoFocus={isWelcomeMode}
