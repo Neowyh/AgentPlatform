@@ -41,6 +41,7 @@ vi.mock("@/core/threads/hooks", () => ({
   useThreadTokenUsage: () => ({
     data: null,
   }),
+  useThreads: () => ({ data: [] }),
 }));
 
 vi.mock("@/components/workspace/chats", () => ({

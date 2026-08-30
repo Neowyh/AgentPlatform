@@ -158,6 +158,7 @@ vi.mock("@/core/settings", () => ({
 vi.mock("@/core/threads/hooks", () => ({
   useThreadStream: (...args: any[]) => mockUseThreadStream(...args),
   useThreadTokenUsage: () => ({ data: null }),
+  useThreads: () => ({ data: [] }),
 }));
 
 vi.mock("@/core/threads/token-usage", () => ({
@@ -880,7 +881,7 @@ describe("ChatPage", () => {
     expect(mockLastInputBoxProps.current.disabled).toBe(true);
   });
 
-  test("does not render the retired workbench content in welcome mode", () => {
+  test("renders the task-first workbench content in welcome mode", () => {
     mockUseThreadChat.mockReturnValue({
       threadId: "test-thread",
       setThreadId: vi.fn(),
@@ -891,7 +892,7 @@ describe("ChatPage", () => {
 
     const { rerender } = render(<ChatPage />);
     rerender(<ChatPage />);
-    expect(screen.queryByTestId("workbench-home")).not.toBeInTheDocument();
+    expect(screen.getByTestId("workbench-home")).toBeInTheDocument();
   });
 
   test("does not render retired workbench content after send", () => {
