@@ -20,6 +20,16 @@ test.describe("WorkBuddy cascade bar", () => {
     await expect(page.getByRole("tab", { name: /专业任务/ })).toBeVisible();
   });
 
+  test("shows the task-first welcome hierarchy", async ({ page }) => {
+    mockLangGraphAPI(page);
+    await page.goto("/workspace/chats/new");
+    await expect(page.getByTestId("workbench-home")).toBeVisible();
+    await expect(page.getByText("iDeer，落地你的idea")).toBeVisible();
+    await expect(page.getByTestId("workbench-quick-entries")).toBeVisible();
+    await expect(page.getByText("方向不明？")).toBeVisible();
+    await expect(page.getByText("目标明确？")).toBeVisible();
+  });
+
   test("shows pills when scenario tab is selected", async ({ page }) => {
     mockLangGraphAPI(page);
     await page.goto("/workspace/chats/new");

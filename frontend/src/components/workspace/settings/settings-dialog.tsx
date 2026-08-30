@@ -98,7 +98,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
       data-testid="settings-dialog"
     >
       <DialogContent
-        className="flex h-[75vh] max-h-[calc(100vh-2rem)] flex-col sm:max-w-5xl md:max-w-6xl"
+        className="workbench-settings-dialog flex h-[75vh] max-h-[calc(100vh-2rem)] flex-col sm:max-w-5xl md:max-w-6xl"
         aria-describedby={undefined}
         data-testid="settings-dialog-content"
       >
@@ -108,7 +108,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
             {t.settings.description}
           </p>
         </DialogHeader>
-        <div className="grid min-h-0 flex-1 gap-4 md:grid-cols-[220px_minmax(0,1fr)]">
+        <div className="workbench-settings-layout grid min-h-0 flex-1 gap-4 md:grid-cols-[220px_minmax(0,1fr)]">
           <nav className="bg-sidebar min-h-0 overflow-y-auto rounded-lg border p-2">
             <ul className="space-y-1 pr-1">
               {sections.map(({ id, label, icon: Icon }) => {

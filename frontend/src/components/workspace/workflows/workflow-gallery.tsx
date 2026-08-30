@@ -38,7 +38,7 @@ export function WorkflowGallery() {
   }, [workflows, search, showFavoritesOnly]);
 
   return (
-    <div className="flex size-full flex-col">
+    <div className="workbench-collection-surface flex size-full flex-col">
       {/* Page header */}
       <div className="flex items-center justify-between border-b px-6 py-4">
         <div>
@@ -103,7 +103,7 @@ export function WorkflowGallery() {
             </Button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="workbench-collection-grid grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {filteredWorkflows.map((workflow) => (
               <WorkflowCard key={workflow.name} workflow={workflow} />
             ))}
