@@ -1,122 +1,74 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 
-import { getChipsByPill, getPillsByScenario } from "./config";
-import type {
-  ChipSelection,
-  PillSelection,
-  ScenarioBinding,
-  ScenarioId,
-} from "./types";
+import { useScenarioBinding as useCanonicalScenarioBinding } from "./binding";
+import type { ScenarioId } from "./types";
 
-export function useScenarioBinding(
-  initialScenario: ScenarioId | null = "creative",
-) {
-  const [selectedScenario, setSelectedScenario] = useState<ScenarioId | null>(
-    initialScenario,
-  );
-  const [selectedPill, setSelectedPill] = useState<PillSelection>(null);
-  const [selectedChip, setSelectedChip] = useState<ChipSelection>(null);
-
-  const selectScenario = useCallback((id: ScenarioId | null) => {
-    setSelectedScenario((current) => {
-      if (current === id) return current;
-      setSelectedPill(null);
-      setSelectedChip(null);
-      return id;
-    });
-  }, []);
-
-  const togglePill = useCallback(
-    (scenarioId: ScenarioId, agentSlug: string) => {
-      setSelectedScenario(scenarioId);
-      setSelectedPill((current) =>
-        current?.scenarioId === scenarioId && current.agentSlug === agentSlug
-          ? null
-          : { scenarioId, agentSlug },
-      );
-      setSelectedChip(null);
-    },
-    [],
-  );
-
-  const toggleChip = useCallback(
-    (scenarioId: ScenarioId, agentSlug: string, taskId: string) => {
-      if (
-        selectedPill?.scenarioId !== scenarioId ||
-        selectedPill.agentSlug !== agentSlug
-      ) {
-        return;
-      }
-      const chip = getChipsByPill(scenarioId, agentSlug).find(
-        (item) => item.taskId === taskId,
-      );
-      if (!chip) return;
-      setSelectedChip((current) =>
-        current?.scenarioId === scenarioId &&
-        current.agentSlug === agentSlug &&
-        current.taskId === taskId
-          ? null
-          : { scenarioId, agentSlug, taskId },
-      );
-    },
-    [selectedPill],
-  );
-
-  const clear = useCallback(() => {
-    setSelectedPill(null);
-    setSelectedChip(null);
-  }, []);
-
-  const activeBinding = useMemo<ScenarioBinding | null>(() => {
-    if (!selectedPill) return null;
-    const pill = getPillsByScenario(selectedPill.scenarioId).find(
-      (item) => item.agentSlug === selectedPill.agentSlug,
-    );
-    if (!pill) return null;
-    const chip = selectedChip
-      ? getChipsByPill(selectedPill.scenarioId, selectedPill.agentSlug).find(
-          (item) => item.taskId === selectedChip.taskId,
-        )
-      : undefined;
-    return {
-      agentSlug: pill.agentSlug,
-      agentName: pill.label,
-      skillName: chip?.skillName ?? null,
-      promptTemplate: chip?.promptTemplate ?? null,
-      tags: [
-        { id: `agent:${pill.agentSlug}`, label: pill.label },
-        ...(chip ? [{ id: `task:${chip.taskId}`, label: chip.skillName }] : []),
-      ],
-    };
-  }, [selectedChip, selectedPill]);
+export function useScenarioBinding(initialScenario: ScenarioId = "creative") {
+  const binding = useCanonicalScenarioBinding(initialScenario);
 
   return {
-    selectedScenario,
-    selectedPill,
-    selectedChip,
-    activeBinding,
-    tags: activeBinding?.tags ?? [],
-    selectScenario,
-    togglePill,
-    toggleChip,
-    clear,
+    ...binding,
+    tags: binding.activeBinding.tags.map((tag) => ({
+      id: tag.id,
+      label: tag.text,
+    })),
+    clear: binding.resetSelection,
   };
 }
 
 /** @deprecated Use useScenarioBinding. Kept for one release as a migration adapter. */
 export function useScenarioSelection() {
-  const binding = useScenarioBinding(null);
+  const binding = useCanonicalScenarioBinding("creative");
+  const {
+    resetSelection: resetBinding,
+    selectScenario: selectBindingScenario,
+    togglePill: toggleBindingPill,
+    toggleChip: toggleBindingChip,
+    selectedPill,
+    selectedChip,
+  } = binding;
+  const [selectedScenario, setSelectedScenario] = useState<ScenarioId | null>(
+    null,
+  );
+
+  const selectScenario = useCallback(
+    (id: ScenarioId | null) => {
+      setSelectedScenario(id);
+      if (id) {
+        selectBindingScenario(id);
+      } else {
+        resetBinding();
+      }
+    },
+    [resetBinding, selectBindingScenario],
+  );
+  const togglePill = useCallback(
+    (scenarioId: ScenarioId, agentSlug: string) => {
+      setSelectedScenario(scenarioId);
+      toggleBindingPill(scenarioId, agentSlug);
+    },
+    [toggleBindingPill],
+  );
+  const toggleChip = useCallback(
+    (scenarioId: ScenarioId, agentSlug: string, taskId: string) => {
+      toggleBindingChip(scenarioId, agentSlug, taskId);
+    },
+    [toggleBindingChip],
+  );
   const resetSelection = useCallback(() => {
-    binding.selectScenario(null);
-  }, [binding.selectScenario]);
+    setSelectedScenario(null);
+    resetBinding();
+  }, [resetBinding]);
 
   return {
-    selectedScenario: binding.selectedScenario,
-    selectedPill: binding.selectedPill,
-    selectedChip: binding.selectedChip,
-    selectScenario: binding.selectScenario,
-    togglePill: binding.togglePill,
-    toggleChip: binding.toggleChip,
+    selectedScenario,
+    selectedPill,
+    selectedChip,
+    selectScenario,
+    togglePill,
+    toggleChip,
     resetSelection,
   };
 }
+
+export type { ScenarioBinding } from "./binding";
