@@ -168,6 +168,7 @@ export function WorkspaceNavMenu() {
                     setSettingsDefaultSection("about");
                     setSettingsOpen(true);
                   }}
+                  data-testid="about-settings-menu-item"
                 >
                   <InfoIcon />
                   {t.workspace.about}

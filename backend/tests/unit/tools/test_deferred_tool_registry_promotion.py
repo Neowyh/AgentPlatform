@@ -31,6 +31,7 @@ tools so we don't need a real MCP server.
 from __future__ import annotations
 
 from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
@@ -61,6 +62,12 @@ class FakeToolCallingModel(FakeMessagesListChatModel):
 def fake_mcp_search(query: str) -> str:
     """Pretend to search a knowledge base for the given query."""
     return f"results for {query}"
+
+
+@as_tool
+def duplicate_tool(query: str) -> str:
+    """Fixture for a config tool colliding with an MCP tool."""
+    return f"config result for {query}"
 
 
 @as_tool
@@ -180,6 +187,49 @@ def test_get_available_tools_preserves_promotions_across_reentrant_calls(monkeyp
     assert reg2 is not None
     deferred_after = {e.name for e in reg2.entries}
     assert "fake_mcp_search" not in deferred_after, f"REGRESSION (#2884): get_available_tools wiped the deferred registry, re-deferring a tool that was already promoted by tool_search. deferred_after_second_call={deferred_after!r}"
+
+
+def test_config_tool_collision_stays_active_when_mcp_tools_are_deferred(monkeypatch: pytest.MonkeyPatch):
+    """A config tool wins a name collision without being deferred with MCP tools."""
+    from ideer.config.extensions_config import ExtensionsConfig, McpServerConfig
+    from ideer.tools.builtins.tool_search import get_deferred_registry
+    from ideer.tools.tools import get_available_tools
+
+    config_tool = MagicMock(name="config_tool")
+    config_tool.name = "duplicate_tool"
+    config_tool.group = "core"
+    config_tool.use = "tests:duplicate_tool"
+    config_tool.requires_network = False
+    config = MagicMock(
+        tools=[config_tool],
+        models=[],
+        skill_evolution=MagicMock(enabled=False),
+        tool_search=MagicMock(enabled=True),
+        acp_agents={},
+    )
+    config.get_model_config.return_value = None
+    monkeypatch.setattr("ideer.tools.tools.get_app_config", lambda: config)
+    monkeypatch.setattr("ideer.tools.tools.resolve_variable", lambda *_args: duplicate_tool)
+    monkeypatch.setattr(
+        "ideer.config.extensions_config.ExtensionsConfig.from_file",
+        classmethod(
+            lambda cls: ExtensionsConfig(
+                mcpServers={"fake-server": McpServerConfig(type="stdio", command="echo", enabled=True)},
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        "ideer.mcp.cache.get_cached_mcp_tools",
+        lambda: [duplicate_tool, fake_mcp_search],
+    )
+
+    result = get_available_tools()
+
+    assert [tool.name for tool in result if tool.name == "duplicate_tool"] == ["duplicate_tool"]
+    assert next(tool for tool in result if tool.name == "duplicate_tool") is duplicate_tool
+    registry = get_deferred_registry()
+    assert registry is not None
+    assert {entry.name for entry in registry.entries} == {"fake_mcp_search"}
 
 
 # ---------------------------------------------------------------------------

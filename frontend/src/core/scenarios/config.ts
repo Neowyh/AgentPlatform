@@ -391,6 +391,11 @@ export function getScenarioById(id: ScenarioId) {
   return SCENARIOS.find((s) => s.id === id);
 }
 
+export const SCENARIO_IDS = SCENARIOS.map((scenario) => scenario.id);
+export const SCENARIO_ICONS = Object.fromEntries(
+  SCENARIOS.map((scenario) => [scenario.id, scenario.icon]),
+) as Record<ScenarioId, string>;
+
 export function getPillsByScenario(scenarioId: ScenarioId) {
   return getScenarioById(scenarioId)?.agentPills ?? [];
 }

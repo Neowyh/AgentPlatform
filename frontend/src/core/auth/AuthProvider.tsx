@@ -80,7 +80,6 @@ export function AuthProvider({ children, initialUser }: AuthProviderProps) {
       }
     } catch (err) {
       console.error("Failed to refresh user:", err);
-      setUser(null);
     } finally {
       setIsLoading(false);
     }

@@ -12,6 +12,7 @@ const {
   mockLastScenarioCascadeProps,
   mockUseAgents,
   mockUseAgent,
+  mockUseSkills,
 } = vi.hoisted(() => ({
   mockUseThreadChat: vi.fn().mockReturnValue({
     threadId: "test-thread",
@@ -45,6 +46,7 @@ const {
   mockLastScenarioCascadeProps: { current: null as any },
   mockUseAgents: vi.fn().mockReturnValue({ agents: [] }),
   mockUseAgent: vi.fn().mockReturnValue({ agent: null }),
+  mockUseSkills: vi.fn().mockReturnValue({ skills: [] }),
 }));
 
 vi.mock("@/core/i18n/hooks", () => ({
@@ -140,6 +142,10 @@ vi.mock("@/core/agents/hooks", () => ({
   useAgent: (...args: unknown[]) => mockUseAgent(...args),
 }));
 
+vi.mock("@/core/skills/hooks", () => ({
+  useSkills: () => mockUseSkills(),
+}));
+
 vi.mock("@/core/notification/hooks", () => ({
   useNotification: () => ({ showNotification: mockShowNotification }),
 }));
@@ -206,6 +212,7 @@ describe("ChatPage", () => {
     mockLastInputBoxProps.current = null;
     mockLastScenarioCascadeProps.current = null;
     mockTextOfMessage.mockReturnValue("");
+    mockUseSkills.mockReturnValue({ skills: [] });
   });
 
   test("renders chat box", () => {
@@ -423,7 +430,7 @@ describe("ChatPage", () => {
 
     expect(mockLastInputBoxProps.current.selectedTags).toEqual([
       { id: "agent:office-docs", label: "办公文档" },
-      { id: "task:word-editor", label: "Word 创建编辑" },
+      { id: "task:word-editor", label: "anthropic-docx" },
     ]);
   });
 
@@ -451,6 +458,45 @@ describe("ChatPage", () => {
     expect(mockLastInputBoxProps.current.allowedSkillNames).toEqual([
       "skill-resource-id",
     ]);
+  });
+
+  test("passes canonical Agent and Skill resource IDs in the selection context", () => {
+    mockUseThreadChat.mockReturnValue({
+      threadId: "test-thread",
+      setThreadId: vi.fn(),
+      isNewThread: true,
+      setIsNewThread: vi.fn(),
+      isMock: false,
+    });
+    mockUseAgents.mockReturnValue({
+      agents: [{ slug: "office-docs", resource_id: "agent-resource-id" }],
+    });
+    mockUseSkills.mockReturnValue({
+      skills: [
+        {
+          slug: "anthropic-docx",
+          name: "anthropic-docx",
+          resource_id: "skill-resource-id",
+        },
+      ],
+    });
+
+    render(<ChatPage />);
+    act(() => {
+      screen.getByTestId("scenario-cascade-bar").click();
+    });
+    act(() => {
+      mockLastScenarioCascadeProps.current.onToggleChip(
+        "daily",
+        "office-docs",
+        "word-editor",
+      );
+    });
+
+    expect(mockLastInputBoxProps.current.context).toMatchObject({
+      agent_resource_id: "agent-resource-id",
+      skill_resource_id: "skill-resource-id",
+    });
   });
 
   test("onStart callback sets threadId and updates URL", () => {

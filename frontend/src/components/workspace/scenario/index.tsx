@@ -21,7 +21,8 @@ interface ScenarioCascadeBarProps {
     agentSlug: string,
     taskId: string,
   ) => void;
-  onInjectPrompt: (template: string) => void;
+  /** @deprecated Prompt state is derived from useScenarioBinding by the page. */
+  onInjectPrompt?: (template: string) => void;
 }
 
 export function ScenarioCascadeBar({
@@ -53,7 +54,7 @@ export function ScenarioCascadeBar({
     if (!isDeselect) {
       const chip = getTemplateForChip(scenarioId, agentSlug, taskId);
       if (chip) {
-        onInjectPrompt(chip.promptTemplate);
+        onInjectPrompt?.(chip.promptTemplate);
       }
     }
   };

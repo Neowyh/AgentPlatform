@@ -1,5 +1,7 @@
 export interface TaskChip {
   taskId: string;
+  /** Stable translation key; label is retained for the legacy adapter. */
+  labelKey?: string;
   label: string;
   skillName: string;
   promptTemplate: string;
@@ -7,6 +9,8 @@ export interface TaskChip {
 
 export interface AgentPill {
   agentSlug: string;
+  /** Stable translation key; label is retained for the legacy adapter. */
+  labelKey?: string;
   label: string;
   chips?: TaskChip[];
 }
@@ -16,6 +20,14 @@ export interface ScenarioTab {
   labelKey: string;
   icon: string;
   agentPills: AgentPill[];
+}
+
+export interface ScenarioBinding {
+  agentSlug: string;
+  agentName: string;
+  skillName: string | null;
+  promptTemplate: string | null;
+  tags: Array<{ id: string; label: string }>;
 }
 
 export type ScenarioId = "daily" | "creative" | "professional";

@@ -14,6 +14,7 @@ from ideer.persistence.models.resource_catalog import Resource, ResourceDraft, R
 from ideer.resources.runtime import load_validated_agent_definition
 from ideer.resources.service import ResourceConflict, ResourceService
 from ideer.resources.storage import ResourceStorage, StorageError, StorageValidationError
+from ideer.skills.publish_policy import SkillPublishPolicy
 from ideer.workflows.v2.parser import parse_workflow_v2
 
 logger = logging.getLogger(__name__)
@@ -42,6 +43,11 @@ class ResourcePublisher:
     def __init__(self, service: ResourceService, storage: ResourceStorage) -> None:
         self.service = service
         self.storage = storage
+        self.skill_publish_policy = SkillPublishPolicy()
+
+    def _assert_publishable(self, resource: Resource, scan_result: dict) -> None:
+        if resource.type == "skill":
+            self.skill_publish_policy.assert_publishable(scan_result)
 
     async def save_filesystem_draft(
         self,
@@ -142,6 +148,7 @@ class ResourcePublisher:
     ) -> ResourceVersion:
         resource = await self.service.get_visible(resource_id)
         self.service.assert_modify(resource)
+        self._assert_publishable(resource, scan_result)
         draft = await self.service.session.get(ResourceDraft, resource.id)
         if draft is None or draft.revision != expected_draft_revision:
             raise ResourceConflict("Draft revision changed before filesystem publication")
@@ -215,6 +222,7 @@ class ResourcePublisher:
     ) -> ResourceVersion:
         resource = await self.service.get_visible(resource_id)
         self.service.assert_modify(resource)
+        self._assert_publishable(resource, scan_result)
         if resource.type != "workflow" or resource.storage_kind != "database":
             raise ResourceConflict("Only database-backed Workflow resources accept database publication")
         draft = await self.service.session.get(ResourceDraft, resource.id)

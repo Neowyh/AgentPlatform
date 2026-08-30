@@ -4,8 +4,6 @@ description: |
   离线长文本与文档智能摘要。基于上传文件或粘贴文本（禁公网 URL 抓取），走 LLM 分级摘要，输出结构化摘要+核心要点+关键词，支持 short/medium/long 三档与 text/markdown/json 输出。日常办公→智能摘要 Pill 一键触发。
 description_zh: "离线长文本/本地文档摘要（LLM 分级，禁公网），含文档摘要/会议纪要/要点提炼三模版，输出摘要+要点+关键词，支持 short/medium/long 与 text/markdown/json。"
 requires-internet: false
-user-invocable: true
-argument-hint: '[粘贴长文或上传 .txt/.md/.pdf/.docx]'
 allowed-tools:
   - Read
   - Grep

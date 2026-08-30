@@ -384,6 +384,21 @@ def test_merge_run_context_overrides_skill_name_and_skill_names():
     assert config["context"]["skill_names"] == ["s1", "s2"]
 
 
+def test_merge_run_context_overrides_resource_ids():
+    from app.gateway.services import build_run_config, merge_run_context_overrides
+
+    config = build_run_config("thread-1", None, None)
+    merge_run_context_overrides(
+        config,
+        {"agent_resource_id": "agent-1", "skill_resource_id": "skill-1"},
+    )
+
+    assert config["configurable"]["agent_resource_id"] == "agent-1"
+    assert config["configurable"]["skill_resource_id"] == "skill-1"
+    assert config["context"]["agent_resource_id"] == "agent-1"
+    assert config["context"]["skill_resource_id"] == "skill-1"
+
+
 def test_merge_run_context_overrides_noop_for_empty_context():
     from app.gateway.services import build_run_config, merge_run_context_overrides
 

@@ -322,7 +322,7 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
 
   // ── Auth endpoints (defense-in-depth for IDEER_AUTH_DISABLED mode) ──
 
-  void page.route("**/api/v1/auth/me", (route) => {
+  void page.route("**/api/v1/auth/me**", (route) => {
     if (route.request().method() === "GET") {
       return route.fulfill({
         status: 200,
@@ -338,7 +338,7 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
     return route.fallback();
   });
 
-  void page.route("**/api/v1/auth/setup-status", (route) => {
+  void page.route("**/api/v1/auth/setup-status**", (route) => {
     if (route.request().method() === "GET") {
       return route.fulfill({
         status: 200,
@@ -349,7 +349,7 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
     return route.fallback();
   });
 
-  void page.route("**/api/v1/auth/logout", (route) => {
+  void page.route("**/api/v1/auth/logout**", (route) => {
     if (route.request().method() === "POST") {
       return route.fulfill({
         status: 200,
