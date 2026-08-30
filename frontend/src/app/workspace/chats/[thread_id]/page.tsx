@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { type PromptInputMessage } from "@/components/ai-elements/prompt-input";
@@ -32,11 +33,88 @@ import { useScenarioBinding } from "@/core/scenarios/hooks";
 import type { ScenarioId } from "@/core/scenarios/types";
 import { useLocalSettings, useThreadSettings } from "@/core/settings";
 import { useSkills } from "@/core/skills/hooks";
-import { useThreadStream, useThreadTokenUsage } from "@/core/threads/hooks";
+import {
+  useThreadStream,
+  useThreadTokenUsage,
+  useThreads,
+} from "@/core/threads/hooks";
 import { threadTokenUsageToTokenUsage } from "@/core/threads/token-usage";
-import { textOfMessage } from "@/core/threads/utils";
+import {
+  pathOfThread,
+  textOfMessage,
+  titleOfThread,
+} from "@/core/threads/utils";
 import { env } from "@/env";
 import { cn } from "@/lib/utils";
+
+const QUICK_ENTRIES = [
+  { label: "整理资料", template: "请帮我整理以下资料：[粘贴内容或上传附件]" },
+  { label: "形成观点", template: "请基于以下材料形成清晰观点：[粘贴内容]" },
+  { label: "推进项目", template: "请帮我推进这个项目：[项目目标与当前进展]" },
+];
+
+function HomeQuickEntries({
+  onSelect,
+}: {
+  onSelect: (template: string) => void;
+}) {
+  return (
+    <section
+      className="workbench-home-module"
+      aria-label="快捷入口"
+      data-testid="workbench-quick-entries"
+    >
+      <p className="workbench-module-guide">
+        <span className="workbench-guide-question">方向不明？</span>
+        <span className="workbench-guide-answer">iDeer帮你找对帮手</span>
+      </p>
+      <div className="workbench-quick-entries">
+        {QUICK_ENTRIES.map((entry) => (
+          <button
+            key={entry.label}
+            type="button"
+            className="workbench-quick-entry"
+            onClick={() => onSelect(entry.template)}
+          >
+            {entry.label}
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function RecentTaskCards({
+  threads,
+}: {
+  threads: Array<Parameters<typeof titleOfThread>[0]>;
+}) {
+  if (threads.length === 0) return null;
+  return (
+    <section className="workbench-recent-tasks" aria-label="最近任务">
+      <p className="workbench-module-guide">
+        <span className="workbench-guide-question">工作复盘？</span>
+        <span className="workbench-guide-answer">iDeer带你回到过去</span>
+      </p>
+      <div className="workbench-recent-grid">
+        {threads.slice(0, 3).map((thread) => (
+          <Link
+            key={thread.thread_id}
+            href={pathOfThread(thread)}
+            className="workbench-recent-card"
+          >
+            <span className="workbench-recent-summary">
+              {titleOfThread(thread)}
+            </span>
+            <span className="workbench-recent-meta">
+              对话{thread.updated_at ? ` · ${thread.updated_at}` : ""}
+            </span>
+          </Link>
+        ))}
+      </div>
+    </section>
+  );
+}
 
 export default function ChatPage() {
   const { t } = useI18n();
@@ -63,6 +141,7 @@ export default function ChatPage() {
     tags,
   } = useScenarioBinding();
   const { agents } = useAgents();
+  const { data: recentThreads = [] } = useThreads();
   const selectedAgent = agents.find(
     (item) => (item.slug ?? item.name) === selectedPill?.agentSlug,
   );
@@ -305,8 +384,14 @@ export default function ChatPage() {
             >
               <div className="relative w-full max-w-(--container-width-md)">
                 {isWelcomeMode && (
-                  <div className="flex flex-col items-center gap-2">
+                  <div
+                    className="workbench-home flex flex-col items-center"
+                    data-testid="workbench-home"
+                  >
                     <Welcome mode={settings.context.mode} />
+                    <HomeQuickEntries
+                      onSelect={(template) => setPendingTemplate(template)}
+                    />
                     <ScenarioTabs
                       selected={activeScenario}
                       onSelect={handleSelectScenario}
@@ -334,35 +419,50 @@ export default function ChatPage() {
                   </div>
                 )}
                 {mountedRef.current ? (
-                  <InputBox
-                    className="bg-background/5 w-full"
-                    isWelcomeMode={isWelcomeMode}
-                    threadId={threadId}
-                    autoFocus={isWelcomeMode}
-                    status={
-                      thread.error
-                        ? "error"
-                        : thread.isLoading
-                          ? "streaming"
-                          : "ready"
-                    }
-                    context={selectionContext}
-                    allowedSkillNames={allowedSkillNames}
-                    pendingTemplate={pendingTemplate}
-                    onPendingTemplateConsumed={() => setPendingTemplate(null)}
-                    selectedTags={selectedTags}
-                    onRemoveTag={handleRemoveTag}
-                    disabled={
-                      isMock ||
-                      env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true" ||
-                      isUploading
-                    }
-                    onContextChange={(context) =>
-                      setSettings("context", context)
-                    }
-                    onSubmit={handleSubmit}
-                    onStop={handleStop}
-                  />
+                  <>
+                    {isWelcomeMode && (
+                      <p className="workbench-module-guide workbench-input-guide">
+                        <span className="workbench-guide-question">
+                          目标明确？
+                        </span>
+                        <span className="workbench-guide-answer">
+                          iDeer帮你落地实现
+                        </span>
+                      </p>
+                    )}
+                    <InputBox
+                      className="bg-background/5 w-full"
+                      isWelcomeMode={isWelcomeMode}
+                      threadId={threadId}
+                      autoFocus={isWelcomeMode}
+                      status={
+                        thread.error
+                          ? "error"
+                          : thread.isLoading
+                            ? "streaming"
+                            : "ready"
+                      }
+                      context={selectionContext}
+                      allowedSkillNames={allowedSkillNames}
+                      pendingTemplate={pendingTemplate}
+                      onPendingTemplateConsumed={() => setPendingTemplate(null)}
+                      selectedTags={selectedTags}
+                      onRemoveTag={handleRemoveTag}
+                      disabled={
+                        isMock ||
+                        env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true" ||
+                        isUploading
+                      }
+                      onContextChange={(context) =>
+                        setSettings("context", context)
+                      }
+                      onSubmit={handleSubmit}
+                      onStop={handleStop}
+                    />
+                    {isWelcomeMode && (
+                      <RecentTaskCards threads={recentThreads} />
+                    )}
+                  </>
                 ) : (
                   <div
                     aria-hidden="true"

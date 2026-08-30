@@ -117,7 +117,7 @@ describe("zhCN locale", () => {
   // =======================================================================
   describe("welcome", () => {
     it("welcome.greeting", () => {
-      expect(zhCN.welcome.greeting).toBe("iDeer，实现你的idea");
+      expect(zhCN.welcome.greeting).toBe("iDeer，落地你的idea");
     });
 
     it("welcome.description contains iDeer brand", () => {

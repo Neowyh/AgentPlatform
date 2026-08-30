@@ -317,6 +317,139 @@
     background: var(--background);
   }
 
+  .workbench-home {
+    gap: 1rem;
+  }
+
+  .workbench-welcome-title {
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    font-size: 2rem;
+    line-height: 1.2;
+  }
+
+  .workbench-home-module,
+  .workbench-recent-tasks {
+    width: min(100%, 52rem);
+  }
+
+  .workbench-home-module {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .workbench-module-guide {
+    margin: 0;
+    color: var(--muted-foreground);
+    font-size: 1rem;
+    line-height: 1.4;
+    text-align: center;
+    white-space: nowrap;
+  }
+
+  .workbench-guide-question {
+    color: var(--muted-foreground);
+  }
+
+  .workbench-guide-answer {
+    margin-inline-start: 0.5rem;
+    color: #a86443;
+    font-weight: 600;
+  }
+
+  .workbench-quick-entries {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.5rem;
+  }
+
+  .workbench-quick-entry {
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--card) 80%, transparent);
+    color: var(--muted-foreground);
+    padding: 0.55rem 1rem;
+    font: inherit;
+    cursor: pointer;
+    transition:
+      border-color 150ms ease,
+      color 150ms ease,
+      background 150ms ease;
+  }
+
+  .workbench-quick-entry:hover,
+  .workbench-quick-entry:focus-visible {
+    border-color: #c98b68;
+    background: var(--card);
+    color: var(--foreground);
+  }
+
+  .workbench-input-guide {
+    margin: 1rem 0 0.5rem;
+  }
+
+  .workbench-recent-tasks {
+    margin-top: 1.5rem;
+  }
+
+  .workbench-recent-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.75rem;
+    margin-top: 0.75rem;
+  }
+
+  .workbench-recent-card {
+    display: flex;
+    min-height: 6rem;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+    background: var(--card);
+    padding: 0.9rem;
+    color: var(--foreground);
+    text-decoration: none;
+    transition:
+      border-color 150ms ease,
+      box-shadow 150ms ease,
+      transform 150ms ease;
+  }
+
+  .workbench-recent-card:hover,
+  .workbench-recent-card:focus-visible {
+    border-color: #c98b68;
+    box-shadow: 0 8px 20px rgb(93 62 36 / 8%);
+    transform: translateY(-1px);
+  }
+
+  .workbench-recent-summary {
+    overflow: hidden;
+    font-size: 0.875rem;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .workbench-recent-meta {
+    color: var(--muted-foreground);
+    font-size: 0.875rem;
+  }
+
+  @media (max-width: 640px) {
+    .workbench-recent-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .workbench-module-guide {
+      white-space: normal;
+    }
+  }
+
   .container-md {
     width: 100%;
     @media (width >= 40rem) {

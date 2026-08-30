@@ -13,7 +13,7 @@ vi.mock("@/core/i18n/hooks", () => ({
   useI18n: () => ({
     t: {
       welcome: {
-        greeting: "iDeer，实现你的idea",
+        greeting: "iDeer，落地你的idea",
         description: "How can I help you today?",
         createYourOwnSkill: "Create Your Own Skill",
         createYourOwnSkillDescription: "Build custom skills for your workflow",
@@ -56,8 +56,7 @@ afterEach(() => {
 describe("Welcome", () => {
   test("renders the localized greeting by default", () => {
     render(<Welcome />);
-    expect(screen.getByText("iDeer")).toBeInTheDocument();
-    expect(screen.getByText("，实现你的idea")).toBeInTheDocument();
+    expect(screen.getByText("iDeer，落地你的idea")).toBeInTheDocument();
   });
 
   test("does not render a description by default", () => {
@@ -85,7 +84,7 @@ describe("Welcome", () => {
     mockSearchParams = new URLSearchParams("mode=skill");
     render(<Welcome />);
     expect(screen.queryByText("iDeer")).not.toBeInTheDocument();
-    expect(screen.queryByText("，实现你的idea")).not.toBeInTheDocument();
+    expect(screen.queryByText("iDeer，落地你的idea")).not.toBeInTheDocument();
   });
 
   test("applies custom className", () => {
@@ -99,15 +98,15 @@ describe("Welcome", () => {
 
   test("renders with display font in non-ultra mode", () => {
     render(<Welcome />);
-    expect(screen.getByText("iDeer")).toBeInTheDocument();
-    const title = screen.getByText("iDeer").closest("div");
+    expect(screen.getByText("iDeer，落地你的idea")).toBeInTheDocument();
+    const title = screen.getByText("iDeer，落地你的idea").closest("div");
     expect(title?.className).toMatch(/tracking-\[-0\.04em\]/);
   });
 
   test("renders same title in ultra mode (no AuroraText)", () => {
     render(<Welcome mode="ultra" />);
-    expect(screen.getByText("iDeer")).toBeInTheDocument();
-    expect(screen.getByText("，实现你的idea")).toBeInTheDocument();
+    expect(screen.getByText("iDeer，落地你的idea")).toBeInTheDocument();
+    expect(screen.getByText("iDeer，落地你的idea")).toBeInTheDocument();
   });
 
   test("does not render a greeting emoji", () => {
@@ -117,8 +116,8 @@ describe("Welcome", () => {
 
   test("keeps the localized greeting in ultra mode", () => {
     render(<Welcome mode="ultra" />);
-    expect(screen.getByText("iDeer")).toBeInTheDocument();
-    expect(screen.getByText("，实现你的idea")).toBeInTheDocument();
+    expect(screen.getByText("iDeer，落地你的idea")).toBeInTheDocument();
+    expect(screen.getByText("iDeer，落地你的idea")).toBeInTheDocument();
   });
 
   test("renders centered layout", () => {
