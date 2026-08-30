@@ -1,9 +1,17 @@
 import { render, screen, cleanup } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-const { mockImportPage, mockGenerateStaticParamsFor } = vi.hoisted(() => ({
-  mockImportPage: vi.fn(),
-  mockGenerateStaticParamsFor: vi.fn().mockReturnValue(() => []),
+const { mockImportPage, mockGenerateStaticParamsFor, mockNotFound } =
+  vi.hoisted(() => ({
+    mockImportPage: vi.fn(),
+    mockGenerateStaticParamsFor: vi.fn().mockReturnValue(() => []),
+    mockNotFound: vi.fn(() => {
+      throw new Error("NEXT_NOT_FOUND");
+    }),
+  }));
+
+vi.mock("next/navigation", () => ({
+  notFound: mockNotFound,
 }));
 
 vi.mock("nextra/pages", () => ({
@@ -68,6 +76,25 @@ describe("Docs catch-all page", () => {
 
     expect(metadata).toEqual({ title: "Overview" });
     expect(mockImportPage).toHaveBeenCalledWith(["overview"], "zh");
+  });
+
+  test("normalizes a multi-segment string mdxPath for Nextra", async () => {
+    mockImportPage.mockResolvedValue({
+      metadata: { title: "Deployment Guide" },
+      default: () => <div>Content</div>,
+    });
+
+    await generateMetadata({
+      params: Promise.resolve({
+        mdxPath: "application/deployment-guide",
+        lang: "en",
+      }),
+    });
+
+    expect(mockImportPage).toHaveBeenCalledWith(
+      ["application", "deployment-guide"],
+      "en",
+    );
   });
 
   test("Page renders MDX content inside wrapper", async () => {
@@ -140,5 +167,18 @@ describe("Docs catch-all page", () => {
 
     expect(receivedProps[0]).toHaveProperty("params");
     expect(receivedProps[0].params).toEqual(params);
+  });
+
+  test("Page supplies safe defaults for optional Nextra fields", async () => {
+    const MockMDXContent = () => <div>Content</div>;
+    mockImportPage.mockResolvedValue({ default: MockMDXContent });
+
+    render(
+      await DocPage({
+        params: Promise.resolve({ mdxPath: ["minimal"], lang: "en" }),
+      }),
+    );
+
+    expect(screen.getByTestId("mdx-wrapper")).toBeInTheDocument();
   });
 });

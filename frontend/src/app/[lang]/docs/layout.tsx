@@ -24,10 +24,20 @@ function formatPageRoute(base: string, items: PageMapItem[]): PageMapItem[] {
   });
 }
 
+function isLocalePage(item: PageMapItem, lang: string) {
+  return (
+    !("route" in item) ||
+    item.route === `/${lang}` ||
+    item.route.startsWith(`/${lang}/`)
+  );
+}
+
 export default async function DocLayout({ children, params }) {
   const { lang } = await params;
   const locale = getLocaleByLang(lang);
-  const pages = await getPageMap(`/${lang}`);
+  const pages = (await getPageMap(`/${lang}`)).filter((item) =>
+    isLocalePage(item, lang),
+  );
   const pageMap = formatPageRoute(`/${lang}/docs`, pages);
 
   return (

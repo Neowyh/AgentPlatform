@@ -11,7 +11,7 @@ test.describe("Landing page", () => {
 
     // "Get Started" call-to-action button in hero
     await expect(
-      page.getByRole("link", { name: /get started/i }),
+      page.getByRole("link", { name: /get started|开始创造/i }),
     ).toBeVisible();
   });
 
@@ -20,7 +20,9 @@ test.describe("Landing page", () => {
 
     await page.goto("/");
 
-    const getStarted = page.getByRole("link", { name: /get started/i });
+    const getStarted = page.getByRole("link", {
+      name: /get started|开始创造/i,
+    });
     await getStarted.click();
 
     // Should redirect to /workspace/chats/new

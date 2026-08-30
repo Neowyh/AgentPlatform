@@ -243,7 +243,7 @@ describe("AuthProvider.refreshUser", () => {
     expect(mockPush).not.toHaveBeenCalled();
   });
 
-  test("sets user to null on fetch error", async () => {
+  test("preserves the existing user on a transient fetch error", async () => {
     mockFetch.mockRejectedValue(new Error("Network error"));
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
@@ -258,7 +258,7 @@ describe("AuthProvider.refreshUser", () => {
       await ctxRef.current!.refreshUser();
     });
 
-    expect(ctxRef.current!.user).toBeNull();
+    expect(ctxRef.current!.user).toEqual(mockUser);
     expect(consoleSpy).toHaveBeenCalledWith(
       "Failed to refresh user:",
       expect.any(Error),

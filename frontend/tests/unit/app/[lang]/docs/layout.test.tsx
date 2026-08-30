@@ -25,6 +25,7 @@ vi.mock("nextra-theme-docs", () => ({
     <div
       data-testid="nextra-layout"
       data-docs-repository-base={docsRepositoryBase}
+      data-page-map={JSON.stringify(pageMap)}
     >
       {navbar}
       {footer}
@@ -185,5 +186,27 @@ describe("DocLayout", () => {
     const params = Promise.resolve({ lang: "en" });
     render(await DocLayout({ children: <div>content</div>, params }));
     expect(mockGetPageMap).toHaveBeenCalledWith("/en");
+  });
+
+  test("excludes non-locale app routes from the docs page map", async () => {
+    mockGetPageMap.mockResolvedValueOnce([
+      { route: "/en/application", name: "application" },
+      {
+        route: "/workspace/agents/[agent_name]/edit",
+        name: "edit",
+      },
+      { name: "separator", separator: true },
+    ]);
+
+    const params = Promise.resolve({ lang: "en" });
+    render(await DocLayout({ children: <div>content</div>, params }));
+
+    expect(screen.getByTestId("nextra-layout")).toHaveAttribute(
+      "data-page-map",
+      JSON.stringify([
+        { route: "/en/docs/en/application", name: "application" },
+        { name: "separator", separator: true },
+      ]),
+    );
   });
 });

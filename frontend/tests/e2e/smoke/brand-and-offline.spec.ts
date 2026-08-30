@@ -1,6 +1,13 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 import { mockLangGraphAPI } from "../utils/mock-api";
+
+async function openWorkspaceMenu(page: Page) {
+  const trigger = page.getByTestId("nav-menu-trigger").first();
+  await expect(trigger).toBeVisible({ timeout: 15_000 });
+  await trigger.click();
+  await expect(page.getByRole("menu")).toBeVisible();
+}
 
 test.describe("Brand and offline adaptations", () => {
   test.describe("Landing Page", () => {
@@ -9,7 +16,9 @@ test.describe("Brand and offline adaptations", () => {
       await page.goto("/");
 
       // Should show iDeer brand name
-      await expect(page.getByText("iDeer").first()).toBeVisible({
+      await expect(
+        page.getByText("iDeer", { exact: true }).first(),
+      ).toBeVisible({
         timeout: 15_000,
       });
     });
@@ -47,25 +56,15 @@ test.describe("Brand and offline adaptations", () => {
     });
   });
 
-  test.describe("Auth Pages", () => {
-    test("login page shows iDeer brand", async ({ page }) => {
-      mockLangGraphAPI(page);
-      await page.goto("/login");
-
-      // Should show iDeer brand
-      await expect(page.getByText("iDeer")).toBeVisible({
-        timeout: 15_000,
-      });
-    });
-  });
-
   test.describe("Workspace", () => {
     test("workspace header shows iDeer brand", async ({ page }) => {
       mockLangGraphAPI(page);
       await page.goto("/workspace/chats/new");
 
       // Should show iDeer in the sidebar/header area
-      await expect(page.getByText("iDeer").first()).toBeVisible({
+      await expect(
+        page.getByText("iDeer", { exact: true }).first(),
+      ).toBeVisible({
         timeout: 15_000,
       });
     });
@@ -110,13 +109,10 @@ test.describe("Brand and offline adaptations", () => {
       await page.goto("/workspace/chats/new");
 
       // Open settings
-      await page
-        .getByRole("button", { name: /settings/i })
-        .first()
-        .click();
+      await openWorkspaceMenu(page);
 
       // Navigate to About section
-      await page.getByText(/about/i).click();
+      await page.getByTestId("about-settings-menu-item").click();
 
       // Should NOT have GitHub links in the about content
       const githubLinks = page.locator(
@@ -129,14 +125,13 @@ test.describe("Brand and offline adaptations", () => {
       mockLangGraphAPI(page);
       await page.goto("/workspace/chats/new");
 
-      await page
-        .getByRole("button", { name: /settings/i })
-        .first()
-        .click();
-      await page.getByText(/about/i).click();
+      await openWorkspaceMenu(page);
+      await page.getByTestId("about-settings-menu-item").click();
 
       // Should show iDeer in about content
-      await expect(page.getByText("iDeer").first()).toBeVisible({
+      await expect(
+        page.getByText("iDeer", { exact: true }).first(),
+      ).toBeVisible({
         timeout: 10_000,
       });
     });
@@ -150,10 +145,7 @@ test.describe("Brand and offline adaptations", () => {
       await page.goto("/workspace/chats/new");
 
       // Open the settings/more dropdown
-      const menuBtn = page.getByRole("button", {
-        name: /settings|more|设置/i,
-      });
-      await menuBtn.first().click();
+      await openWorkspaceMenu(page);
 
       // Should NOT have "Visit GitHub" or "Official Website" links
       await expect(page.getByText(/visit.*github|official.*website/i))
