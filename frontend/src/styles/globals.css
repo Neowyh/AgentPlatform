@@ -476,6 +476,29 @@
     box-shadow: 0 8px 22px rgb(93 62 36 / 8%);
   }
 
+  .workbench-collection-surface {
+    background: var(--background);
+  }
+
+  .workbench-collection-surface > :is(div, header) {
+    border-color: var(--border);
+  }
+
+  .workbench-collection-grid > * {
+    border-color: var(--border);
+  }
+
+  .workbench-settings-dialog {
+    border-color: var(--border);
+    background: var(--card);
+  }
+
+  .workbench-settings-layout > nav,
+  .workbench-settings-layout > div {
+    border-color: var(--border);
+    background: color-mix(in srgb, var(--card) 92%, var(--background));
+  }
+
   @media (max-width: 640px) {
     .workbench-recent-grid {
       grid-template-columns: 1fr;
