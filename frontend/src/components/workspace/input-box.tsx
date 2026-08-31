@@ -11,7 +11,6 @@ import {
   XIcon,
   ZapIcon,
 } from "lucide-react";
-import { useSearchParams } from "next/navigation";
 import {
   useCallback,
   useEffect,
@@ -76,10 +75,9 @@ import { Suggestion, Suggestions } from "../ai-elements/suggestion";
 import { useThread } from "./messages/context";
 import { ModeHoverGuide } from "./mode-hover-guide";
 import { InlineSelectedTag, type SelectedTag } from "./scenario/selected-tags";
-import { SlashOverlay } from "./slash-overlay";
+import { SkillPicker } from "./slash-overlay";
 import {
   getSlashAtCursor,
-  filterSkillsByAllowedNames,
   getMatchingSkillSuggestions,
   parseSlashPrefix,
 } from "./slash-suggestions";
@@ -171,9 +169,7 @@ export function InputBox({
   onStop?: () => void;
 }) {
   const { t } = useI18n();
-  const searchParams = useSearchParams();
   const [modelDialogOpen, setModelDialogOpen] = useState(false);
-  const [skillDialogOpen, setSkillDialogOpen] = useState(false);
   const { models } = useModels();
   const { thread, isMock } = useThread();
   const { textInput } = usePromptInputController();
@@ -523,13 +519,19 @@ export function InputBox({
     ],
   );
 
-  const handleSkillSelect = useCallback(
-    (skillName: string) => {
-      handleSlashSelect(skillName);
-      setSkillDialogOpen(false);
-    },
-    [handleSlashSelect],
-  );
+  const handleSkillPickerOpen = useCallback(() => {
+    const value = textInput.value ?? "";
+    const textarea = promptRootRef.current?.querySelector("textarea");
+    const cursor = textarea?.selectionStart ?? value.length;
+    setSlashState({
+      open: true,
+      query: "",
+      start: cursor,
+      end: cursor,
+      activeIndex: 0,
+    });
+    textarea?.focus();
+  }, [textInput]);
 
   const showFollowups =
     !disabled &&
@@ -749,11 +751,12 @@ export function InputBox({
               externalOnKeyDown={handleSlashKeyDown}
             />
             {slashState.open && (
-              <SlashOverlay
+              <SkillPicker
                 skills={skills}
                 allowedSkillNames={allowedSkillNames}
                 query={slashState.query}
                 activeIndex={slashState.activeIndex}
+                title={t.inputBox.skill}
                 onSelect={(skill) => handleSlashSelect(skill.name)}
                 onClose={() =>
                   setSlashState((prev) => ({ ...prev, open: false }))
@@ -1120,7 +1123,7 @@ export function InputBox({
               <PromptInputButton
                 data-testid="skill-selector-trigger"
                 aria-label={t.inputBox.invokeSkill}
-                onClick={() => setSkillDialogOpen(true)}
+                onClick={handleSkillPickerOpen}
               >
                 <SparklesIcon className="size-4" />
                 <span className="type-body font-normal">
@@ -1161,34 +1164,6 @@ export function InputBox({
               {t.inputBox.followupConfirmReplace}
             </Button>
           </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={skillDialogOpen} onOpenChange={setSkillDialogOpen}>
-        <DialogContent className="workbench-skill-dialog sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>{t.inputBox.invokeSkill}</DialogTitle>
-            <DialogDescription>
-              {t.inputBox.skillDialogDescription}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="max-h-96 overflow-y-auto">
-            {filterSkillsByAllowedNames(skills, allowedSkillNames)
-              .filter((skill) => skill.enabled)
-              .map((skill) => (
-                <button
-                  key={skill.name}
-                  type="button"
-                  className="hover:bg-accent type-body flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left"
-                  onClick={() => handleSkillSelect(skill.name)}
-                >
-                  <span className="font-medium">{skill.name}</span>
-                  <span className="text-muted-foreground type-body truncate">
-                    {skill.description}
-                  </span>
-                </button>
-              ))}
-          </div>
         </DialogContent>
       </Dialog>
     </div>

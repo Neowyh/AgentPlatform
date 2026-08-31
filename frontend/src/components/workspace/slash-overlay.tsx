@@ -7,23 +7,25 @@ import { cn } from "@/lib/utils";
 
 import { getMatchingSkillSuggestions } from "./slash-suggestions";
 
-export type SlashOverlayProps = {
+export type SkillPickerProps = {
   skills: Skill[];
   allowedSkillNames?: readonly string[];
   query: string;
   activeIndex: number;
   onSelect: (skill: Skill) => void;
   onClose: () => void;
+  title?: string;
 };
 
-export function SlashOverlay({
+export function SkillPicker({
   skills,
   allowedSkillNames,
   query,
   activeIndex,
   onSelect,
   onClose,
-}: SlashOverlayProps) {
+  title,
+}: SkillPickerProps) {
   const listRef = useRef<HTMLDivElement>(null);
   const suggestions = getMatchingSkillSuggestions(
     skills,
@@ -50,15 +52,20 @@ export function SlashOverlay({
     <div
       ref={listRef}
       data-testid="slash-overlay"
-      className="workbench-slash-overlay bg-popover absolute right-0 bottom-full left-0 z-50 mb-0 box-border max-h-72 w-full min-w-0 overflow-y-auto rounded-md border p-1 shadow-md"
+      className="workbench-slash-overlay bg-popover absolute right-0 bottom-full left-0 z-50 mb-2 box-border max-h-72 w-full min-w-0 overflow-y-auto rounded-2xl border p-2 shadow-lg"
     >
+      {title ? (
+        <div className="text-muted-foreground type-body px-2 py-1 font-medium">
+          {title} ({suggestions.length})
+        </div>
+      ) : null}
       {suggestions.map((skill, i) => (
         <button
           key={skill.name}
           type="button"
           data-testid={`slash-option-${skill.name}`}
           className={cn(
-            "type-body flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left outline-none",
+            "type-body flex w-full min-w-0 items-center gap-2 rounded-lg px-2 py-2 text-left outline-none",
             i === activeIndex
               ? "bg-accent text-accent-foreground"
               : "hover:bg-accent/50",
@@ -69,7 +76,7 @@ export function SlashOverlay({
           }}
         >
           <span className="shrink-0 font-medium">{skill.name}</span>
-          <span className="text-muted-foreground type-body min-w-0 flex-1 truncate">
+          <span className="text-muted-foreground type-supporting min-w-0 flex-1 truncate">
             {skill.description}
           </span>
         </button>
@@ -77,3 +84,5 @@ export function SlashOverlay({
     </div>
   );
 }
+
+export const SlashOverlay = SkillPicker;

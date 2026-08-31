@@ -148,11 +148,7 @@ vi.mock("@/components/workspace/tooltip", () => ({
 }));
 
 vi.mock("@/core/skills/hooks", () => ({
-  useSkills: () => ({
-    skills: [],
-    isLoading: false,
-    error: null,
-  }),
+  useSkills: vi.fn(),
 }));
 
 // Mock the prompt-input hooks and provide simple renderable stubs for
@@ -260,6 +256,7 @@ import { useThread } from "@/components/workspace/messages/context";
 import { SlashOverlay } from "@/components/workspace/slash-overlay";
 import { fetch } from "@/core/api/fetcher";
 import { useModels } from "@/core/models/hooks";
+import { useSkills } from "@/core/skills/hooks";
 import { useSearchParams } from "next/navigation";
 
 // ---------------------------------------------------------------------------
@@ -354,6 +351,11 @@ beforeEach(() => {
   // Default mocks
   (useModels as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
     models: [makeModel()],
+  });
+  (useSkills as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+    skills: [],
+    isLoading: false,
+    error: null,
   });
   (useThread as unknown as ReturnType<typeof vi.fn>).mockReturnValue(
     makeThread(),
@@ -1627,6 +1629,38 @@ describe("InputBox", () => {
       expect(skillButton).toHaveAttribute("aria-label", "Invoke skill");
       expect(modelButton).toHaveAttribute("aria-label", "Select model");
     });
+
+    test("opens the same anchored skill picker as slash suggestions", async () => {
+      const user = userEvent.setup();
+      (useSkills as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+        skills: [
+          {
+            name: "research",
+            description: "Research a topic",
+            category: "general",
+            license: "MIT",
+            enabled: true,
+          },
+        ],
+        isLoading: false,
+        error: null,
+      });
+
+      render(<InputBox {...defaultProps()} />);
+
+      const skillButton = screen
+        .getAllByTestId("skill-selector-trigger")
+        .find((element) => element.tagName === "BUTTON");
+      await user.click(skillButton!);
+
+      const picker = screen.getByTestId("slash-overlay");
+      expect(picker).toHaveClass("left-0", "right-0", "w-full", "bottom-full");
+      expect(picker).toHaveTextContent("research");
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+      await user.click(screen.getByTestId("slash-option-research"));
+      expect(mockSetInput).toHaveBeenCalledWith("/research ");
+    });
   });
 
   describe("slash skill picker", () => {
@@ -1650,7 +1684,7 @@ describe("InputBox", () => {
       );
 
       const overlay = screen.getByTestId("slash-overlay");
-      expect(overlay).toHaveClass("left-0", "right-0", "w-full", "mb-0");
+      expect(overlay).toHaveClass("left-0", "right-0", "w-full", "mb-2");
       expect(overlay).not.toHaveClass("w-auto", "max-w-none");
     });
   });

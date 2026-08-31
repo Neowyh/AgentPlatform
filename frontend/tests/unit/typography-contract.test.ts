@@ -11,6 +11,7 @@ describe("production typography contract", () => {
     );
 
     expect(css).toContain("--text-display: 2.5rem;");
+    expect(css).toContain("--text-display-hero: clamp(2.25rem, 4vw, 2.75rem);");
     expect(css).toContain("--text-page-title: 1.5rem;");
     expect(css).toContain("--text-section-title: 1.125rem;");
     expect(css).toContain("--text-body: 1rem;");
@@ -68,5 +69,21 @@ describe("production typography contract", () => {
 
     expect(classOutput).toBe("");
     expect(cssOutput).toBe("");
+  });
+
+  test("keeps the landing hero close to its pre-governance scale through roles", async () => {
+    const css = await readFile(
+      join(process.cwd(), "src/styles/globals.css"),
+      "utf8",
+    );
+    const hero = await readFile(
+      join(process.cwd(), "src/components/landing/hero.tsx"),
+      "utf8",
+    );
+
+    expect(css).toContain(".workbench-welcome-title");
+    expect(css).toContain("font-size: var(--text-display-hero);");
+    expect(hero).toContain('<h1 className="type-display-hero');
+    expect(hero).toContain('<span className="type-body">开始创造</span>');
   });
 });
