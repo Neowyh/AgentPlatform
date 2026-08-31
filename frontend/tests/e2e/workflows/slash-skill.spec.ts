@@ -25,6 +25,19 @@ const MOCK_SKILLS = [
     license: null,
     enabled: true,
   },
+  ...[
+    "officecli",
+    "data-analysis",
+    "code-documentation",
+    "summarize",
+    "ppt-generation",
+  ].map((name) => ({
+    name,
+    description: `${name} skill`,
+    category: "public" as const,
+    license: null,
+    enabled: true,
+  })),
 ];
 
 async function gotoChat(page: Page) {
@@ -84,6 +97,9 @@ test.describe("Slash skill invocation", () => {
       await expect(page.getByTestId("slash-overlay")).toBeVisible({
         timeout: 8000,
       });
+      await expect(
+        page.getByTestId("slash-overlay").getByRole("button"),
+      ).toHaveCount(8);
     });
 
     test("typing /res filters to matching skills", async ({ page }) => {
@@ -157,26 +173,26 @@ test.describe("Slash skill invocation", () => {
   });
 
   test.describe("Skills toolbar button", () => {
-    test("Skills button opens skill selection dialog", async ({ page }) => {
+    test("Skills button opens the anchored skill picker", async ({ page }) => {
       await gotoChat(page);
 
       await page.getByTestId("skill-selector-trigger").click();
 
-      await expect(page.getByText("Select Skill")).toBeVisible({
+      await expect(page.getByTestId("slash-overlay")).toBeVisible({
         timeout: 8000,
       });
     });
 
-    test("clicking skill in dialog inserts prefix", async ({ page }) => {
+    test("clicking skill in the picker inserts prefix", async ({ page }) => {
       await gotoChat(page);
 
       await page.getByTestId("skill-selector-trigger").click();
 
-      await expect(page.getByText("Select Skill")).toBeVisible({
+      await expect(page.getByTestId("slash-overlay")).toBeVisible({
         timeout: 8000,
       });
 
-      await page.getByRole("dialog").getByText("deep-research").first().click();
+      await page.getByTestId("slash-option-deep-research").click();
 
       await expect(page.getByTestId("chat-input")).toHaveValue(
         /\/deep-research\s/,

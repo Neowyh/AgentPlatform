@@ -48,6 +48,21 @@ test.describe("WorkBuddy cascade bar", () => {
     await expect(chips).toHaveCount(3);
   });
 
+  test("disables skill invocation while an Agent Pill is selected", async ({
+    page,
+  }) => {
+    mockLangGraphAPI(page);
+    await page.goto("/workspace/chats/new");
+    await selectAgent(page, /日常办公/, /办公文档/);
+
+    await expect(page.getByTestId("skill-selector-trigger")).not.toBeVisible();
+    const textarea = page.getByTestId("chat-input");
+    await textarea.fill("/");
+    await textarea.press("Space");
+    await textarea.press("Backspace");
+    await expect(page.getByTestId("slash-overlay")).not.toBeVisible();
+  });
+
   test("injects prompt template when chip is clicked", async ({ page }) => {
     mockLangGraphAPI(page);
     await page.goto("/workspace/chats/new");

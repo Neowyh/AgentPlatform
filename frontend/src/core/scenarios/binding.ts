@@ -1,17 +1,12 @@
 import { useCallback, useMemo, useState } from "react";
 
-import { SCENARIOS, getChipsByPill, getPillsByScenario } from "./config";
+import { getChipsByPill, getPillsByScenario } from "./config";
 import type {
   ChipSelection,
   PillSelection,
   ScenarioId,
   TaskChip,
 } from "./types";
-
-export const SCENARIO_IDS = SCENARIOS.map((scenario) => scenario.id) as [
-  ScenarioId,
-  ...ScenarioId[],
-];
 
 export type BindingState = "idle" | "pending" | "confirming";
 
@@ -40,14 +35,8 @@ export interface ScenarioBinding {
   bindingState: BindingState;
   pendingTemplate: string | null;
   selectScenario: (id: ScenarioId) => void;
-  togglePill: {
-    (agentSlug: string): void;
-    (scenarioId: ScenarioId, agentSlug: string): void;
-  };
-  toggleChip: {
-    (taskId: string): void;
-    (scenarioId: ScenarioId, agentSlug: string, taskId: string): void;
-  };
+  togglePill: (agentSlug: string) => void;
+  toggleChip: (taskId: string) => void;
   consumePendingTemplate: () => void;
   setBindingState: (state: BindingState) => void;
   resetSelection: () => void;
@@ -88,14 +77,9 @@ export function useScenarioBinding(
   }, []);
 
   const togglePill = useCallback(
-    (scenarioOrAgent: ScenarioId | string, maybeAgent?: string) => {
-      const scenarioId = maybeAgent
-        ? (scenarioOrAgent as ScenarioId)
-        : undefined;
-      const agentSlug = maybeAgent ?? scenarioOrAgent;
-      const targetScenario =
-        scenarioId ?? SCENARIO_IDS.find((id) => findPill(id, agentSlug));
-      if (!targetScenario || !findPill(targetScenario, agentSlug)) return;
+    (agentSlug: string) => {
+      const targetScenario = selectedScenario;
+      if (!findPill(targetScenario, agentSlug)) return;
 
       setSelectedScenario(targetScenario);
       setSelectedPill((current) =>
@@ -108,21 +92,14 @@ export function useScenarioBinding(
       setPendingTemplate(null);
       setBindingState("idle");
     },
-    [],
+    [selectedScenario],
   );
 
   const toggleChip = useCallback(
-    (first: string | ScenarioId, second?: string, third?: string) => {
-      const scenarioId = third ? (first as ScenarioId) : selectedScenario;
-      const agentSlug = third ? second : selectedPill?.agentSlug;
-      const taskId = third ?? first;
-      if (
-        !agentSlug ||
-        (third &&
-          (selectedPill?.scenarioId !== scenarioId ||
-            selectedPill.agentSlug !== agentSlug)) ||
-        !findTaskChip(scenarioId, agentSlug, taskId)
-      ) {
+    (taskId: string) => {
+      const scenarioId = selectedScenario;
+      const agentSlug = selectedPill?.agentSlug;
+      if (!agentSlug || !findTaskChip(scenarioId, agentSlug, taskId)) {
         return;
       }
 
@@ -211,8 +188,8 @@ export function useScenarioBinding(
     bindingState,
     pendingTemplate,
     selectScenario,
-    togglePill: togglePill as ScenarioBinding["togglePill"],
-    toggleChip: toggleChip as ScenarioBinding["toggleChip"],
+    togglePill,
+    toggleChip,
     consumePendingTemplate: useCallback(() => {
       setPendingTemplate(null);
       setBindingState("idle");

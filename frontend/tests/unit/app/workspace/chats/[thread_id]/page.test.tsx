@@ -127,7 +127,7 @@ vi.mock("@/components/workspace/scenario", () => ({
     return (
       <button
         data-testid="scenario-cascade-bar"
-        onClick={() => props.onTogglePill("daily", "office-docs")}
+        onClick={() => props.onTogglePill("office-docs")}
       />
     );
   },
@@ -417,16 +417,11 @@ describe("ChatPage", () => {
 
     const { rerender } = render(<ChatPage />);
     rerender(<ChatPage />);
-    act(() => {
-      screen.getByTestId("scenario-cascade-bar").click();
-    });
+    act(() => screen.getByRole("tab", { name: "日常办公" }).click());
+    act(() => screen.getByTestId("scenario-cascade-bar").click());
 
     act(() => {
-      mockLastScenarioCascadeProps.current.onToggleChip(
-        "daily",
-        "office-docs",
-        "word-editor",
-      );
+      mockLastScenarioCascadeProps.current.onToggleChip("word-editor");
     });
 
     expect(mockLastInputBoxProps.current.selectedTags).toEqual([
@@ -455,15 +450,10 @@ describe("ChatPage", () => {
 
     const { rerender } = render(<ChatPage />);
     rerender(<ChatPage />);
+    act(() => screen.getByRole("tab", { name: "日常办公" }).click());
+    act(() => screen.getByTestId("scenario-cascade-bar").click());
     act(() => {
-      screen.getByTestId("scenario-cascade-bar").click();
-    });
-    act(() => {
-      mockLastScenarioCascadeProps.current.onToggleChip(
-        "daily",
-        "office-docs",
-        "word-editor",
-      );
+      mockLastScenarioCascadeProps.current.onToggleChip("word-editor");
     });
 
     expect(mockLastInputBoxProps.current.selectedTags).toContainEqual({
@@ -496,14 +486,14 @@ describe("ChatPage", () => {
     });
 
     render(<ChatPage />);
-    act(() => {
-      screen.getByTestId("scenario-cascade-bar").click();
-    });
+    act(() => screen.getByRole("tab", { name: "日常办公" }).click());
+    act(() => screen.getByTestId("scenario-cascade-bar").click());
 
     expect(mockUseAgent).toHaveBeenLastCalledWith("agent-resource-id");
     expect(mockLastInputBoxProps.current.allowedSkillNames).toEqual([
       "skill-resource-id",
     ]);
+    expect(mockLastInputBoxProps.current.skillInvocationEnabled).toBe(false);
   });
 
   test("passes canonical Agent and Skill resource IDs in the selection context", () => {
@@ -528,15 +518,10 @@ describe("ChatPage", () => {
     });
 
     render(<ChatPage />);
+    act(() => screen.getByRole("tab", { name: "日常办公" }).click());
+    act(() => screen.getByTestId("scenario-cascade-bar").click());
     act(() => {
-      screen.getByTestId("scenario-cascade-bar").click();
-    });
-    act(() => {
-      mockLastScenarioCascadeProps.current.onToggleChip(
-        "daily",
-        "office-docs",
-        "word-editor",
-      );
+      mockLastScenarioCascadeProps.current.onToggleChip("word-editor");
     });
 
     expect(mockLastInputBoxProps.current.context).toMatchObject({

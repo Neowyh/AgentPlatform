@@ -1687,6 +1687,24 @@ describe("InputBox", () => {
       expect(overlay).toHaveClass("left-0", "right-0", "w-full", "mb-2");
       expect(overlay).not.toHaveClass("w-auto", "max-w-none");
     });
+
+    test("hides the skill button and ignores slash invocation when disabled", async () => {
+      const user = userEvent.setup();
+      (useSkills as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+        skills: [skill],
+        isLoading: false,
+        error: null,
+      });
+
+      render(<InputBox {...defaultProps()} skillInvocationEnabled={false} />);
+
+      expect(
+        screen.queryByTestId("skill-selector-trigger"),
+      ).not.toBeInTheDocument();
+      const textarea = screen.getByTestId("chat-input");
+      await user.type(textarea, "/");
+      expect(screen.queryByTestId("slash-overlay")).not.toBeInTheDocument();
+    });
   });
 
   // ----- Disabled and welcome mode combined -----
