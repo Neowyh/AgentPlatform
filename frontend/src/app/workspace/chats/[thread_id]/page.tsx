@@ -28,8 +28,8 @@ import { useAgent, useAgents } from "@/core/agents/hooks";
 import { useI18n } from "@/core/i18n/hooks";
 import { useModels } from "@/core/models/hooks";
 import { useNotification } from "@/core/notification/hooks";
+import { useScenarioBinding } from "@/core/scenarios/binding";
 import { getChipsByPill } from "@/core/scenarios/config";
-import { useScenarioBinding } from "@/core/scenarios/hooks";
 import type { ScenarioId } from "@/core/scenarios/types";
 import { useLocalSettings, useThreadSettings } from "@/core/settings";
 import { useSkills } from "@/core/skills/hooks";
@@ -133,7 +133,7 @@ export default function ChatPage() {
     togglePill,
     toggleChip,
     activeBinding,
-    clear: resetSelection,
+    resetSelection,
   } = useScenarioBinding();
   const { agents } = useAgents();
   const { data: recentThreads = [] } = useThreads();
@@ -230,14 +230,10 @@ export default function ChatPage() {
   const handleRemoveTag = useCallback(
     (id: string) => {
       if (id === `agent:${selectedPill?.agentSlug}` && selectedPill) {
-        togglePill(selectedPill.scenarioId, selectedPill.agentSlug);
+        togglePill(selectedPill.agentSlug);
         setPendingTemplate(null);
       } else if (id === `task:${selectedChip?.taskId}` && selectedChip) {
-        toggleChip(
-          selectedChip.scenarioId,
-          selectedChip.agentSlug,
-          selectedChip.taskId,
-        );
+        toggleChip(selectedChip.taskId);
         setPendingTemplate(null);
       }
     },
@@ -458,6 +454,7 @@ export default function ChatPage() {
                       }
                       context={selectionContext}
                       allowedSkillNames={allowedSkillNames}
+                      skillInvocationEnabled={!selectedPill}
                       pendingTemplate={pendingTemplate}
                       clearInjectedTemplateKey={templateResetKey}
                       onPendingTemplateConsumed={() => setPendingTemplate(null)}

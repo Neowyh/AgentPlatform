@@ -20,11 +20,6 @@ vi.mock("@/core/scenarios/config", () => ({
   getChipsByPill: (...args: unknown[]) => mockGetChipsByPill(...args),
 }));
 
-const mockGetTemplateForChip = vi.fn();
-vi.mock("@/core/scenarios/prompt-templates", () => ({
-  getTemplateForChip: (...args: unknown[]) => mockGetTemplateForChip(...args),
-}));
-
 vi.mock("@/core/scenarios/types", () => ({}));
 
 import { ScenarioCascadeBar } from "@/components/workspace/scenario/index";
@@ -43,17 +38,14 @@ describe("ScenarioCascadeBar", () => {
     vi.clearAllMocks();
     mockGetPillsByScenario.mockReturnValue([]);
     mockGetChipsByPill.mockReturnValue([]);
-    mockGetTemplateForChip.mockReturnValue(undefined);
   });
 
   const defaultProps = {
     selectedScenario: null as ScenarioId | null,
     selectedPill: null as PillSelection,
     selectedChip: null as ChipSelection,
-    onSelectScenario: vi.fn(),
     onTogglePill: vi.fn(),
     onToggleChip: vi.fn(),
-    onInjectPrompt: vi.fn(),
   };
 
   it("no selected scenario → no task entry is rendered", () => {
@@ -97,88 +89,6 @@ describe("ScenarioCascadeBar", () => {
     expect(screen.getByTestId("task-chip-bar")).toBeInTheDocument();
   });
 
-  it("onInjectPrompt calls getTemplateForChip result", async () => {
-    const { default: userEvent } = await import("@testing-library/user-event");
-    mockGetPillsByScenario.mockReturnValue([
-      {
-        agentSlug: "agent-a",
-        label: "Agent A",
-        chips: [
-          {
-            taskId: "task-a",
-            label: "Skill",
-            skillName: "s1",
-            promptTemplate: "t1",
-          },
-        ],
-      },
-    ]);
-    mockGetChipsByPill.mockReturnValue([
-      { taskId: "task-a", label: "Skill", skillName: "s1" },
-    ]);
-    mockGetTemplateForChip.mockReturnValue({
-      promptTemplate: "prompt from template",
-    });
-    const onInjectPrompt = vi.fn();
-    const onToggleChip = vi.fn();
-
-    render(
-      <ScenarioCascadeBar
-        {...defaultProps}
-        selectedScenario="daily"
-        selectedPill={{ scenarioId: "daily", agentSlug: "agent-a" }}
-        onToggleChip={onToggleChip}
-        onInjectPrompt={onInjectPrompt}
-      />,
-    );
-
-    await userEvent.setup().click(screen.getByRole("tab", { name: "Skill" }));
-
-    expect(onToggleChip).toHaveBeenCalledWith("daily", "agent-a", "task-a");
-    expect(mockGetTemplateForChip).toHaveBeenCalledWith(
-      "daily",
-      "agent-a",
-      "task-a",
-    );
-    expect(onInjectPrompt).toHaveBeenCalledWith("prompt from template");
-  });
-
-  it("getTemplateForChip returns undefined → onInjectPrompt not called", async () => {
-    const { default: userEvent } = await import("@testing-library/user-event");
-    mockGetPillsByScenario.mockReturnValue([
-      {
-        agentSlug: "agent-a",
-        label: "Agent A",
-        chips: [
-          {
-            taskId: "task-a",
-            label: "Skill",
-            skillName: "s1",
-            promptTemplate: "t1",
-          },
-        ],
-      },
-    ]);
-    mockGetChipsByPill.mockReturnValue([
-      { taskId: "task-a", label: "Skill", skillName: "s1" },
-    ]);
-    mockGetTemplateForChip.mockReturnValue(undefined);
-    const onInjectPrompt = vi.fn();
-
-    render(
-      <ScenarioCascadeBar
-        {...defaultProps}
-        selectedScenario="daily"
-        selectedPill={{ scenarioId: "daily", agentSlug: "agent-a" }}
-        onInjectPrompt={onInjectPrompt}
-      />,
-    );
-
-    await userEvent.setup().click(screen.getByRole("tab", { name: "Skill" }));
-
-    expect(onInjectPrompt).not.toHaveBeenCalled();
-  });
-
   it("toggleChip passes through onToggleChip", async () => {
     const { default: userEvent } = await import("@testing-library/user-event");
     mockGetPillsByScenario.mockReturnValue([
@@ -198,7 +108,6 @@ describe("ScenarioCascadeBar", () => {
     mockGetChipsByPill.mockReturnValue([
       { taskId: "task-a", label: "Skill", skillName: "s1" },
     ]);
-    mockGetTemplateForChip.mockReturnValue(undefined);
     const onToggleChip = vi.fn();
 
     render(
@@ -212,7 +121,7 @@ describe("ScenarioCascadeBar", () => {
 
     await userEvent.setup().click(screen.getByRole("tab", { name: "Skill" }));
 
-    expect(onToggleChip).toHaveBeenCalledWith("daily", "agent-a", "task-a");
+    expect(onToggleChip).toHaveBeenCalledWith("task-a");
   });
 
   it("scenario switch → pills refresh", () => {

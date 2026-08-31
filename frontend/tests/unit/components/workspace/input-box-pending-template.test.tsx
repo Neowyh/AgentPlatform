@@ -371,7 +371,7 @@ describe("InputBox pendingTemplate", () => {
     expect(textarea).toBeTruthy();
   });
 
-  it("pendingTemplate + non-empty input → replaces the current input", () => {
+  it("pendingTemplate + non-empty input → asks before replacing", () => {
     mockTextInputContext.value = "existing text";
 
     render(
@@ -382,8 +382,8 @@ describe("InputBox pendingTemplate", () => {
       />,
     );
 
-    expect(mockSetInput).toHaveBeenCalledWith("请帮我处理以下文档：[描述需求]");
-    expect(screen.queryByText("Send suggestion?")).not.toBeInTheDocument();
+    expect(mockSetInput).not.toHaveBeenCalled();
+    expect(screen.getByText("Send suggestion?")).toBeInTheDocument();
   });
 
   it("clears an injected template when the scenario changes", () => {
@@ -409,7 +409,7 @@ describe("InputBox pendingTemplate", () => {
     expect(mockTextInputContext.clear).toHaveBeenCalled();
   });
 
-  it("replaces a non-empty input and highlights the template placeholder", () => {
+  it("replaces a non-empty input after confirmation and highlights the template placeholder", async () => {
     mockTextInputContext.value = "existing text";
     render(
       <InputBox
@@ -418,6 +418,8 @@ describe("InputBox pendingTemplate", () => {
         onPendingTemplateConsumed={vi.fn()}
       />,
     );
+    await userEvent.setup().click(screen.getByText("Replace & send"));
+    expect(mockSetInput).toHaveBeenCalledWith("请帮我处理以下文档：[描述需求]");
     act(() => {
       vi.advanceTimersByTime(50);
     });

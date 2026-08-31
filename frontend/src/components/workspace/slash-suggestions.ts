@@ -1,6 +1,5 @@
 import type { Skill } from "@/core/skills/type";
-
-export const MAX_SKILL_SUGGESTIONS = 6;
+import { parseTaskSkillPrefix } from "@/core/threads/task-input";
 
 export const RESERVED_SLASH_SKILL_NAMES: ReadonlySet<string> = new Set([
   "bootstrap",
@@ -74,16 +73,9 @@ export function getMatchingSkillSuggestions(
       const bStarts = b.name.startsWith(q);
       if (aStarts !== bStarts) return aStarts ? -1 : 1;
       return a.index - b.index;
-    })
-    .slice(0, MAX_SKILL_SUGGESTIONS);
+    });
 
   return candidates.map(({ skill }) => skill);
 }
 
-export function parseSlashPrefix(
-  text: string,
-): { skillName: string; rest: string } | null {
-  const match = /^\/([a-z0-9](?:[a-z0-9-]*[a-z0-9])?)(?:\s+(.*))?$/.exec(text);
-  if (!match) return null;
-  return { skillName: match[1]!, rest: match[2] ?? "" };
-}
+export const parseSlashPrefix = parseTaskSkillPrefix;

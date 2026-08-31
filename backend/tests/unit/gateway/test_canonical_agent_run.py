@@ -14,12 +14,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 import ideer.persistence.models  # noqa: F401
+from app.gateway.canonical_agent_run_preparation import prepare_canonical_agent_run
 from app.gateway.routers.assistants_compat import _list_canonical_assistants
-from app.gateway.services import _prepare_canonical_agent_run
 from ideer.persistence.base import Base
 from ideer.persistence.models.resource_catalog import Resource, RunResourceSnapshot
 from ideer.persistence.models.user import UserModel
 from ideer.resources.publisher import ResourcePublisher
+from ideer.resources.runtime import CanonicalResourceLoader, ResourceRuntimeError
 from ideer.resources.service import ResourceAction, ResourceActor, ResourceService
 from ideer.resources.storage import ResourceStorage
 
@@ -81,7 +82,7 @@ async def test_prepare_canonical_agent_run_freezes_visible_version_and_hides_pri
     monkeypatch.setattr("ideer.config.get_paths", lambda: SimpleNamespace(base_dir=tmp_path))
     request = SimpleNamespace(state=SimpleNamespace(user=SimpleNamespace(id="runner")))
 
-    factory = await _prepare_canonical_agent_run(resource_id, request, visible_run_id)
+    factory = await prepare_canonical_agent_run(resource_id, request, visible_run_id)
 
     assert callable(factory)
     assistants = await _list_canonical_assistants(request)
@@ -89,13 +90,33 @@ async def test_prepare_canonical_agent_run_freezes_visible_version_and_hides_pri
     async with session_factory() as session:
         snapshots = list((await session.execute(select(RunResourceSnapshot).where(RunResourceSnapshot.run_id == visible_run_id))).scalars())
         assert [(item.resource_id, item.version) for item in snapshots] == [(resource_id, 1)]
+
+    original_skill_loader = CanonicalResourceLoader.load_agent_skill_definitions
+
+    async def fail_skill_loading(*_args: object, **_kwargs: object) -> list[object]:
+        raise ResourceRuntimeError("skill view preparation failed")
+
+    monkeypatch.setattr(CanonicalResourceLoader, "load_agent_skill_definitions", fail_skill_loading)
+    with pytest.raises(HTTPException) as failed_info:
+        await prepare_canonical_agent_run(resource_id, request, hidden_run_id)
+    assert failed_info.value.status_code == 409
+    async with session_factory() as session:
+        failed = list((await session.execute(select(RunResourceSnapshot).where(RunResourceSnapshot.run_id == hidden_run_id))).scalars())
+        assert failed == []
+    monkeypatch.setattr(
+        CanonicalResourceLoader,
+        "load_agent_skill_definitions",
+        original_skill_loader,
+    )
+
+    async with session_factory() as session:
         resource = await session.get(Resource, resource_id)
         assert resource is not None
         resource.visibility = "private"
         await session.commit()
 
     with pytest.raises(HTTPException) as exc_info:
-        await _prepare_canonical_agent_run(resource_id, request, hidden_run_id)
+        await prepare_canonical_agent_run(resource_id, request, hidden_run_id)
     assert exc_info.value.status_code == 404
     async with session_factory() as session:
         hidden = list((await session.execute(select(RunResourceSnapshot).where(RunResourceSnapshot.run_id == hidden_run_id))).scalars())

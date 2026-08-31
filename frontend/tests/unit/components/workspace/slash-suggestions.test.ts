@@ -6,7 +6,6 @@ import {
   getMatchingSkillSuggestions,
   parseSlashPrefix,
   RESERVED_SLASH_SKILL_NAMES,
-  MAX_SKILL_SUGGESTIONS,
 } from "@/components/workspace/slash-suggestions";
 import type { Skill } from "@/core/skills/type";
 
@@ -139,13 +138,11 @@ describe("getSlashAtCursor", () => {
 });
 
 describe("getMatchingSkillSuggestions", () => {
-  test("returns up to MAX_SKILL_SUGGESTIONS items", () => {
+  test("returns all matching enabled items", () => {
     const many = Array.from({ length: 20 }, (_, i) =>
       makeSkill(`skill-${String(i).padStart(2, "0")}`),
     );
-    expect(getMatchingSkillSuggestions(many, "").length).toBe(
-      MAX_SKILL_SUGGESTIONS,
-    );
+    expect(getMatchingSkillSuggestions(many, "").length).toBe(20);
   });
 
   test("filters by name prefix (case insensitive)", () => {
@@ -168,10 +165,8 @@ describe("getMatchingSkillSuggestions", () => {
     ).toEqual(["consulting-analysis"]);
   });
 
-  test("returns all skills for empty query (up to MAX)", () => {
-    expect(getMatchingSkillSuggestions(SKILLS, "").length).toBe(
-      MAX_SKILL_SUGGESTIONS,
-    );
+  test("returns all skills for empty query", () => {
+    expect(getMatchingSkillSuggestions(SKILLS, "").length).toBe(SKILLS.length);
   });
 
   test("prefers startsWith matches over substring matches", () => {

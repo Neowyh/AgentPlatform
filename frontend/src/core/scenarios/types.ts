@@ -22,14 +22,6 @@ export interface ScenarioTab {
   agentPills: AgentPill[];
 }
 
-export interface ScenarioBinding {
-  agentSlug: string;
-  agentName: string;
-  skillName: string | null;
-  promptTemplate: string | null;
-  tags: Array<{ id: string; label: string }>;
-}
-
 export type ScenarioId = "daily" | "creative" | "professional";
 
 export type PillSelection = {

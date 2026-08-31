@@ -58,6 +58,13 @@ import { useI18n } from "@/core/i18n/hooks";
 import { useModels } from "@/core/models/hooks";
 import { useSkills } from "@/core/skills/hooks";
 import type { AgentThreadContext } from "@/core/threads";
+import {
+  applyTaskInputInsertion,
+  getResolvedInputMode,
+  hasTaskInput,
+  prepareTaskInputInsertion,
+  prepareTaskSubmission,
+} from "@/core/threads/task-input";
 import { textOfMessage } from "@/core/threads/utils";
 import { cn } from "@/lib/utils";
 
@@ -79,7 +86,6 @@ import { SkillPicker } from "./slash-overlay";
 import {
   getSlashAtCursor,
   getMatchingSkillSuggestions,
-  parseSlashPrefix,
 } from "./slash-suggestions";
 import { Tooltip } from "./tooltip";
 
@@ -97,19 +103,6 @@ function highlightPlaceholder(text: string, root: HTMLElement | null) {
   textarea.focus();
 }
 
-function getResolvedMode(
-  mode: InputMode | undefined,
-  supportsThinking: boolean,
-): InputMode {
-  if (!supportsThinking && mode !== "flash") {
-    return "flash";
-  }
-  if (mode) {
-    return mode;
-  }
-  return supportsThinking ? "pro" : "flash";
-}
-
 export function InputBox({
   className,
   disabled,
@@ -122,6 +115,7 @@ export function InputBox({
   pendingTemplate,
   clearInjectedTemplateKey,
   allowedSkillNames,
+  skillInvocationEnabled = true,
   selectedTags = [],
   onPendingTemplateConsumed,
   onContextChange,
@@ -152,6 +146,7 @@ export function InputBox({
   pendingTemplate?: string | null;
   clearInjectedTemplateKey?: number;
   allowedSkillNames?: readonly string[];
+  skillInvocationEnabled?: boolean;
   selectedTags?: SelectedTag[];
   onPendingTemplateConsumed?: () => void;
   onContextChange?: (
@@ -223,6 +218,12 @@ export function InputBox({
   }, [selectedTags]);
 
   useEffect(() => {
+    if (!skillInvocationEnabled) {
+      setSlashState((prev) => ({ ...prev, open: false }));
+    }
+  }, [skillInvocationEnabled]);
+
+  useEffect(() => {
     if (models.length === 0) {
       return;
     }
@@ -230,7 +231,7 @@ export function InputBox({
     const fallbackModel = currentModel ?? models[0]!;
     const supportsThinking = fallbackModel.supports_thinking ?? false;
     const nextModelName = fallbackModel.name;
-    const nextMode = getResolvedMode(context.mode, supportsThinking);
+    const nextMode = getResolvedInputMode(context.mode, supportsThinking);
 
     if (context.model_name === nextModelName && context.mode === nextMode) {
       return;
@@ -271,7 +272,10 @@ export function InputBox({
       onContextChange?.({
         ...context,
         model_name,
-        mode: getResolvedMode(context.mode, model.supports_thinking ?? false),
+        mode: getResolvedInputMode(
+          context.mode,
+          model.supports_thinking ?? false,
+        ),
         reasoning_effort: context.reasoning_effort,
       });
       setModelDialogOpen(false);
@@ -283,7 +287,7 @@ export function InputBox({
     (mode: InputMode) => {
       onContextChange?.({
         ...context,
-        mode: getResolvedMode(mode, supportThinking),
+        mode: getResolvedInputMode(mode, supportThinking),
         reasoning_effort:
           mode === "ultra"
             ? "high"
@@ -313,41 +317,37 @@ export function InputBox({
         onStop?.();
         return;
       }
-      if (!message.text.trim() && message.files.length === 0) {
+      if (!hasTaskInput(message)) {
         return;
       }
       setFollowups([]);
       setFollowupsHidden(false);
       setFollowupsLoading(false);
 
-      const parsed = parseSlashPrefix(message.text);
-      const skillName = parsed?.skillName ?? null;
-      const cleanText = parsed ? parsed.rest : message.text;
-      const cleanMessage = { ...message, text: cleanText };
+      const submission = prepareTaskSubmission(message, context);
 
-      const contextWithSkill = skillName
-        ? { ...context, skill_name: skillName }
-        : context;
-
-      if (resolvedModelName && context.model_name !== resolvedModelName) {
+      if (
+        submission.skillName ||
+        (resolvedModelName && context.model_name !== resolvedModelName)
+      ) {
         onContextChange?.({
-          ...contextWithSkill,
+          ...submission.context,
           model_name: resolvedModelName,
-          mode: getResolvedMode(
+          mode: getResolvedInputMode(
             context.mode,
             selectedModel?.supports_thinking ?? false,
           ),
         });
         return new Promise<void>((resolve, reject) => {
           setTimeout(() => {
-            Promise.resolve(onSubmit?.(cleanMessage))
+            Promise.resolve(onSubmit?.(submission.message))
               .then(resolve)
               .catch(reject);
           }, 0);
         });
       }
 
-      return onSubmit?.(cleanMessage);
+      return onSubmit?.(submission.message);
     },
     [
       context,
@@ -390,7 +390,13 @@ export function InputBox({
       return;
     }
     const isCascade = pendingSourceRef.current === "cascade";
-    textInput.setInput(pendingSuggestion);
+    textInput.setInput(
+      applyTaskInputInsertion(
+        textInput.value ?? "",
+        pendingSuggestion,
+        "replace",
+      ),
+    );
     setFollowupsHidden(true);
     setConfirmOpen(false);
     setPendingSuggestion(null);
@@ -410,10 +416,11 @@ export function InputBox({
       return;
     }
     const isCascade = pendingSourceRef.current === "cascade";
-    const current = (textInput.value ?? "").trim();
-    const next = current
-      ? `${current}\n${pendingSuggestion}`
-      : pendingSuggestion;
+    const next = applyTaskInputInsertion(
+      textInput.value ?? "",
+      pendingSuggestion,
+      "append",
+    );
     textInput.setInput(next);
     setFollowupsHidden(true);
     setConfirmOpen(false);
@@ -430,6 +437,7 @@ export function InputBox({
 
   const handleCursorChange = useCallback(
     (pos: number) => {
+      if (!skillInvocationEnabled) return;
       const match = getSlashAtCursor(textInput.value ?? "", pos);
       if (match) {
         setSlashState({ open: true, ...match, activeIndex: 0 });
@@ -437,7 +445,7 @@ export function InputBox({
         setSlashState((prev) => ({ ...prev, open: false }));
       }
     },
-    [textInput],
+    [skillInvocationEnabled, textInput],
   );
 
   const handleSlashSelect = useCallback(
@@ -468,7 +476,7 @@ export function InputBox({
 
   const handleSlashKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      if (!slashState.open) return;
+      if (!skillInvocationEnabled || !slashState.open) return;
       const suggestions = getMatchingSkillSuggestions(
         skills,
         slashState.query,
@@ -515,11 +523,13 @@ export function InputBox({
       slashState.activeIndex,
       skills,
       allowedSkillNames,
+      skillInvocationEnabled,
       handleSlashSelect,
     ],
   );
 
   const handleSkillPickerOpen = useCallback(() => {
+    if (!skillInvocationEnabled) return;
     const value = textInput.value ?? "";
     const textarea = promptRootRef.current?.querySelector("textarea");
     const cursor = textarea?.selectionStart ?? value.length;
@@ -531,7 +541,7 @@ export function InputBox({
       activeIndex: 0,
     });
     textarea?.focus();
-  }, [textInput]);
+  }, [skillInvocationEnabled, textInput]);
 
   const showFollowups =
     !disabled &&
@@ -566,12 +576,23 @@ export function InputBox({
 
   useEffect(() => {
     if (!pendingTemplate) return;
-    textInput.setInput(pendingTemplate);
-    injectedTemplateRef.current = pendingTemplate;
     onPendingTemplateConsumed?.();
-    setTimeout(() => {
-      highlightPlaceholder(pendingTemplate, promptRootRef.current);
-    }, 50);
+    const insertion = prepareTaskInputInsertion(
+      textInput.value ?? "",
+      pendingTemplate,
+    );
+    if (insertion.kind === "conflict") {
+      pendingSourceRef.current = "cascade";
+      setPendingSuggestion(pendingTemplate);
+      setConfirmOpen(true);
+      return;
+    }
+    textInput.setInput(insertion.text);
+    injectedTemplateRef.current = insertion.text;
+    setTimeout(
+      () => highlightPlaceholder(insertion.text, promptRootRef.current),
+      50,
+    );
   }, [pendingTemplate, onPendingTemplateConsumed, textInput]);
 
   useEffect(() => {
@@ -750,7 +771,7 @@ export function InputBox({
               onCursorChange={handleCursorChange}
               externalOnKeyDown={handleSlashKeyDown}
             />
-            {slashState.open && (
+            {skillInvocationEnabled && slashState.open && (
               <SkillPicker
                 skills={skills}
                 allowedSkillNames={allowedSkillNames}
@@ -1119,18 +1140,20 @@ export function InputBox({
                 </ModelSelectorList>
               </ModelSelectorContent>
             </ModelSelector>
-            <Tooltip content={t.inputBox.invokeSkill}>
-              <PromptInputButton
-                data-testid="skill-selector-trigger"
-                aria-label={t.inputBox.invokeSkill}
-                onClick={handleSkillPickerOpen}
-              >
-                <SparklesIcon className="size-4" />
-                <span className="type-body font-normal">
-                  {t.inputBox.skill}
-                </span>
-              </PromptInputButton>
-            </Tooltip>
+            {skillInvocationEnabled && (
+              <Tooltip content={t.inputBox.invokeSkill}>
+                <PromptInputButton
+                  data-testid="skill-selector-trigger"
+                  aria-label={t.inputBox.invokeSkill}
+                  onClick={handleSkillPickerOpen}
+                >
+                  <SparklesIcon className="size-4" />
+                  <span className="type-body font-normal">
+                    {t.inputBox.skill}
+                  </span>
+                </PromptInputButton>
+              </Tooltip>
+            )}
             <PromptInputSubmit
               className="rounded-full"
               disabled={disabled}
