@@ -195,9 +195,10 @@ export function InputBox({
     end: number;
     activeIndex: number;
   }>({ open: false, query: "", start: 0, end: 0, activeIndex: 0 });
+  const selectedTagIdentity = selectedTags.map((tag) => tag.id).join("\0");
 
   useEffect(() => {
-    if (selectedTags.length > 0 && promptRootRef.current) {
+    if (selectedTagIdentity.length > 0 && promptRootRef.current) {
       const textarea =
         promptRootRef.current.querySelector<HTMLTextAreaElement>("textarea");
       if (textarea) {
@@ -205,7 +206,7 @@ export function InputBox({
         textarea.setSelectionRange(0, 0);
       }
     }
-  }, [selectedTags]);
+  }, [selectedTagIdentity]);
 
   useLayoutEffect(() => {
     const element = selectedTagsRef.current;

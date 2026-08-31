@@ -63,6 +63,28 @@ test.describe("WorkBuddy cascade bar", () => {
     await expect(page.getByTestId("slash-overlay")).not.toBeVisible();
   });
 
+  test("keeps the caret after newly typed text when an Agent Pill is selected", async ({
+    page,
+  }) => {
+    mockLangGraphAPI(page);
+    await page.goto("/workspace/chats/new");
+    await selectAgent(page, /日常办公/, /办公文档/);
+
+    const textarea = page.locator("textarea[name='message']");
+    await textarea.click();
+    await textarea.pressSequentially("abc");
+
+    await expect(textarea).toHaveValue("abc");
+    await expect
+      .poll(() =>
+        textarea.evaluate((element: HTMLTextAreaElement) => ({
+          start: element.selectionStart,
+          end: element.selectionEnd,
+        })),
+      )
+      .toEqual({ start: 3, end: 3 });
+  });
+
   test("injects prompt template when chip is clicked", async ({ page }) => {
     mockLangGraphAPI(page);
     await page.goto("/workspace/chats/new");

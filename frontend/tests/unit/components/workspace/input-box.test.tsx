@@ -1412,6 +1412,32 @@ describe("InputBox", () => {
       expect(screen.getByTestId("chat-input")).toHaveFocus();
     });
 
+    test("keeps the caret after newly typed text when selected tags are recreated", async () => {
+      const user = userEvent.setup();
+      const tag = { id: "agent:writer", label: "办公文档" };
+      const props = defaultProps({
+        onRemoveTag: vi.fn(),
+        selectedTags: [tag],
+      });
+      const { rerender } = render(<InputBox {...props} />);
+      const textarea = screen.getByTestId<HTMLTextAreaElement>("chat-input");
+
+      await user.type(textarea, "a");
+      rerender(<InputBox {...props} selectedTags={[{ ...tag }]} />);
+      await waitFor(() => expect(textarea).toHaveValue("a"));
+      textarea.setRangeText(
+        "b",
+        textarea.selectionStart,
+        textarea.selectionEnd,
+        "end",
+      );
+      fireEvent.input(textarea);
+
+      expect(textarea).toHaveValue("ab");
+      expect(textarea.selectionStart).toBe(2);
+      expect(textarea.selectionEnd).toBe(2);
+    });
+
     test("renders with non-welcome mode layout", () => {
       render(<InputBox {...defaultProps()} />);
       const container = screen.getByTestId("input-box");
