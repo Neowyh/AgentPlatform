@@ -85,6 +85,10 @@ export interface Translations {
     placeholder: string;
     createSkillPrompt: string;
     addAttachments: string;
+    selectModel: string;
+    invokeSkill: string;
+    skill: string;
+    skillDialogDescription: string;
     mode: string;
     flashMode: string;
     flashModeDescription: string;

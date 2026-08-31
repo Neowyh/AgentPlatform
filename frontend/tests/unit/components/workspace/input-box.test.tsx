@@ -29,6 +29,11 @@ vi.mock("@/core/i18n/hooks", () => ({
       inputBox: {
         placeholder: "How can I assist you today? /invoke skill",
         addAttachments: "Add attachments",
+        selectModel: "Select model",
+        invokeSkill: "Invoke skill",
+        skill: "Skill",
+        skillDialogDescription:
+          "Choose a skill to insert /skill-name into the input.",
         mode: "Mode",
         flashMode: "Flash",
         flashModeDescription: "Fast and efficient",
@@ -252,6 +257,7 @@ vi.mock("@/components/ai-elements/prompt-input", () => {
 
 import { InputBox } from "@/components/workspace/input-box";
 import { useThread } from "@/components/workspace/messages/context";
+import { SlashOverlay } from "@/components/workspace/slash-overlay";
 import { fetch } from "@/core/api/fetcher";
 import { useModels } from "@/core/models/hooks";
 import { useSearchParams } from "next/navigation";
@@ -1602,7 +1608,50 @@ describe("InputBox", () => {
     test("renders the attachment button", () => {
       render(<InputBox {...defaultProps()} />);
       // The attachment button has a PaperclipIcon and a tooltip
-      expect(screen.getByTestId("tooltip")).toBeInTheDocument();
+      expect(screen.getByTitle("Add attachments")).toBeInTheDocument();
+    });
+  });
+
+  describe("composer action labels", () => {
+    test("makes the skill action discoverable and labels the model action", () => {
+      render(<InputBox {...defaultProps()} />);
+
+      const skillButton = screen
+        .getAllByTestId("skill-selector-trigger")
+        .find((element) => element.tagName === "BUTTON");
+      const modelButton = screen
+        .getAllByTestId("model-selector-trigger")
+        .find((element) => element.tagName === "BUTTON");
+
+      expect(skillButton).toHaveTextContent("Skill");
+      expect(skillButton).toHaveAttribute("aria-label", "Invoke skill");
+      expect(modelButton).toHaveAttribute("aria-label", "Select model");
+    });
+  });
+
+  describe("slash skill picker", () => {
+    const skill = {
+      name: "research",
+      description: "Research a topic",
+      category: "general",
+      license: "MIT",
+      enabled: true,
+    };
+
+    test("matches the input width and sits against the input top edge", () => {
+      render(
+        <SlashOverlay
+          skills={[skill]}
+          query=""
+          activeIndex={0}
+          onSelect={vi.fn()}
+          onClose={vi.fn()}
+        />,
+      );
+
+      const overlay = screen.getByTestId("slash-overlay");
+      expect(overlay).toHaveClass("left-0", "right-0", "w-full", "mb-0");
+      expect(overlay).not.toHaveClass("w-auto", "max-w-none");
     });
   });
 
@@ -1624,7 +1673,7 @@ describe("InputBox", () => {
       const user = userEvent.setup();
       render(<InputBox {...defaultProps()} />);
 
-      const tooltip = screen.getByTestId("tooltip");
+      const tooltip = screen.getByTitle("Add attachments");
       const attachButton = tooltip.querySelector("button");
       expect(attachButton).toBeTruthy();
       await user.click(attachButton!);

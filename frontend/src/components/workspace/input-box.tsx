@@ -1077,18 +1077,20 @@ export function InputBox({
               open={modelDialogOpen}
               onOpenChange={setModelDialogOpen}
             >
-              <ModelSelectorTrigger asChild>
-                <PromptInputButton
-                  data-testid="model-selector-trigger"
-                  aria-label="Select model"
-                >
-                  <div className="flex min-w-0 flex-col items-start text-left">
-                    <ModelSelectorName className="text-base font-normal">
-                      {selectedModel?.display_name}
-                    </ModelSelectorName>
-                  </div>
-                </PromptInputButton>
-              </ModelSelectorTrigger>
+              <Tooltip content={t.inputBox.selectModel}>
+                <ModelSelectorTrigger asChild>
+                  <PromptInputButton
+                    data-testid="model-selector-trigger"
+                    aria-label={t.inputBox.selectModel}
+                  >
+                    <div className="flex min-w-0 flex-col items-start text-left">
+                      <ModelSelectorName className="text-base font-normal">
+                        {selectedModel?.display_name}
+                      </ModelSelectorName>
+                    </div>
+                  </PromptInputButton>
+                </ModelSelectorTrigger>
+              </Tooltip>
               <ModelSelectorContent>
                 <ModelSelectorInput placeholder={t.inputBox.searchModels} />
                 <ModelSelectorList>
@@ -1114,13 +1116,18 @@ export function InputBox({
                 </ModelSelectorList>
               </ModelSelectorContent>
             </ModelSelector>
-            <PromptInputButton
-              data-testid="skill-selector-trigger"
-              aria-label="Select skill"
-              onClick={() => setSkillDialogOpen(true)}
-            >
-              <SparklesIcon className="size-4" />
-            </PromptInputButton>
+            <Tooltip content={t.inputBox.invokeSkill}>
+              <PromptInputButton
+                data-testid="skill-selector-trigger"
+                aria-label={t.inputBox.invokeSkill}
+                onClick={() => setSkillDialogOpen(true)}
+              >
+                <SparklesIcon className="size-4" />
+                <span className="text-base font-normal">
+                  {t.inputBox.skill}
+                </span>
+              </PromptInputButton>
+            </Tooltip>
             <PromptInputSubmit
               className="rounded-full"
               disabled={disabled}
@@ -1160,9 +1167,9 @@ export function InputBox({
       <Dialog open={skillDialogOpen} onOpenChange={setSkillDialogOpen}>
         <DialogContent className="workbench-skill-dialog sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Select Skill</DialogTitle>
+            <DialogTitle>{t.inputBox.invokeSkill}</DialogTitle>
             <DialogDescription>
-              Choose a skill to invoke with your message.
+              {t.inputBox.skillDialogDescription}
             </DialogDescription>
           </DialogHeader>
           <div className="max-h-96 overflow-y-auto">

@@ -50,7 +50,7 @@ export function SlashOverlay({
     <div
       ref={listRef}
       data-testid="slash-overlay"
-      className="workbench-slash-overlay bg-popover absolute right-0 bottom-full left-0 z-50 mb-2 max-h-72 w-auto max-w-none overflow-y-auto rounded-md border p-1 shadow-md"
+      className="workbench-slash-overlay bg-popover absolute right-0 bottom-full left-0 z-50 mb-0 box-border max-h-72 w-full min-w-0 overflow-y-auto rounded-md border p-1 shadow-md"
     >
       {suggestions.map((skill, i) => (
         <button
@@ -68,8 +68,8 @@ export function SlashOverlay({
             onSelect(skill);
           }}
         >
-          <span className="font-medium">{skill.name}</span>
-          <span className="text-muted-foreground truncate text-base">
+          <span className="shrink-0 font-medium">{skill.name}</span>
+          <span className="text-muted-foreground min-w-0 flex-1 truncate text-base">
             {skill.description}
           </span>
         </button>

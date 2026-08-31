@@ -168,6 +168,11 @@ export const enUS: Translations = {
     createSkillPrompt:
       "We're going to build a new skill step by step with `skill-creator`. To start, what do you want this skill to do?",
     addAttachments: "Add attachments",
+    selectModel: "Select model",
+    invokeSkill: "Invoke skill",
+    skill: "Skill",
+    skillDialogDescription:
+      "Choose a skill to insert /skill-name into the input.",
     mode: "Mode",
     flashMode: "Flash",
     flashModeDescription: "Fast and efficient, but may not be accurate",

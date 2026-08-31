@@ -168,6 +168,10 @@ export const zhCN: Translations = {
     createSkillPrompt:
       "我们一起用 skill-creator 技能来创建一个技能吧。先问问我希望这个技能能做什么。",
     addAttachments: "添加附件",
+    selectModel: "选择模型",
+    invokeSkill: "调用技能",
+    skill: "技能",
+    skillDialogDescription: "选择技能后，会将 /技能名 插入输入框。",
     mode: "模式",
     flashMode: "闪速",
     flashModeDescription: "快速且高效的完成任务，但可能不够精准",
