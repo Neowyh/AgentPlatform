@@ -739,7 +739,7 @@ export function InputBox({
           {(attachment) => <PromptInputAttachment data={attachment} />}
         </PromptInputAttachments>
         <PromptInputBody className="absolute top-0 right-0 left-0 z-3">
-          <div className="relative">
+          <div className="relative w-full">
             {selectedTags.length > 0 && onRemoveTag && (
               <div
                 ref={selectedTagsRef}

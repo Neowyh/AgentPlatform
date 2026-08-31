@@ -85,6 +85,41 @@ async function gotoChat(page: Page) {
 }
 
 test.describe("Slash skill invocation", () => {
+  test("typing slash and clicking Skill show the same anchored picker", async ({
+    page,
+  }) => {
+    await gotoChat(page);
+
+    const textarea = page.getByTestId("chat-input");
+    const picker = page.getByTestId("slash-overlay");
+
+    await textarea.fill("/");
+    await textarea.press("Space");
+    await textarea.press("Backspace");
+    await expect(picker).toBeVisible({ timeout: 8000 });
+
+    const slashBox = await picker.boundingBox();
+    const slashSkills = await picker.getByRole("button").allTextContents();
+    const slashScreenshot = await picker.screenshot();
+
+    await textarea.press("Escape");
+    await expect(picker).not.toBeVisible();
+
+    await page.getByTestId("skill-selector-trigger").click();
+    await expect(picker).toBeVisible({ timeout: 8000 });
+
+    const buttonBox = await picker.boundingBox();
+    const buttonSkills = await picker.getByRole("button").allTextContents();
+    const buttonScreenshot = await picker.screenshot();
+    const inputBox = await textarea.boundingBox();
+
+    expect(slashBox).not.toBeNull();
+    expect(buttonBox).toEqual(slashBox);
+    expect(buttonSkills).toEqual(slashSkills);
+    expect(buttonScreenshot).toEqual(slashScreenshot);
+    expect(buttonBox).toMatchObject({ x: inputBox?.x, width: inputBox?.width });
+  });
+
   test.describe("Slash overlay", () => {
     test("typing / shows skill suggestions overlay", async ({ page }) => {
       await gotoChat(page);
