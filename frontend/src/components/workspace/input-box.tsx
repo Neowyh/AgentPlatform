@@ -673,7 +673,7 @@ export function InputBox({
         <div className="flex items-center justify-center pb-1">
           <div className="flex items-center gap-2">
             {followupsLoading ? (
-              <div className="text-muted-foreground bg-background/80 rounded-full border px-4 py-1.5 text-base backdrop-blur-sm">
+              <div className="text-muted-foreground bg-background/80 type-body rounded-full border px-4 py-1.5 backdrop-blur-sm">
                 {t.inputBox.followupLoading}
               </div>
             ) : (
@@ -688,7 +688,7 @@ export function InputBox({
                 ))}
                 <Button
                   aria-label={t.common.close}
-                  className="text-muted-foreground h-auto cursor-pointer rounded-full px-2.5 py-1.5 text-base font-normal"
+                  className="text-muted-foreground type-body h-auto cursor-pointer rounded-full px-2.5 py-1.5 font-normal"
                   variant="outline"
                   size="sm"
                   type="button"
@@ -736,7 +736,7 @@ export function InputBox({
               className={cn(
                 "size-full text-left placeholder:text-left",
                 isWelcomeMode &&
-                  "workbench-input-textarea min-h-40 text-base leading-7",
+                  "workbench-input-textarea type-body min-h-40 leading-7",
                 "pt-3",
               )}
               style={{ textIndent: selectedTagsOffset }}
@@ -810,7 +810,7 @@ export function InputBox({
                   </div>
                   <div
                     className={cn(
-                      "text-base font-normal",
+                      "type-body font-normal",
                       context.mode === "ultra" ? "golden-text" : "",
                     )}
                   >
@@ -824,7 +824,7 @@ export function InputBox({
               </ModeHoverGuide>
               <PromptInputActionMenuContent className="w-80">
                 <DropdownMenuGroup>
-                  <DropdownMenuLabel className="text-muted-foreground text-base">
+                  <DropdownMenuLabel className="text-muted-foreground type-body">
                     {t.inputBox.mode}
                   </DropdownMenuLabel>
                   <PromptInputActionMenu>
@@ -847,7 +847,7 @@ export function InputBox({
                           />
                           {t.inputBox.flashMode}
                         </div>
-                        <div className="pl-7 text-base">
+                        <div className="type-body pl-7">
                           {t.inputBox.flashModeDescription}
                         </div>
                       </div>
@@ -877,7 +877,7 @@ export function InputBox({
                             />
                             {t.inputBox.reasoningMode}
                           </div>
-                          <div className="pl-7 text-base">
+                          <div className="type-body pl-7">
                             {t.inputBox.reasoningModeDescription}
                           </div>
                         </div>
@@ -907,7 +907,7 @@ export function InputBox({
                           />
                           {t.inputBox.proMode}
                         </div>
-                        <div className="pl-7 text-base">
+                        <div className="type-body pl-7">
                           {t.inputBox.proModeDescription}
                         </div>
                       </div>
@@ -941,7 +941,7 @@ export function InputBox({
                             {t.inputBox.ultraMode}
                           </div>
                         </div>
-                        <div className="pl-7 text-base">
+                        <div className="type-body pl-7">
                           {t.inputBox.ultraModeDescription}
                         </div>
                       </div>
@@ -958,7 +958,7 @@ export function InputBox({
             {supportReasoningEffort && context.mode !== "flash" && (
               <PromptInputActionMenu>
                 <PromptInputActionMenuTrigger className="gap-1! px-2!">
-                  <div className="text-base font-normal">
+                  <div className="type-body font-normal">
                     {t.inputBox.reasoningEffort}:
                     {context.reasoning_effort === "minimal" &&
                       " " + t.inputBox.reasoningEffortMinimal}
@@ -972,7 +972,7 @@ export function InputBox({
                 </PromptInputActionMenuTrigger>
                 <PromptInputActionMenuContent className="w-70">
                   <DropdownMenuGroup>
-                    <DropdownMenuLabel className="text-muted-foreground text-base">
+                    <DropdownMenuLabel className="text-muted-foreground type-body">
                       {t.inputBox.reasoningEffort}
                     </DropdownMenuLabel>
                     <PromptInputActionMenu>
@@ -988,7 +988,7 @@ export function InputBox({
                           <div className="flex items-center gap-1 font-bold">
                             {t.inputBox.reasoningEffortMinimal}
                           </div>
-                          <div className="pl-2 text-base">
+                          <div className="type-body pl-2">
                             {t.inputBox.reasoningEffortMinimalDescription}
                           </div>
                         </div>
@@ -1010,7 +1010,7 @@ export function InputBox({
                           <div className="flex items-center gap-1 font-bold">
                             {t.inputBox.reasoningEffortLow}
                           </div>
-                          <div className="pl-2 text-base">
+                          <div className="type-body pl-2">
                             {t.inputBox.reasoningEffortLowDescription}
                           </div>
                         </div>
@@ -1033,7 +1033,7 @@ export function InputBox({
                           <div className="flex items-center gap-1 font-bold">
                             {t.inputBox.reasoningEffortMedium}
                           </div>
-                          <div className="pl-2 text-base">
+                          <div className="type-body pl-2">
                             {t.inputBox.reasoningEffortMediumDescription}
                           </div>
                         </div>
@@ -1056,7 +1056,7 @@ export function InputBox({
                           <div className="flex items-center gap-1 font-bold">
                             {t.inputBox.reasoningEffortHigh}
                           </div>
-                          <div className="pl-2 text-base">
+                          <div className="type-body pl-2">
                             {t.inputBox.reasoningEffortHighDescription}
                           </div>
                         </div>
@@ -1084,7 +1084,7 @@ export function InputBox({
                     aria-label={t.inputBox.selectModel}
                   >
                     <div className="flex min-w-0 flex-col items-start text-left">
-                      <ModelSelectorName className="text-base font-normal">
+                      <ModelSelectorName className="type-body font-normal">
                         {selectedModel?.display_name}
                       </ModelSelectorName>
                     </div>
@@ -1102,7 +1102,7 @@ export function InputBox({
                     >
                       <div className="flex min-w-0 flex-1 flex-col">
                         <ModelSelectorName>{m.display_name}</ModelSelectorName>
-                        <span className="text-muted-foreground truncate text-[10px]">
+                        <span className="text-muted-foreground type-compact truncate">
                           {m.model}
                         </span>
                       </div>
@@ -1123,7 +1123,7 @@ export function InputBox({
                 onClick={() => setSkillDialogOpen(true)}
               >
                 <SparklesIcon className="size-4" />
-                <span className="text-base font-normal">
+                <span className="type-body font-normal">
                   {t.inputBox.skill}
                 </span>
               </PromptInputButton>
@@ -1179,11 +1179,11 @@ export function InputBox({
                 <button
                   key={skill.name}
                   type="button"
-                  className="hover:bg-accent flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-base"
+                  className="hover:bg-accent type-body flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left"
                   onClick={() => handleSkillSelect(skill.name)}
                 >
                   <span className="font-medium">{skill.name}</span>
-                  <span className="text-muted-foreground truncate text-base">
+                  <span className="text-muted-foreground type-body truncate">
                     {skill.description}
                   </span>
                 </button>

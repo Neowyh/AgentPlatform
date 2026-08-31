@@ -28,7 +28,7 @@ export function SelectedTags({ tags, onRemove, className }: SelectedTagsProps) {
         <span
           key={tag.id}
           className={cn(
-            "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-base font-medium",
+            "type-body inline-flex items-center gap-1.5 rounded-full border px-3 py-1 font-medium",
             "border-primary/30 bg-primary/10 text-primary",
           )}
         >
@@ -65,7 +65,7 @@ export function InlineSelectedTag({ tag, onRemove }: InlineSelectedTagProps) {
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-base font-medium",
+        "type-body inline-flex items-center gap-1.5 rounded-full px-3 py-1 font-medium",
         "bg-primary/15 text-primary whitespace-nowrap shadow-sm",
         "cursor-default select-none",
       )}

@@ -176,7 +176,7 @@ const ModelLogoFallback = ({
 }) => (
   <span
     className={cn(
-      "bg-muted text-muted-foreground inline-flex size-3 items-center justify-center rounded-full text-[8px] font-semibold uppercase",
+      "bg-muted text-muted-foreground type-compact inline-flex size-3 items-center justify-center rounded-full font-semibold uppercase",
       className,
     )}
     aria-label={`${provider} logo fallback`}
@@ -231,7 +231,7 @@ export const ModelSelectorName = ({
   ...props
 }: ModelSelectorNameProps) => (
   <span
-    className={cn("flex-1 truncate text-left text-base", className)}
+    className={cn("type-body flex-1 truncate text-left", className)}
     {...props}
   />
 );

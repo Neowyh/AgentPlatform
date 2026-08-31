@@ -49,14 +49,14 @@ export function PostMeta({
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-8 text-base">
+    <div className="type-body flex flex-wrap items-center gap-8">
       {formattedDate ? (
         <p className="text-muted-foreground">{formattedDate}</p>
       ) : null}
 
       {pathname && availableLanguages.length > 1 ? (
         <div className="flex flex-wrap items-center gap-3">
-          <span className="text-secondary-foreground text-base">Language:</span>
+          <span className="text-secondary-foreground type-body">Language:</span>
           {availableLanguages.map((lang) => {
             const isActive = lang === currentLang;
             return (
@@ -65,8 +65,8 @@ export function PostMeta({
                 href={`${pathname}?lang=${lang}`}
                 className={
                   isActive
-                    ? "text-foreground text-base font-medium"
-                    : "text-muted-foreground hover:text-foreground text-base transition-colors"
+                    ? "text-foreground type-body font-medium"
+                    : "text-muted-foreground hover:text-foreground type-body transition-colors"
                 }
               >
                 {lang.toUpperCase()}
@@ -100,12 +100,12 @@ export function PostTags({
 
   return (
     <div className={cn("flex flex-wrap items-center gap-3", className)}>
-      <span className="text-secondary-foreground text-base">Tags:</span>
+      <span className="text-secondary-foreground type-body">Tags:</span>
       {validTags.map((tag) => (
         <Link
           key={tag}
           href={`/blog/tags/${normalizeTagSlug(tag)}`}
-          className="border-border text-secondary-foreground hover:text-foreground rounded-xl border px-2 py-1 text-base transition-colors"
+          className="border-border text-secondary-foreground hover:text-foreground type-body rounded-xl border px-2 py-1 transition-colors"
         >
           {tag}
         </Link>
@@ -118,7 +118,7 @@ export function PostList({ description, posts, title }: PostListProps) {
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-12 px-6">
       <header className="space-y-4">
-        <h2 className="text-foreground text-base font-semibold tracking-tight">
+        <h2 className="text-foreground type-section-title font-semibold tracking-tight">
           {title}
         </h2>
         {description ? (
@@ -142,7 +142,7 @@ export function PostList({ description, posts, title }: PostListProps) {
                 />
                 <Link
                   href={getBlogRoute(post.slug)}
-                  className="text-foreground hover:text-primary block text-base font-semibold tracking-tight transition-colors"
+                  className="text-foreground hover:text-primary type-body block font-semibold tracking-tight transition-colors"
                 >
                   {post.title}
                 </Link>

@@ -155,7 +155,7 @@ export default function LoginPage() {
       />
       <div className="border-border/20 bg-background/5 w-full max-w-md space-y-6 rounded-3xl border p-8 backdrop-blur-sm">
         <div className="text-center">
-          <h1 className="text-foreground font-serif text-base">iDeer</h1>
+          <h1 className="text-foreground type-body font-serif">iDeer</h1>
           <p className="text-muted-foreground mt-2">
             {isLogin ? t.auth.signInTitle : t.auth.createAccountTitle}
           </p>
@@ -163,7 +163,7 @@ export default function LoginPage() {
 
         <form onSubmit={handleSubmit} className="space-y-2">
           <div className="flex flex-col space-y-1">
-            <label htmlFor="email" className="text-base font-medium">
+            <label htmlFor="email" className="type-body font-medium">
               {t.auth.email}
             </label>
             <Input
@@ -176,7 +176,7 @@ export default function LoginPage() {
             />
           </div>
           <div className="flex flex-col space-y-1">
-            <label htmlFor="password" className="text-base font-medium">
+            <label htmlFor="password" className="type-body font-medium">
               {t.auth.password}
             </label>
             <Input
@@ -199,7 +199,7 @@ export default function LoginPage() {
           </Button>
         </form>
 
-        <div className="text-center text-base">
+        <div className="type-body text-center">
           <button
             type="button"
             onClick={() => setIsLogin(!isLogin)}
@@ -209,7 +209,7 @@ export default function LoginPage() {
           </button>
         </div>
 
-        <div className="text-muted-foreground text-center text-base">
+        <div className="text-muted-foreground type-body text-center">
           <Link href="/" className="hover:underline">
             {t.auth.backToHome}
           </Link>

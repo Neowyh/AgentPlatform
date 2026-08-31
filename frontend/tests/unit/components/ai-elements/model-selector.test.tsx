@@ -327,7 +327,7 @@ describe("ModelSelectorName", () => {
     render(<ModelSelectorName data-testid="name">Model</ModelSelectorName>);
     const el = screen.getByTestId("name");
     expect(el.className).toContain("truncate");
-    expect(el.className).toContain("text-base");
+    expect(el.className).toContain("type-body");
   });
 });
 

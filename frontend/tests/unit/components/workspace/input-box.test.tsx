@@ -1398,7 +1398,7 @@ describe("InputBox", () => {
 
       const textarea = screen.getByTestId("chat-input");
       expect(textarea.className).toContain("min-h-40");
-      expect(textarea.className).toContain("text-base");
+      expect(textarea.className).toContain("type-body");
       expect(textarea.className).toContain("text-left");
     });
 

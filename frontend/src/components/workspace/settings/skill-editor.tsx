@@ -59,14 +59,14 @@ const customDarkTheme = monokaiInit({
     gutterBackground: "transparent",
     gutterForeground: "#555",
     gutterActiveForeground: "#fff",
-    fontSize: "var(--text-base)",
+    fontSize: "var(--type-body)",
   },
 });
 
 const customLightTheme = basicLightInit({
   settings: {
     background: "transparent",
-    fontSize: "var(--text-base)",
+    fontSize: "var(--type-body)",
   },
 });
 
@@ -142,21 +142,21 @@ export function SkillEditor({
       return escaped
         .replace(
           /^### (.+)$/gm,
-          '<h3 class="text-base font-semibold mt-4 mb-2">$1</h3>',
+          '<h3 class="type-section-title font-semibold mt-4 mb-2">$1</h3>',
         )
         .replace(
           /^## (.+)$/gm,
-          '<h2 class="text-base font-semibold mt-6 mb-3">$1</h2>',
+          '<h2 class="type-section-title font-semibold mt-6 mb-3">$1</h2>',
         )
         .replace(
           /^# (.+)$/gm,
-          '<h1 class="text-base font-bold mt-8 mb-4">$1</h1>',
+          '<h1 class="type-page-title font-bold mt-8 mb-4">$1</h1>',
         )
         .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
         .replace(/\*(.+?)\*/g, "<em>$1</em>")
         .replace(
           /`(.+?)`/g,
-          '<code class="bg-muted rounded px-1 py-0.5 text-base">$1</code>',
+          '<code class="bg-muted rounded px-1 py-0.5 type-body">$1</code>',
         )
         .replace(/^- (.+)$/gm, '<li class="ml-4">$1</li>')
         .replace(/^\d+\. (.+)$/gm, '<li class="ml-4 list-decimal">$1</li>')
@@ -171,8 +171,10 @@ export function SkillEditor({
       {/* Header */}
       <div className="flex items-center justify-between border-b px-4 py-3">
         <div>
-          <h2 className="text-base font-semibold">Edit Skill: {skillName}</h2>
-          <p className="text-muted-foreground text-base">
+          <h2 className="type-section-title font-semibold">
+            Edit Skill: {skillName}
+          </h2>
+          <p className="text-muted-foreground type-body">
             Edit the SKILL.md content for this skill
           </p>
         </div>
@@ -209,7 +211,7 @@ export function SkillEditor({
         {/* Editor */}
         <div className="flex w-1/2 flex-col border-r">
           <div className="border-b px-4 py-2">
-            <span className="text-base font-medium">Editor</span>
+            <span className="type-body font-medium">Editor</span>
           </div>
           <div className="flex-1 overflow-auto">
             <CodeMirror
@@ -233,18 +235,18 @@ export function SkillEditor({
         {/* Preview */}
         <div className="flex w-1/2 flex-col">
           <div className="border-b px-4 py-2">
-            <span className="text-base font-medium">Preview</span>
+            <span className="type-body font-medium">Preview</span>
           </div>
           <div className="flex-1 overflow-auto p-4">
             <div
               className={cn(
                 "prose prose-sm dark:prose-invert max-w-none",
-                "[&_h1]:mt-8 [&_h1]:mb-4 [&_h1]:text-base [&_h1]:font-bold",
-                "[&_h2]:mt-6 [&_h2]:mb-3 [&_h2]:text-base [&_h2]:font-semibold",
-                "[&_h3]:mt-4 [&_h3]:mb-2 [&_h3]:text-base [&_h3]:font-semibold",
+                "[&_h1]:mt-8 [&_h1]:mb-4 [&_h1]:font-bold",
+                "[&_h2]:mt-6 [&_h2]:mb-3 [&_h2]:font-semibold",
+                "[&_h3]:mt-4 [&_h3]:mb-2 [&_h3]:font-semibold",
                 "[&_p]:mb-4",
                 "[&_li]:ml-4",
-                "[&_code]:bg-muted [&_code]:rounded [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-base",
+                "[&_code]:bg-muted [&_code]:rounded [&_code]:px-1 [&_code]:py-0.5",
               )}
               dangerouslySetInnerHTML={{
                 __html: `<p class="mb-4">${renderPreview(content)}</p>`,

@@ -28,7 +28,7 @@ export function Welcome({
           : t.welcome.greeting}
       </div>
       {isSkillMode ? (
-        <div className="text-muted-foreground text-base">
+        <div className="text-muted-foreground type-body">
           {t.welcome.createYourOwnSkillDescription.includes("\n") ? (
             <pre className="font-sans whitespace-pre">
               {t.welcome.createYourOwnSkillDescription}

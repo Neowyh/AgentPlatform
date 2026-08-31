@@ -49,7 +49,7 @@ export function ScenarioTabs({ selected, onSelect }: ScenarioTabsProps) {
             tabIndex={isActive ? 0 : -1}
             data-state={isActive ? "active" : "inactive"}
             className={cn(
-              "flex items-center gap-2 rounded-full border px-6 py-3 text-base font-medium transition-all",
+              "type-body flex items-center gap-2 rounded-full border px-6 py-3 font-medium transition-all",
               isActive
                 ? "bg-muted text-foreground border-transparent font-semibold shadow-sm"
                 : "text-muted-foreground hover:bg-muted/60 hover:text-foreground border-transparent",

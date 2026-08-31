@@ -4,7 +4,7 @@
 @source "../node_modules/streamdown/dist/index.js";
 
 /* Heading */
-@source inline("text-{xs,sm,base,lg,xl,2xl,3xl,4xl,5xl,6xl}");
+
 @source inline("font-{normal,medium,semibold,bold,extrabold}");
 @source inline("leading-{none,tight,snug,normal,relaxed,loose}");
 
@@ -71,19 +71,12 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme {
+  --text-display: 2.5rem;
+  --text-page-title: 1.5rem;
+  --text-section-title: 1.125rem;
   --text-body: 1rem;
-  --text-subtitle: 2.25rem;
-  --text-title: 2.75rem;
-  --text-xs: var(--text-body);
-  --text-sm: var(--text-body);
-  --text-base: var(--text-body);
-  --text-lg: var(--text-body);
-  --text-xl: var(--text-body);
-  --text-2xl: var(--text-body);
-  --text-3xl: var(--text-body);
-  --text-4xl: var(--text-body);
-  --text-5xl: var(--text-body);
-  --text-6xl: var(--text-body);
+  --text-supporting: 0.875rem;
+  --text-compact: 0.75rem;
 
   --font-sans:
     ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji",
@@ -316,22 +309,43 @@
     line-height: 1.5;
   }
 
-  h1 {
-    font-size: var(--text-title) !important;
+  .type-display,
+  .type-page-title,
+  .type-section-title,
+  .type-body,
+  .type-supporting,
+  .type-compact {
+    font-family: inherit;
+  }
+
+  .type-display {
+    font-size: var(--text-display);
     line-height: 1.2;
   }
 
-  h2,
-  h3 {
-    font-size: var(--text-subtitle) !important;
-    line-height: 1.25;
+  .type-page-title {
+    font-size: var(--text-page-title);
+    line-height: 1.3;
   }
 
-  h4,
-  h5,
-  h6 {
-    font-size: var(--text-body) !important;
+  .type-section-title {
+    font-size: var(--text-section-title);
+    line-height: 1.35;
+  }
+
+  .type-body {
+    font-size: var(--text-body);
     line-height: 1.5;
+  }
+
+  .type-supporting {
+    font-size: var(--text-supporting);
+    line-height: 1.45;
+  }
+
+  .type-compact {
+    font-size: var(--text-compact);
+    line-height: 1.35;
   }
 
   .workbench-shell {
@@ -429,7 +443,7 @@
   .workbench-welcome-title {
     color: var(--foreground);
     font-family: var(--font-sans);
-    font-size: clamp(2.25rem, 4vw, 2.75rem);
+    font-size: var(--text-display);
     line-height: 1.2;
   }
 
@@ -462,7 +476,7 @@
   .workbench-module-guide {
     margin: 0;
     color: var(--muted-foreground);
-    font-size: 1rem;
+    font-size: var(--text-body);
     line-height: 1.4;
     text-align: center;
     white-space: nowrap;
@@ -526,7 +540,7 @@
   }
 
   .workbench-welcome-footer {
-    font-size: 1rem;
+    font-size: var(--text-body);
   }
 
   .workbench-welcome-footer button {
@@ -632,13 +646,16 @@
   }
 
   @media (max-width: 640px) {
-    h1 {
-      font-size: 2.25rem !important;
+    .type-display {
+      font-size: 2.25rem;
     }
 
-    h2,
-    h3 {
-      font-size: 1.75rem !important;
+    .type-page-title {
+      font-size: 1.375rem;
+    }
+
+    .type-section-title {
+      font-size: 1.0625rem;
     }
 
     .workbench-recent-grid {

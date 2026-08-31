@@ -312,7 +312,7 @@ export function PromptInputAttachment({
       <HoverCardTrigger asChild>
         <div
           className={cn(
-            "group border-border hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50 relative flex h-8 cursor-pointer items-center gap-1.5 rounded-md border px-1.5 text-base font-medium transition-all select-none",
+            "group border-border hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50 type-body relative flex h-8 cursor-pointer items-center gap-1.5 rounded-md border px-1.5 font-medium transition-all select-none",
             className,
           )}
           key={data.id}
@@ -367,11 +367,11 @@ export function PromptInputAttachment({
           )}
           <div className="flex items-center gap-2.5">
             <div className="min-w-0 flex-1 space-y-1 px-0.5">
-              <h4 className="truncate text-base leading-none font-semibold">
+              <h4 className="type-section-title truncate leading-none font-semibold">
                 {filename || (isImage ? "Image" : "Attachment")}
               </h4>
               {data.mediaType && (
-                <p className="text-muted-foreground truncate font-mono text-base">
+                <p className="text-muted-foreground type-body truncate font-mono">
                   {data.mediaType}
                 </p>
               )}
@@ -1418,7 +1418,7 @@ export const PromptInputTabLabel = ({
 }: PromptInputTabLabelProps) => (
   <h3
     className={cn(
-      "text-muted-foreground mb-2 px-3 text-base font-medium",
+      "text-muted-foreground type-body mb-2 px-3 font-medium",
       className,
     )}
     {...props}
@@ -1442,7 +1442,7 @@ export const PromptInputTabItem = ({
 }: PromptInputTabItemProps) => (
   <div
     className={cn(
-      "hover:bg-accent flex items-center gap-2 px-3 py-2 text-base",
+      "hover:bg-accent type-body flex items-center gap-2 px-3 py-2",
       className,
     )}
     {...props}

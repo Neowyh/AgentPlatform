@@ -336,7 +336,7 @@ describe("AnimatedSpan", () => {
   test("renders with body text class", () => {
     render(<AnimatedSpan>Small text</AnimatedSpan>);
     const span = screen.getByText("Small text");
-    expect(span.getAttribute("class")).toContain("text-base");
+    expect(span.getAttribute("class")).toContain("type-body");
   });
 });
 

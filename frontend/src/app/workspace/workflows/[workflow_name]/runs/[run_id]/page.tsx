@@ -153,14 +153,14 @@ export default function WorkflowRunDetailPage() {
 
   if (isLoading)
     return (
-      <div className="text-muted-foreground flex size-full items-center justify-center text-base">
+      <div className="text-muted-foreground type-body flex size-full items-center justify-center">
         {t.common.loading}
       </div>
     );
   if (error || !runStatus)
     return (
       <div className="flex size-full flex-col items-center justify-center gap-4">
-        <p className="text-destructive text-base">
+        <p className="text-destructive type-body">
           {error?.message ?? t.workflows.runNotFound}
         </p>
         <Button
@@ -199,10 +199,10 @@ export default function WorkflowRunDetailPage() {
             <ArrowLeftIcon className="h-4 w-4" />
           </Button>
           <div>
-            <h1 className="text-base font-semibold">
+            <h1 className="type-page-title font-semibold">
               {workflow?.name ?? workflow_name}
             </h1>
-            <p className="text-muted-foreground text-base">
+            <p className="text-muted-foreground type-body">
               {t.workflows.runId}
               {runStatus.run_id}
             </p>
@@ -261,19 +261,19 @@ export default function WorkflowRunDetailPage() {
       <div className="flex-1 overflow-y-auto p-6">
         <div className="mx-auto max-w-6xl space-y-6">
           {fallbackPolling && (
-            <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-base text-amber-900 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-300">
+            <p className="type-body rounded-md border border-amber-200 bg-amber-50 p-3 text-amber-900 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-300">
               {t.workflows.streamFallback}
             </p>
           )}
           {runStatus.error && (
-            <p className="text-destructive rounded-md border border-red-200 bg-red-50 p-3 text-base dark:border-red-800 dark:bg-red-950/50">
+            <p className="text-destructive type-body rounded-md border border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-950/50">
               {formatWorkflowRunError(runStatus.error, runStatus.error_code)}
             </p>
           )}
           {workflow &&
             runStatus.definition_version != null &&
             workflow.version !== String(runStatus.definition_version) && (
-              <p className="text-muted-foreground bg-muted/40 rounded-md border p-3 text-base">
+              <p className="text-muted-foreground bg-muted/40 type-body rounded-md border p-3">
                 {t.workflows.definitionMismatchHint}
               </p>
             )}
@@ -318,7 +318,7 @@ export default function WorkflowRunDetailPage() {
                   </div>
                 </div>
               ) : (
-                <div className="text-muted-foreground flex h-48 items-center justify-center text-base">
+                <div className="text-muted-foreground type-body flex h-48 items-center justify-center">
                   {t.common.loading}
                 </div>
               )}
@@ -348,21 +348,21 @@ export default function WorkflowRunDetailPage() {
                     {(runStatus.events ?? []).map((event) => (
                       <li
                         key={event.seq}
-                        className="rounded-md border p-2 text-base"
+                        className="type-body rounded-md border p-2"
                       >
                         <span className="text-muted-foreground mr-2 font-mono">
                           #{event.seq}
                         </span>
                         {event.type}
                         {typeof event.payload.node_id === "string" && (
-                          <span className="text-muted-foreground ml-2 font-mono text-base">
+                          <span className="text-muted-foreground type-body ml-2 font-mono">
                             {event.payload.node_id}
                           </span>
                         )}
                         {event.type === "edge_selected" &&
                           typeof event.payload.from === "string" &&
                           typeof event.payload.to === "string" && (
-                            <span className="text-muted-foreground ml-2 font-mono text-base">
+                            <span className="text-muted-foreground type-body ml-2 font-mono">
                               {event.payload.from} → {event.payload.to}
                             </span>
                           )}
@@ -379,11 +379,11 @@ export default function WorkflowRunDetailPage() {
             </CardHeader>
             <CardContent>
               {artifactsError ? (
-                <p className="text-destructive text-base">
+                <p className="text-destructive type-body">
                   {t.workflows.artifactLoadError}
                 </p>
               ) : artifacts.length === 0 ? (
-                <p className="text-muted-foreground text-base">
+                <p className="text-muted-foreground type-body">
                   {t.workflows.noArtifacts}
                 </p>
               ) : (
@@ -396,10 +396,10 @@ export default function WorkflowRunDetailPage() {
                       <li key={artifact.path} className="rounded-md border p-3">
                         <div className="flex items-center justify-between gap-2">
                           <div className="min-w-0">
-                            <p className="truncate font-mono text-base">
+                            <p className="type-body truncate font-mono">
                               {name}
                             </p>
-                            <p className="text-muted-foreground text-base">
+                            <p className="text-muted-foreground type-body">
                               {t.workflows.artifactSize}:{" "}
                               {formatSize(artifact.size)}
                             </p>
@@ -430,7 +430,7 @@ export default function WorkflowRunDetailPage() {
                           </div>
                         </div>
                         {selectedPath === artifact.path && (
-                          <pre className="bg-muted mt-2 max-h-96 overflow-auto rounded p-2 text-base whitespace-pre-wrap">
+                          <pre className="bg-muted type-body mt-2 max-h-96 overflow-auto rounded p-2 whitespace-pre-wrap">
                             {previewLoading
                               ? t.common.loading
                               : prettyContent(

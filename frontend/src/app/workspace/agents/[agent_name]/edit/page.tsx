@@ -116,7 +116,7 @@ export default function AgentEditPage() {
   if (isLoadingAgent) {
     return (
       <div className="flex size-full items-center justify-center">
-        <div className="text-muted-foreground text-base">
+        <div className="text-muted-foreground type-body">
           {t.common.loading}
         </div>
       </div>
@@ -126,7 +126,7 @@ export default function AgentEditPage() {
   if (!agent) {
     return (
       <div className="flex size-full flex-col items-center justify-center gap-4">
-        <div className="text-destructive text-base">Agent not found</div>
+        <div className="text-destructive type-body">Agent not found</div>
         <Button
           variant="outline"
           onClick={() => router.push("/workspace/agents")}
@@ -140,7 +140,7 @@ export default function AgentEditPage() {
   if (agent.read_only) {
     return (
       <div className="flex size-full flex-col items-center justify-center gap-4">
-        <div className="text-destructive text-base">
+        <div className="text-destructive type-body">
           You do not have permission to edit this Agent
         </div>
         <Button
@@ -167,8 +167,8 @@ export default function AgentEditPage() {
             <ArrowLeftIcon className="h-4 w-4" />
           </Button>
           <div>
-            <h1 className="text-base font-semibold">Edit Agent</h1>
-            <p className="text-muted-foreground mt-0.5 text-base">
+            <h1 className="type-page-title font-semibold">Edit Agent</h1>
+            <p className="text-muted-foreground type-body mt-0.5">
               {agent_name}
             </p>
           </div>
@@ -194,7 +194,7 @@ export default function AgentEditPage() {
           <div className="space-y-2">
             <Label>Name</Label>
             <Input value={agent_name} disabled />
-            <p className="text-muted-foreground text-base">
+            <p className="text-muted-foreground type-body">
               Agent name cannot be changed after creation
             </p>
           </div>
@@ -221,7 +221,7 @@ export default function AgentEditPage() {
             <Label htmlFor="model">Model</Label>
             <select
               id="model"
-              className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus:ring-ring flex h-10 w-full rounded-md border px-3 py-2 text-base file:border-0 file:bg-transparent file:text-base file:font-medium focus:ring-2 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+              className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus:ring-ring type-body flex h-10 w-full rounded-md border px-3 py-2 file:border-0 file:bg-transparent file:font-medium focus:ring-2 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
               value={formData.model ?? ""}
               onChange={(e) =>
                 setFormData((prev) => ({
@@ -257,7 +257,7 @@ export default function AgentEditPage() {
                 <SelectItem value="public">Public</SelectItem>
               </SelectContent>
             </Select>
-            <p className="text-muted-foreground text-base">
+            <p className="text-muted-foreground type-body">
               Visibility changes require an application submission
             </p>
           </div>
@@ -277,7 +277,7 @@ export default function AgentEditPage() {
                     onChange={() => toggleToolGroup(group.id)}
                     className="h-4 w-4 rounded border-gray-300"
                   />
-                  <span className="text-base">{group.label}</span>
+                  <span className="type-body">{group.label}</span>
                 </label>
               ))}
             </div>
@@ -305,11 +305,11 @@ export default function AgentEditPage() {
                     className="h-4 w-4 rounded border-gray-300"
                   />
                   <div className="min-w-0">
-                    <div className="truncate text-base font-medium">
+                    <div className="type-body truncate font-medium">
                       {skill.name}
                     </div>
                     {skill.description && (
-                      <div className="text-muted-foreground truncate text-base">
+                      <div className="text-muted-foreground type-body truncate">
                         {skill.description}
                       </div>
                     )}
@@ -330,9 +330,9 @@ export default function AgentEditPage() {
                 setFormData((prev) => ({ ...prev, soul: e.target.value }))
               }
               rows={12}
-              className="font-mono text-base"
+              className="type-body font-mono"
             />
-            <p className="text-muted-foreground text-base">
+            <p className="text-muted-foreground type-body">
               The soul defines the agent&apos;s personality and behavior. Uses
               Markdown format.
             </p>

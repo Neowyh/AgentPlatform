@@ -18,7 +18,7 @@ export function CommunitySection() {
       subtitle="Contribute brilliant ideas to shape the future of iDeer. Collaborate, innovate, and make impacts."
     >
       <div className="flex justify-center">
-        <Button className="text-base" size="lg" asChild>
+        <Button className="type-body" size="lg" asChild>
           <Link href="/">Contribute Now</Link>
         </Button>
       </div>

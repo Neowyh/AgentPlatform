@@ -190,12 +190,12 @@ export function SkillApplyDialog({
             </Select>
           </div>
           {change === "upgrade" && (
-            <p className="text-muted-foreground text-base">
+            <p className="text-muted-foreground type-body">
               {t.settings.skills.applyDialogUpgradeHint}
             </p>
           )}
           {change === "downgrade" && (
-            <p className="text-muted-foreground text-base">
+            <p className="text-muted-foreground type-body">
               {t.settings.skills.applyDialogDowngradeHint}
             </p>
           )}

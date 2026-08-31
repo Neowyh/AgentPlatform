@@ -231,10 +231,10 @@ describe("Suggestion", () => {
     expect(button.className).toContain("cursor-pointer");
   });
 
-  test("applies text-base class", () => {
+  test("applies body type class", () => {
     render(<Suggestion suggestion="Small text" />);
     const button = screen.getByRole("button", { name: "Small text" });
-    expect(button.className).toContain("text-base");
+    expect(button.className).toContain("type-body");
   });
 });
 

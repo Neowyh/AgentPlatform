@@ -23,14 +23,14 @@ const customDarkTheme = monokaiInit({
     gutterBackground: "transparent",
     gutterForeground: "#555",
     gutterActiveForeground: "#fff",
-    fontSize: "var(--text-base)",
+    fontSize: "var(--type-body)",
   },
 });
 
 const customLightTheme = basicLightInit({
   settings: {
     background: "transparent",
-    fontSize: "var(--text-base)",
+    fontSize: "var(--type-body)",
   },
 });
 

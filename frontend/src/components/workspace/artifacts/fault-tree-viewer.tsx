@@ -75,11 +75,11 @@ function toFlowNodes(nodes: FaultTreeNode[]): FlowNode[] {
       data: {
         label: (
           <div className="flex max-w-[200px] flex-col gap-2 text-left">
-            <div className="text-base leading-snug font-medium break-words">
+            <div className="type-body leading-snug font-medium break-words">
               {node.label}
             </div>
             {node.description && (
-              <div className="text-muted-foreground line-clamp-3 text-base leading-snug break-words">
+              <div className="text-muted-foreground type-body line-clamp-3 leading-snug break-words">
                 {node.description}
               </div>
             )}
@@ -88,7 +88,7 @@ function toFlowNodes(nodes: FaultTreeNode[]): FlowNode[] {
                 {badges.map((badge) => (
                   <Badge
                     key={badge}
-                    className="max-w-full truncate text-[10px]"
+                    className="type-compact max-w-full truncate"
                     variant="outline"
                   >
                     {badge}
@@ -141,7 +141,7 @@ export function FaultTreeViewer({ content }: { content: string }) {
 
   return (
     <div className="flex size-full flex-col">
-      <div className="border-border bg-background/80 grid shrink-0 grid-cols-2 gap-2 border-b p-3 text-base md:grid-cols-4">
+      <div className="border-border bg-background/80 type-body grid shrink-0 grid-cols-2 gap-2 border-b p-3 md:grid-cols-4">
         <SummaryItem
           label="Bottom events"
           value={result.summary.bottomEventCount}
@@ -154,7 +154,7 @@ export function FaultTreeViewer({ content }: { content: string }) {
         />
       </div>
       {result.diagnostics.length > 0 && (
-        <div className="border-border bg-muted/40 shrink-0 border-b px-4 py-2 text-base">
+        <div className="border-border bg-muted/40 type-body shrink-0 border-b px-4 py-2">
           {result.diagnostics.join(" ")}
         </div>
       )}
@@ -182,8 +182,8 @@ export function FaultTreeViewer({ content }: { content: string }) {
 function SummaryItem({ label, value }: { label: string; value: number }) {
   return (
     <div className="border-border bg-card rounded-md border p-2">
-      <div className="text-muted-foreground text-base">{label}</div>
-      <div className="text-base font-semibold">{value}</div>
+      <div className="text-muted-foreground type-body">{label}</div>
+      <div className="type-body font-semibold">{value}</div>
     </div>
   );
 }

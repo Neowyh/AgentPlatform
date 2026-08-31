@@ -4,19 +4,26 @@ import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 
 describe("production typography contract", () => {
-  test("defines the three shared sizes and body line height", async () => {
+  test("defines the production typography roles and responsive scale", async () => {
     const css = await readFile(
       join(process.cwd(), "src/styles/globals.css"),
       "utf8",
     );
 
+    expect(css).toContain("--text-display: 2.5rem;");
+    expect(css).toContain("--text-page-title: 1.5rem;");
+    expect(css).toContain("--text-section-title: 1.125rem;");
     expect(css).toContain("--text-body: 1rem;");
-    expect(css).toContain("--text-subtitle: 2.25rem;");
-    expect(css).toContain("--text-title: 2.75rem;");
-    expect(css).toContain("font-size: var(--text-body);");
+    expect(css).toContain("--text-supporting: 0.875rem;");
+    expect(css).toContain("--text-compact: 0.75rem;");
+    expect(css).toContain(".type-display");
+    expect(css).toContain(".type-page-title");
+    expect(css).toContain(".type-section-title");
+    expect(css).toContain(".type-body");
+    expect(css).toContain(".type-supporting");
+    expect(css).toContain(".type-compact");
     expect(css).toContain("line-height: 1.5;");
-    expect(css).toContain("font-size: 2.25rem !important;");
-    expect(css).toContain("font-size: 1.75rem !important;");
+    expect(css).not.toMatch(/h[123]\s*\{[^}]*font-size:[^}]*!important/s);
   });
 
   test("does not retain unclassified small or utility text sizes", async () => {
@@ -32,7 +39,7 @@ describe("production typography contract", () => {
       "--glob",
       "*.{ts,tsx}",
       "-e",
-      "text-(xs|sm|lg|xl|2xl|3xl|4xl|5xl|6xl)",
+      "text-(xs|sm|lg|xl|2xl|3xl|4xl|5xl|6xl)|text-\\[(8px|10px|11px)\\]",
       "src",
     ];
     const cssArgs = [
@@ -42,7 +49,7 @@ describe("production typography contract", () => {
       "--glob",
       "*.css",
       "-e",
-      "font-size\\s*:\\s*(10|11|12|13|14|15)px",
+      "font-size\\s*:\\s*(8|9|10|11|12|13|14|15)px",
       "src",
     ];
 

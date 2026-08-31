@@ -50,7 +50,7 @@ describe("Label", () => {
   test("applies default styling classes", () => {
     render(<Label data-testid="label-styles">Styled Label</Label>);
     const label = screen.getByTestId("label-styles");
-    expect(label.className).toContain("text-base");
+    expect(label.className).toContain("type-body");
     expect(label.className).toContain("font-medium");
   });
 });

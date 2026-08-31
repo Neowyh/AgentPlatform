@@ -221,8 +221,8 @@ export default function VisibilityApplicationsPage() {
             <ArrowLeftIcon className="h-5 w-5" />
           </Link>
           <div>
-            <h1 className="text-base font-semibold">统一审批中心</h1>
-            <p className="text-muted-foreground mt-0.5 text-base">
+            <h1 className="type-page-title font-semibold">统一审批中心</h1>
+            <p className="text-muted-foreground type-body mt-0.5">
               审批所有资源的可见性变更申请
             </p>
           </div>
@@ -232,7 +232,7 @@ export default function VisibilityApplicationsPage() {
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-6">
         {loading ? (
-          <div className="text-muted-foreground flex h-40 items-center justify-center text-base">
+          <div className="text-muted-foreground type-body flex h-40 items-center justify-center">
             加载中...
           </div>
         ) : (
@@ -321,7 +321,7 @@ export default function VisibilityApplicationsPage() {
                 </SelectContent>
               </Select>
 
-              <span className="text-muted-foreground ml-auto text-base">
+              <span className="text-muted-foreground type-body ml-auto">
                 共 {total} 条
               </span>
             </div>
@@ -330,7 +330,7 @@ export default function VisibilityApplicationsPage() {
             {applications.length === 0 ? (
               <Card>
                 <CardContent className="flex h-40 items-center justify-center">
-                  <p className="text-muted-foreground text-base">
+                  <p className="text-muted-foreground type-body">
                     {filterStatus === "pending"
                       ? "没有待审批的申请"
                       : "没有找到申请记录"}
@@ -343,7 +343,7 @@ export default function VisibilityApplicationsPage() {
                   <Card key={app.id}>
                     <CardHeader className="pb-2">
                       <div className="flex items-center justify-between">
-                        <CardTitle className="text-base">
+                        <CardTitle className="type-body">
                           {app.resource_id}
                         </CardTitle>
                         <div className="flex items-center gap-2">
@@ -365,24 +365,24 @@ export default function VisibilityApplicationsPage() {
                     </CardHeader>
                     <CardContent>
                       <div className="flex flex-col gap-2">
-                        <p className="text-base">
+                        <p className="type-body">
                           <span className="font-medium">申请理由:</span>{" "}
                           {app.reason || "无"}
                         </p>
                         {app.submitted_at && (
-                          <p className="text-muted-foreground text-base">
+                          <p className="text-muted-foreground type-body">
                             提交时间:{" "}
                             {new Date(app.submitted_at).toLocaleString()}
                           </p>
                         )}
                         {app.reviewed_at && (
-                          <p className="text-muted-foreground text-base">
+                          <p className="text-muted-foreground type-body">
                             审批时间:{" "}
                             {new Date(app.reviewed_at).toLocaleString()}
                           </p>
                         )}
                         {app.review_comment && (
-                          <p className="text-base">
+                          <p className="type-body">
                             <span className="font-medium">审批意见:</span>{" "}
                             {app.review_comment}
                           </p>
@@ -425,7 +425,7 @@ export default function VisibilityApplicationsPage() {
                 >
                   上一页
                 </Button>
-                <span className="text-muted-foreground text-base">
+                <span className="text-muted-foreground type-body">
                   {page} / {totalPages}
                 </span>
                 <Button

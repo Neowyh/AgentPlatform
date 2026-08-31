@@ -81,10 +81,10 @@ export function CaseStudySection({ className }: { className?: string }) {
                   }}
                 >
                   <div className="flex flex-col gap-2">
-                    <h3 className="flex h-14 items-center text-base font-bold text-shadow-black">
+                    <h3 className="type-section-title flex h-14 items-center font-bold text-shadow-black">
                       {caseStudy.title}
                     </h3>
-                    <p className="box-shadow-black overflow-hidden text-base text-white/85 text-shadow-black">
+                    <p className="box-shadow-black type-body overflow-hidden text-white/85 text-shadow-black">
                       {caseStudy.description}
                     </p>
                   </div>

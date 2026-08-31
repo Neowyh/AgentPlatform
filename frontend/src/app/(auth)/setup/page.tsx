@@ -147,7 +147,7 @@ export default function SetupPage() {
   if (mode === "loading") {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <p className="text-muted-foreground text-base">Loading…</p>
+        <p className="text-muted-foreground type-body">Loading…</p>
       </div>
     );
   }
@@ -166,15 +166,15 @@ export default function SetupPage() {
         />
         <div className="border-border/20 bg-background/5 w-full max-w-md space-y-6 rounded-3xl border p-8 backdrop-blur-sm">
           <div className="text-center">
-            <h1 className="font-serif text-base">iDeer</h1>
+            <h1 className="type-body font-serif">iDeer</h1>
             <p className="text-muted-foreground mt-2">Create admin account</p>
-            <p className="text-muted-foreground mt-1 text-base">
+            <p className="text-muted-foreground type-body mt-1">
               Set up the administrator account to get started.
             </p>
           </div>
           <form onSubmit={handleInitAdmin} className="space-y-2">
             <div className="flex flex-col space-y-1">
-              <label htmlFor="email" className="text-base font-medium">
+              <label htmlFor="email" className="type-body font-medium">
                 Email
               </label>
               <Input
@@ -187,7 +187,7 @@ export default function SetupPage() {
               />
             </div>
             <div className="flex flex-col space-y-1">
-              <label htmlFor="password" className="text-base font-medium">
+              <label htmlFor="password" className="type-body font-medium">
                 Password
               </label>
               <Input
@@ -203,7 +203,7 @@ export default function SetupPage() {
             <div className="flex flex-col space-y-1">
               <label
                 htmlFor="confirmPassword"
-                className="text-base font-medium"
+                className="type-body font-medium"
               >
                 Confirm Password
               </label>
@@ -217,7 +217,7 @@ export default function SetupPage() {
                 minLength={8}
               />
             </div>
-            {error && <p className="ms-1 text-base text-red-500">{error}</p>}
+            {error && <p className="type-body ms-1 text-red-500">{error}</p>}
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? "Creating account…" : "Create Admin Account"}
             </Button>
@@ -240,11 +240,11 @@ export default function SetupPage() {
       />
       <div className="border-border/20 bg-background/5 w-full max-w-md space-y-6 rounded-3xl border p-8 backdrop-blur-sm">
         <div className="text-center">
-          <h1 className="font-serif text-base">iDeer</h1>
+          <h1 className="type-body font-serif">iDeer</h1>
           <p className="text-muted-foreground mt-2">
             Complete admin account setup
           </p>
-          <p className="text-muted-foreground mt-1 text-base">
+          <p className="text-muted-foreground type-body mt-1">
             Set your real email and a new password.
           </p>
         </div>
@@ -279,7 +279,7 @@ export default function SetupPage() {
             required
             minLength={8}
           />
-          {error && <p className="text-base text-red-500">{error}</p>}
+          {error && <p className="type-body text-red-500">{error}</p>}
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? "Setting up…" : "Complete Setup"}
           </Button>

@@ -26,12 +26,12 @@ export function ConnectorList() {
           key={name}
           className="workbench-resource-card rounded-lg border p-4"
         >
-          <h3 className="font-medium">{name}</h3>
-          <p className="text-muted-foreground text-base">
+          <h3 className="type-section-title font-medium">{name}</h3>
+          <p className="text-muted-foreground type-body">
             {server.description}
           </p>
           <span
-            className={`mt-2 inline-block rounded-full px-2 py-1 text-base ${
+            className={`type-body mt-2 inline-block rounded-full px-2 py-1 ${
               server.enabled
                 ? "bg-green-100 text-green-800"
                 : "bg-gray-100 text-gray-800"

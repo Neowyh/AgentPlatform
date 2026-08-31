@@ -135,10 +135,10 @@ describe("ArtifactTitle", () => {
     expect(screen.getByTestId("title")).toHaveClass("custom-title");
   });
 
-  test("has text-base and font-medium classes", () => {
+  test("has body type and font-medium classes", () => {
     render(<ArtifactTitle data-testid="title">Title</ArtifactTitle>);
     const el = screen.getByTestId("title");
-    expect(el.className).toContain("text-base");
+    expect(el.className).toContain("type-body");
     expect(el.className).toContain("font-medium");
   });
 });

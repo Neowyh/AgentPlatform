@@ -79,8 +79,8 @@ export function AgentGallery() {
             </Link>
           </Button>
           <div>
-            <h1 className="text-base font-semibold">{t.agents.title}</h1>
-            <p className="text-muted-foreground mt-0.5 text-base">
+            <h1 className="type-page-title font-semibold">{t.agents.title}</h1>
+            <p className="text-muted-foreground type-body mt-0.5">
               {t.agents.description}
             </p>
           </div>
@@ -92,7 +92,7 @@ export function AgentGallery() {
               placeholder={`${t.agents.title}...`}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="h-9 w-48 pl-8 text-base"
+              className="type-body h-9 w-48 pl-8"
             />
           </div>
           <Button
@@ -128,7 +128,7 @@ export function AgentGallery() {
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-6">
         {isLoading ? (
-          <div className="text-muted-foreground flex h-40 items-center justify-center text-base">
+          <div className="text-muted-foreground type-body flex h-40 items-center justify-center">
             {t.common.loading}
           </div>
         ) : agents.length === 0 ? (
@@ -138,7 +138,7 @@ export function AgentGallery() {
             </div>
             <div>
               <p className="font-medium">{t.agents.emptyTitle}</p>
-              <p className="text-muted-foreground mt-1 text-base">
+              <p className="text-muted-foreground type-body mt-1">
                 {t.agents.emptyDescription}
               </p>
             </div>

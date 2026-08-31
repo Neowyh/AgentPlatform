@@ -146,12 +146,12 @@ export default function AgentChatPage() {
             {/* Agent badge */}
             <div className="flex shrink-0 items-center gap-1.5 rounded-md border px-2 py-1">
               <BotIcon className="text-primary h-3.5 w-3.5" />
-              <span className="text-base font-medium">
+              <span className="type-body font-medium">
                 {agent?.name ?? agent_name}
               </span>
             </div>
 
-            <div className="flex w-full items-center text-base font-medium">
+            <div className="type-body flex w-full items-center font-medium">
               <ThreadTitle threadId={threadId} thread={thread} />
             </div>
             <div className="mr-4 flex items-center">
@@ -258,7 +258,7 @@ export default function AgentChatPage() {
                   onStop={handleStop}
                 />
                 {env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true" && (
-                  <div className="text-muted-foreground/67 w-full translate-y-12 text-center text-base">
+                  <div className="text-muted-foreground/67 type-body w-full translate-y-12 text-center">
                     {t.common.notAvailableInDemoMode}
                   </div>
                 )}

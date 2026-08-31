@@ -73,14 +73,14 @@ export function AccountSettingsPage() {
       <SettingsSection title={t.settings.account.profileTitle}>
         <div className="space-y-2">
           <div className="grid grid-cols-[max-content_max-content] items-center gap-4">
-            <span className="text-muted-foreground text-base">
+            <span className="text-muted-foreground type-body">
               {t.settings.account.email}
             </span>
-            <span className="text-base font-medium">{user?.email ?? "—"}</span>
-            <span className="text-muted-foreground text-base">
+            <span className="type-body font-medium">{user?.email ?? "—"}</span>
+            <span className="text-muted-foreground type-body">
               {t.settings.account.role}
             </span>
-            <span className="text-base font-medium capitalize">
+            <span className="type-body font-medium capitalize">
               {user?.system_role ?? "—"}
             </span>
           </div>
@@ -115,8 +115,8 @@ export function AccountSettingsPage() {
             required
             minLength={8}
           />
-          {error && <p className="text-base text-red-500">{error}</p>}
-          {message && <p className="text-base text-green-500">{message}</p>}
+          {error && <p className="type-body text-red-500">{error}</p>}
+          {message && <p className="type-body text-green-500">{message}</p>}
           <Button type="submit" variant="outline" size="sm" disabled={loading}>
             {loading
               ? t.settings.account.updating

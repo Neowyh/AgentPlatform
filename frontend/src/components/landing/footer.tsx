@@ -16,12 +16,12 @@ export function Footer({ className }: FooterProps) {
       )}
     >
       <hr className="from-border/0 to-border/0 m-0 h-px w-full border-none bg-linear-to-r via-white/20" />
-      <div className="text-muted-foreground container flex h-20 flex-col items-center justify-center text-base">
-        <p className="text-center font-serif text-base md:text-base">
+      <div className="text-muted-foreground type-body container flex h-20 flex-col items-center justify-center">
+        <p className="type-body text-center font-serif">
           &quot;Originated from Open Source, give back to Open Source.&quot;
         </p>
       </div>
-      <div className="text-muted-foreground container mb-8 flex flex-col items-center justify-center text-base">
+      <div className="text-muted-foreground type-body container mb-8 flex flex-col items-center justify-center">
         <p>Licensed under MIT License</p>
         <p>&copy; {year} iDeer</p>
       </div>

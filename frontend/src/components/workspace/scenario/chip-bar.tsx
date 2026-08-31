@@ -76,7 +76,7 @@ export function ChipBar<T extends string>({
             tabIndex={active ? 0 : -1}
             data-state={active ? "active" : "inactive"}
             className={cn(
-              "shrink-0 rounded-full border px-5 py-2.5 text-base font-medium transition-all",
+              "type-body shrink-0 rounded-full border px-5 py-2.5 font-medium transition-all",
               variant === "pill"
                 ? active
                   ? "border-primary bg-primary/10 text-primary"

@@ -14,9 +14,9 @@ export function SettingsSection({
   return (
     <section className={cn(className)}>
       <header className="space-y-2">
-        <div className="text-base font-semibold">{title}</div>
+        <div className="type-body font-semibold">{title}</div>
         {description && (
-          <div className="text-muted-foreground text-base">{description}</div>
+          <div className="text-muted-foreground type-body">{description}</div>
         )}
       </header>
       <main className="mt-4">{children}</main>

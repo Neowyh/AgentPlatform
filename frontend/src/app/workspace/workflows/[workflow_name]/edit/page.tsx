@@ -24,14 +24,14 @@ const customDarkTheme = monokaiInit({
     gutterBackground: "transparent",
     gutterForeground: "#555",
     gutterActiveForeground: "#fff",
-    fontSize: "var(--text-base)",
+    fontSize: "var(--type-body)",
   },
 });
 
 const customLightTheme = basicLightInit({
   settings: {
     background: "transparent",
-    fontSize: "var(--text-base)",
+    fontSize: "var(--type-body)",
   },
 });
 
@@ -100,7 +100,7 @@ export default function WorkflowEditPage() {
   if (isLoadingWorkflow) {
     return (
       <div className="flex size-full items-center justify-center">
-        <div className="text-muted-foreground text-base">
+        <div className="text-muted-foreground type-body">
           {t.common.loading}
         </div>
       </div>
@@ -110,7 +110,7 @@ export default function WorkflowEditPage() {
   if (!workflow) {
     return (
       <div className="flex size-full flex-col items-center justify-center gap-4">
-        <div className="text-destructive text-base">{t.workflows.notFound}</div>
+        <div className="text-destructive type-body">{t.workflows.notFound}</div>
         <Button
           variant="outline"
           onClick={() => router.push("/workspace/workflows")}
@@ -124,7 +124,7 @@ export default function WorkflowEditPage() {
   if (!isOwner) {
     return (
       <div className="flex size-full flex-col items-center justify-center gap-4">
-        <div className="text-destructive text-base">{t.workflows.notOwner}</div>
+        <div className="text-destructive type-body">{t.workflows.notOwner}</div>
         <Button
           variant="outline"
           onClick={() => router.push(`/workspace/workflows/${workflow_name}`)}
@@ -149,8 +149,10 @@ export default function WorkflowEditPage() {
             <ArrowLeftIcon className="h-4 w-4" />
           </Button>
           <div>
-            <h1 className="text-base font-semibold">{t.workflows.edit}</h1>
-            <p className="text-muted-foreground mt-0.5 text-base">
+            <h1 className="type-page-title font-semibold">
+              {t.workflows.edit}
+            </h1>
+            <p className="text-muted-foreground type-body mt-0.5">
               {workflow_name}
             </p>
           </div>
@@ -190,7 +192,7 @@ export default function WorkflowEditPage() {
       <div className="flex min-h-0 flex-1">
         <div className="flex w-full flex-col">
           <div className="border-b px-4 py-2">
-            <span className="text-base font-medium">
+            <span className="type-body font-medium">
               {t.workflows.yamlEditor}
             </span>
           </div>

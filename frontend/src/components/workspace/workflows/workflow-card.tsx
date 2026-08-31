@@ -95,15 +95,15 @@ export function WorkflowCard({ workflow }: WorkflowCardProps) {
                 <WorkflowIcon className="h-5 w-5" />
               </div>
               <div className="min-w-0">
-                <CardTitle className="truncate text-base">
+                <CardTitle className="type-body truncate">
                   {workflow.name}
                 </CardTitle>
                 <div className="mt-0.5 flex items-center gap-1.5">
-                  <Badge variant="secondary" className="text-base">
+                  <Badge variant="secondary" className="type-body">
                     v{workflow.version ?? t.workflows.unknown}
                   </Badge>
                   <span
-                    className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
+                    className={`type-compact inline-flex items-center rounded-full px-1.5 py-0.5 font-medium ${
                       workflow.visibility === "public"
                         ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
                         : workflow.visibility === "department"
@@ -136,7 +136,7 @@ export function WorkflowCard({ workflow }: WorkflowCardProps) {
             </Button>
           </div>
           {workflow.description && (
-            <CardDescription className="mt-2 line-clamp-2 text-base">
+            <CardDescription className="type-body mt-2 line-clamp-2">
               {workflow.description}
             </CardDescription>
           )}
@@ -144,11 +144,11 @@ export function WorkflowCard({ workflow }: WorkflowCardProps) {
 
         <CardContent className="pt-0 pb-3">
           <div className="flex flex-wrap gap-1">
-            <Badge variant="outline" className="text-base">
+            <Badge variant="outline" className="type-body">
               {t.workflows.steps(workflow.steps_count ?? 0)}
             </Badge>
             {workflow.inputs && Object.keys(workflow.inputs).length > 0 && (
-              <Badge variant="outline" className="text-base">
+              <Badge variant="outline" className="type-body">
                 {t.workflows.inputs(Object.keys(workflow.inputs).length)}
               </Badge>
             )}

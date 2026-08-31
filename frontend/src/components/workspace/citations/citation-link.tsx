@@ -37,7 +37,7 @@ export function CitationLink({
         >
           <Badge
             variant="secondary"
-            className="hover:bg-secondary/80 mx-0.5 cursor-pointer gap-1 rounded-full px-2 py-0.5 text-base font-normal"
+            className="hover:bg-secondary/80 type-body mx-0.5 cursor-pointer gap-1 rounded-full px-2 py-0.5 font-normal"
           >
             {displayText}
             <ExternalLinkIcon className="size-3" />
@@ -48,12 +48,12 @@ export function CitationLink({
         <div className="p-3">
           <div className="space-y-1">
             {displayText && (
-              <h4 className="truncate text-base leading-tight font-medium">
+              <h4 className="type-section-title truncate leading-tight font-medium">
                 {displayText}
               </h4>
             )}
             {href && (
-              <p className="text-muted-foreground truncate text-base break-all">
+              <p className="text-muted-foreground type-body truncate break-all">
                 {href}
               </p>
             )}
@@ -62,7 +62,7 @@ export function CitationLink({
             href={href}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-primary mt-2 inline-flex items-center gap-1 text-base hover:underline"
+            className="text-primary type-body mt-2 inline-flex items-center gap-1 hover:underline"
           >
             Visit source
             <ExternalLinkIcon className="size-3" />

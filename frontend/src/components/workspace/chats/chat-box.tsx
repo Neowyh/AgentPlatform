@@ -159,7 +159,9 @@ const ChatBox: React.FC<{ children: React.ReactNode; threadId: string }> = ({
               ) : (
                 <div className="flex size-full max-w-(--container-width-sm) flex-col justify-center p-4 pt-8">
                   <header className="shrink-0">
-                    <h2 className="text-base font-medium">Artifacts</h2>
+                    <h2 className="type-section-title font-medium">
+                      Artifacts
+                    </h2>
                   </header>
                   <main className="min-h-0 grow">
                     <ArtifactFileList

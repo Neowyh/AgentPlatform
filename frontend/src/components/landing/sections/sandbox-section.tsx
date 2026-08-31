@@ -71,10 +71,10 @@ export function SandboxSection({ className }: { className?: string }) {
         {/* Right: Description */}
         <div className="w-full flex-1 space-y-6">
           <div className="space-y-4">
-            <p className="text-base font-medium tracking-wider text-purple-400 uppercase">
+            <p className="type-body font-medium tracking-wider text-purple-400 uppercase">
               Open-source
             </p>
-            <h2 className="text-base font-bold tracking-tight lg:text-base">
+            <h2 className="type-section-title font-bold tracking-tight">
               <a
                 href="https://github.com/agent-infra/sandbox"
                 target="_blank"
@@ -85,7 +85,7 @@ export function SandboxSection({ className }: { className?: string }) {
             </h2>
           </div>
 
-          <div className="space-y-4 text-base text-zinc-400">
+          <div className="type-body space-y-4 text-zinc-400">
             <p>
               We recommend using{" "}
               <a
@@ -103,19 +103,19 @@ export function SandboxSection({ className }: { className?: string }) {
 
           {/* Feature Tags */}
           <div className="flex flex-wrap gap-3 pt-4">
-            <span className="rounded-full border border-zinc-800 bg-zinc-900 px-4 py-2 text-base text-zinc-300">
+            <span className="type-body rounded-full border border-zinc-800 bg-zinc-900 px-4 py-2 text-zinc-300">
               Isolated
             </span>
-            <span className="rounded-full border border-zinc-800 bg-zinc-900 px-4 py-2 text-base text-zinc-300">
+            <span className="type-body rounded-full border border-zinc-800 bg-zinc-900 px-4 py-2 text-zinc-300">
               Safe
             </span>
-            <span className="rounded-full border border-zinc-800 bg-zinc-900 px-4 py-2 text-base text-zinc-300">
+            <span className="type-body rounded-full border border-zinc-800 bg-zinc-900 px-4 py-2 text-zinc-300">
               Persistent
             </span>
-            <span className="rounded-full border border-zinc-800 bg-zinc-900 px-4 py-2 text-base text-zinc-300">
+            <span className="type-body rounded-full border border-zinc-800 bg-zinc-900 px-4 py-2 text-zinc-300">
               Mountable FS
             </span>
-            <span className="rounded-full border border-zinc-800 bg-zinc-900 px-4 py-2 text-base text-zinc-300">
+            <span className="type-body rounded-full border border-zinc-800 bg-zinc-900 px-4 py-2 text-zinc-300">
               Long-running
             </span>
           </div>

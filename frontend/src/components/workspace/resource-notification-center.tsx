@@ -106,7 +106,7 @@ export function ResourceNotificationCenter() {
           >
             <BellIcon className="size-4" />
             {unreadCount > 0 && (
-              <span className="bg-destructive text-destructive-foreground absolute top-1 right-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold">
+              <span className="bg-destructive text-destructive-foreground type-compact absolute top-1 right-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 font-semibold">
                 {unreadCount > 99 ? "99+" : unreadCount}
               </span>
             )}
@@ -123,7 +123,7 @@ export function ResourceNotificationCenter() {
             {unreadCount > 0 && (
               <button
                 type="button"
-                className="text-muted-foreground hover:text-foreground cursor-pointer text-base"
+                className="text-muted-foreground hover:text-foreground type-body cursor-pointer"
                 onClick={handleMarkAllRead}
                 disabled={markAllRead.isPending}
               >
@@ -133,11 +133,11 @@ export function ResourceNotificationCenter() {
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
           {isLoading && items.length === 0 ? (
-            <p className="text-muted-foreground px-3 py-6 text-center text-base">
+            <p className="text-muted-foreground type-body px-3 py-6 text-center">
               ...
             </p>
           ) : items.length === 0 ? (
-            <p className="text-muted-foreground px-3 py-6 text-center text-base">
+            <p className="text-muted-foreground type-body px-3 py-6 text-center">
               {t.resources.notificationsEmpty}
             </p>
           ) : (
@@ -159,7 +159,7 @@ export function ResourceNotificationCenter() {
                   >
                     {titleFor(notification)}
                   </span>
-                  <span className="text-muted-foreground text-base">
+                  <span className="text-muted-foreground type-body">
                     {subtitleFor(notification)}
                   </span>
                 </DropdownMenuItem>

@@ -20,8 +20,8 @@ export function SkillList() {
           key={skill.name}
           className="workbench-resource-card rounded-lg border p-4"
         >
-          <h3 className="font-medium">{skill.name}</h3>
-          <p className="text-muted-foreground text-base">{skill.description}</p>
+          <h3 className="type-section-title font-medium">{skill.name}</h3>
+          <p className="text-muted-foreground type-body">{skill.description}</p>
         </div>
       ))}
     </div>

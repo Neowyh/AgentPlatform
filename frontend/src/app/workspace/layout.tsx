@@ -33,20 +33,20 @@ export default async function WorkspaceLayout({
           <p className="text-muted-foreground">
             Service temporarily unavailable.
           </p>
-          <p className="text-muted-foreground text-base">
+          <p className="text-muted-foreground type-body">
             The backend may be restarting. Please wait a moment and try again.
           </p>
           <div className="flex gap-3">
             <Link
               href="/workspace"
-              className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-md px-4 py-2 text-base"
+              className="bg-primary text-primary-foreground hover:bg-primary/90 type-body rounded-md px-4 py-2"
             >
               Retry
             </Link>
             <form action="/api/v1/auth/logout" method="post">
               <button
                 type="submit"
-                className="text-muted-foreground hover:bg-muted rounded-md border px-4 py-2 text-base"
+                className="text-muted-foreground hover:bg-muted type-body rounded-md border px-4 py-2"
               >
                 Logout &amp; Reset
               </button>

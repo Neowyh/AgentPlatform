@@ -245,7 +245,7 @@ export function ToolSettingsPage() {
         description={t.settings.tools.description}
       >
         {isLoading ? (
-          <div className="text-muted-foreground text-base">
+          <div className="text-muted-foreground type-body">
             {t.common.loading}
           </div>
         ) : error ? (
@@ -260,7 +260,7 @@ export function ToolSettingsPage() {
             </div>
 
             {Object.keys(servers).length === 0 ? (
-              <div className="text-muted-foreground rounded-lg border border-dashed p-4 text-base">
+              <div className="text-muted-foreground type-body rounded-lg border border-dashed p-4">
                 {t.settings.tools.emptyState}
               </div>
             ) : (
@@ -335,7 +335,7 @@ export function ToolSettingsPage() {
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <label className="text-base font-medium">
+              <label className="type-body font-medium">
                 {t.settings.tools.serverName}
               </label>
               <Input
@@ -349,7 +349,7 @@ export function ToolSettingsPage() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-base font-medium">
+              <label className="type-body font-medium">
                 {t.settings.tools.serverType}
               </label>
               <Select
@@ -375,7 +375,7 @@ export function ToolSettingsPage() {
             {form.type === "stdio" && (
               <>
                 <div className="space-y-2">
-                  <label className="text-base font-medium">
+                  <label className="type-body font-medium">
                     {t.settings.tools.command}
                   </label>
                   <Input
@@ -387,7 +387,7 @@ export function ToolSettingsPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-base font-medium">
+                  <label className="type-body font-medium">
                     {t.settings.tools.args}
                   </label>
                   <Textarea
@@ -406,7 +406,7 @@ export function ToolSettingsPage() {
 
             {form.type !== "stdio" && (
               <div className="space-y-2">
-                <label className="text-base font-medium">
+                <label className="type-body font-medium">
                   {t.settings.tools.url}
                 </label>
                 <Input
@@ -420,7 +420,7 @@ export function ToolSettingsPage() {
             )}
 
             <div className="space-y-2">
-              <label className="text-base font-medium">
+              <label className="type-body font-medium">
                 {t.settings.tools.env}
               </label>
               <KeyValueEditor
@@ -431,7 +431,7 @@ export function ToolSettingsPage() {
 
             {form.type !== "stdio" && (
               <div className="space-y-2">
-                <label className="text-base font-medium">
+                <label className="type-body font-medium">
                   {t.settings.tools.headers}
                 </label>
                 <KeyValueEditor
@@ -444,7 +444,7 @@ export function ToolSettingsPage() {
             )}
 
             <div className="space-y-2">
-              <label className="text-base font-medium">Description</label>
+              <label className="type-body font-medium">Description</label>
               <Textarea
                 value={form.description}
                 onChange={(e) =>
@@ -483,7 +483,7 @@ export function ToolSettingsPage() {
             </DialogDescription>
           </DialogHeader>
           {deleteTarget && (
-            <div className="bg-muted rounded-md border p-3 text-base">
+            <div className="bg-muted type-body rounded-md border p-3">
               <p className="font-medium">{deleteTarget}</p>
             </div>
           )}

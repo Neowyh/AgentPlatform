@@ -538,19 +538,19 @@ export function MemorySettingsPage() {
         description={t.settings.memory.description}
       >
         {isLoading ? (
-          <div className="text-muted-foreground text-base">
+          <div className="text-muted-foreground type-body">
             {t.common.loading}
           </div>
         ) : error ? (
           <div>Error: {error.message}</div>
         ) : !memory ? (
-          <div className="text-muted-foreground text-base">
+          <div className="text-muted-foreground type-body">
             {t.settings.memory.empty}
           </div>
         ) : (
           <div className="space-y-4">
             {isMemorySummaryEmpty(memory) && memory.facts.length === 0 ? (
-              <div className="text-muted-foreground rounded-lg border border-dashed p-4 text-base">
+              <div className="text-muted-foreground type-body rounded-lg border border-dashed p-4">
                 {memoryFullyEmpty}
               </div>
             ) : null}
@@ -618,14 +618,14 @@ export function MemorySettingsPage() {
             </div>
 
             {!hasMatchingVisibleContent && normalizedQuery ? (
-              <div className="text-muted-foreground rounded-lg border border-dashed p-4 text-base">
+              <div className="text-muted-foreground type-body rounded-lg border border-dashed p-4">
                 {noMatches}
               </div>
             ) : null}
 
             {shouldRenderSummariesBlock ? (
               <div className="min-w-0 rounded-lg border p-4">
-                <div className="text-muted-foreground mb-4 text-base">
+                <div className="text-muted-foreground type-body mb-4">
                   {summaryReadOnly}
                 </div>
                 <Streamdown
@@ -640,13 +640,13 @@ export function MemorySettingsPage() {
             {shouldRenderFactsBlock ? (
               <div className="min-w-0 rounded-lg border p-4">
                 <div className="mb-4">
-                  <h3 className="text-base font-medium">
+                  <h3 className="type-section-title font-medium">
                     {t.settings.memory.markdown.facts}
                   </h3>
                 </div>
 
                 {filteredFacts.length === 0 ? (
-                  <div className="text-muted-foreground text-base">
+                  <div className="text-muted-foreground type-body">
                     {normalizedQuery ? noMatches : noFacts}
                   </div>
                 ) : (
@@ -662,7 +662,7 @@ export function MemorySettingsPage() {
                           className="flex flex-col gap-3 rounded-md border p-3 sm:flex-row sm:items-start sm:justify-between"
                         >
                           <div className="min-w-0 space-y-2 [overflow-wrap:anywhere]">
-                            <div className="flex flex-wrap gap-x-4 gap-y-1 text-base">
+                            <div className="type-body flex flex-wrap gap-x-4 gap-y-1">
                               <span>
                                 <span className="text-muted-foreground">
                                   {t.settings.memory.markdown.table.category}:
@@ -697,7 +697,7 @@ export function MemorySettingsPage() {
                                 )}
                               </span>
                             </div>
-                            <p className="text-base [overflow-wrap:anywhere]">
+                            <p className="type-body [overflow-wrap:anywhere]">
                               {fact.content}
                             </p>
                           </div>
@@ -782,7 +782,7 @@ export function MemorySettingsPage() {
           <div className="space-y-4">
             <div className="space-y-2">
               <label
-                className="text-base font-medium"
+                className="type-body font-medium"
                 htmlFor={factContentInputId}
               >
                 {factContentLabel}
@@ -804,7 +804,7 @@ export function MemorySettingsPage() {
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <label
-                  className="text-base font-medium"
+                  className="type-body font-medium"
                   htmlFor={factCategoryInputId}
                 >
                   {factCategoryLabel}
@@ -824,7 +824,7 @@ export function MemorySettingsPage() {
 
               <div className="space-y-2">
                 <label
-                  className="text-base font-medium"
+                  className="type-body font-medium"
                   htmlFor={factConfidenceInputId}
                 >
                   {factConfidenceLabel}
@@ -845,7 +845,7 @@ export function MemorySettingsPage() {
                   }
                 />
                 <div
-                  className="text-muted-foreground text-base"
+                  className="text-muted-foreground type-body"
                   id={factConfidenceHintId}
                 >
                   {factConfidenceHint}
@@ -891,7 +891,7 @@ export function MemorySettingsPage() {
             </DialogDescription>
           </DialogHeader>
           {factToDelete ? (
-            <div className="bg-muted rounded-md border p-3 text-base">
+            <div className="bg-muted type-body rounded-md border p-3">
               <div className="text-muted-foreground mb-1 font-medium">
                 {factPreviewLabel}
               </div>
@@ -935,7 +935,7 @@ export function MemorySettingsPage() {
             </DialogDescription>
           </DialogHeader>
           {pendingImport ? (
-            <div className="bg-muted rounded-md border p-3 text-base">
+            <div className="bg-muted type-body rounded-md border p-3">
               <div>
                 <span className="text-muted-foreground">
                   {t.settings.memory.importFileLabel}:

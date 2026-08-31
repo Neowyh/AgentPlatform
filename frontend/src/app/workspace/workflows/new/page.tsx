@@ -51,14 +51,14 @@ const customDarkTheme = monokaiInit({
     gutterBackground: "transparent",
     gutterForeground: "#555",
     gutterActiveForeground: "#fff",
-    fontSize: "var(--text-base)",
+    fontSize: "var(--type-body)",
   },
 });
 
 const customLightTheme = basicLightInit({
   settings: {
     background: "transparent",
-    fontSize: "var(--text-base)",
+    fontSize: "var(--type-body)",
   },
 });
 
@@ -106,10 +106,10 @@ export default function NewWorkflowPage() {
             <ArrowLeftIcon className="h-4 w-4" />
           </Button>
           <div>
-            <h1 className="text-base font-semibold">
+            <h1 className="type-page-title font-semibold">
               {t.workflows.newWorkflow}
             </h1>
-            <p className="text-muted-foreground mt-0.5 text-base">
+            <p className="text-muted-foreground type-body mt-0.5">
               {t.workflows.createSubtitle}
             </p>
           </div>
@@ -149,7 +149,7 @@ export default function NewWorkflowPage() {
       <div className="flex min-h-0 flex-1">
         <div className="flex w-full flex-col">
           <div className="border-b px-4 py-2">
-            <span className="text-base font-medium">
+            <span className="type-body font-medium">
               {t.workflows.yamlEditor}
             </span>
           </div>

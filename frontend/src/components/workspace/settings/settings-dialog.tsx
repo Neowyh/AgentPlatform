@@ -104,7 +104,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
       >
         <DialogHeader className="gap-1">
           <DialogTitle>{t.settings.title}</DialogTitle>
-          <p className="text-muted-foreground text-base">
+          <p className="text-muted-foreground type-body">
             {t.settings.description}
           </p>
         </DialogHeader>
@@ -120,7 +120,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
                       onClick={() => setActiveSection(id as SettingsSection)}
                       data-testid={`settings-tab-${id}`}
                       className={cn(
-                        "flex w-full items-center gap-3 rounded-md px-3 py-2 text-base font-medium transition-colors",
+                        "type-body flex w-full items-center gap-3 rounded-md px-3 py-2 font-medium transition-colors",
                         active
                           ? "bg-primary text-primary-foreground shadow-sm"
                           : "text-muted-foreground hover:bg-muted hover:text-foreground",

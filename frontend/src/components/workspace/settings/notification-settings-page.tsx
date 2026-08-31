@@ -39,7 +39,7 @@ export function NotificationSettingsPage() {
         title={t.settings.notification.title}
         description={t.settings.notification.description}
       >
-        <p className="text-muted-foreground text-base">
+        <p className="text-muted-foreground type-body">
           {t.settings.notification.notSupported}
         </p>
       </SettingsSection>
@@ -73,7 +73,7 @@ export function NotificationSettingsPage() {
         )}
 
         {permission === "denied" && (
-          <p className="text-muted-foreground rounded-md border border-amber-200 bg-amber-50 p-3 text-base dark:border-amber-800 dark:bg-amber-950/50">
+          <p className="text-muted-foreground type-body rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/50">
             {t.settings.notification.deniedHint}
           </p>
         )}

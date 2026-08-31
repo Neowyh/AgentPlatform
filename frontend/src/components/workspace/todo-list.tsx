@@ -46,7 +46,7 @@ export function TodoList({
     >
       <header
         className={cn(
-          "bg-accent flex min-h-8 shrink-0 cursor-pointer items-center justify-between px-4 text-base transition-all duration-300 ease-out",
+          "bg-accent type-body flex min-h-8 shrink-0 cursor-pointer items-center justify-between px-4 transition-all duration-300 ease-out",
         )}
         onClick={handleToggle}
       >

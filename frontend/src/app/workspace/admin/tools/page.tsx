@@ -94,8 +94,8 @@ export default function ToolsPage() {
             </Button>
           </Link>
           <div>
-            <h1 className="text-base font-semibold">工具管理</h1>
-            <p className="text-muted-foreground mt-0.5 text-base">
+            <h1 className="type-page-title font-semibold">工具管理</h1>
+            <p className="text-muted-foreground type-body mt-0.5">
               查看和测试系统工具
             </p>
           </div>
@@ -105,17 +105,17 @@ export default function ToolsPage() {
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-6">
         {loading ? (
-          <div className="text-muted-foreground flex h-40 items-center justify-center text-base">
+          <div className="text-muted-foreground type-body flex h-40 items-center justify-center">
             加载中...
           </div>
         ) : error ? (
-          <div className="text-destructive flex h-40 items-center justify-center text-base">
+          <div className="text-destructive type-body flex h-40 items-center justify-center">
             {error}
           </div>
         ) : tools.length === 0 ? (
           <div className="flex h-64 flex-col items-center justify-center gap-3 text-center">
             <WrenchIcon className="text-muted-foreground h-10 w-10" />
-            <p className="text-muted-foreground text-base">暂无工具</p>
+            <p className="text-muted-foreground type-body">暂无工具</p>
           </div>
         ) : (
           <div
@@ -136,7 +136,7 @@ export default function ToolsPage() {
                         <WrenchIcon className="text-primary h-5 w-5" />
                       </div>
                       <div>
-                        <CardTitle className="text-base">{tool.name}</CardTitle>
+                        <CardTitle className="type-body">{tool.name}</CardTitle>
                         <div className="mt-0.5 flex items-center gap-1">
                           {tool.visibility && (
                             <Badge
@@ -162,7 +162,7 @@ export default function ToolsPage() {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <CardDescription className="line-clamp-2 text-base">
+                  <CardDescription className="type-body line-clamp-2">
                     {tool.description || "暂无描述"}
                   </CardDescription>
                 </CardContent>
@@ -203,9 +203,9 @@ export default function ToolsPage() {
               )}
             </div>
             <div className="space-y-2">
-              <label className="text-base font-medium">测试输入 (JSON)</label>
+              <label className="type-body font-medium">测试输入 (JSON)</label>
               <Textarea
-                className="font-mono text-base"
+                className="type-body font-mono"
                 rows={6}
                 value={testInput}
                 onChange={(e) => setTestInput(e.target.value)}
@@ -218,8 +218,8 @@ export default function ToolsPage() {
             </Button>
             {testResult !== null && (
               <div className="space-y-2">
-                <label className="text-base font-medium">测试结果</label>
-                <pre className="bg-muted max-h-64 overflow-auto rounded-md p-4 text-base">
+                <label className="type-body font-medium">测试结果</label>
+                <pre className="bg-muted type-body max-h-64 overflow-auto rounded-md p-4">
                   {testResult}
                 </pre>
               </div>

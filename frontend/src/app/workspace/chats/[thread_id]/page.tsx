@@ -343,7 +343,7 @@ export default function ChatPage() {
                 : "bg-background/80 shadow-xs backdrop-blur",
             )}
           >
-            <div className="flex w-full items-center text-base font-medium">
+            <div className="type-body flex w-full items-center font-medium">
               <ThreadTitle threadId={threadId} thread={thread} />
             </div>
             <div className="flex items-center gap-2">
@@ -485,7 +485,7 @@ export default function ChatPage() {
                   />
                 )}
                 {env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true" && (
-                  <div className="text-muted-foreground/67 w-full translate-y-12 text-center text-base">
+                  <div className="text-muted-foreground/67 type-body w-full translate-y-12 text-center">
                     {t.common.notAvailableInDemoMode}
                   </div>
                 )}

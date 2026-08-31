@@ -19,10 +19,10 @@ export function KnowledgeBaseList() {
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
       {knowledgeBases.map((kb) => (
         <div key={kb.id} className="rounded-lg border p-4">
-          <h3 className="font-medium">{kb.name}</h3>
-          <p className="text-muted-foreground text-base">{kb.description}</p>
+          <h3 className="type-section-title font-medium">{kb.name}</h3>
+          <p className="text-muted-foreground type-body">{kb.description}</p>
           <div className="mt-2">
-            <span className="text-muted-foreground text-base">
+            <span className="text-muted-foreground type-body">
               {kb.document_count} documents
             </span>
           </div>

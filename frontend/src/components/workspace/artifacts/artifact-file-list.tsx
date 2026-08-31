@@ -86,7 +86,7 @@ export function ArtifactFileList({
                 {getFileIcon(file, "size-6")}
               </div>
             </CardTitle>
-            <CardDescription className="min-w-0 pl-8 text-base">
+            <CardDescription className="type-body min-w-0 pl-8">
               {getFileExtensionDisplayName(file)} file
             </CardDescription>
             <CardAction className="row-span-1 self-center">

@@ -76,8 +76,8 @@ export default function AdminDashboardPage() {
       {/* Page header */}
       <div className="flex items-center justify-between border-b px-6 py-4">
         <div>
-          <h1 className="text-base font-semibold">管理后台</h1>
-          <p className="text-muted-foreground mt-0.5 text-base">
+          <h1 className="type-page-title font-semibold">管理后台</h1>
+          <p className="text-muted-foreground type-body mt-0.5">
             管理用户、部门和系统工具
           </p>
         </div>
@@ -86,11 +86,11 @@ export default function AdminDashboardPage() {
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-6">
         {isLoading ? (
-          <div className="text-muted-foreground flex h-40 items-center justify-center text-base">
+          <div className="text-muted-foreground type-body flex h-40 items-center justify-center">
             加载中...
           </div>
         ) : error ? (
-          <div className="text-destructive flex h-40 items-center justify-center text-base">
+          <div className="text-destructive type-body flex h-40 items-center justify-center">
             {error instanceof Error ? error.message : String(error)}
           </div>
         ) : (
@@ -102,16 +102,16 @@ export default function AdminDashboardPage() {
                   data-testid="admin-stat-card"
                 >
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-base font-medium">
+                    <CardTitle className="type-body font-medium">
                       {card.label}
                     </CardTitle>
                     <card.icon className={`h-4 w-4 ${card.color}`} />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-base font-bold">
+                    <div className="type-body font-bold">
                       {stats?.[card.key] ?? 0}
                     </div>
-                    <CardDescription className="text-base">
+                    <CardDescription className="type-body">
                       点击查看详情
                     </CardDescription>
                   </CardContent>

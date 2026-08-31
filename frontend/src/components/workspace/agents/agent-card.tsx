@@ -110,7 +110,7 @@ export function AgentCard({ agent }: AgentCardProps) {
                 <BotIcon className="h-5 w-5" />
               </div>
               <div className="min-w-0">
-                <CardTitle className="truncate text-base">
+                <CardTitle className="type-body truncate">
                   <Link
                     href={`/workspace/agents/${routeIdentity}`}
                     className="hover:underline"
@@ -118,7 +118,7 @@ export function AgentCard({ agent }: AgentCardProps) {
                     {agent.name}
                   </Link>
                   {agent.read_only && (
-                    <Badge variant="outline" className="ml-1.5 text-base">
+                    <Badge variant="outline" className="type-body ml-1.5">
                       <LockIcon className="mr-0.5 h-2.5 w-2.5" />
                       {t.agents.template}
                     </Badge>
@@ -126,12 +126,12 @@ export function AgentCard({ agent }: AgentCardProps) {
                 </CardTitle>
                 <div className="mt-0.5 flex items-center gap-1.5">
                   {agent.model && (
-                    <Badge variant="secondary" className="text-base">
+                    <Badge variant="secondary" className="type-body">
                       {agent.model}
                     </Badge>
                   )}
                   <span
-                    className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
+                    className={`type-compact inline-flex items-center rounded-full px-1.5 py-0.5 font-medium ${
                       agent.visibility === "public"
                         ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
                         : agent.visibility === "department"
@@ -161,7 +161,7 @@ export function AgentCard({ agent }: AgentCardProps) {
             </Button>
           </div>
           {agent.description && (
-            <CardDescription className="mt-2 line-clamp-2 text-base">
+            <CardDescription className="type-body mt-2 line-clamp-2">
               {agent.description}
             </CardDescription>
           )}
@@ -174,7 +174,7 @@ export function AgentCard({ agent }: AgentCardProps) {
                 <Badge
                   key={`tg:${group}`}
                   variant="outline"
-                  className="text-base"
+                  className="type-body"
                 >
                   {group}
                 </Badge>
@@ -183,7 +183,7 @@ export function AgentCard({ agent }: AgentCardProps) {
                 <Badge
                   key={`sk:${skill}`}
                   variant="secondary"
-                  className="text-base"
+                  className="type-body"
                 >
                   {skill}
                 </Badge>

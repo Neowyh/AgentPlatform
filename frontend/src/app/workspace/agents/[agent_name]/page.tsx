@@ -133,7 +133,7 @@ export default function AgentDetailPage() {
   if (isLoading) {
     return (
       <div className="flex size-full items-center justify-center">
-        <div className="text-muted-foreground text-base">
+        <div className="text-muted-foreground type-body">
           {t.common.loading}
         </div>
       </div>
@@ -143,7 +143,7 @@ export default function AgentDetailPage() {
   if (error || !agent) {
     return (
       <div className="flex size-full flex-col items-center justify-center gap-4">
-        <div className="text-destructive text-base">
+        <div className="text-destructive type-body">
           {error?.message ?? "Agent not found"}
         </div>
         <Button
@@ -174,9 +174,9 @@ export default function AgentDetailPage() {
               <BotIcon className="h-5 w-5" />
             </div>
             <div>
-              <h1 className="text-base font-semibold">{agent.name}</h1>
+              <h1 className="type-page-title font-semibold">{agent.name}</h1>
               {agent.description && (
-                <p className="text-muted-foreground mt-0.5 text-base">
+                <p className="text-muted-foreground type-body mt-0.5">
                   {agent.description}
                 </p>
               )}
@@ -212,42 +212,42 @@ export default function AgentDetailPage() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-base font-medium">
+                <CardTitle className="type-body font-medium">
                   Conversations
                 </CardTitle>
                 <MessageSquareIcon className="text-muted-foreground h-4 w-4" />
               </CardHeader>
               <CardContent>
-                <div className="text-base font-bold">--</div>
-                <p className="text-muted-foreground text-base">
+                <div className="type-body font-bold">--</div>
+                <p className="text-muted-foreground type-body">
                   Total conversations
                 </p>
               </CardContent>
             </Card>
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-base font-medium">
+                <CardTitle className="type-body font-medium">
                   Token Usage
                 </CardTitle>
                 <CoinsIcon className="text-muted-foreground h-4 w-4" />
               </CardHeader>
               <CardContent>
-                <div className="text-base font-bold">--</div>
-                <p className="text-muted-foreground text-base">
+                <div className="type-body font-bold">--</div>
+                <p className="text-muted-foreground type-body">
                   Tokens consumed
                 </p>
               </CardContent>
             </Card>
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-base font-medium">
+                <CardTitle className="type-body font-medium">
                   Active Days
                 </CardTitle>
                 <CalendarIcon className="text-muted-foreground h-4 w-4" />
               </CardHeader>
               <CardContent>
-                <div className="text-base font-bold">--</div>
-                <p className="text-muted-foreground text-base">
+                <div className="type-body font-bold">--</div>
+                <p className="text-muted-foreground type-body">
                   Days with activity
                 </p>
               </CardContent>
@@ -266,8 +266,8 @@ export default function AgentDetailPage() {
             <CardContent className="space-y-4">
               {/* Model */}
               <div>
-                <h4 className="text-base font-medium">Model</h4>
-                <p className="text-muted-foreground text-base">
+                <h4 className="type-section-title font-medium">Model</h4>
+                <p className="text-muted-foreground type-body">
                   {agent.model ?? "Default model"}
                 </p>
               </div>
@@ -275,7 +275,9 @@ export default function AgentDetailPage() {
               {/* Tool groups */}
               {agent.tool_groups && agent.tool_groups.length > 0 && (
                 <div>
-                  <h4 className="text-base font-medium">Tool Groups</h4>
+                  <h4 className="type-section-title font-medium">
+                    Tool Groups
+                  </h4>
                   <div className="mt-1 flex flex-wrap gap-2">
                     {agent.tool_groups.map((group) => (
                       <Badge key={group} variant="outline">
@@ -289,7 +291,7 @@ export default function AgentDetailPage() {
               {/* Skills */}
               {agent.skills && agent.skills.length > 0 && (
                 <div>
-                  <h4 className="text-base font-medium">Skills</h4>
+                  <h4 className="type-section-title font-medium">Skills</h4>
                   <div className="mt-1 flex flex-wrap gap-2">
                     {agent.skills.map((skill) => (
                       <Badge key={skill} variant="secondary">
@@ -304,8 +306,8 @@ export default function AgentDetailPage() {
               {/* SOUL.md preview */}
               {agent.soul && (
                 <div>
-                  <h4 className="text-base font-medium">SOUL.md</h4>
-                  <pre className="bg-muted mt-2 max-h-48 overflow-auto rounded-md p-4 text-base">
+                  <h4 className="type-section-title font-medium">SOUL.md</h4>
+                  <pre className="bg-muted type-body mt-2 max-h-48 overflow-auto rounded-md p-4">
                     {agent.soul}
                   </pre>
                 </div>
@@ -388,7 +390,7 @@ export default function AgentDetailPage() {
               <div className="space-y-4 py-4">
                 <div className="space-y-2">
                   <Label>{t.agents.currentVisibility}</Label>
-                  <p className="text-muted-foreground text-base">
+                  <p className="text-muted-foreground type-body">
                     {agent.visibility}
                   </p>
                 </div>
@@ -420,7 +422,7 @@ export default function AgentDetailPage() {
                   agent.visibility,
                   targetVisibility,
                 ) === "upgrade" && (
-                  <p className="text-muted-foreground text-base">
+                  <p className="text-muted-foreground type-body">
                     {t.agents.visibilityUpgradeHint}
                   </p>
                 )}
@@ -428,7 +430,7 @@ export default function AgentDetailPage() {
                   agent.visibility,
                   targetVisibility,
                 ) === "downgrade" && (
-                  <p className="text-muted-foreground text-base">
+                  <p className="text-muted-foreground type-body">
                     {t.agents.visibilityDowngradeHint}
                   </p>
                 )}

@@ -96,7 +96,7 @@ export const ChainOfThoughtHeader = memo(
       <Collapsible onOpenChange={setIsOpen} open={isOpen}>
         <CollapsibleTrigger
           className={cn(
-            "text-muted-foreground hover:text-foreground flex w-full items-center gap-2 text-base transition-colors",
+            "text-muted-foreground hover:text-foreground type-body flex w-full items-center gap-2 transition-colors",
             className,
           )}
           data-testid="chain-of-thought-trigger"
@@ -144,7 +144,7 @@ export const ChainOfThoughtStep = memo(
     return (
       <div
         className={cn(
-          "flex gap-2 text-base",
+          "type-body flex gap-2",
           statusStyles[status],
           "fade-in-0 slide-in-from-top-2 animate-in",
           className,
@@ -159,7 +159,7 @@ export const ChainOfThoughtStep = memo(
         <div className="flex-1 space-y-2 overflow-hidden">
           <div>{label}</div>
           {description && (
-            <div className="text-muted-foreground text-base">{description}</div>
+            <div className="text-muted-foreground type-body">{description}</div>
           )}
           {children}
         </div>
@@ -187,7 +187,7 @@ export type ChainOfThoughtSearchResultProps = ComponentProps<typeof Badge>;
 export const ChainOfThoughtSearchResult = memo(
   ({ className, children, ...props }: ChainOfThoughtSearchResultProps) => (
     <Badge
-      className={cn("gap-1 px-2 py-0.5 text-base font-normal", className)}
+      className={cn("type-body gap-1 px-2 py-0.5 font-normal", className)}
       variant="secondary"
       {...props}
     >
@@ -231,7 +231,7 @@ export const ChainOfThoughtImage = memo(
       <div className="bg-muted relative flex max-h-[22rem] items-center justify-center overflow-hidden rounded-lg p-3">
         {children}
       </div>
-      {caption && <p className="text-muted-foreground text-base">{caption}</p>}
+      {caption && <p className="text-muted-foreground type-body">{caption}</p>}
     </div>
   ),
 );

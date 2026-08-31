@@ -164,13 +164,13 @@ describe("TaskItem", () => {
     expect(screen.getByTestId("item")).toHaveClass("custom-item");
   });
 
-  test("has text-base class", () => {
+  test("has body type class", () => {
     render(
       <TaskItem data-testid="item">
         <span>Item</span>
       </TaskItem>,
     );
-    expect(screen.getByTestId("item").className).toContain("text-base");
+    expect(screen.getByTestId("item").className).toContain("type-body");
   });
 });
 

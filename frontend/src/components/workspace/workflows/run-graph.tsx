@@ -116,10 +116,10 @@ function toFlowNodes(
           <div className="flex min-w-0 flex-col gap-0.5 text-left">
             <div className="flex items-center gap-1.5">
               <Icon className="h-3.5 w-3.5 shrink-0" />
-              <span className="truncate text-base font-medium">{node.id}</span>
+              <span className="type-body truncate font-medium">{node.id}</span>
             </div>
             {node.action?.name && (
-              <span className="text-muted-foreground truncate text-[10px]">
+              <span className="text-muted-foreground type-compact truncate">
                 {node.action.name}
               </span>
             )}

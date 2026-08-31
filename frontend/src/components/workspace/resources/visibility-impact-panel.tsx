@@ -85,7 +85,7 @@ export function VisibilityImpactPanel({
 
   if (loadFailed) {
     return (
-      <p className="text-destructive text-base">
+      <p className="text-destructive type-body">
         {t.resources.impactLoadError}
       </p>
     );
@@ -98,7 +98,7 @@ export function VisibilityImpactPanel({
   ).length;
 
   return (
-    <div className="space-y-2 rounded-lg border border-amber-300/60 bg-amber-50 p-3 text-base text-amber-950 dark:border-amber-500/40 dark:bg-amber-950/40 dark:text-amber-100">
+    <div className="type-body space-y-2 rounded-lg border border-amber-300/60 bg-amber-50 p-3 text-amber-950 dark:border-amber-500/40 dark:bg-amber-950/40 dark:text-amber-100">
       <p className="font-medium">{t.resources.impactTitle}</p>
       <p>
         {t.resources.impactSummary(
@@ -110,7 +110,7 @@ export function VisibilityImpactPanel({
       {impact.blocked_count > 0 && (
         <p>{t.resources.impactBlockedSummary(impact.blocked_count)}</p>
       )}
-      <ul className="max-h-40 space-y-1 overflow-y-auto text-base">
+      <ul className="type-body max-h-40 space-y-1 overflow-y-auto">
         {impact.impacted.map((item) => (
           <li key={item.resource_id} className="flex justify-between gap-3">
             <span className="min-w-0 truncate">
