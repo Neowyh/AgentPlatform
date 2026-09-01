@@ -1,5 +1,6 @@
 ---
 name: srs-writing
+description_zh: 依据软件任务书生成符合 GJB438C-2021 的需求规格说明和双向追踪矩阵
 description: 依据软件任务书（docx/doc/markdown/pdf）按 GJB438C-2021 生成软件需求规格说明（.docx）与功能-需求双向追踪矩阵（.docx），采用逐项确认的交互式流程
 allowed-tools:
   - glob

@@ -1,5 +1,6 @@
 ---
 name: ask-matt
+description_zh: 根据当前问题推荐最合适的技能或工作流入口
 description: Ask which skill or flow fits your situation. A router over the skills in this repo.
 ---
 

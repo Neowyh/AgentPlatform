@@ -1,5 +1,6 @@
 ---
 name: to-tickets
+description_zh: 将计划或规格拆分为声明阻塞关系的可执行任务单
 description: Break a plan, spec, or the current conversation into a set of tracer-bullet tickets, each declaring its blocking edges, published to the configured tracker (edges as text in one file per ticket locally, or native blocking links on a real tracker).
 ---
 

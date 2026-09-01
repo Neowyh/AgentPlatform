@@ -1,5 +1,6 @@
 ---
 name: abaqus-odb
+description_zh: 只读检查 Abaqus ODB 的分析步、场输出、历史输出、区域和结果
 description: Use when reading an Abaqus ODB to inspect steps, frames, field outputs, history outputs, regions, coordinates, units, extrema, paths, or bounded result exports without modification.
 ---
 
@@ -63,4 +64,3 @@ and a bounded export plan. Open with `readOnly=True` and close deterministically
 - [ ] Component/invariant, coordinates, units, and aggregation are recorded.
 - [ ] Missing outputs are reported rather than fabricated.
 - [ ] Database closure and export boundaries are verified.
-

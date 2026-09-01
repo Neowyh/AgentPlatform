@@ -1,5 +1,6 @@
 ---
 name: to-questionnaire
+description_zh: 将暂时无法独立回答的决策整理为供他人填写的问卷
 description: Turn a decision you can't fully answer into a questionnaire for someone else to fill in.
 ---
 

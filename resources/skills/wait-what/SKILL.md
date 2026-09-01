@@ -1,5 +1,6 @@
 ---
 name: wait-what
+description_zh: 在上下文未对齐时暂停并用更清晰的语言重新说明当前进展
 description: "Stop. That last message did not land: re-pitch it."
 ---
 

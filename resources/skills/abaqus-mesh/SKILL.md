@@ -1,5 +1,6 @@
 ---
 name: abaqus-mesh
+description_zh: 生成或审查 Abaqus 单元类型、网格划分、局部细化和网格质量
 description: Use when generating or reviewing Abaqus element types, seeding, mesh controls, local refinement, mesh quality, or interface mapping.
 ---
 

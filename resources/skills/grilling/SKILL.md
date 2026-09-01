@@ -1,5 +1,6 @@
 ---
 name: grilling
+description_zh: 通过连续追问对计划、决策或想法进行压力测试
 description: Grill the user relentlessly about a plan, decision, or idea. Use when the user wants to stress-test their thinking, or uses any 'grill' trigger phrases.
 ---
 

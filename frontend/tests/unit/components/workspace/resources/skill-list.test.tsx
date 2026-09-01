@@ -93,4 +93,12 @@ describe("SkillList", () => {
       "/workspace/chats/new?prompt=%2Fskill-1%20",
     );
   });
+
+  test("clamps card descriptions to two lines while retaining full detail link", () => {
+    render(<SkillList />);
+    expect(screen.getByText("Skill 1 description")).toHaveClass(
+      "line-clamp-2",
+      "min-h-[3rem]",
+    );
+  });
 });

@@ -1,5 +1,6 @@
 ---
 name: tdd
+description_zh: 使用测试驱动开发，以红灯、绿灯、重构循环可靠地构建或修复功能
 description: Test-driven development. Use when the user wants to build features or fix bugs test-first, mentions "red-green-refactor", or wants integration tests.
 ---
 

@@ -1,5 +1,6 @@
 ---
 name: to-spec
+description_zh: 将当前对话综合整理为规格说明并发布到项目任务跟踪器
 description: "Turn the current conversation into a spec and publish it to the project issue tracker: no interview, just synthesis of what you've already discussed."
 ---
 

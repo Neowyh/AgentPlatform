@@ -1,5 +1,6 @@
 ---
 name: resolving-merge-conflicts
+description_zh: 按照变更意图和测试结果安全解决 Git 合并或变基冲突
 description: "Use when you need to resolve an in-progress git merge/rebase conflict."
 ---
 

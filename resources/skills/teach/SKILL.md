@@ -1,5 +1,6 @@
 ---
 name: teach
+description_zh: 在当前工作区通过连续课程教用户掌握新的技能或概念
 description: Teach the user a new skill or concept, within this workspace.
 ---
 

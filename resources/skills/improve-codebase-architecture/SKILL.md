@@ -1,5 +1,6 @@
 ---
 name: improve-codebase-architecture
+description_zh: 扫描代码库中的架构深化机会并生成可审阅的改进报告
 description: Scan a codebase for deepening opportunities, present them as a visual HTML report, then grill through whichever one you pick.
 ---
 

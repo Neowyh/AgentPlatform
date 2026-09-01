@@ -1,5 +1,6 @@
 ---
 name: fault-zeroing
+description_zh: 基于资料完成故障归零分析、故障树构建和归零报告编制
 description: 基于文件资料完成归零排故、故障树构建、底事件评估和生成归零报告
 allowed-tools:
   - glob

@@ -127,7 +127,7 @@ export function SkillList() {
               className="workbench-resource-card flex flex-col rounded-lg border p-4"
             >
               <h3 className="type-section-title font-medium">{skill.name}</h3>
-              <p className="text-muted-foreground type-body mt-2 flex-1">
+              <p className="text-muted-foreground type-body mt-2 line-clamp-2 min-h-[3rem] flex-1">
                 {skill.description}
               </p>
               <div className="mt-4 flex gap-2">

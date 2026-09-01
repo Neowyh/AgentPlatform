@@ -1,5 +1,6 @@
 ---
 name: implement
+description_zh: 根据规格或任务单实现功能，并完成测试、审查和提交
 description: "Implement a piece of work based on a spec or set of tickets."
 ---
 

@@ -1,5 +1,6 @@
 ---
 name: abaqus-script-debugging-checklist
+description_zh: 诊断 Abaqus Python 脚本报错、空区域、缺失标识和结果数据库故障
 description: Use when an Abaqus Python script raises a traceback, resolves an empty region, misses a repository key, fails to create a job, or cannot open an expected result database.
 ---
 

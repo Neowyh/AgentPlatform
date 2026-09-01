@@ -1,5 +1,6 @@
 ---
 name: triage
+description_zh: 按分流状态机分类、核验并整理问题和外部 PR，形成可执行简报
 description: Move issues and external PRs through a state machine of triage roles, categorise, verify, grill if needed, and write agent-ready briefs.
 ---
 

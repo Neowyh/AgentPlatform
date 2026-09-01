@@ -1,5 +1,6 @@
 ---
 name: writing-for-agents
+description_zh: 编写供专家稳定理解和执行的技能文档及代理指令
 description: Writing documents for agents. Use when creating or editing skills, or modifying AGENTS.md or CLAUDE.md.
 ---
 

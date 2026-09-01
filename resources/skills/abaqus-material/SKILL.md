@@ -1,5 +1,6 @@
 ---
 name: abaqus-material
+description_zh: 定义或审查 Abaqus 材料、截面和岩土本构参数及其单位溯源
 description: Use when defining or reviewing Abaqus density, elasticity, plasticity, permeability, damping, sections, or geotechnical constitutive inputs that require units and provenance.
 ---
 
@@ -63,4 +64,3 @@ map, and verification tests with unresolved fields clearly marked.
 - [ ] Abaqus table ordering is checked.
 - [ ] Section assignments cover exactly the intended regions.
 - [ ] Independent response checks are defined.
-

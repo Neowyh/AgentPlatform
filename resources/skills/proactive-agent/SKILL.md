@@ -1,5 +1,6 @@
 ---
 name: proactive-agent
+description_zh: 将 AI 从被动执行者转变为能预判需求并持续改进的主动伙伴
 version: 3.0.0
 description: "Transform AI agents from task-followers into proactive partners that anticipate needs and continuously improve. Now with WAL Protocol, Working Buffer for context survival, Compaction Recovery, and battle-tested security patterns. Part of the Hal Stack 🦞"
 author: halthelobster

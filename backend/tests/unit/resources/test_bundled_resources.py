@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -88,6 +89,23 @@ def test_repository_bundled_manifest_has_unique_stable_ids_and_existing_sources(
     assert len({(item.type, item.slug) for item in manifest.resources}) == len(manifest.resources)
     assert {(item.type, item.slug): item.id for item in manifest.resources}[("workflow", "fault-zeroing")] == "018ce2c1-4d43-5db4-b4e3-d8d40624260d"
     assert all((REPO_ROOT / item.source).exists() for item in manifest.resources)
+
+
+def test_repository_bundled_skills_have_chinese_summaries() -> None:
+    manifest = load_bundled_manifest(REPO_ROOT / "bundled-resources.json")
+
+    missing = []
+    for item in manifest.resources:
+        if item.type != "skill":
+            continue
+        skill_file = REPO_ROOT / item.source / "SKILL.md"
+        source = skill_file.read_text(encoding="utf-8")
+        match = re.match(r"\A---\s*\n(.*?)\n---", source, re.DOTALL)
+        metadata = yaml.safe_load(match.group(1)) if match else None
+        if not isinstance(metadata, dict) or not str(metadata.get("description_zh", "")).strip():
+            missing.append(item.slug)
+
+    assert missing == []
 
 
 @pytest.mark.asyncio

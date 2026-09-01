@@ -1,5 +1,6 @@
 ---
 name: abaqus-geometry
+description_zh: 创建或审查 Abaqus 零件、装配、分区、集合和 CAD 几何
 description: Use when creating or reviewing Abaqus parts, sketches, assemblies, instances, partitions, sets, surfaces, or CAD-import geometry from approved inputs.
 ---
 

@@ -1,5 +1,6 @@
 ---
 name: chip-software-development-package
+description_zh: 从原厂芯片资料中提取可追溯的嵌入式软件开发知识包
 description: 从同型号同封装的原厂芯片资料集中提取可追溯的嵌入式软件开发知识包
 allowed-tools:
   - glob

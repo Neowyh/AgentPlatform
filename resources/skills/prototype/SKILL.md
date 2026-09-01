@@ -1,5 +1,6 @@
 ---
 name: prototype
+description_zh: 构建一次性原型，用于验证状态模型、逻辑或界面设计
 description: Build a throwaway prototype to answer a design question. Use when the user wants to sanity-check whether a state model or logic feels right, or explore what a UI should look like.
 ---
 

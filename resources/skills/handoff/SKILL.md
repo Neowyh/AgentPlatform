@@ -1,5 +1,6 @@
 ---
 name: handoff
+description_zh: 将当前对话压缩整理为供其他专家继续工作的交接文档
 description: Compact the current conversation into a handoff document for another agent to pick up.
 ---
 

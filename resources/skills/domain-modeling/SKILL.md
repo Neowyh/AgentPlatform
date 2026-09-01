@@ -1,5 +1,6 @@
 ---
 name: domain-modeling
+description_zh: 建立和完善项目领域模型、术语表及架构决策记录
 description: Build and sharpen a project's domain model. Use when discussing codebase terminology, writing or editing a CONTEXT.md, or recording or editing an ADR.
 ---
 

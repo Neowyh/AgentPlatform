@@ -1,5 +1,6 @@
 ---
 name: wayfinder
+description_zh: 将大型工作拆成共享的决策任务地图，并逐项消除路径上的不确定性
 description: Plan a huge chunk of work (more than one agent session can hold) as a shared map of decision tickets on your issue tracker, and resolve them one at a time until the way to the destination is clear.
 ---
 

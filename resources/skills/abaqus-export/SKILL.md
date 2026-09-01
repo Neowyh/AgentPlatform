@@ -1,5 +1,6 @@
 ---
 name: abaqus-export
+description_zh: 将 Abaqus 几何、网格、输入文件或结果可追溯地导出为指定格式
 description: Use when an approved Abaqus geometry, mesh, input-deck, image, or read-only result export needs a traceable destination and format.
 ---
 

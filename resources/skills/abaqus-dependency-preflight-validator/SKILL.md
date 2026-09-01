@@ -1,5 +1,6 @@
 ---
 name: abaqus-dependency-preflight-validator
+description_zh: 在执行 Abaqus 前检查跨文件模型、区域、分析步、作业和 ODB 标识契约
 description: Use when an Abaqus scripting project spans multiple files and model, part, instance, region, step, job, output, or ODB identifiers may have drifted before execution.
 ---
 
@@ -63,4 +64,3 @@ from warnings that require runtime evidence.
 - [ ] Step and artifact dependencies are ordered.
 - [ ] Findings include file and line evidence.
 - [ ] No project code or solver job ran during preflight.
-

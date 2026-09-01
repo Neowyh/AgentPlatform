@@ -1,5 +1,6 @@
 ---
 name: setup-matt-pocock-skills
+description_zh: 配置工程技能所需的问题跟踪器、分流标签和领域文档结构
 description: "Configure this repo for the engineering skills: set up its issue tracker, triage label vocabulary, and domain doc layout. Run once before first use of the other engineering skills."
 ---
 
