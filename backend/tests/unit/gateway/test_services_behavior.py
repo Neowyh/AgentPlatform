@@ -212,7 +212,7 @@ class TestStartRun:
             patch("app.gateway.services.get_run_context", return_value=run_ctx),
             patch("app.gateway.services.resolve_agent_factory") as mock_factory,
             patch("app.gateway.services.run_agent", new_callable=AsyncMock),
-            patch("app.gateway.services.get_app_config") as mock_app_config,
+            patch("app.gateway.run_preparation.get_app_config") as mock_app_config,
         ):
             mock_factory.return_value = MagicMock()
             mock_app_config.return_value.get_model_config.return_value = None
@@ -250,10 +250,10 @@ class TestStartRun:
             patch("app.gateway.services.get_stream_bridge", return_value=bridge),
             patch("app.gateway.services.get_run_manager", return_value=run_mgr),
             patch("app.gateway.services.get_run_context", return_value=run_ctx),
-            patch("app.gateway.services._prepare_canonical_agent_run", new_callable=AsyncMock) as prepare,
+            patch("app.gateway.run_preparation._prepare_canonical_agent_run", new_callable=AsyncMock) as prepare,
             patch("app.gateway.services.resolve_agent_factory") as legacy_factory,
             patch("app.gateway.services.run_agent", new_callable=AsyncMock) as run_agent,
-            patch("app.gateway.services.get_app_config") as mock_app_config,
+            patch("app.gateway.run_preparation.get_app_config") as mock_app_config,
             patch("app.gateway.services.uuid.uuid4", return_value="canonical-run"),
         ):
             prepare.return_value = canonical_factory
@@ -294,9 +294,9 @@ class TestStartRun:
             patch("app.gateway.services.get_stream_bridge", return_value=bridge),
             patch("app.gateway.services.get_run_manager", return_value=run_mgr),
             patch("app.gateway.services.get_run_context", return_value=run_ctx),
-            patch("app.gateway.services._prepare_canonical_agent_run", new_callable=AsyncMock),
-            patch("app.gateway.services._discard_canonical_run_snapshot", new_callable=AsyncMock) as discard,
-            patch("app.gateway.services.get_app_config") as mock_app_config,
+            patch("app.gateway.run_preparation._prepare_canonical_agent_run", new_callable=AsyncMock),
+            patch("app.gateway.run_preparation._discard_canonical_run_snapshot", new_callable=AsyncMock) as discard,
+            patch("app.gateway.run_preparation.get_app_config") as mock_app_config,
             patch("app.gateway.services.uuid.uuid4", return_value="rejected-run"),
         ):
             mock_app_config.return_value.get_model_config.return_value = None
@@ -340,7 +340,7 @@ class TestStartRun:
             patch("app.gateway.services.get_run_context", return_value=run_ctx),
             patch("app.gateway.services.resolve_agent_factory") as mock_factory,
             patch("app.gateway.services.run_agent", new_callable=AsyncMock),
-            patch("app.gateway.services.get_app_config") as mock_app_config,
+            patch("app.gateway.run_preparation.get_app_config") as mock_app_config,
         ):
             mock_factory.return_value = MagicMock()
             mock_app_config.return_value.get_model_config.return_value = mock_model_config
@@ -374,7 +374,7 @@ class TestStartRun:
             patch("app.gateway.services.get_stream_bridge", return_value=bridge),
             patch("app.gateway.services.get_run_manager", return_value=run_mgr),
             patch("app.gateway.services.get_run_context", return_value=run_ctx),
-            patch("app.gateway.services.get_app_config") as mock_app_config,
+            patch("app.gateway.run_preparation.get_app_config") as mock_app_config,
         ):
             mock_app_config.return_value.get_model_config.return_value = None
 
@@ -414,7 +414,7 @@ class TestStartRun:
             patch("app.gateway.services.get_run_context", return_value=run_ctx),
             patch("app.gateway.services.resolve_agent_factory") as mock_factory,
             patch("app.gateway.services.run_agent", new_callable=AsyncMock),
-            patch("app.gateway.services.get_app_config") as mock_app_config,
+            patch("app.gateway.run_preparation.get_app_config") as mock_app_config,
         ):
             mock_factory.return_value = MagicMock()
             mock_app_config.return_value.get_model_config.return_value = {"name": "12345"}
@@ -451,7 +451,7 @@ class TestStartRun:
             patch("app.gateway.services.get_stream_bridge", return_value=bridge),
             patch("app.gateway.services.get_run_manager", return_value=run_mgr),
             patch("app.gateway.services.get_run_context", return_value=run_ctx),
-            patch("app.gateway.services.get_app_config") as mock_app_config,
+            patch("app.gateway.run_preparation.get_app_config") as mock_app_config,
         ):
             mock_app_config.return_value.get_model_config.return_value = None
 
@@ -488,7 +488,7 @@ class TestStartRun:
             patch("app.gateway.services.get_stream_bridge", return_value=bridge),
             patch("app.gateway.services.get_run_manager", return_value=run_mgr),
             patch("app.gateway.services.get_run_context", return_value=run_ctx),
-            patch("app.gateway.services.get_app_config") as mock_app_config,
+            patch("app.gateway.run_preparation.get_app_config") as mock_app_config,
         ):
             mock_app_config.return_value.get_model_config.return_value = None
 
@@ -531,7 +531,7 @@ class TestStartRun:
             patch("app.gateway.services.get_run_context", return_value=run_ctx),
             patch("app.gateway.services.resolve_agent_factory") as mock_factory,
             patch("app.gateway.services.run_agent", new_callable=AsyncMock),
-            patch("app.gateway.services.get_app_config") as mock_app_config,
+            patch("app.gateway.run_preparation.get_app_config") as mock_app_config,
         ):
             mock_factory.return_value = MagicMock()
             mock_app_config.return_value.get_model_config.return_value = None
@@ -576,7 +576,7 @@ class TestStartRun:
             patch("app.gateway.services.get_run_context", return_value=run_ctx),
             patch("app.gateway.services.resolve_agent_factory") as mock_factory,
             patch("app.gateway.services.run_agent", new_callable=AsyncMock),
-            patch("app.gateway.services.get_app_config") as mock_app_config,
+            patch("app.gateway.run_preparation.get_app_config") as mock_app_config,
         ):
             mock_factory.return_value = MagicMock()
             mock_app_config.return_value.get_model_config.return_value = None
