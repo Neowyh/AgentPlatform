@@ -162,7 +162,7 @@ export function AgentCard({ agent }: AgentCardProps) {
           </div>
           {agent.description && (
             <CardDescription className="type-body mt-2 line-clamp-2">
-              {agent.description}
+              {agent.summary ?? agent.description}
             </CardDescription>
           )}
         </CardHeader>

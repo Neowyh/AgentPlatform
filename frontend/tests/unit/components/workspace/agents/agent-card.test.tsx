@@ -123,6 +123,19 @@ describe("AgentCard", () => {
     expect(screen.getByText("Hello world")).toBeInTheDocument();
   });
 
+  test("prefers the task-oriented summary when provided", () => {
+    render(
+      <AgentCard
+        agent={makeAgent({
+          description: "Technical description",
+          summary: "Plain-language task summary",
+        })}
+      />,
+    );
+    expect(screen.getByText("Plain-language task summary")).toBeInTheDocument();
+    expect(screen.queryByText("Technical description")).not.toBeInTheDocument();
+  });
+
   test("does not render description when description is empty string", () => {
     const { container } = render(
       <AgentCard agent={makeAgent({ description: "" })} />,

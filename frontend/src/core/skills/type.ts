@@ -4,6 +4,7 @@ export interface Skill {
   read_only?: boolean;
   name: string;
   description: string;
+  summary?: string;
   category: string;
   license: string;
   enabled: boolean;

@@ -1,6 +1,7 @@
 import { extractError } from "@/core/api/errors";
 import { fetch } from "@/core/api/fetcher";
 import { getBackendBaseURL } from "@/core/config";
+import { getResourceSummary } from "@/core/resources/summaries";
 
 import type { Skill } from "./type";
 
@@ -39,6 +40,10 @@ export async function loadSkills(): Promise<Skill[]> {
       read_only: !resource.can_modify,
       name: resource.display_name,
       description: resource.description ?? resource.display_name,
+      summary: getResourceSummary(
+        resource.slug,
+        resource.description ?? resource.display_name,
+      ),
       category: resource.can_modify ? "custom" : "public",
       license: "",
       enabled: true,

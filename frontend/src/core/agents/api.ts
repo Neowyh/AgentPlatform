@@ -6,6 +6,7 @@ import {
 } from "@/core/api/errors";
 import { fetch } from "@/core/api/fetcher";
 import { getBackendBaseURL } from "@/core/config";
+import { getResourceSummary } from "@/core/resources/summaries";
 
 import type { Agent, CreateAgentRequest, UpdateAgentRequest } from "./types";
 
@@ -32,6 +33,10 @@ function fromCanonicalResource(resource: CanonicalAgentResource): Agent {
     draft_revision: resource.draft_revision,
     name: resource.display_name,
     description: resource.description ?? resource.display_name,
+    summary: getResourceSummary(
+      resource.slug,
+      resource.description ?? resource.display_name,
+    ),
     model: null,
     tool_groups: null,
     skills: null,
@@ -59,6 +64,10 @@ function fromCanonicalPublished(payload: {
   return {
     ...agent,
     description: payload.content.config.description ?? "",
+    summary: getResourceSummary(
+      payload.resource.slug,
+      payload.content.config.description ?? "",
+    ),
     model: payload.content.config.model ?? null,
     tool_groups: payload.content.config.tool_groups ?? null,
     skills: payload.content.config.skills ?? null,

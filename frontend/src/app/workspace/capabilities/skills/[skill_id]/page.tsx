@@ -38,7 +38,7 @@ export default function SkillDetailPage() {
         </Link>
         <h1 className="type-page-title mt-2 font-semibold">{skill.name}</h1>
         <p className="text-muted-foreground type-body mt-1">
-          {skill.description}
+          {skill.summary ?? skill.description}
         </p>
       </div>
       <div className="flex-1 overflow-y-auto p-6">

@@ -4,6 +4,7 @@ import {
   DownloadIcon,
   Code2Icon,
   MessageSquareIcon,
+  PlusIcon,
   StarIcon,
   Trash2Icon,
   UploadIcon,
@@ -19,6 +20,7 @@ import {
   CardContent,
   CardFooter,
   CardHeader,
+  CardDescription,
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -107,7 +109,7 @@ export function SkillList() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <Input
-          className="w-48"
+          className="min-w-48 flex-1"
           placeholder={t.settings.skills.searchPlaceholder}
           value={query}
           onChange={(event) => setQuery(event.target.value)}
@@ -129,8 +131,16 @@ export function SkillList() {
           <UploadIcon className="mr-1.5 h-4 w-4" />
           {t.common.import}
         </Button>
+        <Button asChild>
+          <Link
+            href={`/workspace/chats/new?prompt=${encodeURIComponent("请使用 skill-creator 帮我创建一个新技能。")}`}
+          >
+            <PlusIcon className="mr-1.5 h-4 w-4" />
+            {t.settings.skills.createSkill}
+          </Link>
+        </Button>
       </div>
-      <div className="workbench-resource-grid grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div className="workbench-resource-grid grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {visibleSkills.map((skill) => {
           const identity = skill.resource_id ?? skill.slug ?? skill.name;
           const invocation = skill.slug ?? skill.name;
@@ -146,7 +156,12 @@ export function SkillList() {
                       <Code2Icon className="h-5 w-5" />
                     </div>
                     <CardTitle className="type-body truncate">
-                      {skill.name}
+                      <Link
+                        href={`/workspace/capabilities/skills/${identity}`}
+                        className="hover:underline"
+                      >
+                        {skill.name}
+                      </Link>
                     </CardTitle>
                   </div>
                   {skill.resource_id && (
@@ -179,9 +194,9 @@ export function SkillList() {
                     {skill.read_only ? "只读" : "可管理"}
                   </Badge>
                 </div>
-                <p className="text-muted-foreground type-body line-clamp-2 min-h-[3rem]">
-                  {skill.description}
-                </p>
+                <CardDescription className="type-body mt-2 line-clamp-2 min-h-[3rem]">
+                  {skill.summary ?? skill.description}
+                </CardDescription>
               </CardHeader>
               <CardContent className="pt-0" />
               <CardFooter className="mt-auto flex gap-2 pt-3">

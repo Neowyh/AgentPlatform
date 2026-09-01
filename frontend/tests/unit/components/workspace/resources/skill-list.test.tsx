@@ -9,6 +9,7 @@ const mockSkills = [
     slug: "skill-1",
     name: "skill-1",
     description: "Skill 1 description",
+    summary: "Skill 1 task summary",
   },
   {
     resource_id: "skill-2-id",
@@ -43,6 +44,7 @@ vi.mock("@/core/i18n/hooks", () => ({
           importSuccess: "Skill imported",
           archiveSuccess: "Skill archived",
           searchPlaceholder: "Search skills...",
+          createSkill: "Create skill",
           details: "Details",
           use: "Use",
           noResults: "No matching skills",
@@ -75,9 +77,9 @@ describe("SkillList", () => {
     expect(screen.getByText("skill-2")).toBeInTheDocument();
   });
 
-  test("displays skill descriptions", () => {
+  test("displays task-oriented summaries", () => {
     render(<SkillList />);
-    expect(screen.getByText("Skill 1 description")).toBeInTheDocument();
+    expect(screen.getByText("Skill 1 task summary")).toBeInTheDocument();
     expect(screen.getByText("Skill 2 description")).toBeInTheDocument();
   });
 
@@ -96,7 +98,7 @@ describe("SkillList", () => {
 
   test("clamps card descriptions to two lines while retaining full detail link", () => {
     render(<SkillList />);
-    expect(screen.getByText("Skill 1 description")).toHaveClass(
+    expect(screen.getByText("Skill 1 task summary")).toHaveClass(
       "line-clamp-2",
       "min-h-[3rem]",
     );

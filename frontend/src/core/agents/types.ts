@@ -4,6 +4,7 @@ export interface Agent {
   draft_revision?: number;
   name: string;
   description: string;
+  summary?: string;
   model: string | null;
   tool_groups: string[] | null;
   skills: string[] | null;

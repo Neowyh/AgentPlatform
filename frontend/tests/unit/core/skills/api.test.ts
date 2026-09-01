@@ -59,6 +59,38 @@ describe("skills api", () => {
       expect(result[0]!.name).toBe("test-skill");
       expect(result[0]!.enabled).toBe(true);
       expect(result[0]!.category).toBe("custom");
+      expect(result[0]!.summary).toBe("test-skill");
+    });
+
+    test("uses the bundled task summary without changing the source description", async () => {
+      const { fetch: fetcher } = await import("@/core/api/fetcher");
+      vi.mocked(fetcher).mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            items: [
+              {
+                id: "11111111-1111-1111-1111-111111111111",
+                type: "skill",
+                slug: "data-analysis",
+                display_name: "Data Analysis",
+                description: "Trigger description",
+                owner_id: "owner",
+                visibility: "public",
+                scope_department_id: null,
+                can_modify: false,
+              },
+            ],
+            total: 1,
+          }),
+          { status: 200 },
+        ),
+      );
+
+      const { loadSkills } = await import("@/core/skills/api");
+      const [skill] = await loadSkills();
+
+      expect(skill?.description).toBe("Trigger description");
+      expect(skill?.summary).toContain("Excel");
     });
 
     test("maps canonical Skills and keeps UUID identity separate from display name", async () => {
