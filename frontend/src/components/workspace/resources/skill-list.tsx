@@ -5,6 +5,7 @@ import {
   Code2Icon,
   MessageSquareIcon,
   PlusIcon,
+  SearchIcon,
   StarIcon,
   Trash2Icon,
   UploadIcon,
@@ -13,11 +14,9 @@ import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
-  CardContent,
   CardFooter,
   CardHeader,
   CardDescription,
@@ -108,17 +107,21 @@ export function SkillList() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <Input
-          className="min-w-48 flex-1"
-          placeholder={t.settings.skills.searchPlaceholder}
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-        />
+        <div className="relative min-w-48 flex-1">
+          <SearchIcon className="text-muted-foreground absolute top-1/2 left-2.5 h-4 w-4 -translate-y-1/2" />
+          <Input
+            className="pl-8"
+            placeholder={t.settings.skills.searchPlaceholder}
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </div>
         <Button
           variant={favoritesOnly ? "default" : "outline"}
           onClick={() => setFavoritesOnly((value) => !value)}
         >
-          {t.common.favoritesOnly}
+          <StarIcon className="mr-1.5 h-4 w-4" />
+          {favoritesOnly ? t.common.showAll : t.common.favoritesOnly}
         </Button>
         <input
           ref={importRef}
@@ -147,7 +150,7 @@ export function SkillList() {
           return (
             <Card
               key={identity}
-              className="workbench-resource-card flex min-h-[15rem] flex-col"
+              className="workbench-resource-card group flex flex-col transition-shadow hover:shadow-md"
             >
               <CardHeader className="pb-3">
                 <div className="flex items-start justify-between gap-2">
@@ -182,29 +185,11 @@ export function SkillList() {
                     </Button>
                   )}
                 </div>
-                <div className="flex flex-wrap gap-1">
-                  <Badge variant="secondary">
-                    {skill.slug ? `/${skill.slug}` : "Skill"}
-                  </Badge>
-                  <Badge variant="outline">{skill.category}</Badge>
-                  {skill.visibility && (
-                    <Badge variant="outline">{skill.visibility}</Badge>
-                  )}
-                  <Badge variant="outline">
-                    {skill.read_only ? "只读" : "可管理"}
-                  </Badge>
-                </div>
                 <CardDescription className="type-body mt-2 line-clamp-2 min-h-[3rem]">
                   {skill.summary ?? skill.description}
                 </CardDescription>
               </CardHeader>
-              <CardContent className="pt-0" />
-              <CardFooter className="mt-auto flex gap-2 pt-3">
-                <Button asChild variant="outline" size="sm" className="flex-1">
-                  <Link href={`/workspace/capabilities/skills/${identity}`}>
-                    {t.settings.skills.details}
-                  </Link>
-                </Button>
+              <CardFooter className="mt-auto flex items-center justify-between gap-2 pt-3">
                 <Button asChild size="sm" className="flex-1">
                   <Link
                     href={`/workspace/chats/new?prompt=${encodeURIComponent(`/${invocation} `)}`}
@@ -213,25 +198,30 @@ export function SkillList() {
                     {t.settings.skills.use}
                   </Link>
                 </Button>
-                {skill.resource_id && (
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={() => void handleExport(skill)}
-                  >
-                    <DownloadIcon className="h-4 w-4" />
-                  </Button>
-                )}
-                {skill.resource_id && !skill.read_only && (
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="text-destructive"
-                    onClick={() => void handleArchive(skill.resource_id!)}
-                  >
-                    <Trash2Icon className="h-4 w-4" />
-                  </Button>
-                )}
+                <div className="flex gap-1">
+                  {skill.resource_id && (
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-8 w-8 shrink-0"
+                      onClick={() => void handleExport(skill)}
+                      title={t.common.export}
+                    >
+                      <DownloadIcon className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                  {skill.resource_id && !skill.read_only && (
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="text-destructive hover:text-destructive h-8 w-8 shrink-0"
+                      onClick={() => void handleArchive(skill.resource_id!)}
+                      title={t.settings.skills.archiveSuccess}
+                    >
+                      <Trash2Icon className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                </div>
               </CardFooter>
             </Card>
           );

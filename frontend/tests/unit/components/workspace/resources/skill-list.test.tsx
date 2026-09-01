@@ -83,16 +83,31 @@ describe("SkillList", () => {
     expect(screen.getByText("Skill 2 description")).toBeInTheDocument();
   });
 
-  test("links to details and starts a prefilled skill conversation", () => {
+  test("keeps the title detail link and starts a prefilled skill conversation", () => {
     render(<SkillList />);
 
-    expect(screen.getAllByRole("link", { name: "Details" })[0]).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "skill-1" })).toHaveAttribute(
       "href",
       "/workspace/capabilities/skills/skill-1-id",
     );
+    expect(
+      screen.queryByRole("link", { name: "Details" }),
+    ).not.toBeInTheDocument();
     expect(screen.getAllByRole("link", { name: "Use" })[0]).toHaveAttribute(
       "href",
       "/workspace/chats/new?prompt=%2Fskill-1%20",
+    );
+  });
+
+  test("matches the expert toolbar icon affordances", () => {
+    render(<SkillList />);
+
+    expect(screen.getByPlaceholderText("Search skills...")).toHaveClass("pl-8");
+    const favoritesButtons = screen.getAllByRole("button", {
+      name: "Favorites",
+    });
+    expect(favoritesButtons[0]).toContainElement(
+      favoritesButtons[0]?.querySelector("svg"),
     );
   });
 
