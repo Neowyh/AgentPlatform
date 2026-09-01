@@ -1,0 +1,2 @@
+PIN: PA0 | signal=UART1_TX | alternate_function=AF1 | peripheral=UART1 | interrupt=UART1_IRQn | source=reference manual § 10.1 (p. 210)
+TOPIC: clock | claim=PLL lock may fail after wakeup | source=reference manual § 6.4 (p. 99)

@@ -1,0 +1,1 @@
+TOPIC: errata_impact | claim=UART1 may lose the first byte after wakeup | source=errata § 3.2 (p. 6)

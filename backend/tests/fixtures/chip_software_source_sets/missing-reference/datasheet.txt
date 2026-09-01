@@ -1,0 +1,1 @@
+TOPIC: startup_reset | claim=Reset vector is at 0x00000000 | source=datasheet § 4.1 (p. 12)

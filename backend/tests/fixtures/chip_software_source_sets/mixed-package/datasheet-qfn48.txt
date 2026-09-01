@@ -1,0 +1,1 @@
+PIN: PA0 | signal=UART1_TX | alternate_function=AF1 | peripheral=UART1 | interrupt=UART1_IRQn | source=other package datasheet § 7.3 (p. 41)

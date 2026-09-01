@@ -82,7 +82,7 @@ def test_repository_bundled_manifest_has_unique_stable_ids_and_existing_sources(
     manifest = load_bundled_manifest(REPO_ROOT / "bundled-resources.json")
 
     assert manifest.schema_version == 1
-    assert len(manifest.resources) == 72
+    assert len(manifest.resources) == 73
     assert len({item.id for item in manifest.resources}) == len(manifest.resources)
     assert len({(item.type, item.slug) for item in manifest.resources}) == len(manifest.resources)
     assert {(item.type, item.slug): item.id for item in manifest.resources}[("workflow", "fault-zeroing")] == "018ce2c1-4d43-5db4-b4e3-d8d40624260d"
