@@ -83,7 +83,7 @@ vi.mock("@/components/workspace/workspace-breadcrumb", () => ({
 // Import component after mocks
 // ---------------------------------------------------------------------------
 
-import AgentDetailPage from "@/app/workspace/agents/[agent_name]/page";
+import AgentDetailPage from "@/app/workspace/capabilities/experts/[agent_name]/page";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -165,7 +165,7 @@ describe("AgentDetailPage", () => {
     expect(screen.getByText("Back")).toBeInTheDocument();
   });
 
-  test("back button navigates to /workspace/agents", async () => {
+  test("back button navigates to the experts gallery", async () => {
     const user = userEvent.setup();
     mockUseAgent.mockReturnValue({
       agent: null,
@@ -174,7 +174,7 @@ describe("AgentDetailPage", () => {
     });
     render(<AgentDetailPage />);
     await user.click(screen.getByText("Back"));
-    expect(mockPush).toHaveBeenCalledWith("/workspace/agents");
+    expect(mockPush).toHaveBeenCalledWith("/workspace/capabilities/experts");
   });
 
   // ── Success state: full agent ──────────────────────────────────────
@@ -377,7 +377,7 @@ describe("AgentDetailPage", () => {
     const editLink = editLinks[0]!.closest("a");
     expect(editLink).toHaveAttribute(
       "href",
-      "/workspace/agents/test-agent/edit",
+      "/workspace/capabilities/experts/test-agent/edit",
     );
   });
 
@@ -391,11 +391,11 @@ describe("AgentDetailPage", () => {
     const startChatLink = screen.getByText("Start Chat").closest("a");
     expect(startChatLink).toHaveAttribute(
       "href",
-      "/workspace/agents/test-agent/chats/new",
+      "/workspace/capabilities/experts/test-agent/chats/new",
     );
   });
 
-  test("back arrow button navigates to /workspace/agents", async () => {
+  test("back arrow button navigates to the experts gallery", async () => {
     const user = userEvent.setup();
     mockUseAgent.mockReturnValue({
       agent: fullAgent,
@@ -406,7 +406,7 @@ describe("AgentDetailPage", () => {
     // The back arrow button - it's the first ghost button
     const backButtons = screen.getAllByRole("button");
     await user.click(backButtons[0]!);
-    expect(mockPush).toHaveBeenCalledWith("/workspace/agents");
+    expect(mockPush).toHaveBeenCalledWith("/workspace/capabilities/experts");
   });
 
   // ── Agent with tool groups and skills ──────────────────────────────

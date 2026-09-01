@@ -216,7 +216,7 @@ vi.mock("@/components/workspace/messages/context", () => ({
   },
 }));
 
-import NewAgentPage from "@/app/workspace/agents/new/page";
+import NewAgentPage from "@/app/workspace/capabilities/experts/new/page";
 
 afterEach(() => {
   vi.clearAllMocks();

@@ -90,7 +90,7 @@ export default function AgentChatPage() {
       history.replaceState(
         null,
         "",
-        `/workspace/agents/${agent_name}/chats/${createdThreadId}`,
+        `/workspace/capabilities/experts/${agent_name}/chats/${createdThreadId}`,
       );
     },
     onFinish: (state) => {
@@ -160,7 +160,9 @@ export default function AgentChatPage() {
                   size="sm"
                   variant="secondary"
                   onClick={() => {
-                    router.push(`/workspace/agents/${agent_name}/chats/new`);
+                    router.push(
+                      `/workspace/capabilities/experts/${agent_name}/chats/new`,
+                    );
                   }}
                 >
                   <PlusSquare /> {t.agents.newChat}

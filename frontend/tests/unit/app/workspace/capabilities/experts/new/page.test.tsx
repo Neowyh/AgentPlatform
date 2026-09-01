@@ -213,7 +213,7 @@ vi.mock("@/components/ui/button", () => ({
 // Imports – after mocks are set up.
 // ---------------------------------------------------------------------------
 
-import NewAgentPage from "@/app/workspace/agents/new/page";
+import NewAgentPage from "@/app/workspace/capabilities/experts/new/page";
 import { checkAgentName, getAgent } from "@/core/agents/api";
 import { isIMEComposing } from "@/lib/ime";
 import { toast } from "sonner";
@@ -952,7 +952,7 @@ describe("NewAgentPage", () => {
 
       fireEvent.click(screen.getByText("Start Chatting"));
       expect(mockPush).toHaveBeenCalledWith(
-        "/workspace/agents/nav-agent/chats/new",
+        "/workspace/capabilities/experts/nav-agent/chats/new",
       );
     });
 
@@ -970,7 +970,7 @@ describe("NewAgentPage", () => {
       await act(async () => {});
 
       fireEvent.click(screen.getByText("Back"));
-      expect(mockPush).toHaveBeenCalledWith("/workspace/agents");
+      expect(mockPush).toHaveBeenCalledWith("/workspace/capabilities/experts");
     });
   });
 
@@ -1122,7 +1122,7 @@ describe("NewAgentPage", () => {
       );
       expect(backBtn).toBeTruthy();
       fireEvent.click(backBtn!);
-      expect(mockPush).toHaveBeenCalledWith("/workspace/agents");
+      expect(mockPush).toHaveBeenCalledWith("/workspace/capabilities/experts");
     });
   });
 

@@ -19,7 +19,7 @@ vi.mock("@/core/tasks/context", () => ({
   ),
 }));
 
-import AgentChatLayout from "@/app/workspace/agents/[agent_name]/chats/[thread_id]/layout";
+import AgentChatLayout from "@/app/workspace/capabilities/experts/[agent_name]/chats/[thread_id]/layout";
 
 afterEach(() => {
   cleanup();

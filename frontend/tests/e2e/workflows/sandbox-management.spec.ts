@@ -47,9 +47,9 @@ test.describe("Sandbox Management", () => {
   });
 
   test("agent chat page renders without sandbox errors", async ({ page }) => {
-    // The agents gallery lives at /workspace/agents, not the base /workspace
+    // The experts gallery lives at /workspace/capabilities/experts, not the base /workspace
     // path (which redirects to /workspace/chats/new).
-    await page.goto("/workspace/agents");
+    await page.goto("/workspace/capabilities/experts");
     await page.waitForLoadState("networkidle");
 
     // Wait for the agent card to appear (rendered from mock agents data)

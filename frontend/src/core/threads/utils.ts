@@ -29,7 +29,7 @@ export function pathOfThread(
   }
 
   return agentName
-    ? `/workspace/agents/${encodeURIComponent(agentName)}/chats/${threadId}`
+    ? `/workspace/capabilities/experts/${encodeURIComponent(agentName)}/chats/${threadId}`
     : `/workspace/chats/${threadId}`;
 }
 

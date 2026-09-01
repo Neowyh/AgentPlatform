@@ -68,7 +68,7 @@ test("shared mock fixture preserves agent workflow memory and skill contracts", 
     },
   });
 
-  await page.goto("/workspace/agents");
+  await page.goto("/workspace/capabilities/experts");
   await expect(page.getByText("contract-agent").first()).toBeVisible({
     timeout: 15_000,
   });

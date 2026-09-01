@@ -49,7 +49,7 @@ export function AgentCard({ agent }: AgentCardProps) {
   const routeIdentity = agent.resource_id ?? agent.name;
 
   function handleChat() {
-    router.push(`/workspace/agents/${routeIdentity}/chats/new`);
+    router.push(`/workspace/capabilities/experts/${routeIdentity}/chats/new`);
   }
 
   async function handleToggleFavorite() {
@@ -112,7 +112,7 @@ export function AgentCard({ agent }: AgentCardProps) {
               <div className="min-w-0">
                 <CardTitle className="type-body truncate">
                   <Link
-                    href={`/workspace/agents/${routeIdentity}`}
+                    href={`/workspace/capabilities/experts/${routeIdentity}`}
                     className="hover:underline"
                   >
                     {agent.name}

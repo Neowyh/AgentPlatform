@@ -9,7 +9,7 @@ test.describe("Core workspace — visual regression", () => {
   });
 
   test("agent gallery desktop screenshot", async ({ page }) => {
-    await page.goto("/workspace/agents");
+    await page.goto("/workspace/capabilities/experts");
     await expect(page.getByRole("main")).toBeVisible();
     await expect(page).toHaveScreenshot("agent-gallery.png", {
       fullPage: true,

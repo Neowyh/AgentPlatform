@@ -192,7 +192,7 @@ describe("DocLayout", () => {
     mockGetPageMap.mockResolvedValueOnce([
       { route: "/en/application", name: "application" },
       {
-        route: "/workspace/agents/[agent_name]/edit",
+        route: "/workspace/capabilities/experts/[agent_name]/edit",
         name: "edit",
       },
       { name: "separator", separator: true },

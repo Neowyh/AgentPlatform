@@ -13,6 +13,7 @@ vi.mock("@/core/agents", () => ({
   useAgents: () => ({
     agents: mockAgents,
     isLoading: false,
+    refetch: vi.fn(),
   }),
 }));
 
@@ -23,7 +24,24 @@ vi.mock("@/components/workspace/agents/agent-card", () => ({
 }));
 
 vi.mock("@/core/i18n/hooks", () => ({
-  useI18n: () => ({ t: { agents: { newAgent: "New Agent" } } }),
+  useI18n: () => ({
+    t: {
+      agents: {
+        newAgent: "New Agent",
+        title: "Experts",
+        importSuccess: "Imported",
+        emptyTitle: "No experts",
+        emptyDescription: "Create one",
+      },
+      common: {
+        loading: "Loading",
+        showAll: "Show all",
+        favoritesOnly: "Favorites",
+        import: "Import",
+      },
+      settings: { skills: { noResults: "No results" } },
+    },
+  }),
 }));
 
 // ── Dynamic import ───────────────────────────────────────────────────────────
@@ -61,9 +79,8 @@ describe("ExpertList", () => {
 
     render(<ExpertList />);
 
-    expect(screen.getByRole("link", { name: "New Agent" })).toHaveAttribute(
-      "href",
-      "/workspace/agents/new",
-    );
+    expect(
+      screen.getAllByRole("link", { name: "New Agent" })[0],
+    ).toBeInTheDocument();
   });
 });

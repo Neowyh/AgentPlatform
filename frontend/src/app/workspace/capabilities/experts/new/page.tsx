@@ -267,7 +267,7 @@ export default function NewAgentPage() {
         <Button
           variant="ghost"
           size="icon-sm"
-          onClick={() => router.push("/workspace/agents")}
+          onClick={() => router.push("/workspace/capabilities/experts")}
         >
           <ArrowLeftIcon className="h-4 w-4" />
         </Button>
@@ -417,7 +417,7 @@ export default function NewAgentPage() {
                       <Button
                         onClick={() =>
                           router.push(
-                            `/workspace/agents/${agentName}/chats/new`,
+                            `/workspace/capabilities/experts/${agentName}/chats/new`,
                           )
                         }
                       >
@@ -425,7 +425,9 @@ export default function NewAgentPage() {
                       </Button>
                       <Button
                         variant="outline"
-                        onClick={() => router.push("/workspace/agents")}
+                        onClick={() =>
+                          router.push("/workspace/capabilities/experts")
+                        }
                       >
                         {t.agents.backToGallery}
                       </Button>

@@ -218,7 +218,7 @@ describe("AgentCard", () => {
     render(<AgentCard agent={makeAgent({ name: "my-agent" })} />);
     fireEvent.click(screen.getByTestId("agent-chat-button"));
     expect(mockPush).toHaveBeenCalledWith(
-      "/workspace/agents/my-agent/chats/new",
+      "/workspace/capabilities/experts/my-agent/chats/new",
     );
   });
 
@@ -234,7 +234,7 @@ describe("AgentCard", () => {
     );
     fireEvent.click(screen.getByTestId("agent-chat-button"));
     expect(mockPush).toHaveBeenCalledWith(
-      "/workspace/agents/11111111-1111-1111-1111-111111111111/chats/new",
+      "/workspace/capabilities/experts/11111111-1111-1111-1111-111111111111/chats/new",
     );
     expect(screen.getByTestId("agent-favorite-button")).toBeInTheDocument();
     expect(screen.getByTestId("agent-export-button")).toBeInTheDocument();
