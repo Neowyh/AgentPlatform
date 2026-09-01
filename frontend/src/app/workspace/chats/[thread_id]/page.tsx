@@ -205,7 +205,7 @@ export default function ChatPage() {
       delete context.task_id;
       delete context.task_label;
       delete context.prompt_template;
-      delete context.connector_name;
+      context.connector_name = selectedConnector ?? undefined;
       return context;
     }
     const chip = selectedChip

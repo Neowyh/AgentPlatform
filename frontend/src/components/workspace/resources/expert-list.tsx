@@ -15,10 +15,6 @@ export function ExpertList() {
     return <div className="text-muted-foreground">Loading...</div>;
   }
 
-  if (!agents || agents.length === 0) {
-    return <div className="text-muted-foreground">No experts found</div>;
-  }
-
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
@@ -26,11 +22,15 @@ export function ExpertList() {
           <Link href="/workspace/agents/new">{t.agents.newAgent}</Link>
         </Button>
       </div>
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {agents.map((agent) => (
-          <AgentCard key={agent.name} agent={agent} />
-        ))}
-      </div>
+      {agents && agents.length > 0 ? (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {agents.map((agent) => (
+            <AgentCard key={agent.name} agent={agent} />
+          ))}
+        </div>
+      ) : (
+        <div className="text-muted-foreground">No experts found</div>
+      )}
     </div>
   );
 }

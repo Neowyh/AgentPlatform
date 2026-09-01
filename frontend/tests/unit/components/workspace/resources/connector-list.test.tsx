@@ -56,11 +56,11 @@ describe("ConnectorList", () => {
 
   test("offers enabled connectors for a new conversation", () => {
     render(<ConnectorList />);
-    expect(screen.getByText("Use in new conversation")).toHaveAttribute(
-      "href",
-      "/workspace/chats/new?connector=server-1",
-    );
-    expect(screen.queryByText("Use in new conversation")).toHaveAttribute(
+    const links = screen.getAllByRole("link", {
+      name: "Use in new conversation",
+    });
+    expect(links).toHaveLength(1);
+    expect(links[0]).toHaveAttribute(
       "href",
       "/workspace/chats/new?connector=server-1",
     );
