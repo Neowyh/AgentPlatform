@@ -667,6 +667,20 @@ export interface Translations {
       noResults: string;
       backToSkills: string;
       notFound: string;
+      edit: string;
+      export: string;
+      information: string;
+      license: string;
+      allowedTools: string;
+      internet: string;
+      required: string;
+      notRequired: string;
+      version: string;
+      skillMd: string;
+      notSpecified: string;
+      readOnly: string;
+      saved: string;
+      saveFailed: string;
     };
     notification: {
       title: string;

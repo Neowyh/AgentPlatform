@@ -5,19 +5,22 @@ import { getResourceSummary } from "@/core/resources/summaries";
 
 import type { Skill } from "./type";
 
+type CanonicalSkill = {
+  id: string;
+  slug: string;
+  display_name: string;
+  description?: string | null;
+  owner_id: string;
+  visibility: string;
+  scope_department_id: string | null;
+  system_owned: boolean;
+  can_modify: boolean;
+  is_favorited?: boolean;
+  latest_version?: number;
+  draft_revision?: number;
+};
+
 export async function loadSkills(): Promise<Skill[]> {
-  type CanonicalSkill = {
-    id: string;
-    slug: string;
-    display_name: string;
-    description?: string | null;
-    owner_id: string;
-    visibility: string;
-    scope_department_id: string | null;
-    system_owned: boolean;
-    can_modify: boolean;
-    is_favorited?: boolean;
-  };
   const items: CanonicalSkill[] = [];
   const limit = 200;
   for (let offset = 0; ; offset += limit) {
@@ -51,8 +54,86 @@ export async function loadSkills(): Promise<Skill[]> {
       owner_id: resource.owner_id,
       department_id: resource.scope_department_id,
       is_favorited: resource.is_favorited,
+      latest_version: resource.latest_version,
+      draft_revision: resource.draft_revision,
+      can_modify: resource.can_modify,
+      system_owned: resource.system_owned,
     }),
   );
+}
+
+export async function getSkill(resourceId: string): Promise<Skill> {
+  const response = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resourceId)}/published`,
+  );
+  if (!response.ok) await extractError(response, "Failed to load Skill");
+  const payload = (await response.json()) as {
+    resource: CanonicalSkill;
+    content: {
+      name: string;
+      description: string;
+      license?: string | null;
+      allowed_tools?: string[] | null;
+      requires_internet?: boolean;
+    };
+    skill_md?: string;
+    version: { version: number; published_at?: string | null };
+  };
+  const resource = payload.resource;
+  return {
+    resource_id: resource.id,
+    slug: resource.slug,
+    name: resource.display_name,
+    description: payload.content.description,
+    summary: payload.content.description,
+    category: resource.can_modify ? "custom" : "public",
+    license: payload.content.license ?? "",
+    enabled: true,
+    visibility: resource.visibility,
+    owner_id: resource.owner_id,
+    department_id: resource.scope_department_id,
+    read_only: !resource.can_modify,
+    is_favorited: resource.is_favorited,
+    latest_version: resource.latest_version,
+    draft_revision: resource.draft_revision,
+    can_modify: resource.can_modify,
+    system_owned: resource.system_owned,
+    allowed_tools: payload.content.allowed_tools,
+    requires_internet: payload.content.requires_internet,
+    skill_md: payload.skill_md,
+    published_at: payload.version.published_at,
+  };
+}
+
+export async function updateSkill(
+  resourceId: string,
+  content: string,
+  expectedRevision: number,
+): Promise<void> {
+  const draftResponse = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resourceId)}/skill-draft`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content, expected_revision: expectedRevision }),
+    },
+  );
+  if (!draftResponse.ok)
+    await extractError(draftResponse, "Failed to save Skill draft");
+  const draft = (await draftResponse.json()) as { revision: number };
+  const publishResponse = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resourceId)}/publish`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        expected_draft_revision: draft.revision,
+        scan_result: {},
+      }),
+    },
+  );
+  if (!publishResponse.ok)
+    await extractError(publishResponse, "Failed to publish Skill");
 }
 
 export async function enableSkill(

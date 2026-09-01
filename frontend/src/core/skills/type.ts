@@ -12,4 +12,12 @@ export interface Skill {
   owner_id?: string | null;
   department_id?: string | null;
   is_favorited?: boolean;
+  latest_version?: number;
+  draft_revision?: number;
+  can_modify?: boolean;
+  system_owned?: boolean;
+  allowed_tools?: string[] | null;
+  requires_internet?: boolean;
+  skill_md?: string;
+  published_at?: string | null;
 }

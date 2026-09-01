@@ -15,6 +15,7 @@ import { useAgent } from "@/core/agents";
 import type { Agent } from "@/core/agents";
 import { useI18n } from "@/core/i18n/hooks";
 import type { Translations } from "@/core/i18n/locales/types";
+import type { Skill } from "@/core/skills";
 
 interface BreadcrumbSegment {
   label: string;
@@ -25,6 +26,7 @@ function getBreadcrumbSegments(
   pathname: string,
   t: Translations,
   agentLabel?: string,
+  skillLabel?: string,
 ): BreadcrumbSegment[] {
   const segments: BreadcrumbSegment[] = [];
   const parts = pathname.split("/").filter(Boolean);
@@ -127,7 +129,7 @@ function getBreadcrumbSegments(
       });
       if (parts[3]) {
         segments.push({
-          label: parts[3],
+          label: tab === "skills" ? (skillLabel ?? t.common.loading) : parts[3],
           href: `/workspace/capabilities/${tab}/${parts[3]}`,
         });
       }
@@ -174,7 +176,10 @@ function getBreadcrumbSegments(
   return segments;
 }
 
-export function WorkspaceBreadcrumb({ agent }: { agent?: Agent } = {}) {
+export function WorkspaceBreadcrumb({
+  agent,
+  skill,
+}: { agent?: Agent; skill?: Skill } = {}) {
   const pathname = usePathname();
   const { t } = useI18n();
   const parts = pathname.split("/").filter(Boolean);
@@ -187,6 +192,7 @@ export function WorkspaceBreadcrumb({ agent }: { agent?: Agent } = {}) {
     pathname,
     t,
     agent?.name ?? fetchedAgent?.name,
+    skill?.name,
   );
 
   if (segments.length <= 1) {

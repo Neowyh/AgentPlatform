@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import shutil
 import uuid
 import zipfile
 from collections.abc import AsyncIterator
@@ -48,6 +49,7 @@ from ideer.resources.service import (
     VisibilityClosureError,
 )
 from ideer.resources.storage import ResourceStorage, StorageConflict, StorageValidationError
+from ideer.skills.validation import _validate_skill_frontmatter
 from ideer.workflows.v2.errors import WorkflowRunError
 from ideer.workflows.v2.file_roots import (
     collect_artifacts,
@@ -145,6 +147,11 @@ class WorkflowDraftRequest(BaseModel):
 class AgentDraftRequest(BaseModel):
     config: dict[str, Any]
     soul: str = ""
+    expected_revision: int = Field(ge=0)
+
+
+class SkillDraftRequest(BaseModel):
+    content: str = Field(min_length=1)
     expected_revision: int = Field(ge=0)
 
 
@@ -788,6 +795,7 @@ async def get_published_resource(
                 "allowed_tools": skill.allowed_tools,
                 "requires_internet": skill.requires_internet,
             }
+            payload["skill_md"] = (source / "SKILL.md").read_text(encoding="utf-8")
         return payload
 
 
@@ -913,6 +921,48 @@ async def save_agent_draft(
                 service,
                 ResourceStorage(get_paths().base_dir),
             ).save_filesystem_draft(
+                resource.id,
+                source_dir=source,
+                expected_revision=body.expected_revision,
+            )
+            return {
+                "resource_id": draft.resource_id,
+                "revision": draft.revision,
+                "content_hash": draft.content_hash,
+            }
+
+
+@router.put("/{resource_id}/skill-draft")
+@_translate_resource_errors
+async def save_skill_draft(
+    resource_id: str,
+    body: SkillDraftRequest,
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> dict[str, Any]:
+    """Save only SKILL.md while carrying the published resource attachments forward."""
+    with TemporaryDirectory(prefix="ideer-skill-draft-") as temporary:
+        source = Path(temporary)
+        async with _factory()() as session:
+            service = ResourceService(session, _resource_actor(current_user))
+            resource = await service.get_visible(resource_id)
+            service.assert_modify(resource)
+            if resource.type != "skill" or resource.storage_kind != "filesystem":
+                raise ValueError("Only filesystem-backed Skill resources accept Skill drafts")
+            published = await service.get_published_content(resource.id)
+            storage = ResourceStorage(get_paths().base_dir)
+            published_dir = storage.resources_root / published.storage_key
+            await asyncio.to_thread(
+                shutil.copytree,
+                published_dir,
+                source,
+                dirs_exist_ok=True,
+                copy_function=shutil.copyfile,
+            )
+            (source / "SKILL.md").write_text(body.content, encoding="utf-8")
+            valid, message, _name = await asyncio.to_thread(_validate_skill_frontmatter, source)
+            if not valid:
+                raise ValueError(message)
+            draft = await ResourcePublisher(service, storage).save_filesystem_draft(
                 resource.id,
                 source_dir=source,
                 expected_revision=body.expected_revision,

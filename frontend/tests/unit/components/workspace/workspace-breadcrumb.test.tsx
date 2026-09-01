@@ -138,6 +138,23 @@ describe("WorkspaceBreadcrumb", () => {
     expect(screen.getByText("中文专家")).toBeInTheDocument();
   });
 
+  test("renders skill name instead of the resource id", () => {
+    mockPathname = "/workspace/capabilities/skills/skill-uuid";
+    render(
+      <WorkspaceBreadcrumb
+        skill={{
+          name: "文档整理",
+          description: "",
+          category: "public",
+          license: "",
+          enabled: true,
+        }}
+      />,
+    );
+    expect(screen.getByText("文档整理")).toBeInTheDocument();
+    expect(screen.queryByText("skill-uuid")).not.toBeInTheDocument();
+  });
+
   test("renders agent edit breadcrumb", () => {
     mockPathname = "/workspace/capabilities/experts/my-agent/edit";
     render(<WorkspaceBreadcrumb />);
