@@ -1,8 +1,10 @@
 """Upload router for handling file uploads."""
 
+import asyncio
 import logging
 import os
 import stat
+import zipfile
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field
@@ -13,6 +15,13 @@ from ideer.config.app_config import AppConfig
 from ideer.config.paths import get_paths
 from ideer.runtime.user_context import get_effective_user_id
 from ideer.sandbox.sandbox_provider import SandboxProvider, get_sandbox_provider
+from ideer.uploads.code_evidence import (
+    CodeEvidencePackageError,
+    accept_package,
+    delete_package,
+    list_packages,
+    read_manifest,
+)
 from ideer.uploads.manager import (
     PathTraversalError,
     UnsafeUploadPathError,
@@ -54,6 +63,17 @@ class UploadLimits(BaseModel):
     max_files: int
     max_file_size: int
     max_total_size: int
+
+
+class CodeEvidencePackageResponse(BaseModel):
+    package_id: str
+    original_filename: str
+    accepted: list[str]
+    excluded: list[str]
+    rejected: list[dict[str, str]]
+    compressed_size: int
+    expanded_size: int
+    source_virtual_path: str
 
 
 def _make_file_sandbox_writable(file_path: os.PathLike[str] | str) -> None:
@@ -331,6 +351,55 @@ async def get_upload_limits(
 ) -> UploadLimits:
     """Return upload limits used by the gateway for this thread."""
     return _get_upload_limits(config)
+
+
+@router.post("/code-evidence-package", response_model=CodeEvidencePackageResponse)
+@require_permission("threads", "write", owner_check=True, require_existing=True)
+async def upload_code_evidence_package(
+    thread_id: str,
+    file: UploadFile = File(...),
+) -> CodeEvidencePackageResponse:
+    """Accept one governed ZIP package without changing ordinary uploads."""
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="A ZIP package filename is required")
+    try:
+        manifest, _root = await asyncio.to_thread(
+            accept_package,
+            file.file,
+            thread_id=thread_id,
+            original_filename=file.filename,
+        )
+    except CodeEvidencePackageError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except (OSError, zipfile.BadZipFile) as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid code evidence package: {exc}") from exc
+    return CodeEvidencePackageResponse(**manifest.as_dict())
+
+
+@router.get("/code-evidence-package", response_model=list[CodeEvidencePackageResponse])
+@require_permission("threads", "read", owner_check=True, require_existing=True)
+async def get_code_evidence_packages(thread_id: str) -> list[CodeEvidencePackageResponse]:
+    return [CodeEvidencePackageResponse(**item) for item in await asyncio.to_thread(list_packages, thread_id)]
+
+
+@router.get("/code-evidence-package/{package_id}", response_model=CodeEvidencePackageResponse)
+@require_permission("threads", "read", owner_check=True, require_existing=True)
+async def get_code_evidence_package(thread_id: str, package_id: str) -> CodeEvidencePackageResponse:
+    try:
+        manifest = await asyncio.to_thread(read_manifest, thread_id, package_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Code Evidence Package not found") from exc
+    return CodeEvidencePackageResponse(**manifest)
+
+
+@router.delete("/code-evidence-package/{package_id}")
+@require_permission("threads", "delete", owner_check=True, require_existing=True)
+async def remove_code_evidence_package(thread_id: str, package_id: str) -> dict[str, bool]:
+    try:
+        await asyncio.to_thread(delete_package, thread_id, package_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Code Evidence Package not found") from exc
+    return {"success": True}
 
 
 @router.get("/list", response_model=dict)

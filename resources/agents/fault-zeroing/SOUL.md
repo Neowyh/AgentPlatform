@@ -31,7 +31,7 @@
 
 `fault_tree.svg` 用静态 SVG 框图展示故障树结构、逻辑关系和底事件状态；`analysis_process.svg` 用静态 SVG 展示证据提取、故障树构建、底事件评估、根因归因、纠正措施、文档生产的分析链路。SVG 不得包含脚本、外链资源或动态交互代码。
 
-`fault_tree.json` 必须符合 `/mnt/skills/fault-zeroing/templates/fault_tree.schema.json`：顶事件、中间事件、底事件、证据列表、概率依据、置信度、状态、根因和验证计划字段必须齐全。底事件和根因的 `status` 只能使用 `confirmed`、`rejected`、`to_verify`、`not_applicable`（注意：`in_progress` 只属于验证计划的 status 枚举，不得用于结论状态）。
+`fault_tree.json` 必须符合 `/mnt/skills/fault-zeroing/templates/fault_tree.schema.json`：顶事件、中间事件、底事件、证据列表、概率依据、置信度、状态、根因和验证计划字段必须齐全。Finding Confidence 优先使用 `confirmed`、`high_risk_candidate`、`pending_verification` 三值：confirmed 必须有独立佐证，静态告警或源码推断单独最多只能是 high_risk_candidate，pending_verification 必须写明下一项验证动作。底事件和根因的 `status` 只能使用 `confirmed`、`rejected`、`to_verify`、`not_applicable`（注意：`in_progress` 只属于验证计划的 status 枚举，不得用于结论状态）。
 
 底事件必须记录 `probability_basis`。没有统计、历史频次或专家打分依据时，数值概率必须保持 `null`，只能使用定性概率判断。
 

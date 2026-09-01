@@ -61,7 +61,7 @@
       "enum": ["pending", "in_progress", "passed", "failed", "blocked"]
     },
     "confidence": {
-      "enum": ["high", "medium", "low", "unknown"]
+      "enum": ["confirmed", "high_risk_candidate", "pending_verification", "high", "medium", "low", "unknown"]
     },
     "evidence_grade": {
       "enum": ["A", "B", "C", "D"]

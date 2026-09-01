@@ -8,7 +8,7 @@ from ideer.config.network_mode import is_offline
 from ideer.reflection import resolve_variable
 from ideer.sandbox.security import is_host_bash_allowed
 from ideer.tools.assembly import assemble_tools
-from ideer.tools.builtins import ask_clarification_tool, present_file_tool, task_tool, view_image_tool
+from ideer.tools.builtins import analyze_code_evidence, ask_clarification_tool, present_file_tool, task_tool, view_image_tool
 from ideer.tools.builtins.tool_search import get_deferred_registry
 from ideer.tools.sync import make_sync_tool_wrapper
 
@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 BUILTIN_TOOLS = [
     present_file_tool,
     ask_clarification_tool,
+    analyze_code_evidence,
 ]
 
 SUBAGENT_TOOLS = [

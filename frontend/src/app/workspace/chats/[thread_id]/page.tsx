@@ -11,6 +11,7 @@ import {
   useThreadChat,
 } from "@/components/workspace/chats";
 import { ExportTrigger } from "@/components/workspace/export-trigger";
+import { FaultZeroingEvidenceControls } from "@/components/workspace/fault-zeroing-evidence-controls";
 import { InputBox } from "@/components/workspace/input-box";
 import {
   MessageList,
@@ -44,6 +45,7 @@ import {
   textOfMessage,
   titleOfThread,
 } from "@/core/threads/utils";
+import type { CodeEvidencePackage, EvidenceMode } from "@/core/uploads/api";
 import { env } from "@/env";
 import { cn } from "@/lib/utils";
 
@@ -160,6 +162,13 @@ export default function ChatPage() {
   const { agent: selectedAgentDetails } = useAgent(selectedAgent?.resource_id);
   const [pendingTemplate, setPendingTemplate] = useState<string | null>(null);
   const [templateResetKey, setTemplateResetKey] = useState(0);
+  const [evidenceMode, setEvidenceMode] = useState<EvidenceMode>(
+    (settings.context.evidence_mode as EvidenceMode | undefined) ?? "document",
+  );
+  const [codePackage, setCodePackage] = useState<CodeEvidencePackage | null>(
+    null,
+  );
+  const evidenceThreadRef = useRef<string | null>(null);
 
   const activeScenario = selectedScenario;
   const handleSelectScenario = useCallback(
@@ -181,6 +190,16 @@ export default function ChatPage() {
   useEffect(() => {
     setPendingTemplate(activeBinding?.promptTemplate ?? null);
   }, [activeBinding?.promptTemplate]);
+
+  useEffect(() => {
+    if (evidenceThreadRef.current === threadId) return;
+    evidenceThreadRef.current = threadId;
+    setEvidenceMode(
+      (settings.context.evidence_mode as EvidenceMode | undefined) ??
+        "document",
+    );
+    setCodePackage(null);
+  }, [settings.context.evidence_mode, threadId]);
 
   const allowedSkillNames = useMemo(() => {
     if (!selectedPill) return undefined;
@@ -213,7 +232,7 @@ export default function ChatPage() {
           (item) => item.taskId === selectedChip.taskId,
         )
       : undefined;
-    return {
+    const nextContext = {
       ...context,
       scenario_id: selectedPill.scenarioId,
       agent_name: selectedPill.agentSlug,
@@ -225,7 +244,21 @@ export default function ChatPage() {
       task_label: chip?.label,
       prompt_template: chip?.promptTemplate,
       connector_name: selectedConnector ?? undefined,
+      ...(selectedPill.agentSlug === "fault-zeroing" &&
+      evidenceMode !== "document"
+        ? {
+            evidence_mode: evidenceMode,
+            code_package_id: codePackage?.package_id,
+          }
+        : {}),
     };
+    if (
+      selectedPill.agentSlug === "fault-zeroing" &&
+      evidenceMode === "document"
+    ) {
+      delete nextContext.code_package_id;
+    }
+    return nextContext;
   }, [
     activeBinding,
     selectedAgent,
@@ -234,6 +267,8 @@ export default function ChatPage() {
     selectedPill,
     selectedChip,
     selectedConnector,
+    evidenceMode,
+    codePackage,
   ]);
 
   const handleRemoveTag = useCallback(
@@ -448,6 +483,22 @@ export default function ChatPage() {
                           iDeer帮你落地实现
                         </span>
                       </p>
+                    )}
+                    {selectedPill?.agentSlug === "fault-zeroing" && (
+                      <FaultZeroingEvidenceControls
+                        threadId={threadId}
+                        mode={evidenceMode}
+                        packageInfo={codePackage}
+                        onModeChange={(mode) => {
+                          setEvidenceMode(mode);
+                          if (mode === "document") setCodePackage(null);
+                          setSettings("context", {
+                            ...settings.context,
+                            evidence_mode: mode,
+                          });
+                        }}
+                        onPackageChange={setCodePackage}
+                      />
                     )}
                     <InputBox
                       className="workbench-input-surface bg-background/5 w-full"
