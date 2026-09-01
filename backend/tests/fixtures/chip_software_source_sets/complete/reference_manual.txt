@@ -1,0 +1,2 @@
+TOPIC: memory | claim=Flash starts at 0x08000000 | source=reference manual § 2.1 (p. 19)
+TOPIC: dma | claim=DMA1 channel 1 serves UART1_TX | source=reference manual § 9.4 (p. 188)

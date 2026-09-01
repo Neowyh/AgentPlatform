@@ -10,6 +10,14 @@
       "source": "resources/skills/academic-paper-review"
     },
     {
+      "id": "e4f5b5d3-7f5d-5e89-9b99-4edec7a1e4c2",
+      "type": "skill",
+      "slug": "chip-software-development-package",
+      "display_name": "芯片软件开发包提取",
+      "visibility": "public",
+      "source": "resources/skills/chip-software-development-package"
+    },
+    {
       "id": "5e05ca2a-7233-5f37-9f35-3a95f6286038",
       "type": "skill",
       "slug": "bootstrap",

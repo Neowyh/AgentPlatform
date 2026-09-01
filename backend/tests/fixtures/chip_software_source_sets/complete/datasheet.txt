@@ -1,0 +1,3 @@
+TOPIC: startup_reset | claim=Reset vector is at 0x00000000 | source=datasheet § 4.1 (p. 12)
+TOPIC: clock | claim=HSE supports 8 MHz crystal | source=datasheet § 6.2 (p. 28)
+PIN: PA0 | signal=UART1_TX | alternate_function=AF1 | peripheral=UART1 | interrupt=UART1_IRQn | source=datasheet § 7.3 (p. 41)

@@ -1,0 +1,2 @@
+PIN: PB3 | signal=SPI1_SCK | alternate_function=AF5 | peripheral=SPI1 | interrupt=SPI1_IRQn | source=datasheet § 8.1 table 12 (p. 44)
+PIN: PB3 | signal=SPI1_SCK | alternate_function=AF5 | peripheral=SPI1 | interrupt=SPI1_IRQn | source=datasheet § 8.1 table 12 continuation (p. 45)

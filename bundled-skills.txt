@@ -62,6 +62,7 @@ proactive-agent              # 主动式智能体（235K 安装，WAL 协议 + �
 # —— 行业场景 ——
 srs-writing                  # GJB438C 软件需求规格说明生成
 fault-zeroing                # 归零排故/故障树构建与归零报告
+chip-software-development-package # 芯片软件开发包提取，原厂资料集核验与证据门禁
 abaqus-dependency-preflight-validator # Abaqus 依赖预检验证
 abaqus-export                # Abaqus 几何/结果导出规划
 abaqus-geometry              # Abaqus 零件/装配/分区审查
