@@ -842,6 +842,7 @@ export const enUS: Translations = {
       readOnly: "Read-only skill; editing is unavailable",
       saved: "Skill published",
       saveFailed: "Failed to save skill",
+      exportFailed: "Failed to export skill. Please try again.",
     },
     notification: {
       title: "Notification",

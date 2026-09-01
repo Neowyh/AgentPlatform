@@ -803,6 +803,7 @@ export const zhCN: Translations = {
       readOnly: "只读技能，无法编辑",
       saved: "技能已发布",
       saveFailed: "技能保存失败",
+      exportFailed: "技能导出失败，请重试。",
     },
     notification: {
       title: "通知",

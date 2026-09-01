@@ -795,7 +795,10 @@ async def get_published_resource(
                 "allowed_tools": skill.allowed_tools,
                 "requires_internet": skill.requires_internet,
             }
-            payload["skill_md"] = (source / "SKILL.md").read_text(encoding="utf-8")
+            payload["skill_md"] = await asyncio.to_thread(
+                (source / "SKILL.md").read_text,
+                encoding="utf-8",
+            )
         return payload
 
 

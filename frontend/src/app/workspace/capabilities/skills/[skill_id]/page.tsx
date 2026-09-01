@@ -33,12 +33,16 @@ export default function SkillDetailPage() {
     );
   const invocation = skill.slug ?? skill.name;
   const download = async () => {
-    const url = URL.createObjectURL(await exportSkill(skill.resource_id!));
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `${invocation}.skill`;
-    anchor.click();
-    URL.revokeObjectURL(url);
+    try {
+      const url = URL.createObjectURL(await exportSkill(skill.resource_id!));
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `${invocation}.skill`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error(t.settings.skills.exportFailed);
+    }
   };
   return (
     <main className="flex size-full flex-col">

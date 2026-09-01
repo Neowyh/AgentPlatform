@@ -681,6 +681,7 @@ export interface Translations {
       readOnly: string;
       saved: string;
       saveFailed: string;
+      exportFailed: string;
     };
     notification: {
       title: string;
