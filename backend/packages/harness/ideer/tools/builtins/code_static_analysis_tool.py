@@ -10,7 +10,7 @@ from langchain.tools import tool
 from ideer.config.paths import get_paths
 from ideer.runtime.user_context import get_effective_user_id
 from ideer.tools.types import Runtime
-from ideer.uploads.code_analysis import fixed_scanner_commands, inventory_package, normalize_scanner_output, run_fixed_scanner, write_analysis_summary
+from ideer.uploads.code_analysis import SCANNER_TIMEOUT_SECONDS, fixed_scanner_commands, inventory_package, normalize_scanner_output, run_fixed_scanner, write_analysis_summary
 from ideer.uploads.code_evidence import package_root
 
 
@@ -37,9 +37,12 @@ def analyze_code_evidence(runtime: Runtime) -> str:
     for name, command in fixed_scanner_commands(root, output):
         version = "unavailable"
         version_command = [command[0], "--version"]
-        version_result = subprocess.run(version_command, capture_output=True, text=True, shell=False, check=False)
-        if version_result.stdout:
-            version = version_result.stdout.splitlines()[0].strip()
+        try:
+            version_result = subprocess.run(version_command, capture_output=True, text=True, shell=False, check=False, timeout=SCANNER_TIMEOUT_SECONDS)
+            if version_result.stdout:
+                version = version_result.stdout.splitlines()[0].strip()
+        except subprocess.TimeoutExpired:
+            version = f"timeout after {SCANNER_TIMEOUT_SECONDS} seconds"
         raw_path = output / f"{name}.raw.txt"
         return_code, _raw = run_fixed_scanner(command, cwd=root / "source", output_file=raw_path)
         scanners.append({"name": name, "version": version, "command": [command[0]], "return_code": return_code, "raw_artifact": str(raw_path)})

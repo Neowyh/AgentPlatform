@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { type Dispatch, type SetStateAction, useRef, useState } from "react";
 
 import {
   type CodeEvidencePackage,
@@ -20,11 +20,12 @@ export function FaultZeroingEvidenceControls({
   mode: EvidenceMode;
   packageInfo: CodeEvidencePackage | null;
   onModeChange: (mode: EvidenceMode) => void;
-  onPackageChange: (value: CodeEvidencePackage | null) => void;
+  onPackageChange: Dispatch<SetStateAction<CodeEvidencePackage | null>>;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   async function handleFile(file: File | undefined) {
     if (!file) return;
@@ -44,11 +45,17 @@ export function FaultZeroingEvidenceControls({
   async function handleDelete() {
     if (!packageInfo) return;
     setError(null);
+    const packageId = packageInfo.package_id;
+    setDeleting(true);
     try {
-      await deleteCodeEvidencePackage(threadId, packageInfo.package_id);
-      onPackageChange(null);
+      await deleteCodeEvidencePackage(threadId, packageId);
+      onPackageChange((current) =>
+        current?.package_id === packageId ? null : current,
+      );
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "代码包删除失败");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -86,7 +93,7 @@ export function FaultZeroingEvidenceControls({
           <button
             type="button"
             className="rounded-md border px-2 py-1"
-            disabled={uploading || threadId === "new"}
+            disabled={uploading || deleting || threadId === "new"}
             onClick={() => inputRef.current?.click()}
           >
             {uploading
@@ -105,6 +112,7 @@ export function FaultZeroingEvidenceControls({
             <button
               type="button"
               className="text-destructive rounded-md border px-2 py-1"
+              disabled={uploading || deleting}
               onClick={() => void handleDelete()}
             >
               删除代码包

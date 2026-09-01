@@ -594,7 +594,7 @@ async def start_run(
     # The ``context`` field is a custom extension for the langgraph-compat layer
     # that carries agent configuration (model_name, thinking_enabled, etc.).
     # Only agent-relevant keys are forwarded; unknown keys (e.g. thread_id) are ignored.
-    merge_run_context_overrides(config, getattr(body, "context", None))
+    merge_run_context_overrides(config, body_context)
     inject_authenticated_user_context(config, request)
 
     stream_modes = normalize_stream_modes(body.stream_mode)

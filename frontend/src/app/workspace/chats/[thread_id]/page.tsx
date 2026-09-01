@@ -162,6 +162,7 @@ export default function ChatPage() {
   const [codePackage, setCodePackage] = useState<CodeEvidencePackage | null>(
     null,
   );
+  const evidenceThreadRef = useRef<string | null>(null);
 
   const activeScenario = selectedScenario;
   const handleSelectScenario = useCallback(
@@ -183,6 +184,16 @@ export default function ChatPage() {
   useEffect(() => {
     setPendingTemplate(activeBinding?.promptTemplate ?? null);
   }, [activeBinding?.promptTemplate]);
+
+  useEffect(() => {
+    if (evidenceThreadRef.current === threadId) return;
+    evidenceThreadRef.current = threadId;
+    setEvidenceMode(
+      (settings.context.evidence_mode as EvidenceMode | undefined) ??
+        "document",
+    );
+    setCodePackage(null);
+  }, [settings.context.evidence_mode, threadId]);
 
   const allowedSkillNames = useMemo(() => {
     if (!selectedPill) return undefined;
@@ -214,7 +225,7 @@ export default function ChatPage() {
           (item) => item.taskId === selectedChip.taskId,
         )
       : undefined;
-    return {
+    const nextContext = {
       ...context,
       scenario_id: selectedPill.scenarioId,
       agent_name: selectedPill.agentSlug,
@@ -225,13 +236,21 @@ export default function ChatPage() {
       task_id: chip?.taskId,
       task_label: chip?.label,
       prompt_template: chip?.promptTemplate,
-      ...(selectedPill.agentSlug === "fault-zeroing"
+      ...(selectedPill.agentSlug === "fault-zeroing" &&
+      evidenceMode !== "document"
         ? {
             evidence_mode: evidenceMode,
             code_package_id: codePackage?.package_id,
           }
         : {}),
     };
+    if (
+      selectedPill.agentSlug === "fault-zeroing" &&
+      evidenceMode === "document"
+    ) {
+      delete nextContext.code_package_id;
+    }
+    return nextContext;
   }, [
     activeBinding,
     selectedAgent,
@@ -463,6 +482,7 @@ export default function ChatPage() {
                         packageInfo={codePackage}
                         onModeChange={(mode) => {
                           setEvidenceMode(mode);
+                          if (mode === "document") setCodePackage(null);
                           setSettings("context", {
                             ...settings.context,
                             evidence_mode: mode,

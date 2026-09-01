@@ -16,6 +16,7 @@ FindingConfidence = Literal["confirmed", "high_risk_candidate", "pending_verific
 
 _SOURCE_SUFFIXES = {".c", ".h", ".cc", ".cpp", ".cxx"}
 _LOG_SUFFIXES = {".log", ".txt", ".md"}
+SCANNER_TIMEOUT_SECONDS = 120
 
 
 @dataclass(frozen=True)
@@ -79,8 +80,9 @@ def fixed_scanner_commands(package_root: Path, output_dir: Path) -> list[tuple[s
     source = package_root / "source"
     output_dir.mkdir(parents=True, exist_ok=True)
     commands: list[tuple[str, list[str]]] = []
+    source_files = [str(path) for path in sorted(source.rglob("*")) if path.is_file() and path.suffix.lower() in _SOURCE_SUFFIXES]
     if shutil.which("clang-tidy"):
-        commands.append(("clang-tidy", ["clang-tidy", "--quiet", "-p", str(source), "--", "-fsyntax-only"]))
+        commands.append(("clang-tidy", ["clang-tidy", "--quiet", *source_files, "-p", str(source), "--", "-fsyntax-only"]))
     if shutil.which("cppcheck"):
         commands.append(("cppcheck", ["cppcheck", "--enable=warning,style,performance,portability", "--xml", "--xml-version=2", str(source)]))
     return commands
@@ -88,10 +90,24 @@ def fixed_scanner_commands(package_root: Path, output_dir: Path) -> list[tuple[s
 
 def run_fixed_scanner(command: list[str], *, cwd: Path, output_file: Path) -> tuple[int, str]:
     """Run a preselected analyzer without shell execution or package writes."""
-    result = subprocess.run(command, cwd=cwd, capture_output=True, text=True, shell=False, check=False)
-    raw = result.stdout + result.stderr
+    try:
+        result = subprocess.run(command, cwd=cwd, capture_output=True, text=True, shell=False, check=False, timeout=SCANNER_TIMEOUT_SECONDS)
+        returncode = result.returncode
+        raw = result.stdout + result.stderr
+    except subprocess.TimeoutExpired:
+        returncode = 124
+        raw = f"Scanner timed out after {SCANNER_TIMEOUT_SECONDS} seconds"
     output_file.write_text(raw, encoding="utf-8")
-    return result.returncode, raw
+    return returncode, raw
+
+
+def _relative_scanner_path(value: str, source_root: Path) -> str | None:
+    path = Path(value)
+    candidate = path if path.is_absolute() else source_root / path
+    try:
+        return candidate.resolve().relative_to(source_root.resolve()).as_posix()
+    except ValueError:
+        return None
 
 
 def normalize_scanner_output(scanner: str, version: str, raw: str, *, source_root: Path) -> list[StaticFinding]:
@@ -106,19 +122,15 @@ def normalize_scanner_output(scanner: str, version: str, raw: str, *, source_roo
             location = error.find("location")
             if location is None or not location.get("file"):
                 continue
-            path = Path(location.get("file", ""))
-            try:
-                relative = path.resolve().relative_to(source_root.resolve()).as_posix()
-            except ValueError:
+            relative = _relative_scanner_path(location.get("file", ""), source_root)
+            if relative is None:
                 continue
             findings.append(StaticFinding(scanner, version, error.get("id", "cppcheck"), relative, int(location.get("line", "0") or 0) or None, error.get("msg", "")))
     else:
         pattern = re.compile(r"^(.*?):(\d+):(\d+):\s+(warning|error):\s+(.*?)\s+\[([^]]+)\]", re.MULTILINE)
         for match in pattern.finditer(raw):
-            path = Path(match.group(1))
-            try:
-                relative = path.resolve().relative_to(source_root.resolve()).as_posix()
-            except ValueError:
+            relative = _relative_scanner_path(match.group(1), source_root)
+            if relative is None:
                 continue
             findings.append(StaticFinding(scanner, version, match.group(6), relative, int(match.group(2)), match.group(5)))
     return findings

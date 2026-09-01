@@ -1,9 +1,11 @@
 import io
 import stat
 import zipfile
+from pathlib import PurePosixPath
 
 import pytest
 
+from ideer.uploads import code_evidence
 from ideer.uploads.code_evidence import CodeEvidencePackageError, _preflight
 
 
@@ -53,3 +55,38 @@ def test_preflight_rejects_duplicate_paths():
     archive = make_zip([("src/main.c", b"one", None), ("src/main.c", b"two", None)])
     with pytest.raises(CodeEvidencePackageError, match="Duplicate"):
         _preflight(archive)
+
+
+def test_preflight_rejects_file_directory_conflict_in_either_order():
+    for entries in [
+        [("src", b"file", None), ("src/main.c", b"child", None)],
+        [("src/main.c", b"child", None), ("src", b"file", None)],
+    ]:
+        archive = make_zip(entries)
+        with pytest.raises(CodeEvidencePackageError, match="Conflicting"):
+            _preflight(archive)
+
+
+def test_preflight_reports_binary_targets_as_rejected():
+    archive = make_zip([("build/app.o", b"binary", None), ("src/app.o", b"binary", None)])
+
+    _, excluded, rejected, _ = _preflight(archive)
+
+    assert excluded == ["build/app.o"]
+    assert rejected == [{"path": "src/app.o", "reason": "Binary target is not accepted"}]
+
+
+def test_accept_package_bounds_actual_extracted_bytes(tmp_path, monkeypatch):
+    source = io.BytesIO()
+    with zipfile.ZipFile(source, "w") as archive:
+        archive.writestr("src/main.c", b"0123456789")
+    source.seek(0)
+    monkeypatch.setattr(code_evidence, "MAX_EXPANDED_SIZE", 5)
+    monkeypatch.setattr(
+        code_evidence,
+        "_preflight",
+        lambda archive: ([(archive.infolist()[0], PurePosixPath("src/main.c"))], [], [], 0),
+    )
+
+    with pytest.raises(CodeEvidencePackageError, match="expanded"):
+        code_evidence.accept_package(source, thread_id="thread-1", original_filename="evidence.zip")

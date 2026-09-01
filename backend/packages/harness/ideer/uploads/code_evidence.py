@@ -83,7 +83,7 @@ def _is_symlink(info: zipfile.ZipInfo) -> bool:
 
 
 def _is_excluded(path: PurePosixPath) -> bool:
-    return any(part in _EXCLUDED_PARTS or path.suffix.lower() in _BINARY_SUFFIXES for part in path.parts)
+    return any(part in _EXCLUDED_PARTS for part in path.parts)
 
 
 def _preflight(archive: zipfile.ZipFile) -> tuple[list[tuple[zipfile.ZipInfo, PurePosixPath]], list[str], list[dict[str, str]], int]:
@@ -102,7 +102,7 @@ def _preflight(archive: zipfile.ZipFile) -> tuple[list[tuple[zipfile.ZipInfo, Pu
         if key in seen:
             raise CodeEvidencePackageError(f"Duplicate archive path: {info.filename!r}")
         seen.add(key)
-        if any(parent.as_posix() in files for parent in path.parents):
+        if any(parent.as_posix() in files for parent in path.parents) or (not info.is_dir() and any(item.startswith(f"{key}/") for item in files)):
             raise CodeEvidencePackageError(f"Conflicting archive paths: {info.filename!r}")
         if _is_symlink(info):
             raise CodeEvidencePackageError(f"Symbolic links are not allowed: {info.filename!r}")
@@ -115,6 +115,8 @@ def _preflight(archive: zipfile.ZipFile) -> tuple[list[tuple[zipfile.ZipInfo, Pu
             raise CodeEvidencePackageError(f"Archive expands beyond {MAX_EXPANDED_SIZE} bytes")
         if info.is_dir() or _is_excluded(path):
             excluded.append(path.as_posix())
+        elif path.suffix.lower() in _BINARY_SUFFIXES:
+            rejected.append({"path": path.as_posix(), "reason": "Binary target is not accepted"})
         else:
             files.add(key)
             accepted.append((info, path))
@@ -146,11 +148,16 @@ def accept_package(source: BinaryIO, *, thread_id: str, original_filename: str) 
             accepted, excluded, rejected, expanded = _preflight(archive)
             source_root = temporary / "source"
             source_root.mkdir()
+            extracted = 0
             for info, path in accepted:
                 destination = source_root.joinpath(*path.parts)
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 with archive.open(info) as source_file, destination.open("wb") as target:
-                    shutil.copyfileobj(source_file, target, length=1024 * 1024)
+                    while chunk := source_file.read(1024 * 1024):
+                        extracted += len(chunk)
+                        if extracted > MAX_EXPANDED_SIZE:
+                            raise CodeEvidencePackageError(f"Archive expanded beyond {MAX_EXPANDED_SIZE} bytes")
+                        target.write(chunk)
             manifest = PackageManifest(package_id, original_filename, tuple(p.as_posix() for _, p in accepted), tuple(excluded), tuple(rejected), total, expanded)
             _write_manifest(temporary, manifest)
         final_root = thread_root / package_id
