@@ -41,8 +41,19 @@ async def make_stream_bridge(app_config: AppConfig | None = None) -> AsyncIterat
         from ideer.runtime.stream_bridge.memory import MemoryStreamBridge
 
         maxsize = config.queue_maxsize if config is not None else 256
-        bridge = MemoryStreamBridge(queue_maxsize=maxsize)
-        logger.info("Stream bridge initialised: memory (queue_maxsize=%d)", maxsize)
+        heartbeat = config.heartbeat_interval if config is not None else 15.0
+        cleanup_delay = config.cleanup_delay if config is not None else 60.0
+        bridge = MemoryStreamBridge(
+            queue_maxsize=maxsize,
+            heartbeat_interval=heartbeat,
+            cleanup_delay=cleanup_delay,
+        )
+        logger.info(
+            "Stream bridge initialised: memory (queue_maxsize=%d, heartbeat=%.1fs, cleanup_delay=%.1fs)",
+            maxsize,
+            heartbeat,
+            cleanup_delay,
+        )
         try:
             yield bridge
         finally:

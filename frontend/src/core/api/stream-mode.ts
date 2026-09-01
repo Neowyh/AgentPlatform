@@ -1,4 +1,14 @@
-const SUPPORTED_RUN_STREAM_MODES = new Set([
+/**
+ * Stream-mode validation — single source of truth for LangGraph stream modes.
+ *
+ * This module is the canonical **seam** for stream-mode validation.
+ * `streams.ts` re-exports from here so callers have one owner and one
+ * **interface** (`sanitizeRunStreamOptions`). Unknown modes now fail closed
+ * (throw) instead of being silently dropped — locality: bad config is
+ * reported at the call site, not hidden in a once-only console.warn.
+ */
+
+export const SUPPORTED_RUN_STREAM_MODES = new Set([
   "values",
   "messages",
   "messages-tuple",
@@ -42,27 +52,30 @@ export function sanitizeRunStreamOptions<T>(options: T): T {
     return options;
   }
 
-  const streamMode = options.streamMode;
+  const streamMode = (options as { streamMode?: unknown }).streamMode;
   if (streamMode == null) {
     return options;
   }
 
   const requestedModes = Array.isArray(streamMode) ? streamMode : [streamMode];
-  const sanitizedModes = requestedModes.filter((mode) =>
-    SUPPORTED_RUN_STREAM_MODES.has(mode),
+  const sanitizedModes = (requestedModes as string[]).filter((mode) =>
+    SUPPORTED_RUN_STREAM_MODES.has(mode as never),
   );
 
-  if (sanitizedModes.length === requestedModes.length) {
+  if (sanitizedModes.length === (requestedModes as string[]).length) {
     return options;
   }
 
-  const droppedModes = requestedModes.filter(
-    (mode) => !SUPPORTED_RUN_STREAM_MODES.has(mode),
+  const droppedModes = (requestedModes as string[]).filter(
+    (mode) => !SUPPORTED_RUN_STREAM_MODES.has(mode as never),
   );
   warnUnsupportedStreamModes(droppedModes);
 
-  return {
-    ...options,
-    streamMode: Array.isArray(streamMode) ? sanitizedModes : sanitizedModes[0],
-  };
+  // Fail closed: unknown mode is a caller bug — throw so it surfaces in
+  // tests and in the SDK wrapper (`api-client.ts`) rather than being
+  // silently ignored. Callers that historically relied on dropping can
+  // catch and handle, but new code must fix the mode list.
+  throw new Error(
+    `[ideer] Unsupported stream mode(s): ${droppedModes.join(", ")} — supported: ${[...SUPPORTED_RUN_STREAM_MODES].join(", ")}`,
+  );
 }

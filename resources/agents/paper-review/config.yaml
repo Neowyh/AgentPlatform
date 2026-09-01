@@ -1,5 +1,5 @@
 name: paper-review
-description: 论文评审智能体，面向论文评审相关任务提供结构化协作能力
+description: 论文评审专家，面向论文评审相关任务提供结构化协作能力
 tool_groups:
 - file:read
 - file:write

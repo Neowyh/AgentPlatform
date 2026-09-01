@@ -29,10 +29,19 @@ class MemoryStreamBridge(StreamBridge):
     and reconnecting clients can replay buffered events from ``Last-Event-ID``.
     """
 
-    def __init__(self, *, queue_maxsize: int = 256) -> None:
+    def __init__(
+        self,
+        *,
+        queue_maxsize: int = 256,
+        heartbeat_interval: float = 15.0,
+        cleanup_delay: float = 60.0,
+    ) -> None:
         self._maxsize = queue_maxsize
+        self._heartbeat_interval = heartbeat_interval
+        self._cleanup_delay = cleanup_delay
         self._streams: dict[str, _RunStream] = {}
         self._counters: dict[str, int] = {}
+        self._cleanup_tasks: dict[str, asyncio.Task] = {}
 
     # -- helpers ---------------------------------------------------------------
 
@@ -122,12 +131,33 @@ class MemoryStreamBridge(StreamBridge):
                 return
             yield entry
 
-    async def cleanup(self, run_id: str, *, delay: float = 0) -> None:
-        if delay > 0:
-            await asyncio.sleep(delay)
+    async def cleanup(self, run_id: str, *, delay: float | None = None) -> None:
+        effective_delay = self._cleanup_delay if delay is None else delay
+        if effective_delay > 0:
+            await asyncio.sleep(effective_delay)
         self._streams.pop(run_id, None)
         self._counters.pop(run_id, None)
+        self._cleanup_tasks.pop(run_id, None)
+
+    def schedule_cleanup(self, run_id: str, *, delay: float | None = None) -> asyncio.Task:
+        """Schedule cleanup and track the task so it can be awaited on close."""
+        # Cancel any prior cleanup for the same run to avoid double-free races.
+        prior = self._cleanup_tasks.pop(run_id, None)
+        if prior is not None and not prior.done():
+            prior.cancel()
+        task = asyncio.create_task(self.cleanup(run_id, delay=delay if delay is not None else self._cleanup_delay))
+        self._cleanup_tasks[run_id] = task
+        # Remove from tracking when done to avoid leak.
+        task.add_done_callback(lambda t: self._cleanup_tasks.pop(run_id, None))
+        return task
 
     async def close(self) -> None:
+        # Cancel pending cleanups before clearing.
+        for task in list(self._cleanup_tasks.values()):
+            if not task.done():
+                task.cancel()
+        if self._cleanup_tasks:
+            await asyncio.gather(*self._cleanup_tasks.values(), return_exceptions=True)
+        self._cleanup_tasks.clear()
         self._streams.clear()
         self._counters.clear()

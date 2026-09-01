@@ -20,12 +20,8 @@ from fastapi import HTTPException, Request
 from langchain_core.messages import BaseMessage
 from langchain_core.messages.utils import convert_to_messages
 
-from app.gateway.canonical_agent_run_preparation import (
-    prepare_canonical_agent_run as _prepare_canonical_agent_run,
-)
 from app.gateway.deps import get_run_context, get_run_manager, get_stream_bridge
 from app.gateway.utils import sanitize_log_param
-from ideer.config.app_config import get_app_config
 from ideer.runtime import (
     END_SENTINEL,
     HEARTBEAT_SENTINEL,
@@ -470,75 +466,15 @@ async def start_run(
 
     disconnect = DisconnectMode.cancel if body.on_disconnect == "cancel" else DisconnectMode.continue_
 
-    body_context = getattr(body, "context", None) or {}
-    evidence_mode, code_package_id = validate_evidence_selection(
-        getattr(body, "evidence_mode", None) or body_context.get("evidence_mode"),
-        getattr(body, "code_package_id", None) or body_context.get("code_package_id"),
-    )
-    if code_package_id:
-        from ideer.uploads.code_evidence import read_manifest
+    # Deep module owns evidence/manifest/alias parallelism and snapshot freeze.
+    from app.gateway.run_preparation import discard_canonical_snapshot, prepare_run
 
-        try:
-            await asyncio.to_thread(read_manifest, thread_id, str(code_package_id))
-        except FileNotFoundError as exc:
-            raise HTTPException(status_code=400, detail="Code Evidence Package was not found for this Thread") from exc
-    body_context = {**body_context, "evidence_mode": evidence_mode}
-    if code_package_id:
-        body_context["code_package_id"] = str(code_package_id)
-    body_context["code_evidence_source"] = f"/mnt/user-data/code-evidence/{code_package_id}/source" if code_package_id else None
-    model_name = body_context.get("model_name")
-
-    canonical_resource_id = _canonical_assistant_id(getattr(body, "assistant_id", None))
-    # The workspace and channel manager always send the default assistant id
-    # and carry the requested agent in ``context.agent_name``; treat a UUID
-    # there as a canonical resource the same way as an assistant_id UUID.
-    if canonical_resource_id is None:
-        canonical_resource_id = _canonical_assistant_id(body_context.get("agent_name"))
-    # Legacy owner-directory reads are sealed: legacy-name assistants
-    # resolve through the catalog alias resolver (owner-first, unique
-    # visible shared), failing closed when unknown or ambiguous.
-    # ``context.agent_name`` takes precedence over assistant_id because it is
-    # where the workspace and channels actually carry the requested agent.
-    # Bootstrap runs carry the name of the agent being created, which cannot
-    # exist in the catalog yet — skip resolution so setup_agent can create it.
-    if canonical_resource_id is None and not body_context.get("is_bootstrap"):
-        candidate = body_context.get("agent_name") or getattr(body, "assistant_id", None)
-        if candidate:
-            canonical_resource_id = await _resolve_canonical_alias(candidate, request)
-
-    # Coerce non-string model_name values to str before truncation.
-    if model_name is not None and not isinstance(model_name, str):
-        model_name = str(model_name)
-
-    # Validate model against the allowlist when a model_name is provided.
-    if model_name:
-        app_config = get_app_config()
-        resolved = app_config.get_model_config(model_name)
-        if resolved is None:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Model {model_name!r} is not in the configured model allowlist",
-            )
-
-    canonical_run_id = str(uuid.uuid4()) if canonical_resource_id else None
-    preferred_skill = body_context.get("skill_resource_id") or body_context.get("skill_name")
-    if canonical_resource_id and canonical_run_id:
-        prepare_kwargs = {"preferred_skill": preferred_skill} if preferred_skill else {}
-        canonical_factory = await _prepare_canonical_agent_run(
-            canonical_resource_id,
-            request,
-            canonical_run_id,
-            **prepare_kwargs,
-        )
-    else:
-        canonical_factory = None
-
-    run_metadata = dict(body.metadata or {})
-    run_metadata["evidence_mode"] = evidence_mode
-    if code_package_id:
-        run_metadata["code_package_id"] = str(code_package_id)
-    if canonical_run_id and canonical_resource_id:
-        run_metadata.update(await _canonical_selection_metadata(canonical_run_id, canonical_resource_id, body_context))
+    prepared = await prepare_run(body, thread_id, request)
+    body_context = prepared.body_context
+    canonical_run_id = prepared.canonical_run_id
+    canonical_factory = prepared.canonical_factory
+    model_name = prepared.model_name
+    run_metadata = prepared.run_metadata
 
     try:
         create_kwargs = {
@@ -552,16 +488,13 @@ async def start_run(
             create_kwargs["run_id"] = canonical_run_id
         record = await run_mgr.create_or_reject(thread_id, body.assistant_id, **create_kwargs)
     except ConflictError as exc:
-        if canonical_run_id:
-            await _discard_canonical_run_snapshot(canonical_run_id)
+        await discard_canonical_snapshot(canonical_run_id)
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except UnsupportedStrategyError as exc:
-        if canonical_run_id:
-            await _discard_canonical_run_snapshot(canonical_run_id)
+        await discard_canonical_snapshot(canonical_run_id)
         raise HTTPException(status_code=501, detail=str(exc)) from exc
     except BaseException:
-        if canonical_run_id:
-            await _discard_canonical_run_snapshot(canonical_run_id)
+        await discard_canonical_snapshot(canonical_run_id)
         raise
 
     # Upsert thread metadata so the thread appears in /threads/search,

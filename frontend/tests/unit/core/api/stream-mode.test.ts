@@ -128,67 +128,55 @@ describe("stream-mode", () => {
 
     // -- Filtering unsupported modes ------------------------------------------
 
-    test("drops unsupported stream modes from array payloads", () => {
-      const sanitized = sanitizeRunStreamOptions({
-        streamMode: [
-          "values",
-          "messages-tuple",
-          "custom",
-          "updates",
-          "events",
-          "tools",
-        ],
-      });
-
-      expect(sanitized.streamMode).toEqual([
-        "values",
-        "messages-tuple",
-        "custom",
-        "updates",
-        "events",
-      ]);
+    test("throws when array payload contains unsupported stream modes", () => {
+      expect(() =>
+        sanitizeRunStreamOptions({
+          streamMode: [
+            "values",
+            "messages-tuple",
+            "custom",
+            "updates",
+            "events",
+            "tools",
+          ],
+        }),
+      ).toThrow(/Unsupported stream mode\(s\): tools/);
     });
 
-    test("drops unsupported stream modes from scalar payloads", () => {
-      const sanitized = sanitizeRunStreamOptions({
-        streamMode: "tools",
-      });
-
-      expect(sanitized.streamMode).toBeUndefined();
+    test("throws when scalar payload is unsupported", () => {
+      expect(() =>
+        sanitizeRunStreamOptions({
+          streamMode: "tools",
+        }),
+      ).toThrow(/Unsupported stream mode\(s\): tools/);
     });
 
-    test("removes all modes when every requested mode is unsupported", () => {
-      const sanitized = sanitizeRunStreamOptions({
-        streamMode: ["alpha", "beta"],
-      });
-
-      expect(sanitized.streamMode).toEqual([]);
+    test("throws when every requested mode is unsupported", () => {
+      expect(() =>
+        sanitizeRunStreamOptions({
+          streamMode: ["alpha", "beta"],
+        }),
+      ).toThrow(/Unsupported stream mode\(s\): alpha, beta/);
     });
 
-    test("preserves sibling properties when filtering", () => {
-      const sanitized = sanitizeRunStreamOptions({
-        threadId: "t1",
-        streamMode: ["values", "unknown_mode"],
-        recursionLimit: 25,
-      });
-
-      expect(sanitized).toEqual({
-        threadId: "t1",
-        streamMode: ["values"],
-        recursionLimit: 25,
-      });
+    test("preserves sibling properties when filtering — now throws", () => {
+      expect(() =>
+        sanitizeRunStreamOptions({
+          threadId: "t1",
+          streamMode: ["values", "unknown_mode"],
+          recursionLimit: 25,
+        }),
+      ).toThrow(/unknown_mode/);
     });
 
-    test("warns about dropped modes via warnUnsupportedStreamModes", () => {
-      const warn = vi.fn();
-      // We need to exercise the warn path — sanitizeRunStreamOptions internally
-      // calls warnUnsupportedStreamOptions with default console.warn.
-      // We spy on console.warn to observe the side-effect.
+    test("warns about dropped modes and then throws", () => {
       const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-      sanitizeRunStreamOptions({
-        streamMode: ["values", "bad_mode"],
-      });
+      expect(() =>
+        sanitizeRunStreamOptions({
+          streamMode: ["values", "bad_mode"],
+        }),
+      ).toThrow(/bad_mode/);
 
       expect(spy).toHaveBeenCalledOnce();
       expect(spy).toHaveBeenCalledWith(
@@ -216,23 +204,26 @@ describe("stream-mode", () => {
 
     // -- Duplicate warning suppression across calls ---------------------------
 
-    test("suppresses duplicate warnings for the same unsupported mode", () => {
+    test("suppresses duplicate warnings for the same unsupported mode (throws each time)", () => {
       const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-      sanitizeRunStreamOptions({ streamMode: "bad_mode" });
-      sanitizeRunStreamOptions({ streamMode: "bad_mode" });
+      expect(() =>
+        sanitizeRunStreamOptions({ streamMode: "bad_mode" }),
+      ).toThrow();
+      expect(() =>
+        sanitizeRunStreamOptions({ streamMode: "bad_mode" }),
+      ).toThrow();
 
-      // warnUnsupportedStreamModes is called each time, but the second call
-      // should be a no-op because "bad_mode" was already seen.
+      // First throw warns, second is suppressed because mode already seen.
       expect(spy).toHaveBeenCalledOnce();
       spy.mockRestore();
     });
 
-    test("warns separately for different unsupported modes across calls", () => {
+    test("warns separately for different unsupported modes across calls (throws each time)", () => {
       const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-      sanitizeRunStreamOptions({ streamMode: "bad_a" });
-      sanitizeRunStreamOptions({ streamMode: "bad_b" });
+      expect(() => sanitizeRunStreamOptions({ streamMode: "bad_a" })).toThrow();
+      expect(() => sanitizeRunStreamOptions({ streamMode: "bad_b" })).toThrow();
 
       expect(spy).toHaveBeenCalledTimes(2);
       spy.mockRestore();

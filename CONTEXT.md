@@ -22,6 +22,26 @@ _Avoid_: Forced skill invocation
 
 ## Product Experience
 
+**Embedded software knowledge brief**:
+A source-cited, human-reviewable digest of a specified chip model and package that contains the information needed to start embedded software development; it is not a replacement for the manufacturer data sheet or a hardware design database.
+_Avoid_: Pin table, complete data sheet, schematic source of truth
+
+**Chip data-sheet extraction**:
+The task of deriving an Embedded software knowledge brief from a native-text PDF data sheet for one specified chip model and package.
+_Avoid_: Generic document summary, OCR-first document conversion, multi-package merge
+
+**Chip software source set**:
+The mutually consistent documents for one specified chip model and package: its data sheet, Reference Manual or Programming Manual, and any applicable errata.
+_Avoid_: Datasheet alone, mixed-family documents, unqualified web excerpts
+
+**Chip software development package**:
+The pair of deliverables from a Chip software source set: a source-cited Markdown knowledge brief and a controlled structured appendix for review and later automation; it excludes application initialization code.
+_Avoid_: Uncited chat answer, generated firmware, hardware design database
+
+**Evidence status**:
+The confidence label on a fact in a Chip software development package: `confirmed` when directly supported by consistent source documents, or `review_required` when it remains ambiguous, conflicting, or incomplete; both statuses remain visible to the user.
+_Avoid_: Implicit confidence, silently discarded uncertainty, treating unreviewed content as confirmed
+
 **Task-first entry**:
 The default platform entry helps a user describe what they want to accomplish before exposing Agent, Skill, or Workflow concepts. Recent work and workspace status support the task entry without replacing it.
 _Avoid_: Resource-first entry
@@ -73,6 +93,26 @@ _Avoid_: Generic Tool, Skill, Agent
 **Capability navigation**:
 Agent, Skill, and Connector are browsable and configurable from the persistent left navigation. The input box may invoke an already available capability for the current task without forcing the user through the configuration surface.
 _Avoid_: Capability cards as the home hero, configuration-only invocation
+
+**Workbench navigation**:
+The persistent workbench navigation exposes New conversation, Conversation history, Expert-Skill-Connector, Workflow, and Library in that order. Expert-Skill-Connector groups the platform's reusable working capabilities rather than scattering them through Settings.
+_Avoid_: A flat resource catalogue, capability configuration hidden in Settings
+
+**Expert-Skill-Connector**:
+The user-facing capability center grouping Expert, Skill, and Connector. Expert is the user-facing name for an Agent; Connector means MCP connection configuration, not a generic Tool.
+_Avoid_: Agent terminology in user-facing navigation, Tool as a synonym for Connector
+
+**Capability resource page**:
+Each Expert, Skill, or Connector page supports the resource lifecycle and task use from one place: create, browse, edit, delete, favorite, call in a conversation, import, export, and request a visibility change, subject to the user's authorization.
+_Avoid_: Read-only catalogues separated from management actions, actions that bypass authorization
+
+**Capability summary**:
+A concise, persisted user-facing explanation of an Expert or Skill's purpose and scope, derived from its published source when an explicit description is absent.
+_Avoid_: Runtime model-generated copy, a full SOUL.md or SKILL.md transcript
+
+**Bundled resource seed**:
+The idempotent provisioning of manifest-declared public Skills, Experts, and Workflows into the canonical resource catalog for a local or deployed runtime.
+_Avoid_: A frontend-only catalog, manually copied Agent directories, one-time private installer state
 
 **Scenario selection granularity**:
 The home keeps three fixed scenario groups and the three-level Scenario Tab → Agent Pill → Task Chip entry. A user may start with no selection, select only a Scenario Tab, select an Agent Pill, or continue from an Agent Pill to its Task Chips; Task Chips do not appear without an Agent Pill selection.
@@ -261,6 +301,18 @@ _Avoid_: Chat history, Context
 **Artifact**:
 A file produced during a Run and attached to its Thread, addressable at /api/threads/{thread_id}/artifacts/{path}.
 _Avoid_: File, Attachment, Output
+
+**Code Evidence Package**:
+A Thread-bound read-only ZIP input for a fault-zeroing Run that preserves a source tree and fault evidence, with optional build metadata that raises analysis confidence.
+_Avoid_: Code folder, project upload, Agent archive
+
+**Finding Confidence**:
+The evidence grade of a fault-zeroing conclusion: confirmed, high-risk candidate, or pending verification. A static-analysis alert alone is never confirmed.
+_Avoid_: Severity, certainty, bug status
+
+**Evidence Mode**:
+The explicit fault-zeroing input classification: document, code, or hybrid. It selects evidence extraction rules while retaining one shared fault-analysis and reporting flow.
+_Avoid_: Auto-detected file type, workflow variant, analysis guess
 
 **Todo**:
 A task item within a Thread's state, with status pending, in_progress, or completed.

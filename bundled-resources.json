@@ -181,7 +181,7 @@
       "id": "56e2423d-37c3-52cb-a05f-d32677e6abcb",
       "type": "agent",
       "slug": "fault-zeroing",
-      "display_name": "故障归零智能体",
+      "display_name": "故障归零专家",
       "visibility": "public",
       "source": "resources/agents/fault-zeroing"
     },
@@ -189,7 +189,7 @@
       "id": "4b0b0a3b-1321-59f9-870f-bcdf47489d4d",
       "type": "agent",
       "slug": "srs-writing",
-      "display_name": "软件需求规格编写智能体",
+      "display_name": "软件需求规格编写专家",
       "visibility": "public",
       "source": "resources/agents/srs-writing"
     },
@@ -485,7 +485,7 @@
       "id": "6c465339-44e3-5c93-97ad-1c46421341d8",
       "type": "agent",
       "slug": "office-docs",
-      "display_name": "办公文档智能体",
+      "display_name": "办公文档专家",
       "visibility": "public",
       "source": "resources/agents/office-docs"
     },
@@ -493,7 +493,7 @@
       "id": "fa2b8af9-16e7-555f-8ede-81e148429406",
       "type": "agent",
       "slug": "data-analysis",
-      "display_name": "数据分析智能体",
+      "display_name": "数据分析专家",
       "visibility": "public",
       "source": "resources/agents/data-analysis"
     },
@@ -501,7 +501,7 @@
       "id": "3c3ce48d-56f9-54a0-85bc-b0530e07a95a",
       "type": "agent",
       "slug": "translation",
-      "display_name": "翻译润色智能体",
+      "display_name": "翻译润色专家",
       "visibility": "public",
       "source": "resources/agents/translation"
     },
@@ -509,7 +509,7 @@
       "id": "8206fd59-9707-5a6f-b83f-69267e5f37ad",
       "type": "agent",
       "slug": "document-writing",
-      "display_name": "文书处理智能体",
+      "display_name": "文书处理专家",
       "visibility": "public",
       "source": "resources/agents/document-writing"
     },
@@ -517,7 +517,7 @@
       "id": "dd0b2c9c-3709-541a-a021-8c1078f7e823",
       "type": "agent",
       "slug": "summarize",
-      "display_name": "智能摘要智能体",
+      "display_name": "智能摘要专家",
       "visibility": "public",
       "source": "resources/agents/summarize"
     },
@@ -525,7 +525,7 @@
       "id": "bc5ec8b0-cd80-5574-b2a0-aa4fd31dfb85",
       "type": "agent",
       "slug": "ppt-web",
-      "display_name": "PPT 制作智能体",
+      "display_name": "PPT 制作专家",
       "visibility": "public",
       "source": "resources/agents/ppt-web"
     },
@@ -533,7 +533,7 @@
       "id": "de7f5dc7-d602-5594-9c1d-b668c982e744",
       "type": "agent",
       "slug": "visual-doc",
-      "display_name": "版式文档智能体",
+      "display_name": "版式文档专家",
       "visibility": "public",
       "source": "resources/agents/visual-doc"
     },
@@ -541,7 +541,7 @@
       "id": "8d1ff9a0-c635-5498-a85c-fa4743097bf1",
       "type": "agent",
       "slug": "frontend-design",
-      "display_name": "前端设计智能体",
+      "display_name": "前端设计专家",
       "visibility": "public",
       "source": "resources/agents/frontend-design"
     },
@@ -549,7 +549,7 @@
       "id": "9d68a47e-f8cd-5487-8ba5-21b1bf531f92",
       "type": "agent",
       "slug": "creative-play",
-      "display_name": "创意探索智能体",
+      "display_name": "创意探索专家",
       "visibility": "public",
       "source": "resources/agents/creative-play"
     },
@@ -557,7 +557,7 @@
       "id": "f364045a-59df-567a-9268-f3360b72cb22",
       "type": "agent",
       "slug": "skill-workshop",
-      "display_name": "技能工坊智能体",
+      "display_name": "技能工坊专家",
       "visibility": "public",
       "source": "resources/agents/skill-workshop"
     },
@@ -565,7 +565,7 @@
       "id": "4f6814a6-cd6c-58e4-a3f4-b8a6753981a5",
       "type": "agent",
       "slug": "code-dev",
-      "display_name": "代码开发智能体",
+      "display_name": "代码开发专家",
       "visibility": "public",
       "source": "resources/agents/code-dev"
     },
@@ -573,7 +573,7 @@
       "id": "24534a1b-e77f-5c6f-909c-e1ec7139598a",
       "type": "agent",
       "slug": "abaqus",
-      "display_name": "仿真分析智能体",
+      "display_name": "仿真分析专家",
       "visibility": "public",
       "source": "resources/agents/abaqus"
     },
@@ -581,7 +581,7 @@
       "id": "836c0262-b657-51a6-b748-9249b58fa187",
       "type": "agent",
       "slug": "paper-review",
-      "display_name": "论文评审智能体",
+      "display_name": "论文评审专家",
       "visibility": "public",
       "source": "resources/agents/paper-review"
     }
