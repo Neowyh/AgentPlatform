@@ -248,3 +248,20 @@ class TestReconcileWorkflowAndAgentMetadata:
 
         with patch("ideer.persistence.engine.get_session_factory", return_value=None):
             await _reconcile_workflow_and_agent_metadata()
+
+
+@pytest.mark.asyncio
+async def test_seeds_bundled_resources_for_active_super_admin():
+    from app.gateway.app import _seed_bundled_resources
+
+    session = MagicMock()
+    session.execute = AsyncMock(return_value=_Result("admin-1"))
+    sf = _session_factory(session)
+
+    with patch("ideer.persistence.engine.get_session_factory", return_value=sf):
+        with patch("ideer.resources.bundled.seed_bundled_resources", new_callable=AsyncMock) as seed:
+            await _seed_bundled_resources()
+
+    seed.assert_awaited_once()
+    assert seed.await_args.kwargs["owner_id"] == "admin-1"
+    assert seed.await_args.kwargs["conflict_policy"] == "keep"

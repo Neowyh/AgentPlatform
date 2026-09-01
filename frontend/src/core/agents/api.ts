@@ -14,6 +14,7 @@ interface CanonicalAgentResource {
   type: "agent";
   slug: string;
   display_name: string;
+  description?: string | null;
   owner_id: string;
   visibility: string;
   scope_department_id: string | null;
@@ -30,7 +31,7 @@ function fromCanonicalResource(resource: CanonicalAgentResource): Agent {
     slug: resource.slug,
     draft_revision: resource.draft_revision,
     name: resource.display_name,
-    description: resource.display_name,
+    description: resource.description ?? resource.display_name,
     model: null,
     tool_groups: null,
     skills: null,
@@ -86,15 +87,22 @@ export class AgentNameCheckError extends Error {
 }
 
 export async function listAgents(): Promise<Agent[]> {
-  const canonicalRes = await fetch(
-    `${getBackendBaseURL()}/api/resources?type=agent&limit=200`,
-  );
-  if (!canonicalRes.ok)
-    await extractError(canonicalRes, "Failed to load canonical agents");
-  const canonical = (await canonicalRes.json()) as {
-    items: CanonicalAgentResource[];
-  };
-  return canonical.items.map(fromCanonicalResource);
+  const items: CanonicalAgentResource[] = [];
+  const limit = 200;
+  for (let offset = 0; ; offset += limit) {
+    const canonicalRes = await fetch(
+      `${getBackendBaseURL()}/api/resources?type=agent&limit=${limit}${offset ? `&offset=${offset}` : ""}`,
+    );
+    if (!canonicalRes.ok)
+      await extractError(canonicalRes, "Failed to load canonical agents");
+    const canonical = (await canonicalRes.json()) as {
+      items: CanonicalAgentResource[];
+      total: number;
+    };
+    items.push(...canonical.items);
+    if (items.length >= canonical.total || canonical.items.length === 0) break;
+  }
+  return items.map(fromCanonicalResource);
 }
 
 export async function getAgent(identifier: string): Promise<Agent> {

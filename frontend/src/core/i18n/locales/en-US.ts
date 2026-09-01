@@ -263,7 +263,7 @@ export const enUS: Translations = {
     capabilities: "Experts · Skills · Connectors",
     recentChats: "Recent chats",
     demoChats: "Demo chats",
-    agents: "Agents",
+    agents: "Experts",
     resources: "Resources",
     automations: "Automations",
     library: "Library",
@@ -272,48 +272,48 @@ export const enUS: Translations = {
 
   // Agents
   agents: {
-    title: "Agents",
+    title: "Experts",
     description:
-      "Create and manage your own agents with dedicated responsibilities and capabilities.",
-    newAgent: "New Agent",
-    emptyTitle: "No custom agents yet",
+      "Create and manage your own Experts with dedicated responsibilities and capabilities.",
+    newAgent: "New Expert",
+    emptyTitle: "No custom Experts yet",
     emptyDescription:
-      "Create your first custom agent with a specialized system prompt.",
+      "Create your first custom Expert with a specialized system prompt.",
     chat: "Chat",
     delete: "Delete",
     deleteConfirm:
-      "Are you sure you want to delete this agent? This action cannot be undone.",
-    deleteSuccess: "Agent deleted",
+      "Are you sure you want to archive this Expert? This action cannot be undone.",
+    deleteSuccess: "Expert archived",
     template: "Template",
     newChat: "New chat",
-    createPageTitle: "Design your Agent",
+    createPageTitle: "Design your Expert",
     createPageSubtitle:
-      "Describe the agent you want — I'll help you create it through conversation.",
-    nameStepTitle: "Name your new Agent",
+      "Describe the Expert you want — I'll help you create it through conversation.",
+    nameStepTitle: "Name your new Expert",
     nameStepHint:
       "Letters, digits, and hyphens only — stored lowercase (e.g. code-reviewer)",
     nameStepPlaceholder: "e.g. code-reviewer",
     nameStepContinue: "Continue",
     nameStepInvalidError:
       "Invalid name — use only letters, digits, and hyphens",
-    nameStepAlreadyExistsError: "An agent with this name already exists",
+    nameStepAlreadyExistsError: "An Expert with this name already exists",
     nameStepNetworkError:
       "Network request failed — check your network or backend connection",
     nameStepCheckError: "Could not verify name availability — please try again",
     nameStepBootstrapMessage:
-      "The new custom agent name is {name}. Help me design its purpose, behavior, and SOUL.md before saving it.",
-    save: "Save agent",
-    saving: "Saving agent...",
+      "The new custom Expert name is {name}. Help me design its purpose, behavior, and SOUL.md before saving it.",
+    save: "Save Expert",
+    saving: "Saving Expert...",
     saveRequested:
       "Save requested. iDeer is generating and saving an initial version now.",
     saveHint:
-      "You can save this agent at any time from the top-right menu, even if this is only a first draft.",
+      "You can save this Expert at any time from the top-right menu, even if this is only a first draft.",
     saveCommandMessage:
-      "Please save this custom agent now based on everything we have discussed so far. Treat this as my explicit confirmation to save. If some details are still missing, make reasonable assumptions, generate a concise first SOUL.md in English, and call setup_agent immediately without asking me for more confirmation.",
+      "Please save this custom Expert now based on everything we have discussed so far. Treat this as my explicit confirmation to save. If some details are still missing, make reasonable assumptions, generate a concise first SOUL.md in English, and call setup_agent immediately without asking me for more confirmation.",
     agentCreatedPendingRefresh:
-      "The agent was created, but iDeer could not load it yet. Please refresh this page in a moment.",
+      "The Expert was created, but iDeer could not load it yet. Please refresh this page in a moment.",
     more: "More actions",
-    agentCreated: "Agent created!",
+    agentCreated: "Expert created!",
     startChatting: "Start chatting",
     backToGallery: "Back to Gallery",
     visibility: "Visibility",
@@ -324,7 +324,7 @@ export const enUS: Translations = {
       "Department and Public options are only available to admins",
     applyVisibility: "Apply Visibility Change",
     applyVisibilityDescription:
-      "Submit an application to change the visibility level of this agent",
+      "Submit an application to change the visibility level of this Expert",
     currentVisibility: "Current Visibility",
     targetVisibility: "Target Visibility",
     reason: "Reason",
@@ -344,8 +344,8 @@ export const enUS: Translations = {
     confirm: "Confirm",
     favoriteAdded: "Added to favorites",
     favoriteRemoved: "Removed from favorites",
-    exportSuccess: "Agent exported",
-    importSuccess: "Agent imported",
+    exportSuccess: "Expert exported",
+    importSuccess: "Expert imported",
   },
   auth: {
     signInTitle: "Sign in to your account",
@@ -616,7 +616,7 @@ export const enUS: Translations = {
     impactCascadeLabel:
       "Also downgrade repairable affected resources to private",
     impactLoadError: "Failed to load impact analysis. Please retry.",
-    resourceTypeAgent: "Agent",
+    resourceTypeAgent: "Expert",
     resourceTypeSkill: "Skill",
     resourceTypeWorkflow: "Workflow",
     resourceTypeTool: "Tool",
@@ -820,6 +820,14 @@ export const enUS: Translations = {
       applyDialogDowngradeConfirmDescription:
         "The downgrade takes effect immediately without approval. Continue?",
       applyDialogConfirm: "Confirm",
+      details: "Details",
+      use: "Use",
+      searchPlaceholder: "Search skills...",
+      importSuccess: "Skill imported",
+      archiveSuccess: "Skill archived",
+      noResults: "No matching skills",
+      backToSkills: "Back to Skills",
+      notFound: "Skill not found",
     },
     notification: {
       title: "Notification",

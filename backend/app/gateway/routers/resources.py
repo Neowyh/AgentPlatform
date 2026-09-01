@@ -67,30 +67,50 @@ def _skill_description(
     resource: Resource,
     storage: ResourceStorage,
 ) -> str | None:
-    """Chinese display description from the published SKILL.md frontmatter.
+    """Stable display summary from published Expert or Skill source.
 
     Prefers the ``description_zh`` metadata field (kept in the source file
     alongside the English ``description`` used by agents) and falls back to
     ``description``. Cached per published version.
     """
-    if resource.type != "skill" or resource.latest_version is None:
+    if resource.type not in {"skill", "agent"} or resource.latest_version is None:
         return None
     key = f"{resource.id}:{resource.latest_version}"
     if key in _skill_description_cache:
         return _skill_description_cache[key]
-    source = storage.resources_root / f"skills/{resource.id}/versions/{resource.latest_version}/SKILL.md"
+    directory = "skills" if resource.type == "skill" else "agents"
+    filename = "SKILL.md" if resource.type == "skill" else "config.yaml"
+    source = storage.resources_root / f"{directory}/{resource.id}/versions/{resource.latest_version}/{filename}"
     if not source.is_file():
         _skill_description_cache[key] = None
         return None
-    front_matter_match = re.match(r"\A---\s*\n(.*?)\n---", source.read_text(encoding="utf-8"), re.DOTALL)
-    if front_matter_match is None:
-        _skill_description_cache[key] = None
-        return None
-    try:
-        metadata = yaml.safe_load(front_matter_match.group(1))
-    except yaml.YAMLError:
-        _skill_description_cache[key] = None
-        return None
+    source_text = source.read_text(encoding="utf-8")
+    if resource.type == "agent":
+        try:
+            config = yaml.safe_load(source_text)
+        except yaml.YAMLError:
+            config = None
+        description = config.get("description") if isinstance(config, dict) else None
+        if not isinstance(description, str) or not description.strip():
+            soul_path = source.with_name("SOUL.md")
+            description = (
+                next(
+                    (line.strip() for line in soul_path.read_text(encoding="utf-8").splitlines() if line.strip()),
+                    None,
+                )
+                if soul_path.is_file()
+                else None
+            )
+        _skill_description_cache[key] = description.strip() if isinstance(description, str) and description.strip() else None
+        return _skill_description_cache[key]
+    front_matter_match = re.match(r"\A---\s*\n(.*?)\n---", source_text, re.DOTALL)
+    metadata: object = None
+    if front_matter_match is not None:
+        try:
+            metadata = yaml.safe_load(front_matter_match.group(1))
+        except yaml.YAMLError:
+            _skill_description_cache[key] = None
+            return None
     description = None
     if isinstance(metadata, dict):
         description_zh = metadata.get("description_zh")
@@ -100,6 +120,12 @@ def _skill_description(
             fallback = metadata.get("description")
             if isinstance(fallback, str) and fallback.strip():
                 description = fallback.strip()
+    if description is None:
+        body = source_text[front_matter_match.end() :] if front_matter_match else source_text
+        description = next(
+            (line.strip() for line in body.splitlines() if line.strip() and not line.lstrip().startswith("#")),
+            None,
+        )
     _skill_description_cache[key] = description
     return description
 
@@ -573,6 +599,72 @@ async def import_agent_resource(
                         "version": version.version,
                         "content_hash": version.content_hash,
                     },
+                )
+                return _resource_payload(resource, current_user=current_user)
+    finally:
+        await archive.close()
+        if archive_path is not None:
+            archive_path.unlink(missing_ok=True)
+
+
+@router.post("/import/skill", status_code=201)
+@_translate_resource_errors
+async def import_skill_resource(
+    archive: UploadFile = File(...),
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> dict[str, Any]:
+    """Import a validated .skill archive into the canonical catalog."""
+    from ideer.skills.parser import parse_skill_file
+    from ideer.skills.types import SkillCategory
+
+    storage = ResourceStorage(get_paths().base_dir)
+    archive_path: Path | None = None
+    try:
+        with NamedTemporaryFile(suffix=".skill", delete=False) as temporary:
+            archive_path = Path(temporary.name)
+            total = 0
+            while chunk := await archive.read(1024 * 1024):
+                total += len(chunk)
+                if total > storage.limits.max_archive_bytes:
+                    raise StorageValidationError("Archive exceeds compressed size limit")
+                temporary.write(chunk)
+        with TemporaryDirectory(prefix="ideer-skill-import-") as extracted:
+            source = Path(extracted)
+            await asyncio.to_thread(_extract_resource_archive, archive_path, source, storage)
+            skill = await asyncio.to_thread(
+                parse_skill_file,
+                source / "SKILL.md",
+                category=SkillCategory.CUSTOM,
+                relative_path=Path("import"),
+            )
+            if skill is None:
+                raise StorageValidationError("Skill archive is missing a valid SKILL.md")
+            async with _factory()() as session:
+                service = ResourceService(session, _resource_actor(current_user))
+                resource = await service.create_resource(
+                    resource_type="skill",
+                    slug=skill.name,
+                    display_name=skill.name,
+                    storage_kind="filesystem",
+                )
+                publisher = ResourcePublisher(service, storage)
+                draft = await publisher.save_filesystem_draft(resource.id, source_dir=source, expected_revision=0)
+                try:
+                    version = await publisher.publish_filesystem(
+                        resource.id,
+                        expected_draft_revision=draft.revision,
+                        scan_result={"status": "validated_import"},
+                    )
+                except BaseException:
+                    await service.archive(resource.id)
+                    await session.commit()
+                    raise
+                await record_audit(
+                    str(current_user.id),
+                    "resource_imported",
+                    "skill",
+                    resource.id,
+                    {"version": version.version, "content_hash": version.content_hash},
                 )
                 return _resource_payload(resource, current_user=current_user)
     finally:

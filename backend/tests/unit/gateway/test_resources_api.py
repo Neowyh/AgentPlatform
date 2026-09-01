@@ -50,10 +50,15 @@ def _skill_resource(resource_id: str) -> Resource:
     )
 
 
-def _write_skill_md(storage: ResourceStorage, resource_id: str, frontmatter: str) -> None:
+def _write_skill_md(
+    storage: ResourceStorage,
+    resource_id: str,
+    frontmatter: str,
+    body: str = "",
+) -> None:
     source = storage.resources_root / f"skills/{resource_id}/versions/1"
     source.mkdir(parents=True, exist_ok=True)
-    (source / "SKILL.md").write_text(f"---\n{frontmatter}---\n", encoding="utf-8")
+    (source / "SKILL.md").write_text(f"---\n{frontmatter.rstrip()}\n---\n{body}", encoding="utf-8")
 
 
 def test_skill_description_prefers_description_zh(tmp_path: Path) -> None:
@@ -78,6 +83,18 @@ def test_skill_description_falls_back_to_english(tmp_path: Path) -> None:
     assert resources._skill_description(_skill_resource("skill-en"), storage) == "English description"
 
 
+def test_skill_description_falls_back_to_skill_body(tmp_path: Path) -> None:
+    storage = ResourceStorage(tmp_path / "runtime")
+    _write_skill_md(
+        storage,
+        "skill-body",
+        "name: demo\n",
+        "# Demo\n\nSummarize documents into concise findings.\n",
+    )
+
+    assert resources._skill_description(_skill_resource("skill-body"), storage) == "Summarize documents into concise findings."
+
+
 def test_skill_description_is_none_for_missing_or_invalid_content(tmp_path: Path) -> None:
     storage = ResourceStorage(tmp_path / "runtime")
     assert resources._skill_description(_skill_resource("skill-missing"), storage) is None
@@ -86,6 +103,17 @@ def test_skill_description_is_none_for_missing_or_invalid_content(tmp_path: Path
     workflow = _skill_resource("skill-other")
     workflow.type = "workflow"
     assert resources._skill_description(workflow, storage) is None
+
+
+def test_agent_description_uses_config_then_soul(tmp_path: Path) -> None:
+    storage = ResourceStorage(tmp_path / "runtime")
+    agent = _skill_resource("expert")
+    agent.type = "agent"
+    source = storage.resources_root / "agents/expert/versions/1"
+    source.mkdir(parents=True)
+    (source / "config.yaml").write_text("description: Config summary\n", encoding="utf-8")
+    (source / "SOUL.md").write_text("Soul summary\n", encoding="utf-8")
+    assert resources._skill_description(agent, storage) == "Config summary"
 
 
 def test_actor_mapping_separates_read_use_write_and_admin_governance() -> None:
@@ -113,6 +141,7 @@ def test_router_exposes_uuid_first_workflow_lifecycle() -> None:
     assert ("POST", "/api/resources") in routes
     assert ("GET", "/api/resources/notifications") in routes
     assert ("POST", "/api/resources/import/agent") in routes
+    assert ("POST", "/api/resources/import/skill") in routes
     assert ("GET", "/api/resources/{resource_id}") in routes
     assert ("GET", "/api/resources/{resource_id}/published") in routes
     assert ("GET", "/api/resources/{resource_id}/export") in routes

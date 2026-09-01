@@ -84,6 +84,61 @@ describe("listAgents", () => {
     ]);
   });
 
+  test("loads every canonical Agent page", async () => {
+    const first = {
+      id: "11111111-1111-1111-1111-111111111111",
+      type: "agent",
+      slug: "first",
+      display_name: "First Expert",
+      owner_id: "owner",
+      visibility: "public",
+      scope_department_id: null,
+      latest_version: 1,
+      draft_revision: 1,
+      can_modify: false,
+    };
+    const second = {
+      ...first,
+      id: "22222222-2222-2222-2222-222222222222",
+      slug: "second",
+      display_name: "Second Expert",
+    };
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            items: Array.from({ length: 200 }, (_, index) => ({
+              ...first,
+              id: `${index}`,
+            })),
+            total: 201,
+            offset: 0,
+            limit: 200,
+          }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            items: [second],
+            total: 201,
+            offset: 200,
+            limit: 200,
+          }),
+      });
+
+    const result = await listAgents();
+    expect(result).toHaveLength(201);
+    expect(result.at(-1)).toEqual(
+      expect.objectContaining({ name: "Second Expert" }),
+    );
+    expect(mockFetch).toHaveBeenNthCalledWith(
+      2,
+      "http://localhost:8000/api/resources?type=agent&limit=200&offset=200",
+    );
+  });
+
   test("calls extractError on failure", async () => {
     mockFetch.mockResolvedValue({ ok: false });
     mockExtractError.mockRejectedValue(

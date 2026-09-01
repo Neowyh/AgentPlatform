@@ -2,6 +2,7 @@ import asyncio
 import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -193,6 +194,35 @@ async def _reconcile_workflow_and_agent_metadata() -> None:
     await _reconcile_agent_metadata(sf, admin_id)
 
 
+async def _seed_bundled_resources() -> None:
+    """Provision manifest resources once an active super admin exists."""
+    from sqlalchemy import select
+
+    from ideer.config.paths import get_paths
+    from ideer.persistence.engine import get_session_factory
+    from ideer.persistence.models.user import UserModel, UserRole
+    from ideer.resources.bundled import seed_bundled_resources
+    from ideer.resources.storage import ResourceStorage
+
+    sf = get_session_factory()
+    if sf is None:
+        return
+    async with sf() as session:
+        admin = (await session.execute(select(UserModel.id).where(UserModel.role == UserRole.SUPER_ADMIN, UserModel.disabled.is_not(True)).limit(1))).scalar_one_or_none()
+    if admin is None:
+        logger.info("No active super_admin found; skipping bundled resource seed")
+        return
+    repo_root = Path(__file__).resolve().parents[3]
+    await seed_bundled_resources(
+        sf,
+        ResourceStorage(get_paths().base_dir, allow_scanned_executables=True),
+        manifest_path=repo_root / "bundled-resources.json",
+        source_root=repo_root,
+        owner_id=str(admin),
+        conflict_policy="keep",
+    )
+
+
 async def _resolve_resource_owner(sf, raw_owner: str | None) -> tuple[str | None, str | None]:
     """Resolve a raw owner reference to a valid ``(owner_id, department_id)`` pair.
 
@@ -366,6 +396,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             await _reconcile_workflow_and_agent_metadata()
         except Exception:
             logger.exception("Skill metadata reconciliation failed (non-fatal)")
+
+        try:
+            await _seed_bundled_resources()
+        except Exception:
+            logger.exception("Bundled resource seed failed (non-fatal)")
 
         # Published catalog pointers must be usable before the gateway accepts
         # runs. Orphan files are only reported; startup never deletes them.

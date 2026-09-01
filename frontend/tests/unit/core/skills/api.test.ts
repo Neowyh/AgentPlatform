@@ -132,6 +132,58 @@ describe("skills api", () => {
     });
   });
 
+  describe("canonical Skill management", () => {
+    test("imports a .skill archive through the canonical endpoint", async () => {
+      const { fetch: fetcher } = await import("@/core/api/fetcher");
+      vi.mocked(fetcher).mockResolvedValue(new Response(null, { status: 201 }));
+
+      const { importSkill } = await import("@/core/skills/api");
+      await importSkill(new File(["archive"], "review.skill"));
+
+      expect(fetcher).toHaveBeenCalledWith(
+        "http://localhost:8000/api/resources/import/skill",
+        expect.objectContaining({ method: "POST", body: expect.any(FormData) }),
+      );
+    });
+
+    test("archives, exports, and favorites canonical Skills by resource id", async () => {
+      const { fetch: fetcher } = await import("@/core/api/fetcher");
+      vi.mocked(fetcher).mockClear();
+      vi.mocked(fetcher)
+        .mockResolvedValueOnce(new Response(null, { status: 204 }))
+        .mockResolvedValueOnce(new Response("archive", { status: 200 }))
+        .mockResolvedValueOnce(new Response(null, { status: 204 }))
+        .mockResolvedValueOnce(new Response(null, { status: 204 }));
+      const { archiveSkill, exportSkill, toggleSkillFavorite } =
+        await import("@/core/skills/api");
+
+      await archiveSkill("skill/id");
+      await exportSkill("skill/id");
+      await toggleSkillFavorite("skill/id", false);
+      await toggleSkillFavorite("skill/id", true);
+
+      expect(fetcher).toHaveBeenNthCalledWith(
+        1,
+        "http://localhost:8000/api/resources/skill%2Fid/archive",
+        { method: "POST" },
+      );
+      expect(fetcher).toHaveBeenNthCalledWith(
+        2,
+        "http://localhost:8000/api/resources/skill%2Fid/export",
+      );
+      expect(fetcher).toHaveBeenNthCalledWith(
+        3,
+        "http://localhost:8000/api/resources/skill%2Fid/favorite",
+        { method: "POST" },
+      );
+      expect(fetcher).toHaveBeenNthCalledWith(
+        4,
+        "http://localhost:8000/api/resources/skill%2Fid/favorite",
+        { method: "DELETE" },
+      );
+    });
+  });
+
   describe("visibility application requests", () => {
     test("submits a skill visibility application through the canonical resource endpoint", async () => {
       const { fetch: fetcher } = await import("@/core/api/fetcher");

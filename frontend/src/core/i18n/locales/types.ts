@@ -659,6 +659,14 @@ export interface Translations {
       applyDialogDowngradeConfirmTitle: string;
       applyDialogDowngradeConfirmDescription: string;
       applyDialogConfirm: string;
+      details: string;
+      use: string;
+      searchPlaceholder: string;
+      importSuccess: string;
+      archiveSuccess: string;
+      noResults: string;
+      backToSkills: string;
+      notFound: string;
     };
     notification: {
       title: string;

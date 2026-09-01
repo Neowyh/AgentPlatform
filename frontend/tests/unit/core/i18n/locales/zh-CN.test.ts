@@ -263,7 +263,7 @@ describe("zhCN locale", () => {
       capabilities: "专家 · 技能 · 连接器",
       recentChats: "最近的对话",
       demoChats: "演示对话",
-      agents: "智能体",
+      agents: "专家",
       workflows: "工作流",
     };
 
@@ -283,42 +283,42 @@ describe("zhCN locale", () => {
   // =======================================================================
   describe("agents", () => {
     const expected: Record<string, string> = {
-      title: "智能体",
-      description: "创建和管理你的专属智能体，为它设定职责和能力。",
-      newAgent: "新建智能体",
-      emptyTitle: "还没有自定义智能体",
-      emptyDescription: "创建你的第一个自定义智能体，设置专属系统提示词。",
+      title: "专家",
+      description: "创建和管理你的专属专家，为它设定职责和能力。",
+      newAgent: "新建专家",
+      emptyTitle: "还没有自定义专家",
+      emptyDescription: "创建你的第一个自定义专家，设置专属系统提示词。",
       chat: "对话",
       delete: "删除",
-      deleteConfirm: "确定要删除该智能体吗？此操作不可撤销。",
-      deleteSuccess: "智能体已删除",
+      deleteConfirm: "确定要归档该专家吗？",
+      deleteSuccess: "专家已归档",
       template: "模板",
       newChat: "新对话",
-      createPageTitle: "设计你的智能体",
-      createPageSubtitle: "描述你想要的智能体，我来帮你通过对话创建。",
-      nameStepTitle: "给新智能体起个名字",
+      createPageTitle: "设计你的专家",
+      createPageSubtitle: "描述你想要的专家，我来帮你通过对话创建。",
+      nameStepTitle: "给新专家起个名字",
       nameStepHint:
         "只允许字母、数字和连字符，存储时自动转为小写（例如 code-reviewer）",
       nameStepPlaceholder: "例如 code-reviewer",
       nameStepContinue: "继续",
       nameStepInvalidError: "名称无效，只允许字母、数字和连字符",
-      nameStepAlreadyExistsError: "已存在同名智能体",
+      nameStepAlreadyExistsError: "已存在同名专家",
       nameStepNetworkError: "网络请求失败，请检查网络或后端连接",
       nameStepCheckError: "无法验证名称可用性，请稍后重试",
       nameStepBootstrapMessage:
-        "新智能体的名称是 {name}。请先帮我设计它的用途、行为方式和 SOUL.md，再保存它。",
-      save: "保存智能体",
-      saving: "正在保存智能体...",
+        "新专家的名称是 {name}。请先帮我设计它的用途、行为方式和 SOUL.md，再保存它。",
+      save: "保存专家",
+      saving: "正在保存专家...",
       saveRequested:
-        "已提交保存请求，iDeer 正在根据当前对话生成并保存初版智能体。",
+        "已提交保存请求，iDeer 正在根据当前对话生成并保存初版专家。",
       saveHint:
-        "你可以在右上角的菜单里随时保存这个智能体，就算目前还只是初稿也可以。",
+        "你可以在右上角的菜单里随时保存这个专家，就算目前还只是初稿也可以。",
       saveCommandMessage:
-        "请现在根据我们目前已经讨论的全部内容保存这个自定义智能体。这就是我明确的保存确认。如果仍有少量细节缺失，请根据上下文做出合理假设，生成一份简洁的英文初始 SOUL.md，并直接调用 setup_agent，不要再向我索要额外确认。",
+        "请现在根据我们目前已经讨论的全部内容保存这个自定义专家。这就是我明确的保存确认。如果仍有少量细节缺失，请根据上下文做出合理假设，生成一份简洁的英文初始 SOUL.md，并直接调用 setup_agent，不要再向我索要额外确认。",
       agentCreatedPendingRefresh:
-        "智能体已创建，但 iDeer 暂时还无法读取到它。请稍后刷新当前页面。",
+        "专家已创建，但 iDeer 暂时还无法读取到它。请稍后刷新当前页面。",
       more: "更多操作",
-      agentCreated: "智能体已创建！",
+      agentCreated: "专家已创建！",
       startChatting: "开始对话",
       backToGallery: "返回 Gallery",
       visibilityPrivate: "私有",
@@ -326,8 +326,8 @@ describe("zhCN locale", () => {
       visibilityPublic: "公开",
       favoriteAdded: "已收藏",
       favoriteRemoved: "已取消收藏",
-      exportSuccess: "智能体已导出",
-      importSuccess: "智能体已导入",
+      exportSuccess: "专家已导出",
+      importSuccess: "专家已导入",
     };
 
     for (const [key, value] of Object.entries(expected)) {
@@ -1026,7 +1026,7 @@ describe("zhCN locale", () => {
     describe("skills", () => {
       const expected: Record<string, string> = {
         title: "技能",
-        description: "管理 Agent Skill 配置和启用状态。",
+        description: "管理技能配置和启用状态。",
         createSkill: "新建技能",
         emptyTitle: "还没有技能",
         emptyDescription:

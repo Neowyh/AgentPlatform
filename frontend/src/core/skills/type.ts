@@ -10,4 +10,5 @@ export interface Skill {
   visibility?: string | null;
   owner_id?: string | null;
   department_id?: string | null;
+  is_favorited?: boolean;
 }
