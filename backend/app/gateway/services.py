@@ -20,12 +20,8 @@ from fastapi import HTTPException, Request
 from langchain_core.messages import BaseMessage
 from langchain_core.messages.utils import convert_to_messages
 
-from app.gateway.canonical_agent_run_preparation import (
-    prepare_canonical_agent_run as _prepare_canonical_agent_run,
-)
 from app.gateway.deps import get_run_context, get_run_manager, get_stream_bridge
 from app.gateway.utils import sanitize_log_param
-from ideer.config.app_config import get_app_config
 from ideer.runtime import (
     END_SENTINEL,
     HEARTBEAT_SENTINEL,
@@ -122,6 +118,18 @@ def normalize_input(raw_input: dict[str, Any] | None) -> dict[str, Any]:
     return raw_input
 
 
+def validate_evidence_selection(evidence_mode: str | None, code_package_id: str | None) -> tuple[str, str | None]:
+    """Validate explicit evidence mode before any workflow or agent starts."""
+    mode = evidence_mode or "document"
+    if mode not in {"document", "code", "hybrid"}:
+        raise HTTPException(status_code=400, detail="evidence_mode must be document, code, or hybrid")
+    if mode in {"code", "hybrid"} and not code_package_id:
+        raise HTTPException(status_code=400, detail=f"{mode} mode requires a Code Evidence Package")
+    if mode == "document" and code_package_id:
+        raise HTTPException(status_code=400, detail="document mode cannot include a Code Evidence Package")
+    return mode, str(code_package_id) if code_package_id else None
+
+
 _DEFAULT_ASSISTANT_ID = "lead_agent"
 
 
@@ -146,6 +154,9 @@ _CONTEXT_CONFIGURABLE_KEYS: frozenset[str] = frozenset(
         "skill_name",
         "skill_resource_id",
         "skill_names",
+        "evidence_mode",
+        "code_package_id",
+        "code_evidence_source",
     }
 )
 
@@ -455,57 +466,15 @@ async def start_run(
 
     disconnect = DisconnectMode.cancel if body.on_disconnect == "cancel" else DisconnectMode.continue_
 
-    body_context = getattr(body, "context", None) or {}
-    model_name = body_context.get("model_name")
+    # Deep module owns evidence/manifest/alias parallelism and snapshot freeze.
+    from app.gateway.run_preparation import discard_canonical_snapshot, prepare_run
 
-    canonical_resource_id = _canonical_assistant_id(getattr(body, "assistant_id", None))
-    # The workspace and channel manager always send the default assistant id
-    # and carry the requested agent in ``context.agent_name``; treat a UUID
-    # there as a canonical resource the same way as an assistant_id UUID.
-    if canonical_resource_id is None:
-        canonical_resource_id = _canonical_assistant_id(body_context.get("agent_name"))
-    # Legacy owner-directory reads are sealed: legacy-name assistants
-    # resolve through the catalog alias resolver (owner-first, unique
-    # visible shared), failing closed when unknown or ambiguous.
-    # ``context.agent_name`` takes precedence over assistant_id because it is
-    # where the workspace and channels actually carry the requested agent.
-    # Bootstrap runs carry the name of the agent being created, which cannot
-    # exist in the catalog yet — skip resolution so setup_agent can create it.
-    if canonical_resource_id is None and not body_context.get("is_bootstrap"):
-        candidate = body_context.get("agent_name") or getattr(body, "assistant_id", None)
-        if candidate:
-            canonical_resource_id = await _resolve_canonical_alias(candidate, request)
-
-    # Coerce non-string model_name values to str before truncation.
-    if model_name is not None and not isinstance(model_name, str):
-        model_name = str(model_name)
-
-    # Validate model against the allowlist when a model_name is provided.
-    if model_name:
-        app_config = get_app_config()
-        resolved = app_config.get_model_config(model_name)
-        if resolved is None:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Model {model_name!r} is not in the configured model allowlist",
-            )
-
-    canonical_run_id = str(uuid.uuid4()) if canonical_resource_id else None
-    preferred_skill = body_context.get("skill_resource_id") or body_context.get("skill_name")
-    if canonical_resource_id and canonical_run_id:
-        prepare_kwargs = {"preferred_skill": preferred_skill} if preferred_skill else {}
-        canonical_factory = await _prepare_canonical_agent_run(
-            canonical_resource_id,
-            request,
-            canonical_run_id,
-            **prepare_kwargs,
-        )
-    else:
-        canonical_factory = None
-
-    run_metadata = dict(body.metadata or {})
-    if canonical_run_id and canonical_resource_id:
-        run_metadata.update(await _canonical_selection_metadata(canonical_run_id, canonical_resource_id, body_context))
+    prepared = await prepare_run(body, thread_id, request)
+    body_context = prepared.body_context
+    canonical_run_id = prepared.canonical_run_id
+    canonical_factory = prepared.canonical_factory
+    model_name = prepared.model_name
+    run_metadata = prepared.run_metadata
 
     try:
         create_kwargs = {
@@ -519,16 +488,13 @@ async def start_run(
             create_kwargs["run_id"] = canonical_run_id
         record = await run_mgr.create_or_reject(thread_id, body.assistant_id, **create_kwargs)
     except ConflictError as exc:
-        if canonical_run_id:
-            await _discard_canonical_run_snapshot(canonical_run_id)
+        await discard_canonical_snapshot(canonical_run_id)
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except UnsupportedStrategyError as exc:
-        if canonical_run_id:
-            await _discard_canonical_run_snapshot(canonical_run_id)
+        await discard_canonical_snapshot(canonical_run_id)
         raise HTTPException(status_code=501, detail=str(exc)) from exc
     except BaseException:
-        if canonical_run_id:
-            await _discard_canonical_run_snapshot(canonical_run_id)
+        await discard_canonical_snapshot(canonical_run_id)
         raise
 
     # Upsert thread metadata so the thread appears in /threads/search,
@@ -561,7 +527,7 @@ async def start_run(
     # The ``context`` field is a custom extension for the langgraph-compat layer
     # that carries agent configuration (model_name, thinking_enabled, etc.).
     # Only agent-relevant keys are forwarded; unknown keys (e.g. thread_id) are ignored.
-    merge_run_context_overrides(config, getattr(body, "context", None))
+    merge_run_context_overrides(config, body_context)
     inject_authenticated_user_context(config, request)
 
     stream_modes = normalize_stream_modes(body.stream_mode)

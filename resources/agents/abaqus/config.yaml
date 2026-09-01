@@ -1,5 +1,5 @@
 name: abaqus
-description: 仿真分析智能体，面向仿真分析相关任务提供结构化协作能力
+description: 仿真分析专家，面向仿真分析相关任务提供结构化协作能力
 tool_groups:
 - file:read
 - file:write

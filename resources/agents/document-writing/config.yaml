@@ -1,5 +1,5 @@
 name: document-writing
-description: 文书处理智能体，面向文书处理相关任务提供结构化协作能力
+description: 文书处理专家，面向文书处理相关任务提供结构化协作能力
 tool_groups:
 - file:read
 - file:write

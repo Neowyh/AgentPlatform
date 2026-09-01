@@ -19,13 +19,13 @@ import {
   extractTextFromMessage,
   getAssistantTurnCopyData,
   getAssistantTurnUsageMessages,
-  getMessageGroups,
   getStreamingMessageLookup,
   hasContent,
   hasPresentFiles,
   hasReasoning,
   isAssistantMessageGroupStreaming,
 } from "@/core/messages/utils";
+import { useConversationGroups } from "@/core/messages/view";
 import { useRehypeSplitWordsIntoSpans } from "@/core/rehype";
 import type { Subtask } from "@/core/tasks";
 import { useUpdateSubtask } from "@/core/tasks/context";
@@ -179,7 +179,7 @@ export function MessageList({
   const rehypePlugins = useRehypeSplitWordsIntoSpans(thread.isLoading);
   const updateSubtask = useUpdateSubtask();
   const messages = thread.messages;
-  const groupedMessages = getMessageGroups(messages);
+  const groupedMessages = useConversationGroups(messages);
   const turnUsageMessagesByGroupIndex =
     getAssistantTurnUsageMessages(groupedMessages);
   const tokenDebugSteps = useMemo(

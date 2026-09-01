@@ -425,7 +425,12 @@ async def run_agent(
                 logger.debug("Failed to update thread_meta status for %s (non-fatal)", thread_id)
 
         await bridge.publish_end(run_id)
-        asyncio.create_task(bridge.cleanup(run_id, delay=60))
+        # Track cleanup so close() can await it; prefer schedule_cleanup when available.
+        cleanup_fn = getattr(bridge, "schedule_cleanup", None)
+        if callable(cleanup_fn):
+            cleanup_fn(run_id, delay=60)
+        else:
+            asyncio.create_task(bridge.cleanup(run_id, delay=60))
 
 
 # ---------------------------------------------------------------------------

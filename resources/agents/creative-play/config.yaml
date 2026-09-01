@@ -1,5 +1,5 @@
 name: creative-play
-description: 创意探索智能体，面向创意探索相关任务提供结构化协作能力
+description: 创意探索专家，面向创意探索相关任务提供结构化协作能力
 tool_groups:
 - file:read
 - file:write

@@ -56,26 +56,26 @@ describe("streams", () => {
     expect(sanitizeRunStreamOptions(list)).toBe(list);
   });
 
-  test("drops unsupported scalar and array stream modes", () => {
+  test("throws on unsupported scalar and array stream modes", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-    expect(sanitizeRunStreamOptions({ streamMode: "tools" })).toEqual({
-      streamMode: undefined,
-    });
-    expect(
+    expect(() => sanitizeRunStreamOptions({ streamMode: "tools" })).toThrow(
+      /Unsupported stream mode\(s\): tools/,
+    );
+    expect(() =>
       sanitizeRunStreamOptions({
         streamMode: ["values", "tools", "events", "unknown"],
         recursionLimit: 10,
       }),
-    ).toEqual({
-      streamMode: ["values", "events"],
-      recursionLimit: 10,
-    });
+    ).toThrow(/tools, unknown/);
 
-    expect(warn).toHaveBeenCalledWith(
+    expect(warn).toHaveBeenCalledTimes(2);
+    expect(warn).toHaveBeenNthCalledWith(
+      1,
       "[ideer] Dropped unsupported LangGraph stream mode(s): tools",
     );
-    expect(warn).toHaveBeenCalledWith(
+    expect(warn).toHaveBeenNthCalledWith(
+      2,
       "[ideer] Dropped unsupported LangGraph stream mode(s): unknown",
     );
     warn.mockRestore();

@@ -22,6 +22,18 @@ class StreamBridgeConfig(BaseModel):
         default=256,
         description="Maximum number of events buffered per run in the memory bridge.",
     )
+    heartbeat_interval: float = Field(
+        default=15.0,
+        ge=1.0,
+        le=60.0,
+        description="Heartbeat interval in seconds for SSE keep-alive when no events arrive.",
+    )
+    cleanup_delay: float = Field(
+        default=60.0,
+        ge=0.0,
+        le=600.0,
+        description="Delay in seconds before cleaning up stream resources after a run ends, giving late subscribers a chance to drain remaining events.",
+    )
 
 
 # Global configuration instance — None means no stream bridge is configured
