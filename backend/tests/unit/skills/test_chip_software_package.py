@@ -172,3 +172,38 @@ def test_sanitized_acceptance_samples_cover_complete_gaps_mixing_conflict_and_cr
 
     cross_page = extract_chip_software_package(load_sample("cross-page-pin-table"), target_part="DEER-M4", target_package="LQFP64")
     assert all(row["confidence"] == "confirmed" for row in cross_page.structured_rows)
+
+
+def test_duplicate_document_names_cannot_reintroduce_rejected_identity() -> None:
+    docs = [
+        document("same.pdf", "datasheet", package="LQFP64", content="PIN: PA0 | signal=UART1_TX | source=LQFP64 § 1 (p. 1)"),
+        document("same.pdf", "datasheet", package="QFN48", content="PIN: PA0 | signal=FORBIDDEN | source=QFN48 § 1 (p. 1)"),
+    ]
+
+    result = extract_chip_software_package(docs, target_part="DEER-M4", target_package="LQFP64")
+
+    assert len(result.structured_rows) == 1
+    assert result.structured_rows[0]["signal"] == "UART1_TX"
+    assert "FORBIDDEN" not in result.artifacts["chip-software-table.json"]
+
+
+def test_unsupported_document_type_is_rejected() -> None:
+    result = extract_chip_software_package(
+        [document("application-note.pdf", "application_note", content="TOPIC: clock | claim=untrusted")],
+        target_part="DEER-M4",
+        target_package="LQFP64",
+    )
+
+    assert result.validation.accepted is False
+    assert any("unsupported document type" in issue for issue in result.validation.issues)
+
+
+def test_incomplete_extracted_record_requires_review() -> None:
+    result = extract_chip_software_package(
+        [document("datasheet.pdf", "datasheet", content="TOPIC: clock | claim=")],
+        target_part="DEER-M4",
+        target_package="LQFP64",
+    )
+
+    assert result.structured_rows[0]["confidence"] == "review_required"
+    assert "需人工复核" in result.artifacts["embedded-software-knowledge-brief.md"]

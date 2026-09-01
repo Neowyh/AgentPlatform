@@ -23,6 +23,7 @@ _TOPICS = (
     "dma",
     "errata_impact",
 )
+_SUPPORTED_DOCUMENT_TYPES = {"datasheet", "reference_manual", "programming_manual", "errata"}
 _PIN_FIELDS = ("pin", "signal", "alternate_function", "peripheral", "interrupt", "source")
 _PART_RE = re.compile(r"^\s*([^=|]+?)\s*=\s*(.*?)\s*(?:\||$)")
 
@@ -73,6 +74,9 @@ def validate_source_set(documents: list[ChipSoftwareDocument], *, target_part: s
         if document.package != target_package:
             issues.append(f"{document.name}: package {document.package} does not match target {target_package}")
             continue
+        if document.document_type not in _SUPPORTED_DOCUMENT_TYPES:
+            issues.append(f"{document.name}: unsupported document type {document.document_type}")
+            continue
         accepted_documents.append(document.name)
         present_types.add(document.document_type)
 
@@ -95,7 +99,7 @@ def validate_source_set(documents: list[ChipSoftwareDocument], *, target_part: s
 
 def extract_chip_software_package(documents: list[ChipSoftwareDocument], *, target_part: str, target_package: str) -> ChipSoftwarePackage:
     validation = validate_source_set(documents, target_part=target_part, target_package=target_package)
-    valid_documents = [document for document in documents if document.name in validation.accepted_documents]
+    valid_documents = [document for document in documents if document.is_native_text and document.part_number == target_part and document.package == target_package and document.document_type in _SUPPORTED_DOCUMENT_TYPES]
     rows: list[dict[str, Any]] = []
     for document in valid_documents:
         rows.extend(_extract_document_rows(document, target_package))
@@ -123,22 +127,27 @@ def _extract_document_rows(document: ChipSoftwareDocument, package: str) -> list
             row = {field: values.get(field, "") for field in _PIN_FIELDS}
             row.update({"package": package, "topic": "pin_mux", "confidence": "confirmed"})
             row["source"] = values.get("source") or f"{document.name} (line {line_number})"
+            if any(not row[field] for field in _PIN_FIELDS if field != "source"):
+                row["confidence"] = "review_required"
+                row["review_note"] = "incomplete extracted record; 需人工复核"
             rows.append(row)
         elif line.startswith("TOPIC:"):
             values = _parse_fields(line.removeprefix("TOPIC:").strip(), first_key="topic")
             topic = values.get("topic", "")
             if topic not in _TOPICS:
                 continue
-            rows.append(
-                {
-                    **{field: "" for field in _PIN_FIELDS},
-                    "topic": topic,
-                    "claim": values.get("claim", ""),
-                    "source": values.get("source") or f"{document.name} (line {line_number})",
-                    "package": package,
-                    "confidence": "confirmed",
-                }
-            )
+            row = {
+                **{field: "" for field in _PIN_FIELDS},
+                "topic": topic,
+                "claim": values.get("claim", ""),
+                "source": values.get("source") or f"{document.name} (line {line_number})",
+                "package": package,
+                "confidence": "confirmed",
+            }
+            if not row["claim"]:
+                row["confidence"] = "review_required"
+                row["review_note"] = "incomplete extracted record; 需人工复核"
+            rows.append(row)
     return rows
 
 
