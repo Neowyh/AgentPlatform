@@ -2,6 +2,7 @@
 
 import {
   DownloadIcon,
+  Code2Icon,
   MessageSquareIcon,
   StarIcon,
   Trash2Icon,
@@ -11,7 +12,15 @@ import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useI18n } from "@/core/i18n/hooks";
 import {
@@ -88,11 +97,15 @@ export function SkillList() {
   if (isLoading)
     return <div className="text-muted-foreground">{t.common.loading}</div>;
   if (!skills.length)
-    return <div className="text-muted-foreground">No skills found</div>;
+    return (
+      <div className="text-muted-foreground flex h-64 items-center justify-center">
+        No skills found
+      </div>
+    );
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <Input
           className="w-48"
           placeholder={t.settings.skills.searchPlaceholder}
@@ -122,15 +135,56 @@ export function SkillList() {
           const identity = skill.resource_id ?? skill.slug ?? skill.name;
           const invocation = skill.slug ?? skill.name;
           return (
-            <div
+            <Card
               key={identity}
-              className="workbench-resource-card flex flex-col rounded-lg border p-4"
+              className="workbench-resource-card flex min-h-[15rem] flex-col"
             >
-              <h3 className="type-section-title font-medium">{skill.name}</h3>
-              <p className="text-muted-foreground type-body mt-2 line-clamp-2 min-h-[3rem] flex-1">
-                {skill.description}
-              </p>
-              <div className="mt-4 flex gap-2">
+              <CardHeader className="pb-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <div className="bg-primary/10 text-primary flex h-9 w-9 shrink-0 items-center justify-center rounded-lg">
+                      <Code2Icon className="h-5 w-5" />
+                    </div>
+                    <CardTitle className="type-body truncate">
+                      {skill.name}
+                    </CardTitle>
+                  </div>
+                  {skill.resource_id && (
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      aria-label={t.common.favoritesOnly}
+                      onClick={() =>
+                        void handleFavorite(
+                          skill.resource_id!,
+                          Boolean(skill.is_favorited),
+                        )
+                      }
+                    >
+                      <StarIcon
+                        className={`h-4 w-4 ${skill.is_favorited ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground"}`}
+                      />
+                    </Button>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  <Badge variant="secondary">
+                    {skill.slug ? `/${skill.slug}` : "Skill"}
+                  </Badge>
+                  <Badge variant="outline">{skill.category}</Badge>
+                  {skill.visibility && (
+                    <Badge variant="outline">{skill.visibility}</Badge>
+                  )}
+                  <Badge variant="outline">
+                    {skill.read_only ? "只读" : "可管理"}
+                  </Badge>
+                </div>
+                <p className="text-muted-foreground type-body line-clamp-2 min-h-[3rem]">
+                  {skill.description}
+                </p>
+              </CardHeader>
+              <CardContent className="pt-0" />
+              <CardFooter className="mt-auto flex gap-2 pt-3">
                 <Button asChild variant="outline" size="sm" className="flex-1">
                   <Link href={`/workspace/capabilities/skills/${identity}`}>
                     {t.settings.skills.details}
@@ -153,20 +207,6 @@ export function SkillList() {
                     <DownloadIcon className="h-4 w-4" />
                   </Button>
                 )}
-                {skill.resource_id && (
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={() =>
-                      void handleFavorite(
-                        skill.resource_id!,
-                        Boolean(skill.is_favorited),
-                      )
-                    }
-                  >
-                    <StarIcon className="h-4 w-4" />
-                  </Button>
-                )}
                 {skill.resource_id && !skill.read_only && (
                   <Button
                     size="icon"
@@ -177,8 +217,8 @@ export function SkillList() {
                     <Trash2Icon className="h-4 w-4" />
                   </Button>
                 )}
-              </div>
-            </div>
+              </CardFooter>
+            </Card>
           );
         })}
       </div>

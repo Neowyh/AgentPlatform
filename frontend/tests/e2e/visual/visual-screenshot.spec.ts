@@ -297,14 +297,14 @@ const SCREENSHOTS: ScreenshotConfig[] = [
   },
   {
     name: "agents-gallery",
-    route: "/workspace/agents",
+    route: "/workspace/capabilities/experts",
     needsMock: true,
     needsAuth: true,
     expectedTexts: ["Agent", "agent", "智能体"],
   },
   {
     name: "agent-create",
-    route: "/workspace/agents/new",
+    route: "/workspace/capabilities/experts/new",
     needsMock: true,
     needsAuth: true,
     expectedElements: [
@@ -313,14 +313,14 @@ const SCREENSHOTS: ScreenshotConfig[] = [
   },
   {
     name: "agent-detail",
-    route: "/workspace/agents/research-assistant",
+    route: "/workspace/capabilities/experts/research-assistant",
     needsMock: true,
     needsAuth: true,
     expectedTexts: ["research-assistant", "Agent", "智能体"],
   },
   {
     name: "agent-edit",
-    route: "/workspace/agents/research-assistant/edit",
+    route: "/workspace/capabilities/experts/research-assistant/edit",
     needsMock: true,
     needsAuth: true,
     expectedElements: [
@@ -329,7 +329,7 @@ const SCREENSHOTS: ScreenshotConfig[] = [
   },
   {
     name: "agent-chat",
-    route: "/workspace/agents/research-assistant/chats/new",
+    route: "/workspace/capabilities/experts/research-assistant/chats/new",
     needsMock: true,
     needsAuth: true,
     expectedElements: [
@@ -484,7 +484,7 @@ const SCREENSHOTS: ScreenshotConfig[] = [
   },
   {
     name: "dialog-delete-agent",
-    route: "/workspace/agents",
+    route: "/workspace/capabilities/experts",
     needsMock: true,
     needsAuth: true,
     skipMobile: false,
@@ -1502,7 +1502,7 @@ const SCREENSHOTS: ScreenshotConfig[] = [
   // ─── Phase 2.1: 空状态 ─────────────────────────────────────
   {
     name: "empty-agents",
-    route: "/workspace/agents",
+    route: "/workspace/capabilities/experts",
     needsMock: true,
     needsAuth: true,
     skipMobile: false,

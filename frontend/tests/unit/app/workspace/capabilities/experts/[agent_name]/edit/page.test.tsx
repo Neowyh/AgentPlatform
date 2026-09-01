@@ -169,7 +169,7 @@ vi.mock("@/components/ui/textarea", () => ({
 // Import the component under test AFTER all mocks are set up
 // ---------------------------------------------------------------------------
 
-import AgentEditPage from "@/app/workspace/agents/[agent_name]/edit/page";
+import AgentEditPage from "@/app/workspace/capabilities/experts/[agent_name]/edit/page";
 import { useAgent, useUpdateAgent } from "@/core/agents";
 
 // ---------------------------------------------------------------------------
@@ -293,7 +293,9 @@ describe("AgentEditPage", () => {
 
       render(<AgentEditPage />);
       await user.click(screen.getByText("Back to Gallery"));
-      expect(mocks.push).toHaveBeenCalledWith("/workspace/agents");
+      expect(mocks.push).toHaveBeenCalledWith(
+        "/workspace/capabilities/experts",
+      );
     });
 
     test("does not render form in not found state", () => {
@@ -336,7 +338,9 @@ describe("AgentEditPage", () => {
       );
       expect(backButton).toBeTruthy();
       await user.click(backButton!);
-      expect(mocks.push).toHaveBeenCalledWith("/workspace/agents/test-agent");
+      expect(mocks.push).toHaveBeenCalledWith(
+        "/workspace/capabilities/experts/test-agent",
+      );
     });
 
     test("cancel button navigates to agent detail page", async () => {
@@ -344,7 +348,9 @@ describe("AgentEditPage", () => {
       render(<AgentEditPage />);
 
       await user.click(screen.getByText("Cancel"));
-      expect(mocks.push).toHaveBeenCalledWith("/workspace/agents/test-agent");
+      expect(mocks.push).toHaveBeenCalledWith(
+        "/workspace/capabilities/experts/test-agent",
+      );
     });
   });
 
@@ -564,7 +570,9 @@ describe("AgentEditPage", () => {
       await user.click(screen.getByText("Save Changes"));
       await user.click(screen.getByText("Go to Detail Page"));
 
-      expect(mocks.push).toHaveBeenCalledWith("/workspace/agents/test-agent");
+      expect(mocks.push).toHaveBeenCalledWith(
+        "/workspace/capabilities/experts/test-agent",
+      );
     });
   });
 
@@ -810,7 +818,9 @@ describe("AgentEditPage", () => {
 
       await user.click(screen.getByText("Save Changes"));
       await waitFor(() => {
-        expect(mocks.push).toHaveBeenCalledWith("/workspace/agents/test-agent");
+        expect(mocks.push).toHaveBeenCalledWith(
+          "/workspace/capabilities/experts/test-agent",
+        );
       });
     });
   });

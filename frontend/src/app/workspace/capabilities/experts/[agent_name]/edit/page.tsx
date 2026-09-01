@@ -84,7 +84,7 @@ export default function AgentEditPage() {
     try {
       await updateAgent.mutateAsync({ name: agent_name, request: formData });
       toast.success("Agent updated successfully");
-      router.push(`/workspace/agents/${agent_name}`);
+      router.push(`/workspace/capabilities/experts/${agent_name}`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     }
@@ -92,7 +92,7 @@ export default function AgentEditPage() {
 
   const handleNavigateToDetail = () => {
     setVisibilityChangeDialogOpen(false);
-    router.push(`/workspace/agents/${agent_name}`);
+    router.push(`/workspace/capabilities/experts/${agent_name}`);
   };
 
   const toggleToolGroup = (groupId: string) => {
@@ -129,7 +129,7 @@ export default function AgentEditPage() {
         <div className="text-destructive type-body">Agent not found</div>
         <Button
           variant="outline"
-          onClick={() => router.push("/workspace/agents")}
+          onClick={() => router.push("/workspace/capabilities/experts")}
         >
           {t.agents.backToGallery}
         </Button>
@@ -145,7 +145,9 @@ export default function AgentEditPage() {
         </div>
         <Button
           variant="outline"
-          onClick={() => router.push(`/workspace/agents/${agent_name}`)}
+          onClick={() =>
+            router.push(`/workspace/capabilities/experts/${agent_name}`)
+          }
         >
           Back to Agent
         </Button>
@@ -155,14 +157,16 @@ export default function AgentEditPage() {
 
   return (
     <div className="flex size-full flex-col">
-      <WorkspaceBreadcrumb />
+      <WorkspaceBreadcrumb agent={agent} />
       {/* Page header */}
       <div className="flex items-center justify-between border-b px-6 py-4">
         <div className="flex items-center gap-3">
           <Button
             variant="ghost"
             size="icon-sm"
-            onClick={() => router.push(`/workspace/agents/${agent_name}`)}
+            onClick={() =>
+              router.push(`/workspace/capabilities/experts/${agent_name}`)
+            }
           >
             <ArrowLeftIcon className="h-4 w-4" />
           </Button>
@@ -176,7 +180,9 @@ export default function AgentEditPage() {
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
-            onClick={() => router.push(`/workspace/agents/${agent_name}`)}
+            onClick={() =>
+              router.push(`/workspace/capabilities/experts/${agent_name}`)
+            }
           >
             Cancel
           </Button>

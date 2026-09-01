@@ -66,7 +66,7 @@ export default function AgentDetailPage() {
 
   useEffect(() => {
     if (agent?.resource_id && agent_name !== agent.resource_id) {
-      router.replace(`/workspace/agents/${agent.resource_id}`);
+      router.replace(`/workspace/capabilities/experts/${agent.resource_id}`);
     }
   }, [agent, agent_name, router]);
 
@@ -148,7 +148,7 @@ export default function AgentDetailPage() {
         </div>
         <Button
           variant="outline"
-          onClick={() => router.push("/workspace/agents")}
+          onClick={() => router.push("/workspace/capabilities/experts")}
         >
           {t.agents.backToGallery}
         </Button>
@@ -158,14 +158,14 @@ export default function AgentDetailPage() {
 
   return (
     <div className="flex size-full flex-col">
-      <WorkspaceBreadcrumb />
+      <WorkspaceBreadcrumb agent={agent} />
       {/* Page header */}
       <div className="flex items-center justify-between border-b px-6 py-4">
         <div className="flex items-center gap-3">
           <Button
             variant="ghost"
             size="icon-sm"
-            onClick={() => router.push("/workspace/agents")}
+            onClick={() => router.push("/workspace/capabilities/experts")}
           >
             <ArrowLeftIcon className="h-4 w-4" />
           </Button>
@@ -195,7 +195,9 @@ export default function AgentDetailPage() {
                 {t.agents.applyVisibility}
               </Button>
               <Button asChild>
-                <Link href={`/workspace/agents/${agent_name}/edit`}>
+                <Link
+                  href={`/workspace/capabilities/experts/${agent_name}/edit`}
+                >
                   <EditIcon className="mr-1.5 h-4 w-4" />
                   Edit Agent
                 </Link>
@@ -323,14 +325,18 @@ export default function AgentDetailPage() {
             <CardContent>
               <div className="flex gap-4">
                 <Button asChild>
-                  <Link href={`/workspace/agents/${agent_name}/chats/new`}>
+                  <Link
+                    href={`/workspace/capabilities/experts/${agent_name}/chats/new`}
+                  >
                     <MessageSquareIcon className="mr-1.5 h-4 w-4" />
                     Start Chat
                   </Link>
                 </Button>
                 {!agent.read_only && (
                   <Button variant="outline" asChild>
-                    <Link href={`/workspace/agents/${agent_name}/edit`}>
+                    <Link
+                      href={`/workspace/capabilities/experts/${agent_name}/edit`}
+                    >
                       <EditIcon className="mr-1.5 h-4 w-4" />
                       Edit Configuration
                     </Link>

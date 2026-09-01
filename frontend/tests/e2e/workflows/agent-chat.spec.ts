@@ -14,7 +14,7 @@ test.describe("Agent chat", () => {
   test("agent chat page loads with input box", async ({ page }) => {
     mockLangGraphAPI(page, { agents: MOCK_AGENTS });
 
-    await page.goto("/workspace/agents/test-agent/chats/new");
+    await page.goto("/workspace/capabilities/experts/test-agent/chats/new");
 
     // The prompt input textarea should be visible
     const textarea = page.getByPlaceholder(/how can i assist you/i);
@@ -24,7 +24,7 @@ test.describe("Agent chat", () => {
   test("agent chat page shows agent badge", async ({ page }) => {
     mockLangGraphAPI(page, { agents: MOCK_AGENTS });
 
-    await page.goto("/workspace/agents/test-agent/chats/new");
+    await page.goto("/workspace/capabilities/experts/test-agent/chats/new");
 
     // The agent badge should display in the header (scoped to header to avoid
     // matching the welcome area which also shows the agent name)

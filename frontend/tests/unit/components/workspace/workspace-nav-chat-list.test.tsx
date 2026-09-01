@@ -141,7 +141,7 @@ describe("WorkspaceNavChatList", () => {
   });
 
   test("marks capabilities as active for legacy agent paths", () => {
-    mockPathname = "/workspace/agents/some-agent";
+    mockPathname = "/workspace/capabilities/experts/some-agent";
     render(<WorkspaceNavChatList />);
     const buttons = screen.getAllByTestId("sidebar-menu-button");
     expect(buttons[1]!.getAttribute("data-is-active")).toBe("true");

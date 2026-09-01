@@ -35,7 +35,6 @@ export function WorkspaceNavChatList() {
           <SidebarMenuButton
             isActive={
               pathname.startsWith("/workspace/capabilities") ||
-              pathname.startsWith("/workspace/agents") ||
               pathname.startsWith("/workspace/resources")
             }
             asChild

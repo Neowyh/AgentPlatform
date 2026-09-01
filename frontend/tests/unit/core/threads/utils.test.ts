@@ -17,7 +17,7 @@ describe("pathOfThread", () => {
 
   test("string thread ID with context having agent_name returns agent chat path", () => {
     expect(pathOfThread("thread-123", { agent_name: "researcher" })).toBe(
-      "/workspace/agents/researcher/chats/thread-123",
+      "/workspace/capabilities/experts/researcher/chats/thread-123",
     );
   });
 
@@ -27,7 +27,7 @@ describe("pathOfThread", () => {
         thread_id: "thread-123",
         context: { agent_name: "analyst" },
       }),
-    ).toBe("/workspace/agents/analyst/chats/thread-123");
+    ).toBe("/workspace/capabilities/experts/analyst/chats/thread-123");
   });
 
   test("object thread with no context but metadata.agent_name uses metadata.agent_name", () => {
@@ -36,7 +36,7 @@ describe("pathOfThread", () => {
         thread_id: "thread-456",
         metadata: { agent_name: "coder" },
       }),
-    ).toBe("/workspace/agents/coder/chats/thread-456");
+    ).toBe("/workspace/capabilities/experts/coder/chats/thread-456");
   });
 
   test("object thread with context.agent_name and metadata.agent_name prefers context.agent_name", () => {
@@ -46,12 +46,12 @@ describe("pathOfThread", () => {
         context: { agent_name: "from-context" },
         metadata: { agent_name: "from-metadata" },
       }),
-    ).toBe("/workspace/agents/from-context/chats/thread-789");
+    ).toBe("/workspace/capabilities/experts/from-context/chats/thread-789");
   });
 
   test("agent name with special characters is URL-encoded", () => {
     expect(pathOfThread("thread-abc", { agent_name: "ops agent" })).toBe(
-      "/workspace/agents/ops%20agent/chats/thread-abc",
+      "/workspace/capabilities/experts/ops%20agent/chats/thread-abc",
     );
   });
 

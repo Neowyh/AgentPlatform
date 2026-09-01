@@ -151,7 +151,7 @@ vi.mock("@/lib/utils", () => ({
   cn: (...args: any[]) => args.filter(Boolean).join(" "),
 }));
 
-import AgentChatPage from "@/app/workspace/agents/[agent_name]/chats/[thread_id]/page";
+import AgentChatPage from "@/app/workspace/capabilities/experts/[agent_name]/chats/[thread_id]/page";
 
 afterEach(() => {
   cleanup();
@@ -370,7 +370,7 @@ describe("AgentChatPage", () => {
     expect(replaceStateSpy).toHaveBeenCalledWith(
       null,
       "",
-      "/workspace/agents/test-agent/chats/created-thread-123",
+      "/workspace/capabilities/experts/test-agent/chats/created-thread-123",
     );
 
     replaceStateSpy.mockRestore();
@@ -714,7 +714,7 @@ describe("AgentChatPage", () => {
     newChatButton?.click();
 
     expect(mockRouterPush).toHaveBeenCalledWith(
-      "/workspace/agents/test-agent/chats/new",
+      "/workspace/capabilities/experts/test-agent/chats/new",
     );
   });
 

@@ -35,7 +35,9 @@ const mockT = {
   },
   sidebar: {
     agents: "Agents",
+    capabilities: "Capabilities",
   },
+  resources: { experts: "Experts", skills: "Skills", connectors: "Connectors" },
   workspace: {
     adminPanel: "Admin",
     userManagement: "Users",
@@ -51,6 +53,10 @@ const mockT = {
 
 vi.mock("@/core/i18n/hooks", () => ({
   useI18n: () => ({ t: mockT }),
+}));
+
+vi.mock("@/core/agents", () => ({
+  useAgent: () => ({ agent: { name: "中文专家" } }),
 }));
 
 // Mock breadcrumb components
@@ -118,40 +124,40 @@ describe("WorkspaceBreadcrumb", () => {
   });
 
   test("renders breadcrumb for agents path", () => {
-    mockPathname = "/workspace/agents";
+    mockPathname = "/workspace/capabilities/experts";
     render(<WorkspaceBreadcrumb />);
     expect(screen.getByText("Workspace")).toBeInTheDocument();
-    expect(screen.getByText("Agents")).toBeInTheDocument();
+    expect(screen.getByText("Experts")).toBeInTheDocument();
   });
 
   test("renders agent detail breadcrumb", () => {
-    mockPathname = "/workspace/agents/my-agent";
+    mockPathname = "/workspace/capabilities/experts/my-agent";
     render(<WorkspaceBreadcrumb />);
     expect(screen.getByText("Workspace")).toBeInTheDocument();
-    expect(screen.getByText("Agents")).toBeInTheDocument();
-    expect(screen.getByText("my-agent")).toBeInTheDocument();
+    expect(screen.getByText("Capabilities")).toBeInTheDocument();
+    expect(screen.getByText("中文专家")).toBeInTheDocument();
   });
 
   test("renders agent edit breadcrumb", () => {
-    mockPathname = "/workspace/agents/my-agent/edit";
+    mockPathname = "/workspace/capabilities/experts/my-agent/edit";
     render(<WorkspaceBreadcrumb />);
     expect(screen.getByText("Edit")).toBeInTheDocument();
   });
 
   test("renders agent chats breadcrumb", () => {
-    mockPathname = "/workspace/agents/my-agent/chats";
+    mockPathname = "/workspace/capabilities/experts/my-agent/chats";
     render(<WorkspaceBreadcrumb />);
     expect(screen.getByText("Chats")).toBeInTheDocument();
   });
 
   test("renders agent chats with thread breadcrumb", () => {
-    mockPathname = "/workspace/agents/my-agent/chats/thread-123";
+    mockPathname = "/workspace/capabilities/experts/my-agent/chats/thread-123";
     render(<WorkspaceBreadcrumb />);
     expect(screen.getByText("Untitled")).toBeInTheDocument();
   });
 
   test("does not render Untitled for new chat", () => {
-    mockPathname = "/workspace/agents/my-agent/chats/new";
+    mockPathname = "/workspace/capabilities/experts/my-agent/chats/new";
     render(<WorkspaceBreadcrumb />);
     expect(screen.queryByText("Untitled")).not.toBeInTheDocument();
   });

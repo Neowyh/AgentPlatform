@@ -23,7 +23,7 @@ test.describe("Agent management", () => {
   test.describe("Gallery", () => {
     test("gallery page loads and shows agent cards", async ({ page }) => {
       mockLangGraphAPI(page, { agents: MOCK_AGENTS });
-      await page.goto("/workspace/agents");
+      await page.goto("/workspace/capabilities/experts");
 
       await expect(page.getByText("test-agent").first()).toBeVisible({
         timeout: 15_000,
@@ -33,7 +33,7 @@ test.describe("Agent management", () => {
 
     test("gallery shows New Agent and Import buttons", async ({ page }) => {
       mockLangGraphAPI(page, { agents: MOCK_AGENTS });
-      await page.goto("/workspace/agents");
+      await page.goto("/workspace/capabilities/experts");
 
       await expect(
         page.getByRole("button", { name: /new agent/i }),
@@ -43,7 +43,7 @@ test.describe("Agent management", () => {
 
     test("New Agent button navigates to create page", async ({ page }) => {
       mockLangGraphAPI(page, { agents: MOCK_AGENTS });
-      await page.goto("/workspace/agents");
+      await page.goto("/workspace/capabilities/experts");
 
       await page.getByRole("button", { name: /new agent/i }).click();
 
@@ -52,7 +52,7 @@ test.describe("Agent management", () => {
 
     test("gallery shows empty state when no agents", async ({ page }) => {
       mockLangGraphAPI(page, { agents: [] });
-      await page.goto("/workspace/agents");
+      await page.goto("/workspace/capabilities/experts");
 
       // Should show empty state or no agent cards
       await expect(page.getByText("test-agent")).toBeHidden({
@@ -66,7 +66,7 @@ test.describe("Agent management", () => {
       page,
     }) => {
       mockLangGraphAPI(page, { agents: [] });
-      await page.goto("/workspace/agents/new");
+      await page.goto("/workspace/capabilities/experts/new");
 
       // Name input should be visible (placeholder is "e.g. code-reviewer")
       const nameInput = page.getByPlaceholder(/code-reviewer/i);
@@ -78,7 +78,7 @@ test.describe("Agent management", () => {
 
     test("name validation rejects invalid characters", async ({ page }) => {
       mockLangGraphAPI(page, { agents: [] });
-      await page.goto("/workspace/agents/new");
+      await page.goto("/workspace/capabilities/experts/new");
 
       const nameInput = page.getByPlaceholder(/code-reviewer/i);
       await expect(nameInput).toBeVisible({ timeout: 15_000 });
@@ -95,7 +95,7 @@ test.describe("Agent management", () => {
     test("name validation rejects duplicate names", async ({ page }) => {
       mockLangGraphAPI(page, { agents: MOCK_AGENTS });
 
-      await page.goto("/workspace/agents/new");
+      await page.goto("/workspace/capabilities/experts/new");
 
       const nameInput = page.getByPlaceholder(/code-reviewer/i);
       await expect(nameInput).toBeVisible({ timeout: 15_000 });
@@ -121,7 +121,7 @@ test.describe("Agent management", () => {
 
     test("valid name advances to setup step", async ({ page }) => {
       mockLangGraphAPI(page, { agents: [] });
-      await page.goto("/workspace/agents/new");
+      await page.goto("/workspace/capabilities/experts/new");
 
       const nameInput = page.getByPlaceholder(/code-reviewer/i);
       await expect(nameInput).toBeVisible({ timeout: 15_000 });
@@ -142,7 +142,7 @@ test.describe("Agent management", () => {
   test.describe("Agent Detail", () => {
     test("detail page shows agent configuration", async ({ page }) => {
       mockLangGraphAPI(page, { agents: MOCK_AGENTS });
-      await page.goto("/workspace/agents/test-agent");
+      await page.goto("/workspace/capabilities/experts/test-agent");
 
       // Should show agent name and description
       await expect(page.getByText("test-agent").first()).toBeVisible({
@@ -158,7 +158,7 @@ test.describe("Agent management", () => {
 
     test("detail page shows Edit Agent link", async ({ page }) => {
       mockLangGraphAPI(page, { agents: MOCK_AGENTS });
-      await page.goto("/workspace/agents/test-agent");
+      await page.goto("/workspace/capabilities/experts/test-agent");
 
       const editLink = page.getByRole("link", { name: /edit agent/i });
       await expect(editLink).toBeVisible({ timeout: 15_000 });
@@ -168,7 +168,7 @@ test.describe("Agent management", () => {
   test.describe("Edit Agent", () => {
     test("edit page loads with form fields", async ({ page }) => {
       mockLangGraphAPI(page, { agents: MOCK_AGENTS });
-      await page.goto("/workspace/agents/test-agent/edit");
+      await page.goto("/workspace/capabilities/experts/test-agent/edit");
 
       // Description textarea should be visible
       await expect(page.getByLabel(/description/i)).toBeVisible({
@@ -181,7 +181,7 @@ test.describe("Agent management", () => {
 
     test("edit page shows name as read-only", async ({ page }) => {
       mockLangGraphAPI(page, { agents: MOCK_AGENTS });
-      await page.goto("/workspace/agents/test-agent/edit");
+      await page.goto("/workspace/capabilities/experts/test-agent/edit");
 
       // Name field should be disabled (find input with value "test-agent")
       const nameInput = page.locator('input[value="test-agent"]');
@@ -193,7 +193,7 @@ test.describe("Agent management", () => {
   test.describe("Delete Agent", () => {
     test("delete button opens confirmation dialog", async ({ page }) => {
       mockLangGraphAPI(page, { agents: MOCK_AGENTS });
-      await page.goto("/workspace/agents");
+      await page.goto("/workspace/capabilities/experts");
 
       // Find the delete button on the non-template agent card
       const deleteBtn = page.getByRole("button", { name: /delete/i }).first();
@@ -208,7 +208,7 @@ test.describe("Agent management", () => {
 
     test("template agent does not show delete button", async ({ page }) => {
       mockLangGraphAPI(page, { agents: MOCK_AGENTS });
-      await page.goto("/workspace/agents");
+      await page.goto("/workspace/capabilities/experts");
 
       // Template agent card should be visible
       await expect(page.getByText("template-agent").first()).toBeVisible({

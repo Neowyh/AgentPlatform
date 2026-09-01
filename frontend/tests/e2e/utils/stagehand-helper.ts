@@ -14,7 +14,7 @@
  *   test("create agent", async () => {
  *     const { stagehand, page, cleanup } = await createStagehandTest();
  *     try {
- *       await page.goto("http://localhost:3000/workspace/agents");
+ *       await page.goto("http://localhost:3000/workspace/capabilities/experts");
  *       await stagehand.act("click the Create button");
  *       await stagehand.act('fill in name with "Test Agent"');
  *       await stagehand.act("click Save");
