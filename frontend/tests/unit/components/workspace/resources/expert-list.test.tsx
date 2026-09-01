@@ -21,6 +21,10 @@ vi.mock("@/components/workspace/agents/agent-card", () => ({
   ),
 }));
 
+vi.mock("@/core/i18n/hooks", () => ({
+  useI18n: () => ({ t: { agents: { newAgent: "New Agent" } } }),
+}));
+
 // ── Dynamic import ───────────────────────────────────────────────────────────
 
 let ExpertList: typeof import("@/components/workspace/resources/expert-list").ExpertList;

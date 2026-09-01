@@ -137,6 +137,7 @@ export interface Translations {
     recentChats: string;
     newChat: string;
     chats: string;
+    capabilities: string;
     demoChats: string;
     agents: string;
     resources: string;

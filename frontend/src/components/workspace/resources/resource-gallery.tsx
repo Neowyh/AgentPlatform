@@ -1,5 +1,7 @@
 "use client";
 
+import { usePathname, useRouter } from "next/navigation";
+
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useI18n } from "@/core/i18n/hooks";
 
@@ -7,8 +9,20 @@ import { ConnectorList } from "./connector-list";
 import { ExpertList } from "./expert-list";
 import { SkillList } from "./skill-list";
 
-export function ResourceGallery() {
+type ResourceTab = "experts" | "skills" | "connectors";
+
+export function ResourceGallery({
+  defaultTab = "experts",
+}: {
+  defaultTab?: ResourceTab;
+}) {
   const { t } = useI18n();
+  const pathname = usePathname();
+  const router = useRouter();
+  const pathTab = pathname.split("/").at(-1) as ResourceTab;
+  const activeTab = ["experts", "skills", "connectors"].includes(pathTab)
+    ? pathTab
+    : defaultTab;
 
   return (
     <div className="workbench-resource-surface flex h-full flex-col gap-6 p-6">
@@ -17,7 +31,13 @@ export function ResourceGallery() {
         <p className="text-muted-foreground">{t.resources.description}</p>
       </div>
 
-      <Tabs defaultValue="experts" className="flex-1">
+      <Tabs
+        value={activeTab}
+        onValueChange={(value) =>
+          router.push(`/workspace/capabilities/${value}`)
+        }
+        className="flex-1"
+      >
         <TabsList>
           <TabsTrigger value="experts">{t.resources.experts}</TabsTrigger>
           <TabsTrigger value="skills">{t.resources.skills}</TabsTrigger>

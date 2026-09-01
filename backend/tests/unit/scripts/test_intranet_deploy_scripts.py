@@ -367,8 +367,7 @@ def test_status_logs_and_stop_do_not_install_fault_zeroing_agent(tmp_path: Path)
 
 
 def test_deploy_script_wires_admin_bootstrap_and_bundled_resource_steps():
-    """The up/restart flow auto-creates the super admin and installs the bundled
-    agents/workflow/skills as the admin's public resources."""
+    """The up/restart flow seeds the complete manifest after admin bootstrap."""
     script = DEPLOY_SCRIPT.read_text(encoding="utf-8")
 
     assert "initialize_super_admin" in script
@@ -376,13 +375,13 @@ def test_deploy_script_wires_admin_bootstrap_and_bundled_resource_steps():
     assert "IDEER_ADMIN_EMAIL:-super_admin@test.com" in script
     assert "IDEER_ADMIN_PASSWORD:-super_admin@test.com" in script
     assert "install_admin_bundled_resources" in script
-    assert "install_agent.py" in script
-    assert "install_srs_writing_agent.py" in script
-    assert "--owner super-admin" in script
+    assert "seed_bundled_resources.py" in script
+    assert "bundled-resources.json" in script
+    assert "--conflict-policy" in script
     assert "seed_custom_skill_owners.py" not in script
-    assert "cleanup_legacy_shared_agent" in script
-    assert "removing legacy shared agent copy" in script
-    assert "--created-by" in script
+    assert "install_agent.py" not in script
+    assert "install_srs_writing_agent.py" not in script
+    assert "cleanup_legacy_shared_agent" not in script
     assert "find_super_admin_id" in script
     assert "install_bundled_agents" not in script
     assert "prepare_bundle 0" not in script
@@ -657,8 +656,7 @@ def test_guide_documents_bundled_agent_and_workflow_hooks():
     assert "installing bundled srs-writing agent for super admin (public)..." in guide
     assert "agents_api" in guide
     assert "officecli" in guide
-    assert "IDEER_INSTALL_FAULT_ZEROING=0" in guide
-    assert "IDEER_INSTALL_SRS_WRITING=0" in guide
+    assert "bundled-resources.json" in guide
     assert "seed" in guide
     assert "super_admin@test.com" in guide
     assert "公开" in guide

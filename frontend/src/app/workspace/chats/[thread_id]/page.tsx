@@ -114,8 +114,14 @@ function RecentTaskCards({
 
 export default function ChatPage() {
   const { t } = useI18n();
-  const { threadId, setThreadId, isNewThread, setIsNewThread, isMock } =
-    useThreadChat();
+  const {
+    threadId,
+    setThreadId,
+    isNewThread,
+    setIsNewThread,
+    isMock,
+    selectedConnector,
+  } = useThreadChat();
   // `isNewThread` tracks whether the backend has the thread yet — gates the
   // SDK's history fetch (see issue #2746).  `isWelcomeMode` is the visual
   // welcome layout (centered input, hero, quick actions); we flip it to false
@@ -199,6 +205,7 @@ export default function ChatPage() {
       delete context.task_id;
       delete context.task_label;
       delete context.prompt_template;
+      delete context.connector_name;
       return context;
     }
     const chip = selectedChip
@@ -217,6 +224,7 @@ export default function ChatPage() {
       task_id: chip?.taskId,
       task_label: chip?.label,
       prompt_template: chip?.promptTemplate,
+      connector_name: selectedConnector ?? undefined,
     };
   }, [
     activeBinding,
@@ -225,6 +233,7 @@ export default function ChatPage() {
     settings.context,
     selectedPill,
     selectedChip,
+    selectedConnector,
   ]);
 
   const handleRemoveTag = useCallback(

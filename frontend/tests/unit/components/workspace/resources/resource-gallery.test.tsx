@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/workspace/resources",
+  useRouter: () => ({ push: vi.fn() }),
 }));
 
 vi.mock("next/link", () => ({
@@ -42,11 +43,17 @@ vi.mock("@/components/ui/tabs", () => ({
   Tabs: ({
     children,
     defaultValue,
+    value,
   }: {
     children: React.ReactNode;
     defaultValue?: string;
+    value?: string;
   }) => (
-    <div data-testid="tabs" data-default-value={defaultValue}>
+    <div
+      data-testid="tabs"
+      data-default-value={defaultValue}
+      data-value={value}
+    >
       {children}
     </div>
   ),
@@ -130,10 +137,10 @@ describe("ResourceGallery", () => {
     expect(screen.getByTestId("connector-list")).toBeInTheDocument();
   });
 
-  test("has correct default tab value", () => {
+  test("uses the tab encoded by the route", () => {
     render(<ResourceGallery />);
     const tabs = screen.getByTestId("tabs");
-    expect(tabs.getAttribute("data-default-value")).toBe("experts");
+    expect(tabs.getAttribute("data-value")).toBe("experts");
   });
 
   test("has correct tab trigger values", () => {

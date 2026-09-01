@@ -17,6 +17,14 @@ vi.mock("@/core/mcp/hooks", () => ({
   }),
 }));
 
+vi.mock("@/core/auth/AuthProvider", () => ({
+  useAuth: () => ({ user: null }),
+}));
+
+vi.mock("@/components/workspace/settings/tool-settings-page", () => ({
+  ToolSettingsPage: () => <div data-testid="tool-settings-page" />,
+}));
+
 // ── Dynamic import ───────────────────────────────────────────────────────────
 
 let ConnectorList: typeof import("@/components/workspace/resources/connector-list").ConnectorList;
@@ -44,5 +52,17 @@ describe("ConnectorList", () => {
     render(<ConnectorList />);
     expect(screen.getByText("Server 1 description")).toBeInTheDocument();
     expect(screen.getByText("Server 2 description")).toBeInTheDocument();
+  });
+
+  test("offers enabled connectors for a new conversation", () => {
+    render(<ConnectorList />);
+    expect(screen.getByText("Use in new conversation")).toHaveAttribute(
+      "href",
+      "/workspace/chats/new?connector=server-1",
+    );
+    expect(screen.queryByText("Use in new conversation")).toHaveAttribute(
+      "href",
+      "/workspace/chats/new?connector=server-1",
+    );
   });
 });

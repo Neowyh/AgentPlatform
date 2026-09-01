@@ -310,6 +310,7 @@ describe("enUS locale comprehensive", () => {
     const expected: Record<string, string> = {
       newChat: "New chat",
       chats: "Chats",
+      capabilities: "Experts · Skills · Connectors",
       recentChats: "Recent chats",
       demoChats: "Demo chats",
       agents: "Agents",
@@ -322,8 +323,8 @@ describe("enUS locale comprehensive", () => {
       });
     }
 
-    it("has 9 keys", () => {
-      expect(Object.keys(enUS.sidebar)).toHaveLength(9);
+    it("has 10 keys", () => {
+      expect(Object.keys(enUS.sidebar)).toHaveLength(10);
     });
   });
 

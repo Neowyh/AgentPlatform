@@ -30,9 +30,7 @@ vi.mock("@/core/i18n/hooks", () => ({
     t: {
       sidebar: {
         chats: "Chats",
-        agents: "Agents",
-        resources: "Resources",
-        automations: "Automations",
+        capabilities: "Experts · Skills · Connectors",
         library: "Library",
         workflows: "Workflows",
       },
@@ -91,18 +89,18 @@ afterEach(() => {
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe("WorkspaceNavChatList", () => {
-  test("renders six navigation items", () => {
+  test("renders four navigation items", () => {
     render(<WorkspaceNavChatList />);
     const items = screen.getAllByTestId("sidebar-menu-item");
-    expect(items).toHaveLength(6);
+    expect(items).toHaveLength(4);
   });
 
-  test("renders Chats, Agents, Resources, Automations, Library, and Workflows links", () => {
+  test("renders history, capabilities, workflows, and library links", () => {
     render(<WorkspaceNavChatList />);
     expect(screen.getByText("Chats")).toBeInTheDocument();
-    expect(screen.getByText("Agents")).toBeInTheDocument();
-    expect(screen.getByText("Resources")).toBeInTheDocument();
-    expect(screen.getByText("Automations")).toBeInTheDocument();
+    expect(
+      screen.getByText("Experts · Skills · Connectors"),
+    ).toBeInTheDocument();
     expect(screen.getByText("Library")).toBeInTheDocument();
     expect(screen.getByText("Workflows")).toBeInTheDocument();
   });
@@ -114,74 +112,53 @@ describe("WorkspaceNavChatList", () => {
     expect(buttons[0]!.getAttribute("data-is-active")).toBe("true");
   });
 
-  test("marks Agents as active when on agents path", () => {
-    mockPathname = "/workspace/agents";
+  test("marks capabilities as active on a capability path", () => {
+    mockPathname = "/workspace/capabilities/skills";
     render(<WorkspaceNavChatList />);
     const buttons = screen.getAllByTestId("sidebar-menu-button");
     expect(buttons[1]!.getAttribute("data-is-active")).toBe("true");
   });
 
-  test("marks Resources as active when on resources path", () => {
+  test("marks capabilities as active for legacy resource paths", () => {
     mockPathname = "/workspace/resources";
     render(<WorkspaceNavChatList />);
     const buttons = screen.getAllByTestId("sidebar-menu-button");
-    expect(buttons[2]!.getAttribute("data-is-active")).toBe("true");
-  });
-
-  test("marks Automations as active when on automations path", () => {
-    mockPathname = "/workspace/automations";
-    render(<WorkspaceNavChatList />);
-    const buttons = screen.getAllByTestId("sidebar-menu-button");
-    expect(buttons[3]!.getAttribute("data-is-active")).toBe("true");
+    expect(buttons[1]!.getAttribute("data-is-active")).toBe("true");
   });
 
   test("marks Library as active when on library path", () => {
     mockPathname = "/workspace/library";
     render(<WorkspaceNavChatList />);
     const buttons = screen.getAllByTestId("sidebar-menu-button");
-    expect(buttons[4]!.getAttribute("data-is-active")).toBe("true");
+    expect(buttons[3]!.getAttribute("data-is-active")).toBe("true");
   });
 
   test("marks Workflows as active when on workflows path", () => {
     mockPathname = "/workspace/workflows";
     render(<WorkspaceNavChatList />);
     const buttons = screen.getAllByTestId("sidebar-menu-button");
-    expect(buttons[5]!.getAttribute("data-is-active")).toBe("true");
+    expect(buttons[2]!.getAttribute("data-is-active")).toBe("true");
   });
 
-  test("marks Agents as active for sub-paths", () => {
+  test("marks capabilities as active for legacy agent paths", () => {
     mockPathname = "/workspace/agents/some-agent";
     render(<WorkspaceNavChatList />);
     const buttons = screen.getAllByTestId("sidebar-menu-button");
     expect(buttons[1]!.getAttribute("data-is-active")).toBe("true");
   });
 
-  test("marks Resources as active for sub-paths", () => {
-    mockPathname = "/workspace/resources/some-resource";
-    render(<WorkspaceNavChatList />);
-    const buttons = screen.getAllByTestId("sidebar-menu-button");
-    expect(buttons[2]!.getAttribute("data-is-active")).toBe("true");
-  });
-
-  test("marks Automations as active for sub-paths", () => {
-    mockPathname = "/workspace/automations/some-automation";
-    render(<WorkspaceNavChatList />);
-    const buttons = screen.getAllByTestId("sidebar-menu-button");
-    expect(buttons[3]!.getAttribute("data-is-active")).toBe("true");
-  });
-
   test("marks Library as active for sub-paths", () => {
     mockPathname = "/workspace/library/some-doc";
     render(<WorkspaceNavChatList />);
     const buttons = screen.getAllByTestId("sidebar-menu-button");
-    expect(buttons[4]!.getAttribute("data-is-active")).toBe("true");
+    expect(buttons[3]!.getAttribute("data-is-active")).toBe("true");
   });
 
   test("marks Workflows as active for sub-paths", () => {
     mockPathname = "/workspace/workflows/some-workflow";
     render(<WorkspaceNavChatList />);
     const buttons = screen.getAllByTestId("sidebar-menu-button");
-    expect(buttons[5]!.getAttribute("data-is-active")).toBe("true");
+    expect(buttons[2]!.getAttribute("data-is-active")).toBe("true");
   });
 
   test("none are active for unrelated paths", () => {
@@ -192,18 +169,14 @@ describe("WorkspaceNavChatList", () => {
     expect(buttons[1]!.getAttribute("data-is-active")).toBe("false");
     expect(buttons[2]!.getAttribute("data-is-active")).toBe("false");
     expect(buttons[3]!.getAttribute("data-is-active")).toBe("false");
-    expect(buttons[4]!.getAttribute("data-is-active")).toBe("false");
-    expect(buttons[5]!.getAttribute("data-is-active")).toBe("false");
   });
 
   test("links have correct hrefs", () => {
     render(<WorkspaceNavChatList />);
     const links = screen.getAllByRole("link");
     expect(links[0]).toHaveAttribute("href", "/workspace/chats");
-    expect(links[1]).toHaveAttribute("href", "/workspace/agents");
-    expect(links[2]).toHaveAttribute("href", "/workspace/resources");
-    expect(links[3]).toHaveAttribute("href", "/workspace/automations");
-    expect(links[4]).toHaveAttribute("href", "/workspace/library");
-    expect(links[5]).toHaveAttribute("href", "/workspace/workflows");
+    expect(links[1]).toHaveAttribute("href", "/workspace/capabilities/experts");
+    expect(links[2]).toHaveAttribute("href", "/workspace/workflows");
+    expect(links[3]).toHaveAttribute("href", "/workspace/library");
   });
 });

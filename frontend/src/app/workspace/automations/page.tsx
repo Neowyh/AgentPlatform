@@ -1,5 +1,5 @@
-import { AutomationGallery } from "@/components/workspace/automations/automation-gallery";
+import { redirect } from "next/navigation";
 
 export default function AutomationsPage() {
-  return <AutomationGallery />;
+  redirect("/workspace/workflows");
 }

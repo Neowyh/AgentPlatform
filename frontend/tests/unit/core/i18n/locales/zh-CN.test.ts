@@ -260,6 +260,7 @@ describe("zhCN locale", () => {
     const expected: Record<string, string> = {
       newChat: "新对话",
       chats: "对话",
+      capabilities: "专家 · 技能 · 连接器",
       recentChats: "最近的对话",
       demoChats: "演示对话",
       agents: "智能体",
@@ -272,8 +273,8 @@ describe("zhCN locale", () => {
       });
     }
 
-    it("has 9 keys", () => {
-      expect(Object.keys(zhCN.sidebar)).toHaveLength(9);
+    it("has 10 keys", () => {
+      expect(Object.keys(zhCN.sidebar)).toHaveLength(10);
     });
   });
 
