@@ -33,6 +33,57 @@ export interface ListFilesResponse {
   count: number;
 }
 
+export type EvidenceMode = "document" | "code" | "hybrid";
+
+export interface CodeEvidencePackage {
+  package_id: string;
+  original_filename: string;
+  accepted: string[];
+  excluded: string[];
+  rejected: Array<{ path: string; reason: string }>;
+  compressed_size: number;
+  expanded_size: number;
+  source_virtual_path: string;
+}
+
+export async function uploadCodeEvidencePackage(
+  threadId: string,
+  file: File,
+): Promise<CodeEvidencePackage> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const response = await fetch(
+    `${getBackendBaseURL()}/api/threads/${threadId}/uploads/code-evidence-package`,
+    { method: "POST", body: formData },
+  );
+  if (!response.ok) await extractError(response, "Code package upload failed");
+  return response.json();
+}
+
+export async function listCodeEvidencePackages(
+  threadId: string,
+): Promise<CodeEvidencePackage[]> {
+  const response = await fetch(
+    `${getBackendBaseURL()}/api/threads/${threadId}/uploads/code-evidence-package`,
+  );
+  if (!response.ok)
+    await extractError(response, "Failed to list code packages");
+  return response.json();
+}
+
+export async function deleteCodeEvidencePackage(
+  threadId: string,
+  packageId: string,
+): Promise<{ success: boolean }> {
+  const response = await fetch(
+    `${getBackendBaseURL()}/api/threads/${threadId}/uploads/code-evidence-package/${encodeURIComponent(packageId)}`,
+    { method: "DELETE" },
+  );
+  if (!response.ok)
+    await extractError(response, "Failed to delete code package");
+  return response.json();
+}
+
 /**
  * Upload files to a thread
  */

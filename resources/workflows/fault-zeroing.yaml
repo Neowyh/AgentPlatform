@@ -3,6 +3,14 @@ name: fault-zeroing
 description: 归零排故工作流 — 基于证据资料完成故障树构建、底事件评估、根因归因、纠正措施和归零报告生成
 
 inputs:
+  evidence_mode:
+    type: string
+    default: "document"
+    description: "证据模式：document、code 或 hybrid"
+  code_package_source:
+    type: string
+    default: ""
+    description: "经授权的 Code Evidence Package 源码根目录"
   upload_dir:
     type: string
     required: true
@@ -71,12 +79,15 @@ nodes:
           /mnt/skills/fault-zeroing/references/evidence_rules.md
 
           上传目录：{{inputs.upload_dir}}
+          证据模式：{{inputs.evidence_mode}}
+          代码包源码目录：{{inputs.code_package_source}}
           问题描述：{{inputs.problem_description}}
 
           你拥有对该目录的完整读取权限，可以直接对精确路径 {{inputs.upload_dir}}
           使用 ls / glob / grep 枚举目录内容（注意：不要枚举上级目录，上级目录不在权限内）。
 
-          1. 使用 glob 扫描 {{inputs.upload_dir}}，了解文件结构
+          1. 使用 glob 扫描 {{inputs.upload_dir}}，了解文件结构。
+             当模式为 code 或 hybrid 时，再扫描 {{inputs.code_package_source}}，仅在该目录内递归读取 .c/.h、日志和构建元数据；记录源码相对路径、行号和 provenance。没有编译元数据时记录 compilation_configuration_verified=false，并将代码结论标为 pending_verification。
            2. 按格式读取关键文件：
               - .doc/.docx/.pdf/.xls/.xlsx/.ppt/.pptx 调用 read_document 转 Markdown 后读取
                 （遇截断标记用 page_range 分段继续；转换结果为空疑似扫描件时按失败契约处理；
@@ -85,7 +96,7 @@ nodes:
               - .md/.txt/.log 等纯文本直接用 read_file 读取
           3. 读取文件内容，抽取每一条证据
           4. 检查五类资料覆盖情况：问题描述、设计约束、试验记录或日志、总结报告、历史或复核记录
-          5. 生成证据台账
+          5. 生成证据台账。静态告警单独最多只能标为 high_risk_candidate，不能标为 confirmed。
 
           输出：
           a) 写入 {{inputs.output_base_dir}}/artifacts/evidence/evidence_table.json

@@ -11,6 +11,7 @@ import {
   useThreadChat,
 } from "@/components/workspace/chats";
 import { ExportTrigger } from "@/components/workspace/export-trigger";
+import { FaultZeroingEvidenceControls } from "@/components/workspace/fault-zeroing-evidence-controls";
 import { InputBox } from "@/components/workspace/input-box";
 import {
   MessageList,
@@ -44,6 +45,7 @@ import {
   textOfMessage,
   titleOfThread,
 } from "@/core/threads/utils";
+import type { CodeEvidencePackage, EvidenceMode } from "@/core/uploads/api";
 import { env } from "@/env";
 import { cn } from "@/lib/utils";
 
@@ -154,6 +156,12 @@ export default function ChatPage() {
   const { agent: selectedAgentDetails } = useAgent(selectedAgent?.resource_id);
   const [pendingTemplate, setPendingTemplate] = useState<string | null>(null);
   const [templateResetKey, setTemplateResetKey] = useState(0);
+  const [evidenceMode, setEvidenceMode] = useState<EvidenceMode>(
+    (settings.context.evidence_mode as EvidenceMode | undefined) ?? "document",
+  );
+  const [codePackage, setCodePackage] = useState<CodeEvidencePackage | null>(
+    null,
+  );
 
   const activeScenario = selectedScenario;
   const handleSelectScenario = useCallback(
@@ -217,6 +225,12 @@ export default function ChatPage() {
       task_id: chip?.taskId,
       task_label: chip?.label,
       prompt_template: chip?.promptTemplate,
+      ...(selectedPill.agentSlug === "fault-zeroing"
+        ? {
+            evidence_mode: evidenceMode,
+            code_package_id: codePackage?.package_id,
+          }
+        : {}),
     };
   }, [
     activeBinding,
@@ -225,6 +239,8 @@ export default function ChatPage() {
     settings.context,
     selectedPill,
     selectedChip,
+    evidenceMode,
+    codePackage,
   ]);
 
   const handleRemoveTag = useCallback(
@@ -439,6 +455,21 @@ export default function ChatPage() {
                           iDeer帮你落地实现
                         </span>
                       </p>
+                    )}
+                    {selectedPill?.agentSlug === "fault-zeroing" && (
+                      <FaultZeroingEvidenceControls
+                        threadId={threadId}
+                        mode={evidenceMode}
+                        packageInfo={codePackage}
+                        onModeChange={(mode) => {
+                          setEvidenceMode(mode);
+                          setSettings("context", {
+                            ...settings.context,
+                            evidence_mode: mode,
+                          });
+                        }}
+                        onPackageChange={setCodePackage}
+                      />
                     )}
                     <InputBox
                       className="workbench-input-surface bg-background/5 w-full"

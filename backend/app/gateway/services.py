@@ -122,6 +122,18 @@ def normalize_input(raw_input: dict[str, Any] | None) -> dict[str, Any]:
     return raw_input
 
 
+def validate_evidence_selection(evidence_mode: str | None, code_package_id: str | None) -> tuple[str, str | None]:
+    """Validate explicit evidence mode before any workflow or agent starts."""
+    mode = evidence_mode or "document"
+    if mode not in {"document", "code", "hybrid"}:
+        raise HTTPException(status_code=400, detail="evidence_mode must be document, code, or hybrid")
+    if mode in {"code", "hybrid"} and not code_package_id:
+        raise HTTPException(status_code=400, detail=f"{mode} mode requires a Code Evidence Package")
+    if mode == "document" and code_package_id:
+        raise HTTPException(status_code=400, detail="document mode cannot include a Code Evidence Package")
+    return mode, str(code_package_id) if code_package_id else None
+
+
 _DEFAULT_ASSISTANT_ID = "lead_agent"
 
 
@@ -146,6 +158,9 @@ _CONTEXT_CONFIGURABLE_KEYS: frozenset[str] = frozenset(
         "skill_name",
         "skill_resource_id",
         "skill_names",
+        "evidence_mode",
+        "code_package_id",
+        "code_evidence_source",
     }
 )
 
@@ -456,6 +471,21 @@ async def start_run(
     disconnect = DisconnectMode.cancel if body.on_disconnect == "cancel" else DisconnectMode.continue_
 
     body_context = getattr(body, "context", None) or {}
+    evidence_mode, code_package_id = validate_evidence_selection(
+        getattr(body, "evidence_mode", None) or body_context.get("evidence_mode"),
+        getattr(body, "code_package_id", None) or body_context.get("code_package_id"),
+    )
+    if code_package_id:
+        from ideer.uploads.code_evidence import read_manifest
+
+        try:
+            await asyncio.to_thread(read_manifest, thread_id, str(code_package_id))
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=400, detail="Code Evidence Package was not found for this Thread") from exc
+    body_context = {**body_context, "evidence_mode": evidence_mode}
+    if code_package_id:
+        body_context["code_package_id"] = str(code_package_id)
+    body_context["code_evidence_source"] = f"/mnt/user-data/code-evidence/{code_package_id}/source" if code_package_id else None
     model_name = body_context.get("model_name")
 
     canonical_resource_id = _canonical_assistant_id(getattr(body, "assistant_id", None))
@@ -504,6 +534,9 @@ async def start_run(
         canonical_factory = None
 
     run_metadata = dict(body.metadata or {})
+    run_metadata["evidence_mode"] = evidence_mode
+    if code_package_id:
+        run_metadata["code_package_id"] = str(code_package_id)
     if canonical_run_id and canonical_resource_id:
         run_metadata.update(await _canonical_selection_metadata(canonical_run_id, canonical_resource_id, body_context))
 

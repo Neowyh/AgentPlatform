@@ -26,6 +26,8 @@ export interface AgentThreadContext extends Record<string, unknown> {
   task_id?: string;
   task_label?: string;
   prompt_template?: string;
+  evidence_mode?: "document" | "code" | "hybrid";
+  code_package_id?: string;
 }
 
 export interface AgentThread extends Thread<AgentThreadState> {
