@@ -1,5 +1,5 @@
 name: code-dev
-description: 代码开发智能体，面向代码开发相关任务提供结构化协作能力
+description: 代码开发专家，面向代码开发相关任务提供结构化协作能力
 tool_groups:
 - file:read
 - file:write
