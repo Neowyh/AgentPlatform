@@ -260,6 +260,7 @@ export const enUS: Translations = {
   sidebar: {
     newChat: "New chat",
     chats: "Chats",
+    capabilities: "Experts · Skills · Connectors",
     recentChats: "Recent chats",
     demoChats: "Demo chats",
     agents: "Agents",

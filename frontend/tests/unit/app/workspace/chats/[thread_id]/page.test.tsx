@@ -530,6 +530,24 @@ describe("ChatPage", () => {
     });
   });
 
+  test("preserves a connector selected from the capability center", () => {
+    mockUseThreadChat.mockReturnValue({
+      threadId: "test-thread",
+      setThreadId: vi.fn(),
+      isNewThread: true,
+      setIsNewThread: vi.fn(),
+      isMock: false,
+      selectedConnector: "server-1",
+    });
+
+    const { rerender } = render(<ChatPage />);
+    rerender(<ChatPage />);
+
+    expect(mockLastInputBoxProps.current.context).toMatchObject({
+      connector_name: "server-1",
+    });
+  });
+
   test("onStart callback sets threadId and updates URL", () => {
     const setThreadIdMock = vi.fn();
     const setIsNewThreadMock = vi.fn();

@@ -39,8 +39,6 @@ Environment:
   IDEER_BUNDLE_ROOT, IDEER_VERSION, IDEER_NO_LOAD
   IDEER_ADMIN_EMAIL, IDEER_ADMIN_PASSWORD override the auto-created super admin
     credentials (default: super_admin@test.com / super_admin@test.com)
-  IDEER_INSTALL_FAULT_ZEROING=0 skips installing the bundled fault-zeroing agent
-  IDEER_INSTALL_SRS_WRITING=0 skips installing the bundled srs-writing agent
   IDEER_BUNDLED_CONFLICT=keep|override same as --bundled-conflict
 EOF
 }
@@ -726,11 +724,9 @@ print(row[0] if row else "")
 PY
 }
 
-# Install the bundled agents (fault-zeroing, srs-writing), assign the bundled
-# custom skills, and seed the fault-zeroing workflow as PRIVATE resources of
-# the super admin.  Runs after the gateway is healthy and the admin exists
-# because the per-user install and resource ownership live in the runtime
-# database.  Skip each agent with IDEER_INSTALL_<NAME>=0.
+# Seed the complete bundled manifest as public canonical resources. Runs after
+# the gateway is healthy and the admin exists because the resource owner is a
+# foreign key in the runtime database.
 install_admin_bundled_resources() {
     local resource_install_failed=0
     command -v python3 >/dev/null 2>&1 || {
@@ -760,54 +756,6 @@ install_admin_bundled_resources() {
         return 1
     fi
     log "installing bundled resources for super admin $admin_id (public)..."
-
-    # Older bundle versions auto-installed the bundled agents into the shared
-    # directory (runtime/data/agents/<name>), which keeps them visible to every
-    # user as read-only templates.  Once the per-user copy is in place,
-    # remove a legacy shared copy when it still matches the bundle byte-for-byte;
-    # a customized shared agent is left behind with a warning.
-    cleanup_legacy_shared_agent() {
-        local name="$1"
-        local source_dir="$2"
-        local shared_dir="$runtime_home/agents/$name"
-        [ -d "$shared_dir" ] || return 0
-        if ! diff -rq "$source_dir" "$shared_dir" >/dev/null 2>&1; then
-            warn "legacy shared agent $shared_dir differs from the bundle; leaving it for manual review"
-            return 0
-        fi
-        log "removing legacy shared agent copy: $shared_dir"
-        run_cmd rm -rf "$shared_dir"
-    }
-
-    if [ "${IDEER_INSTALL_FAULT_ZEROING:-1}" = "0" ]; then
-        log "skipping fault-zeroing agent install"
-    elif [ -d "$SOURCE_DIR/resources/agents/fault-zeroing" ] && [ -f "$SOURCE_DIR/scripts/install_agent.py" ]; then
-        log "installing bundled fault-zeroing agent for super admin (public)..."
-        if ! run_cmd env IDEER_HOME="$runtime_home" IDEER_CONFIG_PATH="$config_path" \
-            python3 "$SOURCE_DIR/scripts/install_agent.py" --agent fault-zeroing --owner super-admin
-        then
-            resource_install_failed=1
-        fi
-        cleanup_legacy_shared_agent fault-zeroing "$SOURCE_DIR/resources/agents/fault-zeroing"
-    else
-        warn "fault-zeroing agent source not found in bundle"
-        resource_install_failed=1
-    fi
-
-    if [ "${IDEER_INSTALL_SRS_WRITING:-1}" = "0" ]; then
-        log "skipping srs-writing agent install"
-    elif [ -d "$SOURCE_DIR/resources/agents/srs-writing" ] && [ -f "$SOURCE_DIR/scripts/install_srs_writing_agent.py" ]; then
-        log "installing bundled srs-writing agent for super admin (public)..."
-        if ! run_cmd env IDEER_HOME="$runtime_home" IDEER_CONFIG_PATH="$config_path" \
-            python3 "$SOURCE_DIR/scripts/install_srs_writing_agent.py" --owner super-admin; then
-            warn "srs-writing agent install failed (see output above)"
-            resource_install_failed=1
-        fi
-        cleanup_legacy_shared_agent srs-writing "$SOURCE_DIR/resources/agents/srs-writing"
-    else
-        warn "srs-writing agent source not found in bundle"
-        resource_install_failed=1
-    fi
 
     if [ ! -f "$SOURCE_DIR/scripts/seed_bundled_resources.py" ] \
         || [ ! -f "$SOURCE_DIR/bundled-resources.json" ]; then

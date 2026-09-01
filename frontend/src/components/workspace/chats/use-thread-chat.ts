@@ -36,5 +36,13 @@ export function useThreadChat() {
     setThreadId(threadIdFromPath);
   }, [pathname, threadIdFromPath]);
   const isMock = searchParams.get("mock") === "true";
-  return { threadId, setThreadId, isNewThread, setIsNewThread, isMock };
+  const selectedConnector = searchParams.get("connector");
+  return {
+    threadId,
+    setThreadId,
+    isNewThread,
+    setIsNewThread,
+    isMock,
+    selectedConnector,
+  };
 }

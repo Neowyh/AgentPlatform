@@ -253,6 +253,7 @@ export const zhCN: Translations = {
   sidebar: {
     newChat: "新对话",
     chats: "对话",
+    capabilities: "专家 · 技能 · 连接器",
     recentChats: "最近的对话",
     demoChats: "演示对话",
     agents: "智能体",

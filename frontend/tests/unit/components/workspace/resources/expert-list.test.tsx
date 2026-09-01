@@ -3,10 +3,11 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
-const mockAgents = [
+const defaultAgents = [
   { name: "agent-1", description: "Agent 1 description", is_favorited: false },
   { name: "agent-2", description: "Agent 2 description", is_favorited: true },
 ];
+let mockAgents = defaultAgents;
 
 vi.mock("@/core/agents", () => ({
   useAgents: () => ({
@@ -21,12 +22,17 @@ vi.mock("@/components/workspace/agents/agent-card", () => ({
   ),
 }));
 
+vi.mock("@/core/i18n/hooks", () => ({
+  useI18n: () => ({ t: { agents: { newAgent: "New Agent" } } }),
+}));
+
 // ── Dynamic import ───────────────────────────────────────────────────────────
 
 let ExpertList: typeof import("@/components/workspace/resources/expert-list").ExpertList;
 
 beforeEach(async () => {
   vi.clearAllMocks();
+  mockAgents = defaultAgents;
   const mod = await import("@/components/workspace/resources/expert-list");
   ExpertList = mod.ExpertList;
 });
@@ -48,5 +54,16 @@ describe("ExpertList", () => {
     render(<ExpertList />);
     const cards = screen.getAllByTestId("agent-card");
     expect(cards).toHaveLength(2);
+  });
+
+  test("keeps the new-agent action available for an empty catalog", () => {
+    mockAgents = [];
+
+    render(<ExpertList />);
+
+    expect(screen.getByRole("link", { name: "New Agent" })).toHaveAttribute(
+      "href",
+      "/workspace/agents/new",
+    );
   });
 });

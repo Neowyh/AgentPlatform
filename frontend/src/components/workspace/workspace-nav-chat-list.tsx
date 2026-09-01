@@ -1,12 +1,10 @@
 "use client";
 
 import {
-  BotIcon,
   BookOpenIcon,
-  LayersIcon,
   MessagesSquare,
+  NetworkIcon,
   WorkflowIcon,
-  ZapIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -35,40 +33,36 @@ export function WorkspaceNavChatList() {
         </SidebarMenuItem>
         <SidebarMenuItem>
           <SidebarMenuButton
-            isActive={pathname.startsWith("/workspace/agents")}
+            isActive={
+              pathname.startsWith("/workspace/capabilities") ||
+              pathname.startsWith("/workspace/agents") ||
+              pathname.startsWith("/workspace/resources")
+            }
             asChild
           >
-            <Link className="text-sidebar-foreground" href="/workspace/agents">
-              <BotIcon />
-              <span>{t.sidebar.agents}</span>
+            <Link
+              className="text-sidebar-foreground"
+              href="/workspace/capabilities/experts"
+            >
+              <NetworkIcon />
+              <span>{t.sidebar.capabilities}</span>
             </Link>
           </SidebarMenuButton>
         </SidebarMenuItem>
         <SidebarMenuItem>
           <SidebarMenuButton
-            isActive={pathname.startsWith("/workspace/resources")}
+            isActive={
+              pathname.startsWith("/workspace/workflows") ||
+              pathname.startsWith("/workspace/automations")
+            }
             asChild
           >
             <Link
               className="text-sidebar-foreground"
-              href="/workspace/resources"
+              href="/workspace/workflows"
             >
-              <LayersIcon />
-              <span>{t.sidebar.resources}</span>
-            </Link>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-        <SidebarMenuItem>
-          <SidebarMenuButton
-            isActive={pathname.startsWith("/workspace/automations")}
-            asChild
-          >
-            <Link
-              className="text-sidebar-foreground"
-              href="/workspace/automations"
-            >
-              <ZapIcon />
-              <span>{t.sidebar.automations}</span>
+              <WorkflowIcon />
+              <span>{t.sidebar.workflows}</span>
             </Link>
           </SidebarMenuButton>
         </SidebarMenuItem>
@@ -80,20 +74,6 @@ export function WorkspaceNavChatList() {
             <Link className="text-sidebar-foreground" href="/workspace/library">
               <BookOpenIcon />
               <span>{t.sidebar.library}</span>
-            </Link>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-        <SidebarMenuItem>
-          <SidebarMenuButton
-            isActive={pathname.startsWith("/workspace/workflows")}
-            asChild
-          >
-            <Link
-              className="text-sidebar-foreground"
-              href="/workspace/workflows"
-            >
-              <WorkflowIcon />
-              <span>{t.sidebar.workflows}</span>
             </Link>
           </SidebarMenuButton>
         </SidebarMenuItem>

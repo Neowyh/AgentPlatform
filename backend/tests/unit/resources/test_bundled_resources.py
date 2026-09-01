@@ -13,6 +13,7 @@ from ideer.persistence.base import Base
 from ideer.persistence.models.resource_catalog import (
     Resource,
     ResourceDependency,
+    ResourceProvenance,
     ResourceVersion,
 )
 from ideer.persistence.models.user import UserModel, UserRole
@@ -266,6 +267,62 @@ async def test_repository_bundle_can_be_seeded_offline_as_one_complete_set(
         assert set(resources) == {resource.id for resource in manifest.resources}
         assert all(resource.visibility == "public" for resource in resources.values())
         assert all(resource.latest_version == 1 for resource in resources.values())
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_repository_bundle_upgrade_repairs_legacy_partial_agent_catalog(
+    tmp_path: Path,
+) -> None:
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'legacy.db'}")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    manifest = load_bundled_manifest(REPO_ROOT / "bundled-resources.json")
+    legacy_agents = [item for item in manifest.resources if item.type == "agent"][:2]
+    async with factory() as session:
+        session.add(
+            UserModel(
+                id="system-owner",
+                username="system@test.com",
+                role=UserRole.SUPER_ADMIN,
+                disabled=False,
+            )
+        )
+        for item in legacy_agents:
+            session.add(
+                Resource(
+                    id=item.id,
+                    type=item.type,
+                    slug=item.slug,
+                    display_name=item.display_name,
+                    owner_id="system-owner",
+                    visibility="public",
+                    lifecycle_status="active",
+                    latest_version=0,
+                    draft_revision=0,
+                    storage_kind="filesystem",
+                    storage_key=f"agents/{item.id}",
+                    provenance=ResourceProvenance.BUNDLED.value,
+                    system_owned=item.system_owned,
+                    authz_revision=1,
+                )
+            )
+        await session.commit()
+
+    report = await seed_bundled_resources(
+        factory,
+        ResourceStorage(tmp_path / "runtime", allow_scanned_executables=True),
+        manifest_path=REPO_ROOT / "bundled-resources.json",
+        source_root=REPO_ROOT,
+        owner_id="system-owner",
+    )
+
+    assert report.created == len(manifest.resources) - len(legacy_agents)
+    async with factory() as session:
+        resources = list((await session.execute(select(Resource))).scalars())
+        assert {resource.slug for resource in resources if resource.type == "agent"} == {item.slug for item in legacy_agents} | {item.slug for item in manifest.resources if item.type == "agent"} - {item.slug for item in legacy_agents}
+        assert all(resource.latest_version == 1 for resource in resources)
     await engine.dispose()
 
 

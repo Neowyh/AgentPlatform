@@ -90,10 +90,25 @@ function getBreadcrumbSegments(
           href: `/workspace/resources/${resourceId}`,
         });
       }
+    } else if (parts[1] === "capabilities") {
+      const tab = parts[2] ?? "experts";
+      const tabLabels: Record<string, string> = {
+        experts: t.resources.experts,
+        skills: t.resources.skills,
+        connectors: t.resources.connectors,
+      };
+      segments.push({
+        label: t.sidebar.capabilities,
+        href: "/workspace/capabilities/experts",
+      });
+      segments.push({
+        label: tabLabels[tab] ?? tab,
+        href: `/workspace/capabilities/${tab}`,
+      });
     } else if (parts[1] === "automations") {
       segments.push({
-        label: t.sidebar.automations,
-        href: "/workspace/automations",
+        label: t.sidebar.workflows,
+        href: "/workspace/workflows",
       });
 
       if (parts[2]) {

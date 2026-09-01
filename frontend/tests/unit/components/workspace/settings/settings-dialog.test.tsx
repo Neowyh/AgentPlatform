@@ -157,14 +157,14 @@ describe("SettingsDialog", () => {
 
   // ── Navigation tabs ──────────────────────────────────────────────────────
 
-  test("renders all settings section tabs", () => {
+  test("renders settings sections without migrated capability tabs", () => {
     render(<SettingsDialog open={true} onOpenChange={vi.fn()} />);
     expect(screen.getByTestId("settings-tab-account")).toBeInTheDocument();
     expect(screen.getByTestId("settings-tab-appearance")).toBeInTheDocument();
     expect(screen.getByTestId("settings-tab-notification")).toBeInTheDocument();
     expect(screen.getByTestId("settings-tab-memory")).toBeInTheDocument();
-    expect(screen.getByTestId("settings-tab-tools")).toBeInTheDocument();
-    expect(screen.getByTestId("settings-tab-skills")).toBeInTheDocument();
+    expect(screen.queryByTestId("settings-tab-tools")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("settings-tab-skills")).not.toBeInTheDocument();
     expect(screen.getByTestId("settings-tab-about")).toBeInTheDocument();
   });
 
@@ -174,8 +174,8 @@ describe("SettingsDialog", () => {
     expect(screen.getByText("Appearance")).toBeInTheDocument();
     expect(screen.getByText("Notifications")).toBeInTheDocument();
     expect(screen.getByText("Memory")).toBeInTheDocument();
-    expect(screen.getByText("Tools")).toBeInTheDocument();
-    expect(screen.getByText("Skills")).toBeInTheDocument();
+    expect(screen.queryByText("Tools")).not.toBeInTheDocument();
+    expect(screen.queryByText("Skills")).not.toBeInTheDocument();
     expect(screen.getByText("About")).toBeInTheDocument();
   });
 
@@ -221,28 +221,6 @@ describe("SettingsDialog", () => {
     expect(screen.getByTestId("memory-page")).toBeInTheDocument();
   });
 
-  test("opens to tools section when specified", () => {
-    render(
-      <SettingsDialog
-        open={true}
-        onOpenChange={vi.fn()}
-        defaultSection="tools"
-      />,
-    );
-    expect(screen.getByTestId("tools-page")).toBeInTheDocument();
-  });
-
-  test("opens to skills section when specified", () => {
-    render(
-      <SettingsDialog
-        open={true}
-        onOpenChange={vi.fn()}
-        defaultSection="skills"
-      />,
-    );
-    expect(screen.getByTestId("skills-page")).toBeInTheDocument();
-  });
-
   test("opens to notification section when specified", () => {
     render(
       <SettingsDialog
@@ -269,17 +247,6 @@ describe("SettingsDialog", () => {
       expect(screen.getByTestId("account-page")).toBeInTheDocument();
     });
     expect(screen.queryByTestId("appearance-page")).not.toBeInTheDocument();
-  });
-
-  test("switches to tools section when tab clicked", async () => {
-    const user = userEvent.setup();
-    render(<SettingsDialog open={true} onOpenChange={vi.fn()} />);
-
-    await user.click(screen.getByTestId("settings-tab-tools"));
-
-    await waitFor(() => {
-      expect(screen.getByTestId("tools-page")).toBeInTheDocument();
-    });
   });
 
   test("switches to about section when tab clicked", async () => {
@@ -315,30 +282,19 @@ describe("SettingsDialog", () => {
     });
   });
 
-  test("switches to skills section when tab clicked", async () => {
-    const user = userEvent.setup();
-    render(<SettingsDialog open={true} onOpenChange={vi.fn()} />);
-
-    await user.click(screen.getByTestId("settings-tab-skills"));
-
-    await waitFor(() => {
-      expect(screen.getByTestId("skills-page")).toBeInTheDocument();
-    });
-  });
-
   test("only renders one section page at a time", async () => {
     const user = userEvent.setup();
     render(<SettingsDialog open={true} onOpenChange={vi.fn()} />);
 
     // Start at appearance
     expect(screen.getByTestId("appearance-page")).toBeInTheDocument();
-    expect(screen.queryByTestId("tools-page")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("memory-page")).not.toBeInTheDocument();
 
-    // Switch to tools
-    await user.click(screen.getByTestId("settings-tab-tools"));
+    // Switch to memory
+    await user.click(screen.getByTestId("settings-tab-memory"));
 
     await waitFor(() => {
-      expect(screen.getByTestId("tools-page")).toBeInTheDocument();
+      expect(screen.getByTestId("memory-page")).toBeInTheDocument();
     });
     expect(screen.queryByTestId("appearance-page")).not.toBeInTheDocument();
   });
@@ -379,11 +335,11 @@ describe("SettingsDialog", () => {
       <SettingsDialog
         open={true}
         onOpenChange={vi.fn()}
-        defaultSection="tools"
+        defaultSection="memory"
       />,
     );
-    const toolsTab = screen.getByTestId("settings-tab-tools");
-    expect(toolsTab.className).toContain("bg-primary");
+    const memoryTab = screen.getByTestId("settings-tab-memory");
+    expect(memoryTab.className).toContain("bg-primary");
   });
 
   test("applies inactive styling to non-current section tabs", () => {
@@ -391,7 +347,7 @@ describe("SettingsDialog", () => {
       <SettingsDialog
         open={true}
         onOpenChange={vi.fn()}
-        defaultSection="tools"
+        defaultSection="memory"
       />,
     );
     const accountTab = screen.getByTestId("settings-tab-account");
