@@ -37,8 +37,7 @@ nodes:
     action:
       # kind: "agent" 使用 AI agent；"tool" 直接调用工具
       kind: agent
-      # 在"设置 → Agents"中创建 agent 后，将名称填写在此处
-      name: my-agent
+      name: code-dev
       params:
         # prompt 支持 {{inputs.*}} / {{state.*}} 引用
         prompt: "请处理以下任务：{{inputs.topic}}"
@@ -123,9 +122,7 @@ export default function NewWorkflowPage() {
           </Button>
           <Button onClick={handleSave} disabled={createWorkflow.isPending}>
             <SaveIcon className="mr-1.5 h-4 w-4" />
-            {createWorkflow.isPending
-              ? t.workflows.creating
-              : t.workflows.newWorkflow}
+            {createWorkflow.isPending ? t.workflows.saving : t.common.save}
           </Button>
         </div>
       </div>

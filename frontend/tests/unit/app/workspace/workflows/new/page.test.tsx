@@ -35,7 +35,7 @@ vi.mock("@/core/i18n/hooks", () => ({
         created: "Workflow created",
         creating: "Creating...",
       },
-      common: { loading: "Loading...", cancel: "Cancel" },
+      common: { loading: "Loading...", cancel: "Cancel", save: "Save" },
     },
   }),
 }));
@@ -109,10 +109,9 @@ describe("NewWorkflowPage", () => {
     expect(screen.getByTestId("code-editor")).toBeInTheDocument();
   });
 
-  test("renders save button", () => {
+  test("renders save button with save action text", () => {
     render(<NewWorkflowPage />);
-    const elements = screen.getAllByText("New Workflow");
-    expect(elements.length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
   });
 
   test("renders cancel button", () => {
@@ -176,8 +175,7 @@ describe("NewWorkflowPage", () => {
 
     render(<NewWorkflowPage />);
 
-    const saveButtons = screen.getAllByText("New Workflow");
-    fireEvent.click(saveButtons[saveButtons.length - 1]!);
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() => {
       expect(mockMutateAsync).toHaveBeenCalled();
@@ -190,8 +188,7 @@ describe("NewWorkflowPage", () => {
 
     render(<NewWorkflowPage />);
 
-    const saveButtons = screen.getAllByText("New Workflow");
-    fireEvent.click(saveButtons[saveButtons.length - 1]!);
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() => {
       expect(mockPush).toHaveBeenCalledWith("/workspace/workflows");
@@ -213,6 +210,7 @@ describe("NewWorkflowPage", () => {
     render(<NewWorkflowPage />);
     const editor = screen.getByTestId("code-editor");
     expect((editor as HTMLInputElement).value).toContain("name: my-workflow");
+    expect((editor as HTMLInputElement).value).toContain("name: code-dev");
     expect((editor as HTMLInputElement).value).toContain("nodes:");
   });
 
@@ -233,8 +231,7 @@ describe("NewWorkflowPage", () => {
     mockMutateAsync.mockRejectedValue(new Error("Create failed"));
 
     render(<NewWorkflowPage />);
-    const saveButtons = screen.getAllByText("New Workflow");
-    fireEvent.click(saveButtons[saveButtons.length - 1]!);
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith("Create failed");
@@ -247,8 +244,7 @@ describe("NewWorkflowPage", () => {
     mockMutateAsync.mockRejectedValue("raw string error");
 
     render(<NewWorkflowPage />);
-    const saveButtons = screen.getAllByText("New Workflow");
-    fireEvent.click(saveButtons[saveButtons.length - 1]!);
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith("raw string error");

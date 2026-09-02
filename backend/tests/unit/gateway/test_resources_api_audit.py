@@ -6,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 import ideer.persistence.models  # noqa: F401
@@ -98,6 +99,30 @@ async def test_canonical_create_and_archive_record_audit(
     assert calls[-1][2] == "agent"
     assert calls[-1][3] == resource_id
     assert calls[-1][4] is None
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_canonical_create_duplicate_slug_returns_conflict(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A duplicate owner slug is a client conflict, not an internal error."""
+    engine, _factory, current_user = await _make_env(tmp_path, monkeypatch, UserRole.USER)
+
+    request = resources.ResourceCreateRequest(
+        type="workflow",
+        slug="duplicate-workflow",
+        display_name="Duplicate Workflow",
+        storage_kind="database",
+    )
+    await resources.create_resource(request, current_user)
+
+    with pytest.raises(HTTPException) as error:
+        await resources.create_resource(request, current_user)
+
+    assert error.value.status_code == 409
+    assert "already exists" in str(error.value.detail)
     await engine.dispose()
 
 

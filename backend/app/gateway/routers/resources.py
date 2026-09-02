@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Reques
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError
 from starlette.background import BackgroundTask
 
 from app.gateway.audit import record_audit
@@ -776,13 +777,23 @@ async def create_resource(
     current_user: UserModel = Depends(get_current_rbac_user),
 ) -> dict[str, Any]:
     async with _factory()() as session:
-        resource = await ResourceService(session, _resource_actor(current_user)).create_resource(
-            resource_type=body.type,
-            slug=body.slug,
-            display_name=body.display_name,
-            storage_kind=body.storage_kind,
-        )
-        await session.commit()
+        try:
+            resource = await ResourceService(
+                session,
+                _resource_actor(current_user),
+            ).create_resource(
+                resource_type=body.type,
+                slug=body.slug,
+                display_name=body.display_name,
+                storage_kind=body.storage_kind,
+            )
+            await session.commit()
+        except IntegrityError as exc:
+            await session.rollback()
+            message = str(exc.orig or exc).lower()
+            if "uq_resources_type_owner_slug" not in message and "resources.type, resources.owner_id, resources.slug" not in message:
+                raise
+            raise ResourceConflict(f"A {body.type} with slug '{body.slug}' already exists for this owner") from exc
         await record_audit(
             str(current_user.id),
             "resource_created",
