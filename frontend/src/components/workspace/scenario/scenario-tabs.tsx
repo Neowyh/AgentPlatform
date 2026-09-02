@@ -17,7 +17,7 @@ const ICONS: Record<string, LucideIcon> = {
 
 interface ScenarioTabsProps {
   selected: ScenarioId | null;
-  onSelect: (id: ScenarioId | null) => void;
+  onSelect: (id: ScenarioId) => void;
 }
 
 export function ScenarioTabs({ selected, onSelect }: ScenarioTabsProps) {
@@ -55,7 +55,7 @@ export function ScenarioTabs({ selected, onSelect }: ScenarioTabsProps) {
                 : "text-muted-foreground hover:bg-muted/60 hover:text-foreground border-transparent",
               "hover:shadow-sm active:scale-95",
             )}
-            onClick={() => onSelect(isActive ? null : id)}
+            onClick={() => onSelect(id)}
           >
             <Icon className="size-5" />
             {t.scenarios[id]}

@@ -47,13 +47,13 @@ describe("ScenarioTabs", () => {
     expect(onSelect).toHaveBeenCalledWith("daily");
   });
 
-  it("clicks same tab again → onSelect(null) toggles off", async () => {
+  it("clicks same tab again → keeps the tab selected", async () => {
     const user = userEvent.setup();
     const onSelect = vi.fn();
     render(<ScenarioTabs selected="daily" onSelect={onSelect} />);
 
     await user.click(screen.getByRole("tab", { name: /日常办公/ }));
-    expect(onSelect).toHaveBeenCalledWith(null);
+    expect(onSelect).toHaveBeenCalledWith("daily");
   });
 
   it("ArrowRight cycles to next tab", async () => {

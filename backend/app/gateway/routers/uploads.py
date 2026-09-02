@@ -19,8 +19,6 @@ from ideer.uploads.code_evidence import (
     CodeEvidencePackageError,
     accept_package,
     delete_package,
-    list_packages,
-    read_manifest,
 )
 from ideer.uploads.manager import (
     PathTraversalError,
@@ -55,6 +53,7 @@ class UploadResponse(BaseModel):
     files: list[dict[str, str]]
     message: str
     skipped_files: list[str] = Field(default_factory=list)
+    code_packages: list[dict] = Field(default_factory=list)
 
 
 class UploadLimits(BaseModel):
@@ -63,17 +62,6 @@ class UploadLimits(BaseModel):
     max_files: int
     max_file_size: int
     max_total_size: int
-
-
-class CodeEvidencePackageResponse(BaseModel):
-    package_id: str
-    original_filename: str
-    accepted: list[str]
-    excluded: list[str]
-    rejected: list[dict[str, str]]
-    compressed_size: int
-    expanded_size: int
-    source_virtual_path: str
 
 
 def _make_file_sandbox_writable(file_path: os.PathLike[str] | str) -> None:
@@ -231,6 +219,8 @@ async def upload_files(
     written_paths = []
     sandbox_sync_targets = []
     skipped_files = []
+    code_packages = []
+    created_package_ids: list[str] = []
     total_size = 0
     # Track filenames within this request so duplicate form parts do not
     # silently truncate each other. Existing uploads keep the historical
@@ -269,6 +259,24 @@ async def upload_files(
             )
             written_paths.append(file_path)
 
+            if original_filename.lower().endswith(".zip"):
+                file.file.seek(0)
+                try:
+                    manifest, _root = await asyncio.to_thread(
+                        accept_package,
+                        file.file,
+                        thread_id=thread_id,
+                        original_filename=original_filename,
+                    )
+                except CodeEvidencePackageError as exc:
+                    raise HTTPException(status_code=400, detail=str(exc)) from exc
+                except (OSError, zipfile.BadZipFile) as exc:
+                    raise HTTPException(status_code=400, detail=f"Invalid code evidence package: {exc}") from exc
+                finally:
+                    file.file.seek(0, 2)
+                code_packages.append(manifest.as_dict())
+                created_package_ids.append(manifest.package_id)
+
             virtual_path = upload_virtual_path(safe_filename)
 
             if sync_to_sandbox:
@@ -305,6 +313,11 @@ async def upload_files(
 
         except HTTPException as e:
             _cleanup_uploaded_paths(written_paths)
+            for package_id in created_package_ids:
+                try:
+                    delete_package(thread_id, package_id)
+                except FileNotFoundError:
+                    pass
             raise e
         except UnsafeUploadPathError as e:
             logger.warning("Skipping upload with unsafe destination %s: %s", file.filename, e)
@@ -313,6 +326,11 @@ async def upload_files(
         except Exception as e:
             logger.error(f"Failed to upload {file.filename}: {e}")
             _cleanup_uploaded_paths(written_paths)
+            for package_id in created_package_ids:
+                try:
+                    delete_package(thread_id, package_id)
+                except FileNotFoundError:
+                    pass
             raise HTTPException(status_code=500, detail=f"Failed to upload {file.filename}: {str(e)}")
 
     # Uploaded files are created with 0o600 permissions (owner read/write only).
@@ -339,6 +357,7 @@ async def upload_files(
         files=uploaded_files,
         message=message,
         skipped_files=skipped_files,
+        code_packages=code_packages,
     )
 
 
@@ -351,55 +370,6 @@ async def get_upload_limits(
 ) -> UploadLimits:
     """Return upload limits used by the gateway for this thread."""
     return _get_upload_limits(config)
-
-
-@router.post("/code-evidence-package", response_model=CodeEvidencePackageResponse)
-@require_permission("threads", "write", owner_check=True, require_existing=True)
-async def upload_code_evidence_package(
-    thread_id: str,
-    file: UploadFile = File(...),
-) -> CodeEvidencePackageResponse:
-    """Accept one governed ZIP package without changing ordinary uploads."""
-    if not file.filename:
-        raise HTTPException(status_code=400, detail="A ZIP package filename is required")
-    try:
-        manifest, _root = await asyncio.to_thread(
-            accept_package,
-            file.file,
-            thread_id=thread_id,
-            original_filename=file.filename,
-        )
-    except CodeEvidencePackageError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except (OSError, zipfile.BadZipFile) as exc:
-        raise HTTPException(status_code=400, detail=f"Invalid code evidence package: {exc}") from exc
-    return CodeEvidencePackageResponse(**manifest.as_dict())
-
-
-@router.get("/code-evidence-package", response_model=list[CodeEvidencePackageResponse])
-@require_permission("threads", "read", owner_check=True, require_existing=True)
-async def get_code_evidence_packages(thread_id: str) -> list[CodeEvidencePackageResponse]:
-    return [CodeEvidencePackageResponse(**item) for item in await asyncio.to_thread(list_packages, thread_id)]
-
-
-@router.get("/code-evidence-package/{package_id}", response_model=CodeEvidencePackageResponse)
-@require_permission("threads", "read", owner_check=True, require_existing=True)
-async def get_code_evidence_package(thread_id: str, package_id: str) -> CodeEvidencePackageResponse:
-    try:
-        manifest = await asyncio.to_thread(read_manifest, thread_id, package_id)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="Code Evidence Package not found") from exc
-    return CodeEvidencePackageResponse(**manifest)
-
-
-@router.delete("/code-evidence-package/{package_id}")
-@require_permission("threads", "delete", owner_check=True, require_existing=True)
-async def remove_code_evidence_package(thread_id: str, package_id: str) -> dict[str, bool]:
-    try:
-        await asyncio.to_thread(delete_package, thread_id, package_id)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="Code Evidence Package not found") from exc
-    return {"success": True}
 
 
 @router.get("/list", response_model=dict)

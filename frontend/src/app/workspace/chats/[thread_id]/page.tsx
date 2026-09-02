@@ -11,7 +11,6 @@ import {
   useThreadChat,
 } from "@/components/workspace/chats";
 import { ExportTrigger } from "@/components/workspace/export-trigger";
-import { FaultZeroingEvidenceControls } from "@/components/workspace/fault-zeroing-evidence-controls";
 import { InputBox } from "@/components/workspace/input-box";
 import {
   MessageList,
@@ -46,10 +45,6 @@ import {
   textOfMessage,
   titleOfThread,
 } from "@/core/threads/utils";
-import {
-  type CodeEvidencePackage,
-  uploadCodeEvidencePackage,
-} from "@/core/uploads/api";
 import { env } from "@/env";
 import { cn } from "@/lib/utils";
 
@@ -166,16 +161,11 @@ export default function ChatPage() {
   const { agent: selectedAgentDetails } = useAgent(selectedAgent?.resource_id);
   const [pendingTemplate, setPendingTemplate] = useState<string | null>(null);
   const [templateResetKey, setTemplateResetKey] = useState(0);
-  const [codePackage, setCodePackage] = useState<CodeEvidencePackage | null>(
-    null,
-  );
-  const [pendingCodeFile, setPendingCodeFile] = useState<File | null>(null);
-  const evidenceThreadRef = useRef<string | null>(null);
 
   const activeScenario = selectedScenario;
   const handleSelectScenario = useCallback(
-    (scenario: ScenarioId | null) => {
-      selectScenario(scenario ?? "creative");
+    (scenario: ScenarioId) => {
+      selectScenario(scenario);
       setTemplateResetKey((key) => key + 1);
     },
     [selectScenario],
@@ -192,13 +182,6 @@ export default function ChatPage() {
   useEffect(() => {
     setPendingTemplate(activeBinding?.promptTemplate ?? null);
   }, [activeBinding?.promptTemplate]);
-
-  useEffect(() => {
-    if (evidenceThreadRef.current === threadId) return;
-    evidenceThreadRef.current = threadId;
-    setCodePackage(null);
-    setPendingCodeFile(null);
-  }, [threadId]);
 
   const allowedSkillNames = useMemo(() => {
     if (!selectedPill) return undefined;
@@ -246,7 +229,6 @@ export default function ChatPage() {
       ...(selectedPill.agentSlug === "fault-zeroing"
         ? {
             evidence_mode: "hybrid",
-            code_package_id: codePackage?.package_id,
           }
         : {}),
     };
@@ -259,7 +241,6 @@ export default function ChatPage() {
     selectedPill,
     selectedChip,
     selectedConnector,
-    codePackage,
   ]);
 
   const handleRemoveTag = useCallback(
@@ -313,27 +294,14 @@ export default function ChatPage() {
     threadId: isNewThread ? undefined : threadId,
     context: selectionContext,
     isMock,
-    prepareSubmit:
-      selectedPill?.agentSlug === "fault-zeroing" && pendingCodeFile
-        ? async () => {
-            const created = await getAPIClient().threads.create({
-              metadata: { agent_name: selectedPill.agentSlug },
-            });
-            const uploaded = await uploadCodeEvidencePackage(
-              created.thread_id,
-              pendingCodeFile,
-            );
-            setCodePackage(uploaded);
-            setPendingCodeFile(null);
-            return {
-              threadId: created.thread_id,
-              context: {
-                evidence_mode: "hybrid",
-                code_package_id: uploaded.package_id,
-              },
-            };
-          }
-        : undefined,
+    prepareSubmit: async () => {
+      const created = await getAPIClient().threads.create({
+        metadata: {
+          agent_name: selectedPill?.agentSlug,
+        },
+      });
+      return { threadId: created.thread_id };
+    },
     onThreadCreated: (createdThreadId) => {
       setThreadId(createdThreadId);
       setIsNewThread(false);
@@ -500,15 +468,6 @@ export default function ChatPage() {
                           iDeer帮你落地实现
                         </span>
                       </p>
-                    )}
-                    {selectedPill?.agentSlug === "fault-zeroing" && (
-                      <FaultZeroingEvidenceControls
-                        threadId={threadId}
-                        packageInfo={codePackage}
-                        onPackageChange={setCodePackage}
-                        pendingFile={pendingCodeFile}
-                        onPendingFileChange={setPendingCodeFile}
-                      />
                     )}
                     <InputBox
                       className="workbench-input-surface bg-background/5 w-full"

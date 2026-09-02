@@ -482,6 +482,15 @@ export function useThreadStream({
       let uploadedFileInfo: UploadedFileInfo[] = [];
 
       try {
+        let submitThreadId = threadId;
+        let preparedContext: Record<string, unknown> = {};
+        if (threadId === "new" && prepareSubmit) {
+          const prepared = await prepareSubmit(threadId);
+          submitThreadId = prepared.threadId;
+          preparedContext = prepared.context ?? {};
+          listeners.current.onThreadCreated?.(submitThreadId);
+        }
+
         // Upload files first if any
         if (message.files && message.files.length > 0) {
           setIsUploading(true);
@@ -502,13 +511,21 @@ export function useThreadStream({
               );
             }
 
-            if (!threadId) {
+            if (!submitThreadId) {
               throw new Error("Thread is not ready for file upload.");
             }
 
             if (files.length > 0) {
-              const uploadResponse = await uploadFiles(threadId, files);
+              const uploadResponse = await uploadFiles(submitThreadId, files);
               uploadedFileInfo = uploadResponse.files;
+              const codePackage = uploadResponse.code_packages?.[0];
+              if (codePackage) {
+                preparedContext = {
+                  ...preparedContext,
+                  evidence_mode: "hybrid",
+                  code_package_id: codePackage.package_id,
+                };
+              }
 
               // Update optimistic human message with uploaded status + paths
               const uploadedFiles: FileInMessage[] = uploadedFileInfo.map(
@@ -556,15 +573,6 @@ export function useThreadStream({
           }),
         );
 
-        let submitThreadId = threadId;
-        let preparedContext: Record<string, unknown> = {};
-        if (threadId === "new" && prepareSubmit) {
-          const prepared = await prepareSubmit(threadId);
-          submitThreadId = prepared.threadId;
-          preparedContext = prepared.context ?? {};
-          listeners.current.onThreadCreated?.(submitThreadId);
-        }
-
         await thread.submit(
           {
             messages: [
@@ -608,7 +616,7 @@ export function useThreadStream({
                     : context.mode === "thinking"
                       ? "low"
                       : undefined),
-              thread_id: threadId,
+              thread_id: submitThreadId,
             },
           },
         );
