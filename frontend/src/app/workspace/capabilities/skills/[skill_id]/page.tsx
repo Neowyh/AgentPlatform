@@ -15,6 +15,7 @@ import {
 import { SkillApplyDialog } from "@/components/workspace/settings/skill-apply-dialog";
 import { WorkspaceBreadcrumb } from "@/components/workspace/workspace-breadcrumb";
 import { useI18n } from "@/core/i18n/hooks";
+import { getResourceSummary } from "@/core/resources/summaries";
 import { exportSkill, useSkill } from "@/core/skills";
 import {
   changeResourceVisibility,
@@ -55,7 +56,11 @@ export default function SkillDetailPage() {
       title={skill.name}
       description={
         locale === "zh-CN"
-          ? (skill.description_zh ?? t.settings.skills.noDescription)
+          ? (skill.summary ??
+            getResourceSummary(
+              skill.slug,
+              skill.description_zh ?? t.settings.skills.noDescription,
+            ))
           : skill.description
       }
       actions={
@@ -92,36 +97,12 @@ export default function SkillDetailPage() {
       <ResourceDetailCard title={t.settings.skills.information}>
         <dl>
           <ResourceDetailRow
-            label={t.settings.skills.category}
+            label={t.settings.skills.descriptionLabel}
             value={
-              skill.category === "custom" ? t.common.custom : t.common.public
+              locale === "zh-CN"
+                ? (skill.description_zh ?? t.settings.skills.noDescription)
+                : skill.description
             }
-          />
-          <ResourceDetailRow
-            label={t.settings.skills.command}
-            value={`/${invocation}`}
-          />
-          <ResourceDetailRow
-            label={t.settings.skills.license}
-            value={skill.license || t.settings.skills.notSpecified}
-          />
-          <ResourceDetailRow
-            label={t.settings.skills.allowedTools}
-            value={
-              skill.allowed_tools?.join(", ") ?? t.settings.skills.notSpecified
-            }
-          />
-          <ResourceDetailRow
-            label={t.settings.skills.internet}
-            value={
-              skill.requires_internet
-                ? t.settings.skills.required
-                : t.settings.skills.notRequired
-            }
-          />
-          <ResourceDetailRow
-            label={t.settings.skills.version}
-            value={`v${skill.latest_version ?? 1}`}
           />
           <ResourceDetailRow
             label={t.settings.skills.usage}

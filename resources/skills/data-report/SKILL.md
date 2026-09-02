@@ -5,6 +5,7 @@ description: |
   TRIGGER: 用户上传表格文件 + 提出分析/出报告/看趋势/做可视化/出 KPI/同环比/ 排名/构成/异常/帕累托/漏斗/留存/归因/分群等诉求时立即触发, 包括"出份报告"/ "做个分析"/"看看数据"这类模糊表达。
   PARTIAL: .xls 提示用户另存 xlsx; 加密/损坏 xlsx 明确告知; 纯文本无数值列降级 categorical。
   DO NOT TRIGGER: 扩展名不在白名单 (pdf/docx/pptx/txt/图片/xlsb/parquet/ods/numbers); 数据库 SQL 场景 (.db/.sqlite/jdbc/mysql://); 修改/编辑 Excel 本体 (改用 xlsx skill); 数据清洗/去重/合并 (先用 xlsx skill TRANSFORM 后再调本技能); 图片 PDF 中的表格 (先 OCR/pdf-extract); API/HTTP 返回数据 (先落盘 csv/xlsx); 无数据输入仅有分析诉求 (先引导上传文件)。
+description_zh: 从 Excel 或 CSV 生成包含 KPI、ECharts 图表和文字洞察的自包含 HTML 数据分析报告。
 license: MIT
 install_source: official
 install_method: download

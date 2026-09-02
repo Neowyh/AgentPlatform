@@ -87,7 +87,10 @@ export async function getSkill(resourceId: string): Promise<Skill> {
     name: resource.display_name,
     description: payload.content.description,
     description_zh: payload.content.description_zh,
-    summary: payload.content.description_zh ?? undefined,
+    summary: getResourceSummary(
+      resource.slug,
+      payload.content.description_zh ?? payload.content.description,
+    ),
     category: resource.can_modify ? "custom" : "public",
     license: payload.content.license ?? "",
     enabled: true,

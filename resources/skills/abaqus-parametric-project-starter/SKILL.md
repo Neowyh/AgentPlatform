@@ -1,6 +1,7 @@
 ---
 name: abaqus-parametric-project-starter
 description: Use when starting a new multi-file Abaqus Python automation project that needs explicit configuration, naming, execution, and output boundaries before model code is written.
+description_zh: 为多文件 Abaqus Python 自动化项目建立配置、命名、执行和输出边界，再开始编写模型逻辑。
 ---
 
 # Abaqus Parametric Project Starter

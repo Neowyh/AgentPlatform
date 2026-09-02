@@ -1,6 +1,7 @@
 ---
 name: abaqus-tunnel-local-mesh-rebuilder
 description: Use when a tunnel or underpass neighborhood has asymmetric, flower-like, over-dense, poorly swept, or inconsistently mapped soil and lining mesh topology.
+description_zh: 修复隧道或通道邻域的局部网格拓扑，重建分区、种子、接口映射并输出修复前后质量证据。
 ---
 
 # Abaqus Tunnel Local Mesh Rebuilder

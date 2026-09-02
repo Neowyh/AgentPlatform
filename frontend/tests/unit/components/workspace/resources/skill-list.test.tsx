@@ -33,6 +33,7 @@ vi.mock("@/core/skills", () => ({
 
 vi.mock("@/core/i18n/hooks", () => ({
   useI18n: () => ({
+    locale: "zh-CN",
     t: {
       common: {
         loading: "Loading...",
@@ -107,7 +108,7 @@ describe("SkillList", () => {
       name: "Favorites",
     });
     expect(favoritesButtons[0]).toContainElement(
-      favoritesButtons[0]?.querySelector("svg"),
+      favoritesButtons[0]!.querySelector("svg"),
     );
   });
 

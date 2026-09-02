@@ -807,6 +807,7 @@ export const zhCN: Translations = {
       edit: "编辑技能",
       export: "导出",
       information: "技能信息",
+      descriptionLabel: "简介",
       license: "许可证",
       allowedTools: "允许的工具",
       internet: "联网要求",

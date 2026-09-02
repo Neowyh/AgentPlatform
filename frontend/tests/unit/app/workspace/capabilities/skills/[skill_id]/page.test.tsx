@@ -12,6 +12,7 @@ vi.mock("next/navigation", () => ({
 }));
 vi.mock("@/core/i18n/hooks", () => ({
   useI18n: () => ({
+    locale: "zh-CN",
     t: {
       common: { loading: "Loading" },
       resources: { skills: "Skills" },
@@ -25,6 +26,7 @@ vi.mock("@/core/i18n/hooks", () => ({
           exportFailed: "Export failed",
           applyVisibility: "Apply",
           information: "Information",
+          descriptionLabel: "Description",
           usage: "Usage",
           command: "Command",
           input: "Input",
@@ -54,7 +56,8 @@ vi.mock("@/core/skills", () => ({
       slug: "demo",
       name: "Demo",
       description: "Demo skill",
-      summary: "Demo skill",
+      description_zh: "完整的技能简介",
+      summary: "面向用户的短简介",
       category: "custom",
       license: "MIT",
       enabled: true,
@@ -96,8 +99,15 @@ describe("SkillDetailPage export", () => {
   test("keeps usage fields in basic information and removes title badges", () => {
     render(<SkillDetailPage />);
     expect(screen.getByText("Information")).toBeInTheDocument();
+    expect(screen.getByText("Description")).toBeInTheDocument();
+    expect(screen.getByText("完整的技能简介")).toBeInTheDocument();
+    expect(screen.getByText("面向用户的短简介")).toBeInTheDocument();
     expect(screen.getByText("Input materials")).toBeInTheDocument();
     expect(screen.getByText("Output results")).toBeInTheDocument();
+    expect(screen.queryByText("License")).not.toBeInTheDocument();
+    expect(screen.queryByText("Tools")).not.toBeInTheDocument();
+    expect(screen.queryByText("Internet")).not.toBeInTheDocument();
+    expect(screen.queryByText("Version")).not.toBeInTheDocument();
     expect(screen.queryByText("Skills")).not.toBeInTheDocument();
     expect(screen.queryByText("Private")).not.toBeInTheDocument();
     expect(screen.getByText("SKILL.md")).toBeInTheDocument();

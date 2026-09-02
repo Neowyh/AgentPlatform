@@ -1,6 +1,7 @@
 ---
 name: abaqus-field
 description: Use when defining or reviewing Abaqus initial conditions or predefined fields such as stress, temperature, pore pressure, velocity, or approved result mapping.
+description_zh: 定义或检查 Abaqus 初始场和预定义场，核对来源、单位、坐标、区域、分析步及映射证据。
 ---
 
 # Abaqus Fields

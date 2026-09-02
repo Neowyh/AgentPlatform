@@ -1,6 +1,7 @@
 ---
 name: abaqus-load
 description: Use when defining or reviewing Abaqus force, moment, pressure, gravity, traction, flux, body load, amplitude, direction, sign, region, or step activation.
+description_zh: 定义或检查 Abaqus 力、压力、重力等载荷，核对数值来源、单位、方向、分布、幅值和分析步历史。
 ---
 
 # Abaqus Loads
@@ -62,4 +63,3 @@ needed to test direction, equilibrium, and activation.
 - [ ] Step and amplitude history are complete.
 - [ ] Resultant force and moment have an audit method.
 - [ ] No unsupported magnitude was introduced.
-

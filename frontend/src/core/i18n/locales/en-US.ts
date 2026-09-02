@@ -846,6 +846,7 @@ export const enUS: Translations = {
       edit: "Edit Skill",
       export: "Export",
       information: "Skill information",
+      descriptionLabel: "Description",
       license: "License",
       allowedTools: "Allowed tools",
       internet: "Internet access",

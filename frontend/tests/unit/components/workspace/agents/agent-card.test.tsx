@@ -118,6 +118,13 @@ describe("AgentCard", () => {
     expect(screen.getByText("test-agent")).toBeInTheDocument();
   });
 
+  test("does not render a visibility badge", () => {
+    render(<AgentCard agent={makeAgent({ visibility: "public" })} />);
+    expect(screen.queryByText("Public")).not.toBeInTheDocument();
+    expect(screen.getByText("gpt-4")).toBeInTheDocument();
+    expect(screen.getByText("summarize")).toBeInTheDocument();
+  });
+
   test("renders the description when provided", () => {
     render(<AgentCard agent={makeAgent({ description: "Hello world" })} />);
     expect(screen.getByText("Hello world")).toBeInTheDocument();

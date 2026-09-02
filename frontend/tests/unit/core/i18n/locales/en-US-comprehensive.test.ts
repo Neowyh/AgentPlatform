@@ -1156,8 +1156,8 @@ describe("enUS locale comprehensive", () => {
         });
       }
 
-      it("has 60 keys", () => {
-        expect(Object.keys(enUS.settings.skills)).toHaveLength(60);
+      it("has 61 keys", () => {
+        expect(Object.keys(enUS.settings.skills)).toHaveLength(61);
       });
     });
 

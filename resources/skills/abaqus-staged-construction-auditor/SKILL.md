@@ -1,6 +1,7 @@
 ---
 name: abaqus-staged-construction-auditor
 description: Use when a clean-room model contract declares construction_events for staged activation or deactivation and the event set, action, step, or conflict status needs a dedicated static audit.
+description_zh: 静态审计 Abaqus 分阶段激活或停用事件，检查集合、动作、分析步引用和重复事件冲突。
 ---
 
 # Abaqus Staged Construction Auditor

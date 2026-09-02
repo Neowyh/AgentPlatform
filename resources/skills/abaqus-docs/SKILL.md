@@ -1,6 +1,7 @@
 ---
 name: abaqus-docs
 description: Use when an Abaqus Python API symbol, method signature, argument, module location, or release compatibility needs verification.
+description_zh: 核验 Abaqus Python API 的符号、参数、模块位置和版本兼容性，并区分文档事实与运行时结论。
 ---
 
 # Abaqus API Documentation

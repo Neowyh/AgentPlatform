@@ -1,6 +1,7 @@
 ---
 name: abaqus-shared-naming-manifest-builder
 description: Use when multiple Abaqus scripts or configurations repeat model, part, instance, set, surface, step, job, or result identifiers and require one authoritative naming contract.
+description_zh: 将多个 Abaqus 脚本重复使用的模型、区域、分析步和结果标识集中成一份可校验的命名契约。
 ---
 
 # Abaqus Shared Naming Manifest Builder

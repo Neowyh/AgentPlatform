@@ -1,6 +1,7 @@
 ---
 name: abaqus-mapped-load-provenance-auditor
 description: Use when a clean-room model contract declares mapped_loads and source-to-surface provenance, digest, units, sign, or face-count consistency needs a dedicated static audit.
+description_zh: 静态审计 Abaqus 映射载荷的来源、摘要、单位、符号和面数量契约，输出可复核的映射问题。
 ---
 
 # Abaqus Mapped Load Provenance Auditor

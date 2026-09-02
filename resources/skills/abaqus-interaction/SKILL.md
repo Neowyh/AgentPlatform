@@ -1,6 +1,7 @@
 ---
 name: abaqus-interaction
 description: Use when defining or reviewing Abaqus contact, tie, surface interaction, coupling constraints, or connectors between named regions.
+description_zh: 定义或审查 Abaqus 接触、绑定、耦合和连接器，形成包含区域、参数、激活历史和风险的接口契约。
 ---
 
 # Abaqus Interactions

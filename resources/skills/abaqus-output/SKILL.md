@@ -1,6 +1,7 @@
 ---
 name: abaqus-output
 description: Use when defining or reviewing Abaqus field or history output variables, regions, frequency, and result-file size controls.
+description_zh: 依据验收目标设计或检查 Abaqus 场输出和历史输出，核对变量、区域、频率及结果文件规模。
 ---
 
 # Abaqus Output Requests

@@ -1,6 +1,7 @@
 ---
 name: abaqus-step
 description: Use when defining or reviewing an Abaqus procedure, analysis step, increment controls, nonlinear settings, stabilization, construction sequence, or restart relationship.
+description_zh: 定义或检查 Abaqus 分析步骤和施工序列，核对增量、非线性、稳定化、重启动及数值与物理证据边界。
 ---
 
 # Abaqus Analysis Steps

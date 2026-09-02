@@ -685,6 +685,7 @@ export interface Translations {
       edit: string;
       export: string;
       information: string;
+      descriptionLabel: string;
       license: string;
       allowedTools: string;
       internet: string;

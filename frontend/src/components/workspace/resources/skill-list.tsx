@@ -33,7 +33,7 @@ import {
 } from "@/core/skills";
 
 export function SkillList() {
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
   const { skills, isLoading, refetch } = useSkills();
   const importRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
@@ -44,7 +44,7 @@ export function SkillList() {
         (skill) =>
           (!favoritesOnly || skill.is_favorited) &&
           (!query ||
-            `${skill.name} ${skill.description}`
+            `${skill.name} ${skill.description} ${skill.summary ?? ""}`
               .toLowerCase()
               .includes(query.toLowerCase())),
       ),
@@ -186,7 +186,9 @@ export function SkillList() {
                   )}
                 </div>
                 <CardDescription className="type-body mt-2 line-clamp-2 min-h-[3rem]">
-                  {skill.summary ?? skill.description}
+                  {locale === "zh-CN"
+                    ? (skill.summary ?? skill.description)
+                    : skill.description}
                 </CardDescription>
               </CardHeader>
               <CardFooter className="mt-auto flex items-center justify-between gap-2 pt-3">

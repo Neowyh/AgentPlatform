@@ -1,6 +1,7 @@
 ---
 name: abaqus-bc
 description: Use when defining or reviewing Abaqus displacement, rotation, symmetry, support, pore-pressure, temperature, or other prescribed boundary conditions on named regions and steps.
+description_zh: 根据物理约束定义或检查 Abaqus 边界条件，核对区域、自由度、幅值、分析步和反力证据。
 ---
 
 # Abaqus Boundary Conditions
@@ -63,4 +64,3 @@ verification observations. State every unconstrained degree of freedom.
 - [ ] Conflicts and rigid-body modes were checked.
 - [ ] Activation history matches the construction sequence.
 - [ ] Verification variables and regions are defined.
-
