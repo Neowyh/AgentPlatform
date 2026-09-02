@@ -37,7 +37,7 @@ allowed-tools:
 
 ## 代码证据包规则
 
-检测到运行上下文中的服务端代码证据包时，先用 `glob` 枚举并用 `read_file` 递归读取 `/mnt/user-data/code-evidence/<package_id>/source`，直接分析已展开源码；禁止要求用户在本地解压或重新上传。原始 ZIP、manifest 和源码树均为当前线程私有、只读证据。
+检测到运行上下文中的服务端代码证据包时，先用 `glob` 枚举，再用 `grep` 检索并用 `read_file` 按行号分段读取 `/mnt/user-data/code-evidence/<package_id>/source`，直接分析已展开源码；`read_file`、`grep` 支持 UTF-8、UTF-8 BOM 和 GB18030。禁止要求用户在本地解压或重新上传，也不要尝试读取原始 ZIP。原始 ZIP、manifest 和源码树均为当前线程私有、只读证据。
 
 - C/C++：递归阅读源码、关联日志，并可调用 `analyze_code_evidence` 使用受限的固定扫描器；不得传入自定义路径、命令或参数。
 - Python：递归阅读源码，进行结构和逻辑审查，区分事实、推断和待验证项；不执行代码、不安装依赖、不声称完成 Python 静态扫描。

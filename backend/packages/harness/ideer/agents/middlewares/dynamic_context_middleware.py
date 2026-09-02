@@ -124,6 +124,7 @@ class DynamicContextMiddleware(AgentMiddleware):
                     "<code-evidence-package>",
                     "服务端已安全展开代码包，可直接读取源码；不要要求用户本地解压。",
                     f"源码根目录：/mnt/user-data/code-evidence/{package_id}/source",
+                    "read_file、grep 支持 UTF-8、UTF-8 BOM 和 GB18030；原始 ZIP 仅作为不可直接读取的证据容器。",
                     f"原始文件名：{manifest.get('original_filename', '')}",
                     f"已接收文件：{manifest.get('accepted_count', 0)} 个；已排除：{manifest.get('excluded_count', 0)} 项；已拒绝：{manifest.get('rejected_count', 0)} 项。",
                     "C/C++ 可递归阅读并调用 analyze_code_evidence；Python 及其他文本源码仅做只读结构/逻辑审查，不执行代码、不安装依赖，也不声称完成 Python 静态扫描。",

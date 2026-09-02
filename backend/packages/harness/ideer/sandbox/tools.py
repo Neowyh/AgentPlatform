@@ -1,4 +1,5 @@
 import asyncio
+import codecs
 import logging
 import posixpath
 import re
@@ -19,7 +20,7 @@ from ideer.sandbox.exceptions import (
 from ideer.sandbox.file_operation_lock import get_file_operation_lock
 from ideer.sandbox.sandbox import Sandbox
 from ideer.sandbox.sandbox_provider import get_sandbox_provider
-from ideer.sandbox.search import GrepMatch
+from ideer.sandbox.search import DEFAULT_LINE_SUMMARY_LENGTH, DEFAULT_MAX_FILE_SIZE_BYTES, GrepMatch, truncate_line
 from ideer.sandbox.security import LOCAL_HOST_BASH_DISABLED_MESSAGE, is_host_bash_allowed
 from ideer.tools.types import Runtime
 
@@ -45,6 +46,7 @@ _DEFAULT_GLOB_MAX_RESULTS = 200
 _MAX_GLOB_MAX_RESULTS = 1000
 _DEFAULT_GREP_MAX_RESULTS = 100
 _MAX_GREP_MAX_RESULTS = 500
+_CODE_EVIDENCE_SOURCE_PATTERN = re.compile(r"^/mnt/user-data/code-evidence/([^/]+)/source(?:/(.*))?$")
 _DEFAULT_WRITE_FILE_ERROR_MAX_CHARS = 2000
 _LOCAL_BASH_CWD_COMMANDS = {"cd", "pushd"}
 _LOCAL_BASH_COMMAND_WRAPPERS = {"command", "builtin"}
@@ -1345,6 +1347,34 @@ def _truncate_read_file_output(output: str, max_chars: int) -> str:
     return f"{output[:kept]}{marker}"
 
 
+class _CodeEvidenceDecodeError(ValueError):
+    """Actionable failure while decoding immutable code-evidence source."""
+
+
+def _code_evidence_path(path: str, runtime: Runtime) -> bool:
+    context = getattr(runtime, "context", None) or {}
+    package_id = context.get("code_package_id")
+    match = _CODE_EVIDENCE_SOURCE_PATTERN.match(path.replace("\\", "/"))
+    return isinstance(package_id, str) and bool(match) and match.group(1) == package_id
+
+
+def _decode_code_evidence(data: bytes) -> tuple[str, str]:
+    if b"\0" in data:
+        raise _CodeEvidenceDecodeError("Code evidence source contains NUL bytes; binary files are not readable as text")
+    if data.startswith(codecs.BOM_UTF8):
+        try:
+            return data[len(codecs.BOM_UTF8) :].decode("utf-8", errors="strict"), "UTF-8 BOM"
+        except UnicodeDecodeError as exc:
+            raise _CodeEvidenceDecodeError("Code evidence is not valid UTF-8 after its BOM; re-export as UTF-8 or GB18030") from exc
+    try:
+        return data.decode("utf-8", errors="strict"), "UTF-8"
+    except UnicodeDecodeError:
+        try:
+            return data.decode("gb18030", errors="strict"), "GB18030"
+        except UnicodeDecodeError as exc:
+            raise _CodeEvidenceDecodeError("Code evidence is neither valid UTF-8 nor GB18030; re-export the source with a supported encoding") from exc
+
+
 def _truncate_ls_output(output: str, max_chars: int) -> str:
     """Head-truncate ls output, preserving the beginning of the listing.
 
@@ -1588,14 +1618,37 @@ def grep_tool(
             if thread_data is None:
                 raise SandboxRuntimeError("Thread data not available for local sandbox")
             path = _resolve_local_read_path(path, thread_data)
-        matches, truncated = sandbox.grep(
-            path,
-            pattern,
-            glob=glob,
-            literal=literal,
-            case_sensitive=case_sensitive,
-            max_results=effective_max_results,
-        )
+        if _code_evidence_path(requested_path, runtime):
+            candidates, truncated = sandbox.glob(requested_path, glob or "**/*", max_results=1000)
+            regex = re.compile(re.escape(pattern) if literal else pattern, 0 if case_sensitive else re.IGNORECASE)
+            matches = []
+            for candidate in candidates:
+                try:
+                    raw = sandbox.download_file(candidate)
+                    if len(raw) > DEFAULT_MAX_FILE_SIZE_BYTES or b"\0" in raw:
+                        continue
+                    content, _ = _decode_code_evidence(raw)
+                    for line_number, line in enumerate(content.splitlines(), 1):
+                        if len(line) > DEFAULT_LINE_SUMMARY_LENGTH * 10:
+                            continue
+                        if regex.search(line):
+                            matches.append(GrepMatch(path=candidate, line_number=line_number, line=truncate_line(line)))
+                            if len(matches) >= effective_max_results:
+                                truncated = True
+                                break
+                    if truncated:
+                        break
+                except (_CodeEvidenceDecodeError, OSError, PermissionError):
+                    continue
+        else:
+            matches, truncated = sandbox.grep(
+                path,
+                pattern,
+                glob=glob,
+                literal=literal,
+                case_sensitive=case_sensitive,
+                max_results=effective_max_results,
+            )
         if thread_data is not None:
             matches = [
                 GrepMatch(
@@ -1676,7 +1729,11 @@ def read_file_tool(
             elif not (_is_custom_mount_path(path) or _is_canonical_run_skills_path(path)):
                 path = _resolve_and_validate_user_data_path(path, thread_data)
             # Custom and frozen Run Skill mounts are resolved by LocalSandbox._resolve_path().
-        content = sandbox.read_file(path)
+        encoding = None
+        if _code_evidence_path(requested_path, runtime):
+            content, encoding = _decode_code_evidence(sandbox.download_file(requested_path))
+        else:
+            content = sandbox.read_file(path)
         if not content:
             return "(empty)"
         if start_line is not None and end_line is not None:
@@ -1688,7 +1745,8 @@ def read_file_tool(
             max_chars = sandbox_cfg.read_file_output_max_chars if sandbox_cfg else 50000
         except Exception:
             max_chars = 50000
-        return _truncate_read_file_output(content, max_chars)
+        output = _truncate_read_file_output(content, max_chars)
+        return f"[encoding: {encoding}]\n{output}" if encoding == "GB18030" else output
     except SandboxError as e:
         return f"Error: {e}"
     except FileNotFoundError:

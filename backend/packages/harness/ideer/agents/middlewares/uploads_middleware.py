@@ -213,6 +213,30 @@ class UploadsMiddleware(AgentMiddleware[UploadsMiddlewareState]):
         if not isinstance(last_message, HumanMessage):
             return None
 
+        context = getattr(runtime, "context", None) or {}
+        package_id = context.get("code_package_id")
+        if isinstance(package_id, str):
+            manifest = context.get("code_evidence_manifest") or {}
+            original = manifest.get("original_filename", "")
+            package_message = "\n".join(
+                [
+                    "<uploaded_files>",
+                    "服务端已安全展开代码证据包；请先枚举并阅读源码根目录：",
+                    f"  /mnt/user-data/code-evidence/{package_id}/source",
+                    "read_file 与 grep 支持 UTF-8、UTF-8 BOM 和 GB18030；原始 ZIP 仅作为不可直接读取的证据容器。",
+                    f"原始文件名：{original}",
+                    "</uploaded_files>",
+                ]
+            )
+            updated = HumanMessage(
+                content=f"{package_message}\n\n{last_message.content}",
+                id=last_message.id,
+                name=last_message.name,
+                additional_kwargs=last_message.additional_kwargs,
+            )
+            messages[last_message_index] = updated
+            return {"uploaded_files": [], "messages": messages}
+
         # Resolve uploads directory for existence checks
         thread_id = (runtime.context or {}).get("thread_id")
         if thread_id is None:
