@@ -124,7 +124,9 @@ def render_roots(file_access: dict[str, list[str]] | None, state: dict[str, Any]
         roots = []
         for root in file_access.get(key, []):
             try:
-                roots.append(render_template(root, state))
+                rendered_root = render_template(root, state)
+                if rendered_root:
+                    roots.append(rendered_root)
             except (KeyError, IndexError, TypeError):
                 roots.append(root)
         rendered[key] = roots
@@ -198,6 +200,7 @@ def make_host_resolver(run_id: str, user_id: str | None) -> Callable[[str], str 
     """
     paths = get_paths()
     mappings: dict[str, str] = {
+        f"{VIRTUAL_PATH_PREFIX}/code-evidence": str(paths.thread_dir(run_id, user_id=user_id) / "user-data" / "code-evidence"),
         f"{VIRTUAL_PATH_PREFIX}/workspace": str(paths.sandbox_work_dir(run_id, user_id=user_id)),
         f"{VIRTUAL_PATH_PREFIX}/uploads": str(paths.sandbox_uploads_dir(run_id, user_id=user_id)),
         f"{VIRTUAL_PATH_PREFIX}/outputs": str(paths.sandbox_outputs_dir(run_id, user_id=user_id)),

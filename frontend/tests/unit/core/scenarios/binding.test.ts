@@ -1,9 +1,77 @@
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { useScenarioBinding } from "@/core/scenarios/binding";
+import {
+  buildScenarioSubmissionBinding,
+  useScenarioBinding,
+} from "@/core/scenarios/binding";
 
 describe("useScenarioBinding", () => {
+  it("does not retain a paper-review Skill when the Expert switches to fault-zeroing", () => {
+    const binding = buildScenarioSubmissionBinding({
+      baseContext: {
+        mode: "flash",
+        agent_resource_id: "old-paper-agent",
+        skill_resource_id: "paper-skill-id",
+        skill_name: "academic-paper-review",
+      },
+      selectedPill: { scenarioId: "professional", agentSlug: "fault-zeroing" },
+      selectedChip: null,
+      agent: { resource_id: "fault-agent-id", slug: "fault-zeroing" },
+      agentDetails: { skills: ["fault-skill-id"] },
+      skills: [
+        {
+          resource_id: "paper-skill-id",
+          slug: "academic-paper-review",
+          name: "Academic paper review",
+        },
+        {
+          resource_id: "fault-skill-id",
+          slug: "fault-zeroing",
+          name: "Fault zeroing",
+        },
+      ],
+    });
+
+    expect(binding).toMatchObject({
+      valid: true,
+      context: {
+        agent_resource_id: "fault-agent-id",
+        agent_name: "fault-zeroing",
+      },
+    });
+    expect(binding.valid).toBe(true);
+    if (!binding.valid) throw new Error("expected valid binding");
+    expect(binding.context).not.toHaveProperty("skill_resource_id");
+    expect(binding.context).not.toHaveProperty("skill_name");
+  });
+
+  it("rejects a selected Task Skill outside the loaded Expert closure", () => {
+    const binding = buildScenarioSubmissionBinding({
+      baseContext: { mode: "flash" },
+      selectedPill: { scenarioId: "professional", agentSlug: "fault-zeroing" },
+      selectedChip: {
+        scenarioId: "professional",
+        agentSlug: "fault-zeroing",
+        taskId: "fault-zeroing",
+      },
+      agent: { resource_id: "fault-agent-id", slug: "fault-zeroing" },
+      agentDetails: { skills: ["other-skill-id"] },
+      skills: [
+        {
+          resource_id: "fault-skill-id",
+          slug: "fault-zeroing",
+          name: "Fault zeroing",
+        },
+      ],
+    });
+
+    expect(binding).toEqual({
+      valid: false,
+      reason: "请重新选择当前专家下的任务后再提交。",
+    });
+  });
+
   it("selects the scenario and Agent pill for a configured agent", () => {
     const { result } = renderHook(() => useScenarioBinding());
 

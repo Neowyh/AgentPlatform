@@ -63,6 +63,7 @@ class ThreadDataMiddleware(AgentMiddleware[ThreadDataMiddlewareState]):
             "workspace_path": str(self._paths.sandbox_work_dir(thread_id, user_id=user_id)),
             "uploads_path": str(self._paths.sandbox_uploads_dir(thread_id, user_id=user_id)),
             "outputs_path": str(self._paths.sandbox_outputs_dir(thread_id, user_id=user_id)),
+            "code_evidence_path": str(self._paths.thread_dir(thread_id, user_id=user_id) / "user-data" / "code-evidence"),
         }
 
     def _create_thread_directories(self, thread_id: str, user_id: str | None = None) -> dict[str, str]:

@@ -315,6 +315,12 @@ export const SCENARIOS: ScenarioTab[] = [
             promptTemplate:
               "请诊断以下 Bug。现象：[描述]；期望与实际：[对比]；复现步骤：[步骤]；日志或堆栈：[粘贴]；环境与版本：[信息]；最近变更：[信息]。请先区分事实与假设，定位最可能根因，给出最小修复、回归测试、验证步骤和仍需观测的风险。",
           },
+        ],
+      },
+      {
+        agentSlug: "srs-writing",
+        label: "软件需求规格编写",
+        chips: [
           {
             taskId: "srs-writing",
             label: "需求规格说明撰写",

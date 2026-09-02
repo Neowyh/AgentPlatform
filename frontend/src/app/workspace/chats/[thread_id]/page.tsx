@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 
 import { type PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import { ArtifactTrigger } from "@/components/workspace/artifacts";
@@ -30,7 +31,10 @@ import { getAPIClient } from "@/core/api";
 import { useI18n } from "@/core/i18n/hooks";
 import { useModels } from "@/core/models/hooks";
 import { useNotification } from "@/core/notification/hooks";
-import { useScenarioBinding } from "@/core/scenarios/binding";
+import {
+  buildScenarioSubmissionBinding,
+  useScenarioBinding,
+} from "@/core/scenarios/binding";
 import { getChipsByPill } from "@/core/scenarios/config";
 import type { ScenarioId } from "@/core/scenarios/types";
 import { useLocalSettings, useThreadSettings } from "@/core/settings";
@@ -198,54 +202,30 @@ export default function ChatPage() {
     );
   }, [selectedAgentDetails, selectedPill]);
 
-  const selectionContext = useMemo(() => {
-    const context = { ...settings.context };
-    if (!selectedPill) {
-      delete context.agent_name;
-      delete context.agent_resource_id;
-      delete context.skill_name;
-      delete context.skill_resource_id;
-      delete context.scenario_id;
-      delete context.agent_label;
-      delete context.task_id;
-      delete context.task_label;
-      delete context.prompt_template;
-      context.connector_name = selectedConnector ?? undefined;
-      return context;
-    }
-    const chip = selectedChip
-      ? getChipsByPill(selectedChip.scenarioId, selectedChip.agentSlug).find(
-          (item) => item.taskId === selectedChip.taskId,
-        )
-      : undefined;
-    const nextContext = {
-      ...context,
-      scenario_id: selectedPill.scenarioId,
-      agent_name: selectedPill.agentSlug,
-      agent_resource_id: selectedAgent?.resource_id,
-      agent_label: activeBinding?.agentName,
-      skill_name: chip?.skillName,
-      skill_resource_id: selectedSkill?.resource_id,
-      task_id: chip?.taskId,
-      task_label: chip?.label,
-      prompt_template: chip?.promptTemplate,
-      connector_name: selectedConnector ?? undefined,
-      ...(selectedPill.agentSlug === "fault-zeroing"
-        ? {
-            evidence_mode: "hybrid",
-          }
-        : {}),
-    };
-    return nextContext;
-  }, [
-    activeBinding,
-    selectedAgent,
-    selectedSkill,
-    settings.context,
-    selectedPill,
-    selectedChip,
-    selectedConnector,
-  ]);
+  const selectionBinding = useMemo(
+    () =>
+      buildScenarioSubmissionBinding({
+        baseContext: settings.context,
+        selectedPill,
+        selectedChip,
+        agent: selectedAgent,
+        agentDetails: selectedAgentDetails,
+        skills,
+        connectorName: selectedConnector,
+      }),
+    [
+      selectedAgent,
+      selectedAgentDetails,
+      settings.context,
+      selectedPill,
+      selectedChip,
+      selectedConnector,
+      skills,
+    ],
+  );
+  const selectionContext = selectionBinding.valid
+    ? selectionBinding.context
+    : { ...settings.context };
 
   const handleRemoveTag = useCallback(
     (id: string) => {
@@ -366,13 +346,21 @@ export default function ChatPage() {
 
   const handleSubmit = useCallback(
     (message: PromptInputMessage) => {
-      const sendPromise = sendMessage(threadId, message);
+      if (!selectionBinding.valid) {
+        toast.error(selectionBinding.reason);
+        return;
+      }
+      const sendPromise = sendMessage(
+        threadId,
+        message,
+        selectionBinding.context,
+      );
       if (message.files.length > 0) {
         return sendPromise;
       }
       void sendPromise;
     },
-    [sendMessage, threadId],
+    [selectionBinding, sendMessage, threadId],
   );
   const handleStop = useCallback(async () => {
     await thread.stop();

@@ -50,13 +50,13 @@ class PreparedRun:
     run_metadata: dict[str, Any]
 
 
-async def _read_manifest_if_needed(thread_id: str, code_package_id: str | None) -> None:
+async def _read_manifest_if_needed(thread_id: str, code_package_id: str | None) -> dict[str, Any] | None:
     if not code_package_id:
         return
     from ideer.uploads.code_evidence import read_manifest
 
     try:
-        await asyncio.to_thread(read_manifest, thread_id, str(code_package_id))
+        return await asyncio.to_thread(read_manifest, thread_id, str(code_package_id))
     except FileNotFoundError as exc:
         raise HTTPException(status_code=400, detail="Code Evidence Package was not found for this Thread") from exc
 
@@ -119,7 +119,17 @@ async def prepare_run(body: Any, thread_id: str, request: Request) -> PreparedRu
         alias_task = asyncio.create_task(_resolve_candidate_alias(candidate, request))
 
     if manifest_task is not None:
-        await manifest_task
+        manifest = await manifest_task
+        if manifest:
+            # Only pass server-derived summary fields to the runtime. The
+            # expert receives a fixed virtual root, never an arbitrary host path.
+            body_context["code_evidence_manifest"] = {
+                "package_id": str(manifest.get("package_id", code_package_id)),
+                "original_filename": str(manifest.get("original_filename", "")),
+                "accepted_count": len(manifest.get("accepted", [])),
+                "excluded_count": len(manifest.get("excluded", [])),
+                "rejected_count": len(manifest.get("rejected", [])),
+            }
     if alias_task is not None:
         resolved = await alias_task
         if resolved:
@@ -131,6 +141,10 @@ async def prepare_run(body: Any, thread_id: str, request: Request) -> PreparedRu
     canonical_factory = None
     if canonical_resource_id and canonical_run_id:
         prepare_kwargs = {"preferred_skill": preferred_skill} if preferred_skill else {}
+        prepare_kwargs.update(
+            diagnostic_context=body_context,
+            thread_id=thread_id,
+        )
         canonical_factory = await _prepare_canonical_agent_run(
             canonical_resource_id,
             request,

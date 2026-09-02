@@ -63,6 +63,7 @@ nodes:
       file_access:
         read:
           - "{{inputs.upload_dir}}"
+          - "{{inputs.code_package_source}}"
           - "/mnt/skills/fault-zeroing"
           - "/mnt/skills/fault-zeroing/references"
         write:

@@ -14,6 +14,7 @@ import {
   listWorkflowRuns,
   listWorkflows,
   deleteWorkflow,
+  runWorkflowWithFiles,
   runWorkflow,
   updateWorkflow,
   workflowEventsUrl,
@@ -263,5 +264,39 @@ describe("canonical Workflow API facade", () => {
         }),
       }),
     );
+  });
+
+  test("uses multipart only when a workflow has run-private files", async () => {
+    mockFetch.mockResolvedValueOnce(
+      response({
+        run_id: "run-files",
+        status: "queued",
+        workflow_resource_id: resourceId,
+      }),
+    );
+    const source = new File(["zip"], "source.zip", { type: "application/zip" });
+    const log = new File(["log"], "trial.log", { type: "text/plain" });
+
+    await runWorkflowWithFiles(
+      resourceId,
+      { evidence_mode: "hybrid" },
+      [source, log],
+      "model-b",
+    );
+
+    const call = mockFetch.mock.calls.at(0);
+    expect(call?.[0]).toBe(
+      `http://localhost:8000/api/resources/${resourceId}/workflow-runs/with-files`,
+    );
+    const options = call?.[1] as RequestInit;
+    const body = options.body as FormData;
+    expect(options.method).toBe("POST");
+    expect(options.headers).toBeUndefined();
+    expect(body).toBeInstanceOf(FormData);
+    expect(body.get("inputs")).toBe(
+      JSON.stringify({ evidence_mode: "hybrid" }),
+    );
+    expect(body.get("model_name")).toBe("model-b");
+    expect(body.getAll("files")).toHaveLength(2);
   });
 });

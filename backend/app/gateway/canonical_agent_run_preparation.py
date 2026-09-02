@@ -13,11 +13,28 @@ from typing import Any
 from fastapi import HTTPException, Request
 
 
+class SelectedSkillOutsideClosure(Exception):
+    """Diagnostic-only conflict for an Expert/Skill mismatch."""
+
+    def __init__(
+        self,
+        *,
+        agent: dict[str, str],
+        requested_skill: str,
+        available_skills: list[dict[str, str]],
+    ) -> None:
+        self.agent = agent
+        self.requested_skill = requested_skill
+        self.available_skills = available_skills
+
+
 async def prepare_canonical_agent_run(
     resource_id: str,
     request: Request,
     run_id: str,
     preferred_skill: str | None = None,
+    diagnostic_context: dict[str, Any] | None = None,
+    thread_id: str | None = None,
 ) -> Any:
     """Prepare one canonical Agent Run from the authenticated user's view."""
 
@@ -76,7 +93,13 @@ async def prepare_canonical_agent_run(
                     None,
                 )
                 if selected is None or selected.type != "skill":
-                    raise ResourceConflict(f"Selected Skill {preferred_skill} is outside Agent {resource_id}'s dependency closure")
+                    agent = next(item.resource for item in closure if item.resource.id == resource_id)
+                    available_skills = [{"resource_id": item.resource.id, "slug": item.resource.slug} for item in closure if item.resource.type == "skill"]
+                    raise SelectedSkillOutsideClosure(
+                        agent={"resource_id": agent.id, "slug": agent.slug},
+                        requested_skill=str(preferred_skill),
+                        available_skills=available_skills,
+                    )
                 selected_skill_id = selected.id
             await service.create_run_snapshot(
                 run_id,
@@ -110,6 +133,36 @@ async def prepare_canonical_agent_run(
                 "code": "visibility_closure_violation",
                 "message": str(exc),
                 "violations": exc.violations,
+            },
+        ) from exc
+    except SelectedSkillOutsideClosure as exc:
+        from app.gateway.audit import record_audit
+
+        await record_audit(
+            str(user_id),
+            "run_preparation_rejected",
+            resource_type="agent",
+            resource_id=resource_id,
+            detail={
+                "thread_id": thread_id,
+                "run_attempt_id": run_id,
+                "agent": exc.agent,
+                "requested_skill": exc.requested_skill,
+                "available_skills": exc.available_skills,
+                "task_id": (diagnostic_context or {}).get("task_id"),
+                "context_source": (diagnostic_context or {}).get("context_source", "request"),
+                "reason": "skill_outside_agent_closure",
+            },
+        )
+        raise HTTPException(
+            409,
+            detail={
+                "code": "skill_outside_agent_closure",
+                "message": "The selected Skill is not available to the current Expert.",
+                "agent": exc.agent,
+                "requested_skill": exc.requested_skill,
+                "available_skills": exc.available_skills,
+                "context_source": (diagnostic_context or {}).get("context_source", "request"),
             },
         ) from exc
     except (ResourceConflict, ResourceRuntimeError) as exc:

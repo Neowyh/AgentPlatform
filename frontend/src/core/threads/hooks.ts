@@ -13,7 +13,10 @@ import type { VisibilityClosureViolation } from "../api/errors";
 import { fetch } from "../api/fetcher";
 import { getBackendBaseURL } from "../config";
 import { useI18n } from "../i18n/hooks";
-import type { FileInMessage } from "../messages/utils";
+import type {
+  CodeEvidencePackageStatus,
+  FileInMessage,
+} from "../messages/utils";
 import type { LocalSettings } from "../settings";
 import { useUpdateSubtask } from "../tasks/context";
 import type { UploadedFileInfo } from "../uploads";
@@ -480,6 +483,7 @@ export function useThreadStream({
       listeners.current.onSend?.(threadId);
 
       let uploadedFileInfo: UploadedFileInfo[] = [];
+      let codeEvidencePackageStatus: CodeEvidencePackageStatus | undefined;
 
       try {
         let submitThreadId = threadId;
@@ -520,6 +524,12 @@ export function useThreadStream({
               uploadedFileInfo = uploadResponse.files;
               const codePackage = uploadResponse.code_packages?.[0];
               if (codePackage) {
+                codeEvidencePackageStatus = {
+                  original_filename: codePackage.original_filename,
+                  accepted_count: codePackage.accepted.length,
+                  excluded_count: codePackage.excluded.length,
+                  rejected_count: codePackage.rejected.length,
+                };
                 preparedContext = {
                   ...preparedContext,
                   evidence_mode: "hybrid",
@@ -542,7 +552,16 @@ export function useThreadStream({
                   return [
                     {
                       ...humanMessage,
-                      additional_kwargs: { files: uploadedFiles },
+                      additional_kwargs: {
+                        files: uploadedFiles,
+                        ...(codePackage
+                          ? {
+                              code_evidence_package: {
+                                ...codeEvidencePackageStatus,
+                              },
+                            }
+                          : {}),
+                      },
                     },
                     ...messages.slice(1),
                   ];
@@ -573,6 +592,15 @@ export function useThreadStream({
           }),
         );
 
+        const submitMode =
+          typeof extraContext?.mode === "string"
+            ? extraContext.mode
+            : context.mode;
+        const submitReasoningEffort =
+          typeof extraContext?.reasoning_effort === "string"
+            ? extraContext.reasoning_effort
+            : context.reasoning_effort;
+
         await thread.submit(
           {
             messages: [
@@ -589,6 +617,9 @@ export function useThreadStream({
                   ...(filesForSubmit.length > 0
                     ? { files: filesForSubmit }
                     : {}),
+                  ...(codeEvidencePackageStatus
+                    ? { code_evidence_package: codeEvidencePackageStatus }
+                    : {}),
                 },
               },
             ],
@@ -602,18 +633,18 @@ export function useThreadStream({
             },
             context: {
               ...preparedContext,
-              ...extraContext,
               ...context,
-              thinking_enabled: context.mode !== "flash",
-              is_plan_mode: context.mode === "pro" || context.mode === "ultra",
-              subagent_enabled: context.mode === "ultra",
+              ...extraContext,
+              thinking_enabled: submitMode !== "flash",
+              is_plan_mode: submitMode === "pro" || submitMode === "ultra",
+              subagent_enabled: submitMode === "ultra",
               reasoning_effort:
-                context.reasoning_effort ??
-                (context.mode === "ultra"
+                submitReasoningEffort ??
+                (submitMode === "ultra"
                   ? "high"
-                  : context.mode === "pro"
+                  : submitMode === "pro"
                     ? "medium"
-                    : context.mode === "thinking"
+                    : submitMode === "thinking"
                       ? "low"
                       : undefined),
               thread_id: submitThreadId,

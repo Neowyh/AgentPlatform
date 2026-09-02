@@ -241,6 +241,25 @@ export async function runWorkflow(
   return { ...result, workflow: result.workflow ?? name };
 }
 
+export async function runWorkflowWithFiles(
+  name: string,
+  inputs: Record<string, unknown>,
+  files: File[],
+  modelName?: string,
+): Promise<WorkflowRunResult> {
+  const body = new FormData();
+  body.set("inputs", JSON.stringify(inputs));
+  if (modelName) body.set("model_name", modelName);
+  for (const file of files) body.append("files", file);
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(name)}/workflow-runs/with-files`,
+    { method: "POST", body },
+  );
+  if (!res.ok) return extractError(res, "Failed to run workflow with files");
+  const result = (await res.json()) as WorkflowRunResult;
+  return { ...result, workflow: result.workflow ?? name };
+}
+
 export async function getRunStatus(
   name: string,
   runId: string,

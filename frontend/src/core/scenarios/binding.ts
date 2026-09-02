@@ -43,6 +43,138 @@ export interface ScenarioBinding {
   resetSelection: () => void;
 }
 
+type ResourceIdentity = {
+  resource_id?: string;
+  slug?: string;
+  name?: string;
+};
+
+type AgentClosure = {
+  skills: string[] | null;
+};
+
+export type ScenarioSubmissionBinding =
+  | {
+      valid: true;
+      context: Record<string, unknown> & {
+        mode: "flash" | "thinking" | "pro" | "ultra" | undefined;
+      };
+    }
+  | { valid: false; reason: string };
+
+const SCENARIO_CONTEXT_KEYS = [
+  "agent_name",
+  "agent_resource_id",
+  "skill_name",
+  "skill_resource_id",
+  "scenario_id",
+  "agent_label",
+  "task_id",
+  "task_label",
+  "prompt_template",
+] as const;
+
+function withoutScenarioContext(
+  baseContext: Record<string, unknown> & {
+    mode: "flash" | "thinking" | "pro" | "ultra" | undefined;
+  },
+) {
+  const context = { ...baseContext };
+  for (const key of SCENARIO_CONTEXT_KEYS) {
+    delete context[key];
+  }
+  return context;
+}
+
+function matchesResource(identity: ResourceIdentity, value: string) {
+  return (
+    identity.resource_id === value ||
+    identity.slug === value ||
+    identity.name === value
+  );
+}
+
+function selectedTaskFor(selectedChip: ChipSelection): TaskChip | undefined {
+  return selectedChip
+    ? findTaskChip(
+        selectedChip.scenarioId,
+        selectedChip.agentSlug,
+        selectedChip.taskId,
+      )
+    : undefined;
+}
+
+/**
+ * Build the canonical Run context from the submission-time Scenario state.
+ * Existing thread settings may contribute model/connector preferences but
+ * never an Agent or Skill identity from a previous conversation state.
+ */
+export function buildScenarioSubmissionBinding({
+  baseContext,
+  selectedPill,
+  selectedChip,
+  agent,
+  agentDetails,
+  skills,
+  connectorName,
+}: {
+  baseContext: Record<string, unknown> & {
+    mode: "flash" | "thinking" | "pro" | "ultra" | undefined;
+  };
+  selectedPill: PillSelection;
+  selectedChip: ChipSelection;
+  agent?: ResourceIdentity;
+  agentDetails?: AgentClosure | null;
+  skills: ResourceIdentity[];
+  connectorName?: string | null;
+}): ScenarioSubmissionBinding {
+  const context = withoutScenarioContext(baseContext);
+  context.connector_name = connectorName ?? undefined;
+  if (!selectedPill) {
+    return { valid: true, context };
+  }
+  if (!agent?.resource_id) {
+    return { valid: false, reason: "当前专家仍在加载，请稍后再提交。" };
+  }
+
+  const pill = findPill(selectedPill.scenarioId, selectedPill.agentSlug);
+  const task = selectedTaskFor(selectedChip);
+  Object.assign(context, {
+    context_source: "scenario_binding",
+    scenario_id: selectedPill.scenarioId,
+    agent_name: selectedPill.agentSlug,
+    agent_resource_id: agent.resource_id,
+    agent_label: pill?.label,
+  });
+  if (selectedPill.agentSlug === "fault-zeroing") {
+    context.evidence_mode = "hybrid";
+  }
+  if (!task) {
+    return { valid: true, context };
+  }
+
+  const skill = skills.find((item) => matchesResource(item, task.skillName));
+  const closure = agentDetails?.skills;
+  const inClosure = Boolean(
+    skill?.resource_id &&
+    closure?.some((value) => matchesResource(skill, value)),
+  );
+  if (!inClosure || !skill?.resource_id) {
+    return {
+      valid: false,
+      reason: "请重新选择当前专家下的任务后再提交。",
+    };
+  }
+  Object.assign(context, {
+    skill_name: task.skillName,
+    skill_resource_id: skill.resource_id,
+    task_id: task.taskId,
+    task_label: task.label,
+    prompt_template: task.promptTemplate,
+  });
+  return { valid: true, context };
+}
+
 function findPill(scenarioId: ScenarioId, agentSlug: string) {
   return getPillsByScenario(scenarioId).find(
     (pill) => pill.agentSlug === agentSlug,

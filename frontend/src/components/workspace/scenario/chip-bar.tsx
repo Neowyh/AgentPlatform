@@ -58,39 +58,44 @@ export function ChipBar<T extends string>({
 
   return (
     <div
-      className="flex w-max min-w-full items-center justify-center gap-2 overflow-x-auto [&::-webkit-scrollbar]:hidden"
-      role="tablist"
-      data-testid={testId}
-      onKeyDown={onKeyDown}
+      className="w-full overflow-x-auto [&::-webkit-scrollbar]:hidden"
+      data-testid={testId ? `${testId}-wrap` : undefined}
     >
-      {items.map((item) => {
-        const active = selectedId === item.id;
-        return (
-          <button
-            key={item.id}
-            ref={(element) => {
-              if (element) buttonRefs.current.set(item.id, element);
-            }}
-            role="tab"
-            aria-selected={active}
-            tabIndex={active ? 0 : -1}
-            data-state={active ? "active" : "inactive"}
-            className={cn(
-              "type-body shrink-0 rounded-full border px-5 py-2.5 font-medium transition-all",
-              variant === "pill"
-                ? active
-                  ? "border-primary bg-primary/10 text-primary"
-                  : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground border-transparent"
-                : active
-                  ? "border-accent bg-accent/10 text-accent-foreground"
-                  : "bg-muted/30 text-muted-foreground hover:bg-muted/60 hover:text-foreground border-transparent",
-            )}
-            onClick={() => onSelect(item.id)}
-          >
-            {item.label}
-          </button>
-        );
-      })}
+      <div
+        className="justify-[safe_center] mx-auto flex w-max min-w-full flex-nowrap items-center justify-center gap-2 overflow-x-auto [&::-webkit-scrollbar]:hidden"
+        role="tablist"
+        data-testid={testId}
+        onKeyDown={onKeyDown}
+      >
+        {items.map((item) => {
+          const active = selectedId === item.id;
+          return (
+            <button
+              key={item.id}
+              ref={(element) => {
+                if (element) buttonRefs.current.set(item.id, element);
+              }}
+              role="tab"
+              aria-selected={active}
+              tabIndex={active ? 0 : -1}
+              data-state={active ? "active" : "inactive"}
+              className={cn(
+                "type-body shrink-0 rounded-full border px-5 py-2.5 font-medium transition-all",
+                variant === "pill"
+                  ? active
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground border-transparent"
+                  : active
+                    ? "border-accent bg-accent/10 text-accent-foreground"
+                    : "bg-muted/30 text-muted-foreground hover:bg-muted/60 hover:text-foreground border-transparent",
+              )}
+              onClick={() => onSelect(item.id)}
+            >
+              {item.label}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

@@ -71,6 +71,7 @@ class _ToolAdapter:
             return cached
         paths = get_paths()
         thread_data = {
+            "code_evidence_path": str(paths.thread_dir(thread_id, user_id=self.user_id) / "user-data" / "code-evidence"),
             "workspace_path": str(paths.sandbox_work_dir(thread_id, user_id=self.user_id)),
             "uploads_path": str(paths.sandbox_uploads_dir(thread_id, user_id=self.user_id)),
             "outputs_path": str(paths.sandbox_outputs_dir(thread_id, user_id=self.user_id)),

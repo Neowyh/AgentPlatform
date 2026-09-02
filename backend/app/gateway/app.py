@@ -445,7 +445,10 @@ def _http_exception_payload(exc: HTTPException) -> dict:
     errors. Plain string details keep the legacy envelope verbatim.
     """
     detail = exc.detail
-    if isinstance(detail, dict) and detail.get("code") == "visibility_closure_violation":
+    if isinstance(detail, dict) and detail.get("code") in {
+        "visibility_closure_violation",
+        "skill_outside_agent_closure",
+    }:
         return {
             "success": False,
             "data": None,

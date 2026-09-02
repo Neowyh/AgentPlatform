@@ -101,7 +101,7 @@ class DynamicContextMiddleware(AgentMiddleware):
         self._agent_name = agent_name
         self._app_config = app_config
 
-    def _build_full_reminder(self) -> str:
+    def _build_full_reminder(self, runtime: Runtime | None = None) -> str:
         from ideer.agents.lead_agent.prompt import _get_memory_context
 
         # Memory injection is gated by injection_enabled; date is always included.
@@ -114,6 +114,22 @@ class DynamicContextMiddleware(AgentMiddleware):
             lines.append(memory_context.strip())
             lines.append("")  # blank line separating memory from date
         lines.append(f"<current_date>{current_date}</current_date>")
+        context = getattr(runtime, "context", None) or {}
+        manifest = context.get("code_evidence_manifest")
+        package_id = context.get("code_package_id")
+        if isinstance(manifest, dict) and isinstance(package_id, str):
+            lines.extend(
+                [
+                    "",
+                    "<code-evidence-package>",
+                    "服务端已安全展开代码包，可直接读取源码；不要要求用户本地解压。",
+                    f"源码根目录：/mnt/user-data/code-evidence/{package_id}/source",
+                    f"原始文件名：{manifest.get('original_filename', '')}",
+                    f"已接收文件：{manifest.get('accepted_count', 0)} 个；已排除：{manifest.get('excluded_count', 0)} 项；已拒绝：{manifest.get('rejected_count', 0)} 项。",
+                    "C/C++ 可递归阅读并调用 analyze_code_evidence；Python 及其他文本源码仅做只读结构/逻辑审查，不执行代码、不安装依赖，也不声称完成 Python 静态扫描。",
+                    "</code-evidence-package>",
+                ]
+            )
         lines.append("</system-reminder>")
 
         return "\n".join(lines)
@@ -153,7 +169,7 @@ class DynamicContextMiddleware(AgentMiddleware):
         )
         return reminder_msg, user_msg
 
-    def _inject(self, state) -> dict | None:
+    def _inject(self, state, runtime: Runtime | None = None) -> dict | None:
         messages = list(state.get("messages", []))
         if not messages:
             return None
@@ -172,7 +188,7 @@ class DynamicContextMiddleware(AgentMiddleware):
             first_idx = next((i for i, m in enumerate(messages) if _is_user_injection_target(m)), None)
             if first_idx is None:
                 return None
-            full_reminder = self._build_full_reminder()
+            full_reminder = self._build_full_reminder(runtime)
             logger.info(
                 "DynamicContextMiddleware: injecting full reminder (len=%d, has_memory=%s) into first HumanMessage id=%r",
                 len(full_reminder),
@@ -197,8 +213,8 @@ class DynamicContextMiddleware(AgentMiddleware):
 
     @override
     def before_agent(self, state, runtime: Runtime) -> dict | None:
-        return self._inject(state)
+        return self._inject(state, runtime)
 
     @override
     async def abefore_agent(self, state, runtime: Runtime) -> dict | None:
-        return self._inject(state)
+        return self._inject(state, runtime)

@@ -491,6 +491,7 @@ def replace_virtual_path(path: str, thread_data: ThreadDataState | None) -> str:
         /mnt/user-data/workspace/* -> thread_data['workspace_path']/*
         /mnt/user-data/uploads/* -> thread_data['uploads_path']/*
         /mnt/user-data/outputs/* -> thread_data['outputs_path']/*
+        /mnt/user-data/code-evidence/* -> thread_data['code_evidence_path']/*
 
     Args:
         path: The path that may contain virtual path prefix.
@@ -527,6 +528,7 @@ def _thread_virtual_to_actual_mappings(thread_data: ThreadDataState) -> dict[str
     workspace = thread_data.get("workspace_path")
     uploads = thread_data.get("uploads_path")
     outputs = thread_data.get("outputs_path")
+    code_evidence = thread_data.get("code_evidence_path")
 
     if workspace:
         mappings[f"{VIRTUAL_PATH_PREFIX}/workspace"] = workspace
@@ -534,6 +536,8 @@ def _thread_virtual_to_actual_mappings(thread_data: ThreadDataState) -> dict[str
         mappings[f"{VIRTUAL_PATH_PREFIX}/uploads"] = uploads
     if outputs:
         mappings[f"{VIRTUAL_PATH_PREFIX}/outputs"] = outputs
+    if code_evidence:
+        mappings[f"{VIRTUAL_PATH_PREFIX}/code-evidence"] = code_evidence
 
     # Also map the virtual root when all known dirs share the same parent.
     actual_dirs = [Path(p) for p in (workspace, uploads, outputs) if p]
@@ -704,6 +708,7 @@ def _validate_resolved_user_data_path(resolved: Path, thread_data: ThreadDataSta
             thread_data.get("workspace_path"),
             thread_data.get("uploads_path"),
             thread_data.get("outputs_path"),
+            thread_data.get("code_evidence_path"),
         )
         if p is not None
     ]

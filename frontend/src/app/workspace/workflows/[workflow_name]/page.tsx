@@ -71,6 +71,7 @@ export default function WorkflowDetailPage() {
   }, [runDialogOpen, settings.context.model_name, models]);
   const [visibilityDialogOpen, setVisibilityDialogOpen] = useState(false);
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
+  const [runFiles, setRunFiles] = useState<File[]>([]);
   const [targetVisibility, setTargetVisibility] = useState("department");
   const [visibilityReason, setVisibilityReason] = useState("");
   const [submittingApplication, setSubmittingApplication] = useState(false);
@@ -123,6 +124,7 @@ export default function WorkflowDetailPage() {
     if (!workflow) return;
     // Validate required inputs
     for (const [key, param] of Object.entries(workflow.inputs)) {
+      if (["code_package_source", "upload_dir"].includes(key)) continue;
       if (param.required && !inputValues[key]?.trim()) {
         toast.error(t.workflows.requiredMissing(key));
         return;
@@ -131,6 +133,7 @@ export default function WorkflowDetailPage() {
 
     const inputs: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(inputValues)) {
+      if (["code_package_source", "upload_dir"].includes(key)) continue;
       if (value.trim()) {
         try {
           inputs[key] = JSON.parse(value);
@@ -145,6 +148,7 @@ export default function WorkflowDetailPage() {
         name: workflow_name,
         inputs,
         modelName: selectedModel || undefined,
+        ...(runFiles.length ? { files: runFiles } : {}),
       });
       setRunDialogOpen(false);
       toast.success(t.workflows.started);
@@ -605,36 +609,40 @@ export default function WorkflowDetailPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            {Object.entries(workflow.inputs).map(([key, param]) => (
-              <div key={key} className="space-y-2">
-                <Label htmlFor={`input-${key}`}>
-                  {key}
-                  {param.required && (
-                    <span className="text-destructive ml-1">*</span>
+            {Object.entries(workflow.inputs)
+              .filter(
+                ([key]) => !["code_package_source", "upload_dir"].includes(key),
+              )
+              .map(([key, param]) => (
+                <div key={key} className="space-y-2">
+                  <Label htmlFor={`input-${key}`}>
+                    {key}
+                    {param.required && (
+                      <span className="text-destructive ml-1">*</span>
+                    )}
+                  </Label>
+                  {param.description && (
+                    <p className="text-muted-foreground type-body">
+                      {param.description}
+                    </p>
                   )}
-                </Label>
-                {param.description && (
-                  <p className="text-muted-foreground type-body">
-                    {param.description}
-                  </p>
-                )}
-                <Input
-                  id={`input-${key}`}
-                  placeholder={
-                    param.default !== undefined
-                      ? `${t.workflows.defaultPrefix}${JSON.stringify(param.default)}`
-                      : t.workflows.enterInput(key)
-                  }
-                  value={inputValues[key] ?? ""}
-                  onChange={(e) =>
-                    setInputValues((prev) => ({
-                      ...prev,
-                      [key]: e.target.value,
-                    }))
-                  }
-                />
-              </div>
-            ))}
+                  <Input
+                    id={`input-${key}`}
+                    placeholder={
+                      param.default !== undefined
+                        ? `${t.workflows.defaultPrefix}${JSON.stringify(param.default)}`
+                        : t.workflows.enterInput(key)
+                    }
+                    value={inputValues[key] ?? ""}
+                    onChange={(e) =>
+                      setInputValues((prev) => ({
+                        ...prev,
+                        [key]: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
+              ))}
             {Object.keys(workflow.inputs).length === 0 && (
               <p className="text-muted-foreground type-body">
                 {t.workflows.noInputs}
@@ -662,6 +670,54 @@ export default function WorkflowDetailPage() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="workflow-files">源码 ZIP 与资料附件</Label>
+              <input
+                id="workflow-files"
+                type="file"
+                multiple
+                className="border-input bg-background file:text-foreground placeholder:text-muted-foreground focus-visible:ring-ring flex h-9 w-full rounded-md border px-3 py-1 text-base shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium focus-visible:ring-1 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
+                onChange={(event) => {
+                  const selected = Array.from(event.target.files ?? []);
+                  const sourceZips = selected.filter((file) =>
+                    file.name.toLowerCase().endsWith(".zip"),
+                  );
+                  if (sourceZips.length > 1) {
+                    toast.error("一次运行只能选择一个源码 ZIP");
+                    event.target.value = "";
+                    setRunFiles([]);
+                    return;
+                  }
+                  setRunFiles(selected);
+                  if (sourceZips.length) {
+                    setInputValues((previous) => ({
+                      ...previous,
+                      evidence_mode: previous.evidence_mode ?? "hybrid",
+                    }));
+                  }
+                }}
+              />
+              {runFiles.some((file) =>
+                file.name.toLowerCase().endsWith(".zip"),
+              ) && (
+                <p className="text-muted-foreground type-body">
+                  源码包已就绪，提交后将安全展开并仅授权本次运行读取。
+                </p>
+              )}
+              {runFiles.filter(
+                (file) => !file.name.toLowerCase().endsWith(".zip"),
+              ).length > 0 && (
+                <p className="text-muted-foreground type-body">
+                  已选择{" "}
+                  {
+                    runFiles.filter(
+                      (file) => !file.name.toLowerCase().endsWith(".zip"),
+                    ).length
+                  }{" "}
+                  份资料。
+                </p>
+              )}
             </div>
           </div>
           <DialogFooter>

@@ -41,6 +41,7 @@ import {
   extractReasoningContentFromMessage,
   parseUploadedFiles,
   stripUploadedFilesTag,
+  type CodeEvidencePackageStatus,
   type FileInMessage,
 } from "@/core/messages/utils";
 import { useRehypeSplitWordsIntoSpans } from "@/core/rehype";
@@ -270,6 +271,18 @@ function MessageContent_({
     files && files.length > 0 ? (
       <RichFilesList files={files} threadId={threadId} />
     ) : null;
+  const codeEvidencePackage = message.additional_kwargs
+    ?.code_evidence_package as CodeEvidencePackageStatus | undefined;
+  const codeEvidenceStatus = codeEvidencePackage ? (
+    <div className="border-border/50 bg-muted/30 text-muted-foreground type-compact mb-2 rounded-md border px-2.5 py-1.5">
+      <span className="text-foreground font-medium">代码包已就绪</span>
+      {`：${codeEvidencePackage.accepted_count} 个文件可直接分析`}
+      {codeEvidencePackage.excluded_count > 0 &&
+        `，已排除 ${codeEvidencePackage.excluded_count} 项`}
+      {codeEvidencePackage.rejected_count > 0 &&
+        `，已拒绝 ${codeEvidencePackage.rejected_count} 项（可查看原因）`}
+    </div>
+  ) : null;
 
   // Uploading state: mock AI message shown while files upload
   if (message.additional_kwargs?.element === "task") {
@@ -312,6 +325,7 @@ function MessageContent_({
     ) : null;
     return (
       <div className={cn("ml-auto flex flex-col gap-2", className)}>
+        {codeEvidenceStatus}
         {filesList}
         {messageResponse && (
           <AIElementMessageContent className="w-fit">

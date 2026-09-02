@@ -17,6 +17,7 @@ import ideer.persistence.models  # noqa: F401
 from app.gateway.canonical_agent_run_preparation import prepare_canonical_agent_run
 from app.gateway.routers.assistants_compat import _list_canonical_assistants
 from ideer.persistence.base import Base
+from ideer.persistence.models.audit_log import AuditLog
 from ideer.persistence.models.resource_catalog import Resource, RunResourceSnapshot
 from ideer.persistence.models.user import UserModel
 from ideer.resources.publisher import ResourcePublisher
@@ -79,6 +80,7 @@ async def test_prepare_canonical_agent_run_freezes_visible_version_and_hides_pri
         resource_id = resource.id
 
     monkeypatch.setattr("ideer.persistence.engine.get_session_factory", lambda: session_factory)
+    monkeypatch.setattr("app.gateway.audit.get_session_factory", lambda: session_factory)
     monkeypatch.setattr("ideer.config.get_paths", lambda: SimpleNamespace(base_dir=tmp_path))
     request = SimpleNamespace(state=SimpleNamespace(user=SimpleNamespace(id="runner")))
 
@@ -90,6 +92,36 @@ async def test_prepare_canonical_agent_run_freezes_visible_version_and_hides_pri
     async with session_factory() as session:
         snapshots = list((await session.execute(select(RunResourceSnapshot).where(RunResourceSnapshot.run_id == visible_run_id))).scalars())
         assert [(item.resource_id, item.version) for item in snapshots] == [(resource_id, 1)]
+
+    rejected_run_id = str(uuid.uuid4())
+    with pytest.raises(HTTPException) as rejected_info:
+        await prepare_canonical_agent_run(
+            resource_id,
+            request,
+            rejected_run_id,
+            preferred_skill="academic-paper-review",
+            diagnostic_context={
+                "task_id": "academic-paper-review",
+                "context_source": "scenario_binding",
+            },
+            thread_id="thread-123",
+        )
+    assert rejected_info.value.status_code == 409
+    assert rejected_info.value.detail == {
+        "code": "skill_outside_agent_closure",
+        "message": "The selected Skill is not available to the current Expert.",
+        "agent": {"resource_id": resource_id, "slug": "canonical-agent"},
+        "requested_skill": "academic-paper-review",
+        "available_skills": [],
+        "context_source": "scenario_binding",
+    }
+    async with session_factory() as session:
+        audit = (await session.execute(select(AuditLog).where(AuditLog.action == "run_preparation_rejected"))).scalar_one()
+        assert audit.detail is not None
+        assert '"thread_id": "thread-123"' in audit.detail
+        assert '"run_attempt_id": "' in audit.detail
+        assert '"task_id": "academic-paper-review"' in audit.detail
+        assert "message" not in audit.detail
 
     original_skill_loader = CanonicalResourceLoader.load_agent_skill_definitions
 

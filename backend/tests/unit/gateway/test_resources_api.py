@@ -161,6 +161,7 @@ def test_router_exposes_uuid_first_workflow_lifecycle() -> None:
     assert ("PUT", "/api/resources/{resource_id}/dependencies") in routes
     assert ("POST", "/api/resources/{resource_id}/fork") in routes
     assert ("POST", "/api/resources/{resource_id}/workflow-runs") in routes
+    assert ("POST", "/api/resources/{resource_id}/workflow-runs/with-files") in routes
     assert ("GET", "/api/resources/{resource_id}/workflow-runs") in routes
     assert ("GET", "/api/resources/{resource_id}/workflow-runs/{run_id}") in routes
     assert ("GET", "/api/resources/{resource_id}/workflow-runs/{run_id}/events") in routes

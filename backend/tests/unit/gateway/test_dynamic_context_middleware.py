@@ -86,6 +86,32 @@ def test_memory_included_when_present():
     assert result["messages"][1].content == "Hi"
 
 
+def test_code_evidence_package_reminder_uses_trusted_summary_and_fixed_root():
+    mw = _make_middleware()
+    state = {"messages": [HumanMessage(content="分析代码", id="msg-code")]}
+    runtime = SimpleNamespace(
+        context={
+            "code_package_id": "pkg-123",
+            "code_evidence_manifest": {
+                "original_filename": "src.zip",
+                "accepted_count": 3,
+                "excluded_count": 2,
+                "rejected_count": 1,
+            },
+        }
+    )
+    with mock.patch("ideer.agents.lead_agent.prompt._get_memory_context", return_value=""), mock.patch("ideer.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
+        mock_dt.now.return_value.strftime.return_value = "2026-05-08, Friday"
+        result = mw.before_agent(state, runtime)
+
+    reminder = result["messages"][0].content
+    assert "服务端已安全展开代码包" in reminder
+    assert "/mnt/user-data/code-evidence/pkg-123/source" in reminder
+    assert "src.zip" in reminder
+    assert "已接收文件：3 个；已排除：2 项；已拒绝：1 项" in reminder
+    assert "不要要求用户本地解压" in reminder
+
+
 # ---------------------------------------------------------------------------
 # Frozen-snapshot: no re-injection within a session
 # ---------------------------------------------------------------------------

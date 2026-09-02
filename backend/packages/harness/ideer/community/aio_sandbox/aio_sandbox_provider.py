@@ -333,9 +333,7 @@ class AioSandboxProvider(SandboxProvider):
         paths.ensure_thread_dirs(thread_id, user_id=user_id)
 
         return [
-            (paths.host_sandbox_work_dir(thread_id, user_id=user_id), f"{VIRTUAL_PATH_PREFIX}/workspace", False),
-            (paths.host_sandbox_uploads_dir(thread_id, user_id=user_id), f"{VIRTUAL_PATH_PREFIX}/uploads", False),
-            (paths.host_sandbox_outputs_dir(thread_id, user_id=user_id), f"{VIRTUAL_PATH_PREFIX}/outputs", False),
+            (paths.host_sandbox_user_data_dir(thread_id, user_id=user_id), VIRTUAL_PATH_PREFIX, False),
             # ACP workspace: read-only inside the sandbox (lead agent reads results;
             # the ACP subprocess writes from the host side, not from within the container).
             (paths.host_acp_workspace_dir(thread_id, user_id=user_id), "/mnt/acp-workspace", True),

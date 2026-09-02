@@ -67,6 +67,13 @@ class TestRenderTemplate:
 
 
 class TestRenderRoots:
+    def test_empty_server_assigned_root_is_not_authorized(self) -> None:
+        rendered = render_roots(
+            {"read": ["{{inputs.code_package_source}}"], "write": []},
+            {"inputs": {"code_package_source": ""}, "state": {}},
+        )
+        assert rendered == {"read": [], "write": []}
+
     def test_missing_template_value_keeps_root_verbatim(self) -> None:
         rendered = render_roots(
             {"read": ["{{state.late}}/x.json"], "write": []},
@@ -123,6 +130,11 @@ class TestHostResolver:
         expected = str(host_resolver.sandbox_outputs_dir("run-1", user_id="user-1"))
         assert resolver("/mnt/user-data/outputs/artifacts/a.json") == f"{expected}/artifacts/a.json"
         assert resolver("/mnt/user-data/workspace") == str(host_resolver.sandbox_work_dir("run-1", user_id="user-1"))
+
+    def test_code_evidence_mapping_is_run_private(self, host_resolver) -> None:
+        resolver = make_host_resolver("run-1", "user-1")
+        expected = host_resolver.thread_dir("run-1", user_id="user-1") / "user-data/code-evidence/pkg/source/main.c"
+        assert resolver("/mnt/user-data/code-evidence/pkg/source/main.c") == str(expected)
 
     def test_custom_mount_mapping(self, custom_mounts) -> None:
         resolver = make_host_resolver("run-1", "user-1")

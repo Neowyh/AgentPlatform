@@ -36,6 +36,24 @@ def test_visibility_closure_violation_keeps_envelope_with_structured_detail():
     }
 
 
+def test_skill_closure_violation_keeps_structured_diagnostics():
+    detail = {
+        "code": "skill_outside_agent_closure",
+        "message": "The selected Skill is not available to the current Expert.",
+        "agent": {"resource_id": "agent-id", "slug": "fault-zeroing"},
+        "requested_skill": "academic-paper-review",
+        "available_skills": [{"resource_id": "skill-id", "slug": "fault-zeroing"}],
+        "context_source": "scenario_binding",
+    }
+
+    assert _http_exception_payload(HTTPException(status_code=409, detail=detail)) == {
+        "success": False,
+        "data": None,
+        "error": {"code": "INTERNAL_ERROR", "message": detail["message"]},
+        "detail": detail,
+    }
+
+
 def test_string_detail_keeps_legacy_envelope():
     exc = HTTPException(status_code=404, detail="Resource not found")
 

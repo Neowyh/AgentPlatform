@@ -11,6 +11,7 @@ import {
   listWorkflowRuns,
   listWorkflows,
   runWorkflow,
+  runWorkflowWithFiles,
   submitWorkflowCommand,
   toggleWorkflowFavorite,
   updateWorkflow,
@@ -137,11 +138,16 @@ export function useRunWorkflow() {
       name,
       inputs,
       modelName,
+      files,
     }: {
       name: string;
       inputs: Record<string, unknown>;
       modelName?: string;
-    }) => runWorkflow(name, inputs, modelName),
+      files?: File[];
+    }) =>
+      files?.length
+        ? runWorkflowWithFiles(name, inputs, files, modelName)
+        : runWorkflow(name, inputs, modelName),
   });
 }
 

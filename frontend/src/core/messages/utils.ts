@@ -487,6 +487,13 @@ export interface FileInMessage {
   status?: "uploading" | "uploaded";
 }
 
+export interface CodeEvidencePackageStatus {
+  original_filename: string;
+  accepted_count: number;
+  excluded_count: number;
+  rejected_count: number;
+}
+
 /**
  * Strip <uploaded_files> tag from message content.
  * Returns the content with the tag removed.

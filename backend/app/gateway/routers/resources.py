@@ -16,7 +16,7 @@ from tempfile import NamedTemporaryFile, TemporaryDirectory
 from typing import Any
 
 import yaml
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select, update
@@ -50,6 +50,8 @@ from ideer.resources.service import (
 )
 from ideer.resources.storage import ResourceStorage, StorageConflict, StorageValidationError
 from ideer.skills.validation import _validate_skill_frontmatter
+from ideer.uploads.code_evidence import CodeEvidencePackageError, PackageManifest, accept_package
+from ideer.uploads.manager import claim_unique_filename, normalize_filename, open_upload_file_no_symlink
 from ideer.workflows.v2.errors import WorkflowRunError
 from ideer.workflows.v2.file_roots import (
     collect_artifacts,
@@ -215,6 +217,72 @@ class TransferRequest(BaseModel):
 class WorkflowRunRequest(BaseModel):
     inputs: dict[str, Any] = Field(default_factory=dict)
     model_name: str | None = Field(default=None, min_length=1, max_length=128)
+
+
+_WORKFLOW_UPLOAD_MAX_FILE_SIZE = 50 * 1024 * 1024
+_WORKFLOW_UPLOAD_MAX_TOTAL_SIZE = 100 * 1024 * 1024
+
+
+def _cleanup_run_user_data(run_id: str, user_id: str) -> None:
+    """Remove data written before a Run was persisted."""
+    shutil.rmtree(get_paths().thread_dir(run_id, user_id=user_id) / "user-data", ignore_errors=True)
+
+
+async def _store_workflow_run_files(*, run_id: str, user_id: str, files: list[UploadFile]) -> tuple[PackageManifest | None, list[str]]:
+    """Store one source ZIP and ordinary evidence under a not-yet-created Run."""
+    source_files = [file for file in files if file.filename and file.filename.lower().endswith(".zip")]
+    if len(source_files) > 1:
+        raise HTTPException(400, "Only one source ZIP may be attached to a workflow Run")
+
+    uploads_dir = get_paths().sandbox_uploads_dir(run_id, user_id=user_id)
+    uploads_dir.mkdir(parents=True, exist_ok=True)
+    stored_names: list[str] = []
+    total_size = 0
+    source_manifest: PackageManifest | None = None
+    seen_names: set[str] = set()
+    try:
+        for file in files:
+            if not file.filename:
+                continue
+            original_name = normalize_filename(file.filename)
+            if source_files and file is source_files[0]:
+                try:
+                    source_manifest, _ = await asyncio.to_thread(
+                        accept_package,
+                        file.file,
+                        thread_id=run_id,
+                        original_filename=original_name,
+                    )
+                except CodeEvidencePackageError as exc:
+                    raise HTTPException(400, str(exc)) from exc
+                except (OSError, zipfile.BadZipFile) as exc:
+                    raise HTTPException(400, f"Invalid code evidence package: {exc}") from exc
+                continue
+
+            filename = claim_unique_filename(original_name, seen_names)
+            path, handle = open_upload_file_no_symlink(uploads_dir, filename)
+            size = 0
+            try:
+                while chunk := await file.read(8192):
+                    size += len(chunk)
+                    total_size += len(chunk)
+                    if size > _WORKFLOW_UPLOAD_MAX_FILE_SIZE:
+                        raise HTTPException(413, f"File too large: {filename}")
+                    if total_size > _WORKFLOW_UPLOAD_MAX_TOTAL_SIZE:
+                        raise HTTPException(413, "Total upload size too large")
+                    handle.write(chunk)
+            except Exception:
+                handle.close()
+                path.unlink(missing_ok=True)
+                raise
+            else:
+                handle.close()
+                path.chmod(0o644)
+                stored_names.append(filename)
+    except Exception:
+        _cleanup_run_user_data(run_id, user_id)
+        raise
+    return source_manifest, stored_names
 
 
 class WorkflowCommandRequest(BaseModel):
@@ -1333,6 +1401,71 @@ async def create_workflow_run(
         "status": run.status,
         "workflow_resource_id": run.workflow_resource_id,
         "model_name": run.model_name,
+    }
+
+
+@router.post("/{resource_id}/workflow-runs/with-files", status_code=201)
+@_translate_resource_errors
+async def create_workflow_run_with_files(
+    resource_id: str,
+    inputs: str = Form("{}"),
+    model_name: str | None = Form(default=None),
+    files: list[UploadFile] = File(default=[]),
+    current_user: UserModel = Depends(get_current_rbac_user),
+) -> dict[str, Any]:
+    """Create a canonical Workflow Run with files private to its generated id."""
+    try:
+        submitted = json.loads(inputs)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(400, "inputs must be a JSON object") from exc
+    if not isinstance(submitted, dict):
+        raise HTTPException(400, "inputs must be a JSON object")
+    protected = {"code_package_source", "code_package_id", "code_evidence_source", "upload_dir"}
+    if protected.intersection(submitted):
+        raise HTTPException(400, "Code and upload paths are assigned by the server")
+    if not files:
+        raise HTTPException(400, "Attach at least one source ZIP or evidence file")
+    if model_name is not None and get_app_config().get_model_config(model_name) is None:
+        raise HTTPException(400, f"Model {model_name!r} is not in the configured model allowlist")
+
+    actor = _resource_actor(current_user)
+    async with _factory()() as session:
+        resource = await ResourceService(session, actor).resolve_for_use(resource_id)
+        if resource.type != "workflow":
+            raise ValueError("Resource is not a Workflow")
+
+    run_id = str(uuid.uuid4())
+    user_id = str(current_user.id)
+    source_manifest, _stored_names = await _store_workflow_run_files(run_id=run_id, user_id=user_id, files=files)
+    mode = submitted.get("evidence_mode") or ("hybrid" if source_manifest is not None else "document")
+    submitted["evidence_mode"] = mode
+    if source_manifest is not None:
+        if mode == "document":
+            _cleanup_run_user_data(run_id, user_id)
+            raise HTTPException(400, "document evidence_mode cannot be used with a source ZIP")
+        submitted["code_package_source"] = source_manifest.source_virtual_path
+    submitted["upload_dir"] = "/mnt/user-data/uploads"
+
+    runtime = get_app_config().workflow_runtime
+    try:
+        run = await WorkflowV2Store(_factory()).create_canonical_run(
+            run_id,
+            resource_id,
+            submitted,
+            actor,
+            model_name=model_name,
+            user_concurrency=runtime.user_concurrency,
+            department_concurrency=runtime.department_concurrency,
+        )
+    except Exception:
+        _cleanup_run_user_data(run_id, user_id)
+        raise
+    return {
+        "run_id": run.run_id,
+        "status": run.status,
+        "workflow_resource_id": run.workflow_resource_id,
+        "model_name": run.model_name,
+        "code_package": source_manifest.as_dict() if source_manifest is not None else None,
     }
 
 

@@ -57,7 +57,7 @@ describe("SCENARIOS config", () => {
 
   it("keeps the complete scenario entry inventory aligned with the release", () => {
     expect(SCENARIOS.flatMap((scenario) => scenario.agentPills)).toHaveLength(
-      14,
+      15,
     );
     expect(
       SCENARIOS.flatMap((scenario) =>
@@ -181,7 +181,6 @@ describe("getChipsByPill", () => {
       "代码变更评审",
       "代码库架构改进",
       "疑难故障诊断",
-      "需求规格说明撰写",
     ]);
   });
 });

@@ -32,6 +32,7 @@ _THREAD_DATA = {
     "workspace_path": "/tmp/ideer/threads/t1/user-data/workspace",
     "uploads_path": "/tmp/ideer/threads/t1/user-data/uploads",
     "outputs_path": "/tmp/ideer/threads/t1/user-data/outputs",
+    "code_evidence_path": "/tmp/ideer/threads/t1/user-data/code-evidence",
 }
 
 
@@ -41,6 +42,22 @@ _THREAD_DATA = {
 def test_replace_virtual_path_maps_virtual_root_and_subpaths() -> None:
     assert Path(replace_virtual_path("/mnt/user-data/workspace/a.txt", _THREAD_DATA)).as_posix() == "/tmp/ideer/threads/t1/user-data/workspace/a.txt"
     assert Path(replace_virtual_path("/mnt/user-data", _THREAD_DATA)).as_posix() == "/tmp/ideer/threads/t1/user-data"
+
+
+def test_replace_virtual_path_maps_code_evidence_source() -> None:
+    result = replace_virtual_path("/mnt/user-data/code-evidence/pkg/source/main.py", _THREAD_DATA)
+    assert result == "/tmp/ideer/threads/t1/user-data/code-evidence/pkg/source/main.py"
+
+
+def test_validate_resolved_user_data_path_allows_code_evidence(tmp_path) -> None:
+    from ideer.sandbox.tools import _validate_resolved_user_data_path
+
+    root = tmp_path / "code-evidence"
+    source = root / "pkg" / "source"
+    source.mkdir(parents=True)
+    file = source / "main.py"
+    file.touch()
+    _validate_resolved_user_data_path(file.resolve(), {"code_evidence_path": str(root)})
 
 
 def test_replace_virtual_path_preserves_trailing_slash() -> None:

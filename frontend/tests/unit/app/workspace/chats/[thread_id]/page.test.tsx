@@ -551,7 +551,6 @@ describe("ChatPage", () => {
         },
       ],
     });
-
     const { rerender } = render(<ChatPage />);
     rerender(<ChatPage />);
     act(() => screen.getByRole("tab", { name: "日常办公" }).click());
@@ -620,6 +619,7 @@ describe("ChatPage", () => {
         },
       ],
     });
+    mockUseAgent.mockReturnValue({ agent: { skills: ["skill-resource-id"] } });
 
     render(<ChatPage />);
     act(() => screen.getByRole("tab", { name: "日常办公" }).click());

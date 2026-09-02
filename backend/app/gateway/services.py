@@ -157,6 +157,7 @@ _CONTEXT_CONFIGURABLE_KEYS: frozenset[str] = frozenset(
         "evidence_mode",
         "code_package_id",
         "code_evidence_source",
+        "code_evidence_manifest",
     }
 )
 
