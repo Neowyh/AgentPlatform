@@ -22,7 +22,7 @@ import {
 } from "@/core/visibility-applications/api";
 
 export default function SkillDetailPage() {
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
   const { skill_id: skillId } = useParams<{ skill_id: string }>();
   const { skill, isLoading, error } = useSkill(skillId);
   const [applyOpen, setApplyOpen] = useState(false);
@@ -35,12 +35,6 @@ export default function SkillDetailPage() {
       </div>
     );
   const invocation = skill.slug ?? skill.name;
-  const visibility =
-    skill.visibility === "public"
-      ? t.settings.skills.applyDialogVisibilityPublic
-      : skill.visibility === "department"
-        ? t.settings.skills.applyDialogVisibilityDepartment
-        : t.settings.skills.applyDialogVisibilityPrivate;
   const download = async () => {
     try {
       const url = URL.createObjectURL(await exportSkill(skill.resource_id!));
@@ -58,10 +52,12 @@ export default function SkillDetailPage() {
       breadcrumb={<WorkspaceBreadcrumb skill={skill} />}
       backHref="/workspace/capabilities/skills"
       icon={<Code2Icon className="h-5 w-5" />}
-      typeLabel={t.resources.skills}
       title={skill.name}
-      description={skill.summary ?? skill.description}
-      status={visibility}
+      description={
+        locale === "zh-CN"
+          ? (skill.description_zh ?? t.settings.skills.noDescription)
+          : skill.description
+      }
       actions={
         <>
           <Button asChild>
@@ -127,12 +123,8 @@ export default function SkillDetailPage() {
             label={t.settings.skills.version}
             value={`v${skill.latest_version ?? 1}`}
           />
-        </dl>
-      </ResourceDetailCard>
-      <ResourceDetailCard title={t.settings.skills.usage}>
-        <dl>
           <ResourceDetailRow
-            label={t.settings.skills.command}
+            label={t.settings.skills.usage}
             value={`/${invocation}`}
           />
           <ResourceDetailRow
@@ -145,10 +137,7 @@ export default function SkillDetailPage() {
           />
         </dl>
       </ResourceDetailCard>
-      <ResourceDetailCard
-        title={t.settings.skills.skillMd}
-        className="lg:col-span-2"
-      >
+      <ResourceDetailCard title={t.settings.skills.skillMd}>
         <pre className="bg-muted type-body max-h-[30rem] overflow-auto rounded-xl p-4 whitespace-pre-wrap">
           {skill.skill_md ?? t.settings.skills.notSpecified}
         </pre>

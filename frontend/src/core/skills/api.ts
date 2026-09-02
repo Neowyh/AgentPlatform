@@ -72,6 +72,7 @@ export async function getSkill(resourceId: string): Promise<Skill> {
     content: {
       name: string;
       description: string;
+      description_zh?: string | null;
       license?: string | null;
       allowed_tools?: string[] | null;
       requires_internet?: boolean;
@@ -85,7 +86,8 @@ export async function getSkill(resourceId: string): Promise<Skill> {
     slug: resource.slug,
     name: resource.display_name,
     description: payload.content.description,
-    summary: payload.content.description,
+    description_zh: payload.content.description_zh,
+    summary: payload.content.description_zh ?? undefined,
     category: resource.can_modify ? "custom" : "public",
     license: payload.content.license ?? "",
     enabled: true,

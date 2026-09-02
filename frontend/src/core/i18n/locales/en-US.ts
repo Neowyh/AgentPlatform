@@ -315,6 +315,7 @@ export const enUS: Translations = {
     more: "More actions",
     agentCreated: "Expert created!",
     startChatting: "Start chatting",
+    detailChat: "Chat",
     backToGallery: "Back to Gallery",
     visibility: "Visibility",
     visibilityPrivate: "Private",
@@ -323,6 +324,7 @@ export const enUS: Translations = {
     visibilityAdminOnly:
       "Department and Public options are only available to admins",
     applyVisibility: "Apply Visibility Change",
+    changeVisibility: "Change visibility",
     applyVisibilityDescription:
       "Submit an application to change the visibility level of this Expert",
     currentVisibility: "Current Visibility",
@@ -852,6 +854,7 @@ export const enUS: Translations = {
       version: "Current version",
       skillMd: "SKILL.md",
       notSpecified: "Not specified",
+      noDescription: "No description available",
       readOnly: "Read-only skill; editing is unavailable",
       saved: "Skill published",
       saveFailed: "Failed to save skill",

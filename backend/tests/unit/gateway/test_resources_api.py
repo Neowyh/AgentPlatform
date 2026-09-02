@@ -72,6 +72,13 @@ def test_skill_description_prefers_description_zh(tmp_path: Path) -> None:
     assert resources._skill_description(_skill_resource("skill-zh"), storage) == "中文说明"
 
 
+def test_skill_localized_description_is_empty_when_description_zh_is_missing(tmp_path: Path) -> None:
+    storage = ResourceStorage(tmp_path / "runtime")
+    _write_skill_md(storage, "skill-en", "name: demo\ndescription: English description\n")
+
+    assert resources._skill_description_zh(_skill_resource("skill-en"), storage) is None
+
+
 def test_skill_description_falls_back_to_english(tmp_path: Path) -> None:
     storage = ResourceStorage(tmp_path / "runtime")
     _write_skill_md(

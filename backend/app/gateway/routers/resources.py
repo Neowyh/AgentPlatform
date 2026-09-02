@@ -132,6 +132,27 @@ def _skill_description(
     return description
 
 
+def _skill_description_zh(
+    resource: Resource,
+    storage: ResourceStorage,
+) -> str | None:
+    """Return only the authored Chinese Skill summary, without fallbacks."""
+    if resource.type != "skill" or resource.latest_version is None:
+        return None
+    source = storage.resources_root / (f"skills/{resource.id}/versions/{resource.latest_version}/SKILL.md")
+    if not source.is_file():
+        return None
+    match = re.match(r"\A---\s*\n(.*?)\n---", source.read_text(encoding="utf-8"), re.DOTALL)
+    if match is None:
+        return None
+    try:
+        metadata = yaml.safe_load(match.group(1))
+    except yaml.YAMLError:
+        return None
+    description = metadata.get("description_zh") if isinstance(metadata, dict) else None
+    return description.strip() if isinstance(description, str) and description.strip() else None
+
+
 class ResourceCreateRequest(BaseModel):
     type: str = Field(pattern="^(skill|agent|workflow)$")
     slug: str = Field(min_length=1, max_length=128)
@@ -791,6 +812,11 @@ async def get_published_resource(
             payload["content"] = {
                 "name": skill.name,
                 "description": skill.description,
+                "description_zh": await asyncio.to_thread(
+                    _skill_description_zh,
+                    resource,
+                    storage,
+                ),
                 "license": skill.license,
                 "allowed_tools": skill.allowed_tools,
                 "requires_internet": skill.requires_internet,

@@ -39,6 +39,7 @@ import { WorkspaceBreadcrumb } from "@/components/workspace/workspace-breadcrumb
 import { useAgent } from "@/core/agents";
 import { exportAgent } from "@/core/agents/api";
 import { useI18n } from "@/core/i18n/hooks";
+import { useSkills } from "@/core/skills";
 import {
   changeResourceVisibility,
   createVisibilityApplication,
@@ -50,6 +51,7 @@ export default function AgentDetailPage() {
   const router = useRouter();
   const { agent_name: agentName } = useParams<{ agent_name: string }>();
   const { agent, isLoading, error } = useAgent(agentName);
+  const { skills } = useSkills();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [targetVisibility, setTargetVisibility] = useState("private");
   const [reason, setReason] = useState("");
@@ -143,10 +145,8 @@ export default function AgentDetailPage() {
         breadcrumb={<WorkspaceBreadcrumb agent={agent} />}
         backHref="/workspace/capabilities/experts"
         icon={<BotIcon className="h-5 w-5" />}
-        typeLabel={t.resources.experts}
         title={agent.name}
-        description={agent.description}
-        status={visibility}
+        description={agent.summary ?? agent.description}
         actions={
           <>
             <Button asChild>
@@ -154,12 +154,12 @@ export default function AgentDetailPage() {
                 href={`/workspace/capabilities/experts/${agentName}/chats/new`}
               >
                 <MessageSquareIcon className="mr-1.5 h-4 w-4" />
-                {t.agents.startChatting}
+                {t.agents.detailChat}
               </Link>
             </Button>
             {!agent.read_only && (
               <Button variant="outline" onClick={() => setDialogOpen(true)}>
-                {t.agents.applyVisibility}
+                {t.agents.changeVisibility}
               </Button>
             )}
             {!agent.read_only && (
@@ -168,7 +168,7 @@ export default function AgentDetailPage() {
                   href={`/workspace/capabilities/experts/${agentName}/edit`}
                 >
                   <EditIcon className="mr-1.5 h-4 w-4" />
-                  {t.agents.edit}
+                  {t.common.edit}
                 </Link>
               </Button>
             )}
@@ -193,20 +193,26 @@ export default function AgentDetailPage() {
             />
             <ResourceDetailRow
               label={t.agents.skills}
-              value={agent.skills?.join(", ") ?? t.agents.notSpecified}
-            />
-          </dl>
-        </ResourceDetailCard>
-        <ResourceDetailCard title={t.agents.usage}>
-          <dl>
-            <ResourceDetailRow
-              label={t.agents.command}
-              value={t.agents.startChatting}
+              value={
+                agent.skills?.length
+                  ? agent.skills
+                      .map(
+                        (skillRef) =>
+                          skills.find(
+                            (skill) =>
+                              skill.slug === skillRef ||
+                              skill.resource_id === skillRef,
+                          )?.name,
+                      )
+                      .filter((name): name is string => Boolean(name))
+                      .join(", ") || t.agents.notSpecified
+                  : t.agents.notSpecified
+              }
             />
             <ResourceDetailRow label={t.agents.visibility} value={visibility} />
           </dl>
         </ResourceDetailCard>
-        <ResourceDetailCard title={t.agents.source} className="lg:col-span-2">
+        <ResourceDetailCard title={t.agents.source}>
           <pre className="bg-muted type-body max-h-[30rem] overflow-auto rounded-xl p-4 whitespace-pre-wrap">
             {agent.soul ?? t.agents.notSpecified}
           </pre>

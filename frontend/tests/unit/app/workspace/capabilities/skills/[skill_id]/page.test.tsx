@@ -25,6 +25,12 @@ vi.mock("@/core/i18n/hooks", () => ({
           exportFailed: "Export failed",
           applyVisibility: "Apply",
           information: "Information",
+          usage: "Usage",
+          command: "Command",
+          input: "Input",
+          output: "Output",
+          inputDescription: "Input materials",
+          outputDescription: "Output results",
           license: "License",
           allowedTools: "Tools",
           internet: "Internet",
@@ -85,5 +91,15 @@ describe("SkillDetailPage export", () => {
     await waitFor(() =>
       expect(toastError).toHaveBeenCalledWith("Export failed"),
     );
+  });
+
+  test("keeps usage fields in basic information and removes title badges", () => {
+    render(<SkillDetailPage />);
+    expect(screen.getByText("Information")).toBeInTheDocument();
+    expect(screen.getByText("Input materials")).toBeInTheDocument();
+    expect(screen.getByText("Output results")).toBeInTheDocument();
+    expect(screen.queryByText("Skills")).not.toBeInTheDocument();
+    expect(screen.queryByText("Private")).not.toBeInTheDocument();
+    expect(screen.getByText("SKILL.md")).toBeInTheDocument();
   });
 });

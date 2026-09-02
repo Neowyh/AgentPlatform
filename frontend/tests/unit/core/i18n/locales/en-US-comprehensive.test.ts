@@ -410,6 +410,8 @@ describe("enUS locale comprehensive", () => {
       confirm: "Confirm",
       edit: "Edit Expert",
       export: "Export",
+      detailChat: "Chat",
+      changeVisibility: "Change visibility",
       notFound: "Expert not found",
       configuration: "Configuration",
       model: "Model",
@@ -1154,8 +1156,8 @@ describe("enUS locale comprehensive", () => {
         });
       }
 
-      it("has 59 keys", () => {
-        expect(Object.keys(enUS.settings.skills)).toHaveLength(59);
+      it("has 60 keys", () => {
+        expect(Object.keys(enUS.settings.skills)).toHaveLength(60);
       });
     });
 

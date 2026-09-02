@@ -18,6 +18,11 @@ vi.mock("sonner", () => ({
   toast: { error: mocks.toastError, success: vi.fn() },
 }));
 vi.mock("@/core/agents", () => ({ useAgent: mocks.useAgent }));
+vi.mock("@/core/skills", () => ({
+  useSkills: () => ({
+    skills: [{ slug: "code-review", name: "代码变更评审" }],
+  }),
+}));
 vi.mock("@/core/agents/api", () => ({ exportAgent: mocks.exportAgent }));
 vi.mock("@/core/visibility-applications/api", () => ({
   changeResourceVisibility: vi.fn(),
@@ -32,21 +37,21 @@ vi.mock("@/components/workspace/resources/visibility-impact-panel", () => ({
 vi.mock("@/core/i18n/hooks", () => ({
   useI18n: () => ({
     t: {
-      common: { loading: "Loading", cancel: "Cancel" },
+      common: { loading: "Loading", cancel: "Cancel", edit: "Edit" },
       resources: { experts: "Experts" },
       agents: {
-        startChatting: "Start chatting",
-        applyVisibility: "Apply visibility",
-        edit: "Edit Expert",
+        startChatting: "Chat",
+        detailChat: "Chat",
+        applyVisibility: "Change visibility",
+        changeVisibility: "Change visibility",
+        edit: "Edit",
         export: "Export",
         notFound: "Expert not found",
-        configuration: "Configuration",
+        configuration: "Basic information",
         model: "Model",
         defaultModel: "Default model",
         toolGroups: "Tool groups",
         skills: "Skills",
-        usage: "How to use",
-        command: "Entry point",
         source: "Source definition",
         notSpecified: "Not specified",
         exportFailed: "Export failed",
@@ -94,19 +99,17 @@ describe("AgentDetailPage unified resource detail", () => {
   test("renders the shared resource identity and localized actions", () => {
     render(<AgentDetailPage />);
     expect(screen.getByText("故障归零专家")).toBeInTheDocument();
-    expect(screen.getByText("Experts")).toBeInTheDocument();
-    expect(
-      screen.getByRole("link", { name: "Start chatting" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("link", { name: /Edit Expert/ }),
-    ).toBeInTheDocument();
+    expect(screen.queryByText("Experts")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Chat" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Edit" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Export" })).toBeInTheDocument();
   });
 
   test("shows real configuration and source without placeholder statistics", () => {
     render(<AgentDetailPage />);
-    expect(screen.getByText("Configuration")).toBeInTheDocument();
+    expect(screen.getByText("Basic information")).toBeInTheDocument();
+    expect(screen.getByText("代码变更评审")).toBeInTheDocument();
+    expect(screen.queryByText("How to use")).not.toBeInTheDocument();
     expect(screen.getByText("Be evidence-led.")).toBeInTheDocument();
     expect(screen.queryByText("Conversations")).not.toBeInTheDocument();
     expect(screen.queryByText("--")).not.toBeInTheDocument();
@@ -120,7 +123,7 @@ describe("AgentDetailPage unified resource detail", () => {
     });
     render(<AgentDetailPage />);
     expect(
-      screen.queryByRole("link", { name: /Edit Expert/ }),
+      screen.queryByRole("link", { name: "Edit" }),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Export" }),

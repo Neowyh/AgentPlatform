@@ -179,6 +179,7 @@ export interface Translations {
     more: string;
     agentCreated: string;
     startChatting: string;
+    detailChat: string;
     backToGallery: string;
     visibility: string;
     visibilityPrivate: string;
@@ -186,6 +187,7 @@ export interface Translations {
     visibilityPublic: string;
     visibilityAdminOnly: string;
     applyVisibility: string;
+    changeVisibility: string;
     applyVisibilityDescription: string;
     currentVisibility: string;
     targetVisibility: string;
@@ -691,6 +693,7 @@ export interface Translations {
       version: string;
       skillMd: string;
       notSpecified: string;
+      noDescription: string;
       readOnly: string;
       saved: string;
       saveFailed: string;

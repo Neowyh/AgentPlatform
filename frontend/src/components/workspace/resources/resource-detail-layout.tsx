@@ -1,7 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { WorkspaceBreadcrumb } from "@/components/workspace/workspace-breadcrumb";
 
@@ -9,10 +8,8 @@ interface ResourceDetailLayoutProps {
   backHref: string;
   breadcrumb: ReactNode;
   icon: ReactNode;
-  typeLabel: string;
   title: string;
   description?: string | null;
-  status?: string;
   actions: ReactNode;
   children: ReactNode;
 }
@@ -21,10 +18,8 @@ export function ResourceDetailLayout({
   backHref,
   breadcrumb,
   icon,
-  typeLabel,
   title,
   description,
-  status,
   actions,
   children,
 }: ResourceDetailLayoutProps) {
@@ -48,16 +43,6 @@ export function ResourceDetailLayout({
               {icon}
             </div>
             <div className="min-w-0">
-              <div className="mb-1 flex flex-wrap items-center gap-2">
-                <Badge variant="secondary" className="type-caption">
-                  {typeLabel}
-                </Badge>
-                {status && (
-                  <Badge variant="outline" className="type-caption">
-                    {status}
-                  </Badge>
-                )}
-              </div>
               <h1 className="type-page-title truncate font-semibold">
                 {title}
               </h1>
@@ -74,9 +59,7 @@ export function ResourceDetailLayout({
         </div>
       </header>
       <div className="flex-1 overflow-y-auto px-4 py-5 sm:p-6">
-        <div className="mx-auto grid max-w-6xl gap-5 lg:grid-cols-2">
-          {children}
-        </div>
+        <div className="mx-auto grid max-w-4xl gap-5">{children}</div>
       </div>
     </div>
   );
