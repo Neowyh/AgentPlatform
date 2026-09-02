@@ -4,6 +4,18 @@ import { describe, expect, it } from "vitest";
 import { useScenarioBinding } from "@/core/scenarios/binding";
 
 describe("useScenarioBinding", () => {
+  it("selects the scenario and Agent pill for a configured agent", () => {
+    const { result } = renderHook(() => useScenarioBinding());
+
+    act(() => result.current.selectAgent("fault-zeroing"));
+
+    expect(result.current.selectedScenario).toBe("professional");
+    expect(result.current.selectedPill).toEqual({
+      scenarioId: "professional",
+      agentSlug: "fault-zeroing",
+    });
+  });
+
   it("starts on creative and derives Agent-only binding", () => {
     const { result } = renderHook(() => useScenarioBinding());
 

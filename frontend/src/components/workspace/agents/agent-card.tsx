@@ -49,7 +49,9 @@ export function AgentCard({ agent }: AgentCardProps) {
   const routeIdentity = agent.resource_id ?? agent.name;
 
   function handleChat() {
-    router.push(`/workspace/capabilities/experts/${routeIdentity}/chats/new`);
+    router.push(
+      `/workspace/chats/new?agent=${encodeURIComponent(routeIdentity)}`,
+    );
   }
 
   async function handleToggleFavorite() {

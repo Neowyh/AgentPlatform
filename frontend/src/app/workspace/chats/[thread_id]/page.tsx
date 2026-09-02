@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { type PromptInputMessage } from "@/components/ai-elements/prompt-input";
@@ -115,6 +116,8 @@ function RecentTaskCards({
 
 export default function ChatPage() {
   const { t } = useI18n();
+  const searchParams = useSearchParams();
+  const requestedAgent = searchParams.get("agent");
   const {
     threadId,
     setThreadId,
@@ -137,6 +140,7 @@ export default function ChatPage() {
     selectedPill,
     selectedChip,
     selectScenario,
+    selectAgent,
     togglePill,
     toggleChip,
     activeBinding,
@@ -260,6 +264,28 @@ export default function ChatPage() {
     resetSelection();
     setPendingTemplate(null);
   }, [threadId, resetSelection]);
+
+  const initializedAgentRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!isNewThread || !requestedAgent || agents.length === 0) return;
+    if (initializedAgentRef.current === requestedAgent) return;
+
+    const agent = agents.find(
+      (item) =>
+        item.resource_id === requestedAgent ||
+        item.slug === requestedAgent ||
+        item.name === requestedAgent,
+    );
+    const agentSlug = agent?.slug ?? agent?.name ?? requestedAgent;
+    const isConfiguredAgent =
+      getChipsByPill("daily", agentSlug).length > 0 ||
+      getChipsByPill("creative", agentSlug).length > 0 ||
+      getChipsByPill("professional", agentSlug).length > 0;
+    if (!isConfiguredAgent) return;
+
+    selectAgent(agentSlug);
+    initializedAgentRef.current = requestedAgent;
+  }, [agents, isNewThread, requestedAgent, selectAgent]);
   const threadTokenUsage = useThreadTokenUsage(
     isNewThread || isMock ? undefined : threadId,
     { enabled: tokenUsageEnabled && !isMock },

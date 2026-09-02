@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 
-import { getChipsByPill, getPillsByScenario } from "./config";
+import { SCENARIOS, getChipsByPill, getPillsByScenario } from "./config";
 import type {
   ChipSelection,
   PillSelection,
@@ -35,6 +35,7 @@ export interface ScenarioBinding {
   bindingState: BindingState;
   pendingTemplate: string | null;
   selectScenario: (id: ScenarioId) => void;
+  selectAgent: (agentSlug: string) => void;
   togglePill: (agentSlug: string) => void;
   toggleChip: (taskId: string) => void;
   consumePendingTemplate: () => void;
@@ -71,6 +72,19 @@ export function useScenarioBinding(
   const selectScenario = useCallback((id: ScenarioId) => {
     setSelectedScenario((current) => (current === id ? current : id));
     setSelectedPill(null);
+    setSelectedChip(null);
+    setPendingTemplate(null);
+    setBindingState("idle");
+  }, []);
+
+  const selectAgent = useCallback((agentSlug: string) => {
+    const match = SCENARIOS.find((scenario) =>
+      scenario.agentPills.some((pill) => pill.agentSlug === agentSlug),
+    );
+    if (!match) return;
+
+    setSelectedScenario(match.id);
+    setSelectedPill({ scenarioId: match.id, agentSlug });
     setSelectedChip(null);
     setPendingTemplate(null);
     setBindingState("idle");
@@ -188,6 +202,7 @@ export function useScenarioBinding(
     bindingState,
     pendingTemplate,
     selectScenario,
+    selectAgent,
     togglePill,
     toggleChip,
     consumePendingTemplate: useCallback(() => {

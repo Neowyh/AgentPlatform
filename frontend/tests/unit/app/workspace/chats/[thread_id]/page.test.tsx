@@ -49,6 +49,11 @@ const {
   mockUseSkills: vi.fn().mockReturnValue({ skills: [] }),
 }));
 
+let mockSearchParams = new URLSearchParams();
+vi.mock("next/navigation", () => ({
+  useSearchParams: () => mockSearchParams,
+}));
+
 vi.mock("@/core/i18n/hooks", () => ({
   useI18n: () => ({
     t: {
@@ -186,6 +191,7 @@ afterEach(() => {
 
 describe("ChatPage", () => {
   beforeEach(() => {
+    mockSearchParams = new URLSearchParams();
     mockUseThreadChat.mockReturnValue({
       threadId: "test-thread",
       setThreadId: vi.fn(),
@@ -404,6 +410,26 @@ describe("ChatPage", () => {
     expect(mockLastScenarioCascadeProps.current.selectedScenario).toBe(
       "creative",
     );
+  });
+
+  test("preselects the configured Agent from the new-chat URL", () => {
+    mockSearchParams = new URLSearchParams("agent=fault-zeroing");
+    mockUseThreadChat.mockReturnValue({
+      threadId: "test-thread",
+      setThreadId: vi.fn(),
+      isNewThread: true,
+      setIsNewThread: vi.fn(),
+      isMock: false,
+    });
+    mockUseAgents.mockReturnValue({
+      agents: [{ slug: "fault-zeroing", resource_id: "fault-resource-id" }],
+    });
+
+    render(<ChatPage />);
+
+    expect(mockLastInputBoxProps.current.selectedTags).toEqual([
+      { id: "agent:fault-zeroing", label: "故障归零" },
+    ]);
   });
 
   test("uses the selected Agent pill label inside the input", () => {

@@ -234,11 +234,11 @@ describe("AgentCard", () => {
     expect(screen.getByText("Chat")).toBeInTheDocument();
   });
 
-  test("chat button navigates to the agent's new chat route", () => {
+  test("chat button navigates to the shared new chat page with the agent", () => {
     render(<AgentCard agent={makeAgent({ name: "my-agent" })} />);
     fireEvent.click(screen.getByTestId("agent-chat-button"));
     expect(mockPush).toHaveBeenCalledWith(
-      "/workspace/capabilities/experts/my-agent/chats/new",
+      "/workspace/chats/new?agent=my-agent",
     );
   });
 
@@ -254,7 +254,7 @@ describe("AgentCard", () => {
     );
     fireEvent.click(screen.getByTestId("agent-chat-button"));
     expect(mockPush).toHaveBeenCalledWith(
-      "/workspace/capabilities/experts/11111111-1111-1111-1111-111111111111/chats/new",
+      "/workspace/chats/new?agent=11111111-1111-1111-1111-111111111111",
     );
     expect(screen.getByTestId("agent-favorite-button")).toBeInTheDocument();
     expect(screen.getByTestId("agent-export-button")).toBeInTheDocument();

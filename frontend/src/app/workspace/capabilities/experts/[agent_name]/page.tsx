@@ -151,7 +151,7 @@ export default function AgentDetailPage() {
           <>
             <Button asChild>
               <Link
-                href={`/workspace/capabilities/experts/${agentName}/chats/new`}
+                href={`/workspace/chats/new?agent=${encodeURIComponent(resourceId)}`}
               >
                 <MessageSquareIcon className="mr-1.5 h-4 w-4" />
                 {t.agents.detailChat}
