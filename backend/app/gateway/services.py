@@ -119,11 +119,11 @@ def normalize_input(raw_input: dict[str, Any] | None) -> dict[str, Any]:
 
 
 def validate_evidence_selection(evidence_mode: str | None, code_package_id: str | None) -> tuple[str, str | None]:
-    """Validate explicit evidence mode before any workflow or agent starts."""
-    mode = evidence_mode or "document"
+    """Normalize the hidden hybrid mode and validate an optional code package."""
+    mode = evidence_mode or "hybrid"
     if mode not in {"document", "code", "hybrid"}:
         raise HTTPException(status_code=400, detail="evidence_mode must be document, code, or hybrid")
-    if mode in {"code", "hybrid"} and not code_package_id:
+    if mode == "code" and not code_package_id:
         raise HTTPException(status_code=400, detail=f"{mode} mode requires a Code Evidence Package")
     if mode == "document" and code_package_id:
         raise HTTPException(status_code=400, detail="document mode cannot include a Code Evidence Package")

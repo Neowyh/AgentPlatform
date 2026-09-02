@@ -56,6 +56,11 @@ export type ThreadStreamOptions = {
   onStart?: (threadId: string, runId: string) => void;
   onFinish?: (state: AgentThreadState) => void;
   onToolEnd?: (event: ToolEndEvent) => void;
+  prepareSubmit?: (threadId: string) => Promise<{
+    threadId: string;
+    context?: Record<string, unknown>;
+  }>;
+  onThreadCreated?: (threadId: string) => void;
 };
 
 type SendMessageOptions = {
@@ -140,6 +145,8 @@ export function useThreadStream({
   onStart,
   onFinish,
   onToolEnd,
+  prepareSubmit,
+  onThreadCreated,
 }: ThreadStreamOptions) {
   const { t } = useI18n();
   // Track the thread ID that is currently streaming to handle thread changes during streaming
@@ -154,6 +161,7 @@ export function useThreadStream({
     onStart,
     onFinish,
     onToolEnd,
+    onThreadCreated,
   });
 
   const {
@@ -166,8 +174,14 @@ export function useThreadStream({
 
   // Keep listeners ref updated with latest callbacks
   useEffect(() => {
-    listeners.current = { onSend, onStart, onFinish, onToolEnd };
-  }, [onSend, onStart, onFinish, onToolEnd]);
+    listeners.current = {
+      onSend,
+      onStart,
+      onFinish,
+      onToolEnd,
+      onThreadCreated,
+    };
+  }, [onSend, onStart, onFinish, onToolEnd, onThreadCreated]);
 
   useEffect(() => {
     const normalizedThreadId = threadId ?? null;
@@ -542,6 +556,15 @@ export function useThreadStream({
           }),
         );
 
+        let submitThreadId = threadId;
+        let preparedContext: Record<string, unknown> = {};
+        if (threadId === "new" && prepareSubmit) {
+          const prepared = await prepareSubmit(threadId);
+          submitThreadId = prepared.threadId;
+          preparedContext = prepared.context ?? {};
+          listeners.current.onThreadCreated?.(submitThreadId);
+        }
+
         await thread.submit(
           {
             messages: [
@@ -563,13 +586,14 @@ export function useThreadStream({
             ],
           },
           {
-            threadId: threadId,
+            threadId: submitThreadId,
             streamSubgraphs: true,
             streamResumable: true,
             config: {
               recursion_limit: 1000,
             },
             context: {
+              ...preparedContext,
               ...extraContext,
               ...context,
               thinking_enabled: context.mode !== "flash",
@@ -597,7 +621,14 @@ export function useThreadStream({
         sendInFlightRef.current = false;
       }
     },
-    [thread, t.uploads.uploadingFiles, context, queryClient, humanMessageCount],
+    [
+      thread,
+      t.uploads.uploadingFiles,
+      context,
+      queryClient,
+      humanMessageCount,
+      prepareSubmit,
+    ],
   );
 
   // Cache the latest thread messages in a ref to compare against incoming history messages for deduplication,

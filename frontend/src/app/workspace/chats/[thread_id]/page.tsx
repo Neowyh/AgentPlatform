@@ -26,6 +26,7 @@ import { TodoList } from "@/components/workspace/todo-list";
 import { TokenUsageIndicator } from "@/components/workspace/token-usage-indicator";
 import { Welcome } from "@/components/workspace/welcome";
 import { useAgent, useAgents } from "@/core/agents/hooks";
+import { getAPIClient } from "@/core/api";
 import { useI18n } from "@/core/i18n/hooks";
 import { useModels } from "@/core/models/hooks";
 import { useNotification } from "@/core/notification/hooks";
@@ -45,7 +46,10 @@ import {
   textOfMessage,
   titleOfThread,
 } from "@/core/threads/utils";
-import type { CodeEvidencePackage, EvidenceMode } from "@/core/uploads/api";
+import {
+  type CodeEvidencePackage,
+  uploadCodeEvidencePackage,
+} from "@/core/uploads/api";
 import { env } from "@/env";
 import { cn } from "@/lib/utils";
 
@@ -162,12 +166,10 @@ export default function ChatPage() {
   const { agent: selectedAgentDetails } = useAgent(selectedAgent?.resource_id);
   const [pendingTemplate, setPendingTemplate] = useState<string | null>(null);
   const [templateResetKey, setTemplateResetKey] = useState(0);
-  const [evidenceMode, setEvidenceMode] = useState<EvidenceMode>(
-    (settings.context.evidence_mode as EvidenceMode | undefined) ?? "document",
-  );
   const [codePackage, setCodePackage] = useState<CodeEvidencePackage | null>(
     null,
   );
+  const [pendingCodeFile, setPendingCodeFile] = useState<File | null>(null);
   const evidenceThreadRef = useRef<string | null>(null);
 
   const activeScenario = selectedScenario;
@@ -194,12 +196,9 @@ export default function ChatPage() {
   useEffect(() => {
     if (evidenceThreadRef.current === threadId) return;
     evidenceThreadRef.current = threadId;
-    setEvidenceMode(
-      (settings.context.evidence_mode as EvidenceMode | undefined) ??
-        "document",
-    );
     setCodePackage(null);
-  }, [settings.context.evidence_mode, threadId]);
+    setPendingCodeFile(null);
+  }, [threadId]);
 
   const allowedSkillNames = useMemo(() => {
     if (!selectedPill) return undefined;
@@ -244,20 +243,13 @@ export default function ChatPage() {
       task_label: chip?.label,
       prompt_template: chip?.promptTemplate,
       connector_name: selectedConnector ?? undefined,
-      ...(selectedPill.agentSlug === "fault-zeroing" &&
-      evidenceMode !== "document"
+      ...(selectedPill.agentSlug === "fault-zeroing"
         ? {
-            evidence_mode: evidenceMode,
+            evidence_mode: "hybrid",
             code_package_id: codePackage?.package_id,
           }
         : {}),
     };
-    if (
-      selectedPill.agentSlug === "fault-zeroing" &&
-      evidenceMode === "document"
-    ) {
-      delete nextContext.code_package_id;
-    }
     return nextContext;
   }, [
     activeBinding,
@@ -267,7 +259,6 @@ export default function ChatPage() {
     selectedPill,
     selectedChip,
     selectedConnector,
-    evidenceMode,
     codePackage,
   ]);
 
@@ -322,6 +313,32 @@ export default function ChatPage() {
     threadId: isNewThread ? undefined : threadId,
     context: selectionContext,
     isMock,
+    prepareSubmit:
+      selectedPill?.agentSlug === "fault-zeroing" && pendingCodeFile
+        ? async () => {
+            const created = await getAPIClient().threads.create({
+              metadata: { agent_name: selectedPill.agentSlug },
+            });
+            const uploaded = await uploadCodeEvidencePackage(
+              created.thread_id,
+              pendingCodeFile,
+            );
+            setCodePackage(uploaded);
+            setPendingCodeFile(null);
+            return {
+              threadId: created.thread_id,
+              context: {
+                evidence_mode: "hybrid",
+                code_package_id: uploaded.package_id,
+              },
+            };
+          }
+        : undefined,
+    onThreadCreated: (createdThreadId) => {
+      setThreadId(createdThreadId);
+      setIsNewThread(false);
+      history.replaceState(null, "", `/workspace/chats/${createdThreadId}`);
+    },
     // onSend only animates the UI; do NOT flip `isNewThread` here — the
     // LangGraph SDK eagerly fetches /history the moment it receives a
     // thread id and assumes the thread exists on the backend (issue #2746).
@@ -487,17 +504,10 @@ export default function ChatPage() {
                     {selectedPill?.agentSlug === "fault-zeroing" && (
                       <FaultZeroingEvidenceControls
                         threadId={threadId}
-                        mode={evidenceMode}
                         packageInfo={codePackage}
-                        onModeChange={(mode) => {
-                          setEvidenceMode(mode);
-                          if (mode === "document") setCodePackage(null);
-                          setSettings("context", {
-                            ...settings.context,
-                            evidence_mode: mode,
-                          });
-                        }}
                         onPackageChange={setCodePackage}
+                        pendingFile={pendingCodeFile}
+                        onPendingFileChange={setPendingCodeFile}
                       />
                     )}
                     <InputBox

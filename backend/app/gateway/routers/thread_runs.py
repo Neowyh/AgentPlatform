@@ -54,7 +54,7 @@ class RunCreateRequest(BaseModel):
     after_seconds: float | None = Field(default=None, description="Delayed execution")
     if_not_exists: Literal["reject", "create"] = Field(default="create", description="Thread creation policy")
     feedback_keys: list[str] | None = Field(default=None, description="LangSmith feedback keys")
-    evidence_mode: Literal["document", "code", "hybrid"] = Field(default="document", description="Evidence source for fault-analysis runs")
+    evidence_mode: Literal["document", "code", "hybrid"] = Field(default="hybrid", description="Internal evidence strategy for fault-analysis runs")
     code_package_id: str | None = Field(default=None, description="Validated Thread-private Code Evidence Package")
 
 

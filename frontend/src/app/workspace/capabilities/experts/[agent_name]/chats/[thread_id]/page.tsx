@@ -13,6 +13,7 @@ import {
   useThreadChat,
 } from "@/components/workspace/chats";
 import { ExportTrigger } from "@/components/workspace/export-trigger";
+import { FaultZeroingEvidenceControls } from "@/components/workspace/fault-zeroing-evidence-controls";
 import { InputBox } from "@/components/workspace/input-box";
 import {
   MessageList,
@@ -24,6 +25,7 @@ import { TodoList } from "@/components/workspace/todo-list";
 import { TokenUsageIndicator } from "@/components/workspace/token-usage-indicator";
 import { Tooltip } from "@/components/workspace/tooltip";
 import { useAgent } from "@/core/agents";
+import { getAPIClient } from "@/core/api";
 import { useI18n } from "@/core/i18n/hooks";
 import { useModels } from "@/core/models/hooks";
 import { useNotification } from "@/core/notification/hooks";
@@ -31,6 +33,10 @@ import { useLocalSettings, useThreadSettings } from "@/core/settings";
 import { useThreadStream, useThreadTokenUsage } from "@/core/threads/hooks";
 import { threadTokenUsageToTokenUsage } from "@/core/threads/token-usage";
 import { textOfMessage } from "@/core/threads/utils";
+import {
+  type CodeEvidencePackage,
+  uploadCodeEvidencePackage,
+} from "@/core/uploads/api";
 import { env } from "@/env";
 import { cn } from "@/lib/utils";
 
@@ -63,6 +69,10 @@ export default function AgentChatPage() {
   const backendTokenUsage = threadTokenUsageToTokenUsage(threadTokenUsage.data);
 
   const { showNotification } = useNotification();
+  const [codePackage, setCodePackage] = useState<CodeEvidencePackage | null>(
+    null,
+  );
+  const [pendingCodeFile, setPendingCodeFile] = useState<File | null>(null);
 
   useEffect(() => {
     setIsWelcomeMode(isNewThread);
@@ -78,8 +88,42 @@ export default function AgentChatPage() {
     loadMoreHistory,
   } = useThreadStream({
     threadId: isNewThread ? undefined : threadId,
-    context: { ...settings.context, agent_name: agent_name },
+    context: {
+      ...settings.context,
+      agent_name: agent_name,
+      evidence_mode: "hybrid",
+      code_package_id: codePackage?.package_id,
+    },
     isMock,
+    prepareSubmit: pendingCodeFile
+      ? async () => {
+          const created = await getAPIClient().threads.create({
+            metadata: { agent_name },
+          });
+          const uploaded = await uploadCodeEvidencePackage(
+            created.thread_id,
+            pendingCodeFile,
+          );
+          setCodePackage(uploaded);
+          setPendingCodeFile(null);
+          return {
+            threadId: created.thread_id,
+            context: {
+              evidence_mode: "hybrid",
+              code_package_id: uploaded.package_id,
+            },
+          };
+        }
+      : undefined,
+    onThreadCreated: (createdThreadId) => {
+      setThreadId(createdThreadId);
+      setIsNewThread(false);
+      history.replaceState(
+        null,
+        "",
+        `/workspace/capabilities/experts/${agent_name}/chats/${createdThreadId}`,
+      );
+    },
     onSend: () => {
       setIsWelcomeMode(false);
     },
@@ -186,6 +230,20 @@ export default function AgentChatPage() {
 
           <main className="flex min-h-0 max-w-full grow flex-col">
             <div className="flex min-h-0 flex-1 justify-center">
+              {isWelcomeMode && agent && (
+                <div className="flex max-w-xl flex-col items-center justify-center px-6 text-center">
+                  <BotIcon className="text-primary mb-3 size-10" />
+                  <h1 className="type-h2">{agent.name}</h1>
+                  <p className="text-muted-foreground mt-2">
+                    {agent.summary ?? agent.description}
+                  </p>
+                  {agent.skills && agent.skills.length > 0 && (
+                    <p className="type-body text-muted-foreground mt-3">
+                      擅长：{agent.skills.join("、")}
+                    </p>
+                  )}
+                </div>
+              )}
               <MessageList
                 className={cn("size-full", !isWelcomeMode && "pt-10")}
                 threadId={threadId}
@@ -235,6 +293,15 @@ export default function AgentChatPage() {
                   </div>
                 )}
 
+                {agent_name === "fault-zeroing" && (
+                  <FaultZeroingEvidenceControls
+                    threadId={threadId}
+                    packageInfo={codePackage}
+                    onPackageChange={setCodePackage}
+                    pendingFile={pendingCodeFile}
+                    onPendingFileChange={setPendingCodeFile}
+                  />
+                )}
                 <InputBox
                   className={cn(
                     "bg-background/5 w-full",
@@ -250,7 +317,11 @@ export default function AgentChatPage() {
                         ? "streaming"
                         : "ready"
                   }
-                  context={settings.context}
+                  context={{
+                    ...settings.context,
+                    evidence_mode: "hybrid",
+                    code_package_id: codePackage?.package_id,
+                  }}
                   disabled={
                     env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true" ||
                     isUploading

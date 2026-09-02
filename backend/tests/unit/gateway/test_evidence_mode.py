@@ -4,12 +4,12 @@ from fastapi import HTTPException
 from app.gateway.services import validate_evidence_selection
 
 
-def test_document_mode_is_backward_compatible():
-    assert validate_evidence_selection(None, None) == ("document", None)
+def test_hybrid_mode_is_default_without_a_code_package():
+    assert validate_evidence_selection(None, None) == ("hybrid", None)
     assert validate_evidence_selection("document", None) == ("document", None)
 
 
-@pytest.mark.parametrize("mode", ["code", "hybrid"])
+@pytest.mark.parametrize("mode", ["code"])
 def test_code_modes_require_a_package(mode):
     with pytest.raises(HTTPException, match="requires"):
         validate_evidence_selection(mode, None)
