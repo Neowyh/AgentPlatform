@@ -1,14 +1,17 @@
 "use client";
 
-import { ArrowLeftIcon, Code2Icon, DownloadIcon, EditIcon } from "lucide-react";
+import { Code2Icon, DownloadIcon, EditIcon } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  ResourceDetailCard,
+  ResourceDetailLayout,
+  ResourceDetailRow,
+} from "@/components/workspace/resources/resource-detail-layout";
 import { SkillApplyDialog } from "@/components/workspace/settings/skill-apply-dialog";
 import { WorkspaceBreadcrumb } from "@/components/workspace/workspace-breadcrumb";
 import { useI18n } from "@/core/i18n/hooks";
@@ -32,6 +35,12 @@ export default function SkillDetailPage() {
       </div>
     );
   const invocation = skill.slug ?? skill.name;
+  const visibility =
+    skill.visibility === "public"
+      ? t.settings.skills.applyDialogVisibilityPublic
+      : skill.visibility === "department"
+        ? t.settings.skills.applyDialogVisibilityDepartment
+        : t.settings.skills.applyDialogVisibilityPrivate;
   const download = async () => {
     try {
       const url = URL.createObjectURL(await exportSkill(skill.resource_id!));
@@ -45,31 +54,16 @@ export default function SkillDetailPage() {
     }
   };
   return (
-    <main className="flex size-full flex-col">
-      <WorkspaceBreadcrumb skill={skill} />
-      <div className="flex items-center justify-between border-b px-6 py-4">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon-sm" asChild>
-            <Link
-              href="/workspace/capabilities/skills"
-              aria-label={t.settings.skills.backToSkills}
-            >
-              <ArrowLeftIcon className="h-4 w-4" />
-            </Link>
-          </Button>
-          <div className="flex items-center gap-2">
-            <div className="bg-primary/10 text-primary flex h-9 w-9 items-center justify-center rounded-lg">
-              <Code2Icon className="h-5 w-5" />
-            </div>
-            <div>
-              <h1 className="type-page-title font-semibold">{skill.name}</h1>
-              <p className="text-muted-foreground type-body mt-0.5">
-                {skill.summary ?? skill.description}
-              </p>
-            </div>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
+    <ResourceDetailLayout
+      breadcrumb={<WorkspaceBreadcrumb skill={skill} />}
+      backHref="/workspace/capabilities/skills"
+      icon={<Code2Icon className="h-5 w-5" />}
+      typeLabel={t.resources.skills}
+      title={skill.name}
+      description={skill.summary ?? skill.description}
+      status={visibility}
+      actions={
+        <>
           <Button asChild>
             <Link
               href={`/workspace/chats/new?prompt=${encodeURIComponent(`/${invocation} `)}`}
@@ -96,60 +90,69 @@ export default function SkillDetailPage() {
               </Button>
             </>
           )}
-        </div>
-      </div>
-      <div className="flex-1 overflow-y-auto p-6">
-        <div className="mx-auto grid max-w-4xl gap-6 lg:grid-cols-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>{t.settings.skills.information}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex flex-wrap gap-2">
-                <Badge>{skill.category}</Badge>
-                <Badge variant="outline">{skill.visibility ?? "private"}</Badge>
-                <Badge variant="outline">/{invocation}</Badge>
-                {skill.read_only && (
-                  <Badge variant="outline">{t.settings.skills.readOnly}</Badge>
-                )}
-              </div>
-              <Detail
-                label={t.settings.skills.license}
-                value={skill.license || t.settings.skills.notSpecified}
-              />
-              <Detail
-                label={t.settings.skills.allowedTools}
-                value={
-                  skill.allowed_tools?.join(", ") ??
-                  t.settings.skills.notSpecified
-                }
-              />
-              <Detail
-                label={t.settings.skills.internet}
-                value={
-                  skill.requires_internet
-                    ? t.settings.skills.required
-                    : t.settings.skills.notRequired
-                }
-              />
-              <Detail
-                label={t.settings.skills.version}
-                value={`v${skill.latest_version ?? 1}`}
-              />
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle>{t.settings.skills.skillMd}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <pre className="bg-muted type-body max-h-[28rem] overflow-auto rounded-md p-4 whitespace-pre-wrap">
-                {skill.skill_md ?? t.settings.skills.notSpecified}
-              </pre>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+        </>
+      }
+    >
+      <ResourceDetailCard title={t.settings.skills.information}>
+        <dl>
+          <ResourceDetailRow
+            label={t.settings.skills.category}
+            value={
+              skill.category === "custom" ? t.common.custom : t.common.public
+            }
+          />
+          <ResourceDetailRow
+            label={t.settings.skills.command}
+            value={`/${invocation}`}
+          />
+          <ResourceDetailRow
+            label={t.settings.skills.license}
+            value={skill.license || t.settings.skills.notSpecified}
+          />
+          <ResourceDetailRow
+            label={t.settings.skills.allowedTools}
+            value={
+              skill.allowed_tools?.join(", ") ?? t.settings.skills.notSpecified
+            }
+          />
+          <ResourceDetailRow
+            label={t.settings.skills.internet}
+            value={
+              skill.requires_internet
+                ? t.settings.skills.required
+                : t.settings.skills.notRequired
+            }
+          />
+          <ResourceDetailRow
+            label={t.settings.skills.version}
+            value={`v${skill.latest_version ?? 1}`}
+          />
+        </dl>
+      </ResourceDetailCard>
+      <ResourceDetailCard title={t.settings.skills.usage}>
+        <dl>
+          <ResourceDetailRow
+            label={t.settings.skills.command}
+            value={`/${invocation}`}
+          />
+          <ResourceDetailRow
+            label={t.settings.skills.input}
+            value={t.settings.skills.inputDescription}
+          />
+          <ResourceDetailRow
+            label={t.settings.skills.output}
+            value={t.settings.skills.outputDescription}
+          />
+        </dl>
+      </ResourceDetailCard>
+      <ResourceDetailCard
+        title={t.settings.skills.skillMd}
+        className="lg:col-span-2"
+      >
+        <pre className="bg-muted type-body max-h-[30rem] overflow-auto rounded-xl p-4 whitespace-pre-wrap">
+          {skill.skill_md ?? t.settings.skills.notSpecified}
+        </pre>
+      </ResourceDetailCard>
       <SkillApplyDialog
         skill={applyOpen ? skill : null}
         open={applyOpen}
@@ -174,14 +177,6 @@ export default function SkillDetailPage() {
           setApplyOpen(false);
         }}
       />
-    </main>
-  );
-}
-function Detail({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <dt className="text-muted-foreground type-caption">{label}</dt>
-      <dd className="type-body mt-1">{value}</dd>
-    </div>
+    </ResourceDetailLayout>
   );
 }

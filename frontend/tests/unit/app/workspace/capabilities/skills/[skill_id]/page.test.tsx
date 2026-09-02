@@ -14,6 +14,7 @@ vi.mock("@/core/i18n/hooks", () => ({
   useI18n: () => ({
     t: {
       common: { loading: "Loading" },
+      resources: { skills: "Skills" },
       settings: {
         skills: {
           notFound: "Not found",

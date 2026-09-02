@@ -408,6 +408,19 @@ describe("enUS locale comprehensive", () => {
       downgradeConfirmDescription:
         "The downgrade takes effect immediately without approval. Continue?",
       confirm: "Confirm",
+      edit: "Edit Expert",
+      export: "Export",
+      notFound: "Expert not found",
+      configuration: "Configuration",
+      model: "Model",
+      defaultModel: "Default model",
+      toolGroups: "Tool groups",
+      skills: "Skills",
+      usage: "How to use",
+      command: "Entry point",
+      source: "Source definition",
+      notSpecified: "Not specified",
+      exportFailed: "Failed to export Expert. Please try again.",
     };
 
     for (const [key, value] of Object.entries(expected)) {
@@ -1141,8 +1154,8 @@ describe("enUS locale comprehensive", () => {
         });
       }
 
-      it("has 51 keys", () => {
-        expect(Object.keys(enUS.settings.skills)).toHaveLength(51);
+      it("has 59 keys", () => {
+        expect(Object.keys(enUS.settings.skills)).toHaveLength(59);
       });
     });
 

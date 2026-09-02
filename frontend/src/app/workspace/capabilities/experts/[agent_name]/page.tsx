@@ -1,29 +1,17 @@
 "use client";
 
 import {
-  ArrowLeftIcon,
   BotIcon,
-  CalendarIcon,
-  CoinsIcon,
+  DownloadIcon,
   EditIcon,
   MessageSquareIcon,
-  SettingsIcon,
-  SparklesIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -41,9 +29,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  ResourceDetailCard,
+  ResourceDetailLayout,
+  ResourceDetailRow,
+} from "@/components/workspace/resources/resource-detail-layout";
 import { VisibilityImpactPanel } from "@/components/workspace/resources/visibility-impact-panel";
 import { WorkspaceBreadcrumb } from "@/components/workspace/workspace-breadcrumb";
 import { useAgent } from "@/core/agents";
+import { exportAgent } from "@/core/agents/api";
 import { useI18n } from "@/core/i18n/hooks";
 import {
   changeResourceVisibility,
@@ -54,305 +48,171 @@ import { classifyVisibilityChange } from "@/core/visibility-applications/options
 export default function AgentDetailPage() {
   const { t } = useI18n();
   const router = useRouter();
-  const { agent_name } = useParams<{ agent_name: string }>();
-  const { agent, isLoading, error } = useAgent(agent_name);
-
-  const [visibilityDialogOpen, setVisibilityDialogOpen] = useState(false);
-  const [targetVisibility, setTargetVisibility] = useState("department");
-  const [visibilityReason, setVisibilityReason] = useState("");
-  const [submittingApplication, setSubmittingApplication] = useState(false);
+  const { agent_name: agentName } = useParams<{ agent_name: string }>();
+  const { agent, isLoading, error } = useAgent(agentName);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [targetVisibility, setTargetVisibility] = useState("private");
+  const [reason, setReason] = useState("");
   const [confirmingDowngrade, setConfirmingDowngrade] = useState(false);
-  const [cascadeDowngrade, setCascadeDowngrade] = useState(false);
+  const [cascade, setCascade] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    if (agent?.resource_id && agent_name !== agent.resource_id) {
+    if (agent?.resource_id && agentName !== agent.resource_id)
       router.replace(`/workspace/capabilities/experts/${agent.resource_id}`);
-    }
-  }, [agent, agent_name, router]);
+    if (agent) setTargetVisibility(agent.visibility ?? "private");
+  }, [agent, agentName, router]);
 
-  useEffect(() => {
-    if (agent) {
-      setTargetVisibility(agent.visibility ?? "private");
-      setVisibilityReason("");
-      setConfirmingDowngrade(false);
-      setCascadeDowngrade(false);
-    }
-  }, [agent]);
+  if (isLoading)
+    return <div className="text-muted-foreground p-6">{t.common.loading}</div>;
+  if (error || !agent)
+    return (
+      <div className="flex size-full items-center justify-center">
+        <p className="text-destructive">
+          {error?.message ?? t.agents.notFound}
+        </p>
+      </div>
+    );
 
-  async function handleSubmitVisibility() {
-    if (!agent) return;
+  const resourceId = agent.resource_id ?? agentName;
+  const visibility =
+    agent.visibility === "public"
+      ? t.agents.visibilityPublic
+      : agent.visibility === "department"
+        ? t.agents.visibilityDepartment
+        : t.agents.visibilityPrivate;
+  const submitVisibility = async () => {
     const change = classifyVisibilityChange(agent.visibility, targetVisibility);
     if (change === "unchanged") return;
     if (change === "downgrade") {
       setConfirmingDowngrade(true);
       return;
     }
-    if (!visibilityReason.trim()) {
+    if (!reason.trim()) {
       toast.error(t.agents.visibilityReasonRequired);
       return;
     }
-
-    setSubmittingApplication(true);
+    setSubmitting(true);
     try {
       await createVisibilityApplication({
         resource_type: "agent",
-        resource_id: agent.resource_id ?? agent.name,
+        resource_id: resourceId,
         target_visibility: targetVisibility,
-        reason: visibilityReason.trim(),
+        reason: reason.trim(),
       });
       toast.success(t.agents.applicationSubmitted);
-      setVisibilityDialogOpen(false);
-      setVisibilityReason("");
+      setDialogOpen(false);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     } finally {
-      setSubmittingApplication(false);
+      setSubmitting(false);
     }
-  }
-
-  async function handleConfirmDowngrade() {
-    if (!agent) return;
-    setSubmittingApplication(true);
+  };
+  const confirmVisibility = async () => {
+    setSubmitting(true);
     try {
       await changeResourceVisibility({
-        resource_id: agent.resource_id ?? agent.name,
+        resource_id: resourceId,
         visibility: targetVisibility,
-        cascade: cascadeDowngrade,
+        cascade,
       });
       toast.success(t.agents.visibilityUpdated);
-      setVisibilityDialogOpen(false);
-      setVisibilityReason("");
+      setDialogOpen(false);
       setConfirmingDowngrade(false);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     } finally {
-      setSubmittingApplication(false);
+      setSubmitting(false);
     }
-  }
-
-  if (isLoading) {
-    return (
-      <div className="flex size-full items-center justify-center">
-        <div className="text-muted-foreground type-body">
-          {t.common.loading}
-        </div>
-      </div>
-    );
-  }
-
-  if (error || !agent) {
-    return (
-      <div className="flex size-full flex-col items-center justify-center gap-4">
-        <div className="text-destructive type-body">
-          {error?.message ?? "Agent not found"}
-        </div>
-        <Button
-          variant="outline"
-          onClick={() => router.push("/workspace/capabilities/experts")}
-        >
-          {t.agents.backToGallery}
-        </Button>
-      </div>
-    );
-  }
-
+  };
+  const download = async () => {
+    try {
+      const url = URL.createObjectURL(await exportAgent(resourceId));
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `${agent.slug ?? agent.name}.zip`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error(t.agents.exportFailed);
+    }
+  };
   return (
-    <div className="flex size-full flex-col">
-      <WorkspaceBreadcrumb agent={agent} />
-      {/* Page header */}
-      <div className="flex items-center justify-between border-b px-6 py-4">
-        <div className="flex items-center gap-3">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={() => router.push("/workspace/capabilities/experts")}
-          >
-            <ArrowLeftIcon className="h-4 w-4" />
-          </Button>
-          <div className="flex items-center gap-2">
-            <div className="bg-primary/10 text-primary flex h-9 w-9 items-center justify-center rounded-lg">
-              <BotIcon className="h-5 w-5" />
-            </div>
-            <div>
-              <h1 className="type-page-title font-semibold">{agent.name}</h1>
-              {agent.description && (
-                <p className="text-muted-foreground type-body mt-0.5">
-                  {agent.description}
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          {agent.model && <Badge variant="secondary">{agent.model}</Badge>}
-          {agent.read_only && <Badge variant="outline">Template</Badge>}
-          {!agent.read_only && (
-            <>
-              <Button
-                variant="outline"
-                onClick={() => setVisibilityDialogOpen(true)}
+    <>
+      <ResourceDetailLayout
+        breadcrumb={<WorkspaceBreadcrumb agent={agent} />}
+        backHref="/workspace/capabilities/experts"
+        icon={<BotIcon className="h-5 w-5" />}
+        typeLabel={t.resources.experts}
+        title={agent.name}
+        description={agent.description}
+        status={visibility}
+        actions={
+          <>
+            <Button asChild>
+              <Link
+                href={`/workspace/capabilities/experts/${agentName}/chats/new`}
               >
+                <MessageSquareIcon className="mr-1.5 h-4 w-4" />
+                {t.agents.startChatting}
+              </Link>
+            </Button>
+            {!agent.read_only && (
+              <Button variant="outline" onClick={() => setDialogOpen(true)}>
                 {t.agents.applyVisibility}
               </Button>
-              <Button asChild>
+            )}
+            {!agent.read_only && (
+              <Button variant="outline" asChild>
                 <Link
-                  href={`/workspace/capabilities/experts/${agent_name}/edit`}
+                  href={`/workspace/capabilities/experts/${agentName}/edit`}
                 >
                   <EditIcon className="mr-1.5 h-4 w-4" />
-                  Edit Agent
+                  {t.agents.edit}
                 </Link>
               </Button>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto p-6">
-        <div className="mx-auto max-w-4xl space-y-6">
-          {/* Stats cards */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="type-body font-medium">
-                  Conversations
-                </CardTitle>
-                <MessageSquareIcon className="text-muted-foreground h-4 w-4" />
-              </CardHeader>
-              <CardContent>
-                <div className="type-body font-bold">--</div>
-                <p className="text-muted-foreground type-body">
-                  Total conversations
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="type-body font-medium">
-                  Token Usage
-                </CardTitle>
-                <CoinsIcon className="text-muted-foreground h-4 w-4" />
-              </CardHeader>
-              <CardContent>
-                <div className="type-body font-bold">--</div>
-                <p className="text-muted-foreground type-body">
-                  Tokens consumed
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="type-body font-medium">
-                  Active Days
-                </CardTitle>
-                <CalendarIcon className="text-muted-foreground h-4 w-4" />
-              </CardHeader>
-              <CardContent>
-                <div className="type-body font-bold">--</div>
-                <p className="text-muted-foreground type-body">
-                  Days with activity
-                </p>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Configuration overview */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <SettingsIcon className="h-5 w-5" />
-                Configuration
-              </CardTitle>
-              <CardDescription>Agent capabilities and settings</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Model */}
-              <div>
-                <h4 className="type-section-title font-medium">Model</h4>
-                <p className="text-muted-foreground type-body">
-                  {agent.model ?? "Default model"}
-                </p>
-              </div>
-
-              {/* Tool groups */}
-              {agent.tool_groups && agent.tool_groups.length > 0 && (
-                <div>
-                  <h4 className="type-section-title font-medium">
-                    Tool Groups
-                  </h4>
-                  <div className="mt-1 flex flex-wrap gap-2">
-                    {agent.tool_groups.map((group) => (
-                      <Badge key={group} variant="outline">
-                        {group}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Skills */}
-              {agent.skills && agent.skills.length > 0 && (
-                <div>
-                  <h4 className="type-section-title font-medium">Skills</h4>
-                  <div className="mt-1 flex flex-wrap gap-2">
-                    {agent.skills.map((skill) => (
-                      <Badge key={skill} variant="secondary">
-                        <SparklesIcon className="mr-1 h-3 w-3" />
-                        {skill}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* SOUL.md preview */}
-              {agent.soul && (
-                <div>
-                  <h4 className="type-section-title font-medium">SOUL.md</h4>
-                  <pre className="bg-muted type-body mt-2 max-h-48 overflow-auto rounded-md p-4">
-                    {agent.soul}
-                  </pre>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Quick actions */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Quick Actions</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex gap-4">
-                <Button asChild>
-                  <Link
-                    href={`/workspace/capabilities/experts/${agent_name}/chats/new`}
-                  >
-                    <MessageSquareIcon className="mr-1.5 h-4 w-4" />
-                    Start Chat
-                  </Link>
-                </Button>
-                {!agent.read_only && (
-                  <Button variant="outline" asChild>
-                    <Link
-                      href={`/workspace/capabilities/experts/${agent_name}/edit`}
-                    >
-                      <EditIcon className="mr-1.5 h-4 w-4" />
-                      Edit Configuration
-                    </Link>
-                  </Button>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-
-      {/* Visibility Application Dialog */}
-      <Dialog
-        open={visibilityDialogOpen}
-        onOpenChange={setVisibilityDialogOpen}
+            )}
+            {!agent.read_only && (
+              <Button variant="outline" onClick={() => void download()}>
+                <DownloadIcon className="mr-1.5 h-4 w-4" />
+                {t.agents.export}
+              </Button>
+            )}
+          </>
+        }
       >
+        <ResourceDetailCard title={t.agents.configuration}>
+          <dl>
+            <ResourceDetailRow
+              label={t.agents.model}
+              value={agent.model ?? t.agents.defaultModel}
+            />
+            <ResourceDetailRow
+              label={t.agents.toolGroups}
+              value={agent.tool_groups?.join(", ") ?? t.agents.notSpecified}
+            />
+            <ResourceDetailRow
+              label={t.agents.skills}
+              value={agent.skills?.join(", ") ?? t.agents.notSpecified}
+            />
+          </dl>
+        </ResourceDetailCard>
+        <ResourceDetailCard title={t.agents.usage}>
+          <dl>
+            <ResourceDetailRow
+              label={t.agents.command}
+              value={t.agents.startChatting}
+            />
+            <ResourceDetailRow label={t.agents.visibility} value={visibility} />
+          </dl>
+        </ResourceDetailCard>
+        <ResourceDetailCard title={t.agents.source} className="lg:col-span-2">
+          <pre className="bg-muted type-body max-h-[30rem] overflow-auto rounded-xl p-4 whitespace-pre-wrap">
+            {agent.soul ?? t.agents.notSpecified}
+          </pre>
+        </ResourceDetailCard>
+      </ResourceDetailLayout>
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
           {confirmingDowngrade ? (
             <>
@@ -363,10 +223,10 @@ export default function AgentDetailPage() {
                 </DialogDescription>
               </DialogHeader>
               <VisibilityImpactPanel
-                resourceId={agent.resource_id ?? agent.name}
+                resourceId={resourceId}
                 currentVisibility={agent.visibility}
                 targetVisibility={targetVisibility}
-                onCascadeChange={setCascadeDowngrade}
+                onCascadeChange={setCascade}
               />
               <DialogFooter>
                 <Button
@@ -376,12 +236,10 @@ export default function AgentDetailPage() {
                   {t.common.cancel}
                 </Button>
                 <Button
-                  onClick={handleConfirmDowngrade}
-                  disabled={submittingApplication}
+                  onClick={() => void confirmVisibility()}
+                  disabled={submitting}
                 >
-                  {submittingApplication
-                    ? t.agents.submitting
-                    : t.agents.confirm}
+                  {t.agents.confirm}
                 </Button>
               </DialogFooter>
             </>
@@ -394,99 +252,50 @@ export default function AgentDetailPage() {
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label>{t.agents.currentVisibility}</Label>
-                  <p className="text-muted-foreground type-body">
-                    {agent.visibility}
-                  </p>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="target-visibility">
-                    {t.agents.targetVisibility}
-                  </Label>
-                  <Select
-                    value={targetVisibility}
-                    onValueChange={setTargetVisibility}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="private">
-                        {t.agents.visibilityPrivate}
-                      </SelectItem>
-                      <SelectItem value="department">
-                        {t.agents.visibilityDepartment}
-                      </SelectItem>
-                      <SelectItem value="public">
-                        {t.agents.visibilityPublic}
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                {classifyVisibilityChange(
-                  agent.visibility,
-                  targetVisibility,
-                ) === "upgrade" && (
-                  <p className="text-muted-foreground type-body">
-                    {t.agents.visibilityUpgradeHint}
-                  </p>
-                )}
-                {classifyVisibilityChange(
-                  agent.visibility,
-                  targetVisibility,
-                ) === "downgrade" && (
-                  <p className="text-muted-foreground type-body">
-                    {t.agents.visibilityDowngradeHint}
-                  </p>
-                )}
-                {classifyVisibilityChange(
-                  agent.visibility,
-                  targetVisibility,
-                ) !== "downgrade" && (
-                  <div className="space-y-2">
-                    <Label htmlFor="reason">{t.agents.reason}</Label>
-                    <Textarea
-                      id="reason"
-                      placeholder={t.agents.reasonPlaceholder}
-                      value={visibilityReason}
-                      onChange={(e) => setVisibilityReason(e.target.value)}
-                      rows={3}
-                    />
-                  </div>
-                )}
+                <Label>{t.agents.targetVisibility}</Label>
+                <Select
+                  value={targetVisibility}
+                  onValueChange={setTargetVisibility}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="private">
+                      {t.agents.visibilityPrivate}
+                    </SelectItem>
+                    <SelectItem value="department">
+                      {t.agents.visibilityDepartment}
+                    </SelectItem>
+                    <SelectItem value="public">
+                      {t.agents.visibilityPublic}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <Label htmlFor="reason">{t.agents.reason}</Label>
+                <Textarea
+                  id="reason"
+                  value={reason}
+                  onChange={(event) => setReason(event.target.value)}
+                  placeholder={t.agents.reasonPlaceholder}
+                  rows={3}
+                />
               </div>
               <DialogFooter>
-                <Button
-                  variant="outline"
-                  onClick={() => setVisibilityDialogOpen(false)}
-                >
+                <Button variant="outline" onClick={() => setDialogOpen(false)}>
                   {t.common.cancel}
                 </Button>
                 <Button
-                  onClick={handleSubmitVisibility}
-                  disabled={
-                    submittingApplication ||
-                    classifyVisibilityChange(
-                      agent.visibility,
-                      targetVisibility,
-                    ) === "unchanged" ||
-                    (classifyVisibilityChange(
-                      agent.visibility,
-                      targetVisibility,
-                    ) === "upgrade" &&
-                      !visibilityReason.trim())
-                  }
+                  onClick={() => void submitVisibility()}
+                  disabled={submitting}
                 >
-                  {submittingApplication
-                    ? t.agents.submitting
-                    : t.agents.submit}
+                  {t.agents.submit}
                 </Button>
               </DialogFooter>
             </>
           )}
         </DialogContent>
       </Dialog>
-    </div>
+    </>
   );
 }

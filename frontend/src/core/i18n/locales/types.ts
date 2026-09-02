@@ -205,6 +205,19 @@ export interface Translations {
     favoriteRemoved: string;
     exportSuccess: string;
     importSuccess: string;
+    edit: string;
+    export: string;
+    notFound: string;
+    configuration: string;
+    model: string;
+    defaultModel: string;
+    toolGroups: string;
+    skills: string;
+    usage: string;
+    command: string;
+    source: string;
+    notSpecified: string;
+    exportFailed: string;
   };
 
   // Auth
@@ -682,6 +695,13 @@ export interface Translations {
       saved: string;
       saveFailed: string;
       exportFailed: string;
+      category: string;
+      command: string;
+      usage: string;
+      input: string;
+      output: string;
+      inputDescription: string;
+      outputDescription: string;
     };
     notification: {
       title: string;
