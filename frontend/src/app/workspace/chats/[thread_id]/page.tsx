@@ -268,7 +268,8 @@ export default function ChatPage() {
   const initializedAgentRef = useRef<string | null>(null);
   useEffect(() => {
     if (!isNewThread || !requestedAgent || agents.length === 0) return;
-    if (initializedAgentRef.current === requestedAgent) return;
+    const initializationKey = `${threadId}:${requestedAgent}`;
+    if (initializedAgentRef.current === initializationKey) return;
 
     const agent = agents.find(
       (item) =>
@@ -284,8 +285,8 @@ export default function ChatPage() {
     if (!isConfiguredAgent) return;
 
     selectAgent(agentSlug);
-    initializedAgentRef.current = requestedAgent;
-  }, [agents, isNewThread, requestedAgent, selectAgent]);
+    initializedAgentRef.current = initializationKey;
+  }, [agents, isNewThread, requestedAgent, selectAgent, threadId]);
   const threadTokenUsage = useThreadTokenUsage(
     isNewThread || isMock ? undefined : threadId,
     { enabled: tokenUsageEnabled && !isMock },

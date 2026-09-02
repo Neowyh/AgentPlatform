@@ -101,6 +101,10 @@ describe("AgentDetailPage unified resource detail", () => {
     expect(screen.getByText("故障归零专家")).toBeInTheDocument();
     expect(screen.queryByText("Experts")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Chat" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Chat" })).toHaveAttribute(
+      "href",
+      "/workspace/chats/new?agent=fault-zeroing",
+    );
     expect(screen.getByRole("link", { name: "Edit" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Export" })).toBeInTheDocument();
   });

@@ -427,8 +427,86 @@ describe("ChatPage", () => {
 
     render(<ChatPage />);
 
+    expect(mockLastScenarioCascadeProps.current.selectedScenario).toBe(
+      "professional",
+    );
     expect(mockLastInputBoxProps.current.selectedTags).toEqual([
       { id: "agent:fault-zeroing", label: "故障归零" },
+    ]);
+  });
+
+  test("resolves a legacy resource UUID and selects its configured Agent", () => {
+    mockSearchParams = new URLSearchParams("agent=fault-resource-id");
+    mockUseThreadChat.mockReturnValue({
+      threadId: "test-thread",
+      setThreadId: vi.fn(),
+      isNewThread: true,
+      setIsNewThread: vi.fn(),
+      isMock: false,
+    });
+    mockUseAgents.mockReturnValue({
+      agents: [
+        {
+          slug: "fault-zeroing",
+          name: "故障归零专家",
+          resource_id: "fault-resource-id",
+        },
+      ],
+    });
+
+    render(<ChatPage />);
+
+    expect(mockLastInputBoxProps.current.selectedTags).toEqual([
+      { id: "agent:fault-zeroing", label: "故障归零" },
+    ]);
+  });
+
+  test("resolves a legacy display name and selects its configured Agent", () => {
+    mockSearchParams = new URLSearchParams("agent=故障归零专家");
+    mockUseThreadChat.mockReturnValue({
+      threadId: "test-thread",
+      setThreadId: vi.fn(),
+      isNewThread: true,
+      setIsNewThread: vi.fn(),
+      isMock: false,
+    });
+    mockUseAgents.mockReturnValue({
+      agents: [
+        {
+          slug: "fault-zeroing",
+          name: "故障归零专家",
+          resource_id: "fault-resource-id",
+        },
+      ],
+    });
+
+    render(<ChatPage />);
+
+    expect(mockLastInputBoxProps.current.selectedTags).toEqual([
+      { id: "agent:fault-zeroing", label: "故障归零" },
+    ]);
+  });
+
+  test("does not overwrite a manual Agent selection after URL initialization", () => {
+    mockSearchParams = new URLSearchParams("agent=fault-zeroing");
+    mockUseThreadChat.mockReturnValue({
+      threadId: "test-thread",
+      setThreadId: vi.fn(),
+      isNewThread: true,
+      setIsNewThread: vi.fn(),
+      isMock: false,
+    });
+    mockUseAgents.mockReturnValue({
+      agents: [{ slug: "fault-zeroing", resource_id: "fault-resource-id" }],
+    });
+
+    render(<ChatPage />);
+    act(() => {
+      mockLastScenarioCascadeProps.current.onTogglePill("code-dev");
+    });
+
+    expect(mockLastInputBoxProps.current.selectedTags).toEqual([
+      { id: "agent:code-dev", label: "代码开发" },
     ]);
   });
 

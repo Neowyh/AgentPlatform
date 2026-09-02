@@ -54,6 +54,18 @@ describe("TaskChipBar", () => {
     expect(screen.getAllByRole("tab")).toHaveLength(3);
   });
 
+  it("keeps the chip row centered while allowing an overflowing row to scroll", () => {
+    render(
+      <TaskChipBar chips={chips} selectedTaskId={null} onSelect={vi.fn()} />,
+    );
+    expect(screen.getByTestId("task-chip-bar")).toHaveClass(
+      "w-max",
+      "min-w-full",
+      "justify-center",
+      "overflow-x-auto",
+    );
+  });
+
   it("keeps same-skill tasks distinct without a duplicate-key warning", () => {
     const onSelect = vi.fn();
     const consoleError = vi

@@ -235,14 +235,16 @@ describe("AgentCard", () => {
   });
 
   test("chat button navigates to the shared new chat page with the agent", () => {
-    render(<AgentCard agent={makeAgent({ name: "my-agent" })} />);
+    render(
+      <AgentCard agent={makeAgent({ name: "My Agent", slug: "my-agent" })} />,
+    );
     fireEvent.click(screen.getByTestId("agent-chat-button"));
     expect(mockPush).toHaveBeenCalledWith(
       "/workspace/chats/new?agent=my-agent",
     );
   });
 
-  test("canonical Agent navigation uses resource UUID instead of display name", () => {
+  test("chat navigation prefers the slug while resource actions use the UUID", async () => {
     render(
       <AgentCard
         agent={makeAgent({
@@ -254,8 +256,14 @@ describe("AgentCard", () => {
     );
     fireEvent.click(screen.getByTestId("agent-chat-button"));
     expect(mockPush).toHaveBeenCalledWith(
-      "/workspace/chats/new?agent=11111111-1111-1111-1111-111111111111",
+      "/workspace/chats/new?agent=Shared%20Agent",
     );
+    fireEvent.click(screen.getByTestId("agent-export-button"));
+    await waitFor(() => {
+      expect(mockExportAgent).toHaveBeenCalledWith(
+        "11111111-1111-1111-1111-111111111111",
+      );
+    });
     expect(screen.getByTestId("agent-favorite-button")).toBeInTheDocument();
     expect(screen.getByTestId("agent-export-button")).toBeInTheDocument();
   });

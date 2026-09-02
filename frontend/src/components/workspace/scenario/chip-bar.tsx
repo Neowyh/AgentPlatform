@@ -58,7 +58,7 @@ export function ChipBar<T extends string>({
 
   return (
     <div
-      className="flex items-center gap-2 overflow-x-auto [&::-webkit-scrollbar]:hidden"
+      className="flex w-max min-w-full items-center justify-center gap-2 overflow-x-auto [&::-webkit-scrollbar]:hidden"
       role="tablist"
       data-testid={testId}
       onKeyDown={onKeyDown}

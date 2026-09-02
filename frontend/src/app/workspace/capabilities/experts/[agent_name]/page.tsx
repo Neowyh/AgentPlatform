@@ -77,6 +77,7 @@ export default function AgentDetailPage() {
     );
 
   const resourceId = agent.resource_id ?? agentName;
+  const chatIdentity = agent.slug ?? agent.name;
   const visibility =
     agent.visibility === "public"
       ? t.agents.visibilityPublic
@@ -151,7 +152,7 @@ export default function AgentDetailPage() {
           <>
             <Button asChild>
               <Link
-                href={`/workspace/chats/new?agent=${encodeURIComponent(resourceId)}`}
+                href={`/workspace/chats/new?agent=${encodeURIComponent(chatIdentity)}`}
               >
                 <MessageSquareIcon className="mr-1.5 h-4 w-4" />
                 {t.agents.detailChat}
