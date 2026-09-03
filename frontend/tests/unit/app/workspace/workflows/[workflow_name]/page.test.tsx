@@ -136,6 +136,13 @@ vi.mock("@/core/i18n/hooks", () => ({
         runHistory: "Run History",
         noRuns: "No runs yet",
         noInputs: "No inputs required",
+        addFiles: "Add files",
+        fileSelectionHint: "You can add files in multiple selections.",
+        selectedFiles: "Selected files",
+        noSelectedFiles: "No files selected",
+        fileCount: (count: number) => `${count} file${count === 1 ? "" : "s"}`,
+        removeFile: (name: string) => `Remove ${name}`,
+        singleSourceZip: "Only one source ZIP can be selected per run",
         defaultPrefix: "Default: ",
         enterInput: (k: string) => `Enter ${k}`,
         requiredMissing: (k: string) => `${k} is required`,
@@ -988,6 +995,80 @@ describe("WorkflowDetailPage", () => {
       // "Research topic" also appears in the inputs card, so scope to dialog
       const descriptions = within(dialog).getAllByText("Research topic");
       expect(descriptions).toHaveLength(1);
+    });
+
+    test("keeps files from earlier selections and replaces same-name files", async () => {
+      const user = userEvent.setup();
+      render(<WorkflowDetailPage />);
+      await user.click(findRunButton());
+
+      const fileInput = screen.getByTestId("workflow-file-input");
+      const firstVersion = new File(["first"], "evidence.txt", {
+        type: "text/plain",
+      });
+      const secondFile = new File(["second"], "log.txt", {
+        type: "text/plain",
+      });
+      const replacement = new File(["replacement"], "evidence.txt", {
+        type: "text/plain",
+      });
+
+      fireEvent.change(fileInput, { target: { files: [firstVersion] } });
+      fireEvent.change(fileInput, { target: { files: [secondFile] } });
+      expect(screen.getByText("evidence.txt")).toBeInTheDocument();
+      expect(screen.getByText("log.txt")).toBeInTheDocument();
+
+      fireEvent.change(fileInput, { target: { files: [replacement] } });
+      expect(screen.getAllByText("evidence.txt")).toHaveLength(1);
+      expect(screen.getByText("log.txt")).toBeInTheDocument();
+    });
+
+    test("removes only the selected file", async () => {
+      const user = userEvent.setup();
+      render(<WorkflowDetailPage />);
+      await user.click(findRunButton());
+
+      const fileInput = screen.getByTestId("workflow-file-input");
+      fireEvent.change(fileInput, {
+        target: {
+          files: [
+            new File(["a"], "a.txt", { type: "text/plain" }),
+            new File(["b"], "b.txt", { type: "text/plain" }),
+          ],
+        },
+      });
+
+      await user.click(screen.getByRole("button", { name: "Remove a.txt" }));
+      expect(screen.queryByText("a.txt")).not.toBeInTheDocument();
+      expect(screen.getByText("b.txt")).toBeInTheDocument();
+    });
+
+    test("rejects a second source ZIP while keeping the existing files", async () => {
+      const user = userEvent.setup();
+      render(<WorkflowDetailPage />);
+      await user.click(findRunButton());
+
+      const fileInput = screen.getByTestId("workflow-file-input");
+      fireEvent.change(fileInput, {
+        target: {
+          files: [
+            new File(["one"], "source-one.zip", { type: "application/zip" }),
+          ],
+        },
+      });
+      fireEvent.change(fileInput, {
+        target: {
+          files: [
+            new File(["two"], "source-two.zip", { type: "application/zip" }),
+          ],
+        },
+      });
+
+      expect(screen.getByText("source-one.zip")).toBeInTheDocument();
+      expect(screen.queryByText("source-two.zip")).not.toBeInTheDocument();
+      expect(toast.error).toHaveBeenCalledWith(
+        "Only one source ZIP can be selected per run",
+      );
     });
   });
 

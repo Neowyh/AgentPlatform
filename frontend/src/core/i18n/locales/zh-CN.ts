@@ -422,6 +422,13 @@ export const zhCN: Translations = {
     modelLabel: "模型",
     followSystemModel: "跟随系统默认",
     starting: "启动中...",
+    addFiles: "添加文件",
+    fileSelectionHint: "可多次选择，后续选择会追加到清单",
+    selectedFiles: "已选资料",
+    noSelectedFiles: "暂无已选文件",
+    fileCount: (count: number) => `${count} 个文件`,
+    removeFile: (name: string) => `删除 ${name}`,
+    singleSourceZip: "一次运行只能选择一个源码 ZIP",
     // Create/Edit
     createSubtitle: "用 YAML 定义新的工作流",
     yamlEditor: "YAML 编辑器",

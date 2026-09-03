@@ -4,12 +4,15 @@ import {
   ArrowLeftIcon,
   DownloadIcon,
   EditIcon,
+  PlusIcon,
   PlayIcon,
   WorkflowIcon,
+  XIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { ChangeEvent } from "react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -72,6 +75,7 @@ export default function WorkflowDetailPage() {
   const [visibilityDialogOpen, setVisibilityDialogOpen] = useState(false);
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
   const [runFiles, setRunFiles] = useState<File[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [targetVisibility, setTargetVisibility] = useState("department");
   const [visibilityReason, setVisibilityReason] = useState("");
   const [submittingApplication, setSubmittingApplication] = useState(false);
@@ -93,6 +97,51 @@ export default function WorkflowDetailPage() {
   }, [workflow]);
 
   const { runs } = useWorkflowRuns(workflow_name);
+
+  function handleFilesSelected(event: ChangeEvent<HTMLInputElement>) {
+    const selected = Array.from(event.target.files ?? []);
+    const incomingZips = selected.filter((file) =>
+      file.name.toLowerCase().endsWith(".zip"),
+    );
+    const existingZip = runFiles.find((file) =>
+      file.name.toLowerCase().endsWith(".zip"),
+    );
+
+    if (incomingZips.length > 1) {
+      toast.error(t.workflows.singleSourceZip);
+      event.target.value = "";
+      return;
+    }
+
+    const accepted = selected.filter(
+      (file) =>
+        !existingZip ||
+        !file.name.toLowerCase().endsWith(".zip") ||
+        file.name === existingZip.name,
+    );
+    if (accepted.length !== selected.length) {
+      toast.error(t.workflows.singleSourceZip);
+    }
+
+    setRunFiles((current) => {
+      const next = [...current];
+      for (const file of accepted) {
+        const existingIndex = next.findIndex(
+          (currentFile) => currentFile.name === file.name,
+        );
+        if (existingIndex === -1) next.push(file);
+        else next[existingIndex] = file;
+      }
+      return next;
+    });
+    if (accepted.some((file) => file.name.toLowerCase().endsWith(".zip"))) {
+      setInputValues((previous) => ({
+        ...previous,
+        evidence_mode: previous.evidence_mode ?? "hybrid",
+      }));
+    }
+    event.target.value = "";
+  }
 
   if (isLoading) {
     return (
@@ -601,126 +650,163 @@ export default function WorkflowDetailPage() {
 
       {/* Run dialog */}
       <Dialog open={runDialogOpen} onOpenChange={setRunDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
+        <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col sm:max-w-xl">
+          <DialogHeader className="shrink-0">
             <DialogTitle>{t.workflows.runDialog}</DialogTitle>
             <DialogDescription>
               {t.workflows.runDialogDescription}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            {Object.entries(workflow.inputs)
-              .filter(
-                ([key]) => !["code_package_source", "upload_dir"].includes(key),
-              )
-              .map(([key, param]) => (
-                <div key={key} className="space-y-2">
-                  <Label htmlFor={`input-${key}`}>
-                    {key}
-                    {param.required && (
-                      <span className="text-destructive ml-1">*</span>
+          <div className="min-h-0 flex-1 overflow-y-auto py-4 pr-1">
+            <div className="space-y-4">
+              {Object.entries(workflow.inputs)
+                .filter(
+                  ([key]) =>
+                    !["code_package_source", "upload_dir"].includes(key),
+                )
+                .map(([key, param]) => (
+                  <div key={key} className="space-y-2">
+                    <Label htmlFor={`input-${key}`}>
+                      {key}
+                      {param.required && (
+                        <span className="text-destructive ml-1">*</span>
+                      )}
+                    </Label>
+                    {param.description && (
+                      <p className="text-muted-foreground type-body">
+                        {param.description}
+                      </p>
                     )}
-                  </Label>
-                  {param.description && (
-                    <p className="text-muted-foreground type-body">
-                      {param.description}
-                    </p>
-                  )}
-                  <Input
-                    id={`input-${key}`}
-                    placeholder={
-                      param.default !== undefined
-                        ? `${t.workflows.defaultPrefix}${JSON.stringify(param.default)}`
-                        : t.workflows.enterInput(key)
-                    }
-                    value={inputValues[key] ?? ""}
-                    onChange={(e) =>
-                      setInputValues((prev) => ({
-                        ...prev,
-                        [key]: e.target.value,
-                      }))
-                    }
-                  />
-                </div>
-              ))}
-            {Object.keys(workflow.inputs).length === 0 && (
-              <p className="text-muted-foreground type-body">
-                {t.workflows.noInputs}
-              </p>
-            )}
-            <div className="space-y-2">
-              <Label htmlFor="run-model">{t.workflows.modelLabel}</Label>
-              <Select
-                value={selectedModel}
-                onValueChange={(value) =>
-                  setSelectedModel(value === "__system__" ? "" : value)
-                }
-              >
-                <SelectTrigger id="run-model">
-                  <SelectValue placeholder={t.workflows.followSystemModel} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__system__">
-                    {t.workflows.followSystemModel}
-                  </SelectItem>
-                  {models.map((model) => (
-                    <SelectItem key={model.name} value={model.name}>
-                      {model.display_name || model.name}
+                    <Input
+                      id={`input-${key}`}
+                      placeholder={
+                        param.default !== undefined
+                          ? `${t.workflows.defaultPrefix}${JSON.stringify(param.default)}`
+                          : t.workflows.enterInput(key)
+                      }
+                      value={inputValues[key] ?? ""}
+                      onChange={(e) =>
+                        setInputValues((prev) => ({
+                          ...prev,
+                          [key]: e.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                ))}
+              {Object.keys(workflow.inputs).length === 0 && (
+                <p className="text-muted-foreground type-body">
+                  {t.workflows.noInputs}
+                </p>
+              )}
+              <div className="space-y-2">
+                <Label htmlFor="run-model">{t.workflows.modelLabel}</Label>
+                <Select
+                  value={selectedModel}
+                  onValueChange={(value) =>
+                    setSelectedModel(value === "__system__" ? "" : value)
+                  }
+                >
+                  <SelectTrigger id="run-model">
+                    <SelectValue placeholder={t.workflows.followSystemModel} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__system__">
+                      {t.workflows.followSystemModel}
                     </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="workflow-files">源码 ZIP 与资料附件</Label>
-              <input
-                id="workflow-files"
-                type="file"
-                multiple
-                className="border-input bg-background file:text-foreground placeholder:text-muted-foreground focus-visible:ring-ring flex h-9 w-full rounded-md border px-3 py-1 text-base shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium focus-visible:ring-1 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
-                onChange={(event) => {
-                  const selected = Array.from(event.target.files ?? []);
-                  const sourceZips = selected.filter((file) =>
-                    file.name.toLowerCase().endsWith(".zip"),
-                  );
-                  if (sourceZips.length > 1) {
-                    toast.error("一次运行只能选择一个源码 ZIP");
-                    event.target.value = "";
-                    setRunFiles([]);
-                    return;
-                  }
-                  setRunFiles(selected);
-                  if (sourceZips.length) {
-                    setInputValues((previous) => ({
-                      ...previous,
-                      evidence_mode: previous.evidence_mode ?? "hybrid",
-                    }));
-                  }
-                }}
-              />
-              {runFiles.some((file) =>
-                file.name.toLowerCase().endsWith(".zip"),
-              ) && (
-                <p className="text-muted-foreground type-body">
-                  源码包已就绪，提交后将安全展开并仅授权本次运行读取。
-                </p>
-              )}
-              {runFiles.filter(
-                (file) => !file.name.toLowerCase().endsWith(".zip"),
-              ).length > 0 && (
-                <p className="text-muted-foreground type-body">
-                  已选择{" "}
-                  {
-                    runFiles.filter(
-                      (file) => !file.name.toLowerCase().endsWith(".zip"),
-                    ).length
-                  }{" "}
-                  份资料。
-                </p>
-              )}
+                    {models.map((model) => (
+                      <SelectItem key={model.name} value={model.name}>
+                        {model.display_name || model.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>源码 ZIP 与资料附件</Label>
+                <div className="border-border/70 bg-muted/20 rounded-lg border p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="type-body font-medium">
+                        {t.workflows.addFiles}
+                      </p>
+                      <p className="text-muted-foreground type-body">
+                        {t.workflows.fileSelectionHint}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      <PlusIcon className="mr-1.5 size-4" />
+                      {t.workflows.addFiles}
+                    </Button>
+                  </div>
+                </div>
+                <input
+                  ref={fileInputRef}
+                  data-testid="workflow-file-input"
+                  type="file"
+                  multiple
+                  className="sr-only"
+                  onChange={handleFilesSelected}
+                />
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label>{t.workflows.selectedFiles}</Label>
+                    <span className="text-muted-foreground type-body">
+                      {t.workflows.fileCount(runFiles.length)}
+                    </span>
+                  </div>
+                  {runFiles.length === 0 ? (
+                    <p className="text-muted-foreground bg-muted/20 type-body rounded-md border border-dashed p-3 text-center">
+                      {t.workflows.noSelectedFiles}
+                    </p>
+                  ) : (
+                    <ul className="divide-border max-h-56 overflow-y-auto rounded-md border sm:max-h-60">
+                      {runFiles.map((file) => (
+                        <li
+                          key={`${file.name}-${file.lastModified}`}
+                          className="odd:bg-muted/20 flex items-center justify-between gap-3 px-3 py-2 first:rounded-t-md last:rounded-b-md"
+                        >
+                          <span
+                            className="type-body min-w-0 truncate"
+                            title={file.name}
+                          >
+                            {file.name}
+                          </span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            aria-label={t.workflows.removeFile(file.name)}
+                            onClick={() =>
+                              setRunFiles((current) =>
+                                current.filter(
+                                  (currentFile) =>
+                                    currentFile.name !== file.name,
+                                ),
+                              )
+                            }
+                          >
+                            <XIcon className="size-4" />
+                          </Button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                {runFiles.some((file) =>
+                  file.name.toLowerCase().endsWith(".zip"),
+                ) && (
+                  <p className="text-muted-foreground type-body">
+                    源码包已就绪，提交后将安全展开并仅授权本次运行读取。
+                  </p>
+                )}
+              </div>
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="shrink-0 border-t pt-4">
             <Button variant="outline" onClick={() => setRunDialogOpen(false)}>
               {t.common.cancel}
             </Button>

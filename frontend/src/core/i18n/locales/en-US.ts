@@ -440,6 +440,13 @@ export const enUS: Translations = {
     modelLabel: "Model",
     followSystemModel: "Follow system default",
     starting: "Starting...",
+    addFiles: "Add files",
+    fileSelectionHint: "You can add files in multiple selections.",
+    selectedFiles: "Selected files",
+    noSelectedFiles: "No files selected",
+    fileCount: (count: number) => `${count} file${count === 1 ? "" : "s"}`,
+    removeFile: (name: string) => `Remove ${name}`,
+    singleSourceZip: "Only one source ZIP can be selected per run",
     // Create/Edit
     createSubtitle: "Define a new workflow in YAML",
     yamlEditor: "YAML Editor",

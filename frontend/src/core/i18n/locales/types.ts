@@ -302,6 +302,13 @@ export interface Translations {
     modelLabel: string;
     followSystemModel: string;
     starting: string;
+    addFiles: string;
+    fileSelectionHint: string;
+    selectedFiles: string;
+    noSelectedFiles: string;
+    fileCount: (count: number) => string;
+    removeFile: (name: string) => string;
+    singleSourceZip: string;
     // Create/Edit
     createSubtitle: string;
     yamlEditor: string;
