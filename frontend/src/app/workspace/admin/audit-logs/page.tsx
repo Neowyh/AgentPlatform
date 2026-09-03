@@ -32,20 +32,7 @@ import {
 import { listAuditLogs } from "@/core/audit-logs/api";
 import type { AuditLog } from "@/core/audit-logs/types";
 import { useAuth } from "@/core/auth/AuthProvider";
-
-const ACTION_LABELS: Record<string, string> = {
-  create: "创建",
-  update: "更新",
-  delete: "删除",
-  review: "审批",
-  approve: "批准",
-  reject: "驳回",
-  withdraw: "撤回",
-  grant: "授权",
-  revoke: "撤销",
-  apply: "申请",
-  withdrawal: "撤回",
-};
+import { useI18n } from "@/core/i18n/hooks";
 
 const ACTION_BADGE_CLASSES: Record<string, string> = {
   create:
@@ -65,15 +52,30 @@ const ACTION_BADGE_CLASSES: Record<string, string> = {
     "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-100 border-amber-200 dark:border-amber-800",
 };
 
-const RESOURCE_TYPE_LABELS: Record<string, string> = {
-  tool: "工具",
-  skill: "Skill",
-  workflow: "工作流",
-  agent: "智能体",
-};
-
 export default function AuditLogsPage() {
   const { user: currentUser } = useAuth();
+  const { t } = useI18n();
+
+  const actionLabels: Record<string, string> = {
+    create: t.admin.auditLogs.actionCreate,
+    update: t.admin.auditLogs.actionUpdate,
+    delete: t.admin.auditLogs.actionDelete,
+    review: t.admin.auditLogs.actionReview,
+    approve: t.admin.auditLogs.actionApprove,
+    reject: t.admin.auditLogs.actionReject,
+    withdraw: t.admin.auditLogs.actionWithdraw,
+    grant: t.admin.auditLogs.actionGrant,
+    revoke: t.admin.auditLogs.actionRevoke,
+    apply: t.admin.auditLogs.actionApply,
+    withdrawal: t.admin.auditLogs.actionWithdrawal,
+  };
+
+  const resourceTypeLabels: Record<string, string> = {
+    tool: t.admin.auditLogs.resourceTypeTool,
+    skill: t.admin.auditLogs.resourceTypeSkill,
+    workflow: t.admin.auditLogs.resourceTypeWorkflow,
+    agent: t.admin.auditLogs.resourceTypeAgent,
+  };
 
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
@@ -139,7 +141,7 @@ export default function AuditLogsPage() {
         setDetailJson(log.detail);
       }
     } else {
-      setDetailJson("无");
+      setDetailJson(t.admin.auditLogs.none);
     }
   };
 
@@ -157,9 +159,11 @@ export default function AuditLogsPage() {
             <ArrowLeftIcon className="h-5 w-5" />
           </Link>
           <div>
-            <h1 className="type-page-title font-semibold">审计日志</h1>
+            <h1 className="type-page-title font-semibold">
+              {t.admin.auditLogs.pageTitle}
+            </h1>
             <p className="text-muted-foreground type-body mt-0.5">
-              浏览和查询系统操作审计记录
+              {t.admin.auditLogs.pageDescription}
             </p>
           </div>
         </div>
@@ -169,7 +173,7 @@ export default function AuditLogsPage() {
       <div className="flex-1 overflow-y-auto p-6">
         {loading ? (
           <div className="text-muted-foreground type-body flex h-40 items-center justify-center">
-            加载中...
+            {t.admin.auditLogs.loading}
           </div>
         ) : error ? (
           <div className="text-destructive type-body flex h-40 items-center justify-center">
@@ -180,9 +184,11 @@ export default function AuditLogsPage() {
             {/* Filters */}
             <div className="flex flex-wrap items-end gap-3">
               <div className="flex flex-col gap-1.5">
-                <Label className="type-body">操作者</Label>
+                <Label className="type-body">
+                  {t.admin.auditLogs.operatorLabel}
+                </Label>
                 <Input
-                  placeholder="用户 ID"
+                  placeholder={t.admin.auditLogs.userIdPlaceholder}
                   value={filterActorId}
                   onChange={(e) => {
                     setFilterActorId(e.target.value);
@@ -192,7 +198,9 @@ export default function AuditLogsPage() {
                 />
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label className="type-body">操作类型</Label>
+                <Label className="type-body">
+                  {t.admin.auditLogs.actionTypeLabel}
+                </Label>
                 <Select
                   value={filterAction}
                   onValueChange={(v) => {
@@ -201,26 +209,52 @@ export default function AuditLogsPage() {
                   }}
                 >
                   <SelectTrigger className="h-9 w-32">
-                    <SelectValue placeholder="操作类型" />
+                    <SelectValue
+                      placeholder={t.admin.auditLogs.actionTypeLabel}
+                    />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">全部</SelectItem>
-                    <SelectItem value="create">创建</SelectItem>
-                    <SelectItem value="update">更新</SelectItem>
-                    <SelectItem value="delete">删除</SelectItem>
-                    <SelectItem value="review">审批</SelectItem>
-                    <SelectItem value="approve">批准</SelectItem>
-                    <SelectItem value="reject">驳回</SelectItem>
-                    <SelectItem value="withdraw">撤回</SelectItem>
-                    <SelectItem value="grant">授权</SelectItem>
-                    <SelectItem value="revoke">撤销</SelectItem>
-                    <SelectItem value="apply">申请</SelectItem>
-                    <SelectItem value="withdrawal">撤回</SelectItem>
+                    <SelectItem value="all">{t.admin.auditLogs.all}</SelectItem>
+                    <SelectItem value="create">
+                      {t.admin.auditLogs.actionCreate}
+                    </SelectItem>
+                    <SelectItem value="update">
+                      {t.admin.auditLogs.actionUpdate}
+                    </SelectItem>
+                    <SelectItem value="delete">
+                      {t.admin.auditLogs.actionDelete}
+                    </SelectItem>
+                    <SelectItem value="review">
+                      {t.admin.auditLogs.actionReview}
+                    </SelectItem>
+                    <SelectItem value="approve">
+                      {t.admin.auditLogs.actionApprove}
+                    </SelectItem>
+                    <SelectItem value="reject">
+                      {t.admin.auditLogs.actionReject}
+                    </SelectItem>
+                    <SelectItem value="withdraw">
+                      {t.admin.auditLogs.actionWithdraw}
+                    </SelectItem>
+                    <SelectItem value="grant">
+                      {t.admin.auditLogs.actionGrant}
+                    </SelectItem>
+                    <SelectItem value="revoke">
+                      {t.admin.auditLogs.actionRevoke}
+                    </SelectItem>
+                    <SelectItem value="apply">
+                      {t.admin.auditLogs.actionApply}
+                    </SelectItem>
+                    <SelectItem value="withdrawal">
+                      {t.admin.auditLogs.actionWithdrawal}
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label className="type-body">资源类型</Label>
+                <Label className="type-body">
+                  {t.admin.auditLogs.resourceTypeLabel}
+                </Label>
                 <Select
                   value={filterResourceType}
                   onValueChange={(v) => {
@@ -229,19 +263,31 @@ export default function AuditLogsPage() {
                   }}
                 >
                   <SelectTrigger className="h-9 w-28">
-                    <SelectValue placeholder="资源类型" />
+                    <SelectValue
+                      placeholder={t.admin.auditLogs.resourceTypeLabel}
+                    />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">全部</SelectItem>
-                    <SelectItem value="tool">工具</SelectItem>
-                    <SelectItem value="skill">Skill</SelectItem>
-                    <SelectItem value="workflow">工作流</SelectItem>
-                    <SelectItem value="agent">智能体</SelectItem>
+                    <SelectItem value="all">{t.admin.auditLogs.all}</SelectItem>
+                    <SelectItem value="tool">
+                      {t.admin.auditLogs.resourceTypeTool}
+                    </SelectItem>
+                    <SelectItem value="skill">
+                      {t.admin.auditLogs.resourceTypeSkill}
+                    </SelectItem>
+                    <SelectItem value="workflow">
+                      {t.admin.auditLogs.resourceTypeWorkflow}
+                    </SelectItem>
+                    <SelectItem value="agent">
+                      {t.admin.auditLogs.resourceTypeAgent}
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label className="type-body">开始时间</Label>
+                <Label className="type-body">
+                  {t.admin.auditLogs.startTimeLabel}
+                </Label>
                 <Input
                   type="datetime-local"
                   value={filterStartDate}
@@ -253,7 +299,9 @@ export default function AuditLogsPage() {
                 />
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label className="type-body">结束时间</Label>
+                <Label className="type-body">
+                  {t.admin.auditLogs.endTimeLabel}
+                </Label>
                 <Input
                   type="datetime-local"
                   value={filterEndDate}
@@ -277,10 +325,10 @@ export default function AuditLogsPage() {
                   setPage(1);
                 }}
               >
-                重置
+                {t.admin.auditLogs.reset}
               </Button>
               <span className="text-muted-foreground type-body ml-auto">
-                共 {total} 条
+                {t.admin.auditLogs.totalCount(total)}
               </span>
             </div>
 
@@ -289,7 +337,7 @@ export default function AuditLogsPage() {
               <Card>
                 <CardContent className="flex h-40 items-center justify-center">
                   <p className="text-muted-foreground type-body">
-                    没有找到审计日志
+                    {t.admin.auditLogs.emptyState}
                   </p>
                 </CardContent>
               </Card>
@@ -308,14 +356,14 @@ export default function AuditLogsPage() {
                         </CardTitle>
                         <div className="flex items-center gap-2">
                           <Badge variant="outline">
-                            {RESOURCE_TYPE_LABELS[log.resource_type ?? ""] ??
+                            {resourceTypeLabels[log.resource_type ?? ""] ??
                               log.resource_type ??
                               "—"}
                           </Badge>
                           <Badge
                             className={ACTION_BADGE_CLASSES[log.action] ?? ""}
                           >
-                            {ACTION_LABELS[log.action] ?? log.action}
+                            {actionLabels[log.action] ?? log.action}
                           </Badge>
                         </div>
                       </div>
@@ -325,12 +373,17 @@ export default function AuditLogsPage() {
                     </CardHeader>
                     <CardContent>
                       <p className="text-muted-foreground type-body">
-                        <span className="font-medium">操作者:</span>{" "}
-                        {log.actor_id ?? "系统"}
+                        <span className="font-medium">
+                          {t.admin.auditLogs.operatorLabel}:
+                        </span>{" "}
+                        {log.actor_id ?? t.admin.auditLogs.system}
                         {log.resource_id ? (
                           <>
                             {" "}
-                            | <span className="font-medium">资源:</span>{" "}
+                            |{" "}
+                            <span className="font-medium">
+                              {t.admin.auditLogs.resourceLabel}:
+                            </span>{" "}
                             {log.resource_id}
                           </>
                         ) : null}
@@ -357,7 +410,7 @@ export default function AuditLogsPage() {
                   disabled={page <= 1}
                   onClick={() => setPage((p) => p - 1)}
                 >
-                  上一页
+                  {t.admin.auditLogs.previousPage}
                 </Button>
                 <span className="text-muted-foreground type-body">
                   {page} / {totalPages}
@@ -368,7 +421,7 @@ export default function AuditLogsPage() {
                   disabled={page >= totalPages}
                   onClick={() => setPage((p) => p + 1)}
                 >
-                  下一页
+                  {t.admin.auditLogs.nextPage}
                 </Button>
               </div>
             )}
@@ -383,14 +436,16 @@ export default function AuditLogsPage() {
       >
         <DialogContent className="max-h-[80vh] max-w-2xl overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>审计日志详情</DialogTitle>
-            <DialogDescription>日志 ID: {detailLog?.id}</DialogDescription>
+            <DialogTitle>{t.admin.auditLogs.detailTitle}</DialogTitle>
+            <DialogDescription>
+              {t.admin.auditLogs.logIdLabel}: {detailLog?.id}
+            </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-4">
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label className="text-muted-foreground type-body">
-                  操作类型
+                  {t.admin.auditLogs.actionTypeLabel}
                 </Label>
                 <p>
                   <Badge
@@ -398,14 +453,13 @@ export default function AuditLogsPage() {
                       ACTION_BADGE_CLASSES[detailLog?.action ?? ""] ?? ""
                     }
                   >
-                    {ACTION_LABELS[detailLog?.action ?? ""] ??
-                      detailLog?.action}
+                    {actionLabels[detailLog?.action ?? ""] ?? detailLog?.action}
                   </Badge>
                 </p>
               </div>
               <div>
                 <Label className="text-muted-foreground type-body">
-                  操作时间
+                  {t.admin.auditLogs.actionTimeLabel}
                 </Label>
                 <p className="type-body">
                   {detailLog?.created_at
@@ -415,36 +469,38 @@ export default function AuditLogsPage() {
               </div>
               <div>
                 <Label className="text-muted-foreground type-body">
-                  操作者
+                  {t.admin.auditLogs.operatorLabel}
                 </Label>
-                <p className="type-body">{detailLog?.actor_id ?? "系统"}</p>
+                <p className="type-body">
+                  {detailLog?.actor_id ?? t.admin.auditLogs.system}
+                </p>
               </div>
               <div>
                 <Label className="text-muted-foreground type-body">
-                  IP 地址
+                  {t.admin.auditLogs.ipAddressLabel}
                 </Label>
                 <p className="type-body">{detailLog?.ip_address ?? "—"}</p>
               </div>
               <div>
                 <Label className="text-muted-foreground type-body">
-                  资源类型
+                  {t.admin.auditLogs.resourceTypeLabel}
                 </Label>
                 <p className="type-body">
-                  {RESOURCE_TYPE_LABELS[detailLog?.resource_type ?? ""] ??
+                  {resourceTypeLabels[detailLog?.resource_type ?? ""] ??
                     detailLog?.resource_type ??
                     "—"}
                 </p>
               </div>
               <div>
                 <Label className="text-muted-foreground type-body">
-                  资源 ID
+                  {t.admin.auditLogs.resourceIdLabel}
                 </Label>
                 <p className="type-body">{detailLog?.resource_id ?? "—"}</p>
               </div>
             </div>
             <div>
               <Label className="text-muted-foreground type-body">
-                详细内容
+                {t.admin.auditLogs.detailContentLabel}
               </Label>
               <pre className="bg-muted type-body mt-1 max-h-60 overflow-auto rounded-md p-3">
                 {detailJson}

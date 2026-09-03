@@ -41,9 +41,11 @@ import {
 } from "@/core/admin/api";
 import type { Department } from "@/core/admin/types";
 import { useAuth } from "@/core/auth/AuthProvider";
+import { useI18n } from "@/core/i18n/hooks";
 
 export default function DepartmentsPage() {
   const { user } = useAuth();
+  const { t } = useI18n();
   const [departments, setDepartments] = useState<Department[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -94,7 +96,7 @@ export default function DepartmentsPage() {
   // Role check: only super_admin and department_admin can access admin pages
   const handleCreate = async () => {
     if (!name.trim()) {
-      toast.error("请输入部门名称");
+      toast.error(t.admin.departments.enterDepartmentName);
       return;
     }
     setSubmitting(true);
@@ -103,7 +105,7 @@ export default function DepartmentsPage() {
         name: name.trim(),
         description: description.trim(),
       });
-      toast.success("部门已创建");
+      toast.success(t.admin.departments.createdSuccess);
       setCreateOpen(false);
       setName("");
       setDescription("");
@@ -117,7 +119,7 @@ export default function DepartmentsPage() {
 
   const handleEdit = async () => {
     if (!editDept || !name.trim()) {
-      toast.error("请输入部门名称");
+      toast.error(t.admin.departments.enterDepartmentName);
       return;
     }
     setSubmitting(true);
@@ -126,7 +128,7 @@ export default function DepartmentsPage() {
         name: name.trim(),
         description: description.trim(),
       });
-      toast.success("部门已更新");
+      toast.success(t.admin.departments.updatedSuccess);
       setEditOpen(false);
       setEditDept(null);
       setName("");
@@ -152,14 +154,14 @@ export default function DepartmentsPage() {
 
       if (data.resources.length === 0) {
         // No resources, proceed with direct delete
-        if (!confirm("确定要删除该部门吗？此操作不可撤销。")) {
+        if (!confirm(t.admin.departments.deleteConfirm)) {
           setReallocLoading(false);
           return;
         }
         setDeletingId(deptId);
         try {
           await deleteDepartment(deptId);
-          toast.success("部门已删除");
+          toast.success(t.admin.departments.deletedSuccess);
           await fetchDepartments();
         } catch (err) {
           toast.error(err instanceof Error ? err.message : String(err));
@@ -183,7 +185,7 @@ export default function DepartmentsPage() {
     setReallocSubmitting(true);
     try {
       await deleteDepartment(reallocDeptId, reallocTargetDeptId || undefined);
-      toast.success("部门已删除");
+      toast.success(t.admin.departments.deletedSuccess);
       setReallocDialogOpen(false);
       setReallocDeptId(null);
       setReallocResources(null);
@@ -213,9 +215,11 @@ export default function DepartmentsPage() {
             </Button>
           </Link>
           <div>
-            <h1 className="type-page-title font-semibold">部门管理</h1>
+            <h1 className="type-page-title font-semibold">
+              {t.admin.departments.pageTitle}
+            </h1>
             <p className="text-muted-foreground type-body mt-0.5">
-              管理组织部门和资源分配
+              {t.admin.departments.pageDescription}
             </p>
           </div>
         </div>
@@ -228,7 +232,7 @@ export default function DepartmentsPage() {
             }}
           >
             <PlusIcon className="mr-1.5 h-4 w-4" />
-            新建部门
+            {t.admin.departments.createDepartment}
           </Button>
         )}
       </div>
@@ -237,7 +241,7 @@ export default function DepartmentsPage() {
       <div className="flex-1 overflow-y-auto p-6">
         {loading ? (
           <div className="text-muted-foreground type-body flex h-40 items-center justify-center">
-            加载中...
+            {t.admin.departments.loading}
           </div>
         ) : error ? (
           <div className="text-destructive type-body flex h-40 items-center justify-center">
@@ -246,7 +250,9 @@ export default function DepartmentsPage() {
         ) : departments.length === 0 ? (
           <div className="flex h-64 flex-col items-center justify-center gap-3 text-center">
             <Building2Icon className="text-muted-foreground h-10 w-10" />
-            <p className="text-muted-foreground type-body">暂无部门</p>
+            <p className="text-muted-foreground type-body">
+              {t.admin.departments.noDepartments}
+            </p>
             <Button
               variant="outline"
               onClick={() => {
@@ -256,7 +262,7 @@ export default function DepartmentsPage() {
               }}
             >
               <PlusIcon className="mr-1.5 h-4 w-4" />
-              新建部门
+              {t.admin.departments.createDepartment}
             </Button>
           </div>
         ) : (
@@ -279,7 +285,8 @@ export default function DepartmentsPage() {
                       <div>
                         <CardTitle className="type-body">{dept.name}</CardTitle>
                         <CardDescription className="line-clamp-1">
-                          {dept.description || "暂无描述"}
+                          {dept.description ||
+                            t.admin.departments.noDescription}
                         </CardDescription>
                       </div>
                     </div>
@@ -289,7 +296,7 @@ export default function DepartmentsPage() {
                           variant="ghost"
                           size="icon-sm"
                           onClick={() => openEditDialog(dept)}
-                          title="编辑"
+                          title={t.admin.departments.edit}
                           data-testid="department-edit-button"
                         >
                           <EditIcon className="h-3.5 w-3.5" />
@@ -301,7 +308,7 @@ export default function DepartmentsPage() {
                           size="icon-sm"
                           onClick={() => handleDelete(dept.id)}
                           disabled={deletingId === dept.id}
-                          title="删除"
+                          title={t.admin.departments.delete}
                           data-testid="department-delete-button"
                         >
                           <Trash2Icon className="text-destructive h-3.5 w-3.5" />
@@ -314,19 +321,27 @@ export default function DepartmentsPage() {
                   <div className="type-body flex items-center gap-4">
                     <div className="flex items-center gap-1">
                       <UsersIcon className="text-muted-foreground h-4 w-4" />
-                      <span>{dept.member_count} 成员</span>
+                      <span>
+                        {t.admin.departments.memberCount(dept.member_count)}
+                      </span>
                     </div>
                     <div className="flex items-center gap-1">
                       <Building2Icon className="text-muted-foreground h-4 w-4" />
-                      <span>{dept.agent_count} 智能体</span>
+                      <span>
+                        {t.admin.departments.agentCount(dept.agent_count)}
+                      </span>
                     </div>
                     <div className="flex items-center gap-1">
                       <WrenchIcon className="text-muted-foreground h-4 w-4" />
-                      <span>{dept.skill_count} 技能</span>
+                      <span>
+                        {t.admin.departments.skillCount(dept.skill_count)}
+                      </span>
                     </div>
                   </div>
                   <div className="text-muted-foreground type-body mt-2">
-                    创建于 {new Date(dept.created_at).toLocaleDateString()}
+                    {t.admin.departments.createdAt(
+                      new Date(dept.created_at).toLocaleDateString(),
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -339,22 +354,28 @@ export default function DepartmentsPage() {
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>新建部门</DialogTitle>
-            <DialogDescription>创建一个新的组织部门</DialogDescription>
+            <DialogTitle>{t.admin.departments.createDepartment}</DialogTitle>
+            <DialogDescription>
+              {t.admin.departments.createDescription}
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <label className="type-body font-medium">部门名称</label>
+              <label className="type-body font-medium">
+                {t.admin.departments.nameLabel}
+              </label>
               <Input
-                placeholder="请输入部门名称"
+                placeholder={t.admin.departments.enterDepartmentName}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
               />
             </div>
             <div className="space-y-2">
-              <label className="type-body font-medium">部门描述</label>
+              <label className="type-body font-medium">
+                {t.admin.departments.descriptionLabel}
+              </label>
               <Textarea
-                placeholder="请输入部门描述（可选）"
+                placeholder={t.admin.departments.descriptionPlaceholder}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
               />
@@ -362,10 +383,12 @@ export default function DepartmentsPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>
-              取消
+              {t.admin.departments.cancel}
             </Button>
             <Button onClick={handleCreate} disabled={submitting}>
-              {submitting ? "创建中..." : "创建"}
+              {submitting
+                ? t.admin.departments.creating
+                : t.admin.departments.create}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -375,22 +398,28 @@ export default function DepartmentsPage() {
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>编辑部门</DialogTitle>
-            <DialogDescription>修改部门信息</DialogDescription>
+            <DialogTitle>{t.admin.departments.editDepartment}</DialogTitle>
+            <DialogDescription>
+              {t.admin.departments.editDescription}
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <label className="type-body font-medium">部门名称</label>
+              <label className="type-body font-medium">
+                {t.admin.departments.nameLabel}
+              </label>
               <Input
-                placeholder="请输入部门名称"
+                placeholder={t.admin.departments.enterDepartmentName}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
               />
             </div>
             <div className="space-y-2">
-              <label className="type-body font-medium">部门描述</label>
+              <label className="type-body font-medium">
+                {t.admin.departments.descriptionLabel}
+              </label>
               <Textarea
-                placeholder="请输入部门描述（可选）"
+                placeholder={t.admin.departments.descriptionPlaceholder}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
               />
@@ -398,10 +427,12 @@ export default function DepartmentsPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditOpen(false)}>
-              取消
+              {t.admin.departments.cancel}
             </Button>
             <Button onClick={handleEdit} disabled={submitting}>
-              {submitting ? "保存中..." : "保存"}
+              {submitting
+                ? t.admin.departments.saving
+                : t.admin.departments.save}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -411,22 +442,26 @@ export default function DepartmentsPage() {
       <Dialog open={reallocDialogOpen} onOpenChange={setReallocDialogOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>删除部门 - 资源重分配</DialogTitle>
+            <DialogTitle>{t.admin.departments.reallocTitle}</DialogTitle>
             <DialogDescription>
-              部门 &quot;{reallocDeptName}&quot; 包含{" "}
-              {reallocResources?.length ?? 0} 个资源，请选择如何处理这些资源。
+              {t.admin.departments.reallocDescription(
+                reallocDeptName,
+                reallocResources?.length ?? 0,
+              )}
             </DialogDescription>
           </DialogHeader>
 
           {reallocLoading ? (
             <div className="text-muted-foreground type-body py-8 text-center">
-              加载资源列表中...
+              {t.admin.departments.loadingResources}
             </div>
           ) : (
             <div className="space-y-4">
               {/* Resource List */}
               <div className="space-y-2">
-                <label className="type-body font-medium">受影响的资源</label>
+                <label className="type-body font-medium">
+                  {t.admin.departments.affectedResources}
+                </label>
                 <div className="max-h-60 overflow-y-auto rounded-md border p-2">
                   {reallocResources && reallocResources.length > 0 ? (
                     <div className="space-y-2">
@@ -445,15 +480,15 @@ export default function DepartmentsPage() {
                           </div>
                           <span className="text-muted-foreground type-body">
                             {resource.visibility === "department"
-                              ? "部门级"
-                              : "私有"}
+                              ? t.admin.departments.visibilityDepartment
+                              : t.admin.departments.visibilityPrivate}
                           </span>
                         </div>
                       ))}
                     </div>
                   ) : (
                     <div className="text-muted-foreground type-body py-4 text-center">
-                      暂无资源
+                      {t.admin.departments.noResources}
                     </div>
                   )}
                 </div>
@@ -461,7 +496,9 @@ export default function DepartmentsPage() {
 
               {/* Target Department Selection */}
               <div className="space-y-2">
-                <label className="type-body font-medium">资源处理方式</label>
+                <label className="type-body font-medium">
+                  {t.admin.departments.reallocMethodLabel}
+                </label>
                 <div className="space-y-3">
                   <div className="flex items-center gap-2">
                     <input
@@ -482,7 +519,7 @@ export default function DepartmentsPage() {
                       className="h-4 w-4"
                     />
                     <label htmlFor="realloc-dept" className="type-body">
-                      重分配到目标部门
+                      {t.admin.departments.reassignToDept}
                     </label>
                   </div>
 
@@ -492,7 +529,9 @@ export default function DepartmentsPage() {
                       onChange={(e) => setReallocTargetDeptId(e.target.value)}
                       className="type-body ml-6 h-9 w-full max-w-xs rounded-md border bg-transparent px-3"
                     >
-                      <option value="">请选择目标部门</option>
+                      <option value="">
+                        {t.admin.departments.selectTargetDept}
+                      </option>
                       {departments
                         .filter((d) => d.id !== reallocDeptId)
                         .map((dept) => (
@@ -513,7 +552,7 @@ export default function DepartmentsPage() {
                       className="h-4 w-4"
                     />
                     <label htmlFor="realloc-private" className="type-body">
-                      降级为私有（资源变为私有，部门关联清除）
+                      {t.admin.departments.downgradeToPrivate}
                     </label>
                   </div>
                 </div>
@@ -530,14 +569,16 @@ export default function DepartmentsPage() {
                 setReallocResources(null);
               }}
             >
-              取消
+              {t.admin.departments.cancel}
             </Button>
             <Button
               variant="destructive"
               onClick={handleReallocDelete}
               disabled={reallocLoading || reallocSubmitting}
             >
-              {reallocSubmitting ? "删除中..." : "确认删除"}
+              {reallocSubmitting
+                ? t.admin.departments.deleting
+                : t.admin.departments.confirmDelete}
             </Button>
           </DialogFooter>
         </DialogContent>

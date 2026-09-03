@@ -3,8 +3,11 @@
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
+import { useI18n } from "@/core/i18n/hooks";
+
 export default function SkillApplicationsPage() {
   const router = useRouter();
+  const { t } = useI18n();
 
   useEffect(() => {
     router.replace("/workspace/admin/visibility-applications");
@@ -13,7 +16,7 @@ export default function SkillApplicationsPage() {
   return (
     <div className="flex size-full items-center justify-center">
       <p className="text-muted-foreground type-body">
-        正在跳转到统一审批中心...
+        {t.admin.skillApplications.redirecting()}
       </p>
     </div>
   );

@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -69,13 +70,18 @@ export function RecentChatList() {
       agent_name?: string;
     }>();
   const { data: threads = [] } = useThreads();
-  const { mutate: deleteThread } = useDeleteThread();
+  const { mutate: deleteThread, isPending: deletePending } = useDeleteThread();
   const { mutate: renameThread } = useRenameThread();
 
   // Rename dialog state
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [renameThreadId, setRenameThreadId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
+
+  // Delete confirmation dialog state
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteThreadId, setDeleteThreadId] = useState<string | null>(null);
+  const [deleteThreadTitle, setDeleteThreadTitle] = useState("");
 
   const handleDelete = useCallback(
     (threadId: string) => {
@@ -97,6 +103,20 @@ export function RecentChatList() {
     },
     [agentNameFromPath, deleteThread, router, threadIdFromPath, threads],
   );
+
+  const handleDeleteClick = useCallback((thread: AgentThread) => {
+    setDeleteThreadId(thread.thread_id);
+    setDeleteThreadTitle(titleOfThread(thread));
+    setDeleteDialogOpen(true);
+  }, []);
+
+  const handleDeleteConfirm = useCallback(() => {
+    if (!deleteThreadId) return;
+    handleDelete(deleteThreadId);
+    setDeleteDialogOpen(false);
+    setDeleteThreadId(null);
+    setDeleteThreadTitle("");
+  }, [deleteThreadId, handleDelete]);
 
   const handleRenameClick = useCallback(
     (threadId: string, currentTitle: string) => {
@@ -154,7 +174,7 @@ export function RecentChatList() {
         }
         toast.success(t.common.exportSuccess);
       } catch {
-        toast.error("Failed to export conversation");
+        toast.error(t.common.exportFailed);
       }
     },
     [t],
@@ -254,11 +274,13 @@ export function RecentChatList() {
                               </DropdownMenuSub>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
-                                onSelect={() => handleDelete(thread.thread_id)}
+                                onSelect={() => handleDeleteClick(thread)}
                                 data-testid="thread-delete-action"
                               >
-                                <Trash2 className="text-muted-foreground" />
-                                <span>{t.common.delete}</span>
+                                <Trash2 className="text-destructive" />
+                                <span className="text-destructive">
+                                  {t.common.delete}
+                                </span>
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
@@ -281,6 +303,7 @@ export function RecentChatList() {
           </DialogHeader>
           <div className="py-4">
             <Input
+              autoFocus
               value={renameValue}
               onChange={(e) => setRenameValue(e.target.value)}
               placeholder={t.common.rename}
@@ -300,6 +323,35 @@ export function RecentChatList() {
               {t.common.cancel}
             </Button>
             <Button onClick={handleRenameSubmit}>{t.common.save}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirm Dialog */}
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t.common.deleteTitle}</DialogTitle>
+            <DialogDescription>
+              {t.common.deleteThreadConfirm(deleteThreadTitle)}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDeleteDialogOpen(false)}
+              disabled={deletePending}
+            >
+              {t.common.cancel}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteConfirm}
+              disabled={deletePending}
+              data-testid="thread-delete-confirm"
+            >
+              {t.common.delete}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
