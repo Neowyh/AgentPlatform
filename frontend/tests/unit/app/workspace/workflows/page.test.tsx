@@ -97,6 +97,8 @@ vi.mock("@/core/i18n/hooks", () => ({
         started: "Workflow started",
         runStatus: "Run Status",
         runId: "Run ID: ",
+        fileCount: (count: number) => `${count} file${count === 1 ? "" : "s"}`,
+        noSelectedFiles: "No files selected",
         requiredMissing: (key: string) => `Required input missing: ${key}`,
       },
     },

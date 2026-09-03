@@ -919,10 +919,17 @@ describe("ChatPage", () => {
       files: [file],
     });
     expect(result).toBeInstanceOf(Promise);
-    expect(sendMessageMock).toHaveBeenCalledWith("test-thread", {
-      text: "hello",
-      files: [file],
-    });
+    expect(sendMessageMock).toHaveBeenCalledWith(
+      "test-thread",
+      {
+        text: "hello",
+        files: [file],
+      },
+      {
+        connector_name: undefined,
+        mode: "flash",
+      },
+    );
   });
 
   test("handleSubmit without files returns void", () => {
@@ -953,10 +960,17 @@ describe("ChatPage", () => {
       files: [],
     });
     expect(result).toBeUndefined();
-    expect(sendMessageMock).toHaveBeenCalledWith("test-thread", {
-      text: "hello",
-      files: [],
-    });
+    expect(sendMessageMock).toHaveBeenCalledWith(
+      "test-thread",
+      {
+        text: "hello",
+        files: [],
+      },
+      {
+        connector_name: undefined,
+        mode: "flash",
+      },
+    );
   });
 
   test("handleStop calls thread.stop", async () => {
