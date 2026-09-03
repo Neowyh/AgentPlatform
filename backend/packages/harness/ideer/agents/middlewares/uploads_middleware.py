@@ -223,7 +223,7 @@ class UploadsMiddleware(AgentMiddleware[UploadsMiddlewareState]):
                     "<uploaded_files>",
                     "服务端已安全展开代码证据包；请先枚举并阅读源码根目录：",
                     f"  /mnt/user-data/code-evidence/{package_id}/source",
-                    "read_file 与 grep 支持 UTF-8、UTF-8 BOM 和 GB18030；原始 ZIP 仅作为不可直接读取的证据容器。",
+                    "read_file 与 grep 在全路径自动识别 UTF-8、UTF-8 BOM 和 GB18030（兼容 GBK）；原始 ZIP 仅作为不可直接读取的证据容器。",
                     f"原始文件名：{original}",
                     "</uploaded_files>",
                 ]

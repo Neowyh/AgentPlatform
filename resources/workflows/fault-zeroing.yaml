@@ -94,7 +94,8 @@ nodes:
                 （遇截断标记用 page_range 分段继续；转换结果为空疑似扫描件时按失败契约处理；
                 read_document 返回 JSON 错误时同样按失败契约处理，不得把错误信息当作内容；
                 .doc 转换失败通常是网关缺少 LibreOffice——记入覆盖矩阵缺失项并建议用户提供 .docx）
-              - .md/.txt/.log 等纯文本直接用 read_file 读取
+               - .md/.txt/.log/.c/.h 等纯文本与源码文本直接用 read_file 读取
+                 （工具自动识别 UTF-8 / GB18030，GBK 兼容）
           3. 读取文件内容，抽取每一条证据
           4. 检查五类资料覆盖情况：问题描述、设计约束、试验记录或日志、总结报告、历史或复核记录
           5. 生成证据台账。静态告警单独最多只能标为 high_risk_candidate，不能标为 confirmed。
@@ -392,7 +393,8 @@ nodes:
           - .doc/.docx/.pdf/.xls/.xlsx/.ppt/.pptx 用 read_document 转 Markdown 后读取
             （遇截断标记用 page_range 分段继续；read_document 返回 JSON 错误时
             在问题清单中记录"来源无法回查"，不得编造核对结论）
-          - .md/.txt/.log 等纯文本直接用 read_file 读取
+          - .md/.txt/.log/.c/.h 等纯文本与源码文本直接用 read_file 读取
+            （工具自动识别 UTF-8 / GB18030，GBK 兼容）
 
           输出：
           ```json

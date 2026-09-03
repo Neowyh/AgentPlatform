@@ -370,8 +370,18 @@ class LocalSandbox(Sandbox):
     def read_file(self, path: str) -> str:
         resolved_path = self._resolve_path(path)
         try:
-            with open(resolved_path, encoding="utf-8") as f:
-                content = f.read()
+            with open(resolved_path, "rb") as f:
+                raw = f.read()
+            # Plain open(..., encoding="utf-8") rejects GBK/GB18030 uploads
+            # (e.g. C sources saved by Chinese Windows editors), so fall back
+            # to GB18030 which is a superset of GBK.
+            try:
+                content = raw.decode("utf-8")
+            except UnicodeDecodeError:
+                # Fall back to GB18030 (a superset of GBK) for uploads saved
+                # by Chinese Windows editors, e.g. GBK-encoded C sources.
+                # Still raises UnicodeDecodeError when neither works.
+                content = raw.decode("gb18030")
             # Only reverse-resolve paths in files that were previously written
             # by write_file (agent-authored content). User-uploaded files,
             # external tool output, and other non-agent content should not be

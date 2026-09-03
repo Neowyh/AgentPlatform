@@ -94,6 +94,22 @@ def truncate_line(line: str, max_chars: int = DEFAULT_LINE_SUMMARY_LENGTH) -> st
     return line[: max_chars - 3] + "..."
 
 
+def decode_text_bytes(data: bytes) -> str | None:
+    """Decode text bytes as UTF-8, falling back to GB18030.
+
+    GB18030 is a superset of GBK, so one fallback covers both encodings
+    commonly produced by Chinese Windows editors. Returns None when the
+    bytes are valid in neither encoding.
+    """
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:
+        try:
+            return data.decode("gb18030")
+        except UnicodeDecodeError:
+            return None
+
+
 def is_binary_file(path: Path, sample_size: int = 8192) -> bool:
     try:
         with path.open("rb") as handle:
@@ -189,21 +205,24 @@ def find_grep_matches(
                     continue
                 if file_path.stat().st_size > max_file_size or is_binary_file(file_path):
                     continue
-                with file_path.open(encoding="utf-8", errors="replace") as handle:
-                    for line_number, line in enumerate(handle, start=1):
-                        if len(line) > _max_line_chars:
-                            continue
-                        if regex.search(line):
-                            matches.append(
-                                GrepMatch(
-                                    path=str(file_path),
-                                    line_number=line_number,
-                                    line=truncate_line(line, line_summary_length),
-                                )
+                raw = file_path.read_bytes()
+                text = decode_text_bytes(raw)
+                if text is None:
+                    continue
+                for line_number, line in enumerate(text.splitlines(keepends=True), start=1):
+                    if len(line) > _max_line_chars:
+                        continue
+                    if regex.search(line):
+                        matches.append(
+                            GrepMatch(
+                                path=str(file_path),
+                                line_number=line_number,
+                                line=truncate_line(line, line_summary_length),
                             )
-                            if len(matches) >= max_results:
-                                truncated = True
-                                return matches, truncated
+                        )
+                        if len(matches) >= max_results:
+                            truncated = True
+                            return matches, truncated
             except OSError:
                 continue
 

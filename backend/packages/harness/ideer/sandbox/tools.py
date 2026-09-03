@@ -1375,6 +1375,29 @@ def _decode_code_evidence(data: bytes) -> tuple[str, str]:
             raise _CodeEvidenceDecodeError("Code evidence is neither valid UTF-8 nor GB18030; re-export the source with a supported encoding") from exc
 
 
+def _decode_text_file_bytes(data: bytes) -> tuple[str, str]:
+    """Decode arbitrary user file bytes as UTF-8 (BOM-aware), falling back to GB18030.
+
+    Same decode order as :func:`_decode_code_evidence` (GB18030 covers GBK),
+    but with generic error messages for non-evidence paths such as direct
+    uploads under ``/mnt/user-data/uploads/``.
+    """
+    if b"\0" in data:
+        raise ValueError("File contains NUL bytes; binary files are not readable as text")
+    if data.startswith(codecs.BOM_UTF8):
+        try:
+            return data[len(codecs.BOM_UTF8) :].decode("utf-8", errors="strict"), "UTF-8 BOM"
+        except UnicodeDecodeError as exc:
+            raise ValueError("File is not valid UTF-8 after its BOM; re-export as UTF-8 or GB18030") from exc
+    try:
+        return data.decode("utf-8", errors="strict"), "UTF-8"
+    except UnicodeDecodeError:
+        try:
+            return data.decode("gb18030", errors="strict"), "GB18030"
+        except UnicodeDecodeError as exc:
+            raise ValueError("File is neither valid UTF-8 nor GB18030; re-export the source with a supported encoding") from exc
+
+
 def _truncate_ls_output(output: str, max_chars: int) -> str:
     """Head-truncate ls output, preserving the beginning of the listing.
 
@@ -1733,7 +1756,13 @@ def read_file_tool(
         if _code_evidence_path(requested_path, runtime):
             content, encoding = _decode_code_evidence(sandbox.download_file(requested_path))
         else:
-            content = sandbox.read_file(path)
+            try:
+                content = sandbox.read_file(path)
+            except UnicodeDecodeError:
+                # Sandboxes that only read UTF-8 reject GBK/GB18030 uploads
+                # (e.g. C sources saved by Chinese Windows editors); retry
+                # from raw bytes with the same UTF-8 -> GB18030 fallback.
+                content, encoding = _decode_text_file_bytes(sandbox.download_file(requested_path))
         if not content:
             return "(empty)"
         if start_line is not None and end_line is not None:
