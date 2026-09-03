@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Run the three checked-in fault-zeroing cases through the production worker path."""
+"""Run the three checked-in fault-zeroing cases through the production worker path.
+
+Ticket 07: the acceptance harness goes through the shared FaultZeroingKernel
+seam — hybrid evidence intake (with explicit single-side confirmation),
+contract-gated completion (never "file exists == success"), and the contract
+verdict recorded in the acceptance report.
+"""
 
 from __future__ import annotations
 
@@ -8,6 +14,7 @@ import asyncio
 import hashlib
 import json
 import shutil
+import sys
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -16,17 +23,25 @@ from uuid import uuid4
 import yaml
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from app.workflow_worker import execute_workflow_task
-from ideer.config import get_app_config
-from ideer.config.checkpointer_config import CheckpointerConfig
-from ideer.config.paths import get_paths
-from ideer.persistence.base import Base
-from ideer.workflows.v2.store import WorkflowV2Store
-from ideer.workflows.v2.worker import WorkflowWorker
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO_ROOT / "backend" / "packages" / "harness"))
+
+from app.workflow_worker import execute_workflow_task  # noqa: E402
+from ideer.config import get_app_config  # noqa: E402
+from ideer.config.checkpointer_config import CheckpointerConfig  # noqa: E402
+from ideer.config.paths import get_paths  # noqa: E402
+from ideer.fault_zeroing.contract import CONTRACT_VERSION  # noqa: E402
+from ideer.fault_zeroing.kernel import (  # noqa: E402
+    COMPLETION_STATUS_COMPLETED,
+    FaultZeroingKernel,
+)
+from ideer.persistence.base import Base  # noqa: E402
+from ideer.workflows.v2.store import WorkflowV2Store  # noqa: E402
+from ideer.workflows.v2.worker import WorkflowWorker  # noqa: E402
+
 CASES_ROOT = REPO_ROOT / "docs" / "zero_agent_eval_cases"
-WORKFLOW_PATH = REPO_ROOT / "workflows" / "fault-zeroing.yaml"
+# Ticket 07 regression: the canonical bundled workflow lives under resources/.
+WORKFLOW_PATH = REPO_ROOT / "resources" / "workflows" / "fault-zeroing.yaml"
 EXPECTED_OUTPUTS = (
     "fault_tree.json",
     "fault_tree.svg",
@@ -66,6 +81,22 @@ def _stage_case(case_dir: Path, uploads_dir: Path) -> list[str]:
     return staged
 
 
+async def _confirm_single_side_intake(
+    kernel: FaultZeroingKernel, store: WorkflowV2Store, run_id: str, user_id: str
+) -> None:
+    """Operator confirmation for the documented single-side (document) cases."""
+
+    run = await store.get_run(run_id)
+    if run is None or run.status != "paused":
+        return
+    interrupt = (run.snapshot or {}).get("interrupt", [{}])[0]
+    await kernel.confirm_evidence(
+        run_id,
+        payload={"input_snapshot_hash": interrupt.get("input_snapshot_hash")},
+        confirmed_by=user_id,
+    )
+
+
 async def _run(user_id: str, case_name: str | None = None) -> dict:
     started_at = datetime.now(UTC)
     session_id = started_at.strftime("%Y%m%dT%H%M%SZ")
@@ -75,6 +106,7 @@ async def _run(user_id: str, case_name: str | None = None) -> dict:
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
     store = WorkflowV2Store(async_sessionmaker(engine, expire_on_commit=False))
+    kernel = FaultZeroingKernel(store)
 
     workflow_text = WORKFLOW_PATH.read_text(encoding="utf-8")
     workflow_raw = yaml.safe_load(workflow_text)
@@ -104,17 +136,24 @@ async def _run(user_id: str, case_name: str | None = None) -> dict:
             if any(name.endswith("_expected_analysis.md") for name in staged_files):
                 raise AssertionError(f"expected analysis leaked into runtime inputs for {case_dir.name}")
             problem_description = (case_dir / "00_problem_statement.md").read_text(encoding="utf-8")
-            await store.create_run(
-                run_id,
-                "fault-zeroing",
-                version.version,
-                {
+
+            # Unified Run seam: intake decides execute vs pause before any
+            # model execution; the eval cases provide document evidence only,
+            # so the operator confirms the missing code-evidence side.
+            started_result = await kernel.start_run(
+                workflow_name="fault-zeroing",
+                definition_version=version.version,
+                inputs={
                     "upload_dir": "/mnt/user-data/uploads",
                     "problem_description": problem_description,
                     "output_base_dir": "/mnt/user-data/outputs",
+                    "evidence_mode": "hybrid",
                 },
-                user_id,
+                created_by=user_id,
+                run_id=run_id,
             )
+            if started_result.status == "paused":
+                await _confirm_single_side_intake(kernel, store, run_id, user_id)
             started = time.monotonic()
 
             async def execute(task) -> None:
@@ -151,7 +190,15 @@ async def _run(user_id: str, case_name: str | None = None) -> dict:
                 path = Path(raw_path)
                 if not path.is_file() or path.stat().st_size == 0:
                     raise AssertionError(f"{case_dir.name} missing or empty artifact: {name}")
-            json.loads((outputs_dir / "fault_tree.json").read_text(encoding="utf-8"))
+
+            # Contract-gated completion: full five artifacts + semantic
+            # consistency, never file existence alone.
+            completion = await kernel.evaluate_completion(run_id, str(outputs_dir))
+            if completion.status != COMPLETION_STATUS_COMPLETED:
+                raise AssertionError(
+                    f"{case_dir.name} failed the Result Contract: {completion.reason_codes}"
+                )
+
             results.append(
                 {
                     "case": case_dir.name,
@@ -166,6 +213,8 @@ async def _run(user_id: str, case_name: str | None = None) -> dict:
                     "expected_analysis_provided": False,
                     "artifacts": artifacts,
                     "automated_checks": "passed",
+                    "contract_verdict": completion.verdict.to_dict(),
+                    "pending_verification": completion.pending_verification,
                     "human_check": "pending",
                 }
             )
@@ -177,7 +226,8 @@ async def _run(user_id: str, case_name: str | None = None) -> dict:
         "completed_at": datetime.now(UTC).isoformat(),
         "workflow": "fault-zeroing",
         "definition_version": version.version,
-        "validator_run": False,
+        "contract_version": CONTRACT_VERSION,
+        "validator_run": True,
         "results": results,
     }
     record_path = acceptance_dir / "acceptance.json"

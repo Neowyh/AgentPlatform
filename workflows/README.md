@@ -1,13 +1,15 @@
 # iDeer Workflows
 
-此目录存放 schema v2 的 YAML 格式工作流定义文件。捆绑工作流通过
-`python scripts/seed_fault_zeroing_workflow.py` 幂等导入定义存储
-（内容未变化时跳过，变化时创建新版本）。
+此目录存放 schema v2 的 YAML 格式工作流定义文件。捆绑工作流（含
+fault-zeroing）通过 canonical bundled resource module 幂等发布
+（`scripts/seed_bundled_resources.py` + `bundled-resources.json`），
+不使用独立的 seed 脚本。
 
 ## 快速开始
 
-1. 工作台页面点击 **工作流 → 新建**（或先用 seed 脚本导入 fault-zeroing）
-2. 编写 YAML 定义（参考下方格式与 `fault-zeroing.yaml`）
+1. 工作台页面点击 **工作流 → 新建**（捆绑的 fault-zeroing 已由
+   canonical bundle 自动发布）
+2. 编写 YAML 定义（参考下方格式与 `resources/workflows/fault-zeroing.yaml`）
 3. 保存后点击 **运行**，填入输入参数
 
 ## YAML 格式（schema_version: 2）

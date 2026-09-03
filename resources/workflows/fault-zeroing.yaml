@@ -443,6 +443,11 @@ nodes:
           - 不同意 → 说明理由
 
           输出：覆盖写入 {{inputs.output_base_dir}}/fault_tree.json
+    # Result Contract 质量门：修订后的最终故障树必须仍通过 schema 校验，
+    # 否则最后一次写入会绕过所有校验（最终修订绕过漏洞）。
+    schemas:
+      - file: "{{inputs.output_base_dir}}/fault_tree.json"
+        schema_file: "/mnt/skills/fault-zeroing/templates/fault_tree.schema.json"
     preconditions:
       - file: "{{inputs.output_base_dir}}/fault_tree.json"
         non_empty: true

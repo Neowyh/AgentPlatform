@@ -16,7 +16,6 @@ DEPLOY_SCRIPT = REPO_ROOT / "scripts" / "deploy-intranet.sh"
 PACKAGE_SCRIPT = REPO_ROOT / "scripts" / "package-intranet-offline.sh"
 MANIFEST_SCRIPT = REPO_ROOT / "scripts" / "intranet_bundle_manifest.py"
 CHECK_SCRIPT = REPO_ROOT / "scripts" / "check-intranet.sh"
-INSTALL_SCRIPT = REPO_ROOT / "scripts" / "install_fault_zeroing_agent.py"
 INSTALL_AGENT_SCRIPT = REPO_ROOT / "scripts" / "install_agent.py"
 INSTALL_SRS_SCRIPT = REPO_ROOT / "scripts" / "install_srs_writing_agent.py"
 COMPOSE_FILE = REPO_ROOT / "docker" / "docker-compose.intranet.yaml"
@@ -185,7 +184,6 @@ sandbox:
         "{}\n",
         encoding="utf-8",
     )
-    _write_executable(root / "scripts" / "install_fault_zeroing_agent.py", INSTALL_SCRIPT.read_text(encoding="utf-8"))
     _write_executable(
         root / "scripts" / "install_agent.py",
         (REPO_ROOT / "scripts" / "install_agent.py").read_text(encoding="utf-8"),
@@ -358,7 +356,7 @@ def test_prepare_never_installs_agents_into_per_user_directories(tmp_path: Path)
     assert not (user_dir / "agents" / "fault-zeroing").exists()
 
 
-def test_status_logs_and_stop_do_not_install_fault_zeroing_agent(tmp_path: Path):
+def test_status_logs_and_stop_do_not_install_agents(tmp_path: Path):
     for command in ("status", "logs", "stop"):
         bundle_root = _make_bundle(tmp_path / command)
         proc = _run_deploy(bundle_root, command, env=_env_with_fake_docker(tmp_path / f"{command}-env"))

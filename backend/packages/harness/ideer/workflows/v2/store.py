@@ -146,6 +146,7 @@ class WorkflowV2Store:
         inputs: dict,
         created_by: str,
         *,
+        snapshot: dict | None = None,
         department_id: str | None = None,
         user_concurrency: int | None = None,
         department_concurrency: int | None = None,
@@ -157,7 +158,7 @@ class WorkflowV2Store:
             checkpoint_thread_id=f"wf-{run_id}",
             status="queued",
             inputs=inputs,
-            snapshot={},
+            snapshot=snapshot or {},
             created_by=created_by,
             department_id=department_id,
         )
@@ -194,6 +195,43 @@ class WorkflowV2Store:
             # Flush before inserting the task: with SQLite foreign keys enabled
             # (production engine), the task row must reference an already
             # persisted run row. Relying on flush ordering alone is fragile.
+            await session.flush()
+            session.add(task)
+            await session.commit()
+        return run
+
+    async def create_paused_run(
+        self,
+        run_id: str,
+        workflow_name: str,
+        definition_version: int,
+        inputs: dict,
+        created_by: str,
+        *,
+        snapshot: dict | None = None,
+        department_id: str | None = None,
+    ) -> WorkflowV2RunRow:
+        """Create a run that starts (and stays) paused until a resume command.
+
+        Unlike ``create_run`` the paired task row is parked in ``paused`` so
+        no worker can claim it: the fault-zeroing kernel uses this to hold a
+        run for explicit user confirmation before any model execution.
+        """
+
+        run = WorkflowV2RunRow(
+            run_id=run_id,
+            workflow_name=workflow_name,
+            definition_version=definition_version,
+            checkpoint_thread_id=f"wf-{run_id}",
+            status="paused",
+            inputs=inputs,
+            snapshot=snapshot or {},
+            created_by=created_by,
+            department_id=department_id,
+        )
+        task = WorkflowTaskRow(task_id=str(uuid4()), run_id=run_id, status="paused", attempts=0, cancel_requested=False)
+        async with self.session_factory() as session:
+            session.add(run)
             await session.flush()
             session.add(task)
             await session.commit()
@@ -299,6 +337,18 @@ class WorkflowV2Store:
             )
             await session.commit()
             return run
+
+    async def cancel_legacy_run(self, run_id: str, *, status: str = "cancelled", reason_code: str | None = None) -> bool:
+        """Explicitly cancel one queued/paused run (legacy cutover support)."""
+
+        async with self.session_factory() as session:
+            run = (await session.execute(select(WorkflowV2RunRow).where(WorkflowV2RunRow.run_id == run_id))).scalar_one_or_none()
+            if run is None or run.status not in ("queued", "paused"):
+                return False
+            run.status = status
+            run.error = reason_code
+            await session.commit()
+            return True
 
     async def append_event(
         self,
