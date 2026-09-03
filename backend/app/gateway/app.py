@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import uuid
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -463,6 +464,81 @@ def _http_exception_payload(exc: HTTPException) -> dict:
     }
 
 
+def register_exception_handlers(app: FastAPI) -> None:
+    """Register global exception handlers for structured error responses."""
+
+    @app.exception_handler(ApiException)
+    async def api_exception_handler(_request: Request, exc: ApiException) -> JSONResponse:
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={
+                "success": False,
+                "data": None,
+                "error": {"code": exc.code, "message": exc.message},
+                "detail": exc.message,
+            },
+        )
+
+    @app.exception_handler(HTTPException)
+    async def http_exception_handler(_request: Request, exc: HTTPException) -> JSONResponse:
+        return JSONResponse(
+            status_code=exc.status_code,
+            content=_http_exception_payload(exc),
+        )
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_exception_handler(_request: Request, exc: RequestValidationError) -> JSONResponse:
+        # Return only a sanitized projection (loc/msg/type) — never the raw
+        # pydantic repr, which may leak internal model paths and payloads.
+        issues = [
+            {
+                "loc": [str(item) for item in err.get("loc", [])],
+                "msg": err.get("msg", ""),
+                "type": err.get("type", ""),
+            }
+            for err in exc.errors()
+        ]
+        return JSONResponse(
+            status_code=400,
+            content={
+                "success": False,
+                "data": None,
+                "error": {
+                    "code": "INVALID_REQUEST_BODY",
+                    "message": "请求体格式不合法",
+                    "issues": issues,
+                },
+            },
+        )
+
+    @app.exception_handler(Exception)
+    async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+        # Safety net for any unhandled exception: log the full traceback with a
+        # correlation id, but return a generic envelope so internal details
+        # (stack traces, model paths, payloads) never reach the client.
+        request_id = uuid.uuid4().hex[:12]
+        logger.exception(
+            "Unhandled exception (request_id=%s, method=%s, path=%s): %s",
+            request_id,
+            request.method,
+            request.url.path,
+            exc,
+        )
+        return JSONResponse(
+            status_code=500,
+            headers={"X-Request-ID": request_id},
+            content={
+                "success": False,
+                "data": None,
+                "error": {
+                    "code": "INTERNAL_ERROR",
+                    "message": "服务器内部错误",
+                    "request_id": request_id,
+                },
+            },
+        )
+
+
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application.
 
@@ -577,36 +653,7 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
     )
 
     # --- Global exception handlers for structured error responses ---
-
-    @app.exception_handler(ApiException)
-    async def api_exception_handler(_request: Request, exc: ApiException) -> JSONResponse:
-        return JSONResponse(
-            status_code=exc.status_code,
-            content={
-                "success": False,
-                "data": None,
-                "error": {"code": exc.code, "message": exc.message},
-                "detail": exc.message,
-            },
-        )
-
-    @app.exception_handler(HTTPException)
-    async def http_exception_handler(_request: Request, exc: HTTPException) -> JSONResponse:
-        return JSONResponse(
-            status_code=exc.status_code,
-            content=_http_exception_payload(exc),
-        )
-
-    @app.exception_handler(RequestValidationError)
-    async def validation_exception_handler(_request: Request, exc: RequestValidationError) -> JSONResponse:
-        return JSONResponse(
-            status_code=400,
-            content={
-                "success": False,
-                "data": None,
-                "error": {"code": "INVALID_REQUEST_BODY", "message": str(exc)},
-            },
-        )
+    register_exception_handlers(app)
 
     # Auth: reject unauthenticated requests to non-public paths (fail-closed safety net)
     app.add_middleware(AuthMiddleware)
