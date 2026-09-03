@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 _OUTLINE_PREVIEW_LINES = 5
+_DOCUMENT_EXTENSIONS = {".doc", ".docx", ".pdf", ".xls", ".xlsx", ".ppt", ".pptx", ".rtf"}
 
 
 def _extract_outline_for_file(file_path: Path) -> tuple[list[dict], list[str]]:
@@ -104,6 +105,8 @@ class UploadsMiddleware(AgentMiddleware[UploadsMiddlewareState]):
                 for text in preview:
                     lines.append(f"    > {text}")
             lines.append("  Use `grep` to search for keywords (e.g. `grep(pattern='keyword', path='/mnt/user-data/uploads/')`).")
+            if file.get("extension", "").lower() in _DOCUMENT_EXTENSIONS:
+                lines.append("  For this document, use `read_document` with the exact path; do not treat it as plain text.")
         lines.append("")
 
     def _create_files_message(self, new_files: list[dict], historical_files: list[dict]) -> str:
@@ -215,6 +218,7 @@ class UploadsMiddleware(AgentMiddleware[UploadsMiddlewareState]):
 
         context = getattr(runtime, "context", None) or {}
         package_id = context.get("code_package_id")
+        package_message: str | None = None
         if isinstance(package_id, str):
             manifest = context.get("code_evidence_manifest") or {}
             original = manifest.get("original_filename", "")
@@ -228,14 +232,6 @@ class UploadsMiddleware(AgentMiddleware[UploadsMiddlewareState]):
                     "</uploaded_files>",
                 ]
             )
-            updated = HumanMessage(
-                content=f"{package_message}\n\n{last_message.content}",
-                id=last_message.id,
-                name=last_message.name,
-                additional_kwargs=last_message.additional_kwargs,
-            )
-            messages[last_message_index] = updated
-            return {"uploaded_files": [], "messages": messages}
 
         # Resolve uploads directory for existence checks
         thread_id = (runtime.context or {}).get("thread_id")
@@ -250,13 +246,16 @@ class UploadsMiddleware(AgentMiddleware[UploadsMiddlewareState]):
 
         # Get newly uploaded files from the current message's additional_kwargs.files
         new_files = self._files_from_kwargs(last_message, uploads_dir) or []
+        package_filename = str((context.get("code_evidence_manifest") or {}).get("original_filename") or "") if isinstance(package_id, str) else ""
+        if package_filename:
+            new_files = [file for file in new_files if file["filename"] != package_filename]
 
         # Collect historical files from the uploads directory (all except the new ones)
         new_filenames = {f["filename"] for f in new_files}
         historical_files: list[dict] = []
         if uploads_dir and uploads_dir.exists():
             for file_path in sorted(uploads_dir.iterdir()):
-                if file_path.is_file() and file_path.name not in new_filenames:
+                if file_path.is_file() and file_path.name not in new_filenames and file_path.name != package_filename:
                     stat = file_path.stat()
                     outline, preview = _extract_outline_for_file(file_path)
                     historical_files.append(
@@ -278,13 +277,15 @@ class UploadsMiddleware(AgentMiddleware[UploadsMiddlewareState]):
                 file["outline"] = outline
                 file["outline_preview"] = preview
 
-        if not new_files and not historical_files:
+        if not new_files and not historical_files and package_message is None:
             return None
 
         logger.debug(f"New files: {[f['filename'] for f in new_files]}, historical: {[f['filename'] for f in historical_files]}")
 
         # Create files message and prepend to the last human message content
-        files_message = self._create_files_message(new_files, historical_files)
+        files_message = self._create_files_message(new_files, historical_files) if (new_files or historical_files) else ""
+        if package_message is not None:
+            files_message = f"{package_message}\n\n{files_message}" if files_message else package_message
 
         # Extract original content - handle both string and list formats
         original_content = last_message.content

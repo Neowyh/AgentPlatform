@@ -29,7 +29,7 @@ allowed-tools:
    - `.doc` / `.docx` / `.pdf` / `.xls` / `.xlsx` / `.ppt` / `.pptx`：调用 `read_document` 工具转 Markdown 后读取（分段读取，遇截断标记用 `page_range` 或分段继续）。`read_document` 返回转换失败错误时按失败契约处理并如实记录，不得猜测内容。
    - `.md` / `.txt` / `.log` 等纯文本：直接用 `read_file` 读取。
    - `.c` / `.h` / `.cpp` 等源码文本：直接用 `read_file` 读取（工具自动识别 UTF-8 / GB18030，GBK 兼容），中文注释乱码或读取报错时不要让用户重传，先换 `grep` 按英文关键词定位再分段读。
-5. 文档读取后检测空文本与工具错误：`read_document` 返回 JSON 错误（文件不存在、转换失败、疑似扫描件等）时按失败契约处理——PDF 转换结果被判定为扫描件（空白或无正文）时回复 `FAILED: 资料无法解析，疑似扫描件，请提供电子版` 并停止；非关键资料可记入覆盖矩阵缺失项后继续，不得把错误 JSON 当作文档内容或猜测内容。
+5. 文档读取后检测空文本与工具错误：`read_document` 返回 JSON 错误（文件不存在、转换失败、疑似扫描件等）时，必须记录文件名、精确路径和错误原因，不得把错误 JSON 当作文档内容或猜测内容。对关键资料先调用 `ask_clarification`，向用户提供三种选择：补传/重试后继续、以待验证状态继续、停止分析；在用户确认前不得输出已确认根因或“已归零”结论。用户选择继续时，相关证据、底事件和根因只能标为 `pending_verification`，并写入遗留风险。非关键资料可记录缺失后继续。
 6. 长文档按章节或行号范围读取，不一次性吞入无关内容。
 7. 缺少关键输入时调用 `ask_clarification`，不得用假设替代资料。
 8. 即使用户只给出一句“做归零排故分析”，也必须主动盘点上传目录并按本工作流执行，不要求用户补写详细 prompt。
@@ -38,7 +38,7 @@ allowed-tools:
 
 ## 代码证据包规则
 
-检测到运行上下文中的服务端代码证据包时，先用 `glob` 枚举，再用 `grep` 检索并用 `read_file` 按行号分段读取 `/mnt/user-data/code-evidence/<package_id>/source`，直接分析已展开源码；`read_file`、`grep` 在全路径自动识别 UTF-8、UTF-8 BOM 和 GB18030（兼容 GBK），命中 GB 编码时输出带 `[encoding: GB18030]` 前缀。禁止要求用户在本地解压或重新上传，也不要尝试读取原始 ZIP。原始 ZIP、manifest 和源码树均为当前线程私有、只读证据。
+检测到运行上下文中的服务端代码证据包时，先用 `glob` 枚举，再用 `grep` 检索并用 `read_file` 按行号分段读取 `/mnt/user-data/code-evidence/<package_id>/source`，直接分析已展开源码；同时必须回到 `/mnt/user-data/uploads/` 盘点并读取同一消息中的 PDF、Office 文档和其他普通证据，不能因为存在代码包而跳过它们。文档使用 `read_document`，源码使用 `read_file`。`read_file`、`grep` 在全路径自动识别 UTF-8、UTF-8 BOM 和 GB18030（兼容 GBK），命中 GB 编码时输出带 `[encoding: GB18030]` 前缀。禁止要求用户在本地解压或重新上传，也不要尝试读取原始 ZIP。原始 ZIP、manifest 和源码树均为当前线程私有、只读证据。
 
 - C/C++：递归阅读源码、关联日志，并可调用 `analyze_code_evidence` 使用受限的固定扫描器；不得传入自定义路径、命令或参数。
 - Python：递归阅读源码，进行结构和逻辑审查，区分事实、推断和待验证项；不执行代码、不安装依赖、不声称完成 Python 静态扫描。

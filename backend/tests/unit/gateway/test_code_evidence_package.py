@@ -90,3 +90,18 @@ def test_accept_package_bounds_actual_extracted_bytes(tmp_path, monkeypatch):
 
     with pytest.raises(CodeEvidencePackageError, match="expanded"):
         code_evidence.accept_package(source, thread_id="thread-1", original_filename="evidence.zip")
+
+
+def test_accept_package_applies_caller_compressed_size_limit():
+    source = io.BytesIO()
+    with zipfile.ZipFile(source, "w") as archive:
+        archive.writestr("src/main.c", b"source")
+    source.seek(0)
+
+    with pytest.raises(CodeEvidencePackageError, match="compressed bytes"):
+        code_evidence.accept_package(
+            source,
+            thread_id="thread-1",
+            original_filename="evidence.zip",
+            max_compressed_size=1,
+        )

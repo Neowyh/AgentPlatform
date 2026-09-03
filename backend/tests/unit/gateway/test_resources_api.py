@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.gateway.routers import resources
 from app.gateway.routers.resources import WorkflowRunRequest
+from ideer.config.workflow_runtime_config import WorkflowRuntimeConfig
 from ideer.persistence.base import Base
 from ideer.persistence.models.resource_catalog import (
     Resource,
@@ -140,6 +141,13 @@ def test_workflow_run_request_accepts_optional_model_name() -> None:
     request = WorkflowRunRequest(inputs={"topic": "test"}, model_name="model-b")
 
     assert request.model_name == "model-b"
+
+
+def test_workflow_runtime_defaults_allow_large_evidence_bundle() -> None:
+    config = WorkflowRuntimeConfig()
+
+    assert config.upload_max_file_size == 100 * 1024 * 1024
+    assert config.upload_max_total_size == 200 * 1024 * 1024
 
 
 def test_router_exposes_uuid_first_workflow_lifecycle() -> None:

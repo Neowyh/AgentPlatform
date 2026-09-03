@@ -106,6 +106,8 @@ def render_template(value: Any, state: dict[str, Any]) -> Any:
 def lookup_path(path: str, state: dict[str, Any]) -> Any:
     current: Any = state
     for part in path.removeprefix("$.").split("."):
+        if not isinstance(current, dict) or part not in current:
+            return None
         current = current[part]
     return current
 

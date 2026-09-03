@@ -636,6 +636,11 @@ uploads:
   # markitdown  — always use MarkItDown (original behaviour).
   docx_converter: auto
 
+# Durable workflow evidence bundle limits (compressed upload bytes).
+workflow_runtime:
+  upload_max_file_size: 104857600   # 100 MiB
+  upload_max_total_size: 209715200  # 200 MiB
+
 sandbox:
   use: ideer.sandbox.local:LocalSandboxProvider
   # Host bash execution is disabled by default because LocalSandboxProvider is

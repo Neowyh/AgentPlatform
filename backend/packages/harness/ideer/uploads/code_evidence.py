@@ -127,7 +127,13 @@ def _write_manifest(root: Path, manifest: PackageManifest) -> None:
     (root / "manifest.json").write_text(json.dumps(manifest.as_dict(), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
-def accept_package(source: BinaryIO, *, thread_id: str, original_filename: str) -> tuple[PackageManifest, Path]:
+def accept_package(
+    source: BinaryIO,
+    *,
+    thread_id: str,
+    original_filename: str,
+    max_compressed_size: int = MAX_COMPRESSED_SIZE,
+) -> tuple[PackageManifest, Path]:
     """Validate and atomically extract one ZIP package for a Thread."""
     if not original_filename.lower().endswith(".zip"):
         raise CodeEvidencePackageError("Code Evidence Package must be a ZIP archive")
@@ -141,8 +147,8 @@ def accept_package(source: BinaryIO, *, thread_id: str, original_filename: str) 
         with archive_path.open("wb") as target:
             while chunk := source.read(1024 * 1024):
                 total += len(chunk)
-                if total > MAX_COMPRESSED_SIZE:
-                    raise CodeEvidencePackageError(f"Archive exceeds {MAX_COMPRESSED_SIZE} compressed bytes")
+                if total > max_compressed_size:
+                    raise CodeEvidencePackageError(f"Archive exceeds {max_compressed_size} compressed bytes")
                 target.write(chunk)
         with zipfile.ZipFile(archive_path) as archive:
             accepted, excluded, rejected, expanded = _preflight(archive)

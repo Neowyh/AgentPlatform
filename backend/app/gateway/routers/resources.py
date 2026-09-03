@@ -220,10 +220,6 @@ class WorkflowRunRequest(BaseModel):
     model_name: str | None = Field(default=None, min_length=1, max_length=128)
 
 
-_WORKFLOW_UPLOAD_MAX_FILE_SIZE = 50 * 1024 * 1024
-_WORKFLOW_UPLOAD_MAX_TOTAL_SIZE = 100 * 1024 * 1024
-
-
 def _cleanup_run_user_data(run_id: str, user_id: str) -> None:
     """Remove data written before a Run was persisted."""
     shutil.rmtree(get_paths().thread_dir(run_id, user_id=user_id) / "user-data", ignore_errors=True)
@@ -240,6 +236,7 @@ async def _store_workflow_run_files(*, run_id: str, user_id: str, files: list[Up
     stored_names: list[str] = []
     total_size = 0
     source_manifest: PackageManifest | None = None
+    limits = get_app_config().workflow_runtime
     seen_names: set[str] = set()
     try:
         for file in files:
@@ -253,11 +250,15 @@ async def _store_workflow_run_files(*, run_id: str, user_id: str, files: list[Up
                         file.file,
                         thread_id=run_id,
                         original_filename=original_name,
+                        max_compressed_size=limits.upload_max_file_size,
                     )
                 except CodeEvidencePackageError as exc:
                     raise HTTPException(400, str(exc)) from exc
                 except (OSError, zipfile.BadZipFile) as exc:
                     raise HTTPException(400, f"Invalid code evidence package: {exc}") from exc
+                total_size += source_manifest.compressed_size
+                if total_size > limits.upload_max_total_size:
+                    raise HTTPException(413, "Total upload size too large")
                 continue
 
             filename = claim_unique_filename(original_name, seen_names)
@@ -267,9 +268,9 @@ async def _store_workflow_run_files(*, run_id: str, user_id: str, files: list[Up
                 while chunk := await file.read(8192):
                     size += len(chunk)
                     total_size += len(chunk)
-                    if size > _WORKFLOW_UPLOAD_MAX_FILE_SIZE:
+                    if size > limits.upload_max_file_size:
                         raise HTTPException(413, f"File too large: {filename}")
-                    if total_size > _WORKFLOW_UPLOAD_MAX_TOTAL_SIZE:
+                    if total_size > limits.upload_max_total_size:
                         raise HTTPException(413, "Total upload size too large")
                     handle.write(chunk)
             except Exception:

@@ -12,3 +12,5 @@ class WorkflowRuntimeConfig(BaseModel):
     lease_seconds: int = Field(default=30, ge=1)
     heartbeat_seconds: int = Field(default=10, ge=1)
     max_attempts: int = Field(default=3, ge=1)
+    upload_max_file_size: int = Field(default=100 * 1024 * 1024, ge=1, description="Maximum compressed size of one workflow attachment in bytes")
+    upload_max_total_size: int = Field(default=200 * 1024 * 1024, ge=1, description="Maximum total compressed size of workflow attachments in bytes")

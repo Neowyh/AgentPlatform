@@ -332,8 +332,30 @@ class TestBeforeAgent:
         result = mw.before_agent(self._state(msg), _runtime(thread_id=None))
         # With no existence check, the file passes through and injection happens
         assert result is not None
+
+    def test_code_package_keeps_pdf_attachment_visible(self, tmp_path):
+        """A code package must not hide ordinary evidence uploaded with it."""
+        mw = _middleware(tmp_path)
+        uploads_dir = _uploads_dir(tmp_path)
+        (uploads_dir / "failure-report.pdf").write_bytes(b"pdf")
+        msg = _human(
+            "analyse the evidence",
+            files=[{"filename": "failure-report.pdf", "size": 3, "path": "/mnt/user-data/uploads/failure-report.pdf"}],
+        )
+        runtime = _runtime()
+        runtime.context.update(
+            {
+                "code_package_id": "pkg-1",
+                "code_evidence_manifest": {"original_filename": "source.zip"},
+            }
+        )
+
+        result = mw.before_agent(self._state(msg), runtime)
+
+        assert result is not None
         content = result["messages"][-1].content
-        assert "previous messages" not in content
+        assert "failure-report.pdf" in content
+        assert "read_document" in content
 
     def test_message_id_preserved_on_updated_message(self, tmp_path):
         mw = _middleware(tmp_path)
