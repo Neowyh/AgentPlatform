@@ -190,11 +190,13 @@ async def run_agent(
                 if ckpt_tuple is not None:
                     ckpt_config = getattr(ckpt_tuple, "config", {}).get("configurable", {})
                     pre_run_checkpoint_id = ckpt_config.get("checkpoint_id")
+                    # T2: store references — the snapshot is only consumed on the
+                    # rollback path, so the deepcopy cost moves there too.
                     pre_run_snapshot = {
                         "checkpoint_ns": ckpt_config.get("checkpoint_ns", ""),
-                        "checkpoint": copy.deepcopy(getattr(ckpt_tuple, "checkpoint", {})),
-                        "metadata": copy.deepcopy(getattr(ckpt_tuple, "metadata", {})),
-                        "pending_writes": copy.deepcopy(getattr(ckpt_tuple, "pending_writes", []) or []),
+                        "checkpoint": getattr(ckpt_tuple, "checkpoint", {}),
+                        "metadata": getattr(ckpt_tuple, "metadata", {}),
+                        "pending_writes": getattr(ckpt_tuple, "pending_writes", []) or [],
                     }
             except Exception:
                 snapshot_capture_failed = True
@@ -488,7 +490,9 @@ async def _rollback_to_pre_run_checkpoint(
     if not isinstance(checkpoint, dict):
         logger.warning("Run %s rollback skipped: invalid pre-run checkpoint snapshot", run_id)
         return
-    checkpoint_to_restore = checkpoint
+    # T2: copy here — this is the only consumer of the snapshot, and this
+    # path runs only when a rollback actually happens.
+    checkpoint_to_restore = copy.deepcopy(checkpoint)
     if checkpoint_to_restore.get("id") is None and pre_run_checkpoint_id is not None:
         checkpoint_to_restore = {**checkpoint_to_restore, "id": pre_run_checkpoint_id}
     if checkpoint_to_restore.get("id") is None:
@@ -501,7 +505,7 @@ async def _rollback_to_pre_run_checkpoint(
         "ts": restore_marker["ts"],
     }
     metadata = pre_run_snapshot.get("metadata", {})
-    metadata_to_restore = metadata if isinstance(metadata, dict) else {}
+    metadata_to_restore = copy.deepcopy(metadata) if isinstance(metadata, dict) else {}
     raw_checkpoint_ns = pre_run_snapshot.get("checkpoint_ns")
     checkpoint_ns = raw_checkpoint_ns if isinstance(raw_checkpoint_ns, str) else ""
 
@@ -531,6 +535,8 @@ async def _rollback_to_pre_run_checkpoint(
     if not pending_writes:
         return
 
+    # T2: copy here alongside the other rollback-only reads.
+    pending_writes = copy.deepcopy(pending_writes)
     writes_by_task: dict[str, list[tuple[str, Any]]] = {}
     for item in pending_writes:
         if not isinstance(item, (tuple, list)) or len(item) != 3:

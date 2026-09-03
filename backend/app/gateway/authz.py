@@ -147,6 +147,26 @@ def _make_test_request_stub() -> Any:
     return SimpleNamespace(state=SimpleNamespace(), cookies={}, _ideer_test_bypass_auth=True)
 
 
+_RBAC_IDENTITY_ATTR = "_ideer_rbac_user"
+
+
+def _stash_rbac_identity(request: Request, *, user_id: str, department_id: str | None, role: str) -> None:
+    """Cache the resolved RBAC identity on the request for this request only."""
+    request.state._ideer_rbac_user = {
+        "user_id": user_id,
+        "department_id": department_id,
+        "role": role,
+    }
+
+
+def _cached_rbac_identity(request: Request, user_id: str) -> dict[str, Any] | None:
+    """Return the cached RBAC identity when it belongs to ``user_id``."""
+    cached = getattr(getattr(request, "state", None), _RBAC_IDENTITY_ATTR, None)
+    if not isinstance(cached, dict) or cached.get("user_id") != user_id:
+        return None
+    return cached
+
+
 async def _authenticate(request: Request) -> AuthContext:
     """Authenticate request and return AuthContext.
 
@@ -201,6 +221,15 @@ async def _authenticate(request: Request) -> AuthContext:
             except (TypeError, ValueError):
                 logger.error("Invalid role '%s' for user %s, defaulting to viewer permissions", rbac_user.role, user.id)
                 role = UserRole.VIEWER
+            # T2: cache the resolved identity on the request so downstream
+            # run preparation (alias resolve, canonical freeze) reuses it
+            # instead of issuing duplicate UserModel SELECTs.
+            _stash_rbac_identity(
+                request,
+                user_id=str(user.id),
+                department_id=str(rbac_user.department_id) if rbac_user.department_id is not None else None,
+                role=str(rbac_user.role),
+            )
             if role == UserRole.VIEWER:
                 return AuthContext(user=user, permissions=_VIEWER_PERMISSIONS)
     except Exception as exc:
