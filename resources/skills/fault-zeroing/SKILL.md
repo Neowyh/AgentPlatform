@@ -48,6 +48,13 @@ allowed-tools:
 
 执行前读取 `references/evidence_rules.md`。每条关键结论必须包含 evidence id 或明确资料来源，来源至少包含文件路径；能定位行号时写明行号或章节名。把内容区分为事实、推断、假设、待验证项。证据台账是证据评估和报告结论的唯一 evidence id 来源；演绎建树不读取证据台账，证据提取与演绎建树的执行关系由 Workflow V2 图和节点文件访问策略控制。底事件、根因和报告结论不得引用证据台账之外的 evidence id。
 
+## 运行入口边界（Result Contract 约束）
+
+- 本 Skill、fault-zeroing Expert 和 fault-zeroing Workflow 是同一套共享执行内核（`ideer.fault_zeroing.kernel`）的三个入口适配器：相同输入从任一入口发起实际归零 Run 时，使用相同的输入快照、证据规则、阶段策略和 Result Contract 版本，得到语义等价的结构化结果。
+- 概念解释、方法答疑和有限编辑保持普通对话交互，不得意外启动完整 Run；只有用户明确发起归零分析时才进入执行。
+- 单侧证据（仅文档或仅代码证据包）继续的 Run 仍为 hybrid 模式，必须在资料覆盖矩阵和遗留风险中披露缺失侧（`文档证据未提供` / `代码证据包未提供`），Result Contract 会强制校验该披露。
+- 结构化最终产物的完成判定以 Result Contract 为准（版本 `1.0.0`），`pending_verification` 是完整的披露性完成状态，不等同于根因已确认。
+
 ## 故障树构建规则
 
 1. 顶事件必须来自用户问题或资料原文。

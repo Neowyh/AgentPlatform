@@ -873,41 +873,6 @@ install_admin_bundled_resources() {
     return "$resource_install_failed"
 }
 
-# Seed the bundled fault-zeroing workflow into the workflow v2 store after the
-# gateway is healthy (the DB only exists after the first boot).  Runs the
-# repository's seed script inside the gateway container, so it needs no Python
-# tooling on the host.  The workflow is recorded as a public resource owned by
-# the active super admin (falling back to "system" when none exists).
-# Idempotent; a missing or failed seed aborts deployment initialization.
-seed_bundled_workflows() {
-    [ -f "$SOURCE_DIR/resources/workflows/fault-zeroing.yaml" ] || return 1
-    [ -f "$SOURCE_DIR/scripts/seed_fault_zeroing_workflow.py" ] || return 1
-
-    if ! docker container inspect ideer-gateway >/dev/null 2>&1; then
-        warn "gateway container not running; cannot seed bundled workflow"
-        return 1
-    fi
-
-    local created_by="system"
-    local admin_id
-    admin_id="$(find_super_admin_id)"
-    if [ -n "$admin_id" ]; then
-        created_by="$admin_id"
-    fi
-
-    log "seeding bundled fault-zeroing workflow (owner: $created_by)..."
-    if run_cmd docker cp "$SOURCE_DIR/resources/workflows/fault-zeroing.yaml" ideer-gateway:/tmp/fault-zeroing.yaml \
-        && run_cmd docker cp "$SOURCE_DIR/scripts/seed_fault_zeroing_workflow.py" ideer-gateway:/tmp/seed_fault_zeroing_workflow.py \
-        && run_cmd docker compose -p ideer -f "$COMPOSE_FILE" --env-file "$ENV_FILE" exec -T gateway \
-            sh -c 'cd /app/backend && PYTHONPATH=. uv run --no-sync python /tmp/seed_fault_zeroing_workflow.py --workflow-path /tmp/fault-zeroing.yaml --created-by '"$created_by"; then
-        log "bundled fault-zeroing workflow seeded"
-    else
-        warn "bundled workflow seed failed; run it manually after 'up' with:"
-        warn "  docker compose -p ideer exec gateway sh -c 'cd /app/backend && PYTHONPATH=. uv run --no-sync python /tmp/seed_fault_zeroing_workflow.py --workflow-path /tmp/fault-zeroing.yaml --created-by '"$created_by"'"
-        return 1
-    fi
-}
-
 http_ok() {
     local url="$1"
     if command -v curl >/dev/null 2>&1; then
@@ -1067,9 +1032,6 @@ case "$COMMAND" in
             if ! install_admin_bundled_resources; then
                 die "public resource initialization failed"
             fi
-            if ! seed_bundled_workflows; then
-                die "bundled workflow initialization failed"
-            fi
         fi
         if [ "$PRUNE_OLD" -eq 1 ]; then
             prune_old_images
@@ -1092,9 +1054,6 @@ case "$COMMAND" in
             initialize_super_admin
             if ! install_admin_bundled_resources; then
                 die "public resource initialization failed"
-            fi
-            if ! seed_bundled_workflows; then
-                die "bundled workflow initialization failed"
             fi
         fi
         if [ "$PRUNE_OLD" -eq 1 ]; then

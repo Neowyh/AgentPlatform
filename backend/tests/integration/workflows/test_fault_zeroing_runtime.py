@@ -98,7 +98,11 @@ def _assessed_tree() -> dict:
             "item": "零点复测复核",
             "method": "复查相邻测点和重复试验数据",
             "expected_result": "确认零漂是否复现",
-            "status": "to_verify",
+            # Must satisfy VERIFICATION_STATUS_VALUES (pending/in_progress/
+            # passed/failed/blocked); "to_verify" is a conclusion status and
+            # would now be caught by the schema gate once an
+            # artifact_resolver is wired in.
+            "status": "pending",
         }
     ]
     return tree

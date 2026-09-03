@@ -308,7 +308,9 @@ def test_v2_parser_accepts_fault_zeroing_workflow() -> None:
     assert all(value == (2, 30) for value in retry_by_node.values())
 
     # Write-schema gates: the intermediate tree is validated after both
-    # deductive construction and post-review integration.
+    # deductive construction and post-review integration; the FINAL tree
+    # write (assessment_refine) is gated too, so the last revision cannot
+    # bypass the fault_tree schema.
     schemas_by_node = {node.id: [(spec.file, spec.schema_file) for spec in node.schemas] for node in workflow.nodes if node.schemas}
     assert schemas_by_node == {
         "deductive_tree": [
@@ -324,6 +326,12 @@ def test_v2_parser_accepts_fault_zeroing_workflow() -> None:
             )
         ],
         "evidence_assessment": [
+            (
+                "{{inputs.output_base_dir}}/fault_tree.json",
+                "/mnt/skills/fault-zeroing/templates/fault_tree.schema.json",
+            )
+        ],
+        "assessment_refine": [
             (
                 "{{inputs.output_base_dir}}/fault_tree.json",
                 "/mnt/skills/fault-zeroing/templates/fault_tree.schema.json",
