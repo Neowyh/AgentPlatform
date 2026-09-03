@@ -360,6 +360,13 @@ Proxied through nginx: `/api/langgraph/*` → Gateway LangGraph-compatible runti
 - **Injection**: Enabled skills listed in agent system prompt with container paths
 - **Installation**: `POST /api/skills/install` extracts .skill ZIP archive to custom/ directory
 
+### Fault-zeroing Domain (`packages/harness/ideer/fault_zeroing/`)
+
+- **contract.py**: versioned Result Contract (`CONTRACT_VERSION`, stdlib-only) — the single source of truth for validating the five fault-zeroing output artifacts; returns `ContractVerdict` with stable reason codes, artifact digests and JSON serialization. The offline CLI `scripts/validate_fault_zeroing_outputs.py` is a thin shim over it.
+- **intake.py / kernel.py / policy.py / entries.py / legacy.py**: hybrid evidence intake (execute/pause/reject with snapshot-bound confirmation), the shared resumable Run seam (`FaultZeroingKernel` over `WorkflowV2Store`, which gained `create_paused_run`/`cancel_legacy_run`), the bounded retry/pause error decision table, Skill/Expert/Workflow entry adapters, and legacy-run termination.
+- **Resource lifecycle**: the fault-zeroing Skill–Expert–Workflow closure is seeded/updated exclusively via the canonical bundled resource module (`ideer.resources.bundled`); legacy install/seed paths were removed and old queued/paused runs are terminated with `legacy_run_terminated`.
+- **Tests**: `backend/tests/unit/fault_zeroing/` (contract, intake, kernel, entries, legacy, regression guards).
+
 ### Model Factory (`packages/harness/ideer/models/factory.py`)
 
 - `create_chat_model(name, thinking_enabled)` instantiates LLM from config via reflection

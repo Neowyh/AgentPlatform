@@ -80,7 +80,15 @@ class EvidenceIntakeDecision:
 
 
 def build_input_snapshot(upload_dir: str | None, code_package_source: str | None) -> dict[str, str]:
-    """Canonical, comparable snapshot of the two evidence sides."""
+    """Canonical, comparable snapshot of the two evidence sides.
+
+    The snapshot binds the confirmation to the *declared* inputs (the
+    evidence-side paths accepted at run creation).  Adding brand-new files
+    inside an already-declared directory does not change this hash; callers
+    that accept additional material mid-run should surface it as a new
+    declared input (a new path/package id), which does change the hash and
+    therefore forces re-confirmation.
+    """
 
     return {
         "document_evidence": str(upload_dir) if upload_dir else "",

@@ -208,6 +208,29 @@ def test_confirm_evidence_resumes_paused_run(kernel_env) -> None:
     assert result["missing_evidence_sides"] == ["code_evidence_package"]
 
 
+def test_confirm_evidence_requires_paused_run(kernel_env) -> None:
+    _, _, _, kernel_mod, kernel, store, _ = kernel_env
+    started = asyncio.run(
+        kernel.start_run(
+            workflow_name="fault-zeroing",
+            definition_version=1,
+            inputs=dict(BASE_INPUTS),
+            created_by="user-1",
+        )
+    )
+
+    with pytest.raises(kernel_mod.ConfirmationStaleError) as excinfo:
+        asyncio.run(
+            kernel.confirm_evidence(
+                started.run_id,
+                payload={"input_snapshot_hash": "whatever"},
+                confirmed_by="user-1",
+            )
+        )
+    assert excinfo.value.reason_code == kernel_mod.REASON_RUN_NOT_PAUSED
+    assert not store.commands
+
+
 def test_new_material_requires_reconfirmation(kernel_env) -> None:
     _, _, _, kernel_mod, kernel, store, _ = kernel_env
     started = asyncio.run(

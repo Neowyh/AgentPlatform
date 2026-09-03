@@ -39,7 +39,9 @@ SNAPSHOT_INTAKE_KEY = "evidence_intake"
 SNAPSHOT_CONTRACT_VERSION_KEY = "contract_version"
 
 # Kernel event types (persisted through the store's event log).
-EVENT_RUN_REJECTED = "kernel_run_rejected"
+# Rejection before run creation (both evidence sides missing) raises
+# EvidenceIntakeRejected with its reason code; no run row exists, so there
+# is no run-scoped event log to append to — the gateway surfaces the code.
 EVENT_INTERRUPTED = "interrupted"
 EVENT_CONFIRMED = "resumed"
 EVENT_CONFIRMATION_REJECTED = "kernel_confirmation_rejected"
@@ -48,6 +50,8 @@ EVENT_CONTRACT_FAILED = "kernel_contract_failed"
 
 COMPLETION_STATUS_COMPLETED = "completed"
 COMPLETION_STATUS_FAILED = "failed"
+
+REASON_RUN_NOT_PAUSED = "run_not_paused_for_confirmation"
 
 
 class EvidenceIntakeRejected(RuntimeError):
@@ -264,7 +268,32 @@ class FaultZeroingKernel:
         run = await self._store.get_run(run_id)
         if run is None:
             raise RunNotFoundError(run_id)
+        if getattr(run, "status", None) != "paused":
+            # Evidence confirmation only applies to a run parked by intake;
+            # confirming a queued/running/finished run would silently resume
+            # something that never paused for evidence.
+            await self._store.append_event(
+                run_id,
+                EVENT_CONFIRMATION_REJECTED,
+                {"code": REASON_RUN_NOT_PAUSED, "run_status": getattr(run, "status", None)},
+                worker_id=KERNEL_WORKER_ID,
+            )
+            raise ConfirmationStaleError(
+                REASON_RUN_NOT_PAUSED,
+                "evidence confirmation requires a run paused by evidence intake",
+            )
         record = _intake_record_from_snapshot(dict(run.snapshot or {}))
+        if not record.missing:
+            await self._store.append_event(
+                run_id,
+                EVENT_CONFIRMATION_REJECTED,
+                {"code": REASON_RUN_NOT_PAUSED, "missing": []},
+                worker_id=KERNEL_WORKER_ID,
+            )
+            raise ConfirmationStaleError(
+                REASON_RUN_NOT_PAUSED,
+                "run intake record shows no missing evidence side to confirm",
+            )
         current_hash = _current_snapshot_hash(dict(run.inputs or {}))
         presented_hash = payload.get("input_snapshot_hash")
 

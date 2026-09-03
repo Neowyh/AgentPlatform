@@ -6,7 +6,8 @@ adapters are call+presentation shims ONLY: they never re-implement
 fault-zeroing stages or result validation.
 
 Concept explanations and limited edits stay ordinary agent interactions —
-an entry only starts a real Run through :func:`start_fault_zeroing_run`.
+an entry only starts a real Run through ``EntryAdapter.start_run`` (which
+delegates to ``FaultZeroingKernel.start_run``).
 """
 
 from __future__ import annotations
@@ -15,6 +16,8 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from ideer.fault_zeroing.contract import EVIDENCE_SIDE_DISCLOSURE
 
 SUPPORTED_ENTRIES = ("skill", "expert", "workflow")
 
@@ -101,7 +104,7 @@ def semantic_fields(outputs_dir: str | Path) -> dict[str, Any]:
         report_text = (outputs / "zeroing_report.md").read_text(encoding="utf-8")
     except OSError:
         report_text = ""
-    fields["missing_evidence_disclosed"] = [phrase for phrase in ("文档证据未提供", "代码证据包未提供") if phrase in report_text]
+    fields["missing_evidence_disclosed"] = [phrase for phrase in EVIDENCE_SIDE_DISCLOSURE.values() if phrase in report_text]
     return fields
 
 

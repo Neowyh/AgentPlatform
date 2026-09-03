@@ -1111,7 +1111,7 @@ def evaluate_result_contract(
     _validate_analysis_process(analysis_process, sink)
     _validate_svg("fault_tree.svg", _read_text(output_path / "fault_tree.svg", sink), sink)
     _validate_svg("analysis_process.svg", analysis_process, sink)
-    _validate_corrective_actions(output_path, tree, sink)
+    _validate_corrective_actions(output_path, tree, sink, resolved_corrective)
     _validate_hybrid_disclosure(report_text, tuple(missing_evidence_sides), sink)
     return _finish(sink, requested_version, fingerprint, output_path)
 
