@@ -1,5 +1,10 @@
 "use client";
 
+import { useAgents } from "@/core/agents/hooks";
+import {
+  findAgentForPill,
+  agentDescription,
+} from "@/core/scenarios/descriptions";
 import type { AgentPill } from "@/core/scenarios/types";
 
 import { ChipBar } from "./chip-bar";
@@ -15,9 +20,17 @@ export function AgentPillBar({
   selectedSlug,
   onSelect,
 }: AgentPillBarProps) {
+  const { agents } = useAgents();
   return (
     <ChipBar
-      items={pills.map((pill) => ({ id: pill.agentSlug, label: pill.label }))}
+      items={pills.map((pill) => {
+        const agent = findAgentForPill(agents, pill.agentSlug);
+        return {
+          id: pill.agentSlug,
+          label: pill.label,
+          description: agent ? agentDescription(agent) : undefined,
+        };
+      })}
       selectedId={selectedSlug}
       onSelect={onSelect}
       variant="pill"

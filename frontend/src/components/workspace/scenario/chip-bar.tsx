@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useRef } from "react";
+import { Fragment, useCallback, useRef } from "react";
 
+import { Tooltip } from "@/components/workspace/tooltip";
 import { cn } from "@/lib/utils";
 
 export function useRovingTabIndex<T extends string>(
@@ -33,8 +34,14 @@ export function useRovingTabIndex<T extends string>(
   return { buttonRefs, onKeyDown };
 }
 
+export interface ChipBarItem<T extends string> {
+  id: T;
+  label: string;
+  description?: string;
+}
+
 interface ChipBarProps<T extends string> {
-  items: Array<{ id: T; label: string }>;
+  items: ChipBarItem<T>[];
   selectedId: T | null;
   onSelect: (id: T) => void;
   variant: "pill" | "chip";
@@ -69,9 +76,8 @@ export function ChipBar<T extends string>({
       >
         {items.map((item) => {
           const active = selectedId === item.id;
-          return (
+          const tabButton = (
             <button
-              key={item.id}
               ref={(element) => {
                 if (element) buttonRefs.current.set(item.id, element);
               }}
@@ -93,6 +99,20 @@ export function ChipBar<T extends string>({
             >
               {item.label}
             </button>
+          );
+          return item.description ? (
+            <Tooltip
+              key={item.id}
+              content={
+                <span className="block max-w-65 leading-relaxed text-pretty">
+                  {item.description}
+                </span>
+              }
+            >
+              {tabButton}
+            </Tooltip>
+          ) : (
+            <Fragment key={item.id}>{tabButton}</Fragment>
           );
         })}
       </div>

@@ -2,8 +2,43 @@ import { render, screen, cleanup } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
 
+const mockLocaleState = vi.hoisted(() => ({ locale: "zh-CN" }));
+
 vi.mock("@/core/i18n/hooks", () => ({
-  useI18n: () => ({ t: {} }),
+  useI18n: () => ({ t: {}, locale: mockLocaleState.locale }),
+}));
+
+vi.mock("@/core/skills/hooks", () => ({
+  useSkills: () => ({
+    skills: [
+      {
+        slug: "summarize",
+        name: "智能摘要",
+        description: "Description text",
+        summary: "Summary text",
+      },
+      {
+        slug: "translate",
+        name: "翻译润色",
+        description: "Translate description",
+      },
+    ],
+  }),
+}));
+
+vi.mock("@/components/workspace/tooltip", () => ({
+  Tooltip: ({
+    children,
+    content,
+  }: {
+    children: React.ReactNode;
+    content?: React.ReactNode;
+  }) => (
+    <div data-testid="tooltip">
+      {children}
+      <div data-testid="tooltip-content">{content}</div>
+    </div>
+  ),
 }));
 
 import { TaskChipBar } from "@/components/workspace/scenario/task-chip-bar";
@@ -158,5 +193,87 @@ describe("TaskChipBar", () => {
 
     await user.click(screen.getByRole("tab", { name: "Chip One" }));
     expect(onSelect).toHaveBeenCalledWith("task-1");
+  });
+});
+
+describe("TaskChipBar descriptions", () => {
+  const describedChips: TaskChip[] = [
+    {
+      taskId: "task-summary",
+      label: "文档摘要",
+      skillName: "summarize",
+      promptTemplate: "tpl",
+    },
+    {
+      taskId: "task-translate",
+      label: "翻译润色",
+      skillName: "translate",
+      promptTemplate: "tpl",
+    },
+    {
+      taskId: "task-unknown",
+      label: "未知技能",
+      skillName: "no-such-skill",
+      promptTemplate: "tpl",
+    },
+  ];
+
+  const contents = () =>
+    screen.getAllByTestId("tooltip-content").map((node) => node.textContent);
+
+  it("zh-CN prefers the skill summary", () => {
+    mockLocaleState.locale = "zh-CN";
+    render(
+      <TaskChipBar
+        chips={describedChips}
+        selectedTaskId={null}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    expect(contents()).toContain("Summary text");
+  });
+
+  it("zh-CN falls back to the description when no summary exists", () => {
+    mockLocaleState.locale = "zh-CN";
+    render(
+      <TaskChipBar
+        chips={describedChips}
+        selectedTaskId={null}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    expect(contents()).toContain("Translate description");
+  });
+
+  it("non-zh locale uses the description", () => {
+    mockLocaleState.locale = "en-US";
+    render(
+      <TaskChipBar
+        chips={describedChips}
+        selectedTaskId={null}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    const titles = contents();
+    expect(titles).toContain("Description text");
+    expect(titles).not.toContain("Summary text");
+    mockLocaleState.locale = "zh-CN";
+  });
+
+  it("renders unmatched skills with no tooltip", () => {
+    mockLocaleState.locale = "zh-CN";
+    render(
+      <TaskChipBar
+        chips={describedChips}
+        selectedTaskId={null}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    expect(screen.getAllByTestId("tooltip")).toHaveLength(2);
+    expect(screen.getByRole("tab", { name: "未知技能" })).toBeInTheDocument();
   });
 });

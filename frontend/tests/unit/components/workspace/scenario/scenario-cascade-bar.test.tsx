@@ -22,6 +22,14 @@ vi.mock("@/core/scenarios/config", () => ({
 
 vi.mock("@/core/scenarios/types", () => ({}));
 
+vi.mock("@/core/agents/hooks", () => ({
+  useAgents: () => ({ agents: [] }),
+}));
+
+vi.mock("@/core/skills/hooks", () => ({
+  useSkills: () => ({ skills: [] }),
+}));
+
 import { ScenarioCascadeBar } from "@/components/workspace/scenario/index";
 import type {
   ChipSelection,
