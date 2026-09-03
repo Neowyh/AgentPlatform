@@ -204,8 +204,13 @@ class CanonicalResourceLoader:
         self,
         run_id: str,
         agent_resource_id: str,
+        *,
+        definition: CanonicalAgentDefinition | None = None,
     ) -> list[CanonicalSkillDefinition]:
-        definition = await self.load_agent(run_id, agent_resource_id)
+        # T3: callers that already loaded the Agent pass it in so the
+        # definition (inspect + hash + parse) happens exactly once per Run.
+        if definition is None:
+            definition = await self.load_agent(run_id, agent_resource_id)
         targets = list(
             (
                 await self.session.execute(

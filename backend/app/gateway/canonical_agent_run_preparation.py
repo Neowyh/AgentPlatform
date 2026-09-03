@@ -106,9 +106,11 @@ async def prepare_canonical_agent_run(
                     tool_groups=None,
                 )
             service = ResourceService(session, actor)
+            # T3: resolve the closure once — it serves the Skill check below
+            # and the snapshot freeze, instead of walking the graph twice.
+            closure = await service.resolve_dependency_closure(resource_id)
             selected_skill_id = None
             if preferred_skill:
-                closure = await service.resolve_dependency_closure(resource_id)
                 selected = next(
                     (item.resource for item in closure if item.resource.id == preferred_skill or item.resource.slug == preferred_skill),
                     None,
@@ -126,11 +128,12 @@ async def prepare_canonical_agent_run(
                 run_id,
                 resource_id,
                 selected_resource_id=selected_skill_id,
+                closure=closure,
             )
             storage = ResourceStorage(get_paths().base_dir)
             loader = CanonicalResourceLoader(session, storage)
             definition = await loader.load_agent(run_id, resource_id)
-            skill_definitions = await loader.load_agent_skill_definitions(run_id, resource_id)
+            skill_definitions = await loader.load_agent_skill_definitions(run_id, resource_id, definition=definition)
             skills = [value.skill for value in skill_definitions]
             await asyncio.to_thread(
                 storage.create_run_skill_view,
