@@ -11,11 +11,25 @@ Targets missed lines:
 
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
+
+
+async def _drain_background_upsert(mock_method, timeout: float = 5.0) -> None:
+    """Wait for start_run's background thread-upsert task to call through.
+
+    Thread metadata upsert is intentionally fire-and-forget (T2) so the
+    first token is not blocked by it; tests must yield before asserting.
+    """
+    for _ in range(int(timeout / 0.01)):
+        await asyncio.sleep(0.01)
+        if mock_method.called:
+            return
+    raise AssertionError("background thread upsert did not run in time")
 
 
 def test_prompt_template_hash_is_stable_for_task_history() -> None:
@@ -223,6 +237,7 @@ class TestStartRun:
 
         assert result == record
         run_mgr.create_or_reject.assert_called_once()
+        await _drain_background_upsert(run_ctx.thread_store.create)
         run_ctx.thread_store.create.assert_called_once()
 
     @pytest.mark.asyncio
@@ -263,7 +278,13 @@ class TestStartRun:
             result = await start_run(body, "thread-1", request)
 
         assert result is record
-        prepare.assert_awaited_once_with(assistant_id, request, "canonical-run")
+        prepare.assert_awaited_once_with(
+            assistant_id,
+            request,
+            "canonical-run",
+            diagnostic_context={"evidence_mode": "hybrid", "code_evidence_source": None},
+            thread_id="thread-1",
+        )
         assert run_mgr.create_or_reject.call_args.kwargs["run_id"] == "canonical-run"
         legacy_factory.assert_not_called()
         config = run_agent.call_args.kwargs["config"]
@@ -541,6 +562,7 @@ class TestStartRun:
             result = await start_run(body, "thread-1", request)
 
         assert result == record
+        await _drain_background_upsert(run_ctx.thread_store.update_status)
         run_ctx.thread_store.update_status.assert_called_once_with("thread-1", "running")
         run_ctx.thread_store.create.assert_not_called()
 

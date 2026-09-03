@@ -486,24 +486,41 @@ export function useThreadStream({
       let codeEvidencePackageStatus: CodeEvidencePackageStatus | undefined;
 
       try {
-        let submitThreadId = threadId;
-        let preparedContext: Record<string, unknown> = {};
-        if (threadId === "new" && prepareSubmit) {
-          const prepared = await prepareSubmit(threadId);
-          submitThreadId = prepared.threadId;
-          preparedContext = prepared.context ?? {};
+        // T6: start thread creation and file conversion concurrently. The
+        // upload still needs the created id, but conversion must not wait
+        // for the network round trip.
+        const shouldPrepare = threadId === "new" && prepareSubmit;
+        const preparePromise = shouldPrepare
+          ? prepareSubmit(threadId)
+          : Promise.resolve({
+              threadId,
+              context: {} as Record<string, unknown>,
+            });
+        const conversionPromise =
+          message.files && message.files.length > 0
+            ? Promise.all(
+                message.files.map((fileUIPart) =>
+                  promptInputFilePartToFile(fileUIPart),
+                ),
+              )
+            : null;
+        // If creation fails, conversion may still reject later — mark it
+        // handled so it never surfaces as an unhandled rejection; the
+        // await below still throws the original conversion error.
+        conversionPromise?.then(undefined, () => undefined);
+
+        const prepared = await preparePromise;
+        const submitThreadId = prepared.threadId;
+        let preparedContext: Record<string, unknown> = prepared.context ?? {};
+        if (shouldPrepare) {
           listeners.current.onThreadCreated?.(submitThreadId);
         }
 
         // Upload files first if any
-        if (message.files && message.files.length > 0) {
+        if (conversionPromise) {
           setIsUploading(true);
           try {
-            const filePromises = message.files.map((fileUIPart) =>
-              promptInputFilePartToFile(fileUIPart),
-            );
-
-            const conversionResults = await Promise.all(filePromises);
+            const conversionResults = await conversionPromise;
             const files = conversionResults.filter(
               (file): file is File => file !== null,
             );

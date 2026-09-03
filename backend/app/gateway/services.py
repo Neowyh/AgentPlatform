@@ -20,6 +20,7 @@ from fastapi import HTTPException, Request
 from langchain_core.messages import BaseMessage
 from langchain_core.messages.utils import convert_to_messages
 
+from app.gateway.authz import _cached_rbac_identity
 from app.gateway.deps import get_run_context, get_run_manager, get_stream_bridge
 from app.gateway.utils import sanitize_log_param
 from ideer.runtime import (
@@ -416,24 +417,36 @@ async def _resolve_canonical_alias(assistant_id: str | None, request: Request) -
     if session_factory is None:
         raise HTTPException(status_code=503, detail="Resource persistence is unavailable")
     try:
+        # T2: reuse the identity _authenticate already resolved instead of
+        # issuing a duplicate UserModel SELECT on every first turn.
+        cached = _cached_rbac_identity(request, str(user_id))
         async with session_factory() as session:
-            user = (
-                await session.execute(
-                    select(UserModel).where(
-                        UserModel.id == str(user_id),
-                        UserModel.disabled.is_not(True),
-                    )
+            if cached is not None:
+                actor = ResourceActor(
+                    user_id=cached["user_id"],
+                    department_id=cached["department_id"],
+                    role=cached["role"],
+                    permissions=frozenset({ResourceAction.READ, ResourceAction.USE}),
+                    tool_groups=None,
                 )
-            ).scalar_one_or_none()
-            if user is None:
-                raise ResourcePermissionDenied("Active RBAC user is required")
-            actor = ResourceActor(
-                user_id=str(user.id),
-                department_id=str(user.department_id) if user.department_id is not None else None,
-                role=str(user.role),
-                permissions=frozenset({ResourceAction.READ, ResourceAction.USE}),
-                tool_groups=None,
-            )
+            else:
+                user = (
+                    await session.execute(
+                        select(UserModel).where(
+                            UserModel.id == str(user_id),
+                            UserModel.disabled.is_not(True),
+                        )
+                    )
+                ).scalar_one_or_none()
+                if user is None:
+                    raise ResourcePermissionDenied("Active RBAC user is required")
+                actor = ResourceActor(
+                    user_id=str(user.id),
+                    department_id=str(user.department_id) if user.department_id is not None else None,
+                    role=str(user.role),
+                    permissions=frozenset({ResourceAction.READ, ResourceAction.USE}),
+                    tool_groups=None,
+                )
             resource = await ResourceService(session, actor).resolve_legacy_alias("agent", assistant_id)
         return resource.id
     except ResourceNotFound as exc:
@@ -501,18 +514,23 @@ async def start_run(
     # Upsert thread metadata so the thread appears in /threads/search,
     # even for threads that were never explicitly created via POST /threads
     # (e.g. stateless runs).
-    try:
-        existing = await run_ctx.thread_store.get(thread_id)
-        if existing is None:
-            await run_ctx.thread_store.create(
-                thread_id,
-                assistant_id=body.assistant_id,
-                metadata=run_metadata,
-            )
-        else:
-            await run_ctx.thread_store.update_status(thread_id, "running")
-    except Exception:
-        logger.warning("Failed to upsert thread_meta for %s (non-fatal)", sanitize_log_param(thread_id))
+    # T2: runs in the background — thread listing freshness must not block
+    # the first token. Failures were and remain non-fatal (warning only).
+    async def _upsert_thread_meta() -> None:
+        try:
+            existing = await run_ctx.thread_store.get(thread_id)
+            if existing is None:
+                await run_ctx.thread_store.create(
+                    thread_id,
+                    assistant_id=body.assistant_id,
+                    metadata=run_metadata,
+                )
+            else:
+                await run_ctx.thread_store.update_status(thread_id, "running")
+        except Exception:
+            logger.warning("Failed to upsert thread_meta for %s (non-fatal)", sanitize_log_param(thread_id))
+
+    _upsert_task = asyncio.create_task(_upsert_thread_meta())
 
     agent_factory = canonical_factory or resolve_agent_factory(body.assistant_id)
     graph_input = normalize_input(body.input)
@@ -532,6 +550,15 @@ async def start_run(
     inject_authenticated_user_context(config, request)
 
     stream_modes = normalize_stream_modes(body.stream_mode)
+
+    # T5: retrieve the Memory warmer as late as possible for maximum overlap
+    # with the work above. It is done by now in the common case (instant
+    # await); a slow disk degrades to the status quo, never to a failed Run.
+    if prepared.memory_preload_task is not None:
+        try:
+            await prepared.memory_preload_task
+        except Exception:
+            logger.debug("Memory preload did not complete for %s (non-fatal)", sanitize_log_param(thread_id))
 
     task = asyncio.create_task(
         run_agent(

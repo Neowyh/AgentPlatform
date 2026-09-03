@@ -8,7 +8,8 @@ ready-to-execute **Run**.  Behind one small **interface**
 * parallel manifest verification (file IO) and canonical alias resolution (DB),
 * single-transaction canonical snapshot freeze + factory build,
 * selection metadata fetch,
-* unified compensating discard on failure.
+* unified compensating discard on failure,
+* background Memory cache warming for the graph-time injection read.
 
 Callers learn one function; all orchestration, parallelism, and cleanup have
 **locality** here.  Deleting the module would scatter 6 sequential awaits and
@@ -35,6 +36,7 @@ from app.gateway.services import (
     _discard_canonical_run_snapshot,
     validate_evidence_selection,
 )
+from ideer.agents.memory import get_memory_data
 from ideer.config.app_config import get_app_config
 
 logger = logging.getLogger(__name__)
@@ -52,6 +54,10 @@ class PreparedRun:
     body_context: dict[str, Any]
     model_name: str | None
     run_metadata: dict[str, Any]
+    # T5: background Memory cache warmer (may be None when injection is off
+    # or no user is on the request). start_run retrieves it before spawning
+    # the worker; the graph-time load then hits the warmed cache.
+    memory_preload_task: asyncio.Task | None = None
 
 
 async def _read_manifest_if_needed(thread_id: str, code_package_id: str | None) -> dict[str, Any] | None:
@@ -72,6 +78,23 @@ async def _resolve_candidate_alias(candidate: str | None, request: Request) -> s
     from app.gateway.services import _resolve_canonical_alias
 
     return await _resolve_canonical_alias(candidate, request)
+
+
+def _memory_injection_enabled() -> bool:
+    """Whether a graph-time Memory read will happen (gate the preload)."""
+    try:
+        memory_config = get_app_config().memory
+    except Exception:
+        return False
+    return bool(getattr(memory_config, "enabled", False)) and bool(getattr(memory_config, "injection_enabled", False))
+
+
+async def _preload_memory(agent_name: str | None, user_id: str) -> None:
+    """Warm the Memory storage cache in a worker thread. Never raises."""
+    try:
+        await asyncio.to_thread(get_memory_data, agent_name, user_id=user_id)
+    except Exception:
+        logger.debug("Memory preload failed (non-fatal)", exc_info=True)
 
 
 async def prepare_run(body: Any, thread_id: str, request: Request) -> PreparedRun:
@@ -139,6 +162,15 @@ async def prepare_run(body: Any, thread_id: str, request: Request) -> PreparedRu
         if resolved:
             canonical_resource_id = resolved
 
+    # T5: warm the Memory cache concurrently with the snapshot freeze below.
+    # The graph-time load uses (canonical id | None, user id) as its key, so
+    # warming the same key turns it into a single stat call. First turns need
+    # Memory the most (full reminder injection), so there is no no-history skip.
+    memory_preload_task: asyncio.Task | None = None
+    preload_user_id = getattr(getattr(request.state, "user", None), "id", None)
+    if preload_user_id is not None and _memory_injection_enabled():
+        memory_preload_task = asyncio.create_task(_preload_memory(canonical_resource_id, str(preload_user_id)))
+
     # 4. Freeze canonical snapshot + factory (dependent on canonical_resource_id).
     # T1 first-token timing: snapshot freeze is the heaviest pre-token segment.
     snapshot_started = time.perf_counter()
@@ -181,6 +213,7 @@ async def prepare_run(body: Any, thread_id: str, request: Request) -> PreparedRu
         body_context=body_context,
         model_name=model_name,
         run_metadata=run_metadata,
+        memory_preload_task=memory_preload_task,
     )
 
 

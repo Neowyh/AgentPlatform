@@ -1,4 +1,7 @@
+import hashlib
+import json
 import logging
+import threading
 
 from langchain.chat_models import BaseChatModel
 
@@ -8,6 +11,28 @@ from ideer.reflection import resolve_class
 from ideer.tracing import build_tracing_callbacks
 
 logger = logging.getLogger(__name__)
+
+# T4: construction cache for chat models. Provider clients (httpx, SDK auth)
+# are built inside the model constructor, so rebuilding per Run wastes the
+# first-token budget. The key fingerprints the model class path plus the fully
+# resolved settings — a config edit yields a different key, so hot-reloaded
+# configs (#3107) can never hit a stale entry. Only the attach_tracing=False
+# path shares: attach_tracing=True mutates the instance afterwards, which must
+# stay per-call.
+_CHAT_MODEL_CACHE: dict[str, BaseChatModel] = {}
+_CHAT_MODEL_CACHE_LOCK = threading.Lock()
+_CHAT_MODEL_CACHE_MAXSIZE = 64
+
+
+def clear_chat_model_cache() -> None:
+    """Drop all cached chat-model instances (tests, operator reset)."""
+    with _CHAT_MODEL_CACHE_LOCK:
+        _CHAT_MODEL_CACHE.clear()
+
+
+def _chat_model_cache_key(model_use_path: str, settings: dict) -> str:
+    fingerprint = json.dumps({"use": model_use_path, "settings": settings}, sort_keys=True, default=str)
+    return hashlib.sha256(fingerprint.encode("utf-8")).hexdigest()
 
 
 def _deep_merge_dicts(base: dict | None, override: dict) -> dict:
@@ -160,7 +185,24 @@ def create_chat_model(name: str | None = None, thinking_enabled: bool = False, *
         if "stream_usage" in getattr(model_class, "model_fields", {}):
             model_settings_from_config["stream_usage"] = True
 
+    model_instance = None
+    if not attach_tracing:
+        cache_key = _chat_model_cache_key(model_config.use, {**model_settings_from_config, **kwargs})
+        with _CHAT_MODEL_CACHE_LOCK:
+            model_instance = _CHAT_MODEL_CACHE.get(cache_key)
+        if model_instance is not None:
+            logger.debug(f"Reusing cached chat model '{name}'")
+            return model_instance
+    else:
+        cache_key = None
+
     model_instance = model_class(**kwargs, **model_settings_from_config)
+
+    if not attach_tracing and cache_key is not None:
+        with _CHAT_MODEL_CACHE_LOCK:
+            model_instance = _CHAT_MODEL_CACHE.setdefault(cache_key, model_instance)
+            while len(_CHAT_MODEL_CACHE) > _CHAT_MODEL_CACHE_MAXSIZE:
+                _CHAT_MODEL_CACHE.pop(next(iter(_CHAT_MODEL_CACHE)))
 
     if attach_tracing:
         callbacks = build_tracing_callbacks()

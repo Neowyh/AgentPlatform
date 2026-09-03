@@ -12,6 +12,8 @@ from typing import Any
 
 from fastapi import HTTPException, Request
 
+from app.gateway.authz import _cached_rbac_identity
+
 
 class SelectedSkillOutsideClosure(Exception):
     """Diagnostic-only conflict for an Expert/Skill mismatch."""
@@ -64,30 +66,51 @@ async def prepare_canonical_agent_run(
         raise HTTPException(503, "Resource persistence is unavailable")
     try:
         async with session_factory() as session:
-            user = (
-                await session.execute(
-                    select(UserModel).where(
-                        UserModel.id == str(user_id),
-                        UserModel.disabled.is_not(True),
-                    )
+            # T2: reuse the identity _authenticate already resolved instead of
+            # issuing a duplicate UserModel SELECT on every first turn.
+            cached = _cached_rbac_identity(request, str(user_id))
+            if cached is not None:
+                permissions = {ResourceAction.READ}
+                if cached["role"] in {
+                    UserRole.USER.value,
+                    UserRole.DEPARTMENT_ADMIN.value,
+                    UserRole.SUPER_ADMIN.value,
+                }:
+                    permissions.add(ResourceAction.USE)
+                actor = ResourceActor(
+                    user_id=cached["user_id"],
+                    department_id=cached["department_id"],
+                    role=cached["role"],
+                    permissions=frozenset(permissions),
+                    tool_groups=None,
                 )
-            ).scalar_one_or_none()
-            if user is None:
-                raise ResourcePermissionDenied("Active RBAC user is required")
-            permissions = {ResourceAction.READ}
-            if user.role in {UserRole.USER, UserRole.DEPARTMENT_ADMIN, UserRole.SUPER_ADMIN}:
-                permissions.add(ResourceAction.USE)
-            actor = ResourceActor(
-                user_id=str(user.id),
-                department_id=str(user.department_id) if user.department_id is not None else None,
-                role=str(user.role),
-                permissions=frozenset(permissions),
-                tool_groups=None,
-            )
+            else:
+                user = (
+                    await session.execute(
+                        select(UserModel).where(
+                            UserModel.id == str(user_id),
+                            UserModel.disabled.is_not(True),
+                        )
+                    )
+                ).scalar_one_or_none()
+                if user is None:
+                    raise ResourcePermissionDenied("Active RBAC user is required")
+                permissions = {ResourceAction.READ}
+                if user.role in {UserRole.USER, UserRole.DEPARTMENT_ADMIN, UserRole.SUPER_ADMIN}:
+                    permissions.add(ResourceAction.USE)
+                actor = ResourceActor(
+                    user_id=str(user.id),
+                    department_id=str(user.department_id) if user.department_id is not None else None,
+                    role=str(user.role),
+                    permissions=frozenset(permissions),
+                    tool_groups=None,
+                )
             service = ResourceService(session, actor)
+            # T3: resolve the closure once — it serves the Skill check below
+            # and the snapshot freeze, instead of walking the graph twice.
+            closure = await service.resolve_dependency_closure(resource_id)
             selected_skill_id = None
             if preferred_skill:
-                closure = await service.resolve_dependency_closure(resource_id)
                 selected = next(
                     (item.resource for item in closure if item.resource.id == preferred_skill or item.resource.slug == preferred_skill),
                     None,
@@ -105,11 +128,12 @@ async def prepare_canonical_agent_run(
                 run_id,
                 resource_id,
                 selected_resource_id=selected_skill_id,
+                closure=closure,
             )
             storage = ResourceStorage(get_paths().base_dir)
             loader = CanonicalResourceLoader(session, storage)
             definition = await loader.load_agent(run_id, resource_id)
-            skill_definitions = await loader.load_agent_skill_definitions(run_id, resource_id)
+            skill_definitions = await loader.load_agent_skill_definitions(run_id, resource_id, definition=definition)
             skills = [value.skill for value in skill_definitions]
             await asyncio.to_thread(
                 storage.create_run_skill_view,
