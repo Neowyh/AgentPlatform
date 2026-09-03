@@ -18,53 +18,55 @@ import {
 } from "@/components/ui/card";
 import { useAdminStats } from "@/core/admin/hooks";
 import { useAuth } from "@/core/auth/AuthProvider";
+import { useI18n } from "@/core/i18n/hooks";
 
 const statCards = [
   {
     key: "total_users" as const,
-    label: "用户总数",
+    labelKey: "totalUsers",
     icon: UsersIcon,
     href: "/workspace/admin/users",
     color: "text-blue-500",
   },
   {
     key: "total_departments" as const,
-    label: "部门总数",
+    labelKey: "totalDepartments",
     icon: Building2Icon,
     href: "/workspace/admin/departments",
     color: "text-green-500",
   },
   {
     key: "total_tools" as const,
-    label: "工具总数",
+    labelKey: "totalTools",
     icon: WrenchIcon,
     href: "/workspace/admin/tools",
     color: "text-orange-500",
   },
   {
     key: "pending_applications" as const,
-    label: "待审批申请",
+    labelKey: "pendingApplications",
     icon: ClipboardCheckIcon,
     href: "/workspace/admin/visibility-applications",
     color: "text-yellow-500",
   },
   {
     key: "total_resources" as const,
-    label: "资源总数",
+    labelKey: "totalResources",
     icon: WrenchIcon,
     href: "/workspace/admin/resources",
     color: "text-indigo-500",
   },
   {
     key: "audit_logs" as const,
-    label: "审计日志",
+    labelKey: "auditLogs",
     icon: ScrollTextIcon,
     href: "/workspace/admin/audit-logs",
     color: "text-slate-500",
   },
-];
+] as const;
 
 export default function AdminDashboardPage() {
+  const { t } = useI18n();
   const { user } = useAuth();
   const isAdmin =
     user?.system_role === "super_admin" ||
@@ -76,9 +78,11 @@ export default function AdminDashboardPage() {
       {/* Page header */}
       <div className="flex items-center justify-between border-b px-6 py-4">
         <div>
-          <h1 className="type-page-title font-semibold">管理后台</h1>
+          <h1 className="type-page-title font-semibold">
+            {t.admin.dashboard.title}
+          </h1>
           <p className="text-muted-foreground type-body mt-0.5">
-            管理用户、部门和系统工具
+            {t.admin.dashboard.subtitle}
           </p>
         </div>
       </div>
@@ -87,7 +91,7 @@ export default function AdminDashboardPage() {
       <div className="flex-1 overflow-y-auto p-6">
         {isLoading ? (
           <div className="text-muted-foreground type-body flex h-40 items-center justify-center">
-            加载中...
+            {t.admin.dashboard.loading}
           </div>
         ) : error ? (
           <div className="text-destructive type-body flex h-40 items-center justify-center">
@@ -103,7 +107,7 @@ export default function AdminDashboardPage() {
                 >
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="type-body font-medium">
-                      {card.label}
+                      {t.admin.dashboard[card.labelKey]}
                     </CardTitle>
                     <card.icon className={`h-4 w-4 ${card.color}`} />
                   </CardHeader>
@@ -112,7 +116,7 @@ export default function AdminDashboardPage() {
                       {stats?.[card.key] ?? 0}
                     </div>
                     <CardDescription className="type-body">
-                      点击查看详情
+                      {t.admin.dashboard.viewDetails}
                     </CardDescription>
                   </CardContent>
                 </Card>

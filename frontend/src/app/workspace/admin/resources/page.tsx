@@ -28,20 +28,7 @@ import {
 } from "@/core/admin/api";
 import type { AdminResource, User } from "@/core/admin/types";
 import { useAuth } from "@/core/auth/AuthProvider";
-
-const RESOURCE_TYPES = [
-  { value: "all", label: "全部类型" },
-  { value: "agent", label: "智能体" },
-  { value: "tool", label: "工具" },
-  { value: "skill", label: "Skill" },
-  { value: "workflow", label: "工作流" },
-];
-
-const VISIBILITY_LABELS: Record<string, string> = {
-  private: "私有",
-  department: "部门",
-  public: "公开",
-};
+import { useI18n } from "@/core/i18n/hooks";
 
 const TYPE_STYLES: Record<string, string> = {
   agent: "bg-purple-100 text-purple-800",
@@ -54,12 +41,6 @@ const VISIBILITY_STYLES: Record<string, string> = {
   private: "bg-gray-100 text-gray-800",
   department: "bg-blue-100 text-blue-800",
   public: "bg-green-100 text-green-800",
-};
-
-const LIFECYCLE_LABELS: Record<string, string> = {
-  active: "启用",
-  archived: "已归档",
-  suspended: "已下架",
 };
 
 const LIFECYCLE_STYLES: Record<string, string> = {
@@ -77,7 +58,29 @@ function isCanonicalResource(resource: AdminResource): boolean {
 }
 
 export default function ResourcesPage() {
+  const { t } = useI18n();
   const { user } = useAuth();
+
+  const RESOURCE_TYPES = [
+    { value: "all", label: t.admin.resources.allTypesLabel },
+    { value: "agent", label: t.admin.resources.agentLabel },
+    { value: "tool", label: t.admin.resources.toolLabel },
+    { value: "skill", label: "Skill" },
+    { value: "workflow", label: t.admin.resources.workflowLabel },
+  ];
+
+  const VISIBILITY_LABELS: Record<string, string> = {
+    private: t.admin.resources.privateLabel,
+    department: t.admin.resources.departmentLabel,
+    public: t.admin.resources.publicLabel,
+  };
+
+  const LIFECYCLE_LABELS: Record<string, string> = {
+    active: t.admin.resources.activeLabel,
+    archived: t.admin.resources.archivedLabel,
+    suspended: t.admin.resources.suspendedLabel,
+  };
+
   const [resources, setResources] = useState<AdminResource[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -177,7 +180,7 @@ export default function ResourcesPage() {
             onClick={() => handleLifecycleAction(resource, "suspend")}
           >
             <BanIcon className="h-3.5 w-3.5" />
-            下架
+            {t.admin.resources.suspendAction}
           </Button>
         )}
         {isSuperAdmin && lifecycle === "suspended" && (
@@ -188,7 +191,7 @@ export default function ResourcesPage() {
             onClick={() => handleLifecycleAction(resource, "restore")}
           >
             <RefreshCwIcon className="h-3.5 w-3.5" />
-            恢复
+            {t.admin.resources.restoreAction}
           </Button>
         )}
         {lifecycle !== "suspended" && (
@@ -199,7 +202,7 @@ export default function ResourcesPage() {
             onClick={() => handleLifecycleAction(resource, "archive")}
           >
             <ArchiveIcon className="h-3.5 w-3.5" />
-            归档
+            {t.admin.resources.archiveAction}
           </Button>
         )}
       </div>
@@ -216,9 +219,11 @@ export default function ResourcesPage() {
             </Button>
           </Link>
           <div>
-            <h1 className="type-page-title font-semibold">资源管理</h1>
+            <h1 className="type-page-title font-semibold">
+              {t.admin.resources.pageTitle}
+            </h1>
             <p className="text-muted-foreground type-body mt-0.5">
-              共 {total} 个资源
+              {t.admin.resources.totalCount(total)}
             </p>
           </div>
         </div>
@@ -231,12 +236,12 @@ export default function ResourcesPage() {
             onValueChange={handleFilterChange(setFilterType)}
           >
             <SelectTrigger className="w-32">
-              <SelectValue placeholder="类型" />
+              <SelectValue placeholder={t.admin.resources.typeLabel} />
             </SelectTrigger>
             <SelectContent>
-              {RESOURCE_TYPES.map((t) => (
-                <SelectItem key={t.value} value={t.value}>
-                  {t.label}
+              {RESOURCE_TYPES.map((rt) => (
+                <SelectItem key={rt.value} value={rt.value}>
+                  {rt.label}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -247,13 +252,21 @@ export default function ResourcesPage() {
             onValueChange={handleFilterChange(setFilterVisibility)}
           >
             <SelectTrigger className="w-32">
-              <SelectValue placeholder="可见性" />
+              <SelectValue placeholder={t.admin.resources.visibilityLabel} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">全部可见性</SelectItem>
-              <SelectItem value="private">私有</SelectItem>
-              <SelectItem value="department">部门</SelectItem>
-              <SelectItem value="public">公开</SelectItem>
+              <SelectItem value="all">
+                {t.admin.resources.allVisibilityLabel}
+              </SelectItem>
+              <SelectItem value="private">
+                {t.admin.resources.privateLabel}
+              </SelectItem>
+              <SelectItem value="department">
+                {t.admin.resources.departmentLabel}
+              </SelectItem>
+              <SelectItem value="public">
+                {t.admin.resources.publicLabel}
+              </SelectItem>
             </SelectContent>
           </Select>
 
@@ -262,13 +275,21 @@ export default function ResourcesPage() {
             onValueChange={handleFilterChange(setFilterStatus)}
           >
             <SelectTrigger className="w-32">
-              <SelectValue placeholder="状态" />
+              <SelectValue placeholder={t.admin.resources.statusLabel} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">全部状态</SelectItem>
-              <SelectItem value="active">启用</SelectItem>
-              <SelectItem value="archived">已归档</SelectItem>
-              <SelectItem value="suspended">已下架</SelectItem>
+              <SelectItem value="all">
+                {t.admin.resources.allStatusLabel}
+              </SelectItem>
+              <SelectItem value="active">
+                {t.admin.resources.activeLabel}
+              </SelectItem>
+              <SelectItem value="archived">
+                {t.admin.resources.archivedLabel}
+              </SelectItem>
+              <SelectItem value="suspended">
+                {t.admin.resources.suspendedLabel}
+              </SelectItem>
             </SelectContent>
           </Select>
 
@@ -277,10 +298,12 @@ export default function ResourcesPage() {
             onValueChange={handleFilterChange(setFilterOwner)}
           >
             <SelectTrigger className="w-40">
-              <SelectValue placeholder="创建者" />
+              <SelectValue placeholder={t.admin.resources.ownerLabel} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">全部创建者</SelectItem>
+              <SelectItem value="all">
+                {t.admin.resources.allOwnersLabel}
+              </SelectItem>
               {users.map((u) => (
                 <SelectItem key={u.id} value={u.id}>
                   {u.username}
@@ -296,7 +319,7 @@ export default function ResourcesPage() {
 
         {loading ? (
           <div className="text-muted-foreground type-body flex h-40 items-center justify-center">
-            加载中...
+            {t.admin.resources.loading}
           </div>
         ) : error ? (
           <div className="text-destructive type-body flex h-40 items-center justify-center">
@@ -305,7 +328,9 @@ export default function ResourcesPage() {
         ) : resources.length === 0 ? (
           <div className="flex h-64 flex-col items-center justify-center gap-3 text-center">
             <BoxIcon className="text-muted-foreground h-10 w-10" />
-            <p className="text-muted-foreground type-body">暂无资源</p>
+            <p className="text-muted-foreground type-body">
+              {t.admin.resources.empty}
+            </p>
           </div>
         ) : (
           <>
@@ -316,13 +341,27 @@ export default function ResourcesPage() {
               <table className="type-body w-full">
                 <thead>
                   <tr className="bg-muted/50 border-b text-left">
-                    <th className="px-4 py-3 font-medium">类型</th>
-                    <th className="px-4 py-3 font-medium">名称</th>
-                    <th className="px-4 py-3 font-medium">可见性</th>
-                    <th className="px-4 py-3 font-medium">状态</th>
-                    <th className="px-4 py-3 font-medium">创建者</th>
-                    <th className="px-4 py-3 font-medium">创建时间</th>
-                    <th className="px-4 py-3 text-right">操作</th>
+                    <th className="px-4 py-3 font-medium">
+                      {t.admin.resources.typeLabel}
+                    </th>
+                    <th className="px-4 py-3 font-medium">
+                      {t.admin.resources.nameLabel}
+                    </th>
+                    <th className="px-4 py-3 font-medium">
+                      {t.admin.resources.visibilityLabel}
+                    </th>
+                    <th className="px-4 py-3 font-medium">
+                      {t.admin.resources.statusLabel}
+                    </th>
+                    <th className="px-4 py-3 font-medium">
+                      {t.admin.resources.ownerLabel}
+                    </th>
+                    <th className="px-4 py-3 font-medium">
+                      {t.admin.resources.createdAtLabel}
+                    </th>
+                    <th className="px-4 py-3 text-right">
+                      {t.admin.resources.actionsLabel}
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -382,7 +421,7 @@ export default function ResourcesPage() {
                   disabled={page <= 1}
                   onClick={() => setPage((p) => p - 1)}
                 >
-                  上一页
+                  {t.admin.resources.prevPage}
                 </Button>
                 <span className="text-muted-foreground type-body">
                   {page} / {totalPages}
@@ -393,7 +432,7 @@ export default function ResourcesPage() {
                   disabled={page >= totalPages}
                   onClick={() => setPage((p) => p + 1)}
                 >
-                  下一页
+                  {t.admin.resources.nextPage}
                 </Button>
               </div>
             )}

@@ -24,9 +24,11 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { listTools, testTool } from "@/core/admin/api";
 import { useAuth } from "@/core/auth/AuthProvider";
+import { useI18n } from "@/core/i18n/hooks";
 import type { Tool } from "@/core/tools/types";
 
 export default function ToolsPage() {
+  const { t } = useI18n();
   const { user } = useAuth();
   const [tools, setTools] = useState<Tool[]>([]);
   const [loading, setLoading] = useState(true);
@@ -69,14 +71,16 @@ export default function ToolsPage() {
       try {
         parsedInput = JSON.parse(testInput) as Record<string, unknown>;
       } catch {
-        setTestResult("Error: Invalid JSON input");
+        setTestResult(t.admin.tools.invalidJsonError);
         return;
       }
       const data = await testTool(selectedTool.name, parsedInput);
       setTestResult(JSON.stringify(data, null, 2));
     } catch (err) {
       setTestResult(
-        `Error: ${err instanceof Error ? err.message : String(err)}`,
+        t.admin.tools.errorWithMessage(
+          err instanceof Error ? err.message : String(err),
+        ),
       );
     } finally {
       setTesting(false);
@@ -94,9 +98,11 @@ export default function ToolsPage() {
             </Button>
           </Link>
           <div>
-            <h1 className="type-page-title font-semibold">工具管理</h1>
+            <h1 className="type-page-title font-semibold">
+              {t.admin.tools.pageTitle}
+            </h1>
             <p className="text-muted-foreground type-body mt-0.5">
-              查看和测试系统工具
+              {t.admin.tools.subtitle}
             </p>
           </div>
         </div>
@@ -106,7 +112,7 @@ export default function ToolsPage() {
       <div className="flex-1 overflow-y-auto p-6">
         {loading ? (
           <div className="text-muted-foreground type-body flex h-40 items-center justify-center">
-            加载中...
+            {t.admin.tools.loading}
           </div>
         ) : error ? (
           <div className="text-destructive type-body flex h-40 items-center justify-center">
@@ -115,7 +121,9 @@ export default function ToolsPage() {
         ) : tools.length === 0 ? (
           <div className="flex h-64 flex-col items-center justify-center gap-3 text-center">
             <WrenchIcon className="text-muted-foreground h-10 w-10" />
-            <p className="text-muted-foreground type-body">暂无工具</p>
+            <p className="text-muted-foreground type-body">
+              {t.admin.tools.empty}
+            </p>
           </div>
         ) : (
           <div
@@ -157,13 +165,15 @@ export default function ToolsPage() {
                     <Badge
                       variant={tool.requires_network ? "secondary" : "default"}
                     >
-                      {tool.requires_network ? "需联网" : "可用"}
+                      {tool.requires_network
+                        ? t.admin.tools.requiresNetworkLabel
+                        : t.admin.tools.availableLabel}
                     </Badge>
                   </div>
                 </CardHeader>
                 <CardContent>
                   <CardDescription className="type-body line-clamp-2">
-                    {tool.description || "暂无描述"}
+                    {tool.description || t.admin.tools.noDescription}
                   </CardDescription>
                 </CardContent>
               </Card>
@@ -186,7 +196,9 @@ export default function ToolsPage() {
                   selectedTool?.requires_network ? "secondary" : "default"
                 }
               >
-                {selectedTool?.requires_network ? "需联网" : "可用"}
+                {selectedTool?.requires_network
+                  ? t.admin.tools.requiresNetworkLabel
+                  : t.admin.tools.availableLabel}
               </Badge>
               {selectedTool?.visibility && (
                 <Badge
@@ -203,7 +215,9 @@ export default function ToolsPage() {
               )}
             </div>
             <div className="space-y-2">
-              <label className="type-body font-medium">测试输入 (JSON)</label>
+              <label className="type-body font-medium">
+                {t.admin.tools.testInputLabel}
+              </label>
               <Textarea
                 className="type-body font-mono"
                 rows={6}
@@ -214,11 +228,13 @@ export default function ToolsPage() {
             </div>
             <Button onClick={handleTest} disabled={testing}>
               <PlayIcon className="mr-1.5 h-4 w-4" />
-              {testing ? "测试中..." : "测试工具"}
+              {testing ? t.admin.tools.testingLabel : t.admin.tools.testButton}
             </Button>
             {testResult !== null && (
               <div className="space-y-2">
-                <label className="type-body font-medium">测试结果</label>
+                <label className="type-body font-medium">
+                  {t.admin.tools.testResultLabel}
+                </label>
                 <pre className="bg-muted type-body max-h-64 overflow-auto rounded-md p-4">
                   {testResult}
                 </pre>
@@ -227,7 +243,7 @@ export default function ToolsPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDetailOpen(false)}>
-              关闭
+              {t.admin.tools.closeButton}
             </Button>
           </DialogFooter>
         </DialogContent>

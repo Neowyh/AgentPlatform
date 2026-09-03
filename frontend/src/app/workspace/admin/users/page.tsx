@@ -50,12 +50,7 @@ import {
 } from "@/core/admin/api";
 import type { Department, User, UserRole } from "@/core/admin/types";
 import { useAuth } from "@/core/auth/AuthProvider";
-
-const ROLE_LABELS: Record<UserRole, string> = {
-  user: "普通用户",
-  department_admin: "部门管理员",
-  super_admin: "超级管理员",
-};
+import { useI18n } from "@/core/i18n/hooks";
 
 const ROLE_VARIANTS: Record<UserRole, "default" | "secondary" | "destructive"> =
   {
@@ -65,7 +60,13 @@ const ROLE_VARIANTS: Record<UserRole, "default" | "secondary" | "destructive"> =
   };
 
 export default function UsersPage() {
+  const { t } = useI18n();
   const { user: currentUser } = useAuth();
+  const roleLabels: Record<UserRole, string> = {
+    user: t.admin.users.roleUser,
+    department_admin: t.admin.users.roleDepartmentAdmin,
+    super_admin: t.admin.users.roleSuperAdmin,
+  };
   const [users, setUsers] = useState<User[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [loading, setLoading] = useState(true);
@@ -128,24 +129,28 @@ export default function UsersPage() {
 
   const handleRoleChange = async (userId: string, newRole: string) => {
     if (userId === currentUser?.id) {
-      toast.error("不能修改自己的角色");
+      toast.error(t.admin.users.cannotChangeOwnRole);
       return;
     }
     const user = users.find((u) => u.id === userId);
     if (!user) return;
-    const currentLabel = ROLE_LABELS[user.role] ?? user.role;
-    const newLabel = ROLE_LABELS[newRole as UserRole] ?? newRole;
+    const currentLabel = roleLabels[user.role] ?? user.role;
+    const newLabel = roleLabels[newRole as UserRole] ?? newRole;
     if (newRole === "super_admin" || user.role === "super_admin") {
       if (
         !confirm(
-          `确定要将用户 "${user.username}" 的角色从 ${currentLabel} 变更为 ${newLabel} 吗？`,
+          t.admin.users.roleChangeConfirm(
+            user.username,
+            currentLabel,
+            newLabel,
+          ),
         )
       )
         return;
     }
     try {
       await updateUserRole(userId, newRole);
-      toast.success("用户角色已更新");
+      toast.success(t.admin.users.roleUpdated);
       await fetchUsers();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
@@ -157,15 +162,24 @@ export default function UsersPage() {
     currentlyDisabled: boolean,
   ) => {
     if (userId === currentUser?.id) {
-      toast.error("不能修改自己的状态");
+      toast.error(t.admin.users.cannotChangeOwnStatus);
       return;
     }
-    const action = currentlyDisabled ? "启用" : "禁用";
-    if (!confirm(`确定要${action}该用户吗？`)) return;
+    const enabling = currentlyDisabled;
+    if (
+      !confirm(
+        enabling
+          ? t.admin.users.enableUserConfirm
+          : t.admin.users.disableUserConfirm,
+      )
+    )
+      return;
     setDisablingId(userId);
     try {
       await toggleUserStatus(userId);
-      toast.success(`用户已${action}`);
+      toast.success(
+        enabling ? t.admin.users.userEnabled : t.admin.users.userDisabled,
+      );
       await fetchUsers();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
@@ -180,11 +194,11 @@ export default function UsersPage() {
       !createForm.password.trim() ||
       !createForm.username.trim()
     ) {
-      toast.error("请填写所有必填字段");
+      toast.error(t.admin.users.fillRequiredFields);
       return;
     }
     if (createForm.password.length < 6) {
-      toast.error("密码至少需要6个字符");
+      toast.error(t.admin.users.passwordTooShort);
       return;
     }
     setCreating(true);
@@ -196,7 +210,7 @@ export default function UsersPage() {
         role: createForm.role,
         department_id: createForm.department_id || undefined,
       });
-      toast.success("用户创建成功");
+      toast.success(t.admin.users.userCreated);
       setCreateDialogOpen(false);
       setCreateForm({
         email: "",
@@ -225,7 +239,7 @@ export default function UsersPage() {
   const handleSaveEdit = async () => {
     if (!editingUser) return;
     if (!editForm.username.trim()) {
-      toast.error("用户名不能为空");
+      toast.error(t.admin.users.usernameRequired);
       return;
     }
     setSaving(true);
@@ -234,7 +248,7 @@ export default function UsersPage() {
         username: editForm.username.trim(),
         department_id: editForm.department_id || undefined,
       });
-      toast.success("用户信息已更新");
+      toast.success(t.admin.users.userUpdated);
       setEditDialogOpen(false);
       setEditingUser(null);
       await fetchUsers();
@@ -263,7 +277,7 @@ export default function UsersPage() {
           ? deleteTargetUserId || undefined
           : undefined,
       );
-      toast.success("用户已删除");
+      toast.success(t.admin.users.userDeleted);
       setDeleteDialogOpen(false);
       setDeletingUser(null);
       await fetchUsers();
@@ -285,11 +299,13 @@ export default function UsersPage() {
             </Button>
           </Link>
           <div>
-            <h1 className="type-page-title font-semibold">用户管理</h1>
+            <h1 className="type-page-title font-semibold">
+              {t.admin.users.pageTitle}
+            </h1>
             <p className="text-muted-foreground type-body mt-0.5">
               {isSuperAdmin
-                ? "管理系统用户和角色权限"
-                : "管理本部门用户和角色权限"}
+                ? t.admin.users.subtitleSuperAdmin
+                : t.admin.users.subtitleDeptAdmin}
             </p>
           </div>
         </div>
@@ -301,10 +317,12 @@ export default function UsersPage() {
           {isSuperAdmin && (
             <Select value={filterDept} onValueChange={setFilterDept}>
               <SelectTrigger className="w-48">
-                <SelectValue placeholder="筛选部门" />
+                <SelectValue placeholder={t.admin.users.filterDepartment} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">全部部门</SelectItem>
+                <SelectItem value="all">
+                  {t.admin.users.allDepartments}
+                </SelectItem>
                 {departments.map((dept) => (
                   <SelectItem key={dept.id} value={dept.id}>
                     {dept.name}
@@ -315,21 +333,25 @@ export default function UsersPage() {
           )}
           <Select value={filterRole} onValueChange={setFilterRole}>
             <SelectTrigger className="w-40">
-              <SelectValue placeholder="筛选角色" />
+              <SelectValue placeholder={t.admin.users.filterRole} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">全部角色</SelectItem>
-              <SelectItem value="user">普通用户</SelectItem>
-              <SelectItem value="department_admin">部门管理员</SelectItem>
+              <SelectItem value="all">{t.admin.users.allRoles}</SelectItem>
+              <SelectItem value="user">{t.admin.users.roleUser}</SelectItem>
+              <SelectItem value="department_admin">
+                {t.admin.users.roleDepartmentAdmin}
+              </SelectItem>
               {isSuperAdmin && (
-                <SelectItem value="super_admin">超级管理员</SelectItem>
+                <SelectItem value="super_admin">
+                  {t.admin.users.roleSuperAdmin}
+                </SelectItem>
               )}
             </SelectContent>
           </Select>
         </div>
         <Button size="sm" onClick={() => setCreateDialogOpen(true)}>
           <PlusIcon className="mr-1 h-4 w-4" />
-          新增用户
+          {t.admin.users.createUser}
         </Button>
       </div>
 
@@ -337,7 +359,7 @@ export default function UsersPage() {
       <div className="flex-1 overflow-y-auto p-6">
         {loading ? (
           <div className="text-muted-foreground type-body flex h-40 items-center justify-center">
-            加载中...
+            {t.admin.users.loading}
           </div>
         ) : error ? (
           <div className="text-destructive type-body flex h-40 items-center justify-center">
@@ -346,7 +368,9 @@ export default function UsersPage() {
         ) : users.length === 0 ? (
           <div className="flex h-64 flex-col items-center justify-center gap-3 text-center">
             <UserIcon className="text-muted-foreground h-10 w-10" />
-            <p className="text-muted-foreground type-body">暂无用户</p>
+            <p className="text-muted-foreground type-body">
+              {t.admin.users.noUsers}
+            </p>
           </div>
         ) : (
           <div className="grid gap-4" data-testid="user-list">
@@ -367,17 +391,23 @@ export default function UsersPage() {
                           <CardDescription>
                             {departments.find(
                               (d) => d.id === user.department_id,
-                            )?.name ?? "未分配部门"}
+                            )?.name ?? t.admin.users.noDepartment}
                           </CardDescription>
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        {isSelf && <Badge variant="outline">当前用户</Badge>}
+                        {isSelf && (
+                          <Badge variant="outline">
+                            {t.admin.users.currentUserBadge}
+                          </Badge>
+                        )}
                         <Badge variant={ROLE_VARIANTS[user.role]}>
-                          {ROLE_LABELS[user.role]}
+                          {roleLabels[user.role]}
                         </Badge>
                         {user.disabled && (
-                          <Badge variant="destructive">已禁用</Badge>
+                          <Badge variant="destructive">
+                            {t.admin.users.disabledBadge}
+                          </Badge>
                         )}
                       </div>
                     </div>
@@ -386,13 +416,15 @@ export default function UsersPage() {
                     <div className="flex items-center justify-between">
                       <div className="text-muted-foreground type-body">
                         <span>
-                          创建于{" "}
-                          {new Date(user.created_at).toLocaleDateString()}
+                          {t.admin.users.createdAt(
+                            new Date(user.created_at).toLocaleDateString(),
+                          )}
                         </span>
                         {user.last_login && (
                           <span className="ml-4">
-                            最后登录{" "}
-                            {new Date(user.last_login).toLocaleDateString()}
+                            {t.admin.users.lastLogin(
+                              new Date(user.last_login).toLocaleDateString(),
+                            )}
                           </span>
                         )}
                       </div>
@@ -409,13 +441,15 @@ export default function UsersPage() {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="user">普通用户</SelectItem>
+                            <SelectItem value="user">
+                              {t.admin.users.roleUser}
+                            </SelectItem>
                             <SelectItem value="department_admin">
-                              部门管理员
+                              {t.admin.users.roleDepartmentAdmin}
                             </SelectItem>
                             {isSuperAdmin && (
                               <SelectItem value="super_admin">
-                                超级管理员
+                                {t.admin.users.roleSuperAdmin}
                               </SelectItem>
                             )}
                           </SelectContent>
@@ -425,7 +459,7 @@ export default function UsersPage() {
                             variant="ghost"
                             size="icon-sm"
                             onClick={() => handleEdit(user)}
-                            title="编辑用户"
+                            title={t.admin.users.editUser}
                             data-testid="user-edit-button"
                           >
                             <PencilIcon className="h-4 w-4" />
@@ -437,7 +471,11 @@ export default function UsersPage() {
                             size="icon-sm"
                             onClick={() => handleDeleteClick(user)}
                             disabled={!user.disabled}
-                            title={user.disabled ? "删除用户" : "请先禁用用户"}
+                            title={
+                              user.disabled
+                                ? t.admin.users.deleteUser
+                                : t.admin.users.disableFirst
+                            }
                             data-testid="user-delete-button"
                           >
                             <Trash2Icon className="text-destructive h-4 w-4" />
@@ -452,10 +490,10 @@ export default function UsersPage() {
                           disabled={isSelf || disablingId === user.id}
                           title={
                             isSelf
-                              ? "不能修改自己的状态"
+                              ? t.admin.users.cannotChangeOwnStatus
                               : user.disabled
-                                ? "启用用户"
-                                : "禁用用户"
+                                ? t.admin.users.enableUser
+                                : t.admin.users.disableUser
                           }
                           data-testid="user-toggle-status-button"
                         >
@@ -479,12 +517,14 @@ export default function UsersPage() {
       <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
-            <DialogTitle>新增用户</DialogTitle>
-            <DialogDescription>创建一个新的系统用户账户</DialogDescription>
+            <DialogTitle>{t.admin.users.createUser}</DialogTitle>
+            <DialogDescription>
+              {t.admin.users.createUserDesc}
+            </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
-              <Label htmlFor="create-email">邮箱 *</Label>
+              <Label htmlFor="create-email">{t.admin.users.emailLabel}</Label>
               <Input
                 id="create-email"
                 type="email"
@@ -496,11 +536,13 @@ export default function UsersPage() {
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="create-password">密码 *</Label>
+              <Label htmlFor="create-password">
+                {t.admin.users.passwordLabel}
+              </Label>
               <Input
                 id="create-password"
                 type="password"
-                placeholder="至少6个字符"
+                placeholder={t.admin.users.passwordPlaceholder}
                 value={createForm.password}
                 onChange={(e) =>
                   setCreateForm((prev) => ({
@@ -511,10 +553,12 @@ export default function UsersPage() {
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="create-username">用户名 *</Label>
+              <Label htmlFor="create-username">
+                {t.admin.users.usernameLabel}
+              </Label>
               <Input
                 id="create-username"
-                placeholder="用户显示名称"
+                placeholder={t.admin.users.usernamePlaceholder}
                 value={createForm.username}
                 onChange={(e) =>
                   setCreateForm((prev) => ({
@@ -525,7 +569,7 @@ export default function UsersPage() {
               />
             </div>
             <div className="grid gap-2">
-              <Label>角色</Label>
+              <Label>{t.admin.users.roleLabel}</Label>
               <Select
                 value={createForm.role}
                 onValueChange={(value) =>
@@ -539,13 +583,15 @@ export default function UsersPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="user">普通用户</SelectItem>
+                  <SelectItem value="user">{t.admin.users.roleUser}</SelectItem>
                   {isSuperAdmin && (
                     <>
                       <SelectItem value="department_admin">
-                        部门管理员
+                        {t.admin.users.roleDepartmentAdmin}
                       </SelectItem>
-                      <SelectItem value="super_admin">超级管理员</SelectItem>
+                      <SelectItem value="super_admin">
+                        {t.admin.users.roleSuperAdmin}
+                      </SelectItem>
                     </>
                   )}
                 </SelectContent>
@@ -553,7 +599,7 @@ export default function UsersPage() {
             </div>
             {isSuperAdmin && (
               <div className="grid gap-2">
-                <Label>部门</Label>
+                <Label>{t.admin.users.departmentLabel}</Label>
                 <Select
                   value={createForm.department_id}
                   onValueChange={(value) =>
@@ -564,7 +610,9 @@ export default function UsersPage() {
                   }
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="选择部门（可选）" />
+                    <SelectValue
+                      placeholder={t.admin.users.departmentOptional}
+                    />
                   </SelectTrigger>
                   <SelectContent>
                     {departments.map((dept) => (
@@ -583,10 +631,10 @@ export default function UsersPage() {
               onClick={() => setCreateDialogOpen(false)}
               disabled={creating}
             >
-              取消
+              {t.admin.users.cancel}
             </Button>
             <Button onClick={handleCreate} disabled={creating}>
-              {creating ? "创建中..." : "创建"}
+              {creating ? t.admin.users.creating : t.admin.users.create}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -596,15 +644,17 @@ export default function UsersPage() {
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
-            <DialogTitle>编辑用户</DialogTitle>
-            <DialogDescription>修改用户信息</DialogDescription>
+            <DialogTitle>{t.admin.users.editUser}</DialogTitle>
+            <DialogDescription>{t.admin.users.editUserDesc}</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
-              <Label htmlFor="edit-username">用户名 *</Label>
+              <Label htmlFor="edit-username">
+                {t.admin.users.usernameLabel}
+              </Label>
               <Input
                 id="edit-username"
-                placeholder="用户显示名称"
+                placeholder={t.admin.users.usernamePlaceholder}
                 value={editForm.username}
                 onChange={(e) =>
                   setEditForm((prev) => ({
@@ -616,7 +666,7 @@ export default function UsersPage() {
             </div>
             {isSuperAdmin && (
               <div className="grid gap-2">
-                <Label>部门</Label>
+                <Label>{t.admin.users.departmentLabel}</Label>
                 <Select
                   value={editForm.department_id}
                   onValueChange={(value) =>
@@ -627,7 +677,9 @@ export default function UsersPage() {
                   }
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="选择部门（可选）" />
+                    <SelectValue
+                      placeholder={t.admin.users.departmentOptional}
+                    />
                   </SelectTrigger>
                   <SelectContent>
                     {departments.map((dept) => (
@@ -646,10 +698,10 @@ export default function UsersPage() {
               onClick={() => setEditDialogOpen(false)}
               disabled={saving}
             >
-              取消
+              {t.admin.users.cancel}
             </Button>
             <Button onClick={handleSaveEdit} disabled={saving}>
-              {saving ? "保存中..." : "保存"}
+              {saving ? t.admin.users.saving : t.admin.users.save}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -659,13 +711,15 @@ export default function UsersPage() {
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <DialogContent className="sm:max-w-[480px]">
           <DialogHeader>
-            <DialogTitle>删除用户</DialogTitle>
+            <DialogTitle>{t.admin.users.deleteUser}</DialogTitle>
             <DialogDescription>
-              确定要删除用户「{deletingUser?.username}」吗？此操作不可撤销。
+              {t.admin.users.deleteConfirm(deletingUser?.username ?? "")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <p className="type-body font-medium">资源处理方式</p>
+            <p className="type-body font-medium">
+              {t.admin.users.resourceStrategy}
+            </p>
 
             <label className="flex cursor-pointer items-start gap-3 rounded-md border p-3">
               <input
@@ -676,9 +730,11 @@ export default function UsersPage() {
                 className="mt-0.5"
               />
               <div className="space-y-0.5">
-                <p className="type-body font-medium">仅标记删除</p>
+                <p className="type-body font-medium">
+                  {t.admin.users.softDelete}
+                </p>
                 <p className="text-muted-foreground type-body">
-                  保留磁盘文件，可恢复
+                  {t.admin.users.softDeleteDesc}
                 </p>
               </div>
             </label>
@@ -692,9 +748,11 @@ export default function UsersPage() {
                 className="mt-0.5"
               />
               <div className="space-y-0.5">
-                <p className="type-body font-medium">彻底删除</p>
+                <p className="type-body font-medium">
+                  {t.admin.users.hardDelete}
+                </p>
                 <p className="text-muted-foreground type-body">
-                  清除所有磁盘文件，不可恢复
+                  {t.admin.users.hardDeleteDesc}
                 </p>
               </div>
             </label>
@@ -711,9 +769,11 @@ export default function UsersPage() {
                 className="mt-0.5"
               />
               <div className="flex-1 space-y-0.5">
-                <p className="type-body font-medium">转移资源</p>
+                <p className="type-body font-medium">
+                  {t.admin.users.transferResources}
+                </p>
                 <p className="text-muted-foreground type-body">
-                  将所有资源转给其他用户
+                  {t.admin.users.transferDesc}
                 </p>
                 {deleteStrategy === "transfer" && (
                   <select
@@ -721,7 +781,7 @@ export default function UsersPage() {
                     onChange={(e) => setDeleteTargetUserId(e.target.value)}
                     className="type-body mt-2 h-9 w-full max-w-xs rounded-md border bg-transparent px-3"
                   >
-                    <option value="">请选择目标用户</option>
+                    <option value="">{t.admin.users.selectTargetUser}</option>
                     {users
                       .filter((u) => u.id !== deletingUser?.id)
                       .map((u) => (
@@ -740,14 +800,16 @@ export default function UsersPage() {
               onClick={() => setDeleteDialogOpen(false)}
               disabled={deleteSubmitting}
             >
-              取消
+              {t.admin.users.cancel}
             </Button>
             <Button
               variant="destructive"
               onClick={handleDeleteConfirm}
               disabled={deleteSubmitting}
             >
-              {deleteSubmitting ? "删除中..." : "确认删除"}
+              {deleteSubmitting
+                ? t.admin.users.deleting
+                : t.admin.users.confirmDelete}
             </Button>
           </DialogFooter>
         </DialogContent>

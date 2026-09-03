@@ -34,19 +34,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { listUsers } from "@/core/admin/api";
 import type { User } from "@/core/admin/types";
 import { useAuth } from "@/core/auth/AuthProvider";
+import { useI18n } from "@/core/i18n/hooks";
 import {
   listVisibilityApplications,
   reviewVisibilityApplication,
   withdrawVisibilityApplication,
 } from "@/core/visibility-applications/api";
 import type { VisibilityApplication } from "@/core/visibility-applications/types";
-
-const STATUS_LABELS: Record<string, string> = {
-  pending: "待审批",
-  approved: "已批准",
-  rejected: "已拒绝",
-  withdrawn: "已撤回",
-};
 
 const STATUS_VARIANTS: Record<string, "default" | "secondary" | "destructive"> =
   {
@@ -56,21 +50,29 @@ const STATUS_VARIANTS: Record<string, "default" | "secondary" | "destructive"> =
     withdrawn: "secondary",
   };
 
-const RESOURCE_TYPE_LABELS: Record<string, string> = {
-  tool: "工具",
-  skill: "Skill",
-  workflow: "工作流",
-  agent: "智能体",
-};
-
-const VISIBILITY_LABELS: Record<string, string> = {
-  private: "私有",
-  department: "部门",
-  public: "公开",
-};
-
 export default function VisibilityApplicationsPage() {
   const { user: currentUser } = useAuth();
+  const { t } = useI18n();
+
+  const statusLabels: Record<string, string> = {
+    pending: t.admin.visibilityApplications.statusPending(),
+    approved: t.admin.visibilityApplications.statusApproved(),
+    rejected: t.admin.visibilityApplications.statusRejected(),
+    withdrawn: t.admin.visibilityApplications.statusWithdrawn(),
+  };
+
+  const resourceTypeLabels: Record<string, string> = {
+    tool: t.admin.visibilityApplications.resourceTypeTool(),
+    skill: t.admin.visibilityApplications.resourceTypeSkill(),
+    workflow: t.admin.visibilityApplications.resourceTypeWorkflow(),
+    agent: t.admin.visibilityApplications.resourceTypeAgent(),
+  };
+
+  const visibilityLabels: Record<string, string> = {
+    private: t.admin.visibilityApplications.visibilityPrivate(),
+    department: t.admin.visibilityApplications.visibilityDepartment(),
+    public: t.admin.visibilityApplications.visibilityPublic(),
+  };
 
   const [applications, setApplications] = useState<VisibilityApplication[]>([]);
   const [loading, setLoading] = useState(true);
@@ -221,9 +223,11 @@ export default function VisibilityApplicationsPage() {
             <ArrowLeftIcon className="h-5 w-5" />
           </Link>
           <div>
-            <h1 className="type-page-title font-semibold">统一审批中心</h1>
+            <h1 className="type-page-title font-semibold">
+              {t.admin.visibilityApplications.pageTitle()}
+            </h1>
             <p className="text-muted-foreground type-body mt-0.5">
-              审批所有资源的可见性变更申请
+              {t.admin.visibilityApplications.pageDescription()}
             </p>
           </div>
         </div>
@@ -233,17 +237,17 @@ export default function VisibilityApplicationsPage() {
       <div className="flex-1 overflow-y-auto p-6">
         {loading ? (
           <div className="text-muted-foreground type-body flex h-40 items-center justify-center">
-            加载中...
+            {t.admin.visibilityApplications.loading()}
           </div>
         ) : (
           <div className="flex flex-col gap-4">
             {error && (
               <Alert variant="destructive">
                 <AlertTitle className="flex items-center justify-between gap-2 pr-1">
-                  操作失败
+                  {t.admin.visibilityApplications.operationFailed()}
                   <button
                     type="button"
-                    aria-label="关闭错误提示"
+                    aria-label={t.admin.visibilityApplications.closeError()}
                     onClick={() => setError(null)}
                   >
                     <XIcon className="h-4 w-4" />
@@ -262,14 +266,26 @@ export default function VisibilityApplicationsPage() {
                 onValueChange={handleFilterStatusChange}
               >
                 <SelectTrigger className="w-36">
-                  <SelectValue placeholder="状态" />
+                  <SelectValue
+                    placeholder={t.admin.visibilityApplications.status()}
+                  />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="pending">待审批</SelectItem>
-                  <SelectItem value="approved">已批准</SelectItem>
-                  <SelectItem value="rejected">已拒绝</SelectItem>
-                  <SelectItem value="withdrawn">已撤回</SelectItem>
-                  <SelectItem value="all">全部状态</SelectItem>
+                  <SelectItem value="pending">
+                    {t.admin.visibilityApplications.statusPending()}
+                  </SelectItem>
+                  <SelectItem value="approved">
+                    {t.admin.visibilityApplications.statusApproved()}
+                  </SelectItem>
+                  <SelectItem value="rejected">
+                    {t.admin.visibilityApplications.statusRejected()}
+                  </SelectItem>
+                  <SelectItem value="withdrawn">
+                    {t.admin.visibilityApplications.statusWithdrawn()}
+                  </SelectItem>
+                  <SelectItem value="all">
+                    {t.admin.visibilityApplications.allStatuses()}
+                  </SelectItem>
                 </SelectContent>
               </Select>
 
@@ -278,14 +294,26 @@ export default function VisibilityApplicationsPage() {
                 onValueChange={handleFilterResourceTypeChange}
               >
                 <SelectTrigger className="w-36">
-                  <SelectValue placeholder="资源类型" />
+                  <SelectValue
+                    placeholder={t.admin.visibilityApplications.resourceType()}
+                  />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">全部类型</SelectItem>
-                  <SelectItem value="tool">工具</SelectItem>
-                  <SelectItem value="skill">Skill</SelectItem>
-                  <SelectItem value="workflow">工作流</SelectItem>
-                  <SelectItem value="agent">智能体</SelectItem>
+                  <SelectItem value="all">
+                    {t.admin.visibilityApplications.allTypes()}
+                  </SelectItem>
+                  <SelectItem value="tool">
+                    {t.admin.visibilityApplications.resourceTypeTool()}
+                  </SelectItem>
+                  <SelectItem value="skill">
+                    {t.admin.visibilityApplications.resourceTypeSkill()}
+                  </SelectItem>
+                  <SelectItem value="workflow">
+                    {t.admin.visibilityApplications.resourceTypeWorkflow()}
+                  </SelectItem>
+                  <SelectItem value="agent">
+                    {t.admin.visibilityApplications.resourceTypeAgent()}
+                  </SelectItem>
                 </SelectContent>
               </Select>
 
@@ -294,13 +322,23 @@ export default function VisibilityApplicationsPage() {
                 onValueChange={handleFilterVisibilityChange}
               >
                 <SelectTrigger className="w-32">
-                  <SelectValue placeholder="目标可见性" />
+                  <SelectValue
+                    placeholder={t.admin.visibilityApplications.targetVisibility()}
+                  />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">全部可见性</SelectItem>
-                  <SelectItem value="private">私有</SelectItem>
-                  <SelectItem value="department">部门</SelectItem>
-                  <SelectItem value="public">公开</SelectItem>
+                  <SelectItem value="all">
+                    {t.admin.visibilityApplications.allVisibilities()}
+                  </SelectItem>
+                  <SelectItem value="private">
+                    {t.admin.visibilityApplications.visibilityPrivate()}
+                  </SelectItem>
+                  <SelectItem value="department">
+                    {t.admin.visibilityApplications.visibilityDepartment()}
+                  </SelectItem>
+                  <SelectItem value="public">
+                    {t.admin.visibilityApplications.visibilityPublic()}
+                  </SelectItem>
                 </SelectContent>
               </Select>
 
@@ -309,10 +347,14 @@ export default function VisibilityApplicationsPage() {
                 onValueChange={handleFilterApplicantChange}
               >
                 <SelectTrigger className="w-40">
-                  <SelectValue placeholder="申请人" />
+                  <SelectValue
+                    placeholder={t.admin.visibilityApplications.applicant()}
+                  />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">全部申请人</SelectItem>
+                  <SelectItem value="all">
+                    {t.admin.visibilityApplications.allApplicants()}
+                  </SelectItem>
                   {users.map((u) => (
                     <SelectItem key={u.id} value={u.id}>
                       {u.username}
@@ -322,7 +364,7 @@ export default function VisibilityApplicationsPage() {
               </Select>
 
               <span className="text-muted-foreground type-body ml-auto">
-                共 {total} 条
+                {t.admin.visibilityApplications.totalCount(total)}
               </span>
             </div>
 
@@ -332,8 +374,8 @@ export default function VisibilityApplicationsPage() {
                 <CardContent className="flex h-40 items-center justify-center">
                   <p className="text-muted-foreground type-body">
                     {filterStatus === "pending"
-                      ? "没有待审批的申请"
-                      : "没有找到申请记录"}
+                      ? t.admin.visibilityApplications.emptyPending()
+                      : t.admin.visibilityApplications.emptyNotFound()}
                   </p>
                 </CardContent>
               </Card>
@@ -348,42 +390,48 @@ export default function VisibilityApplicationsPage() {
                         </CardTitle>
                         <div className="flex items-center gap-2">
                           <Badge variant="outline">
-                            {RESOURCE_TYPE_LABELS[app.resource_type] ??
+                            {resourceTypeLabels[app.resource_type] ??
                               app.resource_type}
                           </Badge>
                           <Badge variant={STATUS_VARIANTS[app.status]}>
-                            {STATUS_LABELS[app.status]}
+                            {statusLabels[app.status]}
                           </Badge>
                         </div>
                       </div>
                       <CardDescription>
-                        申请编号: {app.id} | 申请人:{" "}
-                        {applicantName(app.applicant_id)} | 可见性:{" "}
-                        {VISIBILITY_LABELS[app.current_visibility]} →{" "}
-                        {VISIBILITY_LABELS[app.target_visibility]}
+                        {t.admin.visibilityApplications.applicationId()}:{" "}
+                        {app.id} | {t.admin.visibilityApplications.applicant()}:{" "}
+                        {applicantName(app.applicant_id)} |{" "}
+                        {t.admin.visibilityApplications.visibility()}:{" "}
+                        {visibilityLabels[app.current_visibility]} →{" "}
+                        {visibilityLabels[app.target_visibility]}
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
                       <div className="flex flex-col gap-2">
                         <p className="type-body">
-                          <span className="font-medium">申请理由:</span>{" "}
-                          {app.reason || "无"}
+                          <span className="font-medium">
+                            {t.admin.visibilityApplications.reason()}:
+                          </span>{" "}
+                          {app.reason || t.admin.visibilityApplications.none()}
                         </p>
                         {app.submitted_at && (
                           <p className="text-muted-foreground type-body">
-                            提交时间:{" "}
+                            {t.admin.visibilityApplications.submittedAt()}:{" "}
                             {new Date(app.submitted_at).toLocaleString()}
                           </p>
                         )}
                         {app.reviewed_at && (
                           <p className="text-muted-foreground type-body">
-                            审批时间:{" "}
+                            {t.admin.visibilityApplications.reviewedAt()}:{" "}
                             {new Date(app.reviewed_at).toLocaleString()}
                           </p>
                         )}
                         {app.review_comment && (
                           <p className="type-body">
-                            <span className="font-medium">审批意见:</span>{" "}
+                            <span className="font-medium">
+                              {t.admin.visibilityApplications.reviewComment()}:
+                            </span>{" "}
                             {app.review_comment}
                           </p>
                         )}
@@ -393,7 +441,7 @@ export default function VisibilityApplicationsPage() {
                               size="sm"
                               onClick={() => setReviewingApplication(app)}
                             >
-                              审核
+                              {t.admin.visibilityApplications.review()}
                             </Button>
                             {app.applicant_id === currentUser?.id && (
                               <Button
@@ -402,7 +450,7 @@ export default function VisibilityApplicationsPage() {
                                 disabled={withdrawingId === app.id}
                                 onClick={() => setWithdrawConfirm(app)}
                               >
-                                撤回
+                                {t.admin.visibilityApplications.withdraw()}
                               </Button>
                             )}
                           </div>
@@ -423,7 +471,7 @@ export default function VisibilityApplicationsPage() {
                   disabled={page <= 1}
                   onClick={() => setPage((p) => p - 1)}
                 >
-                  上一页
+                  {t.admin.visibilityApplications.previousPage()}
                 </Button>
                 <span className="text-muted-foreground type-body">
                   {page} / {totalPages}
@@ -434,7 +482,7 @@ export default function VisibilityApplicationsPage() {
                   disabled={page >= totalPages}
                   onClick={() => setPage((p) => p + 1)}
                 >
-                  下一页
+                  {t.admin.visibilityApplications.nextPage()}
                 </Button>
               </div>
             )}
@@ -449,45 +497,57 @@ export default function VisibilityApplicationsPage() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>审核可见性变更申请</DialogTitle>
+            <DialogTitle>
+              {t.admin.visibilityApplications.reviewDialogTitle()}
+            </DialogTitle>
             <DialogDescription>
-              申请编号: {reviewingApplication?.id}
+              {t.admin.visibilityApplications.applicationId()}:{" "}
+              {reviewingApplication?.id}
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-4">
             <div className="grid gap-2">
               <Label>
-                资源类型:{" "}
-                {RESOURCE_TYPE_LABELS[
+                {t.admin.visibilityApplications.resourceType()}:{" "}
+                {resourceTypeLabels[
                   reviewingApplication?.resource_type ?? ""
                 ] ?? reviewingApplication?.resource_type}
               </Label>
-              <Label>资源ID: {reviewingApplication?.resource_id}</Label>
               <Label>
-                可见性变更:{" "}
-                {VISIBILITY_LABELS[
+                {t.admin.visibilityApplications.resourceId()}:{" "}
+                {reviewingApplication?.resource_id}
+              </Label>
+              <Label>
+                {t.admin.visibilityApplications.visibilityChange()}:{" "}
+                {visibilityLabels[
                   reviewingApplication?.current_visibility ?? ""
                 ] ?? reviewingApplication?.current_visibility}{" "}
                 →{" "}
-                {VISIBILITY_LABELS[
+                {visibilityLabels[
                   reviewingApplication?.target_visibility ?? ""
                 ] ?? reviewingApplication?.target_visibility}
               </Label>
               <Label>
-                申请人:{" "}
+                {t.admin.visibilityApplications.applicant()}:{" "}
                 {reviewingApplication
                   ? applicantName(reviewingApplication.applicant_id)
                   : ""}
               </Label>
-              <Label>申请理由: {reviewingApplication?.reason ?? "无"}</Label>
+              <Label>
+                {t.admin.visibilityApplications.reason()}:{" "}
+                {reviewingApplication?.reason ??
+                  t.admin.visibilityApplications.none()}
+              </Label>
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="review-comment">审批意见</Label>
+              <Label htmlFor="review-comment">
+                {t.admin.visibilityApplications.reviewComment()}
+              </Label>
               <Textarea
                 id="review-comment"
                 value={reviewComment}
                 onChange={(e) => setReviewComment(e.target.value)}
-                placeholder="请输入审批意见..."
+                placeholder={t.admin.visibilityApplications.reviewCommentPlaceholder()}
               />
             </div>
           </div>
@@ -496,18 +556,18 @@ export default function VisibilityApplicationsPage() {
               variant="outline"
               onClick={() => setReviewingApplication(null)}
             >
-              取消
+              {t.admin.visibilityApplications.cancel()}
             </Button>
             <Button
               variant="destructive"
               onClick={() => handleReview("rejected")}
             >
               <XIcon className="mr-2 h-4 w-4" />
-              驳回
+              {t.admin.visibilityApplications.reject()}
             </Button>
             <Button onClick={() => handleReview("approved")}>
               <CheckIcon className="mr-2 h-4 w-4" />
-              通过
+              {t.admin.visibilityApplications.approve()}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -520,21 +580,23 @@ export default function VisibilityApplicationsPage() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>确认撤回</DialogTitle>
+            <DialogTitle>
+              {t.admin.visibilityApplications.confirmWithdraw()}
+            </DialogTitle>
             <DialogDescription>
-              确定要撤回此申请吗？撤回后无法恢复。
+              {t.admin.visibilityApplications.withdrawConfirmDescription()}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setWithdrawConfirm(null)}>
-              取消
+              {t.admin.visibilityApplications.cancel()}
             </Button>
             <Button
               variant="destructive"
               disabled={withdrawingId !== null}
               onClick={handleWithdraw}
             >
-              确认撤回
+              {t.admin.visibilityApplications.confirmWithdraw()}
             </Button>
           </DialogFooter>
         </DialogContent>

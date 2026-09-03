@@ -1,19 +1,13 @@
 "use client";
 
-import { usePathname } from "next/navigation";
 import { ThemeProvider as NextThemesProvider } from "next-themes";
 
 export function ThemeProvider({
   children,
   ...props
 }: React.ComponentProps<typeof NextThemesProvider>) {
-  const pathname = usePathname();
-  return (
-    <NextThemesProvider
-      {...props}
-      forcedTheme={pathname === "/" ? "dark" : undefined}
-    >
-      {children}
-    </NextThemesProvider>
-  );
+  // P0-2A: route-based forced theming was removed. The workbench palette is
+  // now the app-wide default, and the landing page scopes its own dark look
+  // via a local `.dark` wrapper instead of hijacking the global theme.
+  return <NextThemesProvider {...props}>{children}</NextThemesProvider>;
 }

@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import time
 import uuid
 from collections.abc import Iterable
 from dataclasses import replace
@@ -57,14 +58,16 @@ def _is_subagent_terminal(result: Any) -> bool:
 
 
 async def _await_subagent_terminal(task_id: str, max_polls: int) -> Any | None:
-    """Poll until the background subagent reaches a terminal status or we run out of polls."""
+    """Wait until the background subagent reaches a terminal status or we run out of polls."""
     for _ in range(max_polls):
         result = get_background_task_result(task_id)
         if result is None:
             return None
         if _is_subagent_terminal(result):
             return result
-        await asyncio.sleep(5)
+        # Wake up the instant the subagent signals its terminal event; the 1s
+        # bound only serves as a re-check interval and cancellation point.
+        await asyncio.to_thread(result.terminal_event.wait, 1.0)
     return None
 
 
@@ -81,7 +84,7 @@ async def _deferred_cleanup_subagent_task(task_id: str, trace_id: str, max_polls
         if cleanup_poll_count >= max_polls:
             logger.warning(f"[trace={trace_id}] Deferred cleanup for task {task_id} timed out after {cleanup_poll_count} polls")
             return
-        await asyncio.sleep(5)
+        await asyncio.to_thread(result.terminal_event.wait, 1.0)
         cleanup_poll_count += 1
 
 
@@ -351,7 +354,11 @@ async def task_tool(
     poll_count = 0
     last_status = None
     last_message_count = 0  # Track how many AI messages we've already sent
-    # Polling timeout: execution timeout + 60s buffer, checked every 5s
+    # Timeout safety net: execution timeout + 60s buffer, expressed as a
+    # monotonic deadline. Catches edge cases where the background task gets
+    # stuck and the thread pool timeout does not fire.
+    poll_deadline = time.monotonic() + config.timeout_seconds + 60
+    # Kept for the cancel-path helpers, which still operate on poll budgets.
     max_poll_count = (config.timeout_seconds + 60) // 5
 
     logger.info(f"[trace={trace_id}] Started background task {task_id} (subagent={subagent_type}, timeout={config.timeout_seconds}s, polling_limit={max_poll_count} polls)")
@@ -425,14 +432,16 @@ async def task_tool(
                 cleanup_background_task(task_id)
                 return f"Task timed out. Error: {result.error}"
 
-            # Still running, wait before next poll
-            await asyncio.sleep(5)
+            # Still running: block on the terminal event so we wake up the
+            # instant the subagent finishes. The 1s bound keeps incremental
+            # task_running events flowing while the subagent is mid-flight.
+            await asyncio.to_thread(result.terminal_event.wait, 1.0)
             poll_count += 1
 
-            # Polling timeout as a safety net (in case thread pool timeout doesn't work)
-            # Set to execution timeout + 60s buffer, in 5s poll intervals
+            # Deadline safety net (in case the thread pool timeout doesn't work)
+            # Set to execution timeout + 60s buffer.
             # This catches edge cases where the background task gets stuck
-            if poll_count > max_poll_count:
+            if time.monotonic() > poll_deadline:
                 timeout_minutes = config.timeout_seconds // 60
                 logger.error(f"[trace={trace_id}] Task {task_id} polling timed out after {poll_count} polls (should have been caught by thread pool timeout)")
                 _report_subagent_usage(runtime, result)
