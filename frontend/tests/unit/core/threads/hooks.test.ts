@@ -1697,6 +1697,68 @@ describe("useThreadStream", () => {
     expect(options.context.thread_id).toBe("t1");
   });
 
+  it("converts files concurrently with new-thread creation", async () => {
+    const mockSubmit = vi.fn().mockResolvedValue(undefined);
+    mockUseStream.mockReturnValue({
+      messages: [] as Message[],
+      isLoading: false,
+      submit: mockSubmit,
+    });
+
+    const order: string[] = [];
+    const mockPrepareSubmit = vi.fn(
+      () =>
+        new Promise<{ threadId: string }>((resolve) =>
+          setTimeout(() => {
+            order.push("prepared");
+            resolve({ threadId: "created-1" });
+          }, 50),
+        ),
+    );
+    const mockFile = new File(["content"], "test.txt", { type: "text/plain" });
+    mockPromptInputFilePartToFile.mockImplementation(async () => {
+      order.push("converted");
+      return mockFile;
+    });
+    mockUploadFiles.mockResolvedValue({ files: [] });
+
+    const { wrapper } = createWrapper();
+    const { result } = renderHook(
+      () =>
+        useThreadStream({
+          threadId: undefined,
+          context: defaultContext,
+          prepareSubmit: mockPrepareSubmit,
+        }),
+      { wrapper },
+    );
+
+    await act(async () => {
+      await result.current.sendMessage(
+        "new",
+        {
+          text: "analyze this",
+          files: [
+            {
+              type: "file" as const,
+              filename: "test.txt",
+              mediaType: "text/plain",
+              url: "",
+            },
+          ],
+        },
+        undefined,
+      );
+    });
+
+    // Conversion must not wait for the thread-creation round trip.
+    expect(order).toEqual(["converted", "prepared"]);
+    expect(mockUploadFiles).toHaveBeenCalledWith("created-1", [mockFile]);
+    expect(mockSubmit).toHaveBeenCalledTimes(1);
+    const [, options] = mockSubmit.mock.calls[0] ?? [];
+    expect(options.threadId).toBe("created-1");
+  });
+
   it("shows toast error when file upload fails", async () => {
     mockUseStream.mockReturnValue({
       messages: [] as Message[],
