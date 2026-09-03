@@ -14,6 +14,7 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[4]
 DEPLOY_SCRIPT = REPO_ROOT / "scripts" / "deploy-intranet.sh"
 PACKAGE_SCRIPT = REPO_ROOT / "scripts" / "package-intranet-offline.sh"
+MANIFEST_SCRIPT = REPO_ROOT / "scripts" / "intranet_bundle_manifest.py"
 CHECK_SCRIPT = REPO_ROOT / "scripts" / "check-intranet.sh"
 INSTALL_SCRIPT = REPO_ROOT / "scripts" / "install_fault_zeroing_agent.py"
 INSTALL_AGENT_SCRIPT = REPO_ROOT / "scripts" / "install_agent.py"
@@ -840,6 +841,13 @@ def test_load_reuses_local_sandbox_tag_for_incremental_bundle(tmp_path: Path):
 
 def test_package_incremental_bundle_saves_only_gateway_and_frontend(tmp_path: Path):
     output_dir = tmp_path / "bundle"
+    base_dir = tmp_path / "base"
+    base_dir.mkdir()
+    (base_dir / "wheels").mkdir()
+    (base_dir / "bundle-manifest.json").write_text(
+        '{"version":"v1","components":{"gateway":"old","frontend":"old"},"source_files":{},"source_roots":[]}',
+        encoding="utf-8",
+    )
     env = _env_with_fake_docker(tmp_path)
 
     proc = subprocess.run(
@@ -852,7 +860,7 @@ def test_package_incremental_bundle_saves_only_gateway_and_frontend(tmp_path: Pa
             str(output_dir),
             "--incremental",
             "--incremental-from",
-            "v1",
+            str(base_dir),
         ],
         cwd=REPO_ROOT,
         env=env,
@@ -902,3 +910,94 @@ def test_package_full_bundle_manifest_marks_bundle_type_full(tmp_path: Path):
     assert "Bundle type: full" in manifest
     assert "Bundle type: incremental" not in manifest
     assert "Incremental bundles are for upgrading an existing deployment only" not in manifest
+
+
+def test_manifest_helper_builds_source_delta_and_deletion_list(tmp_path: Path):
+    base = tmp_path / "base"
+    current = tmp_path / "current"
+    base.mkdir()
+    current.mkdir()
+    (base / "keep.txt").write_text("same\n", encoding="utf-8")
+    (base / "change.txt").write_text("old\n", encoding="utf-8")
+    (base / "delete.txt").write_text("gone\n", encoding="utf-8")
+    (current / "keep.txt").write_text("same\n", encoding="utf-8")
+    (current / "change.txt").write_text("new\n", encoding="utf-8")
+    (current / "add.txt").write_text("new file\n", encoding="utf-8")
+
+    base_manifest = tmp_path / "base.json"
+    current_manifest = tmp_path / "current.json"
+    delta = tmp_path / "delta.tar.gz"
+    deleted = tmp_path / "deleted.txt"
+    for root, output in ((base, base_manifest), (current, current_manifest)):
+        proc = subprocess.run(
+            ["python3", str(MANIFEST_SCRIPT), "snapshot", "--root", str(root), "--output", str(output)],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        assert proc.returncode == 0, proc.stderr
+    proc = subprocess.run(
+        [
+            "python3",
+            str(MANIFEST_SCRIPT),
+            "delta",
+            "--root",
+            str(current),
+            "--base",
+            str(base_manifest),
+            "--manifest",
+            str(current_manifest),
+            "--archive",
+            str(delta),
+            "--deleted",
+            str(deleted),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert deleted.read_text(encoding="utf-8").splitlines() == ["delete.txt"]
+    with tarfile.open(delta, "r:gz") as tar:
+        assert set(tar.getnames()) == {"add.txt", "change.txt"}
+
+
+def test_manifest_helper_applies_delta_and_verifies_result(tmp_path: Path):
+    root = tmp_path / "root"
+    root.mkdir()
+    (root / "old.txt").write_text("old\n", encoding="utf-8")
+    base_manifest = tmp_path / "base.json"
+    current_manifest = tmp_path / "current.json"
+    delta = tmp_path / "delta.tar.gz"
+    deleted = tmp_path / "deleted.txt"
+    subprocess.run(["python3", str(MANIFEST_SCRIPT), "snapshot", "--root", str(root), "--output", str(base_manifest)], check=True)
+    (root / "new.txt").write_text("new\n", encoding="utf-8")
+    (root / "old.txt").unlink()
+    subprocess.run(
+        ["python3", str(MANIFEST_SCRIPT), "delta", "--root", str(root), "--base", str(base_manifest), "--manifest", str(current_manifest), "--archive", str(delta), "--deleted", str(deleted)],
+        check=True,
+    )
+    (root / "old.txt").write_text("old\n", encoding="utf-8")
+    (root / "new.txt").unlink()
+    proc = subprocess.run(["python3", str(MANIFEST_SCRIPT), "apply", "--root", str(root), "--archive", str(delta), "--deleted", str(deleted), "--manifest", str(current_manifest)], capture_output=True, text=True)
+    assert proc.returncode == 0, proc.stderr
+    assert not (root / "old.txt").exists()
+    assert (root / "new.txt").read_text(encoding="utf-8") == "new\n"
+
+
+def test_manifest_helper_keeps_root_unchanged_when_verification_fails(tmp_path: Path):
+    root = tmp_path / "root"
+    root.mkdir()
+    (root / "old.txt").write_text("old\n", encoding="utf-8")
+    archive = tmp_path / "delta.tar.gz"
+    with tarfile.open(archive, "w:gz") as tar:
+        changed = tmp_path / "changed.txt"
+        changed.write_text("changed\n", encoding="utf-8")
+        tar.add(changed, arcname="old.txt")
+    deleted = tmp_path / "deleted.txt"
+    deleted.write_text("", encoding="utf-8")
+    manifest = tmp_path / "bad.json"
+    manifest.write_text('{"source_files":{"old.txt":"sha256:invalid"}}\n', encoding="utf-8")
+    proc = subprocess.run(["python3", str(MANIFEST_SCRIPT), "apply", "--root", str(root), "--archive", str(archive), "--deleted", str(deleted), "--manifest", str(manifest)], capture_output=True, text=True)
+    assert proc.returncode != 0
+    assert (root / "old.txt").read_text(encoding="utf-8") == "old\n"

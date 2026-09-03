@@ -223,16 +223,24 @@ find_bundle_file() {
 }
 
 if [ -n "$VERSION" ]; then
-    IMAGES_TAR="$(
-        find_bundle_file "ideer-images-$VERSION.tar" "ideer-images-$VERSION.tar"
-    )" || die "could not find ideer-images-$VERSION.tar"
+    if [ -f "$BUNDLE_ROOT/bundle-manifest.json" ] && python3 -c 'import json,sys; sys.exit(0 if json.load(open(sys.argv[1], encoding="utf-8")).get("bundle_type") == "incremental" else 1)' "$BUNDLE_ROOT/bundle-manifest.json" 2>/dev/null; then
+        IMAGES_TAR="$(find_bundle_file "ideer-images-$VERSION.tar" "ideer-images-$VERSION.tar" 2>/dev/null || true)"
+    else
+        IMAGES_TAR="$(find_bundle_file "ideer-images-$VERSION.tar" "ideer-images-$VERSION.tar")" || die "could not find ideer-images-$VERSION.tar"
+    fi
     SOURCE_TAR="$(
         find_bundle_file "ideer-source-$VERSION.tar.gz" "ideer-source-$VERSION.tar.gz"
     )" || die "could not find ideer-source-$VERSION.tar.gz"
 else
-    IMAGES_TAR="$(find_bundle_file 'ideer-images-*.tar' '')" || die "could not find a unique ideer-images-*.tar"
+    IMAGES_TAR="$(find_bundle_file 'ideer-images-*.tar' '' 2>/dev/null || true)"
+    [ -n "$IMAGES_TAR" ] || [ -f "$BUNDLE_ROOT/bundle-manifest.json" ] || die "could not find a unique ideer-images-*.tar"
     SOURCE_TAR="$(find_bundle_file 'ideer-source-*.tar.gz' '')" || die "could not find a unique ideer-source-*.tar.gz"
-    VERSION="$(basename "$IMAGES_TAR" | sed -E 's/^ideer-images-(.*)\.tar$/\1/')"
+    if [ -n "$IMAGES_TAR" ]; then
+        VERSION="$(basename "$IMAGES_TAR" | sed -E 's/^ideer-images-(.*)\.tar$/\1/')"
+    else
+        VERSION="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8")).get("version", ""))' "$BUNDLE_ROOT/bundle-manifest.json")"
+        [ -n "$VERSION" ] || die "incremental bundle manifest has no version"
+    fi
 fi
 
 SOURCE_DIR="$BUNDLE_ROOT/source"
@@ -241,9 +249,60 @@ ENV_FILE="$BUNDLE_ROOT/env.intranet"
 COMPOSE_FILE="$SOURCE_DIR/docker/docker-compose.intranet.yaml"
 IMAGES_BASENAME="$(basename "$IMAGES_TAR")"
 SOURCE_BASENAME="$(basename "$SOURCE_TAR")"
+BUNDLE_MANIFEST="$BUNDLE_ROOT/bundle-manifest.json"
+SOURCE_DELETED="$BUNDLE_ROOT/source-deletions.txt"
+BUNDLE_MANIFEST_TOOL="$BUNDLE_ROOT/intranet_bundle_manifest.py"
+[ -f "$BUNDLE_MANIFEST_TOOL" ] || BUNDLE_MANIFEST_TOOL="$SOURCE_DIR/scripts/intranet_bundle_manifest.py"
+
+validate_bundle_platform() {
+    [ -f "$BUNDLE_MANIFEST" ] || return 0
+    local bundle_platform docker_arch expected
+    bundle_platform="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8")).get("platform", ""))' "$BUNDLE_MANIFEST" 2>/dev/null || true)"
+    [ -n "$bundle_platform" ] || return 0
+    docker_arch="$(docker info --format '{{.Architecture}}' 2>/dev/null || true)"
+    [ -n "$docker_arch" ] || return 0
+    case "$docker_arch" in x86_64) expected="linux/amd64" ;; aarch64) expected="linux/arm64" ;; *) expected="linux/$docker_arch" ;; esac
+    [ "$bundle_platform" = "$expected" ] || die "bundle platform '$bundle_platform' does not match target Docker architecture '$docker_arch'"
+}
+
+validate_bundle_platform
 
 extract_source() {
     local marker="$SOURCE_DIR/.bundle-version"
+    local bundle_type="full"
+    if [ -f "$BUNDLE_MANIFEST" ]; then
+        bundle_type="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8")).get("bundle_type", "full"))' "$BUNDLE_MANIFEST")"
+    fi
+    if [ "$bundle_type" = "incremental" ]; then
+        [ -d "$SOURCE_DIR" ] || die "incremental bundle requires an existing source tree"
+        [ -f "$SOURCE_DIR/.bundle-manifest.json" ] || die "incremental bundle requires source/.bundle-manifest.json; deploy a full bundle first"
+        python3 "$BUNDLE_MANIFEST_TOOL" verify --root "$SOURCE_DIR" --manifest "$SOURCE_DIR/.bundle-manifest.json" \
+            || die "existing source tree does not match its recorded baseline; use a full bundle"
+        python3 - "$BUNDLE_MANIFEST" "$SOURCE_DIR/.bundle-manifest.json" <<'PY' || die "incremental bundle base identity does not match the deployed source; use the correct base bundle"
+import hashlib, json, sys
+bundle = json.load(open(sys.argv[1], encoding="utf-8"))
+source_path = sys.argv[2]
+source = json.load(open(source_path, encoding="utf-8"))
+if bundle.get("base_version") != source.get("version"):
+    raise SystemExit("base version mismatch")
+expected = bundle.get("base_manifest_digest")
+if expected:
+    actual = "sha256:" + hashlib.sha256(open(source_path, "rb").read()).hexdigest()
+    if expected != actual:
+        raise SystemExit("base manifest digest mismatch")
+PY
+        if [ "$DRY_RUN" -eq 1 ]; then
+            log "[dry-run] apply incremental source delta: $SOURCE_TAR"
+            return 0
+        fi
+        [ -f "$SOURCE_DELETED" ] || : > "$SOURCE_DELETED"
+        python3 "$BUNDLE_MANIFEST_TOOL" apply --root "$SOURCE_DIR" --archive "$SOURCE_TAR" \
+            --deleted "$SOURCE_DELETED" --manifest "$BUNDLE_MANIFEST" \
+            || die "incremental source update failed; use a full bundle"
+        cp "$BUNDLE_MANIFEST" "$SOURCE_DIR/.bundle-manifest.json"
+        printf '%s\n' "$VERSION" > "$marker"
+        return 0
+    fi
     if [ -d "$SOURCE_DIR/backend" ] && [ -d "$SOURCE_DIR/frontend" ] && [ -d "$SOURCE_DIR/docker" ]; then
         if [ -f "$marker" ] && [ "$(cat "$marker")" = "$VERSION" ]; then
             return 0
@@ -256,6 +315,9 @@ extract_source() {
     run_cmd mkdir -p "$SOURCE_DIR"
     run_cmd tar -xzf "$SOURCE_TAR" -C "$SOURCE_DIR"
     run_cmd printf '%s\n' "$VERSION" > "$marker"
+    if [ -f "$BUNDLE_MANIFEST" ]; then
+        run_cmd cp "$BUNDLE_MANIFEST" "$SOURCE_DIR/.bundle-manifest.json"
+    fi
 }
 
 seed_file() {
@@ -484,6 +546,11 @@ append_env_if_missing() {
 refresh_image_tags() {
     [ -f "$ENV_FILE" ] || return 0
     local entry key value current
+    local changed_images="" bundle_type="full" component=""
+    if [ -f "$BUNDLE_MANIFEST" ]; then
+        bundle_type="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8")).get("bundle_type", "full"))' "$BUNDLE_MANIFEST" 2>/dev/null || echo full)"
+        changed_images="$(python3 -c 'import json,sys; print("\n".join(json.load(open(sys.argv[1], encoding="utf-8")).get("changed_images", [])))' "$BUNDLE_MANIFEST" 2>/dev/null || true)"
+    fi
     for entry in \
         "IDEER_GATEWAY_IMAGE=ideer-gateway:$VERSION" \
         "IDEER_FRONTEND_IMAGE=ideer-frontend:$VERSION"; do
@@ -493,6 +560,11 @@ refresh_image_tags() {
         if [ -z "$current" ]; then
             append_env_if_missing "$key" "$value"
         elif [ "$current" != "$value" ] && [[ "$current" == ideer-gateway:* || "$current" == ideer-frontend:* ]]; then
+            component="gateway"
+            [ "$key" = "IDEER_FRONTEND_IMAGE" ] && component="frontend"
+            if [ "$bundle_type" = "incremental" ] && ! printf '%s\n' "$changed_images" | grep -qx "$component"; then
+                continue
+            fi
             log "refreshing $key: $current -> $value"
             run_cmd sed -i "s|^${key}=.*|${key}=${value}|" "$ENV_FILE"
         fi
@@ -577,6 +649,11 @@ load_images() {
         return 0
     fi
 
+    if [ ! -f "$IMAGES_TAR" ]; then
+        log "no changed Docker images in this incremental bundle; reusing local images"
+        ensure_sandbox_tag
+        return 0
+    fi
     log "loading docker images..."
     run_cmd docker load -i "$IMAGES_TAR"
     ensure_sandbox_tag
@@ -650,6 +727,27 @@ prune_old_images() {
 
 compose_cmd() {
     run_cmd docker compose -p ideer -f "$COMPOSE_FILE" --env-file "$ENV_FILE" "$@"
+}
+
+compose_update_args() {
+    if [ ! -f "$BUNDLE_MANIFEST" ]; then
+        printf '%s\n' "--remove-orphans" "--force-recreate"
+        return 0
+    fi
+    local services=()
+    local changed
+    changed="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1], encoding="utf-8")); print("\n".join(d.get("changed_files", []) + d.get("deleted_files", [])))' "$BUNDLE_MANIFEST" 2>/dev/null || true)"
+    if printf '%s\n' "$changed" | grep -Eq '(^|/)(docker/|docker-compose|\.dockerignore$)' || [ "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8")).get("bundle_type") != "incremental")' "$BUNDLE_MANIFEST")" = "True" ]; then
+        printf '%s\n' "--remove-orphans" "--force-recreate"
+        return 0
+    fi
+    if printf '%s\n' "$changed" | grep -q '^frontend/' || python3 -c 'import json,sys; sys.exit(0 if "frontend" in json.load(open(sys.argv[1], encoding="utf-8")).get("changed_images", []) else 1)' "$BUNDLE_MANIFEST"; then services+=(frontend); fi
+    if printf '%s\n' "$changed" | grep -vE '^(frontend/|$)' | grep -q . || python3 -c 'import json,sys; sys.exit(0 if "gateway" in json.load(open(sys.argv[1], encoding="utf-8")).get("changed_images", []) else 1)' "$BUNDLE_MANIFEST"; then services+=(gateway workflow-worker); fi
+    if [ "${#services[@]}" -eq 0 ]; then
+        printf '%s\n' "--remove-orphans" "--no-recreate"
+        return 0
+    fi
+    printf '%s\n' "--remove-orphans" "--force-recreate" "${services[@]}"
 }
 
 # POST a JSON body and print the HTTP status code.  Uses curl when available
@@ -959,7 +1057,7 @@ case "$COMMAND" in
         fi
         load_images
         log "starting services..."
-        if ! compose_cmd up -d --remove-orphans; then
+        if ! compose_cmd up -d $(compose_update_args); then
             print_rollback_instructions
             die "failed to start services"
         fi
@@ -985,7 +1083,7 @@ case "$COMMAND" in
         fi
         load_images
         log "restarting services..."
-        if ! compose_cmd up -d --remove-orphans --force-recreate; then
+        if ! compose_cmd up -d $(compose_update_args); then
             print_rollback_instructions
             die "failed to restart services"
         fi

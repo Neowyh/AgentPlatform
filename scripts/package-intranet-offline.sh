@@ -24,7 +24,8 @@ Options:
                           Use a full bundle for fresh installs or to update
                           the nginx/sandbox images.
   --incremental-from <v>  Record the previous bundle version in the manifest
-                          (informational only, used with --incremental)
+                          (or pass the previous bundle directory; required
+                          for content-delta generation with --incremental)
   --exclude-skills <csv>  Comma-separated skill names under resources/skills to
                           exclude from the source archive
   --skills-manifest <csv> Comma-separated expected skill names under
@@ -64,6 +65,8 @@ SANDBOX_IMAGE=""
 NO_SANDBOX=0
 INCREMENTAL=0
 INCREMENTAL_FROM=""
+BASE_BUNDLE=""
+BASE_MANIFEST_DIGEST=""
 FORCE=0
 NO_CACHE=0
 REQUIRE_CLEAN=0
@@ -109,6 +112,7 @@ while [ "$#" -gt 0 ]; do
         --incremental-from)
             [ "$#" -ge 2 ] || die "--incremental-from requires a value"
             INCREMENTAL_FROM="$2"
+            BASE_BUNDLE="$2"
             shift 2
             ;;
         --exclude-skills)
@@ -157,6 +161,24 @@ fi
 
 if [ -z "$OUTPUT_DIR" ]; then
     OUTPUT_DIR="$REPO_ROOT/dist/intranet/ideer-$VERSION"
+fi
+
+if [ "$INCREMENTAL" -eq 1 ]; then
+    if [ -d "$BASE_BUNDLE" ]; then
+        BASE_BUNDLE="$(cd "$BASE_BUNDLE" && pwd)"
+    elif [ -n "$BASE_BUNDLE" ] && [ -d "$REPO_ROOT/dist/intranet/ideer-$BASE_BUNDLE" ]; then
+        BASE_BUNDLE="$REPO_ROOT/dist/intranet/ideer-$BASE_BUNDLE"
+    else
+        die "--incremental requires an existing base bundle directory or version (use --incremental-from <bundle-dir|version>)"
+    fi
+    BASE_MANIFEST="$BASE_BUNDLE/bundle-manifest.json"
+    [ -f "$BASE_MANIFEST" ] || die "base bundle is missing bundle-manifest.json: $BASE_BUNDLE"
+    [ "$(readlink -f "$OUTPUT_DIR")" != "$BASE_BUNDLE" ] || die "output directory must differ from the incremental base bundle"
+    BASE_VERSION="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8")).get("version", ""))' "$BASE_MANIFEST")"
+    [ -n "$BASE_VERSION" ] && INCREMENTAL_FROM="$BASE_VERSION"
+    BASE_MANIFEST_DIGEST="sha256:$(sha256sum "$BASE_MANIFEST" | cut -d' ' -f1)"
+    BASE_PLATFORM="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8")).get("platform", ""))' "$BASE_MANIFEST")"
+    [ -z "$BASE_PLATFORM" ] || [ "$BASE_PLATFORM" = "$PLATFORM" ] || die "incremental base platform '$BASE_PLATFORM' differs from current '$PLATFORM'; use a full bundle"
 fi
 
 GIT_AVAILABLE=0
@@ -284,6 +306,13 @@ CHECK_SCRIPT_FILE="$REPO_ROOT/scripts/check-intranet.sh"
 GUIDE_BASENAME="$(basename "$GUIDE_FILE")"
 DEPLOY_BASENAME="$(basename "$DEPLOY_SCRIPT_FILE")"
 CHECK_BASENAME="$(basename "$CHECK_SCRIPT_FILE")"
+BUNDLE_MANIFEST_FILE="$OUTPUT_DIR/bundle-manifest.json"
+SOURCE_DELETED_FILE="$OUTPUT_DIR/source-deletions.txt"
+SOURCE_ROOTS=(.env.example Makefile README.md backend bundled-resources.json bundled-skills.txt config.example.yaml config.intranet.yaml docker docs extensions_config.example.json frontend resources scripts vendor workflows)
+BUNDLE_TYPE="full"
+if [ "$INCREMENTAL" -eq 1 ]; then BUNDLE_TYPE="incremental"; fi
+WHEEL_PY_VERSION="${SKILL_WHEELS_PYTHON_VERSION:-3.12}"
+WHEEL_RECIPE="$PLATFORM|$WHEEL_PY_VERSION|duckdb,openpyxl,python-pptx,pillow"
 
 log "output: $OUTPUT_DIR"
 log "version: $VERSION"
@@ -295,8 +324,23 @@ if [ "$NO_CACHE" -eq 1 ]; then
     BUILD_CACHE_ARGS+=(--no-cache)
 fi
 
+component_fingerprint() {
+    python3 "$REPO_ROOT/scripts/intranet_bundle_manifest.py" fingerprint --root "$REPO_ROOT" "$@"
+}
+
+GATEWAY_FINGERPRINT="$(printf '%s\n%s' "$(component_fingerprint backend backend/Dockerfile .dockerignore)" "gateway|$PLATFORM|${UV_IMAGE:-ghcr.io/astral-sh/uv:0.7.20}|${UV_INDEX_URL:-https://pypi.org/simple}|${UV_EXTRAS:-}|${APT_MIRROR:-}" | sha256sum | awk '{print "sha256:" $1}')"
+FRONTEND_FINGERPRINT="$(printf '%s\n%s' "$(component_fingerprint frontend frontend/Dockerfile .dockerignore)" "frontend|$PLATFORM|${PNPM_STORE_PATH:-/root/.local/share/pnpm/store}|${NPM_REGISTRY:-}" | sha256sum | awk '{print "sha256:" $1}')"
+BUILD_GATEWAY=1
+BUILD_FRONTEND=1
+if [ "$INCREMENTAL" -eq 1 ]; then
+    BASE_GATEWAY_FINGERPRINT="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8")).get("components", {}).get("gateway", ""))' "$BASE_MANIFEST")"
+    BASE_FRONTEND_FINGERPRINT="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8")).get("components", {}).get("frontend", ""))' "$BASE_MANIFEST")"
+    [ "$GATEWAY_FINGERPRINT" = "$BASE_GATEWAY_FINGERPRINT" ] && BUILD_GATEWAY=0
+    [ "$FRONTEND_FINGERPRINT" = "$BASE_FRONTEND_FINGERPRINT" ] && BUILD_FRONTEND=0
+fi
+
 log "[1/7] building gateway image..."
-docker build \
+if [ "$BUILD_GATEWAY" -eq 1 ]; then docker build \
     "${BUILD_CACHE_ARGS[@]}" \
     --platform "$PLATFORM" \
     --build-arg UV_IMAGE="${UV_IMAGE:-ghcr.io/astral-sh/uv:0.7.20}" \
@@ -305,10 +349,10 @@ docker build \
     --build-arg APT_MIRROR="${APT_MIRROR:-}" \
     -f "$REPO_ROOT/backend/Dockerfile" \
     -t "$GATEWAY_IMAGE" \
-    "$REPO_ROOT"
+    "$REPO_ROOT"; else log "  unchanged from base bundle; reusing gateway image"; fi
 
 log "[2/7] building frontend image..."
-docker build \
+if [ "$BUILD_FRONTEND" -eq 1 ]; then docker build \
     "${BUILD_CACHE_ARGS[@]}" \
     --platform "$PLATFORM" \
     --build-arg PNPM_STORE_PATH="${PNPM_STORE_PATH:-/root/.local/share/pnpm/store}" \
@@ -316,7 +360,7 @@ docker build \
     -f "$REPO_ROOT/frontend/Dockerfile" \
     --target prod \
     -t "$FRONTEND_IMAGE" \
-    "$REPO_ROOT"
+    "$REPO_ROOT"; else log "  unchanged from base bundle; reusing frontend image"; fi
 
 log "[3/7] pulling nginx image..."
 if [ "$INCREMENTAL" -eq 1 ]; then
@@ -346,15 +390,21 @@ fi
 
 log "[5/7] saving docker images..."
 if [ "$INCREMENTAL" -eq 1 ]; then
-    log "  incremental bundle: saving ideer-gateway:$VERSION and ideer-frontend:$VERSION only"
-    IMAGES_TO_SAVE=("$GATEWAY_IMAGE" "$FRONTEND_IMAGE")
+    IMAGES_TO_SAVE=()
+    [ "$BUILD_GATEWAY" -eq 1 ] && IMAGES_TO_SAVE+=("$GATEWAY_IMAGE")
+    [ "$BUILD_FRONTEND" -eq 1 ] && IMAGES_TO_SAVE+=("$FRONTEND_IMAGE")
+    log "  incremental bundle: saving changed images only (${IMAGES_TO_SAVE[*]:-(none)})"
 else
     IMAGES_TO_SAVE=("$GATEWAY_IMAGE" "$FRONTEND_IMAGE" "$NGINX_IMAGE")
     if [ "$INCLUDE_SANDBOX" -eq 1 ]; then
         IMAGES_TO_SAVE+=("$BUNDLED_SANDBOX_TAG")
     fi
 fi
-docker save -o "$IMAGES_TAR" "${IMAGES_TO_SAVE[@]}"
+if [ "${#IMAGES_TO_SAVE[@]}" -gt 0 ]; then
+    docker save -o "$IMAGES_TAR" "${IMAGES_TO_SAVE[@]}"
+else
+    rm -f "$IMAGES_TAR"
+fi
 
 log "[6/7] packing source archive..."
 TAR_EXCLUDES=()
@@ -426,6 +476,16 @@ if [ "$ALL_SKILLS" -eq 0 ]; then
     fi
 fi
 log "  bundled custom skills: ${BUNDLED_SKILLS[*]:-(none)}"
+MANIFEST_SKILL_ARGS=()
+if [ "$ALL_SKILLS" -eq 1 ]; then MANIFEST_SKILL_ARGS+=(--all-skills); fi
+for skill in "${EXCLUDED_SKILLS[@]}"; do [ -n "$skill" ] && MANIFEST_SKILL_ARGS+=(--exclude-skill "$skill"); done
+if [ "$INCREMENTAL" -eq 1 ]; then
+    SOURCE_INCLUDE_ARGS=()
+    for source_root in "${SOURCE_ROOTS[@]}"; do SOURCE_INCLUDE_ARGS+=(--include "$source_root"); done
+    python3 "$REPO_ROOT/scripts/intranet_bundle_manifest.py" delta \
+        --root "$REPO_ROOT" --base "$BASE_MANIFEST" --manifest "$BUNDLE_MANIFEST_FILE" \
+        --archive "$SOURCE_TAR" --deleted "$SOURCE_DELETED_FILE" "${SOURCE_INCLUDE_ARGS[@]}" "${MANIFEST_SKILL_ARGS[@]}"
+else
 tar \
     -C "$REPO_ROOT" \
     --exclude='.git' \
@@ -466,6 +526,24 @@ tar \
     scripts \
     vendor \
     workflows
+    SOURCE_INCLUDE_ARGS=()
+    for source_root in "${SOURCE_ROOTS[@]}"; do SOURCE_INCLUDE_ARGS+=(--include "$source_root"); done
+    python3 "$REPO_ROOT/scripts/intranet_bundle_manifest.py" snapshot --root "$REPO_ROOT" --output "$BUNDLE_MANIFEST_FILE" "${SOURCE_INCLUDE_ARGS[@]}" "${MANIFEST_SKILL_ARGS[@]}"
+fi
+
+python3 - "$BUNDLE_MANIFEST_FILE" "$VERSION" "$BUNDLE_TYPE" "$GATEWAY_FINGERPRINT" "$FRONTEND_FINGERPRINT" "${INCREMENTAL_FROM:-}" "$BUILD_GATEWAY" "$BUILD_FRONTEND" "$PLATFORM" "$BASE_MANIFEST_DIGEST" "$WHEEL_RECIPE" <<'PY'
+import json, sys
+path, version, bundle_type, gateway, frontend, base, build_gateway, build_frontend, platform, base_digest, wheel_recipe = sys.argv[1:]
+data = json.load(open(path, encoding="utf-8"))
+data.update({"version": version, "bundle_type": bundle_type,
+            "components": {"gateway": gateway, "frontend": frontend},
+            "base_version": base or None,
+            "base_manifest_digest": base_digest or None,
+            "platform": platform,
+            "wheel_recipe": wheel_recipe,
+            "changed_images": [name for name, enabled in (("gateway", build_gateway), ("frontend", build_frontend)) if enabled == "1"]})
+open(path, "w", encoding="utf-8").write(json.dumps(data, indent=2, sort_keys=True) + "\n")
+PY
 
 log "[7/7] assembling bundle..."
 
@@ -473,11 +551,15 @@ log "[7/7] assembling bundle..."
 # install them without network access (used by deploy-intranet.sh).
 SKILL_WHEELS_DIR="$OUTPUT_DIR/wheels"
 WHEEL_PY_VERSION="${SKILL_WHEELS_PYTHON_VERSION:-3.12}"
+BASE_WHEEL_RECIPE=""
+if [ "$INCREMENTAL" -eq 1 ]; then BASE_WHEEL_RECIPE="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8")).get("wheel_recipe", ""))' "$BASE_MANIFEST")"; fi
 case "$PLATFORM" in
     linux/arm64) WHEEL_PLATFORM_ARGS=(--platform manylinux2014_aarch64 --platform manylinux_2_28_aarch64) ;;
     *)           WHEEL_PLATFORM_ARGS=(--platform manylinux2014_x86_64 --platform manylinux_2_28_x86_64) ;;
 esac
-if python3 -m pip --version >/dev/null 2>&1; then
+if [ "$INCREMENTAL" -eq 1 ] && [ "$WHEEL_RECIPE" = "$BASE_WHEEL_RECIPE" ] && [ -d "$BASE_BUNDLE/wheels" ]; then
+    log "  incremental bundle: reusing baseline skill wheels"
+elif python3 -m pip --version >/dev/null 2>&1; then
     mkdir -p "$SKILL_WHEELS_DIR"
     log "  collecting skill runtime wheels ($PLATFORM, py$WHEEL_PY_VERSION)..."
     if python3 -m pip download \
@@ -500,6 +582,7 @@ fi
 cp "$GUIDE_FILE" "$OUTPUT_DIR/$GUIDE_BASENAME"
 cp "$DEPLOY_SCRIPT_FILE" "$OUTPUT_DIR/$DEPLOY_BASENAME"
 cp "$CHECK_SCRIPT_FILE" "$OUTPUT_DIR/$CHECK_BASENAME"
+cp "$REPO_ROOT/scripts/intranet_bundle_manifest.py" "$OUTPUT_DIR/intranet_bundle_manifest.py"
 
 # Copy config files if they exist
 if [ -f "$REPO_ROOT/config.intranet.yaml" ]; then
@@ -530,10 +613,6 @@ else
     fi
 fi
 
-BUNDLE_TYPE="full"
-if [ "$INCREMENTAL" -eq 1 ]; then
-    BUNDLE_TYPE="incremental"
-fi
 INCREMENTAL_FROM_LINE=""
 if [ "$INCREMENTAL" -eq 1 ] && [ -n "$INCREMENTAL_FROM" ]; then
     INCREMENTAL_FROM_LINE="Incremental from: $INCREMENTAL_FROM"
@@ -558,6 +637,8 @@ if [ "$INCREMENTAL" -eq 1 ]; then
     must use a full bundle; use a full bundle to update the nginx or sandbox
     images as well."
 fi
+IMAGES_FILE_LINE="  - $(basename "$IMAGES_TAR")        (Docker images archive)"
+if [ ! -f "$IMAGES_TAR" ]; then IMAGES_FILE_LINE="  - (none; all service images unchanged from the base bundle)"; fi
 
 cat > "$MANIFEST_FILE" <<EOF
 iDeer Intranet Offline Bundle
@@ -572,11 +653,14 @@ Docker Images:
 $MANIFEST_IMAGES
 
 Files:
-  - $(basename "$IMAGES_TAR")        (Docker images archive)
+${IMAGES_FILE_LINE}
   - $(basename "$SOURCE_TAR")       (Source code archive)
+  - $(basename "$BUNDLE_MANIFEST_FILE") (Component and source manifest)
+  - source-deletions.txt             (Incremental deletion list, when present)
   - $GUIDE_BASENAME (Deployment guide)
   - $DEPLOY_BASENAME  (Deploy script)
   - $CHECK_BASENAME  (Pre-check script)
+  - intranet_bundle_manifest.py (Delta verification tool)
   - config.intranet.yaml  (Intranet config template)
   - .env.intranet         (Intranet environment template)
   - $(basename "$MANIFEST_FILE")        (This manifest)
@@ -605,14 +689,18 @@ $INCREMENTAL_NOTES_LINE
 For details, see the deployment guide included in this bundle.
 EOF
 
-(cd "$OUTPUT_DIR" && sha256sum \
-    "$(basename "$IMAGES_TAR")" \
-    "$(basename "$SOURCE_TAR")" \
+CHECKSUM_FILES=(
+    "$(basename "$SOURCE_TAR")"
     "$GUIDE_BASENAME" \
     "$DEPLOY_BASENAME" \
     "$CHECK_BASENAME" \
-    "$(basename "$MANIFEST_FILE")" \
-    > "$(basename "$SHA_FILE")")
+    "intranet_bundle_manifest.py" \
+    "$(basename "$MANIFEST_FILE")"
+    "$(basename "$BUNDLE_MANIFEST_FILE")"
+)
+[ -f "$IMAGES_TAR" ] && CHECKSUM_FILES+=("$(basename "$IMAGES_TAR")")
+[ -f "$SOURCE_DELETED_FILE" ] && CHECKSUM_FILES+=("$(basename "$SOURCE_DELETED_FILE")")
+(cd "$OUTPUT_DIR" && sha256sum "${CHECKSUM_FILES[@]}" > "$(basename "$SHA_FILE")")
 
 echo ""
 log "=== Bundle Complete ==="

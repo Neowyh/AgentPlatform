@@ -34,10 +34,23 @@ IMAGES_TAR="$(find . -maxdepth 1 -name 'ideer-images-*.tar' 2>/dev/null | head -
 if [ -n "$IMAGES_TAR" ]; then
     VERSION="$(basename "$IMAGES_TAR" | sed -E 's/^ideer-images-(.*)\.tar$/\1/')"
 else
-    VERSION="latest"
+    if [ -f "bundle-manifest.json" ]; then
+        VERSION="$(python3 -c 'import json; print(json.load(open("bundle-manifest.json", encoding="utf-8")).get("version", "latest"))' 2>/dev/null || echo latest)"
+    else
+        VERSION="latest"
+    fi
 fi
 echo "[3/8] Docker images (version $VERSION)..."
 REQUIRED_IMAGES=("ideer-frontend:$VERSION" "ideer-gateway:$VERSION" "nginx:alpine")
+if [ -f "bundle-manifest.json" ] && python3 -c 'import json; import sys; sys.exit(0 if json.load(open("bundle-manifest.json", encoding="utf-8")).get("bundle_type") == "incremental" else 1)' 2>/dev/null; then
+    REQUIRED_IMAGES=("nginx:alpine")
+    while IFS= read -r component; do
+        case "$component" in
+            gateway|frontend) REQUIRED_IMAGES+=("ideer-$component:$VERSION") ;;
+        esac
+    done < <(python3 -c 'import json,sys; print("\n".join(json.load(open("bundle-manifest.json", encoding="utf-8")).get("changed_images", [])))' 2>/dev/null || true)
+    echo "  incremental bundle: checking only changed service images"
+fi
 # When prepare already generated env.intranet and bundled a sandbox image,
 # verify the sandbox image is loaded too (WARNING level, so bundles without
 # a sandbox image or local-provider setups are not treated as errors).

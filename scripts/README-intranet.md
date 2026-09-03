@@ -159,9 +159,12 @@ incremental bundle on the build machine:
 scripts/package-intranet-offline.sh --version <new-version> --incremental --incremental-from <old-version> --force
 ```
 
-The images tar then contains only the gateway and frontend images; the target
-machine reuses its local `nginx:alpine` and `ideer-sandbox` image (the deploy
-script retags a local `ideer-sandbox:*` to the new version automatically).
+The incremental package compares the new source against the base bundle's
+`bundle-manifest.json`. It only builds/exports changed gateway or frontend
+images, and carries a source delta plus deletion list; unchanged components
+and skill wheels are reused. The target machine reuses its local
+`nginx:alpine` and `ideer-sandbox` image (the deploy script retags a local
+`ideer-sandbox:*` to the new version automatically).
 Incremental bundles are for upgrades only -- fresh installs must use a full
 bundle.
 
