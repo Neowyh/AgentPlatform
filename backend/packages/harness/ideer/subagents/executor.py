@@ -83,6 +83,10 @@ class SubagentResult:
     token_usage_records: list[dict[str, int | str]] = field(default_factory=list)
     usage_reported: bool = False
     cancel_event: threading.Event = field(default_factory=threading.Event, repr=False)
+    # Set exactly once when the task reaches a terminal state. Waiters can
+    # block on this instead of polling on a fixed interval, cutting the
+    # perceived completion latency to near zero.
+    terminal_event: threading.Event = field(default_factory=threading.Event, repr=False)
     _state_lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
 
     def __post_init__(self):
@@ -123,6 +127,7 @@ class SubagentResult:
                 self.token_usage_records = token_usage_records
             self.completed_at = completed_at or datetime.now()
             self.status = status
+            self.terminal_event.set()
             return True
 
 
