@@ -551,6 +551,15 @@ async def start_run(
 
     stream_modes = normalize_stream_modes(body.stream_mode)
 
+    # T5: retrieve the Memory warmer as late as possible for maximum overlap
+    # with the work above. It is done by now in the common case (instant
+    # await); a slow disk degrades to the status quo, never to a failed Run.
+    if prepared.memory_preload_task is not None:
+        try:
+            await prepared.memory_preload_task
+        except Exception:
+            logger.debug("Memory preload did not complete for %s (non-fatal)", sanitize_log_param(thread_id))
+
     task = asyncio.create_task(
         run_agent(
             bridge,
