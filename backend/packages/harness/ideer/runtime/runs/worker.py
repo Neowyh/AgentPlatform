@@ -20,6 +20,7 @@ import copy
 import inspect
 import logging
 import os
+import time
 from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import TYPE_CHECKING, Any, Literal, cast
@@ -250,10 +251,18 @@ async def run_agent(
         # the agent name that this run will actually execute.
         config.setdefault("run_name", resolve_root_run_name(config, record.assistant_id))
         runnable_config = RunnableConfig(**config)
+        # T1 first-token timing: agent assembly blocks astream.
+        agent_build_started = time.perf_counter()
         if ctx.app_config is not None and _agent_factory_supports_app_config(agent_factory):
             agent = agent_factory(config=runnable_config, app_config=ctx.app_config)
         else:
             agent = agent_factory(config=runnable_config)
+        logger.info(
+            "first_token_timing stage=agent_build elapsed_ms=%.1f thread_id=%s run_id=%s",
+            (time.perf_counter() - agent_build_started) * 1000,
+            thread_id,
+            run_id,
+        )
 
         # Capture the effective (resolved) model name from the agent's metadata.
         # _resolve_model_name in agent.py may return the default model if the

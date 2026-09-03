@@ -4,6 +4,7 @@ import abc
 import json
 import logging
 import threading
+import time
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -122,6 +123,20 @@ class FileMemoryStorage(MemoryStorage):
 
     def load(self, agent_name: str | None = None, *, user_id: str | None = None) -> dict[str, Any]:
         """Load memory data (cached with file modification time check)."""
+        # T1 first-token timing: file read sits right before the model call.
+        load_started = time.perf_counter()
+        try:
+            return self._load_inner(agent_name, user_id=user_id)
+        finally:
+            logger.info(
+                "first_token_timing stage=memory_load elapsed_ms=%.1f user_id=%s agent_name=%s",
+                (time.perf_counter() - load_started) * 1000,
+                user_id,
+                agent_name,
+            )
+
+    def _load_inner(self, agent_name: str | None = None, *, user_id: str | None = None) -> dict[str, Any]:
+        """Load implementation behind the timing wrapper."""
         file_path = self._get_memory_file_path(agent_name, user_id=user_id)
         cache_key = self._cache_key(agent_name, user_id=user_id)
 
