@@ -103,3 +103,7 @@ frontend/\\\\wsl.localhost\\*
 
 # Fault-zeroing workflow runtime outputs
 docs/zero_agent_eval_cases/outputs/
+
+# Temporary / scratch
+.scratch/
+temp/
