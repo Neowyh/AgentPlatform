@@ -18,6 +18,8 @@ Callers learn one function; all orchestration, parallelism, and cleanup have
 from __future__ import annotations
 
 import asyncio
+import logging
+import time
 import uuid
 from dataclasses import dataclass
 from typing import Any
@@ -34,6 +36,8 @@ from app.gateway.services import (
     validate_evidence_selection,
 )
 from ideer.config.app_config import get_app_config
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -136,6 +140,8 @@ async def prepare_run(body: Any, thread_id: str, request: Request) -> PreparedRu
             canonical_resource_id = resolved
 
     # 4. Freeze canonical snapshot + factory (dependent on canonical_resource_id).
+    # T1 first-token timing: snapshot freeze is the heaviest pre-token segment.
+    snapshot_started = time.perf_counter()
     canonical_run_id = str(uuid.uuid4()) if canonical_resource_id else None
     preferred_skill = body_context.get("skill_resource_id") or body_context.get("skill_name")
     canonical_factory = None
@@ -160,6 +166,12 @@ async def prepare_run(body: Any, thread_id: str, request: Request) -> PreparedRu
     if canonical_run_id and canonical_resource_id:
         run_metadata.update(await _canonical_selection_metadata(canonical_run_id, canonical_resource_id, body_context))
 
+    logger.info(
+        "first_token_timing stage=snapshot elapsed_ms=%.1f thread_id=%s has_canonical=%s",
+        (time.perf_counter() - snapshot_started) * 1000,
+        thread_id,
+        canonical_resource_id is not None,
+    )
     return PreparedRun(
         canonical_resource_id=canonical_resource_id,
         canonical_factory=canonical_factory,

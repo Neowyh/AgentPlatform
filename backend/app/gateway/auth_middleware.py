@@ -9,6 +9,8 @@ owner filtering works automatically via the sentinel pattern.
 Fine-grained permission checks remain in authz.py decorators.
 """
 
+import logging
+import time
 from collections.abc import Callable
 
 from fastapi import HTTPException, Request, Response
@@ -19,6 +21,8 @@ from starlette.types import ASGIApp
 from app.gateway.auth.errors import AuthErrorCode, AuthErrorResponse
 from app.gateway.internal_auth import INTERNAL_AUTH_HEADER_NAME, get_internal_user, is_valid_internal_auth_token
 from ideer.runtime.user_context import reset_current_user, set_current_user
+
+logger = logging.getLogger(__name__)
 
 # Paths that never require authentication.
 _PUBLIC_PATH_PREFIXES: tuple[str, ...] = (
@@ -75,6 +79,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if _is_public(request.url.path):
             return await call_next(request)
 
+        # T1 first-token timing: auth is the first pre-token segment.
+        auth_started = time.perf_counter()
+
         internal_user = None
         if is_valid_internal_auth_token(request.headers.get(INTERNAL_AUTH_HEADER_NAME)):
             internal_user = get_internal_user()
@@ -119,6 +126,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # is cached on request.state._ideer_rbac_user so the second
         # query is a cache hit, not a duplicate DB roundtrip.
         request.state.user = user
+        logger.info(
+            "first_token_timing stage=auth elapsed_ms=%.1f path=%s",
+            (time.perf_counter() - auth_started) * 1000,
+            request.url.path,
+        )
         token = set_current_user(user)
         try:
             return await call_next(request)
