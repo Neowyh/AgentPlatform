@@ -278,7 +278,13 @@ class TestStartRun:
             result = await start_run(body, "thread-1", request)
 
         assert result is record
-        prepare.assert_awaited_once_with(assistant_id, request, "canonical-run")
+        prepare.assert_awaited_once_with(
+            assistant_id,
+            request,
+            "canonical-run",
+            diagnostic_context={"evidence_mode": "hybrid", "code_evidence_source": None},
+            thread_id="thread-1",
+        )
         assert run_mgr.create_or_reject.call_args.kwargs["run_id"] == "canonical-run"
         legacy_factory.assert_not_called()
         config = run_agent.call_args.kwargs["config"]

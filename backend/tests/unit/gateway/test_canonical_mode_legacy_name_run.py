@@ -222,9 +222,9 @@ class TestStartRunCanonicalLegacyName:
             patch("app.gateway.services.get_run_manager", return_value=run_mgr),
             patch("app.gateway.services.get_run_context", return_value=run_ctx),
             patch("app.gateway.services._resolve_canonical_alias", new_callable=AsyncMock, return_value=resource_id) as alias,
-            patch("app.gateway.services._prepare_canonical_agent_run", new_callable=AsyncMock) as prepare,
+            patch("app.gateway.run_preparation._prepare_canonical_agent_run", new_callable=AsyncMock) as prepare,
             patch("app.gateway.services.run_agent", new_callable=AsyncMock),
-            patch("app.gateway.services.get_app_config") as mock_app_config,
+            patch("app.gateway.run_preparation.get_app_config") as mock_app_config,
             patch("app.gateway.services.uuid.uuid4", return_value="canonical-run"),
         ):
             mock_app_config.return_value.get_model_config.return_value = None
@@ -234,7 +234,13 @@ class TestStartRunCanonicalLegacyName:
 
         assert result is record
         alias.assert_awaited_once_with("writer", request)
-        prepare.assert_awaited_once_with(resource_id, request, "canonical-run")
+        prepare.assert_awaited_once_with(
+            resource_id,
+            request,
+            "canonical-run",
+            diagnostic_context={"evidence_mode": "hybrid", "code_evidence_source": None},
+            thread_id="thread-1",
+        )
         assert run_mgr.create_or_reject.call_args.kwargs["run_id"] == "canonical-run"
 
     @pytest.mark.asyncio
@@ -251,7 +257,7 @@ class TestStartRunCanonicalLegacyName:
                 side_effect=HTTPException(status_code=404, detail="Agent 'ghost' not found"),
             ),
             patch("app.gateway.services.run_agent", new_callable=AsyncMock),
-            patch("app.gateway.services.get_app_config") as mock_app_config,
+            patch("app.gateway.run_preparation.get_app_config") as mock_app_config,
         ):
             mock_app_config.return_value.get_model_config.return_value = None
             from app.gateway.services import start_run
@@ -275,7 +281,7 @@ class TestStartRunCanonicalLegacyName:
             patch("app.gateway.services._resolve_canonical_alias", new_callable=AsyncMock, return_value=None) as alias,
             patch("app.gateway.services.resolve_agent_factory") as mock_factory,
             patch("app.gateway.services.run_agent", new_callable=AsyncMock),
-            patch("app.gateway.services.get_app_config") as mock_app_config,
+            patch("app.gateway.run_preparation.get_app_config") as mock_app_config,
         ):
             mock_factory.return_value = MagicMock()
             mock_app_config.return_value.get_model_config.return_value = None
@@ -299,9 +305,9 @@ class TestStartRunCanonicalLegacyName:
             patch("app.gateway.services.get_run_manager", return_value=run_mgr),
             patch("app.gateway.services.get_run_context", return_value=run_ctx),
             patch("app.gateway.services._resolve_canonical_alias", new_callable=AsyncMock) as alias,
-            patch("app.gateway.services._prepare_canonical_agent_run", new_callable=AsyncMock) as prepare,
+            patch("app.gateway.run_preparation._prepare_canonical_agent_run", new_callable=AsyncMock) as prepare,
             patch("app.gateway.services.run_agent", new_callable=AsyncMock),
-            patch("app.gateway.services.get_app_config") as mock_app_config,
+            patch("app.gateway.run_preparation.get_app_config") as mock_app_config,
             patch("app.gateway.services.uuid.uuid4", return_value="canonical-run"),
         ):
             mock_app_config.return_value.get_model_config.return_value = None
@@ -311,7 +317,17 @@ class TestStartRunCanonicalLegacyName:
 
         assert result is record
         alias.assert_not_called()
-        prepare.assert_awaited_once_with(resource_id, request, "canonical-run")
+        prepare.assert_awaited_once_with(
+            resource_id,
+            request,
+            "canonical-run",
+            diagnostic_context={
+                "agent_name": resource_id,
+                "evidence_mode": "hybrid",
+                "code_evidence_source": None,
+            },
+            thread_id="thread-1",
+        )
         assert run_mgr.create_or_reject.call_args.kwargs["run_id"] == "canonical-run"
 
     @pytest.mark.asyncio
@@ -326,9 +342,9 @@ class TestStartRunCanonicalLegacyName:
             patch("app.gateway.services.get_run_manager", return_value=run_mgr),
             patch("app.gateway.services.get_run_context", return_value=run_ctx),
             patch("app.gateway.services._resolve_canonical_alias", new_callable=AsyncMock, return_value=resource_id) as alias,
-            patch("app.gateway.services._prepare_canonical_agent_run", new_callable=AsyncMock) as prepare,
+            patch("app.gateway.run_preparation._prepare_canonical_agent_run", new_callable=AsyncMock) as prepare,
             patch("app.gateway.services.run_agent", new_callable=AsyncMock),
-            patch("app.gateway.services.get_app_config") as mock_app_config,
+            patch("app.gateway.run_preparation.get_app_config") as mock_app_config,
             patch("app.gateway.services.uuid.uuid4", return_value="canonical-run"),
         ):
             mock_app_config.return_value.get_model_config.return_value = None
@@ -338,7 +354,17 @@ class TestStartRunCanonicalLegacyName:
 
         assert result is record
         alias.assert_awaited_once_with("writer", request)
-        prepare.assert_awaited_once_with(resource_id, request, "canonical-run")
+        prepare.assert_awaited_once_with(
+            resource_id,
+            request,
+            "canonical-run",
+            diagnostic_context={
+                "agent_name": "writer",
+                "evidence_mode": "hybrid",
+                "code_evidence_source": None,
+            },
+            thread_id="thread-1",
+        )
 
     @pytest.mark.asyncio
     async def test_dual_mode_resolves_context_agent_name_uuid(self, mock_deps, monkeypatch: pytest.MonkeyPatch):
@@ -352,9 +378,9 @@ class TestStartRunCanonicalLegacyName:
             patch("app.gateway.services.get_run_manager", return_value=run_mgr),
             patch("app.gateway.services.get_run_context", return_value=run_ctx),
             patch("app.gateway.services._resolve_canonical_alias", new_callable=AsyncMock) as alias,
-            patch("app.gateway.services._prepare_canonical_agent_run", new_callable=AsyncMock) as prepare,
+            patch("app.gateway.run_preparation._prepare_canonical_agent_run", new_callable=AsyncMock) as prepare,
             patch("app.gateway.services.run_agent", new_callable=AsyncMock),
-            patch("app.gateway.services.get_app_config") as mock_app_config,
+            patch("app.gateway.run_preparation.get_app_config") as mock_app_config,
             patch("app.gateway.services.uuid.uuid4", return_value="canonical-run"),
         ):
             mock_app_config.return_value.get_model_config.return_value = None
@@ -364,4 +390,14 @@ class TestStartRunCanonicalLegacyName:
 
         assert result is record
         alias.assert_not_called()
-        prepare.assert_awaited_once_with(resource_id, request, "canonical-run")
+        prepare.assert_awaited_once_with(
+            resource_id,
+            request,
+            "canonical-run",
+            diagnostic_context={
+                "agent_name": resource_id,
+                "evidence_mode": "hybrid",
+                "code_evidence_source": None,
+            },
+            thread_id="thread-1",
+        )
