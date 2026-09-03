@@ -622,6 +622,18 @@ async def initialize_admin(request: Request, response: Response, body: Initializ
             detail=AuthErrorResponse(code=AuthErrorCode.SYSTEM_ALREADY_INITIALIZED, message="System already initialized").model_dump(),
         )
 
+    # Startup skips the bundle while the first admin has not yet been created.
+    # Provision it now so a newly initialized local runtime exposes the same
+    # catalog as an offline deployment without requiring a restart.
+    try:
+        from app.gateway.app import _seed_bundled_resources
+
+        await _seed_bundled_resources()
+    except Exception:
+        # The admin was already committed. Preserve a usable setup response and
+        # let the idempotent startup seed retry on the next gateway boot.
+        logger.exception("Bundled resource seed failed after admin initialization")
+
     token = create_access_token(str(user.id), token_version=user.token_version)
     _set_session_cookie(response, token, request)
 

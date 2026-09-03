@@ -462,8 +462,11 @@ mkdir -p logs
 mkdir -p temp/client_body_temp temp/proxy_temp temp/fastcgi_temp temp/uwsgi_temp temp/scgi_temp
 
 # 0. Database migrations
+# Run from backend/ so relative sqlite_dir ".ideer/data" resolves to
+# backend/.ideer/data/ideer.db, matching Gateway startup (env.py further
+# resolves from config.yaml and ensures the parent dir exists).
 echo "Running database migrations..."
-(cd "$REPO_ROOT/backend/packages/harness/ideer/persistence/migrations" && uv run alembic upgrade head) || { echo "✗ Database migrations failed"; cleanup 1; }
+(cd "$REPO_ROOT/backend" && uv run alembic -c packages/harness/ideer/persistence/migrations/alembic.ini upgrade head) || { echo "✗ Database migrations failed"; cleanup 1; }
 echo "✓ Database migrations completed"
 
 # 1. Gateway API

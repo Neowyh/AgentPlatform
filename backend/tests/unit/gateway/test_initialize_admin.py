@@ -7,6 +7,7 @@ and public accessibility (no auth cookie required).
 
 import asyncio
 import os
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -94,6 +95,15 @@ def test_initialize_creates_admin_and_sets_cookie(client):
     auth_role, rbac_role = asyncio.run(_get_roles_by_email("admin@example.com"))
     assert auth_role == "user"
     assert rbac_role == "super_admin"
+
+
+def test_initialize_seeds_bundled_resources_for_new_admin(client):
+    """First admin creation immediately provisions the bundled catalog."""
+    with patch("app.gateway.app._seed_bundled_resources", new_callable=AsyncMock) as seed:
+        resp = client.post("/api/v1/auth/initialize", json=_init_payload())
+
+    assert resp.status_code == 201
+    seed.assert_awaited_once()
 
 
 def test_initialize_needs_setup_false(client):
