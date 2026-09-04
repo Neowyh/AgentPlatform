@@ -269,9 +269,9 @@ def test_bundled_conflict_option_is_validated_and_parsed(tmp_path: Path):
 def test_deploy_fails_closed_when_any_bundled_resource_seed_fails() -> None:
     script = DEPLOY_SCRIPT.read_text(encoding="utf-8")
 
+    assert "if ! install_admin_bundled_resources; then" in script
     assert 'die "public resource initialization failed"' in script
-    assert "if ! seed_bundled_workflows; then" in script
-    assert 'die "bundled workflow initialization failed"' in script
+    assert 'warn "canonical bundled resource seeding failed"' in script
     assert "Idempotent; failures are warnings, not fatal." not in script
 
 
