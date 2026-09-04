@@ -80,6 +80,7 @@ def _make_result(
 ):
     return SimpleNamespace(
         status=status,
+        terminal_event=MagicMock(),
         ai_messages=ai_messages or [],
         result=result,
         error=error,

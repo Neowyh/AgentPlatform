@@ -78,6 +78,7 @@ def _make_result(
 ) -> SimpleNamespace:
     return SimpleNamespace(
         status=status,
+        terminal_event=MagicMock(),
         ai_messages=ai_messages or [],
         result=result,
         error=error,
@@ -926,7 +927,7 @@ def test_cleanup_scheduled_on_cancellation(monkeypatch):
 
     sleep_count = 0
 
-    async def cancel_on_second_sleep(_: float) -> None:
+    async def cancel_on_second_sleep(*_: object) -> None:
         nonlocal sleep_count
         sleep_count += 1
         if sleep_count == 2:
@@ -942,7 +943,7 @@ def test_cleanup_scheduled_on_cancellation(monkeypatch):
 
     monkeypatch.setattr(task_tool_module, "get_background_task_result", get_result)
     monkeypatch.setattr(task_tool_module, "get_stream_writer", lambda: events.append)
-    monkeypatch.setattr(task_tool_module.asyncio, "sleep", cancel_on_second_sleep)
+    monkeypatch.setattr(task_tool_module.asyncio, "to_thread", cancel_on_second_sleep)
     monkeypatch.setattr("ideer.tools.get_available_tools", lambda **kwargs: [])
     monkeypatch.setattr(
         task_tool_module,
@@ -983,7 +984,7 @@ def test_cancelled_cleanup_stops_after_timeout(monkeypatch):
         lambda _: _make_result(FakeSubagentStatus.RUNNING, ai_messages=[]),
     )
 
-    async def cancel_on_first_sleep(_: float) -> None:
+    async def cancel_on_first_sleep(*_: object) -> None:
         raise asyncio.CancelledError
 
     def fake_report_subagent_usage(runtime, result):
@@ -1009,7 +1010,7 @@ def test_cancelled_cleanup_stops_after_timeout(monkeypatch):
     )
     monkeypatch.setattr(task_tool_module, "get_subagent_config", lambda _: config)
     monkeypatch.setattr(task_tool_module, "get_stream_writer", lambda: events.append)
-    monkeypatch.setattr(task_tool_module.asyncio, "sleep", cancel_on_first_sleep)
+    monkeypatch.setattr(task_tool_module.asyncio, "to_thread", cancel_on_first_sleep)
     monkeypatch.setattr(task_tool_module.asyncio, "create_task", fake_create_task)
     monkeypatch.setattr(task_tool_module, "_report_subagent_usage", fake_report_subagent_usage)
     monkeypatch.setattr("ideer.tools.get_available_tools", lambda **kwargs: [])
@@ -1053,7 +1054,7 @@ def test_cancellation_wait_uses_subagent_polling_budget(monkeypatch):
             return _make_result(FakeSubagentStatus.RUNNING, ai_messages=[])
         return terminal_result
 
-    async def cancel_then_continue(_: float) -> None:
+    async def cancel_then_continue(*_: object) -> None:
         nonlocal sleep_count
         sleep_count += 1
         if sleep_count == 1:
@@ -1074,7 +1075,7 @@ def test_cancellation_wait_uses_subagent_polling_budget(monkeypatch):
     monkeypatch.setattr(task_tool_module, "get_subagent_config", lambda _: config)
     monkeypatch.setattr(task_tool_module, "get_background_task_result", get_result)
     monkeypatch.setattr(task_tool_module, "get_stream_writer", lambda: events.append)
-    monkeypatch.setattr(task_tool_module.asyncio, "sleep", cancel_then_continue)
+    monkeypatch.setattr(task_tool_module.asyncio, "to_thread", cancel_then_continue)
     monkeypatch.setattr(task_tool_module.asyncio, "wait_for", fail_on_fixed_timeout)
     monkeypatch.setattr(task_tool_module, "_report_subagent_usage", fake_report_subagent_usage)
     monkeypatch.setattr("ideer.tools.get_available_tools", lambda **kwargs: [])
@@ -1103,7 +1104,7 @@ def test_cancellation_calls_request_cancel(monkeypatch):
     events = []
     cancel_requests = []
 
-    async def cancel_on_first_sleep(_: float) -> None:
+    async def cancel_on_first_sleep(*_: object) -> None:
         raise asyncio.CancelledError
 
     monkeypatch.setattr(task_tool_module, "SubagentStatus", FakeSubagentStatus)
@@ -1120,7 +1121,7 @@ def test_cancellation_calls_request_cancel(monkeypatch):
         lambda _: _make_result(FakeSubagentStatus.RUNNING, ai_messages=[]),
     )
     monkeypatch.setattr(task_tool_module, "get_stream_writer", lambda: events.append)
-    monkeypatch.setattr(task_tool_module.asyncio, "sleep", cancel_on_first_sleep)
+    monkeypatch.setattr(task_tool_module.asyncio, "to_thread", cancel_on_first_sleep)
     monkeypatch.setattr("ideer.tools.get_available_tools", lambda **kwargs: [])
     monkeypatch.setattr(
         task_tool_module,
@@ -1223,7 +1224,7 @@ def test_cancellation_reports_subagent_usage(monkeypatch):
 
     sleep_count = 0
 
-    async def cancel_on_third_sleep(_: float) -> None:
+    async def cancel_on_third_sleep(*_: object) -> None:
         nonlocal sleep_count
         sleep_count += 1
         if sleep_count == 3:
@@ -1241,7 +1242,7 @@ def test_cancellation_reports_subagent_usage(monkeypatch):
     monkeypatch.setattr(task_tool_module, "get_subagent_config", lambda _: config)
     monkeypatch.setattr(task_tool_module, "get_background_task_result", get_result)
     monkeypatch.setattr(task_tool_module, "get_stream_writer", lambda: events.append)
-    monkeypatch.setattr(task_tool_module.asyncio, "sleep", cancel_on_third_sleep)
+    monkeypatch.setattr(task_tool_module.asyncio, "to_thread", cancel_on_third_sleep)
     monkeypatch.setattr(task_tool_module, "_report_subagent_usage", fake_report_subagent_usage)
     monkeypatch.setattr("ideer.tools.get_available_tools", lambda **kwargs: [])
     monkeypatch.setattr(task_tool_module, "request_cancel_background_task", lambda _: None)
