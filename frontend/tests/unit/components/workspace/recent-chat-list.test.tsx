@@ -106,6 +106,9 @@ vi.mock("@/components/ui/dialog", () => ({
   DialogTitle: ({ children }: { children: React.ReactNode }) => (
     <h2>{children}</h2>
   ),
+  DialogDescription: ({ children }: { children: React.ReactNode }) => (
+    <div>{children}</div>
+  ),
   DialogFooter: ({ children }: { children: React.ReactNode }) => (
     <div>{children}</div>
   ),
@@ -187,9 +190,13 @@ const mockT = {
     exportAsMarkdown: "Export as Markdown",
     exportAsJSON: "Export as JSON",
     delete: "Delete",
+    deleteTitle: "Delete conversation",
+    deleteThreadConfirm: (title: string) => `Delete ${title}`,
+    deleteFailed: "Failed to delete conversation",
     cancel: "Cancel",
     save: "Save",
     exportSuccess: "Export successful",
+    exportFailed: "Failed to export conversation",
   },
   conversation: {
     noMessages: "No messages to export",
@@ -390,6 +397,7 @@ describe("RecentChatList", () => {
     // Click the delete action on the first thread
     const deleteButtons = screen.getAllByTestId("thread-delete-action");
     await user.click(deleteButtons[0]!);
+    await user.click(screen.getByTestId("thread-delete-confirm"));
 
     expect(mockDeleteMutate).toHaveBeenCalledWith({ threadId: "t1" });
   });
@@ -406,6 +414,7 @@ describe("RecentChatList", () => {
 
     const deleteButtons = screen.getAllByTestId("thread-delete-action");
     await user.click(deleteButtons[0]!);
+    await user.click(screen.getByTestId("thread-delete-confirm"));
 
     expect(mockPush).toHaveBeenCalledWith("/workspace/chats/t2");
   });
@@ -422,6 +431,7 @@ describe("RecentChatList", () => {
 
     const deleteButtons = screen.getAllByTestId("thread-delete-action");
     await user.click(deleteButtons[1]!);
+    await user.click(screen.getByTestId("thread-delete-confirm"));
 
     expect(mockPush).toHaveBeenCalledWith("/workspace/chats/t1");
   });
@@ -435,6 +445,7 @@ describe("RecentChatList", () => {
 
     const deleteButtons = screen.getAllByTestId("thread-delete-action");
     await user.click(deleteButtons[0]!);
+    await user.click(screen.getByTestId("thread-delete-confirm"));
 
     expect(mockPush).toHaveBeenCalledWith("/workspace/chats/new");
   });
@@ -451,6 +462,7 @@ describe("RecentChatList", () => {
 
     const deleteButtons = screen.getAllByTestId("thread-delete-action");
     await user.click(deleteButtons[1]!);
+    await user.click(screen.getByTestId("thread-delete-confirm"));
 
     expect(mockDeleteMutate).toHaveBeenCalledWith({ threadId: "t2" });
     expect(mockPush).not.toHaveBeenCalled();
@@ -683,6 +695,7 @@ describe("RecentChatList", () => {
 
     const deleteButtons = screen.getAllByTestId("thread-delete-action");
     await user.click(deleteButtons[0]!);
+    await user.click(screen.getByTestId("thread-delete-confirm"));
 
     expect(mockPush).toHaveBeenCalledWith(
       "/workspace/capabilities/experts/my-agent/chats/new",

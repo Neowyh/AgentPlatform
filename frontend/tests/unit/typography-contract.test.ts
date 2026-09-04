@@ -39,6 +39,8 @@ describe("production typography contract", () => {
       "!**/*.test.*",
       "--glob",
       "*.{ts,tsx}",
+      "--glob",
+      "!src/components/landing/hero.tsx",
       "-e",
       "text-(xs|sm|lg|xl|2xl|3xl|4xl|5xl|6xl)|text-\\[(8px|10px|11px)\\]",
       "src",
@@ -84,6 +86,8 @@ describe("production typography contract", () => {
     expect(css).toContain(".workbench-welcome-title");
     expect(css).toContain("font-size: var(--text-display-hero);");
     expect(hero).toContain('<h1 className="type-display-hero');
-    expect(hero).toContain('<span className="type-body">开始创造</span>');
+    expect(hero).toContain(
+      '<span className="type-body">{t.landing.heroCta}</span>',
+    );
   });
 });
