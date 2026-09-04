@@ -55,23 +55,23 @@ export default function VisibilityApplicationsPage() {
   const { t } = useI18n();
 
   const statusLabels: Record<string, string> = {
-    pending: t.admin.visibilityApplications.statusPending(),
-    approved: t.admin.visibilityApplications.statusApproved(),
-    rejected: t.admin.visibilityApplications.statusRejected(),
-    withdrawn: t.admin.visibilityApplications.statusWithdrawn(),
+    pending: t.admin.visibilityApplications.statusPending,
+    approved: t.admin.visibilityApplications.statusApproved,
+    rejected: t.admin.visibilityApplications.statusRejected,
+    withdrawn: t.admin.visibilityApplications.statusWithdrawn,
   };
 
   const resourceTypeLabels: Record<string, string> = {
-    tool: t.admin.visibilityApplications.resourceTypeTool(),
-    skill: t.admin.visibilityApplications.resourceTypeSkill(),
-    workflow: t.admin.visibilityApplications.resourceTypeWorkflow(),
-    agent: t.admin.visibilityApplications.resourceTypeAgent(),
+    tool: t.admin.visibilityApplications.resourceTypeTool,
+    skill: t.admin.visibilityApplications.resourceTypeSkill,
+    workflow: t.admin.visibilityApplications.resourceTypeWorkflow,
+    agent: t.admin.visibilityApplications.resourceTypeAgent,
   };
 
   const visibilityLabels: Record<string, string> = {
-    private: t.admin.visibilityApplications.visibilityPrivate(),
-    department: t.admin.visibilityApplications.visibilityDepartment(),
-    public: t.admin.visibilityApplications.visibilityPublic(),
+    private: t.admin.visibilityApplications.visibilityPrivate,
+    department: t.admin.visibilityApplications.visibilityDepartment,
+    public: t.admin.visibilityApplications.visibilityPublic,
   };
 
   const [applications, setApplications] = useState<VisibilityApplication[]>([]);
@@ -224,10 +224,10 @@ export default function VisibilityApplicationsPage() {
           </Link>
           <div>
             <h1 className="type-page-title font-semibold">
-              {t.admin.visibilityApplications.pageTitle()}
+              {t.admin.visibilityApplications.pageTitle}
             </h1>
             <p className="text-muted-foreground type-body mt-0.5">
-              {t.admin.visibilityApplications.pageDescription()}
+              {t.admin.visibilityApplications.pageDescription}
             </p>
           </div>
         </div>
@@ -237,17 +237,17 @@ export default function VisibilityApplicationsPage() {
       <div className="flex-1 overflow-y-auto p-6">
         {loading ? (
           <div className="text-muted-foreground type-body flex h-40 items-center justify-center">
-            {t.admin.visibilityApplications.loading()}
+            {t.admin.visibilityApplications.loading}
           </div>
         ) : (
           <div className="flex flex-col gap-4">
             {error && (
               <Alert variant="destructive">
                 <AlertTitle className="flex items-center justify-between gap-2 pr-1">
-                  {t.admin.visibilityApplications.operationFailed()}
+                  {t.admin.visibilityApplications.operationFailed}
                   <button
                     type="button"
-                    aria-label={t.admin.visibilityApplications.closeError()}
+                    aria-label={t.admin.visibilityApplications.closeError}
                     onClick={() => setError(null)}
                   >
                     <XIcon className="h-4 w-4" />
@@ -267,24 +267,24 @@ export default function VisibilityApplicationsPage() {
               >
                 <SelectTrigger className="w-36">
                   <SelectValue
-                    placeholder={t.admin.visibilityApplications.status()}
+                    placeholder={t.admin.visibilityApplications.status}
                   />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="pending">
-                    {t.admin.visibilityApplications.statusPending()}
+                    {t.admin.visibilityApplications.statusPending}
                   </SelectItem>
                   <SelectItem value="approved">
-                    {t.admin.visibilityApplications.statusApproved()}
+                    {t.admin.visibilityApplications.statusApproved}
                   </SelectItem>
                   <SelectItem value="rejected">
-                    {t.admin.visibilityApplications.statusRejected()}
+                    {t.admin.visibilityApplications.statusRejected}
                   </SelectItem>
                   <SelectItem value="withdrawn">
-                    {t.admin.visibilityApplications.statusWithdrawn()}
+                    {t.admin.visibilityApplications.statusWithdrawn}
                   </SelectItem>
                   <SelectItem value="all">
-                    {t.admin.visibilityApplications.allStatuses()}
+                    {t.admin.visibilityApplications.allStatuses}
                   </SelectItem>
                 </SelectContent>
               </Select>
@@ -295,24 +295,24 @@ export default function VisibilityApplicationsPage() {
               >
                 <SelectTrigger className="w-36">
                   <SelectValue
-                    placeholder={t.admin.visibilityApplications.resourceType()}
+                    placeholder={t.admin.visibilityApplications.resourceType}
                   />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">
-                    {t.admin.visibilityApplications.allTypes()}
+                    {t.admin.visibilityApplications.allTypes}
                   </SelectItem>
                   <SelectItem value="tool">
-                    {t.admin.visibilityApplications.resourceTypeTool()}
+                    {t.admin.visibilityApplications.resourceTypeTool}
                   </SelectItem>
                   <SelectItem value="skill">
-                    {t.admin.visibilityApplications.resourceTypeSkill()}
+                    {t.admin.visibilityApplications.resourceTypeSkill}
                   </SelectItem>
                   <SelectItem value="workflow">
-                    {t.admin.visibilityApplications.resourceTypeWorkflow()}
+                    {t.admin.visibilityApplications.resourceTypeWorkflow}
                   </SelectItem>
                   <SelectItem value="agent">
-                    {t.admin.visibilityApplications.resourceTypeAgent()}
+                    {t.admin.visibilityApplications.resourceTypeAgent}
                   </SelectItem>
                 </SelectContent>
               </Select>
@@ -323,21 +323,23 @@ export default function VisibilityApplicationsPage() {
               >
                 <SelectTrigger className="w-32">
                   <SelectValue
-                    placeholder={t.admin.visibilityApplications.targetVisibility()}
+                    placeholder={
+                      t.admin.visibilityApplications.targetVisibility
+                    }
                   />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">
-                    {t.admin.visibilityApplications.allVisibilities()}
+                    {t.admin.visibilityApplications.allVisibilities}
                   </SelectItem>
                   <SelectItem value="private">
-                    {t.admin.visibilityApplications.visibilityPrivate()}
+                    {t.admin.visibilityApplications.visibilityPrivate}
                   </SelectItem>
                   <SelectItem value="department">
-                    {t.admin.visibilityApplications.visibilityDepartment()}
+                    {t.admin.visibilityApplications.visibilityDepartment}
                   </SelectItem>
                   <SelectItem value="public">
-                    {t.admin.visibilityApplications.visibilityPublic()}
+                    {t.admin.visibilityApplications.visibilityPublic}
                   </SelectItem>
                 </SelectContent>
               </Select>
@@ -348,12 +350,12 @@ export default function VisibilityApplicationsPage() {
               >
                 <SelectTrigger className="w-40">
                   <SelectValue
-                    placeholder={t.admin.visibilityApplications.applicant()}
+                    placeholder={t.admin.visibilityApplications.applicant}
                   />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">
-                    {t.admin.visibilityApplications.allApplicants()}
+                    {t.admin.visibilityApplications.allApplicants}
                   </SelectItem>
                   {users.map((u) => (
                     <SelectItem key={u.id} value={u.id}>
@@ -374,8 +376,8 @@ export default function VisibilityApplicationsPage() {
                 <CardContent className="flex h-40 items-center justify-center">
                   <p className="text-muted-foreground type-body">
                     {filterStatus === "pending"
-                      ? t.admin.visibilityApplications.emptyPending()
-                      : t.admin.visibilityApplications.emptyNotFound()}
+                      ? t.admin.visibilityApplications.emptyPending
+                      : t.admin.visibilityApplications.emptyNotFound}
                   </p>
                 </CardContent>
               </Card>
@@ -399,10 +401,10 @@ export default function VisibilityApplicationsPage() {
                         </div>
                       </div>
                       <CardDescription>
-                        {t.admin.visibilityApplications.applicationId()}:{" "}
-                        {app.id} | {t.admin.visibilityApplications.applicant()}:{" "}
+                        {t.admin.visibilityApplications.applicationId}: {app.id}{" "}
+                        | {t.admin.visibilityApplications.applicant}:{" "}
                         {applicantName(app.applicant_id)} |{" "}
-                        {t.admin.visibilityApplications.visibility()}:{" "}
+                        {t.admin.visibilityApplications.visibility}:{" "}
                         {visibilityLabels[app.current_visibility]} →{" "}
                         {visibilityLabels[app.target_visibility]}
                       </CardDescription>
@@ -411,26 +413,26 @@ export default function VisibilityApplicationsPage() {
                       <div className="flex flex-col gap-2">
                         <p className="type-body">
                           <span className="font-medium">
-                            {t.admin.visibilityApplications.reason()}:
+                            {t.admin.visibilityApplications.reason}:
                           </span>{" "}
-                          {app.reason || t.admin.visibilityApplications.none()}
+                          {app.reason || t.admin.visibilityApplications.none}
                         </p>
                         {app.submitted_at && (
                           <p className="text-muted-foreground type-body">
-                            {t.admin.visibilityApplications.submittedAt()}:{" "}
+                            {t.admin.visibilityApplications.submittedAt}:{" "}
                             {new Date(app.submitted_at).toLocaleString()}
                           </p>
                         )}
                         {app.reviewed_at && (
                           <p className="text-muted-foreground type-body">
-                            {t.admin.visibilityApplications.reviewedAt()}:{" "}
+                            {t.admin.visibilityApplications.reviewedAt}:{" "}
                             {new Date(app.reviewed_at).toLocaleString()}
                           </p>
                         )}
                         {app.review_comment && (
                           <p className="type-body">
                             <span className="font-medium">
-                              {t.admin.visibilityApplications.reviewComment()}:
+                              {t.admin.visibilityApplications.reviewComment}:
                             </span>{" "}
                             {app.review_comment}
                           </p>
@@ -441,7 +443,7 @@ export default function VisibilityApplicationsPage() {
                               size="sm"
                               onClick={() => setReviewingApplication(app)}
                             >
-                              {t.admin.visibilityApplications.review()}
+                              {t.admin.visibilityApplications.review}
                             </Button>
                             {app.applicant_id === currentUser?.id && (
                               <Button
@@ -450,7 +452,7 @@ export default function VisibilityApplicationsPage() {
                                 disabled={withdrawingId === app.id}
                                 onClick={() => setWithdrawConfirm(app)}
                               >
-                                {t.admin.visibilityApplications.withdraw()}
+                                {t.admin.visibilityApplications.withdraw}
                               </Button>
                             )}
                           </div>
@@ -471,7 +473,7 @@ export default function VisibilityApplicationsPage() {
                   disabled={page <= 1}
                   onClick={() => setPage((p) => p - 1)}
                 >
-                  {t.admin.visibilityApplications.previousPage()}
+                  {t.admin.visibilityApplications.previousPage}
                 </Button>
                 <span className="text-muted-foreground type-body">
                   {page} / {totalPages}
@@ -482,7 +484,7 @@ export default function VisibilityApplicationsPage() {
                   disabled={page >= totalPages}
                   onClick={() => setPage((p) => p + 1)}
                 >
-                  {t.admin.visibilityApplications.nextPage()}
+                  {t.admin.visibilityApplications.nextPage}
                 </Button>
               </div>
             )}
@@ -498,27 +500,27 @@ export default function VisibilityApplicationsPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {t.admin.visibilityApplications.reviewDialogTitle()}
+              {t.admin.visibilityApplications.reviewDialogTitle}
             </DialogTitle>
             <DialogDescription>
-              {t.admin.visibilityApplications.applicationId()}:{" "}
+              {t.admin.visibilityApplications.applicationId}:{" "}
               {reviewingApplication?.id}
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-4">
             <div className="grid gap-2">
               <Label>
-                {t.admin.visibilityApplications.resourceType()}:{" "}
+                {t.admin.visibilityApplications.resourceType}:{" "}
                 {resourceTypeLabels[
                   reviewingApplication?.resource_type ?? ""
                 ] ?? reviewingApplication?.resource_type}
               </Label>
               <Label>
-                {t.admin.visibilityApplications.resourceId()}:{" "}
+                {t.admin.visibilityApplications.resourceId}:{" "}
                 {reviewingApplication?.resource_id}
               </Label>
               <Label>
-                {t.admin.visibilityApplications.visibilityChange()}:{" "}
+                {t.admin.visibilityApplications.visibilityChange}:{" "}
                 {visibilityLabels[
                   reviewingApplication?.current_visibility ?? ""
                 ] ?? reviewingApplication?.current_visibility}{" "}
@@ -528,26 +530,28 @@ export default function VisibilityApplicationsPage() {
                 ] ?? reviewingApplication?.target_visibility}
               </Label>
               <Label>
-                {t.admin.visibilityApplications.applicant()}:{" "}
+                {t.admin.visibilityApplications.applicant}:{" "}
                 {reviewingApplication
                   ? applicantName(reviewingApplication.applicant_id)
                   : ""}
               </Label>
               <Label>
-                {t.admin.visibilityApplications.reason()}:{" "}
+                {t.admin.visibilityApplications.reason}:{" "}
                 {reviewingApplication?.reason ??
-                  t.admin.visibilityApplications.none()}
+                  t.admin.visibilityApplications.none}
               </Label>
             </div>
             <div className="grid gap-2">
               <Label htmlFor="review-comment">
-                {t.admin.visibilityApplications.reviewComment()}
+                {t.admin.visibilityApplications.reviewComment}
               </Label>
               <Textarea
                 id="review-comment"
                 value={reviewComment}
                 onChange={(e) => setReviewComment(e.target.value)}
-                placeholder={t.admin.visibilityApplications.reviewCommentPlaceholder()}
+                placeholder={
+                  t.admin.visibilityApplications.reviewCommentPlaceholder
+                }
               />
             </div>
           </div>
@@ -556,18 +560,18 @@ export default function VisibilityApplicationsPage() {
               variant="outline"
               onClick={() => setReviewingApplication(null)}
             >
-              {t.admin.visibilityApplications.cancel()}
+              {t.admin.visibilityApplications.cancel}
             </Button>
             <Button
               variant="destructive"
               onClick={() => handleReview("rejected")}
             >
               <XIcon className="mr-2 h-4 w-4" />
-              {t.admin.visibilityApplications.reject()}
+              {t.admin.visibilityApplications.reject}
             </Button>
             <Button onClick={() => handleReview("approved")}>
               <CheckIcon className="mr-2 h-4 w-4" />
-              {t.admin.visibilityApplications.approve()}
+              {t.admin.visibilityApplications.approve}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -581,22 +585,22 @@ export default function VisibilityApplicationsPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {t.admin.visibilityApplications.confirmWithdraw()}
+              {t.admin.visibilityApplications.confirmWithdraw}
             </DialogTitle>
             <DialogDescription>
-              {t.admin.visibilityApplications.withdrawConfirmDescription()}
+              {t.admin.visibilityApplications.withdrawConfirmDescription}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setWithdrawConfirm(null)}>
-              {t.admin.visibilityApplications.cancel()}
+              {t.admin.visibilityApplications.cancel}
             </Button>
             <Button
               variant="destructive"
               disabled={withdrawingId !== null}
               onClick={handleWithdraw}
             >
-              {t.admin.visibilityApplications.confirmWithdraw()}
+              {t.admin.visibilityApplications.confirmWithdraw}
             </Button>
           </DialogFooter>
         </DialogContent>

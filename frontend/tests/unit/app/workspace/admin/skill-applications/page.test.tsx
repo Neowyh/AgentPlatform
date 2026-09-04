@@ -1,6 +1,17 @@
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
+vi.mock("@/core/i18n/hooks", async () => {
+  const { zhCN } = await import("@/core/i18n/locales/zh-CN");
+  return {
+    useI18n: () => ({
+      t: zhCN,
+      locale: "zh-CN",
+      changeLocale: () => {},
+    }),
+  };
+});
+
 // ---------------------------------------------------------------------------
 // Mocks
 // ---------------------------------------------------------------------------

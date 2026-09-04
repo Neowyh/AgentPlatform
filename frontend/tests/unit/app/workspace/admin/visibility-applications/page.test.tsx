@@ -2,6 +2,17 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
+vi.mock("@/core/i18n/hooks", async () => {
+  const { zhCN } = await import("@/core/i18n/locales/zh-CN");
+  return {
+    useI18n: () => ({
+      t: zhCN,
+      locale: "zh-CN",
+      changeLocale: () => {},
+    }),
+  };
+});
+
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
 let mockUser: {

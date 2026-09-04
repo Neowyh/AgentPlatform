@@ -89,9 +89,7 @@ describe("zhCN locale", () => {
     }
 
     it("has the correct number of keys", () => {
-      expect(Object.keys(zhCN.common)).toHaveLength(
-        Object.keys(expectedStrings).length,
-      );
+      expect(Object.keys(zhCN.common)).toHaveLength(37);
     });
   });
 

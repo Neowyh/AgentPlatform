@@ -849,9 +849,9 @@ export interface Translations {
       noDescription: string;
       edit: string;
       delete: string;
-      memberCount: (count: string) => string;
-      agentCount: (count: string) => string;
-      skillCount: (count: string) => string;
+      memberCount: (count: number | null) => string;
+      agentCount: (count: number) => string;
+      skillCount: (count: number) => string;
       createdAt: (date: string) => string;
       createDescription: string;
       nameLabel: string;
@@ -870,7 +870,7 @@ export interface Translations {
       deleteConfirm: string;
       deletedSuccess: string;
       reallocTitle: string;
-      reallocDescription: (name: string, count: string) => string;
+      reallocDescription: (name: string, count: number) => string;
       loadingResources: string;
       affectedResources: string;
       visibilityDepartment: string;
@@ -885,7 +885,7 @@ export interface Translations {
     };
     resources: {
       pageTitle: string;
-      totalCount: string;
+      totalCount: (total: number) => string;
       allTypesLabel: string;
       agentLabel: string;
       toolLabel: string;
@@ -926,7 +926,7 @@ export interface Translations {
       testResultLabel: string;
       closeButton: string;
       invalidJsonError: string;
-      errorWithMessage: string;
+      errorWithMessage: (message: string) => string;
       loading: string;
       empty: string;
     };
@@ -942,7 +942,7 @@ export interface Translations {
       startTimeLabel: string;
       endTimeLabel: string;
       reset: string;
-      totalCount: (total: string) => string;
+      totalCount: (total: number) => string;
       emptyState: string;
       system: string;
       resourceLabel: string;
@@ -996,7 +996,7 @@ export interface Translations {
       allTypes: string;
       allVisibilities: string;
       allApplicants: string;
-      totalCount: (total: string) => string;
+      totalCount: (total: number) => string;
       emptyPending: string;
       emptyNotFound: string;
       applicationId: string;

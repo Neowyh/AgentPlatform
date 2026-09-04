@@ -16,7 +16,7 @@ export default function SkillApplicationsPage() {
   return (
     <div className="flex size-full items-center justify-center">
       <p className="text-muted-foreground type-body">
-        {t.admin.skillApplications.redirecting()}
+        {t.admin.skillApplications.redirecting}
       </p>
     </div>
   );
