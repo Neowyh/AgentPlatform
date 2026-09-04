@@ -310,9 +310,21 @@ _Avoid_: Code folder, project upload, Agent archive
 The evidence grade of a fault-zeroing conclusion: confirmed, high-risk candidate, or pending verification. A static-analysis alert alone is never confirmed.
 _Avoid_: Severity, certainty, bug status
 
-**Evidence Mode**:
-The explicit fault-zeroing input classification: document, code, or hybrid. It selects evidence extraction rules while retaining one shared fault-analysis and reporting flow.
-_Avoid_: Auto-detected file type, workflow variant, analysis guess
+**Hybrid Evidence Intake**:
+The fixed fault-zeroing input policy that expects both documentary evidence and a Code Evidence Package. If exactly one side is missing, the platform creates a paused Run and records the user's confirmation against the input snapshot before continuing; if both are missing, it rejects the request without creating a Run. A non-empty problem description or any document-type attachment satisfies the documentary side, while missing evidence remains visible in the coverage matrix and residual risks.
+_Avoid_: Evidence Mode selection, document-only Run, code-only Run, silent mode downgrade
+
+**Fault-zeroing Execution Kernel**:
+The single Workflow-backed implementation used by Skill, Expert, and Workflow invocation adapters for an actual fault-zeroing analysis. Educational or editing conversations remain ordinary Agent interactions; starting an analysis routes all three forms through the same evidence, fault-tree, assessment, review, reporting, and validation stages.
+_Avoid_: Three independent fault-zeroing implementations, prompt-only orchestration, starting a Run for conceptual questions
+
+**Fault-zeroing Result Contract**:
+The immutable, versioned, deterministic rules that validate fault-zeroing Artifacts at analysis checkpoints and before Run completion, including structure, references, evidence strength, report consistency, and static SVG safety. Each Run pins the contract version it started with.
+_Avoid_: Skill text as the validator, mutable in-place rules, separate Workflow and offline validation standards
+
+**Fault-zeroing Completion**:
+The successful end state of a fault-zeroing Run after its required Artifacts pass the Fault-zeroing Result Contract. A fully disclosed pending-verification conclusion may complete; completion does not claim that a root cause has been confirmed.
+_Avoid_: Files merely exist, root cause must be confirmed, model self-certification
 
 **Todo**:
 A task item within a Thread's state, with status pending, in_progress, or completed.
