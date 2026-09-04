@@ -7,7 +7,6 @@ Provides a pluggable channel system that connects external messaging platforms
 which uses ``langgraph-sdk`` to communicate with Gateway's LangGraph-compatible API.
 """
 
-from app.channels import service
 from app.channels.base import Channel
 from app.channels.message_bus import InboundMessage, MessageBus, OutboundMessage
 
@@ -16,5 +15,12 @@ __all__ = [
     "InboundMessage",
     "MessageBus",
     "OutboundMessage",
-    "service",
 ]
+
+
+def __getattr__(name: str):
+    if name == "service":
+        from importlib import import_module
+
+        return import_module("app.channels.service")
+    raise AttributeError(name)
