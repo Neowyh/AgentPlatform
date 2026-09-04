@@ -1,26 +1,26 @@
 ---
 title: Configuration
-description: "iDeer's configuration system is designed around one goal: every meaningful behavior should be expressible in a config file, not hardcoded in the application. This makes deployments reproducible, auditable, and easy to customize per environment."
+description: "DeerFlow's configuration system is designed around one goal: every meaningful behavior should be expressible in a config file, not hardcoded in the application. This makes deployments reproducible, auditable, and easy to customize per environment."
 ---
 
-import { Callout, Cards } from "nextra/components";
+import { Callout } from "nextra/components";
 
 # Configuration
 
 <Callout type="info" emoji="⚙️">
-  All iDeer Harness behaviors are driven by <code>config.yaml</code>. One
+  All DeerFlow Harness behaviors are driven by <code>config.yaml</code>. One
   file controls which models are available, how the sandbox runs, what tools are
   loaded, and how each subsystem behaves.
 </Callout>
 
-iDeer's configuration system is designed around one goal: every meaningful behavior should be expressible in a config file, not hardcoded in the application. This makes deployments reproducible, auditable, and easy to customize per environment.
+DeerFlow's configuration system is designed around one goal: every meaningful behavior should be expressible in a config file, not hardcoded in the application. This makes deployments reproducible, auditable, and easy to customize per environment.
 
 ## Config file location
 
-iDeer resolves `config.yaml` using the following priority order:
+DeerFlow resolves `config.yaml` using the following priority order:
 
 1. The path passed to `AppConfig.from_file(config_path)` explicitly.
-2. The `IDEER_CONFIG_PATH` environment variable.
+2. The `DEER_FLOW_CONFIG_PATH` environment variable.
 3. `backend/config.yaml` (relative to the backend directory).
 4. `config.yaml` in the repository root.
 
@@ -29,7 +29,7 @@ If none of these paths exist, the application raises an error at startup.
 To use a custom location:
 
 ```bash
-export IDEER_CONFIG_PATH=/path/to/my-config.yaml
+export DEER_FLOW_CONFIG_PATH=/path/to/my-config.yaml
 ```
 
 ## Environment variable interpolation
@@ -62,14 +62,14 @@ Examples:
 
 ```yaml
 sandbox:
-  use: ideer.sandbox.local:LocalSandboxProvider
+  use: deerflow.sandbox.local:LocalSandboxProvider
 
 tools:
-  - use: ideer.community.tavily.tools:web_search_tool
+  - use: deerflow.community.tavily.tools:web_search_tool
     api_key: $TAVILY_API_KEY
 ```
 
-This pattern is how iDeer achieves pluggability without hardcoding class references.
+This pattern is how DeerFlow achieves pluggability without hardcoding class references.
 
 ## Extra fields are passed through
 
@@ -143,15 +143,15 @@ models:
     supports_vision: true
 
 sandbox:
-  use: ideer.sandbox.local:LocalSandboxProvider
+  use: deerflow.sandbox.local:LocalSandboxProvider
 
 tools:
-  - use: ideer.community.ddg_search.tools:web_search_tool
-  - use: ideer.community.jina_ai.tools:web_fetch_tool
-  - use: ideer.sandbox.tools:ls_tool
-  - use: ideer.sandbox.tools:read_file_tool
-  - use: ideer.sandbox.tools:write_file_tool
-  - use: ideer.sandbox.tools:bash_tool
+  - use: deerflow.community.ddg_search.tools:web_search_tool
+  - use: deerflow.community.jina_ai.tools:web_fetch_tool
+  - use: deerflow.sandbox.tools:ls_tool
+  - use: deerflow.sandbox.tools:read_file_tool
+  - use: deerflow.sandbox.tools:write_file_tool
+  - use: deerflow.sandbox.tools:bash_tool
 ```
 
 Start from `config.example.yaml` in the repository root and uncomment the sections you need.

@@ -236,7 +236,7 @@ export function ToolSettingsPage() {
   }
 
   const servers = config?.mcp_servers ?? {};
-  const isFormPending = addServer.isPending || updateServer.isPending;
+  const isFormPending = addServer.isPending ?? updateServer.isPending;
 
   return (
     <>

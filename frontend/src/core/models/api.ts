@@ -1,3 +1,5 @@
+import { fetch } from "@/core/api/fetcher";
+
 import { extractError } from "../api/errors";
 import { getBackendBaseURL } from "../config";
 import { isStaticWebsiteOnly } from "../static-mode";

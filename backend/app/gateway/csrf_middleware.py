@@ -29,6 +29,12 @@ def generate_csrf_token() -> str:
     return secrets.token_urlsafe(CSRF_TOKEN_LENGTH)
 
 
+def auth_csrf_cookie_settings(request: Request) -> tuple[bool, int | None]:
+    """Return secure and max-age settings shared by auth handlers."""
+    secure = is_secure_request(request)
+    return secure, (60 * 60 * 24 if secure else None)
+
+
 def should_check_csrf(request: Request) -> bool:
     """Determine if a request needs CSRF validation.
 

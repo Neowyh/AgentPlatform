@@ -1,7 +1,9 @@
-"""IM Channel integration for iDeer.
+"""IM Channel integration for the Gateway.
 
 Provides a pluggable channel system that connects external messaging platforms
 (Feishu/Lark, Slack, Telegram) to the iDeer agent via the ChannelManager,
+Provides a pluggable channel system that connects external messaging platforms
+(Feishu/Lark, Slack, Telegram) to the agent via the ChannelManager,
 which uses ``langgraph-sdk`` to communicate with Gateway's LangGraph-compatible API.
 """
 

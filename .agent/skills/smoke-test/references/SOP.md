@@ -1,12 +1,12 @@
-# iDeer Smoke Test Standard Operating Procedure (SOP)
+# DeerFlow Smoke Test Standard Operating Procedure (SOP)
 
-This document describes the detailed operating steps for each phase of the iDeer smoke test.
+This document describes the detailed operating steps for each phase of the DeerFlow smoke test.
 
 ## Phase 1: Code Update Check
 
 ### 1.1 Confirm Current Directory
 
-**Objective**: Verify that the current working directory is the iDeer project root.
+**Objective**: Verify that the current working directory is the DeerFlow project root.
 
 **Steps**:
 1. Run `pwd` to view the current working directory
@@ -138,10 +138,9 @@ This document describes the detailed operating steps for each phase of the iDeer
    lsof -i :2026  # Main port
    lsof -i :3000  # Frontend
    lsof -i :8001  # Gateway
-   lsof -i :2024  # LangGraph
    ```
 
-**Success Criteria**: All ports are free, or they are occupied only by iDeer-related processes.
+**Success Criteria**: All ports are free, or they are occupied only by DeerFlow-related processes.
 
 **Failure Handling**:
 - If a port is occupied, ask the user to stop the related process
@@ -185,7 +184,7 @@ This document describes the detailed operating steps for each phase of the iDeer
 **Steps**:
 1. Run `lsof -i :2026` (macOS/Linux) or `netstat -ano | findstr :2026` (Windows)
 
-**Success Criteria**: Port 2026 is free, or it is occupied only by a iDeer-related process.
+**Success Criteria**: Port 2026 is free, or it is occupied only by a DeerFlow-related process.
 
 **Failure Handling**:
 - If the port is occupied by another process, ask the user to stop that process or change the configuration
@@ -258,7 +257,7 @@ This document describes the detailed operating steps for each phase of the iDeer
 **Steps**:
 1. Run `make dev-daemon` (background mode)
 
-**Description**: This command starts all services (LangGraph, Gateway, Frontend, Nginx).
+**Description**: This command starts all services (Gateway embedded runtime, Frontend, Nginx).
 
 **Notes**:
 - `make dev` runs in the foreground and stops with Ctrl+C
@@ -272,7 +271,6 @@ This document describes the detailed operating steps for each phase of the iDeer
 **Steps**:
 1. Wait 90-120 seconds for all services to start completely
 2. You can monitor startup progress by checking these log files:
-   - `logs/langgraph.log`
    - `logs/gateway.log`
    - `logs/frontend.log`
    - `logs/nginx.log`
@@ -293,9 +291,9 @@ This document describes the detailed operating steps for each phase of the iDeer
 #### 4.2.2 Start Docker Services
 
 **Steps**:
-1. Run `make docker-start`
+1. Run `make up`
 
-**Description**: This command builds and starts all required Docker containers.
+**Description**: This command builds and starts all required Docker containers in production.
 
 ---
 
@@ -316,11 +314,10 @@ This document describes the detailed operating steps for each phase of the iDeer
 **Steps**:
 1. Run the following command to check processes:
    ```bash
-   ps aux | grep -E "(langgraph|uvicorn|next|nginx)" | grep -v grep
+   ps aux | grep -E "(uvicorn|next|nginx)" | grep -v grep
    ```
 
 **Success Criteria**: Confirm that the following processes are running:
-- LangGraph (`langgraph dev`)
 - Gateway (`uvicorn app.gateway.app:app`)
 - Frontend (`next dev` or `next start`)
 - Nginx (`nginx`)
@@ -356,10 +353,27 @@ curl http://localhost:2026/health
 
 ---
 
-#### 5.1.4 Check LangGraph Service
+#### 5.1.4 Check LangGraph-compatible API
 
 **Steps**:
-1. Visit relevant LangGraph endpoints to verify availability
+1. Visit `http://localhost:2026/api/langgraph/assistants/lead_agent` to verify Gateway's LangGraph-compatible API route is reachable.
+2. A `401` response is acceptable when authentication is enabled and no session cookie is provided.
+
+---
+
+#### 5.1.5 Frontend Route Smoke Check
+
+**Objective**: Verify key `/workspace/*` frontend routes render correctly.
+
+**Steps**:
+1. Run `bash .agent/skills/smoke-test/scripts/frontend_check.sh`.
+2. The script auto-detects whether authentication (`DEER_FLOW_AUTH_DISABLED`) is enabled.
+3. When auth is on, the script registers / logs in a smoke-test user (`smoke-test@deerflow.dev` by default) and passes the session cookie so the real `/workspace/*` pages are verified — not the login redirect.
+4. When auth is off, the routes are checked anonymously as before.
+
+**Customisation**:
+- `SMOKE_TEST_EMAIL` — email for the test account (default: `smoke-test@deerflow.dev`).
+- `SMOKE_TEST_PASSWORD` — password for the test account (default: `SmokeTest123!`).
 
 ---
 
@@ -370,10 +384,9 @@ curl http://localhost:2026/health
 **Steps**:
 1. Run `docker ps`
 2. Confirm that the following containers are running:
-   - `ideer-nginx`
-   - `ideer-frontend`
-   - `ideer-gateway`
-   - `ideer-langgraph` (if not in gateway mode)
+   - `deer-flow-nginx`
+   - `deer-flow-frontend`
+   - `deer-flow-gateway`
 
 ---
 
@@ -406,10 +419,27 @@ curl http://localhost:2026/health
 
 ---
 
-#### 5.2.4 Check LangGraph Service
+#### 5.2.4 Check LangGraph-compatible API
 
 **Steps**:
-1. Visit relevant LangGraph endpoints to verify availability
+1. Visit `http://localhost:2026/api/langgraph/assistants/lead_agent` to verify Gateway's LangGraph-compatible API route is reachable.
+2. A `401` response is acceptable when authentication is enabled and no session cookie is provided.
+
+---
+
+#### 5.2.5 Frontend Route Smoke Check
+
+**Objective**: Verify key `/workspace/*` frontend routes render correctly.
+
+**Steps**:
+1. Run `bash .agent/skills/smoke-test/scripts/frontend_check.sh`.
+2. The script auto-detects whether authentication (`DEER_FLOW_AUTH_DISABLED`) is enabled.
+3. When auth is on, the script registers / logs in a smoke-test user (`smoke-test@deerflow.dev` by default) and passes the session cookie so the real `/workspace/*` pages are verified — not the login redirect.
+4. When auth is off, the routes are checked anonymously as before.
+
+**Customisation**:
+- `SMOKE_TEST_EMAIL` — email for the test account (default: `smoke-test@deerflow.dev`).
+- `SMOKE_TEST_PASSWORD` — password for the test account (default: `SmokeTest123!`).
 
 ---
 

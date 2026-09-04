@@ -27,14 +27,14 @@ import {
 import { useI18n } from "@/core/i18n/hooks";
 import { useGlobalShortcuts } from "@/hooks/use-global-shortcuts";
 
-import { SettingsDialog } from "./settings";
+import { useSettingsDialog } from "./settings";
 
 export function CommandPalette() {
   const { t } = useI18n();
   const router = useRouter();
+  const { openSettings } = useSettingsDialog();
   const [open, setOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [isMac, setIsMac] = useState(false);
 
   const handleNewChat = useCallback(() => {
@@ -44,8 +44,8 @@ export function CommandPalette() {
 
   const handleOpenSettings = useCallback(() => {
     setOpen(false);
-    setSettingsOpen(true);
-  }, []);
+    openSettings("appearance");
+  }, [openSettings]);
 
   const handleShowShortcuts = useCallback(() => {
     setOpen(false);
@@ -72,7 +72,6 @@ export function CommandPalette() {
 
   return (
     <>
-      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
       <CommandDialog open={open} onOpenChange={setOpen}>
         <CommandInput placeholder={t.shortcuts.searchActions} />
         <CommandList>
@@ -108,7 +107,7 @@ export function CommandPalette() {
               {t.shortcuts.keyboardShortcutsDescription}
             </DialogDescription>
           </DialogHeader>
-          <div className="type-body space-y-3">
+          <div className="space-y-3 text-sm">
             {[
               { keys: `${metaKey}K`, label: t.shortcuts.openCommandPalette },
               { keys: `${metaKey}${shiftKey}N`, label: t.sidebar.newChat },
@@ -121,7 +120,7 @@ export function CommandPalette() {
             ].map(({ keys, label }) => (
               <div key={keys} className="flex items-center justify-between">
                 <span className="text-muted-foreground">{label}</span>
-                <kbd className="bg-muted text-muted-foreground type-body rounded px-2 py-0.5 font-mono">
+                <kbd className="bg-muted text-muted-foreground rounded px-2 py-0.5 font-mono text-xs">
                   {keys}
                 </kbd>
               </div>

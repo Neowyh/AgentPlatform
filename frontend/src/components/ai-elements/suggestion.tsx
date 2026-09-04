@@ -21,7 +21,6 @@ export const Suggestions = ({
     <div
       className={cn("flex w-full flex-wrap items-center gap-2", className)}
       data-slot="suggestions-list"
-      data-testid="suggestions-container"
     >
       {Children.map(children, (child, index) =>
         child != null ? (
@@ -65,14 +64,13 @@ export const Suggestion = ({
   return (
     <Button
       className={cn(
-        "text-muted-foreground dark:bg-background type-body h-auto max-w-full cursor-pointer rounded-full px-4 py-2 text-center font-normal whitespace-normal",
+        "text-muted-foreground dark:bg-background h-auto max-w-full cursor-pointer rounded-full px-4 py-2 text-center text-xs font-normal whitespace-normal",
         className,
       )}
       onClick={handleClick}
       size={size}
       type="button"
       variant={variant}
-      data-testid="suggestion-button"
       {...props}
     >
       {Icon && <Icon className="size-4" />}

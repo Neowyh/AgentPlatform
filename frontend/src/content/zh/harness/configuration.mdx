@@ -1,25 +1,25 @@
 ---
 title: 配置
-description: iDeer 的配置系统围绕一个目标设计：每一个有意义的行为都应该可以在配置文件中表达，而不是硬编码在应用程序中。这使部署可重现、可审计，并且易于按环境定制。
+description: DeerFlow 的配置系统围绕一个目标设计：每一个有意义的行为都应该可以在配置文件中表达，而不是硬编码在应用程序中。这使部署可重现、可审计，并且易于按环境定制。
 ---
 
-import { Callout, Cards } from "nextra/components";
+import { Callout } from "nextra/components";
 
 # 配置
 
 <Callout type="info" emoji="⚙️">
-  所有 iDeer Harness 行为都由 <code>config.yaml</code>{" "}
+  所有 DeerFlow Harness 行为都由 <code>config.yaml</code>{" "}
   驱动。一个文件控制哪些模型可用、沙箱如何运行、加载哪些工具，以及每个子系统的行为。
 </Callout>
 
-iDeer 的配置系统围绕一个目标设计：每一个有意义的行为都应该可以在配置文件中表达，而不是硬编码在应用程序中。这使部署可重现、可审计，并且易于按环境定制。
+DeerFlow 的配置系统围绕一个目标设计：每一个有意义的行为都应该可以在配置文件中表达，而不是硬编码在应用程序中。这使部署可重现、可审计，并且易于按环境定制。
 
 ## 配置文件位置
 
-iDeer 使用以下优先级顺序解析 `config.yaml`：
+DeerFlow 使用以下优先级顺序解析 `config.yaml`：
 
 1. 显式传递给 `AppConfig.from_file(config_path)` 的路径。
-2. `IDEER_CONFIG_PATH` 环境变量。
+2. `DEER_FLOW_CONFIG_PATH` 环境变量。
 3. `backend/config.yaml`（相对于后端目录）。
 4. 仓库根目录中的 `config.yaml`。
 
@@ -28,7 +28,7 @@ iDeer 使用以下优先级顺序解析 `config.yaml`：
 要使用自定义位置：
 
 ```bash
-export IDEER_CONFIG_PATH=/path/to/my-config.yaml
+export DEER_FLOW_CONFIG_PATH=/path/to/my-config.yaml
 ```
 
 ## 环境变量插值
@@ -61,14 +61,14 @@ package.subpackage.module:variable_name
 
 ```yaml
 sandbox:
-  use: ideer.sandbox.local:LocalSandboxProvider
+  use: deerflow.sandbox.local:LocalSandboxProvider
 
 tools:
-  - use: ideer.community.tavily.tools:web_search_tool
+  - use: deerflow.community.tavily.tools:web_search_tool
     api_key: $TAVILY_API_KEY
 ```
 
-这是 iDeer 实现可插拔性而不硬编码类引用的方式。
+这是 DeerFlow 实现可插拔性而不硬编码类引用的方式。
 
 ## 额外字段透传
 
@@ -141,15 +141,15 @@ models:
     supports_vision: true
 
 sandbox:
-  use: ideer.sandbox.local:LocalSandboxProvider
+  use: deerflow.sandbox.local:LocalSandboxProvider
 
 tools:
-  - use: ideer.community.ddg_search.tools:web_search_tool
-  - use: ideer.community.jina_ai.tools:web_fetch_tool
-  - use: ideer.sandbox.tools:ls_tool
-  - use: ideer.sandbox.tools:read_file_tool
-  - use: ideer.sandbox.tools:write_file_tool
-  - use: ideer.sandbox.tools:bash_tool
+  - use: deerflow.community.ddg_search.tools:web_search_tool
+  - use: deerflow.community.jina_ai.tools:web_fetch_tool
+  - use: deerflow.sandbox.tools:ls_tool
+  - use: deerflow.sandbox.tools:read_file_tool
+  - use: deerflow.sandbox.tools:write_file_tool
+  - use: deerflow.sandbox.tools:bash_tool
 ```
 
 从仓库根目录的 `config.example.yaml` 开始，取消注释你需要的章节。

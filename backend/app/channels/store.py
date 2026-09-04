@@ -1,4 +1,4 @@
-"""ChannelStore — persists IM chat-to-iDeer thread mappings."""
+"""ChannelStore — persists IM chat-to-agent thread mappings."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 class ChannelStore:
-    """JSON-file-backed store that maps IM conversations to iDeer threads.
+    """JSON-file-backed store that maps IM conversations to agent threads.
 
     Data layout (on disk)::
 
@@ -80,9 +80,10 @@ class ChannelStore:
     # -- public API --------------------------------------------------------
 
     def get_thread_id(self, channel_name: str, chat_id: str, topic_id: str | None = None) -> str | None:
-        """Look up the iDeer thread_id for a given IM conversation/topic."""
-        entry = self._data.get(self._key(channel_name, chat_id, topic_id))
-        return entry["thread_id"] if entry else None
+        """Look up the agent thread_id for a given IM conversation/topic."""
+        with self._lock:
+            entry = self._data.get(self._key(channel_name, chat_id, topic_id))
+            return entry["thread_id"] if entry else None
 
     def set_thread_id(
         self,
@@ -138,8 +139,11 @@ class ChannelStore:
 
     def list_entries(self, channel_name: str | None = None) -> list[dict[str, Any]]:
         """List all stored mappings, optionally filtered by channel."""
+        with self._lock:
+            entries = [(key, entry.copy()) for key, entry in self._data.items()]
+
         results = []
-        for key, entry in self._data.items():
+        for key, entry in entries:
             parts = key.split(":", 2)
             ch = parts[0]
             chat = parts[1] if len(parts) > 1 else ""

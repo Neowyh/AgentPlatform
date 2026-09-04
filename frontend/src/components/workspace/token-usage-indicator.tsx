@@ -26,13 +26,17 @@ import {
   type TokenUsagePreferences,
   type TokenUsageViewPreset,
 } from "@/core/messages/usage-model";
+import type { ContextUsage } from "@/core/threads/token-usage";
 import { cn } from "@/lib/utils";
+
+import { formatContextUsagePercentage } from "./context-usage-format";
 
 interface TokenUsageIndicatorProps {
   threadId?: string;
   messages: Message[];
   pendingMessages?: Message[];
   backendUsage?: TokenUsage | null;
+  contextUsage?: ContextUsage | null;
   enabled?: boolean;
   preferences: TokenUsagePreferences;
   onPreferencesChange: (preferences: TokenUsagePreferences) => void;
@@ -44,6 +48,7 @@ export function TokenUsageIndicator({
   messages,
   pendingMessages,
   backendUsage,
+  contextUsage,
   enabled = false,
   preferences,
   onPreferencesChange,
@@ -61,6 +66,9 @@ export function TokenUsageIndicator({
     [backendUsage, messages, pendingMessages, threadId],
   );
   const preset = getTokenUsageViewPreset(preferences);
+  const contextPercentage = formatContextUsagePercentage(
+    contextUsage?.percentage,
+  );
 
   if (!enabled) {
     return null;
@@ -73,7 +81,7 @@ export function TokenUsageIndicator({
           type="button"
           variant="ghost"
           className={cn(
-            "text-muted-foreground bg-background/70 hover:bg-background/90 type-body flex h-auto items-center gap-1.5 rounded-full border px-2 py-1 font-normal",
+            "text-muted-foreground bg-background/70 hover:bg-background/90 flex h-auto items-center gap-1.5 rounded-full border px-2 py-1 text-xs font-normal",
             className,
           )}
         >
@@ -86,12 +94,20 @@ export function TokenUsageIndicator({
                 : "-"
               : t.tokenUsage.presets[presetKeyToTranslationKey(preset)]}
           </span>
+          {contextPercentage != null && (
+            <span
+              className="text-muted-foreground/80 border-l pl-1.5 font-mono"
+              aria-label={t.contextUsage.badgeAriaLabel(contextPercentage)}
+            >
+              {contextPercentage}%
+            </span>
+          )}
           <ChevronDownIcon className="size-3" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent side="bottom" align="end" className="w-80">
         <DropdownMenuLabel>{t.tokenUsage.title}</DropdownMenuLabel>
-        <div className="type-body px-2 py-1">
+        <div className="px-2 py-1 text-xs">
           {usage ? (
             <div className="space-y-1">
               <div className="flex justify-between gap-4">
@@ -139,7 +155,7 @@ export function TokenUsageIndicator({
               <DropdownMenuRadioItem key={value} value={value}>
                 <div className="grid gap-0.5">
                   <span>{t.tokenUsage.presets[translationKey]}</span>
-                  <span className="text-muted-foreground type-body">
+                  <span className="text-muted-foreground text-xs">
                     {t.tokenUsage.presetDescriptions[translationKey]}
                   </span>
                 </div>
@@ -148,7 +164,7 @@ export function TokenUsageIndicator({
           })}
         </DropdownMenuRadioGroup>
         <DropdownMenuSeparator />
-        <div className="text-muted-foreground type-body px-2 py-2 leading-relaxed">
+        <div className="text-muted-foreground px-2 py-2 text-xs leading-relaxed">
           {t.tokenUsage.note}
         </div>
       </DropdownMenuContent>

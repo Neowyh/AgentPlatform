@@ -1,19 +1,14 @@
 "use client";
 
 import {
-  BoxIcon,
-  Building2Icon,
+  BugIcon,
   ChevronsUpDown,
-  ClipboardCheckIcon,
+  GlobeIcon,
   InfoIcon,
-  ScrollTextIcon,
+  MailIcon,
   Settings2Icon,
   SettingsIcon,
-  ShieldIcon,
-  UsersIcon,
-  WrenchIcon,
 } from "lucide-react";
-import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import {
@@ -30,11 +25,10 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { useAuth } from "@/core/auth/AuthProvider";
 import { useI18n } from "@/core/i18n/hooks";
 
-import { ResourceNotificationCenter } from "./resource-notification-center";
-import { SettingsDialog } from "./settings";
+import { GithubIcon } from "./github-icon";
+import { useSettingsDialog } from "./settings";
 
 function NavMenuButtonContent({
   isSidebarOpen,
@@ -44,7 +38,7 @@ function NavMenuButtonContent({
   t: ReturnType<typeof useI18n>["t"];
 }) {
   return isSidebarOpen ? (
-    <div className="text-sidebar-foreground type-body flex w-full items-center gap-2 text-left">
+    <div className="text-muted-foreground flex w-full items-center gap-2 text-left text-sm">
       <SettingsIcon className="size-4" />
       <span>{t.workspace.settingsAndMore}</span>
       <ChevronsUpDown className="text-muted-foreground ml-auto size-4" />
@@ -57,18 +51,10 @@ function NavMenuButtonContent({
 }
 
 export function WorkspaceNavMenu() {
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsDefaultSection, setSettingsDefaultSection] = useState<
-    "appearance" | "memory" | "notification" | "about"
-  >("appearance");
+  const { openSettings } = useSettingsDialog();
   const [mounted, setMounted] = useState(false);
   const { open: isSidebarOpen } = useSidebar();
   const { t } = useI18n();
-  const { user } = useAuth();
-
-  const isAdmin =
-    user?.system_role === "super_admin" ||
-    user?.system_role === "department_admin";
 
   useEffect(() => {
     setMounted(true);
@@ -76,13 +62,7 @@ export function WorkspaceNavMenu() {
 
   return (
     <>
-      <SettingsDialog
-        open={settingsOpen}
-        onOpenChange={setSettingsOpen}
-        defaultSection={settingsDefaultSection}
-      />
       <SidebarMenu className="w-full">
-        <ResourceNotificationCenter />
         <SidebarMenuItem>
           {mounted ? (
             <DropdownMenu>
@@ -90,7 +70,6 @@ export function WorkspaceNavMenu() {
                 <SidebarMenuButton
                   size="lg"
                   className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
-                  data-testid="nav-menu-trigger"
                 >
                   <NavMenuButtonContent isSidebarOpen={isSidebarOpen} t={t} />
                 </SidebarMenuButton>
@@ -103,72 +82,56 @@ export function WorkspaceNavMenu() {
                 <DropdownMenuGroup>
                   <DropdownMenuItem
                     onClick={() => {
-                      setSettingsDefaultSection("appearance");
-                      setSettingsOpen(true);
+                      openSettings("appearance");
                     }}
-                    data-testid="settings-menu-item"
                   >
                     <Settings2Icon />
                     {t.common.settings}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
+                  <a
+                    href="https://deerflow.tech/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <DropdownMenuItem>
+                      <GlobeIcon />
+                      {t.workspace.officialWebsite}
+                    </DropdownMenuItem>
+                  </a>
+                  <a
+                    href="https://github.com/bytedance/deer-flow"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <DropdownMenuItem>
+                      <GithubIcon />
+                      {t.workspace.visitGithub}
+                    </DropdownMenuItem>
+                  </a>
+                  <DropdownMenuSeparator />
+                  <a
+                    href="https://github.com/bytedance/deer-flow/issues"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <DropdownMenuItem>
+                      <BugIcon />
+                      {t.workspace.reportIssue}
+                    </DropdownMenuItem>
+                  </a>
+                  <a href="mailto:support@deerflow.tech">
+                    <DropdownMenuItem>
+                      <MailIcon />
+                      {t.workspace.contactUs}
+                    </DropdownMenuItem>
+                  </a>
                 </DropdownMenuGroup>
-                {isAdmin && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuGroup>
-                      <DropdownMenuItem asChild>
-                        <Link href="/workspace/admin">
-                          <ShieldIcon />
-                          {t.workspace.adminPanel}
-                        </Link>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem asChild>
-                        <Link href="/workspace/admin/users">
-                          <UsersIcon />
-                          {t.workspace.userManagement}
-                        </Link>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem asChild>
-                        <Link href="/workspace/admin/departments">
-                          <Building2Icon />
-                          {t.workspace.departmentManagement}
-                        </Link>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem asChild>
-                        <Link href="/workspace/admin/tools">
-                          <WrenchIcon />
-                          {t.workspace.toolManagement}
-                        </Link>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem asChild>
-                        <Link href="/workspace/admin/resources">
-                          <BoxIcon />
-                          {t.workspace.resourceManagement}
-                        </Link>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem asChild>
-                        <Link href="/workspace/admin/visibility-applications">
-                          <ClipboardCheckIcon />
-                          {t.workspace.applicationManagement}
-                        </Link>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem asChild>
-                        <Link href="/workspace/admin/audit-logs">
-                          <ScrollTextIcon />
-                          {t.workspace.auditLogManagement}
-                        </Link>
-                      </DropdownMenuItem>
-                    </DropdownMenuGroup>
-                  </>
-                )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={() => {
-                    setSettingsDefaultSection("about");
-                    setSettingsOpen(true);
+                    openSettings("about");
                   }}
-                  data-testid="about-settings-menu-item"
                 >
                   <InfoIcon />
                   {t.workspace.about}

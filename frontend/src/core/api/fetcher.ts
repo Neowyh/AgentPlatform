@@ -1,5 +1,6 @@
 import { buildLoginUrl } from "@/core/auth/types";
 
+import { UnauthorizedError } from "./errors";
 /** HTTP methods that the gateway's CSRFMiddleware checks. */
 export type StateChangingMethod = "POST" | "PUT" | "DELETE" | "PATCH";
 
@@ -40,7 +41,6 @@ export interface FetchOptions extends RequestInit {
   /** When false, skip the automatic 401 → login redirect. Default: true. */
   redirectOn401?: boolean;
 }
-
 /**
  * Fetch with credentials and automatic CSRF protection.
  *
@@ -86,8 +86,13 @@ export async function fetch(
   });
 
   if (res.status === 401 && init?.redirectOn401 !== false) {
-    window.location.href = buildLoginUrl(window.location.pathname);
-    throw new Error("Unauthorized");
+    // Include the search string: routes that carry their target in the query
+    // (e.g. the standalone artifact viewer) are otherwise unrecoverable after
+    // login, which lands on the default workspace instead.
+    window.location.href = buildLoginUrl(
+      `${window.location.pathname}${window.location.search}`,
+    );
+    throw new UnauthorizedError();
   }
 
   return res;

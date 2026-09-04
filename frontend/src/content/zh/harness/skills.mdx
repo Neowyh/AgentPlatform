@@ -3,7 +3,7 @@ title: 技能
 description: 技能不仅仅是提示词。它是一个自包含的能力包，可以包含结构化指令、分步工作流、领域最佳实践、支撑资源和工具配置。技能按需加载——在任务需要时注入内容，否则不影响上下文。
 ---
 
-import { Callout, Cards, FileTree, Steps } from "nextra/components";
+import { Callout, FileTree, Steps } from "nextra/components";
 
 # 技能
 
@@ -16,7 +16,7 @@ import { Callout, Cards, FileTree, Steps } from "nextra/components";
 
 ## 技能包含什么
 
-每个技能位于 `resources/skills/`（或用户创建技能的 `resources/skills/`）下自己的子目录中。目录包含一个 `SKILL.md` 文件，定义技能的元数据、指令和工作流。
+每个技能位于 `skills/public/`（或用户创建技能的 `skills/custom/`）下自己的子目录中。目录包含一个 `SKILL.md` 文件，定义技能的元数据、指令和工作流。
 
 <FileTree>
   <FileTree.Folder name="skills/" defaultOpen>
@@ -38,7 +38,7 @@ import { Callout, Cards, FileTree, Steps } from "nextra/components";
 
 ## 内置技能
 
-iDeer 内置以下公共技能：
+DeerFlow 内置以下公共技能：
 
 | 技能                           | 描述                                         |
 | ------------------------------ | -------------------------------------------- |
@@ -105,7 +105,7 @@ skills:
 
 技能可用性在 `extensions_config.json` 中跟踪（独立于 `config.yaml`）。你可以管理技能状态：
 
-- **通过 iDeer 应用界面**：技能面板允许你切换技能的启用/禁用状态。
+- **通过 DeerFlow 应用界面**：技能面板允许你切换技能的启用/禁用状态。
 - **通过 Gateway API**：`POST /api/extensions/skills/{name}/enable` 和 `/disable`。
 - **直接编辑 `extensions_config.json`**。
 
@@ -113,10 +113,10 @@ skills:
 
 ## 按自定义 Agent 限制技能
 
-自定义 Agent 可以被限制为特定技能子集。在 Agent 的配置中（由统一资源目录管理，见 `resources/agents/<uuid>/` 的 agent-draft），设置 `skills` 列表：
+自定义 Agent 可以被限制为特定技能子集。在 Agent 的配置中（存储在 `agents/{name}/config.yaml`），设置 `skills` 列表：
 
 ```yaml
-# agent definition in the resource catalog (agent-draft)
+# agents/my-researcher/config.yaml
 name: my-researcher
 skills:
   - deep-research
@@ -127,9 +127,16 @@ skills:
 - **空列表 `[]`**：Agent 没有技能。
 - **命名列表**：Agent 只加载那些特定技能。
 
+对于作为主 Agent 运行的自定义 Agent，显式列表会同时约束技能发现和沙箱文件系统。
+`/mnt/skills` 只包含“全局已启用、当前用户可见、Agent 已允许”三者的交集。AIO 和
+E2B 会对 shell 命令及文件工具强制执行该视图。Local 仅在 host bash 保持默认禁用时，
+通过受管理的虚拟路径执行该视图；主机文件系统并不是安全边界，启用 host bash 后，
+显式 Agent 策略会失败关闭。其他 sandbox provider 若未声明支持，显式策略会在获取
+沙箱前失败关闭。Agent 配置变更会在该线程的下一次运行生效。
+
 ## 技能进化
 
-iDeer 包含一个可选的**技能进化**功能，允许 Agent 在 `resources/skills/` 目录中自主创建和改进技能：
+DeerFlow 包含一个可选的**技能进化**功能，允许 Agent 在 `skills/custom/` 目录中自主创建和改进技能：
 
 ```yaml
 skill_evolution:
@@ -147,7 +154,7 @@ skill_evolution:
 
 要创建自定义技能：
 
-1. 在 `resources/skills/your-skill-name/` 下创建新目录
+1. 在 `skills/custom/your-skill-name/` 下创建新目录
 2. 添加定义技能元数据和指令的 `SKILL.md` 文件
 3. 技能将在下次 `load_skills()` 调用时自动被发现
 

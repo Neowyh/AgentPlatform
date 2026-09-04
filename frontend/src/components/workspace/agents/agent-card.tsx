@@ -2,15 +2,12 @@
 
 import {
   BotIcon,
-  DownloadIcon,
-  LockIcon,
   MessageSquareIcon,
-  StarIcon,
+  Settings2Icon,
   Trash2Icon,
 } from "lucide-react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { type ComponentProps, type ReactElement, useState } from "react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -31,51 +28,99 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useDeleteAgent, useToggleAgentFavorite } from "@/core/agents";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { useDeleteAgent } from "@/core/agents";
 import type { Agent } from "@/core/agents";
-import { exportAgent } from "@/core/agents/api";
 import { useI18n } from "@/core/i18n/hooks";
+import { cn } from "@/lib/utils";
+
+import { AgentSettingsDialog } from "./agent-settings-dialog";
 
 interface AgentCardProps {
   agent: Agent;
+}
+
+/**
+ * Reveals the full text in a tooltip ONLY when its trigger is actually clipped.
+ * Clipping is measured on pointer enter against the trigger's own box, covering
+ * both single-line `truncate` (width) and multi-line `line-clamp` (height), so
+ * untruncated content never pops a redundant tooltip.
+ */
+function TruncatedTooltip({
+  text,
+  children,
+}: {
+  text: string;
+  children: ReactElement;
+}) {
+  const [truncated, setTruncated] = useState(false);
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        asChild
+        onPointerEnter={(e) => {
+          const el = e.currentTarget;
+          setTruncated(
+            el.scrollWidth > el.clientWidth ||
+              el.scrollHeight > el.clientHeight,
+          );
+        }}
+      >
+        {children}
+      </TooltipTrigger>
+      {truncated && (
+        <TooltipContent className="max-w-xs text-wrap break-words">
+          {text}
+        </TooltipContent>
+      )}
+    </Tooltip>
+  );
+}
+
+/**
+ * Long, user-controlled labels (agent model, skills, tool groups) that must
+ * never break the card layout: width is capped to the parent and the text is
+ * truncated with an ellipsis, with the full value revealed on hover.
+ */
+function TruncatedBadge({
+  label,
+  variant,
+  className,
+}: {
+  label: string;
+  variant: ComponentProps<typeof Badge>["variant"];
+  className?: string;
+}) {
+  return (
+    <TruncatedTooltip text={label}>
+      <Badge
+        variant={variant}
+        className={cn("block max-w-full truncate", className)}
+      >
+        {label}
+      </Badge>
+    </TruncatedTooltip>
+  );
 }
 
 export function AgentCard({ agent }: AgentCardProps) {
   const { t } = useI18n();
   const router = useRouter();
   const deleteAgent = useDeleteAgent();
-  const toggleFavorite = useToggleAgentFavorite();
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const resourceIdentity = agent.resource_id ?? agent.name;
-  const chatIdentity = agent.slug ?? agent.name;
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   function handleChat() {
-    router.push(
-      `/workspace/chats/new?agent=${encodeURIComponent(chatIdentity)}`,
-    );
-  }
-
-  async function handleToggleFavorite() {
-    try {
-      await toggleFavorite.mutateAsync(
-        agent.resource_id
-          ? {
-              name: agent.resource_id,
-              isFavorited: agent.is_favorited ?? false,
-            }
-          : agent.name,
-      );
-      toast.success(
-        agent.is_favorited ? t.agents.favoriteRemoved : t.agents.favoriteAdded,
-      );
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err));
-    }
+    router.push(`/workspace/agents/${agent.name}/chats/new`);
   }
 
   async function handleDelete() {
     try {
-      await deleteAgent.mutateAsync(resourceIdentity);
+      await deleteAgent.mutateAsync(agent.name);
       toast.success(t.agents.deleteSuccess);
       setDeleteOpen(false);
     } catch (err) {
@@ -83,75 +128,37 @@ export function AgentCard({ agent }: AgentCardProps) {
     }
   }
 
-  async function handleExport() {
-    try {
-      const blob = await exportAgent(resourceIdentity);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${agent.name}.zip`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      toast.success(t.agents.exportSuccess);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err));
-    }
-  }
-
   return (
     <>
-      <Card
-        className="workbench-resource-card group flex flex-col transition-shadow hover:shadow-md"
-        data-testid="agent-card"
-      >
+      <Card className="group flex flex-col transition-shadow hover:shadow-md">
         <CardHeader className="pb-3">
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex items-center gap-2">
+          <div className="flex min-w-0 items-start justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-2">
               <div className="bg-primary/10 text-primary flex h-9 w-9 shrink-0 items-center justify-center rounded-lg">
                 <BotIcon className="h-5 w-5" />
               </div>
               <div className="min-w-0">
-                <CardTitle className="type-body truncate">
-                  <Link
-                    href={`/workspace/capabilities/experts/${resourceIdentity}`}
-                    className="hover:underline"
-                  >
+                <TruncatedTooltip text={agent.name}>
+                  <CardTitle className="truncate text-base">
                     {agent.name}
-                  </Link>
-                  {agent.read_only && (
-                    <Badge variant="outline" className="type-body ml-1.5">
-                      <LockIcon className="mr-0.5 h-2.5 w-2.5" />
-                      {t.agents.template}
-                    </Badge>
-                  )}
-                </CardTitle>
-                <div className="mt-0.5 flex items-center gap-1.5">
-                  {agent.model && (
-                    <Badge variant="secondary" className="type-body">
-                      {agent.model}
-                    </Badge>
-                  )}
-                </div>
+                  </CardTitle>
+                </TruncatedTooltip>
+                {agent.model && (
+                  <TruncatedBadge
+                    label={agent.model}
+                    variant="secondary"
+                    className="mt-0.5 text-xs"
+                  />
+                )}
               </div>
             </div>
-            <Button
-              size="icon"
-              variant="ghost"
-              className="h-8 w-8 shrink-0"
-              onClick={handleToggleFavorite}
-              data-testid="agent-favorite-button"
-            >
-              <StarIcon
-                className={`h-4 w-4 ${agent.is_favorited ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground"}`}
-              />
-            </Button>
           </div>
           {agent.description && (
-            <CardDescription className="type-body mt-2 line-clamp-2">
-              {agent.summary ?? agent.description}
-            </CardDescription>
+            <TruncatedTooltip text={agent.description}>
+              <CardDescription className="mt-2 line-clamp-2 text-sm">
+                {agent.description}
+              </CardDescription>
+            </TruncatedTooltip>
           )}
         </CardHeader>
 
@@ -159,34 +166,27 @@ export function AgentCard({ agent }: AgentCardProps) {
           <CardContent className="pt-0 pb-3">
             <div className="flex flex-wrap gap-1">
               {agent.tool_groups?.map((group) => (
-                <Badge
+                <TruncatedBadge
                   key={`tg:${group}`}
+                  label={group}
                   variant="outline"
-                  className="type-body"
-                >
-                  {group}
-                </Badge>
+                  className="text-xs"
+                />
               ))}
               {agent.skills?.map((skill) => (
-                <Badge
+                <TruncatedBadge
                   key={`sk:${skill}`}
+                  label={skill}
                   variant="secondary"
-                  className="type-body"
-                >
-                  {skill}
-                </Badge>
+                  className="text-xs"
+                />
               ))}
             </div>
           </CardContent>
         )}
 
         <CardFooter className="mt-auto flex items-center justify-between gap-2 pt-3">
-          <Button
-            size="sm"
-            className="flex-1"
-            onClick={handleChat}
-            data-testid="agent-chat-button"
-          >
+          <Button size="sm" className="flex-1" onClick={handleChat}>
             <MessageSquareIcon className="mr-1.5 h-3.5 w-3.5" />
             {t.agents.chat}
           </Button>
@@ -195,27 +195,33 @@ export function AgentCard({ agent }: AgentCardProps) {
               size="icon"
               variant="ghost"
               className="h-8 w-8 shrink-0"
-              onClick={handleExport}
-              title={t.common.export}
-              data-testid="agent-export-button"
+              onClick={() => setSettingsOpen(true)}
+              title={t.agents.settings}
             >
-              <DownloadIcon className="h-3.5 w-3.5" />
+              <Settings2Icon className="h-3.5 w-3.5" />
             </Button>
-            {!agent.read_only && (
-              <Button
-                size="icon"
-                variant="ghost"
-                className="text-destructive hover:text-destructive h-8 w-8 shrink-0"
-                onClick={() => setDeleteOpen(true)}
-                title={t.agents.delete}
-                data-testid="agent-delete-button"
-              >
-                <Trash2Icon className="h-3.5 w-3.5" />
-              </Button>
-            )}
+            <Button
+              size="icon"
+              variant="ghost"
+              className="text-destructive hover:text-destructive h-8 w-8 shrink-0"
+              onClick={() => setDeleteOpen(true)}
+              title={t.agents.delete}
+            >
+              <Trash2Icon className="h-3.5 w-3.5" />
+            </Button>
           </div>
         </CardFooter>
       </Card>
+
+      {/* Model settings — mounted only while open so its form state always
+          re-seeds from the latest agent props (avoids stale values on reopen). */}
+      {settingsOpen && (
+        <AgentSettingsDialog
+          agent={agent}
+          open={settingsOpen}
+          onOpenChange={setSettingsOpen}
+        />
+      )}
 
       {/* Delete Confirm */}
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>

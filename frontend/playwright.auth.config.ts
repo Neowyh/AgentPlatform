@@ -1,58 +1,49 @@
-/**
- * Playwright config for Auth E2E tests.
- *
- * Runs the frontend WITHOUT IDEER_AUTH_DISABLED, connecting to the real
- * backend at localhost:8001 for authentication. Requires the backend to
- * be running with auth enabled.
- */
-import { dirname, resolve } from "path";
-import { fileURLToPath } from "url";
-
 import { defineConfig, devices } from "@playwright/test";
-import { config } from "dotenv";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-config({ path: resolve(__dirname, "../.env") });
-const frontendPort = process.env.E2E_FRONTEND_PORT ?? "3003";
-const baseURL = `http://localhost:${frontendPort}`;
+const frontendPort = process.env.E2E_AUTH_FRONTEND_PORT ?? "3001";
+const frontendURL =
+  process.env.PLAYWRIGHT_AUTH_BASE_URL ?? `http://localhost:${frontendPort}`;
+const skipWebServer = process.env.PLAYWRIGHT_SKIP_WEB_SERVER === "1";
 
+/**
+ * Auth-enabled E2E coverage for the login and setup pages. The default config
+ * runs with auth disabled so workspace tests can skip a real session; that
+ * would SSR-redirect these pages before page.route() can exercise recovery.
+ */
 export default defineConfig({
-  testDir: "./tests/e2e/auth",
-  fullyParallel: false,
+  testDir: "./tests/e2e-auth",
+  fullyParallel: true,
   forbidOnly: !!process.env.CI,
-  retries: 0,
-  workers: 1,
-  reporter: "list",
+  retries: process.env.CI ? 2 : 0,
+  workers: process.env.CI ? 1 : undefined,
+  reporter: process.env.CI ? "github" : "html",
   timeout: 30_000,
 
-  expect: {
-    timeout: 15_000,
-  },
-
   use: {
-    baseURL,
+    baseURL: frontendURL,
+    locale: "en-US",
     trace: "on-first-retry",
   },
 
   projects: [
     {
-      name: "auth",
+      name: "chromium",
       use: { ...devices["Desktop Chrome"] },
     },
   ],
 
-  webServer: {
-    command: `pnpm exec next build --webpack && pnpm start -p ${frontendPort}`,
-    url: baseURL,
-    reuseExistingServer: false,
-    timeout: 120_000,
-    env: {
-      SKIP_ENV_VALIDATION: "1",
-      // Auth is ENABLED — no IDEER_AUTH_DISABLED
-      // Do NOT set NEXT_PUBLIC_BACKEND_BASE_URL — the Next.js rewrite rules
-      // in next.config.js proxy /api/* to the gateway when this is unset.
-      OPENAI_API_KEY: process.env.OPENAI_API_KEY ?? "",
-      OPENAI_BASE_URL: process.env.OPENAI_BASE_URL ?? "",
-    },
-  },
+  webServer: skipWebServer
+    ? undefined
+    : {
+        command: `pnpm build && pnpm exec next start -p ${frontendPort}`,
+        url: frontendURL,
+        reuseExistingServer: !process.env.CI,
+        timeout: 240_000,
+        env: {
+          SKIP_ENV_VALIDATION: "1",
+          DEER_FLOW_AUTH_DISABLED: "0",
+          DEER_FLOW_INTERNAL_GATEWAY_BASE_URL: "http://127.0.0.1:65535",
+          DEER_FLOW_TRUSTED_ORIGINS: frontendURL,
+        },
+      },
 });

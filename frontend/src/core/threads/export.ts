@@ -15,7 +15,7 @@ import { titleOfThread } from "./utils";
 /**
  * Optional debug switches for advanced exports.
  *
- * Bytedance/ideer issue #3107 BUG-006 explicitly prescribes that the
+ * Bytedance/deer-flow issue #3107 BUG-006 explicitly prescribes that the
  * default export includes only the user-visible transcript and excludes
  * thinking/reasoning content, tool calls, tool results, hidden messages,
  * memory injection, and `<system-reminder>` payloads. These options let a
@@ -29,6 +29,8 @@ export interface ExportOptions {
   includeToolMessages?: boolean;
   includeHidden?: boolean;
 }
+
+export type ThreadExportFormat = "markdown" | "json";
 
 function visibleMessages(
   messages: Message[],
@@ -139,7 +141,8 @@ function buildJSONMessage(
 ): JSONExportMessage | null {
   // Run the same sanitiser the Markdown path uses so the JSON `content`
   // field never carries inline `<think>...</think>` wrappers, content-array
-  // thinking blocks, `<uploaded_files>` markers, or other internal payloads.
+  // thinking blocks, `<current_uploads>`/`<uploaded_files>` markers, or other
+  // internal payloads.
   const content = formatMessageContent(msg);
   const reasoning =
     options.includeReasoning && msg.type === "ai"
@@ -221,4 +224,16 @@ export function exportThreadAsJSON(thread: AgentThread, messages: Message[]) {
   const json = formatThreadAsJSON(thread, messages);
   const filename = `${sanitizeFilename(titleOfThread(thread))}.json`;
   downloadAsFile(json, filename, "application/json;charset=utf-8");
+}
+
+export function exportThread(
+  thread: AgentThread,
+  messages: Message[],
+  format: ThreadExportFormat,
+) {
+  if (format === "markdown") {
+    exportThreadAsMarkdown(thread, messages);
+  } else {
+    exportThreadAsJSON(thread, messages);
+  }
 }

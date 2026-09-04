@@ -9,12 +9,11 @@ import { cn } from "@/lib/utils";
 import { BookIcon, ChevronDownIcon } from "lucide-react";
 import type { ComponentProps } from "react";
 
-export type SourcesProps = ComponentProps<typeof Collapsible>;
+export type SourcesProps = ComponentProps<"div">;
 
 export const Sources = ({ className, ...props }: SourcesProps) => (
   <Collapsible
-    className={cn("not-prose text-primary type-body mb-4", className)}
-    data-testid="sources-container"
+    className={cn("not-prose text-primary mb-4 text-xs", className)}
     {...props}
   />
 );
@@ -31,7 +30,6 @@ export const SourcesTrigger = ({
 }: SourcesTriggerProps) => (
   <CollapsibleTrigger
     className={cn("flex items-center gap-2", className)}
-    data-testid="sources-trigger"
     {...props}
   >
     {children ?? (
@@ -67,7 +65,6 @@ export const Source = ({ href, title, children, ...props }: SourceProps) => (
     href={href}
     rel="noopener noreferrer"
     target="_blank"
-    data-testid="source-link"
     {...props}
   >
     {children ?? (

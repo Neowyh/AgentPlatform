@@ -20,6 +20,12 @@ export const SUPPORTED_RUN_STREAM_MODES = new Set([
   "custom",
 ] as const);
 
+export const CHAT_RUN_STREAM_MODES = [
+  "messages-tuple",
+  "updates",
+  "custom",
+] as const;
+
 const warnedUnsupportedStreamModes = new Set<string>();
 
 export function warnUnsupportedStreamModes(
@@ -78,4 +84,21 @@ export function sanitizeRunStreamOptions<T>(options: T): T {
   throw new Error(
     `[ideer] Unsupported stream mode(s): ${droppedModes.join(", ")} — supported: ${[...SUPPORTED_RUN_STREAM_MODES].join(", ")}`,
   );
+}
+
+/** Keep chat streams incremental and avoid retransmitting full thread state. */
+export function forceChatRunStreamOptions<T>(options: T): T {
+  const sanitized = sanitizeRunStreamOptions(options);
+  if (typeof sanitized !== "object" || sanitized === null) return sanitized;
+  const requested = Reflect.get(sanitized, "streamMode");
+  const modes = new Set<string>([
+    ...CHAT_RUN_STREAM_MODES,
+    ...((Array.isArray(requested)
+      ? requested
+      : requested == null
+        ? []
+        : [requested]) as string[]),
+  ]);
+  modes.delete("values");
+  return { ...sanitized, streamMode: [...modes] } as T;
 }

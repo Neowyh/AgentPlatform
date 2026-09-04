@@ -2,7 +2,6 @@ import { isStaticWebsiteOnly } from "@/core/static-mode";
 import { DEMO_THREAD_IDS } from "@/core/threads/static-demo";
 
 import { ChatProviders } from "./providers";
-
 export function generateStaticParams() {
   if (!isStaticWebsiteOnly()) {
     return [];

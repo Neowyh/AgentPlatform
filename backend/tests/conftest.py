@@ -6,64 +6,28 @@ issues when unit-testing lightweight config/registry code in isolation.
 
 from __future__ import annotations
 
-import hashlib
 import importlib.util
-import os
-import shutil
 import sys
-import tempfile
-import time
-from datetime import UTC
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
-from uuid import uuid4
+from unittest.mock import MagicMock
 
 import pytest
-from dotenv import load_dotenv
 
-# Load .env from project root (for OPENAI_API_KEY etc.)
-load_dotenv(Path(__file__).resolve().parents[2] / ".env")
-
-
-def _state_snapshot(root: Path) -> str:
-    digest = hashlib.sha256()
-    if not root.exists():
-        return digest.hexdigest()
-    for path in sorted(root.rglob("*"), key=lambda item: item.relative_to(root).as_posix()):
-        relative = path.relative_to(root).as_posix()
-        if path.is_symlink():
-            digest.update(f"symlink\0{relative}\0{os.readlink(path)}".encode())
-        elif path.is_file():
-            digest.update(f"file\0{relative}\0".encode())
-            digest.update(path.read_bytes())
-        elif path.is_dir():
-            digest.update(f"directory\0{relative}".encode())
-    return digest.hexdigest()
-
-
-_PRODUCTION_USERS_ROOT = Path(__file__).resolve().parents[1] / ".ideer" / "users"
-_PRODUCTION_USERS_BEFORE = _state_snapshot(_PRODUCTION_USERS_ROOT)
-_TEST_IDEER_HOME = Path(tempfile.mkdtemp(prefix=f"ideer-pytest-{os.getenv('PYTEST_XDIST_WORKER', 'main')}-"))
-os.environ["IDEER_HOME"] = str(_TEST_IDEER_HOME)
-
-# Make 'app' and 'ideer' importable from any working directory
+# Make 'app' and 'deerflow' importable from any working directory
 sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
-# Make test helpers (e.g. _router_auth_helpers) importable from test modules
-sys.path.insert(0, str(Path(__file__).parent))
-
 # Break the circular import chain that exists in production code:
-#   ideer.subagents.__init__
+#   deerflow.subagents.__init__
 #     -> .executor (SubagentExecutor, SubagentResult)
-#       -> ideer.agents.thread_state
-#         -> ideer.agents.__init__
+#       -> deerflow.agents.thread_state
+#         -> deerflow.agents.__init__
 #           -> lead_agent.agent
 #             -> subagent_limit_middleware
-#               -> ideer.subagents.executor  <-- circular!
+#               -> deerflow.subagents.executor  <-- circular!
 #
-# By injecting a mock for ideer.subagents.executor *before* any test module
+# By injecting a mock for deerflow.subagents.executor *before* any test module
 # triggers the import, __init__.py's "from .executor import ..." succeeds
 # immediately without running the real executor module.
 _executor_mock = MagicMock()
@@ -73,91 +37,7 @@ _executor_mock.SubagentStatus = MagicMock
 _executor_mock.MAX_CONCURRENT_SUBAGENTS = 3
 _executor_mock.get_background_task_result = MagicMock()
 
-if "ideer.subagents.executor" not in sys.modules:
-    sys.modules["ideer.subagents.executor"] = _executor_mock
-
-# Capture initial API key state BEFORE any test module imports ideer.client
-# (which sets OPENAI_API_KEY as a side effect from config.yaml/.env loading).
-# This lets _skip_llm_if_no_key reliably detect "no user-supplied key".
-_initial_openai_api_key = os.environ.get("OPENAI_API_KEY")
-
-
-# ---------------------------------------------------------------------------
-# Shared test fixtures — reduce mock boilerplate across test files
-# ---------------------------------------------------------------------------
-
-
-@pytest.fixture()
-def mock_app_config():
-    """Unified application config mock for tests."""
-    config = MagicMock()
-    config.llm.provider = "openai"
-    config.llm.model = "gpt-4"
-    config.sandbox.enabled = True
-    return config
-
-
-@pytest.fixture()
-def mock_http_client():
-    """Unified HTTP client mock for tests."""
-    client = AsyncMock()
-    client.get = AsyncMock(return_value=MagicMock(status_code=200, json=MagicMock(return_value={})))
-    client.post = AsyncMock(return_value=MagicMock(status_code=200, json=MagicMock(return_value={})))
-    return client
-
-
-@pytest.fixture()
-def mock_db_session():
-    """Unified database session mock for tests."""
-    session = MagicMock()
-    session.execute = MagicMock()
-    session.commit = MagicMock()
-    session.rollback = MagicMock()
-    return session
-
-
-@pytest.fixture()
-def mock_db_session_factory():
-    """Factory fixture that returns a (mock_session, mock_session_factory) pair.
-
-    Usage in tests::
-
-        def test_something(mock_db_session_factory):
-            mock_session, mock_sf = mock_db_session_factory(scalar_result=some_user)
-            # mock_sf can be used as a session factory dependency
-    """
-
-    def _factory(scalar_result=None):
-        mock_session = AsyncMock()
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = scalar_result
-        mock_session.execute = AsyncMock(return_value=mock_result)
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=False)
-        mock_sf = MagicMock(return_value=mock_session)
-        return mock_session, mock_sf
-
-    return _factory
-
-
-@pytest.fixture()
-def mock_sse_bridge():
-    """Unified SSE bridge mock for run-worker tests."""
-    bridge = MagicMock()
-    bridge.publish = AsyncMock()
-    bridge.publish_end = AsyncMock()
-    bridge.cleanup = AsyncMock()
-    return bridge
-
-
-@pytest.fixture()
-def mock_run_manager():
-    """Unified run manager mock for run-worker tests."""
-    manager = MagicMock()
-    manager.set_status = AsyncMock()
-    manager.update_model_name = AsyncMock()
-    manager.update_run_completion = AsyncMock()
-    return manager
+sys.modules["deerflow.subagents.executor"] = _executor_mock
 
 
 @pytest.fixture()
@@ -174,8 +54,16 @@ def provisioner_module():
     assert spec is not None
     assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    previous_module = sys.modules.get(spec.name)
+    sys.modules[spec.name] = module
+    try:
+        spec.loader.exec_module(module)
+        yield module
+    finally:
+        if previous_module is None:
+            sys.modules.pop(spec.name, None)
+        else:
+            sys.modules[spec.name] = previous_module
 
 
 # ---------------------------------------------------------------------------
@@ -183,7 +71,7 @@ def provisioner_module():
 # ---------------------------------------------------------------------------
 #
 # Repository methods read ``user_id`` from a contextvar by default
-# (see ``ideer.runtime.user_context``). Without this fixture, every
+# (see ``deerflow.runtime.user_context``). Without this fixture, every
 # pre-existing persistence test would raise RuntimeError because the
 # contextvar is unset. The fixture sets a default test user on every
 # test; tests that explicitly want to verify behaviour *without* a user
@@ -194,7 +82,7 @@ def provisioner_module():
 def _reset_skill_storage_singleton():
     """Reset the SkillStorage singleton between tests to prevent cross-test contamination."""
     try:
-        from ideer.skills.storage import reset_skill_storage
+        from deerflow.skills.storage import reset_skill_storage
     except ImportError:
         yield
         return
@@ -206,27 +94,21 @@ def _reset_skill_storage_singleton():
 
 
 @pytest.fixture(autouse=True)
-def _reset_registration_attempts():
-    """Reset the in-process registration rate limit state between tests.
+def _reset_frozen_checkpoint_channel_mode(monkeypatch):
+    """Reset the process-global frozen checkpoint channel mode between tests.
 
-    ``_registration_attempts`` is a module-level dict in
-    ``app.gateway.routers.auth`` that accumulates per-IP counters. Without
-    this cleanup, a test that triggers registration can leak state into
-    subsequent tests and cause spurious 429 errors.
+    Production treats ``checkpoint_channel_mode`` (and the delta
+    ``snapshot_frequency`` frozen alongside it) as restart-required: the
+    first client/app freezes it for the process. The test suite builds many
+    clients and apps with different modes in one process, so the freeze must
+    not leak across tests. Mirrors the per-test ``monkeypatch.setattr``
+    resets already used in test_client.py / test_lead_agent_model_resolution.py.
     """
-    try:
-        import app.gateway.routers.auth as auth_mod
+    from deerflow.runtime import checkpoint_mode
 
-        auth_mod._registration_attempts.clear()
-    except ImportError:
-        pass
+    monkeypatch.setattr(checkpoint_mode, "_frozen_checkpoint_channel_mode", None)
+    monkeypatch.setattr(checkpoint_mode, "_frozen_checkpoint_snapshot_frequency", None)
     yield
-    try:
-        import app.gateway.routers.auth as auth_mod
-
-        auth_mod._registration_attempts.clear()
-    except ImportError:
-        pass
 
 
 @pytest.fixture(autouse=True)
@@ -243,7 +125,7 @@ def _restore_title_config_singleton():
     independent regardless of order.
     """
     try:
-        from ideer.config.title_config import reset_title_config
+        from deerflow.config.title_config import reset_title_config
     except ImportError:
         yield
         return
@@ -252,6 +134,25 @@ def _restore_title_config_singleton():
         yield
     finally:
         reset_title_config()
+
+
+@pytest.fixture(autouse=True)
+def _isolate_trace_context():
+    """Give every test an unbound request trace context.
+
+    Entry points bind a trace id unconditionally, and ``ensure_trace_id()``
+    binds one for the remainder of whatever context it is called in. pytest
+    runs the whole session in a single context, so without this reset one
+    test's trace would leak into the next and quietly satisfy assertions
+    about ids the test under exercise never bound.
+    """
+    from deerflow.trace_context import bind_trace_id, reset_trace_id
+
+    token = bind_trace_id(None)
+    try:
+        yield
+    finally:
+        reset_trace_id(token)
 
 
 @pytest.fixture(autouse=True)
@@ -267,7 +168,7 @@ def _auto_user_context(request):
         return
 
     try:
-        from ideer.runtime.user_context import (
+        from deerflow.runtime.user_context import (
             reset_current_user,
             set_current_user,
         )
@@ -281,148 +182,3 @@ def _auto_user_context(request):
         yield
     finally:
         reset_current_user(token)
-
-
-# ---------------------------------------------------------------------------
-# LLM test helpers — skip, serialise, and throttle
-# ---------------------------------------------------------------------------
-#
-# Tests marked ``@pytest.mark.requires_llm`` hit a real LLM API (Mimo by
-# default).  Three concerns:
-#
-# 1. **Skip when no key** — CI and local runs without OPENAI_API_KEY should
-#    skip, not fail.  The ``_skip_llm_if_no_key`` fixture handles this.
-#
-# 2. **Serialise** — LLM tests must not run in parallel (no pytest-xdist
-#    today, but future-proofing).  The ``_llm_rate_limit`` fixture enforces
-#    a minimum gap between consecutive LLM calls.
-#
-# 3. **Retry on transient failure** — API rate-limits and network blips
-#    cause occasional failures.  ``pytest_collection_modifyitems`` adds
-#    ``pytest.mark.flaky(reruns=2, reruns_delay=5)`` so pytest-rerunfailures
-#    retries them automatically.
-
-
-@pytest.fixture(autouse=True)
-def _skip_llm_if_no_key(request):
-    """Auto-skip ``requires_llm`` tests when no API key is available."""
-    if request.node.get_closest_marker("requires_llm"):
-        if os.getenv("CI", "").lower() in ("true", "1") or not _initial_openai_api_key:
-            pytest.skip("Requires LLM API key — skipped in CI or when OPENAI_API_KEY is unset")
-    yield
-
-
-_llm_test_last_run: list[float] = [0.0]
-
-
-@pytest.fixture(autouse=True)
-def _llm_rate_limit(request):
-    """Serialise ``requires_llm`` tests and enforce a minimum interval.
-
-    Prevents hitting Mimo API rate-limits when the full suite runs.
-    Non-LLM tests pass through with zero overhead.
-    """
-    if request.node.get_closest_marker("requires_llm"):
-        gap = 1.5  # seconds between LLM calls
-        elapsed = time.monotonic() - _llm_test_last_run[0]
-        if elapsed < gap:
-            time.sleep(gap - elapsed)
-        yield
-        _llm_test_last_run[0] = time.monotonic()
-    else:
-        yield
-
-
-# ---------------------------------------------------------------------------
-# Shared RBAC user fixtures — reduce boilerplate across permission-matrix tests
-# ---------------------------------------------------------------------------
-
-
-def _make_rbac_user(
-    user_id: str | None = None,
-    role: str = "user",
-    department_id: str | None = None,
-    disabled: bool = False,
-    username: str | None = None,
-) -> MagicMock:
-    """Create a mock RBAC UserModel (shared helper, not a fixture)."""
-    from datetime import datetime
-
-    uid = user_id or str(uuid4())
-    user = MagicMock()
-    user.id = uid
-    user.email = f"{username or f'user-{uid[:8]}'}@test.com"
-    user.role = role
-    user.department_id = department_id
-    user.disabled = disabled
-    user.username = username or f"user-{uid[:8]}"
-    user.created_at = datetime.now(tz=UTC)
-    user.last_login = datetime.now(tz=UTC)
-    user.department = MagicMock()
-    user.department.id = department_id
-    return user
-
-
-@pytest.fixture
-def super_admin_user() -> MagicMock:
-    return _make_rbac_user(role="super_admin", department_id=None)
-
-
-@pytest.fixture
-def dept_admin_user() -> MagicMock:
-    return _make_rbac_user(role="department_admin", department_id="dept-1")
-
-
-@pytest.fixture
-def regular_user() -> MagicMock:
-    return _make_rbac_user(role="user", department_id="dept-1")
-
-
-@pytest.fixture
-def viewer_user() -> MagicMock:
-    return _make_rbac_user(role="viewer", department_id="dept-1")
-
-
-@pytest.fixture(autouse=True)
-def _close_engine():
-    """Close the global DB engine after each test to prevent state leaking.
-
-    Tests in ``test_agents_router_coverage_boost.py`` (and similar) call
-    ``init_engine()`` which writes to a module-level ``_session_factory``.
-    Without cleanup, later tests see a stale engine with a missing user and
-    get FK constraint errors → 403 because ``_save_agent_meta`` silently
-    drops the write and ``_load_agent_meta`` returns an empty dict.
-
-    ``yield`` runs *before* the test, and cleanup (``close_engine``) runs
-    *after*, so the engine is available during the test for tests that need
-    it.
-    """
-    from ideer.persistence import engine as _pengine
-
-    yield
-    _pengine._engine = None
-    _pengine._session_factory = None
-
-
-def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
-    """Add flaky-rerun markers to ``requires_llm`` tests.
-
-    pytest-rerunfailures will retry up to 2 times with a 5-second delay,
-    absorbing transient rate-limit and network errors.
-    """
-    for item in items:
-        if item.get_closest_marker("requires_llm"):
-            item.add_marker(pytest.mark.flaky(reruns=2, reruns_delay=5))
-
-
-def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
-    """Remove test state and fail if the production user tree changed."""
-    try:
-        if _state_snapshot(_PRODUCTION_USERS_ROOT) != _PRODUCTION_USERS_BEFORE:
-            session.exitstatus = pytest.ExitCode.TESTS_FAILED
-            session.config.issue_config_time_warning(
-                pytest.PytestWarning("backend/.ideer/users changed during the test session"),
-                stacklevel=2,
-            )
-    finally:
-        shutil.rmtree(_TEST_IDEER_HOME, ignore_errors=True)

@@ -66,7 +66,6 @@ import {
   type PropsWithChildren,
   type ReactNode,
   type RefObject,
-  forwardRef,
   useCallback,
   useContext,
   useEffect,
@@ -312,7 +311,7 @@ export function PromptInputAttachment({
       <HoverCardTrigger asChild>
         <div
           className={cn(
-            "group border-border hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50 type-body relative flex h-8 cursor-pointer items-center gap-1.5 rounded-md border px-1.5 font-medium transition-all select-none",
+            "group border-border hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50 relative flex h-8 cursor-pointer items-center gap-1.5 rounded-md border px-1.5 text-sm font-medium transition-all select-none",
             className,
           )}
           key={data.id}
@@ -367,11 +366,11 @@ export function PromptInputAttachment({
           )}
           <div className="flex items-center gap-2.5">
             <div className="min-w-0 flex-1 space-y-1 px-0.5">
-              <h4 className="type-section-title truncate leading-none font-semibold">
+              <h4 className="truncate text-sm leading-none font-semibold">
                 {filename || (isImage ? "Image" : "Attachment")}
               </h4>
               {data.mediaType && (
-                <p className="text-muted-foreground type-body truncate font-mono">
+                <p className="text-muted-foreground truncate font-mono text-xs">
                   {data.mediaType}
                 </p>
               )}
@@ -846,7 +845,6 @@ export const PromptInput = ({
         ref={inputRef}
         title="Upload files"
         type="file"
-        data-testid="file-input"
       />
       <form
         className={cn("w-full", className)}
@@ -877,138 +875,104 @@ export const PromptInputBody = ({
   <div className={cn("contents", className)} {...props} />
 );
 
-export type PromptInputTextareaProps = Omit<
-  ComponentProps<typeof InputGroupTextarea>,
-  "onSelect"
-> & {
-  onCursorChange?: (position: number) => void;
-  externalOnKeyDown?: KeyboardEventHandler<HTMLTextAreaElement>;
-};
+export type PromptInputTextareaProps = ComponentProps<
+  typeof InputGroupTextarea
+>;
 
-export const PromptInputTextarea = forwardRef<
-  HTMLTextAreaElement,
-  PromptInputTextareaProps
->(
-  (
-    {
-      onChange,
-      onKeyDown,
-      onCursorChange,
-      externalOnKeyDown,
-      className,
-      placeholder = "What would you like to know?",
-      ...props
-    },
-    ref,
-  ) => {
-    const controller = useOptionalPromptInputController();
-    const attachments = usePromptInputAttachments();
-    const sanitizeIncomingFiles = usePromptInputValidation();
-    const [isComposing, setIsComposing] = useState(false);
+export const PromptInputTextarea = ({
+  onChange,
+  onKeyDown,
+  className,
+  placeholder = "What would you like to know?",
+  ...props
+}: PromptInputTextareaProps) => {
+  const controller = useOptionalPromptInputController();
+  const attachments = usePromptInputAttachments();
+  const sanitizeIncomingFiles = usePromptInputValidation();
+  const [isComposing, setIsComposing] = useState(false);
 
-    const handleKeyDown: KeyboardEventHandler<HTMLTextAreaElement> = (e) => {
-      externalOnKeyDown?.(e);
-      if (e.defaultPrevented) return;
-
-      if (e.key === "Enter") {
-        if (isIMEComposing(e, isComposing)) {
-          return;
-        }
-        if (e.shiftKey) {
-          return;
-        }
-        e.preventDefault();
-
-        const form = e.currentTarget.form;
-        const submitButton = form?.querySelector(
-          'button[type="submit"]',
-        ) as HTMLButtonElement | null;
-        if (submitButton?.disabled) {
-          return;
-        }
-
-        form?.requestSubmit();
+  const handleKeyDown: KeyboardEventHandler<HTMLTextAreaElement> = (e) => {
+    onKeyDown?.(e);
+    if (e.defaultPrevented) {
+      return;
+    }
+    if (e.key === "Enter") {
+      if (isIMEComposing(e, isComposing)) {
+        return;
       }
-
-      if (
-        e.key === "Backspace" &&
-        e.currentTarget.value === "" &&
-        attachments.files.length > 0
-      ) {
-        e.preventDefault();
-        const lastAttachment = attachments.files.at(-1);
-        if (lastAttachment) {
-          attachments.remove(lastAttachment.id);
-        }
+      if (e.shiftKey) {
+        return;
       }
-    };
+      e.preventDefault();
 
-    const handlePaste: ClipboardEventHandler<HTMLTextAreaElement> = (event) => {
-      const items = event.clipboardData?.items;
-
-      if (!items) {
+      // Check if the submit button is disabled before submitting
+      const form = e.currentTarget.form;
+      const submitButton = form?.querySelector(
+        'button[type="submit"]',
+      ) as HTMLButtonElement | null;
+      if (submitButton?.disabled) {
         return;
       }
 
-      const files: File[] = [];
+      form?.requestSubmit();
+    }
+  };
 
-      for (const item of items) {
-        if (item.kind === "file") {
-          const file = item.getAsFile();
-          if (file) {
-            files.push(file);
-          }
+  const handlePaste: ClipboardEventHandler<HTMLTextAreaElement> = (event) => {
+    const items = event.clipboardData?.items;
+
+    if (!items) {
+      return;
+    }
+
+    const files: File[] = [];
+
+    for (const item of items) {
+      if (item.kind === "file") {
+        const file = item.getAsFile();
+        if (file) {
+          files.push(file);
         }
       }
+    }
 
-      if (files.length > 0) {
-        event.preventDefault();
-        const accepted = sanitizeIncomingFiles
-          ? sanitizeIncomingFiles(files)
-          : files;
-        if (accepted.length > 0) {
-          attachments.add(accepted);
-        }
+    if (files.length > 0) {
+      event.preventDefault();
+      const accepted = sanitizeIncomingFiles
+        ? sanitizeIncomingFiles(files)
+        : files;
+      if (accepted.length > 0) {
+        attachments.add(accepted);
       }
-    };
+    }
+  };
 
-    const controlledProps = controller
-      ? {
-          value: controller.textInput.value,
-          onChange: (e: ChangeEvent<HTMLTextAreaElement>) => {
-            controller.textInput.setInput(e.currentTarget.value);
-            onChange?.(e);
-            // Ensure slash overlay reacts to programmatic fills (Playwright)
-            // where onInput may not fire with updated selectionStart yet.
-            onCursorChange?.(e.currentTarget.selectionStart ?? 0);
-          },
-        }
-      : {
-          onChange,
-        };
+  const controlledProps = controller
+    ? {
+        value: controller.textInput.value,
+        onChange: (e: ChangeEvent<HTMLTextAreaElement>) => {
+          controller.textInput.setInput(e.currentTarget.value);
+          onChange?.(e);
+        },
+      }
+    : {
+        onChange,
+      };
 
-    return (
-      <InputGroupTextarea
-        ref={ref}
-        className={cn("field-sizing-content max-h-48 min-h-16", className)}
-        name="message"
-        onCompositionEnd={() => setIsComposing(false)}
-        onCompositionStart={() => setIsComposing(true)}
-        onKeyDown={handleKeyDown}
-        onPaste={handlePaste}
-        onSelect={(e) => {
-          onCursorChange?.(e.currentTarget.selectionStart ?? 0);
-        }}
-        onInput={(e) => {
-          onCursorChange?.(e.currentTarget.selectionStart ?? 0);
-        }}
-        placeholder={placeholder}
-        {...props}
-        {...controlledProps}
-      />
-    );
-  },
-);
+  return (
+    <InputGroupTextarea
+      className={cn("field-sizing-content max-h-48 min-h-16", className)}
+      name="message"
+      onCompositionEnd={() => setIsComposing(false)}
+      onCompositionStart={() => setIsComposing(true)}
+      onKeyDown={handleKeyDown}
+      onPaste={handlePaste}
+      placeholder={placeholder}
+      {...props}
+      {...controlledProps}
+    />
+  );
+};
 
 export type PromptInputHeaderProps = Omit<
   ComponentProps<typeof InputGroupAddon>,
@@ -1418,7 +1382,7 @@ export const PromptInputTabLabel = ({
 }: PromptInputTabLabelProps) => (
   <h3
     className={cn(
-      "text-muted-foreground type-body mb-2 px-3 font-medium",
+      "text-muted-foreground mb-2 px-3 text-xs font-medium",
       className,
     )}
     {...props}
@@ -1442,7 +1406,7 @@ export const PromptInputTabItem = ({
 }: PromptInputTabItemProps) => (
   <div
     className={cn(
-      "hover:bg-accent type-body flex items-center gap-2 px-3 py-2",
+      "hover:bg-accent flex items-center gap-2 px-3 py-2 text-xs",
       className,
     )}
     {...props}

@@ -1,4 +1,4 @@
-"""Authentication configuration for iDeer."""
+"""Authentication configuration for the Gateway."""
 
 import logging
 import os
@@ -15,7 +15,7 @@ class AuthConfig(BaseModel):
     """JWT and auth-related configuration. Parsed once at startup.
 
     Note: the ``users`` table now lives in the shared persistence
-    database managed by ``ideer.persistence.engine``. The old
+    database managed by the shared persistence engine. The old
     ``users_db_path`` config key has been removed — user storage is
     configured through ``config.database`` like every other table.
     """
@@ -45,7 +45,7 @@ def _load_or_create_secret() -> str:
             if secret:
                 return secret
     except OSError as exc:
-        raise RuntimeError(f"Failed to read JWT secret from {secret_file}. Set AUTH_JWT_SECRET explicitly or fix IDEER_HOME/base directory permissions so iDeer can read its persisted auth secret.") from exc
+        raise RuntimeError(f"Failed to read JWT secret from {secret_file}. Set AUTH_JWT_SECRET explicitly or fix base directory permissions so the Gateway can read its persisted auth secret.") from exc
 
     secret = secrets.token_urlsafe(32)
     try:
@@ -54,7 +54,7 @@ def _load_or_create_secret() -> str:
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
             fh.write(secret)
     except OSError as exc:
-        raise RuntimeError(f"Failed to persist JWT secret to {secret_file}. Set AUTH_JWT_SECRET explicitly or fix IDEER_HOME/base directory permissions so iDeer can store a stable auth secret.") from exc
+        raise RuntimeError(f"Failed to persist JWT secret to {secret_file}. Set AUTH_JWT_SECRET explicitly or fix base directory permissions so the Gateway can store a stable auth secret.") from exc
     return secret
 
 

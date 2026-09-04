@@ -8,10 +8,10 @@ const meta: MetaRecord = {
     title: "Introduction",
   },
   harness: {
-    title: "iDeer Harness",
+    title: "DeerFlow Harness",
   },
   application: {
-    title: "iDeer App",
+    title: "DeerFlow App",
   },
   tutorials: {
     title: "Tutorials",
@@ -19,8 +19,20 @@ const meta: MetaRecord = {
   reference: {
     title: "Reference",
   },
-  manual: {
-    title: "User Manual",
+  workspace: {
+    type: "page",
+  },
+  blog: {
+    type: "page",
+  },
+  posts: {
+    type: "page",
+  },
+  login: {
+    type: "page",
+  },
+  setup: {
+    type: "page",
   },
 };
 

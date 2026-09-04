@@ -1,5 +1,5 @@
 import { ExternalLinkIcon } from "lucide-react";
-import type { ComponentProps } from "react";
+import { isValidElement, type ComponentProps, type ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import {
@@ -8,6 +8,25 @@ import {
   HoverCardTrigger,
 } from "@/components/ui/hover-card";
 import { cn } from "@/lib/utils";
+
+/** Extract visible text from renderer-provided ReactNode children. */
+export function extractReactNodeText(node: ReactNode): string | null {
+  if (typeof node === "string" || typeof node === "number") {
+    return String(node);
+  }
+  if (Array.isArray(node)) {
+    const text = node
+      .map(extractReactNodeText)
+      .filter((value): value is string => value !== null)
+      .join("");
+    return text || null;
+  }
+  if (isValidElement(node)) {
+    const children = (node.props as { children?: ReactNode }).children;
+    return children === undefined ? null : extractReactNodeText(children);
+  }
+  return null;
+}
 
 export function CitationLink({
   href,
@@ -18,9 +37,7 @@ export function CitationLink({
 
   // Priority: children > domain
   const childrenText =
-    typeof children === "string"
-      ? children.replace(/^citation:\s*/i, "")
-      : null;
+    extractReactNodeText(children)?.replace(/^citation:\s*/i, "") ?? null;
   const isGenericText = childrenText === "Source" || childrenText === "来源";
   const displayText = (!isGenericText && childrenText) ?? domain;
 
@@ -37,7 +54,7 @@ export function CitationLink({
         >
           <Badge
             variant="secondary"
-            className="hover:bg-secondary/80 type-body mx-0.5 cursor-pointer gap-1 rounded-full px-2 py-0.5 font-normal"
+            className="hover:bg-secondary/80 mx-0.5 cursor-pointer gap-1 rounded-full px-2 py-0.5 text-xs font-normal"
           >
             {displayText}
             <ExternalLinkIcon className="size-3" />
@@ -48,12 +65,12 @@ export function CitationLink({
         <div className="p-3">
           <div className="space-y-1">
             {displayText && (
-              <h4 className="type-section-title truncate leading-tight font-medium">
+              <h4 className="truncate text-sm leading-tight font-medium">
                 {displayText}
               </h4>
             )}
             {href && (
-              <p className="text-muted-foreground type-body truncate break-all">
+              <p className="text-muted-foreground truncate text-xs break-all">
                 {href}
               </p>
             )}
@@ -62,7 +79,7 @@ export function CitationLink({
             href={href}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-primary type-body mt-2 inline-flex items-center gap-1 hover:underline"
+            className="text-primary mt-2 inline-flex items-center gap-1 text-xs hover:underline"
           >
             Visit source
             <ExternalLinkIcon className="size-3" />

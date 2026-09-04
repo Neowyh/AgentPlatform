@@ -48,7 +48,7 @@ if [ -n "$port_2026_usage" ]; then
     echo "  Occupying process:"
     echo "$port_2026_usage"
 
-    ideer_process_found=0
+    deerflow_process_found=0
     while IFS= read -r pid; do
         if [ -z "$pid" ]; then
             continue
@@ -56,18 +56,18 @@ if [ -n "$port_2026_usage" ]; then
 
         process_command="$(ps -p "$pid" -o command= 2>/dev/null || true)"
         case "$process_command" in
-            *[Dd]eer[Ff]low*|*[Dd]eerflow*|*[Nn]ginx*ideer*|*ideer/*[Nn]ginx*)
-                ideer_process_found=1
+            *[Dd]eer[Ff]low*|*[Dd]eerflow*|*[Nn]ginx*deerflow*|*deerflow/*[Nn]ginx*)
+                deerflow_process_found=1
                 ;;
         esac
     done <<EOF
 $(printf '%s\n' "$port_2026_usage" | awk 'NR > 1 {print $2}')
 EOF
 
-    if [ "$ideer_process_found" -eq 1 ]; then
-        echo "✓ Port 2026 is occupied by iDeer"
+    if [ "$deerflow_process_found" -eq 1 ]; then
+        echo "✓ Port 2026 is occupied by DeerFlow"
     else
-        echo "✗ Port 2026 must be free before starting iDeer"
+        echo "✗ Port 2026 must be free before starting DeerFlow"
         exit 1
     fi
 else
