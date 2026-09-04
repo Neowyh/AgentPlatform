@@ -31,7 +31,6 @@ from typing import Dict, List, Optional, Tuple, Union
 
 from install_agent import (
     _find_super_admin_id,
-    _find_top_level_block,
     default_base_dir,
     resolve_config_path,
 )
@@ -100,6 +99,23 @@ def _has_document_tool_group(lines: List[str]) -> bool:
 
 def _has_read_document_tool(lines: List[str]) -> bool:
     return any(re.match(r"^\s*- name: read_document\s*$", line) for line in lines)
+
+
+def _find_top_level_block(
+    lines: List[str], key: str
+) -> Tuple[Optional[int], int]:
+    start: Optional[int] = None
+    end = len(lines)
+    for index, line in enumerate(lines):
+        if re.match(rf"^{re.escape(key)}:\s*$", line):
+            start = index
+            continue
+        if start is not None and index > start and re.match(
+            r"^[A-Za-z0-9_-]+:", line
+        ):
+            end = index
+            break
+    return start, end
 
 
 def _set_allow_host_bash(lines: List[str], value: bool) -> List[str]:

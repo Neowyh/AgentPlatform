@@ -198,7 +198,6 @@ def test_main_installs_agent_and_wires_config(monkeypatch: pytest.MonkeyPatch, t
     import install_agent
 
     monkeypatch.setattr(install_agent, "default_source_dir", lambda agent_name: source)
-    monkeypatch.setattr(install_agent, "default_subagents_file", lambda agent_name: tmp_path / "subagents.yaml")
     monkeypatch.setenv("IDEER_HOME", str(runtime))
     monkeypatch.setenv("IDEER_CONFIG_PATH", str(config_path))
 
