@@ -59,7 +59,19 @@ describe("Hero", () => {
 
   test("renders CTA button with Chinese text", () => {
     render(<Hero />);
-    expect(screen.getByText("开始创造")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /开始创造/ })).toHaveAttribute(
+      "href",
+      "/login?next=%2Fworkspace",
+    );
+  });
+
+  test("uses the warm-paper landing theme hooks", () => {
+    const { container } = render(<Hero />);
+    expect(container.querySelector("[data-testid='galaxy']")).toBeNull();
+    expect(
+      container.querySelector("[data-testid='flickering-grid']"),
+    ).toBeNull();
+    expect(screen.getByRole("heading")).toHaveClass("text-[#3d2b1f]");
   });
 
   test("does not render English words in WordRotate", () => {

@@ -394,7 +394,7 @@ class TestMemoryConfig:
 class TestRunEventsConfig:
     def test_defaults(self):
         cfg = RunEventsConfig()
-        assert cfg.backend == "memory"
+        assert cfg.backend == "db"
         assert cfg.max_trace_content == 10240
         assert cfg.track_token_usage is True
 

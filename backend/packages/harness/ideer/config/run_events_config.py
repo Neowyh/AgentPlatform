@@ -20,8 +20,8 @@ from pydantic import BaseModel, Field
 
 class RunEventsConfig(BaseModel):
     backend: Literal["memory", "db", "jsonl"] = Field(
-        default="memory",
-        description="Storage backend for run events. 'memory' for development (no persistence), 'db' for production (SQL queries), 'jsonl' for lightweight single-node persistence.",
+        default="db",
+        description="Storage backend for run events. 'db' persists messages and traces with the configured database; 'memory' is ephemeral; 'jsonl' is a lightweight single-node alternative.",
     )
     max_trace_content: int = Field(
         default=10240,

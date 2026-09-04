@@ -22,10 +22,16 @@ import { getBackendBaseURL } from "../config";
 
 import type { RunMessage } from "./types";
 
+type RecoverableRun = Run & {
+  message_count?: number;
+  first_user_message?: string | null;
+  last_assistant_message?: string | null;
+};
+
 // Local runs hook to avoid circular import with hooks.ts (history is the owner)
 function useThreadRuns(threadId?: string) {
   const apiClient = getAPIClient();
-  return useQuery<Run[]>({
+  return useQuery<RecoverableRun[]>({
     queryKey: ["thread", threadId],
     queryFn: async () => {
       if (!threadId) return [];
@@ -215,6 +221,20 @@ export function useThreadHistory(threadId: string) {
         const _messages = runMessages
           .filter((m) => !m.metadata.caller?.startsWith("middleware:"))
           .map((m) => m.content);
+        if (
+          _messages.length === 0 &&
+          run.message_count &&
+          run.message_count > 0
+        ) {
+          const summary = [run.first_user_message, run.last_assistant_message]
+            .filter((value): value is string => Boolean(value))
+            .join(" → ");
+          toast.warning(
+            summary
+              ? `This older conversation cannot be fully restored. Available summary: ${summary}`
+              : "This older conversation cannot be fully restored because its messages were not persisted.",
+          );
+        }
         if (
           threadIdRef.current !== requestThreadId ||
           controller.signal.aborted

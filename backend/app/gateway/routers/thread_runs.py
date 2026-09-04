@@ -76,6 +76,8 @@ class RunResponse(BaseModel):
     subagent_tokens: int = 0
     middleware_tokens: int = 0
     message_count: int = 0
+    first_user_message: str | None = None
+    last_assistant_message: str | None = None
 
 
 class ThreadTokenUsageModelBreakdown(BaseModel):
@@ -130,6 +132,25 @@ def _record_to_response(record: RunRecord) -> RunResponse:
         middleware_tokens=record.middleware_tokens,
         message_count=record.message_count,
     )
+
+
+def _message_summary(row: dict) -> str | None:
+    content = row.get("content")
+    if isinstance(content, dict):
+        content = content.get("content")
+    if not isinstance(content, str):
+        return None
+    text = " ".join(content.split())
+    return text[:240] if text else None
+
+
+async def _response_with_message_summary(record: RunRecord, event_store) -> RunResponse:
+    response = _record_to_response(record)
+    rows = await event_store.list_messages_by_run(record.thread_id, record.run_id, limit=200)
+    summaries = [(row.get("event_type"), _message_summary(row)) for row in rows]
+    response.first_user_message = next((text for event_type, text in summaries if event_type == "human_message" and text), None)
+    response.last_assistant_message = next((text for event_type, text in reversed(summaries) if event_type == "ai_message" and text), None)
+    return response
 
 
 # ---------------------------------------------------------------------------
@@ -204,9 +225,10 @@ async def wait_run(thread_id: str, body: RunCreateRequest, request: Request) -> 
 async def list_runs(thread_id: str, request: Request) -> list[RunResponse]:
     """List all runs for a thread."""
     run_mgr = get_run_manager(request)
+    event_store = get_run_event_store(request)
     user_id = await get_current_user(request)
     records = await run_mgr.list_by_thread(thread_id, user_id=user_id)
-    return [_record_to_response(r) for r in records]
+    return [await _response_with_message_summary(record, event_store) for record in records]
 
 
 @router.get("/{thread_id}/runs/{run_id}", response_model=RunResponse)

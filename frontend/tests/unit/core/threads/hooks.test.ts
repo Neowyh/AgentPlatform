@@ -13,6 +13,7 @@ const mockGetBackendBaseURL = vi.hoisted(() =>
 );
 const mockToastError = vi.hoisted(() => vi.fn());
 const mockToastInfo = vi.hoisted(() => vi.fn());
+const mockToastWarning = vi.hoisted(() => vi.fn());
 const mockFetchThreadTokenUsage = vi.hoisted(() => vi.fn());
 const mockUseStream = vi.hoisted(() =>
   vi.fn(() => ({
@@ -63,10 +64,12 @@ const mockToast = vi.hoisted(() => {
     error: ReturnType<typeof vi.fn>;
     success: ReturnType<typeof vi.fn>;
     info: ReturnType<typeof vi.fn>;
+    warning: ReturnType<typeof vi.fn>;
   };
   fn.error = mockToastError;
   fn.success = vi.fn();
   fn.info = mockToastInfo;
+  fn.warning = mockToastWarning;
   return fn;
 });
 
@@ -962,6 +965,35 @@ describe("useThreadHistory", () => {
 
     expect(result.current.messages[0]).toEqual(
       expect.objectContaining({ id: "m1" }),
+    );
+  });
+
+  it("warns when an older run reports lost messages and supplies its summary", async () => {
+    mockGetAPIClient.mockReturnValue({
+      runs: {
+        list: vi.fn().mockResolvedValue([
+          {
+            run_id: "r1",
+            created_at: "2024-01-01",
+            message_count: 2,
+            first_user_message: "original request",
+            last_assistant_message: "saved conclusion",
+          },
+        ]),
+      },
+    });
+    mockFetchFn.mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: [], has_more: false }),
+    });
+
+    const { wrapper } = createWrapper();
+    renderHook(() => useThreadHistory("thread-1"), { wrapper });
+
+    await waitFor(() =>
+      expect(mockToastWarning).toHaveBeenCalledWith(
+        expect.stringContaining("original request → saved conclusion"),
+      ),
     );
   });
 

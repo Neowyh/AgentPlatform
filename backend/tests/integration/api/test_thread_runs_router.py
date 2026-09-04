@@ -16,6 +16,7 @@ Covers gaps not addressed by existing test files:
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
@@ -25,6 +26,7 @@ from app.gateway.routers.thread_runs import (
     RunResponse,
     _cancel_conflict_detail,
     _record_to_response,
+    _response_with_message_summary,
 )
 from ideer.runtime import RunRecord, RunStatus
 
@@ -71,6 +73,9 @@ def _make_app(**state_attrs):
 
     app = make_authed_test_app()
     app.include_router(thread_runs.router)
+    event_store = MagicMock()
+    event_store.list_messages_by_run = AsyncMock(return_value=[])
+    app.state.run_event_store = event_store
     for key, val in state_attrs.items():
         setattr(app.state, key, val)
     return app
@@ -102,6 +107,23 @@ class TestCancelConflictDetail:
         detail = _cancel_conflict_detail("run-1", record)
         assert "not cancellable" in detail
         assert "success" in detail
+
+
+class TestRunResponseSummary:
+    def test_uses_persisted_first_user_and_last_assistant_messages(self):
+        store = MagicMock()
+        store.list_messages_by_run = AsyncMock(
+            return_value=[
+                {"event_type": "human_message", "content": {"content": "  plan  a  trip "}},
+                {"event_type": "ai_message", "content": {"content": "First response"}},
+                {"event_type": "ai_message", "content": {"content": "Final response"}},
+            ]
+        )
+
+        response = asyncio.run(_response_with_message_summary(_make_run_record(), store))
+
+        assert response.first_user_message == "plan a trip"
+        assert response.last_assistant_message == "Final response"
 
     def test_error_run_returns_not_cancellable_message(self):
         """Error runs get 'not cancellable' detail."""
