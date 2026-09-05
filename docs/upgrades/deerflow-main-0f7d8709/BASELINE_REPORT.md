@@ -182,6 +182,11 @@ The following focused slices are green on this branch:
   lead-agent prompt. The previous parallel `/mnt/run-skills` namespace is gone;
   canonical sandbox, prompt, and exact AIO mount regressions passed (20 unit
   tests plus 1 exact mount test).
+- Gateway startup resource seeding, canonical storage reconciliation, and
+  anomaly auditing now resolve filesystem paths through DeerFlow's path
+  runtime. Nine focused startup/extension tests passed; five deployment-script
+  assertions remain open because the checked-in compose/launcher contract is
+  already out of sync with those tests.
 - Gateway run-config hardening now enforces a server-owned recursion ceiling,
   rejects client checkpoint-channel mode overrides, preserves the canonical
   thread ID in both runtime containers, dual-writes custom Agent identity for
