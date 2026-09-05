@@ -56,7 +56,7 @@ migration and air-gapped installation are still pending and are release gates.
 
 ## Runtime Foundation focused evidence
 
-The branch still has 155 textual `ideer` imports under `backend/app`,
+The branch still has 154 textual `ideer` imports under `backend/app`,
 `backend/scripts` and the AgentPlatform-facing harness adapters. This is an
 inventory signal only; the final `import ideer` failure gate is intentionally
 not claimed until the Workflow/resource control-plane extraction is complete.
@@ -101,6 +101,9 @@ The following focused slices are green on this branch:
 - Tool authorization assembly/runtime deny coverage: 28 passed across
   `test_authorization_enforcement.py` and `test_authorization_tool_filter.py`;
   an unrelated `test_client.py` collection drift remains separately recorded.
+- Run/Checkpoint gateway boundary: `thread_runs` now consumes DeerFlow
+  `RunRecord`/`RunStatus`; direct stateless and thread-runs router regressions:
+  32 passed.
 
 These results establish the next-stage baseline but do not close the semantic
 ledger rows. Shared-resource, workflow receipt, migration, offline and fresh

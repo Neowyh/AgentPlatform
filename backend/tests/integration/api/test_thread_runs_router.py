@@ -28,7 +28,7 @@ from app.gateway.routers.thread_runs import (
     _record_to_response,
     _response_with_message_summary,
 )
-from ideer.runtime import RunRecord, RunStatus
+from deerflow.runtime import RunRecord, RunStatus
 
 # ---------------------------------------------------------------------------
 # Helpers
