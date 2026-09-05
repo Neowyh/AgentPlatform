@@ -13,7 +13,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from ideer.config.paths import get_paths
+from deerflow.config.paths import get_paths
 
 _CREDENTIAL_FILENAME = "admin_initial_credentials.txt"
 
