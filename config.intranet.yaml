@@ -77,7 +77,7 @@ models:
   # vLLM 部署视觉模型示例
   # - name: qwen2.5-vl-72b
   #   display_name: Qwen2.5 VL 72B (vLLM)
-  #   use: ideer.models.vllm_provider:VllmChatModel
+  #   use: deerflow.models.vllm_provider:VllmChatModel
   #   model: Qwen/Qwen2.5-VL-72B-Instruct
   #   api_key: $VLLM_API_KEY
   #   base_url: http://vllm.internal.com:8000/v1
