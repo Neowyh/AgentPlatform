@@ -71,7 +71,7 @@ The following focused slices are green on this branch:
 - sandbox mount contract and `/mnt/skills` defaults: 3 tests;
 - AgentPlatform extension boundary and lifecycle binding (snapshot identity,
   caller-scoped memory, default-deny network, explicit install registration):
-  6 tests;
+  7 tests, including shared-agent owner-state exclusion;
 - sandbox network policy and intranet proxy workflow: 14 tests;
 - intranet runtime config path and default-deny contract: 1 test;
 - sub-agent tool receipts, report contract, acceptance checks and delegation

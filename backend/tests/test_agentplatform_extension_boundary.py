@@ -116,3 +116,41 @@ def test_install_registers_boundary_only_with_explicit_authorization() -> None:
         )
     loaded = configured.build()
     assert loaded.has_task_lifecycle
+
+
+@pytest.mark.asyncio
+async def test_shared_agent_install_projects_caller_permissions_without_owner_state() -> None:
+    registry = ExtensionRegistry()
+    with registry.attributed_to("agentplatform:install"):
+        install(
+            registry,
+            {
+                "authorization": {
+                    "caller_user_id": "caller",
+                    "effective_agent_id": "shared-agent",
+                    "policy_revision": "policy-2",
+                    "allowed_tools": ["read_file"],
+                    "memory_scope": "caller",
+                    "owner_user_id": "owner",
+                    "owner_credential": "must-not-cross-runtime-boundary",
+                    "owner_memory_scope": "owner",
+                },
+            },
+        )
+
+    contributor = registry.build().task_lifecycle[0][1]
+    store = ExtensionData("task-1")
+    info = TaskInfo(task_id="task-1", run_id="run-1", thread_id="thread-1", kind="lead")
+
+    await contributor.on_task_start(ExtensionData("app"), store, info)
+    envelope = store.get(RunEvidenceEnvelope)
+    assert envelope is not None
+    assert envelope.authorization_context == {
+        "caller_user_id": "caller",
+        "effective_agent_id": "shared-agent",
+        "policy_revision": "policy-2",
+        "allowed_tools": ["read_file"],
+        "memory_scope": "caller",
+    }
+    assert "owner" not in str(envelope.authorization_context)
+    assert "credential" not in str(envelope.authorization_context).lower()
