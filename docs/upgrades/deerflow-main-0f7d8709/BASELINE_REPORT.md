@@ -239,6 +239,13 @@ The following focused slices are green on this branch:
   environment (the explicit AnyIO invocation produced no result and was
   interrupted); the default pytest path is also blocked by the sandbox's
   socket-using rerun plugin.
+- Memory migration coverage outside the stale router patch seam passed 42
+  tests with one skipped test, covering the DeerFlow `MemoryManager` contract,
+  user isolation, Markdown/legacy JSON migration, retrieval adapter and
+  restart persistence. The legacy `test_memory_router.py` module still has 29
+  collection-time failures because it patches the removed `get_memory_manager`
+  seam; those are classified as test-path compatibility debt, not counted as
+  runtime regressions.
 
 These results establish the next-stage baseline but do not close the semantic
 ledger rows. Shared-resource, workflow receipt, migration, offline and fresh
