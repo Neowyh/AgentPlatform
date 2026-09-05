@@ -43,3 +43,13 @@ No row may move to `closed` without naming a report or focused test in the
 acceptance-evidence column. The ledger is intentionally still open: this
 branch is not eligible for `develop` or release until every row and the final
 gates in the implementation plan are closed.
+
+## Current boundary gate evidence
+
+- `PYTHONPATH=backend:backend/packages/harness import deerflow`: **passed**.
+- `import ideer`: **still succeeds**; the final removal gate is therefore open.
+- A production inventory currently reports 26 `backend/app/**` files importing
+  `ideer`; the remaining references are concentrated in the AgentPlatform
+  control plane (resources/workflows/auth/audit/persistence) plus the
+  compatibility runtime itself. This inventory is evidence for the next
+  migration slices, not a permission to delete the package wholesale.
