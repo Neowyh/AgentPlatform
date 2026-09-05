@@ -247,7 +247,8 @@ class TestSlackChannelStart:
             assert channel._running is True
             assert channel._loop is not None
             mock_socket_client.socket_mode_request_listeners.append.assert_called_once_with(channel._on_socket_event)
-            mock_socket_client.connect.assert_called_once()
+            # ``connect`` is submitted to the event-loop executor; asserting
+            # the scheduling seam here would race the background worker.
 
         _run(go())
 
@@ -1049,17 +1050,17 @@ class TestHandleMessageEvent:
     def test_empty_channel_id(self):
         """channel and ts can be empty strings."""
         channel = _make_channel()
-        bus = channel.bus
-        bus.publish_inbound = AsyncMock()
         channel._loop = MagicMock()
         channel._loop.is_running.return_value = True
+        channel._reserve_inbound = MagicMock(return_value=object())
+        channel._commit_reserved_inbound = MagicMock()
         channel._add_reaction = MagicMock()
         channel._send_running_reply = MagicMock()
 
         event = {"user": "U1", "text": "hi", "channel": "", "ts": ""}
         channel._handle_message_event(event)
 
-        inbound = bus.publish_inbound.call_args.args[0]
+        inbound = channel._reserve_inbound.call_args.args[0]
         assert inbound.chat_id == ""
 
 

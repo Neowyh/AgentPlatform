@@ -207,8 +207,9 @@ class TestStart:
         assert ch._running is True
         assert ch._application is mock_app
         assert ch._main_loop is not None
-        # Verify 7 handlers added: /start, /new, /status, /models, /memory, /help, text
-        assert mock_app.add_handler.call_count == 7
+        # Verify the current handler set: /start, /bootstrap, /new, /status,
+        # /models, /memory, /goal, /help, command text, plain text, files.
+        assert mock_app.add_handler.call_count == 11
 
 
 # ---------------------------------------------------------------------------
