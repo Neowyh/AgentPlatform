@@ -14,7 +14,7 @@ from _router_auth_helpers import make_authed_test_app
 from fastapi.testclient import TestClient
 
 from app.gateway.routers.mcp import router as mcp_router
-from ideer.config.extensions_config import ExtensionsConfig, McpServerConfig
+from deerflow.config.extensions_config import ExtensionsConfig, McpServerConfig
 
 pytestmark = pytest.mark.no_auto_user
 
