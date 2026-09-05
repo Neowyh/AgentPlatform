@@ -82,8 +82,9 @@ The following focused slices are green on this branch:
 - Workflow artifact/schema/precondition integration: 15 passed across
   `test_v2_artifact_gates.py`, `test_v2_write_schemas.py` and
   `test_v2_preconditions.py`.
-- Skill projection and mount isolation: 71 passed across projection,
-  three-way mount, container-path and requested-skill resolver tests.
+- Skill projection and mount isolation: 115 passed across projection,
+  three-way mount, local sandbox mount, container-path and requested-skill
+  resolver tests.
 - Memory migration, manager configuration, user/agent isolation and restart
   persistence: 75 passed, 1 skipped across the focused memory contract suite.
 - Channel runtime boundary: inbound upload management, application-config
