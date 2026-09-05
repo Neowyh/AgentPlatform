@@ -164,6 +164,11 @@ The following focused slices are green on this branch:
   then server-owned checkpoint fields are attached to the runtime config. The
   focused validation/404 contract tests passed (2 passed). Scheduler helper
   dispatch still awaits its idempotent `start_run` contract migration.
+- Scheduler dispatch now reuses the Gateway admission path with a live
+  `scheduler.recursion_limit` clamp, internal `non_interactive` context, owner
+  identity propagation, and `scheduled-task:<run_id>` idempotency keys. The
+  focused scheduler launcher contract passed (5 passed). Full scheduler
+  persistence/recovery and multi-instance acceptance remain open.
 
 These results establish the next-stage baseline but do not close the semantic
 ledger rows. Shared-resource, workflow receipt, migration, offline and fresh
