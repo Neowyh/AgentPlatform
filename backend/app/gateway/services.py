@@ -448,6 +448,7 @@ def build_run_config(
                 context = dict(context_value)
             else:
                 raise ValueError("request config 'context' must be a mapping or null.")
+            context.setdefault("thread_id", thread_id)
             config["context"] = context
             # Keep the thread id in the checkpoint-facing container while
             # dropping any caller-supplied configurable overrides.
@@ -455,6 +456,7 @@ def build_run_config(
         else:
             configurable = {"thread_id": thread_id}
             configurable.update(request_config.get("configurable", {}))
+            configurable["thread_id"] = thread_id
             config["configurable"] = configurable
         for k, v in request_config.items():
             if k not in ("configurable", "context"):
@@ -478,17 +480,18 @@ def build_run_config(
         normalized = assistant_id.strip().lower().replace("_", "-")
         if not normalized or not re.fullmatch(r"[a-z0-9-]+", normalized):
             raise ValueError(f"Invalid assistant_id {assistant_id!r}: must contain only letters, digits, and hyphens after normalization.")
-        if "configurable" in config:
-            target = config["configurable"]
-        elif "context" in config:
-            target = config["context"]
-        else:
-            target = config.setdefault("configurable", {})
-        if target is not None and "agent_name" not in target:
-            target["agent_name"] = normalized
+        context_target = config.setdefault("context", {})
+        configurable_target = config.setdefault("configurable", {"thread_id": thread_id})
+        if not isinstance(context_target, dict) or not isinstance(configurable_target, dict):
+            raise TypeError("run config containers must be mappings")
+        effective_agent_name = context_target.get("agent_name") or configurable_target.get("agent_name") or normalized
+        context_target["agent_name"] = effective_agent_name
+        configurable_target["agent_name"] = effective_agent_name
         config.setdefault("run_name", resolve_root_run_name(config, normalized))
     if metadata:
-        config.setdefault("metadata", {}).update(metadata)
+        merged_metadata = dict(config.get("metadata") or {})
+        merged_metadata.update(metadata)
+        config["metadata"] = merged_metadata
     config["recursion_limit"] = _clamp_recursion_limit(
         config.get("recursion_limit"),
         _resolve_max_recursion_limit(),
