@@ -12,7 +12,9 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 EXAMPLE="$REPO_ROOT/config.example.yaml"
 
 # Resolve config.yaml location: env var > backend/ > repo root
-if [ -n "$IDEER_CONFIG_PATH" ] && [ -f "$IDEER_CONFIG_PATH" ]; then
+if [ -n "$DEER_FLOW_CONFIG_PATH" ] && [ -f "$DEER_FLOW_CONFIG_PATH" ]; then
+    CONFIG="$DEER_FLOW_CONFIG_PATH"
+elif [ -n "$IDEER_CONFIG_PATH" ] && [ -f "$IDEER_CONFIG_PATH" ]; then
     CONFIG="$IDEER_CONFIG_PATH"
 elif [ -f "$REPO_ROOT/backend/config.yaml" ]; then
     CONFIG="$REPO_ROOT/backend/config.yaml"
@@ -64,8 +66,7 @@ user_version = user.get('config_version', 0)
 example_version = example.get('config_version', 0)
 
 if user_version >= example_version:
-    print(f'OK config.yaml is already up to date (version {user_version}).')
-    sys.exit(0)
+    print(f'Config schema version {user_version} is current; checking structural migrations...')
 
 print(f'Upgrading config.yaml: version {user_version} -> {example_version}')
 print()
@@ -92,6 +93,41 @@ MIGRATIONS = {
     # },
 }
 
+# Runtime ownership moved from the legacy ideer harness to DeerFlow.  This
+# migration is deliberately independent of ``config_version``: an operator
+# may already have a current schema while still carrying old dotted paths.
+# Keep product-only community integrations untouched when DeerFlow has no
+# equivalent implementation; those remain explicit compatibility extensions.
+RUNTIME_PATH_MIGRATIONS = [
+    ('ideer.models.', 'deerflow.models.'),
+    ('ideer.sandbox.', 'deerflow.sandbox.'),
+    ('ideer.agents.', 'deerflow.agents.'),
+    ('ideer.tools.', 'deerflow.tools.'),
+    ('ideer.skills.', 'deerflow.skills.'),
+    ('ideer.guardrails.', 'deerflow.guardrails.'),
+    ('ideer.community.ddg_search.', 'deerflow.community.ddg_search.'),
+    ('ideer.community.jina_ai.', 'deerflow.community.jina_ai.'),
+    ('ideer.community.image_search.', 'deerflow.community.image_search.'),
+    ('ideer.community.aio_sandbox.', 'deerflow.community.aio_sandbox.'),
+    ('ideer.config.', 'deerflow.config.'),
+]
+
+# Memory schema migration is structural rather than a versioned text
+# replacement. Keep this here as the operator-facing upgrade path so a
+# config already stamped at the latest version still moves from the legacy
+# top-level DeerMem fields to the host-shared ``backend_config`` contract.
+LEGACY_MEMORY_FIELDS = {
+    'storage_path', 'storage_class', 'debounce_seconds', 'max_facts',
+    'fact_confidence_threshold', 'max_injection_tokens', 'token_counting',
+    'guaranteed_categories', 'guaranteed_token_budget',
+    'staleness_review_enabled', 'staleness_age_days', 'staleness_min_candidates',
+    'staleness_max_removals_per_cycle', 'staleness_protected_categories',
+    'staleness_max_lifetime_multiplier', 'staleness_max_extension_days',
+    'consolidation_enabled', 'consolidation_min_facts',
+    'consolidation_max_groups_per_cycle', 'consolidation_max_sources',
+    'model_name',
+}
+
 # Apply migrations in order for versions (user_version, example_version]
 migrated = []
 for version in range(user_version + 1, example_version + 1):
@@ -104,6 +140,11 @@ for version in range(user_version + 1, example_version + 1):
             raw_text = raw_text.replace(old, new)
             migrated.append(f'{old} -> {new}')
 
+for old, new in RUNTIME_PATH_MIGRATIONS:
+    if old in raw_text:
+        raw_text = raw_text.replace(old, new)
+        migrated.append(f'{old} -> {new}')
+
 # Re-parse after text migrations
 user = yaml.safe_load(raw_text) or {}
 
@@ -112,6 +153,38 @@ if migrated:
     for m in migrated:
         print(f'  ~ {m}')
     print()
+
+# ── Structural Memory migration ────────────────────────────────────────
+memory = user.get('memory')
+memory_migrated = []
+if isinstance(memory, dict):
+    backend_config = dict(memory.get('backend_config') or {})
+    for key in list(memory):
+        if key not in LEGACY_MEMORY_FIELDS:
+            continue
+        value = memory.pop(key)
+        if value is None or value == '':
+            continue
+        if key == 'storage_path' and str(value).endswith('.json'):
+            # The old value names a shared file. The new contract requires a
+            # directory root; omitting it preserves DeerMem's per-user default.
+            memory_migrated.append(f'{key} dropped (legacy file path)')
+            continue
+        if key == 'model_name':
+            model_config = dict(backend_config.get('model') or {})
+            model_config.setdefault('model', value)
+            backend_config['model'] = model_config
+            memory_migrated.append(f'{key} -> memory.backend_config.model.model')
+            continue
+        backend_config.setdefault(key, value)
+        memory_migrated.append(f'{key} -> memory.backend_config.{key}')
+    if memory_migrated:
+        memory['backend_config'] = backend_config
+        user['memory'] = memory
+        print('Migrated legacy Memory fields:')
+        for item in memory_migrated:
+            print(f'  ~ {item}')
+        print()
 
 # ── Merge missing fields ─────────────────────────────────────────────────
 
@@ -132,6 +205,10 @@ merge(user, example)
 # Always update config_version
 user['config_version'] = example_version
 
+if not migrated and not memory_migrated and not added and user_version == example_version:
+    print('No changes needed (config and structural migrations are current).')
+    sys.exit(0)
+
 # ── Write ─────────────────────────────────────────────────────────────────
 
 backup = config_path.with_suffix('.yaml.bak')
@@ -145,9 +222,6 @@ if added:
     print(f'Added {len(added)} new field(s):')
     for a in added:
         print(f'  + {a}')
-
-if not migrated and not added:
-    print('No changes needed (version bumped only).')
 
 print()
 print(f'OK config.yaml upgraded to version {example_version}.')

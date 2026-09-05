@@ -240,3 +240,78 @@ def test_config_upgrade_adds_security_fail_closed_preserving_user_values():
     assert user["skill_evolution"]["enabled"] is True
     assert user["skill_evolution"]["moderation_model_name"] == "custom-moderation-model"
     assert user["config_version"] == example["config_version"]
+
+
+def test_config_upgrade_migrates_legacy_memory_storage_at_current_schema_version(tmp_path):
+    """A current-version config must still migrate legacy Memory structure."""
+    import subprocess
+
+    repo_root = Path(__file__).resolve().parents[2]
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        yaml.safe_dump(
+            {
+                "config_version": 10,
+                "memory": {
+                    "enabled": True,
+                    "storage_path": "memory.json",
+                    "max_facts": 42,
+                    "model_name": "legacy-model",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        ["bash", str(repo_root / "scripts" / "config-upgrade.sh")],
+        env={**os.environ, "DEER_FLOW_CONFIG_PATH": str(config_path)},
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+
+    assert result.returncode == 0, result.stderr
+    upgraded = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    memory = upgraded["memory"]
+    assert "storage_path" not in memory
+    assert memory["backend_config"]["max_facts"] == 42
+    assert memory["backend_config"]["model"]["model"] == "legacy-model"
+    assert (tmp_path / "config.yaml.bak").exists()
+
+
+def test_config_upgrade_migrates_legacy_runtime_paths_at_current_schema_version(tmp_path):
+    """Current-schema configs must stop selecting the legacy runtime harness."""
+    import subprocess
+
+    repo_root = Path(__file__).resolve().parents[2]
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        yaml.safe_dump(
+            {
+                "config_version": 27,
+                "models": [{"use": "ideer.models.patched_deepseek:PatchedChatDeepSeek"}],
+                "sandbox": {"use": "ideer.sandbox.local:LocalSandboxProvider"},
+                "tools": [{"use": "ideer.community.ddg_search.tools:web_search_tool"}],
+                # Product-only extensions stay explicit until DeerFlow provides
+                # an equivalent implementation.
+                "custom": {"use": "ideer.community.doc_reader.tools:read_document_tool"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        ["bash", str(repo_root / "scripts" / "config-upgrade.sh")],
+        env={**os.environ, "DEER_FLOW_CONFIG_PATH": str(config_path)},
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+
+    assert result.returncode == 0, result.stderr
+    upgraded = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    assert upgraded["models"][0]["use"].startswith("deerflow.models.")
+    assert upgraded["sandbox"]["use"].startswith("deerflow.sandbox.")
+    assert upgraded["tools"][0]["use"].startswith("deerflow.community.ddg_search.")
+    assert upgraded["custom"]["use"].startswith("ideer.community.doc_reader.")
