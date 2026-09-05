@@ -18,6 +18,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+import yaml
 
 from deerflow.agents.memory import (
     MemoryManager,
@@ -136,6 +137,21 @@ def test_migration_drops_file_style_legacy_storage_path(caplog) -> None:
     assert "storage_path" not in cfg.backend_config  # file-style dropped
     assert cfg.backend_config.get("max_facts") == 50  # non-file legacy still migrates
     assert any("looks like a file path" in r.message for r in caplog.records)
+
+
+@pytest.mark.parametrize("config_name", ["config.example.yaml", "config.intranet.yaml"])
+def test_repository_configs_use_directory_backed_memory_schema(config_name: str) -> None:
+    """The checked-in profiles must advertise the pluggable memory contract."""
+    config_path = Path(__file__).parents[2] / config_name
+    config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    memory = config["memory"]
+
+    assert memory["mode"] in {"middleware", "tool"}
+    assert memory["manager_class"] == "deermem"
+    backend_config = memory["backend_config"]
+    assert not str(backend_config["storage_path"]).endswith(".json")
+    assert "storage_path" not in memory
+    assert "model_name" not in memory
 
 
 def test_empty_storage_path_factory_injects_runtime_home(tmp_path, monkeypatch) -> None:
