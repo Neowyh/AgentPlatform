@@ -14,7 +14,7 @@ from app.channels.store import ChannelStore
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from ideer.config.app_config import AppConfig
+    from deerflow.config.app_config import AppConfig
 
 # Channel name → import path for lazy loading
 _CHANNEL_REGISTRY: dict[str, str] = {
@@ -83,7 +83,7 @@ class ChannelService:
     def from_app_config(cls, app_config: AppConfig | None = None) -> ChannelService:
         """Create a ChannelService from the application config."""
         if app_config is None:
-            from ideer.config.app_config import get_app_config
+            from deerflow.config.app_config import get_app_config
 
             app_config = get_app_config()
         channels_config = {}
@@ -159,7 +159,7 @@ class ChannelService:
             return False
 
         try:
-            from ideer.reflection import resolve_class
+            from deerflow.reflection import resolve_class
 
             channel_cls = resolve_class(import_path, base_class=None)
         except Exception:

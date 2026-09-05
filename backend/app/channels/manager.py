@@ -419,7 +419,7 @@ async def _ingest_inbound_files(thread_id: str, msg: InboundMessage) -> list[dic
     if not msg.files:
         return []
 
-    from ideer.uploads.manager import (
+    from deerflow.uploads.manager import (
         UnsafeUploadPathError,
         claim_unique_filename,
         ensure_uploads_dir,

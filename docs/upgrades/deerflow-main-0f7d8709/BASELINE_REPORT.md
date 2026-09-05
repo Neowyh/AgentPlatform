@@ -56,7 +56,7 @@ migration and air-gapped installation are still pending and are release gates.
 
 ## Runtime Foundation focused evidence
 
-The branch still has 162 textual `ideer` imports under `backend/app`,
+The branch still has 158 textual `ideer` imports under `backend/app`,
 `backend/scripts` and the AgentPlatform-facing harness adapters. This is an
 inventory signal only; the final `import ideer` failure gate is intentionally
 not claimed until the Workflow/resource control-plane extraction is complete.
@@ -86,6 +86,12 @@ The following focused slices are green on this branch:
   three-way mount, container-path and requested-skill resolver tests.
 - Memory migration, manager configuration, user/agent isolation and restart
   persistence: 75 passed, 1 skipped across the focused memory contract suite.
+- Channel runtime boundary: inbound upload management, application-config
+  lookup and dynamic channel resolution now import DeerFlow directly. The
+  focused channel subset remains incomplete because the current branch's
+  existing channel test surface reports unrelated API drift (143 failures in
+  the full pair, including missing legacy helper signatures); no new channel
+  assertion was introduced by this import-only slice.
 
 These results establish the next-stage baseline but do not close the semantic
 ledger rows. Shared-resource, workflow receipt, migration, offline and fresh
