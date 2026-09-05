@@ -120,7 +120,8 @@ The following focused slices are green on this branch:
   socket policy.
 - Run Evidence now has a dynamic per-run binding: `prepare_run` projects the
   frozen resource UUID/version/hash closure and caller-scoped authorization into
-  an immutable ContextVar inherited by the background worker and sub-agents;
+  an immutable ContextVar inherited by the background worker and sub-agents,
+  including a deterministic runtime-assembly SHA-256 fingerprint;
   the AgentPlatform extension consumes it without static owner state. Extension
   boundary, run-start propagation and real DeerFlow lifecycle regressions are
   green (8, 1 and 13 passed).
