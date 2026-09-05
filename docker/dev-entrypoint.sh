@@ -129,6 +129,13 @@ fi
 # directory, not as a plain glob pattern — on Python 3.12, globbing an absolute
 # pattern raises NotImplementedError and crashes startup (#3459 / #3454). That
 # means `sandbox` must be created here too, not just `.deer-flow`.
+# Existing pre-convergence installs keep their `.ideer` state directory: when
+# it is present and DEER_FLOW_HOME was not set explicitly, adopt it so memory,
+# agents, threads and skills views stay with the data written by the legacy
+# runtime. Fresh installs default to `.deer-flow`.
+if [ -z "${DEER_FLOW_HOME:-}" ] && [ -d /app/backend/.ideer ]; then
+    DEER_FLOW_HOME=/app/backend/.ideer
+fi
 : "${DEER_FLOW_HOME:=/app/backend/.deer-flow}"
 export DEER_FLOW_HOME
 mkdir -p "$DEER_FLOW_HOME" /app/backend/.deer-flow /app/backend/sandbox

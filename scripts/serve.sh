@@ -469,6 +469,15 @@ echo "Running database migrations..."
 (cd "$REPO_ROOT/backend" && uv run alembic -c packages/harness/ideer/persistence/migrations/alembic.ini upgrade head) || { echo "✗ Database migrations failed"; cleanup 1; }
 echo "✓ Database migrations completed"
 
+# ── Runtime state directory continuity ───────────────────────────────────────
+# Existing pre-convergence installs keep their backend/.ideer state directory:
+# when DEER_FLOW_HOME was not set explicitly and the legacy directory exists,
+# adopt it so memory, agents, threads and skills views stay with the data
+# written by the legacy runtime. Fresh installs default to .deer-flow.
+if [ -z "${DEER_FLOW_HOME:-}" ] && [ -d "$REPO_ROOT/backend/.ideer" ]; then
+    export DEER_FLOW_HOME="$REPO_ROOT/backend/.ideer"
+fi
+
 # 1. Gateway API
 run_service "Gateway" \
     "cd backend && PYTHONPATH=. uv run --no-sync uvicorn app.gateway.app:app --host 0.0.0.0 --port 8001 $GATEWAY_EXTRA_FLAGS > ../logs/gateway.log 2>&1" \
