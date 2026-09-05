@@ -236,6 +236,27 @@ export type MockWorkflowRun = {
   record?: { md?: string; jsonl?: string };
 };
 
+export type MockScheduledTask = {
+  id: string;
+  thread_id: string;
+  title: string;
+  prompt: string;
+  schedule_type: "cron" | "interval" | "once";
+  schedule_spec: { cron?: string; interval_seconds?: number; at?: string } & Record<
+    string,
+    unknown
+  >;
+  timezone: string;
+  status: "enabled" | "paused";
+  next_run_at: string | null;
+  last_run_at: string | null;
+  last_run_id: string | null;
+  last_error: string | null;
+  run_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
 export type MockAPIOptions = {
   threads?: MockThread[];
   agents?: MockAgent[];
@@ -250,6 +271,7 @@ export type MockAPIOptions = {
   auditLogs?: MockAuditLog[];
   resources?: MockAdminResource[];
   mcpConfig?: MockMCPConfig;
+  scheduledTasks?: MockScheduledTask[];
   systemRole?: string;
 };
 

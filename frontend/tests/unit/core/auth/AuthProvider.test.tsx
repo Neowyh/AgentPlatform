@@ -34,6 +34,7 @@ const mockUser = {
   email: "test@example.com",
   system_role: "user" as const,
   needs_setup: false,
+  oauth_provider: null,
 };
 
 function makeJsonResponse(

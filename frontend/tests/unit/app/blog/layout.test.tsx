@@ -13,6 +13,10 @@ vi.mock("@/core/blog", () => ({
   getBlogIndexData: vi.fn().mockResolvedValue({ pageMap: [] }),
 }));
 
+vi.mock("@/core/i18n/server", () => ({
+  detectLocaleServer: vi.fn().mockResolvedValue("en"),
+}));
+
 vi.mock("@/components/landing/header", () => ({
   Header: (props: any) => <div data-testid="header">Header</div>,
 }));

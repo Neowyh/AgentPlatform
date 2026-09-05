@@ -11,7 +11,6 @@ export function useModels({ enabled = true }: { enabled?: boolean } = {}) {
     queryKey: MODELS_QUERY_KEY,
     queryFn: () => loadModels(),
     enabled,
-    refetchOnWindowFocus: false,
     // Surface persistent gateway failures promptly while retaining one retry
     // for transient startup or network errors.
     retry: (failureCount, queryError) =>

@@ -106,7 +106,7 @@ function draftFrom(subagent: Subagent): Draft {
 export function SubagentSettingsPage() {
   const { t } = useI18n();
   const { user } = useAuth();
-  const isAdmin = user?.system_role === "admin";
+  const isAdmin = user?.system_role === "super_admin";
   const { subagents, isLoading, error } = useSubagents();
   const update = useUpdateManagedSubagent();
   const remove = useDeleteManagedSubagent();

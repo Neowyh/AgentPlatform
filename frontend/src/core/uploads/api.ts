@@ -2,6 +2,7 @@
  * API functions for file uploads
  */
 
+import { extractError } from "../api/errors";
 import { fetch } from "../api/fetcher";
 import { getBackendBaseURL } from "../config";
 
@@ -37,89 +38,6 @@ export interface UploadLimits {
   max_total_size: number;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function formatValidationIssue(issue: unknown): string | null {
-  if (
-    !isRecord(issue) ||
-    typeof issue.msg !== "string" ||
-    !Array.isArray(issue.loc)
-  ) {
-    return null;
-  }
-
-  if (issue.msg.trim().length === 0) {
-    return null;
-  }
-
-  const location = issue.loc
-    .filter(
-      (part): part is string | number =>
-        typeof part === "string" || typeof part === "number",
-    )
-    .map(String)
-    .filter((part) => part.length > 0)
-    .join(".");
-
-  return location.length > 0 ? `${location}: ${issue.msg}` : issue.msg;
-}
-
-function serializeStructuredDetail(
-  detail: Record<string, unknown> | unknown[],
-): string | null {
-  if (
-    (Array.isArray(detail) && detail.length === 0) ||
-    (!Array.isArray(detail) && Object.keys(detail).length === 0)
-  ) {
-    return null;
-  }
-
-  try {
-    return JSON.stringify(detail);
-  } catch {
-    return null;
-  }
-}
-
-function formatErrorDetail(detail: unknown): string | null {
-  if (typeof detail === "string") {
-    return detail.trim().length > 0 ? detail : null;
-  }
-
-  if (Array.isArray(detail)) {
-    if (detail.length === 0) {
-      return null;
-    }
-
-    const validationIssues = detail.map(formatValidationIssue);
-    if (validationIssues.every((issue) => issue !== null)) {
-      return validationIssues.join("; ");
-    }
-
-    return serializeStructuredDetail(detail);
-  }
-
-  if (isRecord(detail)) {
-    return formatValidationIssue(detail) ?? serializeStructuredDetail(detail);
-  }
-
-  return null;
-}
-
-async function readErrorDetail(
-  response: Response,
-  fallback: string,
-): Promise<string> {
-  const error = (await response.json().catch(() => null)) as unknown;
-  if (!isRecord(error)) {
-    return fallback;
-  }
-
-  return formatErrorDetail(error.detail) ?? fallback;
-}
-
 /**
  * Upload files to a thread
  */
@@ -142,7 +60,7 @@ export async function uploadFiles(
   );
 
   if (!response.ok) {
-    throw new Error(await readErrorDetail(response, "Upload failed"));
+    await extractError(response, "Upload failed");
   }
 
   return response.json();
@@ -157,9 +75,7 @@ export async function getUploadLimits(threadId: string): Promise<UploadLimits> {
   );
 
   if (!response.ok) {
-    throw new Error(
-      await readErrorDetail(response, "Failed to load upload limits"),
-    );
+    await extractError(response, "Failed to load upload limits");
   }
 
   return response.json();
@@ -176,9 +92,7 @@ export async function listUploadedFiles(
   );
 
   if (!response.ok) {
-    throw new Error(
-      await readErrorDetail(response, "Failed to list uploaded files"),
-    );
+    await extractError(response, "Failed to list uploaded files");
   }
 
   return response.json();
@@ -200,7 +114,7 @@ export async function deleteUploadedFile(
   );
 
   if (!response.ok) {
-    throw new Error(await readErrorDetail(response, "Failed to delete file"));
+    await extractError(response, "Failed to delete file");
   }
 
   return response.json();

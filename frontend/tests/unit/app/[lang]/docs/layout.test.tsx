@@ -61,6 +61,7 @@ afterEach(() => {
 });
 
 import DocLayout from "@/app/[lang]/docs/layout";
+import { buildLocalizedDocsPageMap } from "@/components/docs/docs-page-map";
 
 describe("DocLayout", () => {
   test("renders docs layout with children", async () => {
@@ -188,25 +189,22 @@ describe("DocLayout", () => {
     expect(mockGetPageMap).toHaveBeenCalledWith("/en");
   });
 
-  test("excludes non-locale app routes from the docs page map", async () => {
-    mockGetPageMap.mockResolvedValueOnce([
-      { route: "/en/application", name: "application" },
+  test("excludes non-locale app routes from the docs page map", () => {
+    // Post-#4330 contract: buildLocalizedDocsPageMap keeps top-level docs
+    // content roots (rewriting them under the /{lang}/docs base), keeps
+    // separators, and drops App Router routes such as /workspace/*.
+    const pageMap = buildLocalizedDocsPageMap("/en/docs", [
+      { route: "/application", name: "application" },
       {
         route: "/workspace/capabilities/experts/[agent_name]/edit",
         name: "edit",
       },
       { name: "separator", separator: true },
+    ] as any);
+
+    expect(pageMap).toEqual([
+      { route: "/en/docs/application", name: "application" },
+      { name: "separator", separator: true },
     ]);
-
-    const params = Promise.resolve({ lang: "en" });
-    render(await DocLayout({ children: <div>content</div>, params }));
-
-    expect(screen.getByTestId("nextra-layout")).toHaveAttribute(
-      "data-page-map",
-      JSON.stringify([
-        { route: "/en/docs/en/application", name: "application" },
-        { name: "separator", separator: true },
-      ]),
-    );
   });
 });

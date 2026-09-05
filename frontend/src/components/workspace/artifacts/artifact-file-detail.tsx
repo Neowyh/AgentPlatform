@@ -88,7 +88,7 @@ export function ArtifactFileDetail({
   const { t } = useI18n();
   const queryClient = useQueryClient();
   const { user } = useAuth();
-  const isAdmin = user?.system_role === "admin";
+  const isAdmin = user?.system_role === "super_admin";
   const {
     artifacts,
     setOpen,

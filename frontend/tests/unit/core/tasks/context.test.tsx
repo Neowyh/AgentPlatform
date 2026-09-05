@@ -434,7 +434,7 @@ describe("integration: shared provider state", () => {
   });
 
   it("useSubtask returns updated status after useUpdateSubtask marks it completed", () => {
-    const { result } = renderHook(
+    const { result, rerender } = renderHook(
       () => ({
         update: useUpdateSubtask(),
         task: useSubtask("lifecycle"),
@@ -455,7 +455,9 @@ describe("integration: shared provider state", () => {
     });
     expect(result.current.task!.status).toBe("in_progress");
 
-    // Complete
+    // Complete — terminal transitions publish after the next render
+    // (subtaskNotification "deferred": setTasks must not run mid-render while
+    // MessageList parses the terminal ToolMessage).
     act(() => {
       result.current.update({
         id: "lifecycle",
@@ -464,12 +466,15 @@ describe("integration: shared provider state", () => {
         latestMessage: { content: "finished" } as any,
       });
     });
+    act(() => {
+      rerender();
+    });
     expect(result.current.task!.status).toBe("completed");
     expect(result.current.task!.result).toBe("all good");
   });
 
   it("useSubtask returns updated status after useUpdateSubtask marks it failed", () => {
-    const { result } = renderHook(
+    const { result, rerender } = renderHook(
       () => ({
         update: useUpdateSubtask(),
         task: useSubtask("fail-lifecycle"),
@@ -488,6 +493,7 @@ describe("integration: shared provider state", () => {
       });
     });
 
+    // Deferred terminal publish (see the completed-status test above).
     act(() => {
       result.current.update({
         id: "fail-lifecycle",
@@ -495,6 +501,9 @@ describe("integration: shared provider state", () => {
         error: "something broke",
         latestMessage: { content: "error" } as any,
       });
+    });
+    act(() => {
+      rerender();
     });
 
     expect(result.current.task!.status).toBe("failed");

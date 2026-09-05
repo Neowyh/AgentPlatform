@@ -89,11 +89,13 @@ afterEach(() => {
   rs.resetModules();
 });
 
-test("does not subscribe to unsupported LangGraph events mode", async () => {
+test("forwards tool-end detection through onLangChainEvent alongside supported modes", async () => {
   const options = await captureThreadStreamOptions();
 
   expect(options).toBeDefined();
-  expect(options).not.toHaveProperty("onLangChainEvent");
+  // iDeer contract: onLangChainEvent is subscribed so the experts setup
+  // wizard can detect setup_agent completion; it forwards to onToolEnd.
+  expect(options).toHaveProperty("onLangChainEvent");
   expect(options).toHaveProperty("onUpdateEvent");
   expect(options).toHaveProperty("onCustomEvent");
 });

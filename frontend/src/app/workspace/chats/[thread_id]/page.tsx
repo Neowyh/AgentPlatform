@@ -81,8 +81,10 @@ function RecentTaskCards({
               textOfMessage(message as Parameters<typeof textOfMessage>[0]),
             )
             .find((text): text is string => Boolean(text?.trim()));
-          const taskType =
-            context?.task_label ??
+          const taskType: string =
+            (typeof context?.task_label === "string"
+              ? context.task_label
+              : undefined) ??
             (typeof metadata?.task_type === "string"
               ? metadata.task_type
               : undefined) ??
@@ -122,13 +124,13 @@ export default function ChatPage() {
   const { t } = useI18n();
   const searchParams = useSearchParams();
   const requestedAgent = searchParams.get("agent");
+  const selectedConnector = searchParams.get("connector");
   const {
     threadId,
     setThreadId,
     isNewThread,
     setIsNewThread,
     isMock,
-    selectedConnector,
   } = useThreadChat();
   // `isNewThread` tracks whether the backend has the thread yet — gates the
   // SDK's history fetch (see issue #2746).  `isWelcomeMode` is the visual

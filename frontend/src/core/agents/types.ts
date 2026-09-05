@@ -17,6 +17,7 @@ export interface Agent {
   can_modify?: boolean;
   system_owned?: boolean;
   is_favorited?: boolean;
+  summary?: string;
   name: string;
   description: string;
   model: string | null;
