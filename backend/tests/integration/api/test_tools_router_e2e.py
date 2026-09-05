@@ -129,7 +129,7 @@ class TestGetToolDetail:
 class TestTestTool:
     """Tests for POST /api/tools/{tool_name}/test."""
 
-    @patch("ideer.tools.tools.get_available_tools")
+    @patch("app.gateway.routers.tools.get_available_tools")
     @patch("app.gateway.routers.tools.get_app_config")
     def test_test_tool_success(self, mock_config, mock_get_available_tools):
         """Test tool executes successfully."""

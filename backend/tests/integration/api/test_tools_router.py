@@ -270,7 +270,7 @@ class TestGetToolDetail:
 class TestToolExecution:
     """Tests for POST /api/tools/{tool_name}/test."""
 
-    @patch("ideer.tools.tools.get_available_tools")
+    @patch("app.gateway.routers.tools.get_available_tools")
     @patch("app.gateway.routers.tools.get_app_config")
     def test_test_tool_success(self, mock_config, mock_get_tools):
         """Test-execute tool succeeds with valid tool."""
@@ -311,7 +311,7 @@ class TestToolExecution:
 
         assert resp.status_code == 404
 
-    @patch("ideer.tools.tools.get_available_tools")
+    @patch("app.gateway.routers.tools.get_available_tools")
     @patch("app.gateway.routers.tools.get_app_config")
     def test_test_tool_execution_failure(self, mock_config, mock_get_tools):
         """Test-execute handles tool execution failure gracefully."""
@@ -352,7 +352,7 @@ class TestToolExecution:
         with (
             patch("app.gateway.routers.tools._load_tool_meta", new=AsyncMock(return_value={})),
             patch("app.gateway.routers.tools.check_resource_access", return_value=True),
-            patch("app.gateway.routers.tools.get_app_config", side_effect=RuntimeError("config error")),
+            patch("app.gateway.routers.tools.get_available_tools", side_effect=RuntimeError("tool assembly error")),
         ):
             with pytest.raises(HTTPException) as exc:
                 await tools_module.test_tool("my_tool", ToolTestRequest(params={}), current_user=_make_rbac_user())

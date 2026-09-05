@@ -9,11 +9,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
+from app.agentplatform.tool_adapter import get_available_tools
 from app.gateway.authz import check_resource_access, get_current_rbac_user, get_optional_rbac_user, require_role
-from ideer.config.app_config import get_app_config
 from ideer.persistence.engine import get_session_factory
 from ideer.persistence.models.user import UserModel, UserRole
-from ideer.tools.tools import get_available_tools
 
 logger = logging.getLogger(__name__)
 
@@ -55,8 +54,7 @@ async def list_tools(
     current_user: UserModel | None = Depends(get_optional_rbac_user),
 ):
     """List all available tools with metadata. Filters by visibility when auth is active."""
-    config = get_app_config()
-    tools = get_available_tools(app_config=config)
+    tools = get_available_tools()
 
     if search:
         sl = search.lower()
@@ -133,8 +131,7 @@ async def get_tool_detail(
     current_user: UserModel | None = Depends(get_optional_rbac_user),
 ):
     """Get tool detail including parameter schema."""
-    config = get_app_config()
-    tools = get_available_tools(app_config=config)
+    tools = get_available_tools()
     tool = next((t for t in tools if t.name == tool_name), None)
     if tool is None:
         raise HTTPException(status_code=404, detail=f"Tool '{tool_name}' not found")
@@ -184,10 +181,7 @@ async def test_tool(
 
     # Load the actual tool instance and invoke it
     try:
-        from ideer.tools.tools import get_available_tools
-
-        config = get_app_config()
-        available = get_available_tools(app_config=config)
+        available = get_available_tools()
         tool_instance = None
         for t in available:
             if hasattr(t, "name") and t.name == tool_name:
