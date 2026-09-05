@@ -1029,10 +1029,10 @@ class TestHandleMessageEvent:
     def test_no_thread_ts_falls_back_to_ts(self):
         """When event has no thread_ts, it should fall back to ts."""
         channel = _make_channel()
-        bus = channel.bus
-        bus.publish_inbound = AsyncMock()
         channel._loop = MagicMock()
         channel._loop.is_running.return_value = True
+        channel._reserve_inbound = MagicMock(return_value=object())
+        channel._commit_reserved_inbound = MagicMock()
         channel._add_reaction = MagicMock()
         channel._send_running_reply = MagicMock()
 
@@ -1044,7 +1044,7 @@ class TestHandleMessageEvent:
         }
         channel._handle_message_event(event)
 
-        inbound = bus.publish_inbound.call_args.args[0]
+        inbound = channel._reserve_inbound.call_args.args[0]
         assert inbound.thread_ts == "9999999999.000000"
 
     def test_empty_channel_id(self):
