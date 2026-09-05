@@ -20,8 +20,10 @@ from fastapi import HTTPException, Request
 from langchain_core.messages import BaseMessage
 from langchain_core.messages.utils import convert_to_messages
 
+from app.gateway.auth_disabled import AUTH_SOURCE_INTERNAL
 from app.gateway.authz import _cached_rbac_identity
 from app.gateway.deps import get_run_context, get_run_manager, get_stream_bridge
+from app.gateway.internal_auth import INTERNAL_SYSTEM_ROLE
 from app.gateway.utils import sanitize_log_param
 from deerflow.runtime import (
     END_SENTINEL,
@@ -162,8 +164,26 @@ _CONTEXT_CONFIGURABLE_KEYS: frozenset[str] = frozenset(
     }
 )
 
+_CONTEXT_INTERNAL_CALLER_KEYS: frozenset[str] = frozenset({"non_interactive"})
+_SERVER_OWNED_AUTHZ_CONTEXT_KEYS: frozenset[str] = frozenset(
+    {
+        "is_internal",
+        "authz_attributes",
+        "channel_user_id",
+        "langgraph_auth_user",
+        "langgraph_auth_user_id",
+        "sandbox_lease_owner_id",
+        "sandbox_command_scope_id",
+    }
+)
 
-def merge_run_context_overrides(config: dict[str, Any], context: Mapping[str, Any] | None) -> None:
+
+def merge_run_context_overrides(
+    config: dict[str, Any],
+    context: Mapping[str, Any] | None,
+    *,
+    internal: bool = False,
+) -> None:
     """Merge whitelisted keys from ``body.context`` into both ``config['configurable']``
     and ``config['context']`` so they are visible to legacy configurable readers and
     to LangGraph ``ToolRuntime.context`` consumers (e.g. the ``setup_agent`` tool —
@@ -172,15 +192,35 @@ def merge_run_context_overrides(config: dict[str, Any], context: Mapping[str, An
         return
     configurable = config.setdefault("configurable", {})
     runtime_context = config.setdefault("context", {})
-    for key in _CONTEXT_CONFIGURABLE_KEYS:
+    keys = _CONTEXT_CONFIGURABLE_KEYS | _CONTEXT_INTERNAL_CALLER_KEYS if internal else _CONTEXT_CONFIGURABLE_KEYS
+    for key in keys:
         if key in context:
             if isinstance(configurable, dict):
                 configurable.setdefault(key, context[key])
             if isinstance(runtime_context, dict):
                 runtime_context.setdefault(key, context[key])
+    if "user_id" in context and isinstance(runtime_context, dict):
+        runtime_context.setdefault("user_id", context["user_id"])
+    if internal and "channel_user_id" in context and isinstance(runtime_context, dict):
+        runtime_context.setdefault("channel_user_id", context["channel_user_id"])
 
 
-def inject_authenticated_user_context(config: dict[str, Any], request: Request) -> None:
+def strip_internal_context_keys(config: dict[str, Any]) -> None:
+    """Remove internal-only execution flags from client-supplied config."""
+
+    for section in ("context", "configurable"):
+        value = config.get(section)
+        if isinstance(value, dict):
+            for key in _CONTEXT_INTERNAL_CALLER_KEYS:
+                value.pop(key, None)
+
+
+def inject_authenticated_user_context(
+    config: dict[str, Any],
+    request: Request,
+    *,
+    request_context: Mapping[str, Any] | None = None,
+) -> None:
     """Stamp the authenticated user into the run context for background tools.
 
     Tool execution may happen after the request handler has returned, so tools
@@ -188,14 +228,40 @@ def inject_authenticated_user_context(config: dict[str, Any], request: Request) 
     The value comes from server-side auth state, never from client context.
     """
 
+    runtime_context = config.setdefault("context", {})
+    if not isinstance(runtime_context, dict):
+        raise TypeError("run context must be a mapping")
+    for key in _SERVER_OWNED_AUTHZ_CONTEXT_KEYS:
+        runtime_context.pop(key, None)
+    configurable = config.get("configurable")
+    if isinstance(configurable, dict):
+        for key in _SERVER_OWNED_AUTHZ_CONTEXT_KEYS:
+            configurable.pop(key, None)
+
+    auth_source = getattr(getattr(request, "state", None), "auth_source", None)
+    runtime_context["is_internal"] = auth_source == AUTH_SOURCE_INTERNAL
+    if auth_source == AUTH_SOURCE_INTERNAL and request_context is not None:
+        channel_user_id = request_context.get("channel_user_id")
+        if channel_user_id is not None:
+            runtime_context["channel_user_id"] = channel_user_id
+
     user = getattr(request.state, "user", None)
     user_id = getattr(user, "id", None)
     if user_id is None:
         return
 
-    runtime_context = config.setdefault("context", {})
-    if isinstance(runtime_context, dict):
-        runtime_context["user_id"] = str(user_id)
+    if getattr(user, "system_role", None) == INTERNAL_SYSTEM_ROLE:
+        runtime_context.pop("user_role", None)
+        runtime_context.pop("oauth_provider", None)
+        runtime_context.pop("oauth_id", None)
+        return
+
+    runtime_context["user_id"] = str(user_id)
+    cached_identity = getattr(getattr(request, "state", None), "_ideer_rbac_user", None)
+    resolved_role = cached_identity.get("role") if isinstance(cached_identity, dict) else None
+    runtime_context["user_role"] = resolved_role or getattr(user, "system_role", None)
+    runtime_context["oauth_provider"] = getattr(user, "oauth_provider", None)
+    runtime_context["oauth_id"] = getattr(user, "oauth_id", None)
 
 
 def resolve_agent_factory(assistant_id: str | None):
@@ -358,6 +424,9 @@ def build_run_config(
             else:
                 raise ValueError("request config 'context' must be a mapping or null.")
             config["context"] = context
+            # Keep the thread id in the checkpoint-facing container while
+            # dropping any caller-supplied configurable overrides.
+            config["configurable"] = {"thread_id": thread_id}
         else:
             configurable = {"thread_id": thread_id}
             configurable.update(request_config.get("configurable", {}))
@@ -556,8 +625,11 @@ async def start_run(
     # The ``context`` field is a custom extension for the langgraph-compat layer
     # that carries agent configuration (model_name, thinking_enabled, etc.).
     # Only agent-relevant keys are forwarded; unknown keys (e.g. thread_id) are ignored.
-    merge_run_context_overrides(config, body_context)
-    inject_authenticated_user_context(config, request)
+    is_internal_caller = getattr(getattr(request, "state", None), "auth_source", None) == AUTH_SOURCE_INTERNAL
+    merge_run_context_overrides(config, body_context, internal=is_internal_caller)
+    if not is_internal_caller:
+        strip_internal_context_keys(config)
+    inject_authenticated_user_context(config, request, request_context=body_context)
 
     stream_modes = normalize_stream_modes(body.stream_mode)
 
