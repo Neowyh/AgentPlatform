@@ -89,10 +89,10 @@ The following focused slices are green on this branch:
   persistence: 75 passed, 1 skipped across the focused memory contract suite.
 - Channel runtime boundary: inbound upload management, application-config
   lookup and dynamic channel resolution now import DeerFlow directly. The
-  focused channel subset remains incomplete because the current branch's
-  existing channel test surface reports unrelated API drift (143 failures in
-  the full pair, including missing legacy helper signatures); no new channel
-  assertion was introduced by this import-only slice.
+  focused channel regressions were updated to patch those canonical seams and
+  are green: 44 upload-attachment tests, 67 channel-service tests and 78
+  manager/store edge-case tests. The repository-wide PR lane remains
+  incomplete because it stalls before producing a pytest summary.
 - Run-preparation memory preload now goes through the AgentPlatform memory
   adapter and DeerFlow application config; the focused preload/service group
   is green (41 passed).
