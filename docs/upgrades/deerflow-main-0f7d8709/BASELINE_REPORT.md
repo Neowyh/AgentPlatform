@@ -66,6 +66,8 @@ The following focused slices are green on this branch:
   `test_v2_preconditions.py`.
 - Skill projection and mount isolation: 71 passed across projection,
   three-way mount, container-path and requested-skill resolver tests.
+- Memory migration, manager configuration, user/agent isolation and restart
+  persistence: 75 passed, 1 skipped across the focused memory contract suite.
 
 These results establish the next-stage baseline but do not close the semantic
 ledger rows. Shared-resource, workflow receipt, migration, offline and fresh
