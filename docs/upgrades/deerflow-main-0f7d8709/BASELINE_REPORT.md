@@ -39,8 +39,15 @@ The following focused slices are green on this branch:
 - task lifecycle evidence persistence: 50 tests;
 - authorization assembly/runtime enforcement: 43 tests;
 - sandbox mount contract and `/mnt/skills` defaults: 3 tests;
+- sub-agent tool receipts, report contract, acceptance checks and delegation
+  ledger: 270 passed, 1 skipped;
 - SRS smoke flow: `ALL CHECKS PASSED`.
 
 These results establish the next-stage baseline but do not close the semantic
 ledger rows. Shared-resource, workflow receipt, migration, offline and fresh
 intranet-install acceptance remain required.
+
+The selected V2 workflow integration group was started with the same cache
+override but produced no test output within 60 seconds and was interrupted.
+It is therefore recorded as incomplete (not passed); database-backed workflow
+validation needs a dedicated follow-up with an initialized test database.
