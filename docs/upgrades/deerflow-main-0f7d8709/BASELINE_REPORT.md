@@ -42,7 +42,7 @@ Locked DeerFlow SHA: `0f7d8709d3bbf0be26460b6277fbad9329302243`
 | MCP config router regressions | passed | MCP file config parsing and model boundary now use DeerFlow `ExtensionsConfig`; secret-preservation and config API regressions: 23 passed. |
 | Suggestions router config-boundary regression | passed | Replaced the route-only `AppConfig` annotation with DeerFlow's type; focused E2E: 3 passed. |
 | Models/uploads config-boundary regressions | passed | Replaced route-only `AppConfig` annotations with DeerFlow's type; combined model and upload route regressions: 193 passed. |
-| Thread metadata utility regressions | passed | Switched metadata validation and invalid-filter exception boundaries to DeerFlow; thread/router edge regressions: 172 passed. Time/identity utilities remain unchanged due HIGH/CRITICAL blast radius. |
+| Thread metadata utility regressions | partial | Switched metadata validation, invalid-filter exception boundaries, and the gateway thread router's ISO time helpers to DeerFlow. The 95-test legacy router module collects, but its shared fixture still patches removed `build_checkpoint_state_accessor` seams (5 focused tests error before execution); this is a test-path compatibility issue, not evidence of a runtime regression. |
 
 The standard lane now exports `PYTHONPATH=.:tests`, preserving the existing
 collection roots while resolving shared test helpers. Re-run with
