@@ -1,4 +1,4 @@
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
@@ -28,6 +28,15 @@ vi.mock("@uiw/react-codemirror", () => ({
       {value}
     </div>
   ),
+}));
+
+// The merged editor lazy-loads its extension bundle; resolve it immediately
+// so the CodeMirror branch renders.
+vi.mock("@/components/workspace/code-editor-extensions", () => ({
+  loadCodeEditorExtensions: vi.fn(async () => ({
+    extensions: [],
+    theme: "light",
+  })),
 }));
 
 vi.mock("@codemirror/lang-css", () => ({ css: () => ({}) }));
@@ -93,9 +102,11 @@ afterEach(() => {
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe("CodeEditor", () => {
-  test("renders CodeMirror when not loading", () => {
+  test("renders CodeMirror when not loading", async () => {
     render(<CodeEditor value="hello world" />);
-    expect(screen.getByTestId("codemirror")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByTestId("codemirror")).toBeInTheDocument(),
+    );
     expect(screen.getByText("hello world")).toBeInTheDocument();
   });
 
@@ -106,19 +117,23 @@ describe("CodeEditor", () => {
     expect(screen.queryByTestId("codemirror")).not.toBeInTheDocument();
   });
 
-  test("passes readonly prop to CodeMirror", () => {
+  test("passes readonly prop to CodeMirror", async () => {
     render(<CodeEditor value="code" readonly />);
-    expect(screen.getByTestId("codemirror")).toHaveAttribute(
-      "data-readonly",
-      "true",
+    await waitFor(() =>
+      expect(screen.getByTestId("codemirror")).toHaveAttribute(
+        "data-readonly",
+        "true",
+      ),
     );
   });
 
-  test("passes placeholder to CodeMirror", () => {
+  test("passes placeholder to CodeMirror", async () => {
     render(<CodeEditor value="" placeholder="Type code..." />);
-    expect(screen.getByTestId("codemirror")).toHaveAttribute(
-      "data-placeholder",
-      "Type code...",
+    await waitFor(() =>
+      expect(screen.getByTestId("codemirror")).toHaveAttribute(
+        "data-placeholder",
+        "Type code...",
+      ),
     );
   });
 
@@ -143,26 +158,32 @@ describe("CodeEditor", () => {
     expect(screen.getByTestId("textarea")).toHaveValue("some code");
   });
 
-  test("passes disabled prop as readonly to CodeMirror", () => {
+  test("passes disabled prop as readonly to CodeMirror", async () => {
     render(<CodeEditor value="code" disabled />);
-    expect(screen.getByTestId("codemirror")).toHaveAttribute(
-      "data-readonly",
-      "true",
+    await waitFor(() =>
+      expect(screen.getByTestId("codemirror")).toHaveAttribute(
+        "data-readonly",
+        "true",
+      ),
     );
   });
 
-  test("passes settings for lineNumbers", () => {
+  test("passes settings for lineNumbers", async () => {
     render(
       <CodeEditor
         value=""
         settings={{ lineNumbers: true, foldGutter: true }}
       />,
     );
-    expect(screen.getByTestId("codemirror")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByTestId("codemirror")).toBeInTheDocument(),
+    );
   });
 
-  test("handles empty value", () => {
+  test("handles empty value", async () => {
     render(<CodeEditor value="" />);
-    expect(screen.getByTestId("codemirror")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByTestId("codemirror")).toBeInTheDocument(),
+    );
   });
 });

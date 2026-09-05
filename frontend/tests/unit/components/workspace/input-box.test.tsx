@@ -123,9 +123,9 @@ vi.mock("@/components/ai-elements/model-selector", () => ({
   ModelSelectorContent: ({ children }: any) => <div>{children}</div>,
   ModelSelectorInput: (props: any) => <input {...props} />,
   ModelSelectorList: ({ children }: any) => <div>{children}</div>,
-  ModelSelectorItem: ({ children, onSelect, ...props }: any) => (
+  ModelSelectorItem: ({ children, onSelect, value, ...props }: any) => (
     <button
-      data-testid={`model-item-${props.value}`}
+      data-testid={`model-item-${value}`}
       onClick={onSelect}
       {...props}
     >
@@ -165,6 +165,12 @@ vi.mock("@/components/workspace/tooltip", () => ({
       {children}
     </div>
   ),
+}));
+
+vi.mock("@/core/suggestions/hooks", () => ({
+  useSuggestionsConfig: () => ({
+    data: { enabled: true, max_suggestions: 3 },
+  }),
 }));
 
 vi.mock("@/core/skills/hooks", () => ({

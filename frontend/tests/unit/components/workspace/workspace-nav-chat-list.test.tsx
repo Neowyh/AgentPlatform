@@ -1,5 +1,20 @@
-import { render, screen, cleanup } from "@testing-library/react";
+import { render as renderBase, screen, cleanup } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+
+vi.mock("@/core/auth/AuthProvider", () => ({
+  useAuth: () => ({ user: { id: "u1", email: "user@test.com", system_role: "user" } }),
+}));
+
+const render = (ui: React.ReactElement, options?: any) =>
+  renderBase(
+    <QueryClientProvider
+      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+    >
+      {ui}
+    </QueryClientProvider>,
+    options,
+  );
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
@@ -25,14 +40,19 @@ vi.mock("next/link", () => ({
   ),
 }));
 
+let mockAgentsEnabled = true;
+vi.mock("@/core/agents", () => ({
+  useAgentsApiEnabled: () => ({ enabled: mockAgentsEnabled }),
+}));
+
 vi.mock("@/core/i18n/hooks", () => ({
   useI18n: () => ({
     t: {
       sidebar: {
         chats: "Chats",
-        capabilities: "Experts · Skills · Connectors",
-        library: "Library",
-        workflows: "Workflows",
+        agents: "Agents",
+        scheduledTasks: "Scheduled tasks",
+        agentsDisabledTooltip: "Agents are not enabled",
       },
     },
   }),
@@ -60,12 +80,14 @@ vi.mock("@/components/ui/sidebar", () => ({
     children,
     isActive,
     asChild,
+    ...rest
   }: {
     children: React.ReactNode;
     isActive?: boolean;
     asChild?: boolean;
+    [key: string]: unknown;
   }) => (
-    <div data-testid="sidebar-menu-button" data-is-active={isActive}>
+    <div data-testid="sidebar-menu-button" data-is-active={isActive} {...rest}>
       {children}
     </div>
   ),
@@ -89,20 +111,13 @@ afterEach(() => {
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe("WorkspaceNavChatList", () => {
-  test("renders four navigation items", () => {
+  test("renders three navigation items: chats, agents, scheduled tasks", () => {
     render(<WorkspaceNavChatList />);
     const items = screen.getAllByTestId("sidebar-menu-item");
-    expect(items).toHaveLength(4);
-  });
-
-  test("renders history, capabilities, workflows, and library links", () => {
-    render(<WorkspaceNavChatList />);
+    expect(items).toHaveLength(3);
     expect(screen.getByText("Chats")).toBeInTheDocument();
-    expect(
-      screen.getByText("Experts · Skills · Connectors"),
-    ).toBeInTheDocument();
-    expect(screen.getByText("Library")).toBeInTheDocument();
-    expect(screen.getByText("Workflows")).toBeInTheDocument();
+    expect(screen.getByText("Agents")).toBeInTheDocument();
+    expect(screen.getByText("Scheduled tasks")).toBeInTheDocument();
   });
 
   test("marks Chats as active when on chats path", () => {
@@ -110,73 +125,48 @@ describe("WorkspaceNavChatList", () => {
     render(<WorkspaceNavChatList />);
     const buttons = screen.getAllByTestId("sidebar-menu-button");
     expect(buttons[0]!.getAttribute("data-is-active")).toBe("true");
+    expect(buttons[1]!.getAttribute("data-is-active")).toBe("false");
   });
 
-  test("marks capabilities as active on a capability path", () => {
-    mockPathname = "/workspace/capabilities/skills";
+  test("marks Agents as active on the agents path", () => {
+    mockPathname = "/workspace/agents";
     render(<WorkspaceNavChatList />);
     const buttons = screen.getAllByTestId("sidebar-menu-button");
     expect(buttons[1]!.getAttribute("data-is-active")).toBe("true");
   });
 
-  test("marks capabilities as active for legacy resource paths", () => {
-    mockPathname = "/workspace/resources";
+  test("marks Scheduled tasks as active on its path", () => {
+    mockPathname = "/workspace/scheduled-tasks";
     render(<WorkspaceNavChatList />);
     const buttons = screen.getAllByTestId("sidebar-menu-button");
-    expect(buttons[1]!.getAttribute("data-is-active")).toBe("true");
+    expect(buttons[2]!.getAttribute("data-is-active")).toBe("true");
   });
 
-  test("marks Library as active when on library path", () => {
+  test("renders Agents as a plain link when the agents API is enabled", () => {
+    mockAgentsEnabled = true;
+    render(<WorkspaceNavChatList />);
+    const link = screen.getByText("Agents").closest("a");
+    expect(link).toHaveAttribute("href", "/workspace/agents");
+  });
+
+  test("renders a disabled, tooltip-explained Agents entry when the API is off", () => {
+    mockAgentsEnabled = false;
+    render(<WorkspaceNavChatList />);
+    const button = screen
+      .getByText("Agents")
+      .closest("div[data-testid='sidebar-menu-button']");
+    expect(button).toBeInTheDocument();
+    expect(button!.getAttribute("aria-disabled")).toBe("true");
+    expect(screen.getByText("Agents are not enabled")).toBeInTheDocument();
+  });
+
+  test("marks Chats as inactive on other paths", () => {
     mockPathname = "/workspace/library";
     render(<WorkspaceNavChatList />);
     const buttons = screen.getAllByTestId("sidebar-menu-button");
-    expect(buttons[3]!.getAttribute("data-is-active")).toBe("true");
-  });
-
-  test("marks Workflows as active when on workflows path", () => {
-    mockPathname = "/workspace/workflows";
-    render(<WorkspaceNavChatList />);
-    const buttons = screen.getAllByTestId("sidebar-menu-button");
-    expect(buttons[2]!.getAttribute("data-is-active")).toBe("true");
-  });
-
-  test("marks capabilities as active for legacy agent paths", () => {
-    mockPathname = "/workspace/capabilities/experts/some-agent";
-    render(<WorkspaceNavChatList />);
-    const buttons = screen.getAllByTestId("sidebar-menu-button");
-    expect(buttons[1]!.getAttribute("data-is-active")).toBe("true");
-  });
-
-  test("marks Library as active for sub-paths", () => {
-    mockPathname = "/workspace/library/some-doc";
-    render(<WorkspaceNavChatList />);
-    const buttons = screen.getAllByTestId("sidebar-menu-button");
-    expect(buttons[3]!.getAttribute("data-is-active")).toBe("true");
-  });
-
-  test("marks Workflows as active for sub-paths", () => {
-    mockPathname = "/workspace/workflows/some-workflow";
-    render(<WorkspaceNavChatList />);
-    const buttons = screen.getAllByTestId("sidebar-menu-button");
-    expect(buttons[2]!.getAttribute("data-is-active")).toBe("true");
-  });
-
-  test("none are active for unrelated paths", () => {
-    mockPathname = "/workspace/admin";
-    render(<WorkspaceNavChatList />);
-    const buttons = screen.getAllByTestId("sidebar-menu-button");
+    // Chats and Scheduled tasks stay inactive; the disabled Agents entry has
+    // no active state at all.
     expect(buttons[0]!.getAttribute("data-is-active")).toBe("false");
-    expect(buttons[1]!.getAttribute("data-is-active")).toBe("false");
     expect(buttons[2]!.getAttribute("data-is-active")).toBe("false");
-    expect(buttons[3]!.getAttribute("data-is-active")).toBe("false");
-  });
-
-  test("links have correct hrefs", () => {
-    render(<WorkspaceNavChatList />);
-    const links = screen.getAllByRole("link");
-    expect(links[0]).toHaveAttribute("href", "/workspace/chats");
-    expect(links[1]).toHaveAttribute("href", "/workspace/capabilities/experts");
-    expect(links[2]).toHaveAttribute("href", "/workspace/workflows");
-    expect(links[3]).toHaveAttribute("href", "/workspace/library");
   });
 });

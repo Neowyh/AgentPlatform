@@ -35,6 +35,8 @@ import {
 } from "react";
 import { toast } from "sonner";
 
+import { prepareTaskInputInsertion } from "@/core/threads/task-input";
+
 import {
   PromptInput,
   PromptInputActionMenu,
@@ -281,6 +283,18 @@ function buildHiddenConversationQuoteMessage({
   } as Message;
 }
 
+function highlightPlaceholder(text: string, root: HTMLElement | null) {
+  if (!root) return;
+  const textarea = root.querySelector<HTMLTextAreaElement>("textarea");
+  if (!textarea) return;
+  const selEnd = text.lastIndexOf("]");
+  if (selEnd === -1) return;
+  const selStart = text.lastIndexOf("[", selEnd);
+  if (selStart === -1 || selStart > selEnd) return;
+  textarea.setSelectionRange(selStart, selEnd + 1);
+  textarea.focus();
+}
+
 export function InputBox({
   className,
   disabled,
@@ -294,6 +308,9 @@ export function InputBox({
   draftAgentName,
   defaultModelName,
   initialValue,
+  pendingTemplate,
+  clearInjectedTemplateKey,
+  onPendingTemplateConsumed,
   onContextChange,
   onFollowupsVisibilityChange,
   onGoalChange,
@@ -329,6 +346,11 @@ export function InputBox({
    */
   defaultModelName?: string | null;
   initialValue?: string;
+  /** Scenario/task template awaiting injection into the composer. */
+  pendingTemplate?: string | null;
+  /** Bump to clear a previously injected template from the composer. */
+  clearInjectedTemplateKey?: number;
+  onPendingTemplateConsumed?: () => void;
   onContextChange?: (
     context: Omit<
       AgentThreadContext,
@@ -361,6 +383,8 @@ export function InputBox({
   const { skills, isLoading: skillsLoading } = useSkills();
   const { data: uploadLimits } = useUploadLimits(threadId);
   const promptRootRef = useRef<HTMLDivElement | null>(null);
+  const injectedTemplateRef = useRef<string | null>(null);
+  const lastTemplateResetKeyRef = useRef(clearInjectedTemplateKey);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const inlineSkillTextRef = useRef<HTMLSpanElement | null>(null);
   const inlineSkillComposingRef = useRef(false);
@@ -478,6 +502,38 @@ export function InputBox({
   const [pendingSuggestion, setPendingSuggestion] = useState<string | null>(
     null,
   );
+
+  // Scenario/task template injection: empty composer takes the template
+  // directly; a conflicting draft asks before replacing (pre-merge behavior).
+  useEffect(() => {
+    if (!pendingTemplate) return;
+    onPendingTemplateConsumed?.();
+    const insertion = prepareTaskInputInsertion(
+      textInput.value ?? "",
+      pendingTemplate,
+    );
+    if (insertion.kind === "conflict") {
+      setPendingSuggestion(pendingTemplate);
+      setConfirmOpen(true);
+      return;
+    }
+    textInput.setInput(insertion.text);
+    injectedTemplateRef.current = insertion.text;
+    setTimeout(
+      () => highlightPlaceholder(insertion.text, promptRootRef.current),
+      50,
+    );
+  }, [pendingTemplate, onPendingTemplateConsumed, textInput]);
+
+  useEffect(() => {
+    if (clearInjectedTemplateKey === undefined) return;
+    if (lastTemplateResetKeyRef.current === clearInjectedTemplateKey) return;
+    lastTemplateResetKeyRef.current = clearInjectedTemplateKey;
+    if (injectedTemplateRef.current === textInput.value) {
+      textInput.clear();
+    }
+    injectedTemplateRef.current = null;
+  }, [clearInjectedTemplateKey, textInput]);
   const builtinSlashCommands = useMemo<SlashSuggestion[]>(
     () => [
       {

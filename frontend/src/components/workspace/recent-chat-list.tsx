@@ -297,6 +297,7 @@ export function RecentChatList() {
             <div
               className="flex w-full flex-col gap-1"
               style={{ overflowAnchor: "none" }}
+              data-testid="thread-list"
             >
               <VirtualThreadList
                 estimateSize={36}

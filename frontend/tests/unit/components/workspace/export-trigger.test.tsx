@@ -12,12 +12,9 @@ vi.mock("sonner", () => ({
   },
 }));
 
-const mockExportThreadAsMarkdown = vi.fn();
-const mockExportThreadAsJSON = vi.fn();
+const mockExportThread = vi.fn();
 vi.mock("@/core/threads/export", () => ({
-  exportThreadAsMarkdown: (...args: unknown[]) =>
-    mockExportThreadAsMarkdown(...args),
-  exportThreadAsJSON: (...args: unknown[]) => mockExportThreadAsJSON(...args),
+  exportThread: (...args: unknown[]) => mockExportThread(...args),
 }));
 
 vi.mock("@/core/i18n/hooks", () => ({
@@ -203,19 +200,20 @@ describe("ExportTrigger", () => {
 
   // ── Markdown export ──────────────────────────────────────────────────────
 
-  test("clicking markdown export calls exportThreadAsMarkdown with thread and messages", () => {
+  test("clicking markdown export calls exportThread with thread and messages", () => {
     render(<ExportTrigger threadId="thread-abc" />);
     const items = screen.getAllByTestId("dropdown-item");
     fireEvent.click(items[0]!);
 
-    expect(mockExportThreadAsMarkdown).toHaveBeenCalledTimes(1);
-    const [threadArg, messagesArg] = mockExportThreadAsMarkdown.mock.calls[0]!;
+    expect(mockExportThread).toHaveBeenCalledTimes(1);
+    const [threadArg, messagesArg, formatArg] = mockExportThread.mock.calls[0]!;
     expect(threadArg.thread_id).toBe("thread-abc");
     expect(threadArg.updated_at).toBeDefined();
     expect(typeof threadArg.updated_at).toBe("string");
     expect(threadArg.values).toEqual({ title: "Test Thread" });
     expect(messagesArg).toHaveLength(2);
     expect(messagesArg[0].id).toBe("msg-1");
+    expect(formatArg).toBe("markdown");
   });
 
   test("markdown export shows success toast", () => {
@@ -226,26 +224,27 @@ describe("ExportTrigger", () => {
     expect(mockToastSuccess).toHaveBeenCalledWith("Export successful");
   });
 
-  test("markdown export does not call JSON export", () => {
+  test("markdown export passes the markdown format", () => {
     render(<ExportTrigger threadId="thread-1" />);
     const items = screen.getAllByTestId("dropdown-item");
     fireEvent.click(items[0]!);
 
-    expect(mockExportThreadAsJSON).not.toHaveBeenCalled();
+    expect(mockExportThread.mock.calls[0]![2]).toBe("markdown");
   });
 
   // ── JSON export ──────────────────────────────────────────────────────────
 
-  test("clicking JSON export calls exportThreadAsJSON with thread and messages", () => {
+  test("clicking JSON export calls exportThread with thread and messages", () => {
     render(<ExportTrigger threadId="thread-xyz" />);
     const items = screen.getAllByTestId("dropdown-item");
     fireEvent.click(items[1]!);
 
-    expect(mockExportThreadAsJSON).toHaveBeenCalledTimes(1);
-    const [threadArg, messagesArg] = mockExportThreadAsJSON.mock.calls[0]!;
+    expect(mockExportThread).toHaveBeenCalledTimes(1);
+    const [threadArg, messagesArg, formatArg] = mockExportThread.mock.calls[0]!;
     expect(threadArg.thread_id).toBe("thread-xyz");
     expect(threadArg.values).toEqual({ title: "Test Thread" });
     expect(messagesArg).toHaveLength(2);
+    expect(formatArg).toBe("json");
   });
 
   test("JSON export shows success toast", () => {
@@ -256,12 +255,12 @@ describe("ExportTrigger", () => {
     expect(mockToastSuccess).toHaveBeenCalledWith("Export successful");
   });
 
-  test("JSON export does not call markdown export", () => {
+  test("JSON export passes the json format", () => {
     render(<ExportTrigger threadId="thread-1" />);
     const items = screen.getAllByTestId("dropdown-item");
     fireEvent.click(items[1]!);
 
-    expect(mockExportThreadAsMarkdown).not.toHaveBeenCalled();
+    expect(mockExportThread.mock.calls[0]![2]).toBe("json");
   });
 
   // ── Empty messages guard in handler (via re-render) ──────────────────────
@@ -293,7 +292,7 @@ describe("ExportTrigger", () => {
 
     // The guard inside handleExport should fire
     expect(mockToastError).toHaveBeenCalledWith("No messages to export");
-    expect(mockExportThreadAsMarkdown).not.toHaveBeenCalled();
+    expect(mockExportThread).not.toHaveBeenCalled();
   });
 
   test("handleExport JSON guard fires when messages become empty after render via array mutation", () => {
@@ -308,7 +307,7 @@ describe("ExportTrigger", () => {
 
     // The guard inside handleExport should fire
     expect(mockToastError).toHaveBeenCalledWith("No messages to export");
-    expect(mockExportThreadAsJSON).not.toHaveBeenCalled();
+    expect(mockExportThread).not.toHaveBeenCalled();
   });
 
   // ── threadId propagation ─────────────────────────────────────────────────
@@ -318,7 +317,7 @@ describe("ExportTrigger", () => {
     const items = screen.getAllByTestId("dropdown-item");
     fireEvent.click(items[0]!);
 
-    const [threadArg] = mockExportThreadAsMarkdown.mock.calls[0]!;
+    const [threadArg] = mockExportThread.mock.calls[0]!;
     expect(threadArg.thread_id).toBe("custom-id-42");
   });
 
@@ -331,8 +330,9 @@ describe("ExportTrigger", () => {
     fireEvent.click(items[0]!); // Markdown
     fireEvent.click(items[1]!); // JSON
 
-    expect(mockExportThreadAsMarkdown).toHaveBeenCalledTimes(1);
-    expect(mockExportThreadAsJSON).toHaveBeenCalledTimes(1);
+    expect(mockExportThread).toHaveBeenCalledTimes(2);
+    expect(mockExportThread.mock.calls[0]![2]).toBe("markdown");
+    expect(mockExportThread.mock.calls[1]![2]).toBe("json");
     expect(mockToastSuccess).toHaveBeenCalledTimes(2);
   });
 
@@ -347,8 +347,8 @@ describe("ExportTrigger", () => {
     const items = screen.getAllByTestId("dropdown-item");
     fireEvent.click(items[0]!);
 
-    expect(mockExportThreadAsMarkdown).toHaveBeenCalledTimes(1);
-    const [, messagesArg] = mockExportThreadAsMarkdown.mock.calls[0]!;
+    expect(mockExportThread).toHaveBeenCalledTimes(1);
+    const [, messagesArg] = mockExportThread.mock.calls[0]!;
     expect(messagesArg).toHaveLength(1);
     expect(mockToastSuccess).toHaveBeenCalledWith("Export successful");
   });
@@ -362,7 +362,7 @@ describe("ExportTrigger", () => {
     const items = screen.getAllByTestId("dropdown-item");
     fireEvent.click(items[0]!);
 
-    const [threadArg] = mockExportThreadAsMarkdown.mock.calls[0]!;
+    const [threadArg] = mockExportThread.mock.calls[0]!;
     expect(threadArg.values).toEqual({ title: "Custom Title", extra: "data" });
   });
 
@@ -373,7 +373,7 @@ describe("ExportTrigger", () => {
     const items = screen.getAllByTestId("dropdown-item");
     fireEvent.click(items[1]!);
 
-    const [threadArg] = mockExportThreadAsJSON.mock.calls[0]!;
+    const [threadArg] = mockExportThread.mock.calls[0]!;
     expect(threadArg.values).toEqual({});
   });
 
@@ -392,7 +392,7 @@ describe("ExportTrigger", () => {
     const items = screen.getAllByTestId("dropdown-item");
     fireEvent.click(items[0]!);
 
-    const [, messagesArg] = mockExportThreadAsMarkdown.mock.calls[0]!;
+    const [, messagesArg] = mockExportThread.mock.calls[0]!;
     expect(messagesArg).toHaveLength(100);
   });
 
@@ -403,7 +403,7 @@ describe("ExportTrigger", () => {
     const items = screen.getAllByTestId("dropdown-item");
     fireEvent.click(items[0]!);
 
-    const [threadArg] = mockExportThreadAsMarkdown.mock.calls[0]!;
+    const [threadArg] = mockExportThread.mock.calls[0]!;
     const parsed = new Date(threadArg.updated_at);
     expect(parsed.toString()).not.toBe("Invalid Date");
     expect(threadArg.updated_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
@@ -424,9 +424,9 @@ describe("ExportTrigger", () => {
     const items = screen.getAllByTestId("dropdown-item");
     fireEvent.click(items[0]!);
 
-    const [threadArg] = mockExportThreadAsMarkdown.mock.calls[0]!;
+    const [threadArg, , formatArg] = mockExportThread.mock.calls[0]!;
     expect(threadArg.thread_id).toBe("md-only");
-    expect(mockExportThreadAsJSON).not.toHaveBeenCalled();
+    expect(formatArg).toBe("markdown");
   });
 
   test("JSON export receives correct thread_id while markdown is not called", () => {
@@ -434,8 +434,8 @@ describe("ExportTrigger", () => {
     const items = screen.getAllByTestId("dropdown-item");
     fireEvent.click(items[1]!);
 
-    const [threadArg] = mockExportThreadAsJSON.mock.calls[0]!;
+    const [threadArg, , formatArg] = mockExportThread.mock.calls[0]!;
     expect(threadArg.thread_id).toBe("json-only");
-    expect(mockExportThreadAsMarkdown).not.toHaveBeenCalled();
+    expect(formatArg).toBe("json");
   });
 });
