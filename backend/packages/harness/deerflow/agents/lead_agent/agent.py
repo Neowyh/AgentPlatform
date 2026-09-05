@@ -100,6 +100,30 @@ class LeadAgentAssembly:
     descriptor: Any
 
 
+@dataclass(frozen=True)
+class FrozenAgentInputs:
+    """Server-side frozen lead-agent inputs for one Run.
+
+    Enterprise control planes (AgentPlatform resource governance) resolve a
+    canonical Agent to an immutable UUID/version/hash closure before the Run
+    starts. This carrier hands that closure to the assembly as an explicit
+    argument. It is never client-injectable through ``configurable`` and is
+    never read from mutable on-disk agent state, so a published resource
+    version cannot change under a running Run.
+
+    ``resource`` (when given) is a JSON-safe governance identity that travels
+    into the assembly descriptor policies for run-evidence correlation.
+    """
+
+    agent_name: str
+    config: Any
+    soul: str | None = None
+    skills: list[Any] | None = None
+    runner_tool_groups: frozenset[str] | None = None
+    requested_skill_name: str | None = None
+    resource: Mapping[str, Any] | None = None
+
+
 def unwrap_agent_graph(agent_result: Any) -> Any:
     """Unwrap a lead assembly, leaving any other factory result untouched.
 
@@ -732,6 +756,20 @@ def _available_skill_names(agent_config, is_bootstrap: bool) -> set[str] | None:
     return None
 
 
+def _intersect_tool_groups(declared_groups: list[str] | None, runner_allowed_groups: frozenset[str] | None) -> list[str] | None:
+    """Intersect a frozen resource's declared tool groups with the caller's runner groups.
+
+    Declared groups describe what the resource may use; runner groups describe
+    what this caller may execute. ``None`` declared groups mean "all runner
+    groups"; ``None`` runner groups mean no caller restriction.
+    """
+    if declared_groups is None:
+        return sorted(runner_allowed_groups) if runner_allowed_groups is not None else None
+    if runner_allowed_groups is None:
+        return list(dict.fromkeys(declared_groups))
+    return list(dict.fromkeys(group for group in declared_groups if group in runner_allowed_groups))
+
+
 def _load_enabled_available_skills(available_skills: set[str] | None, *, app_config: AppConfig, user_id: str | None = None) -> list[Skill]:
     try:
         from deerflow.agents.lead_agent.prompt import get_enabled_skills_for_config
@@ -755,6 +793,7 @@ def assemble_lead_agent(
     config: RunnableConfig,
     *,
     app_config: AppConfig | None = None,
+    frozen: FrozenAgentInputs | None = None,
 ) -> LeadAgentAssembly:
     """Return the compiled lead graph together with its assembly descriptor.
 
@@ -762,6 +801,10 @@ def assemble_lead_agent(
     built from does not have to be recovered from LangGraph private runtime
     keys or mutable graph attributes. ``make_lead_agent`` remains the
     graph-only LangGraph Server ABI declared in ``langgraph.json``.
+
+    ``frozen`` carries server-side frozen inputs (canonical resource runs).
+    When given, the assembly builds from that closure instead of the on-disk
+    agent store and withholds agent self-mutation.
     """
     runtime_config = _get_runtime_config(config)
     runtime_app_config = app_config or runtime_config.get("app_config")
@@ -789,6 +832,8 @@ def assemble_lead_agent(
     # configurable key must not recompile the channel table either).
     freeze_checkpoint_snapshot_frequency(runtime_app_config.database.checkpoint_delta.snapshot_frequency)
     inject_checkpoint_mode(config, mode)
+    if frozen is not None:
+        return _assemble_lead_agent(config, app_config=runtime_app_config, frozen=frozen)
     return _assemble_lead_agent(config, app_config=runtime_app_config)
 
 
@@ -866,7 +911,7 @@ def _complete_assembly(
     return LeadAgentAssembly(graph=graph, descriptor=descriptor)
 
 
-def _assemble_lead_agent(config: RunnableConfig, *, app_config: AppConfig) -> LeadAgentAssembly:
+def _assemble_lead_agent(config: RunnableConfig, *, app_config: AppConfig, frozen: FrozenAgentInputs | None = None) -> LeadAgentAssembly:
     # Lazy import to avoid circular dependency
     from deerflow.tools import get_available_tools
     from deerflow.tools.builtins import setup_agent, update_agent
@@ -898,9 +943,14 @@ def _assemble_lead_agent(config: RunnableConfig, *, app_config: AppConfig) -> Le
     max_total_subagents = cfg.get("max_total_subagents", _default_max_total_subagents(resolved_app_config))
     is_bootstrap = cfg.get("is_bootstrap", False)
     non_interactive = bool(cfg.get("non_interactive", False))
-    agent_name = validate_agent_name(cfg.get("agent_name"))
-
-    agent_config = load_agent_config(agent_name, user_id=resolved_user_id) if not is_bootstrap else None
+    if frozen is not None and is_bootstrap:
+        raise ValueError("Frozen Agent inputs cannot run in bootstrap mode")
+    if frozen is not None:
+        agent_name = frozen.agent_name
+        agent_config = frozen.config
+    else:
+        agent_name = validate_agent_name(cfg.get("agent_name"))
+        agent_config = load_agent_config(agent_name, user_id=resolved_user_id) if not is_bootstrap else None
     # Keep compatibility with lightweight AgentConfig-shaped objects used by
     # integrations that predate caller-level subagent restrictions.
     allowed_subagents = getattr(agent_config, "allowed_subagents", None) if agent_config is not None else None
@@ -911,6 +961,12 @@ def _assemble_lead_agent(config: RunnableConfig, *, app_config: AppConfig) -> Le
     if isinstance(config.get("context"), dict):
         config["context"]["subagent_enabled"] = subagent_enabled
     available_skills = _available_skill_names(agent_config, is_bootstrap)
+    # Frozen runs intersect the declared tool groups with the caller's runner
+    # groups: the resource may declare more than this caller may execute.
+    if frozen is not None:
+        effective_tool_groups = _intersect_tool_groups(agent_config.tool_groups if agent_config else None, frozen.runner_tool_groups)
+    else:
+        effective_tool_groups = agent_config.tool_groups if agent_config else None
     # Custom agent model from agent config (if any), or None to let _resolve_model_name pick the default
     agent_model_name = agent_config.model if agent_config and agent_config.model else None
 
@@ -985,7 +1041,7 @@ def _assemble_lead_agent(config: RunnableConfig, *, app_config: AppConfig) -> Le
             existing = list(existing)
         config["callbacks"] = [*existing, *tracing_callbacks]
 
-    enabled_skills = _load_enabled_available_skills(available_skills, app_config=resolved_app_config, user_id=resolved_user_id)
+    enabled_skills = list(frozen.skills) if frozen is not None and frozen.skills is not None else _load_enabled_available_skills(available_skills, app_config=resolved_app_config, user_id=resolved_user_id)
 
     # Build skill search setup (deferred skill discovery).
     # Controlled by skills.deferred_discovery — independent from tool_search.enabled.
@@ -1118,9 +1174,17 @@ def _assemble_lead_agent(config: RunnableConfig, *, app_config: AppConfig) -> Le
     # leave it unset, so ``update_agent`` remains available there.
     channel_name = cfg.get("channel_name")
     is_webhook_channel = channel_name in _WEBHOOK_CHANNELS
-    extra_tools = [update_agent] if agent_name and not is_webhook_channel else []
+    # Frozen (canonical resource) runs are read-only for the runner: the
+    # enterprise resource lifecycle owns every mutation of the definition.
+    extra_tools = [update_agent] if agent_name and not is_webhook_channel and frozen is None else []
     # Default lead agent (unchanged behavior)
-    raw_tools = get_available_tools(model_name=model_name, groups=agent_config.tool_groups if agent_config else None, subagent_enabled=subagent_enabled, app_config=resolved_app_config)
+    raw_tools = get_available_tools(model_name=model_name, groups=effective_tool_groups, subagent_enabled=subagent_enabled, app_config=resolved_app_config)
+    if frozen is not None and frozen.skills:
+        # Frozen skills carry their own allowed-tool policy; a tool may be
+        # installed but not executable through this resource closure.
+        from deerflow.skills.tool_policy import filter_tools_by_skill_allowed_tools
+
+        raw_tools = filter_tools_by_skill_allowed_tools(raw_tools, frozen.skills)
     configured_tools = raw_tools + extra_tools
     if non_interactive:
         configured_tools = [tool for tool in configured_tools if tool.name not in _NON_INTERACTIVE_DISABLED_TOOL_NAMES]
@@ -1170,6 +1234,8 @@ def _assemble_lead_agent(config: RunnableConfig, *, app_config: AppConfig) -> Le
         skill_names=skill_setup.skill_names or None,
         allowed_subagents=allowed_subagents,
         subagent_execution_capacity=subagent_execution_capacity,
+        soul_override=frozen.soul if frozen is not None else None,
+        requested_skill_name=frozen.requested_skill_name if frozen is not None else None,
     )
     graph = create_agent(
         model=create_chat_model(name=model_name, thinking_enabled=thinking_enabled, reasoning_effort=reasoning_effort, app_config=resolved_app_config, attach_tracing=False, model_overrides=agent_model_overrides),
@@ -1209,5 +1275,6 @@ def _assemble_lead_agent(config: RunnableConfig, *, app_config: AppConfig) -> Le
                 "catalog_hash": setup.catalog_hash,
             },
             "deferred_skills": skill_search_enabled,
+            **({"resource": dict(frozen.resource)} if frozen is not None and frozen.resource is not None else {}),
         },
     )

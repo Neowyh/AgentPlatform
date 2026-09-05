@@ -1056,6 +1056,8 @@ def apply_prompt_template(
     skill_names: frozenset[str] | None = None,
     allowed_subagents: list[str] | None = None,
     subagent_execution_capacity: int | None = None,
+    soul_override: str | None = None,
+    requested_skill_name: str | None = None,
 ) -> str:
     # Include subagent section only if enabled (from runtime parameter)
     n = (
@@ -1121,6 +1123,17 @@ def apply_prompt_template(
         user_id=user_id,
         skill_names=skill_names,
     )
+    # Frozen (canonical resource) runs may pin a preferred skill for this Run.
+    # It is a selection hint only: it never widens the frozen closure.
+    if requested_skill_name:
+        skills_section = (
+            skills_section
+            + "\n<requested_skill>\n"
+            + f"The user selected **{requested_skill_name}** as the preferred skill for this task. "
+            + "When this task is relevant to that skill, prefer it and load its SKILL.md before using it.\n"
+            + "Use `read_file` on the skill's main file located at the path provided in the <available_skills> section when you use it.\n"
+            + "</requested_skill>"
+        )
 
     # Get deferred tools section (tool_search)
     deferred_tools_section = get_deferred_tools_prompt_section(deferred_names=deferred_names)
@@ -1146,7 +1159,7 @@ def apply_prompt_template(
     # identical across users and sessions for maximum prefix-cache reuse.
     return SYSTEM_PROMPT_TEMPLATE.format(
         agent_name=agent_name or "DeerFlow 2.0",
-        soul=get_agent_soul(agent_name, user_id=user_id),
+        soul=soul_override if soul_override is not None else get_agent_soul(agent_name, user_id=user_id),
         self_update_section=_build_self_update_section(agent_name),
         skills_section=skills_section,
         deferred_tools_section=deferred_tools_section,
