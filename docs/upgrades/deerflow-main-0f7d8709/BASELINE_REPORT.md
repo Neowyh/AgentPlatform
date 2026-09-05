@@ -144,6 +144,14 @@ The following focused slices are green on this branch:
   adapters remain imported from the AgentPlatform control-plane boundary. The
   focused contract test passed (1 passed); full workflow DB integration remains
   incomplete under the restricted test environment.
+- Trusted Gateway authorization projection now strips client-supplied
+  `is_internal`, `authz_attributes`, `channel_user_id`, LangGraph auth identity,
+  and sandbox lease fields from both runtime config sections; it derives
+  `is_internal` from the authenticated source, admits `channel_user_id` only
+  for internal callers, and projects server-owned role/OAuth fields for normal
+  users. Focused gateway authz regressions: 26 passed; internal channel caller
+  boundary: 3 passed. The broader Gateway config suite still has pre-existing
+  compatibility failures outside this slice and remains open.
 
 These results establish the next-stage baseline but do not close the semantic
 ledger rows. Shared-resource, workflow receipt, migration, offline and fresh
