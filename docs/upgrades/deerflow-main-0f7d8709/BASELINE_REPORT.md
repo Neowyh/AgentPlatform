@@ -48,7 +48,8 @@ The following focused slices are green on this branch:
 - pluggable memory configuration and manager compatibility: 18 tests;
 - extension API and run-evidence envelope contracts: 43 tests;
 - task lifecycle evidence persistence: 50 tests;
-- authorization assembly/runtime enforcement: 43 tests;
+- authorization assembly/runtime/provider enforcement, including shared-agent
+  caller identity: 44 tests;
 - sandbox mount contract and `/mnt/skills` defaults: 3 tests;
 - AgentPlatform extension boundary and lifecycle binding (snapshot identity,
   caller-scoped memory, default-deny network, explicit install registration):
