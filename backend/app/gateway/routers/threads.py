@@ -23,9 +23,9 @@ from pydantic import BaseModel, Field, field_validator
 from app.gateway.authz import require_permission
 from app.gateway.deps import get_checkpointer
 from app.gateway.utils import sanitize_log_param
+from deerflow.config.paths import Paths, get_paths
 from deerflow.runtime import serialize_channel_values
-from ideer.config.paths import Paths, get_paths
-from ideer.runtime.user_context import get_effective_user_id
+from deerflow.runtime.user_context import get_effective_user_id
 from ideer.utils.time import coerce_iso, now_iso
 
 logger = logging.getLogger(__name__)
