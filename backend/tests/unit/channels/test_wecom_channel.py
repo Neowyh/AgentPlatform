@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -167,8 +168,8 @@ class TestWeComChannelStop:
     async def test_stop_basic(self):
         ch = _make_channel()
         ch._running = True
-        mock_task = MagicMock()
-        ch._ws_task = mock_task
+        ws_task = asyncio.create_task(asyncio.sleep(0))
+        ch._ws_task = ws_task
         mock_ws = MagicMock()
         ch._ws_client = mock_ws
         ch._ws_frames = {"k": "v"}
@@ -178,7 +179,7 @@ class TestWeComChannelStop:
         await ch.stop()
 
         assert ch._running is False
-        mock_task.cancel.assert_called_once()
+        assert ws_task.cancelled()
         mock_ws.disconnect.assert_called_once()
         assert ch._ws_frames == {}
         assert ch._ws_stream_ids == {}
@@ -196,12 +197,16 @@ class TestWeComChannelStop:
     async def test_stop_task_cancel_error(self):
         ch = _make_channel()
         ch._running = True
-        ch._ws_task = MagicMock()
-        ch._ws_task.cancel.side_effect = RuntimeError("cancel fail")
+
+        async def _failing_task():
+            raise RuntimeError("task fail")
+
+        ch._ws_task = asyncio.create_task(_failing_task())
         ch._ws_client = MagicMock()
         ch._ws_client.disconnect.side_effect = RuntimeError("disconnect fail")
         ch.bus = MagicMock()
 
+        # Shutdown must survive task and disconnect failures.
         await ch.stop()
         assert ch._running is False
 
@@ -567,13 +572,12 @@ class TestPublishWsInbound:
 
         with patch.dict("sys.modules", {"aibot": mock_aibot}):
             with patch("builtins.__import__", return_value=mock_aibot):
-                with patch.object(ch.bus, "publish_inbound", new_callable=AsyncMock) as mock_pub:
-                    await ch._publish_ws_inbound(frame, "hello", files=[{"type": "image", "url": "http://img.png"}])
+                await ch._publish_ws_inbound(frame, "hello", files=[{"type": "image", "url": "http://img.png"}])
 
-                    mock_pub.assert_called_once()
-                    inbound = mock_pub.call_args[0][0]
-                    assert inbound.text == "hello"
-                    assert inbound.topic_id == "user_1"
+                inbound = ch.bus.get_inbound_nowait()
+                ch.bus.inbound_task_done()
+                assert inbound.text == "hello"
+                assert inbound.topic_id == "user_1"
 
     @pytest.mark.asyncio
     async def test_publish_command(self):
@@ -588,10 +592,10 @@ class TestPublishWsInbound:
 
         with patch.dict("sys.modules", {"aibot": mock_aibot}):
             with patch("builtins.__import__", return_value=mock_aibot):
-                with patch.object(ch.bus, "publish_inbound", new_callable=AsyncMock) as mock_pub:
-                    await ch._publish_ws_inbound(frame, "/help")
-                    inbound = mock_pub.call_args[0][0]
-                    assert inbound.msg_type == InboundMessageType.COMMAND
+                await ch._publish_ws_inbound(frame, "/help")
+                inbound = ch.bus.get_inbound_nowait()
+                ch.bus.inbound_task_done()
+                assert inbound.msg_type == InboundMessageType.COMMAND
 
     @pytest.mark.asyncio
     async def test_publish_import_failure(self):

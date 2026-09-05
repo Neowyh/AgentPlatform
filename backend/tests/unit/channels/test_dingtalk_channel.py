@@ -242,7 +242,6 @@ class TestOnChatbotMessage:
     def test_p2p_message_produces_correct_inbound(self):
         async def go():
             bus = MessageBus()
-            bus.publish_inbound = AsyncMock()
             channel = DingTalkChannel(bus, config={})
             channel._client_id = "test_key"
             channel._main_loop = asyncio.get_event_loop()
@@ -260,8 +259,7 @@ class TestOnChatbotMessage:
 
             await asyncio.sleep(0.1)
 
-            bus.publish_inbound.assert_awaited_once()
-            inbound = bus.publish_inbound.await_args.args[0]
+            inbound = bus.get_inbound_nowait()
             assert inbound.channel_name == "dingtalk"
             assert inbound.chat_id == "user_001"
             assert inbound.user_id == "user_001"
@@ -275,7 +273,6 @@ class TestOnChatbotMessage:
     def test_group_message_produces_correct_inbound(self):
         async def go():
             bus = MessageBus()
-            bus.publish_inbound = AsyncMock()
             channel = DingTalkChannel(bus, config={})
             channel._client_id = "test_key"
             channel._main_loop = asyncio.get_event_loop()
@@ -294,8 +291,7 @@ class TestOnChatbotMessage:
 
             await asyncio.sleep(0.1)
 
-            bus.publish_inbound.assert_awaited_once()
-            inbound = bus.publish_inbound.await_args.args[0]
+            inbound = bus.get_inbound_nowait()
             assert inbound.channel_name == "dingtalk"
             assert inbound.chat_id == "conv_group_001"
             assert inbound.user_id == "user_002"
@@ -311,7 +307,6 @@ class TestOnChatbotMessage:
 
         async def go():
             bus = MessageBus()
-            bus.publish_inbound = AsyncMock()
             channel = DingTalkChannel(bus, config={})
             channel._client_id = "test_key"
             channel._main_loop = asyncio.get_event_loop()
@@ -330,8 +325,7 @@ class TestOnChatbotMessage:
 
             await asyncio.sleep(0.1)
 
-            bus.publish_inbound.assert_awaited_once()
-            inbound = bus.publish_inbound.await_args.args[0]
+            inbound = bus.get_inbound_nowait()
             assert inbound.chat_id == "conv_group_001"
             assert inbound.topic_id == "msg_group_002"
             assert inbound.metadata["conversation_type"] == _CONVERSATION_TYPE_GROUP
@@ -341,7 +335,6 @@ class TestOnChatbotMessage:
     def test_command_classified_correctly(self):
         async def go():
             bus = MessageBus()
-            bus.publish_inbound = AsyncMock()
             channel = DingTalkChannel(bus, config={})
             channel._client_id = "test_key"
             channel._main_loop = asyncio.get_event_loop()
@@ -353,8 +346,7 @@ class TestOnChatbotMessage:
 
             await asyncio.sleep(0.1)
 
-            bus.publish_inbound.assert_awaited_once()
-            inbound = bus.publish_inbound.await_args.args[0]
+            inbound = bus.get_inbound_nowait()
             assert inbound.msg_type == InboundMessageType.COMMAND
 
         _run(go())
@@ -362,7 +354,6 @@ class TestOnChatbotMessage:
     def test_non_command_classified_as_chat(self):
         async def go():
             bus = MessageBus()
-            bus.publish_inbound = AsyncMock()
             channel = DingTalkChannel(bus, config={})
             channel._client_id = "test_key"
             channel._main_loop = asyncio.get_event_loop()
@@ -374,8 +365,7 @@ class TestOnChatbotMessage:
 
             await asyncio.sleep(0.1)
 
-            bus.publish_inbound.assert_awaited_once()
-            inbound = bus.publish_inbound.await_args.args[0]
+            inbound = bus.get_inbound_nowait()
             assert inbound.msg_type == InboundMessageType.CHAT
 
         _run(go())
@@ -407,7 +397,6 @@ class TestAllowedUsersFiltering:
     def test_allowed_user_passes(self):
         async def go():
             bus = MessageBus()
-            bus.publish_inbound = AsyncMock()
             channel = DingTalkChannel(bus, config={"allowed_users": ["user_001"]})
             channel._client_id = "test_key"
             channel._main_loop = asyncio.get_event_loop()
@@ -418,7 +407,7 @@ class TestAllowedUsersFiltering:
             channel._on_chatbot_message(msg)
 
             await asyncio.sleep(0.1)
-            bus.publish_inbound.assert_awaited_once()
+            bus.get_inbound_nowait()
 
         _run(go())
 
@@ -442,7 +431,6 @@ class TestAllowedUsersFiltering:
     def test_empty_allowed_users_allows_all(self):
         async def go():
             bus = MessageBus()
-            bus.publish_inbound = AsyncMock()
             channel = DingTalkChannel(bus, config={"allowed_users": []})
             channel._client_id = "test_key"
             channel._main_loop = asyncio.get_event_loop()
@@ -453,7 +441,7 @@ class TestAllowedUsersFiltering:
             channel._on_chatbot_message(msg)
 
             await asyncio.sleep(0.1)
-            bus.publish_inbound.assert_awaited_once()
+            bus.get_inbound_nowait()
 
         _run(go())
 
@@ -655,7 +643,6 @@ class TestTopicIdMapping:
     def test_p2p_topic_is_none(self):
         async def go():
             bus = MessageBus()
-            bus.publish_inbound = AsyncMock()
             channel = DingTalkChannel(bus, config={})
             channel._client_id = "test_key"
             channel._main_loop = asyncio.get_event_loop()
@@ -669,7 +656,7 @@ class TestTopicIdMapping:
             channel._on_chatbot_message(msg)
 
             await asyncio.sleep(0.1)
-            inbound = bus.publish_inbound.await_args.args[0]
+            inbound = bus.get_inbound_nowait()
             assert inbound.topic_id is None
 
         _run(go())
@@ -677,7 +664,6 @@ class TestTopicIdMapping:
     def test_group_topic_is_message_id(self):
         async def go():
             bus = MessageBus()
-            bus.publish_inbound = AsyncMock()
             channel = DingTalkChannel(bus, config={})
             channel._client_id = "test_key"
             channel._main_loop = asyncio.get_event_loop()
@@ -692,7 +678,7 @@ class TestTopicIdMapping:
             channel._on_chatbot_message(msg)
 
             await asyncio.sleep(0.1)
-            inbound = bus.publish_inbound.await_args.args[0]
+            inbound = bus.get_inbound_nowait()
             assert inbound.topic_id == "msg_group_001"
 
         _run(go())
@@ -1457,7 +1443,7 @@ class TestCardMode:
         mock_message.rich_text_content = None
 
         channel._main_loop = MagicMock()
-        channel._main_loop.is_running.return_value = False
+        channel._main_loop.is_running.return_value = True
         channel._allowed_users = set()
         channel._running = True
 
@@ -1689,24 +1675,28 @@ class TestApiHeaders:
 
 class TestLogFutureError:
     def test_no_error(self):
+        channel = DingTalkChannel(MessageBus(), config={})
         fut = MagicMock()
         fut.exception.return_value = None
-        DingTalkChannel._log_future_error(fut, "test", "m1")
+        channel._log_future_error(fut, "test", "m1")
 
     def test_with_error(self):
+        channel = DingTalkChannel(MessageBus(), config={})
         fut = MagicMock()
         fut.exception.return_value = RuntimeError("err")
-        DingTalkChannel._log_future_error(fut, "test", "m1")
+        channel._log_future_error(fut, "test", "m1")
 
     def test_cancelled(self):
+        channel = DingTalkChannel(MessageBus(), config={})
         fut = MagicMock()
         fut.exception.side_effect = asyncio.CancelledError()
-        DingTalkChannel._log_future_error(fut, "test", "m1")
+        channel._log_future_error(fut, "test", "m1")
 
     def test_invalid_state(self):
+        channel = DingTalkChannel(MessageBus(), config={})
         fut = MagicMock()
         fut.exception.side_effect = asyncio.InvalidStateError()
-        DingTalkChannel._log_future_error(fut, "test", "m1")
+        channel._log_future_error(fut, "test", "m1")
 
 
 class TestSendFileExtended:
@@ -3162,7 +3152,7 @@ class TestOnChatbotMessageCardStorage:
         channel = DingTalkChannel(bus, config={"card_template_id": "tpl_123"})
         channel._running = True
         channel._main_loop = MagicMock()
-        channel._main_loop.is_running.return_value = False
+        channel._main_loop.is_running.return_value = True
 
         msg = _make_chatbot_message(
             text="hello",
@@ -3464,12 +3454,11 @@ class TestOnOutboundForwarding:
 
 
 class TestOnChatbotMessageEventLoop:
-    """Cover lines 433-439: event loop scheduling with run_coroutine_threadsafe."""
+    """Cover inbound scheduling onto the running main loop."""
 
     def test_schedules_via_event_loop(self):
         async def go():
             bus = MessageBus()
-            bus.publish_inbound = AsyncMock()
             channel = DingTalkChannel(bus, config={})
             channel._running = True
             channel._main_loop = asyncio.get_running_loop()
@@ -3482,8 +3471,7 @@ class TestOnChatbotMessageEventLoop:
             # Allow scheduled coroutine to complete
             await asyncio.sleep(0.1)
 
-            bus.publish_inbound.assert_awaited_once()
-            inbound = bus.publish_inbound.await_args.args[0]
+            inbound = bus.get_inbound_nowait()
             assert inbound.text == "hello via loop"
 
         _run(go())

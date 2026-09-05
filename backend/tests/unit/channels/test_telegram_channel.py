@@ -233,7 +233,10 @@ class TestStop:
         assert ch._running is False
         assert ch._application is None
         assert ch._thread is None
-        mock_loop.call_soon_threadsafe.assert_called_once_with(mock_loop.stop)
+        # Shutdown first schedules bridge-task cancellation and then stops the
+        # polling loop; both calls are expected for the production contract.
+        assert len(mock_loop.call_soon_threadsafe.call_args_list) == 2
+        assert any(call.args == (mock_loop.stop,) for call in mock_loop.call_soon_threadsafe.call_args_list)
 
     @pytest.mark.asyncio
     async def test_stop_when_loop_not_running(self):
@@ -445,7 +448,7 @@ class TestSendFile:
         msg = _make_outbound()
         att = _make_attachment(size=50 * 1024 * 1024, is_image=False)
 
-        with patch("builtins.open", MagicMock()):
+        with patch("app.channels.telegram._load_telegram_input_file", MagicMock(return_value=MagicMock())):
             with _patch_telegram_modules():
                 result = await ch.send_file(msg, att)
 
@@ -460,7 +463,7 @@ class TestSendFile:
         msg = _make_outbound()
         att = _make_attachment(is_image=True, size=5 * 1024 * 1024, mime_type="image/png")
 
-        with patch("builtins.open", MagicMock()):
+        with patch("app.channels.telegram._load_telegram_input_file", MagicMock(return_value=MagicMock())):
             result = await ch.send_file(msg, att)
 
         assert result is True
@@ -477,7 +480,7 @@ class TestSendFile:
         msg = _make_outbound()
         att = _make_attachment(is_image=True, size=10 * 1024 * 1024, mime_type="image/png")
 
-        with patch("builtins.open", MagicMock()):
+        with patch("app.channels.telegram._load_telegram_input_file", MagicMock(return_value=MagicMock())):
             result = await ch.send_file(msg, att)
 
         assert result is True
@@ -493,7 +496,7 @@ class TestSendFile:
         msg = _make_outbound()
         att = _make_attachment(is_image=True, size=5 * 1024 * 1024)
 
-        with patch("builtins.open", MagicMock()):
+        with patch("app.channels.telegram._load_telegram_input_file", MagicMock(return_value=MagicMock())):
             result = await ch.send_file(msg, att)
 
         assert result is True
@@ -511,7 +514,7 @@ class TestSendFile:
         msg = _make_outbound()
         att = _make_attachment(is_image=True, size=15 * 1024 * 1024, mime_type="image/png")
 
-        with patch("builtins.open", MagicMock()):
+        with patch("app.channels.telegram._load_telegram_input_file", MagicMock(return_value=MagicMock())):
             with _patch_telegram_modules():
                 result = await ch.send_file(msg, att)
 
@@ -528,7 +531,7 @@ class TestSendFile:
         msg = _make_outbound()
         att = _make_attachment(is_image=False, size=2048)
 
-        with patch("builtins.open", MagicMock()):
+        with patch("app.channels.telegram._load_telegram_input_file", MagicMock(return_value=MagicMock())):
             with _patch_telegram_modules():
                 result = await ch.send_file(msg, att)
 
@@ -547,7 +550,7 @@ class TestSendFile:
         msg = _make_outbound()
         att = _make_attachment(is_image=True, size=1024)
 
-        with patch("builtins.open", MagicMock()):
+        with patch("app.channels.telegram._load_telegram_input_file", MagicMock(return_value=MagicMock())):
             result = await ch.send_file(msg, att)
 
         assert result is False
@@ -562,7 +565,7 @@ class TestSendFile:
         msg = _make_outbound()
         att = _make_attachment(is_image=False, size=1024)
 
-        with patch("builtins.open", MagicMock()):
+        with patch("app.channels.telegram._load_telegram_input_file", MagicMock(return_value=MagicMock())):
             with _patch_telegram_modules():
                 result = await ch.send_file(msg, att)
 
@@ -580,7 +583,7 @@ class TestSendFile:
         msg = _make_outbound()
         att = _make_attachment(is_image=True, size=1024)
 
-        with patch("builtins.open", MagicMock()):
+        with patch("app.channels.telegram._load_telegram_input_file", MagicMock(return_value=MagicMock())):
             await ch.send_file(msg, att)
 
         assert ch._last_bot_message["12345"] == 99
@@ -597,7 +600,7 @@ class TestSendFile:
         msg = _make_outbound()
         att = _make_attachment(is_image=False, size=1024)
 
-        with patch("builtins.open", MagicMock()):
+        with patch("app.channels.telegram._load_telegram_input_file", MagicMock(return_value=MagicMock())):
             with _patch_telegram_modules():
                 await ch.send_file(msg, att)
 
@@ -613,7 +616,7 @@ class TestSendFile:
         msg = _make_outbound()
         att = _make_attachment(is_image=False, size=1024)
 
-        with patch("builtins.open", MagicMock()):
+        with patch("app.channels.telegram._load_telegram_input_file", MagicMock(return_value=MagicMock())):
             with _patch_telegram_modules():
                 result = await ch.send_file(msg, att)
 
@@ -631,7 +634,7 @@ class TestSendFile:
         msg = _make_outbound()
         att = _make_attachment(is_image=True, size=1024)
 
-        with patch("builtins.open", MagicMock()):
+        with patch("app.channels.telegram._load_telegram_input_file", MagicMock(return_value=MagicMock())):
             result = await ch.send_file(msg, att)
 
         assert result is True
@@ -679,22 +682,25 @@ class TestSendRunningReply:
 
 class TestLogFutureError:
     def test_future_with_exception(self):
+        ch = _make_channel()
         fut = MagicMock()
         fut.exception.return_value = ValueError("boom")
-        TelegramChannel._log_future_error(fut, "test_op", "msg_1")
+        ch._log_future_error(fut, "test_op", "msg_1")
         fut.exception.assert_called_once()
 
     def test_future_without_exception(self):
+        ch = _make_channel()
         fut = MagicMock()
         fut.exception.return_value = None
-        TelegramChannel._log_future_error(fut, "test_op", "msg_1")
+        ch._log_future_error(fut, "test_op", "msg_1")
         fut.exception.assert_called_once()
 
     def test_future_exception_inspection_fails(self):
+        ch = _make_channel()
         fut = MagicMock()
         fut.exception.side_effect = Exception("cannot inspect")
         # Should not raise
-        TelegramChannel._log_future_error(fut, "test_op", "msg_1")
+        ch._log_future_error(fut, "test_op", "msg_1")
 
 
 # ---------------------------------------------------------------------------
@@ -839,24 +845,23 @@ class TestCmdGeneric:
     @pytest.mark.asyncio
     async def test_private_chat_topic_id_none(self):
         ch = _make_channel()
-        ch._main_loop = MagicMock()
-        ch._main_loop.is_running.return_value = True
+        ch._main_loop = asyncio.get_event_loop()
         update = _make_update(text="/new", chat_id=100, user_id=1, msg_id=10, chat_type="private")
         ctx = MagicMock()
 
-        with patch("asyncio.run_coroutine_threadsafe") as mock_run:
-            mock_fut = MagicMock()
-            mock_run.return_value = mock_fut
-            await ch._cmd_generic(update, ctx)
+        await ch._cmd_generic(update, ctx)
+        await asyncio.sleep(0.1)
 
-        mock_run.assert_called_once()
-        mock_fut.add_done_callback.assert_called_once()
+        inbound = ch.bus.get_inbound_nowait()
+        assert inbound.text == "/new"
+        assert inbound.msg_type == InboundMessageType.COMMAND
+        assert inbound.topic_id is None  # private chat
+        ch.bus.inbound_task_done()
 
     @pytest.mark.asyncio
     async def test_group_chat_with_reply_to(self):
         ch = _make_channel()
-        ch._main_loop = MagicMock()
-        ch._main_loop.is_running.return_value = True
+        ch._main_loop = asyncio.get_event_loop()
         update = _make_update(
             text="/status",
             chat_id=200,
@@ -867,18 +872,19 @@ class TestCmdGeneric:
         )
         ctx = MagicMock()
 
-        with patch("asyncio.run_coroutine_threadsafe") as mock_run:
-            mock_fut = MagicMock()
-            mock_run.return_value = mock_fut
-            await ch._cmd_generic(update, ctx)
+        await ch._cmd_generic(update, ctx)
+        await asyncio.sleep(0.1)
 
-        mock_run.assert_called_once()
+        inbound = ch.bus.get_inbound_nowait()
+        assert inbound.text == "/status"
+        assert inbound.msg_type == InboundMessageType.COMMAND
+        assert inbound.topic_id == "15"
+        ch.bus.inbound_task_done()
 
     @pytest.mark.asyncio
     async def test_group_chat_without_reply_to(self):
         ch = _make_channel()
-        ch._main_loop = MagicMock()
-        ch._main_loop.is_running.return_value = True
+        ch._main_loop = asyncio.get_event_loop()
         update = _make_update(
             text="/models",
             chat_id=300,
@@ -888,12 +894,14 @@ class TestCmdGeneric:
         )
         ctx = MagicMock()
 
-        with patch("asyncio.run_coroutine_threadsafe") as mock_run:
-            mock_fut = MagicMock()
-            mock_run.return_value = mock_fut
-            await ch._cmd_generic(update, ctx)
+        await ch._cmd_generic(update, ctx)
+        await asyncio.sleep(0.1)
 
-        mock_run.assert_called_once()
+        inbound = ch.bus.get_inbound_nowait()
+        assert inbound.text == "/models"
+        assert inbound.msg_type == InboundMessageType.COMMAND
+        assert inbound.topic_id == "30"
+        ch.bus.inbound_task_done()
 
     @pytest.mark.asyncio
     async def test_main_loop_not_running(self):
@@ -940,24 +948,24 @@ class TestOnText:
     @pytest.mark.asyncio
     async def test_private_chat(self):
         ch = _make_channel()
-        ch._main_loop = MagicMock()
-        ch._main_loop.is_running.return_value = True
+        ch._main_loop = asyncio.get_event_loop()
         update = _make_update(text="hello", chat_id=100, user_id=1, msg_id=5, chat_type="private")
         ctx = MagicMock()
 
-        with patch("asyncio.run_coroutine_threadsafe") as mock_run:
-            mock_fut = MagicMock()
-            mock_run.return_value = mock_fut
-            await ch._on_text(update, ctx)
+        await ch._on_text(update, ctx)
+        await asyncio.sleep(0.1)
 
-        mock_run.assert_called_once()
-        mock_fut.add_done_callback.assert_called_once()
+        inbound = ch.bus.get_inbound_nowait()
+        assert inbound.text == "hello"
+        assert inbound.chat_id == "100"
+        assert inbound.msg_type == InboundMessageType.CHAT
+        assert inbound.topic_id is None  # private chat
+        ch.bus.inbound_task_done()
 
     @pytest.mark.asyncio
     async def test_group_chat_with_reply(self):
         ch = _make_channel()
-        ch._main_loop = MagicMock()
-        ch._main_loop.is_running.return_value = True
+        ch._main_loop = asyncio.get_event_loop()
         update = _make_update(
             text="reply msg",
             chat_id=200,
@@ -968,27 +976,30 @@ class TestOnText:
         )
         ctx = MagicMock()
 
-        with patch("asyncio.run_coroutine_threadsafe") as mock_run:
-            mock_fut = MagicMock()
-            mock_run.return_value = mock_fut
-            await ch._on_text(update, ctx)
+        await ch._on_text(update, ctx)
+        await asyncio.sleep(0.1)
 
-        mock_run.assert_called_once()
+        inbound = ch.bus.get_inbound_nowait()
+        assert inbound.text == "reply msg"
+        assert inbound.chat_id == "200"
+        assert inbound.topic_id == "15"  # replied-to message id
+        ch.bus.inbound_task_done()
 
     @pytest.mark.asyncio
     async def test_group_chat_no_reply(self):
         ch = _make_channel()
-        ch._main_loop = MagicMock()
-        ch._main_loop.is_running.return_value = True
+        ch._main_loop = asyncio.get_event_loop()
         update = _make_update(text="new thread", chat_id=300, user_id=1, msg_id=30, chat_type="group")
         ctx = MagicMock()
 
-        with patch("asyncio.run_coroutine_threadsafe") as mock_run:
-            mock_fut = MagicMock()
-            mock_run.return_value = mock_fut
-            await ch._on_text(update, ctx)
+        await ch._on_text(update, ctx)
+        await asyncio.sleep(0.1)
 
-        mock_run.assert_called_once()
+        inbound = ch.bus.get_inbound_nowait()
+        assert inbound.text == "new thread"
+        assert inbound.chat_id == "300"
+        assert inbound.topic_id == "30"  # falls back to the message id
+        ch.bus.inbound_task_done()
 
     @pytest.mark.asyncio
     async def test_main_loop_not_running(self):
@@ -1092,7 +1103,7 @@ class TestOnOutbound:
         att = _make_attachment(is_image=True, size=1024)
         msg = _make_outbound(attachments=[att])
 
-        with patch("builtins.open", MagicMock()):
+        with patch("app.channels.telegram._load_telegram_input_file", MagicMock(return_value=MagicMock())):
             await ch._on_outbound(msg)
 
         bot.send_photo.assert_awaited_once()
@@ -1108,7 +1119,7 @@ class TestOnOutbound:
         att = _make_attachment(is_image=True, size=1024)
         msg = _make_outbound(attachments=[att])
 
-        with patch("builtins.open", MagicMock()):
+        with patch("app.channels.telegram._load_telegram_input_file", MagicMock(return_value=MagicMock())):
             await ch._on_outbound(msg)  # should not raise
 
     @pytest.mark.asyncio
@@ -1155,9 +1166,9 @@ class TestProperties:
         ch = _make_channel(running=True)
         assert ch.is_running is True
 
-    def test_supports_streaming_false(self):
+    def test_supports_streaming_true(self):
         ch = _make_channel()
-        assert ch.supports_streaming is False
+        assert ch.supports_streaming is True
 
 
 # ---------------------------------------------------------------------------
@@ -1168,8 +1179,8 @@ class TestProperties:
 class TestIntegration:
     @pytest.mark.asyncio
     async def test_on_text_publishes_inbound_via_main_loop(self):
-        """Verify the full path: _on_text schedules _process_incoming_with_reply
-        on the main loop, which sends a running reply then publishes inbound."""
+        """Verify the full path: _on_text reserves intake, schedules identity
+        handling on the main loop, then commits the reservation to the bus."""
         ch = _make_channel()
         real_loop = asyncio.get_event_loop()
         ch._main_loop = real_loop
@@ -1187,15 +1198,12 @@ class TestIntegration:
         )
         ctx = MagicMock()
 
-        published: list[InboundMessage] = []
+        await ch._on_text(update, ctx)
+        # Let the scheduled coroutine run
+        await asyncio.sleep(0.1)
 
-        async def capture_inbound(msg):
-            published.append(msg)
-
-        with patch.object(ch.bus, "publish_inbound", side_effect=capture_inbound):
-            await ch._on_text(update, ctx)
-            # Let the scheduled coroutine run
-            await asyncio.sleep(0.1)
+        published = [ch.bus.get_inbound_nowait()]
+        ch.bus.inbound_task_done()
 
         assert len(published) == 1
         assert published[0].text == "integrate me"
@@ -1224,14 +1232,11 @@ class TestIntegration:
         )
         ctx = MagicMock()
 
-        published: list[InboundMessage] = []
+        await ch._cmd_generic(update, ctx)
+        await asyncio.sleep(0.1)
 
-        async def capture_inbound(msg):
-            published.append(msg)
-
-        with patch.object(ch.bus, "publish_inbound", side_effect=capture_inbound):
-            await ch._cmd_generic(update, ctx)
-            await asyncio.sleep(0.1)
+        published = [ch.bus.get_inbound_nowait()]
+        ch.bus.inbound_task_done()
 
         assert len(published) == 1
         assert published[0].text == "/new"

@@ -84,6 +84,11 @@ def _make_event(
     return event
 
 
+async def _hang_forever():
+    """Long-lived coroutine for real task fixtures (stop() cancels them)."""
+    await asyncio.sleep(3600)
+
+
 def _run_on_message_with_loop(ch, content_dict, **kwargs):
     """Run _on_message with a live event loop in a background thread."""
     loop = asyncio.new_event_loop()
@@ -93,14 +98,21 @@ def _run_on_message_with_loop(ch, content_dict, **kwargs):
     event = _make_event(content_dict, **kwargs)
     published = []
 
-    async def mock_prepare(msg_id, inbound):
+    async def mock_prepare(msg_id, inbound, *, source_message_ids=None, reservation=None):
         published.append(inbound)
+        if reservation is not None:
+            reservation.release()
 
     loop_thread = threading.Thread(target=loop.run_forever, daemon=True)
     loop_thread.start()
 
     try:
-        with patch.object(ch, "_prepare_inbound", side_effect=mock_prepare):
+        with (
+            patch.object(ch, "_prepare_inbound", side_effect=mock_prepare),
+            # File/image inbounds are batched; shrink the flush window so the
+            # scheduled prepare still lands within the wait below.
+            patch("app.channels.feishu.FEISHU_INBOUND_BATCH_WINDOW_SECONDS", 0.01),
+        ):
             ch._on_message(event)
             time.sleep(0.2)
     finally:
@@ -349,16 +361,15 @@ class TestFeishuChannelStop:
         ch._running = True
         mock_thread = MagicMock()
         ch._thread = mock_thread
-        mock_task = MagicMock()
-        mock_task.cancel = MagicMock()
-        ch._background_tasks = {mock_task}
-        ch._running_card_tasks = {"key": mock_task}
+        task = asyncio.get_running_loop().create_task(_hang_forever())
+        ch._background_tasks = {task}
+        ch._running_card_tasks = {"key": task}
         ch.bus = MagicMock()
 
         await ch.stop()
 
         assert ch._running is False
-        mock_task.cancel.assert_called()
+        assert task.cancelled()
         mock_thread.join.assert_called_once_with(timeout=5)
         assert ch._thread is None
 
@@ -376,27 +387,28 @@ class TestFeishuChannelStop:
         ch = _make_channel()
         ch._running = True
         ch.bus = MagicMock()
-        task1 = MagicMock()
-        task2 = MagicMock()
+        task1 = asyncio.get_running_loop().create_task(_hang_forever())
+        task2 = asyncio.get_running_loop().create_task(_hang_forever())
         ch._background_tasks = {task1, task2}
 
         await ch.stop()
 
         assert len(ch._background_tasks) == 0
-        task1.cancel.assert_called_once()
-        task2.cancel.assert_called_once()
+        assert task1.cancelled()
+        assert task2.cancelled()
 
     @pytest.mark.asyncio
     async def test_stop_clears_running_card_tasks(self):
         ch = _make_channel()
         ch._running = True
         ch.bus = MagicMock()
-        task = MagicMock()
+        task = asyncio.get_running_loop().create_task(_hang_forever())
         ch._running_card_tasks = {"msg_1": task, "msg_2": task}
 
         await ch.stop()
 
         assert len(ch._running_card_tasks) == 0
+        assert task.cancelled()
 
     @pytest.mark.asyncio
     async def test_stop_unsubscribes_outbound(self):
@@ -803,7 +815,7 @@ class TestReceiveFile:
 
         call_count = 0
 
-        async def mock_receive(ts, key, type_, tid):
+        async def mock_receive(ts, key, type_, tid, user_id=None):
             nonlocal call_count
             call_count += 1
             return f"/mnt/user-data/uploads/file{call_count}.png"
@@ -825,7 +837,7 @@ class TestReceiveFile:
             files=[{"image_key": "img_1"}, {"file_key": "file_1"}],
         )
 
-        async def mock_receive(ts, key, type_, tid):
+        async def mock_receive(ts, key, type_, tid, user_id=None):
             if type_ == "image":
                 return "/mnt/user-data/uploads/img.png"
             return "/mnt/user-data/uploads/doc.pdf"
@@ -848,7 +860,7 @@ class TestReceiveFile:
             files=[{"image_key": "img_1"}, {"sticker_key": "sticker_1"}],
         )
 
-        async def mock_receive(ts, key, type_, tid):
+        async def mock_receive(ts, key, type_, tid, user_id=None):
             return "/mnt/user-data/uploads/img.png"
 
         with patch.object(ch, "_receive_single_file", side_effect=mock_receive) as mock_fn:
@@ -969,7 +981,8 @@ class TestReceiveSingleFile:
             result = await ch._receive_single_file("msg_1", "fk_123", "file", "thread_1")
 
         assert "/mnt/user-data/uploads/" in result
-        assert "my_document.pdf" in result  # dots in name sanitized
+        # normalize_filename keeps interior dots (basename extraction only)
+        assert "my.document.pdf" in result
 
     @pytest.mark.asyncio
     async def test_success_with_default_filename_image(self, tmp_path):
@@ -1063,7 +1076,9 @@ class TestReceiveSingleFile:
 
         mock_sandbox = MagicMock()
         mock_sandbox_provider = MagicMock()
+        mock_sandbox_provider.uses_thread_data_mounts = False
         mock_sandbox_provider.acquire.return_value = "sandbox_abc"
+        mock_sandbox_provider.acquire_async = AsyncMock(return_value="sandbox_abc")
         mock_sandbox_provider.get.return_value = mock_sandbox
 
         with (
@@ -1098,7 +1113,9 @@ class TestReceiveSingleFile:
         mock_paths.sandbox_uploads_dir.return_value = uploads_dir
 
         mock_sandbox_provider = MagicMock()
+        mock_sandbox_provider.uses_thread_data_mounts = False
         mock_sandbox_provider.acquire.return_value = "sandbox_abc"
+        mock_sandbox_provider.acquire_async = AsyncMock(return_value="sandbox_abc")
         mock_sandbox_provider.get.return_value = None
 
         with (
@@ -1132,7 +1149,8 @@ class TestReceiveSingleFile:
         mock_paths.sandbox_uploads_dir.return_value = uploads_dir
 
         mock_sandbox_provider = MagicMock()
-        mock_sandbox_provider.acquire.side_effect = RuntimeError("sandbox error")
+        mock_sandbox_provider.uses_thread_data_mounts = False
+        mock_sandbox_provider.acquire_async = AsyncMock(side_effect=RuntimeError("sandbox error"))
 
         with (
             patch("app.channels.feishu.get_paths", return_value=mock_paths),
@@ -1167,7 +1185,7 @@ class TestReceiveSingleFile:
         with (
             patch("app.channels.feishu.get_paths", return_value=mock_paths),
             patch("app.channels.feishu.get_effective_user_id", return_value="user_1"),
-            patch.object(Path, "write_bytes", side_effect=OSError("write error")),
+            patch("app.channels.feishu.write_upload_file_no_symlink", side_effect=OSError("write error")),
         ):
             result = await ch._receive_single_file("msg_1", "fk_123", "file", "thread_1")
 
@@ -1206,8 +1224,9 @@ class TestReceiveSingleFile:
             result = await ch._receive_single_file("msg_1", "fk_123", "file", "thread_1")
 
         assert "/mnt/user-data/uploads/" in result
-        # path/to should be sanitized
-        assert "path_to" in result
+        # path/to should be sanitized away (basename extraction)
+        assert "file.txt" in result
+        assert "path/to" not in result
 
 
 # ---------------------------------------------------------------------------
@@ -1444,7 +1463,7 @@ class TestRunningCardManagement:
     async def test_ensure_running_card_starts_and_awaits(self):
         ch = _make_channel()
 
-        async def fake_create(mid, text="Working on it..."):
+        async def fake_create(mid, text="Working on it...", metadata=None):
             ch._running_card_ids[mid] = "new_card"
             return "new_card"
 
@@ -1469,7 +1488,7 @@ class TestRunningCardManagement:
         ch = _make_channel()
         # running_card_id is not set at the start
 
-        def side_effect_started(source_message_id, text="Working on it..."):
+        def side_effect_started(source_message_id, text="Working on it...", metadata=None):
             # Simulate a concurrent callback that sets the card ID
             ch._running_card_ids[source_message_id] = "card_from_callback"
             return None
@@ -1616,7 +1635,7 @@ class TestSendCardMessage:
         msg = _make_outbound(thread_ts="msg_1", is_final=False)
         with patch.object(ch, "_ensure_running_card", new_callable=AsyncMock) as mock_ensure:
             await ch._send_card_message(msg)
-            mock_ensure.assert_called_once_with("msg_1", msg.text)
+            mock_ensure.assert_called_once_with("msg_1", msg.text, metadata=msg.metadata)
 
     @pytest.mark.asyncio
     async def test_awaited_task_gives_card_id_then_updates(self):
@@ -1675,27 +1694,24 @@ class TestSendCardMessage:
 
 class TestLogHelpers:
     def test_log_future_error_with_exception(self):
-        from app.channels.feishu import FeishuChannel
-
+        ch = _make_channel()
         fut = MagicMock()
         fut.exception.return_value = RuntimeError("test error")
         # Should not raise
-        FeishuChannel._log_future_error(fut, "test", "msg_1")
+        ch._log_future_error(fut, "test", "msg_1")
 
     def test_log_future_error_no_exception(self):
-        from app.channels.feishu import FeishuChannel
-
+        ch = _make_channel()
         fut = MagicMock()
         fut.exception.return_value = None
-        FeishuChannel._log_future_error(fut, "test", "msg_1")
+        ch._log_future_error(fut, "test", "msg_1")
 
     def test_log_future_error_exception_getting_exception(self):
         """When fut.exception() itself raises, should be silently caught."""
-        from app.channels.feishu import FeishuChannel
-
+        ch = _make_channel()
         fut = MagicMock()
         fut.exception.side_effect = RuntimeError("cancelled")
-        FeishuChannel._log_future_error(fut, "test", "msg_1")
+        ch._log_future_error(fut, "test", "msg_1")
 
     def test_log_task_error_with_exception(self):
         from app.channels.feishu import FeishuChannel
@@ -2147,7 +2163,7 @@ class TestSendRunningReply:
         ch = _make_channel()
         with patch.object(ch, "_ensure_running_card", new_callable=AsyncMock) as mock_ensure:
             await ch._send_running_reply("msg_1")
-            mock_ensure.assert_called_once_with("msg_1")
+            mock_ensure.assert_called_once_with("msg_1", metadata=None)
 
     @pytest.mark.asyncio
     async def test_send_running_reply_exception(self):
@@ -2418,7 +2434,7 @@ class TestEdgeCases:
 
         with patch.object(ch, "_receive_single_file", new_callable=AsyncMock, return_value="/path") as mock_receive:
             await ch.receive_file(msg, "tid")
-            mock_receive.assert_called_once_with("msg_thread_ts", "img_123", "image", "tid")
+            mock_receive.assert_called_once_with("msg_thread_ts", "img_123", "image", "tid", user_id=None)
 
     @pytest.mark.asyncio
     async def test_send_uses_exponential_backoff_delays(self):

@@ -1196,6 +1196,9 @@ def test_state_cursor_is_loaded_from_disk(tmp_path: Path):
         bus=MessageBus(),
         config={"bot_token": "bot-token", "state_dir": str(state_dir)},
     )
+    # __init__ deliberately skips filesystem IO (blocking-IO gate); the cursor
+    # is restored by _load_state(), which start() runs on a worker thread.
+    channel._load_state()
 
     assert channel._get_updates_buf == "cursor-123"
 
@@ -1214,6 +1217,9 @@ def test_auth_state_is_loaded_from_disk(tmp_path: Path):
         bus=MessageBus(),
         config={"state_dir": str(state_dir), "qrcode_login_enabled": True},
     )
+    # __init__ deliberately skips filesystem IO; auth state is restored by
+    # _load_auth_state(), which start()/_ensure_authenticated() invoke.
+    channel._load_auth_state()
 
     assert channel._bot_token == "saved-token"
     assert channel._ilink_bot_id == "bot-1"
@@ -2117,9 +2123,10 @@ class TestEnsureAuthenticated:
             auth_file = tmp_path / "wechat-auth.json"
             auth_file.write_text(json.dumps({"bot_token": "state-token"}))
             channel = WechatChannel(bus=MessageBus(), config={"state_dir": str(tmp_path)})
-            assert channel._bot_token == "state-token"
+            # Auth state is loaded from disk inside _ensure_authenticated().
             result = await channel._ensure_authenticated()
             assert result is True
+            assert channel._bot_token == "state-token"
 
         _run(go())
 

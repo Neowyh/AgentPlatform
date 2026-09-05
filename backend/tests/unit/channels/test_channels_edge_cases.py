@@ -194,10 +194,13 @@ class TestWeComPublishWsInboundReplyStreamError:
         mock_aibot.generate_req_id.return_value = "stream_123"
 
         with patch.dict("sys.modules", {"aibot": mock_aibot}):
-            with patch.object(ch.bus, "publish_inbound", new_callable=AsyncMock) as mock_pub:
-                # Should not raise -- exception is caught and swallowed (lines 291-292)
-                await ch._publish_ws_inbound(frame, "hello")
-                mock_pub.assert_called_once()
+            # Should not raise -- exception is caught and swallowed (lines 291-292)
+            await ch._publish_ws_inbound(frame, "hello")
+
+        # The reserved message is still committed to the bus after the stream error.
+        inbound = ch.bus.get_inbound_nowait()
+        ch.bus.inbound_task_done()
+        assert inbound.text == "hello"
 
 
 class TestWeComSendWsImportFailure:
@@ -500,7 +503,7 @@ class TestDiscordOnMessageUserNone:
         main_loop = MagicMock()
         main_loop.is_running.return_value = True
         ch._main_loop = main_loop
-        ch._publish = MagicMock()
+        ch._publish_reserved = MagicMock(return_value=True)
 
         msg = MagicMock()
         msg.content = "hello bot"
@@ -522,7 +525,7 @@ class TestDiscordOnMessageUserNone:
 
         # user is None => bot_mention/alt_mention/standard_mention are None/""
         # has_mention = False. With default config (not mention_only), still processes.
-        ch._publish.assert_called_once()
+        ch._publish_reserved.assert_called_once()
 
 
 class TestDiscordResolveTargetIntegration:
