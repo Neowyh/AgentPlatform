@@ -15,6 +15,28 @@ export interface McpOAuthConfig {
   extra_token_params: Record<string, string>;
 }
 
+export interface McpUserScopedAuthConfig {
+  enabled: boolean;
+  header: string;
+  users: Record<string, string>;
+  on_missing: "deny" | "passthrough";
+  [key: string]: unknown;
+}
+
+export interface McpContextHeadersConfig {
+  enabled: boolean;
+  headers: Record<string, string>;
+  on_missing: "deny" | "passthrough";
+  [key: string]: unknown;
+}
+
+export interface McpTaskToolsetConfig {
+  name: string;
+  submit_tool: string;
+  status_tool: string;
+  cancel_tool: string;
+}
+
 export interface MCPServerConfig {
   enabled: boolean;
   type: "stdio" | "sse" | "http";
@@ -24,6 +46,14 @@ export interface MCPServerConfig {
   url?: string;
   headers: Record<string, string>;
   oauth?: McpOAuthConfig;
+  user_auth?: McpUserScopedAuthConfig;
+  headers_from_context?: McpContextHeadersConfig;
+  task_toolsets?: McpTaskToolsetConfig[];
+  routing?: Record<string, unknown>;
+  tools?: Record<string, unknown>;
+  tool_name_prefix?: boolean;
+  tool_call_timeout?: number | null;
+  session_init_timeout?: number | null;
   description: string;
 }
 
