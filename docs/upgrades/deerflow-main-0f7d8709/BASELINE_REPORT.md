@@ -57,6 +57,7 @@ The following focused slices are green on this branch:
 - sub-agent tool receipts, report contract, acceptance checks and delegation
   ledger: 270 passed, 1 skipped;
 - SRS smoke flow: `ALL CHECKS PASSED`.
+- Resource version snapshot regression: 14 passed (`tests/unit/resources/test_resource_service_versions.py`), including freezing the selected version for an already-started Run.
 
 These results establish the next-stage baseline but do not close the semantic
 ledger rows. Shared-resource, workflow receipt, migration, offline and fresh
