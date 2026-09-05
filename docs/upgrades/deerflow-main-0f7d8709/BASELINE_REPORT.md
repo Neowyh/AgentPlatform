@@ -233,6 +233,12 @@ The following focused slices are green on this branch:
   runtime guardrail denial. The shared-agent caller-principal boundary plus
   tool-filter suite passed (22 tests), and the enforcement/provider/principal
   runtime slice passed (77 tests).
+- Skill Projection synchronous coverage passed (43 tests), including
+  enabled-only projection and the single `/mnt/skills` namespace. The async
+  archive-install projection test could not complete in the restricted
+  environment (the explicit AnyIO invocation produced no result and was
+  interrupted); the default pytest path is also blocked by the sandbox's
+  socket-using rerun plugin.
 
 These results establish the next-stage baseline but do not close the semantic
 ledger rows. Shared-resource, workflow receipt, migration, offline and fresh
