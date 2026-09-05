@@ -35,7 +35,7 @@ vi.mock("@/core/i18n/hooks", () => ({
 
 // Install is admin-gated; tests exercise the admin view.
 vi.mock("@/core/auth/AuthProvider", () => ({
-  useAuth: () => ({ user: { system_role: "admin" } }),
+  useAuth: () => ({ user: { system_role: "super_admin" } }),
 }));
 
 const mockSelect = vi.fn();

@@ -346,11 +346,9 @@ describe("writeTextToClipboard", () => {
     });
 
     await expect(writeTextToClipboard("hello")).resolves.toBe(false);
-    // remove is NOT called because the error happens before the inner try/finally
-    // (the error is caught by the outer catch, not the inner finally)
-    // Actually let's re-read the source: select() is called outside the inner try/finally,
-    // so if it throws, the outer catch catches it and textarea.remove() is never called.
-    expect(textarea.remove).not.toHaveBeenCalled();
+    // The merged fallback wraps append+select in try/finally, so the textarea
+    // is removed even when select() throws (no DOM leak).
+    expect(textarea.remove).toHaveBeenCalled();
   });
 
   test("returns false when execCommand throws and still removes textarea", async () => {

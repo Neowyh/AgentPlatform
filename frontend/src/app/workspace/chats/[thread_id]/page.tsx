@@ -124,13 +124,13 @@ export default function ChatPage() {
   const { t } = useI18n();
   const searchParams = useSearchParams();
   const requestedAgent = searchParams.get("agent");
-  const selectedConnector = searchParams.get("connector");
   const {
     threadId,
     setThreadId,
     isNewThread,
     setIsNewThread,
     isMock,
+    selectedConnector,
   } = useThreadChat();
   // `isNewThread` tracks whether the backend has the thread yet — gates the
   // SDK's history fetch (see issue #2746).  `isWelcomeMode` is the visual

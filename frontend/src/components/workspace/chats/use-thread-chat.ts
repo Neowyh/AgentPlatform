@@ -123,11 +123,15 @@ export function useThreadChat() {
   const isMock =
     actualPathname.startsWith(`${SHOWCASE_ROUTE_PREFIX}/`) ||
     searchParams.get("mock") === "true";
+  // Connector chosen in the capability center travels via ?connector= and
+  // must survive into the scenario binding of every new message.
+  const selectedConnector = searchParams.get("connector");
   return {
     threadId: isNewPath ? (newThreadIdRef.current ?? threadId) : threadId,
     setThreadId,
     isNewThread: isNewPath ? true : isNewThreadState,
     setIsNewThread,
     isMock,
+    selectedConnector,
   };
 }

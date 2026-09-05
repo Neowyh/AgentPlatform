@@ -37,6 +37,9 @@ const expectedAPISymbols = [
   "importAgent",
   "toggleAgentFavorite",
   "AgentNameCheckError",
+  "AgentsApiDisabledError",
+  "fetchAgentsApiEnabled",
+  "useAgentsApiEnabled",
 ] as const;
 
 const expectedHooksSymbols = [
