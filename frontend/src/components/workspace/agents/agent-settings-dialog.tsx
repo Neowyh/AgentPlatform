@@ -50,7 +50,8 @@ interface AgentSettingsDialogProps {
 /**
  * Edits a custom agent's model behavior (issue #4336): default model plus the
  * per-agent temperature / max_tokens overrides and thinking / reasoning
- * defaults. Persists through `PUT /api/agents/{name}`; changes take effect on
+ * defaults. Persists through the canonical Agent resource draft/publish API;
+ * changes take effect on
  * the agent's next run.
  */
 export function AgentSettingsDialog({

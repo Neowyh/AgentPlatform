@@ -6,6 +6,17 @@ export interface AgentModelSettings {
 export type ReasoningEffort = "low" | "medium" | "high";
 
 export interface Agent {
+  resource_id?: string;
+  slug?: string;
+  read_only?: boolean;
+  visibility?: string;
+  owner_id?: string | null;
+  department_id?: string | null;
+  latest_version?: number;
+  draft_revision?: number;
+  can_modify?: boolean;
+  system_owned?: boolean;
+  is_favorited?: boolean;
   name: string;
   description: string;
   model: string | null;
@@ -29,6 +40,7 @@ export interface CreateAgentRequest {
   thinking_enabled?: boolean | null;
   reasoning_effort?: ReasoningEffort | null;
   soul?: string;
+  visibility?: string;
 }
 
 export interface UpdateAgentRequest {
@@ -41,4 +53,6 @@ export interface UpdateAgentRequest {
   thinking_enabled?: boolean | null;
   reasoning_effort?: ReasoningEffort | null;
   soul?: string | null;
+  draft_revision?: number;
+  visibility?: string | null;
 }
