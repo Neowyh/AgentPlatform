@@ -25,6 +25,7 @@ from deerflow.uploads.manager import (
     upload_artifact_url,
     upload_virtual_path,
 )
+from deerflow.utils.file_conversion import CONVERTIBLE_EXTENSIONS, convert_file_to_markdown
 from ideer.config.app_config import AppConfig
 from ideer.config.paths import get_paths
 from ideer.runtime.user_context import get_effective_user_id
@@ -34,7 +35,6 @@ from ideer.uploads.code_evidence import (
     accept_package,
     delete_package,
 )
-from ideer.utils.file_conversion import CONVERTIBLE_EXTENSIONS, convert_file_to_markdown
 
 logger = logging.getLogger(__name__)
 
