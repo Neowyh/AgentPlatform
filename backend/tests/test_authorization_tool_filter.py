@@ -162,6 +162,39 @@ class TestFilterToolsByAuthorization:
 
 
 class TestApplyToolAuthorization:
+    def test_shared_agent_uses_caller_identity_not_resource_owner(self):
+        """An owner hint must never replace the authenticated caller principal."""
+
+        class _CallerOnlyProvider:
+            name = "caller-only"
+
+            def __init__(self):
+                self.principals = []
+
+            def filter_resources(self, principal, resource_type, candidates):
+                self.principals.append(principal)
+                return candidates if principal.user_id == "caller" else []
+
+            def authorize(self, request):
+                return type("Decision", (), {"allow": request.principal.user_id == "caller"})()
+
+            async def aauthorize(self, request):
+                return self.authorize(request)
+
+        provider = _CallerOnlyProvider()
+        app_config = _make_app_config(AuthorizationConfig(enabled=True))
+        tools = [_make_tool("read_file")]
+
+        result, _ = apply_tool_authorization(
+            tools,
+            context={"user_id": "caller", "owner_user_id": "owner", "user_role": "user"},
+            app_config=app_config,
+            authorization_provider=provider,
+        )
+
+        assert [tool.name for tool in result] == ["read_file"]
+        assert provider.principals[0].user_id == "caller"
+
     def test_disabled_returns_original_and_none(self):
         """When authorization is disabled, tools unchanged and provider=None."""
         app_config = _make_app_config(AuthorizationConfig(enabled=False))
