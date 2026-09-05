@@ -192,6 +192,19 @@ if [ "$REQUIRE_CLEAN" -eq 1 ] && [ "$GIT_AVAILABLE" -eq 1 ]; then
     fi
 fi
 
+# Validate explicitly requested custom skills before any Docker build, pull or
+# source archive work.  This option is intended to fail fast on a build host
+# whose machine-local skill checkout is incomplete.
+if [ -n "$SKILLS_MANIFEST" ]; then
+    IFS=',' read -r -a EXPECTED_SKILLS <<< "$SKILLS_MANIFEST"
+    for skill in "${EXPECTED_SKILLS[@]}"; do
+        [ -n "$skill" ] || continue
+        if [ ! -d "$REPO_ROOT/resources/skills/$skill" ]; then
+            die "skills-manifest lists missing custom skill: resources/skills/$skill (not present on this build machine)"
+        fi
+    done
+fi
+
 if ! command -v docker >/dev/null 2>&1; then
     die "docker is required"
 fi
@@ -417,16 +430,14 @@ if [ -n "$EXCLUDE_SKILLS" ]; then
     log "  excluding custom skills: ${EXCLUDED_SKILLS[*]}"
 fi
 
-# --skills-manifest: fail fast when a listed custom skill is missing from the
-# build machine.  resources/skills is mostly git-ignored and machine-local, so a
-# fresh build machine may silently produce a bundle without custom skills.
+# --skills-manifest: warn when a listed custom skill is excluded explicitly.
+# Existence was validated before Docker/image work above. resources/skills is
+# mostly git-ignored and machine-local, so a fresh build machine may silently
+# produce a bundle without custom skills if this option is omitted.
 if [ -n "$SKILLS_MANIFEST" ]; then
     IFS=',' read -r -a EXPECTED_SKILLS <<< "$SKILLS_MANIFEST"
     for skill in "${EXPECTED_SKILLS[@]}"; do
         [ -n "$skill" ] || continue
-        if [ ! -d "$REPO_ROOT/resources/skills/$skill" ]; then
-            die "skills-manifest lists missing custom skill: resources/skills/$skill (not present on this build machine)"
-        fi
         if [[ " ${EXCLUDED_SKILLS[*]:-} " == *" $skill "* ]]; then
             log "  warning: skill '$skill' is both in --skills-manifest and --exclude-skills; exclusion wins"
         fi

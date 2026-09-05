@@ -27,7 +27,7 @@ Locked DeerFlow SHA: `0f7d8709d3bbf0be26460b6277fbad9329302243`
 | `cd frontend && pnpm test` | blocked | The checked-out frontend dependencies do not provide the `rstest` binary. |
 | `cd frontend && pnpm check` | blocked | With the available install, ESLint cannot load `next/dist/compiled/babel/eslint-parser` through `eslint-config-next`; TypeScript is not reached. Offline install lacks the required package artifacts. |
 | `bash scripts/package-intranet-offline.sh --no-sandbox ...` | blocked | The packaging preflight requires Docker Compose v2, unavailable in this environment. `--help` and argument parsing pass. |
-| `backend/tests/unit/scripts/test_intranet_deploy_scripts.py` | incomplete | The first 15 tests pass. The first package-build subprocess (`test_package_script_fails_when_skills_manifest_skill_missing`) and the following manifest subprocess both hang past 25–90s under the fake-Docker harness; no full-file pass is claimed. |
+| `backend/tests/unit/scripts/test_intranet_deploy_scripts.py` | passed | After moving `--skills-manifest` existence checks ahead of Docker/image work, the complete suite passes: 36 passed in 235.91s. Individual package-build cases are slow (56–76s) but terminate successfully. |
 
 The standard lane now exports `PYTHONPATH=.:tests`, preserving the existing
 collection roots while resolving shared test helpers. Re-run with
