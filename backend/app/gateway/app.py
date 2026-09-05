@@ -39,12 +39,12 @@ from app.gateway.routers import (
     uploads,
     visibility_applications,
 )
+from deerflow.config import app_config as deerflow_app_config
 from deerflow.config.app_config import apply_logging_level
 from deerflow.extensions.gateway import include_contributed_routers
-from ideer.config import app_config as ideer_app_config
 
-AppConfig = ideer_app_config.AppConfig
-get_app_config = ideer_app_config.get_app_config
+AppConfig = deerflow_app_config.AppConfig
+get_app_config = deerflow_app_config.get_app_config
 
 # Default logging; lifespan overrides from config.yaml log_level.
 logging.basicConfig(
