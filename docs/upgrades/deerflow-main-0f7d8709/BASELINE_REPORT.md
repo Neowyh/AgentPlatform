@@ -111,6 +111,11 @@ The following focused slices are green on this branch:
   StreamBridge and run naming; services behavior regressions: 77 passed.
 - Gateway agent-factory resolution now returns DeerFlow's `make_lead_agent`;
   the same 77 service regressions cover the factory identity contract.
+- Gateway startup configuration now binds to DeerFlow's `AppConfig` and
+  `get_app_config`; enterprise persistence imports remain local to the Gateway
+  control-plane functions. Extension/startup focused regressions remain green
+  (18 passed, one TestClient route case separately incomplete under restricted
+  sockets).
 - Gateway Extension host wiring is now active: configured plugins load once at
   `create_app()`, publish the process/app registry and live diagnostics, mount
   contributed routers after host routes, and receive a caller-only principal
