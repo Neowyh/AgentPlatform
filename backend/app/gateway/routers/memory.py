@@ -3,8 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from app.gateway.authz import get_current_rbac_user, require_role
-from ideer.agents.memory.updater import (
+from app.agentplatform.memory_adapter import (
     clear_memory_data,
     create_memory_fact,
     delete_memory_fact,
@@ -13,6 +12,7 @@ from ideer.agents.memory.updater import (
     reload_memory_data,
     update_memory_fact,
 )
+from app.gateway.authz import get_current_rbac_user, require_role
 from ideer.config.memory_config import get_memory_config
 from ideer.persistence.models.user import UserModel, UserRole
 from ideer.runtime.user_context import get_effective_user_id
