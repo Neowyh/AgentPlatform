@@ -27,6 +27,7 @@ from deerflow_extension_api import (
     MiddlewareContributor,
     MiddlewarePlacement,
     Placement,
+    RunEvidenceEnvelope,
     SystemModelCallObserver,
     SystemModelRequest,
     SystemModelResult,
@@ -318,3 +319,23 @@ def test_extension_service_contract_is_public_and_defaults_to_noop():
     assert deps.session_factory is None
     assert asyncio.run(ExtensionService.start(_Bare(), deps)) is None
     assert asyncio.run(ExtensionService.stop(_Bare())) is None
+
+
+def test_run_evidence_envelope_keeps_runtime_and_enterprise_evidence_together():
+    envelope = RunEvidenceEnvelope(
+        run_id="run-1",
+        thread_id="thread-1",
+        trace_id="trace-1",
+        resource_snapshots=({"uuid": "resource-1", "version": 2, "hash": "abc"},),
+        runtime_assembly_fingerprint="assembly-1",
+        authorization_context={"principal": "user-1", "role": "user"},
+        policy_revision="policy-3",
+        tool_receipts=({"receipt_id": "r1", "tool": "read_file"},),
+        subagent_verification=({"task_id": "task-1", "status": "UNVERIFIED"},),
+        artifact_receipts=({"path": "/mnt/user-data/out.txt", "sha256": "def"},),
+    )
+
+    assert envelope.run_id == "run-1"
+    assert envelope.resource_snapshots[0]["version"] == 2
+    assert envelope.authorization_context["principal"] == "user-1"
+    assert envelope.subagent_verification[0]["status"] == "UNVERIFIED"

@@ -67,6 +67,27 @@ class TaskInfo:
     resumed: bool = False
 
 
+@dataclass(frozen=True)
+class RunEvidenceEnvelope:
+    """Canonical evidence boundary for one AgentPlatform run.
+
+    The runtime owns the envelope lifecycle; extensions contribute projections
+    such as resource snapshots, authorization context, receipts and policy
+    revisions without creating a parallel audit record.
+    """
+
+    run_id: str
+    thread_id: str
+    trace_id: str | None = None
+    resource_snapshots: Sequence[Mapping[str, Any]] = ()
+    runtime_assembly_fingerprint: str | None = None
+    authorization_context: Mapping[str, Any] = field(default_factory=dict)
+    policy_revision: str | None = None
+    tool_receipts: Sequence[Mapping[str, Any]] = ()
+    subagent_verification: Sequence[Mapping[str, Any]] = ()
+    artifact_receipts: Sequence[Mapping[str, Any]] = ()
+
+
 class TaskLifecycleContributor(Protocol):
     async def on_task_start(
         self,
