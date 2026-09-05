@@ -840,6 +840,7 @@ export const PromptInput = ({
         accept={accept}
         aria-label="Upload files"
         className="hidden"
+        data-testid="file-input"
         multiple={multiple}
         onChange={handleChange}
         ref={inputRef}
@@ -915,6 +916,19 @@ export const PromptInputTextarea = ({
       }
 
       form?.requestSubmit();
+    }
+
+    // Backspace on an empty textarea removes the last attachment.
+    if (
+      e.key === "Backspace" &&
+      e.currentTarget.value === "" &&
+      attachments.files.length > 0
+    ) {
+      e.preventDefault();
+      const lastAttachment = attachments.files.at(-1);
+      if (lastAttachment) {
+        attachments.remove(lastAttachment.id);
+      }
     }
   };
 

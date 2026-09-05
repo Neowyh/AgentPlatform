@@ -1,14 +1,19 @@
 "use client";
 
 import {
-  BugIcon,
+  BoxIcon,
+  Building2Icon,
   ChevronsUpDown,
-  GlobeIcon,
+  ClipboardCheckIcon,
   InfoIcon,
-  MailIcon,
+  ScrollTextIcon,
   Settings2Icon,
   SettingsIcon,
+  ShieldIcon,
+  UsersIcon,
+  WrenchIcon,
 } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import {
@@ -25,9 +30,10 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { useAuth } from "@/core/auth/AuthProvider";
 import { useI18n } from "@/core/i18n/hooks";
 
-import { GithubIcon } from "./github-icon";
+import { ResourceNotificationCenter } from "./resource-notification-center";
 import { useSettingsDialog } from "./settings";
 
 function NavMenuButtonContent({
@@ -55,96 +61,118 @@ export function WorkspaceNavMenu() {
   const [mounted, setMounted] = useState(false);
   const { open: isSidebarOpen } = useSidebar();
   const { t } = useI18n();
+  const { user } = useAuth();
+
+  // Enterprise RBAC: only super admins and department admins get the
+  // management entries. The dialog itself is owned by the global
+  // SettingsDialogHost; this menu only requests a section.
+  const isAdmin =
+    user?.system_role === "super_admin" ||
+    user?.system_role === "department_admin";
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
   return (
-    <>
-      <SidebarMenu className="w-full">
-        <SidebarMenuItem>
-          {mounted ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <SidebarMenuButton
-                  size="lg"
-                  className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
-                >
-                  <NavMenuButtonContent isSidebarOpen={isSidebarOpen} t={t} />
-                </SidebarMenuButton>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                className="w-(--radix-dropdown-menu-trigger-width) min-w-56 rounded-lg"
-                align="end"
-                sideOffset={4}
+    <SidebarMenu className="w-full">
+      <ResourceNotificationCenter />
+      <SidebarMenuItem>
+        {mounted ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <SidebarMenuButton
+                size="lg"
+                className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+                data-testid="nav-menu-trigger"
               >
-                <DropdownMenuGroup>
-                  <DropdownMenuItem
-                    onClick={() => {
-                      openSettings("appearance");
-                    }}
-                  >
-                    <Settings2Icon />
-                    {t.common.settings}
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <a
-                    href="https://deerflow.tech/"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <DropdownMenuItem>
-                      <GlobeIcon />
-                      {t.workspace.officialWebsite}
-                    </DropdownMenuItem>
-                  </a>
-                  <a
-                    href="https://github.com/bytedance/deer-flow"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <DropdownMenuItem>
-                      <GithubIcon />
-                      {t.workspace.visitGithub}
-                    </DropdownMenuItem>
-                  </a>
-                  <DropdownMenuSeparator />
-                  <a
-                    href="https://github.com/bytedance/deer-flow/issues"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <DropdownMenuItem>
-                      <BugIcon />
-                      {t.workspace.reportIssue}
-                    </DropdownMenuItem>
-                  </a>
-                  <a href="mailto:support@deerflow.tech">
-                    <DropdownMenuItem>
-                      <MailIcon />
-                      {t.workspace.contactUs}
-                    </DropdownMenuItem>
-                  </a>
-                </DropdownMenuGroup>
-                <DropdownMenuSeparator />
+                <NavMenuButtonContent isSidebarOpen={isSidebarOpen} t={t} />
+              </SidebarMenuButton>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              className="w-(--radix-dropdown-menu-trigger-width) min-w-56 rounded-lg"
+              align="end"
+              sideOffset={4}
+            >
+              <DropdownMenuGroup>
                 <DropdownMenuItem
                   onClick={() => {
-                    openSettings("about");
+                    openSettings("appearance");
                   }}
+                  data-testid="settings-menu-item"
                 >
-                  <InfoIcon />
-                  {t.workspace.about}
+                  <Settings2Icon />
+                  {t.common.settings}
                 </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ) : (
-            <SidebarMenuButton size="lg" className="pointer-events-none">
-              <NavMenuButtonContent isSidebarOpen={isSidebarOpen} t={t} />
-            </SidebarMenuButton>
-          )}
-        </SidebarMenuItem>
-      </SidebarMenu>
-    </>
+                <DropdownMenuSeparator />
+              </DropdownMenuGroup>
+              {isAdmin && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuGroup>
+                    <DropdownMenuItem asChild>
+                      <Link href="/workspace/admin">
+                        <ShieldIcon />
+                        {t.workspace.adminPanel}
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/workspace/admin/users">
+                        <UsersIcon />
+                        {t.workspace.userManagement}
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/workspace/admin/departments">
+                        <Building2Icon />
+                        {t.workspace.departmentManagement}
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/workspace/admin/tools">
+                        <WrenchIcon />
+                        {t.workspace.toolManagement}
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/workspace/admin/resources">
+                        <BoxIcon />
+                        {t.workspace.resourceManagement}
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/workspace/admin/visibility-applications">
+                        <ClipboardCheckIcon />
+                        {t.workspace.applicationManagement}
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/workspace/admin/audit-logs">
+                        <ScrollTextIcon />
+                        {t.workspace.auditLogManagement}
+                      </Link>
+                    </DropdownMenuItem>
+                  </DropdownMenuGroup>
+                </>
+              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={() => {
+                  openSettings("about");
+                }}
+                data-testid="about-settings-menu-item"
+              >
+                <InfoIcon />
+                {t.workspace.about}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : (
+          <SidebarMenuButton size="lg" className="pointer-events-none">
+            <NavMenuButtonContent isSidebarOpen={isSidebarOpen} t={t} />
+          </SidebarMenuButton>
+        )}
+      </SidebarMenuItem>
+    </SidebarMenu>
   );
 }

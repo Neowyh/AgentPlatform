@@ -1,12 +1,20 @@
 import { render, screen, cleanup, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+} from "vitest";
 
 import {
   CodeBlock,
   CodeBlockCopyButton,
   highlightCode,
 } from "@/components/ai-elements/code-block";
+import { clearHighlightCacheForTests } from "@/components/ai-elements/shiki-highlight";
 
 // Mock shiki
 vi.mock("shiki", () => ({
@@ -21,16 +29,28 @@ vi.mock("@/core/clipboard", () => ({
   writeTextToClipboard: vi.fn().mockResolvedValue(true),
 }));
 
+beforeEach(() => {
+  // The merged highlighter caches renders; start each test with a cold cache.
+  clearHighlightCacheForTests();
+});
+
 afterEach(() => {
   cleanup();
 });
 
 describe("highlightCode", () => {
-  test("returns light and dark HTML", async () => {
+  test("returns highlighted HTML using dual light and dark themes", async () => {
     const { codeToHtml } = await import("shiki");
     const result = await highlightCode("const x = 1;", "typescript");
-    expect(result).toHaveLength(2);
-    expect(codeToHtml).toHaveBeenCalledTimes(2);
+    // The merged highlighter renders once with shiki dual themes instead of
+    // two separate light/dark renders.
+    expect(typeof result).toBe("string");
+    expect(codeToHtml).toHaveBeenCalledWith(
+      "const x = 1;",
+      expect.objectContaining({
+        themes: { light: "one-light", dark: "one-dark-pro" },
+      }),
+    );
   });
 
   test("passes language to codeToHtml", async () => {
@@ -58,7 +78,12 @@ describe("highlightCode", () => {
   test("uses empty transformers when showLineNumbers is false", async () => {
     const { codeToHtml } = await import("shiki");
     await highlightCode("code", "javascript", false);
-    const call = vi.mocked(codeToHtml).mock.calls[0];
+    const call = vi
+      .mocked(codeToHtml)
+      .mock.calls.at(-1) as unknown as [
+      string,
+      { transformers: unknown[] },
+    ];
     expect(call![1].transformers).toEqual([]);
   });
 });
@@ -106,12 +131,11 @@ describe("CodeBlock", () => {
       />,
     );
     await waitFor(() => {
-      const codeBlocks = screen
-        .getByTestId("code-block")
-        .querySelectorAll("[class*='dark:hidden']");
-      expect(codeBlocks.length).toBeGreaterThan(0);
-      // The light mode div should have innerHTML set
-      expect(codeBlocks[0]!.innerHTML).toContain("highlighted code");
+      // The merged block renders a single highlighted layer whose innerHTML
+      // comes from shiki (dual themes embedded in one markup).
+      expect(screen.getByTestId("code-block").innerHTML).toContain(
+        "highlighted code",
+      );
     });
   });
 

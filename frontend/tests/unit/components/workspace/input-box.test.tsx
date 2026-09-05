@@ -9,19 +9,22 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-// InputBox reads feature flags through react-query; wrap every render in a
-// provider with a fresh client so tests stay isolated.
-const render = (ui: React.ReactElement, options?: any) =>
-  renderBase(
-    <QueryClientProvider
-      client={
-        new QueryClient({ defaultOptions: { queries: { retry: false } } })
-      }
-    >
-      {ui}
-    </QueryClientProvider>,
-    options,
+// InputBox reads feature flags through react-query; wrap every render (and
+// rerender — RTL's rerender replaces the tree) in a provider with a fresh
+// client so tests stay isolated.
+const render = (ui: React.ReactElement, options?: any) => {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const wrap = (element: React.ReactElement) => (
+    <QueryClientProvider client={queryClient}>{element}</QueryClientProvider>
   );
+  const utils = renderBase(wrap(ui), options);
+  return {
+    ...utils,
+    rerender: (element: React.ReactElement) => utils.rerender(wrap(element)),
+  };
+};
 
 // InputBox gates followups on the signed-in user; stub an authenticated user.
 vi.mock("@/core/auth/AuthProvider", () => ({
@@ -46,14 +49,45 @@ vi.mock("@/core/i18n/hooks", () => ({
         cancel: "Cancel",
         create: "Create",
       },
+      uploads: {
+        limitsHint: (maxFiles: number, maxSize: string, maxTotal: string) =>
+          `Add attachments (up to ${maxFiles} files, ${maxSize} each, ${maxTotal} total)`,
+        filesTooLarge: (files: string, maxFileSize: string) =>
+          `Files exceeding the ${maxFileSize} per-file limit were not added: ${files}.`,
+        tooManyFiles: (count: number, maxFiles: number) =>
+          `${count} files not added. You can attach up to ${maxFiles} files at once.`,
+        totalSizeTooLarge: (count: number, maxTotalSize: string) =>
+          `${count} files not added. Attachments can total up to ${maxTotalSize}.`,
+      },
       inputBox: {
         placeholder: "How can I assist you today? /invoke skill",
+        disclaimer: "iDeer is AI and can make mistakes",
         addAttachments: "Add attachments",
         selectModel: "Select model",
         invokeSkill: "Invoke skill",
         skill: "Skill",
         skillDialogDescription:
           "Choose a skill to insert /skill-name into the input.",
+        inputPolish: "Polish input",
+        inputPolishing: "Polishing input...",
+        inputPolishNoChanges: "This input is already clear.",
+        inputPolishFailed: "Failed to polish input.",
+        inputPolishUndo: "Undo polish",
+        inputPolishCancel: "Cancel polishing",
+        voiceInputStartLabel: "Dictate with voice",
+        voiceInputStopLabel: "Stop voice input",
+        voiceInputStart: "Dictate with voice",
+        voiceInputStop: "Stop voice input",
+        voiceInputListening: "Listening...",
+        voiceInputUnsupported: "Voice input is not supported in this browser.",
+        voiceInputPermissionDenied: "Microphone access was denied.",
+        voiceInputMicrophoneUnavailable: "No microphone was detected.",
+        voiceInputUnsupportedLanguage:
+          "Voice input does not support the current language.",
+        voiceInputNetworkError:
+          "Voice input could not reach the speech service.",
+        voiceInputNoSpeech: "No speech was detected.",
+        voiceInputFailed: "Voice input failed.",
         mode: "Mode",
         flashMode: "Flash",
         flashModeDescription: "Fast and efficient",
@@ -80,6 +114,31 @@ vi.mock("@/core/i18n/hooks", () => ({
         followupConfirmDescription: "You already have text in the input.",
         followupConfirmAppend: "Append & send",
         followupConfirmReplace: "Replace & send",
+        suggestionPlaceholderRequired:
+          "Replace the suggestion placeholder before sending.",
+        goalCommandDescription: "Set, show, or clear an active goal",
+        compactCommandDescription:
+          "Compact earlier context while keeping the full chat visible",
+        goalSet: "Goal set.",
+        goalCleared: "Goal cleared.",
+        goalNone: "No active goal.",
+        goalActive: "Active goal: {goal}",
+        goalFailed: "Goal command failed.",
+        goalTooLong: "Goal is too long. Keep it under {max} characters.",
+        goalLengthCounter: "Goal length: {length}/{max} characters",
+        compactSuccess: "Earlier context compacted.",
+        compactSkipped: "The current context does not need compaction yet.",
+        compactFailed: "Context compaction failed.",
+        pleaseWaitStreaming: "Please wait for the current response to finish.",
+        suggestions: [
+          { suggestion: "Write", prompt: "Write a blog post about [topic]" },
+          { suggestion: "Research", prompt: "Research [topic]" },
+        ],
+        suggestionsCreate: [
+          { suggestion: "Webpage", prompt: "Create a webpage about [topic]" },
+          { type: "separator" },
+          { suggestion: "Skill", prompt: "Build a skill with skill-creator" },
+        ],
       },
     },
   }),
@@ -173,6 +232,23 @@ vi.mock("@/core/suggestions/hooks", () => ({
   }),
 }));
 
+// The composer consults gateway upload limits through react-query; isolate the
+// suite from that network path so `fetch` assertions only see suggestion calls.
+vi.mock("@/core/uploads", () => ({
+  useUploadLimits: () => ({ data: undefined }),
+  formatUploadSize: (bytes: number) => `${bytes} B`,
+  splitUnsupportedUploadFiles: (fileList: File[] | FileList) => ({
+    accepted: Array.from(fileList),
+    rejected: [],
+    message: undefined,
+  }),
+  validateUploadLimits: () => ({
+    accepted: [],
+    rejected: [],
+    violations: [],
+  }),
+}));
+
 vi.mock("@/core/skills/hooks", () => ({
   useSkills: vi.fn(),
 }));
@@ -213,7 +289,15 @@ vi.mock("@/components/ai-elements/prompt-input", () => {
         className={className}
         onSubmit={(e: any) => {
           e.preventDefault();
-          onSubmit?.({ text: mockTextInputContext.value, files: [] }, e);
+          // The real composer swallows rejected submit promises (e.g. the
+          // streaming guard); mirror that so rejections are not unhandled.
+          const result = onSubmit?.(
+            { text: mockTextInputContext.value, files: [] },
+            e,
+          );
+          if (result && typeof result.catch === "function") {
+            result.catch(() => {});
+          }
         }}
         {...props}
       >
@@ -892,7 +976,7 @@ describe("InputBox", () => {
   // ----- Submit behavior -----
 
   describe("submit behavior", () => {
-    test("calls onStop when status is streaming and submit is triggered", async () => {
+    test("does not stop or submit when submitting during streaming", async () => {
       const onStop = vi.fn();
       const onSubmit = vi.fn();
 
@@ -910,9 +994,10 @@ describe("InputBox", () => {
         new Event("submit", { bubbles: true, cancelable: true }),
       );
 
-      // When streaming, onStop should be called instead of onSubmit
+      // A concurrent submit must neither cancel the stream (#3878) nor send.
       await waitFor(() => {
-        expect(onStop).toHaveBeenCalled();
+        expect(onStop).not.toHaveBeenCalled();
+        expect(onSubmit).not.toHaveBeenCalled();
       });
     });
 
@@ -1246,9 +1331,14 @@ describe("InputBox", () => {
         />,
       );
 
-      // Followups remain visible but clicking should be a no-op during streaming
-      expect(screen.getByText("Follow-up")).toBeInTheDocument();
-      await user.click(screen.getByText("Follow-up"));
+      // Stale follow-up chips are hidden while a turn is streaming, so there
+      // is nothing to click and the input can not change.
+      await waitFor(() => {
+        expect(screen.queryByText("Follow-up")).not.toBeInTheDocument();
+      });
+      // Ignore the composer's mount-time reset call.
+      mockSetInput.mockClear();
+      await user.click(screen.getByTestId("input-box"));
       expect(mockSetInput).not.toHaveBeenCalled();
     });
   });
@@ -1407,6 +1497,10 @@ describe("InputBox", () => {
         expect(screen.getByText("Send suggestion?")).toBeInTheDocument();
       });
 
+      // The composer's mount-time reset already consumed an initial
+      // setInput("") call; only guard the interactions from here on.
+      mockSetInput.mockClear();
+
       await user.click(screen.getByText("Cancel"));
 
       // Dialog should close
@@ -1414,7 +1508,7 @@ describe("InputBox", () => {
         expect(screen.queryByText("Send suggestion?")).not.toBeInTheDocument();
       });
 
-      // setInput should not have been called
+      // setInput should not have been called while the dialog was open
       expect(mockSetInput).not.toHaveBeenCalled();
     });
   });
@@ -1668,8 +1762,9 @@ describe("InputBox", () => {
   describe("AddAttachmentsButton", () => {
     test("renders the attachment button", () => {
       render(<InputBox {...defaultProps()} />);
-      // The attachment button has a PaperclipIcon and a tooltip
-      expect(screen.getByTitle("Add attachments")).toBeInTheDocument();
+      // The attachment button exposes its accessible name via aria-label
+      // (the merged composer renders the tooltip text inside a styled span).
+      expect(screen.getByLabelText("Add attachments")).toBeInTheDocument();
     });
   });
 
@@ -1698,6 +1793,7 @@ describe("InputBox", () => {
             description: "Research a topic",
             category: "general",
             license: "MIT",
+            editable: false,
             enabled: true,
           },
         ],
@@ -1728,6 +1824,7 @@ describe("InputBox", () => {
       description: "Research a topic",
       category: "general",
       license: "MIT",
+      editable: false,
       enabled: true,
     };
 
@@ -1784,10 +1881,9 @@ describe("InputBox", () => {
       const user = userEvent.setup();
       render(<InputBox {...defaultProps()} />);
 
-      const tooltip = screen.getByTitle("Add attachments");
-      const attachButton = tooltip.querySelector("button");
-      expect(attachButton).toBeTruthy();
-      await user.click(attachButton!);
+      const attachButton = screen.getByLabelText("Add attachments");
+      expect(attachButton.tagName).toBe("BUTTON");
+      await user.click(attachButton);
       expect(mockOpenFileDialog).toHaveBeenCalledOnce();
     });
   });
@@ -1818,6 +1914,9 @@ describe("InputBox", () => {
       await waitFor(() => {
         expect(onSubmit).toHaveBeenCalledWith(
           expect.objectContaining({ text: "Hello world", files: [] }),
+          // The merged composer always passes submit options (draft clearing,
+          // sidecar quote metadata) as the second argument.
+          expect.anything(),
         );
       });
     });
@@ -2523,6 +2622,10 @@ describe("InputBox", () => {
         expect(screen.getByText("Send suggestion?")).toBeInTheDocument();
       });
 
+      // The composer's mount-time reset already consumed an initial
+      // setInput("") call; only guard the interactions from here on.
+      mockSetInput.mockClear();
+
       await user.click(screen.getByText("Cancel"));
 
       await waitFor(() => {
@@ -2631,9 +2734,14 @@ describe("InputBox", () => {
         />,
       );
 
-      await user.click(screen.getByText("Stream sugg"));
-
-      // Should not call setInput since status is streaming
+      // The chips are hidden while streaming, so clicking the surface cannot
+      // set the input.
+      await waitFor(() => {
+        expect(screen.queryByText("Stream sugg")).not.toBeInTheDocument();
+      });
+      // Ignore the composer's mount-time reset call.
+      mockSetInput.mockClear();
+      await user.click(screen.getByTestId("input-box"));
       expect(mockSetInput).not.toHaveBeenCalled();
     });
   });

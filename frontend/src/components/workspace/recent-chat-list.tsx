@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -137,7 +138,7 @@ export function RecentChatList() {
     threadListModel.canLoadMore,
   ]);
 
-  const { mutate: deleteThread } = useDeleteThread();
+  const { mutate: deleteThread, isPending: deletePending } = useDeleteThread();
   const { mutate: renameThread } = useRenameThread();
   const { mutate: updatePinnedThread } = usePinThread();
 
@@ -145,6 +146,11 @@ export function RecentChatList() {
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [renameThreadId, setRenameThreadId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
+
+  // Delete confirmation dialog state
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteThreadId, setDeleteThreadId] = useState<string | null>(null);
+  const [deleteThreadTitle, setDeleteThreadTitle] = useState("");
 
   const handleDelete = useCallback(
     (thread: AgentThread) => {
@@ -160,22 +166,28 @@ export function RecentChatList() {
         threadPath === currentPathname ||
         (isNewThreadPath && threads[0]?.thread_id === thread.thread_id);
 
-      deleteThread({
-        threadId: thread.thread_id,
-        onRemoteDeleted: isCurrentThread
-          ? () => {
-              resetThreadChatAfterDelete({
-                deletedThreadId: thread.thread_id,
-                nextPath: nextThreadPath,
-                force: true,
-              });
-              void router.replace(nextThreadPath);
-            }
-          : undefined,
-      });
+      deleteThread({ threadId: thread.thread_id });
+
+      if (isCurrentThread) {
+        // Land on a neighbour thread so the user keeps their place; fall back
+        // to a fresh chat when the deleted thread was the last one.
+        const index = branchList.threads.findIndex(
+          (candidate) => candidate.thread_id === thread.thread_id,
+        );
+        const neighbour =
+          branchList.threads[index + 1] ?? branchList.threads[index - 1];
+        const targetPath = neighbour ? pathOfThread(neighbour) : nextThreadPath;
+        resetThreadChatAfterDelete({
+          deletedThreadId: thread.thread_id,
+          nextPath: targetPath,
+          force: true,
+        });
+        void router.push(targetPath);
+      }
     },
     [
       agentNameFromPath,
+      branchList,
       deleteThread,
       pathname,
       router,
@@ -183,6 +195,27 @@ export function RecentChatList() {
       threads,
     ],
   );
+
+  const handleDeleteClick = useCallback((thread: AgentThread) => {
+    setDeleteThreadId(thread.thread_id);
+    setDeleteThreadTitle(titleOfThread(thread));
+    setDeleteDialogOpen(true);
+  }, []);
+
+  const handleDeleteConfirm = useCallback(() => {
+    if (!deleteThreadId) {
+      return;
+    }
+    const thread = branchList.threads.find(
+      (candidate) => candidate.thread_id === deleteThreadId,
+    );
+    setDeleteDialogOpen(false);
+    setDeleteThreadId(null);
+    setDeleteThreadTitle("");
+    if (thread) {
+      handleDelete(thread);
+    }
+  }, [branchList.threads, deleteThreadId, handleDelete]);
 
   const handleRenameClick = useCallback(
     (threadId: string, currentTitle: string) => {
@@ -322,6 +355,7 @@ export function RecentChatList() {
                     <SidebarMenuItem
                       key={thread.thread_id}
                       className="group/side-menu-item"
+                      data-testid="thread-item"
                     >
                       <SidebarMenuButton isActive={isActive} asChild>
                         <Link
@@ -405,6 +439,7 @@ export function RecentChatList() {
                                   titleOfThread(thread),
                                 )
                               }
+                              data-testid="thread-rename-action"
                             >
                               <Pencil className="text-muted-foreground" />
                               <span>{t.common.rename}</span>
@@ -439,7 +474,8 @@ export function RecentChatList() {
                             </DropdownMenuSub>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
-                              onSelect={() => handleDelete(thread)}
+                              onSelect={() => handleDeleteClick(thread)}
+                              data-testid="thread-delete-action"
                             >
                               <Trash2 className="text-muted-foreground" />
                               <span>{t.common.delete}</span>
@@ -505,6 +541,34 @@ export function RecentChatList() {
               {t.common.cancel}
             </Button>
             <Button onClick={handleRenameSubmit}>{t.common.save}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* Delete Confirm Dialog */}
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t.common.deleteTitle}</DialogTitle>
+            <DialogDescription>
+              {t.common.deleteThreadConfirm(deleteThreadTitle)}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDeleteDialogOpen(false)}
+              disabled={deletePending}
+            >
+              {t.common.cancel}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteConfirm}
+              disabled={deletePending}
+              data-testid="thread-delete-confirm"
+            >
+              {t.common.delete}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

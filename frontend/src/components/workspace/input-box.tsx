@@ -156,8 +156,14 @@ import {
 } from "./input-box-helpers";
 import { useThread } from "./messages/context";
 import { ModeHoverGuide } from "./mode-hover-guide";
+import {
+  InlineSelectedTag,
+  type SelectedTag,
+} from "./scenario/selected-tags";
 import { ReferenceAttachmentSummary, useMaybeSidecar } from "./sidecar";
+import { SkillPicker } from "./slash-overlay";
 import { SlashSkillChip } from "./slash-skill-chip";
+import { getMatchingSkillSuggestions as getPickerSkillSuggestions } from "./slash-suggestions";
 import { Tooltip } from "./tooltip";
 
 type InputMode = "flash" | "thinking" | "pro" | "ultra";
@@ -311,6 +317,10 @@ export function InputBox({
   pendingTemplate,
   clearInjectedTemplateKey,
   onPendingTemplateConsumed,
+  allowedSkillNames,
+  skillInvocationEnabled = true,
+  selectedTags = [],
+  onRemoveTag,
   onContextChange,
   onFollowupsVisibilityChange,
   onGoalChange,
@@ -351,6 +361,19 @@ export function InputBox({
   /** Bump to clear a previously injected template from the composer. */
   clearInjectedTemplateKey?: number;
   onPendingTemplateConsumed?: () => void;
+  /**
+   * Enterprise skill gating: when the chat is scoped to an agent, only these
+   * skill names (name/slug/resource id, case-insensitive) can be invoked.
+   */
+  allowedSkillNames?: readonly string[];
+  /**
+   * Whether the composer offers skill invocation at all (the "/" picker and
+   * the Skill trigger). Chat pages hide it while a scenario pill is selected.
+   */
+  skillInvocationEnabled?: boolean;
+  /** Scenario/agent tags pinned to the composer (inline agent tag). */
+  selectedTags?: SelectedTag[];
+  onRemoveTag?: (id: string) => void;
   onContextChange?: (
     context: Omit<
       AgentThreadContext,
@@ -436,6 +459,10 @@ export function InputBox({
   const [skillSuggestionIndex, setSkillSuggestionIndex] = useState(0);
   const [selectedSlashSkill, setSelectedSlashSkill] =
     useState<SlashSuggestion | null>(null);
+  // Picker opened from the Skill trigger button (anchored SkillPicker
+  // overlay, independent of the "/" typing flow below).
+  const [skillPickerOpen, setSkillPickerOpen] = useState(false);
+  const [skillPickerIndex, setSkillPickerIndex] = useState(0);
   const [hydratedDraftKey, setHydratedDraftKey] = useState<string | null>(null);
   const [dismissedSkillSuggestionValue, setDismissedSkillSuggestionValue] =
     useState<string | null>(null);
@@ -1374,11 +1401,23 @@ export function InputBox({
   // A selected skill does not close the catalog: `/` reopens it so a skill can
   // be found by browsing and swapped without first clearing the chip.
   const showSkillSuggestions =
+    skillInvocationEnabled &&
     !disabled &&
     textareaFocused &&
     slashSkillQuery !== null &&
     skillSuggestions.length > 0 &&
     dismissedSkillSuggestionValue !== textInput.value;
+  // Skill catalog offered by the Skill trigger button, using the shared
+  // anchored SkillPicker (same overlay as the "/" typing flow in the pre-
+  // composer position). Kept separate from `skillSuggestions` so the typing
+  // flow keeps its builtin-command entries and chip activation behavior.
+  const skillPickerSuggestions = useMemo(
+    () =>
+      skillPickerOpen
+        ? getPickerSkillSuggestions(skills, "", allowedSkillNames)
+        : [],
+    [allowedSkillNames, skillPickerOpen, skills],
+  );
   const isComposerDisabled = disabled === true;
   const isMockThread = isMock === true;
   const composerLocked = isComposerDisabled || polishingInput;
@@ -1662,6 +1701,114 @@ export function InputBox({
     ],
   );
 
+  const closeSkillPicker = useCallback(() => {
+    setSkillPickerOpen(false);
+  }, []);
+
+  const handleSkillPickerOpen = useCallback(() => {
+    if (!skillInvocationEnabled) {
+      return;
+    }
+    setSkillPickerOpen(true);
+    setSkillPickerIndex(0);
+    textareaRef.current?.focus();
+  }, [skillInvocationEnabled]);
+
+  // The trigger picker inserts `/skill ` at the cursor so the invocation
+  // travels with the message text, matching the "/" typing flow's contract.
+  const insertSkillAtCursor = useCallback(
+    (skillName: string) => {
+      const value = textInput.value ?? "";
+      const textarea = textareaRef.current;
+      const start = textarea?.selectionStart ?? value.length;
+      const end = textarea?.selectionEnd ?? start;
+      const nextValue = `${value.slice(0, start)}/${skillName} ${value.slice(end)}`;
+      textInput.setInput(nextValue);
+      closeSkillPicker();
+      requestAnimationFrame(() => {
+        const caret = start + skillName.length + 2;
+        textarea?.focus();
+        textarea?.setSelectionRange(caret, caret);
+      });
+    },
+    [closeSkillPicker, textInput],
+  );
+
+  const handleSkillPickerKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLElement>) => {
+      if (!skillPickerOpen || skillPickerSuggestions.length === 0) {
+        return;
+      }
+
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        setSkillPickerIndex(
+          (index) => (index + 1) % skillPickerSuggestions.length,
+        );
+        return;
+      }
+
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        setSkillPickerIndex(
+          (index) =>
+            (index - 1 + skillPickerSuggestions.length) %
+            skillPickerSuggestions.length,
+        );
+        return;
+      }
+
+      if (event.key === "Enter" || event.key === "Tab") {
+        if (event.shiftKey) {
+          return;
+        }
+        event.preventDefault();
+        const selected =
+          skillPickerSuggestions[skillPickerIndex] ??
+          skillPickerSuggestions[0];
+        if (selected) {
+          insertSkillAtCursor(selected.name);
+        }
+        return;
+      }
+
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeSkillPicker();
+      }
+    },
+    [
+      closeSkillPicker,
+      insertSkillAtCursor,
+      skillPickerIndex,
+      skillPickerOpen,
+      skillPickerSuggestions,
+    ],
+  );
+
+  // Clicking the empty composer surface moves focus to the textarea (welcome
+  // screen affordance): buttons, inputs and popups keep their own behavior.
+  const handlePromptSurfaceClick = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      const target = event.target as HTMLElement;
+      if (
+        target.closest(
+          "button, textarea, input, a, [role='dialog'], [role='listbox'], [role='menu']",
+        )
+      ) {
+        return;
+      }
+      textareaRef.current?.focus();
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!skillInvocationEnabled) {
+      setSkillPickerOpen(false);
+    }
+  }, [skillInvocationEnabled]);
+
   const setPromptHistoryValue = useCallback(
     (value: string) => {
       textInput.setInput(value);
@@ -1842,6 +1989,10 @@ export function InputBox({
 
   const handlePromptTextareaKeyDown = useCallback(
     (event: KeyboardEvent<HTMLElement>) => {
+      handleSkillPickerKeyDown(event);
+      if (event.defaultPrevented) {
+        return;
+      }
       handleSkillSuggestionKeyDown(event);
       if (event.defaultPrevented) {
         return;
@@ -1855,6 +2006,7 @@ export function InputBox({
     [
       handlePromptHistoryKeyDown,
       handleSelectedSlashSkillKeyDown,
+      handleSkillPickerKeyDown,
       handleSkillSuggestionKeyDown,
     ],
   );
@@ -2147,9 +2299,10 @@ export function InputBox({
     <div
       ref={promptRootRef}
       data-testid="input-box"
+      onClick={handlePromptSurfaceClick}
       className={cn(
         "relative flex min-w-0 flex-col",
-        isWelcomeMode ? "gap-4" : "gap-2",
+        isWelcomeMode ? "gap-5" : "gap-2",
       )}
     >
       {showFollowups && (
@@ -2257,6 +2410,20 @@ export function InputBox({
           </div>
         )}
         <PromptInputHeader className="flex-wrap px-3 pt-3 pb-0 empty:hidden">
+          {selectedTags.length > 0 && onRemoveTag && (
+            <div
+              className="flex flex-wrap items-center gap-1"
+              data-testid="inline-selected-tags"
+            >
+              {selectedTags.map((tag) => (
+                <InlineSelectedTag
+                  key={tag.id}
+                  tag={tag}
+                  onRemove={onRemoveTag}
+                />
+              ))}
+            </div>
+          )}
           <PromptInputAttachments className="contents p-0">
             {(attachment) => (
               <div className="max-w-60">
@@ -2291,7 +2458,7 @@ export function InputBox({
             />
           )}
         </PromptInputHeader>
-        <div className="min-h-16 w-full min-w-0 px-3 py-3">
+        <div className="relative min-h-16 w-full min-w-0 px-3 py-3">
           {selectedSlashSkill ? (
             <div
               className="max-h-48 min-h-6 w-full min-w-0 cursor-text overflow-y-auto text-base leading-6 break-all whitespace-pre-wrap md:text-sm"
@@ -2339,7 +2506,12 @@ export function InputBox({
             </div>
           ) : (
             <PromptInputTextarea
-              className="min-h-6! w-full min-w-0 p-0! leading-6!"
+              className={cn(
+                "w-full min-w-0 p-0! text-left",
+                isWelcomeMode
+                  ? "min-h-40 type-body leading-7"
+                  : "min-h-6! leading-6!",
+              )}
               disabled={composerLocked}
               placeholder={t.inputBox.placeholder}
               autoFocus={autoFocus}
@@ -2349,6 +2521,17 @@ export function InputBox({
               onFocus={() => setTextareaFocused(true)}
               onKeyDown={handlePromptTextareaKeyDown}
               ref={textareaRef}
+            />
+          )}
+          {skillInvocationEnabled && skillPickerOpen && (
+            <SkillPicker
+              skills={skills}
+              allowedSkillNames={allowedSkillNames}
+              query=""
+              activeIndex={skillPickerIndex}
+              title={t.inputBox.skill}
+              onSelect={(skill) => insertSkillAtCursor(skill.name)}
+              onClose={closeSkillPicker}
             />
           )}
         </div>
@@ -2718,7 +2901,9 @@ export function InputBox({
             >
               <ModelSelectorTrigger asChild>
                 <PromptInputButton
+                  aria-label={t.inputBox.selectModel}
                   className="max-w-40 min-w-0 sm:max-w-56"
+                  data-testid="model-selector-trigger"
                   disabled={composerLocked}
                 >
                   <div className="flex min-w-0 flex-col text-left">
@@ -2753,6 +2938,21 @@ export function InputBox({
                 </ModelSelectorList>
               </ModelSelectorContent>
             </ModelSelector>
+            {skillInvocationEnabled && (
+              <Tooltip content={t.inputBox.invokeSkill}>
+                <PromptInputButton
+                  aria-label={t.inputBox.invokeSkill}
+                  data-testid="skill-selector-trigger"
+                  disabled={composerLocked}
+                  onClick={handleSkillPickerOpen}
+                >
+                  <SparklesIcon className="size-4" />
+                  <span className="text-xs font-normal">
+                    {t.inputBox.skill}
+                  </span>
+                </PromptInputButton>
+              </Tooltip>
+            )}
             <PromptInputSubmit
               className="rounded-full"
               disabled={composerLocked}

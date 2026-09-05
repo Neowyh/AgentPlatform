@@ -285,6 +285,11 @@ const mockExportJSON = vi.fn();
 vi.mock("@/core/threads/export", () => ({
   exportThreadAsMarkdown: (...args: unknown[]) => mockExportMarkdown(...args),
   exportThreadAsJSON: (...args: unknown[]) => mockExportJSON(...args),
+  // The list calls the format-dispatching wrapper.
+  exportThread: (thread: unknown, messages: unknown, format: string) =>
+    format === "json"
+      ? mockExportJSON(thread, messages)
+      : mockExportMarkdown(thread, messages),
 }));
 
 // API client
@@ -378,8 +383,15 @@ describe("RecentChatList", () => {
     ];
     render(<RecentChatList />);
     const links = screen.getAllByText(/Chat (One|Two)/);
-    expect(links[0]).toHaveAttribute("href", "/workspace/chats/t1");
-    expect(links[1]).toHaveAttribute("href", "/workspace/chats/t2");
+    // The merged list wraps the title in a truncating span inside the link.
+    expect(links[0]!.closest("a")).toHaveAttribute(
+      "href",
+      "/workspace/chats/t1",
+    );
+    expect(links[1]!.closest("a")).toHaveAttribute(
+      "href",
+      "/workspace/chats/t2",
+    );
   });
 
   test("marks the active thread based on pathname", () => {
@@ -528,10 +540,10 @@ describe("RecentChatList", () => {
     const saveButton = screen.getByText("Save");
     await user.click(saveButton);
 
-    expect(mockRenameMutate).toHaveBeenCalledWith({
-      threadId: "t1",
-      title: "New Title",
-    });
+    expect(mockRenameMutate).toHaveBeenCalledWith(
+      { threadId: "t1", title: "New Title" },
+      expect.anything(),
+    );
   });
 
   test("does not submit rename when value is empty", async () => {
@@ -592,10 +604,10 @@ describe("RecentChatList", () => {
     await user.type(input, "New Name");
     await user.keyboard("{Enter}");
 
-    expect(mockRenameMutate).toHaveBeenCalledWith({
-      threadId: "t1",
-      title: "New Name",
-    });
+    expect(mockRenameMutate).toHaveBeenCalledWith(
+      { threadId: "t1", title: "New Name" },
+      expect.anything(),
+    );
   });
 
   // ── Share ────────────────────────────────────────────────────────────────

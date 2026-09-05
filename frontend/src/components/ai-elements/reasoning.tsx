@@ -84,7 +84,9 @@ export const Reasoning = memo(
           setStartTime(Date.now());
         }
       } else if (startTime !== null) {
-        setDuration(Math.floor((Date.now() - startTime) / MS_IN_S));
+        // Ceiling keeps sub-second turns at "Thought for 1 seconds" instead of
+        // looking like the duration was never recorded.
+        setDuration(Math.ceil((Date.now() - startTime) / MS_IN_S));
         setStartTime(null);
       }
     }, [isStreaming, startTimeProp, startTime, setDuration]);
@@ -186,7 +188,7 @@ export const ReasoningTrigger = memo(
     return (
       <CollapsibleTrigger
         className={cn(
-          "text-muted-foreground hover:text-foreground flex w-full items-center gap-2 text-sm transition-colors",
+          "text-muted-foreground hover:text-foreground type-body flex w-full items-center gap-2 transition-colors",
           !hasContent && "cursor-default",
           className,
         )}
@@ -221,7 +223,7 @@ export const ReasoningContent = memo(
   ({ className, children, ...props }: ReasoningContentProps) => (
     <CollapsibleContent
       className={cn(
-        "mt-4 text-sm",
+        "type-body mt-4",
         "data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 text-muted-foreground data-[state=closed]:animate-out data-[state=open]:animate-in outline-none",
         className,
       )}
