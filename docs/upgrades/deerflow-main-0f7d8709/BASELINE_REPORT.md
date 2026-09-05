@@ -59,6 +59,7 @@ The following focused slices are green on this branch:
   ledger: 270 passed, 1 skipped;
 - SRS smoke flow: `ALL CHECKS PASSED`.
 - Resource version snapshot regression: 14 passed (`tests/unit/resources/test_resource_service_versions.py`), including freezing the selected version for an already-started Run.
+- Workflow run-record integration: 7 passed (`tests/integration/workflows/test_v2_run_record.py`), covering JSONL event mirroring, terminal Markdown rendering and exhausted-run records.
 
 These results establish the next-stage baseline but do not close the semantic
 ledger rows. Shared-resource, workflow receipt, migration, offline and fresh
