@@ -400,9 +400,9 @@ class TestConvertWordWithRich:
         src.write_bytes(b"\xd0\xcf\x11\xe0 fake OLE")
 
         with (
-            patch("ideer.utils.docx_rich.is_available", return_value=True),
+            patch("app.agentplatform.utils.docx_rich.is_available", return_value=True),
             patch(
-                "ideer.utils.docx_rich.convert_docx",
+                "app.agentplatform.utils.docx_rich.convert_docx",
                 side_effect=RuntimeError("LibreOffice (soffice) is required"),
             ),
         ):

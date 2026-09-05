@@ -7,7 +7,7 @@ import os
 import uuid
 from pathlib import Path
 
-from ideer.config.paths import get_paths, join_host_path
+from deerflow.config.paths import get_paths, join_host_path
 
 # Canonical Runs replace the generic projection at the same managed DeerFlow
 # mount. Keeping one container path prevents a second skill namespace from
@@ -57,5 +57,7 @@ def canonical_run_skill_view_path(run_id: str) -> Path:
 
 def canonical_run_skill_view_host_path(run_id: str) -> str:
     canonical_run_id = canonical_run_key(run_id)
-    host_base = os.environ.get("IDEER_HOST_BASE_DIR") or str(get_paths().base_dir)
+    # IDEER_HOST_BASE_DIR keeps pre-existing deployments working; DEER_FLOW_HOST_BASE_DIR
+    # is the upstream name deerflow.config.paths resolves, honored as fallback.
+    host_base = os.environ.get("IDEER_HOST_BASE_DIR") or os.environ.get("DEER_FLOW_HOST_BASE_DIR") or str(get_paths().base_dir)
     return join_host_path(host_base, "resources", "run-skill-views", canonical_run_id)

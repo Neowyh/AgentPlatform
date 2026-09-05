@@ -13,9 +13,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agentplatform.rbac_models import ResourceVisibility
 from app.agentplatform.resource_models import Resource, ResourceDependency, ResourceVersion, RunResourceSnapshot
+from app.agentplatform.resources.skill_parser import parse_skill_file
+from app.agentplatform.resources.skill_types import Skill, SkillCategory
 from app.agentplatform.resources.storage import ResourceStorage, StorageValidationError
-from ideer.config.agents_config import AgentConfig
-from ideer.skills.types import Skill, SkillCategory
+from deerflow.config.agents_config import AgentConfig
 
 _CREDENTIAL_KEYS = {"api_key", "credential", "credentials", "password", "secret", "token"}
 
@@ -184,8 +185,6 @@ class CanonicalResourceLoader:
             raise ResourceRuntimeError(f"Skill version content is invalid: {exc}") from exc
         if inspected.content_hash != version.content_hash:
             raise ResourceRuntimeError(f"Skill version hash mismatch for {resource.id}@{version.version}")
-        from ideer.skills.parser import parse_skill_file
-
         skill = parse_skill_file(path / "SKILL.md", category=SkillCategory.CUSTOM, relative_path=Path(resource.id))
         if skill is None:
             raise ResourceRuntimeError(f"Skill definition is invalid for {resource.id}@{version.version}")

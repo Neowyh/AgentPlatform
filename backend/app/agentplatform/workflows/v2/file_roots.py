@@ -13,7 +13,7 @@ container paths).  These helpers centralise the rules shared by:
 - E: cross-node state hand-off (each node's result is materialized to a file
   under the run workspace so downstream nodes can read it on demand)
 
-The allowlist here mirrors ``ideer.sandbox.tools.validate_local_tool_path``
+The allowlist here mirrors ``deerflow.sandbox.tools.validate_local_tool_path``
 so the DSL, the sandbox and the verification layer all agree on one rule set.
 """
 
@@ -24,8 +24,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from ideer.config.paths import VIRTUAL_PATH_PREFIX, get_paths
-from ideer.sandbox.tools import (
+from deerflow.config.paths import VIRTUAL_PATH_PREFIX, get_paths
+from deerflow.sandbox.tools import (
     _get_custom_mounts,
     _get_skills_container_path,
     _get_skills_host_path,

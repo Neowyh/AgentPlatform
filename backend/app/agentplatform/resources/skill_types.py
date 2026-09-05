@@ -1,0 +1,94 @@
+"""Enterprise Skill model for AgentPlatform canonical resources.
+
+Migrated from ``ideer.skills.types`` (P7): the upstream ``deerflow.skills.types``
+``Skill`` is frozen and carries no governance fields, while canonical resource
+loading must attach visibility / owner / department and mutate ``enabled``.
+The defunct ``ideer.persistence.models.user`` import is replaced by the
+AgentPlatform-owned enum in :mod:`app.agentplatform.rbac_models`.
+"""
+
+from dataclasses import dataclass
+from enum import StrEnum
+from pathlib import Path
+
+from app.agentplatform.rbac_models import ResourceVisibility
+
+SKILL_MD_FILE = "SKILL.md"
+
+
+class SkillCategory(StrEnum):
+    """Source category for a skill.
+
+    - ``PUBLIC``: built-in skill bundled with the platform, read-only.
+    - ``CUSTOM``: user-authored skill that can be edited or deleted.
+    """
+
+    PUBLIC = "public"
+    CUSTOM = "custom"
+
+
+@dataclass
+class Skill:
+    """Represents a skill with its metadata and file path"""
+
+    name: str
+    description: str
+    license: str | None
+    skill_dir: Path
+    skill_file: Path
+    relative_path: Path  # Relative path from skills root to skill directory
+    category: SkillCategory
+    allowed_tools: list[str] | None = None
+    enabled: bool = False  # Whether this skill is enabled
+    requires_internet: bool = False  # Whether this skill requires internet access
+    visibility: ResourceVisibility = ResourceVisibility.PRIVATE
+    owner_id: str | None = None
+    department_id: str | None = None
+
+    @property
+    def skill_path(self) -> str:
+        """Returns the relative path from the skills root to this skill's directory"""
+        path = self.relative_path.as_posix()
+        return "" if path == "." else path
+
+    def get_container_path(self, container_base_path: str = "/mnt/skills") -> str:
+        """
+        Get the full path to this skill in the container.
+
+        Args:
+            container_base_path: Base path where skills are mounted in the container
+
+        Returns:
+            Full container path to the skill directory
+
+        Raises:
+            ValueError: If the resolved path escapes the container base directory
+        """
+        skill_path = self.skill_path
+        if skill_path:
+            full_path = f"{container_base_path}/{skill_path}"
+        else:
+            full_path = container_base_path
+
+        # Prevent path traversal: resolve and verify the path stays under container_base_path
+        resolved = Path(full_path).resolve()
+        resolved_base = Path(container_base_path).resolve()
+        if not resolved.is_relative_to(resolved_base):
+            raise ValueError(f"Path traversal detected: skill path '{skill_path}' escapes container base '{container_base_path}'")
+
+        return full_path
+
+    def get_container_file_path(self, container_base_path: str = "/mnt/skills") -> str:
+        """
+        Get the full path to this skill's main file (SKILL.md) in the container.
+
+        Args:
+            container_base_path: Base path where skills are mounted in the container
+
+        Returns:
+            Full container path to the skill's SKILL.md file
+        """
+        return f"{self.get_container_path(container_base_path)}/SKILL.md"
+
+    def __repr__(self) -> str:
+        return f"Skill(name={self.name!r}, description={self.description!r}, category={self.category!r})"

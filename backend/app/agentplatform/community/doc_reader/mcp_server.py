@@ -1,14 +1,14 @@
 """MCP Server for read_document tool.
 
 Run standalone:
-    python -m ideer.community.doc_reader.mcp_server
+    python -m app.agentplatform.community.doc_reader.mcp_server
 
 Register in extensions_config.json:
   "doc-reader": {
     "enabled": true,
     "type": "stdio",
     "command": "python",
-    "args": ["-m", "ideer.community.doc_reader.mcp_server"]
+    "args": ["-m", "app.agentplatform.community.doc_reader.mcp_server"]
   }
 """
 
@@ -17,7 +17,7 @@ import logging
 
 from mcp.server.fastmcp import FastMCP
 
-from ideer.community.doc_reader import tools as _core
+from app.agentplatform.community.doc_reader import tools as _core
 
 logger = logging.getLogger(__name__)
 

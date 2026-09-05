@@ -9,7 +9,7 @@ PDF conversion strategy (auto mode):
   3. If pymupdf4llm is not installed, use MarkItDown directly (existing behaviour).
 
 Word (.docx/.doc) conversion strategy (auto mode):
-  1. Try the rich parser (``ideer.utils.docx_rich``, python-docx based) — preserves
+  1. Try the rich parser (``app.agentplatform.utils.docx_rich``, python-docx based) — preserves
      heading levels, inline formatting, tables, images, MathType formulas (LaTeX)
      and Visio drawings. Extracted images land under ``<stem>_files/images/``.
   2. On failure or missing python-docx, fall back to MarkItDown.
@@ -27,7 +27,7 @@ import re
 import shutil
 from pathlib import Path
 
-from ideer.config.app_config import get_app_config
+from deerflow.config.app_config import get_app_config
 
 logger = logging.getLogger(__name__)
 
@@ -111,7 +111,7 @@ def _convert_with_markitdown(file_path: Path) -> str:
 
 
 def _convert_word_with_rich(file_path: Path) -> str | None:
-    """Attempt high-fidelity Word conversion (ideer.utils.docx_rich).
+    """Attempt high-fidelity Word conversion (app.agentplatform.utils.docx_rich).
 
     Preserves headings, formatting, tables, images, MathType formulas (LaTeX)
     and Visio drawings. Extracted images are stored under ``<stem>_files/images``
@@ -121,7 +121,7 @@ def _convert_word_with_rich(file_path: Path) -> str | None:
     caller fall back to MarkItDown (auto mode).
     """
     try:
-        from ideer.utils.docx_rich import convert_docx, is_available
+        from app.agentplatform.utils.docx_rich import convert_docx, is_available
 
         if not is_available():
             logger.warning("python-docx not installed; skipping rich docx conversion")

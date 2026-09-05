@@ -18,7 +18,7 @@ from app.agentplatform.workflows.v2.file_roots import (
     workflow_state_path,
     workflow_state_root,
 )
-from ideer.config.paths import Paths
+from deerflow.config.paths import Paths
 
 
 class FakeMount:

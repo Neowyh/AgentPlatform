@@ -2,7 +2,7 @@
 
 Converts PDF, Word, Excel, and PowerPoint files to Markdown for easy reading
 by agents.  Leverages the existing file-conversion infrastructure in
-``ideer.utils.file_conversion``.
+``app.agentplatform.utils.file_conversion``.
 """
 
 import json
@@ -12,7 +12,7 @@ from typing import Any
 
 from langchain.tools import ToolRuntime, tool
 
-from ideer.utils.file_conversion import convert_file_to_markdown
+from app.agentplatform.utils.file_conversion import convert_file_to_markdown
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,11 @@ def _resolve_virtual_path(file_path: str, runtime: Any) -> str:
     Agent runs expose uploads/outputs under the virtual ``/mnt/user-data``
     prefix; the actual location is per-thread and only known through the
     injected runtime state (``thread_data``). Sandbox tools share the same
-    mapping via :func:`ideer.sandbox.tools.replace_virtual_path`.
+    mapping via :func:`deerflow.sandbox.tools.replace_virtual_path`.
+
+    deerflow's mapping dropped the enterprise ``/mnt/user-data/code-evidence``
+    root, so it is resolved here from ``thread_data["code_evidence_path"]``
+    with the same longest-prefix, style-preserving semantics.
 
     Returns the input unchanged when there is no runtime, no thread_data, or
     the path is not a ``/mnt/user-data`` path.
@@ -43,9 +47,20 @@ def _resolve_virtual_path(file_path: str, runtime: Any) -> str:
     if runtime is None or not file_path.startswith("/mnt/user-data"):
         return file_path
     try:
-        from ideer.sandbox.tools import get_thread_data, replace_virtual_path
+        from deerflow.sandbox.tools import (
+            _join_path_preserving_style,
+            get_thread_data,
+            replace_virtual_path,
+        )
 
-        resolved = replace_virtual_path(file_path, get_thread_data(runtime))
+        thread_data = get_thread_data(runtime)
+        resolved = replace_virtual_path(file_path, thread_data)
+        if resolved == file_path and isinstance(thread_data, dict):
+            code_evidence = thread_data.get("code_evidence_path")
+            prefix = "/mnt/user-data/code-evidence"
+            if code_evidence and (file_path == prefix or file_path.startswith(f"{prefix}/")):
+                rest = file_path[len(prefix) :].lstrip("/")
+                resolved = _join_path_preserving_style(code_evidence, rest) if rest else code_evidence
     except Exception as exc:  # pragma: no cover - defensive, mapping must exist
         logger.warning("Virtual path resolution failed for %s: %s", file_path, exc)
         return file_path
@@ -60,7 +75,8 @@ def _resolve_mounted_path(file_path: str) -> str | None:
     Custom mounts are declared in config.yaml under ``sandbox.mounts``
     (``host_path`` ↔ ``container_path``) and are already honoured by sandbox
     tools and the workflow engine's artifact resolver. This reuses the exact
-    same registration source (:func:`ideer.sandbox.tools._get_custom_mount_for_path`,
+    same registration source
+    (:func:`deerflow.sandbox.tools._get_custom_mount_for_path`,
     longest container_path prefix first) so all three surfaces agree on what
     is readable.
 
@@ -68,7 +84,7 @@ def _resolve_mounted_path(file_path: str) -> str | None:
     registered mount visible to this process.
     """
     try:
-        from ideer.sandbox.tools import _get_custom_mount_for_path, _is_custom_mount_path
+        from deerflow.sandbox.tools import _get_custom_mount_for_path, _is_custom_mount_path
 
         if not _is_custom_mount_path(file_path):
             return None
@@ -95,7 +111,7 @@ def _invisible_mount_hint(file_path: str) -> str | None:
     deployment hint instead of the generic whitelist message.
     """
     try:
-        from ideer.config import get_app_config
+        from deerflow.config import get_app_config
 
         config = get_app_config()
         mounts = getattr(config.sandbox, "mounts", None) if config.sandbox else None

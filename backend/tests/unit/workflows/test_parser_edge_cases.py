@@ -1,4 +1,4 @@
-"""Tests targeting specific uncovered lines in ideer.skills.parser.
+"""Tests targeting specific uncovered lines in app.agentplatform.resources.skill_parser.
 
 Covered lines:
   - Line 30: empty tool name in allowed-tools list (ValueError)
@@ -14,8 +14,8 @@ from unittest.mock import patch
 
 import pytest
 
-from ideer.skills.parser import parse_allowed_tools, parse_skill_file
-from ideer.skills.types import SkillCategory
+from app.agentplatform.resources.skill_parser import parse_allowed_tools, parse_skill_file
+from app.agentplatform.resources.skill_types import SkillCategory
 
 # ---------------------------------------------------------------------------
 # Helpers

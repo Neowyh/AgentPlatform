@@ -58,8 +58,8 @@ class _ToolAdapter:
     def _build_runtime(self, context: ActionContext) -> Any:
         from langchain.tools import ToolRuntime
 
+        from deerflow.config.paths import get_paths
         from deerflow.sandbox.sandbox_provider import get_sandbox_provider
-        from ideer.config.paths import get_paths
 
         # The sandbox tools resolve virtual paths through runtime.state.thread_data
         # and lazily acquire a sandbox through runtime.context.thread_id; mirror
@@ -133,6 +133,7 @@ class _AgentAdapter:
         import yaml
         from sqlalchemy import select
 
+        from app.agentplatform.resource_models import Resource, ResourceDependency
         from app.agentplatform.resources.service import (
             ResourceAction,
             ResourceActor,
@@ -140,13 +141,16 @@ class _AgentAdapter:
             ResourceService,
         )
         from app.agentplatform.resources.storage import ResourceStorage
-        from ideer.config import get_app_config
-        from ideer.config.paths import get_paths
-        from ideer.persistence.engine import get_session_factory
-        from ideer.persistence.models.resource_catalog import Resource, ResourceDependency
-        from ideer.subagents.config import SubagentConfig
-        from ideer.subagents.executor import SubagentExecutor
-        from ideer.tools.tools import get_available_tools
+        from app.agentplatform.workflows.v2.executor_bridge import (
+            WorkflowSubagentConfig as SubagentConfig,
+        )
+        from app.agentplatform.workflows.v2.executor_bridge import (
+            WorkflowSubagentExecutor as SubagentExecutor,
+        )
+        from deerflow.config import get_app_config
+        from deerflow.config.paths import get_paths
+        from deerflow.persistence.engine import get_session_factory
+        from deerflow.tools.tools import get_available_tools
 
         sf = get_session_factory()
         if sf is None:
@@ -215,7 +219,7 @@ class _AgentAdapter:
 
     def _finalize_result(self, result: Any) -> Any:
         from app.agentplatform.workflows.v2.compiler import WorkflowTransientError
-        from ideer.subagents.executor import SubagentStatus
+        from app.agentplatform.workflows.v2.executor_bridge import SubagentStatus
 
         if result.status == SubagentStatus.COMPLETED:
             if _is_llm_unavailable_text(result.result):
@@ -227,8 +231,8 @@ class _AgentAdapter:
 
     async def run(self, context: ActionContext, params: dict[str, Any]) -> Any:
         from app.agentplatform.workflows.v2.compiler import WorkflowTransientError
-        from ideer.config import get_app_config
-        from ideer.runtime.user_context import reset_current_user, set_current_user
+        from deerflow.config import get_app_config
+        from deerflow.runtime.user_context import reset_current_user, set_current_user
 
         configured_models = [model.name for model in getattr(get_app_config(), "models", [])]
         candidates = [context.model_name] if context.model_name else [None]
@@ -251,8 +255,8 @@ class _AgentAdapter:
 
     async def astream(self, context: ActionContext, params: dict[str, Any]) -> AsyncIterator[dict[str, Any]]:
         from app.agentplatform.workflows.v2.compiler import WorkflowTransientError
-        from ideer.config import get_app_config
-        from ideer.runtime.user_context import reset_current_user, set_current_user
+        from deerflow.config import get_app_config
+        from deerflow.runtime.user_context import reset_current_user, set_current_user
 
         yield {"type": "progress", "message": "started"}
         configured_models = [model.name for model in getattr(get_app_config(), "models", [])]
@@ -304,10 +308,14 @@ class _CanonicalAgentAdapter(_AgentAdapter):
 
     async def _build_executor(self, context: ActionContext, params: dict[str, Any], model_name: str | None = None):
         from app.agentplatform.resources.runtime import intersect_tool_groups
-        from ideer.config import get_app_config
-        from ideer.subagents.config import SubagentConfig
-        from ideer.subagents.executor import SubagentExecutor
-        from ideer.tools.tools import get_available_tools
+        from app.agentplatform.workflows.v2.executor_bridge import (
+            WorkflowSubagentConfig as SubagentConfig,
+        )
+        from app.agentplatform.workflows.v2.executor_bridge import (
+            WorkflowSubagentExecutor as SubagentExecutor,
+        )
+        from deerflow.config import get_app_config
+        from deerflow.tools.tools import get_available_tools
 
         config = self.definition.config
         override = params.get("system_prompt", "")

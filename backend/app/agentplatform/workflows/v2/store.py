@@ -302,8 +302,8 @@ class WorkflowV2Store:
     ) -> WorkflowV2RunRow:
         """Freeze a canonical dependency closure before making the Run claimable."""
 
+        from app.agentplatform.resource_models import Resource, ResourceVersion
         from app.agentplatform.resources.service import ResourceConflict, ResourceService
-        from ideer.persistence.models.resource_catalog import Resource, ResourceVersion
 
         async with self.session_factory() as session:
             service = ResourceService(session, actor)

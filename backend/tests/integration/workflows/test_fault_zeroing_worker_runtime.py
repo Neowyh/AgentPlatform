@@ -163,6 +163,12 @@ async def _run_worker_once(
     run_id: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # deerflow's skills host path defaults to the upstream `skills/` tree; the
+    # enterprise skill bundle (fault-zeroing templates) lives in resources/skills.
+    monkeypatch.setattr(
+        "app.agentplatform.workflows.v2.file_roots._get_skills_host_path",
+        lambda: str(REPO_ROOT / "resources" / "skills"),
+    )
     definition = yaml.safe_load(WORKFLOW_PATH.read_text(encoding="utf-8"))
     await _make_canonical_run(
         durable_store,
@@ -465,7 +471,7 @@ async def test_tool_adapter_injects_sandbox_runtime(
     agent nodes. The adapter must mirror the thread-scoped state/context the
     local sandbox derives (thread_id == run_id).
     """
-    monkeypatch.setattr("ideer.config.paths.get_paths", lambda: Paths(str(tmp_path / "base")))
+    monkeypatch.setattr("deerflow.config.paths.get_paths", lambda: Paths(str(tmp_path / "base")))
 
     from deerflow.sandbox.sandbox_provider import reset_sandbox_provider
     from deerflow.sandbox.tools import read_file_tool, write_file_tool

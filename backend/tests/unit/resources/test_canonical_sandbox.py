@@ -72,7 +72,9 @@ def test_local_provider_scopes_mount_to_exact_run_view(monkeypatch: pytest.Monke
     view = tmp_path / "resources" / "run-skill-views" / run_id
     (view / "custom").mkdir(parents=True)
     scope = canonical_sandbox_scope("thread-42", run_id)
-    monkeypatch.setenv("IDEER_HOME", str(tmp_path))
+    # get_paths() resolves through deerflow now; the deployment layer maps
+    # the legacy IDEER_HOME to DEER_FLOW_HOME.
+    monkeypatch.setenv("DEER_FLOW_HOME", str(tmp_path))
     monkeypatch.setattr(LocalSandboxProvider, "_setup_path_mappings", lambda self: [])
     monkeypatch.setattr(LocalSandboxProvider, "_build_thread_path_mappings", lambda self, thread_id: [])
     provider = LocalSandboxProvider()
