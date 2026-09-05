@@ -139,6 +139,11 @@ The following focused slices are green on this branch:
   the AgentPlatform extension consumes it without static owner state. Extension
   boundary, run-start propagation and real DeerFlow lifecycle regressions are
   green (8, 1 and 13 passed).
+- Workflow worker configuration now resolves through DeerFlow's runtime
+  `get_app_config`; enterprise Workflow v2 persistence, resource loaders and
+  adapters remain imported from the AgentPlatform control-plane boundary. The
+  focused contract test passed (1 passed); full workflow DB integration remains
+  incomplete under the restricted test environment.
 
 These results establish the next-stage baseline but do not close the semantic
 ledger rows. Shared-resource, workflow receipt, migration, offline and fresh
