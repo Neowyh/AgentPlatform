@@ -218,6 +218,11 @@ The following focused slices are green on this branch:
   identity propagation, and `scheduled-task:<run_id>` idempotency keys. The
   focused scheduler launcher contract passed (5 passed). Full scheduler
   persistence/recovery and multi-instance acceptance remain open.
+- Run Evidence API projections now redact legacy `auth_token` metadata and
+  request-scoped config secrets without mutating persisted run records. The
+  run metadata secret-safety suite passed (15 tests), and the combined evidence,
+  extension-boundary and secret-safety regression slice passed (26 passed,
+  3 deselected).
 
 These results establish the next-stage baseline but do not close the semantic
 ledger rows. Shared-resource, workflow receipt, migration, offline and fresh

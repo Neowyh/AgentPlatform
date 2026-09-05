@@ -25,6 +25,7 @@ from app.gateway.deps import get_checkpointer
 from app.gateway.utils import sanitize_log_param
 from deerflow.config.paths import Paths, get_paths
 from deerflow.runtime import serialize_channel_values
+from deerflow.runtime.secret_context import redact_metadata_secrets
 from deerflow.runtime.user_context import get_effective_user_id
 from deerflow.utils.time import coerce_iso, now_iso
 
@@ -70,6 +71,11 @@ class ThreadResponse(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict, description="Thread metadata")
     values: dict[str, Any] = Field(default_factory=dict, description="Current state channel values")
     interrupts: dict[str, Any] = Field(default_factory=dict, description="Pending interrupts")
+
+    @field_validator("metadata", mode="before")
+    @classmethod
+    def _redact_metadata_secrets(cls, value: Any) -> Any:
+        return redact_metadata_secrets(value)
 
 
 class ThreadCreateRequest(BaseModel):
@@ -125,6 +131,11 @@ class ThreadStateResponse(BaseModel):
     created_at: str | None = Field(default=None, description="Checkpoint timestamp")
     tasks: list[dict[str, Any]] = Field(default_factory=list, description="Interrupted task details")
 
+    @field_validator("metadata", mode="before")
+    @classmethod
+    def _redact_metadata_secrets(cls, value: Any) -> Any:
+        return redact_metadata_secrets(value)
+
 
 class ThreadPatchRequest(BaseModel):
     """Request body for patching thread metadata."""
@@ -152,6 +163,11 @@ class HistoryEntry(BaseModel):
     values: dict[str, Any] = Field(default_factory=dict)
     created_at: str | None = None
     next: list[str] = Field(default_factory=list)
+
+    @field_validator("metadata", mode="before")
+    @classmethod
+    def _redact_metadata_secrets(cls, value: Any) -> Any:
+        return redact_metadata_secrets(value)
 
 
 class ThreadHistoryRequest(BaseModel):

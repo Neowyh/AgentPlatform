@@ -23,6 +23,7 @@ from app.gateway.authz import require_permission
 from app.gateway.deps import get_checkpointer, get_current_user, get_feedback_repo, get_run_event_store, get_run_manager, get_run_store, get_stream_bridge
 from app.gateway.services import sse_consumer, start_run
 from deerflow.runtime import RunRecord, RunStatus, serialize_channel_values
+from deerflow.runtime.secret_context import redact_config_secrets, redact_metadata_secrets
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/threads", tags=["runs"])
@@ -113,13 +114,18 @@ def _cancel_conflict_detail(run_id: str, record: RunRecord) -> str:
 
 
 def _record_to_response(record: RunRecord) -> RunResponse:
+    redacted_kwargs = redact_config_secrets(record.kwargs)
+    if isinstance(redacted_kwargs, dict) and isinstance(redacted_kwargs.get("config"), dict):
+        redacted_kwargs = dict(redacted_kwargs)
+        redacted_kwargs["config"] = redact_config_secrets(redacted_kwargs["config"])
+
     return RunResponse(
         run_id=record.run_id,
         thread_id=record.thread_id,
         assistant_id=record.assistant_id,
         status=record.status.value,
-        metadata=record.metadata,
-        kwargs=record.kwargs,
+        metadata=redact_metadata_secrets(record.metadata),
+        kwargs=redacted_kwargs,
         multitask_strategy=record.multitask_strategy,
         created_at=record.created_at,
         updated_at=record.updated_at,
