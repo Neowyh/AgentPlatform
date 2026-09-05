@@ -177,6 +177,11 @@ The following focused slices are green on this branch:
   runtime assembly fingerprint remain on one envelope boundary, with no
   credentials serialized. Extension boundary and background-run evidence
   regressions passed (9 and 1 targeted tests).
+- Canonical Run Skill views now replace the generic managed projection at the
+  single `/mnt/skills` mount, including Local and AIO sandbox paths and the
+  lead-agent prompt. The previous parallel `/mnt/run-skills` namespace is gone;
+  canonical sandbox, prompt, and exact AIO mount regressions passed (20 unit
+  tests plus 1 exact mount test).
 - Gateway run-config hardening now enforces a server-owned recursion ceiling,
   rejects client checkpoint-channel mode overrides, preserves the canonical
   thread ID in both runtime containers, dual-writes custom Agent identity for
