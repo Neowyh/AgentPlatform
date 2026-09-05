@@ -251,6 +251,11 @@ The following focused slices are green on this branch:
   passed 3 tests (including missing-receipt `UNVERIFIED` behavior). The full
   task-tool module remains outside this focused result because it enters the
   restricted async executor path.
+- Workflow canonical-run acceptance remains incomplete in this environment:
+  the focused canonical registry/run/worker/runtime-config group produced no
+  output for over 30 seconds and was interrupted. It must be rerun with an
+  initialized test database and unrestricted async SQLite executor before the
+  Workflow row can close.
 
 These results establish the next-stage baseline but do not close the semantic
 ledger rows. Shared-resource, workflow receipt, migration, offline and fresh
