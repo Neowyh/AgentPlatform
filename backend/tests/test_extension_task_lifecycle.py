@@ -243,6 +243,52 @@ async def test_run_agent_uses_the_run_bound_snapshot_for_lifecycle_and_task_stor
 
 
 @pytest.mark.asyncio
+async def test_dynamic_agentplatform_evidence_reaches_real_run_lifecycle():
+    from agentplatform_extension.evidence import (
+        AuthorizationContext,
+        EvidenceLifecycleContributor,
+        ResourceSnapshotRef,
+        RunEvidenceBinding,
+        bind_run_evidence,
+    )
+
+    manager = RunManager()
+    record = await manager.create("thread-evidence")
+
+    class _Capture(EvidenceLifecycleContributor):
+        def __init__(self):
+            super().__init__()
+            self.store = None
+
+        async def on_task_start(self, app_store, task_store, info):
+            self.store = task_store
+            await super().on_task_start(app_store, task_store, info)
+
+    contributor = _Capture()
+    extensions = _extensions(contributor)
+    binding = RunEvidenceBinding(
+        snapshots=[ResourceSnapshotRef("agent-1", 4, "a" * 64, "root")],
+        authorization=AuthorizationContext("caller-1", "agent-1", "policy-4"),
+    )
+
+    with bind_run_evidence(binding):
+        await run_agent(
+            _bridge(),
+            manager,
+            record,
+            ctx=RunContext(checkpointer=InMemorySaver(), extensions=extensions),
+            agent_factory=lambda *, config: _OkAgent(),
+            graph_input={},
+            config={},
+        )
+
+    envelope = contributor.store.get(RunEvidenceEnvelope)
+    assert envelope is not None
+    assert envelope.resource_snapshots[0]["version"] == 4
+    assert envelope.authorization_context["caller_user_id"] == "caller-1"
+
+
+@pytest.mark.asyncio
 async def test_run_agent_reports_failed_and_skips_runs_that_never_started():
     recorder = _RunRecorder()
     extensions = _extensions(recorder)

@@ -275,6 +275,16 @@ async def _canonical_selection_metadata(
             "content_hash": agent_version.content_hash,
         },
         "resolved_skill_ids": sorted(resource.id for resource, _version in by_id.values() if resource.type == "skill"),
+        "resource_snapshots": [
+            {
+                "resource_id": snapshot.resource_id,
+                "version": snapshot.version,
+                "content_hash": snapshot.content_hash,
+                "selection_role": snapshot.selection_role,
+            }
+            for _resource, _version, snapshot in rows
+        ],
+        "policy_revision": str(max(snapshot.authz_revision for _resource, _version, snapshot in rows)),
     }
     if skill_entry is not None:
         selection["preferred_skill"] = skill_entry
@@ -560,8 +570,10 @@ async def start_run(
         except Exception:
             logger.debug("Memory preload did not complete for %s (non-fatal)", sanitize_log_param(thread_id))
 
-    task = asyncio.create_task(
-        run_agent(
+    run_evidence_binding = getattr(prepared, "evidence_binding", None)
+
+    async def _execute_run() -> None:
+        await run_agent(
             bridge,
             run_mgr,
             record,
@@ -574,7 +586,14 @@ async def start_run(
             interrupt_before=body.interrupt_before,
             interrupt_after=body.interrupt_after,
         )
-    )
+
+    if run_evidence_binding is not None:
+        from agentplatform_extension.evidence import bind_run_evidence
+
+        with bind_run_evidence(run_evidence_binding):
+            task = asyncio.create_task(_execute_run())
+    else:
+        task = asyncio.create_task(_execute_run())
     record.task = task
 
     # Title sync is handled by worker.py's finally block which reads the

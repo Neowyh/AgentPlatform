@@ -114,9 +114,16 @@ The following focused slices are green on this branch:
 - Gateway Extension host wiring is now active: configured plugins load once at
   `create_app()`, publish the process/app registry and live diagnostics, mount
   contributed routers after host routes, and receive a caller-only principal
-  projection (PAT admin capability is suppressed). The focused app-loading and
-  principal contract slice is green (13 passed); the TestClient route case is
-  environment-incomplete under the restricted socket policy.
+  projection (PAT admin capability is suppressed). The focused app-loading
+  slice is green (8 passed); the principal contract slice is green (13 passed).
+  The TestClient route case is environment-incomplete under the restricted
+  socket policy.
+- Run Evidence now has a dynamic per-run binding: `prepare_run` projects the
+  frozen resource UUID/version/hash closure and caller-scoped authorization into
+  an immutable ContextVar inherited by the background worker and sub-agents;
+  the AgentPlatform extension consumes it without static owner state. Extension
+  boundary, run-start propagation and real DeerFlow lifecycle regressions are
+  green (8, 1 and 13 passed).
 
 These results establish the next-stage baseline but do not close the semantic
 ledger rows. Shared-resource, workflow receipt, migration, offline and fresh

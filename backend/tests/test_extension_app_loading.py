@@ -54,6 +54,51 @@ def test_create_app_exposes_loaded_extensions_on_app_state_and_process_singleton
     assert extensions_module.get_loaded_extensions() is loaded
 
 
+def test_create_app_normalizes_mapping_plugin_specs(monkeypatch, stub_app_config):
+    import app.gateway.app as app_module
+    import deerflow.extensions as extensions_module
+
+    observed = []
+    loaded = ExtensionRegistry().build()
+
+    def _load(specs):
+        observed.extend(specs)
+        return loaded, []
+
+    monkeypatch.setattr(
+        app_module,
+        "get_app_config",
+        lambda: stub_app_config.model_copy(update={"plugins": [{"use": "extension_test_fixtures.demo_extensions:install_ok"}]}),
+    )
+    monkeypatch.setattr(extensions_module, "load_extensions", _load)
+
+    app_module.create_app()
+
+    assert len(observed) == 1
+    assert observed[0].use == "extension_test_fixtures.demo_extensions:install_ok"
+
+
+def test_create_app_loads_agentplatform_dynamic_evidence_plugin(monkeypatch, stub_app_config):
+    import app.gateway.app as app_module
+
+    config = stub_app_config.model_copy(
+        update={
+            "plugins": [
+                ExtensionSpec(
+                    use="agentplatform_extension:install",
+                    config={"dynamic_context": True},
+                )
+            ]
+        }
+    )
+    monkeypatch.setattr(app_module, "get_app_config", lambda: config)
+
+    app = app_module.create_app()
+
+    assert app.state.extensions.has_task_lifecycle is True
+    assert app.state.extension_diagnostics == []
+
+
 def test_create_app_exposes_one_canonical_live_diagnostics_list(monkeypatch):
     import deerflow.extensions as extensions_module
 

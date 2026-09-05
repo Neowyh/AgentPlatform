@@ -6,6 +6,8 @@ from agentplatform_extension.evidence import (
     AuthorizationContext,
     EvidenceLifecycleContributor,
     ResourceSnapshotRef,
+    RunEvidenceBinding,
+    bind_run_evidence,
     build_run_evidence_envelope,
 )
 from agentplatform_extension.network_policy import NetworkPolicy
@@ -154,3 +156,33 @@ async def test_shared_agent_install_projects_caller_permissions_without_owner_st
     }
     assert "owner" not in str(envelope.authorization_context)
     assert "credential" not in str(envelope.authorization_context).lower()
+
+
+@pytest.mark.asyncio
+async def test_dynamic_install_uses_the_run_bound_snapshot_and_caller_context() -> None:
+    registry = ExtensionRegistry()
+    with registry.attributed_to("agentplatform:install"):
+        install(registry, {"dynamic_context": True})
+
+    contributor = registry.build().task_lifecycle[0][1]
+    store = ExtensionData("task-1")
+    info = TaskInfo(task_id="task-1", run_id="run-1", thread_id="thread-1", kind="lead")
+    binding = RunEvidenceBinding(
+        snapshots=[ResourceSnapshotRef("agent-1", 7, "a" * 64, "root")],
+        authorization=AuthorizationContext(
+            "caller",
+            "agent-1",
+            "resource-authz-3",
+            allowed_tools=("read_file",),
+        ),
+        runtime_assembly_fingerprint="assembly-7",
+    )
+
+    with bind_run_evidence(binding):
+        await contributor.on_task_start(ExtensionData("app"), store, info)
+
+    envelope = store.get(RunEvidenceEnvelope)
+    assert envelope is not None
+    assert envelope.resource_snapshots[0]["version"] == 7
+    assert envelope.authorization_context["caller_user_id"] == "caller"
+    assert envelope.runtime_assembly_fingerprint == "assembly-7"

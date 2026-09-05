@@ -45,6 +45,8 @@ async def test_prepare_spawns_memory_preload_for_canonical_key():
     ):
         prepared = await prep.prepare_run(_canonical_body(), "thread-1", _authed_request())
         assert prepared.memory_preload_task is not None
+        assert prepared.evidence_binding is not None
+        assert prepared.evidence_binding.authorization.caller_user_id == "user-1"
         await asyncio.wait_for(prepared.memory_preload_task, timeout=5)
     assert seen == {"agent_name": "11111111-1111-1111-1111-111111111111", "user_id": "user-1"}
 
@@ -127,3 +129,71 @@ async def test_preload_failure_does_not_fail_start_run():
         result = await start_run(body, "thread-1", request)
         await asyncio.sleep(0.2)
     assert result is record
+
+
+@pytest.mark.asyncio
+async def test_start_run_binds_dynamic_evidence_to_background_worker():
+    from agentplatform_extension.evidence import (
+        AuthorizationContext,
+        ResourceSnapshotRef,
+        RunEvidenceBinding,
+        current_run_evidence,
+    )
+
+    from app.gateway.services import start_run
+
+    bridge = MagicMock()
+    run_mgr = MagicMock()
+    run_mgr.create_or_reject = AsyncMock()
+    run_ctx = MagicMock()
+    run_ctx.thread_store = MagicMock()
+    run_ctx.thread_store.get = AsyncMock(return_value=None)
+    run_ctx.thread_store.create = AsyncMock()
+    request = MagicMock()
+    request.state = SimpleNamespace(user=SimpleNamespace(id="caller-1"))
+    request.headers = {}
+    record = MagicMock(run_id="run-1", task=None)
+    run_mgr.create_or_reject.return_value = record
+    body = SimpleNamespace(
+        assistant_id="lead_agent",
+        on_disconnect="cancel",
+        input={"messages": [{"role": "user", "content": "hi"}]},
+        config=None,
+        metadata=None,
+        multitask_strategy="reject",
+        stream_mode=None,
+        stream_subgraphs=False,
+        interrupt_before=None,
+        interrupt_after=None,
+        context=None,
+    )
+    binding = RunEvidenceBinding(
+        snapshots=[ResourceSnapshotRef("agent-1", 2, "a" * 64, "root")],
+        authorization=AuthorizationContext("caller-1", "agent-1", "policy-2"),
+    )
+    observed = []
+
+    async def _run_agent(*_args, **_kwargs):
+        observed.append(current_run_evidence())
+
+    prepared = SimpleNamespace(
+        body_context={},
+        canonical_run_id=None,
+        canonical_factory=None,
+        model_name=None,
+        run_metadata={},
+        memory_preload_task=None,
+        evidence_binding=binding,
+    )
+    with (
+        patch("app.gateway.services.get_stream_bridge", return_value=bridge),
+        patch("app.gateway.services.get_run_manager", return_value=run_mgr),
+        patch("app.gateway.services.get_run_context", return_value=run_ctx),
+        patch("app.gateway.services.resolve_agent_factory", return_value=MagicMock()),
+        patch("app.gateway.services.run_agent", side_effect=_run_agent),
+        patch("app.gateway.run_preparation.prepare_run", new=AsyncMock(return_value=prepared)),
+    ):
+        await start_run(body, "thread-1", request)
+        await record.task
+
+    assert observed == [binding]

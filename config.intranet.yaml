@@ -11,6 +11,18 @@
 # ============================================================================
 config_version: 10
 
+# ==========================================================================
+# DeerFlow Extensions
+# ==========================================================================
+# Dynamic Run Evidence stays inside the intranet process and carries only the
+# caller's resource snapshot and authorization projection.
+plugins:
+  - name: agentplatform
+    package: agentplatform-extension
+    use: agentplatform_extension:install
+    config:
+      dynamic_context: true
+
 # ============================================================================
 # 日志配置
 # ============================================================================

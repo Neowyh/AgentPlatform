@@ -87,9 +87,13 @@ def _configure_extensions(app: FastAPI) -> None:
     try:
         config = get_app_config()
     except FileNotFoundError:
-        specs = []
+        raw_specs = []
     else:
-        specs = getattr(config, "plugins", [])
+        raw_specs = getattr(config, "plugins", []) or []
+
+    from deerflow.extensions.loader import ExtensionSpec
+
+    specs = [spec if isinstance(spec, ExtensionSpec) else ExtensionSpec.model_validate(spec) for spec in raw_specs]
 
     try:
         loaded, diagnostics = deerflow_extensions.load_extensions(specs)

@@ -25,6 +25,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
+from agentplatform_extension.evidence import AuthorizationContext, RunEvidenceBinding
 from fastapi import HTTPException, Request
 
 from app.agentplatform.memory_adapter import get_memory_data
@@ -54,6 +55,7 @@ class PreparedRun:
     body_context: dict[str, Any]
     model_name: str | None
     run_metadata: dict[str, Any]
+    evidence_binding: RunEvidenceBinding | None = None
     # T5: background Memory cache warmer (may be None when injection is off
     # or no user is on the request). start_run retrieves it before spawning
     # the worker; the graph-time load then hits the warmed cache.
@@ -198,6 +200,22 @@ async def prepare_run(body: Any, thread_id: str, request: Request) -> PreparedRu
     if canonical_run_id and canonical_resource_id:
         run_metadata.update(await _canonical_selection_metadata(canonical_run_id, canonical_resource_id, body_context))
 
+    user_id = getattr(getattr(request.state, "user", None), "id", None)
+    selection = run_metadata.get("selection_snapshot")
+    evidence_binding = None
+    if user_id is not None:
+        snapshots = selection.get("resource_snapshots", ()) if isinstance(selection, dict) else ()
+        policy_revision = selection.get("policy_revision", "runtime-default") if isinstance(selection, dict) else "runtime-default"
+        evidence_binding = RunEvidenceBinding(
+            snapshots=snapshots,
+            authorization=AuthorizationContext(
+                caller_user_id=str(user_id),
+                effective_agent_id=canonical_resource_id or str(getattr(body, "assistant_id", None) or "lead_agent"),
+                policy_revision=str(policy_revision),
+                memory_scope=str(user_id),
+            ),
+        )
+
     logger.info(
         "first_token_timing stage=snapshot elapsed_ms=%.1f thread_id=%s has_canonical=%s",
         (time.perf_counter() - snapshot_started) * 1000,
@@ -213,6 +231,7 @@ async def prepare_run(body: Any, thread_id: str, request: Request) -> PreparedRu
         body_context=body_context,
         model_name=model_name,
         run_metadata=run_metadata,
+        evidence_binding=evidence_binding,
         memory_preload_task=memory_preload_task,
     )
 

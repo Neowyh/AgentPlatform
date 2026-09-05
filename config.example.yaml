@@ -17,6 +17,18 @@
 # Run `make config-upgrade` to merge new fields into your local config.yaml.
 config_version: 10
 
+# ==========================================================================
+# DeerFlow Extensions
+# ==========================================================================
+# Loaded once when the Gateway starts. The AgentPlatform extension receives
+# caller-scoped Run Evidence from each Run; it never receives owner credentials.
+plugins:
+  - name: agentplatform
+    package: agentplatform-extension
+    use: agentplatform_extension:install
+    config:
+      dynamic_context: true
+
 # ============================================================================
 # Logging
 # ============================================================================

@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, replace
 from typing import Any
 
@@ -71,14 +73,48 @@ class AuthorizationContext:
         }
 
 
+@dataclass(frozen=True, slots=True)
+class RunEvidenceBinding:
+    """Per-run evidence projected into the extension lifecycle."""
+
+    snapshots: tuple[ResourceSnapshotRef | Mapping[str, Any], ...]
+    authorization: AuthorizationContext
+    runtime_assembly_fingerprint: str | None = None
+    trace_id: str | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "snapshots", tuple(self.snapshots))
+
+
+_run_evidence_binding: ContextVar[RunEvidenceBinding | None] = ContextVar(
+    "agentplatform_run_evidence_binding",
+    default=None,
+)
+
+
+@contextmanager
+def bind_run_evidence(binding: RunEvidenceBinding) -> Iterator[None]:
+    """Bind one immutable evidence projection to the current run task."""
+    token = _run_evidence_binding.set(binding)
+    try:
+        yield
+    finally:
+        _run_evidence_binding.reset(token)
+
+
+def current_run_evidence() -> RunEvidenceBinding | None:
+    """Return the binding inherited by the current async task, if any."""
+    return _run_evidence_binding.get()
+
+
 class EvidenceLifecycleContributor:
     """Bind AgentPlatform projections to DeerFlow's task-scoped envelope."""
 
     def __init__(
         self,
         *,
-        snapshots: Iterable[ResourceSnapshotRef | Mapping[str, Any]],
-        authorization: AuthorizationContext,
+        snapshots: Iterable[ResourceSnapshotRef | Mapping[str, Any]] = (),
+        authorization: AuthorizationContext | None = None,
         runtime_assembly_fingerprint: str | None = None,
         trace_id: str | None = None,
     ) -> None:
@@ -89,14 +125,24 @@ class EvidenceLifecycleContributor:
 
     async def on_task_start(self, app_store: ExtensionData, task_store: ExtensionData, info: TaskInfo) -> None:
         del app_store
-        task_store.set(
-            build_run_evidence_envelope(
-                run_id=info.run_id,
-                thread_id=info.thread_id,
+        binding = current_run_evidence()
+        if binding is None:
+            if self._authorization is None:
+                return
+            binding = RunEvidenceBinding(
                 snapshots=self._snapshots,
                 authorization=self._authorization,
                 runtime_assembly_fingerprint=self._runtime_assembly_fingerprint,
                 trace_id=self._trace_id,
+            )
+        task_store.set(
+            build_run_evidence_envelope(
+                run_id=info.run_id,
+                thread_id=info.thread_id,
+                snapshots=binding.snapshots,
+                authorization=binding.authorization,
+                runtime_assembly_fingerprint=binding.runtime_assembly_fingerprint,
+                trace_id=binding.trace_id,
             )
         )
 

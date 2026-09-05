@@ -16,7 +16,10 @@ from agentplatform_extension.evidence import (
     AuthorizationContext,
     EvidenceLifecycleContributor,
     ResourceSnapshotRef,
+    RunEvidenceBinding,
+    bind_run_evidence,
     build_run_evidence_envelope,
+    current_run_evidence,
 )
 from agentplatform_extension.network_policy import NetworkPolicy
 
@@ -31,6 +34,9 @@ def install(registry: ExtensionRegistry, config: Mapping[str, Any]) -> None:
     """
 
     authorization = config.get("authorization")
+    if config.get("dynamic_context") is True:
+        registry.task_lifecycle(EvidenceLifecycleContributor())
+        return
     if not isinstance(authorization, Mapping):
         return
     registry.task_lifecycle(
@@ -54,6 +60,9 @@ __all__ = [
     "EvidenceLifecycleContributor",
     "NetworkPolicy",
     "ResourceSnapshotRef",
+    "RunEvidenceBinding",
     "build_run_evidence_envelope",
+    "bind_run_evidence",
+    "current_run_evidence",
     "install",
 ]
