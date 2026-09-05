@@ -1,27 +1,27 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 
-vi.mock("fs", () => ({
-  default: {
-    existsSync: vi.fn(),
-    readFileSync: vi.fn(),
-  },
+// The merged artifacts mock route validates the requested path against the
+// static-demo allowlist (resolveStaticDemoArtifact) and proxies the file from
+// the static /demo/threads/<id>/... origin path.
+vi.mock("@/core/threads/static-demo", () => ({
+  resolveStaticDemoArtifact: vi.fn(
+    (threadId: string, segments: readonly string[]) => {
+      if (segments[0] !== "mnt") return null;
+      const artifactPath = segments.slice(1).join("/");
+      // Allowlist: only file.txt / video.mp4 exist for thread-1, readme.md for t.
+      if (threadId === "thread-1" && ["file.txt", "video.mp4"].includes(artifactPath)) {
+        return `/demo/threads/${threadId}/${artifactPath}`;
+      }
+      if (threadId === "t" && artifactPath === "readme.md") {
+        return `/demo/threads/${threadId}/${artifactPath}`;
+      }
+      return null;
+    },
+  ),
 }));
-
-vi.mock("path", () => ({
-  default: {
-    resolve: vi.fn((...args: string[]) => args.join("/")),
-  },
-}));
-
-import fs from "fs";
-import path from "path";
 
 import { GET } from "@/app/mock/api/threads/[thread_id]/artifacts/[[...artifact_path]]/route";
-
-const mockExistsSync = vi.mocked(fs.existsSync);
-const mockReadFileSync = vi.mocked(fs.readFileSync);
-const mockPathResolve = vi.mocked(path.resolve);
 
 function makeRequest(url: string) {
   return new NextRequest(url);
@@ -36,19 +36,30 @@ function makeParams(threadId: string, artifactPath?: string[]) {
   };
 }
 
+function mockUpstreamFile(
+  content: string,
+  { status = 200, headers = {} as Record<string, string> } = {},
+) {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() =>
+      Promise.resolve(
+        new Response(content, { status, headers: new Headers(headers) }),
+      ),
+    ),
+  );
+}
+
 describe("mock artifacts route", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
-    mockPathResolve.mockImplementation((...args: string[]) => args.join("/"));
+    vi.unstubAllGlobals();
   });
 
   test("GET returns 404 when file does not exist", async () => {
-    mockExistsSync.mockReturnValueOnce(false);
-
     const request = makeRequest("http://localhost/api/artifacts/nonexistent");
     const response = await GET(
       request,
-      makeParams("thread-1", ["mnt/file.txt"]),
+      makeParams("thread-1", ["mnt/nonexistent.txt"]),
     );
 
     expect(response.status).toBe(404);
@@ -58,7 +69,7 @@ describe("mock artifacts route", () => {
     const request = makeRequest("http://localhost/api/artifacts/other");
     const response = await GET(
       request,
-      makeParams("thread-1", ["other/file.txt"]),
+      makeParams("thread-1", ["other", "file.txt"]),
     );
 
     expect(response.status).toBe(404);
@@ -72,13 +83,12 @@ describe("mock artifacts route", () => {
   });
 
   test("GET returns file content when file exists", async () => {
-    mockExistsSync.mockReturnValueOnce(true);
-    mockReadFileSync.mockReturnValueOnce(Buffer.from("file content"));
+    mockUpstreamFile("file content");
 
     const request = makeRequest("http://localhost/api/artifacts/file");
     const response = await GET(
       request,
-      makeParams("thread-1", ["mnt/file.txt"]),
+      makeParams("thread-1", ["mnt", "file.txt"]),
     );
 
     expect(response.status).toBe(200);
@@ -87,55 +97,56 @@ describe("mock artifacts route", () => {
   });
 
   test("GET sets Content-Disposition header for download requests", async () => {
-    mockExistsSync.mockReturnValueOnce(true);
-    mockReadFileSync.mockReturnValueOnce(Buffer.from("download content"));
+    mockUpstreamFile("download content");
 
     const request = makeRequest(
       "http://localhost/api/artifacts/file?download=true",
     );
     const response = await GET(
       request,
-      makeParams("thread-1", ["mnt/file.txt"]),
+      makeParams("thread-1", ["mnt", "file.txt"]),
     );
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("Content-Disposition")).toContain("attachment");
+    expect(response.headers.get("Content-Disposition")).toContain(
+      "attachment",
+    );
+    expect(response.headers.get("Content-Disposition")).toContain("file.txt");
   });
 
   test("GET returns video/mp4 content type for .mp4 files", async () => {
-    mockExistsSync.mockReturnValueOnce(true);
-    mockReadFileSync.mockReturnValueOnce(Buffer.from("video data"));
+    mockUpstreamFile("video data", { headers: { "Content-Type": "video/mp4" } });
 
     const request = makeRequest("http://localhost/api/artifacts/video");
     const response = await GET(
       request,
-      makeParams("thread-1", ["mnt/video.mp4"]),
+      makeParams("thread-1", ["mnt", "video.mp4"]),
     );
 
     expect(response.status).toBe(200);
     expect(response.headers.get("Content-Type")).toBe("video/mp4");
   });
 
-  test("GET resolves mnt/ path to public/demo/threads path", async () => {
-    mockExistsSync.mockReturnValueOnce(true);
-    mockReadFileSync.mockReturnValueOnce(Buffer.from("data"));
+  test("GET resolves mnt/ path to the static demo/threads origin path", async () => {
+    const fetchMock = vi.fn(() =>
+      Promise.resolve(new Response("data", { status: 200 })),
+    );
+    vi.stubGlobal("fetch", fetchMock);
 
     const request = makeRequest("http://localhost/api/artifacts/file");
-    await GET(request, makeParams("thread-1", ["mnt/file.txt"]));
+    await GET(request, makeParams("thread-1", ["mnt", "file.txt"]));
 
-    expect(mockPathResolve).toHaveBeenCalled();
-    // path.resolve receives (cwd, "public/demo/threads/thread-1/file.txt")
-    const args = mockPathResolve.mock.calls[0]!;
-    expect(args[1]).toContain("public/demo/threads/thread-1/");
-    expect(args[1]).toContain("file.txt");
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(String(fetchMock.mock.calls[0]![0])).toBe(
+      "http://localhost/demo/threads/thread-1/file.txt",
+    );
   });
 
   test("GET returns response with 200 status for regular files", async () => {
-    mockExistsSync.mockReturnValueOnce(true);
-    mockReadFileSync.mockReturnValueOnce(Buffer.from("data"));
+    mockUpstreamFile("data");
 
     const request = makeRequest("http://localhost/api/artifacts/file");
-    const response = await GET(request, makeParams("t", ["mnt/readme.md"]));
+    const response = await GET(request, makeParams("t", ["mnt", "readme.md"]));
 
     expect(response.status).toBe(200);
   });

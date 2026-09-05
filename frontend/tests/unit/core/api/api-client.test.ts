@@ -21,6 +21,7 @@ vi.mock("@/core/static-mode", () => ({
 
 vi.mock("@/core/api/stream-mode", () => ({
   sanitizeRunStreamOptions: vi.fn((opts: unknown) => opts),
+  forceChatRunStreamOptions: vi.fn((opts: unknown) => opts),
 }));
 
 vi.mock("@/core/threads/static-demo", () => ({
@@ -44,6 +45,7 @@ const langGraphClientMock = vi.hoisted(() => {
       runs: {
         stream: vi.fn(),
         joinStream: vi.fn(),
+        cancel: vi.fn(),
       },
       threads: {},
     };
@@ -57,7 +59,10 @@ vi.mock("@langchain/langgraph-sdk/client", () => ({
 
 import { getAPIClient } from "@/core/api/api-client";
 import { readCsrfCookie, isStateChangingMethod } from "@/core/api/fetcher";
-import { sanitizeRunStreamOptions } from "@/core/api/stream-mode";
+import {
+  forceChatRunStreamOptions,
+  sanitizeRunStreamOptions,
+} from "@/core/api/stream-mode";
 import { isStaticWebsiteOnly } from "@/core/static-mode";
 import {
   loadStaticDemoThreads,
@@ -68,6 +73,7 @@ import {
 const mockIsStaticWebsiteOnly = vi.mocked(isStaticWebsiteOnly);
 const mockReadCsrfCookie = vi.mocked(readCsrfCookie);
 const mockSanitizeRunStreamOptions = vi.mocked(sanitizeRunStreamOptions);
+const mockForceChatRunStreamOptions = vi.mocked(forceChatRunStreamOptions);
 const mockLoadStaticDemoThreads = vi.mocked(loadStaticDemoThreads);
 const mockLoadStaticDemoThread = vi.mocked(loadStaticDemoThread);
 const mockStaticDemoThreadState = vi.mocked(staticDemoThreadState);
@@ -253,6 +259,7 @@ describe("static client (isStaticWebsiteOnly = true)", () => {
           runs: {
             stream: vi.fn(),
             joinStream: vi.fn(),
+            cancel: vi.fn(),
           },
           threads: {},
         };
@@ -549,7 +556,7 @@ describe("injectCsrfHeader integration with LangGraphClient", () => {
 // ── runs.stream and runs.joinStream wrapping ─────────────────────────────────
 
 describe("run stream method wrapping", () => {
-  test("client.runs.stream is wrapped with sanitizeRunStreamOptions", () => {
+  test("client.runs.stream is wrapped with sanitizeRunStreamOptions", async () => {
     const client = getAPIClient();
     // The wrapped stream method should be a function
     expect(typeof client.runs.stream).toBe("function");
@@ -560,12 +567,16 @@ describe("run stream method wrapping", () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const mockPayload = { streamMode: ["values"] } as any;
 
-    // The wrapped method should call sanitizeRunStreamOptions before the original
-    client.runs.stream(mockThreadId, mockAssistantId, mockPayload);
-    expect(mockSanitizeRunStreamOptions).toHaveBeenCalledWith(mockPayload);
+    // The wrapped method is a lazy async generator: options sanitization
+    // (via forceChatRunStreamOptions) happens on the first iteration.
+    const stream = client.runs.stream(mockThreadId, mockAssistantId, mockPayload);
+    void stream.next().then(() => stream.return?.(undefined));
+    await vi.waitFor(() =>
+      expect(mockForceChatRunStreamOptions).toHaveBeenCalledWith(mockPayload),
+    );
   });
 
-  test("client.runs.joinStream is wrapped with sanitizeRunStreamOptions", () => {
+  test("client.runs.joinStream is wrapped with sanitizeRunStreamOptions", async () => {
     const client = getAPIClient();
     expect(typeof client.runs.joinStream).toBe("function");
 
@@ -574,7 +585,10 @@ describe("run stream method wrapping", () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const mockOptions = { streamMode: ["updates"] } as any;
 
-    client.runs.joinStream(mockThreadId, mockRunId, mockOptions);
-    expect(mockSanitizeRunStreamOptions).toHaveBeenCalledWith(mockOptions);
+    const stream = client.runs.joinStream(mockThreadId, mockRunId, mockOptions);
+    void stream.next().then(() => stream.return?.(undefined));
+    await vi.waitFor(() =>
+      expect(mockForceChatRunStreamOptions).toHaveBeenCalledWith(mockOptions),
+    );
   });
 });

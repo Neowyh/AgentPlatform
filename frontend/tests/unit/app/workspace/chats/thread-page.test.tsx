@@ -1,8 +1,19 @@
 import { render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
+  useParams: () => ({}),
+  usePathname: () => "/workspace/chats/new",
+  useRouter: () => ({
+    push: vi.fn(),
+    replace: vi.fn(),
+    back: vi.fn(),
+    forward: vi.fn(),
+    refresh: vi.fn(),
+    prefetch: vi.fn(),
+  }),
 }));
 
 vi.mock("@/styles/globals.css", () => ({}));
@@ -17,6 +28,9 @@ vi.mock("@/core/i18n/hooks", () => ({
         notAvailableInDemoMode: "Not available in demo mode",
       },
       chats: { searchChats: "Search chats..." },
+      inputBox: {
+        createSkillPrompt: "Create a skill",
+      },
       scenarios: {
         daily: "Daily Office",
         creative: "Creative Design",
@@ -46,6 +60,8 @@ vi.mock("@/core/threads/hooks", () => ({
     data: null,
   }),
   useThreads: () => ({ data: [] }),
+  useThreadMetadata: () => ({ data: null }),
+  useBranchThread: () => ({ mutate: vi.fn() }),
 }));
 
 vi.mock("@/components/workspace/chats", () => ({
@@ -75,6 +91,7 @@ vi.mock("@/components/workspace/messages/context", () => ({
       <div data-testid="thread-context">{children}</div>
     ),
   },
+  useThread: () => ({ thread: null }),
 }));
 
 vi.mock("@/components/workspace/thread-title", () => ({
@@ -112,6 +129,9 @@ vi.mock("@/core/i18n/hooks", () => ({
       common: {
         loading: "Loading...",
         notAvailableInDemoMode: "Not available in demo mode",
+      },
+      inputBox: {
+        createSkillPrompt: "Create a skill",
       },
       scenarios: {
         daily: "Daily Office",
@@ -151,6 +171,7 @@ vi.mock("@/core/settings", () => ({
 
 vi.mock("@/core/threads/token-usage", () => ({
   threadTokenUsageToTokenUsage: () => null,
+  selectContextUsage: () => null,
 }));
 
 vi.mock("@/core/threads/utils", () => ({
@@ -169,9 +190,34 @@ vi.mock("@/lib/utils", () => ({
 
 vi.mock("@/components/ai-elements/prompt-input", () => ({
   PromptInputMessage: {},
+  usePromptInputController: () => ({
+    textInput: { setInput: vi.fn() },
+  }),
 }));
 
 import ChatPage from "@/app/workspace/chats/[thread_id]/page";
+
+// jsdom has no matchMedia; the workspace sidebar's useIsMobile hook needs it.
+vi.stubGlobal("matchMedia", (query: string) => ({
+  matches: false,
+  media: query,
+  onchange: null,
+  addEventListener: vi.fn(),
+  removeEventListener: vi.fn(),
+  addListener: vi.fn(),
+  removeListener: vi.fn(),
+  dispatchEvent: vi.fn(),
+}));
+
+// ChatPage reads feature flags through react-query; provide a client.
+function renderWithProviders(ui: React.ReactElement) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>,
+  );
+}
 
 afterEach(() => {
   vi.clearAllMocks();
@@ -179,52 +225,52 @@ afterEach(() => {
 
 describe("ChatPage", () => {
   test("renders chat box", () => {
-    render(<ChatPage />);
+    renderWithProviders(<ChatPage />);
     expect(screen.getByTestId("chat-box")).toBeInTheDocument();
   });
 
   test("passes threadId to chat box", () => {
-    render(<ChatPage />);
+    renderWithProviders(<ChatPage />);
     const chatBox = screen.getByTestId("chat-box");
     expect(chatBox).toHaveAttribute("data-thread-id", "test-thread-id");
   });
 
   test("renders message list", () => {
-    render(<ChatPage />);
+    renderWithProviders(<ChatPage />);
     expect(screen.getByTestId("message-list")).toBeInTheDocument();
   });
 
   test("renders thread title", () => {
-    render(<ChatPage />);
+    renderWithProviders(<ChatPage />);
     expect(screen.getByTestId("thread-title")).toBeInTheDocument();
   });
 
   test("renders token usage indicator", () => {
-    render(<ChatPage />);
+    renderWithProviders(<ChatPage />);
     expect(screen.getByTestId("token-usage-indicator")).toBeInTheDocument();
   });
 
   test("renders export trigger", () => {
-    render(<ChatPage />);
+    renderWithProviders(<ChatPage />);
     expect(screen.getByTestId("export-trigger")).toBeInTheDocument();
   });
 
   test("renders artifact trigger", () => {
-    render(<ChatPage />);
+    renderWithProviders(<ChatPage />);
     expect(screen.getByTestId("artifact-trigger")).toBeInTheDocument();
   });
 
   test("renders input placeholder when not yet mounted", () => {
-    render(<ChatPage />);
+    renderWithProviders(<ChatPage />);
     // mountedRef is false on initial render, so a placeholder div is shown
     // instead of the InputBox component
-    const { container } = render(<ChatPage />);
+    const { container } = renderWithProviders(<ChatPage />);
     const placeholder = container.querySelector('[aria-hidden="true"]');
     expect(placeholder).toBeInTheDocument();
   });
 
   test("wraps content in thread context provider", () => {
-    render(<ChatPage />);
+    renderWithProviders(<ChatPage />);
     expect(screen.getByTestId("thread-context")).toBeInTheDocument();
   });
 });

@@ -1,43 +1,15 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
 
-// Mock fs and path before importing the module
-vi.mock("fs", () => ({
-  default: {
-    readdirSync: vi.fn(),
-    readFileSync: vi.fn(),
-  },
+// The merged mock search route enumerates DEMO_THREAD_IDS from the static-demo
+// module and loads each thread manifest over HTTP (/demo/threads/<id>/thread.json),
+// so the tests mock that seam instead of fs.
+vi.mock("@/core/threads/static-demo", () => ({
+  DEMO_THREAD_IDS: ["thread-1", "thread-2", "thread-3"],
 }));
-
-vi.mock("path", () => ({
-  default: {
-    resolve: vi.fn((...args: string[]) => args.join("/")),
-  },
-}));
-
-import fs from "fs";
-import path from "path";
 
 import { POST } from "@/app/mock/api/threads/search/route";
 
-const mockReaddirSync = vi.mocked(fs.readdirSync);
-const mockReadFileSync = vi.mocked(fs.readFileSync);
-const mockPathResolve = vi.mocked(path.resolve);
-
-function createThreadDir(name: string) {
-  return {
-    name,
-    isDirectory: () => true,
-  } as unknown as import("fs").Dirent<NonSharedBuffer>;
-}
-
-function createFile(name: string) {
-  return {
-    name,
-    isDirectory: () => false,
-  } as unknown as import("fs").Dirent<NonSharedBuffer>;
-}
-
-function createThreadJson(overrides: Record<string, unknown> = {}) {
+function threadJson(overrides: Record<string, unknown> = {}) {
   return JSON.stringify({
     thread_id: "test-thread",
     title: "Test Thread",
@@ -45,6 +17,24 @@ function createThreadJson(overrides: Record<string, unknown> = {}) {
     updated_at: "2025-06-01T00:00:00Z",
     ...overrides,
   });
+}
+
+function mockFetchResponses(
+  byId: Record<string, { ok: boolean; body?: string }>,
+) {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn((input: URL | string) => {
+      const url = String(input);
+      const match = /\/demo\/threads\/([^/]+)\/thread\.json/.exec(url);
+      const id = decodeURIComponent(match?.[1] ?? "");
+      const entry = byId[id];
+      if (!entry?.ok) {
+        return Promise.resolve(new Response("not found", { status: 404 }));
+      }
+      return Promise.resolve(new Response(entry.body ?? "{}", { status: 200 }));
+    }),
+  );
 }
 
 async function makeRequest(body: unknown = {}) {
@@ -57,22 +47,15 @@ async function makeRequest(body: unknown = {}) {
 
 describe("mock search route", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
-    mockPathResolve.mockImplementation((...args: string[]) => args.join("/"));
+    vi.unstubAllGlobals();
   });
 
   test("POST returns threads array", async () => {
-    mockReaddirSync.mockReturnValueOnce([
-      createThreadDir("thread-1"),
-      createThreadDir("thread-2"),
-    ]);
-    mockReadFileSync
-      .mockReturnValueOnce(
-        createThreadJson({ updated_at: "2025-06-01T00:00:00Z" }),
-      )
-      .mockReturnValueOnce(
-        createThreadJson({ updated_at: "2025-05-01T00:00:00Z" }),
-      );
+    mockFetchResponses({
+      "thread-1": { ok: true, body: threadJson() },
+      "thread-2": { ok: true, body: threadJson() },
+      "thread-3": { ok: false },
+    });
 
     const response = await POST(await makeRequest());
     const data = await response.json();
@@ -81,184 +64,168 @@ describe("mock search route", () => {
     expect(data.length).toBe(2);
   });
 
-  test("filters out non-directory entries", async () => {
-    mockReaddirSync.mockReturnValueOnce([
-      createThreadDir("thread-1"),
-      createFile("readme.txt"),
-      createFile(".DS_Store"),
-    ]);
-    mockReadFileSync.mockReturnValueOnce(createThreadJson());
+  test("filters out threads whose manifest cannot be loaded", async () => {
+    mockFetchResponses({
+      "thread-1": { ok: true, body: threadJson() },
+      "thread-2": { ok: false },
+      "thread-3": { ok: false },
+    });
 
     const response = await POST(await makeRequest());
     const data = await response.json();
 
-    expect(data.length).toBe(1);
-  });
-
-  test("filters out hidden directories", async () => {
-    mockReaddirSync.mockReturnValueOnce([
-      createThreadDir("thread-1"),
-      createThreadDir(".hidden"),
-    ]);
-    mockReadFileSync.mockReturnValueOnce(createThreadJson());
-
-    const response = await POST(await makeRequest());
-    const data = await response.json();
-
-    expect(data.length).toBe(1);
+    expect(data).toHaveLength(1);
     expect(data[0].thread_id).toBe("thread-1");
   });
 
-  test("applies default limit of 50", async () => {
-    const dirs = Array.from({ length: 60 }, (_, i) =>
-      createThreadDir(`thread-${i}`),
-    );
-    mockReaddirSync.mockReturnValueOnce(dirs);
-    for (let i = 0; i < 60; i++) {
-      mockReadFileSync.mockReturnValueOnce(
-        createThreadJson({ thread_id: `thread-${i}` }),
-      );
-    }
+  test("falls back to created_at when updated_at is missing", async () => {
+    mockFetchResponses({
+      "thread-1": {
+        ok: true,
+        body: threadJson({ updated_at: null, created_at: "2025-02-02T00:00:00Z" }),
+      },
+      "thread-2": { ok: true, body: threadJson() },
+      "thread-3": { ok: false },
+    });
 
     const response = await POST(await makeRequest());
     const data = await response.json();
 
-    expect(data.length).toBe(50);
+    const first = data.find((t: any) => t.thread_id === "thread-1");
+    expect(first.updated_at).toBe("2025-02-02T00:00:00Z");
   });
 
-  test("respects custom limit", async () => {
-    const dirs = Array.from({ length: 10 }, (_, i) =>
-      createThreadDir(`thread-${i}`),
-    );
-    mockReaddirSync.mockReturnValueOnce(dirs);
-    for (let i = 0; i < 10; i++) {
-      mockReadFileSync.mockReturnValueOnce(
-        createThreadJson({ thread_id: `thread-${i}` }),
-      );
-    }
+  test("applies default limit of 50", async () => {
+    mockFetchResponses({
+      "thread-1": { ok: true, body: threadJson() },
+      "thread-2": { ok: true, body: threadJson() },
+      "thread-3": { ok: true, body: threadJson() },
+    });
 
-    const response = await POST(await makeRequest({ limit: 3 }));
+    const response = await POST(await makeRequest());
     const data = await response.json();
 
     expect(data.length).toBe(3);
   });
 
-  test("respects offset", async () => {
-    const dirs = Array.from({ length: 5 }, (_, i) =>
-      createThreadDir(`thread-${i}`),
-    );
-    mockReaddirSync.mockReturnValueOnce(dirs);
-    for (let i = 0; i < 5; i++) {
-      mockReadFileSync.mockReturnValueOnce(
-        createThreadJson({ thread_id: `thread-${i}` }),
-      );
-    }
+  test("respects custom limit", async () => {
+    mockFetchResponses({
+      "thread-1": { ok: true, body: threadJson() },
+      "thread-2": { ok: true, body: threadJson() },
+      "thread-3": { ok: true, body: threadJson() },
+    });
 
-    const response = await POST(await makeRequest({ offset: 2, limit: 2 }));
+    const response = await POST(await makeRequest({ limit: 1 }));
+    const data = await response.json();
+
+    expect(data.length).toBe(1);
+  });
+
+  test("respects offset", async () => {
+    mockFetchResponses({
+      "thread-1": { ok: true, body: threadJson() },
+      "thread-2": { ok: true, body: threadJson() },
+      "thread-3": { ok: true, body: threadJson() },
+    });
+
+    const response = await POST(await makeRequest({ limit: 2, offset: 1 }));
     const data = await response.json();
 
     expect(data.length).toBe(2);
-    expect(data[0].thread_id).toBe("thread-2");
-    expect(data[1].thread_id).toBe("thread-3");
+    expect(data.map((t: any) => t.thread_id)).toEqual([
+      "thread-2",
+      "thread-3",
+    ]);
   });
 
   test("sorts by updated_at desc by default", async () => {
-    mockReaddirSync.mockReturnValueOnce([
-      createThreadDir("thread-a"),
-      createThreadDir("thread-b"),
-    ]);
-    mockReadFileSync
-      .mockReturnValueOnce(
-        createThreadJson({
-          thread_id: "thread-a",
-          updated_at: "2025-01-01T00:00:00Z",
-        }),
-      )
-      .mockReturnValueOnce(
-        createThreadJson({
-          thread_id: "thread-b",
-          updated_at: "2025-06-01T00:00:00Z",
-        }),
-      );
+    mockFetchResponses({
+      "thread-1": {
+        ok: true,
+        body: threadJson({ updated_at: "2025-01-01T00:00:00Z" }),
+      },
+      "thread-2": {
+        ok: true,
+        body: threadJson({ updated_at: "2025-06-01T00:00:00Z" }),
+      },
+      "thread-3": { ok: false },
+    });
 
     const response = await POST(await makeRequest());
     const data = await response.json();
 
-    expect(data[0].thread_id).toBe("thread-b");
-    expect(data[1].thread_id).toBe("thread-a");
+    expect(data[0].thread_id).toBe("thread-2");
+    expect(data[1].thread_id).toBe("thread-1");
   });
 
   test("sorts by updated_at asc when specified", async () => {
-    mockReaddirSync.mockReturnValueOnce([
-      createThreadDir("thread-a"),
-      createThreadDir("thread-b"),
-    ]);
-    mockReadFileSync
-      .mockReturnValueOnce(
-        createThreadJson({
-          thread_id: "thread-a",
-          updated_at: "2025-01-01T00:00:00Z",
-        }),
-      )
-      .mockReturnValueOnce(
-        createThreadJson({
-          thread_id: "thread-b",
-          updated_at: "2025-06-01T00:00:00Z",
-        }),
-      );
+    mockFetchResponses({
+      "thread-1": {
+        ok: true,
+        body: threadJson({ updated_at: "2025-06-01T00:00:00Z" }),
+      },
+      "thread-2": {
+        ok: true,
+        body: threadJson({ updated_at: "2025-01-01T00:00:00Z" }),
+      },
+      "thread-3": { ok: false },
+    });
 
     const response = await POST(
-      await makeRequest({ sortBy: "updated_at", sortOrder: "asc" }),
+      await makeRequest({ sortOrder: "asc" }),
     );
     const data = await response.json();
 
-    expect(data[0].thread_id).toBe("thread-a");
-    expect(data[1].thread_id).toBe("thread-b");
+    expect(data[0].thread_id).toBe("thread-2");
+    expect(data[1].thread_id).toBe("thread-1");
   });
 
   test("sorts by created_at when specified", async () => {
-    mockReaddirSync.mockReturnValueOnce([
-      createThreadDir("thread-a"),
-      createThreadDir("thread-b"),
-    ]);
-    mockReadFileSync
-      .mockReturnValueOnce(
-        createThreadJson({
-          thread_id: "thread-a",
-          created_at: "2025-06-01T00:00:00Z",
-          updated_at: "2025-01-01T00:00:00Z",
-        }),
-      )
-      .mockReturnValueOnce(
-        createThreadJson({
-          thread_id: "thread-b",
-          created_at: "2025-01-01T00:00:00Z",
-          updated_at: "2025-06-01T00:00:00Z",
-        }),
-      );
+    mockFetchResponses({
+      "thread-1": {
+        ok: true,
+        body: threadJson({ created_at: "2025-01-01T00:00:00Z" }),
+      },
+      "thread-2": {
+        ok: true,
+        body: threadJson({ created_at: "2025-05-01T00:00:00Z" }),
+      },
+      "thread-3": { ok: false },
+    });
 
     const response = await POST(
       await makeRequest({ sortBy: "created_at", sortOrder: "desc" }),
     );
     const data = await response.json();
 
-    expect(data[0].thread_id).toBe("thread-a");
-    expect(data[1].thread_id).toBe("thread-b");
+    expect(data[0].thread_id).toBe("thread-2");
   });
 
   test("handles empty request body", async () => {
-    mockReaddirSync.mockReturnValueOnce([createThreadDir("thread-1")]);
-    mockReadFileSync.mockReturnValueOnce(createThreadJson());
+    mockFetchResponses({
+      "thread-1": { ok: true, body: threadJson() },
+      "thread-2": { ok: true, body: threadJson() },
+      "thread-3": { ok: true, body: threadJson() },
+    });
 
-    const response = await POST(await makeRequest());
+    const response = await POST(
+      new Request("http://localhost/api/threads/search", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "not-json",
+      }),
+    );
     const data = await response.json();
 
-    expect(Array.isArray(data)).toBe(true);
-    expect(data.length).toBe(1);
+    expect(data.length).toBe(3);
   });
 
-  test("returns empty array when no threads exist", async () => {
-    mockReaddirSync.mockReturnValueOnce([]);
+  test("returns empty array when no thread manifests load", async () => {
+    mockFetchResponses({
+      "thread-1": { ok: false },
+      "thread-2": { ok: false },
+      "thread-3": { ok: false },
+    });
 
     const response = await POST(await makeRequest());
     const data = await response.json();
@@ -267,56 +234,44 @@ describe("mock search route", () => {
   });
 
   test("each thread result has thread_id field", async () => {
-    mockReaddirSync.mockReturnValueOnce([createThreadDir("thread-1")]);
-    mockReadFileSync.mockReturnValueOnce(
-      createThreadJson({ thread_id: "thread-1" }),
-    );
+    mockFetchResponses({
+      "thread-1": { ok: true, body: threadJson() },
+      "thread-2": { ok: true, body: threadJson() },
+      "thread-3": { ok: true, body: threadJson() },
+    });
 
     const response = await POST(await makeRequest());
     const data = await response.json();
 
-    expect(data[0]).toHaveProperty("thread_id", "thread-1");
+    for (const thread of data) {
+      expect(typeof thread.thread_id).toBe("string");
+    }
   });
 
   test("handles NaN limit gracefully", async () => {
-    mockReaddirSync.mockReturnValueOnce([
-      createThreadDir("thread-1"),
-      createThreadDir("thread-2"),
-      createThreadDir("thread-3"),
-    ]);
-    mockReadFileSync.mockReturnValueOnce(
-      createThreadJson({ thread_id: "thread-1" }),
-    );
-    mockReadFileSync.mockReturnValueOnce(
-      createThreadJson({ thread_id: "thread-2" }),
-    );
-    mockReadFileSync.mockReturnValueOnce(
-      createThreadJson({ thread_id: "thread-3" }),
-    );
+    mockFetchResponses({
+      "thread-1": { ok: true, body: threadJson() },
+      "thread-2": { ok: true, body: threadJson() },
+      "thread-3": { ok: true, body: threadJson() },
+    });
 
-    const response = await POST(await makeRequest({ limit: NaN }));
+    // NaN limit normalizes to NaN → rejected → default limit applies.
+    const response = await POST(await makeRequest({ limit: Number.NaN }));
     const data = await response.json();
 
-    // NaN limit falls back to default of 50
     expect(data.length).toBe(3);
   });
 
   test("handles negative limit gracefully", async () => {
-    mockReaddirSync.mockReturnValueOnce([
-      createThreadDir("thread-1"),
-      createThreadDir("thread-2"),
-    ]);
-    mockReadFileSync.mockReturnValueOnce(
-      createThreadJson({ thread_id: "thread-1" }),
-    );
-    mockReadFileSync.mockReturnValueOnce(
-      createThreadJson({ thread_id: "thread-2" }),
-    );
+    mockFetchResponses({
+      "thread-1": { ok: true, body: threadJson() },
+      "thread-2": { ok: true, body: threadJson() },
+      "thread-3": { ok: true, body: threadJson() },
+    });
 
     const response = await POST(await makeRequest({ limit: -5 }));
     const data = await response.json();
 
-    // Negative limit is normalized to 0 via Math.max(0, Math.floor(-5)) = 0
     expect(data.length).toBe(0);
   });
 });

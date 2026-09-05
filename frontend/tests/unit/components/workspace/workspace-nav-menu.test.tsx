@@ -112,6 +112,15 @@ vi.mock("@/components/workspace/settings", () => ({
       <div data-testid="settings-dialog">Settings Dialog Open</div>
     ) : null;
   },
+  SettingsDialogHost: () => null,
+  useSettingsDialog: () => ({
+    open: false,
+    section: "appearance",
+    openSettings: () => {},
+    closeSettings: () => {},
+  }),
+  openSettingsDialog: () => {},
+  setSettingsDialogOpen: () => {},
 }));
 
 // Radix dropdown-menu – lightweight passthrough so clicks still fire

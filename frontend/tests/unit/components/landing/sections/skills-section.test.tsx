@@ -22,6 +22,12 @@ vi.mock("@/lib/utils", () => ({
   cn: (...args: any[]) => args.filter(Boolean).join(" "),
 }));
 
+// The section suspends its animation until the container is on screen; make
+// it active so the composition under test actually renders.
+vi.mock("@/core/dom/render-activity", () => ({
+  useRenderActivity: vi.fn(() => true),
+}));
+
 import { SkillsSection } from "@/components/landing/sections/skills-section";
 
 afterEach(() => {

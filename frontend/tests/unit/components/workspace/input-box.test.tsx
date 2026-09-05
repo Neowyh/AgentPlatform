@@ -1,12 +1,32 @@
 import {
-  render,
+  render as renderBase,
   screen,
   cleanup,
   fireEvent,
   waitFor,
 } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+
+// InputBox reads feature flags through react-query; wrap every render in a
+// provider with a fresh client so tests stay isolated.
+const render = (ui: React.ReactElement, options?: any) =>
+  renderBase(
+    <QueryClientProvider
+      client={
+        new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      }
+    >
+      {ui}
+    </QueryClientProvider>,
+    options,
+  );
+
+// InputBox gates followups on the signed-in user; stub an authenticated user.
+vi.mock("@/core/auth/AuthProvider", () => ({
+  useAuth: () => ({ user: { id: "u1", email: "user@test.com" } }),
+}));
 
 // ---------------------------------------------------------------------------
 // Mocks -- must be declared before the component import
@@ -205,8 +225,15 @@ vi.mock("@/components/ai-elements/prompt-input", () => {
       <button {...props}>{children}</button>
     ),
     PromptInputAttachment: () => <div />,
-    PromptInputAttachments: ({ children }: any) => <div>{children}</div>,
+    // Real component iterates the (empty) attachments list, invoking a
+    // render-prop child once per file.
+    PromptInputAttachments: ({ children, ...props }: any) => (
+      <div {...props}>{typeof children === "function" ? null : children}</div>
+    ),
     PromptInputBody: ({ children, ...props }: any) => (
+      <div {...props}>{children}</div>
+    ),
+    PromptInputHeader: ({ children, ...props }: any) => (
       <div {...props}>{children}</div>
     ),
     PromptInputButton: ({ children, onClick, ...props }: any) => (

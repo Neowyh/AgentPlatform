@@ -23,9 +23,24 @@ describe("interaction-only bundle boundaries", () => {
     const dialog = read(
       "src/components/workspace/settings/settings-dialog.tsx",
     );
-    expect(dialog.match(/dynamic\(/g)).toHaveLength(10);
+    // The dialog module is itself behind the host's dynamic() boundary, so its
+    // statically imported pages still load only when the dialog opens; each
+    // page must additionally render only for its active section.
+    const sectionsAndPages = [
+      ["account", "AccountSettingsPage"],
+      ["appearance", "AppearanceSettingsPage"],
+      ["memory", "MemorySettingsPage"],
+      ["notification", "NotificationSettingsPage"],
+      ["about", "AboutSettingsPage"],
+    ] as const;
+    for (const [section, page] of sectionsAndPages) {
+      expect(dialog).toContain(`activeSection === "${section}"`);
+      expect(dialog).toContain(page);
+    }
+    // The heavy MCP/skill/subagent management pages moved to their own
+    // workbench surfaces; they must not rejoin the dialog bundle.
     expect(dialog).not.toMatch(
-      /import \{ \w+SettingsPage \} from "@\/components\/workspace\/settings\//,
+      /import \{ (?:Tool|Skill|Subagent)SettingsPage \} from "@\/components\/workspace\/settings\//,
     );
   });
 

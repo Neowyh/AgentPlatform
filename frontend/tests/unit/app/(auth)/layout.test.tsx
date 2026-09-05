@@ -10,6 +10,22 @@ vi.mock("@/core/auth/server", () => ({
   getServerSideUser: mockGetServerSideUser,
 }));
 
+// The layout reads the request locale on the server; `next/headers` cookie
+// access is unavailable under vitest, so stub the locale probe.
+vi.mock("@/core/i18n/server", () => ({
+  detectLocaleServer: async () => "en-US",
+}));
+
+vi.mock("@/core/i18n/context", () => ({
+  I18nProvider: ({ children }: any) => (
+    <div data-testid="i18n-provider">{children}</div>
+  ),
+}));
+
+vi.mock("@/components/workspace/gateway-offline-banner", () => ({
+  GatewayOfflineBanner: () => <div data-testid="gateway-offline-banner" />,
+}));
+
 vi.mock("@/core/auth/AuthProvider", () => ({
   AuthProvider: ({ children, initialUser }: any) => (
     <div
@@ -65,20 +81,21 @@ describe("AuthLayout", () => {
     expect(mockRedirect).toHaveBeenCalledWith("/workspace");
   });
 
-  test("renders gateway unavailable page", async () => {
+  test("renders the offline fallback with a banner instead of children when gateway unavailable", async () => {
     mockGetServerSideUser.mockResolvedValue({ tag: "gateway_unavailable" });
     render(await AuthLayout({ children: <div>child</div> }));
-    expect(
-      screen.getByText("Service temporarily unavailable."),
-    ).toBeInTheDocument();
+    // Children are intentionally not rendered while the gateway is down; the
+    // fallback shows the banner-driven recovery UI instead.
+    expect(screen.getByTestId("gateway-offline-banner")).toBeInTheDocument();
+    expect(screen.queryByText("child")).not.toBeInTheDocument();
   });
 
-  test("renders retry link on gateway unavailable page", async () => {
+  test("wraps the gateway-unavailable fallback in an AuthProvider", async () => {
     mockGetServerSideUser.mockResolvedValue({ tag: "gateway_unavailable" });
     render(await AuthLayout({ children: <div>child</div> }));
-    const link = screen.getByText("Retry");
-    expect(link).toBeInTheDocument();
-    expect(link.closest("a")).toHaveAttribute("href", "/login");
+    const provider = screen.getByTestId("auth-provider");
+    expect(provider).toBeInTheDocument();
+    expect(provider.getAttribute("data-initial-user")).toBe("null");
   });
 
   test("renders unauthenticated state with children", async () => {

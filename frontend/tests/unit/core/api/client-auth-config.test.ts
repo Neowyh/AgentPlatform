@@ -87,6 +87,9 @@ describe("core api client", () => {
     vi.stubGlobal("window", {
       location: {
         pathname: "/workspace",
+        // The 401 redirect preserves the query string so routes that carry
+        // their target in the URL survive the login round trip.
+        search: "",
         href: "",
       },
     });

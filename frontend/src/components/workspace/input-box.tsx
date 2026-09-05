@@ -2090,6 +2090,7 @@ export function InputBox({
   return (
     <div
       ref={promptRootRef}
+      data-testid="input-box"
       className={cn(
         "relative flex min-w-0 flex-col",
         isWelcomeMode ? "gap-4" : "gap-2",

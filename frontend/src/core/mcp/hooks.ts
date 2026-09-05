@@ -31,13 +31,23 @@ interface EnableMCPServerVariables {
   enabled: boolean;
 }
 
+function getMCPErrorMessage(error: Error): string {
+  if (
+    error instanceof MCPConfigRequestError &&
+    (error.isAdminRequired || error.status === 403)
+  ) {
+    return "MCP configuration is managed by super administrators. Please contact your admin.";
+  }
+  return error.message;
+}
+
 export function getEnableMCPServerMutationOptions(queryClient: QueryClient) {
   return {
     mutationFn: ({ serverName, enabled }: EnableMCPServerVariables) =>
       updateMCPServerState(serverName, enabled),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["mcpConfig"] }),
     onError: (error: Error) => {
-      toast.error(error.message);
+      toast.error(getMCPErrorMessage(error));
     },
   };
 }
@@ -76,7 +86,7 @@ export function getMCPServerMutationOptions(queryClient: QueryClient) {
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["mcpConfig"] }),
     onError: (error: Error) => {
-      toast.error(error.message);
+      toast.error(getMCPErrorMessage(error));
     },
   };
 }

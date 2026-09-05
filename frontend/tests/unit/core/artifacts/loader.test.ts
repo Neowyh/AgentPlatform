@@ -22,6 +22,22 @@ vi.mock("@/core/artifacts/preview", () => ({
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
 
+// The loader reads status/ok/headers/arrayBuffer from the fetch response
+// (Content-Range previews, ETag fingerprints). Build a Response-like object.
+function mockArtifactResponse(
+  content: string,
+  { ok = true, status = 200, headers = {} as Record<string, string> } = {},
+) {
+  const bytes = new TextEncoder().encode(content);
+  return {
+    ok,
+    status,
+    headers: new Headers(headers),
+    arrayBuffer: () => bytes.buffer.slice(bytes.byteOffset, bytes.byteLength),
+    text: () => Promise.resolve(content),
+  };
+}
+
 describe("loadArtifactContent", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -34,9 +50,7 @@ describe("loadArtifactContent", () => {
   test("fetches artifact content and returns text with url", async () => {
     const { loadArtifactContent } = await import("@/core/artifacts/loader");
 
-    mockFetch.mockResolvedValueOnce({
-      text: () => Promise.resolve("<html>hello</html>"),
-    });
+mockFetch.mockResolvedValueOnce(mockArtifactResponse("<html>hello</html>"));
 
     const result = await loadArtifactContent({
       filepath: "/mnt/user-data/outputs/report.html",
@@ -53,9 +67,7 @@ describe("loadArtifactContent", () => {
   test("appends /SKILL.md to .skill file paths", async () => {
     const { loadArtifactContent } = await import("@/core/artifacts/loader");
 
-    mockFetch.mockResolvedValueOnce({
-      text: () => Promise.resolve("# Skill content"),
-    });
+mockFetch.mockResolvedValueOnce(mockArtifactResponse("# Skill content"));
 
     const result = await loadArtifactContent({
       filepath: "/mnt/user-data/outputs/my-tool.skill",
@@ -69,9 +81,7 @@ describe("loadArtifactContent", () => {
   test("does not modify non-.skill file paths", async () => {
     const { loadArtifactContent } = await import("@/core/artifacts/loader");
 
-    mockFetch.mockResolvedValueOnce({
-      text: () => Promise.resolve("file content"),
-    });
+mockFetch.mockResolvedValueOnce(mockArtifactResponse("file content"));
 
     await loadArtifactContent({
       filepath: "/mnt/user-data/outputs/data.json",
@@ -86,9 +96,7 @@ describe("loadArtifactContent", () => {
   test("passes isMock flag through to URL generation", async () => {
     const { loadArtifactContent } = await import("@/core/artifacts/loader");
 
-    mockFetch.mockResolvedValueOnce({
-      text: () => Promise.resolve("mock content"),
-    });
+mockFetch.mockResolvedValueOnce(mockArtifactResponse("mock content"));
 
     const result = await loadArtifactContent({
       filepath: "/mnt/user-data/outputs/report.html",
@@ -113,27 +121,25 @@ describe("loadArtifactContent", () => {
     ).rejects.toThrow("Network error");
   });
 
-  test("handles non-OK responses by returning the response text", async () => {
+  test("rejects non-OK responses with a load error", async () => {
     const { loadArtifactContent } = await import("@/core/artifacts/loader");
 
-    mockFetch.mockResolvedValueOnce({
-      text: () => Promise.resolve("Not Found"),
-    });
+    mockFetch.mockResolvedValueOnce(
+      mockArtifactResponse("Not Found", { ok: false, status: 404 }),
+    );
 
-    const result = await loadArtifactContent({
-      filepath: "/nonexistent/file.txt",
-      threadId: "thread-1",
-    });
-
-    expect(result.content).toBe("Not Found");
+    await expect(
+      loadArtifactContent({
+        filepath: "/nonexistent/file.txt",
+        threadId: "thread-1",
+      }),
+    ).rejects.toThrow("Failed to load artifact: 404");
   });
 
   test("normalizes paths without leading slash", async () => {
     const { loadArtifactContent } = await import("@/core/artifacts/loader");
 
-    mockFetch.mockResolvedValueOnce({
-      text: () => Promise.resolve("data"),
-    });
+mockFetch.mockResolvedValueOnce(mockArtifactResponse("data"));
 
     await loadArtifactContent({
       filepath: "mnt/user-data/outputs/file.txt",
@@ -149,9 +155,7 @@ describe("loadArtifactContent", () => {
   test("handles .skill file with nested path correctly", async () => {
     const { loadArtifactContent } = await import("@/core/artifacts/loader");
 
-    mockFetch.mockResolvedValueOnce({
-      text: () => Promise.resolve("skill md content"),
-    });
+mockFetch.mockResolvedValueOnce(mockArtifactResponse("skill md content"));
 
     const result = await loadArtifactContent({
       filepath: "/user-data/skills/analysis.skill",

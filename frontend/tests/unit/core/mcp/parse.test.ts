@@ -27,6 +27,8 @@ describe("formatMCPServerDefinition", () => {
       description: "Remote tools",
       type: "http",
       url: "https://example.test/mcp",
+      args: [],
+      env: {},
       headers: { Authorization: "***" },
     });
 
@@ -37,6 +39,8 @@ describe("formatMCPServerDefinition", () => {
           description: "Remote tools",
           type: "http",
           url: "https://example.test/mcp",
+          args: [],
+          env: {},
           headers: { Authorization: "***" },
         },
       },

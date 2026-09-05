@@ -6,6 +6,7 @@ export const DOCS_CONTENT_ROOTS = [
   "application",
   "harness",
   "introduction",
+  "manual",
   "posts",
   "reference",
   "tutorials",

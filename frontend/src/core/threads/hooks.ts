@@ -62,6 +62,11 @@ import type {
 } from "./types";
 import { THREAD_PINNED_METADATA_KEY } from "./utils";
 
+export type ToolEndEvent = {
+  name: string;
+  data: unknown;
+};
+
 export type ThreadStreamOptions = {
   threadId?: string | null | undefined;
   displayThreadId?: string | null | undefined;
@@ -70,6 +75,12 @@ export type ThreadStreamOptions = {
   onSend?: (threadId: string) => void;
   onStart?: (threadId: string, runId: string) => void;
   onFinish?: (state: AgentThreadState) => void;
+  onToolEnd?: (event: ToolEndEvent) => void;
+  prepareSubmit?: (threadId: string) => Promise<{
+    threadId: string;
+    context?: Record<string, unknown>;
+  }>;
+  onThreadCreated?: (threadId: string) => void;
 };
 
 type SendMessageOptions = {
@@ -1613,6 +1624,9 @@ export function useThreadStream({
   onSend,
   onStart,
   onFinish,
+  onToolEnd,
+  prepareSubmit,
+  onThreadCreated,
 }: ThreadStreamOptions) {
   const { t } = useI18n();
   const currentViewThreadId = displayThreadId ?? threadId ?? null;
@@ -1646,6 +1660,8 @@ export function useThreadStream({
     onSend,
     onStart,
     onFinish,
+    onToolEnd,
+    onThreadCreated,
   });
 
   const {
@@ -1660,8 +1676,8 @@ export function useThreadStream({
 
   // Keep listeners ref updated with latest callbacks
   useEffect(() => {
-    listeners.current = { onSend, onStart, onFinish };
-  }, [onSend, onStart, onFinish]);
+    listeners.current = { onSend, onStart, onFinish, onToolEnd, onThreadCreated };
+  }, [onSend, onStart, onFinish, onToolEnd, onThreadCreated]);
 
   useEffect(() => {
     const normalizedThreadId = threadId ?? null;
@@ -1741,6 +1757,14 @@ export function useThreadStream({
     // starves UI updates while chunks keep arriving faster than the window.
     // Keep explicit: SDK types claim @default true, but runtime uses throttle ?? false.
     throttle: true,
+    onLangChainEvent(event) {
+      if (event.event === "on_tool_end") {
+        listeners.current.onToolEnd?.({
+          name: event.name,
+          data: event.data,
+        });
+      }
+    },
     onCreated(meta) {
       handleStreamStart(meta.thread_id, meta.run_id);
       const now = new Date().toISOString();
@@ -2169,15 +2193,41 @@ export function useThreadStream({
       let uploadedFileInfo: UploadedFileInfo[] = [];
 
       try {
+        // T6: start thread creation and file conversion concurrently. The
+        // upload still needs the created id, but conversion must not wait
+        // for the network round trip.
+        const shouldPrepare = threadId === "new" && prepareSubmit;
+        const preparePromise = shouldPrepare
+          ? prepareSubmit(threadId)
+          : Promise.resolve({
+              threadId,
+              context: {} as Record<string, unknown>,
+            });
+        const conversionPromise =
+          message.files && message.files.length > 0
+            ? Promise.all(
+                message.files.map((fileUIPart) =>
+                  promptInputFilePartToFile(fileUIPart),
+                ),
+              )
+            : null;
+        // If creation fails, conversion may still reject later — mark it
+        // handled so it never surfaces as an unhandled rejection; the
+        // await below still throws the original conversion error.
+        conversionPromise?.then(undefined, () => undefined);
+
+        const prepared = await preparePromise;
+        const submitThreadId = prepared.threadId;
+        const preparedContext: Record<string, unknown> = prepared.context ?? {};
+        if (shouldPrepare) {
+          listeners.current.onThreadCreated?.(submitThreadId);
+        }
+
         // Upload files first if any
-        if (message.files && message.files.length > 0) {
+        if (conversionPromise) {
           setIsUploading(true);
           try {
-            const filePromises = message.files.map((fileUIPart) =>
-              promptInputFilePartToFile(fileUIPart),
-            );
-
-            const conversionResults = await Promise.all(filePromises);
+            const conversionResults = await conversionPromise;
             const files = conversionResults.filter(
               (file): file is File => file !== null,
             );
@@ -2189,12 +2239,12 @@ export function useThreadStream({
               );
             }
 
-            if (!threadId) {
+            if (!submitThreadId) {
               throw new Error("Thread is not ready for file upload.");
             }
 
             if (files.length > 0) {
-              const uploadResponse = await uploadFiles(threadId, files);
+              const uploadResponse = await uploadFiles(submitThreadId, files);
               uploadedFileInfo = uploadResponse.files;
 
               // Update optimistic human message with uploaded status + paths
@@ -2255,7 +2305,7 @@ export function useThreadStream({
             }),
           },
           {
-            threadId: threadId,
+            threadId: submitThreadId,
             // No streamSubgraphs: subtask progress arrives via root-namespace
             // custom events, while subgraph frames would leak a delegated
             // subagent's values/messages into the thread view (#4399).
@@ -2264,6 +2314,7 @@ export function useThreadStream({
               recursion_limit: 1000,
             },
             context: {
+              ...preparedContext,
               ...extraContext,
               ...context,
               thinking_enabled: context.mode !== "flash",
@@ -2278,7 +2329,7 @@ export function useThreadStream({
                     : context.mode === "thinking"
                       ? "low"
                       : undefined),
-              thread_id: threadId,
+              thread_id: submitThreadId,
             },
           },
         );
@@ -2304,6 +2355,7 @@ export function useThreadStream({
       queryClient,
       humanMessageCount,
       persistedMessages,
+      prepareSubmit,
     ],
   );
 

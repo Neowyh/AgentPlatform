@@ -1,6 +1,24 @@
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
+// ChatBox consults useIsMobile (window.matchMedia) for its layout; jsdom does
+// not implement matchMedia, so stub it as desktop before the suite runs.
+if (typeof window.matchMedia !== "function") {
+  Object.defineProperty(window, "matchMedia", {
+    writable: true,
+    value: (query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }),
+  });
+}
+
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
 vi.mock("next/navigation", () => ({
@@ -35,6 +53,38 @@ let mockArtifactsOpen = false;
 let mockSelectedArtifact: string | null = null;
 let mockArtifacts: string[] = [];
 
+vi.mock("@/components/workspace/artifacts/artifact-file-detail", () => ({
+  ArtifactFileDetail: ({ filepath }: { filepath: string }) => (
+    <div data-testid="artifact-detail">{filepath}</div>
+  ),
+}));
+
+vi.mock("@/components/workspace/artifacts/artifact-file-list", () => ({
+  ArtifactFileList: ({
+    files,
+    threadId,
+  }: {
+    files: string[];
+    threadId: string;
+  }) => (
+    <div data-testid="artifact-file-list">
+      {files.join(",")} - {threadId}
+    </div>
+  ),
+}));
+
+vi.mock("@/components/workspace/artifacts/context", () => ({
+  useArtifacts: () => ({
+    artifacts: mockArtifacts,
+    open: mockArtifactsOpen,
+    setOpen: mockSetOpen,
+    setArtifacts: mockSetArtifacts,
+    select: mockSelect,
+    deselect: mockDeselect,
+    selectedArtifact: mockSelectedArtifact,
+  }),
+}));
+
 vi.mock("@/components/workspace/artifacts", () => ({
   useArtifacts: () => ({
     artifacts: mockArtifacts,
@@ -63,6 +113,9 @@ vi.mock("@/components/workspace/artifacts", () => ({
 
 vi.mock("react-resizable-panels", () => ({
   GroupImperativeHandle: {},
+  // Exported by the upgraded react-resizable-panels; ChatBox uses it to pin
+  // the right panel for programmatic resizing.
+  usePanelRef: () => ({ current: null }),
 }));
 
 const mockSetLayout = vi.fn();
@@ -158,7 +211,9 @@ describe("ChatBox", () => {
         <div>Chat</div>
       </ChatBox>,
     );
-    expect(screen.getByTestId("panel-artifacts")).toBeInTheDocument();
+    // The right panel is an aside#artifacts inside the pathname-derived side panel.
+    expect(document.querySelector("aside#artifacts")).toBeInTheDocument();
+    expect(document.querySelector("aside#artifacts")).toBeInTheDocument();
   });
 
   test("renders resizable handle", () => {
@@ -199,11 +254,15 @@ describe("ChatBox", () => {
         <div>Chat</div>
       </ChatBox>,
     );
+    // usePathname is mocked to /workspace/chats/test-thread; the group id is
+    // the sanitized pathname plus the "-group" suffix.
     const group = screen.getByTestId("resizable-panel-group");
-    expect(group).toHaveAttribute("data-id", expect.stringContaining("panels"));
+    expect(group.getAttribute("data-id")).toMatch(
+      /^workspace-chats-test-thread-group$/,
+    );
   });
 
-  test("shows artifact file detail when artifact is selected", () => {
+  test("shows artifact file detail when artifact is selected", async () => {
     mockArtifactsOpen = true;
     mockSelectedArtifact =
       "write-file:/src/test.ts?message_id=m1&tool_call_id=tc1";
@@ -213,10 +272,10 @@ describe("ChatBox", () => {
         <div>Chat</div>
       </ChatBox>,
     );
-    expect(screen.getByTestId("artifact-detail")).toBeInTheDocument();
+    expect(await screen.findByTestId("artifact-detail")).toBeInTheDocument();
   });
 
-  test("shows artifact file list when artifacts panel is open and no artifact selected", () => {
+  test("shows artifact file list when artifacts panel is open and no artifact selected", async () => {
     mockArtifactsOpen = true;
     mockArtifacts = ["file.txt"];
     render(
@@ -224,7 +283,7 @@ describe("ChatBox", () => {
         <div>Chat</div>
       </ChatBox>,
     );
-    expect(screen.getByTestId("artifact-file-list")).toBeInTheDocument();
+    expect(await screen.findByTestId("artifact-file-list")).toBeInTheDocument();
   });
 
   test("shows empty state when no artifacts in thread", () => {
@@ -236,7 +295,7 @@ describe("ChatBox", () => {
         <div>Chat</div>
       </ChatBox>,
     );
-    expect(screen.getByTestId("empty-state")).toBeInTheDocument();
+    expect(screen.getByText("No artifact selected")).toBeInTheDocument();
   });
 
   test("close button calls setOpen with false", () => {
@@ -278,8 +337,9 @@ describe("ChatBox", () => {
         <div>Chat</div>
       </ChatBox>,
     );
-    const panel = screen.getByTestId("panel-artifacts");
-    expect(panel.getAttribute("class")).toContain("transition-all");
+    const aside = document.querySelector("aside#artifacts")!;
+    expect(aside.getAttribute("class")).toContain("transition-opacity");
+    expect(aside.getAttribute("aria-hidden")).toBe("true");
   });
 
   test("artifacts panel renders with transition classes when open", () => {
@@ -290,8 +350,9 @@ describe("ChatBox", () => {
         <div>Chat</div>
       </ChatBox>,
     );
-    const panel = screen.getByTestId("panel-artifacts");
-    expect(panel.getAttribute("class")).toContain("transition-all");
+    const aside = document.querySelector("aside#artifacts")!;
+    expect(aside.getAttribute("class")).toContain("transition-opacity");
+    expect(aside.getAttribute("aria-hidden")).toBe("false");
   });
 
   // ── Static website mode tests ──────────────────────────────────────────────
@@ -430,7 +491,7 @@ describe("ChatBox", () => {
     expect(mockSelect).toHaveBeenCalledWith("new-artifact.txt");
   });
 
-  test("handles null artifacts in thread values (nullish coalescing fallback)", () => {
+  test("handles null artifacts in thread values (nullish coalescing fallback)", async () => {
     mockStaticWebsiteOnly = "false";
     mockArtifactsOpen = true;
     mockArtifacts = null as any;
@@ -440,7 +501,9 @@ describe("ChatBox", () => {
         <div>Chat</div>
       </ChatBox>,
     );
-    // Should render file list with empty array fallback
-    expect(screen.getByTestId("artifact-file-list")).toBeInTheDocument();
+    // Null artifacts must not crash: the panel degrades to the empty state.
+    expect(
+      await screen.findByText("No artifact selected"),
+    ).toBeInTheDocument();
   });
 });

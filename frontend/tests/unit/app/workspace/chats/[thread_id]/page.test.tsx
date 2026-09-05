@@ -52,6 +52,16 @@ const {
 let mockSearchParams = new URLSearchParams();
 vi.mock("next/navigation", () => ({
   useSearchParams: () => mockSearchParams,
+  useParams: () => ({ thread_id: "test-thread" }),
+  usePathname: () => "/workspace/chats/test-thread",
+  useRouter: () => ({
+    push: vi.fn(),
+    replace: vi.fn(),
+    back: vi.fn(),
+    forward: vi.fn(),
+    refresh: vi.fn(),
+    prefetch: vi.fn(),
+  }),
 }));
 
 vi.mock("@/core/i18n/hooks", () => ({

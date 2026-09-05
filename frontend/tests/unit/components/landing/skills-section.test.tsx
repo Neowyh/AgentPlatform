@@ -11,6 +11,12 @@ vi.mock("@/components/landing/progressive-skills-animation", () => ({
   default: () => <div data-testid="progressive-skills-animation" />,
 }));
 
+// The section suspends its animation until the container is on screen; make
+// it active so the composition under test actually renders.
+vi.mock("@/core/dom/render-activity", () => ({
+  useRenderActivity: vi.fn(() => true),
+}));
+
 import { SkillsSection } from "@/components/landing/sections/skills-section";
 
 afterEach(() => {

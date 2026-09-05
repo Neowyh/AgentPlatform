@@ -27,6 +27,16 @@ function encodeArtifactPath(filepath: string) {
     .join("/");
 }
 
+/**
+ * A relative filepath must still land under the artifacts route prefix;
+ * without the leading slash the first segment glues to the route
+ * ("artifactsreports/q1.pdf"). Restores the pre-merge normalization for the
+ * gateway artifact routes (the static-demo path intentionally stays raw).
+ */
+function normalizeArtifactPath(filepath: string) {
+  return filepath.startsWith("/") ? filepath : `/${filepath}`;
+}
+
 export function buildWriteFileArtifactURL({
   filepath,
   messageId,
@@ -66,7 +76,7 @@ export function urlOfArtifact({
     return staticDemoArtifactURL({ filepath, threadId, download });
   }
   const encodedThreadId = encodeURIComponent(threadId);
-  const encodedFilepath = encodeArtifactPath(filepath);
+  const encodedFilepath = encodeArtifactPath(normalizeArtifactPath(filepath));
   if (isMock) {
     return `${getBackendBaseURL()}/mock/api/threads/${encodedThreadId}/artifacts${encodedFilepath}${download ? "?download=true" : ""}`;
   }
@@ -93,7 +103,7 @@ export function resolveArtifactURL(absolutePath: string, threadId: string) {
   if (isStaticWebsiteOnly()) {
     return staticDemoArtifactURL({ filepath: absolutePath, threadId });
   }
-  return `${getBackendBaseURL()}/api/threads/${encodeURIComponent(threadId)}/artifacts${encodeArtifactPath(absolutePath)}`;
+  return `${getBackendBaseURL()}/api/threads/${encodeURIComponent(threadId)}/artifacts${encodeArtifactPath(normalizeArtifactPath(absolutePath))}`;
 }
 
 export function resolveMarkdownArtifactURL(src: string, threadId: string) {

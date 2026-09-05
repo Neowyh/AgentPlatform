@@ -315,7 +315,7 @@ const ChatBox: React.FC<{
               <XIcon />
             </Button>
           </div>
-          {artifacts.length === 0 ? (
+          {(artifacts ?? []).length === 0 ? (
             <ConversationEmptyState
               icon={<FilesIcon />}
               title="No artifact selected"
