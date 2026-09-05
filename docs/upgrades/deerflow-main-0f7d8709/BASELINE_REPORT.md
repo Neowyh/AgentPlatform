@@ -30,6 +30,7 @@ Locked DeerFlow SHA: `0f7d8709d3bbf0be26460b6277fbad9329302243`
 | `backend/tests/unit/scripts/test_intranet_deploy_scripts.py` | passed | After moving `--skills-manifest` existence checks ahead of Docker/image work, the complete suite passes: 36 passed in 235.91s. Individual package-build cases are slow (56–76s) but terminate successfully. |
 | `backend/scripts/e2e_safety_termination_demo.py` | passed | Migrated the standalone safety-termination acceptance driver from `ideer.*` to `deerflow.*`; real DeerFlow client stream completed with `=== PASS ===`. |
 | `tests/integration/api/test_suggestions_router_e2e.py` | passed | Switched the suggestions router's model factory import to `deerflow.models`; focused router regression: 3 passed. |
+| `tests/unit/runtime/test_serialization.py` + `tests/integration/api/test_runs_stateless_router.py` | passed | Switched stateless runs serialization to `deerflow.runtime`; focused serialization/router regressions: 27 passed. |
 
 The standard lane now exports `PYTHONPATH=.:tests`, preserving the existing
 collection roots while resolving shared test helpers. Re-run with
@@ -43,7 +44,7 @@ migration and air-gapped installation are still pending and are release gates.
 
 ## Runtime Foundation focused evidence
 
-The branch still has 177 textual `ideer` imports under `backend/app`,
+The branch still has 176 textual `ideer` imports under `backend/app`,
 `backend/scripts` and the AgentPlatform-facing harness adapters. This is an
 inventory signal only; the final `import ideer` failure gate is intentionally
 not claimed until the Workflow/resource control-plane extraction is complete.
