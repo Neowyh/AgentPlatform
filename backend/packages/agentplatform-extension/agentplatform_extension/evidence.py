@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
-from deerflow_extension_api import RunEvidenceEnvelope
+from deerflow_extension_api import ExtensionData, RunEvidenceEnvelope, TaskInfo, TaskOutcome
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
@@ -69,6 +69,48 @@ class AuthorizationContext:
             "allowed_tools": list(self.allowed_tools),
             "memory_scope": self.memory_scope or self.caller_user_id,
         }
+
+
+class EvidenceLifecycleContributor:
+    """Bind AgentPlatform projections to DeerFlow's task-scoped envelope."""
+
+    def __init__(
+        self,
+        *,
+        snapshots: Iterable[ResourceSnapshotRef | Mapping[str, Any]],
+        authorization: AuthorizationContext,
+        runtime_assembly_fingerprint: str | None = None,
+        trace_id: str | None = None,
+    ) -> None:
+        self._snapshots = tuple(snapshots)
+        self._authorization = authorization
+        self._runtime_assembly_fingerprint = runtime_assembly_fingerprint
+        self._trace_id = trace_id
+
+    async def on_task_start(self, app_store: ExtensionData, task_store: ExtensionData, info: TaskInfo) -> None:
+        del app_store
+        task_store.set(
+            build_run_evidence_envelope(
+                run_id=info.run_id,
+                thread_id=info.thread_id,
+                snapshots=self._snapshots,
+                authorization=self._authorization,
+                runtime_assembly_fingerprint=self._runtime_assembly_fingerprint,
+                trace_id=self._trace_id,
+            )
+        )
+
+    async def on_task_stop(
+        self,
+        app_store: ExtensionData,
+        task_store: ExtensionData,
+        info: TaskInfo,
+        outcome: TaskOutcome,
+    ) -> None:
+        del app_store, info
+        envelope = task_store.get(RunEvidenceEnvelope)
+        if envelope is not None:
+            task_store.set(replace(envelope, outcome=outcome))
 
 
 def _normalize_snapshots(snapshots: Iterable[ResourceSnapshotRef | Mapping[str, Any]]) -> tuple[dict[str, Any], ...]:

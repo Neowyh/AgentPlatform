@@ -14,6 +14,7 @@ from deerflow_extension_api import ExtensionRegistry, extension
 
 from agentplatform_extension.evidence import (
     AuthorizationContext,
+    EvidenceLifecycleContributor,
     ResourceSnapshotRef,
     build_run_evidence_envelope,
 )
@@ -29,15 +30,28 @@ def install(registry: ExtensionRegistry, config: Mapping[str, Any]) -> None:
     never contain caller credentials or private owner state.
     """
 
-    # Keep registration intentionally small until the host supplies the
-    # resource resolver service. The exported builders are usable by the
-    # gateway/workflow adapters without importing DeerFlow internals.
-    _ = registry
-    _ = config
+    authorization = config.get("authorization")
+    if not isinstance(authorization, Mapping):
+        return
+    registry.task_lifecycle(
+        EvidenceLifecycleContributor(
+            snapshots=config.get("resource_snapshots", ()),
+            authorization=AuthorizationContext(
+                caller_user_id=str(authorization.get("caller_user_id", "")),
+                effective_agent_id=str(authorization.get("effective_agent_id", "")),
+                policy_revision=str(authorization.get("policy_revision", "")),
+                allowed_tools=tuple(str(item) for item in authorization.get("allowed_tools", ())),
+                memory_scope=(str(authorization["memory_scope"]) if "memory_scope" in authorization else None),
+            ),
+            runtime_assembly_fingerprint=(str(config["runtime_assembly_fingerprint"]) if "runtime_assembly_fingerprint" in config else None),
+            trace_id=str(config["trace_id"]) if "trace_id" in config else None,
+        )
+    )
 
 
 __all__ = [
     "AuthorizationContext",
+    "EvidenceLifecycleContributor",
     "NetworkPolicy",
     "ResourceSnapshotRef",
     "build_run_evidence_envelope",

@@ -1,8 +1,17 @@
 from __future__ import annotations
 
 import pytest
-from agentplatform_extension.evidence import AuthorizationContext, ResourceSnapshotRef, build_run_evidence_envelope
+from agentplatform_extension import install
+from agentplatform_extension.evidence import (
+    AuthorizationContext,
+    EvidenceLifecycleContributor,
+    ResourceSnapshotRef,
+    build_run_evidence_envelope,
+)
 from agentplatform_extension.network_policy import NetworkPolicy
+from deerflow_extension_api import ExtensionData, RunEvidenceEnvelope, TaskInfo, TaskOutcome
+
+from deerflow.extensions.registry import ExtensionRegistry
 
 
 def test_run_evidence_envelope_freezes_resource_identity_and_caller_boundary() -> None:
@@ -64,3 +73,46 @@ def test_network_policy_defaults_to_intranet_allowlist_and_public_deny() -> None
     assert not policy.allows("https://example.com")
     assert not policy.allows("http://127.0.0.1:8080")
     assert NetworkPolicy(allow_public=True).allows("https://example.com")
+
+
+@pytest.mark.asyncio
+async def test_evidence_lifecycle_contributor_binds_snapshot_and_terminal_outcome() -> None:
+    contributor = EvidenceLifecycleContributor(
+        snapshots=[ResourceSnapshotRef("agent-1", 2, "a" * 64)],
+        authorization=AuthorizationContext("caller", "agent", "policy"),
+        runtime_assembly_fingerprint="assembly-1",
+    )
+    store = ExtensionData("task-1")
+    info = TaskInfo(task_id="task-1", run_id="run-1", thread_id="thread-1", kind="lead")
+
+    await contributor.on_task_start(ExtensionData("app"), store, info)
+    started = store.get(RunEvidenceEnvelope)
+    assert started is not None
+    assert started.resource_snapshots[0]["version"] == 2
+    assert started.authorization_context["caller_user_id"] == "caller"
+
+    await contributor.on_task_stop(ExtensionData("app"), store, info, TaskOutcome.COMPLETED)
+    stopped = store.get(RunEvidenceEnvelope)
+    assert stopped is not None and stopped.outcome is TaskOutcome.COMPLETED
+
+
+def test_install_registers_boundary_only_with_explicit_authorization() -> None:
+    empty = ExtensionRegistry()
+    install(empty, {})
+    assert not empty.build().has_task_lifecycle
+
+    configured = ExtensionRegistry()
+    with configured.attributed_to("agentplatform:install"):
+        install(
+            configured,
+            {
+                "authorization": {
+                    "caller_user_id": "caller",
+                    "effective_agent_id": "agent",
+                    "policy_revision": "policy",
+                },
+                "resource_snapshots": [],
+            },
+        )
+    loaded = configured.build()
+    assert loaded.has_task_lifecycle
