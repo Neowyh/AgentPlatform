@@ -92,9 +92,9 @@ async def test_prepare_resolves_closure_and_loads_agent_once(
         await session.commit()
         agent_id, skill_id = agent.id, skill.id
 
-    monkeypatch.setattr("ideer.persistence.engine.get_session_factory", lambda: session_factory)
+    monkeypatch.setattr("deerflow.persistence.engine.get_session_factory", lambda: session_factory)
     monkeypatch.setattr("app.gateway.audit.get_session_factory", lambda: session_factory)
-    monkeypatch.setattr("ideer.config.get_paths", lambda: SimpleNamespace(base_dir=tmp_path))
+    monkeypatch.setattr("deerflow.config.paths.get_paths", lambda: SimpleNamespace(base_dir=tmp_path))
 
     closure_calls: list[str] = []
     original_resolve = ResourceService.resolve_dependency_closure

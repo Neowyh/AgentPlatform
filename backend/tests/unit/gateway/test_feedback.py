@@ -6,6 +6,10 @@ Uses temp SQLite DB for ORM tests.
 import pytest
 
 from ideer.persistence.feedback import FeedbackRepository
+from ideer.runtime.user_context import reset_current_user, set_current_user
+
+_TEST_USER_ID = "test-user-1"
+_user_token: list = []
 
 
 async def _make_feedback_repo(tmp_path):
@@ -13,6 +17,9 @@ async def _make_feedback_repo(tmp_path):
 
     url = f"sqlite+aiosqlite:///{tmp_path / 'test.db'}"
     await init_engine("sqlite", url=url, sqlite_dir=str(tmp_path))
+    # Mirror the auth middleware: repositories default user_id=AUTO and
+    # resolve the caller from the request-scoped contextvar.
+    _user_token.append(set_current_user(type("User", (), {"id": _TEST_USER_ID})()))
     return FeedbackRepository(get_session_factory())
 
 
@@ -20,6 +27,8 @@ async def _cleanup():
     from ideer.persistence.engine import close_engine
 
     await close_engine()
+    while _user_token:
+        reset_current_user(_user_token.pop())
 
 
 # -- FeedbackRepository --

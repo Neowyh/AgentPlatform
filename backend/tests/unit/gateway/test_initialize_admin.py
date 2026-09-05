@@ -24,7 +24,7 @@ def _setup_auth(tmp_path):
     """Fresh SQLite engine + auth config per test."""
     from app.gateway import deps
     from app.gateway.routers.auth import _SETUP_STATUS_CACHE, _SETUP_STATUS_INFLIGHT
-    from ideer.persistence.engine import close_engine, init_engine
+    from deerflow.persistence.engine import close_engine, init_engine
 
     set_auth_config(AuthConfig(jwt_secret=_TEST_SECRET))
     url = f"sqlite+aiosqlite:///{tmp_path}/init_admin.db"
@@ -68,9 +68,9 @@ def _init_payload(**extra):
 async def _get_roles_by_email(email: str) -> tuple[str, str]:
     from sqlalchemy import select
 
-    from ideer.persistence.engine import get_session_factory
-    from ideer.persistence.models.user import UserModel
-    from ideer.persistence.user.model import UserRow
+    from app.agentplatform.rbac_models import UserModel
+    from deerflow.persistence.engine import get_session_factory
+    from deerflow.persistence.user.model import UserRow
 
     sf = get_session_factory()
     assert sf is not None

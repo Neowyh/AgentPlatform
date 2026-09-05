@@ -219,7 +219,7 @@ class TestCreate:
             _current_user.reset(token)
 
     @pytest.mark.asyncio
-    async def test_create_comment_default_none(self, repo):
+    async def test_create_comment_default_none(self, repo, _set_user):
         result = await repo.create(run_id="r1", thread_id="t1", rating=1)
         assert result["comment"] is None
 

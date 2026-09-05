@@ -18,7 +18,7 @@ class TestMarkRecoveredThreadAsError:
     @pytest.mark.asyncio
     async def test_list_by_thread_raises(self, caplog):
         """Lines 59-61: exception during list_by_thread is logged and continues."""
-        from app.gateway.deps import _mark_latest_recovered_threads_error
+        from app.gateway.deps import _mark_latest_startup_recovered_threads_error as _mark_latest_recovered_threads_error
 
         run_manager = MagicMock()
         run_manager.list_by_thread = AsyncMock(side_effect=RuntimeError("db down"))
@@ -37,7 +37,7 @@ class TestMarkRecoveredThreadAsError:
     @pytest.mark.asyncio
     async def test_update_status_raises(self, caplog):
         """Lines 66-67: exception during update_status is logged."""
-        from app.gateway.deps import _mark_latest_recovered_threads_error
+        from app.gateway.deps import _mark_latest_startup_recovered_threads_error as _mark_latest_recovered_threads_error
 
         record = MagicMock()
         record.thread_id = "thread-1"

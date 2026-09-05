@@ -82,7 +82,7 @@ class TestReconcileWorkflowMetadata:
         store.load_meta = AsyncMock(return_value={})
         store.save_meta = AsyncMock(return_value=True)
 
-        with patch("app.agentplatform.workflows.v2.store.WorkflowV2Store") as store_cls:
+        with patch("app.agentplatform.workflow_runtime.WorkflowV2Store") as store_cls:
             store_cls.return_value.list_latest_definitions = AsyncMock(return_value=([self._definition("orphan-wf", "u1")], 1))
             with patch("app.gateway.utils.ResourceMetadataStore", return_value=store):
                 with patch("app.gateway.app._resolve_resource_owner", return_value=("u1", "dept-1")):
@@ -98,7 +98,7 @@ class TestReconcileWorkflowMetadata:
         store.load_meta = AsyncMock(return_value={"owner_id": "u1"})
         store.save_meta = AsyncMock(return_value=True)
 
-        with patch("app.agentplatform.workflows.v2.store.WorkflowV2Store") as store_cls:
+        with patch("app.agentplatform.workflow_runtime.WorkflowV2Store") as store_cls:
             store_cls.return_value.list_latest_definitions = AsyncMock(return_value=([self._definition("known-wf", "u1")], 1))
             with patch("app.gateway.utils.ResourceMetadataStore", return_value=store):
                 await _reconcile_workflow_metadata(sf, "admin-1")
@@ -113,7 +113,7 @@ class TestReconcileWorkflowMetadata:
         store.load_meta = AsyncMock(return_value={})
         store.save_meta = AsyncMock(return_value=True)
 
-        with patch("app.agentplatform.workflows.v2.store.WorkflowV2Store") as store_cls:
+        with patch("app.agentplatform.workflow_runtime.WorkflowV2Store") as store_cls:
             store_cls.return_value.list_latest_definitions = AsyncMock(return_value=([self._definition("system-wf", "system")], 1))
             with patch("app.gateway.utils.ResourceMetadataStore", return_value=store):
                 with patch("app.gateway.app._resolve_resource_owner", return_value=(None, None)):
@@ -128,7 +128,7 @@ class TestReconcileWorkflowMetadata:
         store = MagicMock()
         store.save_meta = AsyncMock(return_value=True)
 
-        with patch("app.agentplatform.workflows.v2.store.WorkflowV2Store") as store_cls:
+        with patch("app.agentplatform.workflow_runtime.WorkflowV2Store") as store_cls:
             store_cls.return_value.list_latest_definitions = AsyncMock(side_effect=RuntimeError("boom"))
             with patch("app.gateway.utils.ResourceMetadataStore", return_value=store):
                 await _reconcile_workflow_metadata(sf, "admin-1")
@@ -220,7 +220,7 @@ class TestReconcileWorkflowAndAgentMetadata:
         session.execute = AsyncMock(return_value=_Result(_user("admin-1")))
         sf = _session_factory(session)
 
-        with patch("ideer.persistence.engine.get_session_factory", return_value=sf):
+        with patch("deerflow.persistence.engine.get_session_factory", return_value=sf):
             with patch("app.gateway.app._reconcile_workflow_metadata") as wf:
                 with patch("app.gateway.app._reconcile_agent_metadata") as ag:
                     await _reconcile_workflow_and_agent_metadata()
@@ -235,7 +235,7 @@ class TestReconcileWorkflowAndAgentMetadata:
         session.execute = AsyncMock(return_value=_Result(None))
         sf = _session_factory(session)
 
-        with patch("ideer.persistence.engine.get_session_factory", return_value=sf):
+        with patch("deerflow.persistence.engine.get_session_factory", return_value=sf):
             with patch("app.gateway.app._reconcile_workflow_metadata") as wf:
                 with patch("app.gateway.app._reconcile_agent_metadata") as ag:
                     await _reconcile_workflow_and_agent_metadata()
@@ -246,7 +246,7 @@ class TestReconcileWorkflowAndAgentMetadata:
     async def test_skips_when_database_unavailable(self):
         from app.gateway.app import _reconcile_workflow_and_agent_metadata
 
-        with patch("ideer.persistence.engine.get_session_factory", return_value=None):
+        with patch("deerflow.persistence.engine.get_session_factory", return_value=None):
             await _reconcile_workflow_and_agent_metadata()
 
 
@@ -258,8 +258,8 @@ async def test_seeds_bundled_resources_for_active_super_admin():
     session.execute = AsyncMock(return_value=_Result("admin-1"))
     sf = _session_factory(session)
 
-    with patch("ideer.persistence.engine.get_session_factory", return_value=sf):
-        with patch("app.agentplatform.resources.bundled.seed_bundled_resources", new_callable=AsyncMock) as seed:
+    with patch("deerflow.persistence.engine.get_session_factory", return_value=sf):
+        with patch("app.agentplatform.resource_runtime.seed_bundled_resources", new_callable=AsyncMock) as seed:
             await _seed_bundled_resources()
 
     seed.assert_awaited_once()

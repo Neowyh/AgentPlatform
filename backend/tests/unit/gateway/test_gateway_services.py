@@ -249,7 +249,8 @@ def test_build_run_config_context_custom_agent_injects_agent_name():
     )
 
     assert config["context"]["agent_name"] == "finalis"
-    assert "configurable" not in config
+    # The thread id is mirrored into the checkpoint-facing container.
+    assert config["configurable"] == {"thread_id": "thread-1", "agent_name": "finalis"}
 
 
 def test_resolve_agent_factory_returns_make_lead_agent():
@@ -477,7 +478,9 @@ def test_build_run_config_with_context():
     )
     assert "context" in config
     assert config["context"]["user_id"] == "u-42"
-    assert "configurable" not in config
+    # Caller data stays in context; configurable only carries the
+    # checkpoint-facing thread id.
+    assert config["configurable"] == {"thread_id": "thread-1"}
     assert config["recursion_limit"] == 100
 
 
@@ -487,8 +490,8 @@ def test_build_run_config_null_context_becomes_empty_context():
 
     config = build_run_config("thread-1", {"context": None}, None)
 
-    assert config["context"] == {}
-    assert "configurable" not in config
+    assert config["context"] == {"thread_id": "thread-1"}
+    assert config["configurable"] == {"thread_id": "thread-1"}
 
 
 def test_build_run_config_rejects_non_mapping_context():
@@ -507,8 +510,8 @@ def test_build_run_config_null_context_custom_agent_injects_agent_name():
 
     config = build_run_config("thread-1", {"context": None}, None, assistant_id="finalis")
 
-    assert config["context"] == {"agent_name": "finalis"}
-    assert "configurable" not in config
+    assert config["context"] == {"thread_id": "thread-1", "agent_name": "finalis"}
+    assert config["configurable"] == {"thread_id": "thread-1", "agent_name": "finalis"}
 
 
 def test_build_run_config_context_plus_configurable_warns(caplog):
@@ -528,7 +531,9 @@ def test_build_run_config_context_plus_configurable_warns(caplog):
         )
     assert "context" in config
     assert config["context"]["user_id"] == "u-42"
-    assert "configurable" not in config
+    # Caller-supplied configurable overrides are dropped; only the
+    # checkpoint-facing thread id remains.
+    assert config["configurable"] == {"thread_id": "thread-1"}
     assert any("both 'context' and 'configurable'" in r.message for r in caplog.records)
 
 
@@ -542,7 +547,7 @@ def test_build_run_config_context_passthrough_other_keys():
         None,
     )
     assert config["context"]["thread_id"] == "thread-1"
-    assert "configurable" not in config
+    assert config["configurable"] == {"thread_id": "thread-1"}
     assert config["tags"] == ["prod"]
 
 

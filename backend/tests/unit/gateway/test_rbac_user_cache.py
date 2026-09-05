@@ -34,7 +34,7 @@ async def test_authenticate_stashes_identity_on_request_state():
     request = _make_request()
     with (
         patch("app.gateway.deps.get_optional_user_from_request", new_callable=AsyncMock, return_value=user),
-        patch("ideer.persistence.engine.get_session_factory", return_value=mock_sf),
+        patch("deerflow.persistence.engine.get_session_factory", return_value=mock_sf),
     ):
         await _authenticate(request)
     assert request.state._ideer_rbac_user == {
@@ -66,7 +66,7 @@ async def test_alias_resolve_uses_cache_without_user_select():
     _, mock_session = _mock_session_factory(None)
     mock_sf = MagicMock(return_value=_mock_session_factory(None)[0].return_value)
     with (
-        patch("ideer.persistence.engine.get_session_factory", return_value=mock_sf),
+        patch("deerflow.persistence.engine.get_session_factory", return_value=mock_sf),
         patch(
             "app.agentplatform.resources.service.ResourceService.resolve_legacy_alias",
             new=AsyncMock(return_value=SimpleNamespace(id="res-9")),
@@ -86,7 +86,7 @@ async def test_alias_resolve_falls_back_to_query_without_cache():
     request = _make_request()
     request.state.user = SimpleNamespace(id="u-1")
     with (
-        patch("ideer.persistence.engine.get_session_factory", return_value=mock_sf),
+        patch("deerflow.persistence.engine.get_session_factory", return_value=mock_sf),
         patch(
             "app.agentplatform.resources.service.ResourceService.resolve_legacy_alias",
             new=AsyncMock(return_value=SimpleNamespace(id="res-9")),

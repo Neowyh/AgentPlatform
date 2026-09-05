@@ -22,14 +22,14 @@ from fastapi.testclient import TestClient
 
 from app.gateway import deps as gateway_deps
 from app.gateway.deps import get_config
-from ideer.config.app_config import (
+from deerflow.config.app_config import (
     AppConfig,
     pop_current_app_config,
     push_current_app_config,
     reset_app_config,
     set_app_config,
 )
-from ideer.config.sandbox_config import SandboxConfig
+from deerflow.config.sandbox_config import SandboxConfig
 
 
 @pytest.fixture(autouse=True)
@@ -70,7 +70,7 @@ def test_get_config_reflects_file_mtime_reload(tmp_path, monkeypatch):
     """
     config_file = tmp_path / "config.yaml"
     _write_config_yaml(config_file, log_level="info")
-    monkeypatch.setenv("IDEER_CONFIG_PATH", str(config_file))
+    monkeypatch.setenv("DEER_FLOW_CONFIG_PATH", str(config_file))
 
     app = _build_app()
     client = TestClient(app)
@@ -89,7 +89,7 @@ def test_get_config_respects_runtime_context_override(tmp_path, monkeypatch):
     """Per-request ``push_current_app_config`` injection must still win."""
     config_file = tmp_path / "config.yaml"
     _write_config_yaml(config_file, log_level="info")
-    monkeypatch.setenv("IDEER_CONFIG_PATH", str(config_file))
+    monkeypatch.setenv("DEER_FLOW_CONFIG_PATH", str(config_file))
 
     override = AppConfig(sandbox=SandboxConfig(use="test"), log_level="trace")
     push_current_app_config(override)
@@ -125,7 +125,7 @@ def test_run_context_app_config_reflects_yaml_edit(tmp_path, monkeypatch):
 
     config_file = tmp_path / "config.yaml"
     _write_config_yaml(config_file, log_level="info")
-    monkeypatch.setenv("IDEER_CONFIG_PATH", str(config_file))
+    monkeypatch.setenv("DEER_FLOW_CONFIG_PATH", str(config_file))
 
     app = FastAPI()
     # Sentinel values for the rest of the RunContext wiring — we only care
