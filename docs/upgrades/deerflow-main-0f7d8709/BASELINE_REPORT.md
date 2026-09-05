@@ -47,6 +47,7 @@ The following focused slices are green on this branch:
 - AgentPlatform extension boundary (snapshot identity, caller-scoped memory,
   default-deny network): 4 tests;
 - sandbox network policy and intranet proxy workflow: 14 tests;
+- intranet runtime config path and default-deny contract: 1 test;
 - sub-agent tool receipts, report contract, acceptance checks and delegation
   ledger: 270 passed, 1 skipped;
 - SRS smoke flow: `ALL CHECKS PASSED`.

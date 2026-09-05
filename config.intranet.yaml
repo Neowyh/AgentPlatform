@@ -33,7 +33,7 @@ models:
   # 适用于内网 GPU 集群上通过 vLLM 部署的大模型
   - name: qwen3-32b
     display_name: Qwen3 32B (vLLM)
-    use: ideer.models.vllm_provider:VllmChatModel
+    use: deerflow.models.vllm_provider:VllmChatModel
     model: Qwen/Qwen3-32B
     api_key: $VLLM_API_KEY
     base_url: http://vllm.internal.com:8000/v1
@@ -96,34 +96,34 @@ tools:
   # 文件操作工具
   - name: ls
     group: file:read
-    use: ideer.sandbox.tools:ls_tool
+    use: deerflow.sandbox.tools:ls_tool
 
   - name: read_file
     group: file:read
-    use: ideer.sandbox.tools:read_file_tool
+    use: deerflow.sandbox.tools:read_file_tool
 
   - name: glob
     group: file:read
-    use: ideer.sandbox.tools:glob_tool
+    use: deerflow.sandbox.tools:glob_tool
     max_results: 200
 
   - name: grep
     group: file:read
-    use: ideer.sandbox.tools:grep_tool
+    use: deerflow.sandbox.tools:grep_tool
     max_results: 100
 
   - name: write_file
     group: file:write
-    use: ideer.sandbox.tools:write_file_tool
+    use: deerflow.sandbox.tools:write_file_tool
 
   - name: str_replace
     group: file:write
-    use: ideer.sandbox.tools:str_replace_tool
+    use: deerflow.sandbox.tools:str_replace_tool
 
   # Bash 命令执行工具
   - name: bash
     group: bash
-    use: ideer.sandbox.tools:bash_tool
+    use: deerflow.sandbox.tools:bash_tool
 
   # 文档读取工具 — 将 PDF/Word/Excel/PowerPoint 转换为 Markdown 供智能体阅读
   # （软件任务书等办公文档解析依赖此工具）
@@ -173,7 +173,7 @@ uploads:
 # ideer-sandbox:<版本>；若使用自备镜像（先 docker load 到本机），
 # 可自行修改 image 为本地已存在的镜像名。
 sandbox:
-  use: ideer.community.aio_sandbox:AioSandboxProvider
+  use: deerflow.community.aio_sandbox:AioSandboxProvider
   image: ideer-sandbox:latest
   # Enterprise intranet default: no public egress and no interactive grants.
   # Internal endpoints must be added explicitly to allow_domains by the
