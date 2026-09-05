@@ -27,6 +27,7 @@ from typing import Any
 
 from fastapi import HTTPException, Request
 
+from app.agentplatform.memory_adapter import get_memory_data
 from app.gateway.canonical_agent_run_preparation import (
     prepare_canonical_agent_run as _prepare_canonical_agent_run,
 )
@@ -36,8 +37,7 @@ from app.gateway.services import (
     _discard_canonical_run_snapshot,
     validate_evidence_selection,
 )
-from ideer.agents.memory import get_memory_data
-from ideer.config.app_config import get_app_config
+from deerflow.config.app_config import get_app_config
 
 logger = logging.getLogger(__name__)
 

@@ -13,7 +13,7 @@ from typing import Any
 from deerflow.agents.memory import get_memory_manager
 
 
-def get_memory_data(*, user_id: str | None = None, agent_name: str | None = None) -> dict[str, Any]:
+def get_memory_data(agent_name: str | None = None, *, user_id: str | None = None) -> dict[str, Any]:
     return get_memory_manager().get_memory(user_id=user_id, agent_name=agent_name)
 
 
