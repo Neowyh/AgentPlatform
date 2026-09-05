@@ -85,6 +85,21 @@ class RunEvidenceBinding:
     def __post_init__(self) -> None:
         object.__setattr__(self, "snapshots", tuple(self.snapshots))
 
+    def as_mapping(self) -> dict[str, Any]:
+        """Return the caller-safe projection suitable for Run metadata.
+
+        The projection deliberately contains only immutable resource identities,
+        authorization attributes and fingerprints. Credentials and other
+        request-local secrets never cross into durable Run metadata.
+        """
+        return {
+            "resource_snapshots": list(_normalize_snapshots(self.snapshots)),
+            "authorization_context": self.authorization.as_mapping(),
+            "runtime_assembly_fingerprint": self.runtime_assembly_fingerprint,
+            "trace_id": self.trace_id,
+            "policy_revision": self.authorization.policy_revision,
+        }
+
 
 _run_evidence_binding: ContextVar[RunEvidenceBinding | None] = ContextVar(
     "agentplatform_run_evidence_binding",

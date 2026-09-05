@@ -228,6 +228,10 @@ async def prepare_run(body: Any, thread_id: str, request: Request) -> PreparedRu
                 snapshots,
             ),
         )
+        # Persist the same caller-safe projection that the Extension binds to
+        # the task lifecycle. This keeps Run metadata and runtime evidence on
+        # one envelope boundary without persisting credentials or secrets.
+        run_metadata["run_evidence"] = evidence_binding.as_mapping()
 
     logger.info(
         "first_token_timing stage=snapshot elapsed_ms=%.1f thread_id=%s has_canonical=%s",

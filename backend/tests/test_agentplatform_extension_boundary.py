@@ -68,6 +68,27 @@ def test_shared_agent_memory_scope_cannot_be_owner_scoped() -> None:
         AuthorizationContext("caller", "agent", "policy", memory_scope="owner")
 
 
+def test_run_evidence_binding_exposes_only_caller_safe_metadata_projection() -> None:
+    binding = RunEvidenceBinding(
+        snapshots=[ResourceSnapshotRef("agent-1", 2, "a" * 64, "root")],
+        authorization=AuthorizationContext("caller-1", "agent-1", "policy-2", memory_scope="caller-1"),
+        runtime_assembly_fingerprint="b" * 64,
+    )
+
+    projection = binding.as_mapping()
+
+    assert projection["resource_snapshots"] == [
+        {
+            "resource_id": "agent-1",
+            "version": 2,
+            "content_hash": "a" * 64,
+            "selection_role": "root",
+        }
+    ]
+    assert projection["authorization_context"]["memory_scope"] == "caller-1"
+    assert "owner_credential" not in projection
+
+
 def test_network_policy_defaults_to_intranet_allowlist_and_public_deny() -> None:
     policy = NetworkPolicy(allowed_hosts=("vllm.internal",))
 
