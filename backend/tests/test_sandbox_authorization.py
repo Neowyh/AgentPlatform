@@ -371,6 +371,7 @@ def _make_upload_app(monkeypatch, provider, *, fail_closed: bool = True):
     monkeypatch.setattr(
         "app.gateway.authz._get_route_authorization_config",
         lambda: app_config.authorization,
+        raising=False,
     )
     monkeypatch.setattr(
         "deerflow.authz.sandbox_authz.resolve_authorization_provider",
@@ -551,6 +552,7 @@ def test_artifact_sandbox_sync_skipped_when_denied(monkeypatch, tmp_path):
     monkeypatch.setattr(
         "app.gateway.authz._get_route_authorization_config",
         lambda: app_config.authorization,
+        raising=False,
     )
     monkeypatch.setattr(
         "deerflow.authz.sandbox_authz.resolve_authorization_provider",

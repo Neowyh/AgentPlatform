@@ -74,6 +74,9 @@ The following focused slices are green on this branch:
   caller-scoped memory, default-deny network, explicit install registration):
   7 tests, including shared-agent owner-state exclusion;
 - sandbox network policy and intranet proxy workflow: 14 tests;
+- sandbox authorization coverage: 13 synchronous policy tests pass; the two
+  legacy upload/artifact cases now tolerate the removed route-config seam but
+  remain incomplete because their TestClient path stalls in this sandbox;
 - intranet runtime config path and default-deny contract: 1 test;
 - sub-agent tool receipts, report contract, acceptance checks and delegation
   ledger: 270 passed, 1 skipped;
