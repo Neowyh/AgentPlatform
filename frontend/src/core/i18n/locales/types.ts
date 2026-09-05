@@ -49,6 +49,11 @@ export interface Translations {
     showArtifacts: string;
     browser: string;
     showBrowser: string;
+    deleteTitle: string;
+    deleteThreadConfirm: (title: string) => string;
+    deleteFailed: string;
+    showAll: string;
+    favoritesOnly: string;
   };
 
   runDuration: {
@@ -223,6 +228,10 @@ export interface Translations {
         }
     )[];
     pleaseWaitStreaming: string;
+    selectModel: string;
+    invokeSkill: string;
+    skill: string;
+    skillDialogDescription: string;
   };
 
   // Sidebar
@@ -235,6 +244,11 @@ export interface Translations {
     scheduledTasks: string;
     agentsDisabledTooltip: string;
     channels: string;
+    capabilities: string;
+    resources: string;
+    automations: string;
+    library: string;
+    workflows: string;
   };
 
   // Thread-scoped MCP background tasks
@@ -482,12 +496,56 @@ export interface Translations {
     settingsSaved: string;
     settingsInvalidTemperature: string;
     settingsInvalidMaxTokens: string;
+    template: string;
+    detailChat: string;
+    visibility: string;
+    visibilityPrivate: string;
+    visibilityDepartment: string;
+    visibilityPublic: string;
+    visibilityAdminOnly: string;
+    applyVisibility: string;
+    changeVisibility: string;
+    applyVisibilityDescription: string;
+    currentVisibility: string;
+    targetVisibility: string;
+    reason: string;
+    reasonPlaceholder: string;
+    visibilityReasonRequired: string;
+    submitting: string;
+    submit: string;
+    applicationSubmitted: string;
+    visibilityUpgradeHint: string;
+    visibilityDowngradeHint: string;
+    visibilityUpdated: string;
+    downgradeConfirmTitle: string;
+    downgradeConfirmDescription: string;
+    confirm: string;
+    favoriteAdded: string;
+    favoriteRemoved: string;
+    exportSuccess: string;
+    importSuccess: string;
+    edit: string;
+    export: string;
+    notFound: string;
+    configuration: string;
+    model: string;
+    defaultModel: string;
+    toolGroups: string;
+    skills: string;
+    usage: string;
+    command: string;
+    source: string;
+    notSpecified: string;
+    exportFailed: string;
   };
 
   // Breadcrumb
   breadcrumb: {
     workspace: string;
     chats: string;
+    workflows: string;
+    edit: string;
+    runs: string;
   };
 
   // Workspace
@@ -505,6 +563,13 @@ export interface Translations {
     modelLoadFailed: string;
     modelLoadRetry: string;
     modelLoadRetrying: string;
+    adminPanel: string;
+    userManagement: string;
+    departmentManagement: string;
+    toolManagement: string;
+    resourceManagement: string;
+    applicationManagement: string;
+    auditLogManagement: string;
   };
 
   // Conversation
@@ -829,6 +894,21 @@ export interface Translations {
       removeServer: string;
       removeServerDescription: string;
       unnamedServer: string;
+      deleteConfirmTitle: string;
+      deleteConfirmDescription: string;
+      serverName: string;
+      serverType: string;
+      command: string;
+      args: string;
+      url: string;
+      env: string;
+      headers: string;
+      emptyState: string;
+      validationNameRequired: string;
+      validationNameExists: string;
+      addSuccess: string;
+      editSuccess: string;
+      deleteSuccess: string;
     };
     subagents: {
       title: string;
@@ -1000,6 +1080,61 @@ export interface Translations {
       invalidArchive: string;
       archiveTooLarge: string;
       installFailed: string;
+      applyVisibility: string;
+      applyVisibilityDescription: string;
+      locked: string;
+      lockedTooltip: string;
+      applicationSubmitted: string;
+      applicationSubmitFailed: string;
+      applyDialogTitle: string;
+      applyDialogDescription: string;
+      applyDialogCurrentVisibility: string;
+      applyDialogTargetVisibility: string;
+      applyDialogVisibilityPrivate: string;
+      applyDialogVisibilityDepartment: string;
+      applyDialogVisibilityPublic: string;
+      applyDialogReason: string;
+      applyDialogReasonPlaceholder: string;
+      applyDialogCancel: string;
+      applyDialogSubmit: string;
+      applyDialogUpgradeHint: string;
+      applyDialogDowngradeHint: string;
+      visibilityUpdated: string;
+      applyDialogDowngradeConfirmTitle: string;
+      applyDialogDowngradeConfirmDescription: string;
+      applyDialogConfirm: string;
+      details: string;
+      use: string;
+      searchPlaceholder: string;
+      importSuccess: string;
+      archiveSuccess: string;
+      noResults: string;
+      backToSkills: string;
+      notFound: string;
+      edit: string;
+      export: string;
+      information: string;
+      descriptionLabel: string;
+      license: string;
+      allowedTools: string;
+      internet: string;
+      required: string;
+      notRequired: string;
+      version: string;
+      skillMd: string;
+      notSpecified: string;
+      noDescription: string;
+      readOnly: string;
+      saved: string;
+      saveFailed: string;
+      exportFailed: string;
+      category: string;
+      command: string;
+      usage: string;
+      input: string;
+      output: string;
+      inputDescription: string;
+      outputDescription: string;
     };
     notification: {
       title: string;
@@ -1072,4 +1207,477 @@ export interface Translations {
       sso_not_allowed: string;
     };
   };
+
+  workbench: {
+    recentChatsTitle: string;
+  };
+
+  // Scenario cascade bar
+  scenarios: {
+    daily: string;
+    creative: string;
+    professional: string;
+    // Pills
+    pills: Record<string, string>;
+    // Chips
+    chips: Record<string, string>;
+  };
+
+  // Clipboard
+  auth: {
+    signInTitle: string;
+    createAccountTitle: string;
+    email: string;
+    password: string;
+    signIn: string;
+    createAccount: string;
+    pleaseWait: string;
+    noAccount: string;
+    hasAccount: string;
+    backToHome: string;
+    errorAccountDisabled: string;
+    errorTooManyAttempts: string;
+    errorInvalidCredentials: string;
+    errorNetwork: string;
+  };
+
+  // Workflows
+  workflows: {
+    // Gallery
+    title: string;
+    description: string;
+    newWorkflow: string;
+    emptyTitle: string;
+    emptyDescription: string;
+    // Card
+    view: string;
+    deleteTitle: string;
+    deleteConfirm: (name: string) => string;
+    deleteSuccess: string;
+    deleting: string;
+    unknown: string;
+    steps: (count: number) => string;
+    inputs: (count: number) => string;
+    // Detail
+    notFound: string;
+    backToWorkflows: string;
+    edit: string;
+    run: string;
+    stepsTitle: (count: number) => string;
+    stepsDescription: string;
+    noSteps: string;
+    inputsTitle: string;
+    inputsDescription: string;
+    required: string;
+    runStatus: string;
+    runId: string;
+    runHistory: string;
+    noRuns: string;
+    definitionVersion: string;
+    resume: string;
+    cancelRun: string;
+    commandSubmitted: string;
+    streamFallback: string;
+    eventTimeline: string;
+    selectNodeHint: string;
+    nodeDetailTitle: string;
+    nodeNotStarted: string;
+    duration: string;
+    tokenStream: string;
+    definitionMismatchHint: string;
+    artifacts: string;
+    noArtifacts: string;
+    artifactLoadError: string;
+    artifactSize: string;
+    actionOutput: string;
+    runNotFound: string;
+    yamlDefinition: string;
+    // Run Dialog
+    runDialog: string;
+    runDialogDescription: string;
+    model: string;
+    modelPlaceholder: string;
+    defaultPrefix: string;
+    enterInput: (key: string) => string;
+    noInputs: string;
+    modelLabel: string;
+    followSystemModel: string;
+    starting: string;
+    addFiles: string;
+    fileSelectionHint: string;
+    selectedFiles: string;
+    noSelectedFiles: string;
+    fileCount: (count: number) => string;
+    removeFile: (name: string) => string;
+    singleSourceZip: string;
+    // Create/Edit
+    createSubtitle: string;
+    yamlEditor: string;
+    creating: string;
+    saving: string;
+    created: string;
+    updated: string;
+    requiredMissing: (key: string) => string;
+    started: string;
+    saveChanges: string;
+    // Visibility
+    visibility: string;
+    export: string;
+    exportSuccess: string;
+    exportFailed: string;
+    applyVisibility: string;
+    applyVisibilityDescription: string;
+    currentTargetVisibility: string;
+    targetVisibility: string;
+    private: string;
+    department: string;
+    public: string;
+    reason: string;
+    reasonPlaceholder: string;
+    reasonRequired: string;
+    submitting: string;
+    submit: string;
+    applicationSubmitted: string;
+    visibilityUpgradeHint: string;
+    visibilityDowngradeHint: string;
+    visibilityUpdated: string;
+    downgradeConfirmTitle: string;
+    downgradeConfirmDescription: string;
+    confirm: string;
+    notOwner: string;
+    visibilityPrivate: string;
+    visibilityDepartment: string;
+    visibilityPublic: string;
+    favoriteAdded: string;
+    favoriteRemoved: string;
+  };
+
+  // Breadcrumb
+  resources: {
+    title: string;
+    description: string;
+    experts: string;
+    skills: string;
+    connectors: string;
+    impactTitle: string;
+    impactSummary: (
+      total: number,
+      direct: number,
+      transitive: number,
+    ) => string;
+    impactBlockedSummary: (count: number) => string;
+    impactCascadeLabel: string;
+    impactLoadError: string;
+    resourceTypeAgent: string;
+    resourceTypeSkill: string;
+    resourceTypeWorkflow: string;
+    resourceTypeTool: string;
+    visibilityPrivate: string;
+    visibilityDepartment: string;
+    visibilityPublic: string;
+    notificationsTitle: string;
+    notificationsEmpty: string;
+    notificationsMarkAllRead: string;
+    notificationsMarkAllReadDone: string;
+    notificationsVisibilityReduced: (name: string) => string;
+    notificationsVisibilityReducedCascade: (name: string) => string;
+    notificationsAdminVisibilityReduced: (count: number) => string;
+    notificationsUnknownEvent: string;
+    notificationsLoadFailed: string;
+  };
+
+  // Automations
+  automations: {
+    title: string;
+    description: string;
+    create: string;
+    templates: string;
+    myAutomations: string;
+  };
+
+  // Library
+  library: {
+    title: string;
+    description: string;
+    upload: string;
+    search: string;
+    documents: string;
+    knowledgeBases: string;
+  };
+
+  // Settings
+  landing: {
+    heroTitlePrefix: string;
+    heroWords: string[];
+    heroTagline: string;
+    heroCta: string;
+  };
+
+  admin: {
+    dashboard: {
+      title: string;
+      subtitle: string;
+      totalUsers: string;
+      totalDepartments: string;
+      totalTools: string;
+      pendingApplications: string;
+      totalResources: string;
+      auditLogs: string;
+      viewDetails: string;
+      loading: string;
+    };
+    users: {
+      pageTitle: string;
+      subtitleSuperAdmin: string;
+      subtitleDeptAdmin: string;
+      filterDepartment: string;
+      allDepartments: string;
+      filterRole: string;
+      allRoles: string;
+      createUser: string;
+      loading: string;
+      noUsers: string;
+      noDepartment: string;
+      currentUserBadge: string;
+      disabledBadge: string;
+      createdAt: (date: string) => string;
+      lastLogin: (date: string) => string;
+      roleUser: string;
+      roleDepartmentAdmin: string;
+      roleSuperAdmin: string;
+      editUser: string;
+      deleteUser: string;
+      disableFirst: string;
+      enableUser: string;
+      disableUser: string;
+      cannotChangeOwnRole: string;
+      cannotChangeOwnStatus: string;
+      roleChangeConfirm: (
+        username: string,
+        fromRole: string,
+        toRole: string,
+      ) => string;
+      roleUpdated: string;
+      enableUserConfirm: string;
+      disableUserConfirm: string;
+      userEnabled: string;
+      userDisabled: string;
+      fillRequiredFields: string;
+      passwordTooShort: string;
+      userCreated: string;
+      usernameRequired: string;
+      userUpdated: string;
+      userDeleted: string;
+      createUserDesc: string;
+      emailLabel: string;
+      passwordLabel: string;
+      usernameLabel: string;
+      passwordPlaceholder: string;
+      usernamePlaceholder: string;
+      roleLabel: string;
+      departmentLabel: string;
+      departmentOptional: string;
+      cancel: string;
+      creating: string;
+      create: string;
+      editUserDesc: string;
+      saving: string;
+      save: string;
+      deleteConfirm: (name: string) => string;
+      resourceStrategy: string;
+      softDelete: string;
+      softDeleteDesc: string;
+      hardDelete: string;
+      hardDeleteDesc: string;
+      transferResources: string;
+      transferDesc: string;
+      selectTargetUser: string;
+      deleting: string;
+      confirmDelete: string;
+    };
+    departments: {
+      pageTitle: string;
+      pageDescription: string;
+      createDepartment: string;
+      loading: string;
+      noDepartments: string;
+      noDescription: string;
+      edit: string;
+      delete: string;
+      memberCount: (count: number | null) => string;
+      agentCount: (count: number) => string;
+      skillCount: (count: number) => string;
+      createdAt: (date: string) => string;
+      createDescription: string;
+      nameLabel: string;
+      enterDepartmentName: string;
+      descriptionLabel: string;
+      descriptionPlaceholder: string;
+      cancel: string;
+      creating: string;
+      create: string;
+      editDepartment: string;
+      editDescription: string;
+      saving: string;
+      save: string;
+      createdSuccess: string;
+      updatedSuccess: string;
+      deleteConfirm: string;
+      deletedSuccess: string;
+      reallocTitle: string;
+      reallocDescription: (name: string, count: number) => string;
+      loadingResources: string;
+      affectedResources: string;
+      visibilityDepartment: string;
+      visibilityPrivate: string;
+      noResources: string;
+      reallocMethodLabel: string;
+      reassignToDept: string;
+      selectTargetDept: string;
+      downgradeToPrivate: string;
+      deleting: string;
+      confirmDelete: string;
+    };
+    resources: {
+      pageTitle: string;
+      totalCount: (total: number) => string;
+      allTypesLabel: string;
+      agentLabel: string;
+      toolLabel: string;
+      workflowLabel: string;
+      allVisibilityLabel: string;
+      privateLabel: string;
+      departmentLabel: string;
+      publicLabel: string;
+      allStatusLabel: string;
+      activeLabel: string;
+      archivedLabel: string;
+      suspendedLabel: string;
+      allOwnersLabel: string;
+      typeLabel: string;
+      nameLabel: string;
+      visibilityLabel: string;
+      statusLabel: string;
+      ownerLabel: string;
+      createdAtLabel: string;
+      actionsLabel: string;
+      suspendAction: string;
+      restoreAction: string;
+      archiveAction: string;
+      prevPage: string;
+      nextPage: string;
+      loading: string;
+      empty: string;
+    };
+    tools: {
+      pageTitle: string;
+      subtitle: string;
+      requiresNetworkLabel: string;
+      availableLabel: string;
+      noDescription: string;
+      testInputLabel: string;
+      testingLabel: string;
+      testButton: string;
+      testResultLabel: string;
+      closeButton: string;
+      invalidJsonError: string;
+      errorWithMessage: (message: string) => string;
+      loading: string;
+      empty: string;
+    };
+    auditLogs: {
+      pageTitle: string;
+      pageDescription: string;
+      loading: string;
+      none: string;
+      operatorLabel: string;
+      userIdPlaceholder: string;
+      actionTypeLabel: string;
+      all: string;
+      startTimeLabel: string;
+      endTimeLabel: string;
+      reset: string;
+      totalCount: (total: number) => string;
+      emptyState: string;
+      system: string;
+      resourceLabel: string;
+      previousPage: string;
+      nextPage: string;
+      detailTitle: string;
+      logIdLabel: string;
+      actionTimeLabel: string;
+      ipAddressLabel: string;
+      resourceIdLabel: string;
+      resourceTypeLabel: string;
+      detailContentLabel: string;
+      actionCreate: string;
+      actionUpdate: string;
+      actionDelete: string;
+      actionReview: string;
+      actionApprove: string;
+      actionReject: string;
+      actionWithdraw: string;
+      actionGrant: string;
+      actionRevoke: string;
+      actionApply: string;
+      actionWithdrawal: string;
+      resourceTypeTool: string;
+      resourceTypeSkill: string;
+      resourceTypeWorkflow: string;
+      resourceTypeAgent: string;
+    };
+    visibilityApplications: {
+      pageTitle: string;
+      pageDescription: string;
+      loading: string;
+      operationFailed: string;
+      closeError: string;
+      statusPending: string;
+      statusApproved: string;
+      statusRejected: string;
+      statusWithdrawn: string;
+      resourceTypeTool: string;
+      resourceTypeSkill: string;
+      resourceTypeWorkflow: string;
+      resourceTypeAgent: string;
+      visibilityPrivate: string;
+      visibilityDepartment: string;
+      visibilityPublic: string;
+      status: string;
+      resourceType: string;
+      targetVisibility: string;
+      applicant: string;
+      allStatuses: string;
+      allTypes: string;
+      allVisibilities: string;
+      allApplicants: string;
+      totalCount: (total: number) => string;
+      emptyPending: string;
+      emptyNotFound: string;
+      applicationId: string;
+      visibility: string;
+      reason: string;
+      none: string;
+      submittedAt: string;
+      reviewedAt: string;
+      reviewComment: string;
+      review: string;
+      withdraw: string;
+      previousPage: string;
+      nextPage: string;
+      reviewDialogTitle: string;
+      resourceId: string;
+      visibilityChange: string;
+      reviewCommentPlaceholder: string;
+      cancel: string;
+      reject: string;
+      approve: string;
+      confirmWithdraw: string;
+      withdrawConfirmDescription: string;
+    };
+    skillApplications: {
+      redirecting: string;
+    };
+  };
+
 }

@@ -12,6 +12,11 @@ vi.mock("@/core/i18n/hooks", () => ({
         failed: "Failed",
         in_progress: "In progress",
       },
+      tokenUsage: {
+        label: "tokens",
+        collecting: "Collecting usage...",
+        unavailableShort: "N/A",
+      },
     },
     changeLocale: vi.fn(),
   }),
@@ -26,13 +31,37 @@ vi.mock("@/core/messages/utils", () => ({
 }));
 
 vi.mock("@/core/streamdown", () => ({
-  streamdownPluginsWithWordAnimation: {},
+  streamdownPluginsWithoutRawHtml: {},
+  streamdownWordAnimation: {},
+}));
+
+vi.mock("@/core/streamdown/components", () => ({
+  SafeStreamdown: ({ children }: any) => <div>{children}</div>,
+  toStreamdownComponents: (components: any) => components,
+}));
+
+vi.mock("@/core/models/hooks", () => ({
+  useModels: () => ({ models: [], tokenUsageEnabled: false }),
+}));
+
+vi.mock("@/core/tasks/api", () => ({
+  fetchSubtaskSteps: vi.fn(() => Promise.resolve([])),
+}));
+
+vi.mock("@/core/tasks/presentation", () => ({
+  resolveSubtaskModelLabel: () => null,
+  formatSubtaskTokenUsage: () => undefined,
+}));
+
+vi.mock("@/core/tasks/steps", () => ({
+  stepsForDisplay: () => [],
 }));
 
 vi.mock("@/core/tasks/context", () => {
   let mockTask: any = null;
   return {
     useSubtask: () => mockTask,
+    useUpdateSubtask: () => vi.fn(),
     __setMockTask: (task: any) => {
       mockTask = task;
     },

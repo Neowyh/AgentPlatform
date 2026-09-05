@@ -18,7 +18,12 @@ function createMatchMediaMock() {
   const listeners = new Set<Listener>();
 
   const mql: MediaQueryList = {
-    matches: false,
+    // Derive `matches` from the current innerWidth so the mock stays in sync
+    // with the merged hook, which reads matchMedia.matches through
+    // useSyncExternalStore instead of tracking innerWidth in state.
+    get matches() {
+      return window.innerWidth < 768;
+    },
     media: "",
     onchange: null,
     addEventListener: vi.fn((type: string, listener: EventListener) => {

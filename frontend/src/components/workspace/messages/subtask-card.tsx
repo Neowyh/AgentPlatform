@@ -134,6 +134,7 @@ export function SubtaskCard({
           <Button
             className="w-full items-start justify-start text-left"
             variant="ghost"
+            aria-expanded={!collapsed}
             onClick={() => setCollapsed(!collapsed)}
           >
             <div className="flex w-full items-center justify-between">

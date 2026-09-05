@@ -89,7 +89,7 @@ describe("zhCN locale", () => {
     }
 
     it("has the correct number of keys", () => {
-      expect(Object.keys(zhCN.common)).toHaveLength(37);
+      expect(Object.keys(zhCN.common)).toHaveLength(46);
     });
   });
 
@@ -271,8 +271,8 @@ describe("zhCN locale", () => {
       });
     }
 
-    it("has 10 keys", () => {
-      expect(Object.keys(zhCN.sidebar)).toHaveLength(10);
+    it("has 13 keys", () => {
+      expect(Object.keys(zhCN.sidebar)).toHaveLength(13);
     });
   });
 
@@ -478,8 +478,8 @@ describe("zhCN locale", () => {
       });
     }
 
-    it("has 14 keys", () => {
-      expect(Object.keys(zhCN.workspace)).toHaveLength(15);
+    it("has 20 keys", () => {
+      expect(Object.keys(zhCN.workspace)).toHaveLength(20);
     });
   });
 
@@ -497,8 +497,8 @@ describe("zhCN locale", () => {
       );
     });
 
-    it("has 2 keys", () => {
-      expect(Object.keys(zhCN.conversation)).toHaveLength(2);
+    it("has 7 keys", () => {
+      expect(Object.keys(zhCN.conversation)).toHaveLength(7);
     });
   });
 
@@ -510,8 +510,8 @@ describe("zhCN locale", () => {
       expect(zhCN.chats.searchChats).toBe("搜索对话");
     });
 
-    it("has 1 key", () => {
-      expect(Object.keys(zhCN.chats)).toHaveLength(1);
+    it("has 8 keys", () => {
+      expect(Object.keys(zhCN.chats)).toHaveLength(8);
     });
   });
 
@@ -605,8 +605,8 @@ describe("zhCN locale", () => {
       expect(zhCN.uploads.uploadingFiles).toBe("文件上传中，请稍候...");
     });
 
-    it("has 2 keys", () => {
-      expect(Object.keys(zhCN.uploads)).toHaveLength(2);
+    it("has 6 keys", () => {
+      expect(Object.keys(zhCN.uploads)).toHaveLength(6);
     });
   });
 
@@ -809,7 +809,7 @@ describe("zhCN locale", () => {
       }
 
       it("has 7 keys", () => {
-        expect(Object.keys(zhCN.settings.sections)).toHaveLength(7);
+        expect(Object.keys(zhCN.settings.sections)).toHaveLength(10);
       });
     });
 
@@ -1013,8 +1013,8 @@ describe("zhCN locale", () => {
         });
       }
 
-      it("has 19 keys", () => {
-        expect(Object.keys(zhCN.settings.tools)).toHaveLength(19);
+      it("has 36 keys", () => {
+        expect(Object.keys(zhCN.settings.tools)).toHaveLength(36);
       });
     });
 
@@ -1103,7 +1103,7 @@ describe("zhCN locale", () => {
       }
 
       it("has 15 keys", () => {
-        expect(Object.keys(zhCN.settings.account)).toHaveLength(15);
+        expect(Object.keys(zhCN.settings.account)).toHaveLength(18);
       });
     });
 
@@ -1135,11 +1135,17 @@ describe("zhCN locale", () => {
 
     for (const [path, value] of leaves) {
       if (typeof value === "string") {
+        // runDuration.separator is an intentional single space (duration formatting)
+        if (path === "runDuration.separator") continue;
         it(`${path} is a non-empty string`, () => {
           expect(value.trim().length).toBeGreaterThan(0);
         });
       }
     }
+
+    it("runDuration.separator is a single space", () => {
+      expect(zhCN.runDuration.separator).toBe(" ");
+    });
   });
 
   // =======================================================================

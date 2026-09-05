@@ -1,3 +1,4 @@
+import { isValidElement } from "react";
 import { render, screen, cleanup } from "@testing-library/react";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Pluggable is a transitive type from unified
 type Pluggable = any;
@@ -13,8 +14,8 @@ import {
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
-vi.mock("@/components/ai-elements/message", () => ({
-  MessageResponse: ({
+vi.mock("@/core/streamdown/components", () => ({
+  SafeMessageResponse: ({
     children,
     className,
     components,
@@ -42,12 +43,19 @@ vi.mock("@/components/ai-elements/message", () => ({
       )}
     </div>
   ),
+  // Identity: the unit under test is MarkdownContent's component merging,
+  // not streamdown's component-map adaptation.
+  toStreamdownComponents: (components: any) => components,
 }));
 
 vi.mock("@/core/streamdown", () => ({
-  streamdownPlugins: {
+  streamdownPluginsWithoutRawHtml: {
     remarkPlugins: [],
+    rehypePlugins: [],
   },
+  preprocessStreamdownMarkdown: (content: string) => content,
+  rehypeStreamingListItems: () => {},
+  streamdownSmoothStreamingAnimation: true,
 }));
 
 vi.mock("@/components/workspace/citations/citation-link", () => ({
@@ -62,6 +70,25 @@ vi.mock("@/components/workspace/citations/citation-link", () => ({
       {children}
     </a>
   ),
+  extractReactNodeText: function extractReactNodeText(
+    node: any,
+  ): string | null {
+    if (typeof node === "string" || typeof node === "number") {
+      return String(node);
+    }
+    if (Array.isArray(node)) {
+      const text = node
+        .map(extractReactNodeText)
+        .filter((value): value is string => value !== null)
+        .join("");
+      return text || null;
+    }
+    if (isValidElement(node)) {
+      const children = (node.props as { children?: React.ReactNode }).children;
+      return children === undefined ? null : extractReactNodeText(children);
+    }
+    return null;
+  },
 }));
 
 vi.mock("@/core/streamdown/plugins", () => ({
@@ -186,8 +213,8 @@ describe("MarkdownContent a component", () => {
   beforeAll(async () => {
     vi.resetModules();
 
-    vi.doMock("@/components/ai-elements/message", () => ({
-      MessageResponse: ({ children, className, components }: any) => {
+    vi.doMock("@/core/streamdown/components", () => ({
+      SafeMessageResponse: ({ children, className, components }: any) => {
         const AComponent = components?.a;
         return (
           <div data-testid="message-response" className={className}>
@@ -233,12 +260,17 @@ describe("MarkdownContent a component", () => {
           </div>
         );
       },
+      toStreamdownComponents: (components: any) => components,
     }));
 
     vi.doMock("@/core/streamdown", () => ({
-      streamdownPlugins: {
+      streamdownPluginsWithoutRawHtml: {
         remarkPlugins: [],
+        rehypePlugins: [],
       },
+      preprocessStreamdownMarkdown: (content: string) => content,
+      rehypeStreamingListItems: () => {},
+      streamdownSmoothStreamingAnimation: true,
     }));
 
     vi.doMock("@/components/workspace/citations/citation-link", () => ({
@@ -247,6 +279,26 @@ describe("MarkdownContent a component", () => {
           {children}
         </a>
       ),
+      extractReactNodeText: function extractReactNodeText(
+        node: any,
+      ): string | null {
+        if (typeof node === "string" || typeof node === "number") {
+          return String(node);
+        }
+        if (Array.isArray(node)) {
+          const text = node
+            .map(extractReactNodeText)
+            .filter((value): value is string => value !== null)
+            .join("");
+          return text || null;
+        }
+        if (isValidElement(node)) {
+          const children = (node.props as { children?: React.ReactNode })
+            .children;
+          return children === undefined ? null : extractReactNodeText(children);
+        }
+        return null;
+      },
     }));
 
     vi.doMock("@/core/streamdown/plugins", () => ({

@@ -5,6 +5,7 @@ import {
   cleanup,
   act,
 } from "@testing-library/react";
+import { forwardRef, useImperativeHandle } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 // ---------------------------------------------------------------------------
@@ -47,12 +48,12 @@ const {
 // ---------------------------------------------------------------------------
 vi.mock("@/components/ai-elements/conversation", () => ({
   Conversation: ({ children, className, ...props }: any) => (
-    <div data-testid="conversation" data-class={className} {...props}>
+    <div {...props} data-testid="conversation" data-class={className}>
       {children}
     </div>
   ),
   ConversationContent: ({ children, className, ...props }: any) => (
-    <div data-testid="conversation-content" data-class={className} {...props}>
+    <div {...props} data-testid="conversation-content" data-class={className}>
       {children}
     </div>
   ),
@@ -166,28 +167,55 @@ vi.mock("@/components/ui/button", () => ({
   ),
 }));
 
-vi.mock("@/core/i18n/hooks", () => ({
-  useI18n: () => ({
-    t: {
-      common: { loading: "Loading...", loadMore: "Load More" },
-      subtasks: { executing: (n: number) => `Executing ${n} tasks` },
-    },
-  }),
-}));
+vi.mock("@/core/i18n/hooks", async () => {
+  // Use the real en-US dictionary so assertions track actual user-visible
+  // copy (including post-merge wording) instead of a hand-maintained subset.
+  const { enUS } = await import("@/core/i18n/locales/en-US");
+  return {
+    useI18n: () => ({
+      locale: "en-US",
+      t: enUS,
+      changeLocale: vi.fn(),
+    }),
+  };
+});
 
 vi.mock("lucide-react", () => ({
   Loader2Icon: (props: any) => <span data-testid="loader-icon" {...props} />,
   ChevronUpIcon: (props: any) => <span data-testid="chevron-icon" {...props} />,
+  GitBranchPlusIcon: (props: any) => <span {...props} />,
+  MessageCircleIcon: (props: any) => <span {...props} />,
+  MessageSquarePlusIcon: (props: any) => <span {...props} />,
+  RefreshCcwIcon: (props: any) => <span {...props} />,
+  // Icons referenced by the real en-US dictionary module.
+  CompassIcon: () => null,
+  GraduationCapIcon: () => null,
+  ImageIcon: () => null,
+  MicroscopeIcon: () => null,
+  PenLineIcon: () => null,
+  ShapesIcon: () => null,
+  SparklesIcon: () => null,
+  VideoIcon: () => null,
 }));
 
 // ---------------------------------------------------------------------------
 // Mutable function mocks
 // ---------------------------------------------------------------------------
+vi.mock("@/core/messages/derived-state", () => ({
+  deriveStableMessageGroups:
+    (...args: any[]) =>
+    mockGetMessageGroups(...args),
+  deriveAssistantTurnUsageState:
+    (...args: any[]) =>
+    ({ byGroupIndex: mockGetAssistantTurnUsageMessages(...args) }),
+}));
+
 vi.mock("@/core/messages/usage-model", () => ({
   buildTokenDebugSteps: (...args: any[]) => mockBuildTokenDebugSteps(...args),
 }));
 
 vi.mock("@/core/messages/utils", () => ({
+  areStreamMetadataSnapshotsEqual: () => true,
   extractContentFromMessage: (...args: any[]) =>
     mockExtractContentFromMessage(...args),
   extractPresentFilesFromMessage: (...args: any[]) =>
@@ -196,9 +224,9 @@ vi.mock("@/core/messages/utils", () => ({
     mockExtractTextFromMessage(...args),
   getAssistantTurnCopyData: (...args: any[]) =>
     mockGetAssistantTurnCopyData(...args),
-  getAssistantTurnUsageMessages: (...args: any[]) =>
-    mockGetAssistantTurnUsageMessages(...args),
-  getMessageGroups: (...args: any[]) => mockGetMessageGroups(...args),
+  getBranchableAssistantGroupIds: () => new Set(),
+  getLatestEditableTurn: () => null,
+  getStreamMetadataSnapshot: () => ({}),
   getStreamingMessageLookup: (...args: any[]) =>
     mockGetStreamingMessageLookup(...args),
   hasContent: (...args: any[]) => mockHasContent(...args),
@@ -206,6 +234,14 @@ vi.mock("@/core/messages/utils", () => ({
   hasReasoning: (...args: any[]) => mockHasReasoning(...args),
   isAssistantMessageGroupStreaming: (...args: any[]) =>
     mockIsAssistantMessageGroupStreaming(...args),
+  isHiddenFromUIMessage: () => false,
+  stripUploadedFilesTag: (content: string) =>
+    content
+      .replace(
+        /<(current_uploads|uploaded_files|slash_skill_activation)>[\s\S]*?<\/\1>/g,
+        "",
+      )
+      .trim(),
 }));
 
 vi.mock("@/core/rehype", () => ({
@@ -218,10 +254,65 @@ vi.mock("@/core/tasks/context", () => ({
 
 vi.mock("@/core/tasks/subtask-result", () => ({
   parseSubtaskResult: (...args: any[]) => mockParseSubtaskResult(...args),
+  derivePendingSubtaskStatus: () => "in_progress",
 }));
 
 vi.mock("@/lib/utils", () => ({
   cn: (...args: any[]) => args.filter(Boolean).join(" "),
+}));
+
+// ---------------------------------------------------------------------------
+// Workspace surface mocks (context hooks default to "no provider")
+// ---------------------------------------------------------------------------
+vi.mock("@/components/workspace/browser-view", () => ({
+  useMaybeBrowserView: () => null,
+}));
+
+vi.mock("@/components/workspace/sidecar/context", () => ({
+  useMaybeSidecar: () => null,
+}));
+
+vi.mock("@/components/workspace/tooltip", () => ({
+  Tooltip: ({ children, content }: any) => (
+    <div data-testid="tooltip" data-content={content}>
+      {children}
+    </div>
+  ),
+}));
+
+vi.mock("@/components/workspace/messages/conversation-outline", () => ({
+  ConversationOutline: () => null,
+}));
+
+vi.mock("@/components/workspace/messages/human-input-card", () => ({
+  HumanInputCard: () => null,
+}));
+
+vi.mock("@/components/workspace/messages/run-duration", () => ({
+  RunActivity: () => <div data-testid="run-activity" />,
+  RunDuration: ({ durationSeconds }: any) => (
+    <div data-testid="run-duration" data-duration={durationSeconds} />
+  ),
+}));
+
+// Render every group directly: virtualization is covered by its own test file
+// and the real component requires the use-stick-to-bottom provider.
+vi.mock("@/components/workspace/messages/virtual-message-list", () => ({
+  VirtualMessageList: forwardRef(function VirtualMessageList(
+    { groups, renderGroup }: any,
+    ref,
+  ) {
+    useImperativeHandle(ref, () => ({ scrollToGroup: vi.fn() }), []);
+    return (
+      <>
+        {groups.map((group: any, groupIndex: number) => (
+          <div key={group.id ?? groupIndex}>
+            {renderGroup(group, groupIndex)}
+          </div>
+        ))}
+      </>
+    );
+  }),
 }));
 
 // ---------------------------------------------------------------------------
@@ -454,17 +545,18 @@ describe("MessageList", () => {
   // Streaming indicator
   // ========================================================================
   describe("streaming indicator", () => {
-    test("shows streaming indicator when isLoading is true", () => {
+    // Post-merge, the streaming indicator was replaced by RunActivity.
+    test("shows streaming activity indicator when isLoading is true", () => {
       render(
         <MessageList
           threadId="t1"
           thread={createThread({ isLoading: true })}
         />,
       );
-      expect(screen.getByTestId("streaming-indicator")).toBeInTheDocument();
+      expect(screen.getByTestId("run-activity")).toBeInTheDocument();
     });
 
-    test("does not show streaming indicator when isLoading is false", () => {
+    test("does not show streaming activity indicator when isLoading is false", () => {
       render(
         <MessageList
           threadId="t1"
@@ -472,7 +564,7 @@ describe("MessageList", () => {
         />,
       );
       expect(
-        screen.queryByTestId("streaming-indicator"),
+        screen.queryByTestId("run-activity"),
       ).not.toBeInTheDocument();
     });
   });
@@ -537,8 +629,14 @@ describe("MessageList", () => {
           thread={createThread({ messages: [msg] })}
         />,
       );
-      const wrapper = screen.getByTestId("message-list-item").parentElement;
-      expect(wrapper?.className).toContain("group/assistant-turn");
+      // Post-merge each message sits in a keyed wrapper, so locate the
+      // assistant-turn container via the data attribute instead of the
+      // immediate parent.
+      const turnWrapper = screen
+        .getByTestId("message-list-item")
+        .closest("[data-assistant-turn]");
+      expect(turnWrapper).not.toBeNull();
+      expect(turnWrapper?.className).toContain("group/assistant-turn");
     });
 
     test("does not apply group/assistant-turn class to human group wrapper", () => {
@@ -550,8 +648,9 @@ describe("MessageList", () => {
           thread={createThread({ messages: [msg] })}
         />,
       );
-      const wrapper = screen.getByTestId("message-list-item").parentElement;
-      expect(wrapper?.className).not.toContain("group/assistant-turn");
+      expect(
+        screen.getByTestId("message-list-item").closest("[data-assistant-turn]"),
+      ).toBeNull();
     });
 
     test("passes threadId and isLoading to MessageListItem", () => {
@@ -782,9 +881,9 @@ describe("MessageList", () => {
         createPresentFilesGroup("g1", msg1, msg2),
       ]);
       mockHasPresentFiles.mockReturnValue(true);
-      mockExtractPresentFilesFromMessage
-        .mockReturnValueOnce(["a.pdf"])
-        .mockReturnValueOnce(["b.xlsx"]);
+      mockExtractPresentFilesFromMessage.mockImplementation((msg: any) =>
+        msg.id === "pf-1" ? ["a.pdf"] : ["b.xlsx"],
+      );
       render(
         <MessageList
           threadId="t1"
@@ -864,7 +963,7 @@ describe("MessageList", () => {
           thread={createThread({ messages: [aiMsg] })}
         />,
       );
-      expect(screen.getByText("Executing 1 tasks")).toBeInTheDocument();
+      expect(screen.getByText("Executing subtask")).toBeInTheDocument();
     });
 
     test("shows correct count for multiple tasks", () => {
@@ -878,7 +977,7 @@ describe("MessageList", () => {
           thread={createThread({ messages: [aiMsg] })}
         />,
       );
-      expect(screen.getByText("Executing 2 tasks")).toBeInTheDocument();
+      expect(screen.getByText("Executing 2 subtasks in parallel")).toBeInTheDocument();
     });
 
     test("renders SubtaskCard for each task tool call", () => {
@@ -1030,7 +1129,7 @@ describe("MessageList", () => {
       );
       const items = screen.getAllByTestId("message-list-item");
       expect(items).toHaveLength(2); // human + assistant messages
-      expect(screen.getByText("Executing 1 tasks")).toBeInTheDocument();
+      expect(screen.getByText("Executing subtask")).toBeInTheDocument();
     });
   });
 
@@ -1073,6 +1172,8 @@ describe("MessageList", () => {
       mockGetMessageGroups.mockReturnValue([
         createDefaultGroup("g1", msg1, msg2),
       ]);
+      // Post-merge, debug steps are only built in step_debug mode, so the
+      // filtering pass-through is observed under that mode.
       mockBuildTokenDebugSteps.mockReturnValue([
         {
           id: "s1",
@@ -1103,6 +1204,7 @@ describe("MessageList", () => {
         <MessageList
           threadId="t1"
           thread={createThread({ messages: [msg1, msg2] })}
+          tokenUsageInlineMode="step_debug"
         />,
       );
       expect(
@@ -1337,7 +1439,7 @@ describe("MessageList", () => {
         />,
       );
       expect(screen.getByTestId("chevron-icon")).toBeInTheDocument();
-      expect(screen.getByText("Load More")).toBeInTheDocument();
+      expect(screen.getByText("Load more")).toBeInTheDocument();
     });
 
     test("button is disabled when isHistoryLoading is true", () => {

@@ -14,6 +14,14 @@ vi.mock("@/core/i18n/hooks", () => ({
   useI18n: () => ({
     locale: "en-US",
     t: {
+      common: {
+        cancel: "Cancel",
+        editAndRerun: "Edit and rerun",
+        updateAndRerun: "Update and rerun",
+        editRerunWarning:
+          "The message will be updated and the task will rerun with the new content.",
+      },
+      runDuration: { reasoning: "Reasoning" },
       uploads: { uploading: "Uploading..." },
       clipboard: {
         copyToClipboard: "Copy",
@@ -30,7 +38,16 @@ vi.mock("@/core/rehype", () => ({
 }));
 
 vi.mock("@/core/messages/utils", () => ({
+  INTERNAL_MARKER_TAGS: [
+    "current_uploads",
+    "uploaded_files",
+    "slash_skill_activation",
+    "system-reminder",
+    "memory",
+    "current_date",
+  ],
   extractContentFromMessage: (msg: any) => msg.content ?? "",
+  getMessageCopyData: (msg: any) => msg.content ?? "",
   extractReasoningContentFromMessage: vi.fn(() => null),
   parseUploadedFiles: vi.fn(() => []),
   stripUploadedFilesTag: vi.fn((s: string) => s),
@@ -39,6 +56,12 @@ vi.mock("@/core/messages/utils", () => ({
 vi.mock("@/core/artifacts/utils", () => ({
   resolveArtifactURL: (path: string, threadId: string) =>
     `/artifacts/${threadId}/${path}`,
+  resolveMarkdownArtifactURL: (src: string, threadId: string) =>
+    `/artifacts/${threadId}/${src}`,
+  // Mirrors the real contract: /mnt/ links resolve through the artifact URL,
+  // anything else is used verbatim.
+  resolveMessageImageURL: (src: string, threadId: string) =>
+    src.startsWith("/mnt/") ? `/artifacts/${threadId}/${src}` : src,
 }));
 
 vi.mock("@/core/api/feedback", () => ({
@@ -300,7 +323,8 @@ describe("MessageListItem", () => {
   test("human message has w-fit width class in content", () => {
     render(<MessageListItem message={makeHumanMessage()} threadId="t-1" />);
     const content = screen.getByTestId("message-content");
-    expect(content.className).toContain("w-fit");
+    // Post-merge the w-fit bubble wrapper sits above the content element.
+    expect(content.closest(".w-fit")).not.toBeNull();
   });
 
   test("assistant message has w-full width class in content", () => {
@@ -911,14 +935,22 @@ describe("contentToDisplay useMemo for human messages", () => {
 });
 
 describe("Human message rendering paths", () => {
-  test("renders AIElementMessageResponse for human with content", () => {
+  test("renders human content as plain text", async () => {
+    // An earlier test pins a mock return value; restore pass-through here.
+    const { stripUploadedFilesTag } = await import("@/core/messages/utils");
+    vi.mocked(stripUploadedFilesTag).mockImplementation((s: string) => s);
     render(
       <MessageListItem
         message={makeHumanMessage({ content: "Hello!" })}
         threadId="t-1"
       />,
     );
-    expect(screen.getByTestId("message-response")).toBeInTheDocument();
+    // Post-merge, human (composer) content renders verbatim as plain text
+    // instead of going through the markdown response renderer.
+    expect(screen.getByText("Hello!")).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("markdown-content"),
+    ).not.toBeInTheDocument();
   });
 
   test("does not render AIElementMessageResponse for human with empty content", () => {
@@ -1210,7 +1242,10 @@ describe("Human message layout", () => {
     expect(content.parentElement).toHaveClass("ml-auto");
   });
 
-  test("human message with files renders filesList before message response", () => {
+  test("human message with files renders filesList before message text", async () => {
+    // An earlier test pins a mock return value; restore pass-through here.
+    const { stripUploadedFilesTag } = await import("@/core/messages/utils");
+    vi.mocked(stripUploadedFilesTag).mockImplementation((s: string) => s);
     render(
       <MessageListItem
         message={makeHumanMessage({
@@ -1222,9 +1257,14 @@ describe("Human message layout", () => {
         threadId="t-1"
       />,
     );
-    // Both file badge and message response should render
-    expect(screen.getByTestId("badge")).toBeInTheDocument();
-    expect(screen.getByTestId("message-response")).toBeInTheDocument();
+    // Both file badge and message text should render, files first
+    const badge = screen.getByTestId("badge");
+    expect(badge).toBeInTheDocument();
+    const text = screen.getByText("Check this");
+    expect(text).toBeInTheDocument();
+    expect(
+      badge.compareDocumentPosition(text) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 });
 

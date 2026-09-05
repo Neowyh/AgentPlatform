@@ -13,6 +13,7 @@ import type { Locale } from "@/core/i18n";
 import type { Translations } from "@/core/i18n/locales";
 
 import { clientTranslations } from "./client-translations";
+import { setLocaleInCookie } from "./cookies";
 
 export interface I18nContextType {
   locale: Locale;
@@ -34,10 +35,18 @@ export function I18nProvider({
     clientTranslations[initialLocale],
   );
 
-  const handleSetLocale = useCallback((newLocale: Locale) => {
-    setLocale(newLocale);
-    setTranslations(clientTranslations[newLocale]);
-  }, []);
+  const handleSetLocale = useCallback(
+    (newLocale: Locale) => {
+      setLocale(newLocale);
+      setTranslations(clientTranslations[newLocale]);
+      // Persist only real user-facing locale changes; mount-time replays of
+      // the already-saved locale must not rewrite the cookie.
+      if (newLocale !== locale) {
+        setLocaleInCookie(newLocale);
+      }
+    },
+    [locale],
+  );
 
   useEffect(() => {
     document.documentElement.lang = locale;

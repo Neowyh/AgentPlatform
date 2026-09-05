@@ -48,6 +48,10 @@ vi.mock("@/core/rehype", () => ({
 }));
 
 vi.mock("@/core/messages/utils", () => ({
+  extractContentFromMessage: (msg: any) =>
+    typeof msg?.content === "string" ? msg.content : "",
+  extractTextFromMessage: (msg: any) =>
+    typeof msg?.content === "string" ? msg.content : "",
   extractReasoningContentFromMessage: (msg: any) =>
     msg.additional_kwargs?.reasoning ?? null,
   findToolCallResult: (id: string, messages: any[]) => {

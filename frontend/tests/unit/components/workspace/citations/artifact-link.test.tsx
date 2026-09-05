@@ -1,3 +1,4 @@
+import { isValidElement } from "react";
 import { render, screen, cleanup } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
@@ -15,6 +16,25 @@ vi.mock("@/components/workspace/citations/citation-link", () => ({
       {children}
     </a>
   ),
+  extractReactNodeText: function extractReactNodeText(
+    node: any,
+  ): string | null {
+    if (typeof node === "string" || typeof node === "number") {
+      return String(node);
+    }
+    if (Array.isArray(node)) {
+      const text = node
+        .map(extractReactNodeText)
+        .filter((value): value is string => value !== null)
+        .join("");
+      return text || null;
+    }
+    if (isValidElement(node)) {
+      const children = (node.props as { children?: React.ReactNode }).children;
+      return children === undefined ? null : extractReactNodeText(children);
+    }
+    return null;
+  },
 }));
 
 // ── Dynamic import ───────────────────────────────────────────────────────────
