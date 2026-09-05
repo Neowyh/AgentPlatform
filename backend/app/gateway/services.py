@@ -462,6 +462,16 @@ def build_run_config(
     else:
         config["configurable"] = {"thread_id": thread_id}
 
+    # The checkpoint channel mode is a server-owned control field.  The
+    # checkpoint preparation seam applies it after request authentication;
+    # never allow a client to smuggle a mode through either config container.
+    from deerflow.runtime.checkpoint_mode import INTERNAL_CHECKPOINT_MODE_KEY
+
+    for section in ("context", "configurable"):
+        value = config.get(section)
+        if isinstance(value, dict):
+            value.pop(INTERNAL_CHECKPOINT_MODE_KEY, None)
+
     # Inject custom agent name when the caller specified a non-default assistant.
     # Honour an explicit agent_name in the active runtime options container.
     if assistant_id and assistant_id != _DEFAULT_ASSISTANT_ID:
