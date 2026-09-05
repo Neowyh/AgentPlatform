@@ -36,6 +36,7 @@ Locked DeerFlow SHA: `0f7d8709d3bbf0be26460b6277fbad9329302243`
 | `tests/integration/api/test_threads_router_comprehensive.py` + thread edge/cancel regressions | passed | Switched thread serialization to `deerflow.runtime`; focused regressions: 150 passed. |
 | `tests/unit/agentplatform/test_memory_adapter.py` + memory router regressions | passed | Added the AgentPlatform control-plane adapter backed by DeerFlow `MemoryManager`, preserving caller/user and agent scope; 28 passed. |
 | Memory config response and client compatibility regressions | passed | `/api/memory/config` now exposes DeerFlow `mode`, `manager_class`, `backend_config` and shutdown budget while projecting legacy fields; 172 existing tests plus 1 focused schema test passed. |
+| Memory isolation/migration acceptance groups | passed | User/agent isolation and migration contracts: 26 passed; storage/restart edge cases: 38 passed; queue isolation: 32 passed; legacy Markdown migration CLI: 5 passed. |
 
 The standard lane now exports `PYTHONPATH=.:tests`, preserving the existing
 collection roots while resolving shared test helpers. Re-run with
