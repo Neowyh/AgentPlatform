@@ -23,8 +23,8 @@ export function AgentGallery() {
       {/* Page header */}
       <div className="flex items-center justify-between border-b px-6 py-4">
         <div>
-          <h1 className="text-xl font-semibold">{t.agents.title}</h1>
-          <p className="text-muted-foreground mt-0.5 text-sm">
+          <h1 className="type-page-title font-semibold">{t.agents.title}</h1>
+          <p className="text-muted-foreground mt-0.5 type-supporting">
             {t.agents.description}
           </p>
         </div>
@@ -37,7 +37,7 @@ export function AgentGallery() {
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-6">
         {isLoading ? (
-          <div className="text-muted-foreground flex h-40 items-center justify-center text-sm">
+          <div className="text-muted-foreground flex h-40 items-center justify-center type-supporting">
             {t.common.loading}
           </div>
         ) : agents.length === 0 ? (
@@ -47,7 +47,7 @@ export function AgentGallery() {
             </div>
             <div>
               <p className="font-medium">{t.agents.emptyTitle}</p>
-              <p className="text-muted-foreground mt-1 text-sm">
+              <p className="text-muted-foreground mt-1 type-supporting">
                 {t.agents.emptyDescription}
               </p>
             </div>

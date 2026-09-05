@@ -43,7 +43,7 @@ export function ArtifactPreviewError({
   return (
     <div className="flex size-full items-center justify-center p-6">
       <div className="flex max-w-sm flex-col items-center gap-4 text-center">
-        <p className="text-muted-foreground text-sm">{message}</p>
+        <p className="text-muted-foreground type-supporting">{message}</p>
         <Button asChild>
           <a
             href={urlOfArtifact({
@@ -91,9 +91,9 @@ export function ArtifactDownloadFallback({
         </div>
         <div className="space-y-1">
           <div className="font-medium break-all">{filename}</div>
-          <div className="text-muted-foreground text-sm">{fileType} file</div>
+          <div className="text-muted-foreground type-supporting">{fileType} file</div>
         </div>
-        <p className="text-muted-foreground text-sm">
+        <p className="text-muted-foreground type-supporting">
           This file type cannot be previewed in the browser.
         </p>
         <Button asChild>

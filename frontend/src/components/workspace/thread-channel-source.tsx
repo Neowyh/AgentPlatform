@@ -44,7 +44,7 @@ export function ThreadChannelBadge({
   return (
     <span
       className={cn(
-        "bg-muted text-muted-foreground inline-flex h-6 max-w-32 items-center gap-1 rounded-md px-2 text-xs font-medium",
+        "bg-muted text-muted-foreground inline-flex h-6 max-w-32 items-center gap-1 rounded-md px-2 type-compact font-medium",
         className,
       )}
       title={`${source.label} channel`}

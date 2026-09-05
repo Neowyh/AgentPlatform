@@ -274,7 +274,7 @@ function MCPServerList({
             </DialogDescription>
           </DialogHeader>
           <Textarea
-            className="min-h-52 font-mono text-xs"
+            className="min-h-52 font-mono type-compact"
             aria-label={t.settings.tools.serverDefinitionLabel}
             spellCheck={false}
             value={definition}

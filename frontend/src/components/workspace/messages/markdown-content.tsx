@@ -161,11 +161,11 @@ function StreamingPre({ children }: ComponentProps<"pre">) {
       data-streaming-code-block="true"
     >
       {language && (
-        <div className="bg-muted/80 text-muted-foreground p-3 text-xs">
+        <div className="bg-muted/80 text-muted-foreground p-3 type-compact">
           <span className="ml-1 font-mono lowercase">{language}</span>
         </div>
       )}
-      <pre className="bg-muted/40 overflow-x-auto border-t p-4 font-mono text-xs">
+      <pre className="bg-muted/40 overflow-x-auto border-t p-4 font-mono type-compact">
         <StreamingCodeBlockContext.Provider value={true}>
           {children}
         </StreamingCodeBlockContext.Provider>
@@ -187,7 +187,7 @@ function StreamingCode({
       <code
         {...props}
         className={cn(
-          "bg-muted rounded px-1.5 py-0.5 font-mono text-sm",
+          "bg-muted rounded px-1.5 py-0.5 font-mono type-supporting",
           className,
         )}
         data-streaming-inline-code="true"

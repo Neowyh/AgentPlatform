@@ -78,12 +78,12 @@ export const CodeBlock = ({
         <div className="relative size-full">
           {html ? (
             <div
-              className="[&>pre]:bg-background! [&>pre]:text-foreground! size-full overflow-auto [&_code]:font-mono [&_code]:text-sm [&>pre]:m-0 [&>pre]:text-sm [&>pre]:whitespace-pre-wrap"
+              className="[&>pre]:bg-background! [&>pre]:text-foreground! size-full overflow-auto [&_code]:font-mono [&_code]:text-[length:var(--text-supporting)] [&>pre]:m-0 [&>pre]:text-[length:var(--text-supporting)] [&>pre]:whitespace-pre-wrap"
               // biome-ignore lint/security/noDangerouslySetInnerHtml: "this is needed."
               dangerouslySetInnerHTML={{ __html: html }}
             />
           ) : (
-            <pre className="bg-background text-foreground size-full overflow-auto p-4 font-mono text-sm whitespace-pre-wrap">
+            <pre className="bg-background text-foreground type-supporting size-full overflow-auto p-4 font-mono whitespace-pre-wrap">
               <code>{code}</code>
             </pre>
           )}

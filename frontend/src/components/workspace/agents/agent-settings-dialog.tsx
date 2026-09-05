@@ -168,7 +168,7 @@ export function AgentSettingsDialog({
         <div className="space-y-4 py-1">
           {/* Default model */}
           <div className="space-y-1.5">
-            <span className="text-sm font-medium">
+            <span className="type-supporting font-medium">
               {t.agents.settingsModel}
             </span>
             <Select value={model} onValueChange={setModel}>
@@ -190,7 +190,7 @@ export function AgentSettingsDialog({
 
           {/* Temperature */}
           <div className="space-y-1.5">
-            <span className="text-sm font-medium">
+            <span className="type-supporting font-medium">
               {t.agents.settingsTemperature}
             </span>
             <Input
@@ -202,14 +202,14 @@ export function AgentSettingsDialog({
               placeholder={t.agents.settingsInherit}
               onChange={(e) => setTemperature(e.target.value)}
             />
-            <p className="text-muted-foreground text-xs">
+            <p className="text-muted-foreground type-compact">
               {t.agents.settingsTemperatureHint}
             </p>
           </div>
 
           {/* Max output tokens */}
           <div className="space-y-1.5">
-            <span className="text-sm font-medium">
+            <span className="type-supporting font-medium">
               {t.agents.settingsMaxTokens}
             </span>
             <Input
@@ -226,7 +226,7 @@ export function AgentSettingsDialog({
           {/* Thinking mode (only when the selected model supports it) */}
           {supportsThinking && (
             <div className="space-y-1.5">
-              <span className="text-sm font-medium">
+              <span className="type-supporting font-medium">
                 {t.agents.settingsThinking}
               </span>
               <Select
@@ -254,7 +254,7 @@ export function AgentSettingsDialog({
           {/* Reasoning effort (only when supported) */}
           {supportsReasoningEffort && (
             <div className="space-y-1.5">
-              <span className="text-sm font-medium">
+              <span className="type-supporting font-medium">
                 {t.agents.settingsReasoningEffort}
               </span>
               <Select
@@ -280,10 +280,10 @@ export function AgentSettingsDialog({
 
           <div className="space-y-2 border-t pt-4">
             <div>
-              <p className="text-sm font-medium">
+              <p className="type-supporting font-medium">
                 {t.settings.subagents.bindingTitle}
               </p>
-              <p className="text-muted-foreground text-xs">
+              <p className="text-muted-foreground type-compact">
                 {t.settings.subagents.bindingDescription}
               </p>
             </div>
@@ -313,7 +313,7 @@ export function AgentSettingsDialog({
                 {selectableSubagents.map((item) => (
                   <label
                     key={item.name}
-                    className="flex items-start gap-2 text-sm"
+                    className="flex items-start gap-2 type-supporting"
                   >
                     <input
                       type="checkbox"
@@ -331,7 +331,7 @@ export function AgentSettingsDialog({
                       <span className="font-medium">
                         {item.display_name ?? item.name}
                       </span>
-                      <span className="text-muted-foreground block text-xs">
+                      <span className="text-muted-foreground block type-compact">
                         {item.description}
                       </span>
                     </span>
@@ -340,7 +340,7 @@ export function AgentSettingsDialog({
                 {missingSubagents.map((name) => (
                   <label
                     key={name}
-                    className="text-muted-foreground flex items-start gap-2 text-sm"
+                    className="text-muted-foreground flex items-start gap-2 type-supporting"
                   >
                     <input
                       type="checkbox"
@@ -354,7 +354,7 @@ export function AgentSettingsDialog({
                     />
                     <span>
                       <span className="font-medium">{name}</span>
-                      <span className="block text-xs">
+                      <span className="block type-compact">
                         {t.settings.subagents.missing}
                       </span>
                     </span>

@@ -73,7 +73,7 @@ export default async function ArtifactViewerPage({
     const { t } = await getI18n();
     return (
       <main className="flex h-screen items-center justify-center p-6">
-        <p className="text-muted-foreground text-sm">
+        <p className="text-muted-foreground type-supporting">
           {t.artifactPreview.missingTarget}
         </p>
       </main>

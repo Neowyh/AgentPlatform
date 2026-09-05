@@ -230,7 +230,7 @@ export default function ScheduledTasksPage() {
       <WorkspaceHeader />
       <WorkspaceBody>
         <div className="mx-auto flex w-full max-w-(--container-width-md) flex-col gap-4 p-6">
-          <h1 className="text-2xl font-semibold">{t.sidebar.scheduledTasks}</h1>
+          <h1 className="type-page-title font-semibold">{t.sidebar.scheduledTasks}</h1>
           <div
             ref={createFormRef}
             className="grid gap-2 rounded-lg border p-4"
@@ -241,7 +241,7 @@ export default function ScheduledTasksPage() {
               className="flex flex-wrap items-center gap-1"
               data-testid="schedule-recipes"
             >
-              <span className="text-muted-foreground text-sm">
+              <span className="text-muted-foreground type-supporting">
                 {st.recipes.label}:
               </span>
               {RECIPES.map((recipe) => (
@@ -305,7 +305,7 @@ export default function ScheduledTasksPage() {
               onChange={setCreateSchedule}
             />
             {formError && (
-              <div className="text-destructive text-sm">{formError}</div>
+              <div className="text-destructive type-supporting">{formError}</div>
             )}
             <Button
               onClick={() => {
@@ -363,13 +363,13 @@ export default function ScheduledTasksPage() {
             </Button>
           </div>
           {threadId && (
-            <div className="text-muted-foreground text-sm">
+            <div className="text-muted-foreground type-supporting">
               {st.detail.filteredByThread.replace("{id}", threadId)}
             </div>
           )}
           {queryError ? (
             <div
-              className="text-destructive text-sm"
+              className="text-destructive type-supporting"
               data-testid="scheduled-task-load-error"
             >
               {st.detail.loadFailed}: {queryError.message}
@@ -452,7 +452,7 @@ export default function ScheduledTasksPage() {
                     )}
                   >
                     <div className="font-medium">{task.title}</div>
-                    <div className="text-muted-foreground text-sm">
+                    <div className="text-muted-foreground type-supporting">
                       {taskSummary(task)}
                     </div>
                   </button>
@@ -466,7 +466,7 @@ export default function ScheduledTasksPage() {
               {selectedTask ? (
                 <div className="flex flex-col gap-3">
                   <div className="flex items-start justify-between gap-3">
-                    <div className="text-lg font-semibold">
+                    <div className="type-section-title font-semibold">
                       {selectedTask.title}
                     </div>
                     <Button
@@ -477,11 +477,11 @@ export default function ScheduledTasksPage() {
                       {editing ? st.actions.cancelEdit : st.actions.edit}
                     </Button>
                   </div>
-                  <div className="text-muted-foreground text-sm">
+                  <div className="text-muted-foreground type-supporting">
                     {st.detail.contextMode}:{" "}
                     {contextModeLabel(selectedTask.context_mode)}
                   </div>
-                  <div className="text-muted-foreground text-sm">
+                  <div className="text-muted-foreground type-supporting">
                     {selectedTask.context_mode === "reuse_thread"
                       ? `${st.detail.thread}: ${selectedTask.thread_id ?? NONE}`
                       : `${st.detail.lastThread}: ${selectedTask.last_thread_id ?? NONE}`}
@@ -492,22 +492,22 @@ export default function ScheduledTasksPage() {
                       description={st.context.reuseNoticeDescription}
                     />
                   )}
-                  <div className="text-muted-foreground text-sm">
+                  <div className="text-muted-foreground type-supporting">
                     {st.detail.schedule}:{" "}
                     {scheduleTypeLabel(selectedTask.schedule_type)}
                   </div>
-                  <div className="text-muted-foreground text-sm">
+                  <div className="text-muted-foreground type-supporting">
                     {st.detail.nextRun}:{" "}
                     {formatTimestamp(selectedTask.next_run_at, locale)}
                   </div>
-                  <div className="text-muted-foreground text-sm">
+                  <div className="text-muted-foreground type-supporting">
                     {st.detail.lastRun}:{" "}
                     {formatTimestamp(selectedTask.last_run_at, locale)}
                   </div>
-                  <div className="text-muted-foreground text-sm">
+                  <div className="text-muted-foreground type-supporting">
                     {st.detail.lastRunId}: {selectedTask.last_run_id ?? NONE}
                   </div>
-                  <div className="text-muted-foreground text-sm">
+                  <div className="text-muted-foreground type-supporting">
                     {st.detail.lastError}: {selectedTask.last_error ?? NONE}
                   </div>
                   {editing ? (
@@ -545,7 +545,7 @@ export default function ScheduledTasksPage() {
                       </Button>
                     </div>
                   ) : (
-                    <div className="text-sm">{selectedTask.prompt}</div>
+                    <div className="type-supporting">{selectedTask.prompt}</div>
                   )}
                   <div className="flex flex-wrap gap-2">
                     <Button
@@ -603,31 +603,31 @@ export default function ScheduledTasksPage() {
                       (taskRunsQuery.data ?? []).map((run) => (
                         <div
                           key={run.id}
-                          className="rounded-md border p-3 text-sm"
+                          className="rounded-md border p-3 type-supporting"
                         >
                           <div className="font-medium">{runSummary(run)}</div>
-                          <div className="text-muted-foreground text-xs">
+                          <div className="text-muted-foreground type-compact">
                             {run.run_id ?? NONE}
                           </div>
-                          <div className="text-muted-foreground text-xs">
+                          <div className="text-muted-foreground type-compact">
                             {formatTimestamp(run.scheduled_for, locale)}
                           </div>
                           {run.error && (
-                            <div className="text-destructive text-xs">
+                            <div className="text-destructive type-compact">
                               {run.error}
                             </div>
                           )}
                         </div>
                       ))
                     ) : (
-                      <div className="text-muted-foreground text-sm">
+                      <div className="text-muted-foreground type-supporting">
                         {st.detail.noRuns}
                       </div>
                     )}
                   </div>
                 </div>
               ) : (
-                <div className="text-muted-foreground text-sm">
+                <div className="text-muted-foreground type-supporting">
                   {st.detail.noSelection}
                 </div>
               )}

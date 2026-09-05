@@ -444,7 +444,7 @@ export function ArtifactFileDetail({
           {(isSaving || isDirty || activeDraft.conflict) && (
             <span
               className={cn(
-                "text-muted-foreground max-w-32 truncate text-xs",
+                "text-muted-foreground max-w-32 truncate type-compact",
                 activeDraft.conflict && "text-destructive",
               )}
               aria-live="polite"
@@ -609,7 +609,7 @@ export function ArtifactFileDetail({
       </ArtifactHeader>
       <ArtifactContent className="flex flex-col p-0">
         {truncated && (
-          <div className="border-border bg-muted/40 flex shrink-0 items-center justify-between gap-3 border-b px-4 py-2 text-sm">
+          <div className="border-border bg-muted/40 flex shrink-0 items-center justify-between gap-3 border-b px-4 py-2 type-supporting">
             <span className="text-muted-foreground">
               {t.artifactPreview.limited(
                 formatArtifactBytes(previewBytes) ?? "1 MiB",
@@ -622,7 +622,7 @@ export function ArtifactFileDetail({
           </div>
         )}
         {isLoadingFullContent && (
-          <div className="border-border text-muted-foreground flex shrink-0 items-center gap-2 border-b px-4 py-2 text-sm">
+          <div className="border-border text-muted-foreground flex shrink-0 items-center gap-2 border-b px-4 py-2 type-supporting">
             <LoaderIcon className="size-4 animate-spin" />
             {t.artifactPreview.loadingFullFile}
           </div>
@@ -678,7 +678,7 @@ export function ArtifactFileDetail({
             !error &&
             truncated &&
             effectiveViewMode === "code" && (
-              <pre className="size-full overflow-auto p-4 font-mono text-sm whitespace-pre-wrap">
+              <pre className="size-full overflow-auto p-4 font-mono type-supporting whitespace-pre-wrap">
                 {visibleContent}
               </pre>
             )}

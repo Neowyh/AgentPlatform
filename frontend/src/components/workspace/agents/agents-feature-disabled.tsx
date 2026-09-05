@@ -13,7 +13,7 @@ export function AgentsFeatureDisabled() {
       </div>
       <div>
         <p className="font-medium">{t.agents.featureDisabledTitle}</p>
-        <p className="text-muted-foreground mt-1 max-w-md text-sm">
+        <p className="text-muted-foreground mt-1 max-w-md type-supporting">
           {t.agents.featureDisabledDescription}
         </p>
       </div>

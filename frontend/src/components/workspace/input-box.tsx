@@ -2309,7 +2309,7 @@ export function InputBox({
         <div className="flex items-center justify-center pb-1">
           <div className="flex items-center gap-2">
             {followupsLoading ? (
-              <div className="text-muted-foreground bg-background/80 rounded-full border px-4 py-1.5 text-xs backdrop-blur-sm">
+              <div className="text-muted-foreground bg-background/80 rounded-full border px-4 py-1.5 type-compact backdrop-blur-sm">
                 {t.inputBox.followupLoading}
               </div>
             ) : (
@@ -2324,7 +2324,7 @@ export function InputBox({
                 ))}
                 <Button
                   aria-label={t.common.close}
-                  className="text-muted-foreground h-auto cursor-pointer rounded-full px-2.5 py-1.5 text-xs font-normal"
+                  className="text-muted-foreground h-auto cursor-pointer rounded-full px-2.5 py-1.5 type-compact font-normal"
                   variant="outline"
                   size="sm"
                   type="button"
@@ -2368,11 +2368,11 @@ export function InputBox({
                     <SparklesIcon className="text-muted-foreground size-4 shrink-0" />
                   )}
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium">
+                    <span className="block truncate type-supporting font-medium">
                       /{suggestion.name}
                     </span>
                     {suggestion.description && (
-                      <span className="text-muted-foreground block truncate text-xs">
+                      <span className="text-muted-foreground block truncate type-compact">
                         {suggestion.description}
                       </span>
                     )}
@@ -2434,7 +2434,7 @@ export function InputBox({
           {polishingInput && (
             <div
               aria-live="polite"
-              className="text-primary bg-primary/10 border-primary/20 relative z-30 flex h-7 items-center gap-1.5 rounded-full border py-0 pr-1 pl-2.5 text-xs font-medium"
+              className="text-primary bg-primary/10 border-primary/20 relative z-30 flex h-7 items-center gap-1.5 rounded-full border py-0 pr-1 pl-2.5 type-compact font-medium"
               role="status"
             >
               <Loader2Icon className="size-3 animate-spin" />
@@ -2461,7 +2461,7 @@ export function InputBox({
         <div className="relative min-h-16 w-full min-w-0 px-3 py-3">
           {selectedSlashSkill ? (
             <div
-              className="max-h-48 min-h-6 w-full min-w-0 cursor-text overflow-y-auto text-base leading-6 break-all whitespace-pre-wrap md:text-sm"
+              className="max-h-48 min-h-6 w-full min-w-0 cursor-text overflow-y-auto type-body leading-6 break-all whitespace-pre-wrap md:text-[length:var(--text-supporting)]"
               onClick={(event) => {
                 if (event.target === event.currentTarget) {
                   focusContentEditableEnd(inlineSkillTextRef.current);
@@ -2610,7 +2610,7 @@ export function InputBox({
                   </div>
                   <div
                     className={cn(
-                      "truncate text-xs font-normal",
+                      "truncate type-compact font-normal",
                       context.mode === "ultra" ? "golden-text" : "",
                     )}
                   >
@@ -2624,7 +2624,7 @@ export function InputBox({
               </ModeHoverGuide>
               <PromptInputActionMenuContent className="w-80">
                 <DropdownMenuGroup>
-                  <DropdownMenuLabel className="text-muted-foreground text-xs">
+                  <DropdownMenuLabel className="text-muted-foreground type-compact">
                     {t.inputBox.mode}
                   </DropdownMenuLabel>
                   <PromptInputActionMenu>
@@ -2647,7 +2647,7 @@ export function InputBox({
                           />
                           {t.inputBox.flashMode}
                         </div>
-                        <div className="pl-7 text-xs">
+                        <div className="pl-7 type-compact">
                           {t.inputBox.flashModeDescription}
                         </div>
                       </div>
@@ -2677,7 +2677,7 @@ export function InputBox({
                             />
                             {t.inputBox.reasoningMode}
                           </div>
-                          <div className="pl-7 text-xs">
+                          <div className="pl-7 type-compact">
                             {t.inputBox.reasoningModeDescription}
                           </div>
                         </div>
@@ -2707,7 +2707,7 @@ export function InputBox({
                           />
                           {t.inputBox.proMode}
                         </div>
-                        <div className="pl-7 text-xs">
+                        <div className="pl-7 type-compact">
                           {t.inputBox.proModeDescription}
                         </div>
                       </div>
@@ -2741,7 +2741,7 @@ export function InputBox({
                             {t.inputBox.ultraMode}
                           </div>
                         </div>
-                        <div className="pl-7 text-xs">
+                        <div className="pl-7 type-compact">
                           {t.inputBox.ultraModeDescription}
                         </div>
                       </div>
@@ -2761,7 +2761,7 @@ export function InputBox({
                   className="hidden gap-1! px-2! sm:inline-flex"
                   disabled={composerLocked}
                 >
-                  <div className="text-xs font-normal">
+                  <div className="type-compact font-normal">
                     {t.inputBox.reasoningEffort}:
                     {context.reasoning_effort === "minimal" &&
                       " " + t.inputBox.reasoningEffortMinimal}
@@ -2776,7 +2776,7 @@ export function InputBox({
                 </PromptInputActionMenuTrigger>
                 <PromptInputActionMenuContent className="w-70">
                   <DropdownMenuGroup>
-                    <DropdownMenuLabel className="text-muted-foreground text-xs">
+                    <DropdownMenuLabel className="text-muted-foreground type-compact">
                       {t.inputBox.reasoningEffort}
                     </DropdownMenuLabel>
                     <PromptInputActionMenu>
@@ -2792,7 +2792,7 @@ export function InputBox({
                           <div className="flex items-center gap-1 font-bold">
                             {t.inputBox.reasoningEffortMinimal}
                           </div>
-                          <div className="pl-2 text-xs">
+                          <div className="pl-2 type-compact">
                             {t.inputBox.reasoningEffortMinimalDescription}
                           </div>
                         </div>
@@ -2814,7 +2814,7 @@ export function InputBox({
                           <div className="flex items-center gap-1 font-bold">
                             {t.inputBox.reasoningEffortLow}
                           </div>
-                          <div className="pl-2 text-xs">
+                          <div className="pl-2 type-compact">
                             {t.inputBox.reasoningEffortLowDescription}
                           </div>
                         </div>
@@ -2837,7 +2837,7 @@ export function InputBox({
                           <div className="flex items-center gap-1 font-bold">
                             {t.inputBox.reasoningEffortMedium}
                           </div>
-                          <div className="pl-2 text-xs">
+                          <div className="pl-2 type-compact">
                             {t.inputBox.reasoningEffortMediumDescription}
                           </div>
                         </div>
@@ -2860,7 +2860,7 @@ export function InputBox({
                           <div className="flex items-center gap-1 font-bold">
                             {t.inputBox.reasoningEffortHigh}
                           </div>
-                          <div className="pl-2 text-xs">
+                          <div className="pl-2 type-compact">
                             {t.inputBox.reasoningEffortHighDescription}
                           </div>
                         </div>
@@ -2885,7 +2885,7 @@ export function InputBox({
                   )
                   .replace("{max}", () => String(goalObjectiveCounter.max))}
                 className={cn(
-                  "shrink-0 text-xs tabular-nums",
+                  "shrink-0 type-compact tabular-nums",
                   goalObjectiveCounter.overLimit
                     ? "text-destructive font-medium"
                     : "text-muted-foreground",
@@ -2907,7 +2907,7 @@ export function InputBox({
                   disabled={composerLocked}
                 >
                   <div className="flex min-w-0 flex-col text-left">
-                    <ModelSelectorName className="text-xs font-normal">
+                    <ModelSelectorName className="type-compact font-normal">
                       {selectedModel?.display_name}
                     </ModelSelectorName>
                   </div>
@@ -2924,7 +2924,7 @@ export function InputBox({
                     >
                       <div className="flex min-w-0 flex-1 flex-col">
                         <ModelSelectorName>{m.display_name}</ModelSelectorName>
-                        <span className="text-muted-foreground truncate text-[10px]">
+                        <span className="text-muted-foreground truncate type-compact">
                           {m.model}
                         </span>
                       </div>
@@ -2947,7 +2947,7 @@ export function InputBox({
                   onClick={handleSkillPickerOpen}
                 >
                   <SparklesIcon className="size-4" />
-                  <span className="text-xs font-normal">
+                  <span className="type-compact font-normal">
                     {t.inputBox.skill}
                   </span>
                 </PromptInputButton>
@@ -2983,7 +2983,7 @@ export function InputBox({
 
       <p
         className={cn(
-          "text-muted-foreground/67 z-10 px-4 text-center text-xs leading-4",
+          "text-muted-foreground/67 z-10 px-4 text-center type-compact leading-4",
           !isWelcomeMode && "absolute top-full right-0 left-0",
         )}
       >
@@ -3077,7 +3077,7 @@ function SuggestionList({
   return (
     <Suggestions className="min-h-16 w-full max-w-full justify-center px-4 sm:w-fit sm:px-0">
       <ConfettiButton
-        className="text-muted-foreground cursor-pointer rounded-full px-4 text-xs font-normal"
+        className="text-muted-foreground cursor-pointer rounded-full px-4 type-compact font-normal"
         variant="outline"
         size="sm"
         onClick={() => handleSuggestionClick(t.inputBox.surpriseMePrompt)}

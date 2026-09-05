@@ -71,7 +71,7 @@ export function ModelLoadErrorBanner({
           onClick={() => {
             void retry();
           }}
-          className="border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive dark:hover:bg-destructive/10 h-7 bg-transparent px-3 text-xs shadow-none dark:bg-transparent"
+          className="border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive dark:hover:bg-destructive/10 h-7 bg-transparent px-3 type-compact shadow-none dark:bg-transparent"
         >
           {isRetrying
             ? t.workspace.modelLoadRetrying

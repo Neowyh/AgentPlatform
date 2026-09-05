@@ -109,7 +109,7 @@ function FormFieldInput({
     return (
       <Textarea
         id={controlId}
-        className="min-h-20 resize-y text-sm"
+        className="min-h-20 resize-y type-supporting"
         disabled={disabled}
         placeholder={field.placeholder}
         value={stringValue}
@@ -197,7 +197,7 @@ function FormFieldInput({
   return (
     <Input
       id={controlId}
-      className="text-sm"
+      className="type-supporting"
       disabled={disabled}
       placeholder={field.placeholder}
       type={
@@ -336,11 +336,11 @@ export function HumanInputCard({
   const submitFooter = (
     <div className="flex min-h-9 flex-wrap items-center justify-between gap-2">
       {error ? (
-        <p className="text-destructive text-sm" id={formErrorId} role="alert">
+        <p className="text-destructive type-supporting" id={formErrorId} role="alert">
           {error}
         </p>
       ) : answeredResponse ? (
-        <p className="text-muted-foreground text-sm" aria-live="polite">
+        <p className="text-muted-foreground type-supporting" aria-live="polite">
           {t.humanInput.answeredValue(answeredResponse.value)}
         </p>
       ) : (
@@ -371,11 +371,11 @@ export function HumanInputCard({
         <div className="min-w-0 flex-1 space-y-3">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div className="min-w-0 space-y-1">
-              <h2 id={titleId} className="text-sm leading-5 font-medium">
+              <h2 id={titleId} className="type-supporting leading-5 font-medium">
                 {request.title ?? t.toolCalls.needYourHelp}
               </h2>
               {request.context ? (
-                <div className="text-muted-foreground text-sm leading-6">
+                <div className="text-muted-foreground type-supporting leading-6">
                   <MarkdownContent
                     content={request.context}
                     isLoading={false}
@@ -404,7 +404,7 @@ export function HumanInputCard({
             ) : null}
           </div>
 
-          <div className="text-foreground text-sm leading-6">
+          <div className="text-foreground type-supporting leading-6">
             <MarkdownContent content={request.question} isLoading={false} />
           </div>
 
@@ -428,7 +428,7 @@ export function HumanInputCard({
                   return (
                     <label
                       key={field.name}
-                      className="flex w-fit cursor-pointer items-center gap-2 text-sm leading-5"
+                      className="flex w-fit cursor-pointer items-center gap-2 type-supporting leading-5"
                       htmlFor={controlId}
                     >
                       <input
@@ -465,7 +465,7 @@ export function HumanInputCard({
                 return (
                   <div key={field.name} className="space-y-1.5">
                     <label
-                      className="text-sm leading-5 font-medium"
+                      className="type-supporting leading-5 font-medium"
                       htmlFor={controlId}
                       id={labelId}
                     >
@@ -529,7 +529,7 @@ export function HumanInputCard({
                 id={textInputId}
                 aria-invalid={Boolean(error)}
                 aria-describedby={error ? `${textInputId}-error` : undefined}
-                className="min-h-20 resize-y text-sm"
+                className="min-h-20 resize-y type-supporting"
                 disabled={isDisabled}
                 placeholder={t.humanInput.otherPlaceholder}
                 value={text}
@@ -546,14 +546,14 @@ export function HumanInputCard({
               <div className="flex min-h-9 flex-wrap items-center justify-between gap-2">
                 {error ? (
                   <p
-                    className="text-destructive text-sm"
+                    className="text-destructive type-supporting"
                     id={`${textInputId}-error`}
                   >
                     {error}
                   </p>
                 ) : answeredResponse ? (
                   <p
-                    className="text-muted-foreground text-sm"
+                    className="text-muted-foreground type-supporting"
                     aria-live="polite"
                   >
                     {t.humanInput.answeredValue(answeredResponse.value)}
@@ -577,7 +577,7 @@ export function HumanInputCard({
           ) : null}
 
           {!allowText && !isForm && answeredResponse ? (
-            <p className="text-muted-foreground text-sm" aria-live="polite">
+            <p className="text-muted-foreground type-supporting" aria-live="polite">
               {t.humanInput.answeredValue(answeredResponse.value)}
             </p>
           ) : null}

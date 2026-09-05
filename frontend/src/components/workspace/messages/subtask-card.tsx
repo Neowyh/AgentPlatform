@@ -162,7 +162,7 @@ export function SubtaskCard({
                 {collapsed && (
                   <div
                     className={cn(
-                      "text-muted-foreground flex min-w-0 items-center gap-1 text-xs font-normal",
+                      "text-muted-foreground flex min-w-0 items-center gap-1 type-compact font-normal",
                       task.status === "failed" ? "text-red-500 opacity-67" : "",
                     )}
                   >
@@ -234,7 +234,7 @@ export function SubtaskCard({
                   step.kind === "tool" ? (
                     (step.tool_name ?? t.subtasks[task.status])
                   ) : (
-                    <div className="text-muted-foreground line-clamp-3 text-sm">
+                    <div className="text-muted-foreground line-clamp-3 type-supporting">
                       <MarkdownContent content={step.text} isLoading={false} />
                     </div>
                   )

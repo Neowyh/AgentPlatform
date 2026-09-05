@@ -13,7 +13,7 @@ const SettingsDialog = dynamic(
     ssr: false,
     loading: () => (
       <div className="bg-background/80 fixed inset-0 z-50 grid place-items-center backdrop-blur-sm">
-        <p role="status" className="text-muted-foreground text-sm">
+        <p role="status" className="text-muted-foreground type-supporting">
           Loading settings…
         </p>
       </div>

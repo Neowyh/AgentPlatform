@@ -530,8 +530,8 @@ export function SidecarPanel({ className }: { className?: string }) {
       <header className="border-border/70 flex h-12 shrink-0 items-center gap-2 border-b px-3">
         <MessageSquareTextIcon className="text-muted-foreground size-4" />
         <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-medium">{t.sidecar.title}</div>
-          <div className="text-muted-foreground truncate text-xs">
+          <div className="truncate type-supporting font-medium">{t.sidecar.title}</div>
+          <div className="text-muted-foreground truncate type-compact">
             {sidecar.activeReferences.length > 0
               ? referenceCountLabel
               : sidecar.sidecarThreadId
@@ -625,7 +625,7 @@ export function SidecarPanel({ className }: { className?: string }) {
             </PromptInputHeader>
             <PromptInputBody>
               <PromptInputTextarea
-                className="max-h-36 min-h-16 text-sm"
+                className="max-h-36 min-h-16 type-supporting"
                 disabled={disabled}
                 placeholder={t.sidecar.placeholder}
               />
@@ -774,7 +774,7 @@ function SidecarModeMenu({
           </div>
           <div
             className={cn(
-              "truncate text-xs font-normal",
+              "truncate type-compact font-normal",
               mode === "ultra" && "golden-text",
             )}
           >
@@ -787,7 +787,7 @@ function SidecarModeMenu({
       </ModeHoverGuide>
       <PromptInputActionMenuContent className="w-80">
         <DropdownMenuGroup>
-          <DropdownMenuLabel className="text-muted-foreground text-xs">
+          <DropdownMenuLabel className="text-muted-foreground type-compact">
             {t.inputBox.mode}
           </DropdownMenuLabel>
           <PromptInputActionMenuItem
@@ -808,7 +808,7 @@ function SidecarModeMenu({
                 />
                 {t.inputBox.flashMode}
               </div>
-              <div className="pl-7 text-xs">
+              <div className="pl-7 type-compact">
                 {t.inputBox.flashModeDescription}
               </div>
             </div>
@@ -837,7 +837,7 @@ function SidecarModeMenu({
                   />
                   {t.inputBox.reasoningMode}
                 </div>
-                <div className="pl-7 text-xs">
+                <div className="pl-7 type-compact">
                   {t.inputBox.reasoningModeDescription}
                 </div>
               </div>
@@ -866,7 +866,7 @@ function SidecarModeMenu({
                 />
                 {t.inputBox.proMode}
               </div>
-              <div className="pl-7 text-xs">
+              <div className="pl-7 type-compact">
                 {t.inputBox.proModeDescription}
               </div>
             </div>
@@ -896,7 +896,7 @@ function SidecarModeMenu({
                   {t.inputBox.ultraMode}
                 </div>
               </div>
-              <div className="pl-7 text-xs">
+              <div className="pl-7 type-compact">
                 {t.inputBox.ultraModeDescription}
               </div>
             </div>
@@ -940,7 +940,7 @@ function SidecarModelSelector({
       <ModelSelectorTrigger asChild>
         <PromptInputButton className={cn("min-w-0 px-2!", className)}>
           <div className="flex min-w-0 flex-col text-left">
-            <ModelSelectorName className="truncate text-xs font-normal">
+            <ModelSelectorName className="truncate type-compact font-normal">
               {selectedModel.display_name}
             </ModelSelectorName>
           </div>
@@ -957,7 +957,7 @@ function SidecarModelSelector({
             >
               <div className="flex min-w-0 flex-1 flex-col">
                 <ModelSelectorName>{model.display_name}</ModelSelectorName>
-                <span className="text-muted-foreground truncate text-[10px]">
+                <span className="text-muted-foreground truncate type-compact">
                   {model.model}
                 </span>
               </div>

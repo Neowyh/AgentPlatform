@@ -83,7 +83,7 @@ export default function ChatsPage() {
           <header className="flex shrink-0 items-center justify-center pt-8">
             <Input
               type="search"
-              className="h-12 w-full max-w-(--container-width-md) text-xl"
+              className="type-page-title h-12 w-full max-w-(--container-width-md)"
               placeholder={t.chats.searchChats}
               autoFocus
               value={search}
@@ -113,7 +113,7 @@ export default function ChatsPage() {
                             />
                           </div>
                           {thread.updated_at && (
-                            <div className="text-muted-foreground text-sm">
+                            <div className="text-muted-foreground type-supporting">
                               {formatTimeAgo(thread.updated_at)}
                             </div>
                           )}

@@ -106,7 +106,7 @@ export function ChannelRuntimeConfigDialog({
                 <div key={field.name} className="space-y-1.5">
                   <label
                     htmlFor={inputId}
-                    className="text-sm leading-none font-medium"
+                    className="type-supporting leading-none font-medium"
                   >
                     {field.label}
                   </label>

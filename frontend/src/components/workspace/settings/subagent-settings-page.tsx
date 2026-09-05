@@ -137,12 +137,12 @@ export function SubagentSettingsPage() {
       description={t.settings.subagents.description}
     >
       <div className="space-y-4">
-        <p className="text-muted-foreground text-sm">
+        <p className="text-muted-foreground type-supporting">
           {t.settings.subagents.executionNote}
         </p>
         <div className="flex items-center justify-between gap-4">
           {!isAdmin && (
-            <p className="text-muted-foreground text-sm">
+            <p className="text-muted-foreground type-supporting">
               {t.settings.subagents.adminNote}
             </p>
           )}
@@ -159,11 +159,11 @@ export function SubagentSettingsPage() {
         </div>
 
         {isLoading ? (
-          <p className="text-muted-foreground text-sm">{t.common.loading}</p>
+          <p className="text-muted-foreground type-supporting">{t.common.loading}</p>
         ) : error ? (
-          <p className="text-destructive text-sm">{error.message}</p>
+          <p className="text-destructive type-supporting">{error.message}</p>
         ) : subagents.length === 0 ? (
-          <p className="text-muted-foreground text-sm">
+          <p className="text-muted-foreground type-supporting">
             {t.settings.subagents.empty}
           </p>
         ) : (
@@ -191,7 +191,7 @@ export function SubagentSettingsPage() {
                   </ItemTitle>
                   <ItemDescription>{subagent.description}</ItemDescription>
                   {Object.keys(subagent.config_overrides).length > 0 && (
-                    <p className="text-muted-foreground text-xs">
+                    <p className="text-muted-foreground type-compact">
                       {t.settings.subagents.overridden}:{" "}
                       {Object.entries(subagent.config_overrides)
                         .map(
@@ -324,7 +324,7 @@ function SubagentEditor({
               onChange={(event) => set("name", event.target.value)}
             />
             {isNew && (
-              <p className="text-muted-foreground text-xs">
+              <p className="text-muted-foreground type-compact">
                 {t.settings.subagents.nameHint}
               </p>
             )}
@@ -491,7 +491,7 @@ function Field({
 }) {
   return (
     <label className={`space-y-1.5 ${className ?? ""}`}>
-      <span className="text-sm font-medium">{label}</span>
+      <span className="type-supporting font-medium">{label}</span>
       {children}
     </label>
   );

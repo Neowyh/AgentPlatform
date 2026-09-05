@@ -248,7 +248,7 @@ export function ScheduledTaskScheduleInput({
 
           {preset === "weekly" && (
             <div className="flex flex-wrap gap-1">
-              <span className="text-muted-foreground w-full text-sm">
+              <span className="text-muted-foreground w-full type-supporting">
                 {labels.fields.weekday}
               </span>
               {WEEKDAYS.map((w) => {
@@ -293,7 +293,7 @@ export function ScheduledTaskScheduleInput({
                 href="https://crontab.guru/"
                 target="_blank"
                 rel="noreferrer"
-                className="text-muted-foreground text-xs hover:underline"
+                className="text-muted-foreground type-compact hover:underline"
               >
                 {labels.cronHelp} ↗
               </a>
@@ -323,7 +323,7 @@ export function ScheduledTaskScheduleInput({
       </Select>
 
       <div
-        className="text-muted-foreground text-sm"
+        className="text-muted-foreground type-supporting"
         data-testid="schedule-preview"
       >
         {preview}

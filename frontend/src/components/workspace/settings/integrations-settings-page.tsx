@@ -659,7 +659,7 @@ function LarkIntegrationCard() {
       </CardHeader>
       <CardContent className="space-y-4">
         {isLoading ? (
-          <div className="text-muted-foreground text-sm">
+          <div className="text-muted-foreground type-supporting">
             {t.common.loading}
           </div>
         ) : error ? (
@@ -734,7 +734,7 @@ function LarkIntegrationCard() {
               )}
             </div>
             {data.installed && (
-              <div className="text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+              <div className="text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1 type-compact">
                 <span>
                   {t.settings.integrations.lark.installedVersion(
                     data.manifest_version ?? data.version,
@@ -765,10 +765,10 @@ function LarkIntegrationCard() {
             {data.installed && data.cli.available && (
               <div className="rounded-lg border p-3">
                 <div className="space-y-1">
-                  <div className="text-sm font-medium">
+                  <div className="type-supporting font-medium">
                     {t.settings.integrations.lark.permissionTitle}
                   </div>
-                  <p className="text-muted-foreground text-sm">
+                  <p className="text-muted-foreground type-supporting">
                     {t.settings.integrations.lark.permissionDescription}
                   </p>
                 </div>
@@ -802,7 +802,7 @@ function LarkIntegrationCard() {
                     }
                     aria-label={t.settings.integrations.lark.customScopeLabel}
                   />
-                  <p className="text-muted-foreground text-xs">
+                  <p className="text-muted-foreground type-compact">
                     {t.settings.integrations.lark.customScopeDescription}
                   </p>
                 </div>
@@ -842,7 +842,7 @@ function LarkIntegrationCard() {
                 </Button>
               )}
               {!isAdmin && (
-                <span className="text-muted-foreground text-sm">
+                <span className="text-muted-foreground type-supporting">
                   {t.settings.integrations.adminRequired}
                 </span>
               )}
@@ -850,10 +850,10 @@ function LarkIntegrationCard() {
             {showChangeApp && data.installed && data.cli.available && (
               <div className="space-y-3 rounded-lg border p-3">
                 <div className="space-y-1">
-                  <div className="text-sm font-medium">
+                  <div className="type-supporting font-medium">
                     {t.settings.integrations.lark.changeAppTitle}
                   </div>
-                  <p className="text-muted-foreground text-sm">
+                  <p className="text-muted-foreground type-supporting">
                     {t.settings.integrations.lark.changeAppDescription}
                   </p>
                 </div>
@@ -897,7 +897,7 @@ function LarkIntegrationCard() {
                       t.settings.integrations.lark.changeAppSecretLabel
                     }
                   />
-                  <p className="text-muted-foreground text-xs">
+                  <p className="text-muted-foreground type-compact">
                     {t.settings.integrations.lark.changeAppAuthResetNote}
                   </p>
                 </div>
@@ -960,7 +960,7 @@ function LarkIntegrationCard() {
                           : t.settings.integrations.lark
                               .openAuthLinkDescription}
                     </p>
-                    <div className="bg-muted text-foreground rounded-md px-3 py-2 text-xs break-all">
+                    <div className="bg-muted text-foreground rounded-md px-3 py-2 type-compact break-all">
                       {pendingFlow.verification_url}
                     </div>
                     <div className="flex flex-wrap gap-2">
@@ -1011,7 +1011,7 @@ function LarkIntegrationCard() {
                       )}
                     </div>
                     {pendingFlow.expires_in != null && (
-                      <p className="text-muted-foreground text-xs">
+                      <p className="text-muted-foreground type-compact">
                         {t.settings.integrations.lark.authExpiresIn(
                           pendingFlow.expires_in,
                         )}
@@ -1041,7 +1041,7 @@ function StatusItem({
   return (
     <div className="rounded-lg border p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
-        <div className="text-sm font-medium">{label}</div>
+        <div className="type-supporting font-medium">{label}</div>
         <Badge variant={ok ? "secondary" : "outline"}>
           {ok ? (
             <CheckCircle2Icon className="size-3" />
@@ -1051,7 +1051,7 @@ function StatusItem({
           {ok ? t.settings.integrations.ready : t.settings.integrations.pending}
         </Badge>
       </div>
-      <div className="text-muted-foreground text-sm break-words">{value}</div>
+      <div className="text-muted-foreground type-supporting break-words">{value}</div>
     </div>
   );
 }

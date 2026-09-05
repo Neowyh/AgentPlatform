@@ -42,7 +42,7 @@ export function ContextUsageBadge({
       role="status"
       aria-label={t.contextUsage.badgeAriaLabel(formatted)}
       className={cn(
-        "text-muted-foreground bg-background/70 flex h-auto items-center gap-1.5 rounded-full border px-2 py-1 text-xs font-normal",
+        "text-muted-foreground bg-background/70 flex h-auto items-center gap-1.5 rounded-full border px-2 py-1 type-compact font-normal",
         className,
       )}
     >

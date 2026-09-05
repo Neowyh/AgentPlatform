@@ -107,7 +107,7 @@ export function CommandPalette() {
               {t.shortcuts.keyboardShortcutsDescription}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3 text-sm">
+          <div className="space-y-3 type-supporting">
             {[
               { keys: `${metaKey}K`, label: t.shortcuts.openCommandPalette },
               { keys: `${metaKey}${shiftKey}N`, label: t.sidebar.newChat },
@@ -120,7 +120,7 @@ export function CommandPalette() {
             ].map(({ keys, label }) => (
               <div key={keys} className="flex items-center justify-between">
                 <span className="text-muted-foreground">{label}</span>
-                <kbd className="bg-muted text-muted-foreground rounded px-2 py-0.5 font-mono text-xs">
+                <kbd className="bg-muted text-muted-foreground rounded px-2 py-0.5 font-mono type-compact">
                   {keys}
                 </kbd>
               </div>

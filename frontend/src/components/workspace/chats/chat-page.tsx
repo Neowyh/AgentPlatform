@@ -287,7 +287,7 @@ export default function ChatPage() {
               )}
             >
               {!isMock && <SidebarTrigger className="md:hidden" />}
-              <div className="flex min-w-0 flex-1 items-center text-sm font-medium">
+              <div className="flex min-w-0 flex-1 items-center type-supporting font-medium">
                 <ThreadTitle
                   threadId={threadId}
                   thread={thread}
@@ -467,7 +467,7 @@ export default function ChatPage() {
                     />
                   )}
                   {env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true" && (
-                    <div className="text-muted-foreground/67 w-full translate-y-12 text-center text-xs">
+                    <div className="text-muted-foreground/67 w-full translate-y-12 text-center type-compact">
                       {t.common.notAvailableInDemoMode}
                     </div>
                   )}

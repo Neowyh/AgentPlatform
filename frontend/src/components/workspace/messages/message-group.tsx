@@ -534,7 +534,7 @@ function DebugStepLabel({
     <div className="flex items-center justify-between gap-3">
       <div className="min-w-0 flex-1">{label}</div>
       {token ? (
-        <div className="text-muted-foreground shrink-0 font-mono text-[11px]">
+        <div className="text-muted-foreground shrink-0 font-mono type-compact">
           {token}
         </div>
       ) : null}
@@ -683,7 +683,7 @@ function ToolCall({
               decoding="async"
             />
             {browserView?.url && (
-              <div className="text-muted-foreground bg-muted/40 truncate px-2 py-1 text-left text-[11px]">
+              <div className="text-muted-foreground bg-muted/40 truncate px-2 py-1 text-left type-compact">
                 {browserView.url}
               </div>
             )}

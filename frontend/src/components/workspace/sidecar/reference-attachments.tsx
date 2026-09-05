@@ -35,7 +35,7 @@ function ReferencePreview({ references }: { references: SidecarReference[] }) {
     <div className="w-72 max-w-[80vw] space-y-1.5">
       {references.map((reference) => (
         <div
-          className="line-clamp-3 text-left text-sm leading-6 break-words"
+          className="line-clamp-3 text-left type-supporting leading-6 break-words"
           key={reference.id}
         >
           {`"${formatPreviewText(reference.context.content)}"`}
@@ -78,7 +78,7 @@ export function ReferenceAttachmentSummary({
       <Tooltip content={<ReferencePreview references={references} />}>
         <span className="flex min-w-0 cursor-default items-center gap-1.5">
           <MessageSquareQuoteIcon className="text-muted-foreground size-4 shrink-0" />
-          <span className="truncate text-sm font-medium">{label}</span>
+          <span className="truncate type-supporting font-medium">{label}</span>
         </span>
       </Tooltip>
       {onClear && (

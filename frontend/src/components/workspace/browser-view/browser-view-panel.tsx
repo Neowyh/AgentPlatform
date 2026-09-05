@@ -339,7 +339,7 @@ export function BrowserViewPanel({
     >
       <header className="flex shrink-0 items-center gap-2 border-b px-3 py-2">
         <MonitorIcon className="size-4 shrink-0" />
-        <span className="shrink-0 text-sm font-medium">Browser</span>
+        <span className="shrink-0 type-supporting font-medium">Browser</span>
         <div className="flex shrink-0 items-center">
           <Button
             size="icon-sm"
@@ -391,7 +391,7 @@ export function BrowserViewPanel({
             placeholder="Enter a URL and press Enter"
             spellCheck={false}
             autoComplete="off"
-            className="h-8 pl-7 text-xs"
+            className="h-8 pl-7 type-compact"
           />
           {navigating && (
             <Loader2Icon className="text-muted-foreground absolute right-2 size-3.5 animate-spin" />

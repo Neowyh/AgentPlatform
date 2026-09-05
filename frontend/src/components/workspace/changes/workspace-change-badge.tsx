@@ -54,12 +54,12 @@ export function WorkspaceChangeBadge({
               <FileDiffIcon className="text-muted-foreground size-4" />
             </div>
             <div className="min-w-0">
-              <div className="text-foreground text-sm font-semibold">
+              <div className="text-foreground type-supporting font-semibold">
                 {t.workspaceChanges.editedTitle(count)}
               </div>
               <button
                 type="button"
-                className="text-muted-foreground hover:text-foreground mt-0.5 inline-flex items-center gap-1 text-xs font-medium transition-colors"
+                className="text-muted-foreground hover:text-foreground mt-0.5 inline-flex items-center gap-1 type-compact font-medium transition-colors"
                 onClick={() => setOpen(true)}
               >
                 {t.workspaceChanges.viewChanges}
@@ -70,13 +70,13 @@ export function WorkspaceChangeBadge({
           <SummaryDelta
             additions={data.summary.additions}
             deletions={data.summary.deletions}
-            className="hidden text-xs font-semibold sm:inline-flex"
+            className="hidden type-compact font-semibold sm:inline-flex"
           />
         </div>
 
         <div className="py-1">
           {isLoading && (
-            <div className="text-muted-foreground px-3 py-2 text-xs">
+            <div className="text-muted-foreground px-3 py-2 type-compact">
               {t.workspaceChanges.loading}
             </div>
           )}
@@ -104,7 +104,7 @@ function WorkspaceChangeSummaryRow({ file }: { file: WorkspaceFileChange }) {
 
   return (
     <div className="flex items-center justify-between gap-3 px-3 py-2.5">
-      <div className="min-w-0 truncate text-sm" title={file.path}>
+      <div className="min-w-0 truncate type-supporting" title={file.path}>
         {pathParts.dirname && (
           <span className="text-muted-foreground">{pathParts.dirname}/</span>
         )}
@@ -115,7 +115,7 @@ function WorkspaceChangeSummaryRow({ file }: { file: WorkspaceFileChange }) {
       <SummaryDelta
         additions={file.additions}
         deletions={file.deletions}
-        className="text-sm font-semibold"
+        className="type-supporting font-semibold"
       />
     </div>
   );

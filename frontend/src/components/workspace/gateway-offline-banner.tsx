@@ -110,7 +110,7 @@ export function GatewayOfflineBanner({
     <div
       role="status"
       aria-live="polite"
-      className="bg-muted text-muted-foreground flex items-center justify-between gap-3 border-b px-4 py-2 text-sm"
+      className="bg-muted text-muted-foreground flex items-center justify-between gap-3 border-b px-4 py-2 type-supporting"
     >
       <span>
         {t.workspace.gatewayUnavailable}{" "}
@@ -121,7 +121,7 @@ export function GatewayOfflineBanner({
         onClick={() => {
           void logout();
         }}
-        className="hover:bg-background rounded-md border px-3 py-1 text-xs"
+        className="hover:bg-background rounded-md border px-3 py-1 type-compact"
       >
         {t.workspace.logout}
       </button>

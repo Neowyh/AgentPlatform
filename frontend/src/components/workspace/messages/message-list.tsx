@@ -1363,7 +1363,7 @@ export function MessageList({
                   results.push(
                     <div
                       key="subtask-count"
-                      className="text-muted-foreground pt-2 text-sm font-normal"
+                      className="text-muted-foreground pt-2 type-supporting font-normal"
                     >
                       {t.subtasks.executing(tasks.size)}
                     </div>,
@@ -1468,7 +1468,7 @@ export function MessageList({
           style={{ left: selectionToolbar.x, top: selectionToolbar.y }}
         >
           <Button
-            className="h-8 rounded-full px-2.5 text-xs"
+            className="h-8 rounded-full px-2.5 type-compact"
             size="sm"
             type="button"
             variant="ghost"
@@ -1480,7 +1480,7 @@ export function MessageList({
           </Button>
           {!sidecarSurface && (
             <Button
-              className="h-8 rounded-full px-2.5 text-xs"
+              className="h-8 rounded-full px-2.5 type-compact"
               size="sm"
               type="button"
               variant="ghost"

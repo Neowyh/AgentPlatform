@@ -12,7 +12,7 @@ export default function AgentsLayout({ children }: { children: ReactNode }) {
 
   if (isLoading) {
     return (
-      <div className="text-muted-foreground flex size-full items-center justify-center text-sm">
+      <div className="text-muted-foreground flex size-full items-center justify-center type-supporting">
         {t.common.loading}
       </div>
     );

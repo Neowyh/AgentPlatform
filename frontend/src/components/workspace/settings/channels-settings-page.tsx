@@ -352,15 +352,15 @@ export function ChannelsSettingsPage() {
       description={t.settings.channels.description}
     >
       {isLoading ? (
-        <div className="text-muted-foreground text-sm">{t.common.loading}</div>
+        <div className="text-muted-foreground type-supporting">{t.common.loading}</div>
       ) : error ? (
-        <div className="text-destructive text-sm">{t.channels.unavailable}</div>
+        <div className="text-destructive type-supporting">{t.channels.unavailable}</div>
       ) : !enabled ? (
-        <div className="text-muted-foreground text-sm">
+        <div className="text-muted-foreground type-supporting">
           {t.settings.channels.disabled}
         </div>
       ) : visibleProviders.length === 0 ? (
-        <div className="text-muted-foreground text-sm">
+        <div className="text-muted-foreground type-supporting">
           {t.settings.channels.disabled}
         </div>
       ) : (

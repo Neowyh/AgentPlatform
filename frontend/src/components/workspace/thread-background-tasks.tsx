@@ -66,7 +66,7 @@ export function ThreadBackgroundTasks({ threadId }: { threadId: string }) {
           <ListChecksIcon />
           <span className="hidden lg:inline">{t.backgroundTasks.label}</span>
           {activeTasks.length > 0 && (
-            <span className="bg-primary text-primary-foreground grid size-4 place-items-center rounded-full text-[10px] font-semibold">
+            <span className="bg-primary text-primary-foreground grid size-4 place-items-center rounded-full type-compact font-semibold">
               {activeTasks.length > 9 ? "9+" : activeTasks.length}
             </span>
           )}
@@ -85,17 +85,17 @@ export function ThreadBackgroundTasks({ threadId }: { threadId: string }) {
           {tasksQuery.isLoading ? (
             <div
               role="status"
-              className="text-muted-foreground flex items-center justify-center gap-2 py-12 text-sm"
+              className="text-muted-foreground flex items-center justify-center gap-2 py-12 type-supporting"
             >
               <LoaderCircleIcon className="size-4 animate-spin" />
               {t.common.loading}
             </div>
           ) : tasksQuery.isError ? (
-            <div className="border-destructive/30 bg-destructive/5 rounded-xl border p-4 text-sm">
+            <div className="border-destructive/30 bg-destructive/5 rounded-xl border p-4 type-supporting">
               <p className="text-destructive font-medium">
                 {t.backgroundTasks.loadFailed}
               </p>
-              <p className="text-muted-foreground mt-1 text-xs">
+              <p className="text-muted-foreground mt-1 type-compact">
                 {tasksQuery.error.message}
               </p>
               <Button
@@ -111,10 +111,10 @@ export function ThreadBackgroundTasks({ threadId }: { threadId: string }) {
           ) : tasks.length === 0 ? (
             <div className="text-muted-foreground flex flex-col items-center px-6 py-14 text-center">
               <ListChecksIcon className="mb-3 size-8 opacity-40" />
-              <p className="text-foreground text-sm font-medium">
+              <p className="text-foreground type-supporting font-medium">
                 {t.backgroundTasks.empty}
               </p>
-              <p className="mt-1 text-xs">{t.backgroundTasks.emptyHint}</p>
+              <p className="mt-1 type-compact">{t.backgroundTasks.emptyHint}</p>
             </div>
           ) : (
             <div className="space-y-5">
@@ -159,7 +159,7 @@ function TaskSection({
 }) {
   return (
     <section>
-      <h3 className="text-muted-foreground mb-2 px-1 text-xs font-medium tracking-wide uppercase">
+      <h3 className="text-muted-foreground mb-2 px-1 type-compact font-medium tracking-wide uppercase">
         {title}
       </h3>
       <div className="space-y-2">
@@ -208,10 +208,10 @@ function BackgroundTaskCard({
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate text-sm font-medium" title={task.task_name}>
+          <p className="truncate type-supporting font-medium" title={task.task_name}>
             {task.task_name}
           </p>
-          <div className="text-muted-foreground mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
+          <div className="text-muted-foreground mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 type-compact">
             <span className="flex items-center gap-1">
               <Clock3Icon className="size-3" />
               {t.backgroundTasks.created(formatTimeAgo(task.created_at))}
@@ -230,13 +230,13 @@ function BackgroundTaskCard({
       </div>
 
       {task.tracking_degraded && (
-        <p className="mt-2 flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-300">
+        <p className="mt-2 flex items-center gap-1.5 type-compact text-amber-700 dark:text-amber-300">
           <TriangleAlertIcon className="size-3.5 shrink-0" />
           {t.backgroundTasks.trackingDegraded}
         </p>
       )}
       {task.error && (
-        <p className="bg-destructive/5 text-destructive mt-2 rounded-md px-2 py-1.5 text-xs break-words">
+        <p className="bg-destructive/5 text-destructive mt-2 rounded-md px-2 py-1.5 type-compact break-words">
           {task.error}
         </p>
       )}
@@ -309,7 +309,7 @@ function BackgroundTaskDetails({
     return (
       <div
         role="status"
-        className="text-muted-foreground mt-3 flex items-center gap-2 border-t pt-3 text-xs"
+        className="text-muted-foreground mt-3 flex items-center gap-2 border-t pt-3 type-compact"
       >
         <LoaderCircleIcon className="size-3.5 animate-spin" />
         {t.common.loading}
@@ -319,7 +319,7 @@ function BackgroundTaskDetails({
 
   if (error) {
     return (
-      <div className="border-destructive/30 mt-3 border-t pt-3 text-xs">
+      <div className="border-destructive/30 mt-3 border-t pt-3 type-compact">
         <p className="text-destructive">{t.backgroundTasks.detailsFailed}</p>
         <p className="text-muted-foreground mt-1 break-words">
           {error.message}
@@ -342,7 +342,7 @@ function BackgroundTaskDetails({
   return (
     <div className="border-border mt-3 space-y-3 border-t pt-3">
       {task.last_cancel_error && (
-        <div className="flex gap-2 rounded-md bg-amber-500/10 px-2 py-2 text-xs text-amber-700 dark:text-amber-300">
+        <div className="flex gap-2 rounded-md bg-amber-500/10 px-2 py-2 type-compact text-amber-700 dark:text-amber-300">
           <TriangleAlertIcon className="mt-0.5 size-3.5 shrink-0" />
           <div className="min-w-0">
             <p className="font-medium">
@@ -355,7 +355,7 @@ function BackgroundTaskDetails({
         </div>
       )}
       {task.notification_error && (
-        <div className="flex gap-2 rounded-md bg-amber-500/10 px-2 py-2 text-xs text-amber-700 dark:text-amber-300">
+        <div className="flex gap-2 rounded-md bg-amber-500/10 px-2 py-2 type-compact text-amber-700 dark:text-amber-300">
           <TriangleAlertIcon className="mt-0.5 size-3.5 shrink-0" />
           <div className="min-w-0">
             <p className="font-medium">
@@ -387,7 +387,7 @@ function BackgroundTaskDetails({
             label={t.backgroundTasks.inputRequired}
             value={task.input_required}
           />
-          <p className="text-muted-foreground mt-1 text-[11px]">
+          <p className="text-muted-foreground mt-1 type-compact">
             {t.backgroundTasks.inputUnavailable}
           </p>
         </div>
@@ -402,10 +402,10 @@ function TaskDetailField({ label, value }: { label: string; value: unknown }) {
 
   return (
     <div>
-      <p className="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">
+      <p className="text-muted-foreground type-compact font-medium tracking-wide uppercase">
         {label}
       </p>
-      <pre className="bg-muted/60 mt-1 max-h-48 overflow-auto rounded-md px-2 py-1.5 font-sans text-xs break-words whitespace-pre-wrap">
+      <pre className="bg-muted/60 mt-1 max-h-48 overflow-auto rounded-md px-2 py-1.5 font-sans type-compact break-words whitespace-pre-wrap">
         {formatted}
       </pre>
     </div>

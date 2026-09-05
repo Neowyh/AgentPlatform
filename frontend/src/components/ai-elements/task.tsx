@@ -18,7 +18,7 @@ export const TaskItemFile = ({
 }: TaskItemFileProps) => (
   <div
     className={cn(
-      "bg-secondary text-foreground inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-xs",
+      "bg-secondary text-foreground inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 type-compact",
       className,
     )}
     {...props}
@@ -57,9 +57,9 @@ export const TaskTrigger = ({
 }: TaskTriggerProps) => (
   <CollapsibleTrigger asChild className={cn("group", className)} {...props}>
     {children ?? (
-      <div className="text-muted-foreground hover:text-foreground flex w-full cursor-pointer items-center gap-2 text-sm transition-colors">
+      <div className="text-muted-foreground hover:text-foreground flex w-full cursor-pointer items-center gap-2 type-supporting transition-colors">
         <SearchIcon className="size-4" />
-        <p className="text-sm">{title}</p>
+        <p className="type-supporting">{title}</p>
         <ChevronDownIcon className="size-4 transition-transform group-data-[state=open]:rotate-180" />
       </div>
     )}

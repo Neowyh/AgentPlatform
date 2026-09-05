@@ -298,7 +298,7 @@ export default function NewAgentPage() {
         >
           <ArrowLeftIcon className="h-4 w-4" />
         </Button>
-        <h1 className="text-sm font-semibold">{t.agents.createPageTitle}</h1>
+        <h1 className="type-supporting font-semibold">{t.agents.createPageTitle}</h1>
       </div>
 
       {step === "chat" ? (
@@ -339,10 +339,10 @@ export default function NewAgentPage() {
                 <BotIcon className="text-primary h-7 w-7" />
               </div>
               <div className="space-y-1">
-                <h2 className="text-xl font-semibold">
+                <h2 className="type-section-title font-semibold">
                   {t.agents.nameStepTitle}
                 </h2>
-                <p className="text-muted-foreground text-sm">
+                <p className="text-muted-foreground type-supporting">
                   {t.agents.nameStepHint}
                 </p>
               </div>
@@ -361,7 +361,7 @@ export default function NewAgentPage() {
                 className={cn(nameError && "border-destructive")}
               />
               {nameError ? (
-                <p className="text-destructive text-sm">{nameError}</p>
+                <p className="text-destructive type-supporting">{nameError}</p>
               ) : null}
               <Button
                 className="w-full"

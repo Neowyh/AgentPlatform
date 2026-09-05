@@ -154,7 +154,7 @@ export function ArtifactFileList({
             )}
             {t.artifactArchive.downloadCurrent(archiveCount)}
           </Button>
-          <p className="text-muted-foreground text-xs">
+          <p className="text-muted-foreground type-compact">
             {t.artifactArchive.currentVersionNotice}
           </p>
         </div>
@@ -173,7 +173,7 @@ export function ArtifactFileList({
                   {getFileIcon(file, "size-6")}
                 </div>
               </CardTitle>
-              <CardDescription className="min-w-0 pl-8 text-xs">
+              <CardDescription className="min-w-0 pl-8 type-compact">
                 {getFileExtensionDisplayName(file)} file
               </CardDescription>
               <CardAction className="row-span-1 self-center">

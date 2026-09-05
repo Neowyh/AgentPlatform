@@ -57,7 +57,7 @@ export function ArtifactViewer({
           <div className="truncate font-medium" title={filepath}>
             {filename}
           </div>
-          <div className="text-muted-foreground truncate text-xs">
+          <div className="text-muted-foreground truncate type-compact">
             {filepath}
           </div>
         </div>
@@ -87,7 +87,7 @@ export function ArtifactViewer({
       </header>
 
       {truncated && (
-        <div className="border-border bg-muted/40 flex shrink-0 items-center justify-between gap-3 border-b px-4 py-2 text-sm">
+        <div className="border-border bg-muted/40 flex shrink-0 items-center justify-between gap-3 border-b px-4 py-2 type-supporting">
           <span className="text-muted-foreground">
             {t.artifactPreview.limited(
               formatArtifactBytes(previewBytes) ?? "1 MiB",
@@ -100,7 +100,7 @@ export function ArtifactViewer({
         </div>
       )}
       {isLoadingFullContent && (
-        <div className="border-border text-muted-foreground flex shrink-0 items-center gap-2 border-b px-4 py-2 text-sm">
+        <div className="border-border text-muted-foreground flex shrink-0 items-center gap-2 border-b px-4 py-2 type-supporting">
           <LoaderIcon className="size-4 animate-spin" />
           {t.artifactPreview.loadingFullFile}
         </div>
@@ -108,11 +108,11 @@ export function ArtifactViewer({
 
       <main className="mx-auto min-h-0 w-full max-w-4xl flex-1 overflow-hidden">
         {error ? (
-          <p className="text-muted-foreground p-6 text-sm">
+          <p className="text-muted-foreground p-6 type-supporting">
             {t.artifactPreview.previewFailed}
           </p>
         ) : content === undefined ? (
-          <div className="text-muted-foreground flex items-center gap-2 p-6 text-sm">
+          <div className="text-muted-foreground flex items-center gap-2 p-6 type-supporting">
             <LoaderIcon className="size-4 animate-spin" />
             {t.common.loading}
           </div>
