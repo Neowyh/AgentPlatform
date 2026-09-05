@@ -112,6 +112,10 @@ The following focused slices are green on this branch:
   and catalog ORM remain in the AgentPlatform boundary. The focused resource
   API run reached 13 passed before the existing DB-backed response test stalled
   under this restricted test environment, so the full file remains incomplete.
+- Admin resource inventory now also consumes DeerFlow configuration while
+  retaining AgentPlatform RBAC/catalog persistence; module import and lint
+  verification pass. Full admin TestClient coverage remains environment-
+  incomplete under the same restricted socket/test-runtime conditions.
 - Gateway run services now consume DeerFlow RunManager/RunRecord/RunStatus,
   StreamBridge and run naming; services behavior regressions: 77 passed.
 - Gateway agent-factory resolution now returns DeerFlow's `make_lead_agent`;
