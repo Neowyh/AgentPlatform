@@ -159,6 +159,11 @@ The following focused slices are green on this branch:
   run-config regressions: 3 recursion-limit tests, 2 checkpoint-mode tests and
   10 identity/metadata tests passed. Scheduler dispatch and full Gateway
   configuration compatibility remain open.
+- Requested checkpoints now pass through one Gateway validation seam before Run
+  admission: thread identity, namespace/map and checkpoint existence are checked,
+  then server-owned checkpoint fields are attached to the runtime config. The
+  focused validation/404 contract tests passed (2 passed). Scheduler helper
+  dispatch still awaits its idempotent `start_run` contract migration.
 
 These results establish the next-stage baseline but do not close the semantic
 ledger rows. Shared-resource, workflow receipt, migration, offline and fresh
