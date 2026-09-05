@@ -651,7 +651,7 @@ class TestNormalizeInputAdditional:
 class TestResolveAgentFactoryAdditional:
     def test_returns_make_lead_agent(self):
         from app.gateway.services import resolve_agent_factory
-        from ideer.agents.lead_agent.agent import make_lead_agent
+        from deerflow.agents.lead_agent.agent import make_lead_agent
 
         assert resolve_agent_factory(None) is make_lead_agent
         assert resolve_agent_factory("lead_agent") is make_lead_agent
