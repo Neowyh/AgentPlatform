@@ -47,6 +47,7 @@ async def test_prepare_spawns_memory_preload_for_canonical_key():
         assert prepared.memory_preload_task is not None
         assert prepared.evidence_binding is not None
         assert prepared.evidence_binding.authorization.caller_user_id == "user-1"
+        assert len(prepared.evidence_binding.runtime_assembly_fingerprint) == 64
         await asyncio.wait_for(prepared.memory_preload_task, timeout=5)
     assert seen == {"agent_name": "11111111-1111-1111-1111-111111111111", "user_id": "user-1"}
 

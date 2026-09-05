@@ -19,6 +19,8 @@ Callers learn one function; all orchestration, parallelism, and cleanup have
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import logging
 import time
 import uuid
@@ -89,6 +91,13 @@ def _memory_injection_enabled() -> bool:
     except Exception:
         return False
     return bool(getattr(memory_config, "enabled", False)) and bool(getattr(memory_config, "injection_enabled", False))
+
+
+def _runtime_assembly_fingerprint(agent_id: str, snapshots: Any) -> str:
+    """Derive a stable evidence fingerprint from the frozen runtime assembly."""
+    payload = {"agent_id": agent_id, "resource_snapshots": snapshots}
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode()
+    return hashlib.sha256(encoded).hexdigest()
 
 
 async def _preload_memory(agent_name: str | None, user_id: str) -> None:
@@ -213,6 +222,10 @@ async def prepare_run(body: Any, thread_id: str, request: Request) -> PreparedRu
                 effective_agent_id=canonical_resource_id or str(getattr(body, "assistant_id", None) or "lead_agent"),
                 policy_revision=str(policy_revision),
                 memory_scope=str(user_id),
+            ),
+            runtime_assembly_fingerprint=_runtime_assembly_fingerprint(
+                canonical_resource_id or str(getattr(body, "assistant_id", None) or "lead_agent"),
+                snapshots,
             ),
         )
 
