@@ -22,7 +22,7 @@ from langchain_core.messages.utils import convert_to_messages
 
 from app.gateway.auth_disabled import AUTH_SOURCE_INTERNAL
 from app.gateway.authz import _cached_rbac_identity
-from app.gateway.deps import get_run_context, get_run_manager, get_stream_bridge
+from app.gateway.deps import get_checkpointer, get_run_context, get_run_manager, get_stream_bridge
 from app.gateway.internal_auth import INTERNAL_SYSTEM_ROLE
 from app.gateway.utils import sanitize_log_param
 from deerflow.runtime import (
@@ -499,6 +499,65 @@ def build_run_config(
     return config
 
 
+async def apply_checkpoint_to_run_config(
+    config: dict[str, Any],
+    *,
+    body: Any,
+    thread_id: str,
+    request: Request,
+) -> None:
+    """Validate a requested checkpoint and attach its server-owned fields."""
+
+    checkpoint = getattr(body, "checkpoint", None)
+    checkpoint_id = getattr(body, "checkpoint_id", None)
+    checkpoint_ns = ""
+    checkpoint_map = None
+    if checkpoint:
+        if not isinstance(checkpoint, Mapping):
+            raise HTTPException(status_code=400, detail="checkpoint must be an object")
+        checkpoint_thread_id = checkpoint.get("thread_id")
+        if checkpoint_thread_id is not None and str(checkpoint_thread_id) != thread_id:
+            raise HTTPException(status_code=400, detail="checkpoint thread_id does not match request thread_id")
+        if checkpoint.get("checkpoint_id"):
+            checkpoint_id = str(checkpoint["checkpoint_id"])
+        if checkpoint.get("checkpoint_ns") is not None:
+            checkpoint_ns = str(checkpoint["checkpoint_ns"])
+        checkpoint_map = checkpoint.get("checkpoint_map")
+
+    if not checkpoint_id:
+        return
+
+    read_config: dict[str, Any] = {
+        "configurable": {
+            "thread_id": thread_id,
+            "checkpoint_ns": checkpoint_ns,
+            "checkpoint_id": str(checkpoint_id),
+        }
+    }
+    if checkpoint_map is not None:
+        read_config["configurable"]["checkpoint_map"] = checkpoint_map
+    try:
+        checkpoint_tuple = await get_checkpointer(request).aget_tuple(read_config)
+    except Exception as exc:
+        logger.exception("Failed to validate checkpoint %s for thread %s", checkpoint_id, sanitize_log_param(thread_id))
+        raise HTTPException(status_code=500, detail="Failed to validate checkpoint") from exc
+    if checkpoint_tuple is None:
+        raise HTTPException(status_code=404, detail=f"Checkpoint {checkpoint_id} not found")
+
+    configurable = config.setdefault("configurable", {})
+    if not isinstance(configurable, dict):
+        raise HTTPException(status_code=400, detail="request config configurable must be an object")
+    configurable.update(
+        {
+            "thread_id": thread_id,
+            "checkpoint_ns": checkpoint_ns,
+            "checkpoint_id": str(checkpoint_id),
+        }
+    )
+    if checkpoint_map is not None:
+        configurable["checkpoint_map"] = checkpoint_map
+
+
 # ---------------------------------------------------------------------------
 # Run lifecycle
 # ---------------------------------------------------------------------------
@@ -656,6 +715,7 @@ async def start_run(
     agent_factory = canonical_factory or resolve_agent_factory(body.assistant_id)
     graph_input = normalize_input(body.input)
     config = build_run_config(thread_id, body.config, body.metadata, assistant_id=body.assistant_id)
+    await apply_checkpoint_to_run_config(config, body=body, thread_id=thread_id, request=request)
 
     if canonical_run_id:
         for container_name in ("context", "configurable"):
