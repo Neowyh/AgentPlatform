@@ -152,6 +152,13 @@ The following focused slices are green on this branch:
   users. Focused gateway authz regressions: 26 passed; internal channel caller
   boundary: 3 passed. The broader Gateway config suite still has pre-existing
   compatibility failures outside this slice and remains open.
+- Gateway run-config hardening now enforces a server-owned recursion ceiling,
+  rejects client checkpoint-channel mode overrides, preserves the canonical
+  thread ID in both runtime containers, dual-writes custom Agent identity for
+  LangGraph context compatibility, and copies metadata before merging. Focused
+  run-config regressions: 3 recursion-limit tests, 2 checkpoint-mode tests and
+  10 identity/metadata tests passed. Scheduler dispatch and full Gateway
+  configuration compatibility remain open.
 
 These results establish the next-stage baseline but do not close the semantic
 ledger rows. Shared-resource, workflow receipt, migration, offline and fresh
