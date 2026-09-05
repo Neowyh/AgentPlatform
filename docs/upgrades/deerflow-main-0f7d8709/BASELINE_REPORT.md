@@ -223,6 +223,12 @@ The following focused slices are green on this branch:
   run metadata secret-safety suite passed (15 tests), and the combined evidence,
   extension-boundary and secret-safety regression slice passed (26 passed,
   3 deselected).
+- Resource Snapshot acceptance already contains the required version-freeze
+  assertion: publishing a new dependency version after run start leaves the
+  persisted run snapshot on the original UUID/version/hash. The focused
+  `test_resource_service_versions.py` lane was started but produced no output
+  for over 60 seconds in this restricted environment and was interrupted; it
+  remains incomplete rather than being reported as passed.
 
 These results establish the next-stage baseline but do not close the semantic
 ledger rows. Shared-resource, workflow receipt, migration, offline and fresh
