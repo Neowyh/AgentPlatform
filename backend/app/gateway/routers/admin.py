@@ -15,7 +15,7 @@ from sqlalchemy.orm import selectinload
 from app.gateway.authz import get_current_rbac_user, require_role
 from app.gateway.rbac_users import create_auth_user_with_rbac
 from app.gateway.user_deletion import delete_user as service_delete_user
-from ideer.config.app_config import get_app_config
+from deerflow.config.app_config import get_app_config
 from ideer.config.paths import get_paths
 from ideer.persistence.engine import get_session_factory
 from ideer.persistence.models.audit_log import AuditLog
