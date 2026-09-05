@@ -229,6 +229,10 @@ The following focused slices are green on this branch:
   `test_resource_service_versions.py` lane was started but produced no output
   for over 60 seconds in this restricted environment and was interrupted; it
   remains incomplete rather than being reported as passed.
+- Tool authorization now has evidence for both assembly-time filtering and
+  runtime guardrail denial. The shared-agent caller-principal boundary plus
+  tool-filter suite passed (22 tests), and the enforcement/provider/principal
+  runtime slice passed (77 tests).
 
 These results establish the next-stage baseline but do not close the semantic
 ledger rows. Shared-resource, workflow receipt, migration, offline and fresh
