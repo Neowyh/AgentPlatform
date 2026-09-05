@@ -156,6 +156,11 @@ The following focused slices are green on this branch:
   and accept the upstream `DEER_FLOW_INTERNAL_AUTH_TOKEN` environment variable
   while retaining the legacy token name for compatibility. The focused internal
   auth regression suite passed (4 passed).
+- Gateway channel storage, artifact resolution, upload routing, and auth
+  middleware now use DeerFlow's canonical path and user-context runtime modules.
+  ChannelStore/path focused coverage passed (10 selected channel tests plus 27
+  user-context tests); the broader channel suite still has pre-existing API
+  signature mismatches and restricted-environment hangs.
 - Gateway run-config hardening now enforces a server-owned recursion ceiling,
   rejects client checkpoint-channel mode overrides, preserves the canonical
   thread ID in both runtime containers, dual-writes custom Agent identity for
