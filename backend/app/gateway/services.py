@@ -177,6 +177,28 @@ _SERVER_OWNED_AUTHZ_CONTEXT_KEYS: frozenset[str] = frozenset(
     }
 )
 
+_DEFAULT_RECURSION_LIMIT = 100
+_DEFAULT_MAX_RECURSION_LIMIT = 1000
+
+
+def _resolve_max_recursion_limit() -> int:
+    """Read the configured execution ceiling, with a safe fallback."""
+
+    try:
+        from deerflow.config import get_app_config
+
+        return int(get_app_config().max_recursion_limit)
+    except Exception:
+        return _DEFAULT_MAX_RECURSION_LIMIT
+
+
+def _clamp_recursion_limit(value: Any, max_limit: int) -> int:
+    """Clamp untrusted recursion settings to a positive server-owned range."""
+
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        return _DEFAULT_RECURSION_LIMIT
+    return min(value, max(1, int(max_limit)))
+
 
 def merge_run_context_overrides(
     config: dict[str, Any],
@@ -457,6 +479,10 @@ def build_run_config(
         config.setdefault("run_name", resolve_root_run_name(config, normalized))
     if metadata:
         config.setdefault("metadata", {}).update(metadata)
+    config["recursion_limit"] = _clamp_recursion_limit(
+        config.get("recursion_limit"),
+        _resolve_max_recursion_limit(),
+    )
     return config
 
 
