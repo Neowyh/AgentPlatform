@@ -247,11 +247,14 @@ def _patch_checkpoint_state_builder(monkeypatch):
     async def _mutation_boundary(request, *, thread_id, as_node, checkpoint_id=None):
         return _mutation_builder(request, thread_id=thread_id, as_node=as_node, checkpoint_id=checkpoint_id)
 
-    monkeypatch.setattr(threads, "build_checkpoint_state_accessor", _builder)
-    monkeypatch.setattr(threads, "build_checkpoint_state_mutation_accessor", _mutation_builder)
-    monkeypatch.setattr(threads, "build_thread_checkpoint_state_accessor", _read_boundary)
-    monkeypatch.setattr(threads, "build_thread_checkpoint_state_mutation_accessor", _mutation_boundary)
-    monkeypatch.setattr(thread_runs, "build_thread_checkpoint_state_accessor", _read_boundary)
+    # These builders belonged to the pre-DeerFlow router seam. Keep the
+    # fixture compatible with both migrated and legacy route modules without
+    # reintroducing production shims for removed attributes.
+    monkeypatch.setattr(threads, "build_checkpoint_state_accessor", _builder, raising=False)
+    monkeypatch.setattr(threads, "build_checkpoint_state_mutation_accessor", _mutation_builder, raising=False)
+    monkeypatch.setattr(threads, "build_thread_checkpoint_state_accessor", _read_boundary, raising=False)
+    monkeypatch.setattr(threads, "build_thread_checkpoint_state_mutation_accessor", _mutation_boundary, raising=False)
+    monkeypatch.setattr(thread_runs, "build_thread_checkpoint_state_accessor", _read_boundary, raising=False)
 
 
 class _FakeStateAccessor:
