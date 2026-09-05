@@ -41,6 +41,7 @@ Locked DeerFlow SHA: `0f7d8709d3bbf0be26460b6277fbad9329302243`
 | Tool router and assembly adapter regressions | passed | Gateway tool listing/detail/test execution now assemble through the DeerFlow adapter while AgentPlatform retains visibility/RBAC filtering; adapter + router regressions: 21 passed. |
 | MCP config router regressions | passed | MCP file config parsing and model boundary now use DeerFlow `ExtensionsConfig`; secret-preservation and config API regressions: 23 passed. |
 | Suggestions router config-boundary regression | passed | Replaced the route-only `AppConfig` annotation with DeerFlow's type; focused E2E: 3 passed. |
+| Models/uploads config-boundary regressions | passed | Replaced route-only `AppConfig` annotations with DeerFlow's type; combined model and upload route regressions: 193 passed. |
 
 The standard lane now exports `PYTHONPATH=.:tests`, preserving the existing
 collection roots while resolving shared test helpers. Re-run with
@@ -54,7 +55,7 @@ migration and air-gapped installation are still pending and are release gates.
 
 ## Runtime Foundation focused evidence
 
-The branch still has 166 textual `ideer` imports under `backend/app`,
+The branch still has 164 textual `ideer` imports under `backend/app`,
 `backend/scripts` and the AgentPlatform-facing harness adapters. This is an
 inventory signal only; the final `import ideer` failure gate is intentionally
 not claimed until the Workflow/resource control-plane extraction is complete.

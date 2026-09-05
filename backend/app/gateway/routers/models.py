@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field
 
 from app.gateway.authz import require_permission
 from app.gateway.deps import get_config
-from ideer.config.app_config import AppConfig
+from deerflow.config.app_config import AppConfig
 
 router = APIRouter(prefix="/api", tags=["models"])
 

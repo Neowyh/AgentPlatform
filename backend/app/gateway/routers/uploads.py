@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from app.gateway.authz import require_permission
 from app.gateway.deps import get_config
+from deerflow.config.app_config import AppConfig
 from deerflow.uploads.manager import (
     PathTraversalError,
     UnsafeUploadPathError,
@@ -26,7 +27,6 @@ from deerflow.uploads.manager import (
     upload_virtual_path,
 )
 from deerflow.utils.file_conversion import CONVERTIBLE_EXTENSIONS, convert_file_to_markdown
-from ideer.config.app_config import AppConfig
 from ideer.config.paths import get_paths
 from ideer.runtime.user_context import get_effective_user_id
 from ideer.sandbox.sandbox_provider import SandboxProvider, get_sandbox_provider
