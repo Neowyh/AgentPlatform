@@ -246,6 +246,11 @@ The following focused slices are green on this branch:
   collection-time failures because it patches the removed `get_memory_manager`
   seam; those are classified as test-path compatibility debt, not counted as
   runtime regressions.
+- Sub-Agent receipt acceptance passed: the report contract and tool-receipt
+  middleware slice passed 36 tests, and the task-tool receipt verdict slice
+  passed 3 tests (including missing-receipt `UNVERIFIED` behavior). The full
+  task-tool module remains outside this focused result because it enters the
+  restricted async executor path.
 
 These results establish the next-stage baseline but do not close the semantic
 ledger rows. Shared-resource, workflow receipt, migration, offline and fresh
