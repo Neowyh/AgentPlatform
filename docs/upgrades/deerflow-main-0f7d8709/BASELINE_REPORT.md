@@ -166,6 +166,11 @@ The following focused slices are green on this branch:
   AgentPlatform-owned. Memory adapter coverage passed (4 tests) and credential
   file coverage passed (9 tests); legacy router suites still contain stale
   patch seams for the removed memory/checkpoint helpers.
+- Workflow worker execution now obtains its async checkpointer and canonical
+  resource storage paths from DeerFlow while retaining AgentPlatform Workflow
+  v2 persistence, compiler, and adapters. The runtime-config contract passed
+  (1 test); canonical worker DB loading remains incomplete under the restricted
+  environment.
 - Gateway run-config hardening now enforces a server-owned recursion ceiling,
   rejects client checkpoint-channel mode overrides, preserves the canonical
   thread ID in both runtime containers, dual-writes custom Agent identity for
