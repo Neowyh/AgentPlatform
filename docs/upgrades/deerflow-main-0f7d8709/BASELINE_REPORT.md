@@ -152,6 +152,10 @@ The following focused slices are green on this branch:
   users. Focused gateway authz regressions: 26 passed; internal channel caller
   boundary: 3 passed. The broader Gateway config suite still has pre-existing
   compatibility failures outside this slice and remains open.
+- Internal Gateway callers now consume DeerFlow's canonical `DEFAULT_USER_ID`
+  and accept the upstream `DEER_FLOW_INTERNAL_AUTH_TOKEN` environment variable
+  while retaining the legacy token name for compatibility. The focused internal
+  auth regression suite passed (4 passed).
 - Gateway run-config hardening now enforces a server-owned recursion ceiling,
   rejects client checkpoint-channel mode overrides, preserves the canonical
   thread ID in both runtime containers, dual-writes custom Agent identity for
