@@ -50,8 +50,9 @@ The following focused slices are green on this branch:
 - task lifecycle evidence persistence: 50 tests;
 - authorization assembly/runtime enforcement: 43 tests;
 - sandbox mount contract and `/mnt/skills` defaults: 3 tests;
-- AgentPlatform extension boundary (snapshot identity, caller-scoped memory,
-  default-deny network): 4 tests;
+- AgentPlatform extension boundary and lifecycle binding (snapshot identity,
+  caller-scoped memory, default-deny network, explicit install registration):
+  6 tests;
 - sandbox network policy and intranet proxy workflow: 14 tests;
 - intranet runtime config path and default-deny contract: 1 test;
 - sub-agent tool receipts, report contract, acceptance checks and delegation
