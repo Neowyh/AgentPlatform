@@ -56,7 +56,7 @@ class TestChannelStoreInit:
         mock_paths = MagicMock()
         mock_paths.base_dir = "/tmp/ideer-test"
 
-        with patch("ideer.config.paths.get_paths", return_value=mock_paths):
+        with patch("deerflow.config.paths.get_paths", return_value=mock_paths):
             store = ChannelStore(path=None)
 
         assert "channels" in str(store._path)

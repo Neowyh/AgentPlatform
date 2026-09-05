@@ -177,7 +177,7 @@ class TestResolveAttachments:
         mock_paths.resolve_virtual_path.return_value = test_file
         mock_paths.sandbox_outputs_dir.return_value = outputs_dir
 
-        with patch("ideer.config.paths.get_paths", return_value=mock_paths):
+        with patch("deerflow.config.paths.get_paths", return_value=mock_paths):
             result = _resolve_attachments(thread_id, ["/mnt/user-data/outputs/report.pdf"])
 
         assert len(result) == 1
@@ -200,7 +200,7 @@ class TestResolveAttachments:
         mock_paths.resolve_virtual_path.return_value = img
         mock_paths.sandbox_outputs_dir.return_value = outputs_dir
 
-        with patch("ideer.config.paths.get_paths", return_value=mock_paths):
+        with patch("deerflow.config.paths.get_paths", return_value=mock_paths):
             result = _resolve_attachments(thread_id, ["/mnt/user-data/outputs/chart.png"])
 
         assert len(result) == 1
@@ -221,7 +221,7 @@ class TestResolveAttachments:
         mock_paths.resolve_virtual_path.return_value = img
         mock_paths.sandbox_outputs_dir.return_value = outputs_dir
 
-        with patch("ideer.config.paths.get_paths", return_value=mock_paths):
+        with patch("deerflow.config.paths.get_paths", return_value=mock_paths):
             result = _resolve_attachments(thread_id, ["/mnt/user-data/outputs/photo.jpg"])
 
         assert len(result) == 1
@@ -241,7 +241,7 @@ class TestResolveAttachments:
         mock_paths.resolve_virtual_path.return_value = f
         mock_paths.sandbox_outputs_dir.return_value = outputs_dir
 
-        with patch("ideer.config.paths.get_paths", return_value=mock_paths):
+        with patch("deerflow.config.paths.get_paths", return_value=mock_paths):
             result = _resolve_attachments("t1", ["/mnt/user-data/outputs/data.csv"])
 
         assert len(result) == 1
@@ -260,7 +260,7 @@ class TestResolveAttachments:
         mock_paths.resolve_virtual_path.return_value = f
         mock_paths.sandbox_outputs_dir.return_value = outputs_dir
 
-        with patch("ideer.config.paths.get_paths", return_value=mock_paths):
+        with patch("deerflow.config.paths.get_paths", return_value=mock_paths):
             result = _resolve_attachments("t1", ["/mnt/user-data/outputs/report.docx"])
 
         assert len(result) == 1
@@ -279,7 +279,7 @@ class TestResolveAttachments:
         mock_paths.resolve_virtual_path.return_value = f
         mock_paths.sandbox_outputs_dir.return_value = outputs_dir
 
-        with patch("ideer.config.paths.get_paths", return_value=mock_paths):
+        with patch("deerflow.config.paths.get_paths", return_value=mock_paths):
             result = _resolve_attachments("t1", ["/mnt/user-data/outputs/data.xlsx"])
 
         assert len(result) == 1
@@ -298,7 +298,7 @@ class TestResolveAttachments:
         mock_paths.resolve_virtual_path.return_value = f
         mock_paths.sandbox_outputs_dir.return_value = outputs_dir
 
-        with patch("ideer.config.paths.get_paths", return_value=mock_paths):
+        with patch("deerflow.config.paths.get_paths", return_value=mock_paths):
             result = _resolve_attachments("t1", ["/mnt/user-data/outputs/slides.pptx"])
 
         assert len(result) == 1
@@ -315,7 +315,7 @@ class TestResolveAttachments:
         mock_paths.resolve_virtual_path.return_value = outputs_dir / "nonexistent.txt"
         mock_paths.sandbox_outputs_dir.return_value = outputs_dir
 
-        with patch("ideer.config.paths.get_paths", return_value=mock_paths):
+        with patch("deerflow.config.paths.get_paths", return_value=mock_paths):
             result = _resolve_attachments("t1", ["/mnt/user-data/outputs/nonexistent.txt"])
 
         assert result == []
@@ -327,7 +327,7 @@ class TestResolveAttachments:
         mock_paths = MagicMock()
         mock_paths.resolve_virtual_path.side_effect = ValueError("bad path")
 
-        with patch("ideer.config.paths.get_paths", return_value=mock_paths):
+        with patch("deerflow.config.paths.get_paths", return_value=mock_paths):
             result = _resolve_attachments("t1", ["/invalid/path"])
 
         assert result == []
@@ -338,7 +338,7 @@ class TestResolveAttachments:
 
         mock_paths = MagicMock()
 
-        with patch("ideer.config.paths.get_paths", return_value=mock_paths):
+        with patch("deerflow.config.paths.get_paths", return_value=mock_paths):
             result = _resolve_attachments("t1", ["/mnt/user-data/uploads/secret.pdf"])
 
         assert result == []
@@ -350,7 +350,7 @@ class TestResolveAttachments:
 
         mock_paths = MagicMock()
 
-        with patch("ideer.config.paths.get_paths", return_value=mock_paths):
+        with patch("deerflow.config.paths.get_paths", return_value=mock_paths):
             result = _resolve_attachments("t1", ["/mnt/user-data/workspace/config.py"])
 
         assert result == []
@@ -371,7 +371,7 @@ class TestResolveAttachments:
         mock_paths.resolve_virtual_path.return_value = escaped_file
         mock_paths.sandbox_outputs_dir.return_value = outputs_dir
 
-        with patch("ideer.config.paths.get_paths", return_value=mock_paths):
+        with patch("deerflow.config.paths.get_paths", return_value=mock_paths):
             result = _resolve_attachments(thread_id, ["/mnt/user-data/outputs/../uploads/stolen.txt"])
 
         assert result == []
@@ -396,7 +396,7 @@ class TestResolveAttachments:
 
         mock_paths.resolve_virtual_path.side_effect = resolve_side_effect
 
-        with patch("ideer.config.paths.get_paths", return_value=mock_paths):
+        with patch("deerflow.config.paths.get_paths", return_value=mock_paths):
             result = _resolve_attachments(
                 thread_id,
                 ["/mnt/user-data/outputs/data.csv", "/mnt/user-data/outputs/missing.txt"],
@@ -410,7 +410,7 @@ class TestResolveAttachments:
         from app.channels.manager import _resolve_attachments
 
         mock_paths = MagicMock()
-        with patch("ideer.config.paths.get_paths", return_value=mock_paths):
+        with patch("deerflow.config.paths.get_paths", return_value=mock_paths):
             result = _resolve_attachments("t1", [])
 
         assert result == []
@@ -428,7 +428,7 @@ class TestResolveAttachments:
         mock_paths.resolve_virtual_path.return_value = f
         mock_paths.sandbox_outputs_dir.return_value = outputs_dir
 
-        with patch("ideer.config.paths.get_paths", return_value=mock_paths):
+        with patch("deerflow.config.paths.get_paths", return_value=mock_paths):
             result = _resolve_attachments("t1", ["/mnt/user-data/outputs/data.xyz123"])
 
         assert len(result) == 1
@@ -492,7 +492,7 @@ class TestInboundFileIngestion:
             return b"attacker data"
 
         with (
-            patch("ideer.uploads.manager.ensure_uploads_dir", return_value=uploads_dir),
+            patch("deerflow.uploads.manager.ensure_uploads_dir", return_value=uploads_dir),
             patch.dict(manager.INBOUND_FILE_READERS, {"test-channel": fake_reader}, clear=False),
         ):
             result = _run(manager._ingest_inbound_files("thread-1", msg))
@@ -521,7 +521,7 @@ class TestInboundFileIngestion:
             return b"attacker data"
 
         with (
-            patch("ideer.uploads.manager.ensure_uploads_dir", return_value=uploads_dir),
+            patch("deerflow.uploads.manager.ensure_uploads_dir", return_value=uploads_dir),
             patch.dict(manager.INBOUND_FILE_READERS, {"test-channel": fake_reader}, clear=False),
         ):
             result = _run(manager._ingest_inbound_files("thread-1", msg))
@@ -551,7 +551,7 @@ class TestInboundFileIngestion:
             return b"new attachment data"
 
         with (
-            patch("ideer.uploads.manager.ensure_uploads_dir", return_value=uploads_dir),
+            patch("deerflow.uploads.manager.ensure_uploads_dir", return_value=uploads_dir),
             patch.dict(manager.INBOUND_FILE_READERS, {"test-channel": fake_reader}, clear=False),
         ):
             result = _run(manager._ingest_inbound_files("thread-1", msg))
@@ -587,7 +587,7 @@ class TestInboundFileIngestion:
             return b"%PDF-1.4 content"
 
         with (
-            patch("ideer.uploads.manager.ensure_uploads_dir", return_value=uploads_dir),
+            patch("deerflow.uploads.manager.ensure_uploads_dir", return_value=uploads_dir),
             patch.dict(manager.INBOUND_FILE_READERS, {"test-channel": fake_reader}, clear=False),
         ):
             result = _run(manager._ingest_inbound_files("thread-1", msg))
@@ -618,7 +618,7 @@ class TestInboundFileIngestion:
             return b"\x89PNG image data"
 
         with (
-            patch("ideer.uploads.manager.ensure_uploads_dir", return_value=uploads_dir),
+            patch("deerflow.uploads.manager.ensure_uploads_dir", return_value=uploads_dir),
             patch.dict(manager.INBOUND_FILE_READERS, {"test-channel": fake_reader}, clear=False),
         ):
             result = _run(manager._ingest_inbound_files("thread-1", msg))
@@ -641,7 +641,7 @@ class TestInboundFileIngestion:
             files=[{"filename": "file.txt", "url": "https://example.invalid/file.txt"}],
         )
 
-        with patch("ideer.uploads.manager.ensure_uploads_dir", return_value=uploads_dir):
+        with patch("deerflow.uploads.manager.ensure_uploads_dir", return_value=uploads_dir):
             result = _run(manager._ingest_inbound_files("thread-1", msg))
 
         assert result == []
@@ -665,7 +665,7 @@ class TestInboundFileIngestion:
             raise RuntimeError("download failed")
 
         with (
-            patch("ideer.uploads.manager.ensure_uploads_dir", return_value=uploads_dir),
+            patch("deerflow.uploads.manager.ensure_uploads_dir", return_value=uploads_dir),
             patch.dict(manager.INBOUND_FILE_READERS, {"test-channel": failing_reader}, clear=False),
         ):
             result = _run(manager._ingest_inbound_files("thread-1", msg))
@@ -692,7 +692,7 @@ class TestInboundFileIngestion:
             return b"new content"
 
         with (
-            patch("ideer.uploads.manager.ensure_uploads_dir", return_value=uploads_dir),
+            patch("deerflow.uploads.manager.ensure_uploads_dir", return_value=uploads_dir),
             patch.dict(manager.INBOUND_FILE_READERS, {"test-channel": fake_reader}, clear=False),
         ):
             result = _run(manager._ingest_inbound_files("thread-1", msg))
@@ -854,7 +854,7 @@ class TestManagerArtifactResolution:
         from app.channels.manager import _resolve_attachments
 
         mock_paths = MagicMock()
-        with patch("ideer.config.paths.get_paths", return_value=mock_paths):
+        with patch("deerflow.config.paths.get_paths", return_value=mock_paths):
             result = _resolve_attachments("t1", [])
         assert result == []
 

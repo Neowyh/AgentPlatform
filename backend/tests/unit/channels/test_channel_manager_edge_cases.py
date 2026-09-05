@@ -246,7 +246,7 @@ class TestResolveAttachmentsLine386:
         mock_paths.resolve_virtual_path.side_effect = ValueError("bad path")
 
         with (
-            patch("ideer.config.paths.get_paths", return_value=mock_paths),
+            patch("deerflow.config.paths.get_paths", return_value=mock_paths),
             patch("app.channels.manager.get_effective_user_id", return_value="u1"),
         ):
             result = _resolve_attachments("thread_1", ["/mnt/user-data/outputs/file.txt"])
@@ -259,7 +259,7 @@ class TestResolveAttachmentsLine386:
         mock_paths.resolve_virtual_path.side_effect = OSError("disk error")
 
         with (
-            patch("ideer.config.paths.get_paths", return_value=mock_paths),
+            patch("deerflow.config.paths.get_paths", return_value=mock_paths),
             patch("app.channels.manager.get_effective_user_id", return_value="u1"),
         ):
             result = _resolve_attachments("thread_1", ["/mnt/user-data/outputs/file.txt"])
@@ -343,7 +343,7 @@ class TestIngestInboundFilesLine438:
         mock_uploads_dir.iterdir.return_value = []
 
         with (
-            patch("ideer.uploads.manager.ensure_uploads_dir", return_value=mock_uploads_dir),
+            patch("deerflow.uploads.manager.ensure_uploads_dir", return_value=mock_uploads_dir),
             patch.dict("app.channels.manager.INBOUND_FILE_READERS", {}, clear=False),
         ):
             result = await _ingest_inbound_files("thread_1", msg)
@@ -374,10 +374,10 @@ class TestIngestInboundFilesLine462:
             return b"image_bytes"
 
         with (
-            patch("ideer.uploads.manager.ensure_uploads_dir", return_value=mock_uploads_dir),
-            patch("ideer.uploads.manager.normalize_filename", side_effect=lambda x: x),
-            patch("ideer.uploads.manager.claim_unique_filename", side_effect=lambda name, seen: name),
-            patch("ideer.uploads.manager.write_upload_file_no_symlink", side_effect=lambda d, n, b: d / n),
+            patch("deerflow.uploads.manager.ensure_uploads_dir", return_value=mock_uploads_dir),
+            patch("deerflow.uploads.manager.normalize_filename", side_effect=lambda x: x),
+            patch("deerflow.uploads.manager.claim_unique_filename", side_effect=lambda name, seen: name),
+            patch("deerflow.uploads.manager.write_upload_file_no_symlink", side_effect=lambda d, n, b: d / n),
             patch.dict(
                 "app.channels.manager.INBOUND_FILE_READERS",
                 {"slack": mock_reader},
@@ -404,10 +404,10 @@ class TestIngestInboundFilesLine462:
             return b"file_bytes"
 
         with (
-            patch("ideer.uploads.manager.ensure_uploads_dir", return_value=mock_uploads_dir),
-            patch("ideer.uploads.manager.normalize_filename", side_effect=lambda x: x),
-            patch("ideer.uploads.manager.claim_unique_filename", side_effect=lambda name, seen: name),
-            patch("ideer.uploads.manager.write_upload_file_no_symlink", side_effect=lambda d, n, b: d / n),
+            patch("deerflow.uploads.manager.ensure_uploads_dir", return_value=mock_uploads_dir),
+            patch("deerflow.uploads.manager.normalize_filename", side_effect=lambda x: x),
+            patch("deerflow.uploads.manager.claim_unique_filename", side_effect=lambda name, seen: name),
+            patch("deerflow.uploads.manager.write_upload_file_no_symlink", side_effect=lambda d, n, b: d / n),
             patch.dict(
                 "app.channels.manager.INBOUND_FILE_READERS",
                 {"slack": mock_reader},
@@ -441,9 +441,9 @@ class TestIngestInboundFilesLine469:
             return b"data"
 
         with (
-            patch("ideer.uploads.manager.ensure_uploads_dir", return_value=mock_uploads_dir),
-            patch("ideer.uploads.manager.normalize_filename", return_value="bad/name.txt"),
-            patch("ideer.uploads.manager.claim_unique_filename", side_effect=ValueError("unsafe")),
+            patch("deerflow.uploads.manager.ensure_uploads_dir", return_value=mock_uploads_dir),
+            patch("deerflow.uploads.manager.normalize_filename", return_value="bad/name.txt"),
+            patch("deerflow.uploads.manager.claim_unique_filename", side_effect=ValueError("unsafe")),
             patch.dict(
                 "app.channels.manager.INBOUND_FILE_READERS",
                 {"slack": mock_reader},
@@ -476,11 +476,11 @@ class TestIngestInboundFilesLine483:
             return b"data"
 
         with (
-            patch("ideer.uploads.manager.ensure_uploads_dir", return_value=mock_uploads_dir),
-            patch("ideer.uploads.manager.normalize_filename", return_value="ok.txt"),
-            patch("ideer.uploads.manager.claim_unique_filename", return_value="ok.txt"),
+            patch("deerflow.uploads.manager.ensure_uploads_dir", return_value=mock_uploads_dir),
+            patch("deerflow.uploads.manager.normalize_filename", return_value="ok.txt"),
+            patch("deerflow.uploads.manager.claim_unique_filename", return_value="ok.txt"),
             patch(
-                "ideer.uploads.manager.write_upload_file_no_symlink",
+                "deerflow.uploads.manager.write_upload_file_no_symlink",
                 side_effect=RuntimeError("disk full"),
             ),
             patch.dict(
@@ -1033,7 +1033,7 @@ class TestIngestInboundFilesReaderException:
             raise ConnectionError("network down")
 
         with (
-            patch("ideer.uploads.manager.ensure_uploads_dir", return_value=mock_uploads_dir),
+            patch("deerflow.uploads.manager.ensure_uploads_dir", return_value=mock_uploads_dir),
             patch.dict(
                 "app.channels.manager.INBOUND_FILE_READERS",
                 {"custom_channel": bad_reader},
@@ -1066,7 +1066,7 @@ class TestIngestInboundFilesNoData:
             return None
 
         with (
-            patch("ideer.uploads.manager.ensure_uploads_dir", return_value=mock_uploads_dir),
+            patch("deerflow.uploads.manager.ensure_uploads_dir", return_value=mock_uploads_dir),
             patch.dict(
                 "app.channels.manager.INBOUND_FILE_READERS",
                 {"custom_channel": null_reader},
@@ -1096,7 +1096,7 @@ class TestResolveAttachmentsPathEscape:
         mock_paths.resolve_virtual_path.return_value = escape_path
 
         with (
-            patch("ideer.config.paths.get_paths", return_value=mock_paths),
+            patch("deerflow.config.paths.get_paths", return_value=mock_paths),
             patch("app.channels.manager.get_effective_user_id", return_value="u1"),
         ):
             result = _resolve_attachments("thread_1", ["/mnt/user-data/outputs/../../etc/passwd"])
@@ -1123,7 +1123,7 @@ class TestResolveAttachmentsFileNotFound:
         mock_paths.resolve_virtual_path.return_value = resolved_path
 
         with (
-            patch("ideer.config.paths.get_paths", return_value=mock_paths),
+            patch("deerflow.config.paths.get_paths", return_value=mock_paths),
             patch("app.channels.manager.get_effective_user_id", return_value="u1"),
         ):
             result = _resolve_attachments("thread_1", ["/mnt/user-data/outputs/file.txt"])

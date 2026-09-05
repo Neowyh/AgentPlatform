@@ -204,7 +204,7 @@ class TestFromAppConfig:
         ChannelService.from_app_config(app_cfg)
         mock_init.assert_called_once_with(channels_config={})
 
-    @patch("ideer.config.app_config.get_app_config")
+    @patch("deerflow.config.app_config.get_app_config")
     @patch("app.channels.service.ChannelService.__init__", return_value=None)
     def test_from_app_config_none_uses_get_app_config(self, mock_init, mock_get):
         from app.channels.service import ChannelService
@@ -525,7 +525,7 @@ class TestStartChannel:
     @patch("app.channels.service.ChannelManager")
     @patch("app.channels.service.ChannelStore")
     @patch("app.channels.service.MessageBus")
-    @patch("ideer.reflection.resolve_class")
+    @patch("deerflow.reflection.resolve_class")
     async def test_start_channel_import_failure(self, mock_resolve, mock_bus_cls, mock_store_cls, mock_mgr_cls):
         from app.channels.service import ChannelService
 
@@ -538,7 +538,7 @@ class TestStartChannel:
     @patch("app.channels.service.ChannelManager")
     @patch("app.channels.service.ChannelStore")
     @patch("app.channels.service.MessageBus")
-    @patch("ideer.reflection.resolve_class")
+    @patch("deerflow.reflection.resolve_class")
     async def test_start_channel_instantiation_failure(self, mock_resolve, mock_bus_cls, mock_store_cls, mock_mgr_cls):
         from app.channels.service import ChannelService
 
@@ -553,7 +553,7 @@ class TestStartChannel:
     @patch("app.channels.service.ChannelManager")
     @patch("app.channels.service.ChannelStore")
     @patch("app.channels.service.MessageBus")
-    @patch("ideer.reflection.resolve_class")
+    @patch("deerflow.reflection.resolve_class")
     async def test_start_channel_not_running_after_start(self, mock_resolve, mock_bus_cls, mock_store_cls, mock_mgr_cls):
         from app.channels.service import ChannelService
 
@@ -571,7 +571,7 @@ class TestStartChannel:
     @patch("app.channels.service.ChannelManager")
     @patch("app.channels.service.ChannelStore")
     @patch("app.channels.service.MessageBus")
-    @patch("ideer.reflection.resolve_class")
+    @patch("deerflow.reflection.resolve_class")
     async def test_start_channel_success(self, mock_resolve, mock_bus_cls, mock_store_cls, mock_mgr_cls):
         from app.channels.service import ChannelService
 
@@ -593,7 +593,7 @@ class TestStartChannel:
     @patch("app.channels.service.ChannelManager")
     @patch("app.channels.service.ChannelStore")
     @patch("app.channels.service.MessageBus")
-    @patch("ideer.reflection.resolve_class")
+    @patch("deerflow.reflection.resolve_class")
     async def test_start_channel_start_raises(self, mock_resolve, mock_bus_cls, mock_store_cls, mock_mgr_cls):
         """channel.start() raises an exception."""
         from app.channels.service import ChannelService
@@ -848,7 +848,7 @@ class TestStartChannelServiceIntegration:
     """Integration tests for the start_channel_service full flow."""
 
     @pytest.mark.asyncio
-    @patch("ideer.reflection.resolve_class")
+    @patch("deerflow.reflection.resolve_class")
     @patch("app.channels.service.ChannelManager")
     @patch("app.channels.service.ChannelStore")
     @patch("app.channels.service.MessageBus")
@@ -902,7 +902,7 @@ class TestStartChannelEdgeCases:
     @patch("app.channels.service.ChannelManager")
     @patch("app.channels.service.ChannelStore")
     @patch("app.channels.service.MessageBus")
-    @patch("ideer.reflection.resolve_class")
+    @patch("deerflow.reflection.resolve_class")
     async def test_start_channel_class_not_subclass_of_channel(self, mock_resolve, mock_bus_cls, mock_store_cls, mock_mgr_cls):
         """resolve_class returns a class that can still be instantiated (no base_class check)."""
         from app.channels.service import ChannelService
@@ -921,7 +921,7 @@ class TestStartChannelEdgeCases:
     @patch("app.channels.service.ChannelManager")
     @patch("app.channels.service.ChannelStore")
     @patch("app.channels.service.MessageBus")
-    @patch("ideer.reflection.resolve_class")
+    @patch("deerflow.reflection.resolve_class")
     async def test_start_channel_config_gets_channel_store(self, mock_resolve, mock_bus_cls, mock_store_cls, mock_mgr_cls):
         """Verify that channel_store is injected into the config dict."""
         from app.channels.service import ChannelService
@@ -952,7 +952,7 @@ class TestStartChannelEdgeCases:
 
         for name, import_path in _CHANNEL_REGISTRY.items():
             svc = ChannelService()
-            with patch("ideer.reflection.resolve_class") as mock_resolve:
+            with patch("deerflow.reflection.resolve_class") as mock_resolve:
                 ch = _make_channel_mock(name, running=True)
                 mock_resolve.return_value = MagicMock(return_value=ch)
                 config: dict[str, Any] = {"enabled": True}
@@ -1005,7 +1005,7 @@ class TestCoverageCompleteness:
     @patch("app.channels.service.ChannelManager")
     @patch("app.channels.service.ChannelStore")
     @patch("app.channels.service.MessageBus")
-    @patch("ideer.reflection.resolve_class")
+    @patch("deerflow.reflection.resolve_class")
     async def test_start_channel_running_check_false_then_pop(self, mock_resolve, mock_bus_cls, mock_store_cls, mock_mgr_cls):
         """Verify the is_running=False branch pops the channel from _channels."""
         from app.channels.service import ChannelService
@@ -1059,7 +1059,7 @@ class TestCoverageCompleteness:
     @patch("app.channels.service.ChannelManager")
     @patch("app.channels.service.ChannelStore")
     @patch("app.channels.service.MessageBus")
-    @patch("ideer.reflection.resolve_class")
+    @patch("deerflow.reflection.resolve_class")
     async def test_start_channel_exception_during_start_cleans_up(self, mock_resolve, mock_bus_cls, mock_store_cls, mock_mgr_cls):
         """When channel.start() raises, the channel should be removed from _channels."""
         from app.channels.service import ChannelService
