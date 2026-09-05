@@ -11,16 +11,7 @@ from pydantic import BaseModel, Field
 
 from app.gateway.authz import require_permission
 from app.gateway.deps import get_config
-from ideer.config.app_config import AppConfig
-from ideer.config.paths import get_paths
-from ideer.runtime.user_context import get_effective_user_id
-from ideer.sandbox.sandbox_provider import SandboxProvider, get_sandbox_provider
-from ideer.uploads.code_evidence import (
-    CodeEvidencePackageError,
-    accept_package,
-    delete_package,
-)
-from ideer.uploads.manager import (
+from deerflow.uploads.manager import (
     PathTraversalError,
     UnsafeUploadPathError,
     claim_unique_filename,
@@ -33,6 +24,15 @@ from ideer.uploads.manager import (
     open_upload_file_no_symlink,
     upload_artifact_url,
     upload_virtual_path,
+)
+from ideer.config.app_config import AppConfig
+from ideer.config.paths import get_paths
+from ideer.runtime.user_context import get_effective_user_id
+from ideer.sandbox.sandbox_provider import SandboxProvider, get_sandbox_provider
+from ideer.uploads.code_evidence import (
+    CodeEvidencePackageError,
+    accept_package,
+    delete_package,
 )
 from ideer.utils.file_conversion import CONVERTIBLE_EXTENSIONS, convert_file_to_markdown
 
