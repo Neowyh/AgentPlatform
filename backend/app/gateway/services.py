@@ -262,6 +262,9 @@ def inject_authenticated_user_context(
     runtime_context["user_role"] = resolved_role or getattr(user, "system_role", None)
     runtime_context["oauth_provider"] = getattr(user, "oauth_provider", None)
     runtime_context["oauth_id"] = getattr(user, "oauth_id", None)
+    department_id = cached_identity.get("department_id") if isinstance(cached_identity, dict) else None
+    if department_id is not None:
+        runtime_context["authz_attributes"] = {"department_id": str(department_id)}
 
 
 def resolve_agent_factory(assistant_id: str | None):
