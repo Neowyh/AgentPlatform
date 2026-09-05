@@ -631,6 +631,29 @@ def _task_result_command(
     )
 
 
+def _record_run_evidence_verification(
+    *,
+    task_id: str,
+    receipts: list[dict] | None,
+    verdict: dict | None,
+) -> None:
+    """Project the terminal sub-agent receipt verdict into Run Evidence."""
+
+    try:
+        from agentplatform_extension.evidence import record_subagent_verification
+    except ImportError:
+        return
+    verified = receipts is not None and isinstance(verdict, dict) and verdict.get("citation_resolved") is True
+    record_subagent_verification(
+        {
+            "task_id": task_id,
+            "status": "VERIFIED" if verified else "UNVERIFIED",
+            "receipt_count": len(receipts) if receipts is not None else 0,
+            "receipt_verdict": dict(verdict) if isinstance(verdict, dict) else None,
+        }
+    )
+
+
 @tool("task", parse_docstring=True)
 async def task_tool(
     runtime: Runtime,
@@ -1012,6 +1035,11 @@ async def task_tool(
                 # harvest (zero stamped calls) and still gets a verdict.
                 receipts = getattr(result, "tool_receipts", None)
                 receipt_verdict = verify_receipt_citations(result.result or "", receipts) if receipts is not None else None
+                _record_run_evidence_verification(
+                    task_id=tool_call_id,
+                    receipts=receipts,
+                    verdict=receipt_verdict,
+                )
                 # RFC #4651 PR4: deterministic acceptance checklist. Runs only
                 # when the delegation carried criteria; offloaded because the
                 # file leaves perform sandbox IO. Failure-isolated like the

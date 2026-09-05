@@ -13,7 +13,7 @@ from pathlib import Path, PurePosixPath
 import yaml
 from sqlalchemy import delete, select
 
-from ideer.persistence.models.resource_catalog import (
+from app.agentplatform.resource_models import (
     Resource,
     ResourceDependency,
     ResourceProvenance,

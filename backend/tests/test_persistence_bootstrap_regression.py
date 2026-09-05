@@ -75,7 +75,7 @@ async def test_legacy_database_recovers_token_usage_column(tmp_path: Path) -> No
         with sqlite3.connect(db_path) as raw:
             cols = {row[1] for row in raw.execute("PRAGMA table_info(runs)").fetchall()}
             assert "token_usage_by_model" in cols
-            version_row = raw.execute("SELECT version_num FROM alembic_version").fetchone()
+            version_row = raw.execute("SELECT version_num FROM deerflow_alembic_version").fetchone()
             assert version_row[0] == "0018_oauth_identity_pg_partial"
 
         # And the read path that originally 500'd must now succeed.
@@ -115,7 +115,7 @@ async def test_legacy_database_with_manual_alter_still_bootstraps(tmp_path: Path
             cols = [row[1] for row in raw.execute("PRAGMA table_info(runs)").fetchall()]
             # No duplicate column -- list, not set, to catch dupes.
             assert cols.count("token_usage_by_model") == 1
-            version_row = raw.execute("SELECT version_num FROM alembic_version").fetchone()
+            version_row = raw.execute("SELECT version_num FROM deerflow_alembic_version").fetchone()
             assert version_row[0] == "0018_oauth_identity_pg_partial"
     finally:
         await close_engine()

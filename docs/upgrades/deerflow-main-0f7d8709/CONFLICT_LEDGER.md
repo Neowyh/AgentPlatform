@@ -48,8 +48,11 @@ gates in the implementation plan are closed.
 
 - `PYTHONPATH=backend:backend/packages/harness import deerflow`: **passed**.
 - `import ideer`: **still succeeds**; the final removal gate is therefore open.
-- A production inventory currently reports 26 `backend/app/**` files importing
-  `ideer`; the remaining references are concentrated in the AgentPlatform
+- A production inventory currently reports 17 `backend/app/**` files importing
+  `ideer` (including function-local imports); the remaining references are concentrated in the AgentPlatform
   control plane (resources/workflows/auth/audit/persistence) plus the
   compatibility runtime itself. This inventory is evidence for the next
   migration slices, not a permission to delete the package wholesale.
+- `scripts/check-runtime-boundary.sh` now scans both module-level and
+  function-local imports and enforces that this transitional inventory cannot
+  grow beyond the original baseline of 26 files while the slices are migrated.

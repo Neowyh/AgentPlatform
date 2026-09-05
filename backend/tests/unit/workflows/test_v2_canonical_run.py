@@ -9,9 +9,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 import ideer.persistence.models  # noqa: F401
+from app.agentplatform import rbac_models as _rbac_models  # noqa: F401
+from app.agentplatform import resource_models as _resource_models  # noqa: F401
+from app.agentplatform.resource_models import Resource, ResourceDependency, ResourceVersion, RunResourceSnapshot
+from deerflow.persistence.base import Base as DeerFlowBase
+from deerflow.persistence.models.workflow_v2 import WorkflowTaskRow, WorkflowV2RunRow
 from ideer.persistence.base import Base
-from ideer.persistence.models.resource_catalog import Resource, ResourceDependency, ResourceVersion, RunResourceSnapshot
-from ideer.persistence.models.workflow_v2 import WorkflowTaskRow, WorkflowV2RunRow
 from ideer.resources.service import ResourceAction, ResourceActor
 from ideer.workflows.v2.store import WorkflowV2Store
 
@@ -40,6 +43,7 @@ async def test_create_canonical_run_persists_snapshot_run_and_task_in_one_contra
     engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'canonical-run.db'}")
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
+        await connection.run_sync(DeerFlowBase.metadata.create_all)
     factory = async_sessionmaker(engine, expire_on_commit=False)
     workflow = _resource("workflow-id", "workflow")
     agent = _resource("agent-id", "agent")

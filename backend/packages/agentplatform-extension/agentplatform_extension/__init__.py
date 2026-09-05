@@ -20,6 +20,8 @@ from agentplatform_extension.evidence import (
     bind_run_evidence,
     build_run_evidence_envelope,
     current_run_evidence,
+    record_subagent_verification,
+    record_tool_receipt,
 )
 from agentplatform_extension.network_policy import NetworkPolicy
 
@@ -64,5 +66,7 @@ __all__ = [
     "build_run_evidence_envelope",
     "bind_run_evidence",
     "current_run_evidence",
+    "record_subagent_verification",
+    "record_tool_receipt",
     "install",
 ]

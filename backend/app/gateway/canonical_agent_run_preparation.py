@@ -42,12 +42,9 @@ async def prepare_canonical_agent_run(
 
     from sqlalchemy import select
 
-    from ideer.agents.lead_agent.agent import build_canonical_lead_agent_factory
-    from ideer.config import get_paths
-    from ideer.persistence.engine import get_session_factory
-    from ideer.persistence.models.user import UserModel, UserRole
-    from ideer.resources.runtime import CanonicalResourceLoader, ResourceRuntimeError
-    from ideer.resources.service import (
+    from app.agentplatform.rbac_models import UserModel, UserRole
+    from app.agentplatform.resource_runtime import CanonicalResourceLoader, ResourceRuntimeError, ResourceStorage
+    from app.agentplatform.resource_service import (
         ResourceAction,
         ResourceActor,
         ResourceConflict,
@@ -56,7 +53,9 @@ async def prepare_canonical_agent_run(
         ResourceService,
         VisibilityClosureError,
     )
-    from ideer.resources.storage import ResourceStorage
+    from app.agentplatform.runtime_adapter import build_canonical_agent_factory
+    from deerflow.config.paths import get_paths
+    from deerflow.persistence.engine import get_session_factory
 
     user_id = getattr(getattr(request.state, "user", None), "id", None)
     if user_id is None:
@@ -141,7 +140,7 @@ async def prepare_canonical_agent_run(
                 [(value.resource_id, value.version, value.content_hash) for value in skill_definitions],
             )
             await session.commit()
-        return build_canonical_lead_agent_factory(
+        return build_canonical_agent_factory(
             definition,
             skills,
             runner_tool_groups=actor.tool_groups,

@@ -7,8 +7,8 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from app.agentplatform.rbac_models import UserModel, UserRole
 from app.gateway.authz import get_current_rbac_user, require_role
-from ideer.persistence.models.user import UserModel, UserRole
 
 logger = logging.getLogger(__name__)
 

@@ -5,24 +5,66 @@ from __future__ import annotations
 import asyncio
 import os
 from collections.abc import Callable
-from contextlib import AbstractAsyncContextManager
+from contextlib import AbstractAsyncContextManager, contextmanager
 from functools import partial
 from typing import Any
 
 import yaml
 from langgraph.types import Command
 
+from app.agentplatform.workflow_runtime import (
+    RunRecordWriter,
+    WorkflowCancelled,
+    WorkflowGraphCompiler,
+    WorkflowInvalidRootsError,
+    WorkflowMissingInputRootsError,
+    WorkflowPaused,
+    WorkflowRunError,
+    WorkflowV2Store,
+    WorkflowWorker,
+    make_host_resolver,
+    parse_workflow_v2,
+    run_failure_payload,
+    validate_read_roots,
+    validate_workflow_roots,
+    workflow_log_root,
+    workflow_snapshot,
+)
 from deerflow.config import get_app_config
+from deerflow.persistence.engine import close_engine, get_session_factory, init_engine_from_config
+from deerflow.persistence.models.workflow_v2 import WorkflowTaskRow
 from deerflow.runtime.checkpointer.async_provider import make_checkpointer
-from ideer.persistence.engine import close_engine, get_session_factory, init_engine_from_config
-from ideer.persistence.models.workflow_v2 import WorkflowTaskRow
-from ideer.workflows.v2.compiler import WorkflowCancelled, WorkflowGraphCompiler
-from ideer.workflows.v2.errors import WorkflowInvalidRootsError, WorkflowMissingInputRootsError, WorkflowRunError, run_failure_payload
-from ideer.workflows.v2.file_roots import make_host_resolver, validate_read_roots, validate_workflow_roots, workflow_log_root
-from ideer.workflows.v2.parser import parse_workflow_v2
-from ideer.workflows.v2.run_record import RunRecordWriter
-from ideer.workflows.v2.store import WorkflowV2Store
-from ideer.workflows.v2.worker import WorkflowPaused, WorkflowWorker, workflow_snapshot
+
+
+@contextmanager
+def _workflow_run_evidence_context(run: Any):
+    """Bind persisted canonical Run Evidence while the graph is executing."""
+
+    from agentplatform_extension.evidence import AuthorizationContext, RunEvidenceBinding, bind_run_evidence
+
+    snapshot = run.snapshot if isinstance(run.snapshot, dict) else {}
+    evidence = snapshot.get("run_evidence")
+    if not isinstance(evidence, dict):
+        yield
+        return
+    authorization = evidence.get("authorization_context")
+    if not isinstance(authorization, dict):
+        yield
+        return
+    binding = RunEvidenceBinding(
+        snapshots=tuple(evidence.get("resource_snapshots", ())),
+        authorization=AuthorizationContext(
+            caller_user_id=str(authorization.get("caller_user_id", run.created_by)),
+            effective_agent_id=str(authorization.get("effective_agent_id", run.workflow_resource_id or run.workflow_name)),
+            policy_revision=str(authorization.get("policy_revision", evidence.get("policy_revision", "runtime-default"))),
+            allowed_tools=tuple(str(value) for value in authorization.get("allowed_tools", ())),
+            memory_scope=str(authorization.get("memory_scope", run.created_by)),
+        ),
+        runtime_assembly_fingerprint=evidence.get("runtime_assembly_fingerprint"),
+        trace_id=evidence.get("trace_id"),
+    )
+    with bind_run_evidence(binding):
+        yield
 
 
 async def load_workflow_definition_for_run(run: Any, store: Any, session_factory: Any, storage: Any) -> dict:
@@ -32,7 +74,7 @@ async def load_workflow_definition_for_run(run: Any, store: Any, session_factory
     if workflow_resource_id:
         if session_factory is None or storage is None:
             raise RuntimeError("canonical workflow run requires catalog persistence and storage")
-        from ideer.resources.runtime import CanonicalResourceLoader
+        from app.agentplatform.resource_runtime import CanonicalResourceLoader
 
         async with session_factory() as session:
             frozen = await CanonicalResourceLoader(session, storage).load_workflow(run.run_id, workflow_resource_id)
@@ -48,10 +90,10 @@ async def build_canonical_registry(run: Any, config: Any, session_factory: Any, 
 
     from sqlalchemy import select
 
-    from ideer.persistence.models.resource_catalog import Resource, RunResourceSnapshot
-    from ideer.resources.runtime import CanonicalResourceLoader
-    from ideer.tools.tools import get_available_tools
-    from ideer.workflows.v2.adapters import ActionAdapterRegistry, _CanonicalAgentAdapter, _ToolAdapter
+    from app.agentplatform.resource_models import Resource, RunResourceSnapshot
+    from app.agentplatform.resource_runtime import CanonicalResourceLoader
+    from app.agentplatform.workflow_runtime import ActionAdapterRegistry, _CanonicalAgentAdapter, _ToolAdapter
+    from deerflow.tools.tools import get_available_tools
 
     if session_factory is None:
         raise RuntimeError("canonical workflow run requires catalog persistence")
@@ -118,8 +160,8 @@ async def execute_workflow_task(
         raise RuntimeError(f"workflow run '{run_id}' not found")
     storage = None
     if run.workflow_resource_id:
+        from app.agentplatform.resource_runtime import ResourceStorage
         from deerflow.config.paths import get_paths
-        from ideer.resources.storage import ResourceStorage
 
         storage = ResourceStorage(get_paths().base_dir)
     definition_payload = await load_workflow_definition_for_run(
@@ -172,37 +214,46 @@ async def execute_workflow_task(
             max_events=event_limit,
         )
 
-    async with checkpointer_factory(config) as checkpointer:
-        graph = WorkflowGraphCompiler(
-            definition,
-            adapters,
-            emit_event=emit_event,
-            is_cancelled=lambda: store.is_cancel_requested(run_id),
-            node_timeout_seconds=config.workflow_runtime.node_timeout_seconds,
-            artifact_resolver=make_host_resolver(run_id, run.created_by),
-        ).compile(checkpointer=checkpointer)
-        try:
-            invalid_roots = validate_workflow_roots(definition.nodes, run.inputs)
-            if invalid_roots:
-                raise WorkflowInvalidRootsError(invalid_roots)
-            missing_read_roots = validate_read_roots(definition.nodes, run.inputs, make_host_resolver(run_id, run.created_by))
-            if missing_read_roots:
-                raise WorkflowMissingInputRootsError(missing_read_roots)
-            await emit_event("resumed" if task.resume_command_id is not None else "run_started", {"definition_version": run.definition_version})
-            result = await graph.ainvoke(
-                invocation,
-                config={
-                    "configurable": {"thread_id": run.checkpoint_thread_id},
-                    "max_concurrency": config.workflow_runtime.max_parallel_actions,
-                },
-            )
-        except WorkflowCancelled as exc:
-            await emit_terminal_event("run_cancelled", {"error": str(exc)})
-            raise
-        except Exception as exc:
-            await emit_terminal_event("run_failed", run_failure_payload(exc))
-            raise
+    runtime_evidence = None
+    with _workflow_run_evidence_context(run):
+        async with checkpointer_factory(config) as checkpointer:
+            graph = WorkflowGraphCompiler(
+                definition,
+                adapters,
+                emit_event=emit_event,
+                is_cancelled=lambda: store.is_cancel_requested(run_id),
+                node_timeout_seconds=config.workflow_runtime.node_timeout_seconds,
+                artifact_resolver=make_host_resolver(run_id, run.created_by),
+            ).compile(checkpointer=checkpointer)
+            try:
+                invalid_roots = validate_workflow_roots(definition.nodes, run.inputs)
+                if invalid_roots:
+                    raise WorkflowInvalidRootsError(invalid_roots)
+                missing_read_roots = validate_read_roots(definition.nodes, run.inputs, make_host_resolver(run_id, run.created_by))
+                if missing_read_roots:
+                    raise WorkflowMissingInputRootsError(missing_read_roots)
+                await emit_event("resumed" if task.resume_command_id is not None else "run_started", {"definition_version": run.definition_version})
+                result = await graph.ainvoke(
+                    invocation,
+                    config={
+                        "configurable": {"thread_id": run.checkpoint_thread_id},
+                        "max_concurrency": config.workflow_runtime.max_parallel_actions,
+                    },
+                )
+            except WorkflowCancelled as exc:
+                await emit_terminal_event("run_cancelled", {"error": str(exc)})
+                raise
+            except Exception as exc:
+                await emit_terminal_event("run_failed", run_failure_payload(exc))
+                raise
+        from agentplatform_extension.evidence import current_run_evidence
+
+        binding = current_run_evidence()
+        if binding is not None:
+            runtime_evidence = binding.as_mapping()
     snapshot = workflow_snapshot(result)
+    if runtime_evidence is not None:
+        snapshot["run_evidence"] = runtime_evidence
     if not await store.update_snapshot(run_id, snapshot, worker_id=task.lease_owner):
         return
     if "__interrupt__" in result:

@@ -11,7 +11,7 @@ from enum import StrEnum
 from sqlalchemy import Select, delete, func, or_, select, tuple_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ideer.persistence.models.resource_catalog import (
+from app.agentplatform.resource_models import (
     Resource,
     ResourceDependency,
     ResourceDraft,
@@ -23,8 +23,8 @@ from ideer.persistence.models.resource_catalog import (
     ResourceVersion,
     RunResourceSnapshot,
 )
+from deerflow.persistence.models.workflow_v2 import WorkflowCommandRow, WorkflowTaskRow, WorkflowV2RunRow
 from ideer.persistence.models.visibility_application import VisibilityApplication
-from ideer.persistence.models.workflow_v2 import WorkflowCommandRow, WorkflowTaskRow, WorkflowV2RunRow
 
 
 class ResourceAction(StrEnum):
@@ -534,7 +534,7 @@ class ResourceService:
         return repaired_ids
 
     async def _notify_super_admins(self, resource_id: str, *, event: str, detail: dict) -> None:
-        from ideer.persistence.models.user import UserModel, UserRole
+        from app.agentplatform.rbac_models import UserModel, UserRole
 
         admins = list((await self.session.execute(select(UserModel.id).where(UserModel.role == UserRole.SUPER_ADMIN.value))).scalars())
         for admin_id in admins:

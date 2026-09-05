@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import logging
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
@@ -12,7 +14,7 @@ from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy import delete as sql_delete
 from sqlalchemy.exc import OperationalError
 
-from ideer.persistence.models.workflow_v2 import (
+from deerflow.persistence.models.workflow_v2 import (
     WorkflowCommandRow,
     WorkflowDefinitionVersionRow,
     WorkflowLeaseAuditRow,
@@ -22,6 +24,56 @@ from ideer.persistence.models.workflow_v2 import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _canonical_run_evidence(snapshots, actor, workflow_resource_id: str) -> dict:
+    """Project immutable resource and caller identity into the Run snapshot.
+
+    ``WorkflowV2RunRow.snapshot`` is also used for mutable recovery state, so
+    the evidence projection is deliberately nested under ``run_evidence`` and
+    preserved by :func:`_merge_recovery_snapshot`.  Only UUID/version/hash and
+    caller authorization data cross this boundary; owner credentials never do.
+    """
+
+    resource_snapshots = [
+        {
+            "resource_id": snapshot.resource_id,
+            "version": snapshot.version,
+            "content_hash": snapshot.content_hash,
+            "selection_role": snapshot.selection_role,
+        }
+        for snapshot in snapshots
+    ]
+    policy_revision = str(max(snapshot.authz_revision for snapshot in snapshots))
+    allowed_tools = sorted(actor.tool_groups) if actor.tool_groups is not None else []
+    fingerprint_payload = {
+        "workflow_resource_id": workflow_resource_id,
+        "resource_snapshots": resource_snapshots,
+        "allowed_tools": allowed_tools,
+    }
+    runtime_assembly_fingerprint = hashlib.sha256(json.dumps(fingerprint_payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    return {
+        "resource_snapshots": resource_snapshots,
+        "authorization_context": {
+            "caller_user_id": actor.user_id,
+            "effective_agent_id": workflow_resource_id,
+            "policy_revision": policy_revision,
+            "allowed_tools": allowed_tools,
+            "memory_scope": actor.user_id,
+        },
+        "policy_revision": policy_revision,
+        "runtime_assembly_fingerprint": runtime_assembly_fingerprint,
+    }
+
+
+def _merge_recovery_snapshot(existing: dict | None, recovery: dict) -> dict:
+    """Merge mutable checkpoint state without dropping immutable run evidence."""
+
+    preserved = existing.get("run_evidence") if isinstance(existing, dict) else None
+    merged = dict(recovery)
+    if preserved is not None:
+        merged["run_evidence"] = preserved
+    return merged
 
 
 def _validated_canonical_inputs(definition: dict, submitted: dict, run_id: str, user_id: str) -> dict:
@@ -319,7 +371,7 @@ class WorkflowV2Store:
                 status="queued",
                 inputs=inputs,
                 model_name=model_name,
-                snapshot={},
+                snapshot={"run_evidence": _canonical_run_evidence(snapshots, actor, workflow_resource_id)},
                 runner_tool_groups=sorted(actor.tool_groups) if actor.tool_groups is not None else None,
                 created_by=actor.user_id,
                 department_id=actor.department_id,
@@ -438,7 +490,10 @@ class WorkflowV2Store:
                 WorkflowTaskRow.lease_owner == worker_id,
                 WorkflowTaskRow.lease_expires_at > now,
             )
-            result = await session.execute(update(WorkflowV2RunRow).where(WorkflowV2RunRow.run_id == run_id, owned_task.exists()).values(snapshot=snapshot))
+            current = await session.get(WorkflowV2RunRow, run_id)
+            if current is None:
+                return False
+            result = await session.execute(update(WorkflowV2RunRow).where(WorkflowV2RunRow.run_id == run_id, owned_task.exists()).values(snapshot=_merge_recovery_snapshot(current.snapshot, snapshot)))
             if result.rowcount != 1:
                 return False
             await session.commit()

@@ -23,25 +23,19 @@ from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from starlette.background import BackgroundTask
 
-from app.gateway.audit import record_audit
-from app.gateway.authz import get_current_rbac_user
-from deerflow.config.app_config import get_app_config
-from deerflow.uploads.manager import claim_unique_filename, normalize_filename, open_upload_file_no_symlink
-from ideer.config import get_paths
-from ideer.persistence.engine import get_session_factory
-from ideer.persistence.models.resource_catalog import (
-    Resource,
-    ResourceFavorite,
-    ResourceNotification,
-    ResourceVersion,
-    RunResourceSnapshot,
+from app.agentplatform.code_evidence import CodeEvidencePackageError, PackageManifest, accept_package
+from app.agentplatform.rbac_models import UserModel, UserRole
+from app.agentplatform.resource_models import Resource, ResourceFavorite, ResourceNotification, ResourceVersion, RunResourceSnapshot
+from app.agentplatform.resource_runtime import (
+    ResourcePublisher,
+    ResourceStorage,
+    StorageConflict,
+    StorageValidationError,
+    build_retention_report,
+    load_validated_agent_definition,
+    write_agent_draft_source,
 )
-from ideer.persistence.models.user import UserModel, UserRole
-from ideer.persistence.models.workflow_v2 import WorkflowV2RunRow
-from ideer.resources.publisher import ResourcePublisher, write_agent_draft_source
-from ideer.resources.retention import build_retention_report
-from ideer.resources.runtime import load_validated_agent_definition
-from ideer.resources.service import (
+from app.agentplatform.resource_service import (
     ResourceAction,
     ResourceActor,
     ResourceApprovalRequired,
@@ -51,18 +45,23 @@ from ideer.resources.service import (
     ResourceService,
     VisibilityClosureError,
 )
-from ideer.resources.storage import ResourceStorage, StorageConflict, StorageValidationError
-from ideer.skills.validation import _validate_skill_frontmatter
-from ideer.uploads.code_evidence import CodeEvidencePackageError, PackageManifest, accept_package
-from ideer.workflows.v2.errors import WorkflowRunError
-from ideer.workflows.v2.file_roots import (
+from app.agentplatform.workflow_runtime import (
+    WorkflowRunError,
+    WorkflowV2Store,
     collect_artifacts,
     make_host_resolver,
+    parse_workflow_v2,
     render_roots,
     workflow_record_path,
 )
-from ideer.workflows.v2.parser import parse_workflow_v2
-from ideer.workflows.v2.store import WorkflowV2Store
+from app.gateway.audit import record_audit
+from app.gateway.authz import get_current_rbac_user
+from deerflow.config.app_config import get_app_config
+from deerflow.config.paths import get_paths
+from deerflow.persistence.engine import get_session_factory
+from deerflow.persistence.models.workflow_v2 import WorkflowV2RunRow
+from deerflow.skills.validation import _validate_skill_frontmatter
+from deerflow.uploads.manager import claim_unique_filename, normalize_filename, open_upload_file_no_symlink
 
 router = APIRouter(prefix="/api/resources", tags=["resources"])
 
@@ -713,8 +712,8 @@ async def import_skill_resource(
     current_user: UserModel = Depends(get_current_rbac_user),
 ) -> dict[str, Any]:
     """Import a validated .skill archive into the canonical catalog."""
-    from ideer.skills.parser import parse_skill_file
-    from ideer.skills.types import SkillCategory
+    from deerflow.skills.parser import parse_skill_file
+    from deerflow.skills.types import SkillCategory
 
     storage = ResourceStorage(get_paths().base_dir)
     archive_path: Path | None = None
@@ -879,8 +878,8 @@ async def get_published_resource(
             )
             payload["content"] = {"config": config.model_dump(mode="json"), "soul": soul}
         else:
-            from ideer.skills.parser import parse_skill_file
-            from ideer.skills.types import SkillCategory
+            from deerflow.skills.parser import parse_skill_file
+            from deerflow.skills.types import SkillCategory
 
             skill = await asyncio.to_thread(
                 parse_skill_file,

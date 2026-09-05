@@ -18,7 +18,7 @@ from pathlib import Path
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ideer.persistence.models.resource_catalog import (
+from app.agentplatform.resource_models import (
     Resource,
     ResourceDependency,
     ResourceType,

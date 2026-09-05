@@ -81,9 +81,15 @@ class RunEvidenceBinding:
     authorization: AuthorizationContext
     runtime_assembly_fingerprint: str | None = None
     trace_id: str | None = None
+    tool_receipts: tuple[Mapping[str, Any], ...] = ()
+    subagent_verification: tuple[Mapping[str, Any], ...] = ()
+    artifact_receipts: tuple[Mapping[str, Any], ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "snapshots", tuple(self.snapshots))
+        object.__setattr__(self, "tool_receipts", tuple(dict(item) for item in self.tool_receipts))
+        object.__setattr__(self, "subagent_verification", tuple(dict(item) for item in self.subagent_verification))
+        object.__setattr__(self, "artifact_receipts", tuple(dict(item) for item in self.artifact_receipts))
 
     def as_mapping(self) -> dict[str, Any]:
         """Return the caller-safe projection suitable for Run metadata.
@@ -98,6 +104,9 @@ class RunEvidenceBinding:
             "runtime_assembly_fingerprint": self.runtime_assembly_fingerprint,
             "trace_id": self.trace_id,
             "policy_revision": self.authorization.policy_revision,
+            "tool_receipts": list(self.tool_receipts),
+            "subagent_verification": list(self.subagent_verification),
+            "artifact_receipts": list(self.artifact_receipts),
         }
 
 
@@ -120,6 +129,32 @@ def bind_run_evidence(binding: RunEvidenceBinding) -> Iterator[None]:
 def current_run_evidence() -> RunEvidenceBinding | None:
     """Return the binding inherited by the current async task, if any."""
     return _run_evidence_binding.get()
+
+
+def _append_evidence_item(field: str, item: Mapping[str, Any]) -> None:
+    """Append runtime-owned evidence to the current binding, if one exists."""
+
+    binding = current_run_evidence()
+    if binding is None:
+        return
+    values = list(getattr(binding, field))
+    normalized = dict(item)
+    if normalized in values:
+        return
+    values.append(normalized)
+    _run_evidence_binding.set(replace(binding, **{field: tuple(values)}))
+
+
+def record_tool_receipt(receipt: Mapping[str, Any]) -> None:
+    """Record a runtime-stamped tool receipt in the active Run envelope."""
+
+    _append_evidence_item("tool_receipts", receipt)
+
+
+def record_subagent_verification(verification: Mapping[str, Any]) -> None:
+    """Record a sub-agent verification verdict in the active Run envelope."""
+
+    _append_evidence_item("subagent_verification", verification)
 
 
 class EvidenceLifecycleContributor:
@@ -171,7 +206,16 @@ class EvidenceLifecycleContributor:
         del app_store, info
         envelope = task_store.get(RunEvidenceEnvelope)
         if envelope is not None:
-            task_store.set(replace(envelope, outcome=outcome))
+            binding = current_run_evidence()
+            task_store.set(
+                replace(
+                    envelope,
+                    outcome=outcome,
+                    tool_receipts=binding.tool_receipts if binding is not None else envelope.tool_receipts,
+                    subagent_verification=binding.subagent_verification if binding is not None else envelope.subagent_verification,
+                    artifact_receipts=binding.artifact_receipts if binding is not None else envelope.artifact_receipts,
+                )
+            )
 
 
 def _normalize_snapshots(snapshots: Iterable[ResourceSnapshotRef | Mapping[str, Any]]) -> tuple[dict[str, Any], ...]:

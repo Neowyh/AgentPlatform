@@ -117,6 +117,11 @@ def get_configured_cors_origins() -> set[str]:
     return _configured_cors_origins()
 
 
+# Run-creating routes return the run id in this non-safelisted response header;
+# split-origin browser clients need it exposed for the LangGraph SDK.
+CORS_EXPOSED_HEADERS: tuple[str, ...] = ("Content-Location",)
+
+
 def _first_header_value(value: str | None) -> str | None:
     """Return the first value from a comma-separated proxy header."""
     if not value:

@@ -14,10 +14,11 @@ from app.agentplatform.memory_adapter import (
     reload_memory_data,
     update_memory_fact,
 )
+from app.agentplatform.rbac_models import UserModel, UserRole
 from app.gateway.authz import get_current_rbac_user, require_role
+from deerflow.agents.memory import MemoryConflictError, MemoryCorruptionError
 from deerflow.config.memory_config import get_memory_config
 from deerflow.runtime.user_context import get_effective_user_id
-from ideer.persistence.models.user import UserModel, UserRole
 
 router = APIRouter(prefix="/api", tags=["memory"])
 
@@ -74,6 +75,14 @@ def _map_memory_fact_value_error(exc: ValueError) -> HTTPException:
     else:
         detail = "Memory fact content cannot be empty."
     return HTTPException(status_code=400, detail=detail)
+
+
+def _memory_not_supported(operation: str) -> HTTPException:
+    """Expose an unsupported optional MemoryManager capability as HTTP 501."""
+    return HTTPException(
+        status_code=501,
+        detail=f"Memory operation '{operation}' is not supported by the configured backend.",
+    )
 
 
 class FactCreateRequest(BaseModel):
@@ -177,7 +186,12 @@ async def get_memory() -> MemoryResponse:
         }
         ```
     """
-    memory_data = get_memory_data(user_id=get_effective_user_id())
+    try:
+        memory_data = get_memory_data(user_id=get_effective_user_id())
+    except MemoryCorruptionError as exc:
+        raise HTTPException(status_code=500, detail="Stored memory data is corrupted.") from exc
+    except NotImplementedError as exc:
+        raise _memory_not_supported("read") from exc
     return MemoryResponse(**memory_data)
 
 
@@ -200,7 +214,10 @@ async def reload_memory(
     Returns:
         The reloaded memory data.
     """
-    memory_data = reload_memory_data(user_id=get_effective_user_id())
+    try:
+        memory_data = reload_memory_data(user_id=get_effective_user_id())
+    except NotImplementedError as exc:
+        raise _memory_not_supported("reload") from exc
     return MemoryResponse(**memory_data)
 
 
@@ -218,6 +235,8 @@ async def clear_memory(
     """Clear all persisted memory data."""
     try:
         memory_data = clear_memory_data(user_id=get_effective_user_id())
+    except NotImplementedError as exc:
+        raise _memory_not_supported("clear") from exc
     except OSError as exc:
         raise HTTPException(status_code=500, detail="Failed to clear memory data.") from exc
 
@@ -246,6 +265,10 @@ async def create_memory_fact_endpoint(
         )
     except ValueError as exc:
         raise _map_memory_fact_value_error(exc) from exc
+    except MemoryConflictError as exc:
+        raise HTTPException(status_code=409, detail="Memory changed concurrently; reload and retry.") from exc
+    except NotImplementedError as exc:
+        raise _memory_not_supported("create_fact") from exc
     except OSError as exc:
         raise HTTPException(status_code=500, detail="Failed to create memory fact.") from exc
 
@@ -269,6 +292,8 @@ async def delete_memory_fact_endpoint(
         memory_data = delete_memory_fact(fact_id, user_id=get_effective_user_id())
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=f"Memory fact '{fact_id}' not found.") from exc
+    except NotImplementedError as exc:
+        raise _memory_not_supported("delete_fact") from exc
     except OSError as exc:
         raise HTTPException(status_code=500, detail="Failed to delete memory fact.") from exc
 
@@ -299,6 +324,10 @@ async def update_memory_fact_endpoint(
         )
     except ValueError as exc:
         raise _map_memory_fact_value_error(exc) from exc
+    except MemoryConflictError as exc:
+        raise HTTPException(status_code=409, detail="Memory changed concurrently; reload and retry.") from exc
+    except NotImplementedError as exc:
+        raise _memory_not_supported("update_fact") from exc
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=f"Memory fact '{fact_id}' not found.") from exc
     except OSError as exc:
@@ -316,7 +345,12 @@ async def update_memory_fact_endpoint(
 )
 async def export_memory() -> MemoryResponse:
     """Export the current memory data."""
-    memory_data = get_memory_data(user_id=get_effective_user_id())
+    try:
+        memory_data = get_memory_data(user_id=get_effective_user_id())
+    except MemoryCorruptionError as exc:
+        raise HTTPException(status_code=500, detail="Stored memory data is corrupted.") from exc
+    except NotImplementedError as exc:
+        raise _memory_not_supported("export") from exc
     return MemoryResponse(**memory_data)
 
 
@@ -335,6 +369,8 @@ async def import_memory(
     """Import and persist memory data."""
     try:
         memory_data = import_memory_data(request.model_dump(), user_id=get_effective_user_id())
+    except NotImplementedError as exc:
+        raise _memory_not_supported("import") from exc
     except OSError as exc:
         raise HTTPException(status_code=500, detail="Failed to import memory data.") from exc
 
@@ -384,7 +420,12 @@ async def get_memory_status() -> MemoryStatusResponse:
         Combined memory configuration and current data.
     """
     config = get_memory_config()
-    memory_data = get_memory_data(user_id=get_effective_user_id())
+    try:
+        memory_data = get_memory_data(user_id=get_effective_user_id())
+    except MemoryCorruptionError as exc:
+        raise HTTPException(status_code=500, detail="Stored memory data is corrupted.") from exc
+    except NotImplementedError as exc:
+        raise _memory_not_supported("status") from exc
 
     return MemoryStatusResponse(
         config=_memory_config_response(config),

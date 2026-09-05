@@ -6,8 +6,8 @@ import json
 import logging
 import uuid
 
-from ideer.persistence.engine import get_session_factory
-from ideer.persistence.models.audit_log import AuditLog
+from app.agentplatform.audit_model import AuditLog
+from deerflow.persistence.engine import get_session_factory
 
 logger = logging.getLogger(__name__)
 

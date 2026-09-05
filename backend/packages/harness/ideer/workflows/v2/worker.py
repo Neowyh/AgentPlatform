@@ -7,7 +7,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from ideer.persistence.models.workflow_v2 import WorkflowTaskRow
+from deerflow.persistence.models.workflow_v2 import WorkflowTaskRow
 
 from .errors import run_error_summary
 from .store import WorkflowV2Store

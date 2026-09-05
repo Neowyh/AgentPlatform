@@ -12,6 +12,7 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
+from app.agentplatform.rbac_models import UserModel, UserRole
 from app.gateway.auth import (
     UserResponse,
     create_access_token,
@@ -21,8 +22,7 @@ from app.gateway.auth.errors import AuthErrorCode, AuthErrorResponse
 from app.gateway.csrf_middleware import is_secure_request
 from app.gateway.deps import get_current_user_from_request, get_local_provider
 from app.gateway.rbac_users import create_auth_user_with_rbac
-from ideer.persistence.engine import get_session_factory
-from ideer.persistence.models.user import UserModel, UserRole
+from deerflow.persistence.engine import get_session_factory
 
 logger = logging.getLogger(__name__)
 

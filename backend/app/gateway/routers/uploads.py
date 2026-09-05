@@ -9,6 +9,11 @@ import zipfile
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field
 
+from app.agentplatform.code_evidence import (
+    CodeEvidencePackageError,
+    accept_package,
+    delete_package,
+)
 from app.gateway.authz import require_permission
 from app.gateway.deps import get_config
 from deerflow.config.app_config import AppConfig
@@ -30,11 +35,6 @@ from deerflow.uploads.manager import (
     upload_virtual_path,
 )
 from deerflow.utils.file_conversion import CONVERTIBLE_EXTENSIONS, convert_file_to_markdown
-from ideer.uploads.code_evidence import (
-    CodeEvidencePackageError,
-    accept_package,
-    delete_package,
-)
 
 logger = logging.getLogger(__name__)
 

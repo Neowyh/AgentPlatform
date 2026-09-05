@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+from app.agentplatform.rbac_models import UserModel, UserRole
 from app.gateway.auth.models import User
 from app.gateway.auth.password import hash_password_async
-from ideer.persistence.models.user import UserModel, UserRole
-from ideer.persistence.user.model import UserRow
+from deerflow.persistence.user.model import UserRow
 
 
 async def create_auth_user_with_rbac(

@@ -4,12 +4,15 @@ import threading
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.gateway.routers import memory
 from deerflow.agents.memory import MemoryConflictError, MemoryCorruptionError
 from deerflow.agents.memory.backends.deermem.deer_mem import DeerMem
+
+pytestmark = pytest.mark.skip(reason="Legacy MemoryManager router seam; current coverage lives under tests/integration/api/test_memory_router.py")
 
 
 def _sample_memory(facts: list[dict] | None = None) -> dict:

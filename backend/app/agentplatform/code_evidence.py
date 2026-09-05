@@ -1,8 +1,8 @@
-"""Thread-private, read-only code evidence package handling.
+"""Thread-private Code Evidence package handling.
 
-This module deliberately has no FastAPI dependencies.  ZIP processing is
-performed before the package is made visible, and callers receive a manifest
-that distinguishes accepted, excluded, and rejected members.
+Code Evidence is an AgentPlatform product capability.  It validates and
+extracts ZIP packages before publishing them under the caller's private
+thread directory; the runtime only receives the resulting manifest/path.
 """
 
 from __future__ import annotations
@@ -18,14 +18,13 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import BinaryIO
 
-from ideer.config.paths import get_paths
-from ideer.runtime.user_context import get_effective_user_id
+from deerflow.config.paths import get_paths
+from deerflow.runtime.user_context import get_effective_user_id
 
 MAX_COMPRESSED_SIZE = 200 * 1024 * 1024
 MAX_EXPANDED_SIZE = 1024 * 1024 * 1024
 MAX_MEMBERS = 20_000
 MAX_COMPRESSION_RATIO = 200
-
 _EXCLUDED_PARTS = {".git", ".svn", "node_modules", "__pycache__", "build", "dist", "target", ".cache"}
 _BINARY_SUFFIXES = {".a", ".so", ".dll", ".dylib", ".o", ".obj", ".exe", ".bin", ".elf"}
 
@@ -62,7 +61,7 @@ class PackageManifest:
 
 
 def package_root(thread_id: str, package_id: str, *, user_id: str | None = None) -> Path:
-    """Return a validated package root under the owning Thread."""
+    """Return a validated package root under the owning thread."""
     if not package_id or Path(package_id).name != package_id:
         raise ValueError("Invalid package id")
     owner = user_id if user_id is not None else get_effective_user_id()
@@ -78,12 +77,7 @@ def _member_path(info: zipfile.ZipInfo) -> PurePosixPath:
 
 
 def _is_symlink(info: zipfile.ZipInfo) -> bool:
-    mode = (info.external_attr >> 16) & 0xFFFF
-    return stat.S_ISLNK(mode)
-
-
-def _is_excluded(path: PurePosixPath) -> bool:
-    return any(part in _EXCLUDED_PARTS for part in path.parts)
+    return stat.S_ISLNK((info.external_attr >> 16) & 0xFFFF)
 
 
 def _preflight(archive: zipfile.ZipFile) -> tuple[list[tuple[zipfile.ZipInfo, PurePosixPath]], list[str], list[dict[str, str]], int]:
@@ -113,7 +107,7 @@ def _preflight(archive: zipfile.ZipFile) -> tuple[list[tuple[zipfile.ZipInfo, Pu
         expanded += info.file_size
         if expanded > MAX_EXPANDED_SIZE:
             raise CodeEvidencePackageError(f"Archive expands beyond {MAX_EXPANDED_SIZE} bytes")
-        if info.is_dir() or _is_excluded(path):
+        if info.is_dir() or any(part in _EXCLUDED_PARTS for part in path.parts):
             excluded.append(path.as_posix())
         elif path.suffix.lower() in _BINARY_SUFFIXES:
             rejected.append({"path": path.as_posix(), "reason": "Binary target is not accepted"})
@@ -127,14 +121,8 @@ def _write_manifest(root: Path, manifest: PackageManifest) -> None:
     (root / "manifest.json").write_text(json.dumps(manifest.as_dict(), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
-def accept_package(
-    source: BinaryIO,
-    *,
-    thread_id: str,
-    original_filename: str,
-    max_compressed_size: int = MAX_COMPRESSED_SIZE,
-) -> tuple[PackageManifest, Path]:
-    """Validate and atomically extract one ZIP package for a Thread."""
+def accept_package(source: BinaryIO, *, thread_id: str, original_filename: str, max_compressed_size: int = MAX_COMPRESSED_SIZE) -> tuple[PackageManifest, Path]:
+    """Validate and atomically extract one ZIP package for a thread."""
     if not original_filename.lower().endswith(".zip"):
         raise CodeEvidencePackageError("Code Evidence Package must be a ZIP archive")
     thread_root = get_paths().thread_dir(thread_id, user_id=get_effective_user_id()) / "user-data" / "code-evidence"
@@ -175,9 +163,8 @@ def accept_package(
 
 
 def read_manifest(thread_id: str, package_id: str) -> dict:
-    root = package_root(thread_id, package_id)
     try:
-        return json.loads((root / "manifest.json").read_text(encoding="utf-8"))
+        return json.loads((package_root(thread_id, package_id) / "manifest.json").read_text(encoding="utf-8"))
     except FileNotFoundError as exc:
         raise FileNotFoundError(package_id) from exc
 

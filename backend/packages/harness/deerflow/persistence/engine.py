@@ -158,14 +158,13 @@ async def init_engine(
         # behave identically.
         @event.listens_for(_engine.sync_engine, "connect")
         def _enable_sqlite_wal(dbapi_conn, _record):  # noqa: ARG001 — SQLAlchemy contract
-            cursor = dbapi_conn.cursor()
-            try:
-                cursor.execute("PRAGMA journal_mode=WAL;")
-                cursor.execute("PRAGMA synchronous=NORMAL;")
-                cursor.execute("PRAGMA foreign_keys=ON;")
-                cursor.execute("PRAGMA busy_timeout=30000;")
-            finally:
-                cursor.close()
+            # aiosqlite's adapted DB-API connection cannot execute sync
+            # cursor calls from SQLAlchemy's connect hook; bridge back to its
+            # native async connection instead.
+            async def _configure(connection):
+                await connection.executescript("PRAGMA journal_mode=WAL;PRAGMA synchronous=NORMAL;PRAGMA foreign_keys=ON;PRAGMA busy_timeout=30000;")
+
+            dbapi_conn.run_async(_configure)
     elif backend == "postgres":
         from deerflow.persistence.postgres_schema import build_asyncpg_connect_args
 

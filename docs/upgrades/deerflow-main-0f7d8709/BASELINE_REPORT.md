@@ -66,10 +66,14 @@ migration and air-gapped installation are still pending and are release gates.
 
 ## Runtime Foundation focused evidence
 
-The branch still has 150 textual `ideer` imports under `backend/app`,
-`backend/scripts` and the AgentPlatform-facing harness adapters. This is an
-inventory signal only; the final `import ideer` failure gate is intentionally
-not claimed until the Workflow/resource control-plane extraction is complete.
+The branch still has 46 textual `ideer` imports under `backend/app`,
+`backend/scripts` and the AgentPlatform-facing harness adapters, concentrated
+in the transitional Workflow V2 and Resource runtime seams. Gateway callers
+now use the AgentPlatform ResourceService, Resource runtime, and Workflow V2
+runtime seams, leaving 4 direct production `ideer` import files under
+`backend/app`. This is an inventory signal only;
+the final `import ideer` failure gate is intentionally not claimed until the
+Workflow/resource control-plane extraction is complete.
 
 The following focused slices are green on this branch:
 
@@ -256,6 +260,34 @@ The following focused slices are green on this branch:
   output for over 30 seconds and was interrupted. It must be rerun with an
   initialized test database and unrestricted async SQLite executor before the
   Workflow row can close.
+- Business-package checks: the offline SRS smoke flow completed with
+  `ALL CHECKS PASSED` and generated both DOCX artifacts plus the traceability
+  catalog. Fault-zeroing acceptance was started for one case but entered the
+  restricted async worker path without output and was interrupted.
+- Intranet/offline delivery checks remain blocked by environment prerequisites:
+  `scripts/check-intranet.sh` reports missing Docker Compose v2, images and
+  `env.intranet`; `scripts/package-intranet-offline.sh` exits immediately with
+  `docker compose v2 is required`.
+- Canonical Agent preparation now routes the legacy factory through the
+  AgentPlatform control-plane adapter `app.agentplatform.runtime_adapter`; the
+  Gateway no longer imports the `ideer` lead-agent factory directly. The
+  adapter delegation regression passed (1 test) and Ruff checks passed. The
+  adapter is intentionally a bridge, not final DeerFlow parity; the canonical
+  preparation database lane remains incomplete.
+- Migration inventory remains split across two independent Alembic trees:
+  AgentPlatform `20260828_run_snapshot_selection_role` and DeerFlow
+  `0018_oauth_identity_pg_partial` each report a head. No merge revision or
+  PostgreSQL/fresh-install validation has been performed yet, so the migration
+  gate remains open.
+- Memory Router now maps optional-backend capability gaps to stable HTTP 501,
+  hides corruption details behind HTTP 500, and preserves conflict semantics
+  at the AgentPlatform adapter seam. The async edge-case regression file passed
+  (13 tests).
+- The pre-migration `backend/tests/test_memory_router.py` module is now
+  explicitly marked legacy and skipped (29 tests); its patch seam targeted the
+  removed `get_memory_manager` symbol. Current Memory API coverage remains in
+  `tests/integration/api/test_memory_router.py` and the adapter/edge-case
+  suites, so no compatibility shim was added to production code.
 
 These results establish the next-stage baseline but do not close the semantic
 ledger rows. Shared-resource, workflow receipt, migration, offline and fresh
@@ -265,3 +297,228 @@ The selected V2 workflow integration group was started with the same cache
 override but produced no test output within 60 seconds and was interrupted.
 It is therefore recorded as incomplete (not passed); database-backed workflow
 validation needs a dedicated follow-up with an initialized test database.
+
+The isolated `tests/unit/workflows/test_v2_runtime_config.py` contract passed
+(1 test) when pytest plugin autoload was disabled; the default rerun plugin
+cannot bind its status socket in this sandbox. The canonical registry test was
+rerun separately with the explicit async plugin, produced no output within 30
+seconds, and was interrupted, so it remains environment-incomplete rather than
+being reported as green.
+
+Workflow runtime configuration now has a DeerFlow-owned schema at
+`deerflow.config.workflow_runtime_config`; the former `ideer` module is a
+compatibility import and DeerFlow `AppConfig` exposes `workflow_runtime`.
+The migration/identity regression passed (3 tests) with Ruff check and format
+validation. No runtime behavior changed; existing AgentPlatform config callers
+continue to resolve the same model class during the dual-runtime period.
+
+GitNexus verification for this uncommitted slice is not available: the local
+index was removed during the prior refresh recovery attempt, and both
+`gitnexus impact WorkflowRuntimeConfig --direction upstream` and
+`gitnexus detect-changes --scope all` report no indexed repository. This is an
+explicit graph-verification gate; no convergence commit is being created until
+the index can be rebuilt and the checks return complete (non-truncated) output.
+A bounded `gitnexus analyze --index-only --force` retry on this slice timed out
+after 60 seconds without registering an index; `status` and `detect-changes`
+still report no indexed repository.
+
+Workflow Run Evidence now persists the frozen UUID/version/hash closure and
+caller-scoped authorization projection and a deterministic runtime assembly
+fingerprint under `WorkflowV2RunRow.snapshot.run_evidence` when a canonical Run
+is created. Mutable recovery snapshots preserve that
+immutable envelope across worker checkpoint updates. The pure projection and
+merge contract passed (2 tests), and the existing WorkflowV2Store unit suite
+passed (22 tests). The database-backed canonical-run acceptance remains
+environment-incomplete as recorded above.
+
+The Workflow worker now binds the persisted envelope to the runtime context
+while compiling and invoking the graph, so tool/sub-agent observers receive the
+same caller-scoped evidence rather than a second parallel identity model. The
+worker binding regression is included in the 3-test evidence slice; Ruff and
+format checks passed.
+
+The Extension evidence boundary now has a runtime receipt collector. DeerFlow's
+runtime-owned ToolReceiptMiddleware contributes stamped tool receipts when the
+AgentPlatform extension is active; lifecycle stop publishes collected tool and
+sub-agent verification records into the same `RunEvidenceEnvelope`. Missing
+sub-agent receipts are explicitly recorded as `UNVERIFIED`, while a cited,
+validated receipt verdict is `VERIFIED`. Extension boundary tests passed (13),
+the receipt projection slice passed (2), and the DeerFlow tool receipt suites
+passed (30).
+The task-tool receipt behavior regression slice also passed (3 tests), covering
+verified, missing-receipt, and failed-sub-agent result paths.
+
+Config Phase 6 now has an operator migration path for legacy Memory structure:
+`scripts/config-upgrade.sh` honors `DEER_FLOW_CONFIG_PATH`, runs the structural
+Memory migration even when `config_version` is already current, moves legacy
+DeerMem fields under `memory.backend_config`, and drops file-style
+`storage_path: memory.json` in favor of the per-user directory default. The
+same upgrade path now migrates current-schema legacy `ideer.*` selections to
+their DeerFlow equivalents wherever the upstream module exists, while leaving
+product-only compatibility extensions explicit. A local schema-10 profile was
+upgraded to schema 27 and verified to load through DeerFlow configuration.
+The example and intranet profiles are aligned at config version 27 and include the
+checkpoint mode, fail-closed skill evolution, and verification fields. The
+config-version suite passed (12 tests).
+
+Frontend Agent resource-boundary convergence is now implemented: Agent list,
+published detail, draft/publish, archive, favorite, name availability,
+import, and export calls use UUID-backed `/api/resources` endpoints. The
+legacy `/api/agents` route is no longer used as the enterprise Agent
+canonical source. Canonical Agent contract tests cover these calls. The
+local pnpm runner cannot open its database and the installed Vitest package
+is absent, so focused frontend tests are environment-incomplete; TypeScript
+reported no errors in changed Agent source files.
+
+Migration convergence now isolates DeerFlow's Alembic bookkeeping in
+`deerflow_alembic_version`. The bootstrap adopts only numeric legacy DeerFlow
+revisions from the former shared table and ignores AgentPlatform date-based
+heads. The three isolation/adoption tests passed. The broader persistence
+bootstrap suite was incomplete in this sandbox because it produced no output
+within the guarded run window and was interrupted.
+
+Authorization boundary evidence was audited: assembly-time tool filtering and
+runtime forced-call denial passed in the focused authorization suites (15 and
+17 tests), while shared-Agent caller identity, caller-only credential
+projection, and caller-scoped memory invariants are covered by the extension
+boundary tests. The sandbox upload-router subset has a test import-path issue
+when invoked directly (`_router_auth_helpers`), so the end-to-end shared
+resource acceptance remains open and must run through the standard lane.
+
+Skill Projection acceptance was rerun after the authorization audit: the
+canonical Run skill-view and three-way sandbox mount suites passed (26 tests).
+They verify frozen version/hash copies, read-only category mounts, one
+`/mnt/skills` namespace, and no competing root mount for canonical Runs.
+
+Workflow/Run focused contracts also passed: Run Evidence, WorkflowV2Store and
+runtime-config suites completed with 28 tests, and the canonical Agent adapter
+suite completed with 17 tests. The database-backed `test_v2_run_record.py`
+integration suite collected seven tests but its first test produced no output
+within the 30-second guard and was interrupted; it remains incomplete.
+
+The Workflow timeout was minimized independently of pytest: a plain
+`sqlite+aiosqlite` engine hangs on its first `begin()` in this sandbox even
+without ORM metadata, whereas synchronous SQLite creates the same database in
+about 0.4 seconds. This is an environment blocker in the aiosqlite connection
+thread, not evidence of a Workflow schema or event-sink regression.
+
+GitNexus refresh was retried in this turn: the documented local
+`.gitnexus/run.cjs` is absent, the CLI `analyze --index-only --force` ran for
+90 seconds without output and was interrupted, and the repository remains
+unindexed. Graph impact/detect-changes therefore remain an explicit gate.
+
+The direct `ideer` import inventory was corrected to include function-local
+imports: 26 `backend/app` files remain, all in the enterprise control-plane,
+persistence, and compatibility seams. The `scripts/check-runtime-boundary.sh`
+guard passes at baseline 26 and fails if future changes increase that count. It is now a preflight for both
+`pr-standard` and `core-full`, so the standard acceptance lanes cannot start
+with a widened runtime boundary.
+
+`pr-standard` was rerun with `UV_CACHE_DIR=/tmp/deer-flow-uv-cache`. The lane
+started successfully and reached 8% with the changed foundation tests passing;
+it exposed a stale Telegram shutdown assertion (the production stop contract
+now schedules bridge cancellation and loop stop, while the test expected one
+callback). The focused test was updated to assert the two-call contract and
+passes; the full lane was interrupted after the first unrelated long-running
+channel batch and is therefore incomplete.
+
+The next Runtime Foundation slice moved the canonical resource router's path
+resolver from `ideer.config` to `deerflow.config.paths`, matching the adopted
+DeerFlow runtime path semantics. The focused source-boundary regression passed
+(1 test), and Ruff check/format validation passed. Persistence and resource
+model imports in that router remain enterprise-owned and are intentionally
+separate follow-up slices.
+
+The authentication configuration slice now resolves the persisted JWT secret
+path through `deerflow.config.paths` instead of the legacy `ideer` config
+module. The six-case AuthConfig focused suite passed after updating its path
+patches; Ruff check/format validation passed. The boundary inventory decreased
+from 26 to 25 files while the guard baseline remains 26, preventing rollback
+or new import growth.
+
+Code Evidence product entrypoints now use the AgentPlatform-owned
+`app.agentplatform.code_evidence` implementation. Upload, resource, and Run
+preparation paths no longer import the old Harness package; the package
+validation and runtime path-projection focused suite passed (13 tests), and Ruff validation passed. The
+runtime's built-in static analysis tool now consumes the runtime-neutral
+`deerflow.uploads.code_evidence.package_root` projection, and the old Harness
+package implementation has been removed. The deterministic scanner,
+normalization, confidence, and report writers now live in
+`deerflow.uploads.code_analysis`; its focused suite passed (5 tests), with no
+`ideer.uploads.code_*` imports remaining. The corrected boundary inventory is
+now 23 files.
+
+The audit persistence slice now uses DeerFlow's shared session factory while
+the enterprise `AuditLog` mapping lives in `app.agentplatform.audit_model` on
+the shared DeerFlow declarative base. The Gateway audit focused suite passed
+(12 tests), and Ruff validation passed. The direct `backend/app` boundary
+inventory decreased from 23 to 22 files; broader database-backed audit-router
+validation remains pending because the async SQLite integration lane is still
+environment-incomplete.
+
+The authentication repository slice now uses DeerFlow's canonical
+`persistence.user.UserRow` and shared engine contract; its focused repository
+suite passed (17 tests). The direct Gateway boundary inventory decreased from
+22 to 21 files. The enterprise `users_ext` RBAC model remains a separate
+control-plane migration target and was not replaced with a compatibility
+re-export.
+
+The RBAC model slice now owns `UserRole`, `ResourceVisibility`,
+`DepartmentModel`, and `UserModel` under `app.agentplatform.rbac_models` on the
+shared DeerFlow base. Channels, automations, RBAC user creation, and admin
+reset paths use the AgentPlatform model plus DeerFlow `UserRow`; the focused
+auth/RBAC/reset group passed (34 tests). The direct Gateway boundary inventory
+decreased from 21 to 18 files. Resource catalog consumers remain separate so
+their model and migration ownership can be validated independently.
+
+The first Resource Governance persistence slice now owns `ResourceMetadata` in
+`app.agentplatform.resource_models` on the shared DeerFlow base;
+`ResourceMetadataStore` uses the DeerFlow session factory. Its focused store
+suite passed (7 tests), with Ruff and boundary checks passing. The direct
+Gateway boundary inventory decreased from 18 to 17 files. Resource Catalog,
+Workflow V2, and visibility-application models remain separate slices because
+they carry more cross-table migration dependencies.
+
+The Resource Catalog model-family slice now defines `Resource`,
+`ResourceVersion`, `ResourceDraft`, `ResourceDependency`, `RunResourceSnapshot`,
+`ResourceFavorite`, and `ResourceNotification` in the AgentPlatform model
+module, and the resources/admin/user-deletion routes use those mappings plus
+the DeerFlow session factory where applicable. Resource API collection passed
+(19 tests collected); the focused ResourceMetadata suite remained green (7
+tests). A 45-second combined Resource API execution produced only 21 dots and
+no pytest summary before the sandbox runner stopped observing it, so it is
+recorded as incomplete rather than passed. The direct Gateway boundary is now
+12 files after the Resource/RBAC model and DeerFlow engine import cutover.
+
+The resource-runtime consumer slice now imports Resource Catalog entities from
+`app.agentplatform.resource_models` (and RBAC visibility from
+`app.agentplatform.rbac_models`) across service, publisher, retention,
+reconciliation, bundled-resource, storage, and Workflow worker paths. The
+legacy catalog model remains only in control-plane migration/test fixtures; the
+governance suite could not complete in this sandbox because its async SQLite
+fixture stalls before producing a result.
+
+The Workflow V2 model family is now registered under
+`deerflow.persistence.models.workflow_v2`; Gateway, Worker, Store, RunRecord,
+and resource-governance service imports use that runtime namespace. The legacy
+`ideer.persistence.models.workflow_v2` implementation has now been deleted;
+the migration table contract is pinned directly against the DeerFlow mapping.
+The focused Workflow Store unit suite passed (22 tests) after the production
+Store/Worker/RunRecord/service imports moved to the DeerFlow namespace. Workflow store execution
+remains incomplete in this sandbox: the combined focused run emitted 22 dots
+without a pytest summary before observation stopped, so no database-backed
+Workflow result is claimed. Standalone DeerFlow sync metadata `create_all`
+passed after keeping this enterprise table family out of the generic registry;
+combined AgentPlatform resource/RBAC/Workflow metadata `create_all` also passed.
+Read-only inspection of the existing local SQLite database matched all six
+Workflow V2 table column sets, including the migrated definition-level
+`department_id` field. Migration-version, environment, and version-table
+isolation checks passed (33 tests); async bootstrap integration remains
+incomplete because the sandbox's aiosqlite connection stalls.
+
+The fault-zeroing acceptance harness now initializes its temporary database
+with DeerFlow's shared Base and AgentPlatform resource/RBAC metadata, matching
+the production Workflow Store namespace. Its script/regression guard suite
+passed (8 tests); a single-case live run still timed out after 90 seconds at
+the sandbox's async SQLite boundary, so no fault-zeroing green result is
+claimed.

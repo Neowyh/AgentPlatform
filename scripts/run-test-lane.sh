@@ -118,11 +118,13 @@ case "$LANE" in
     (cd "$ROOT_DIR/frontend" && pnpm test:e2e:a11y)
     ;;
   pr-standard)
+    "$ROOT_DIR/scripts/check-runtime-boundary.sh"
     "$ROOT_DIR/scripts/run-test-lane.sh" backend-standard
     "$ROOT_DIR/scripts/run-test-lane.sh" frontend-standard
     "$ROOT_DIR/scripts/run-test-lane.sh" frontend-smoke
     ;;
   core-full)
+    "$ROOT_DIR/scripts/check-runtime-boundary.sh"
     "$ROOT_DIR/scripts/run-test-lane.sh" backend-full
     "$ROOT_DIR/scripts/run-test-lane.sh" frontend-core
     "$ROOT_DIR/scripts/run-test-lane.sh" frontend-mock-e2e

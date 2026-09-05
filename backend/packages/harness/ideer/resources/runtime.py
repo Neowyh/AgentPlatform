@@ -11,9 +11,9 @@ import yaml
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agentplatform.rbac_models import ResourceVisibility
+from app.agentplatform.resource_models import Resource, ResourceDependency, ResourceVersion, RunResourceSnapshot
 from ideer.config.agents_config import AgentConfig
-from ideer.persistence.models.resource_catalog import Resource, ResourceDependency, ResourceVersion, RunResourceSnapshot
-from ideer.persistence.models.user import ResourceVisibility
 from ideer.resources.storage import ResourceStorage, StorageValidationError
 from ideer.skills.types import Skill, SkillCategory
 

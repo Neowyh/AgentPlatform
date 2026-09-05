@@ -760,9 +760,9 @@ def get_local_provider() -> LocalAuthProvider:
         sf = get_session_factory()
         if sf is None:
             try:
-                from ideer.persistence.engine import get_session_factory as get_ideer_session_factory
+                from deerflow.persistence.engine import get_session_factory as get_deerflow_session_factory
 
-                sf = get_ideer_session_factory()
+                sf = get_deerflow_session_factory()
             except ImportError:
                 pass
         if sf is None:

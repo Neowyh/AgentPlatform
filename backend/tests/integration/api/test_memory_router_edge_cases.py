@@ -210,6 +210,33 @@ async def test_update_fact_value_error_empty(app: FastAPI):
 
 
 @pytest.mark.asyncio
+async def test_read_unsupported_backend_returns_501(app: FastAPI):
+    with patch(f"{_PATCH_PREFIX}.get_memory_data", side_effect=NotImplementedError("read")):
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get("/api/memory")
+
+    assert resp.status_code == 501
+    assert "not supported" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_corrupt_memory_returns_stable_500(app: FastAPI):
+    from deerflow.agents.memory import MemoryCorruptionError
+
+    with patch(
+        f"{_PATCH_PREFIX}.get_memory_data",
+        side_effect=MemoryCorruptionError("private parser detail"),
+    ):
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get("/api/memory")
+
+    assert resp.status_code == 500
+    assert resp.json()["detail"] == "Stored memory data is corrupted."
+
+
+@pytest.mark.asyncio
 async def test_update_fact_key_error_not_found(app: FastAPI):
     """Lines 275-276: PATCH /memory/facts/{id} returns 404 when updater raises KeyError."""
     with patch(

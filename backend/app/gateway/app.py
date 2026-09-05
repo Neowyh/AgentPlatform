@@ -134,8 +134,8 @@ async def _ensure_admin_user(app: FastAPI) -> None:
     """
     from sqlalchemy import select
 
-    from ideer.persistence.engine import get_session_factory
-    from ideer.persistence.models.user import UserModel, UserRole
+    from app.agentplatform.rbac_models import UserModel, UserRole
+    from deerflow.persistence.engine import get_session_factory
 
     sf = get_session_factory()
     if sf is None:
@@ -221,8 +221,8 @@ async def _reconcile_workflow_and_agent_metadata() -> None:
     """
     from sqlalchemy import select
 
-    from ideer.persistence.engine import get_session_factory
-    from ideer.persistence.models.user import UserModel, UserRole
+    from app.agentplatform.rbac_models import UserModel, UserRole
+    from deerflow.persistence.engine import get_session_factory
 
     sf = get_session_factory()
     if sf is None:
@@ -252,11 +252,10 @@ async def _seed_bundled_resources() -> None:
     """Provision manifest resources once an active super admin exists."""
     from sqlalchemy import select
 
+    from app.agentplatform.rbac_models import UserModel, UserRole
+    from app.agentplatform.resource_runtime import ResourceStorage, seed_bundled_resources
     from deerflow.config.paths import get_paths
-    from ideer.persistence.engine import get_session_factory
-    from ideer.persistence.models.user import UserModel, UserRole
-    from ideer.resources.bundled import seed_bundled_resources
-    from ideer.resources.storage import ResourceStorage
+    from deerflow.persistence.engine import get_session_factory
 
     sf = get_session_factory()
     if sf is None:
@@ -286,7 +285,7 @@ async def _resolve_resource_owner(sf, raw_owner: str | None) -> tuple[str | None
     """
     from sqlalchemy import or_, select
 
-    from ideer.persistence.models.user import UserModel
+    from app.agentplatform.rbac_models import UserModel
 
     if not raw_owner or raw_owner == "system":
         return None, None
@@ -310,8 +309,8 @@ async def _reconcile_workflow_metadata(sf, admin_id: str) -> None:
     super_admin when creator resolution fails). Idempotent — existing records
     are never touched.
     """
+    from app.agentplatform.workflow_runtime import WorkflowV2Store
     from app.gateway.utils import ResourceMetadataStore
-    from ideer.workflows.v2.store import WorkflowV2Store
 
     try:
         definitions, _ = await WorkflowV2Store(sf).list_latest_definitions(limit=100_000, offset=0)
@@ -345,8 +344,8 @@ async def _reconcile_agent_metadata(sf, admin_id: str) -> None:
     """
     from sqlalchemy import select
 
+    from app.agentplatform.resource_models import Resource
     from app.gateway.utils import ResourceMetadataStore
-    from ideer.persistence.models.resource_catalog import Resource
 
     store = ResourceMetadataStore("agent")
     reconciled = 0
@@ -385,10 +384,9 @@ async def _reconcile_agent_metadata(sf, admin_id: str) -> None:
 async def _reconcile_canonical_resource_storage() -> None:
     """Fail startup on broken DB pointers and report recoverable orphan files."""
 
+    from app.agentplatform.resource_runtime import ResourceStorage, reconcile_catalog_storage
     from deerflow.config.paths import get_paths
-    from ideer.persistence.engine import get_session_factory
-    from ideer.resources.reconciliation import reconcile_catalog_storage
-    from ideer.resources.storage import ResourceStorage
+    from deerflow.persistence.engine import get_session_factory
 
     session_factory = get_session_factory()
     if session_factory is None:

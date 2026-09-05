@@ -97,6 +97,13 @@ logger = logging.getLogger(__name__)
 # Where the alembic environment lives, relative to this file.
 _MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
 
+# AgentPlatform's control-plane migrations historically used the default
+# ``alembic_version`` table. DeerFlow is a separate runtime migration chain;
+# keeping its revision state in a dedicated table prevents one chain from
+# attempting to upgrade the other chain's head.
+_VERSION_TABLE = "deerflow_alembic_version"
+_LEGACY_VERSION_TABLE = "alembic_version"
+
 # Cached migration head, computed once per process from the disk script tree.
 _HEAD_REVISION: str | None = None
 
@@ -251,6 +258,7 @@ def _get_alembic_config(engine: AsyncEngine, *, postgres_schema: str = "") -> Al
     cfg = AlembicConfig()
     cfg.set_main_option("script_location", str(_MIGRATIONS_DIR))
     cfg.set_main_option("sqlalchemy.url", _alembic_safe_url(engine))
+    cfg.set_main_option("version_table", _VERSION_TABLE)
     if postgres_schema:
         cfg.set_main_option("deerflow_pg_schema", postgres_schema)
     return cfg
@@ -291,10 +299,37 @@ def _reflect_state(sync_conn: Any) -> dict[str, bool]:
     insp = sa_inspect(sync_conn)
     reflected = set(insp.get_table_names())
     metadata_tables = set(Base.metadata.tables)
+    has_version = _VERSION_TABLE in reflected
+    # Adopt old DeerFlow-only databases that predate the dedicated table. An
+    # AgentPlatform control-plane revision (date/word based) must not be
+    # mistaken for a DeerFlow revision (numeric 0001/0018).
+    if not has_version and _LEGACY_VERSION_TABLE in reflected:
+        rows = sync_conn.execute(text(f"SELECT version_num FROM {_LEGACY_VERSION_TABLE}")).fetchall()
+        has_version = any(str(row[0]).startswith(("000", "001")) for row in rows)
     return {
-        "has_alembic_version": "alembic_version" in reflected,
+        "has_alembic_version": has_version,
         "has_deerflow_tables": bool(reflected & metadata_tables),
     }
+
+
+def _adopt_legacy_version_table(sync_conn: Any) -> None:
+    """Copy a legacy DeerFlow revision into the dedicated version table.
+
+    Older dual-runtime databases used the shared ``alembic_version`` table.
+    Only numeric DeerFlow revisions are adopted; AgentPlatform control-plane
+    revisions remain untouched and are never used to drive DeerFlow upgrades.
+    """
+    insp = sa_inspect(sync_conn)
+    tables = set(insp.get_table_names())
+    if _VERSION_TABLE in tables or _LEGACY_VERSION_TABLE not in tables:
+        return
+    rows = sync_conn.execute(text(f"SELECT version_num FROM {_LEGACY_VERSION_TABLE}")).fetchall()
+    revisions = [str(row[0]) for row in rows if str(row[0]).startswith(("000", "001"))]
+    if not revisions:
+        return
+    sync_conn.execute(text(f"CREATE TABLE {_VERSION_TABLE} (version_num VARCHAR(32) NOT NULL)"))
+    for revision in revisions:
+        sync_conn.execute(text(f"INSERT INTO {_VERSION_TABLE} (version_num) VALUES (:revision)"), {"revision": revision})
 
 
 def _decide_state(state: dict[str, bool]) -> str:
@@ -499,6 +534,8 @@ async def bootstrap_schema(engine: AsyncEngine, *, backend: str, postgres_schema
     cfg = _get_alembic_config(engine, postgres_schema=postgres_schema if backend == "postgres" else "")
 
     async with _bootstrap_lock(engine, backend=backend):
+        async with engine.begin() as conn:
+            await conn.run_sync(_adopt_legacy_version_table)
         async with engine.connect() as conn:
             state = await conn.run_sync(_reflect_state)
         decision = _decide_state(state)

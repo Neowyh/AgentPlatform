@@ -22,22 +22,19 @@ from sqlalchemy import select
 from sqlalchemy import update as sql_update
 from sqlalchemy.exc import IntegrityError
 
-from app.gateway.audit import record_audit
-from app.gateway.authz import get_current_rbac_user, require_role
-from ideer.persistence.engine import get_session_factory
-from ideer.persistence.models.resource_metadata import ResourceMetadata
-from ideer.persistence.models.user import ResourceVisibility, UserModel, UserRole
-from ideer.persistence.models.visibility_application import (
-    VisibilityApplication,
-    VisibilityApplicationStatus,
-)
-from ideer.resources.service import (
+from app.agentplatform.rbac_models import ResourceVisibility, UserModel, UserRole
+from app.agentplatform.resource_models import ResourceMetadata
+from app.agentplatform.resource_service import (
     ResourceConflict,
     ResourceNotFound,
     ResourcePermissionDenied,
     ResourceService,
     VisibilityClosureError,
 )
+from app.agentplatform.visibility_models import VisibilityApplication, VisibilityApplicationStatus
+from app.gateway.audit import record_audit
+from app.gateway.authz import get_current_rbac_user, require_role
+from deerflow.persistence.engine import get_session_factory
 
 logger = logging.getLogger(__name__)
 

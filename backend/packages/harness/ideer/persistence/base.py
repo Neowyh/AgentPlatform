@@ -14,24 +14,10 @@ from sqlalchemy.orm import DeclarativeBase
 
 
 class Base(DeclarativeBase):
-    """Base class for all iDeer ORM models.
-
-    Provides:
-    - Automatic to_dict() via SQLAlchemy column inspection.
-    - Standard __repr__() showing all column values.
-    """
+    """Base class for all iDeer ORM models."""
 
     def to_dict(self, *, exclude: set[str] | None = None) -> dict:
-        """Convert ORM instance to plain dict.
-
-        Uses SQLAlchemy's inspect() to iterate mapped column attributes.
-
-        Args:
-            exclude: Optional set of column keys to omit.
-
-        Returns:
-            Dict of {column_key: value} for all mapped columns.
-        """
+        """Convert an ORM instance to a plain dictionary."""
         exclude = exclude or set()
         return {c.key: getattr(self, c.key) for c in sa_inspect(type(self)).mapper.column_attrs if c.key not in exclude}
 

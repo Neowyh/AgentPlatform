@@ -34,7 +34,7 @@ _auth_config: AuthConfig | None = None
 
 def _load_or_create_secret() -> str:
     """Load persisted JWT secret from ``{base_dir}/.jwt_secret``, or generate and persist a new one."""
-    from ideer.config.paths import get_paths
+    from deerflow.config.paths import get_paths
 
     paths = get_paths()
     secret_file = paths.base_dir / _SECRET_FILE

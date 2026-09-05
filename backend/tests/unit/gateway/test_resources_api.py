@@ -9,18 +9,28 @@ import pytest
 import yaml
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from app.gateway.routers import resources
-from app.gateway.routers.resources import WorkflowRunRequest
-from ideer.config.workflow_runtime_config import WorkflowRuntimeConfig
-from ideer.persistence.base import Base
-from ideer.persistence.models.resource_catalog import (
+from app.agentplatform import rbac_models as _rbac_models  # noqa: F401
+from app.agentplatform import resource_models as _resource_models  # noqa: F401
+from app.agentplatform.resource_models import (
     Resource,
     ResourceVersion,
 )
+from app.gateway.routers import resources
+from app.gateway.routers.resources import WorkflowRunRequest
+from deerflow.persistence.base import Base as DeerFlowBase
+from deerflow.persistence.models.workflow_v2 import WorkflowV2RunRow
+from ideer.config.workflow_runtime_config import WorkflowRuntimeConfig
+from ideer.persistence.base import Base
 from ideer.persistence.models.user import UserModel, UserRole
-from ideer.persistence.models.workflow_v2 import WorkflowV2RunRow
 from ideer.resources.service import ResourceAction
 from ideer.resources.storage import ResourceStorage
+
+
+def test_resources_router_uses_deerflow_runtime_paths() -> None:
+    source = (Path(__file__).parents[3] / "app" / "gateway" / "routers" / "resources.py").read_text(encoding="utf-8")
+
+    assert "from deerflow.config.paths import get_paths" in source
+    assert "from ideer.config import get_paths" not in source
 
 
 def _user(role: UserRole, *, user_id: str = "user", department_id: str | None = "dept-a") -> UserModel:
@@ -255,6 +265,7 @@ async def test_published_workflow_response_includes_real_yaml(
     engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'published.db'}")
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
+        await connection.run_sync(DeerFlowBase.metadata.create_all)
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as session:
         session.add(

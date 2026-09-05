@@ -7,11 +7,11 @@ import subprocess
 
 from langchain.tools import tool
 
-from ideer.config.paths import get_paths
-from ideer.runtime.user_context import get_effective_user_id
+from deerflow.config.paths import get_paths
+from deerflow.runtime.user_context import get_effective_user_id
+from deerflow.uploads.code_analysis import SCANNER_TIMEOUT_SECONDS, fixed_scanner_commands, inventory_package, normalize_scanner_output, run_fixed_scanner, write_analysis_summary
+from deerflow.uploads.code_evidence import package_root
 from ideer.tools.types import Runtime
-from ideer.uploads.code_analysis import SCANNER_TIMEOUT_SECONDS, fixed_scanner_commands, inventory_package, normalize_scanner_output, run_fixed_scanner, write_analysis_summary
-from ideer.uploads.code_evidence import package_root
 
 
 @tool("analyze_code_evidence", parse_docstring=True)

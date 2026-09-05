@@ -67,8 +67,18 @@ class ToolReceiptMiddleware(AgentMiddleware[AgentState]):
             # The receipt key is runtime-owned: always overwrite, never preserve
             # a pre-existing value — a tool could otherwise forge its own
             # "evidence" and have it rendered as runtime-stamped provenance.
-            kwargs[TOOL_RECEIPT_KEY] = make_tool_receipt(request.tool_call, message)
+            receipt = make_tool_receipt(request.tool_call, message)
+            kwargs[TOOL_RECEIPT_KEY] = receipt
             message.additional_kwargs = kwargs
+            # AgentPlatform's optional extension harvests the same runtime-owned
+            # receipt into the active Run Evidence Envelope. DeerFlow remains
+            # usable without the extension package.
+            try:
+                from agentplatform_extension.evidence import record_tool_receipt
+
+                record_tool_receipt(receipt)
+            except ImportError:
+                pass
         except Exception:
             # Never block tool execution — but a systematic stamping failure must
             # be visible, or the ledger silently goes incomplete and citations lie.

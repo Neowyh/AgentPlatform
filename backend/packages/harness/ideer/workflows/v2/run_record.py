@@ -16,7 +16,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from ideer.persistence.models.workflow_v2 import WorkflowV2EventRow, WorkflowV2RunRow
+from deerflow.persistence.models.workflow_v2 import WorkflowV2EventRow, WorkflowV2RunRow
 
 from .store import WorkflowV2Store
 

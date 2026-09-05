@@ -30,18 +30,20 @@ sys.path.insert(0, str(REPO_ROOT / "backend" / "packages" / "harness"))
 # acceptance script works from the repository root as documented.
 sys.path.insert(0, str(REPO_ROOT / "backend"))
 
-from app.workflow_worker import execute_workflow_task  # noqa: E402
-from ideer.config import get_app_config  # noqa: E402
-from ideer.config.checkpointer_config import CheckpointerConfig  # noqa: E402
-from ideer.config.paths import get_paths  # noqa: E402
-from ideer.fault_zeroing.contract import CONTRACT_VERSION  # noqa: E402
-from ideer.fault_zeroing.kernel import (  # noqa: E402
+from app.agentplatform import rbac_models as _rbac_models  # noqa: F401
+from app.agentplatform import resource_models as _resource_models  # noqa: F401
+from app.workflow_worker import execute_workflow_task
+from deerflow.persistence.base import Base
+from ideer.config import get_app_config
+from ideer.config.checkpointer_config import CheckpointerConfig
+from ideer.config.paths import get_paths
+from ideer.fault_zeroing.contract import CONTRACT_VERSION
+from ideer.fault_zeroing.kernel import (
     COMPLETION_STATUS_COMPLETED,
     FaultZeroingKernel,
 )
-from ideer.persistence.base import Base  # noqa: E402
-from ideer.workflows.v2.store import WorkflowV2Store  # noqa: E402
-from ideer.workflows.v2.worker import WorkflowWorker  # noqa: E402
+from ideer.workflows.v2.store import WorkflowV2Store
+from ideer.workflows.v2.worker import WorkflowWorker
 
 CASES_ROOT = REPO_ROOT / "docs" / "zero_agent_eval_cases"
 # Ticket 07 regression: the canonical bundled workflow lives under resources/.

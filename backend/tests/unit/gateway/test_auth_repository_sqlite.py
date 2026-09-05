@@ -28,7 +28,7 @@ def _make_repo():
 
 
 def _make_user_row(**overrides):
-    from ideer.persistence.user.model import UserRow
+    from deerflow.persistence.user.model import UserRow
 
     defaults = {
         "id": str(uuid4()),

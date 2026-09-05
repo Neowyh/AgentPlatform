@@ -30,6 +30,7 @@ from typing import Any
 from agentplatform_extension.evidence import AuthorizationContext, RunEvidenceBinding
 from fastapi import HTTPException, Request
 
+from app.agentplatform.code_evidence import read_manifest
 from app.agentplatform.memory_adapter import get_memory_data
 from app.gateway.canonical_agent_run_preparation import (
     prepare_canonical_agent_run as _prepare_canonical_agent_run,
@@ -67,8 +68,6 @@ class PreparedRun:
 async def _read_manifest_if_needed(thread_id: str, code_package_id: str | None) -> dict[str, Any] | None:
     if not code_package_id:
         return
-    from ideer.uploads.code_evidence import read_manifest
-
     try:
         return await asyncio.to_thread(read_manifest, thread_id, str(code_package_id))
     except FileNotFoundError as exc:

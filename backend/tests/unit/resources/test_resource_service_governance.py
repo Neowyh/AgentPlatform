@@ -10,8 +10,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 import ideer.persistence.models  # noqa: F401
-from ideer.persistence.base import Base
-from ideer.persistence.models.resource_catalog import (
+from app.agentplatform import rbac_models as _rbac_models  # noqa: F401
+from app.agentplatform import resource_models as _resource_models  # noqa: F401
+from app.agentplatform.resource_models import (
     Resource,
     ResourceDependency,
     ResourceFavorite,
@@ -19,9 +20,11 @@ from ideer.persistence.models.resource_catalog import (
     ResourceVersion,
     RunResourceSnapshot,
 )
+from deerflow.persistence.base import Base as DeerFlowBase
+from deerflow.persistence.models.workflow_v2 import WorkflowCommandRow, WorkflowTaskRow, WorkflowV2RunRow
+from ideer.persistence.base import Base
 from ideer.persistence.models.user import UserModel, UserRole
 from ideer.persistence.models.visibility_application import VisibilityApplication
-from ideer.persistence.models.workflow_v2 import WorkflowCommandRow, WorkflowTaskRow, WorkflowV2RunRow
 from ideer.resources.service import (
     ResourceAction,
     ResourceActor,
@@ -37,6 +40,7 @@ async def session(tmp_path) -> AsyncIterator[AsyncSession]:
     engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'governance.db'}")
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
+        await connection.run_sync(DeerFlowBase.metadata.create_all)
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as value:
         yield value

@@ -7,7 +7,7 @@ import asyncio
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ideer.persistence.models.resource_catalog import Resource, ResourceDraft, ResourceVersion
+from app.agentplatform.resource_models import Resource, ResourceDraft, ResourceVersion
 from ideer.resources.storage import ReconciliationReport, ResourceStorage
 
 

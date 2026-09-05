@@ -12,7 +12,7 @@ import zipfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-from ideer.persistence.models.resource_catalog import ResourceType
+from app.agentplatform.resource_models import ResourceType
 
 
 class StorageError(RuntimeError):

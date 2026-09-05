@@ -27,22 +27,22 @@ from sqlalchemy import delete as sql_delete
 from sqlalchemy import func, select
 from sqlalchemy import update as sql_update
 
-from ideer.persistence.feedback.model import FeedbackRow
-from ideer.persistence.models.audit_log import AuditLog
-from ideer.persistence.models.resource_catalog import Resource, ResourceDraft, ResourceVersion
-from ideer.persistence.models.resource_metadata import ResourceMetadata
-from ideer.persistence.models.run_event import RunEventRow
-from ideer.persistence.models.user import UserModel, UserRole
-from ideer.persistence.models.visibility_application import VisibilityApplication
-from ideer.persistence.run.model import RunRow
-from ideer.persistence.thread_meta.model import ThreadMetaRow
-from ideer.persistence.user.model import UserRow
-from ideer.resources.service import ResourceAction, ResourceActor, ResourceService
+from app.agentplatform.audit_model import AuditLog
+from app.agentplatform.rbac_models import UserModel, UserRole
+from app.agentplatform.resource_models import Resource, ResourceDraft, ResourceMetadata, ResourceVersion
+from app.agentplatform.resource_service import ResourceAction, ResourceActor, ResourceService
+from app.agentplatform.visibility_models import VisibilityApplication
+from deerflow.persistence.engine import get_session_factory
+from deerflow.persistence.feedback.model import FeedbackRow
+from deerflow.persistence.models.run_event import RunEventRow
+from deerflow.persistence.run.model import RunRow
+from deerflow.persistence.thread_meta.model import ThreadMetaRow
+from deerflow.persistence.user.model import UserRow
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
-    from ideer.config.paths import Paths
+    from deerflow.config.paths import Paths
 
 logger = logging.getLogger(__name__)
 
@@ -53,8 +53,6 @@ logger = logging.getLogger(__name__)
 
 async def report_user_state_anomalies(paths: Paths) -> dict[str, list[str]]:
     """Report inconsistent user directories at startup without modifying them."""
-    from ideer.persistence.engine import get_session_factory
-
     sf = get_session_factory()
     if sf is None:
         return {"unexpected_directories": [], "auth_only_users": [], "rbac_only_users": []}

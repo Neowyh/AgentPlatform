@@ -9,6 +9,9 @@ from agentplatform_extension.evidence import (
     RunEvidenceBinding,
     bind_run_evidence,
     build_run_evidence_envelope,
+    current_run_evidence,
+    record_subagent_verification,
+    record_tool_receipt,
 )
 from agentplatform_extension.network_policy import NetworkPolicy
 from deerflow_extension_api import ExtensionData, RunEvidenceEnvelope, TaskInfo, TaskOutcome
@@ -89,6 +92,21 @@ def test_run_evidence_binding_exposes_only_caller_safe_metadata_projection() -> 
     assert "owner_credential" not in projection
 
 
+def test_run_evidence_binding_collects_runtime_receipts() -> None:
+    binding = RunEvidenceBinding(
+        snapshots=[ResourceSnapshotRef("agent-1", 2, "a" * 64, "root")],
+        authorization=AuthorizationContext("caller-1", "agent-1", "policy-2"),
+    )
+
+    with bind_run_evidence(binding):
+        record_tool_receipt({"tool_name": "read_file", "status": "success"})
+        record_subagent_verification({"task_id": "task-1", "verdict": "VERIFIED"})
+        projection = current_run_evidence().as_mapping()
+
+    assert projection["tool_receipts"] == [{"tool_name": "read_file", "status": "success"}]
+    assert projection["subagent_verification"] == [{"task_id": "task-1", "verdict": "VERIFIED"}]
+
+
 def test_network_policy_defaults_to_intranet_allowlist_and_public_deny() -> None:
     policy = NetworkPolicy(allowed_hosts=("vllm.internal",))
 
@@ -117,6 +135,29 @@ async def test_evidence_lifecycle_contributor_binds_snapshot_and_terminal_outcom
     await contributor.on_task_stop(ExtensionData("app"), store, info, TaskOutcome.COMPLETED)
     stopped = store.get(RunEvidenceEnvelope)
     assert stopped is not None and stopped.outcome is TaskOutcome.COMPLETED
+
+
+@pytest.mark.asyncio
+async def test_evidence_lifecycle_publishes_collected_receipts() -> None:
+    contributor = EvidenceLifecycleContributor(
+        snapshots=[ResourceSnapshotRef("agent-1", 2, "a" * 64)],
+        authorization=AuthorizationContext("caller", "agent", "policy"),
+    )
+    store = ExtensionData("task-receipts")
+    info = TaskInfo(task_id="task-receipts", run_id="run-1", thread_id="thread-1", kind="lead")
+    binding = RunEvidenceBinding(
+        snapshots=[ResourceSnapshotRef("agent-1", 2, "a" * 64)],
+        authorization=AuthorizationContext("caller", "agent", "policy"),
+    )
+
+    with bind_run_evidence(binding):
+        await contributor.on_task_start(ExtensionData("app"), store, info)
+        record_tool_receipt({"tool_name": "write_file", "status": "success"})
+        await contributor.on_task_stop(ExtensionData("app"), store, info, TaskOutcome.COMPLETED)
+
+    envelope = store.get(RunEvidenceEnvelope)
+    assert envelope is not None
+    assert envelope.tool_receipts == ({"tool_name": "write_file", "status": "success"},)
 
 
 def test_install_registers_boundary_only_with_explicit_authorization() -> None:

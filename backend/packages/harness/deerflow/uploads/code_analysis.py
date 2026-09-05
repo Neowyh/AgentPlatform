@@ -1,4 +1,4 @@
-"""Deterministic, read-only evidence extraction for C packages."""
+"""Deterministic, read-only static analysis for frozen Code Evidence packages."""
 
 from __future__ import annotations
 

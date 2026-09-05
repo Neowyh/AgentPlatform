@@ -64,6 +64,7 @@ def run_migrations_offline() -> None:
         literal_binds=True,
         render_as_batch=True,
         include_object=include_object,
+        version_table="deerflow_alembic_version",
     )
     with context.begin_transaction():
         context.run_migrations()
@@ -75,6 +76,7 @@ def do_run_migrations(connection):
         target_metadata=target_metadata,
         render_as_batch=True,  # Required for SQLite ALTER TABLE support
         include_object=include_object,
+        version_table="deerflow_alembic_version",
     )
     with context.begin_transaction():
         context.run_migrations()
@@ -114,11 +116,10 @@ async def run_migrations_online() -> None:
 
         @event.listens_for(connectable.sync_engine, "connect")
         def _alembic_sqlite_busy_timeout(dbapi_conn, _record):  # noqa: ARG001
-            cursor = dbapi_conn.cursor()
-            try:
-                cursor.execute("PRAGMA busy_timeout=30000;")
-            finally:
-                cursor.close()
+            async def _configure(connection):
+                await connection.execute("PRAGMA busy_timeout=30000;")
+
+            dbapi_conn.run_async(_configure)
 
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)

@@ -52,6 +52,7 @@ from deerflow.config.tool_output_config import ToolOutputConfig
 from deerflow.config.tool_progress_config import ToolProgressConfig
 from deerflow.config.tool_search_config import ToolSearchConfig, load_tool_search_config_from_dict
 from deerflow.config.verification_config import VerificationConfig
+from deerflow.config.workflow_runtime_config import WorkflowRuntimeConfig
 from deerflow.extensions.loader import ExtensionSpec
 
 load_dotenv()
@@ -240,6 +241,10 @@ class AppConfig(BaseModel):
     agents_api: AgentsApiConfig = Field(default_factory=AgentsApiConfig, description="Custom-agent management API configuration")
     acp_agents: dict[str, ACPAgentConfig] = Field(default_factory=dict, description="ACP-compatible agent configuration")
     subagents: SubagentsAppConfig = Field(default_factory=SubagentsAppConfig, description="Subagent runtime configuration")
+    workflow_runtime: WorkflowRuntimeConfig = Field(
+        default_factory=WorkflowRuntimeConfig,
+        description="Durable workflow admission, lease, and attachment limits.",
+    )
     guardrails: GuardrailsConfig = Field(default_factory=GuardrailsConfig, description="Guardrail middleware configuration")
     authorization: AuthorizationConfig = Field(default_factory=AuthorizationConfig, description="Fine-grained resource authorization configuration (RBAC and beyond)")
     input_polish: InputPolishConfig = Field(default_factory=InputPolishConfig, description="Pre-send input polishing configuration.")

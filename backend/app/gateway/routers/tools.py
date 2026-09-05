@@ -9,10 +9,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
+from app.agentplatform.rbac_models import UserModel, UserRole
+from app.agentplatform.resource_models import ResourceMetadata
 from app.agentplatform.tool_adapter import get_available_tools
 from app.gateway.authz import check_resource_access, get_current_rbac_user, get_optional_rbac_user, require_role
-from ideer.persistence.engine import get_session_factory
-from ideer.persistence.models.user import UserModel, UserRole
+from deerflow.persistence.engine import get_session_factory
 
 logger = logging.getLogger(__name__)
 
@@ -29,8 +30,6 @@ async def _load_tool_meta(tool_name: str) -> dict:
     if sf is not None:
         try:
             async with sf() as session:
-                from ideer.persistence.models.resource_metadata import ResourceMetadata
-
                 stmt = select(ResourceMetadata).where(
                     ResourceMetadata.resource_type == "tool",
                     ResourceMetadata.resource_id == tool_name,
@@ -67,8 +66,6 @@ async def list_tools(
     if sf is not None and tool_names:
         try:
             async with sf() as session:
-                from ideer.persistence.models.resource_metadata import ResourceMetadata
-
                 stmt = select(ResourceMetadata).where(
                     ResourceMetadata.resource_type == "tool",
                     ResourceMetadata.resource_id.in_(tool_names),

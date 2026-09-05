@@ -20,8 +20,10 @@ import pytest_asyncio
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from ideer.persistence.base import Base
-from ideer.persistence.models.workflow_v2 import WorkflowTaskRow
+from app.agentplatform import rbac_models as _rbac_models  # noqa: F401
+from app.agentplatform import resource_models as _resource_models  # noqa: F401
+from deerflow.persistence.base import Base
+from deerflow.persistence.models.workflow_v2 import WorkflowTaskRow
 from ideer.workflows.v2.file_roots import make_host_resolver, workflow_log_root, workflow_record_path
 from ideer.workflows.v2.run_record import RunRecordWriter
 from ideer.workflows.v2.store import WorkflowV2Store

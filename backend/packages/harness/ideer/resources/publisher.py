@@ -10,7 +10,7 @@ from pathlib import Path
 
 import yaml
 
-from ideer.persistence.models.resource_catalog import Resource, ResourceDraft, ResourceVersion
+from app.agentplatform.resource_models import Resource, ResourceDraft, ResourceVersion
 from ideer.resources.runtime import load_validated_agent_definition
 from ideer.resources.service import ResourceConflict, ResourceService
 from ideer.resources.storage import ResourceStorage, StorageError, StorageValidationError
