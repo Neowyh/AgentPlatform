@@ -175,6 +175,13 @@ uploads:
 sandbox:
   use: ideer.community.aio_sandbox:AioSandboxProvider
   image: ideer-sandbox:latest
+  # Enterprise intranet default: no public egress and no interactive grants.
+  # Internal endpoints must be added explicitly to allow_domains by the
+  # deployment operator; community Web/MCP providers remain unavailable.
+  network:
+    mode: isolated
+    allow_domains: []
+    approval: deny
   # 基础端口（默认 8080）
   # port: 8080
   # 最大并发沙箱数量（默认 3）
