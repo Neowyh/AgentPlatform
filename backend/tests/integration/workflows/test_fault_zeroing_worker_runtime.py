@@ -10,8 +10,9 @@ import yaml
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.workflow_worker import execute_workflow_task
+from deerflow.config.database_config import DatabaseConfig
+from deerflow.persistence.base import Base
 from ideer.config.paths import Paths
-from ideer.persistence.base import Base
 from ideer.resources.runtime import _json_hash
 from ideer.resources.service import ResourceAction, ResourceActor
 from ideer.workflows.v2.adapters import ActionAdapterRegistry, _ToolAdapter
@@ -145,7 +146,7 @@ class RecordingAgent:
 def _make_config(tmp_path: Path) -> SimpleNamespace:
     return SimpleNamespace(
         checkpointer=SimpleNamespace(type="sqlite", connection_string=str(tmp_path / "checkpoints.db")),
-        database=SimpleNamespace(backend="memory"),
+        database=DatabaseConfig(backend="memory"),
         workflow_runtime=SimpleNamespace(
             max_events_per_run=1000,
             node_timeout_seconds=30,
@@ -466,8 +467,8 @@ async def test_tool_adapter_injects_sandbox_runtime(
     """
     monkeypatch.setattr("ideer.config.paths.get_paths", lambda: Paths(str(tmp_path / "base")))
 
-    from ideer.sandbox.sandbox_provider import reset_sandbox_provider
-    from ideer.sandbox.tools import read_file_tool, write_file_tool
+    from deerflow.sandbox.sandbox_provider import reset_sandbox_provider
+    from deerflow.sandbox.tools import read_file_tool, write_file_tool
 
     reset_sandbox_provider()
 

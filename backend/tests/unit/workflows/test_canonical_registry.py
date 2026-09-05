@@ -8,10 +8,10 @@ from types import SimpleNamespace
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+import deerflow.tools.tools
 import ideer.persistence.models  # noqa: F401
-import ideer.tools.tools
 from app.workflow_worker import build_canonical_registry
-from ideer.persistence.base import Base
+from deerflow.persistence.base import Base
 from ideer.persistence.models.resource_catalog import Resource, ResourceVersion, RunResourceSnapshot
 from ideer.resources.canonical_sandbox import canonical_run_key
 from ideer.resources.storage import ResourceStorage
@@ -76,7 +76,7 @@ async def test_canonical_registry_uses_uuid_and_frozen_runner_tool_groups(
 
     tools = [SimpleNamespace(name="read_file", group="read"), SimpleNamespace(name="write_file", group="write")]
     monkeypatch.setattr(
-        ideer.tools.tools,
+        deerflow.tools.tools,
         "get_available_tools",
         lambda groups=None, app_config=None: [tool for tool in tools if groups is None or tool.group in groups],
     )

@@ -58,8 +58,8 @@ class _ToolAdapter:
     def _build_runtime(self, context: ActionContext) -> Any:
         from langchain.tools import ToolRuntime
 
+        from deerflow.sandbox.sandbox_provider import get_sandbox_provider
         from ideer.config.paths import get_paths
-        from ideer.sandbox.sandbox_provider import get_sandbox_provider
 
         # The sandbox tools resolve virtual paths through runtime.state.thread_data
         # and lazily acquire a sandbox through runtime.context.thread_id; mirror
