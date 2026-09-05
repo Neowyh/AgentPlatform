@@ -1,5 +1,7 @@
 """Memory API router for retrieving and managing global memory data."""
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
@@ -13,7 +15,7 @@ from app.agentplatform.memory_adapter import (
     update_memory_fact,
 )
 from app.gateway.authz import get_current_rbac_user, require_role
-from ideer.config.memory_config import get_memory_config
+from deerflow.config.memory_config import get_memory_config
 from ideer.persistence.models.user import UserModel, UserRole
 from ideer.runtime.user_context import get_effective_user_id
 
@@ -91,15 +93,21 @@ class FactPatchRequest(BaseModel):
 
 
 class MemoryConfigResponse(BaseModel):
-    """Response model for memory configuration."""
+    """DeerFlow memory configuration with legacy display fields preserved."""
 
     enabled: bool = Field(..., description="Whether memory is enabled")
-    storage_path: str = Field(..., description="Path to memory storage file")
-    debounce_seconds: int = Field(..., description="Debounce time for memory updates")
-    max_facts: int = Field(..., description="Maximum number of facts to store")
-    fact_confidence_threshold: float = Field(..., description="Minimum confidence threshold for facts")
+    mode: str = Field(default="middleware", description="Memory operation mode")
     injection_enabled: bool = Field(..., description="Whether memory injection is enabled")
-    max_injection_tokens: int = Field(..., description="Maximum tokens for memory injection")
+    shutdown_flush_timeout_seconds: float = Field(default=30.0, description="Shutdown flush budget")
+    manager_class: str = Field(default="deermem", description="Configured memory backend")
+    backend_config: dict[str, Any] = Field(default_factory=dict, description="Backend-private memory configuration")
+    # Deprecated display fields retained for older clients. They are derived
+    # from backend_config when using the DeerFlow schema.
+    storage_path: str | None = Field(default=None, description="Legacy memory storage root")
+    debounce_seconds: int | None = Field(default=None, description="Legacy debounce setting")
+    max_facts: int | None = Field(default=None, description="Legacy maximum fact count")
+    fact_confidence_threshold: float | None = Field(default=None, description="Legacy fact confidence threshold")
+    max_injection_tokens: int | None = Field(default=None, description="Legacy injection token budget")
 
 
 class MemoryStatusResponse(BaseModel):
@@ -107,6 +115,25 @@ class MemoryStatusResponse(BaseModel):
 
     config: MemoryConfigResponse
     data: MemoryResponse
+
+
+def _memory_config_response(config: Any) -> MemoryConfigResponse:
+    """Normalize DeerFlow and legacy config objects at the HTTP boundary."""
+    values = vars(config)
+    backend_config = dict(values.get("backend_config") or {})
+    return MemoryConfigResponse(
+        enabled=bool(values.get("enabled", True)),
+        mode=str(values.get("mode", "middleware")),
+        injection_enabled=bool(values.get("injection_enabled", True)),
+        shutdown_flush_timeout_seconds=float(values.get("shutdown_flush_timeout_seconds", 30.0)),
+        manager_class=str(values.get("manager_class", "deermem")),
+        backend_config=backend_config,
+        storage_path=backend_config.get("storage_path", values.get("storage_path")),
+        debounce_seconds=backend_config.get("debounce_seconds", values.get("debounce_seconds")),
+        max_facts=backend_config.get("max_facts", values.get("max_facts")),
+        fact_confidence_threshold=backend_config.get("fact_confidence_threshold", values.get("fact_confidence_threshold")),
+        max_injection_tokens=backend_config.get("max_injection_tokens", values.get("max_injection_tokens")),
+    )
 
 
 @router.get(
@@ -340,15 +367,7 @@ async def get_memory_config_endpoint() -> MemoryConfigResponse:
         ```
     """
     config = get_memory_config()
-    return MemoryConfigResponse(
-        enabled=config.enabled,
-        storage_path=config.storage_path,
-        debounce_seconds=config.debounce_seconds,
-        max_facts=config.max_facts,
-        fact_confidence_threshold=config.fact_confidence_threshold,
-        injection_enabled=config.injection_enabled,
-        max_injection_tokens=config.max_injection_tokens,
-    )
+    return _memory_config_response(config)
 
 
 @router.get(
@@ -368,14 +387,6 @@ async def get_memory_status() -> MemoryStatusResponse:
     memory_data = get_memory_data(user_id=get_effective_user_id())
 
     return MemoryStatusResponse(
-        config=MemoryConfigResponse(
-            enabled=config.enabled,
-            storage_path=config.storage_path,
-            debounce_seconds=config.debounce_seconds,
-            max_facts=config.max_facts,
-            fact_confidence_threshold=config.fact_confidence_threshold,
-            injection_enabled=config.injection_enabled,
-            max_injection_tokens=config.max_injection_tokens,
-        ),
+        config=_memory_config_response(config),
         data=MemoryResponse(**memory_data),
     )
