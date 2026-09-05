@@ -9,8 +9,8 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.store.memory import InMemoryStore
 
 from app.gateway.routers import threads
+from deerflow.persistence.thread_meta import InvalidMetadataFilterError
 from ideer.config.paths import Paths
-from ideer.persistence.thread_meta import InvalidMetadataFilterError
 from ideer.persistence.thread_meta.memory import THREADS_NS, MemoryThreadMetaStore
 
 _ISO_TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}")

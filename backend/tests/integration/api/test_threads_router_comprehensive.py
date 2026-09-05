@@ -606,7 +606,7 @@ class TestSearchThreads:
 
     @patch("app.gateway.routers.threads.coerce_iso", side_effect=lambda x: x)
     def test_search_invalid_metadata_filter_raises_400(self, mock_coerce):
-        from ideer.persistence.thread_meta import InvalidMetadataFilterError
+        from deerflow.persistence.thread_meta import InvalidMetadataFilterError
 
         app, cp, ts = _make_app()
         ts.search = AsyncMock(side_effect=InvalidMetadataFilterError("bad filter"))

@@ -100,7 +100,7 @@ class ThreadSearchRequest(BaseModel):
         """
         if not v:
             return v
-        from ideer.persistence.json_compat import validate_metadata_filter_key, validate_metadata_filter_value
+        from deerflow.persistence.json_compat import validate_metadata_filter_key, validate_metadata_filter_value
 
         bad_entries: list[str] = []
         for key, value in v.items():
@@ -316,7 +316,7 @@ async def search_threads(body: ThreadSearchRequest, request: Request) -> list[Th
     (SQL-backed for sqlite/postgres, Store-backed for memory mode).
     """
     from app.gateway.deps import get_thread_store
-    from ideer.persistence.thread_meta import InvalidMetadataFilterError
+    from deerflow.persistence.thread_meta import InvalidMetadataFilterError
 
     repo = get_thread_store(request)
     try:
