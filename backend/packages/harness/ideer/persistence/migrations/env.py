@@ -15,6 +15,7 @@ from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 from alembic import context
+from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from ideer.persistence.base import Base
@@ -179,11 +180,26 @@ def do_run_migrations(connection):
         context.run_migrations()
 
 
-async def run_migrations_online() -> None:
-    url = _resolve_db_url(config.get_main_option("sqlalchemy.url"))
-    if url is None:
-        logging.getLogger(__name__).info("database.backend=memory -- skipping online migrations")
-        return
+def _run_sqlite_migrations_online(url: str) -> None:
+    """Run SQLite Alembic migrations on a synchronous engine.
+
+    Alembic's command API is synchronous. Using ``asyncio.run`` with an
+    ``aiosqlite`` engine here leaves its worker thread alive during repeated
+    upgrade/downgrade runs (and can hang process shutdown on Python 3.12).
+    The application still uses the async URL at runtime; only this migration
+    boundary uses SQLite's synchronous driver.
+    """
+
+    sync_url = url.replace("sqlite+aiosqlite://", "sqlite://", 1)
+    connectable = create_engine(sync_url)
+    try:
+        with connectable.connect() as connection:
+            do_run_migrations(connection)
+    finally:
+        connectable.dispose()
+
+
+async def _run_async_migrations_online(url: str) -> None:
     _ensure_sqlite_parent_dir(url)
     connectable = create_async_engine(url)
     async with connectable.connect() as connection:
@@ -191,7 +207,19 @@ async def run_migrations_online() -> None:
     await connectable.dispose()
 
 
+def run_migrations_online() -> None:
+    url = _resolve_db_url(config.get_main_option("sqlalchemy.url"))
+    if url is None:
+        logging.getLogger(__name__).info("database.backend=memory -- skipping online migrations")
+        return
+    _ensure_sqlite_parent_dir(url)
+    if url.startswith("sqlite+aiosqlite://"):
+        _run_sqlite_migrations_online(url)
+        return
+    asyncio.run(_run_async_migrations_online(url))
+
+
 if context.is_offline_mode():
     run_migrations_offline()
 else:
-    asyncio.run(run_migrations_online())
+    run_migrations_online()
