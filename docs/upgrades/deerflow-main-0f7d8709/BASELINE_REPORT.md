@@ -107,6 +107,11 @@ The following focused slices are green on this branch:
   32 passed.
 - Resource Gateway upload helpers now consume DeerFlow's shared safe filename
   and no-symlink file primitives; Resource API focused regressions: 18 passed.
+- Canonical Resource router workflow limits, model allowlist and runtime
+  configuration now resolve through DeerFlow `get_app_config`; enterprise paths
+  and catalog ORM remain in the AgentPlatform boundary. The focused resource
+  API run reached 13 passed before the existing DB-backed response test stalled
+  under this restricted test environment, so the full file remains incomplete.
 - Gateway run services now consume DeerFlow RunManager/RunRecord/RunStatus,
   StreamBridge and run naming; services behavior regressions: 77 passed.
 - Gateway agent-factory resolution now returns DeerFlow's `make_lead_agent`;
