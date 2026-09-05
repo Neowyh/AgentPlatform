@@ -10,7 +10,7 @@ from types import SimpleNamespace
 from typing import Any
 
 from deerflow.config.paths import make_safe_user_id
-from ideer.runtime.user_context import DEFAULT_USER_ID
+from deerflow.runtime.user_context import DEFAULT_USER_ID
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ def _get_internal_token() -> str:
     if _internal_token is not None:
         return _internal_token
 
-    token = os.environ.get(INTERNAL_AUTH_ENV_VAR)
+    token = os.environ.get(UPSTREAM_INTERNAL_AUTH_ENV_VAR) or os.environ.get(INTERNAL_AUTH_ENV_VAR)
     if token:
         _internal_token = token
         return _internal_token
