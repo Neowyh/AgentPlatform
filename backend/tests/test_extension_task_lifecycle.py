@@ -11,6 +11,7 @@ import pytest
 from deerflow_extension_api import (
     EXTENSION_TASK_STORE_KEY,
     ExtensionData,
+    RunEvidenceEnvelope,
     TaskInfo,
     TaskOutcome,
 )
@@ -74,6 +75,11 @@ async def test_start_and_stop_reach_contributors_in_order():
 
     assert first.events == [("start", "task-1", "lead"), ("stop", "task-1", "completed")]
     assert second.events == first.events
+    evidence = store.get(RunEvidenceEnvelope)
+    assert evidence is not None
+    assert evidence.run_id == "run-1"
+    assert evidence.thread_id == "thread-1"
+    assert evidence.outcome is TaskOutcome.COMPLETED
 
 
 @pytest.mark.asyncio

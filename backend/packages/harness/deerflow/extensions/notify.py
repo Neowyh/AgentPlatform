@@ -6,12 +6,14 @@ import asyncio
 import logging
 import time
 from collections.abc import Awaitable, Callable, Coroutine, Mapping
+from dataclasses import replace
 from typing import Any
 
 from deerflow_extension_api import (
     EXTENSION_TASK_STORE_KEY,
     CompactionEvent,
     ExtensionData,
+    RunEvidenceEnvelope,
     SystemModelRequest,
     SystemModelResult,
     SystemOperationKind,
@@ -275,6 +277,12 @@ async def notify_task_start(
     *,
     timeout: float | None = None,
 ) -> None:
+    task_store.set(
+        RunEvidenceEnvelope(
+            run_id=info.run_id,
+            thread_id=info.thread_id,
+        )
+    )
     await _notify_each_on_extension_loop(
         extensions.task_lifecycle,
         "on_task_start",
@@ -296,6 +304,10 @@ async def notify_task_stop(
     *,
     timeout: float | None = None,
 ) -> None:
+    envelope = task_store.get(RunEvidenceEnvelope)
+    if envelope is None:
+        envelope = RunEvidenceEnvelope(run_id=info.run_id, thread_id=info.thread_id)
+    task_store.set(replace(envelope, outcome=outcome))
     await _notify_each_on_extension_loop(
         extensions.task_lifecycle,
         "on_task_stop",

@@ -79,6 +79,7 @@ class RunEvidenceEnvelope:
     run_id: str
     thread_id: str
     trace_id: str | None = None
+    outcome: TaskOutcome | None = None
     resource_snapshots: Sequence[Mapping[str, Any]] = ()
     runtime_assembly_fingerprint: str | None = None
     authorization_context: Mapping[str, Any] = field(default_factory=dict)
