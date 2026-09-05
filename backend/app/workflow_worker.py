@@ -13,9 +13,9 @@ import yaml
 from langgraph.types import Command
 
 from deerflow.config import get_app_config
+from deerflow.runtime.checkpointer.async_provider import make_checkpointer
 from ideer.persistence.engine import close_engine, get_session_factory, init_engine_from_config
 from ideer.persistence.models.workflow_v2 import WorkflowTaskRow
-from ideer.runtime.checkpointer.async_provider import make_checkpointer
 from ideer.workflows.v2.compiler import WorkflowCancelled, WorkflowGraphCompiler
 from ideer.workflows.v2.errors import WorkflowInvalidRootsError, WorkflowMissingInputRootsError, WorkflowRunError, run_failure_payload
 from ideer.workflows.v2.file_roots import make_host_resolver, validate_read_roots, validate_workflow_roots, workflow_log_root
@@ -118,7 +118,7 @@ async def execute_workflow_task(
         raise RuntimeError(f"workflow run '{run_id}' not found")
     storage = None
     if run.workflow_resource_id:
-        from ideer.config.paths import get_paths
+        from deerflow.config.paths import get_paths
         from ideer.resources.storage import ResourceStorage
 
         storage = ResourceStorage(get_paths().base_dir)
