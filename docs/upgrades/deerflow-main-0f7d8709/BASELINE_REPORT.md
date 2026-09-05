@@ -27,6 +27,7 @@ Locked DeerFlow SHA: `0f7d8709d3bbf0be26460b6277fbad9329302243`
 | `cd frontend && pnpm test` | blocked | The checked-out frontend dependencies do not provide the `rstest` binary. |
 | `cd frontend && pnpm check` | blocked | With the available install, ESLint cannot load `next/dist/compiled/babel/eslint-parser` through `eslint-config-next`; TypeScript is not reached. Offline install lacks the required package artifacts. |
 | `bash scripts/package-intranet-offline.sh --no-sandbox ...` | blocked | The packaging preflight requires Docker Compose v2, unavailable in this environment. `--help` and argument parsing pass. |
+| `backend/tests/unit/scripts/test_intranet_deploy_scripts.py` | incomplete | The offline manifest/deploy test file progressed through 15 cases, then hung until the explicit 90s timeout; no full-file pass is claimed. |
 
 The standard lane now exports `PYTHONPATH=.:tests`, preserving the existing
 collection roots while resolving shared test helpers. Re-run with
