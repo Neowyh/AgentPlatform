@@ -112,6 +112,7 @@ function setupAuth(role = "super_admin") {
     isLoading: false,
     logout: vi.fn(),
     refreshUser: vi.fn(),
+applyUser: vi.fn(),
   });
 }
 
@@ -178,6 +179,7 @@ describe("AuditLogsPage", () => {
       isLoading: false,
       logout: vi.fn(),
       refreshUser: vi.fn(),
+applyUser: vi.fn(),
     });
 
     render(<AuditLogsPage />);
@@ -662,6 +664,7 @@ describe("AuditLogsPage", () => {
       isLoading: false,
       logout: vi.fn(),
       refreshUser: vi.fn(),
+applyUser: vi.fn(),
     });
 
     render(<AuditLogsPage />);

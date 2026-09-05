@@ -35,7 +35,6 @@ import {
 } from "react";
 import { toast } from "sonner";
 
-import { prepareTaskInputInsertion } from "@/core/threads/task-input";
 
 import {
   PromptInput,
@@ -95,6 +94,7 @@ import {
   type ComposerDraft,
   writeComposerDraft,
 } from "@/core/threads/composer-draft";
+import { prepareTaskInputInsertion } from "@/core/threads/task-input";
 import { threadTokenUsageQueryKey } from "@/core/threads/token-usage";
 import { textOfMessage } from "@/core/threads/utils";
 import {

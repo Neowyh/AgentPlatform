@@ -27,8 +27,13 @@ import { cn } from "@/lib/utils";
 export type SettingsSection =
   | "account"
   | "appearance"
+  | "channels"
+  | "integrations"
   | "memory"
   | "notification"
+  | "tools"
+  | "subagents"
+  | "skills"
   | "about";
 
 type SettingsDialogProps = React.ComponentProps<typeof Dialog> & {

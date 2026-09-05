@@ -118,6 +118,7 @@ const mockSkill = {
   license: "mit",
   enabled: false,
   visibility: "private",
+  editable: false,
 };
 
 const mockOnOpenChange = vi.fn();

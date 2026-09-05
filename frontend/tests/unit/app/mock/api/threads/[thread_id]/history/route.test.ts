@@ -1,5 +1,5 @@
-import { describe, test, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
+import { describe, test, expect, vi, beforeEach } from "vitest";
 
 // The merged mock history route validates the thread against DEMO_THREAD_IDS
 // and loads its manifest over HTTP (/demo/threads/<id>/thread.json).
@@ -18,7 +18,7 @@ function mockFetchResponses(byId: Record<string, object | null>) {
     "fetch",
     vi.fn((input: URL | string) => {
       const url = String(input);
-      const match = url.match(/\/demo\/threads\/([^/]+)\/thread\.json/);
+      const match = /\/demo\/threads\/([^/]+)\/thread\.json/.exec(url);
       const id = match ? decodeURIComponent(match[1]!) : "";
       const body = byId[id];
       if (body === null || body === undefined) {

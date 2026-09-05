@@ -1,5 +1,5 @@
-import { describe, test, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
+import { describe, test, expect, vi, beforeEach } from "vitest";
 
 // The merged artifacts mock route validates the requested path against the
 // static-demo allowlist (resolveStaticDemoArtifact) and proxies the file from
@@ -128,7 +128,7 @@ describe("mock artifacts route", () => {
   });
 
   test("GET resolves mnt/ path to the static demo/threads origin path", async () => {
-    const fetchMock = vi.fn(() =>
+    const fetchMock = vi.fn((..._args: unknown[]) =>
       Promise.resolve(new Response("data", { status: 200 })),
     );
     vi.stubGlobal("fetch", fetchMock);

@@ -24,8 +24,8 @@ const shared = {
 // Framework split (see tests/framework-split.ts): rstest only claims the
 // files that import `@rstest/core`; vitest collects the rest, so no file
 // runs twice.
-const rstestNodeFiles = rstestUnitFiles.filter((file) => !/\.dom\.test\./.test(file));
-const rstestDomFiles = rstestUnitFiles.filter((file) => /\.dom\.test\./.test(file));
+const rstestNodeFiles = rstestUnitFiles.filter((file) => !file.includes(".dom.test."));
+const rstestDomFiles = rstestUnitFiles.filter((file) => file.includes(".dom.test."));
 
 export default defineConfig({
   projects: [

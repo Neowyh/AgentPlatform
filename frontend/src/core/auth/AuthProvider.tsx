@@ -28,6 +28,8 @@ interface AuthContextType {
   isLoading: boolean;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  /** Apply an already-fetched user (e.g. after an auth action) to the context. */
+  applyUser: (user: User | null) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -47,6 +49,7 @@ interface AuthProviderProps {
  */
 export function AuthProvider({ children, initialUser }: AuthProviderProps) {
   const [user, setUser] = useState<User | null>(initialUser);
+  const applyUser = useCallback((next: User | null) => setUser(next), []);
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
@@ -136,6 +139,7 @@ export function AuthProvider({ children, initialUser }: AuthProviderProps) {
     isLoading,
     logout,
     refreshUser,
+    applyUser,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

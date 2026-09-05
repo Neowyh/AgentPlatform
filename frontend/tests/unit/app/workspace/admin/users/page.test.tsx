@@ -162,6 +162,7 @@ describe("UsersPage", () => {
       isLoading: false,
       logout: vi.fn(),
       refreshUser: vi.fn(),
+applyUser: vi.fn(),
     });
     mockListUsers.mockResolvedValue({
       users: mockUsers,
@@ -1364,6 +1365,7 @@ describe("UsersPage", () => {
       isLoading: false,
       logout: vi.fn(),
       refreshUser: vi.fn(),
+applyUser: vi.fn(),
     });
 
     render(<UsersPage />);

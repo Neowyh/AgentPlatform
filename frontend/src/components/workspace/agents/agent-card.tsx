@@ -60,7 +60,7 @@ export function AgentCard({ agent }: AgentCardProps) {
       await toggleFavorite.mutateAsync(
         agent.resource_id
           ? {
-              name: agent.resource_id,
+              id: agent.resource_id,
               isFavorited: agent.is_favorited ?? false,
             }
           : agent.name,

@@ -214,7 +214,7 @@ describe("MCP config mutations", () => {
       operation: "update",
       serverName: "test-server",
       server: {
-        ...MOCK_MCP_CONFIG.mcp_servers["test-server"]!,
+        ...MOCK_MCP_CONFIG.mcp_servers["test-server"],
         command: "python",
       },
     });

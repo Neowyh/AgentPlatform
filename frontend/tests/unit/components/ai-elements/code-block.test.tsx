@@ -84,7 +84,7 @@ describe("highlightCode", () => {
       string,
       { transformers: unknown[] },
     ];
-    expect(call![1].transformers).toEqual([]);
+    expect(call[1].transformers).toEqual([]);
   });
 });
 

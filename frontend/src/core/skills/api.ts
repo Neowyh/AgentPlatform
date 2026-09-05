@@ -41,6 +41,7 @@ export async function loadSkills(): Promise<Skill[]> {
       resource_id: resource.id,
       slug: resource.slug,
       read_only: !resource.can_modify,
+      editable: resource.can_modify,
       name: resource.display_name,
       description: resource.description ?? resource.display_name,
       summary: getResourceSummary(
@@ -98,6 +99,7 @@ export async function getSkill(resourceId: string): Promise<Skill> {
     owner_id: resource.owner_id,
     department_id: resource.scope_department_id,
     read_only: !resource.can_modify,
+      editable: resource.can_modify,
     is_favorited: resource.is_favorited,
     latest_version: resource.latest_version,
     draft_revision: resource.draft_revision,

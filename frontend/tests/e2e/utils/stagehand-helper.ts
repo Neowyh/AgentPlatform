@@ -151,36 +151,17 @@ export async function createStagehandTest(
       }
     : cfg.model;
 
-  // Resolve Chrome executable path from Playwright's cache
-  const { execSync } = await import("child_process");
-  let chromePath: string | undefined;
-  try {
-    chromePath = execSync(
-      'find ~/.cache/ms-playwright -name "chrome" -path "*/chrome-linux64/chrome" 2>/dev/null | head -1',
-      { encoding: "utf-8" },
-    ).trim();
-  } catch {
-    // fallback: let chrome-launcher find it
-  }
-
-  const stagehand = new Stagehand({
-    env: "LOCAL",
+  // Stagehand v4: Stagehand.create() constructs and initializes in one step;
+  // env/localBrowserLaunchOptions/disableAPI no longer exist — v4 always runs
+  // against a provided browser or its own managed local browser.
+  // The model name comes from deployment config while Stagehand's option type
+  // is a literal union of known providers — one explicit boundary cast keeps
+  // the runtime validation (zod) in charge of the actual values.
+  const createOptions = {
     model: modelConfig,
     apiKey: cfg.apiKey,
-    verbose: cfg.verbose,
-    localBrowserLaunchOptions: {
-      headless: cfg.headless,
-      executablePath: chromePath || undefined,
-      args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-      ],
-    },
-    disableAPI: true, // Use local browser only, no Browserbase API
-  });
-
-  await stagehand.init();
+  } as unknown as Parameters<typeof Stagehand.create>[0];
+  const stagehand = await Stagehand.create(createOptions);
 
   // Stagehand v3 exposes the page via resolvePage() (private but accessible)
   const page = await (stagehand as any).resolvePage();

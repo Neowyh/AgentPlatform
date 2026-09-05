@@ -13,6 +13,8 @@ import type { Page, Route } from "@playwright/test";
 // ---------------------------------------------------------------------------
 
 export const MOCK_THREAD_ID = "00000000-0000-0000-0000-000000000001";
+export const MOCK_SIDECAR_THREAD_ID = "00000000-0000-0000-0000-000000000002";
+export const THREAD_PINNED_METADATA_KEY = "ideer.thread-pinned";
 export const MOCK_THREAD_ID_2 = "00000000-0000-0000-0000-000000000002";
 export const MOCK_RUN_ID = "00000000-0000-0000-0000-000000000099";
 
@@ -27,6 +29,7 @@ export type MockThread = {
   agent_name?: string;
   messages?: unknown[];
   artifacts?: string[];
+  metadata?: Record<string, unknown>;
 };
 
 export type MockAgent = {
@@ -253,6 +256,8 @@ export type MockScheduledTask = {
   last_run_id: string | null;
   last_error: string | null;
   run_count: number;
+  last_thread_id?: string | null;
+  context_mode?: string;
   created_at: string;
   updated_at: string;
 };
@@ -272,6 +277,9 @@ export type MockAPIOptions = {
   resources?: MockAdminResource[];
   mcpConfig?: MockMCPConfig;
   scheduledTasks?: MockScheduledTask[];
+  features?: Record<string, boolean>;
+  createdThreadMessages?: unknown[];
+  runStreamHandler?: (route: Route) => unknown;
   systemRole?: string;
 };
 
@@ -338,6 +346,9 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
   const tools = options?.tools ?? [];
   const memory = options?.memory ?? DEFAULT_MOCK_MEMORY;
   const auditLogs = options?.auditLogs ?? [];
+  const runStreamHandler = options?.runStreamHandler;
+  const createdThreadMessages = options?.createdThreadMessages;
+  const features = options?.features;
   const resources = options?.resources ?? [];
   const systemRole = options?.systemRole ?? "super_admin";
   const mcpConfig = options?.mcpConfig ?? { mcp_servers: {} };
@@ -548,6 +559,22 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
         const matchingThread = threads.find((t) =>
           url.includes(`/api/threads/${t.thread_id}/runs/`),
         );
+        if (!matchingThread && createdThreadMessages) {
+          // Messages of a thread created earlier in the same spec run.
+          return route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+              data: createdThreadMessages.map((message, index) => ({
+                run_id: "run-created-thread",
+                content: message,
+                metadata: { caller: "lead_agent" },
+                created_at: `2025-01-01T00:00:${String(index).padStart(2, "0")}Z`,
+              })),
+              hasMore: false,
+            }),
+          });
+        }
         return route.fulfill({
           status: 200,
           contentType: "application/json",
@@ -566,14 +593,33 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
     },
   );
 
-  // Run stream — returns a minimal SSE response with an AI message
+  // Feature flags — capability center reads these on load.
+  if (features) {
+    void page.route("**/api/features", (route) => {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(features),
+      });
+    });
+  }
+
+  // Run stream — returns a minimal SSE response with an AI message. A spec
+  // can take over the stream entirely via `runStreamHandler` (e.g. proxying
+  // to a mock stream server).
+  const runStreamRoute = (route: Route) => {
+    if (runStreamHandler) {
+      return runStreamHandler(route);
+    }
+    return handleRunStream(route);
+  };
   void page.route(
     /\/(?:api\/langgraph|mock\/api)\/runs\/stream$/,
-    handleRunStream,
+    runStreamRoute,
   );
   void page.route(
     /\/(?:api\/langgraph|mock\/api)\/threads\/[^/]+\/runs\/stream$/,
-    handleRunStream,
+    runStreamRoute,
   );
 
   // Mock-mode artifact content — mirrors /mock/api/threads/:id/artifacts/*
@@ -1753,7 +1799,20 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
  * Build a minimal SSE stream that the LangGraph SDK can parse.
  * The stream returns a single AI message: "Hello from iDeer!".
  */
-export function handleRunStream(route: Route) {
+export function handleRunStream(
+  route: Route,
+  _data?: unknown,
+  _extra?: unknown,
+  overrides?: {
+    responseMessage?: Record<string, unknown>;
+    messageMetadata?: Record<string, unknown>;
+  },
+) {
+  const aiMessage = overrides?.responseMessage ?? {
+    type: "ai",
+    id: "msg-ai-1",
+    content: "Hello from iDeer!",
+  };
   const events = [
     {
       event: "metadata",
@@ -1769,9 +1828,8 @@ export function handleRunStream(route: Route) {
             content: [{ type: "text", text: "Hello" }],
           },
           {
-            type: "ai",
-            id: "msg-ai-1",
-            content: "Hello from iDeer!",
+            ...aiMessage,
+            metadata: overrides?.messageMetadata,
           },
         ],
       },

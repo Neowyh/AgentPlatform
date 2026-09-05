@@ -1,5 +1,7 @@
 import { render, screen, cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
+
+import RootLayout from "@/app/layout";
 import { DEFAULT_LOCALE } from "@/core/i18n/locale";
 
 vi.mock("@/styles/globals.css", () => ({}));
@@ -37,7 +39,6 @@ afterEach(() => {
   cleanup();
 });
 
-import RootLayout from "@/app/layout";
 
 describe("RootLayout", () => {
   test("renders children", async () => {

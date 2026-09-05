@@ -90,7 +90,17 @@ export default tseslint.config(
     },
     languageOptions: {
       parserOptions: {
-        projectService: true,
+        projectService: {
+          // These merged test files are not placed by the project service
+          // (max 8 patterns — keep this list minimal).
+          allowDefaultProject: [
+            "tests/unit/components/ai-elements/code-block.test.tsx",
+            "tests/unit/components/workspace/citations/artifact-link.test.tsx",
+            "tests/unit/components/workspace/citations/citation-link.test.tsx",
+            "tests/unit/components/workspace/messages/message-group.test.tsx",
+            "tests/unit/components/workspace/messages/markdown-content.test.tsx",
+          ],
+        },
       },
     },
   },

@@ -148,6 +148,7 @@ describe("WorkspaceBreadcrumb", () => {
           category: "public",
           license: "",
           enabled: true,
+          editable: true,
         }}
       />,
     );

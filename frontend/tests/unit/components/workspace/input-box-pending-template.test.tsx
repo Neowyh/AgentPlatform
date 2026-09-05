@@ -1,6 +1,7 @@
-import { render as renderBase, screen, waitFor, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render as renderBase, screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useSearchParams } from "next/navigation";
 import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
 
 vi.mock("@/core/suggestions/hooks", () => ({
@@ -278,7 +279,6 @@ import { InputBox } from "@/components/workspace/input-box";
 import { useThread } from "@/components/workspace/messages/context";
 import { fetch } from "@/core/api/fetcher";
 import { useModels } from "@/core/models/hooks";
-import { useSearchParams } from "next/navigation";
 
 // ---------------------------------------------------------------------------
 // Helpers
