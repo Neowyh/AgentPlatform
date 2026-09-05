@@ -471,7 +471,7 @@ echo "✓ Database migrations completed"
 
 # 1. Gateway API
 run_service "Gateway" \
-    "cd backend && PYTHONPATH=. uv run uvicorn app.gateway.app:app --host 0.0.0.0 --port 8001 $GATEWAY_EXTRA_FLAGS > ../logs/gateway.log 2>&1" \
+    "cd backend && PYTHONPATH=. uv run --no-sync uvicorn app.gateway.app:app --host 0.0.0.0 --port 8001 $GATEWAY_EXTRA_FLAGS > ../logs/gateway.log 2>&1" \
     8001 30
 
 # 2. Durable workflow task consumer
@@ -479,8 +479,8 @@ run_workflow_worker
 
 # 3. Frontend
 run_service "Frontend" \
-    "cd frontend && $FRONTEND_CMD > ../logs/frontend.log 2>&1" \
-    3000 120
+    "cd frontend && env PORT=3000 $FRONTEND_CMD > ../logs/frontend.log 2>&1" \
+    3000 300
 
 # 4. Nginx
 run_service "Nginx" \

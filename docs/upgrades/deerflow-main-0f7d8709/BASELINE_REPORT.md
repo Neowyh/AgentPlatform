@@ -184,9 +184,10 @@ The following focused slices are green on this branch:
   tests plus 1 exact mount test).
 - Gateway startup resource seeding, canonical storage reconciliation, and
   anomaly auditing now resolve filesystem paths through DeerFlow's path
-  runtime. Nine focused startup/extension tests passed; five deployment-script
-  assertions remain open because the checked-in compose/launcher contract is
-  already out of sync with those tests.
+  runtime. The compose/launcher delivery contract now uses `uv --no-sync`,
+  exposes a gateway healthcheck, waits for readiness, and emits failure
+  diagnostics; all five deployment assertions and the nine startup/extension
+  tests pass.
 - Gateway run-config hardening now enforces a server-owned recursion ceiling,
   rejects client checkpoint-channel mode overrides, preserves the canonical
   thread ID in both runtime containers, dual-writes custom Agent identity for

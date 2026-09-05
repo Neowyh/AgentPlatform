@@ -294,18 +294,30 @@ if [ "$CMD" = "start" ]; then
     echo "Starting containers (no rebuild)..."
     echo ""
     # shellcheck disable=SC2086
-    "${COMPOSE_CMD[@]}" up -d --remove-orphans $services
+    if ! "${COMPOSE_CMD[@]}" up -d --wait --wait-timeout 120 --remove-orphans $services; then
+        echo -e "${RED}✗ DeerFlow services failed to become ready.${NC}" >&2
+        echo '  This deployment requires a Docker Compose version that supports `docker compose up --wait`.' >&2
+        "${COMPOSE_CMD[@]}" ps >&2 || true
+        "${COMPOSE_CMD[@]}" logs --no-color --tail 100 gateway >&2 || true
+        exit 1
+    fi
 else
     # Default: build + start
     echo "Building images and starting containers..."
     echo ""
     # shellcheck disable=SC2086
-    "${COMPOSE_CMD[@]}" up --build -d --remove-orphans $services
+    if ! "${COMPOSE_CMD[@]}" up --build -d --wait --wait-timeout 120 --remove-orphans $services; then
+        echo -e "${RED}✗ DeerFlow services failed to become ready.${NC}" >&2
+        echo '  This deployment requires a Docker Compose version that supports `docker compose up --wait`.' >&2
+        "${COMPOSE_CMD[@]}" ps >&2 || true
+        "${COMPOSE_CMD[@]}" logs --no-color --tail 100 gateway >&2 || true
+        exit 1
+    fi
 fi
 
 echo ""
 echo "=========================================="
-echo "  iDeer is running!"
+echo "  DeerFlow is running!"
 echo "=========================================="
 echo ""
 echo "  🌐 Application: http://localhost:${PORT:-2026}"
