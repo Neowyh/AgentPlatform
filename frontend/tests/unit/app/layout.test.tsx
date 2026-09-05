@@ -1,5 +1,6 @@
 import { render, screen, cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { DEFAULT_LOCALE } from "@/core/i18n/locale";
 
 vi.mock("@/styles/globals.css", () => ({}));
 vi.mock("katex/dist/katex.min.css", () => ({}));
@@ -49,10 +50,18 @@ describe("RootLayout", () => {
     expect(screen.getByTestId("theme-provider")).toBeInTheDocument();
   });
 
-  test("renders I18nProvider with locale", async () => {
+  test("stays static: no i18n provider, default locale on html", async () => {
     render(await RootLayout({ children: <div>content</div> }));
-    const provider = screen.getByTestId("i18n-provider");
-    expect(provider).toHaveAttribute("data-locale", "en");
+    // Perf boundary: locale detection and the i18n provider live in route
+    // layouts (workspace, auth, landing), never in the root layout.
+    expect(screen.queryByTestId("i18n-provider")).toBeNull();
+    const { container } = render(
+      await RootLayout({ children: <div>content</div> }),
+    );
+    const html = container.querySelector("html");
+    if (html) {
+      expect(html).toHaveAttribute("lang", DEFAULT_LOCALE);
+    }
   });
 
   test("renders html element with lang attribute", async () => {
