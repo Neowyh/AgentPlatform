@@ -12,7 +12,7 @@ from typing import Any
 import yaml
 from langgraph.types import Command
 
-from ideer.config import get_app_config
+from deerflow.config import get_app_config
 from ideer.persistence.engine import close_engine, get_session_factory, init_engine_from_config
 from ideer.persistence.models.workflow_v2 import WorkflowTaskRow
 from ideer.runtime.checkpointer.async_provider import make_checkpointer
