@@ -25,6 +25,7 @@ from starlette.background import BackgroundTask
 
 from app.gateway.audit import record_audit
 from app.gateway.authz import get_current_rbac_user
+from deerflow.uploads.manager import claim_unique_filename, normalize_filename, open_upload_file_no_symlink
 from ideer.config import get_app_config, get_paths
 from ideer.persistence.engine import get_session_factory
 from ideer.persistence.models.resource_catalog import (
@@ -52,7 +53,6 @@ from ideer.resources.service import (
 from ideer.resources.storage import ResourceStorage, StorageConflict, StorageValidationError
 from ideer.skills.validation import _validate_skill_frontmatter
 from ideer.uploads.code_evidence import CodeEvidencePackageError, PackageManifest, accept_package
-from ideer.uploads.manager import claim_unique_filename, normalize_filename, open_upload_file_no_symlink
 from ideer.workflows.v2.errors import WorkflowRunError
 from ideer.workflows.v2.file_roots import (
     collect_artifacts,
