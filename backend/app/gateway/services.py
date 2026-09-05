@@ -14,6 +14,7 @@ import logging
 import re
 import uuid
 from collections.abc import Mapping
+from types import SimpleNamespace
 from typing import Any
 
 from fastapi import HTTPException, Request
@@ -23,8 +24,9 @@ from langchain_core.messages.utils import convert_to_messages
 from app.gateway.auth_disabled import AUTH_SOURCE_INTERNAL
 from app.gateway.authz import _cached_rbac_identity
 from app.gateway.deps import get_checkpointer, get_run_context, get_run_manager, get_stream_bridge
-from app.gateway.internal_auth import INTERNAL_SYSTEM_ROLE
+from app.gateway.internal_auth import INTERNAL_OWNER_USER_ID_HEADER_NAME, INTERNAL_SYSTEM_ROLE, get_internal_user
 from app.gateway.utils import sanitize_log_param
+from deerflow.config import get_app_config
 from deerflow.runtime import (
     END_SENTINEL,
     HEARTBEAT_SENTINEL,
@@ -38,6 +40,7 @@ from deerflow.runtime import (
     run_agent,
 )
 from deerflow.runtime.runs.naming import resolve_root_run_name
+from deerflow.trace_context import ensure_trace_context
 
 logger = logging.getLogger(__name__)
 
@@ -185,8 +188,6 @@ def _resolve_max_recursion_limit() -> int:
     """Read the configured execution ceiling, with a safe fallback."""
 
     try:
-        from deerflow.config import get_app_config
-
         return int(get_app_config().max_recursion_limit)
     except Exception:
         return _DEFAULT_MAX_RECURSION_LIMIT
@@ -641,6 +642,8 @@ async def start_run(
     body: Any,
     thread_id: str,
     request: Request,
+    *,
+    idempotency_key: str | None = None,
 ) -> RunRecord:
     """Create a RunRecord and launch the background agent task.
 
@@ -680,6 +683,8 @@ async def start_run(
         }
         if canonical_run_id:
             create_kwargs["run_id"] = canonical_run_id
+        if idempotency_key is not None:
+            create_kwargs["idempotency_key"] = idempotency_key
         record = await run_mgr.create_or_reject(thread_id, body.assistant_id, **create_kwargs)
     except ConflictError as exc:
         await discard_canonical_snapshot(canonical_run_id)
@@ -775,6 +780,71 @@ async def start_run(
     # after the run completes.
 
     return record
+
+
+def _resolve_scheduler_recursion_limit() -> int:
+    """Resolve and clamp the live scheduler recursion setting per dispatch."""
+
+    try:
+        scheduler = getattr(get_app_config(), "scheduler", None)
+        configured = int(getattr(scheduler, "recursion_limit", _DEFAULT_RECURSION_LIMIT))
+        ceiling = _resolve_max_recursion_limit()
+        if configured > ceiling:
+            logger.warning(
+                "scheduler.recursion_limit %s exceeds max_recursion_limit %s; clamping",
+                configured,
+                ceiling,
+            )
+        return _clamp_recursion_limit(configured, ceiling)
+    except Exception:
+        logger.warning("failed to load app config; falling back to recursion_limit=%s", _DEFAULT_RECURSION_LIMIT)
+        return _DEFAULT_RECURSION_LIMIT
+
+
+async def launch_scheduled_thread_run(
+    *,
+    thread_id: str,
+    assistant_id: str | None,
+    prompt: str,
+    request: Request | None = None,
+    app: Any | None = None,
+    owner_user_id: str | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Launch one scheduler occurrence through the normal Run admission seam."""
+
+    if metadata and "auth_token" in metadata:
+        raise HTTPException(status_code=422, detail="legacy auth_token is unsupported; use config.context.secrets")
+    if request is None:
+        if app is None:
+            raise ValueError("launch_scheduled_thread_run requires request or app")
+        request = SimpleNamespace(
+            app=app,
+            headers=({INTERNAL_OWNER_USER_ID_HEADER_NAME: owner_user_id} if owner_user_id else {}),
+            state=SimpleNamespace(user=get_internal_user(), auth_source=AUTH_SOURCE_INTERNAL),
+            cookies={},
+        )
+
+    # Keep the HTTP router's validated model for compatibility with callers
+    # that pass scheduled bodies through the same request boundary.
+    from app.gateway.routers.thread_runs import RunCreateRequest
+
+    body = RunCreateRequest(
+        assistant_id=assistant_id,
+        input={"messages": [{"role": "user", "content": prompt}]},
+        metadata=metadata or {},
+        config={"recursion_limit": _resolve_scheduler_recursion_limit()},
+        context={"non_interactive": True, **({"user_id": owner_user_id} if owner_user_id else {})},
+    )
+    # Scheduler runs never request temporary-thread cleanup; keep the
+    # internal launch contract explicit even while the legacy HTTP model
+    # defaults this field to ``keep``.
+    body.on_completion = None
+    scheduled_task_run_id = (metadata or {}).get("scheduled_task_run_id")
+    idempotency_key = f"scheduled-task:{scheduled_task_run_id}" if isinstance(scheduled_task_run_id, str) else None
+    with ensure_trace_context():
+        record = await start_run(body, thread_id, request, idempotency_key=idempotency_key)
+    return {"run_id": record.run_id, "thread_id": record.thread_id}
 
 
 async def sse_consumer(
