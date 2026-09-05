@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ideer.workflows.v2.errors import (
+from app.agentplatform.workflows.v2.errors import (
     UNKNOWN,
     WorkflowInvalidRootsError,
     WorkflowMissingInputRootsError,
@@ -33,7 +33,7 @@ def test_missing_input_roots_error_summary() -> None:
 
 
 def test_node_failure_payload_maps_schema_violations() -> None:
-    from ideer.workflows.v2.compiler import WorkflowSchemaViolation
+    from app.agentplatform.workflows.v2.compiler import WorkflowSchemaViolation
 
     payload = node_failure_payload("deduce", WorkflowSchemaViolation("deduce", ["$.status: wrong enum", "$.grade: missing"]))
 
@@ -44,7 +44,7 @@ def test_node_failure_payload_maps_schema_violations() -> None:
 
 
 def test_node_failure_payload_maps_precondition_failures() -> None:
-    from ideer.workflows.v2.compiler import WorkflowPreconditionFailed
+    from app.agentplatform.workflows.v2.compiler import WorkflowPreconditionFailed
 
     payload = node_failure_payload("gate", WorkflowPreconditionFailed("gate", ["file fault_tree.json some_equals: confirmed"]))
 
@@ -54,7 +54,7 @@ def test_node_failure_payload_maps_precondition_failures() -> None:
 
 
 def test_node_failure_payload_maps_iteration_limit_and_unknown() -> None:
-    from ideer.workflows.v2.compiler import WorkflowIterationLimit
+    from app.agentplatform.workflows.v2.compiler import WorkflowIterationLimit
 
     limited = node_failure_payload("second", WorkflowIterationLimit("workflow_iteration_limit_exceeded"))
     assert limited["code"] == "iteration_limit"
@@ -67,7 +67,7 @@ def test_node_failure_payload_maps_iteration_limit_and_unknown() -> None:
 
 
 def test_run_level_helpers_collapse_node_failures_to_short_summaries() -> None:
-    from ideer.workflows.v2.compiler import WorkflowNodeFailed
+    from app.agentplatform.workflows.v2.compiler import WorkflowNodeFailed
 
     exc = WorkflowNodeFailed("node 'draft' reported failure: FAILED: 输入数据互相矛盾")
     summary = run_error_summary(exc)
@@ -87,7 +87,7 @@ def test_run_failure_payload_passes_structured_errors_through() -> None:
 
 
 def test_long_details_are_capped() -> None:
-    from ideer.workflows.v2.compiler import WorkflowNodeFailed
+    from app.agentplatform.workflows.v2.compiler import WorkflowNodeFailed
 
     long_message = "FAILED: " + "x" * 10000
     payload = node_failure_payload("draft", WorkflowNodeFailed(f"node 'draft' reported failure: {long_message}"))

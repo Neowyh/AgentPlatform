@@ -1,11 +1,10 @@
 """AgentPlatform resource-governance service seam.
 
-The implementation remains in the transitional harness while the Resource
-control plane is extracted from ``ideer``.  Gateway code imports this seam so
-the eventual move changes one module boundary instead of every caller.
+The Resource control plane is owned by AgentPlatform.  Gateway code imports
+this seam so future moves change one module boundary instead of every caller.
 """
 
-from ideer.resources.service import (
+from app.agentplatform.resources.service import (
     ResourceAction,
     ResourceActor,
     ResourceApprovalRequired,

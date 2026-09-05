@@ -204,8 +204,8 @@ def test_make_lead_agent_keeps_all_tools_without_legacy_skill_policy(monkeypatch
 def test_canonical_lead_agent_uses_frozen_definition_skills_and_runner_tool_intersection(monkeypatch):
     from unittest.mock import MagicMock
 
+    from app.agentplatform.resources.runtime import CanonicalAgentDefinition
     from ideer.agents.lead_agent import agent as lead_agent_module
-    from ideer.resources.runtime import CanonicalAgentDefinition
 
     definition = CanonicalAgentDefinition(
         resource_id="11111111-1111-1111-1111-111111111111",

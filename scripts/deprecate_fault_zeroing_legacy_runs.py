@@ -23,8 +23,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _build_store(db_path: Path):
+    from app.agentplatform.workflows.v2.store import WorkflowV2Store
     from ideer.persistence import engine as persistence_engine
-    from ideer.workflows.v2.store import WorkflowV2Store
 
     persistence_engine.init_engine(f"sqlite+aiosqlite:///{db_path}")
     return WorkflowV2Store(persistence_engine.get_session_factory())

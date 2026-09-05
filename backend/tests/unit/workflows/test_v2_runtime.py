@@ -6,17 +6,17 @@ import pytest
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.types import Command
 
-from ideer.workflows.v2 import compiler as compiler_module
-from ideer.workflows.v2.adapters import ActionAdapterRegistry, ActionResolutionError
-from ideer.workflows.v2.compiler import (
+from app.agentplatform.workflows.v2 import compiler as compiler_module
+from app.agentplatform.workflows.v2.adapters import ActionAdapterRegistry, ActionResolutionError
+from app.agentplatform.workflows.v2.compiler import (
     WorkflowCancelled,
     WorkflowGraphCompiler,
     WorkflowNodeFailed,
     WorkflowNodeTimeout,
     WorkflowTransientError,
 )
-from ideer.workflows.v2.file_roots import workflow_state_root
-from ideer.workflows.v2.parser import parse_workflow_v2
+from app.agentplatform.workflows.v2.file_roots import workflow_state_root
+from app.agentplatform.workflows.v2.parser import parse_workflow_v2
 
 
 def test_registry_resolves_adapter_again_for_each_run() -> None:
@@ -829,7 +829,7 @@ edges:
     async def emit(event_type: str, payload: dict) -> None:
         events.append((event_type, payload))
 
-    from ideer.workflows.v2.compiler import WorkflowIterationLimit
+    from app.agentplatform.workflows.v2.compiler import WorkflowIterationLimit
 
     graph = WorkflowGraphCompiler(
         definition,

@@ -8,6 +8,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 import ideer.persistence.models  # noqa: F401
+from app.agentplatform.resources.retention import RetentionPurgeError, build_retention_report, purge_eligible_versions
+from app.agentplatform.resources.storage import ResourceStorage
 from ideer.persistence.base import Base
 from ideer.persistence.models.resource_catalog import (
     Resource,
@@ -17,8 +19,6 @@ from ideer.persistence.models.resource_catalog import (
     RunResourceSnapshot,
 )
 from ideer.persistence.models.user import UserModel, UserRole
-from ideer.resources.retention import RetentionPurgeError, build_retention_report, purge_eligible_versions
-from ideer.resources.storage import ResourceStorage
 
 
 @pytest.mark.asyncio

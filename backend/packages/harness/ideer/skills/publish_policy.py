@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from ideer.resources.service import ResourceConflict
+from app.agentplatform.resources.service import ResourceConflict
 
 
 class SkillPublishDenied(ResourceConflict):

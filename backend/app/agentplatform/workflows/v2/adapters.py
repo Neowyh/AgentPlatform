@@ -133,17 +133,17 @@ class _AgentAdapter:
         import yaml
         from sqlalchemy import select
 
-        from ideer.config import get_app_config
-        from ideer.config.paths import get_paths
-        from ideer.persistence.engine import get_session_factory
-        from ideer.persistence.models.resource_catalog import Resource, ResourceDependency
-        from ideer.resources.service import (
+        from app.agentplatform.resources.service import (
             ResourceAction,
             ResourceActor,
             ResourceNotFound,
             ResourceService,
         )
-        from ideer.resources.storage import ResourceStorage
+        from app.agentplatform.resources.storage import ResourceStorage
+        from ideer.config import get_app_config
+        from ideer.config.paths import get_paths
+        from ideer.persistence.engine import get_session_factory
+        from ideer.persistence.models.resource_catalog import Resource, ResourceDependency
         from ideer.subagents.config import SubagentConfig
         from ideer.subagents.executor import SubagentExecutor
         from ideer.tools.tools import get_available_tools
@@ -214,8 +214,8 @@ class _AgentAdapter:
         return executor, str(prompt)
 
     def _finalize_result(self, result: Any) -> Any:
+        from app.agentplatform.workflows.v2.compiler import WorkflowTransientError
         from ideer.subagents.executor import SubagentStatus
-        from ideer.workflows.v2.compiler import WorkflowTransientError
 
         if result.status == SubagentStatus.COMPLETED:
             if _is_llm_unavailable_text(result.result):
@@ -226,9 +226,9 @@ class _AgentAdapter:
         raise RuntimeError(result.error or f"agent '{self.name}' failed with status {result.status}")
 
     async def run(self, context: ActionContext, params: dict[str, Any]) -> Any:
+        from app.agentplatform.workflows.v2.compiler import WorkflowTransientError
         from ideer.config import get_app_config
         from ideer.runtime.user_context import reset_current_user, set_current_user
-        from ideer.workflows.v2.compiler import WorkflowTransientError
 
         configured_models = [model.name for model in getattr(get_app_config(), "models", [])]
         candidates = [context.model_name] if context.model_name else [None]
@@ -250,9 +250,9 @@ class _AgentAdapter:
         raise last_error or WorkflowTransientError(f"agent '{self.name}' failed: LLM provider unavailable")
 
     async def astream(self, context: ActionContext, params: dict[str, Any]) -> AsyncIterator[dict[str, Any]]:
+        from app.agentplatform.workflows.v2.compiler import WorkflowTransientError
         from ideer.config import get_app_config
         from ideer.runtime.user_context import reset_current_user, set_current_user
-        from ideer.workflows.v2.compiler import WorkflowTransientError
 
         yield {"type": "progress", "message": "started"}
         configured_models = [model.name for model in getattr(get_app_config(), "models", [])]
@@ -303,8 +303,8 @@ class _CanonicalAgentAdapter(_AgentAdapter):
         self.allowed_tool_groups = allowed_tool_groups
 
     async def _build_executor(self, context: ActionContext, params: dict[str, Any], model_name: str | None = None):
+        from app.agentplatform.resources.runtime import intersect_tool_groups
         from ideer.config import get_app_config
-        from ideer.resources.runtime import intersect_tool_groups
         from ideer.subagents.config import SubagentConfig
         from ideer.subagents.executor import SubagentExecutor
         from ideer.tools.tools import get_available_tools

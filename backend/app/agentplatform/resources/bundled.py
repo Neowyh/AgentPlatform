@@ -19,8 +19,8 @@ from app.agentplatform.resource_models import (
     ResourceProvenance,
     ResourceVersion,
 )
-from ideer.resources.storage import ResourceStorage, StorageConflict
-from ideer.workflows.v2.parser import parse_workflow_v2_file
+from app.agentplatform.resources.storage import ResourceStorage, StorageConflict
+from app.agentplatform.workflows.v2.parser import parse_workflow_v2_file
 
 
 @dataclass(frozen=True)

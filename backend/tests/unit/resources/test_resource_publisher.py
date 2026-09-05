@@ -12,11 +12,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 import ideer.persistence.models  # noqa: F401
+from app.agentplatform.resources.publisher import ResourcePublisher
+from app.agentplatform.resources.service import ResourceAction, ResourceActor, ResourceService
+from app.agentplatform.resources.storage import ResourceStorage
 from ideer.persistence.base import Base
 from ideer.persistence.models.resource_catalog import Resource, ResourceDraft, ResourceVersion
-from ideer.resources.publisher import ResourcePublisher
-from ideer.resources.service import ResourceAction, ResourceActor, ResourceService
-from ideer.resources.storage import ResourceStorage
 
 
 @pytest_asyncio.fixture

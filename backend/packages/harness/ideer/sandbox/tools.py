@@ -138,7 +138,7 @@ def _is_skills_path(path: str) -> bool:
 
 
 def _is_canonical_run_skills_path(path: str) -> bool:
-    from ideer.resources.canonical_sandbox import CANONICAL_SKILLS_CONTAINER_PATH
+    from app.agentplatform.resources.canonical_sandbox import CANONICAL_SKILLS_CONTAINER_PATH
 
     return path == CANONICAL_SKILLS_CONTAINER_PATH or path.startswith(f"{CANONICAL_SKILLS_CONTAINER_PATH}/")
 
@@ -1166,7 +1166,7 @@ def ensure_sandbox_initialized(runtime: Runtime | None = None) -> Sandbox:
     if canonical_run_id is None and runtime.config:
         canonical_run_id = runtime.config.get("configurable", {}).get("canonical_run_id")
     if canonical_run_id:
-        from ideer.resources.canonical_sandbox import canonical_sandbox_scope
+        from app.agentplatform.resources.canonical_sandbox import canonical_sandbox_scope
 
         thread_id = canonical_sandbox_scope(thread_id, str(canonical_run_id))
 
@@ -1219,7 +1219,7 @@ async def ensure_sandbox_initialized_async(runtime: Runtime | None = None) -> Sa
     if canonical_run_id is None and runtime.config:
         canonical_run_id = runtime.config.get("configurable", {}).get("canonical_run_id")
     if canonical_run_id:
-        from ideer.resources.canonical_sandbox import canonical_sandbox_scope
+        from app.agentplatform.resources.canonical_sandbox import canonical_sandbox_scope
 
         thread_id = canonical_sandbox_scope(thread_id, str(canonical_run_id))
 

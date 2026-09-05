@@ -10,15 +10,15 @@ import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 import ideer.persistence.models  # noqa: F401
-from ideer.persistence.base import Base
-from ideer.persistence.models.resource_catalog import Resource, ResourceVersion, RunResourceSnapshot
-from ideer.resources.runtime import (
+from app.agentplatform.resources.runtime import (
     CanonicalResourceLoader,
     ResourceRuntimeError,
     intersect_tool_groups,
     resource_memory_key,
 )
-from ideer.resources.storage import ResourceStorage
+from app.agentplatform.resources.storage import ResourceStorage
+from ideer.persistence.base import Base
+from ideer.persistence.models.resource_catalog import Resource, ResourceVersion, RunResourceSnapshot
 
 
 @pytest_asyncio.fixture

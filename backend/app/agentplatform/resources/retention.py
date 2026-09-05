@@ -25,7 +25,7 @@ from app.agentplatform.resource_models import (
     ResourceVersion,
     RunResourceSnapshot,
 )
-from ideer.resources.storage import ResourceStorage, StorageValidationError
+from app.agentplatform.resources.storage import ResourceStorage, StorageValidationError
 
 
 @dataclass(frozen=True)

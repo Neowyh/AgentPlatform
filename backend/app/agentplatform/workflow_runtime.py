@@ -1,19 +1,19 @@
 """AgentPlatform Workflow V2 runtime seam.
 
-Workflow V2 remains an AgentPlatform-owned product capability.  Until its
-implementation is fully extracted from the compatibility harness, Gateway and
-worker code import the complete public seam from this module.
+Workflow V2 is an AgentPlatform-owned product capability.  Gateway and worker
+code import the complete public seam from this module instead of the
+implementation submodules directly.
 """
 
-from ideer.workflows.v2.adapters import ActionAdapterRegistry, _CanonicalAgentAdapter, _ToolAdapter
-from ideer.workflows.v2.compiler import WorkflowCancelled, WorkflowGraphCompiler
-from ideer.workflows.v2.errors import (
+from app.agentplatform.workflows.v2.adapters import ActionAdapterRegistry, _CanonicalAgentAdapter, _ToolAdapter
+from app.agentplatform.workflows.v2.compiler import WorkflowCancelled, WorkflowGraphCompiler
+from app.agentplatform.workflows.v2.errors import (
     WorkflowInvalidRootsError,
     WorkflowMissingInputRootsError,
     WorkflowRunError,
     run_failure_payload,
 )
-from ideer.workflows.v2.file_roots import (
+from app.agentplatform.workflows.v2.file_roots import (
     collect_artifacts,
     make_host_resolver,
     render_roots,
@@ -22,10 +22,10 @@ from ideer.workflows.v2.file_roots import (
     workflow_log_root,
     workflow_record_path,
 )
-from ideer.workflows.v2.parser import parse_workflow_v2
-from ideer.workflows.v2.run_record import RunRecordWriter
-from ideer.workflows.v2.store import WorkflowV2Store
-from ideer.workflows.v2.worker import WorkflowPaused, WorkflowWorker, workflow_snapshot
+from app.agentplatform.workflows.v2.parser import parse_workflow_v2
+from app.agentplatform.workflows.v2.run_record import RunRecordWriter
+from app.agentplatform.workflows.v2.store import WorkflowV2Store
+from app.agentplatform.workflows.v2.worker import WorkflowPaused, WorkflowWorker, workflow_snapshot
 
 __all__ = [
     "ActionAdapterRegistry",

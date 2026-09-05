@@ -13,8 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agentplatform.rbac_models import ResourceVisibility
 from app.agentplatform.resource_models import Resource, ResourceDependency, ResourceVersion, RunResourceSnapshot
+from app.agentplatform.resources.storage import ResourceStorage, StorageValidationError
 from ideer.config.agents_config import AgentConfig
-from ideer.resources.storage import ResourceStorage, StorageValidationError
 from ideer.skills.types import Skill, SkillCategory
 
 _CREDENTIAL_KEYS = {"api_key", "credential", "credentials", "password", "secret", "token"}

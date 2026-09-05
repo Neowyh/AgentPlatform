@@ -16,9 +16,9 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.agentplatform import rbac_models as _rbac_models  # noqa: F401
 from app.agentplatform import resource_models as _resource_models  # noqa: F401
+from app.agentplatform.workflows.v2.store import WorkflowV2Store
 from deerflow.persistence.base import Base
 from deerflow.persistence.models.workflow_v2 import WorkflowDefinitionVersionRow, WorkflowTaskRow, WorkflowV2RunRow
-from ideer.workflows.v2.store import WorkflowV2Store
 
 
 @pytest_asyncio.fixture

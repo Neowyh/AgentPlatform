@@ -68,7 +68,7 @@ async def test_alias_resolve_uses_cache_without_user_select():
     with (
         patch("ideer.persistence.engine.get_session_factory", return_value=mock_sf),
         patch(
-            "ideer.resources.service.ResourceService.resolve_legacy_alias",
+            "app.agentplatform.resources.service.ResourceService.resolve_legacy_alias",
             new=AsyncMock(return_value=SimpleNamespace(id="res-9")),
         ),
     ):
@@ -88,7 +88,7 @@ async def test_alias_resolve_falls_back_to_query_without_cache():
     with (
         patch("ideer.persistence.engine.get_session_factory", return_value=mock_sf),
         patch(
-            "ideer.resources.service.ResourceService.resolve_legacy_alias",
+            "app.agentplatform.resources.service.ResourceService.resolve_legacy_alias",
             new=AsyncMock(return_value=SimpleNamespace(id="res-9")),
         ),
     ):

@@ -23,13 +23,13 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.agentplatform import rbac_models as _rbac_models  # noqa: F401
 from app.agentplatform import resource_models as _resource_models  # noqa: F401
+from app.agentplatform.workflows.v2.adapters import ActionAdapterRegistry
+from app.agentplatform.workflows.v2.compiler import WorkflowGraphCompiler
+from app.agentplatform.workflows.v2.parser import parse_workflow_v2
+from app.agentplatform.workflows.v2.store import WorkflowV2Store
+from app.agentplatform.workflows.v2.worker import WorkflowPaused, WorkflowWorker, workflow_snapshot
 from deerflow.persistence.base import Base
 from deerflow.persistence.models.workflow_v2 import WorkflowLeaseAuditRow, WorkflowTaskRow
-from ideer.workflows.v2.adapters import ActionAdapterRegistry
-from ideer.workflows.v2.compiler import WorkflowGraphCompiler
-from ideer.workflows.v2.parser import parse_workflow_v2
-from ideer.workflows.v2.store import WorkflowV2Store
-from ideer.workflows.v2.worker import WorkflowPaused, WorkflowWorker, workflow_snapshot
 
 _APPROVAL_WORKFLOW = """
 schema_version: 2

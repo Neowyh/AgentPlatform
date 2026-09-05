@@ -55,11 +55,11 @@ def _update_canonical_agent(
     """
     from tempfile import TemporaryDirectory
 
+    from app.agentplatform.resources.publisher import ResourcePublisher, write_agent_draft_source
+    from app.agentplatform.resources.service import ResourceAction, ResourceActor, ResourceService
+    from app.agentplatform.resources.storage import ResourceStorage
     from ideer.persistence.models.resource_catalog import Resource
     from ideer.persistence.models.user import UserModel, UserRole
-    from ideer.resources.publisher import ResourcePublisher, write_agent_draft_source
-    from ideer.resources.service import ResourceAction, ResourceActor, ResourceService
-    from ideer.resources.storage import ResourceStorage
 
     sf = get_session_factory()
     if sf is None:

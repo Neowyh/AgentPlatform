@@ -14,16 +14,16 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 import ideer.persistence.models  # noqa: F401
+from app.agentplatform.resources.publisher import ResourcePublisher
+from app.agentplatform.resources.runtime import CanonicalResourceLoader, ResourceRuntimeError
+from app.agentplatform.resources.service import ResourceAction, ResourceActor, ResourceService
+from app.agentplatform.resources.storage import ResourceStorage
 from app.gateway.canonical_agent_run_preparation import prepare_canonical_agent_run
 from app.gateway.routers.assistants_compat import _list_canonical_assistants
 from ideer.persistence.base import Base
 from ideer.persistence.models.audit_log import AuditLog
 from ideer.persistence.models.resource_catalog import Resource, RunResourceSnapshot
 from ideer.persistence.models.user import UserModel
-from ideer.resources.publisher import ResourcePublisher
-from ideer.resources.runtime import CanonicalResourceLoader, ResourceRuntimeError
-from ideer.resources.service import ResourceAction, ResourceActor, ResourceService
-from ideer.resources.storage import ResourceStorage
 
 
 @pytest_asyncio.fixture

@@ -10,11 +10,11 @@ import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 import ideer.persistence.models  # noqa: F401
+from app.agentplatform.resources.publisher import ResourcePublisher
+from app.agentplatform.resources.reconciliation import CatalogConsistencyError, reconcile_catalog_storage
+from app.agentplatform.resources.service import ResourceAction, ResourceActor, ResourceService
+from app.agentplatform.resources.storage import ResourceStorage
 from ideer.persistence.base import Base
-from ideer.resources.publisher import ResourcePublisher
-from ideer.resources.reconciliation import CatalogConsistencyError, reconcile_catalog_storage
-from ideer.resources.service import ResourceAction, ResourceActor, ResourceService
-from ideer.resources.storage import ResourceStorage
 
 
 @pytest_asyncio.fixture

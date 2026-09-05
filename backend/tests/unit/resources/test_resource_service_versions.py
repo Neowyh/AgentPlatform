@@ -18,9 +18,7 @@ from app.agentplatform.resource_models import (
     ResourceVersion,
     RunResourceSnapshot,
 )
-from app.agentplatform.visibility_models import VisibilityApplication
-from deerflow.persistence.base import Base
-from ideer.resources.service import (
+from app.agentplatform.resources.service import (
     ResourceAction,
     ResourceActor,
     ResourceConflict,
@@ -28,6 +26,8 @@ from ideer.resources.service import (
     ResourceService,
     VisibilityClosureError,
 )
+from app.agentplatform.visibility_models import VisibilityApplication
+from deerflow.persistence.base import Base
 
 
 @pytest_asyncio.fixture

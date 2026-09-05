@@ -15,6 +15,8 @@ from app.agentplatform.resource_models import (
     Resource,
     ResourceVersion,
 )
+from app.agentplatform.resources.service import ResourceAction
+from app.agentplatform.resources.storage import ResourceStorage
 from app.gateway.routers import resources
 from app.gateway.routers.resources import WorkflowRunRequest
 from deerflow.persistence.base import Base as DeerFlowBase
@@ -22,8 +24,6 @@ from deerflow.persistence.models.workflow_v2 import WorkflowV2RunRow
 from ideer.config.workflow_runtime_config import WorkflowRuntimeConfig
 from ideer.persistence.base import Base
 from ideer.persistence.models.user import UserModel, UserRole
-from ideer.resources.service import ResourceAction
-from ideer.resources.storage import ResourceStorage
 
 
 def test_resources_router_uses_deerflow_runtime_paths() -> None:
@@ -334,7 +334,7 @@ async def test_published_workflow_response_includes_real_yaml(
 
 
 def _record_host(tmp_path: Path, run_id: str, created_by: str, ext: str) -> Path:
-    from ideer.workflows.v2.file_roots import make_host_resolver, workflow_record_path
+    from app.agentplatform.workflows.v2.file_roots import make_host_resolver, workflow_record_path
 
     host = make_host_resolver(run_id, created_by)(workflow_record_path(ext))
     assert host is not None, "record virtual path must resolve under the workspace"
@@ -367,10 +367,10 @@ class TestCanonicalRunRecordDownload:
 
         monkeypatch.setattr(resources, "_get_canonical_run", _stub_run)
         monkeypatch.setattr(
-            "ideer.workflows.v2.file_roots.get_paths",
+            "app.agentplatform.workflows.v2.file_roots.get_paths",
             lambda: Paths(str(tmp_path / "runtime")),
         )
-        monkeypatch.setattr("ideer.workflows.v2.file_roots._get_custom_mounts", lambda: [])
+        monkeypatch.setattr("app.agentplatform.workflows.v2.file_roots._get_custom_mounts", lambda: [])
 
         with TestClient(app) as test_client:
             yield test_client

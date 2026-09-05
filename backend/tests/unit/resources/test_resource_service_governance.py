@@ -20,12 +20,7 @@ from app.agentplatform.resource_models import (
     ResourceVersion,
     RunResourceSnapshot,
 )
-from deerflow.persistence.base import Base as DeerFlowBase
-from deerflow.persistence.models.workflow_v2 import WorkflowCommandRow, WorkflowTaskRow, WorkflowV2RunRow
-from ideer.persistence.base import Base
-from ideer.persistence.models.user import UserModel, UserRole
-from ideer.persistence.models.visibility_application import VisibilityApplication
-from ideer.resources.service import (
+from app.agentplatform.resources.service import (
     ResourceAction,
     ResourceActor,
     ResourceConflict,
@@ -33,6 +28,11 @@ from ideer.resources.service import (
     ResourcePermissionDenied,
     ResourceService,
 )
+from deerflow.persistence.base import Base as DeerFlowBase
+from deerflow.persistence.models.workflow_v2 import WorkflowCommandRow, WorkflowTaskRow, WorkflowV2RunRow
+from ideer.persistence.base import Base
+from ideer.persistence.models.user import UserModel, UserRole
+from ideer.persistence.models.visibility_application import VisibilityApplication
 
 
 @pytest_asyncio.fixture

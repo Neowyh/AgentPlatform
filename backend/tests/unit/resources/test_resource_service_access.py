@@ -13,9 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 import app.agentplatform.rbac_models  # noqa: F401 - register users_ext for audit FK
 import ideer.persistence.models  # noqa: F401 - register all ORM models
 from app.agentplatform.resource_models import Resource
-from app.agentplatform.visibility_models import VisibilityApplication
-from deerflow.persistence.base import Base
-from ideer.resources.service import (
+from app.agentplatform.resources.service import (
     ResourceAction,
     ResourceActor,
     ResourceApprovalRequired,
@@ -24,6 +22,8 @@ from ideer.resources.service import (
     ResourcePermissionDenied,
     ResourceService,
 )
+from app.agentplatform.visibility_models import VisibilityApplication
+from deerflow.persistence.base import Base
 
 
 @pytest_asyncio.fixture

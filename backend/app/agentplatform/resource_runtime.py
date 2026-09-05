@@ -1,16 +1,16 @@
 """AgentPlatform Resource runtime seam.
 
-Resource catalog semantics are owned by AgentPlatform.  During the staged
-runtime extraction the filesystem/runtime implementation remains in the
-compatibility harness, but Gateway and worker callers use this single seam.
+Resource catalog semantics are owned by AgentPlatform.  Gateway and worker
+callers import the implementation through this single seam instead of the
+implementation submodules directly.
 """
 
-from ideer.resources.bundled import seed_bundled_resources
-from ideer.resources.publisher import ResourcePublisher, write_agent_draft_source
-from ideer.resources.reconciliation import reconcile_catalog_storage
-from ideer.resources.retention import build_retention_report
-from ideer.resources.runtime import CanonicalResourceLoader, ResourceRuntimeError, load_validated_agent_definition
-from ideer.resources.storage import ResourceStorage, StorageConflict, StorageValidationError
+from app.agentplatform.resources.bundled import seed_bundled_resources
+from app.agentplatform.resources.publisher import ResourcePublisher, write_agent_draft_source
+from app.agentplatform.resources.reconciliation import reconcile_catalog_storage
+from app.agentplatform.resources.retention import build_retention_report
+from app.agentplatform.resources.runtime import CanonicalResourceLoader, ResourceRuntimeError, load_validated_agent_definition
+from app.agentplatform.resources.storage import ResourceStorage, StorageConflict, StorageValidationError
 
 __all__ = [
     "CanonicalResourceLoader",

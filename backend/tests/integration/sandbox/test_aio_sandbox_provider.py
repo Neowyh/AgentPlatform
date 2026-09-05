@@ -444,7 +444,7 @@ class TestMountHelpers:
         assert len(result) == 1
 
     def test_get_extra_mounts_uses_exact_canonical_run_view(self, monkeypatch, tmp_path):
-        from ideer.resources.canonical_sandbox import canonical_sandbox_scope
+        from app.agentplatform.resources.canonical_sandbox import canonical_sandbox_scope
 
         provider = _make_provider_minimal()
         run_id = str(uuid.uuid4())

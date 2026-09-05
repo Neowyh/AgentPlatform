@@ -17,11 +17,11 @@ import pytest
 import ideer.config
 import ideer.config.agents_config
 import ideer.tools.tools
+from app.agentplatform.resources.runtime import CanonicalAgentDefinition
+from app.agentplatform.workflows.v2.adapters import ActionContext, ActionResolutionError, _AgentAdapter, _CanonicalAgentAdapter, _compose_system_prompt
+from app.agentplatform.workflows.v2.compiler import WorkflowTransientError
 from ideer.config.agents_config import AgentConfig
-from ideer.resources.runtime import CanonicalAgentDefinition
 from ideer.runtime.user_context import get_effective_user_id
-from ideer.workflows.v2.adapters import ActionContext, ActionResolutionError, _AgentAdapter, _CanonicalAgentAdapter, _compose_system_prompt
-from ideer.workflows.v2.compiler import WorkflowTransientError
 
 # conftest.py pre-injects a MagicMock for ideer.subagents.executor to dodge a
 # circular import, so we grab the mock module and re-patch the names the
@@ -400,7 +400,7 @@ async def test_agent_adapter_fails_over_to_next_configured_model(env: pytest.Mon
 @pytest.mark.asyncio
 async def test_agent_adapter_raises_when_agent_missing(env: pytest.MonkeyPatch, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     import ideer.persistence.engine
-    from ideer.workflows.v2.adapters import ActionResolutionError
+    from app.agentplatform.workflows.v2.adapters import ActionResolutionError
 
     session = _FakeSession(get_row=None, execute_rows=[[]])
     monkeypatch.setattr(ideer.persistence.engine, "get_session_factory", lambda: _FakeSessionFactory(session))

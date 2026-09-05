@@ -284,7 +284,7 @@ class AioSandboxProvider(SandboxProvider):
 
     def _get_extra_mounts(self, thread_id: str | None) -> list[tuple[str, str, bool]]:
         """Collect all extra mounts for a sandbox (thread-specific + skills)."""
-        from ideer.resources.canonical_sandbox import (
+        from app.agentplatform.resources.canonical_sandbox import (
             CANONICAL_SKILLS_CONTAINER_PATH,
             canonical_run_skill_view_host_path,
             canonical_run_skill_view_path,

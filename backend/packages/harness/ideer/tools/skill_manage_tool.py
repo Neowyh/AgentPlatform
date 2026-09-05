@@ -88,11 +88,11 @@ async def _skill_manage_canonical_impl(
     but routes every write through ResourceService + ResourcePublisher so the
     catalog row, filesystem draft, and published version stay consistent.
     """
+    from app.agentplatform.resources.publisher import ResourcePublisher
+    from app.agentplatform.resources.service import ResourceAction, ResourceActor, ResourceNotFound, ResourceService
+    from app.agentplatform.resources.storage import ResourceStorage
     from ideer.config.paths import get_paths
     from ideer.persistence.models.user import UserModel, UserRole
-    from ideer.resources.publisher import ResourcePublisher
-    from ideer.resources.service import ResourceAction, ResourceActor, ResourceNotFound, ResourceService
-    from ideer.resources.storage import ResourceStorage
 
     name = SkillStorage.validate_skill_name(name)
     lock = _get_lock(name)

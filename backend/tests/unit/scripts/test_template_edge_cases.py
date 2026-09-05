@@ -10,7 +10,7 @@ Covers edge cases not in test_template.py:
 
 from __future__ import annotations
 
-from ideer.workflows.template import render_params, render_value
+from app.agentplatform.workflows.template import render_params, render_value
 
 # ── Unresolvable references ─────────────────────────────────────────
 

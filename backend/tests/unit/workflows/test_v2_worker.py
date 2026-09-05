@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from ideer.workflows.v2.worker import WorkflowWorker
+from app.agentplatform.workflows.v2.worker import WorkflowWorker
 
 
 @pytest.mark.asyncio

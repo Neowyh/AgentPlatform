@@ -10,12 +10,12 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 import deerflow.tools.tools
 import ideer.persistence.models  # noqa: F401
+from app.agentplatform.resources.canonical_sandbox import canonical_run_key
+from app.agentplatform.resources.storage import ResourceStorage
+from app.agentplatform.workflows.v2.adapters import ActionResolutionError
 from app.workflow_worker import build_canonical_registry
 from deerflow.persistence.base import Base
 from ideer.persistence.models.resource_catalog import Resource, ResourceVersion, RunResourceSnapshot
-from ideer.resources.canonical_sandbox import canonical_run_key
-from ideer.resources.storage import ResourceStorage
-from ideer.workflows.v2.adapters import ActionResolutionError
 
 
 @pytest.mark.asyncio

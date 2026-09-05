@@ -7,12 +7,12 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from ideer.resources.canonical_sandbox import (
+from app.agentplatform.resources.canonical_sandbox import (
     CANONICAL_SKILLS_CONTAINER_PATH,
     canonical_sandbox_scope,
     parse_canonical_sandbox_scope,
 )
-from ideer.resources.storage import ResourceStorage, StorageConflict
+from app.agentplatform.resources.storage import ResourceStorage, StorageConflict
 from ideer.sandbox.local.local_sandbox_provider import LocalSandboxProvider
 from ideer.sandbox.tools import ensure_sandbox_initialized, validate_local_tool_path
 

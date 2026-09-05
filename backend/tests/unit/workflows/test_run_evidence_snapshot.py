@@ -2,8 +2,8 @@ from types import SimpleNamespace
 
 from agentplatform_extension.evidence import current_run_evidence, record_tool_receipt
 
+from app.agentplatform.workflows.v2.store import _canonical_run_evidence, _merge_recovery_snapshot
 from app.workflow_worker import _workflow_run_evidence_context
-from ideer.workflows.v2.store import _canonical_run_evidence, _merge_recovery_snapshot
 
 
 def test_canonical_workflow_evidence_is_caller_scoped_and_immutable() -> None:

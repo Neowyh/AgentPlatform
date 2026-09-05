@@ -3,7 +3,7 @@ import threading
 from collections import OrderedDict
 from pathlib import Path
 
-from ideer.resources.canonical_sandbox import (
+from app.agentplatform.resources.canonical_sandbox import (
     CANONICAL_SKILLS_CONTAINER_PATH,
     canonical_run_skill_view_path,
     parse_canonical_sandbox_scope,

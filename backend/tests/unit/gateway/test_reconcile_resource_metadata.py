@@ -82,7 +82,7 @@ class TestReconcileWorkflowMetadata:
         store.load_meta = AsyncMock(return_value={})
         store.save_meta = AsyncMock(return_value=True)
 
-        with patch("ideer.workflows.v2.store.WorkflowV2Store") as store_cls:
+        with patch("app.agentplatform.workflows.v2.store.WorkflowV2Store") as store_cls:
             store_cls.return_value.list_latest_definitions = AsyncMock(return_value=([self._definition("orphan-wf", "u1")], 1))
             with patch("app.gateway.utils.ResourceMetadataStore", return_value=store):
                 with patch("app.gateway.app._resolve_resource_owner", return_value=("u1", "dept-1")):
@@ -98,7 +98,7 @@ class TestReconcileWorkflowMetadata:
         store.load_meta = AsyncMock(return_value={"owner_id": "u1"})
         store.save_meta = AsyncMock(return_value=True)
 
-        with patch("ideer.workflows.v2.store.WorkflowV2Store") as store_cls:
+        with patch("app.agentplatform.workflows.v2.store.WorkflowV2Store") as store_cls:
             store_cls.return_value.list_latest_definitions = AsyncMock(return_value=([self._definition("known-wf", "u1")], 1))
             with patch("app.gateway.utils.ResourceMetadataStore", return_value=store):
                 await _reconcile_workflow_metadata(sf, "admin-1")
@@ -113,7 +113,7 @@ class TestReconcileWorkflowMetadata:
         store.load_meta = AsyncMock(return_value={})
         store.save_meta = AsyncMock(return_value=True)
 
-        with patch("ideer.workflows.v2.store.WorkflowV2Store") as store_cls:
+        with patch("app.agentplatform.workflows.v2.store.WorkflowV2Store") as store_cls:
             store_cls.return_value.list_latest_definitions = AsyncMock(return_value=([self._definition("system-wf", "system")], 1))
             with patch("app.gateway.utils.ResourceMetadataStore", return_value=store):
                 with patch("app.gateway.app._resolve_resource_owner", return_value=(None, None)):
@@ -128,7 +128,7 @@ class TestReconcileWorkflowMetadata:
         store = MagicMock()
         store.save_meta = AsyncMock(return_value=True)
 
-        with patch("ideer.workflows.v2.store.WorkflowV2Store") as store_cls:
+        with patch("app.agentplatform.workflows.v2.store.WorkflowV2Store") as store_cls:
             store_cls.return_value.list_latest_definitions = AsyncMock(side_effect=RuntimeError("boom"))
             with patch("app.gateway.utils.ResourceMetadataStore", return_value=store):
                 await _reconcile_workflow_metadata(sf, "admin-1")
@@ -259,7 +259,7 @@ async def test_seeds_bundled_resources_for_active_super_admin():
     sf = _session_factory(session)
 
     with patch("ideer.persistence.engine.get_session_factory", return_value=sf):
-        with patch("ideer.resources.bundled.seed_bundled_resources", new_callable=AsyncMock) as seed:
+        with patch("app.agentplatform.resources.bundled.seed_bundled_resources", new_callable=AsyncMock) as seed:
             await _seed_bundled_resources()
 
     seed.assert_awaited_once()

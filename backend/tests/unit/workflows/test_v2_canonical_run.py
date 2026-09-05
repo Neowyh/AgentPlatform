@@ -12,11 +12,11 @@ import ideer.persistence.models  # noqa: F401
 from app.agentplatform import rbac_models as _rbac_models  # noqa: F401
 from app.agentplatform import resource_models as _resource_models  # noqa: F401
 from app.agentplatform.resource_models import Resource, ResourceDependency, ResourceVersion, RunResourceSnapshot
+from app.agentplatform.resources.service import ResourceAction, ResourceActor
+from app.agentplatform.workflows.v2.store import WorkflowV2Store
 from deerflow.persistence.base import Base as DeerFlowBase
 from deerflow.persistence.models.workflow_v2 import WorkflowTaskRow, WorkflowV2RunRow
 from ideer.persistence.base import Base
-from ideer.resources.service import ResourceAction, ResourceActor
-from ideer.workflows.v2.store import WorkflowV2Store
 
 
 def _resource(resource_id: str, resource_type: str, *, latest_version: int = 1) -> Resource:

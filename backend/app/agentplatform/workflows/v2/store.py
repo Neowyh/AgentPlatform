@@ -79,13 +79,13 @@ def _merge_recovery_snapshot(existing: dict | None, recovery: dict) -> dict:
 def _validated_canonical_inputs(definition: dict, submitted: dict, run_id: str, user_id: str) -> dict:
     """Validate one frozen Workflow definition before its Run becomes claimable."""
 
-    from ideer.workflows.v2.errors import WorkflowInvalidRootsError, WorkflowMissingInputRootsError
-    from ideer.workflows.v2.file_roots import (
+    from app.agentplatform.workflows.v2.errors import WorkflowInvalidRootsError, WorkflowMissingInputRootsError
+    from app.agentplatform.workflows.v2.file_roots import (
         make_host_resolver,
         validate_read_roots,
         validate_workflow_roots,
     )
-    from ideer.workflows.v2.schema import WorkflowV2
+    from app.agentplatform.workflows.v2.schema import WorkflowV2
 
     workflow = WorkflowV2.model_validate(definition)
     inputs = dict(submitted)
@@ -302,8 +302,8 @@ class WorkflowV2Store:
     ) -> WorkflowV2RunRow:
         """Freeze a canonical dependency closure before making the Run claimable."""
 
+        from app.agentplatform.resources.service import ResourceConflict, ResourceService
         from ideer.persistence.models.resource_catalog import Resource, ResourceVersion
-        from ideer.resources.service import ResourceConflict, ResourceService
 
         async with self.session_factory() as session:
             service = ResourceService(session, actor)

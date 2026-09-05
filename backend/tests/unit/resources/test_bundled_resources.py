@@ -10,6 +10,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 import ideer.persistence.models  # noqa: F401
+from app.agentplatform.resources.bundled import load_bundled_manifest, seed_bundled_resources
+from app.agentplatform.resources.storage import ResourceStorage
 from ideer.persistence.base import Base
 from ideer.persistence.models.resource_catalog import (
     Resource,
@@ -18,8 +20,6 @@ from ideer.persistence.models.resource_catalog import (
     ResourceVersion,
 )
 from ideer.persistence.models.user import UserModel, UserRole
-from ideer.resources.bundled import load_bundled_manifest, seed_bundled_resources
-from ideer.resources.storage import ResourceStorage
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 

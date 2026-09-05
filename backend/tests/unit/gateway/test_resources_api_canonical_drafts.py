@@ -15,11 +15,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 import ideer.persistence.models  # noqa: F401
+from app.agentplatform.resources.service import ResourceAction, ResourceActor, ResourceService
 from app.gateway.routers import resources
 from ideer.persistence.base import Base
 from ideer.persistence.models.resource_catalog import Resource, ResourceDependency, ResourceDraft
 from ideer.persistence.models.user import UserModel, UserRole
-from ideer.resources.service import ResourceAction, ResourceActor, ResourceService
 
 
 def _actor() -> ResourceActor:

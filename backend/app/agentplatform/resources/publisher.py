@@ -11,11 +11,11 @@ from pathlib import Path
 import yaml
 
 from app.agentplatform.resource_models import Resource, ResourceDraft, ResourceVersion
-from ideer.resources.runtime import load_validated_agent_definition
-from ideer.resources.service import ResourceConflict, ResourceService
-from ideer.resources.storage import ResourceStorage, StorageError, StorageValidationError
+from app.agentplatform.resources.runtime import load_validated_agent_definition
+from app.agentplatform.resources.service import ResourceConflict, ResourceService
+from app.agentplatform.resources.storage import ResourceStorage, StorageError, StorageValidationError
+from app.agentplatform.workflows.v2.parser import parse_workflow_v2
 from ideer.skills.publish_policy import SkillPublishPolicy
-from ideer.workflows.v2.parser import parse_workflow_v2
 
 logger = logging.getLogger(__name__)
 

@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agentplatform.resource_models import Resource, ResourceDraft, ResourceVersion
-from ideer.resources.storage import ReconciliationReport, ResourceStorage
+from app.agentplatform.resources.storage import ReconciliationReport, ResourceStorage
 
 
 class CatalogConsistencyError(RuntimeError):

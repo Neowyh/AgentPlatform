@@ -315,7 +315,7 @@ class ResourceStorage:
     ) -> Path:
         """Atomically build a read-only view containing only frozen Skill versions."""
 
-        from ideer.resources.canonical_sandbox import canonical_run_key
+        from app.agentplatform.resources.canonical_sandbox import canonical_run_key
 
         canonical_run_id = canonical_run_key(run_id)
         view_root = self.resources_root / "run-skill-views"

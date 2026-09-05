@@ -5,8 +5,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from app.agentplatform.workflows.v2.store import WorkflowV2Store
 from deerflow.persistence.models.workflow_v2 import WorkflowCommandRow, WorkflowDefinitionVersionRow, WorkflowTaskRow, WorkflowV2RunRow
-from ideer.workflows.v2.store import WorkflowV2Store
 
 
 class _Context:

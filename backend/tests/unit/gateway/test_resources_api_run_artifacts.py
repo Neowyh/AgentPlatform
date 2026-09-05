@@ -11,13 +11,13 @@ import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 import ideer.persistence.models  # noqa: F401
+from app.agentplatform.workflows.v2 import file_roots
+from app.agentplatform.workflows.v2.store import WorkflowV2Store
 from app.gateway.routers import resources
 from ideer.config.paths import Paths
 from ideer.persistence.base import Base
 from ideer.persistence.models.resource_catalog import Resource, ResourceVersion, RunResourceSnapshot
 from ideer.persistence.models.user import UserModel, UserRole
-from ideer.workflows.v2 import file_roots
-from ideer.workflows.v2.store import WorkflowV2Store
 
 WRITE_ROOT = "/mnt/user-data/outputs"
 

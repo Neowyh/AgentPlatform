@@ -24,6 +24,7 @@ from langchain.agents import create_agent
 from langchain.agents.middleware import AgentMiddleware
 from langchain_core.runnables import RunnableConfig
 
+from app.agentplatform.resources.runtime import CanonicalAgentDefinition, intersect_tool_groups
 from ideer.agents.lead_agent.prompt import apply_prompt_template
 from ideer.agents.memory.summarization_hook import memory_flush_hook
 from ideer.agents.middlewares.clarification_middleware import ClarificationMiddleware
@@ -41,7 +42,6 @@ from ideer.agents.thread_state import ThreadState
 from ideer.config.agents_config import validate_agent_name
 from ideer.config.app_config import AppConfig, get_app_config
 from ideer.models import create_chat_model
-from ideer.resources.runtime import CanonicalAgentDefinition, intersect_tool_groups
 from ideer.skills.tool_policy import filter_tools_by_skill_allowed_tools
 from ideer.skills.types import Skill
 from ideer.tracing import build_tracing_callbacks

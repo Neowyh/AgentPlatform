@@ -1,7 +1,7 @@
 # Workflow YAML v2
 
 Workflow definitions are governed YAML graphs with `schema_version: 2`.
-Definitions are parsed and validated by `ideer.workflows.v2.parser`, compiled
+Definitions are parsed and validated by `app.agentplatform.workflows.v2.parser`, compiled
 to LangGraph by `WorkflowGraphCompiler`, and executed by the durable worker.
 
 Every saved definition creates an immutable version. Runs reference the exact
