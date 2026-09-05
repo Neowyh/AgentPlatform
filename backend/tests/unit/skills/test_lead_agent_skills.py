@@ -69,11 +69,11 @@ def test_get_skills_prompt_section_uses_only_frozen_run_skills_without_global_sc
 
     result = get_skills_prompt_section(
         resolved_skills=[frozen],
-        container_base_path="/mnt/run-skills",
+        container_base_path="/mnt/skills",
     )
 
     assert "frozen-skill" in result
-    assert "/mnt/run-skills/frozen-skill/SKILL.md" in result
+    assert "/mnt/skills/frozen-skill/SKILL.md" in result
 
 
 def test_get_skills_prompt_section_includes_self_evolution_rules(monkeypatch):

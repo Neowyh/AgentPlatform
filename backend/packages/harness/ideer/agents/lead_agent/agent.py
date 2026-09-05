@@ -545,7 +545,7 @@ def _make_lead_agent(
             available_skills=set(agent_config.skills) if agent_config and agent_config.skills is not None else None,
             app_config=resolved_app_config,
             resolved_skills=resolved_skills if canonical_definition else None,
-            skills_container_path="/mnt/run-skills" if canonical_definition else None,
+            skills_container_path="/mnt/skills" if canonical_definition else None,
             soul_override=canonical_definition.soul if canonical_definition else None,
             read_only=canonical_definition is not None,
             requested_skill_name=requested_skill_name,

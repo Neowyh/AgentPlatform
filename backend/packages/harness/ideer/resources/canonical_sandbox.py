@@ -9,7 +9,10 @@ from pathlib import Path
 
 from ideer.config.paths import get_paths, join_host_path
 
-CANONICAL_SKILLS_CONTAINER_PATH = "/mnt/run-skills"
+# Canonical Runs replace the generic projection at the same managed DeerFlow
+# mount. Keeping one container path prevents a second skill namespace from
+# bypassing the enabled-only `/mnt/skills` projection contract.
+CANONICAL_SKILLS_CONTAINER_PATH = "/mnt/skills"
 _SCOPE_PREFIX = "canonical_run_"
 _RUN_NAMESPACE = uuid.UUID("3ea44ca0-e819-5064-91b7-224484411da3")
 

@@ -459,7 +459,7 @@ class TestMountHelpers:
         provider._get_thread_mounts.assert_called_once_with("thread-1")
         assert mounts == [
             ("/thread", "/mnt/user-data", False),
-            (str(view), "/mnt/run-skills", True),
+            (str(view), "/mnt/skills", True),
         ]
 
     def test_get_skills_mount_success(self, monkeypatch):

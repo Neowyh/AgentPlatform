@@ -650,7 +650,6 @@ def validate_local_tool_path(path: str, thread_data: ThreadDataState | None, *, 
     Allowed virtual-path families:
       - ``/mnt/user-data/*``  — always allowed (read + write)
       - ``/mnt/skills/*``     — allowed only when *read_only* is True
-      - ``/mnt/run-skills/*`` — allowed only when *read_only* is True
       - ``/mnt/acp-workspace/*`` — allowed only when *read_only* is True
       - Custom mount paths (from config.yaml) — respects per-mount ``read_only`` flag
 

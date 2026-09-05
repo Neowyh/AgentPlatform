@@ -61,7 +61,7 @@ def test_canonical_skill_path_is_read_only_at_the_tool_gate() -> None:
     path = f"{CANONICAL_SKILLS_CONTAINER_PATH}/custom/example/SKILL.md"
 
     validate_local_tool_path(path, thread_data, read_only=True)
-    with pytest.raises(PermissionError, match="canonical Run skills"):
+    with pytest.raises(PermissionError, match="skills path"):
         validate_local_tool_path(path, thread_data, read_only=False)
     with pytest.raises(PermissionError, match="path traversal"):
         validate_local_tool_path(f"{CANONICAL_SKILLS_CONTAINER_PATH}/../secrets", thread_data, read_only=True)
