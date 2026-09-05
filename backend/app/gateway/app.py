@@ -252,7 +252,7 @@ async def _seed_bundled_resources() -> None:
     """Provision manifest resources once an active super admin exists."""
     from sqlalchemy import select
 
-    from ideer.config.paths import get_paths
+    from deerflow.config.paths import get_paths
     from ideer.persistence.engine import get_session_factory
     from ideer.persistence.models.user import UserModel, UserRole
     from ideer.resources.bundled import seed_bundled_resources
@@ -385,7 +385,7 @@ async def _reconcile_agent_metadata(sf, admin_id: str) -> None:
 async def _reconcile_canonical_resource_storage() -> None:
     """Fail startup on broken DB pointers and report recoverable orphan files."""
 
-    from ideer.config.paths import get_paths
+    from deerflow.config.paths import get_paths
     from ideer.persistence.engine import get_session_factory
     from ideer.resources.reconciliation import reconcile_catalog_storage
     from ideer.resources.storage import ResourceStorage
@@ -437,7 +437,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         # Detection only: startup must never remove user state automatically.
         try:
             from app.gateway.user_deletion import report_user_state_anomalies
-            from ideer.config.paths import get_paths
+            from deerflow.config.paths import get_paths
 
             await report_user_state_anomalies(get_paths())
         except Exception:
