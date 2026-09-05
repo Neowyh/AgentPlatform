@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.gateway.authz import get_current_rbac_user, require_role
-from deerflow.config.extensions_config import ExtensionsConfig, get_extensions_config, reload_extensions_config
+from deerflow.config.extensions_config import ExtensionsConfig, McpTaskToolsetConfig, get_extensions_config, reload_extensions_config
 from ideer.persistence.models.user import UserModel, UserRole
 
 logger = logging.getLogger(__name__)
@@ -44,6 +44,10 @@ class McpServerConfigResponse(BaseModel):
     url: str | None = Field(default=None, description="URL of the MCP server (for sse or http type)")
     headers: dict[str, str] = Field(default_factory=dict, description="HTTP headers to send (for sse or http type)")
     oauth: McpOAuthConfigResponse | None = Field(default=None, description="OAuth configuration for MCP HTTP/SSE servers")
+    task_toolsets: list[McpTaskToolsetConfig] = Field(
+        default_factory=list,
+        description="Durable MCP submit/status/cancel tool groups",
+    )
     description: str = Field(default="", description="Human-readable description of what this MCP server provides")
 
 
