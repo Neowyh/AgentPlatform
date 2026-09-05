@@ -5,11 +5,13 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+from deerflow_extension_api import EXTENSION_PRINCIPAL_RESOLVER_KEY, ExtensionPrincipal
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+import deerflow.extensions as deerflow_extensions
 from app.gateway.auth_middleware import AuthMiddleware
 from app.gateway.config import get_gateway_config
 from app.gateway.csrf_middleware import CSRFMiddleware, get_configured_cors_origins
@@ -37,6 +39,7 @@ from app.gateway.routers import (
     uploads,
     visibility_applications,
 )
+from deerflow.extensions.gateway import include_contributed_routers
 from ideer.config import app_config as ideer_app_config
 from ideer.config.app_config import apply_logging_level
 
@@ -56,6 +59,52 @@ logger = logging.getLogger(__name__)
 # Bounds worker exit time so uvicorn's reload supervisor does not keep
 # firing signals into a worker that is stuck waiting for shutdown cleanup.
 _SHUTDOWN_HOOK_TIMEOUT_SECONDS = 5.0
+
+
+def _extension_principal(request: Request) -> ExtensionPrincipal | None:
+    """Project the authenticated Gateway caller into the extension contract."""
+    state = getattr(request, "state", None)
+    user = getattr(state, "user", None)
+    if user is None:
+        return None
+
+    from app.gateway.auth_disabled import AUTH_SOURCE_INTERNAL, AUTH_SOURCE_PAT
+
+    source = getattr(state, "auth_source", None)
+    role = getattr(user, "system_role", None)
+    roles = (str(role),) if role else ()
+    is_pat = source == AUTH_SOURCE_PAT
+    return ExtensionPrincipal(
+        user_id=str(getattr(user, "id", "")),
+        is_admin=bool(role == "admin" and not is_pat),
+        is_internal=bool(source == AUTH_SOURCE_INTERNAL),
+        roles=() if is_pat and role == "admin" else roles,
+    )
+
+
+def _configure_extensions(app: FastAPI) -> None:
+    """Load configured extensions and mount their contributions after host routes."""
+    try:
+        config = get_app_config()
+    except FileNotFoundError:
+        specs = []
+    else:
+        specs = getattr(config, "plugins", [])
+
+    try:
+        loaded, diagnostics = deerflow_extensions.load_extensions(specs)
+    except deerflow_extensions.ExtensionLoadError:
+        raise
+    except Exception:
+        logger.exception("Extension loading failed; continuing without extensions")
+        loaded, diagnostics = deerflow_extensions.EMPTY_EXTENSIONS, []
+
+    deerflow_extensions.set_loaded_extensions(loaded)
+    live_diagnostics = deerflow_extensions.initialize_runtime_diagnostics(list(diagnostics))
+    app.state.extensions = loaded
+    app.state.extension_diagnostics = live_diagnostics
+    setattr(app.state, EXTENSION_PRINCIPAL_RESOLVER_KEY, _extension_principal)
+    deerflow_extensions.record_runtime_diagnostics(include_contributed_routers(app, loaded))
 
 
 async def _ensure_admin_user(app: FastAPI) -> None:
@@ -743,6 +792,10 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
             Service health status information.
         """
         return {"status": "healthy", "service": "ideer-gateway"}
+
+    # Extension routes are deliberately mounted after every host route so a
+    # plugin can never shadow a canonical Gateway endpoint.
+    _configure_extensions(app)
 
     return app
 

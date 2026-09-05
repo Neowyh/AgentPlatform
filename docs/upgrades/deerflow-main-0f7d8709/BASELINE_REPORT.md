@@ -111,6 +111,12 @@ The following focused slices are green on this branch:
   StreamBridge and run naming; services behavior regressions: 77 passed.
 - Gateway agent-factory resolution now returns DeerFlow's `make_lead_agent`;
   the same 77 service regressions cover the factory identity contract.
+- Gateway Extension host wiring is now active: configured plugins load once at
+  `create_app()`, publish the process/app registry and live diagnostics, mount
+  contributed routers after host routes, and receive a caller-only principal
+  projection (PAT admin capability is suppressed). The focused app-loading and
+  principal contract slice is green (13 passed); the TestClient route case is
+  environment-incomplete under the restricted socket policy.
 
 These results establish the next-stage baseline but do not close the semantic
 ledger rows. Shared-resource, workflow receipt, migration, offline and fresh
