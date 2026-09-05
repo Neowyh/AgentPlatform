@@ -21,6 +21,9 @@ Locked DeerFlow SHA: `0f7d8709d3bbf0be26460b6277fbad9329302243`
 | `tests/test_slash_skills.py` | focused behavior passes; full file incomplete in this environment | The synchronous activation and isolated async test pass. Running the async test after another `asyncio.run` test hangs during Python's `asyncio.to_thread` executor shutdown; this reproduces with a minimal Python 3.12 script and is classified as a test/runtime-environment issue, not a product regression. |
 | `tests/test_migration_user_isolation.py` | fixed and passed | Restored the missing `migrate_skills` entry point with dry-run, conflict quarantine, history-directory and parent-directory preservation semantics: 19 passed. |
 | `tests/integration/persistence/test_migration_schema.py` | partial pass; one environment-incomplete test | After switching Alembic's SQLite path to a synchronous engine, 48 migration/environment checks passed when excluding `test_stamp_alembic_head_interaction`. That async test still hangs at `aiosqlite.connect()` in this sandbox; the remaining result is incomplete, not a release pass. |
+| `cd frontend && pnpm test` | blocked | The checked-out frontend dependencies do not provide the `rstest` binary. |
+| `cd frontend && pnpm check` | failed/incomplete | ESLint reports 5 errors and 1,269 warnings (including generated `coverage/` output); TypeScript was not reached. This is a pre-existing frontend lane issue requiring a separate cleanup pass. |
+| `bash scripts/package-intranet-offline.sh --no-sandbox ...` | blocked | The packaging preflight requires Docker Compose v2, unavailable in this environment. `--help` and argument parsing pass. |
 
 The standard lane now exports `PYTHONPATH=.:tests`, preserving the existing
 collection roots while resolving shared test helpers. Re-run with
