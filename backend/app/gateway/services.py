@@ -23,7 +23,7 @@ from langchain_core.messages.utils import convert_to_messages
 from app.gateway.authz import _cached_rbac_identity
 from app.gateway.deps import get_run_context, get_run_manager, get_stream_bridge
 from app.gateway.utils import sanitize_log_param
-from ideer.runtime import (
+from deerflow.runtime import (
     END_SENTINEL,
     HEARTBEAT_SENTINEL,
     ConflictError,
@@ -35,7 +35,7 @@ from ideer.runtime import (
     UnsupportedStrategyError,
     run_agent,
 )
-from ideer.runtime.runs.naming import resolve_root_run_name
+from deerflow.runtime.runs.naming import resolve_root_run_name
 
 logger = logging.getLogger(__name__)
 

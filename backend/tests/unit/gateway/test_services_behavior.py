@@ -294,7 +294,7 @@ class TestStartRun:
     @pytest.mark.asyncio
     async def test_start_run_uuid_discards_prepared_snapshot_when_run_is_rejected(self, mock_deps):
         bridge, run_mgr, run_ctx, request = mock_deps
-        from ideer.runtime import ConflictError
+        from deerflow.runtime import ConflictError
 
         run_mgr.create_or_reject.side_effect = ConflictError("already running")
         body = SimpleNamespace(
@@ -450,7 +450,7 @@ class TestStartRun:
         """Cover the ConflictError -> HTTPException 409 path."""
         bridge, run_mgr, run_ctx, request = mock_deps
 
-        from ideer.runtime import ConflictError
+        from deerflow.runtime import ConflictError
 
         run_mgr.create_or_reject.side_effect = ConflictError("already running")
 
@@ -487,7 +487,7 @@ class TestStartRun:
         """Cover the UnsupportedStrategyError -> HTTPException 501 path."""
         bridge, run_mgr, run_ctx, request = mock_deps
 
-        from ideer.runtime import UnsupportedStrategyError
+        from deerflow.runtime import UnsupportedStrategyError
 
         run_mgr.create_or_reject.side_effect = UnsupportedStrategyError("not supported")
 

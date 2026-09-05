@@ -56,7 +56,7 @@ migration and air-gapped installation are still pending and are release gates.
 
 ## Runtime Foundation focused evidence
 
-The branch still has 153 textual `ideer` imports under `backend/app`,
+The branch still has 151 textual `ideer` imports under `backend/app`,
 `backend/scripts` and the AgentPlatform-facing harness adapters. This is an
 inventory signal only; the final `import ideer` failure gate is intentionally
 not claimed until the Workflow/resource control-plane extraction is complete.
@@ -107,6 +107,8 @@ The following focused slices are green on this branch:
   32 passed.
 - Resource Gateway upload helpers now consume DeerFlow's shared safe filename
   and no-symlink file primitives; Resource API focused regressions: 18 passed.
+- Gateway run services now consume DeerFlow RunManager/RunRecord/RunStatus,
+  StreamBridge and run naming; services behavior regressions: 77 passed.
 
 These results establish the next-stage baseline but do not close the semantic
 ledger rows. Shared-resource, workflow receipt, migration, offline and fresh
