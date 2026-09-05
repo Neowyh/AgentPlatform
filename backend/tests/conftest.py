@@ -11,12 +11,35 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
+from uuid import uuid4
 
 import pytest
 
 # Make 'app' and 'deerflow' importable from any working directory
 sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+
+
+def _make_rbac_user(
+    user_id: str | None = None,
+    role: str = "user",
+    department_id: str | None = None,
+    disabled: bool = False,
+    username: str | None = None,
+) -> MagicMock:
+    """Create the shared lightweight RBAC user used by contract tests.
+
+    Keep this helper in ``conftest`` because contract modules import it as a
+    top-level test support module when collected by the standard lane.
+    """
+    user = MagicMock()
+    user.id = user_id or str(uuid4())
+    user.role = role
+    user.department_id = department_id
+    user.disabled = disabled
+    user.username = username or f"user-{user.id[:8]}"
+    return user
+
 
 # Break the circular import chain that exists in production code:
 #   deerflow.subagents.__init__

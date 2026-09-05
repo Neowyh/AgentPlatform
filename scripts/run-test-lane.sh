@@ -74,7 +74,11 @@ backend_pytest() {
 
   (
     cd "$ROOT_DIR/backend"
-    PYTHONPATH=. PYTHONIOENCODING=utf-8 PYTHONUTF8=1 uv run pytest "${args[@]}"
+    # A number of compatibility tests intentionally use the shared helpers as
+    # top-level modules (for example ``_router_auth_helpers``).  Keep the
+    # lane's collection roots on PYTHONPATH so those modules resolve exactly
+    # as they do under the backend Make targets.
+    PYTHONPATH=.:tests PYTHONIOENCODING=utf-8 PYTHONUTF8=1 uv run pytest "${args[@]}"
   )
 }
 
