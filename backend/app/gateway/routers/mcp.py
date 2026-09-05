@@ -32,6 +32,30 @@ class McpUserScopedAuthConfigResponse(BaseModel):
         return value
 
 
+class McpContextHeadersConfigResponse(BaseModel):
+    """Per-request header-name to run-secret mapping for an MCP server."""
+
+    enabled: bool = Field(default=True, description="Whether request-scoped header injection is enabled")
+    headers: dict[str, str] = Field(default_factory=dict, description="Map of HTTP header names to config.context.secrets keys")
+    on_missing: Literal["deny", "passthrough"] = Field(default="deny", description="Behavior when a mapped key is absent")
+    model_config = ConfigDict(extra="allow")
+
+    @field_validator("headers")
+    @classmethod
+    def _validate_mapping_entries(cls, value: dict[str, str]) -> dict[str, str]:
+        seen: dict[str, str] = {}
+        for header_name, secret_key in value.items():
+            if not header_name.strip():
+                raise ValueError("headers_from_context.headers must not contain a blank header name")
+            if not isinstance(secret_key, str) or not secret_key.strip():
+                raise ValueError(f"headers_from_context.headers[{header_name!r}] must name a non-blank secret key from config.context.secrets")
+            lowered = header_name.lower()
+            if lowered in seen:
+                raise ValueError(f"headers_from_context.headers maps the same HTTP header under two spellings ({seen[lowered]!r} and {header_name!r}); header names are case-insensitive")
+            seen[lowered] = header_name
+        return value
+
+
 class McpOAuthConfigResponse(BaseModel):
     """OAuth configuration for an MCP server."""
 
@@ -63,6 +87,7 @@ class McpServerConfigResponse(BaseModel):
     headers: dict[str, str] = Field(default_factory=dict, description="HTTP headers to send (for sse or http type)")
     oauth: McpOAuthConfigResponse | None = Field(default=None, description="OAuth configuration for MCP HTTP/SSE servers")
     user_auth: McpUserScopedAuthConfigResponse | None = Field(default=None, description="Per-user credential injection for MCP HTTP/SSE servers")
+    headers_from_context: McpContextHeadersConfigResponse | None = Field(default=None, description="Per-request credential injection for MCP HTTP/SSE servers")
     task_toolsets: list[McpTaskToolsetConfig] = Field(
         default_factory=list,
         description="Durable MCP submit/status/cancel tool groups",
@@ -169,12 +194,18 @@ def _mask_server_config(server: McpServerConfigResponse) -> McpServerConfigRespo
                 **{key: _MASKED_VALUE if _is_sensitive_extra_key(key) else _mask_sensitive_extra_value(value) for key, value in (server.user_auth.model_extra or {}).items()},
             }
         )
+    masked_context_headers = None
+    if server.headers_from_context is not None:
+        masked_context_headers = server.headers_from_context.model_copy(
+            update={key: _MASKED_VALUE if _is_sensitive_extra_key(key) else _mask_sensitive_extra_value(value) for key, value in (server.headers_from_context.model_extra or {}).items()}
+        )
     return server.model_copy(
         update={
             "env": masked_env,
             "headers": masked_headers,
             "oauth": masked_oauth,
             "user_auth": masked_user_auth,
+            "headers_from_context": masked_context_headers,
         }
     )
 
@@ -243,6 +274,7 @@ def _merge_preserving_secrets(
             "headers": merged_headers,
             "oauth": merged_oauth,
             "user_auth": _merge_user_auth(incoming, existing, preserve_omitted_fields=preserve_omitted_fields),
+            "headers_from_context": _merge_context_headers(incoming, existing, preserve_omitted_fields=preserve_omitted_fields),
         }
     )
 
@@ -289,6 +321,32 @@ def _merge_user_auth(
         old_extra = (existing_auth.model_extra or {}).get(key) if existing_auth is not None else None
         base[key] = _merge_extra_value_preserving_masked(key, value, old_extra, existing_present=existing_auth is not None and key in (existing_auth.model_extra or {}))
     return McpUserScopedAuthConfigResponse(**base)
+
+
+def _merge_context_headers(
+    incoming: McpServerConfigResponse,
+    existing: McpServerConfigResponse,
+    *,
+    preserve_omitted_fields: bool = True,
+) -> McpContextHeadersConfigResponse | None:
+    """Merge request-scoped header mappings while preserving masked extras."""
+    if "headers_from_context" not in incoming.model_fields_set:
+        return existing.headers_from_context
+    incoming_headers = incoming.headers_from_context
+    if incoming_headers is None:
+        return None
+    existing_headers = existing.headers_from_context
+    base: dict[str, Any] = {}
+    if preserve_omitted_fields and existing_headers is not None:
+        base.update({"enabled": existing_headers.enabled, "headers": existing_headers.headers, "on_missing": existing_headers.on_missing})
+        base.update(existing_headers.model_extra or {})
+    for field_name in ("enabled", "headers", "on_missing"):
+        if field_name in incoming_headers.model_fields_set:
+            base[field_name] = getattr(incoming_headers, field_name)
+    old_extra = existing_headers.model_extra if existing_headers is not None else {}
+    for key, value in (incoming_headers.model_extra or {}).items():
+        base[key] = _merge_extra_value_preserving_masked(key, value, old_extra.get(key), existing_present=key in old_extra)
+    return McpContextHeadersConfigResponse(**base)
 
 
 @router.get(
