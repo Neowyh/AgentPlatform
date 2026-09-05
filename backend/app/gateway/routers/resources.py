@@ -25,8 +25,9 @@ from starlette.background import BackgroundTask
 
 from app.gateway.audit import record_audit
 from app.gateway.authz import get_current_rbac_user
+from deerflow.config.app_config import get_app_config
 from deerflow.uploads.manager import claim_unique_filename, normalize_filename, open_upload_file_no_symlink
-from ideer.config import get_app_config, get_paths
+from ideer.config import get_paths
 from ideer.persistence.engine import get_session_factory
 from ideer.persistence.models.resource_catalog import (
     Resource,
