@@ -7,7 +7,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.gateway.authz import get_current_rbac_user, require_role
-from ideer.config.extensions_config import ExtensionsConfig, get_extensions_config, reload_extensions_config
+from deerflow.config.extensions_config import get_extensions_config, reload_extensions_config
+from ideer.config.extensions_config import ExtensionsConfig
 from ideer.persistence.models.user import UserModel, UserRole
 
 logger = logging.getLogger(__name__)
