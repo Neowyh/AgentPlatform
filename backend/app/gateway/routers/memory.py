@@ -16,8 +16,8 @@ from app.agentplatform.memory_adapter import (
 )
 from app.gateway.authz import get_current_rbac_user, require_role
 from deerflow.config.memory_config import get_memory_config
+from deerflow.runtime.user_context import get_effective_user_id
 from ideer.persistence.models.user import UserModel, UserRole
-from ideer.runtime.user_context import get_effective_user_id
 
 router = APIRouter(prefix="/api", tags=["memory"])
 
