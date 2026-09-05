@@ -43,6 +43,7 @@ Locked DeerFlow SHA: `0f7d8709d3bbf0be26460b6277fbad9329302243`
 | Suggestions router config-boundary regression | passed | Replaced the route-only `AppConfig` annotation with DeerFlow's type; focused E2E: 3 passed. |
 | Models/uploads config-boundary regressions | passed | Replaced route-only `AppConfig` annotations with DeerFlow's type; combined model and upload route regressions: 193 passed. |
 | Thread metadata utility regressions | partial | Switched metadata validation, invalid-filter exception boundaries, and the gateway thread router's ISO time helpers to DeerFlow. The 95-test legacy router module collects, but its shared fixture still patches removed `build_checkpoint_state_accessor` seams (5 focused tests error before execution); this is a test-path compatibility issue, not evidence of a runtime regression. |
+| Resource/authorization/receipt/skill acceptance group | partial | 128 synchronous tests passed across skill projection, tool authorization, receipt verification and worker snapshot binding. The async archive-install projection test cannot run to completion in the restricted sandbox: with the async plugin it exceeds 30 seconds; without plugin loading it is unsupported. No product pass is claimed for that async case. |
 
 The standard lane now exports `PYTHONPATH=.:tests`, preserving the existing
 collection roots while resolving shared test helpers. Re-run with
