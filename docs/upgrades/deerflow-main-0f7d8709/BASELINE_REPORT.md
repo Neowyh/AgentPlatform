@@ -171,6 +171,12 @@ The following focused slices are green on this branch:
   v2 persistence, compiler, and adapters. The runtime-config contract passed
   (1 test); canonical worker DB loading remains incomplete under the restricted
   environment.
+- Run Evidence now exposes a caller-safe projection from the immutable binding
+  and persists that same projection under Run metadata during preparation;
+  resource UUID/version/hash, authorization context, policy revision and the
+  runtime assembly fingerprint remain on one envelope boundary, with no
+  credentials serialized. Extension boundary and background-run evidence
+  regressions passed (9 and 1 targeted tests).
 - Gateway run-config hardening now enforces a server-owned recursion ceiling,
   rejects client checkpoint-channel mode overrides, preserves the canonical
   thread ID in both runtime containers, dual-writes custom Agent identity for
