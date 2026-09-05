@@ -2,6 +2,8 @@ import { resolve } from "path";
 
 import { defineConfig } from "vitest/config";
 
+import { vitestUnitFiles } from "./tests/framework-split";
+
 export default defineConfig({
   resolve: {
     alias: {
@@ -15,7 +17,9 @@ export default defineConfig({
     },
   },
   test: {
-    include: ["tests/unit/**/*.test.{ts,tsx}"],
+    // Only the files this framework owns (see tests/framework-split.ts);
+    // rstest collects its own set so no file runs twice.
+    include: vitestUnitFiles,
     environment: "jsdom",
     setupFiles: ["./tests/setup.ts"],
     coverage: {

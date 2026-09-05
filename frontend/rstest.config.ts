@@ -3,6 +3,8 @@ import { resolve } from "path";
 import { pluginReact } from "@rsbuild/plugin-react";
 import { defineConfig } from "@rstest/core";
 
+import { rstestUnitFiles } from "./tests/framework-split";
+
 // Build wiring is identical across projects; only the environment and which
 // files each one claims differ.
 const shared = {
@@ -19,12 +21,18 @@ const shared = {
   },
 };
 
+// Framework split (see tests/framework-split.ts): rstest only claims the
+// files that import `@rstest/core`; vitest collects the rest, so no file
+// runs twice.
+const rstestNodeFiles = rstestUnitFiles.filter((file) => !/\.dom\.test\./.test(file));
+const rstestDomFiles = rstestUnitFiles.filter((file) => /\.dom\.test\./.test(file));
+
 export default defineConfig({
   projects: [
     {
       ...shared,
       name: "node",
-      include: ["tests/unit/**/*.test.ts", "tests/unit/**/*.test.tsx"],
+      include: rstestNodeFiles,
       // A DOM environment costs roughly 3x the runtime of this suite, so the
       // pure-logic tests that make up nearly all of it stay on node and only
       // `*.dom.test.*` pays for a document.
@@ -34,7 +42,7 @@ export default defineConfig({
       ...shared,
       name: "dom",
       testEnvironment: "happy-dom",
-      include: ["tests/unit/**/*.dom.test.ts", "tests/unit/**/*.dom.test.tsx"],
+      include: rstestDomFiles,
     },
   ],
 });
