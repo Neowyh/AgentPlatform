@@ -98,6 +98,9 @@ The following focused slices are green on this branch:
 - Upload gateway sandbox provider now resolves through DeerFlow while
   enterprise Code Evidence and AgentPlatform path/identity policy remain at
   the gateway boundary; upload-router focused regressions: 80 passed.
+- Tool authorization assembly/runtime deny coverage: 28 passed across
+  `test_authorization_enforcement.py` and `test_authorization_tool_filter.py`;
+  an unrelated `test_client.py` collection drift remains separately recorded.
 
 These results establish the next-stage baseline but do not close the semantic
 ledger rows. Shared-resource, workflow receipt, migration, offline and fresh
