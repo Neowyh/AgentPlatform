@@ -17,16 +17,15 @@ import app.agentplatform.audit_model  # noqa: F401 - register audit_logs
 import app.agentplatform.rbac_models  # noqa: F401 - register users_ext for audit FK
 import deerflow.persistence.models  # noqa: F401
 from app.agentplatform.audit_model import AuditLog
+from app.agentplatform.rbac_models import UserModel
 from app.agentplatform.resource_models import Resource, RunResourceSnapshot
 from app.agentplatform.resources.publisher import ResourcePublisher
 from app.agentplatform.resources.runtime import CanonicalResourceLoader, ResourceRuntimeError
 from app.agentplatform.resources.service import ResourceAction, ResourceActor, ResourceService
 from app.agentplatform.resources.storage import ResourceStorage
-from app.agentplatform.visibility_models import VisibilityApplication
 from app.gateway.canonical_agent_run_preparation import prepare_canonical_agent_run
 from app.gateway.routers.assistants_compat import _list_canonical_assistants
 from deerflow.persistence.base import Base
-from app.agentplatform.rbac_models import UserModel
 
 
 @pytest_asyncio.fixture

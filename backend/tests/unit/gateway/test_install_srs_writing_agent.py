@@ -59,7 +59,7 @@ def test_wire_srs_config_adds_and_is_idempotent(tmp_path: Path) -> None:
     assert {
         "name": "read_document",
         "group": "document",
-        "use": "ideer.community.doc_reader.tools:read_document_tool",
+        "use": "app.agentplatform.community.doc_reader.tools:read_document_tool",
     } in parsed["tools"]
     assert parsed["sandbox"]["allow_host_bash"] is True
 

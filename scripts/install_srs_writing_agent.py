@@ -37,7 +37,7 @@ from install_agent import (
 from install_agent import main as install_agent_main
 
 SRS_AGENT = "srs-writing"
-READ_DOCUMENT_USE = "ideer.community.doc_reader.tools:read_document_tool"
+READ_DOCUMENT_USE = "app.agentplatform.community.doc_reader.tools:read_document_tool"
 APP_CONFIG_BACKUP_SUFFIX = ".bak-before-srs-agent"
 
 

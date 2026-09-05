@@ -55,7 +55,7 @@ tools:
   use: deerflow.sandbox.tools:bash_tool
 - name: read_document
   group: document
-  use: ideer.community.doc_reader.tools:read_document_tool
+  use: app.agentplatform.community.doc_reader.tools:read_document_tool
 tool_search:
   enabled: false
   auto_promote_top_k: 3

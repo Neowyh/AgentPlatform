@@ -19,7 +19,7 @@ Covers uncovered code paths in:
 - ideer/tools/registry.py
 - ideer/utils/time.py
 - ideer/utils/readability.py
-- ideer/utils/file_conversion.py
+- app/agentplatform/utils/file_conversion.py
 - ideer/runtime/serialization.py
 - ideer/skills/parser.py
 - ideer/skills/validation.py
@@ -2074,14 +2074,14 @@ class TestSkillInstaller:
 
 
 # ---------------------------------------------------------------------------
-# ideer/utils/file_conversion.py — _pymupdf_output_too_sparse, _get_pdf_converter,
+# app/agentplatform/utils/file_conversion.py — _pymupdf_output_too_sparse, _get_pdf_converter,
 # _clean_bold_title, extract_outline
 # ---------------------------------------------------------------------------
 
 
 class TestFileConversion:
     def test_pymupdf_output_too_sparse_no_pages(self):
-        from ideer.utils.file_conversion import _pymupdf_output_too_sparse
+        from app.agentplatform.utils.file_conversion import _pymupdf_output_too_sparse
 
         # When pymupdf is not installed, the import inside the function fails
         with patch.dict("sys.modules", {"pymupdf": None}):
@@ -2090,7 +2090,7 @@ class TestFileConversion:
             assert result is True
 
     def test_pymupdf_output_too_sparse_enough(self):
-        from ideer.utils.file_conversion import _pymupdf_output_too_sparse
+        from app.agentplatform.utils.file_conversion import _pymupdf_output_too_sparse
 
         mock_doc = MagicMock()
         mock_doc.__len__ = MagicMock(return_value=1)
@@ -2103,26 +2103,26 @@ class TestFileConversion:
             assert result is False
 
     def test_get_pdf_converter_default(self):
-        from ideer.utils.file_conversion import _get_pdf_converter
+        from app.agentplatform.utils.file_conversion import _get_pdf_converter
 
-        with patch("ideer.utils.file_conversion._get_uploads_config_value", return_value="auto"):
+        with patch("app.agentplatform.utils.file_conversion._get_uploads_config_value", return_value="auto"):
             assert _get_pdf_converter() == "auto"
 
     def test_get_pdf_converter_invalid(self):
-        from ideer.utils.file_conversion import _get_pdf_converter
+        from app.agentplatform.utils.file_conversion import _get_pdf_converter
 
-        with patch("ideer.utils.file_conversion._get_uploads_config_value", return_value="INVALID"):
+        with patch("app.agentplatform.utils.file_conversion._get_uploads_config_value", return_value="INVALID"):
             assert _get_pdf_converter() == "auto"
 
     def test_clean_bold_title(self):
-        from ideer.utils.file_conversion import _clean_bold_title
+        from app.agentplatform.utils.file_conversion import _clean_bold_title
 
         assert _clean_bold_title("**Overview**") == "Overview"
         assert _clean_bold_title("plain text") == "plain text"
         assert _clean_bold_title("**A** **B**") == "A B"
 
     def test_extract_outline_empty(self):
-        from ideer.utils.file_conversion import extract_outline
+        from app.agentplatform.utils.file_conversion import extract_outline
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
             f.write("No headings here\nJust plain text\n")
@@ -2134,7 +2134,7 @@ class TestFileConversion:
             os.unlink(path)
 
     def test_extract_outline_with_headings(self):
-        from ideer.utils.file_conversion import extract_outline
+        from app.agentplatform.utils.file_conversion import extract_outline
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
             f.write("# Heading 1\nSome text\n## Heading 2\nMore text\n")
@@ -2148,7 +2148,7 @@ class TestFileConversion:
             os.unlink(path)
 
     def test_extract_outline_bold_heading(self):
-        from ideer.utils.file_conversion import extract_outline
+        from app.agentplatform.utils.file_conversion import extract_outline
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
             f.write("**ITEM 1. BUSINESS**\nSome text\n")
@@ -2161,7 +2161,7 @@ class TestFileConversion:
             os.unlink(path)
 
     def test_extract_outline_split_bold(self):
-        from ideer.utils.file_conversion import extract_outline
+        from app.agentplatform.utils.file_conversion import extract_outline
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
             f.write("**1** **Introduction**\nSome text\n")
@@ -2175,7 +2175,7 @@ class TestFileConversion:
             os.unlink(path)
 
     def test_extract_outline_truncation(self):
-        from ideer.utils.file_conversion import MAX_OUTLINE_ENTRIES, extract_outline
+        from app.agentplatform.utils.file_conversion import MAX_OUTLINE_ENTRIES, extract_outline
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
             for i in range(MAX_OUTLINE_ENTRIES + 5):
@@ -2189,7 +2189,7 @@ class TestFileConversion:
             os.unlink(path)
 
     def test_extract_outline_nonexistent_file(self):
-        from ideer.utils.file_conversion import extract_outline
+        from app.agentplatform.utils.file_conversion import extract_outline
 
         result = extract_outline(Path("/nonexistent/file.md"))
         assert result == []

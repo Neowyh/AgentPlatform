@@ -11,7 +11,7 @@ from langgraph.runtime import Runtime
 
 from ideer.config.paths import Paths, get_paths
 from ideer.runtime.user_context import get_effective_user_id
-from ideer.utils.file_conversion import extract_outline
+from app.agentplatform.utils.file_conversion import extract_outline
 
 logger = logging.getLogger(__name__)
 

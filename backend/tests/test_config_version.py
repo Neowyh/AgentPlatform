@@ -295,7 +295,7 @@ def test_config_upgrade_migrates_legacy_runtime_paths_at_current_schema_version(
                 "tools": [{"use": "ideer.community.ddg_search.tools:web_search_tool"}],
                 # Product-only extensions stay explicit until DeerFlow provides
                 # an equivalent implementation.
-                "custom": {"use": "ideer.community.doc_reader.tools:read_document_tool"},
+                "custom": {"use": "app.agentplatform.community.doc_reader.tools:read_document_tool"},
             }
         ),
         encoding="utf-8",
@@ -314,4 +314,4 @@ def test_config_upgrade_migrates_legacy_runtime_paths_at_current_schema_version(
     assert upgraded["models"][0]["use"].startswith("deerflow.models.")
     assert upgraded["sandbox"]["use"].startswith("deerflow.sandbox.")
     assert upgraded["tools"][0]["use"].startswith("deerflow.community.ddg_search.")
-    assert upgraded["custom"]["use"].startswith("ideer.community.doc_reader.")
+    assert upgraded["custom"]["use"].startswith("app.agentplatform.community.doc_reader.")

@@ -1523,8 +1523,8 @@ class TestUploads:
             with (
                 patch("ideer.client.get_uploads_dir", return_value=uploads_dir),
                 patch("ideer.client.ensure_uploads_dir", return_value=uploads_dir),
-                patch("ideer.utils.file_conversion.CONVERTIBLE_EXTENSIONS", {".pdf"}),
-                patch("ideer.utils.file_conversion.convert_file_to_markdown", side_effect=fake_convert),
+                patch("app.agentplatform.utils.file_conversion.CONVERTIBLE_EXTENSIONS", {".pdf"}),
+                patch("app.agentplatform.utils.file_conversion.convert_file_to_markdown", side_effect=fake_convert),
                 patch("concurrent.futures.ThreadPoolExecutor", FakeExecutor),
             ):
                 result = asyncio.run(call_upload())
@@ -2281,8 +2281,8 @@ class TestScenarioEdgeCases:
             with (
                 patch("ideer.client.get_uploads_dir", return_value=uploads_dir),
                 patch("ideer.client.ensure_uploads_dir", return_value=uploads_dir),
-                patch("ideer.utils.file_conversion.CONVERTIBLE_EXTENSIONS", {".pdf"}),
-                patch("ideer.utils.file_conversion.convert_file_to_markdown", side_effect=Exception("conversion failed")),
+                patch("app.agentplatform.utils.file_conversion.CONVERTIBLE_EXTENSIONS", {".pdf"}),
+                patch("app.agentplatform.utils.file_conversion.convert_file_to_markdown", side_effect=Exception("conversion failed")),
             ):
                 result = client.upload_files("t-pdf-fail", [pdf_file])
 

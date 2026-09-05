@@ -13,7 +13,7 @@ import sys
 from types import ModuleType
 from unittest.mock import MagicMock, patch
 
-from ideer.utils.file_conversion import (
+from app.agentplatform.utils.file_conversion import (
     _convert_pdf_with_pymupdf4llm,
     _convert_with_markitdown,
     _get_pdf_converter,
@@ -136,7 +136,7 @@ class TestGetPdfConverterException:
     def test_returns_auto_when_config_raises_exception(self):
         """When _get_uploads_config_value raises an exception, return 'auto' (lines 313-315)."""
         with patch(
-            "ideer.utils.file_conversion._get_uploads_config_value",
+            "app.agentplatform.utils.file_conversion._get_uploads_config_value",
             side_effect=RuntimeError("config unavailable"),
         ):
             result = _get_pdf_converter()
@@ -146,7 +146,7 @@ class TestGetPdfConverterException:
     def test_returns_auto_when_get_app_config_raises(self):
         """When get_app_config itself raises, return 'auto'."""
         with patch(
-            "ideer.utils.file_conversion.get_app_config",
+            "app.agentplatform.utils.file_conversion.get_app_config",
             side_effect=RuntimeError("no config"),
         ):
             result = _get_pdf_converter()

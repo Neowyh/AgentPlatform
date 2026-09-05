@@ -1163,7 +1163,7 @@ class IDeerClient:
             FileNotFoundError: If any file does not exist.
             ValueError: If any supplied path exists but is not a regular file.
         """
-        from ideer.utils.file_conversion import CONVERTIBLE_EXTENSIONS, convert_file_to_markdown
+        from app.agentplatform.utils.file_conversion import CONVERTIBLE_EXTENSIONS, convert_file_to_markdown
 
         # Validate all files upfront to avoid partial uploads.
         resolved_files = []
@@ -1274,7 +1274,7 @@ class IDeerClient:
             FileNotFoundError: If the file does not exist.
             PermissionError: If path traversal is detected.
         """
-        from ideer.utils.file_conversion import CONVERTIBLE_EXTENSIONS
+        from app.agentplatform.utils.file_conversion import CONVERTIBLE_EXTENSIONS
 
         uploads_dir = get_uploads_dir(thread_id)
         return delete_file_safe(uploads_dir, filename, convertible_extensions=CONVERTIBLE_EXTENSIONS)

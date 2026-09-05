@@ -405,7 +405,7 @@ class TestBeforeAgent:
 
     def test_outline_truncation_hint_shown(self, tmp_path):
         """When outline is truncated, a hint line is appended after the last visible entry."""
-        from ideer.utils.file_conversion import MAX_OUTLINE_ENTRIES
+        from app.agentplatform.utils.file_conversion import MAX_OUTLINE_ENTRIES
 
         mw = _middleware(tmp_path)
         uploads_dir = _uploads_dir(tmp_path)
