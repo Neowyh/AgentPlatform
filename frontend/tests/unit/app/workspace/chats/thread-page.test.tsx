@@ -28,6 +28,7 @@ vi.mock("@/core/i18n/hooks", () => ({
         notAvailableInDemoMode: "Not available in demo mode",
       },
       chats: { searchChats: "Search chats..." },
+      sidebar: { scheduledTasks: "Scheduled tasks" },
       inputBox: {
         createSkillPrompt: "Create a skill",
       },
@@ -133,6 +134,7 @@ vi.mock("@/core/i18n/hooks", () => ({
       inputBox: {
         createSkillPrompt: "Create a skill",
       },
+      sidebar: { scheduledTasks: "Scheduled tasks" },
       scenarios: {
         daily: "Daily Office",
         creative: "Creative Design",

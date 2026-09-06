@@ -71,6 +71,7 @@ vi.mock("@/core/i18n/hooks", () => ({
         loading: "Loading...",
         notAvailableInDemoMode: "Not available in demo",
       },
+      sidebar: { scheduledTasks: "Scheduled tasks" },
       scenarios: {
         daily: "日常办公",
         creative: "创意设计",
@@ -192,7 +193,10 @@ vi.mock("@/lib/utils", () => ({
   cn: (...args: any[]) => args.filter(Boolean).join(" "),
 }));
 
-import ChatPage from "@/app/workspace/chats/[thread_id]/page";
+// A relative import: vite's resolver mangles the "@" alias for paths
+// containing bracketed (glob-special) segments like [thread_id].
+import ChatPage from "../../../../../../src/app/workspace/chats/[thread_id]/page";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 afterEach(() => {
   cleanup();
@@ -233,43 +237,75 @@ describe("ChatPage", () => {
   });
 
   test("renders chat box", () => {
-    render(<ChatPage />);
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
     expect(screen.getByTestId("chat-box")).toBeInTheDocument();
   });
 
   test("renders message list", () => {
-    render(<ChatPage />);
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
     expect(screen.getByTestId("message-list")).toBeInTheDocument();
   });
 
   test("renders thread title", () => {
-    render(<ChatPage />);
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
     expect(screen.getByTestId("thread-title")).toBeInTheDocument();
   });
 
   test("renders input box placeholder", () => {
-    render(<ChatPage />);
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
     const placeholder = document.querySelector('[aria-hidden="true"]');
     expect(placeholder).toBeInTheDocument();
   });
 
   test("renders token usage indicator", () => {
-    render(<ChatPage />);
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
     expect(screen.getByTestId("token-usage")).toBeInTheDocument();
   });
 
   test("renders export trigger", () => {
-    render(<ChatPage />);
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
     expect(screen.getByTestId("export-trigger")).toBeInTheDocument();
   });
 
   test("renders artifact trigger", () => {
-    render(<ChatPage />);
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
     expect(screen.getByTestId("artifact-trigger")).toBeInTheDocument();
   });
 
   test("does not render todo list when no todos", () => {
-    render(<ChatPage />);
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
     expect(screen.queryByTestId("todo-list")).not.toBeInTheDocument();
   });
 
@@ -289,7 +325,11 @@ describe("ChatPage", () => {
       loadMoreHistory: vi.fn(),
     });
 
-    render(<ChatPage />);
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
     expect(screen.getByTestId("todo-list")).toBeInTheDocument();
   });
 
@@ -302,7 +342,11 @@ describe("ChatPage", () => {
       isMock: true,
     });
 
-    render(<ChatPage />);
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
     expect(screen.getByTestId("chat-box")).toBeInTheDocument();
     expect(screen.getByTestId("message-list")).toBeInTheDocument();
   });
@@ -323,7 +367,11 @@ describe("ChatPage", () => {
       loadMoreHistory: vi.fn(),
     });
 
-    render(<ChatPage />);
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
     expect(screen.getByTestId("chat-box")).toBeInTheDocument();
   });
 
@@ -343,17 +391,30 @@ describe("ChatPage", () => {
       loadMoreHistory: vi.fn(),
     });
 
-    render(<ChatPage />);
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
     expect(screen.getByTestId("chat-box")).toBeInTheDocument();
   });
 
   test("renders InputBox after re-render when mounted", () => {
-    const { rerender } = render(<ChatPage />);
+    const client = new QueryClient();
+    const { rerender } = render(
+      <QueryClientProvider client={client}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
     expect(screen.queryByTestId("input-box")).not.toBeInTheDocument();
     expect(
       document.querySelector('div[aria-hidden="true"]'),
     ).toBeInTheDocument();
-    rerender(<ChatPage />);
+    rerender(
+      <QueryClientProvider client={client}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
     expect(screen.getByTestId("input-box")).toBeInTheDocument();
     expect(
       document.querySelector('div[aria-hidden="true"]'),
@@ -361,7 +422,11 @@ describe("ChatPage", () => {
   });
 
   test("calls useSpecificChatMode on render", () => {
-    render(<ChatPage />);
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
     expect(mockUseSpecificChatMode).toHaveBeenCalled();
   });
 
@@ -396,8 +461,17 @@ describe("ChatPage", () => {
       };
     });
 
-    const { rerender } = render(<ChatPage />);
-    rerender(<ChatPage />);
+    const client = new QueryClient();
+    const { rerender } = render(
+      <QueryClientProvider client={client}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
+    rerender(
+      <QueryClientProvider client={client}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
     expect(mockLastInputBoxProps.current.isWelcomeMode).toBe(true);
 
     act(() => {
@@ -415,7 +489,11 @@ describe("ChatPage", () => {
       isMock: false,
     });
 
-    render(<ChatPage />);
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
 
     expect(mockLastScenarioCascadeProps.current.selectedScenario).toBe(
       "creative",
@@ -435,7 +513,11 @@ describe("ChatPage", () => {
       agents: [{ slug: "fault-zeroing", resource_id: "fault-resource-id" }],
     });
 
-    render(<ChatPage />);
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
 
     expect(mockLastScenarioCascadeProps.current.selectedScenario).toBe(
       "professional",
@@ -464,7 +546,11 @@ describe("ChatPage", () => {
       ],
     });
 
-    render(<ChatPage />);
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
 
     expect(mockLastInputBoxProps.current.selectedTags).toEqual([
       { id: "agent:fault-zeroing", label: "故障归零" },
@@ -490,7 +576,11 @@ describe("ChatPage", () => {
       ],
     });
 
-    render(<ChatPage />);
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
 
     expect(mockLastInputBoxProps.current.selectedTags).toEqual([
       { id: "agent:fault-zeroing", label: "故障归零" },
@@ -510,7 +600,11 @@ describe("ChatPage", () => {
       agents: [{ slug: "fault-zeroing", resource_id: "fault-resource-id" }],
     });
 
-    render(<ChatPage />);
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
     act(() => {
       mockLastScenarioCascadeProps.current.onTogglePill("code-dev");
     });
@@ -529,8 +623,17 @@ describe("ChatPage", () => {
       isMock: false,
     });
 
-    const { rerender } = render(<ChatPage />);
-    rerender(<ChatPage />);
+    const client = new QueryClient();
+    const { rerender } = render(
+      <QueryClientProvider client={client}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
+    rerender(
+      <QueryClientProvider client={client}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
     act(() => screen.getByRole("tab", { name: "日常办公" }).click());
     act(() => screen.getByTestId("scenario-cascade-bar").click());
 
@@ -561,8 +664,17 @@ describe("ChatPage", () => {
         },
       ],
     });
-    const { rerender } = render(<ChatPage />);
-    rerender(<ChatPage />);
+    const client = new QueryClient();
+    const { rerender } = render(
+      <QueryClientProvider client={client}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
+    rerender(
+      <QueryClientProvider client={client}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
     act(() => screen.getByRole("tab", { name: "日常办公" }).click());
     act(() => screen.getByTestId("scenario-cascade-bar").click());
     act(() => {
@@ -576,7 +688,11 @@ describe("ChatPage", () => {
   });
 
   test("does not render the retired quick-entry row", () => {
-    render(<ChatPage />);
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
 
     expect(
       screen.queryByTestId("workbench-quick-entries"),
@@ -598,7 +714,11 @@ describe("ChatPage", () => {
       agent: { skills: ["skill-resource-id"] },
     });
 
-    render(<ChatPage />);
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
     act(() => screen.getByRole("tab", { name: "日常办公" }).click());
     act(() => screen.getByTestId("scenario-cascade-bar").click());
 
@@ -631,7 +751,11 @@ describe("ChatPage", () => {
     });
     mockUseAgent.mockReturnValue({ agent: { skills: ["skill-resource-id"] } });
 
-    render(<ChatPage />);
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
     act(() => screen.getByRole("tab", { name: "日常办公" }).click());
     act(() => screen.getByTestId("scenario-cascade-bar").click());
     act(() => {
@@ -654,8 +778,17 @@ describe("ChatPage", () => {
       selectedConnector: "server-1",
     });
 
-    const { rerender } = render(<ChatPage />);
-    rerender(<ChatPage />);
+    const client = new QueryClient();
+    const { rerender } = render(
+      <QueryClientProvider client={client}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
+    rerender(
+      <QueryClientProvider client={client}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
 
     expect(mockLastInputBoxProps.current.context).toMatchObject({
       connector_name: "server-1",
@@ -697,7 +830,11 @@ describe("ChatPage", () => {
 
     const replaceStateSpy = vi.spyOn(history, "replaceState");
 
-    render(<ChatPage />);
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
     act(() => {
       capturedOnStart!("new-thread-id-123");
     });
@@ -739,7 +876,11 @@ describe("ChatPage", () => {
     const hiddenSpy = vi.spyOn(document, "hidden", "get").mockReturnValue(true);
     const focusSpy = vi.spyOn(document, "hasFocus").mockReturnValue(false);
 
-    render(<ChatPage />);
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
     capturedOnFinish!({
       messages: [{ content: "Hello world" }],
       title: "Test Conversation",
@@ -779,7 +920,11 @@ describe("ChatPage", () => {
     vi.spyOn(document, "hidden", "get").mockReturnValue(false);
     vi.spyOn(document, "hasFocus").mockReturnValue(true);
 
-    render(<ChatPage />);
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
     capturedOnFinish!({
       messages: [{ content: "Hello" }],
       title: "Test",
@@ -815,7 +960,11 @@ describe("ChatPage", () => {
 
     vi.spyOn(document, "hidden", "get").mockReturnValue(true);
 
-    render(<ChatPage />);
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
     capturedOnFinish!({
       messages: [{ content: "Hello" }],
       title: "Test",
@@ -853,7 +1002,11 @@ describe("ChatPage", () => {
 
     vi.spyOn(document, "hidden", "get").mockReturnValue(true);
 
-    render(<ChatPage />);
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
     capturedOnFinish!({
       messages: [{ content: "Hello" }],
       title: "Test",
@@ -889,7 +1042,11 @@ describe("ChatPage", () => {
 
     vi.spyOn(document, "hidden", "get").mockReturnValue(true);
 
-    render(<ChatPage />);
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
     capturedOnFinish!({
       messages: [],
       title: "Empty Chat",
@@ -920,8 +1077,17 @@ describe("ChatPage", () => {
       loadMoreHistory: vi.fn(),
     });
 
-    const { rerender } = render(<ChatPage />);
-    rerender(<ChatPage />);
+    const client = new QueryClient();
+    const { rerender } = render(
+      <QueryClientProvider client={client}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
+    rerender(
+      <QueryClientProvider client={client}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
 
     const file = new File(["content"], "test.txt", { type: "text/plain" });
     const result = mockLastInputBoxProps.current.onSubmit({
@@ -962,8 +1128,17 @@ describe("ChatPage", () => {
       loadMoreHistory: vi.fn(),
     });
 
-    const { rerender } = render(<ChatPage />);
-    rerender(<ChatPage />);
+    const client = new QueryClient();
+    const { rerender } = render(
+      <QueryClientProvider client={client}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
+    rerender(
+      <QueryClientProvider client={client}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
 
     const result = mockLastInputBoxProps.current.onSubmit({
       text: "hello",
@@ -1003,8 +1178,17 @@ describe("ChatPage", () => {
       loadMoreHistory: vi.fn(),
     });
 
-    const { rerender } = render(<ChatPage />);
-    rerender(<ChatPage />);
+    const client = new QueryClient();
+    const { rerender } = render(
+      <QueryClientProvider client={client}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
+    rerender(
+      <QueryClientProvider client={client}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
 
     await mockLastInputBoxProps.current.onStop();
     expect(stopMock).toHaveBeenCalled();
@@ -1012,8 +1196,17 @@ describe("ChatPage", () => {
 
   test("static website only mode shows demo message and disables input", () => {
     mockEnvValues.NEXT_PUBLIC_STATIC_WEBSITE_ONLY = "true";
-    const { rerender } = render(<ChatPage />);
-    rerender(<ChatPage />);
+    const client = new QueryClient();
+    const { rerender } = render(
+      <QueryClientProvider client={client}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
+    rerender(
+      <QueryClientProvider client={client}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
     expect(screen.getByText("Not available in demo")).toBeInTheDocument();
     expect(mockLastInputBoxProps.current.disabled).toBe(true);
     mockEnvValues.NEXT_PUBLIC_STATIC_WEBSITE_ONLY = "false";
@@ -1028,8 +1221,17 @@ describe("ChatPage", () => {
       isMock: true,
     });
 
-    const { rerender } = render(<ChatPage />);
-    rerender(<ChatPage />);
+    const client = new QueryClient();
+    const { rerender } = render(
+      <QueryClientProvider client={client}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
+    rerender(
+      <QueryClientProvider client={client}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
     expect(mockLastInputBoxProps.current.disabled).toBe(true);
   });
 
@@ -1052,8 +1254,17 @@ describe("ChatPage", () => {
       loadMoreHistory: vi.fn(),
     });
 
-    const { rerender } = render(<ChatPage />);
-    rerender(<ChatPage />);
+    const client = new QueryClient();
+    const { rerender } = render(
+      <QueryClientProvider client={client}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
+    rerender(
+      <QueryClientProvider client={client}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
     expect(mockLastInputBoxProps.current.disabled).toBe(true);
   });
 
@@ -1066,8 +1277,17 @@ describe("ChatPage", () => {
       isMock: false,
     });
 
-    const { rerender } = render(<ChatPage />);
-    rerender(<ChatPage />);
+    const client = new QueryClient();
+    const { rerender } = render(
+      <QueryClientProvider client={client}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
+    rerender(
+      <QueryClientProvider client={client}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
     expect(screen.getByTestId("workbench-home")).toBeInTheDocument();
     const quickEntry = screen.getByTestId("workbench-quick-entry-module");
     expect(quickEntry).toContainElement(screen.getByTestId("scenario-tabs"));
@@ -1085,8 +1305,17 @@ describe("ChatPage", () => {
       isMock: false,
     });
 
-    const { rerender } = render(<ChatPage />);
-    rerender(<ChatPage />);
+    const client = new QueryClient();
+    const { rerender } = render(
+      <QueryClientProvider client={client}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
+    rerender(
+      <QueryClientProvider client={client}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
     expect(screen.queryByTestId("workbench-home")).not.toBeInTheDocument();
   });
 
@@ -1099,15 +1328,33 @@ describe("ChatPage", () => {
       isMock: false,
     });
 
-    const { rerender } = render(<ChatPage />);
-    rerender(<ChatPage />);
+    const client = new QueryClient();
+    const { rerender } = render(
+      <QueryClientProvider client={client}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
+    rerender(
+      <QueryClientProvider client={client}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
     expect(screen.getByTestId("welcome")).toBeInTheDocument();
     expect(mockLastInputBoxProps.current.isWelcomeMode).toBe(true);
   });
 
   test("does not render Welcome component when not in welcome mode", () => {
-    const { rerender } = render(<ChatPage />);
-    rerender(<ChatPage />);
+    const client = new QueryClient();
+    const { rerender } = render(
+      <QueryClientProvider client={client}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
+    rerender(
+      <QueryClientProvider client={client}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
     expect(screen.queryByTestId("welcome")).not.toBeInTheDocument();
     expect(mockLastInputBoxProps.current.isWelcomeMode).toBe(false);
   });
