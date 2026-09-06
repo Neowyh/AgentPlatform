@@ -119,37 +119,36 @@ class TestIsHostBashTool:
 
 
 # ---------------------------------------------------------------------------
-# Lines 72-79: Offline mode filtering
+# requires_network tools: upstream removed offline-mode filtering from
+# get_available_tools, so every resolved config tool is returned.
 # ---------------------------------------------------------------------------
 
 
-class TestOfflineModeFiltering:
-    @patch("deerflow.tools.tools.is_offline", return_value=True)
+class TestNetworkToolFilteringRemoved:
     @patch("deerflow.tools.tools.is_host_bash_allowed", return_value=True)
     @patch("deerflow.tools.tools.resolve_variable")
-    def test_offline_skips_network_tools(self, mock_resolve, mock_bash, mock_offline):
-        """Lines 72-79: network-dependent tools are excluded in offline mode."""
-        net_tool = _make_tool_config(name="net_tool", requires_network=True)
-        local_tool = _make_tool_config(name="local_tool", requires_network=False)
+    def test_network_tool_is_included(self, mock_resolve, mock_bash):
+        """requires_network no longer excludes a tool (offline filter is gone)."""
+        net_tool = _make_tool_config(name="net_tool", group="core", use="some.module:net_tool")
+        local_tool = _make_tool_config(name="local_tool", group="core", use="some.module:local_tool")
 
-        mock_tool = MagicMock(spec=BaseTool)
-        mock_tool.name = "local_tool"
-        mock_tool.func = None
-        mock_tool.coroutine = None
-        mock_resolve.return_value = mock_tool
+        resolved_net = MagicMock(spec=BaseTool)
+        resolved_net.name = "net_tool"
+        resolved_local = MagicMock(spec=BaseTool)
+        resolved_local.name = "local_tool"
+        mock_resolve.side_effect = lambda use, bt: resolved_net if "net_tool" in use else resolved_local
 
         config = _make_config(tools=[net_tool, local_tool])
         result = get_available_tools(app_config=config, include_mcp=False)
 
         tool_names = [t.name for t in result]
-        assert "net_tool" not in tool_names
+        assert "net_tool" in tool_names
         assert "local_tool" in tool_names
 
-    @patch("deerflow.tools.tools.is_offline", return_value=True)
     @patch("deerflow.tools.tools.is_host_bash_allowed", return_value=True)
     @patch("deerflow.tools.tools.resolve_variable")
-    def test_offline_logs_skipped_tools(self, mock_resolve, mock_bash, mock_offline, caplog):
-        """Lines 72-78: logging when offline tools are skipped."""
+    def test_no_offline_skip_logging(self, mock_resolve, mock_bash, caplog):
+        """No 'Offline mode' skip log exists anymore; the tool is loaded."""
         net_tool = _make_tool_config(name="web_search", requires_network=True)
 
         config = _make_config(tools=[net_tool])
@@ -157,27 +156,8 @@ class TestOfflineModeFiltering:
         with caplog.at_level(logging.INFO):
             get_available_tools(app_config=config, include_mcp=False)
 
-        assert "Offline mode" in caplog.text
-        assert "web_search" in caplog.text
-
-    @patch("deerflow.tools.tools.is_offline", return_value=False)
-    @patch("deerflow.tools.tools.is_host_bash_allowed", return_value=True)
-    @patch("deerflow.tools.tools.resolve_variable")
-    def test_online_keeps_network_tools(self, mock_resolve, mock_bash, mock_offline):
-        """Lines 71-79: online mode does not filter network tools."""
-        net_tool = _make_tool_config(name="net_tool", requires_network=True)
-
-        mock_tool = MagicMock(spec=BaseTool)
-        mock_tool.name = "net_tool"
-        mock_tool.func = None
-        mock_tool.coroutine = None
-        mock_resolve.return_value = mock_tool
-
-        config = _make_config(tools=[net_tool])
-        result = get_available_tools(app_config=config, include_mcp=False)
-
-        tool_names = [t.name for t in result]
-        assert "net_tool" in tool_names
+        assert "Offline mode" not in caplog.text
+        assert "Total tools loaded" in caplog.text
 
 
 # ---------------------------------------------------------------------------
@@ -186,10 +166,9 @@ class TestOfflineModeFiltering:
 
 
 class TestToolNameMismatch:
-    @patch("deerflow.tools.tools.is_offline", return_value=False)
     @patch("deerflow.tools.tools.is_host_bash_allowed", return_value=True)
     @patch("deerflow.tools.tools.resolve_variable")
-    def test_name_mismatch_logs_warning(self, mock_resolve, mock_bash, mock_offline, caplog):
+    def test_name_mismatch_logs_warning(self, mock_resolve, mock_bash, caplog):
         """Line 93: warning when config name != tool .name."""
         cfg = _make_tool_config(name="config_name", use="some.module:tool_name")
         mock_tool = MagicMock(spec=BaseTool)
@@ -206,10 +185,9 @@ class TestToolNameMismatch:
         assert "config name" in caplog.text
         assert "Tool name mismatch" in caplog.text
 
-    @patch("deerflow.tools.tools.is_offline", return_value=False)
     @patch("deerflow.tools.tools.is_host_bash_allowed", return_value=True)
     @patch("deerflow.tools.tools.resolve_variable")
-    def test_name_match_no_warning(self, mock_resolve, mock_bash, mock_offline, caplog):
+    def test_name_match_no_warning(self, mock_resolve, mock_bash, caplog):
         """No mismatch warning when names match."""
         cfg = _make_tool_config(name="my_tool", use="some.module:my_tool")
         mock_tool = MagicMock(spec=BaseTool)
@@ -232,10 +210,9 @@ class TestToolNameMismatch:
 
 
 class TestSkillEvolution:
-    @patch("deerflow.tools.tools.is_offline", return_value=False)
     @patch("deerflow.tools.tools.is_host_bash_allowed", return_value=True)
     @patch("deerflow.tools.tools.resolve_variable")
-    def test_skill_evolution_enabled_adds_tool(self, mock_resolve, mock_bash, mock_offline):
+    def test_skill_evolution_enabled_adds_tool(self, mock_resolve, mock_bash):
         """Lines 106-108: skill_manage_tool is added when skill_evolution is enabled."""
         mock_resolve.return_value = MagicMock(spec=BaseTool, name="dummy", func=None, coroutine=None)
 
@@ -249,10 +226,9 @@ class TestSkillEvolution:
 
         assert mock_skill_tool in result
 
-    @patch("deerflow.tools.tools.is_offline", return_value=False)
     @patch("deerflow.tools.tools.is_host_bash_allowed", return_value=True)
     @patch("deerflow.tools.tools.resolve_variable")
-    def test_skill_evolution_disabled_no_extra(self, mock_resolve, mock_bash, mock_offline):
+    def test_skill_evolution_disabled_no_extra(self, mock_resolve, mock_bash):
         """skill_manage_tool is NOT added when skill_evolution is disabled."""
         mock_resolve.return_value = MagicMock(spec=BaseTool, name="dummy", func=None, coroutine=None)
 
@@ -272,10 +248,9 @@ class TestSkillEvolution:
 
 
 class TestVisionSupport:
-    @patch("deerflow.tools.tools.is_offline", return_value=False)
     @patch("deerflow.tools.tools.is_host_bash_allowed", return_value=True)
     @patch("deerflow.tools.tools.resolve_variable")
-    def test_vision_model_includes_view_image_tool(self, mock_resolve, mock_bash, mock_offline):
+    def test_vision_model_includes_view_image_tool(self, mock_resolve, mock_bash):
         """Lines 122-123: view_image_tool is added when model supports vision."""
         mock_resolve.return_value = MagicMock(spec=BaseTool, name="dummy", func=None, coroutine=None)
 
@@ -287,10 +262,9 @@ class TestVisionSupport:
 
         assert mock_vi in result
 
-    @patch("deerflow.tools.tools.is_offline", return_value=False)
     @patch("deerflow.tools.tools.is_host_bash_allowed", return_value=True)
     @patch("deerflow.tools.tools.resolve_variable")
-    def test_no_vision_no_view_image_tool(self, mock_resolve, mock_bash, mock_offline):
+    def test_no_vision_no_view_image_tool(self, mock_resolve, mock_bash):
         """view_image_tool is NOT added when model does not support vision."""
         mock_resolve.return_value = MagicMock(spec=BaseTool, name="dummy", func=None, coroutine=None)
 
@@ -302,10 +276,9 @@ class TestVisionSupport:
 
         assert mock_vi not in result
 
-    @patch("deerflow.tools.tools.is_offline", return_value=False)
     @patch("deerflow.tools.tools.is_host_bash_allowed", return_value=True)
     @patch("deerflow.tools.tools.resolve_variable")
-    def test_no_models_skips_vision_check(self, mock_resolve, mock_bash, mock_offline):
+    def test_no_models_skips_vision_check(self, mock_resolve, mock_bash):
         """When models list is empty and no model_name, vision check is skipped."""
         mock_resolve.return_value = MagicMock(spec=BaseTool, name="dummy", func=None, coroutine=None)
 
@@ -316,10 +289,9 @@ class TestVisionSupport:
 
         assert mock_vi not in result
 
-    @patch("deerflow.tools.tools.is_offline", return_value=False)
     @patch("deerflow.tools.tools.is_host_bash_allowed", return_value=True)
     @patch("deerflow.tools.tools.resolve_variable")
-    def test_explicit_model_name_vision(self, mock_resolve, mock_bash, mock_offline):
+    def test_explicit_model_name_vision(self, mock_resolve, mock_bash):
         """Lines 115-117: explicit model_name overrides default, triggers vision check."""
         mock_resolve.return_value = MagicMock(spec=BaseTool, name="dummy", func=None, coroutine=None)
 
@@ -345,10 +317,9 @@ class TestVisionSupport:
 
 
 class TestMCPErrorHandling:
-    @patch("deerflow.tools.tools.is_offline", return_value=False)
     @patch("deerflow.tools.tools.is_host_bash_allowed", return_value=True)
     @patch("deerflow.tools.tools.resolve_variable")
-    def test_mcp_import_error_handled(self, mock_resolve, mock_bash, mock_offline, caplog):
+    def test_mcp_import_error_handled(self, mock_resolve, mock_bash, caplog):
         """Lines 193-194: ImportError when ExtensionsConfig cannot be imported."""
         mock_resolve.return_value = MagicMock(spec=BaseTool, name="dummy", func=None, coroutine=None)
         config = _make_config(tools=[], tool_search_enabled=False)
@@ -359,10 +330,9 @@ class TestMCPErrorHandling:
 
         assert "MCP module not available" in caplog.text
 
-    @patch("deerflow.tools.tools.is_offline", return_value=False)
     @patch("deerflow.tools.tools.is_host_bash_allowed", return_value=True)
     @patch("deerflow.tools.tools.resolve_variable")
-    def test_mcp_generic_exception_handled(self, mock_resolve, mock_bash, mock_offline, caplog):
+    def test_mcp_generic_exception_handled(self, mock_resolve, mock_bash, caplog):
         """Lines 195-196: generic Exception when getting cached MCP tools fails."""
         mock_resolve.return_value = MagicMock(name="dummy", func=None, coroutine=None)
         config = _make_config(tools=[], tool_search_enabled=False)
@@ -397,10 +367,9 @@ class TestMCPErrorHandling:
 
 
 class TestACPErrorHandling:
-    @patch("deerflow.tools.tools.is_offline", return_value=False)
     @patch("deerflow.tools.tools.is_host_bash_allowed", return_value=True)
     @patch("deerflow.tools.tools.resolve_variable")
-    def test_acp_import_error_handled(self, mock_resolve, mock_bash, mock_offline, caplog):
+    def test_acp_import_error_handled(self, mock_resolve, mock_bash, caplog):
         """Lines 212-213: Exception when ACP tool module import fails."""
         mock_resolve.return_value = MagicMock(spec=BaseTool, name="dummy", func=None, coroutine=None)
         config = _make_config(tools=[], acp_agents={"agent1": {"desc": "test"}})
@@ -411,10 +380,9 @@ class TestACPErrorHandling:
 
         assert "Failed to load ACP tool" in caplog.text
 
-    @patch("deerflow.tools.tools.is_offline", return_value=False)
     @patch("deerflow.tools.tools.is_host_bash_allowed", return_value=True)
     @patch("deerflow.tools.tools.resolve_variable")
-    def test_acp_build_raises_exception(self, mock_resolve, mock_bash, mock_offline, caplog):
+    def test_acp_build_raises_exception(self, mock_resolve, mock_bash, caplog):
         """Lines 212-213: exception during build_invoke_acp_agent_tool call."""
         mock_resolve.return_value = MagicMock(spec=BaseTool, name="dummy", func=None, coroutine=None)
         config = _make_config(tools=[], acp_agents={"agent1": {"desc": "test"}})
@@ -434,10 +402,9 @@ class TestACPErrorHandling:
 
 
 class TestBashToolFiltering:
-    @patch("deerflow.tools.tools.is_offline", return_value=False)
     @patch("deerflow.tools.tools.is_host_bash_allowed", return_value=False)
     @patch("deerflow.tools.tools.resolve_variable")
-    def test_bash_tool_excluded_when_not_allowed(self, mock_resolve, mock_bash, mock_offline):
+    def test_bash_tool_excluded_when_not_allowed(self, mock_resolve, mock_bash):
         """Line 83: bash tools are filtered out when is_host_bash_allowed returns False."""
         bash_tool = _make_tool_config(name="bash_tool", group="bash", use="deerflow.sandbox.tools:bash_tool")
         other_tool = _make_tool_config(name="other_tool", group="core", use="some.module:other")
@@ -466,10 +433,9 @@ class TestBashToolFiltering:
 
 
 class TestSubagentTools:
-    @patch("deerflow.tools.tools.is_offline", return_value=False)
     @patch("deerflow.tools.tools.is_host_bash_allowed", return_value=True)
     @patch("deerflow.tools.tools.resolve_variable")
-    def test_subagent_enabled_adds_task_tool(self, mock_resolve, mock_bash, mock_offline):
+    def test_subagent_enabled_adds_task_tool(self, mock_resolve, mock_bash):
         """Lines 112-113: subagent tools are added when subagent_enabled=True."""
         mock_resolve.return_value = MagicMock(spec=BaseTool, name="dummy", func=None, coroutine=None)
         config = _make_config(tools=[])
@@ -479,10 +445,9 @@ class TestSubagentTools:
         tool_names = [t.name for t in result]
         assert "task" in tool_names
 
-    @patch("deerflow.tools.tools.is_offline", return_value=False)
     @patch("deerflow.tools.tools.is_host_bash_allowed", return_value=True)
     @patch("deerflow.tools.tools.resolve_variable")
-    def test_subagent_disabled_no_task_tool(self, mock_resolve, mock_bash, mock_offline):
+    def test_subagent_disabled_no_task_tool(self, mock_resolve, mock_bash):
         """subagent tools are NOT added when subagent_enabled=False."""
         mock_resolve.return_value = MagicMock(spec=BaseTool, name="dummy", func=None, coroutine=None)
         config = _make_config(tools=[])
@@ -499,10 +464,9 @@ class TestSubagentTools:
 
 
 class TestACPWithNoAppConfig:
-    @patch("deerflow.tools.tools.is_offline", return_value=False)
     @patch("deerflow.tools.tools.is_host_bash_allowed", return_value=True)
     @patch("deerflow.tools.tools.resolve_variable")
-    def test_acp_with_app_config_none_uses_get_acp_agents(self, mock_resolve, mock_bash, mock_offline):
+    def test_acp_with_app_config_none_uses_get_acp_agents(self, mock_resolve, mock_bash):
         """Lines 203-206: when app_config is None, get_acp_agents() is called."""
         mock_loaded = MagicMock()
         mock_loaded.name = "acp_tool"
@@ -525,10 +489,9 @@ class TestACPWithNoAppConfig:
 
         mock_get.assert_called_once()
 
-    @patch("deerflow.tools.tools.is_offline", return_value=False)
     @patch("deerflow.tools.tools.is_host_bash_allowed", return_value=True)
     @patch("deerflow.tools.tools.resolve_variable")
-    def test_acp_logging_line(self, mock_resolve, mock_bash, mock_offline, caplog):
+    def test_acp_logging_line(self, mock_resolve, mock_bash, caplog):
         """Line 211: logging when ACP agents are configured."""
         mock_resolve.return_value = MagicMock(spec=BaseTool, name="dummy", func=None, coroutine=None)
         config = _make_config(tools=[], acp_agents={"agent1": {"desc": "test"}})
@@ -548,10 +511,9 @@ class TestACPWithNoAppConfig:
 
 
 class TestDuplicateToolNames:
-    @patch("deerflow.tools.tools.is_offline", return_value=False)
     @patch("deerflow.tools.tools.is_host_bash_allowed", return_value=True)
     @patch("deerflow.tools.tools.resolve_variable")
-    def test_duplicate_tool_name_skipped(self, mock_resolve, mock_bash, mock_offline, caplog):
+    def test_duplicate_tool_name_skipped(self, mock_resolve, mock_bash, caplog):
         """Line 228: duplicate tool names are detected and skipped."""
         # Create two tool configs with the same resolved name
         tool_cfg1 = _make_tool_config(name="tool_a", group="g1", use="mod1:tool_dup")

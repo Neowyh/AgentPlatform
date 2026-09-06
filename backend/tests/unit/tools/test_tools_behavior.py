@@ -197,9 +197,11 @@ class TestResolveLocalReadPath:
         from deerflow.sandbox.tools import _resolve_local_read_path
 
         td = _make_thread_data()
-        with patch("deerflow.sandbox.tools.validate_local_tool_path"), patch("deerflow.sandbox.tools._is_skills_path", return_value=True), patch("deerflow.sandbox.tools._resolve_skills_path", return_value="/host/skills/test"):
+        with patch("deerflow.sandbox.tools.validate_local_tool_path"), patch("deerflow.sandbox.tools._is_skills_path", return_value=True):
+            # Mounted paths are returned as-is: the sandbox PathMapping (with
+            # acquire-time identity) resolves them, not the tool layer.
             result = _resolve_local_read_path("/mnt/skills/test", td)
-        assert result == "/host/skills/test"
+        assert result == "/mnt/skills/test"
 
     def test_acp_workspace_path(self):
         from deerflow.sandbox.tools import _resolve_local_read_path
@@ -209,11 +211,11 @@ class TestResolveLocalReadPath:
             patch("deerflow.sandbox.tools.validate_local_tool_path"),
             patch("deerflow.sandbox.tools._is_skills_path", return_value=False),
             patch("deerflow.sandbox.tools._is_acp_workspace_path", return_value=True),
-            patch("deerflow.sandbox.tools._resolve_acp_workspace_path", return_value="/host/acp/test"),
-            patch("deerflow.sandbox.tools._extract_thread_id_from_thread_data", return_value="t1"),
         ):
+            # Mounted paths are returned as-is (resolved by the sandbox
+            # PathMapping at execution time, not by tool-layer reconstruction).
             result = _resolve_local_read_path("/mnt/acp-workspace/test", td)
-        assert result == "/host/acp/test"
+        assert result == "/mnt/acp-workspace/test"
 
     def test_user_data_path(self):
         from deerflow.sandbox.tools import _resolve_local_read_path
@@ -316,55 +318,27 @@ class TestValidateLocalBashCwdTargetDollar:
 
 
 # ===========================================================================
-# _looks_like_unsafe_cwd_target (lines 843-845)
+# _validate_local_bash_cwd_target — unsafe target contract (upstream inlined
+# the removed _looks_like_unsafe_cwd_target helper into the validator)
 # ===========================================================================
 
 
-class TestLooksLikeUnsafeCwdTarget:
-    def test_none_returns_false(self):
-        from deerflow.sandbox.tools import _looks_like_unsafe_cwd_target
+class TestValidateLocalBashCwdTargetUnsafe:
+    @pytest.mark.parametrize("target", [None, "-", "$HOME", "`pwd`", "~", "/"])
+    def test_unsafe_target_raises(self, target):
+        from deerflow.sandbox.tools import _validate_local_bash_cwd_target
 
-        assert _looks_like_unsafe_cwd_target(None) is False
+        with pytest.raises(PermissionError, match="Unsafe working directory"):
+            _validate_local_bash_cwd_target("cd", target, [])
 
-    def test_dash_returns_true(self):
-        from deerflow.sandbox.tools import _looks_like_unsafe_cwd_target
+    @pytest.mark.parametrize("target", ["relative/path", "..", "foo/../bar"])
+    def test_relative_target_not_rejected_here(self, target):
+        # Only absolute / substitution / tilde / "-" targets are rejected by
+        # this validator; relative targets are handled by the absolute-path
+        # scanner elsewhere.
+        from deerflow.sandbox.tools import _validate_local_bash_cwd_target
 
-        assert _looks_like_unsafe_cwd_target("-") is True
-
-    def test_dollar_returns_true(self):
-        from deerflow.sandbox.tools import _looks_like_unsafe_cwd_target
-
-        assert _looks_like_unsafe_cwd_target("$HOME") is True
-
-    def test_backtick_returns_true(self):
-        from deerflow.sandbox.tools import _looks_like_unsafe_cwd_target
-
-        assert _looks_like_unsafe_cwd_target("`pwd`") is True
-
-    def test_tilde_returns_true(self):
-        from deerflow.sandbox.tools import _looks_like_unsafe_cwd_target
-
-        assert _looks_like_unsafe_cwd_target("~") is True
-
-    def test_slash_returns_true(self):
-        from deerflow.sandbox.tools import _looks_like_unsafe_cwd_target
-
-        assert _looks_like_unsafe_cwd_target("/") is True
-
-    def test_dotdot_returns_true(self):
-        from deerflow.sandbox.tools import _looks_like_unsafe_cwd_target
-
-        assert _looks_like_unsafe_cwd_target("..") is True
-
-    def test_dotdot_segment_returns_true(self):
-        from deerflow.sandbox.tools import _looks_like_unsafe_cwd_target
-
-        assert _looks_like_unsafe_cwd_target("foo/../bar") is True
-
-    def test_safe_path_returns_false(self):
-        from deerflow.sandbox.tools import _looks_like_unsafe_cwd_target
-
-        assert _looks_like_unsafe_cwd_target("relative/path") is False
+        _validate_local_bash_cwd_target("cd", target, [])
 
 
 # ===========================================================================
@@ -482,19 +456,16 @@ class TestReplaceVirtualPathsInCommand:
         assert result == "echo hello"
 
     def test_replaces_skills_paths(self):
-        """Lines 987-993: skills paths replaced."""
+        """Skills paths are NOT replaced here (upstream change).
+
+        LocalSandbox._resolve_paths_in_command() resolves them via PathMapping
+        at execution time, so replace_virtual_paths_in_command leaves them.
+        """
         from deerflow.sandbox.tools import replace_virtual_paths_in_command
 
         td = _make_thread_data()
-        with (
-            patch("deerflow.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"),
-            patch("deerflow.sandbox.tools._get_skills_host_path", return_value="/host/skills"),
-            patch("deerflow.sandbox.tools._resolve_skills_path", return_value="/host/skills/test.md"),
-            patch("deerflow.sandbox.tools._extract_thread_id_from_thread_data", return_value="t1"),
-            patch("deerflow.sandbox.tools._get_acp_workspace_host_path", return_value=None),
-        ):
-            result = replace_virtual_paths_in_command("cat /mnt/skills/test.md", td)
-        assert "/host/skills/test.md" in result
+        result = replace_virtual_paths_in_command("cat /mnt/skills/test.md", td)
+        assert result == "cat /mnt/skills/test.md"
 
     def test_no_skills_host_path_skips_replacement(self):
         """When skills host path is None, skills paths are not replaced."""
@@ -511,19 +482,16 @@ class TestReplaceVirtualPathsInCommand:
         assert "/mnt/skills/test.md" in result
 
     def test_replaces_acp_workspace_paths(self):
-        """Lines 998-1004: ACP workspace paths replaced."""
+        """ACP workspace paths are NOT replaced here (upstream change).
+
+        LocalSandbox._resolve_paths_in_command() resolves them via PathMapping
+        at execution time, so replace_virtual_paths_in_command leaves them.
+        """
         from deerflow.sandbox.tools import replace_virtual_paths_in_command
 
         td = _make_thread_data()
-        with (
-            patch("deerflow.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"),
-            patch("deerflow.sandbox.tools._get_skills_host_path", return_value=None),
-            patch("deerflow.sandbox.tools._extract_thread_id_from_thread_data", return_value="t1"),
-            patch("deerflow.sandbox.tools._get_acp_workspace_host_path", return_value="/host/acp"),
-            patch("deerflow.sandbox.tools._resolve_acp_workspace_path", return_value="/host/acp/test.py"),
-        ):
-            result = replace_virtual_paths_in_command("cat /mnt/acp-workspace/test.py", td)
-        assert "/host/acp/test.py" in result
+        result = replace_virtual_paths_in_command("cat /mnt/acp-workspace/test.py", td)
+        assert result == "cat /mnt/acp-workspace/test.py"
 
 
 # ===========================================================================
@@ -562,12 +530,12 @@ class TestApplyCwdPrefix:
 
 class TestTruncationKeptZero:
     def test_truncate_bash_output_kept_zero(self):
-        """Line 1272: kept=0 returns output[:max_chars]."""
+        """A tiny limit is clamped to the 32-char exit-marker floor, not crash."""
         from deerflow.sandbox.tools import _truncate_bash_output
 
         output = "A" * 1000
         result = _truncate_bash_output(output, 1)
-        assert len(result) <= 1
+        assert len(result) <= 32
 
     def test_truncate_read_file_output_kept_zero(self):
         """Lines 1301-1302: kept=0 returns output[:max_chars]."""
@@ -1203,7 +1171,7 @@ class TestWriteFileToolLocalPathResolutionBoost:
             patch("deerflow.sandbox.tools._resolve_and_validate_user_data_path", return_value="/tmp/resolved"),
             patch("deerflow.sandbox.tools.get_file_operation_lock", return_value=lock),
         ):
-            result = write_file_tool.func(runtime, "test", "/mnt/user-data/workspace/test.txt", "content")
+            result = write_file_tool.func(runtime, "/mnt/user-data/workspace/test.txt", "content", "test")
         assert result == "OK"
         mock_sandbox.write_file.assert_called_once_with("/tmp/resolved", "content", False)
 

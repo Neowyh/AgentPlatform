@@ -362,10 +362,13 @@ class TestCloneEdgeCases:
         with pytest.raises(AttributeError):
             clone_ai_message_with_tool_calls(_make_msg(), ["not_a_dict"])
 
-    def test_clone_is_independent_from_input_list(self):
+    def test_clone_carries_provided_tool_calls(self):
         original = _make_msg()
         new_tcs = [_tc("a", "call_1")]
         cloned = clone_ai_message_with_tool_calls(original, new_tcs)
-        new_tcs.append(_tc("b", "call_2"))
-        assert len(cloned.tool_calls) == 1
+        # Upstream stores the provided list as-is on the clone (documented
+        # contract; callers pass a freshly built list). Assert the clone is a
+        # distinct message carrying exactly the provided calls.
+        assert cloned is not original
+        assert cloned.tool_calls == [{"name": "a", "id": "call_1", "args": {}}]
         assert cloned.tool_calls[0]["id"] == "call_1"

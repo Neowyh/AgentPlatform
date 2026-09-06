@@ -39,6 +39,34 @@ def _make_mock_cm(session: MagicMock | None = None) -> MagicMock:
     return cm
 
 
+def _insert_live_entry(
+    pool: MCPSessionPool,
+    key: tuple[str, str],
+    *,
+    loop: asyncio.AbstractEventLoop | None = None,
+    owner_raises: bool = False,
+):
+    """Register a synthetic pool entry whose owner task waits on its close event.
+
+    Upstream entries are ``(session, owning_loop, owner_task, close_event)``
+    and teardown always runs in the owner task, so tests simulate owners with
+    a real task that parks on ``close_evt`` (and optionally raises afterwards
+    to exercise the error-swallowing paths).
+    """
+    loop = loop if loop is not None else asyncio.get_running_loop()
+
+    async def _owner(close_evt: asyncio.Event) -> None:
+        await close_evt.wait()
+        if owner_raises:
+            raise RuntimeError("synthetic owner close error")
+
+    close_evt = asyncio.Event()
+    task = loop.create_task(_owner(close_evt))
+    session = MagicMock()
+    pool._entries[key] = (session, loop, task, close_evt)
+    return session, task, close_evt
+
+
 # ---------------------------------------------------------------------------
 # MCPSessionPool unit tests
 # ---------------------------------------------------------------------------
@@ -152,12 +180,11 @@ async def test_evicts_session_from_different_loop():
     """Sessions from a different event loop are evicted and replaced."""
     pool = MCPSessionPool()
     old_session = _make_mock_session()
-    old_cm = _make_mock_cm(old_session)
-    fake_old_loop = MagicMock()
+    foreign_loop = asyncio.new_event_loop()
+    foreign_loop.close()  # a closed foreign loop must not be reused
 
-    # Manually insert an entry with a different loop
-    pool._entries[("s1", "sc1")] = (old_session, fake_old_loop)
-    pool._context_managers[("s1", "sc1")] = old_cm
+    # Manually insert an entry owned by the closed foreign loop.
+    pool._entries[("s1", "sc1")] = (old_session, foreign_loop, MagicMock(), asyncio.Event())
 
     new_session = _make_mock_session()
     new_cm = _make_mock_cm(new_session)
@@ -165,50 +192,43 @@ async def test_evicts_session_from_different_loop():
         result = await pool.get_session("s1", "sc1", {"url": "http://x"})
 
     assert result is new_session
-    old_cm.__aexit__.assert_awaited_once()
+    assert pool._entries[("s1", "sc1")][0] is new_session
+    foreign_loop.close()
 
 
 @pytest.mark.asyncio
-async def test_race_condition_uses_existing():
-    """When another coroutine inserts the key mid-flight, use theirs."""
+async def test_concurrent_callers_share_inflight_creation():
+    """Concurrent callers for the same key join one in-flight creation."""
     pool = MCPSessionPool()
-    existing_session = _make_mock_session()
-    existing_loop = asyncio.get_running_loop()
+    mock_session = _make_mock_session()
+    mock_cm = _make_mock_cm(mock_session)
 
-    def fake_create(connection):
-        # Simulate the race: another coroutine inserts the key
-        pool._entries[("s1", "sc1")] = (existing_session, existing_loop)
-        cm = MagicMock()
-        cm.__aenter__ = AsyncMock(return_value=_make_mock_session())
-        cm.__aexit__ = AsyncMock(return_value=False)
-        return cm
+    with patch("langchain_mcp_adapters.sessions.create_session", return_value=mock_cm):
+        s1, s2 = await asyncio.gather(
+            pool.get_session("s1", "sc1", {"url": "http://x"}),
+            pool.get_session("s1", "sc1", {"url": "http://x"}),
+        )
 
-    with patch("langchain_mcp_adapters.sessions.create_session", side_effect=fake_create):
-        result = await pool.get_session("s1", "sc1", {"url": "http://x"})
-
-    assert result is existing_session
+    assert s1 is s2 is mock_session
+    assert mock_cm.__aenter__.await_count == 1
 
 
 @pytest.mark.asyncio
 async def test_close_scope():
     """close_scope shuts down sessions for a specific scope key."""
     pool = MCPSessionPool()
-    cm1 = _make_mock_cm()
-    cm2 = _make_mock_cm()
-    loop = asyncio.get_running_loop()
-    pool._entries[("s1", "thread1")] = (MagicMock(), loop)
-    pool._entries[("s2", "thread1")] = (MagicMock(), loop)
-    pool._entries[("s3", "thread2")] = (MagicMock(), loop)
-    pool._context_managers[("s1", "thread1")] = cm1
-    pool._context_managers[("s2", "thread1")] = cm2
+    _s1, t1, _e1 = _insert_live_entry(pool, ("s1", "thread1"))
+    _s2, t2, _e2 = _insert_live_entry(pool, ("s2", "thread1"))
+    _insert_live_entry(pool, ("s3", "thread2"))
 
     await pool.close_scope("thread1")
 
     assert ("s1", "thread1") not in pool._entries
     assert ("s2", "thread1") not in pool._entries
     assert ("s3", "thread2") in pool._entries
-    cm1.__aexit__.assert_awaited_once()
-    cm2.__aexit__.assert_awaited_once()
+    # Owners finished their in-task teardown.
+    assert t1.done()
+    assert t2.done()
 
 
 @pytest.mark.asyncio
@@ -220,41 +240,31 @@ async def test_close_scope_no_sessions():
 
 @pytest.mark.asyncio
 async def test_close_scope_handles_close_error():
-    """close_scope swallows errors from cm.__aexit__."""
+    """close_scope swallows owner teardown errors."""
     pool = MCPSessionPool()
-    cm = _make_mock_cm()
-    cm.__aexit__ = AsyncMock(side_effect=RuntimeError("close error"))
-    loop = asyncio.get_running_loop()
-    pool._entries[("s1", "t1")] = (MagicMock(), loop)
-    pool._context_managers[("s1", "t1")] = cm
+    _session, task, _evt = _insert_live_entry(pool, ("s1", "t1"), owner_raises=True)
 
     # Should not raise
     await pool.close_scope("t1")
+    assert ("s1", "t1") not in pool._entries
+    assert task.done()
 
 
 @pytest.mark.asyncio
 async def test_close_server():
     """close_server shuts down all sessions for a given server."""
     pool = MCPSessionPool()
-    cm1 = _make_mock_cm()
-    cm2 = _make_mock_cm()
-    cm3 = _make_mock_cm()
-    loop = asyncio.get_running_loop()
-    pool._entries[("srv1", "t1")] = (MagicMock(), loop)
-    pool._entries[("srv1", "t2")] = (MagicMock(), loop)
-    pool._entries[("srv2", "t1")] = (MagicMock(), loop)
-    pool._context_managers[("srv1", "t1")] = cm1
-    pool._context_managers[("srv1", "t2")] = cm2
-    pool._context_managers[("srv2", "t1")] = cm3
+    _s1, t1, _e1 = _insert_live_entry(pool, ("srv1", "t1"))
+    _s2, t2, _e2 = _insert_live_entry(pool, ("srv1", "t2"))
+    _insert_live_entry(pool, ("srv2", "t1"))
 
     await pool.close_server("srv1")
 
     assert ("srv1", "t1") not in pool._entries
     assert ("srv1", "t2") not in pool._entries
     assert ("srv2", "t1") in pool._entries
-    cm1.__aexit__.assert_awaited_once()
-    cm2.__aexit__.assert_awaited_once()
-    cm3.__aexit__.assert_not_awaited()
+    assert t1.done()
+    assert t2.done()
 
 
 @pytest.mark.asyncio
@@ -266,33 +276,26 @@ async def test_close_server_no_sessions():
 @pytest.mark.asyncio
 async def test_close_server_handles_error():
     pool = MCPSessionPool()
-    cm = _make_mock_cm()
-    cm.__aexit__ = AsyncMock(side_effect=RuntimeError("boom"))
-    loop = asyncio.get_running_loop()
-    pool._entries[("s1", "t1")] = (MagicMock(), loop)
-    pool._context_managers[("s1", "t1")] = cm
+    _session, task, _evt = _insert_live_entry(pool, ("s1", "t1"), owner_raises=True)
     # Should not raise
     await pool.close_server("s1")
+    assert ("s1", "t1") not in pool._entries
+    assert task.done()
 
 
 @pytest.mark.asyncio
 async def test_close_all():
     """close_all shuts down every session."""
     pool = MCPSessionPool()
-    cm1 = _make_mock_cm()
-    cm2 = _make_mock_cm()
-    loop = asyncio.get_running_loop()
-    pool._entries[("s1", "t1")] = (MagicMock(), loop)
-    pool._entries[("s2", "t2")] = (MagicMock(), loop)
-    pool._context_managers[("s1", "t1")] = cm1
-    pool._context_managers[("s2", "t2")] = cm2
+    _s1, t1, _e1 = _insert_live_entry(pool, ("s1", "t1"))
+    _s2, t2, _e2 = _insert_live_entry(pool, ("s2", "t2"))
 
     await pool.close_all()
 
     assert len(pool._entries) == 0
-    assert len(pool._context_managers) == 0
-    cm1.__aexit__.assert_awaited_once()
-    cm2.__aexit__.assert_awaited_once()
+    assert len(pool._inflight) == 0
+    assert t1.done()
+    assert t2.done()
 
 
 @pytest.mark.asyncio
@@ -304,13 +307,11 @@ async def test_close_all_empty():
 @pytest.mark.asyncio
 async def test_close_all_handles_error():
     pool = MCPSessionPool()
-    cm = _make_mock_cm()
-    cm.__aexit__ = AsyncMock(side_effect=RuntimeError("err"))
-    loop = asyncio.get_running_loop()
-    pool._entries[("s1", "t1")] = (MagicMock(), loop)
-    pool._context_managers[("s1", "t1")] = cm
+    _session, task, _evt = _insert_live_entry(pool, ("s1", "t1"), owner_raises=True)
     # Should not raise
     await pool.close_all()
+    assert len(pool._entries) == 0
+    assert task.done()
 
 
 # ===================================================================
@@ -321,13 +322,11 @@ async def test_close_all_handles_error():
 class TestCloseAllSync:
     def test_closes_sessions_on_running_loop(self):
         pool = MCPSessionPool()
-        cm = _make_mock_cm()
         loop = MagicMock()
         loop.is_closed.return_value = False
         loop.is_running.return_value = True
 
-        pool._entries[("s1", "t1")] = (MagicMock(), loop)
-        pool._context_managers[("s1", "t1")] = cm
+        pool._entries[("s1", "t1")] = (MagicMock(), loop, MagicMock(), asyncio.Event())
 
         mock_future = MagicMock()
         mock_future.result.return_value = None
@@ -335,89 +334,53 @@ class TestCloseAllSync:
             pool.close_all_sync()
             mock_rcs.assert_called_once()
             mock_future.result.assert_called_once_with(timeout=pool.SESSION_CLOSE_TIMEOUT)
+        # The registry was cleared up front.
+        assert len(pool._entries) == 0
 
     def test_closes_sessions_on_stopped_loop(self):
         pool = MCPSessionPool()
-        cm = _make_mock_cm()
         loop = MagicMock()
         loop.is_closed.return_value = False
         loop.is_running.return_value = False
 
-        pool._entries[("s1", "t1")] = (MagicMock(), loop)
-        pool._context_managers[("s1", "t1")] = cm
+        pool._entries[("s1", "t1")] = (MagicMock(), loop, MagicMock(), asyncio.Event())
 
         pool.close_all_sync()
         loop.run_until_complete.assert_called_once()
 
     def test_skips_closed_loop(self):
         pool = MCPSessionPool()
-        cm = _make_mock_cm()
         loop = MagicMock()
         loop.is_closed.return_value = True
 
-        pool._entries[("s1", "t1")] = (MagicMock(), loop)
-        pool._context_managers[("s1", "t1")] = cm
-
-        pool.close_all_sync()
-        cm.__aexit__.assert_not_awaited()
-
-    def test_skips_missing_cm(self):
-        pool = MCPSessionPool()
-        loop = MagicMock()
-        loop.is_closed.return_value = False
-        loop.is_running.return_value = False
-
-        pool._entries[("s1", "t1")] = (MagicMock(), loop)
-        # No entry in _context_managers
+        pool._entries[("s1", "t1")] = (MagicMock(), loop, MagicMock(), asyncio.Event())
 
         pool.close_all_sync()
         loop.run_until_complete.assert_not_called()
+        assert len(pool._entries) == 0
+
+    def test_clears_entries_and_inflight(self):
+        pool = MCPSessionPool()
+        loop = MagicMock()
+        loop.is_closed.return_value = True
+        pool._entries[("s1", "t1")] = (MagicMock(), loop, MagicMock(), asyncio.Event())
+        pool._inflight[("s2", "t2")] = (loop, MagicMock(), MagicMock(), asyncio.Event())
+
+        pool.close_all_sync()
+        assert len(pool._entries) == 0
+        assert len(pool._inflight) == 0
 
     def test_handles_close_error(self):
         pool = MCPSessionPool()
-        cm = _make_mock_cm()
         loop = MagicMock()
         loop.is_closed.return_value = False
         loop.is_running.return_value = False
         loop.run_until_complete.side_effect = RuntimeError("boom")
 
-        pool._entries[("s1", "t1")] = (MagicMock(), loop)
-        pool._context_managers[("s1", "t1")] = cm
+        pool._entries[("s1", "t1")] = (MagicMock(), loop, MagicMock(), asyncio.Event())
 
         # Should not raise
         pool.close_all_sync()
-
-    def test_clears_entries(self):
-        pool = MCPSessionPool()
-        loop = MagicMock()
-        loop.is_closed.return_value = True
-        pool._entries[("s1", "t1")] = (MagicMock(), loop)
-
-        pool.close_all_sync()
-        assert len(pool._entries) == 0
-        assert len(pool._context_managers) == 0
-
-
-# ===================================================================
-# _close_cm helper
-# ===================================================================
-
-
-class TestCloseCmHelper:
-    @pytest.mark.asyncio
-    async def test_close_cm_success(self):
-        pool = MCPSessionPool()
-        cm = _make_mock_cm()
-        await pool._close_cm(("s", "t"), cm)
-        cm.__aexit__.assert_awaited_once()
-
-    @pytest.mark.asyncio
-    async def test_close_cm_error(self):
-        pool = MCPSessionPool()
-        cm = _make_mock_cm()
-        cm.__aexit__ = AsyncMock(side_effect=RuntimeError("err"))
-        # Should not raise
-        await pool._close_cm(("s", "t"), cm)
 
 
 # ---------------------------------------------------------------------------
@@ -542,7 +505,8 @@ async def test_session_pool_tool_extracts_thread_id():
         await wrapped.coroutine(runtime=mock_runtime, x=1)
 
     pool = get_session_pool()
-    assert ("server", "from-config") in pool._entries
+    # Upstream scopes pool keys per user: (server_name, f"{user_id}:{thread_id}").
+    assert ("server", "test-user-autouse:from-config") in pool._entries
 
 
 @pytest.mark.asyncio
@@ -575,7 +539,8 @@ async def test_session_pool_tool_default_scope():
         await wrapped.coroutine(runtime=None, x=1)
 
     pool = get_session_pool()
-    assert ("server", "default") in pool._entries
+    # Upstream scopes pool keys per user: (server_name, f"{user_id}:{thread_id}").
+    assert ("server", "test-user-autouse:default") in pool._entries
 
 
 @pytest.mark.asyncio
@@ -613,7 +578,8 @@ async def test_session_pool_tool_get_config_fallback():
         await wrapped.coroutine(runtime=None, x=1)
 
     pool = get_session_pool()
-    assert ("server", "from-langgraph-config") in pool._entries
+    # Upstream scopes pool keys per user: (server_name, f"{user_id}:{thread_id}").
+    assert ("server", "test-user-autouse:from-langgraph-config") in pool._entries
 
 
 def test_session_pool_tool_sync_wrapper_path_is_safe():
@@ -709,7 +675,9 @@ async def test_http_transport_tools_not_pooled():
         patch("langchain_mcp_adapters.sessions.create_session", return_value=mock_cm),
     ):
         mock_client_instance = MockClient.return_value
-        mock_client_instance.get_tools = AsyncMock(return_value=[http_tool, stdio_tool])
+        # Upstream discovers tools per server (get_tools(server_name=...)), so
+        # each server must contribute only its own tools.
+        mock_client_instance.get_tools = AsyncMock(side_effect=lambda server_name=None: [http_tool] if server_name == "myserver" else [stdio_tool])
         tools = await get_mcp_tools()
 
     pool = get_session_pool()

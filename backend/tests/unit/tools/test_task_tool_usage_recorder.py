@@ -74,15 +74,15 @@ def test_find_usage_recorder_returns_none_when_callbacks_is_none():
     assert _find_usage_recorder(runtime) is None
 
 
-def test_find_usage_recorder_finds_single_handler_with_recorder_method():
-    """A single handler with record_external_llm_usage_records is found directly.
+def test_find_usage_recorder_ignores_bare_handler_without_list_wrapper():
+    """A bare handler (not a list or manager) is treated as "no recorder".
 
-    When ``config["callbacks"]`` is a bare handler object (not wrapped in a list
-    or manager), we still find it if it has the recorder method.
+    Upstream only unwraps list-shaped callbacks and ``BaseCallbackManager``
+    instances; any other shape is ignored rather than iterated unsafely.
     """
     handler = _RecorderHandler()
     runtime = _make_runtime(handler)
-    assert _find_usage_recorder(runtime) is handler
+    assert _find_usage_recorder(runtime) is None
 
 
 def test_find_usage_recorder_returns_none_when_config_not_dict():

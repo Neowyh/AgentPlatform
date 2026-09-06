@@ -1153,7 +1153,9 @@ class TestSerialization:
         result = serialize_channel_values({"messages": [1, 2], "__pregel_meta": "x", "__interrupt__": True})
         assert "messages" in result
         assert "__pregel_meta" not in result
-        assert "__interrupt__" not in result
+        # Upstream keeps __interrupt__ so the LangGraph SDK can detect interrupt
+        # events from values chunks (issue #3595); only __pregel_* keys are stripped.
+        assert result["__interrupt__"] is True
 
     def test_serialize_messages_tuple(self):
         from deerflow.runtime.serialization import serialize_messages_tuple
@@ -1592,19 +1594,21 @@ class TestSkillParser:
         from deerflow.skills.parser import parse_allowed_tools
 
         result = parse_allowed_tools(["tool1", "tool2"], Path("test.md"))
-        assert result == ["tool1", "tool2"]
+        assert result == ("tool1", "tool2")
 
     def test_parse_allowed_tools_empty_list(self):
         from deerflow.skills.parser import parse_allowed_tools
 
         result = parse_allowed_tools([], Path("test.md"))
-        assert result == []
+        assert result == ()
 
     def test_parse_allowed_tools_not_list(self):
         from deerflow.skills.parser import parse_allowed_tools
 
+        # Upstream treats strings as the portable space-separated form; only
+        # non-string, non-list values are malformed.
         with pytest.raises(ValueError):
-            parse_allowed_tools("not a list", Path("test.md"))
+            parse_allowed_tools(123, Path("test.md"))
 
     def test_parse_allowed_tools_non_string_item(self):
         from deerflow.skills.parser import parse_allowed_tools
@@ -1723,7 +1727,7 @@ class TestSkillParser:
             skill_file.write_text("---\nname: my-skill\ndescription: Test\nallowed-tools:\n  - tool1\n---\n")
             result = parse_skill_file(skill_file, SkillCategory.CUSTOM)
             assert result is not None
-            assert result.allowed_tools == ["tool1"]
+            assert result.allowed_tools == ("tool1",)
 
     def test_parse_skill_file_invalid_allowed_tools(self):
         from deerflow.skills.parser import parse_skill_file
@@ -1733,7 +1737,9 @@ class TestSkillParser:
             skill_dir = Path(tmpdir) / "my-skill"
             skill_dir.mkdir()
             skill_file = skill_dir / "SKILL.md"
-            skill_file.write_text("---\nname: my-skill\ndescription: Test\nallowed-tools: not-a-list\n---\n")
+            # A non-string, non-list value is malformed upstream (strings are
+            # the portable space-separated form) and rejects the whole skill.
+            skill_file.write_text("---\nname: my-skill\ndescription: Test\nallowed-tools: 123\n---\n")
             result = parse_skill_file(skill_file, SkillCategory.CUSTOM)
             assert result is None
 

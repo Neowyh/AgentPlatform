@@ -410,7 +410,9 @@ async def test_invoke_acp_agent_uses_fixed_acp_workspace(monkeypatch, tmp_path):
             text_block_cls = sys.modules["acp.schema"].TextContentBlock
             await client.session_update(
                 "session-1",
-                SimpleNamespace(content=text_block_cls("ACP result")),
+                # Upstream only collects agent_message_chunk updates whose
+                # content is a TextContentBlock instance.
+                SimpleNamespace(session_update="agent_message_chunk", content=text_block_cls("ACP result")),
             )
 
     class DummyProcessContext:

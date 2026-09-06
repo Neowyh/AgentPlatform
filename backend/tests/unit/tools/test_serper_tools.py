@@ -9,12 +9,12 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def reset_api_key_warned():
-    """Reset the module-level warning flag before each test."""
+    """Reset the module-level warned-tool set before each test."""
     import deerflow.community.serper.tools as serper_mod
 
-    serper_mod._api_key_warned = False
+    serper_mod._api_key_warned = set()
     yield
-    serper_mod._api_key_warned = False
+    serper_mod._api_key_warned = set()
 
 
 @pytest.fixture
@@ -51,7 +51,7 @@ class TestGetApiKey:
 
             from deerflow.community.serper.tools import _get_api_key
 
-            assert _get_api_key() == "from-config"
+            assert _get_api_key("web_search") == "from-config"
 
     def test_falls_back_to_env_when_config_key_empty(self):
         with patch("deerflow.community.serper.tools.get_app_config") as mock:
@@ -61,7 +61,7 @@ class TestGetApiKey:
             with patch.dict("os.environ", {"SERPER_API_KEY": "env-key"}):
                 from deerflow.community.serper.tools import _get_api_key
 
-                assert _get_api_key() == "env-key"
+                assert _get_api_key("web_search") == "env-key"
 
     def test_falls_back_to_env_when_config_key_whitespace(self):
         with patch("deerflow.community.serper.tools.get_app_config") as mock:
@@ -71,7 +71,7 @@ class TestGetApiKey:
             with patch.dict("os.environ", {"SERPER_API_KEY": "env-key"}):
                 from deerflow.community.serper.tools import _get_api_key
 
-                assert _get_api_key() == "env-key"
+                assert _get_api_key("web_search") == "env-key"
 
     def test_falls_back_to_env_when_config_key_null(self):
         with patch("deerflow.community.serper.tools.get_app_config") as mock:
@@ -81,7 +81,7 @@ class TestGetApiKey:
             with patch.dict("os.environ", {"SERPER_API_KEY": "env-key"}):
                 from deerflow.community.serper.tools import _get_api_key
 
-                assert _get_api_key() == "env-key"
+                assert _get_api_key("web_search") == "env-key"
 
     def test_falls_back_to_env_when_no_config(self):
         with patch("deerflow.community.serper.tools.get_app_config") as mock:
@@ -89,7 +89,7 @@ class TestGetApiKey:
             with patch.dict("os.environ", {"SERPER_API_KEY": "env-only"}):
                 from deerflow.community.serper.tools import _get_api_key
 
-                assert _get_api_key() == "env-only"
+                assert _get_api_key("web_search") == "env-only"
 
     def test_returns_none_when_no_key_anywhere(self):
         with patch("deerflow.community.serper.tools.get_app_config") as mock:
@@ -100,7 +100,7 @@ class TestGetApiKey:
                 os.environ.pop("SERPER_API_KEY", None)
                 from deerflow.community.serper.tools import _get_api_key
 
-                assert _get_api_key() is None
+                assert _get_api_key("web_search") is None
 
 
 class TestWebSearchTool:

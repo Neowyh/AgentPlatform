@@ -44,12 +44,15 @@ def test_extensions_config_resolves_env_variables_inside_nested_collections(monk
     assert resolved["timeout"] == 30
 
 
-def test_extensions_config_raises_for_missing_env_var(monkeypatch):
+def test_extensions_config_missing_env_var_resolves_to_empty(monkeypatch):
+    # Upstream stores an empty string for unresolved placeholders so downstream
+    # consumers (e.g. MCP servers) never receive the literal "$VAR" token.
     monkeypatch.delenv("MISSING_TOKEN", raising=False)
     raw_config = {"key": "$MISSING_TOKEN"}
 
-    with pytest.raises(ValueError, match="MISSING_TOKEN"):
-        ExtensionsConfig.resolve_env_variables(raw_config)
+    resolved = ExtensionsConfig.resolve_env_variables(raw_config)
+
+    assert resolved == {"key": ""}
 
 
 def test_build_server_params_stdio_requires_command():

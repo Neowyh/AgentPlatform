@@ -84,6 +84,8 @@ def _make_result(
         ai_messages=ai_messages or [],
         result=result,
         error=error,
+        stop_reason=None,
+        tool_receipts=None,
         token_usage_records=token_usage_records or [],
         usage_reported=usage_reported,
     )
@@ -91,6 +93,11 @@ def _make_result(
 
 async def _no_sleep(_: float) -> None:
     return None
+
+
+def _tool_text(result) -> str:
+    """Extract the model-visible ToolMessage content from the tool's Command result."""
+    return result.update["messages"][0].content
 
 
 def _run_task_tool(**kwargs):
@@ -154,14 +161,14 @@ class TestDeferredCleanupSubagentTask:
 
     @pytest.mark.asyncio
     async def test_returns_when_result_is_none(self, monkeypatch):
-        """Line 77: result is None means the entry was already removed."""
+        """Entry already removed: the peek returns None and the cleaner returns."""
         monkeypatch.setattr(task_tool_module, "get_background_task_result", lambda _: None)
         # Should return without error
-        await task_tool_module._deferred_cleanup_subagent_task("task-y", "trace-1", max_polls=10)
+        await task_tool_module._deferred_cleanup_subagent_task(None, "task-y", "trace-1", max_polls=10)
 
     @pytest.mark.asyncio
     async def test_cleans_up_on_terminal_result(self, monkeypatch):
-        """Lines 79-80: terminal result triggers immediate cleanup and return."""
+        """A terminal result triggers immediate registry removal and return."""
         monkeypatch.setattr(task_tool_module, "SubagentStatus", FakeSubagentStatus)
         terminal = _make_result(FakeSubagentStatus.COMPLETED, result="done")
         cleanup_calls = []
@@ -172,19 +179,19 @@ class TestDeferredCleanupSubagentTask:
             lambda tid: cleanup_calls.append(tid),
         )
 
-        await task_tool_module._deferred_cleanup_subagent_task("task-y", "trace-1", max_polls=10)
+        await task_tool_module._deferred_cleanup_subagent_task(None, "task-y", "trace-1", max_polls=10)
         assert cleanup_calls == ["task-y"]
 
     @pytest.mark.asyncio
     async def test_returns_after_max_polls_for_non_terminal(self, monkeypatch):
-        """Lines 81-85: poll count exceeded without reaching terminal state."""
+        """Poll count exceeded without reaching terminal state."""
         monkeypatch.setattr(task_tool_module, "SubagentStatus", FakeSubagentStatus)
         running = _make_result(FakeSubagentStatus.RUNNING, ai_messages=[])
         monkeypatch.setattr(task_tool_module, "get_background_task_result", lambda _: running)
         monkeypatch.setattr(task_tool_module.asyncio, "sleep", _no_sleep)
 
         # Should return after max_polls without hanging
-        await task_tool_module._deferred_cleanup_subagent_task("task-y", "trace-1", max_polls=2)
+        await task_tool_module._deferred_cleanup_subagent_task(None, "task-y", "trace-1", max_polls=2)
 
 
 # ===========================================================================
@@ -196,7 +203,7 @@ class TestLogCleanupFailure:
     """Coverage for _log_cleanup_failure when task raised an exception."""
 
     def test_logs_error_when_exception_exists(self, monkeypatch):
-        """Line 94: cleanup task finished with an exception."""
+        """A finished-with-exception cleanup task logs an error."""
         exc = RuntimeError("boom")
         mock_task = MagicMock()
         mock_task.cancelled.return_value = False
@@ -209,50 +216,17 @@ class TestLogCleanupFailure:
             lambda msg: log_messages.append(msg),
         )
 
-        task_tool_module._log_cleanup_failure(mock_task, trace_id="t1", task_id="task-z")
+        task_tool_module._log_cleanup_failure(mock_task, trace_id="t1", execution_id="task-z")
         assert len(log_messages) == 1
         assert "task-z" in log_messages[0]
         assert "boom" in log_messages[0]
 
     def test_noop_when_cancelled(self):
-        """Line 89-90: cancelled task does nothing."""
+        """A cancelled cleanup task does nothing."""
         mock_task = MagicMock()
         mock_task.cancelled.return_value = True
         # Should not raise or call exception()
-        task_tool_module._log_cleanup_failure(mock_task, trace_id="t1", task_id="task-z")
-
-
-# ===========================================================================
-# _iter_runtime_callbacks  (lines 136, 143, 146)
-# ===========================================================================
-
-
-class TestIterRuntimeCallbacks:
-    """Coverage for _iter_runtime_callbacks edge paths."""
-
-    def test_returns_empty_list_for_none(self):
-        """Line 136: callbacks is None -> return []."""
-        assert task_tool_module._iter_runtime_callbacks(None) == []
-
-    def test_skips_none_callback_in_list(self):
-        """Line 143: a None entry inside the callback list is skipped."""
-        handler = MagicMock(name="real_handler")
-        result = task_tool_module._iter_runtime_callbacks([None, handler])
-        assert handler in result
-        assert None not in result
-
-    def test_skips_duplicate_callback(self):
-        """Line 146: same callback object appearing twice is only added once."""
-        handler = MagicMock(name="dup_handler")
-        result = task_tool_module._iter_runtime_callbacks([handler, handler])
-        assert result.count(handler) == 1
-
-    def test_deduplicates_across_handlers_and_iterable(self):
-        """Same callback found via .handlers attr and direct iteration is deduped."""
-        handler = MagicMock(name="shared")
-        mgr = SimpleNamespace(handlers=[handler])
-        result = task_tool_module._iter_runtime_callbacks([mgr, handler])
-        assert result.count(handler) == 1
+        task_tool_module._log_cleanup_failure(mock_task, trace_id="t1", execution_id="task-z")
 
 
 # ===========================================================================
@@ -383,7 +357,7 @@ class TestTaskToolThreadIdFallback:
             tool_call_id="tc-configurable",
         )
 
-        assert output == "Task Succeeded. Result: ok"
+        assert _tool_text(output) == "Task Succeeded. Result: ok"
         assert captured["executor_kwargs"]["thread_id"] == "from-configurable"
 
 
@@ -444,8 +418,9 @@ class TestTaskToolTaskDisappeared:
             tool_call_id="tc-disappear",
         )
 
-        assert "disappeared" in output.lower()
-        assert "tc-disappear" in output
+        content = _tool_text(output)
+        assert "disappeared" in content.lower()
+        assert "tc-disappear" in content
         # Verify error event was emitted
         error_events = [e for e in events if e.get("type") == "task_failed"]
         assert len(error_events) == 1

@@ -13,9 +13,10 @@ from deerflow.community.image_search.tools import _search_images, image_search_t
 
 
 def _sample_ddgs_results():
+    # Upstream maps image_url from the "image" field with no fallback to "thumbnail".
     return [
-        {"title": "Image 1", "thumbnail": "http://img1.jpg", "url": "http://page1"},
-        {"title": "Image 2", "thumbnail": "http://img2.jpg", "url": "http://page2"},
+        {"title": "Image 1", "image": "http://img1.jpg", "thumbnail": "http://img1.jpg", "url": "http://page1"},
+        {"title": "Image 2", "image": "http://img2.jpg", "thumbnail": "http://img2.jpg", "url": "http://page2"},
     ]
 
 

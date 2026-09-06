@@ -54,6 +54,21 @@ def _stub_runtime_middleware_imports(monkeypatch: pytest.MonkeyPatch) -> None:
             self.args = args
             self.kwargs = kwargs
 
+    # One distinct fake class per real middleware: upstream validates the built
+    # stack with isinstance-based ordering constraints (e.g. ToolReceiptMiddleware
+    # must be outer of SandboxAuditMiddleware), which a shared fake class would break.
+    class FakeThreadDataMiddleware(FakeMiddleware):
+        pass
+
+    class FakeSandboxMiddleware(FakeMiddleware):
+        pass
+
+    class FakeDanglingToolCallMiddleware(FakeMiddleware):
+        pass
+
+    class FakeSandboxAuditMiddleware(FakeMiddleware):
+        pass
+
     class FakeLLMErrorHandlingMiddleware:
         def __init__(self, *, app_config):
             self.app_config = app_config
@@ -69,22 +84,22 @@ def _stub_runtime_middleware_imports(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(
         sys.modules,
         "deerflow.agents.middlewares.thread_data_middleware",
-        _module("deerflow.agents.middlewares.thread_data_middleware", ThreadDataMiddleware=FakeMiddleware),
+        _module("deerflow.agents.middlewares.thread_data_middleware", ThreadDataMiddleware=FakeThreadDataMiddleware),
     )
     monkeypatch.setitem(
         sys.modules,
         "deerflow.sandbox.middleware",
-        _module("deerflow.sandbox.middleware", SandboxMiddleware=FakeMiddleware),
+        _module("deerflow.sandbox.middleware", SandboxMiddleware=FakeSandboxMiddleware),
     )
     monkeypatch.setitem(
         sys.modules,
         "deerflow.agents.middlewares.dangling_tool_call_middleware",
-        _module("deerflow.agents.middlewares.dangling_tool_call_middleware", DanglingToolCallMiddleware=FakeMiddleware),
+        _module("deerflow.agents.middlewares.dangling_tool_call_middleware", DanglingToolCallMiddleware=FakeDanglingToolCallMiddleware),
     )
     monkeypatch.setitem(
         sys.modules,
         "deerflow.agents.middlewares.sandbox_audit_middleware",
-        _module("deerflow.agents.middlewares.sandbox_audit_middleware", SandboxAuditMiddleware=FakeMiddleware),
+        _module("deerflow.agents.middlewares.sandbox_audit_middleware", SandboxAuditMiddleware=FakeSandboxAuditMiddleware),
     )
 
 
@@ -95,6 +110,18 @@ def test_build_subagent_runtime_middlewares_threads_app_config_to_llm_middleware
         def __init__(self, *args, **kwargs):
             self.args = args
             self.kwargs = kwargs
+
+    class FakeThreadDataMiddleware(FakeMiddleware):
+        pass
+
+    class FakeSandboxMiddleware(FakeMiddleware):
+        pass
+
+    class FakeDanglingToolCallMiddleware(FakeMiddleware):
+        pass
+
+    class FakeSandboxAuditMiddleware(FakeMiddleware):
+        pass
 
     class FakeLLMErrorHandlingMiddleware:
         def __init__(self, *, app_config):
@@ -113,35 +140,35 @@ def test_build_subagent_runtime_middlewares_threads_app_config_to_llm_middleware
     monkeypatch.setitem(
         sys.modules,
         "deerflow.agents.middlewares.thread_data_middleware",
-        _module("deerflow.agents.middlewares.thread_data_middleware", ThreadDataMiddleware=FakeMiddleware),
+        _module("deerflow.agents.middlewares.thread_data_middleware", ThreadDataMiddleware=FakeThreadDataMiddleware),
     )
     monkeypatch.setitem(
         sys.modules,
         "deerflow.sandbox.middleware",
-        _module("deerflow.sandbox.middleware", SandboxMiddleware=FakeMiddleware),
+        _module("deerflow.sandbox.middleware", SandboxMiddleware=FakeSandboxMiddleware),
     )
     monkeypatch.setitem(
         sys.modules,
         "deerflow.agents.middlewares.dangling_tool_call_middleware",
-        _module("deerflow.agents.middlewares.dangling_tool_call_middleware", DanglingToolCallMiddleware=FakeMiddleware),
+        _module("deerflow.agents.middlewares.dangling_tool_call_middleware", DanglingToolCallMiddleware=FakeDanglingToolCallMiddleware),
     )
     monkeypatch.setitem(
         sys.modules,
         "deerflow.agents.middlewares.sandbox_audit_middleware",
-        _module("deerflow.agents.middlewares.sandbox_audit_middleware", SandboxAuditMiddleware=FakeMiddleware),
+        _module("deerflow.agents.middlewares.sandbox_audit_middleware", SandboxAuditMiddleware=FakeSandboxAuditMiddleware),
     )
 
     middlewares = build_subagent_runtime_middlewares(app_config=app_config, lazy_init=False)
 
     assert captured["app_config"] is app_config
-    # 6 baseline (ThreadData, Sandbox, DanglingToolCall, LLMErrorHandling,
-    # SandboxAudit, ToolErrorHandling) + 1 SafetyFinishReasonMiddleware
-    # (enabled by default — see SafetyFinishReasonConfig).
+    # Upstream grew the subagent runtime stack (input sanitization, tool output
+    # budget, receipts, skill activation, ...), so assert membership instead of
+    # an exact count.
     from deerflow.agents.middlewares.safety_finish_reason_middleware import SafetyFinishReasonMiddleware
 
-    assert len(middlewares) == 7
     assert any(isinstance(m, ToolErrorHandlingMiddleware) for m in middlewares)
-    assert isinstance(middlewares[-1], SafetyFinishReasonMiddleware)
+    assert any(isinstance(m, SafetyFinishReasonMiddleware) for m in middlewares)
+    assert any(isinstance(m, FakeLLMErrorHandlingMiddleware) for m in middlewares)
 
 
 def test_wrap_tool_call_passthrough_on_success():

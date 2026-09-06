@@ -59,6 +59,7 @@ class TestSearchText:
             region="us-en",
             safesearch="strict",
             max_results=5,
+            backend="auto",
         )
 
 

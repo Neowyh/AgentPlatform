@@ -1,5 +1,6 @@
 import asyncio
 import contextvars
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -17,6 +18,7 @@ class MockArgs(BaseModel):
 
 def test_mcp_tool_sync_wrapper_generation():
     """Test that get_mcp_tools correctly adds a sync func to async-only tools."""
+    from mcp.types import TextContent
 
     async def mock_coro(x: int):
         return f"result: {x}"
@@ -30,14 +32,33 @@ def test_mcp_tool_sync_wrapper_generation():
     )
 
     mock_client_instance = MagicMock()
-    # Use AsyncMock for get_tools as it's awaited (Fix for Comment 5)
+    # Use AsyncMock for get_tools as it's awaited (Fix for Comment 5).
+    # Upstream discovers tools per server: get_tools(server_name=...).
     mock_client_instance.get_tools = AsyncMock(return_value=[mock_tool])
+
+    # The sync call now goes through the pooled MCP session, so stub the
+    # session with a text result.
+    mock_session = AsyncMock()
+    mock_session.initialize = AsyncMock()
+    mock_session.call_tool = AsyncMock(
+        return_value=SimpleNamespace(
+            content=[TextContent(type="text", text="result: 42")],
+            isError=False,
+            structuredContent=None,
+        )
+    )
+    mock_cm = MagicMock()
+    mock_cm.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_cm.__aexit__ = AsyncMock(return_value=False)
 
     with (
         patch("langchain_mcp_adapters.client.MultiServerMCPClient", return_value=mock_client_instance),
-        patch("deerflow.config.extensions_config.ExtensionsConfig.from_file"),
-        patch("deerflow.mcp.tools.build_servers_config", return_value={"test-server": {}}),
+        # No enabled servers in config: per-server attributes (timeouts, prefix)
+        # then fall back to their defaults instead of leaking MagicMock values.
+        patch("deerflow.config.extensions_config.ExtensionsConfig.from_file", return_value=MagicMock(mcp_servers={})),
+        patch("deerflow.mcp.tools.build_servers_config", return_value={"test-server": {"transport": "stdio", "command": "x", "args": []}}),
         patch("deerflow.mcp.tools.get_initial_oauth_headers", new_callable=AsyncMock, return_value={}),
+        patch("langchain_mcp_adapters.sessions.create_session", return_value=mock_cm),
     ):
         # Run the async function manually with asyncio.run
         tools = asyncio.run(get_mcp_tools())
@@ -48,9 +69,10 @@ def test_mcp_tool_sync_wrapper_generation():
         # Verify func is now populated
         assert patched_tool.func is not None
 
-        # Verify it works (sync call)
+        # Verify it works (sync call runs the pooled-session path and converts
+        # the MCP result to LangChain content_and_artifact format).
         result = patched_tool.func(x=42)
-        assert result == "result: 42"
+        assert result[0][0]["text"] == "result: 42"
 
 
 def test_mcp_tool_sync_wrapper_in_running_loop():

@@ -421,7 +421,7 @@ class TestMakeSessionPoolTool:
         assert result.response_format == "content_and_artifact"
         assert result.metadata == {"meta": "data"}
 
-    def test_call_without_interceptors(self):
+    def test_call_without_interceptors(self, tmp_path):
         """call_with_persistent_session delegates to session.call_tool when no interceptors."""
         from deerflow.mcp.tools import _make_session_pool_tool
 
@@ -432,15 +432,30 @@ class TestMakeSessionPoolTool:
         pool.get_session = AsyncMock(return_value=mock_session)
 
         mock_tool = self._make_mock_tool(name="srv_tool1")
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        tmp_dir = tmp_path / "tmp"
         with (
             patch("deerflow.mcp.tools.get_session_pool", return_value=pool),
             patch("deerflow.mcp.tools._extract_thread_id", return_value="t1"),
+            patch("deerflow.mcp.tools.resolve_runtime_user_id", return_value="test-user-autouse"),
+            patch("deerflow.mcp.tools._prepare_stdio_workspace", return_value=(workspace, tmp_dir, frozenset())),
             patch("deerflow.mcp.tools._convert_call_tool_result", return_value=("converted", None)),
         ):
             wrapped = _make_session_pool_tool(mock_tool, "srv", {"transport": "stdio"}, tool_interceptors=None)
             result = asyncio.run(wrapped.coroutine(runtime=None, arg1="val1"))
 
-        pool.get_session.assert_awaited_once_with("srv", "t1", {"transport": "stdio"})
+        # Upstream scopes sessions per user+thread and pins the stdio process
+        # cwd/temp dirs inside the thread's user-data tree.
+        pool.get_session.assert_awaited_once_with(
+            "srv",
+            "test-user-autouse:t1",
+            {
+                "transport": "stdio",
+                "cwd": str(workspace),
+                "env": {"TMPDIR": str(tmp_dir), "TMP": str(tmp_dir), "TEMP": str(tmp_dir)},
+            },
+        )
         mock_session.call_tool.assert_awaited_once_with("tool1", {"arg1": "val1"})
         assert result == ("converted", None)
 
@@ -745,8 +760,12 @@ class TestGetMcpTools:
         assert len(result) == 1
         assert result[0] is mock_tool
 
-    def test_tool_with_no_matching_server_returned_as_is(self):
-        """A tool whose name does not match any server prefix is returned as-is."""
+    def test_unprefixed_tool_is_pooled_under_its_producing_server(self):
+        """Routing is per producing server: even an unprefixed tool is pooled.
+
+        Upstream attributes each discovered tool to the server that produced it,
+        so the name-prefix scan (and its "no matching server" fallback) is gone.
+        """
         mock_tool = MagicMock()
         mock_tool.name = "orphan_tool"
         mock_tool.description = "d"
@@ -759,19 +778,23 @@ class TestGetMcpTools:
         servers_config = {"s1": {"transport": "stdio", "command": "x"}}
         p = self._base_patches(servers_config=servers_config)
 
+        wrapped = MagicMock(name="wrapped")
         with (
             p["from_file"],
             p["build_servers"],
             p["oauth_headers"],
             p["oauth_interceptor"],
             patch("langchain_mcp_adapters.client.MultiServerMCPClient", return_value=mock_client),
+            patch("deerflow.mcp.tools._make_session_pool_tool", return_value=wrapped) as mock_wrap,
         ):
             from deerflow.mcp.tools import get_mcp_tools
 
             result = asyncio.run(get_mcp_tools())
 
         assert len(result) == 1
-        assert result[0] is mock_tool
+        assert result[0] is wrapped
+        assert mock_wrap.call_args.args[0] is mock_tool
+        assert mock_wrap.call_args.args[1] == "s1"
 
     def test_sse_tool_returned_as_is(self):
         """SSE transport tools are returned directly (no session-pool wrap)."""
@@ -916,7 +939,8 @@ class TestGetMcpTools:
         http_tool.metadata = {}
 
         mock_client = MagicMock()
-        mock_client.get_tools = AsyncMock(return_value=[stdio_tool, http_tool])
+        # Upstream discovers tools per server: get_tools(server_name=...).
+        mock_client.get_tools = AsyncMock(side_effect=lambda server_name=None: [stdio_tool] if server_name == "srv1" else [http_tool])
 
         servers_config = {
             "srv1": {"transport": "stdio", "command": "node"},
