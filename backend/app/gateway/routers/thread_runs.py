@@ -22,7 +22,7 @@ from pydantic import BaseModel, Field
 from app.gateway.authz import require_permission
 from app.gateway.deps import get_checkpointer, get_current_user, get_feedback_repo, get_run_event_store, get_run_manager, get_run_store, get_stream_bridge
 from app.gateway.services import sse_consumer, start_run
-from deerflow.runtime import RunRecord, RunStatus, serialize_channel_values
+from deerflow.runtime import CancelOutcome, RunRecord, RunStatus, serialize_channel_values
 from deerflow.runtime.secret_context import redact_config_secrets, redact_metadata_secrets
 
 logger = logging.getLogger(__name__)
@@ -111,6 +111,19 @@ def _cancel_conflict_detail(run_id: str, record: RunRecord) -> str:
     if record.status in (RunStatus.pending, RunStatus.running):
         return f"Run {run_id} is not active on this worker and cannot be cancelled"
     return f"Run {run_id} is not cancellable (status: {record.status.value})"
+
+
+# Outcomes that mean the cancellation was accepted and the run is stopping:
+# a local cancel, a durable request recorded for the live owner, or a takeover
+# after the owner's lease expired. Every other outcome is a conflict (409) —
+# ``cancel()`` returns a CancelOutcome (a non-empty StrEnum), so the old
+# ``if not cancelled:`` truthiness test could never reject anything.
+_CANCEL_ACCEPTED_OUTCOMES = frozenset({CancelOutcome.cancelled, CancelOutcome.requested, CancelOutcome.taken_over})
+
+
+def _cancel_rejected(run_id: str, record: RunRecord, outcome: CancelOutcome) -> HTTPException:
+    headers = {"Retry-After": "5"} if outcome is CancelOutcome.lease_valid_elsewhere else None
+    return HTTPException(status_code=409, detail=_cancel_conflict_detail(run_id, record), headers=headers)
 
 
 def _record_to_response(record: RunRecord) -> RunResponse:
@@ -271,8 +284,8 @@ async def cancel_run(
         raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
 
     cancelled = await run_mgr.cancel(run_id, action=action)
-    if not cancelled:
-        raise HTTPException(status_code=409, detail=_cancel_conflict_detail(run_id, record))
+    if cancelled not in _CANCEL_ACCEPTED_OUTCOMES:
+        raise _cancel_rejected(run_id, record, cancelled)
 
     if wait and record.task is not None:
         try:
@@ -333,8 +346,8 @@ async def stream_existing_run(
     # Cancel if an action was requested (stop-button / interrupt flow)
     if action is not None:
         cancelled = await run_mgr.cancel(run_id, action=action)
-        if not cancelled:
-            raise HTTPException(status_code=409, detail=_cancel_conflict_detail(run_id, record))
+        if cancelled not in _CANCEL_ACCEPTED_OUTCOMES:
+            raise _cancel_rejected(run_id, record, cancelled)
         if wait and record.task is not None:
             try:
                 await record.task

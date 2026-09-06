@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
 from _router_auth_helpers import make_authed_test_app
 from fastapi.testclient import TestClient
 
@@ -166,12 +165,6 @@ def test_get_run_hydrates_store_only_run():
     assert body["status"] == "running"
 
 
-@pytest.mark.xfail(
-    reason="Suspected product bug: cancel_run() tests truthiness of the CancelOutcome "
-    "StrEnum (thread_runs.py `if not cancelled:`), which is always truthy, so the 409 "
-    "conflict path is unreachable and store-only runs (not_active_locally) get 202.",
-    strict=False,
-)
 def test_cancel_store_only_run_returns_409():
     """Store-only runs are readable but not cancellable by this worker."""
     app = _make_app(run_manager=_make_store_only_run_manager())

@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import asyncio
 
-import pytest
 from _router_auth_helpers import make_authed_test_app
 from fastapi.testclient import TestClient
 
@@ -109,10 +108,44 @@ class TestCancelRunEndpointIdempotency:
         resp = client.post(f"/api/threads/{THREAD_ID}/runs/no-such-run/cancel")
         assert resp.status_code == 404
 
-    @pytest.mark.xfail(
-        reason="Suspected product bug: cancel_run() tests truthiness of the CancelOutcome StrEnum (thread_runs.py `if not cancelled:`), which is always truthy, so the 409 conflict path is unreachable and terminal-state runs get 202.",
-        strict=False,
-    )
+    def test_cancel_lease_valid_elsewhere_returns_409_with_retry_after(self):
+        """A run owned by another live worker is a conflict: 409 plus the
+        safe Retry-After fallback documented for lease_valid_elsewhere."""
+
+        class _ForeignLeaseManager(RunManager):
+            async def cancel(self, run_id, *, action="interrupt"):
+                return CancelOutcome.lease_valid_elsewhere
+
+        async def _setup():
+            mgr = _ForeignLeaseManager()
+            record = await mgr.create(THREAD_ID)
+            await mgr.set_status(record.run_id, RunStatus.running)
+            return mgr, record.run_id
+
+        mgr, run_id = asyncio.run(_setup())
+        client = _make_app(mgr)
+        resp = client.post(f"/api/threads/{THREAD_ID}/runs/{run_id}/cancel")
+        assert resp.status_code == 409
+        assert resp.headers.get("retry-after") == "5"
+
+    def test_cancel_requested_outcome_is_accepted(self):
+        """A durably recorded cancel request (requested) proceeds like a local cancel."""
+
+        class _DurableRequestManager(RunManager):
+            async def cancel(self, run_id, *, action="interrupt"):
+                return CancelOutcome.requested
+
+        async def _setup():
+            mgr = _DurableRequestManager()
+            record = await mgr.create(THREAD_ID)
+            await mgr.set_status(record.run_id, RunStatus.running)
+            return mgr, record.run_id
+
+        mgr, run_id = asyncio.run(_setup())
+        client = _make_app(mgr)
+        resp = client.post(f"/api/threads/{THREAD_ID}/runs/{run_id}/cancel")
+        assert resp.status_code == 202
+
     def test_cancel_successful_run_returns_409(self):
         """Successfully-completed runs cannot be cancelled — must return 409."""
 
