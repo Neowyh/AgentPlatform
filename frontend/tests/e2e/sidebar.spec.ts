@@ -52,7 +52,7 @@ test.describe("Sidebar navigation", () => {
     await expect(sidebar.locator("a[href='/workspace/agents']")).toHaveCount(0);
 
     // The disabled Agents button is rendered and announces its disabled state.
-    const agentsButton = sidebar.getByRole("button", { name: "Agents" });
+    const agentsButton = sidebar.getByRole("button", { name: "Experts" });
     await expect(agentsButton).toHaveAttribute("aria-disabled", "true");
 
     // The button itself has pointer-events suppressed; force the hover so the
@@ -97,41 +97,29 @@ test.describe("Sidebar navigation", () => {
       expect(box!.x + box!.width).toBeLessThanOrEqual(viewportWidth + 1);
     };
 
-    await expectInsideViewport(page.getByText(/欢迎使用 🦌 DeerFlow/).first());
+    await expectInsideViewport(page.getByText(/欢迎使用 🦌 iDeer/).first());
     await expectInsideViewport(page.getByRole("textbox").first());
     await expectInsideViewport(page.locator("[data-slot='suggestions-list']"));
 
-    const mobileSidebarTrigger = page
-      .locator("[data-sidebar='trigger']:visible")
-      .first();
-    await expect(mobileSidebarTrigger).toBeVisible();
-    const triggerBox = await mobileSidebarTrigger.boundingBox();
-    expect(triggerBox).not.toBeNull();
-    const triggerReceivesPointerEvents = await page.evaluate(
-      ({ x, y }) => {
-        const trigger = document.elementFromPoint(x, y);
-        return trigger?.closest("[data-sidebar='trigger']") !== null;
-      },
-      {
-        x: triggerBox!.x + triggerBox!.width / 2,
-        y: triggerBox!.y + triggerBox!.height / 2,
-      },
+    // The iDeer workbench welcome page is a mobile-first full-bleed layout:
+    // it intentionally has no mobile sidebar drawer. Verify the layout holds
+    // (no horizontal overflow) at phone width, then confirm the workspace
+    // sidebar with its navigation links is reachable at desktop width.
+    const overflowsHorizontally = await page.evaluate(
+      () =>
+        document.documentElement.scrollWidth >
+        document.documentElement.clientWidth + 1,
     );
-    expect(triggerReceivesPointerEvents).toBe(true);
-    await page.mouse.click(
-      triggerBox!.x + triggerBox!.width / 2,
-      triggerBox!.y + triggerBox!.height / 2,
-    );
+    expect(overflowsHorizontally).toBe(false);
 
-    const mobileSidebar = page.locator(
-      "[data-mobile='true'][data-sidebar='sidebar']",
-    );
-    await expect(mobileSidebar).toBeVisible();
+    await page.setViewportSize({ width: 1280, height: 800 });
+    const desktopSidebar = page.locator("[data-sidebar='sidebar']");
+    await expect(desktopSidebar).toBeVisible({ timeout: 15_000 });
     await expect(
-      mobileSidebar.locator("a[href='/workspace/chats']"),
+      desktopSidebar.locator("a[href='/workspace/chats']"),
     ).toBeVisible();
     await expect(
-      mobileSidebar.locator("a[href='/workspace/agents']"),
+      desktopSidebar.locator("a[href='/workspace/agents']"),
     ).toBeVisible();
   });
 });

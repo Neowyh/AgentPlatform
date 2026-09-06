@@ -720,16 +720,24 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
     return route.fallback();
   });
 
-  // Feature flags — capability center reads these on load.
-  if (features) {
-    void page.route("**/api/features", (route) => {
-      return route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify(features),
-      });
+  // Feature flags — capability center reads these on load. Default enables
+  // the runtime features the workspace UI expects (mcp tasks, browser control).
+  // Specs may pass either the flat flags (mcpTasksEnabled) or the gateway's
+  // nested shape (mcp_tasks.enabled); normalize to the nested wire format.
+  const flat = features ?? {};
+  const effectiveFeatures = {
+    mcp_tasks: { enabled: flat.mcpTasksEnabled ?? true },
+    browser_control: { enabled: flat.browserControlEnabled ?? false },
+    agents_api: { enabled: flat.agentsApiEnabled ?? true },
+    ...((flat as Record<string, unknown>).mcp_tasks ? { mcp_tasks: (flat as Record<string, unknown>).mcp_tasks } : {}),
+  };
+  void page.route("**/api/features", (route) => {
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(effectiveFeatures),
     });
-  }
+  });
 
   // Run stream — returns a minimal SSE response with an AI message. A spec
   // can take over the stream entirely via `runStreamHandler` (e.g. proxying

@@ -7,14 +7,14 @@ test.describe("Landing page", () => {
     await page.goto("/");
 
     await expect(
-      page.locator("header").first().getByText("DeerFlow", { exact: true }),
+      page.locator("header").first().getByText("iDeer", { exact: true }),
     ).toBeVisible();
     await expect(page.locator("h1")).toHaveCount(1);
-    await expect(page.locator("h1")).toContainText("DeerFlow");
+    await expect(page.locator("h1")).toContainText("iDeer");
 
     // "Get Started" call-to-action button in hero
     await expect(
-      page.getByRole("link", { name: /get started/i }),
+      page.getByRole("link", { name: /start creating/i }),
     ).toBeVisible();
   });
 
@@ -30,12 +30,12 @@ test.describe("Landing page", () => {
     });
   }
 
-  test("Get Started link navigates to workspace", async ({ page }) => {
+  test("Start Creating link navigates to workspace", async ({ page }) => {
     mockLangGraphAPI(page);
 
     await page.goto("/");
 
-    const getStarted = page.getByRole("link", { name: /get started/i });
+    const getStarted = page.getByRole("link", { name: /start creating/i });
     await getStarted.click();
 
     // Should redirect to /workspace/chats/new
