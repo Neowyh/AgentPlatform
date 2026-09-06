@@ -115,39 +115,42 @@ class TestAioSandboxExtraCoverage:
         assert truncated is True
 
     def test_grep_with_glob(self, sb):
-        sb._client.file.find_files.return_value = SimpleNamespace(data=SimpleNamespace(files=["/r/a.py"]))
-        sb._client.file.search_in_file.return_value = SimpleNamespace(data=SimpleNamespace(line_numbers=[1], matches=["hello"]))
-        matches, _ = sb.grep("/r", "hello", glob="*.py")
+        sb._client.file.grep_files.return_value = SimpleNamespace(
+            data=SimpleNamespace(
+                matches=[SimpleNamespace(file="/r/a.py", line_number=1, line_content="hello")],
+                truncated=False,
+            )
+        )
+        matches, truncated = sb.grep("/r", "hello", glob="*.py")
         assert len(matches) == 1
+        assert matches[0].path == "/r/a.py"
+        assert truncated is False
 
     def test_grep_ignores_path(self, sb):
-        sb._client.file.list_path.return_value = SimpleNamespace(
+        sb._client.file.grep_files.return_value = SimpleNamespace(
             data=SimpleNamespace(
-                files=[
-                    SimpleNamespace(path="/r/.git/config", is_directory=False),
-                    SimpleNamespace(path="/r/app.py", is_directory=False),
-                ]
+                matches=[
+                    SimpleNamespace(file="/r/.git/config", line_number=1, line_content="x"),
+                    SimpleNamespace(file="/r/app.py", line_number=2, line_content="x"),
+                ],
+                truncated=False,
             )
         )
-        sb._client.file.search_in_file.return_value = SimpleNamespace(data=SimpleNamespace(line_numbers=[1], matches=["x"]))
-        sb.grep("/r", "x")
-        sb._client.file.search_in_file.assert_called_once()
+        matches, _ = sb.grep("/r", "x")
+        assert [m.path for m in matches] == ["/r/app.py"]
 
     def test_grep_data_none(self, sb):
-        sb._client.file.list_path.return_value = SimpleNamespace(
-            data=SimpleNamespace(
-                files=[
-                    SimpleNamespace(path="/r/a.txt", is_directory=False),
-                ]
-            )
-        )
-        sb._client.file.search_in_file.return_value = SimpleNamespace(data=None)
+        sb._client.file.grep_files.return_value = SimpleNamespace(data=None)
         matches, _ = sb.grep("/r", "x")
         assert matches == []
 
     def test_grep_truncation(self, sb):
-        sb._client.file.list_path.return_value = SimpleNamespace(data=SimpleNamespace(files=[SimpleNamespace(path=f"/r/f{i}.txt", is_directory=False) for i in range(5)]))
-        sb._client.file.search_in_file.return_value = SimpleNamespace(data=SimpleNamespace(line_numbers=[1], matches=["m"]))
+        sb._client.file.grep_files.return_value = SimpleNamespace(
+            data=SimpleNamespace(
+                matches=[SimpleNamespace(file=f"/r/f{i}.txt", line_number=1, line_content="m") for i in range(5)],
+                truncated=False,
+            )
+        )
         matches, truncated = sb.grep("/r", "m", max_results=2)
         assert len(matches) == 2
         assert truncated is True
@@ -200,6 +203,17 @@ def _provider():
     }
     p._backend = MagicMock()
     p._backend.list_running.return_value = []
+    # Upstream acquire/teardown machinery the bare provider now relies on.
+    p._local_teardown = set()
+    p._unowned_since = {}
+    p._active_sandbox_identity = {}
+    p._warm_pool_identity = {}
+    p._acquire_inflight = {}
+    p._acquire_epoch = {}
+    p._acquire_epoch_counter = 0
+    p._ownership = MagicMock()
+    p._ownership.supports_cross_process = False
+    p._ownership_config = SimpleNamespace(renewal_interval_seconds=30)
     return p
 
 
@@ -210,7 +224,7 @@ def _info(sid="s1", url="http://localhost:8080"):
 
 
 class TestIdleCheckerError:
-    """Lines 362-363: loop continues after cleanup error."""
+    """The warm-pool idle checker loop keeps running after a cleanup error."""
 
     def test_continues_after_error(self):
         import importlib
@@ -219,20 +233,20 @@ class TestIdleCheckerError:
         p = _provider()
         count = [0]
 
-        def cleanup(t):
+        def cleanup(idle_timeout):
             count[0] += 1
             if count[0] == 1:
                 raise RuntimeError("err")
             p._idle_checker_stop.set()
 
-        p._cleanup_idle_sandboxes = cleanup
-        orig = mod.IDLE_CHECK_INTERVAL
-        mod.IDLE_CHECK_INTERVAL = 0
-        try:
-            p._idle_checker_loop()
-        finally:
-            mod.IDLE_CHECK_INTERVAL = orig
+        # Upstream loop catches cleanup errors itself and keeps polling; the
+        # per-instance interval shadows the mixin default so wait() returns
+        # immediately.
+        p._cleanup_idle_resources = cleanup
+        p.IDLE_CHECK_INTERVAL = 0
+        p._idle_checker_loop()
         assert count[0] == 2
+        assert mod.IDLE_CHECK_INTERVAL == 60
 
 
 class TestCleanupIdleReverify:
@@ -429,6 +443,13 @@ class TestDiscoverOrCreateAsync:
         monkeypatch.setattr(mod, "get_paths", lambda: Paths(base_dir=tmp_path))
         monkeypatch.setattr(mod, "get_effective_user_id", lambda: None)
 
+        # Stub environment-probing collaborators unrelated to the create flow.
+        p._get_extra_mounts = lambda *a, **k: []
+        p._lark_integration_active = lambda user_id=None: False
+        p._lark_broker_active = lambda user_id=None: False
+        p._local_config_mount_exclusion_root = lambda *a, **k: None
+        p._register_created_sandbox = lambda thread_id, sandbox_id, info, user_id=None: sandbox_id
+
         async def fw(url, timeout=30, poll_interval=1.0):
             return True
 
@@ -444,7 +465,9 @@ class TestDiscoverOrCreateAsync:
         from deerflow.config.paths import Paths
 
         p = _provider()
-        p._thread_sandboxes["t1"] = "c1"
+        # Thread keys are (user_id, thread_id) tuples upstream; the patched
+        # effective user resolves to None here.
+        p._thread_sandboxes[(None, "t1")] = "c1"
         p._sandboxes["c1"] = MagicMock()
         monkeypatch.setattr(mod, "get_paths", lambda: Paths(base_dir=tmp_path))
         monkeypatch.setattr(mod, "get_effective_user_id", lambda: None)
@@ -453,7 +476,7 @@ class TestDiscoverOrCreateAsync:
 
 
 class TestCreateSandboxAsyncEviction:
-    """Lines 759-760: async eviction."""
+    """Replica soft-cap eviction on the async create path."""
 
     @pytest.mark.anyio
     async def test_evicts(self, tmp_path, monkeypatch):
@@ -465,6 +488,20 @@ class TestCreateSandboxAsyncEviction:
         p._sandboxes = {"a": MagicMock()}
         p._warm_pool["w1"] = (_info("w1"), 100.0)
         p._backend.create.return_value = _info("n1")
+
+        # Stub environment probing and the warm-entry teardown (ownership-lease
+        # machinery covered by the dedicated provider tests).
+        p._get_extra_mounts = lambda *a, **k: []
+        p._lark_integration_active = lambda user_id=None: False
+        p._lark_broker_active = lambda user_id=None: False
+        p._local_config_mount_exclusion_root = lambda *a, **k: None
+        p._register_created_sandbox = lambda thread_id, sandbox_id, info, user_id=None: sandbox_id
+
+        def fake_destroy_warm_entry(sandbox_id, entry, *, reason, still_reapable):
+            p._backend.destroy(entry)
+            return True
+
+        p._destroy_warm_entry = fake_destroy_warm_entry
 
         async def fw(url, timeout=30, poll_interval=1.0):
             return True
@@ -481,12 +518,14 @@ class TestCreateSandboxAsyncEviction:
 
 
 class TestWaitReady:
-    """Lines 28-37: wait_for_sandbox_ready."""
+    """wait_for_sandbox_ready polls a session until 200 or timeout."""
 
     def test_ready(self):
         from deerflow.community.aio_sandbox.backend import wait_for_sandbox_ready
 
-        with patch("deerflow.community.aio_sandbox.backend.requests.get", return_value=SimpleNamespace(status_code=200)):
+        with patch("deerflow.community.aio_sandbox.backend.requests.Session") as mock_session_cls:
+            session = mock_session_cls.return_value.__enter__.return_value
+            session.get.return_value = SimpleNamespace(status_code=200)
             with patch("deerflow.community.aio_sandbox.backend.time.sleep"):
                 assert wait_for_sandbox_ready("http://x:80", timeout=5) is True
 
@@ -504,7 +543,9 @@ class TestWaitReady:
             # so the while-loop condition is immediately False.
             return 0.0 if call_count == 1 else float("inf")
 
-        with patch("deerflow.community.aio_sandbox.backend.requests.get", side_effect=req_lib.exceptions.ConnectionError("refused")):
+        with patch("deerflow.community.aio_sandbox.backend.requests.Session") as mock_session_cls:
+            session = mock_session_cls.return_value.__enter__.return_value
+            session.get.side_effect = req_lib.exceptions.ConnectionError("refused")
             with patch("deerflow.community.aio_sandbox.backend.time.time", side_effect=fake_time):
                 with patch("deerflow.community.aio_sandbox.backend.time.sleep"):
                     assert wait_for_sandbox_ready("http://x:80", timeout=5) is False
@@ -519,7 +560,9 @@ class TestWaitReady:
             call_count += 1
             return 0.0 if call_count == 1 else float("inf")
 
-        with patch("deerflow.community.aio_sandbox.backend.requests.get", return_value=SimpleNamespace(status_code=503)):
+        with patch("deerflow.community.aio_sandbox.backend.requests.Session") as mock_session_cls:
+            session = mock_session_cls.return_value.__enter__.return_value
+            session.get.return_value = SimpleNamespace(status_code=503)
             with patch("deerflow.community.aio_sandbox.backend.time.time", side_effect=fake_time):
                 with patch("deerflow.community.aio_sandbox.backend.time.sleep"):
                     assert wait_for_sandbox_ready("http://x:80", timeout=5) is False
@@ -648,8 +691,8 @@ class TestImageSearchToolWrapper:
         from deerflow.community.image_search.tools import image_search_tool
 
         results = [
-            {"title": "A", "thumbnail": "http://a.jpg"},
-            {"title": "B", "thumbnail": "http://b.jpg"},
+            {"title": "A", "image": "http://a.jpg", "thumbnail": "http://a_t.jpg"},
+            {"title": "B", "image": "http://b.jpg", "thumbnail": "http://b_t.jpg"},
         ]
         with (
             patch("deerflow.community.image_search.tools.get_app_config") as mc,
@@ -660,6 +703,7 @@ class TestImageSearchToolWrapper:
         data = json.loads(result)
         assert data["total_results"] == 2
         assert data["results"][0]["image_url"] == "http://a.jpg"
+        assert data["results"][0]["thumbnail_url"] == "http://a_t.jpg"
 
 
 # ===================================================================
@@ -931,34 +975,41 @@ class TestOAuthExtraCoverage:
 
 
 class TestMcpCacheExtra:
-    """Lines 30, 111, 116-126, 134-136."""
+    """Extra coverage for the MCP tools cache."""
 
     def setup_method(self):
         import deerflow.mcp.cache as cm
 
         self.m = cm
         self._oi = cm._cache_initialized
-        self._om = cm._config_mtime
+        self._op = cm._config_path
+        self._os = cm._config_signature
         self._ot = cm._mcp_tools_cache
 
     def teardown_method(self):
         self.m._cache_initialized = self._oi
-        self.m._config_mtime = self._om
+        self.m._config_path = self._op
+        self.m._config_signature = self._os
         self.m._mcp_tools_cache = self._ot
 
-    def test_get_config_mtime_with_file(self, tmp_path):
+    def test_get_config_state_with_file(self, tmp_path):
         from deerflow.config.extensions_config import ExtensionsConfig
+        from deerflow.config.file_signature import get_config_signature
 
         f = tmp_path / "ext.json"
         f.write_text("{}")
         with patch.object(ExtensionsConfig, "resolve_config_path", return_value=f):
-            assert self.m._get_config_mtime() is not None
+            path, signature = self.m._current_config_state()
 
-    def test_get_config_mtime_no_file(self):
+        assert path == f
+        assert signature is not None
+        assert signature == get_config_signature(f)
+
+    def test_get_config_state_no_file(self):
         from deerflow.config.extensions_config import ExtensionsConfig
 
         with patch.object(ExtensionsConfig, "resolve_config_path", return_value=None):
-            assert self.m._get_config_mtime() is None
+            assert self.m._current_config_state() == (None, None)
 
     def test_thread_double_check(self):
         self.m._cache_initialized = True
@@ -1025,10 +1076,15 @@ class TestMcpCacheExtra:
     def test_no_loop_init_fails(self):
         self.m._cache_initialized = False
         self.m._mcp_tools_cache = None
+
+        def failing_run(coro):
+            coro.close()
+            raise RuntimeError("fail")
+
         with (
             patch("deerflow.mcp.cache._is_cache_stale", return_value=False),
             patch("asyncio.get_event_loop", side_effect=RuntimeError("no")),
-            patch("asyncio.run", side_effect=RuntimeError("fail")),
+            patch("asyncio.run", side_effect=failing_run),
         ):
             result = self.m.get_cached_mcp_tools()
         assert result == []

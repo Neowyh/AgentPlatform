@@ -9,29 +9,16 @@ that one user's update cannot mutate another user's agent.
 
 from __future__ import annotations
 
-import asyncio
-from collections.abc import AsyncIterator
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
-import pytest_asyncio
 import yaml
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-import app.agentplatform.audit_model  # noqa: F401 - register audit_logs
-import app.agentplatform.rbac_models  # noqa: F401 - register users_ext
-import app.agentplatform.resource_models  # noqa: F401 - register resource tables
-import app.agentplatform.visibility_models  # noqa: F401 - register visibility tables
-from app.agentplatform.rbac_models import UserModel
-from app.agentplatform.resource_models import Resource, ResourceDependency, ResourceVersion
-from deerflow.persistence.base import Base
-from deerflow.tools.builtins.setup_agent_tool import setup_agent
 from deerflow.tools.builtins.update_agent_tool import update_agent
 
-DEFAULT_USER = "test-user-autouse"  # matches the autouse fixture in tests/conftest.py
+DEFAULT_USER = "test-user"
 
 
 class _DummyRuntime(SimpleNamespace):
@@ -39,8 +26,11 @@ class _DummyRuntime(SimpleNamespace):
     tool_call_id: str
 
 
-def _runtime(agent_name: str | None = "test-agent", tool_call_id: str = "call_1") -> _DummyRuntime:
-    return _DummyRuntime(context={"agent_name": agent_name} if agent_name is not None else {}, tool_call_id=tool_call_id)
+def _runtime(agent_name: str | None = "test-agent", tool_call_id: str = "call_1", user_id: str = DEFAULT_USER) -> _DummyRuntime:
+    return _DummyRuntime(
+        context={"agent_name": agent_name, "user_id": user_id} if agent_name is not None else {"user_id": user_id},
+        tool_call_id=tool_call_id,
+    )
 
 
 def _make_paths_mock(tmp_path: Path) -> MagicMock:
@@ -53,7 +43,7 @@ def _make_paths_mock(tmp_path: Path) -> MagicMock:
     return paths
 
 
-def _user_agent_dir(tmp_path: Path, name: str = "test-agent", user_id: str = DEFAULT_USER) -> Path:
+def _agent_dir(tmp_path: Path, name: str = "test-agent", user_id: str = DEFAULT_USER) -> Path:
     return tmp_path / "users" / user_id / "agents" / name
 
 
@@ -67,7 +57,7 @@ def _seed_agent(
     user_id: str = DEFAULT_USER,
 ) -> Path:
     """Create a baseline agent dir with config.yaml and SOUL.md for tests to mutate."""
-    agent_dir = _user_agent_dir(tmp_path, name, user_id=user_id)
+    agent_dir = _agent_dir(tmp_path, name, user_id=user_id)
     agent_dir.mkdir(parents=True, exist_ok=True)
     cfg: dict = {"name": name, "description": description}
     if skills is not None:
@@ -81,7 +71,8 @@ def _seed_agent(
 def patched_paths(tmp_path: Path):
     paths_mock = _make_paths_mock(tmp_path)
     with patch("deerflow.tools.builtins.update_agent_tool.get_paths", return_value=paths_mock):
-        # load_agent_config also calls get_paths(); patch the same target it uses.
+        # load_agent_config and the file agent store also call get_paths(); patch
+        # the module that binds it so every read/write sees the tmp layout.
         with patch("deerflow.config.agents_config.get_paths", return_value=paths_mock):
             yield paths_mock
 
@@ -95,209 +86,102 @@ def stub_app_config():
         yield fake
 
 
-# --- Canonical catalog mode tests ---
-
-
-@pytest_asyncio.fixture
-async def catalog_db(tmp_path: Path) -> AsyncIterator[async_sessionmaker[AsyncSession]]:
-    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'catalog.db'}")
-    async with engine.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)
-    yield async_sessionmaker(engine, expire_on_commit=False)
-    await engine.dispose()
-
-
-def _seed_user(catalog_db: async_sessionmaker[AsyncSession]) -> None:
-    async def _seed() -> None:
-        async with catalog_db() as session:
-            session.add(UserModel(id=DEFAULT_USER, username=f"{DEFAULT_USER}@test.com", role="user", disabled=False))
-            await session.commit()
-
-    asyncio.run(_seed())
-
-
-def _seed_skill_resource(catalog_db: async_sessionmaker[AsyncSession], resource_id: str, slug: str) -> None:
-    async def _seed() -> None:
-        async with catalog_db() as session:
-            session.add(
-                Resource(
-                    id=resource_id,
-                    type="skill",
-                    slug=slug,
-                    display_name=slug,
-                    owner_id=DEFAULT_USER,
-                    visibility="private",
-                    lifecycle_status="active",
-                    storage_kind="filesystem",
-                    storage_key=f"skills/{resource_id}",
-                )
-            )
-            await session.commit()
-
-    asyncio.run(_seed())
-
-
-def _create_canonical_agent(tmp_path: Path, catalog_db: async_sessionmaker[AsyncSession], name: str, *, soul: str, description: str) -> str:
-    """Create a published canonical agent via setup_agent, returning its resource id."""
-    with (
-        patch("deerflow.tools.builtins.setup_agent_tool.get_session_factory", return_value=catalog_db),
-        patch("deerflow.tools.builtins.setup_agent_tool.get_paths", return_value=_make_paths_mock(tmp_path)),
-    ):
-        result = setup_agent.func(soul=soul, description=description, runtime=_runtime(agent_name=name))
-    return result.update["created_agent_resource_id"]
-
-
-def _published_dir(tmp_path: Path, resource_id: str, version: int) -> Path:
-    return tmp_path / "resources" / "agents" / resource_id / "versions" / str(version)
-
-
-def _assert_version(catalog_db: async_sessionmaker[AsyncSession], resource_id: str, version: int) -> None:
-    async def _assert() -> None:
-        async with catalog_db() as session:
-            resource = (await session.execute(select(Resource).where(Resource.id == resource_id))).scalar_one()
-            assert resource.latest_version == version
-            versions = (await session.execute(select(ResourceVersion).where(ResourceVersion.resource_id == resource_id))).scalars().all()
-            assert [item.version for item in versions] == list(range(1, version + 1))
-
-    asyncio.run(_assert())
-
-
-class TestUpdateAgentCanonical:
-    def test_canonical_mode_updates_fields_via_draft_and_publish(
+class TestUpdateAgentPartialUpdates:
+    def test_updates_fields_via_store(
         self,
         tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-        catalog_db: async_sessionmaker[AsyncSession],
+        patched_paths: MagicMock,
     ) -> None:
-        _seed_user(catalog_db)
-        resource_id = _create_canonical_agent(tmp_path, catalog_db, "canonical-agent", soul="# First Soul", description="First description")
+        agent_dir = _seed_agent(tmp_path, "canonical-agent", soul="# First Soul", description="First description")
 
-        with (
-            patch("deerflow.tools.builtins.update_agent_tool.get_session_factory", return_value=catalog_db),
-            patch("deerflow.tools.builtins.update_agent_tool.get_paths", return_value=_make_paths_mock(tmp_path)),
-        ):
-            result = update_agent.func(runtime=_runtime("canonical-agent"), soul="# Second Soul", description="Second description")
+        result = update_agent.func(runtime=_runtime("canonical-agent"), soul="# Second Soul", description="Second description")
 
-        assert "soul" in result.update["messages"][0].content
-        assert "description" in result.update["messages"][0].content
-        _assert_version(catalog_db, resource_id, version=2)
-        published = _published_dir(tmp_path, resource_id, 2)
-        assert (published / "SOUL.md").read_text(encoding="utf-8") == "# Second Soul"
-        cfg = yaml.safe_load((published / "config.yaml").read_text(encoding="utf-8"))
+        content = result.update["messages"][0].content
+        assert "soul" in content
+        assert "description" in content
+        assert (agent_dir / "SOUL.md").read_text(encoding="utf-8") == "# Second Soul"
+        cfg = yaml.safe_load((agent_dir / "config.yaml").read_text(encoding="utf-8"))
         assert cfg["description"] == "Second description"
-        assert not (tmp_path / "users" / DEFAULT_USER / "agents" / "canonical-agent").exists()
 
-    def test_canonical_mode_omitted_fields_are_preserved(
+    def test_omitted_fields_are_preserved(
         self,
         tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-        catalog_db: async_sessionmaker[AsyncSession],
+        patched_paths: MagicMock,
     ) -> None:
-        _seed_user(catalog_db)
-        resource_id = _create_canonical_agent(tmp_path, catalog_db, "canonical-agent", soul="# Keep Soul", description="Keep description")
+        agent_dir = _seed_agent(tmp_path, "canonical-agent", soul="# Keep Soul", description="Keep description")
 
-        with (
-            patch("deerflow.tools.builtins.update_agent_tool.get_session_factory", return_value=catalog_db),
-            patch("deerflow.tools.builtins.update_agent_tool.get_paths", return_value=_make_paths_mock(tmp_path)),
-        ):
-            result = update_agent.func(runtime=_runtime("canonical-agent"), description="Changed description")
+        result = update_agent.func(runtime=_runtime("canonical-agent"), description="Changed description")
 
-        assert "description" in result.update["messages"][0].content
-        assert "soul" not in result.update["messages"][0].content
-        published = _published_dir(tmp_path, resource_id, 2)
-        assert (published / "SOUL.md").read_text(encoding="utf-8") == "# Keep Soul"
-        cfg = yaml.safe_load((published / "config.yaml").read_text(encoding="utf-8"))
+        content = result.update["messages"][0].content
+        assert "description" in content
+        assert "soul" not in content
+        assert (agent_dir / "SOUL.md").read_text(encoding="utf-8") == "# Keep Soul"
+        cfg = yaml.safe_load((agent_dir / "config.yaml").read_text(encoding="utf-8"))
         assert cfg["description"] == "Changed description"
 
-    def test_canonical_mode_resolves_skill_dependencies(
+    def test_skills_persist_plain_names(
         self,
         tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-        catalog_db: async_sessionmaker[AsyncSession],
+        patched_paths: MagicMock,
     ) -> None:
-        _seed_user(catalog_db)
-        _seed_skill_resource(catalog_db, "77777777-7777-7777-7777-777777777777", "research")
-        resource_id = _create_canonical_agent(tmp_path, catalog_db, "canonical-agent", soul="# Skillful", description="desc")
+        """Skill allowlists are stored as plain names and resolved at load time."""
+        agent_dir = _seed_agent(tmp_path, "canonical-agent", soul="# Skillful", description="desc")
 
-        with (
-            patch("deerflow.tools.builtins.update_agent_tool.get_session_factory", return_value=catalog_db),
-            patch("deerflow.tools.builtins.update_agent_tool.get_paths", return_value=_make_paths_mock(tmp_path)),
-        ):
-            result = update_agent.func(runtime=_runtime("canonical-agent"), skills=["research"])
+        result = update_agent.func(runtime=_runtime("canonical-agent"), skills=["research"])
 
-        assert "skills" in result.update["messages"][0].content
-        cfg = yaml.safe_load((_published_dir(tmp_path, resource_id, 2) / "config.yaml").read_text(encoding="utf-8"))
-        assert cfg["skills"] == ["77777777-7777-7777-7777-777777777777"]
+        content = result.update["messages"][0].content
+        assert "skills" in content
+        cfg = yaml.safe_load((agent_dir / "config.yaml").read_text(encoding="utf-8"))
+        assert cfg["skills"] == ["research"]
 
-        async def _read_dependencies() -> list[str]:
-            async with catalog_db() as session:
-                dependencies = (await session.execute(select(ResourceDependency).where(ResourceDependency.source_resource_id == resource_id))).scalars().all()
-                return [dependency.target_resource_id for dependency in dependencies]
-
-        assert asyncio.run(_read_dependencies()) == ["77777777-7777-7777-7777-777777777777"]
-
-    def test_canonical_mode_skills_omitted_keeps_existing_dependencies(
+    def test_skills_omitted_keeps_existing_allowlist(
         self,
         tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-        catalog_db: async_sessionmaker[AsyncSession],
+        patched_paths: MagicMock,
     ) -> None:
-        _seed_user(catalog_db)
-        _seed_skill_resource(catalog_db, "77777777-7777-7777-7777-777777777777", "research")
-        resource_id = _create_canonical_agent(tmp_path, catalog_db, "canonical-agent", soul="# Skillful", description="desc")
+        agent_dir = _seed_agent(tmp_path, "canonical-agent", soul="# Skillful", description="desc", skills=["research"])
 
-        with (
-            patch("deerflow.tools.builtins.update_agent_tool.get_session_factory", return_value=catalog_db),
-            patch("deerflow.tools.builtins.update_agent_tool.get_paths", return_value=_make_paths_mock(tmp_path)),
-        ):
-            update_agent.func(runtime=_runtime("canonical-agent"), skills=["research"])
-            update_agent.func(runtime=_runtime("canonical-agent"), description="bumped")
+        update_agent.func(runtime=_runtime("canonical-agent"), description="bumped")
 
-        cfg = yaml.safe_load((_published_dir(tmp_path, resource_id, 3) / "config.yaml").read_text(encoding="utf-8"))
-        assert cfg["skills"] == ["77777777-7777-7777-7777-777777777777"], "omitting skills must preserve the existing dependency list"
+        cfg = yaml.safe_load((agent_dir / "config.yaml").read_text(encoding="utf-8"))
+        assert cfg["skills"] == ["research"], "omitting skills must preserve the existing allowlist"
 
-    def test_canonical_mode_no_op_when_values_match(
+    def test_no_op_when_values_match(
         self,
         tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-        catalog_db: async_sessionmaker[AsyncSession],
+        patched_paths: MagicMock,
     ) -> None:
-        _seed_user(catalog_db)
-        resource_id = _create_canonical_agent(tmp_path, catalog_db, "canonical-agent", soul="# Soul", description="Same description")
+        agent_dir = _seed_agent(tmp_path, "canonical-agent", soul="# Soul", description="Same description")
 
-        with (
-            patch("deerflow.tools.builtins.update_agent_tool.get_session_factory", return_value=catalog_db),
-            patch("deerflow.tools.builtins.update_agent_tool.get_paths", return_value=_make_paths_mock(tmp_path)),
-        ):
-            result = update_agent.func(runtime=_runtime("canonical-agent"), description="Same description")
+        result = update_agent.func(runtime=_runtime("canonical-agent"), description="Same description")
 
         assert "No changes applied" in result.update["messages"][0].content
-        _assert_version(catalog_db, resource_id, version=1)
+        cfg = yaml.safe_load((agent_dir / "config.yaml").read_text(encoding="utf-8"))
+        assert cfg["description"] == "Same description"
 
-    def test_canonical_mode_unknown_agent_returns_error(
+    def test_unknown_agent_returns_error(
         self,
         tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-        catalog_db: async_sessionmaker[AsyncSession],
+        patched_paths: MagicMock,
     ) -> None:
-        _seed_user(catalog_db)
+        result = update_agent.func(runtime=_runtime("ghost-agent"), description="x")
 
-        with (
-            patch("deerflow.tools.builtins.update_agent_tool.get_session_factory", return_value=catalog_db),
-            patch("deerflow.tools.builtins.update_agent_tool.get_paths", return_value=_make_paths_mock(tmp_path)),
-        ):
-            result = update_agent.func(runtime=_runtime("ghost-agent"), description="x")
+        content = result.update["messages"][0].content
+        assert "Error" in content
+        assert "ghost-agent" in content
 
-        assert "Error" in result.update["messages"][0].content
-        assert "ghost-agent" in result.update["messages"][0].content
-
-    def test_canonical_mode_without_database_returns_error(
+    def test_store_failure_returns_error(
         self,
         tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
+        patched_paths: MagicMock,
     ) -> None:
+        _seed_agent(tmp_path, "canonical-agent", soul="# Soul", description="desc")
 
-        with patch("deerflow.tools.builtins.update_agent_tool.get_session_factory", return_value=None):
-            result = update_agent.func(runtime=_runtime("canonical-agent"), description="x")
+        failing_store = MagicMock()
+        failing_store.update.side_effect = RuntimeError("disk full")
+        with patch("deerflow.tools.builtins.update_agent_tool.get_agent_store", return_value=failing_store):
+            result = update_agent.func(runtime=_runtime("canonical-agent"), description="changed")
 
-        assert "Error" in result.update["messages"][0].content
+        content = result.update["messages"][0].content
+        assert "Error" in content
+        assert "Failed to update agent" in content

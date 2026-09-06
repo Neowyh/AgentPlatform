@@ -3,23 +3,11 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
-import pytest_asyncio
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-
-import app.agentplatform.audit_model  # noqa: F401 - register audit_logs
-import app.agentplatform.rbac_models  # noqa: F401 - register users_ext
-import app.agentplatform.resource_models  # noqa: F401 - register resource tables
-import app.agentplatform.visibility_models  # noqa: F401 - register visibility tables
-from app.agentplatform.rbac_models import UserModel
-from app.agentplatform.resource_models import Resource, ResourceVersion
-from deerflow.persistence.base import Base
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -30,38 +18,21 @@ def _skill_content(name: str, description: str = "Demo skill") -> str:
     return f"---\nname: {name}\ndescription: {description}\n---\n\n# {name}\n"
 
 
-def _make_runtime(thread_id: str = "t-1") -> SimpleNamespace:
+def _make_runtime(thread_id: str = "t-1", user_id: str = "test-user") -> SimpleNamespace:
     """Build a minimal Runtime-like object."""
     return SimpleNamespace(
-        context={"thread_id": thread_id},
+        context={"thread_id": thread_id, "user_id": user_id},
         config={"configurable": {"thread_id": thread_id}},
     )
-
-
-def _make_storage() -> MagicMock:
-    """Build a mock SkillStorage with sensible defaults."""
-    s = MagicMock()
-    s.validate_skill_name = MagicMock(side_effect=lambda n: n)
-    s.custom_skill_exists = MagicMock(return_value=False)
-    s.public_skill_exists = MagicMock(return_value=False)
-    s.ensure_custom_skill_is_editable = MagicMock()
-    s.validate_skill_markdown_content = MagicMock()
-    s.write_custom_skill = MagicMock()
-    s.append_history = MagicMock()
-    s.delete_custom_skill = MagicMock()
-    s.get_custom_skill_file = MagicMock()
-    s.ensure_safe_support_path = MagicMock()
-    return s
 
 
 def _make_scan_result(decision: str = "allow", reason: str = "ok"):
     return SimpleNamespace(decision=decision, reason=reason)
 
 
-def _async_result(decision: str, reason: str):
-    from deerflow.skills.security_scanner import ScanResult
-
-    return ScanResult(decision=decision, reason=reason)
+def _user_custom_root(tmp_path: Path) -> Path:
+    """Custom-skill root for the test user inside the isolated base dir."""
+    return tmp_path / "users" / "test-user" / "skills" / "custom"
 
 
 # ---------------------------------------------------------------------------
@@ -70,16 +41,25 @@ def _async_result(decision: str, reason: str):
 
 
 @pytest.fixture(autouse=True)
-def _patch_deps():
-    """Patch heavy dependencies for every test in this module."""
+def _patch_deps(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Isolate config paths and patch the async/model dependencies.
+
+    The storage itself stays real (UserScopedSkillStorage over tmp_path) so the
+    tool's filesystem behaviour is exercised end to end; only the LLM security
+    scan and the prompt-cache refresh are mocked.
+    """
+    from deerflow.config.paths import Paths
+    from deerflow.skills.storage.user_scoped_skill_storage import UserScopedSkillStorage
+
+    paths = Paths(base_dir=tmp_path)
+    monkeypatch.setattr("deerflow.config.paths.get_paths", lambda: paths)
+    storage = UserScopedSkillStorage("test-user", host_path=str(tmp_path))
+
     with (
-        patch("deerflow.tools.skill_manage_tool.get_or_new_skill_storage") as mock_storage_fn,
+        patch("deerflow.tools.skill_manage_tool.get_or_new_user_skill_storage", return_value=storage),
         patch("deerflow.tools.skill_manage_tool.scan_skill_content", new_callable=AsyncMock) as mock_scan,
-        patch("deerflow.tools.skill_manage_tool.refresh_skills_system_prompt_cache_async", new_callable=AsyncMock) as mock_refresh,
-        patch("deerflow.tools.skill_manage_tool.SKILL_MD_FILE", "SKILL.md"),
+        patch("deerflow.tools.skill_manage_tool.refresh_user_skills_system_prompt_cache_async", new_callable=AsyncMock) as mock_refresh,
     ):
-        storage = _make_storage()
-        mock_storage_fn.return_value = storage
         mock_scan.return_value = _make_scan_result()
         yield SimpleNamespace(
             storage=storage,
@@ -108,17 +88,23 @@ from deerflow.tools.skill_manage_tool import (  # noqa: E402
 
 class TestGetLock:
     def test_returns_lock_for_name(self):
-        lock = _get_lock("my-skill")
+        lock = _get_lock("test-user", "my-skill")
         assert isinstance(lock, asyncio.Lock)
 
     def test_same_lock_for_same_name(self):
-        a = _get_lock("same")
-        b = _get_lock("same")
+        a = _get_lock("test-user", "same")
+        b = _get_lock("test-user", "same")
         assert a is b
 
     def test_different_locks_for_different_names(self):
-        a = _get_lock("alpha")
-        b = _get_lock("beta")
+        a = _get_lock("test-user", "alpha")
+        b = _get_lock("test-user", "beta")
+        assert a is not b
+
+    def test_different_locks_for_different_users(self):
+        """Lock granularity is (user_id, skill_name) to avoid cross-user blocking."""
+        a = _get_lock("user-1", "shared")
+        b = _get_lock("user-2", "shared")
         assert a is not b
 
 
@@ -232,214 +218,97 @@ class TestToThread:
         result = await _to_thread(add, 3, 4)
         assert result == 7
 
-    # ===================================================================
-    # _skill_manage_impl — action: create
-    # ===================================================================
-
     def test_concurrent_same_name_same_lock(self):
-        lock_a = _get_lock("concurrent-skill")
-        lock_b = _get_lock("concurrent-skill")
+        lock_a = _get_lock("test-user", "concurrent-skill")
+        lock_b = _get_lock("test-user", "concurrent-skill")
         assert lock_a is lock_b
 
     def test_weakref_allows_gc(self):
         """Locks are stored in WeakValueDictionary — unreferenced locks can be GC'd."""
         import gc
 
-        _get_lock("gc-test")
+        _get_lock("test-user", "gc-test")
         gc.collect()
         # After GC, a new lock may be created (not guaranteed, but no crash)
-        lock = _get_lock("gc-test")
+        lock = _get_lock("test-user", "gc-test")
         assert isinstance(lock, asyncio.Lock)
 
 
 # ===================================================================
-# Canonical catalog mode
+# skill_manage_tool — filesystem behaviour via a real user-scoped storage
 # ===================================================================
 
 
-@pytest_asyncio.fixture
-async def _catalog_db(tmp_path: Path) -> AsyncIterator[async_sessionmaker[AsyncSession]]:
-    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'catalog.db'}")
-    async with engine.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)
-    yield async_sessionmaker(engine, expire_on_commit=False)
-    await engine.dispose()
-
-
-async def _seed_user_canonical(catalog_db: async_sessionmaker[AsyncSession]) -> None:
-    async with catalog_db() as session:
-        session.add(UserModel(id="test-user-autouse", username="test-user-autouse@test.com", role="user", disabled=False))
-        await session.commit()
-
-
-def _skill_root(tmp_path: Path, resource_id: str) -> Path:
-    return tmp_path / "resources" / "skills" / resource_id
-
-
-async def _resolve_skill_resource(catalog_db: async_sessionmaker[AsyncSession], slug: str) -> Resource:
-    async with catalog_db() as session:
-        resource = (await session.execute(select(Resource).where(Resource.type == "skill", Resource.slug == slug))).scalar_one()
-        return resource
-
-
-async def _published_skill(tmp_path: Path, catalog_db: async_sessionmaker[AsyncSession], slug: str) -> tuple[str, Path]:
-    resource = await _resolve_skill_resource(catalog_db, slug)
-    async with catalog_db() as session:
-        versions = (await session.execute(select(ResourceVersion).where(ResourceVersion.resource_id == resource.id))).scalars().all()
-        version = max(item.version for item in versions)
-    return resource.id, _skill_root(tmp_path, resource.id) / "versions" / str(version)
-
-
-class TestSkillManageCanonical:
+class TestSkillManageFilesystem:
     @pytest.mark.asyncio
-    async def test_create_publishes_skill(
-        self,
-        tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-        _catalog_db: async_sessionmaker[AsyncSession],
-        _patch_deps,
-    ) -> None:
-        await _seed_user_canonical(_catalog_db)
-
-        with patch("deerflow.tools.skill_manage_tool.get_session_factory", return_value=_catalog_db):
-            with patch("deerflow.config.paths.get_paths", return_value=SimpleNamespace(base_dir=tmp_path)):
-                result = await skill_manage_tool.coroutine(
-                    runtime=_make_runtime(),
-                    action="create",
-                    name="my-skill",
-                    content=_skill_content("my-skill"),
-                )
+    async def test_create_publishes_skill(self, tmp_path: Path) -> None:
+        result = await skill_manage_tool.coroutine(
+            runtime=_make_runtime(),
+            action="create",
+            name="my-skill",
+            content=_skill_content("my-skill"),
+        )
 
         assert result == "Created custom skill 'my-skill'."
-        resource_id, published = await _published_skill(tmp_path, _catalog_db, "my-skill")
-        assert (published / "SKILL.md").read_text(encoding="utf-8") == _skill_content("my-skill")
-        assert not (tmp_path / "skills" / "custom" / "my-skill").exists()
+        published = _user_custom_root(tmp_path) / "my-skill" / "SKILL.md"
+        assert published.read_text(encoding="utf-8") == _skill_content("my-skill")
 
     @pytest.mark.asyncio
-    async def test_create_rejects_existing_skill(
-        self,
-        tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-        _catalog_db: async_sessionmaker[AsyncSession],
-        _patch_deps,
-    ) -> None:
-        await _seed_user_canonical(_catalog_db)
-
-        with patch("deerflow.tools.skill_manage_tool.get_session_factory", return_value=_catalog_db):
-            with patch("deerflow.config.paths.get_paths", return_value=SimpleNamespace(base_dir=tmp_path)):
-                await skill_manage_tool.coroutine(runtime=_make_runtime(), action="create", name="my-skill", content=_skill_content("my-skill"))
-                with pytest.raises(ValueError, match="already exists"):
-                    await skill_manage_tool.coroutine(runtime=_make_runtime(), action="create", name="my-skill", content=_skill_content("my-skill"))
+    async def test_create_rejects_existing_skill(self) -> None:
+        await skill_manage_tool.coroutine(runtime=_make_runtime(), action="create", name="my-skill", content=_skill_content("my-skill"))
+        with pytest.raises(ValueError, match="already exists"):
+            await skill_manage_tool.coroutine(runtime=_make_runtime(), action="create", name="my-skill", content=_skill_content("my-skill"))
 
     @pytest.mark.asyncio
-    async def test_edit_publishes_new_version(
-        self,
-        tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-        _catalog_db: async_sessionmaker[AsyncSession],
-        _patch_deps,
-    ) -> None:
-        await _seed_user_canonical(_catalog_db)
-
-        with patch("deerflow.tools.skill_manage_tool.get_session_factory", return_value=_catalog_db):
-            with patch("deerflow.config.paths.get_paths", return_value=SimpleNamespace(base_dir=tmp_path)):
-                await skill_manage_tool.coroutine(runtime=_make_runtime(), action="create", name="my-skill", content=_skill_content("my-skill"))
-                result = await skill_manage_tool.coroutine(
-                    runtime=_make_runtime(),
-                    action="edit",
-                    name="my-skill",
-                    content=_skill_content("my-skill", description="Edited"),
-                )
+    async def test_edit_updates_skill_and_records_history(self, _patch_deps) -> None:
+        await skill_manage_tool.coroutine(runtime=_make_runtime(), action="create", name="my-skill", content=_skill_content("my-skill"))
+        result = await skill_manage_tool.coroutine(
+            runtime=_make_runtime(),
+            action="edit",
+            name="my-skill",
+            content=_skill_content("my-skill", description="Edited"),
+        )
 
         assert result == "Updated custom skill 'my-skill'."
-        resource_id, published = await _published_skill(tmp_path, _catalog_db, "my-skill")
-        assert (published / "SKILL.md").read_text(encoding="utf-8") == _skill_content("my-skill", description="Edited")
-        assert _skill_root(tmp_path, resource_id).joinpath("versions", "1").exists(), "previous version must be retained"
+        history = _patch_deps.storage.read_history("my-skill")
+        assert [record["action"] for record in history] == ["create", "edit"], "previous version must be retained in history"
+        assert history[-1]["prev_content"] == _skill_content("my-skill")
 
     @pytest.mark.asyncio
-    async def test_patch_applies_replacement(
-        self,
-        tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-        _catalog_db: async_sessionmaker[AsyncSession],
-        _patch_deps,
-    ) -> None:
-        await _seed_user_canonical(_catalog_db)
-
-        with patch("deerflow.tools.skill_manage_tool.get_session_factory", return_value=_catalog_db):
-            with patch("deerflow.config.paths.get_paths", return_value=SimpleNamespace(base_dir=tmp_path)):
-                await skill_manage_tool.coroutine(runtime=_make_runtime(), action="create", name="my-skill", content=_skill_content("my-skill"))
-                result = await skill_manage_tool.coroutine(runtime=_make_runtime(), action="patch", name="my-skill", find="Demo skill", replace="Patched skill")
+    async def test_patch_applies_replacement(self, tmp_path: Path) -> None:
+        await skill_manage_tool.coroutine(runtime=_make_runtime(), action="create", name="my-skill", content=_skill_content("my-skill"))
+        result = await skill_manage_tool.coroutine(runtime=_make_runtime(), action="patch", name="my-skill", find="Demo skill", replace="Patched skill")
 
         assert "1 replacement(s)" in result
-        _, published = await _published_skill(tmp_path, _catalog_db, "my-skill")
-        assert "Patched skill" in (published / "SKILL.md").read_text(encoding="utf-8")
+        published = _user_custom_root(tmp_path) / "my-skill" / "SKILL.md"
+        assert "Patched skill" in published.read_text(encoding="utf-8")
 
     @pytest.mark.asyncio
-    async def test_write_file_and_remove_file(
-        self,
-        tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-        _catalog_db: async_sessionmaker[AsyncSession],
-        _patch_deps,
-    ) -> None:
-        await _seed_user_canonical(_catalog_db)
+    async def test_write_file_and_remove_file(self, tmp_path: Path) -> None:
+        await skill_manage_tool.coroutine(runtime=_make_runtime(), action="create", name="my-skill", content=_skill_content("my-skill"))
+        await skill_manage_tool.coroutine(runtime=_make_runtime(), action="write_file", name="my-skill", path="templates/letter.md", content="# Letter")
 
-        with patch("deerflow.tools.skill_manage_tool.get_session_factory", return_value=_catalog_db):
-            with patch("deerflow.config.paths.get_paths", return_value=SimpleNamespace(base_dir=tmp_path)):
-                await skill_manage_tool.coroutine(runtime=_make_runtime(), action="create", name="my-skill", content=_skill_content("my-skill"))
-                await skill_manage_tool.coroutine(runtime=_make_runtime(), action="write_file", name="my-skill", path="templates/letter.md", content="# Letter")
+        skill_dir = _user_custom_root(tmp_path) / "my-skill"
+        assert (skill_dir / "templates" / "letter.md").read_text(encoding="utf-8") == "# Letter"
 
-                _, published = await _published_skill(tmp_path, _catalog_db, "my-skill")
-                assert (published / "templates" / "letter.md").read_text(encoding="utf-8") == "# Letter"
-
-                await skill_manage_tool.coroutine(runtime=_make_runtime(), action="remove_file", name="my-skill", path="templates/letter.md")
-                _, published = await _published_skill(tmp_path, _catalog_db, "my-skill")
-                assert not (published / "templates" / "letter.md").exists()
-                assert (published / "SKILL.md").exists(), "SKILL.md must survive a support-file removal"
+        await skill_manage_tool.coroutine(runtime=_make_runtime(), action="remove_file", name="my-skill", path="templates/letter.md")
+        assert not (skill_dir / "templates" / "letter.md").exists()
+        assert (skill_dir / "SKILL.md").exists(), "SKILL.md must survive a support-file removal"
 
     @pytest.mark.asyncio
-    async def test_delete_archives_resource(
-        self,
-        tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-        _catalog_db: async_sessionmaker[AsyncSession],
-        _patch_deps,
-    ) -> None:
-        await _seed_user_canonical(_catalog_db)
-
-        with patch("deerflow.tools.skill_manage_tool.get_session_factory", return_value=_catalog_db):
-            with patch("deerflow.config.paths.get_paths", return_value=SimpleNamespace(base_dir=tmp_path)):
-                await skill_manage_tool.coroutine(runtime=_make_runtime(), action="create", name="my-skill", content=_skill_content("my-skill"))
-                result = await skill_manage_tool.coroutine(runtime=_make_runtime(), action="delete", name="my-skill")
+    async def test_delete_removes_custom_skill(self, tmp_path: Path) -> None:
+        await skill_manage_tool.coroutine(runtime=_make_runtime(), action="create", name="my-skill", content=_skill_content("my-skill"))
+        result = await skill_manage_tool.coroutine(runtime=_make_runtime(), action="delete", name="my-skill")
 
         assert result == "Deleted custom skill 'my-skill'."
-        resource = await _resolve_skill_resource(_catalog_db, "my-skill")
-        assert resource.lifecycle_status == "archived"
+        assert not (_user_custom_root(tmp_path) / "my-skill").exists()
 
     @pytest.mark.asyncio
-    async def test_edit_unknown_skill_raises(
-        self,
-        tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-        _catalog_db: async_sessionmaker[AsyncSession],
-        _patch_deps,
-    ) -> None:
-        await _seed_user_canonical(_catalog_db)
-
-        with patch("deerflow.tools.skill_manage_tool.get_session_factory", return_value=_catalog_db):
-            with patch("deerflow.config.paths.get_paths", return_value=SimpleNamespace(base_dir=tmp_path)):
-                with pytest.raises(ValueError, match="does not exist"):
-                    await skill_manage_tool.coroutine(runtime=_make_runtime(), action="edit", name="ghost-skill", content="# Ghost")
+    async def test_edit_unknown_skill_raises(self) -> None:
+        with pytest.raises(FileNotFoundError, match="not found"):
+            await skill_manage_tool.coroutine(runtime=_make_runtime(), action="edit", name="ghost-skill", content="# Ghost")
 
     @pytest.mark.asyncio
-    async def test_without_database_raises(
-        self,
-        tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-        _patch_deps,
-    ) -> None:
-
-        with patch("deerflow.tools.skill_manage_tool.get_session_factory", return_value=None):
-            with pytest.raises(RuntimeError, match="persistence is unavailable"):
-                await skill_manage_tool.coroutine(runtime=_make_runtime(), action="create", name="my-skill", content="# X")
+    async def test_unsupported_action_raises(self) -> None:
+        with pytest.raises(ValueError, match="Unsupported action"):
+            await skill_manage_tool.coroutine(runtime=_make_runtime(), action="frobnicate", name="my-skill")

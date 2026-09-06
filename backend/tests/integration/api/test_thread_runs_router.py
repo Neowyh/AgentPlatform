@@ -28,7 +28,7 @@ from app.gateway.routers.thread_runs import (
     _record_to_response,
     _response_with_message_summary,
 )
-from deerflow.runtime import RunRecord, RunStatus
+from deerflow.runtime import CancelOutcome, RunRecord, RunStatus
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -389,7 +389,8 @@ class TestStreamExistingRun:
 
         rm = MagicMock()
         rm.get = AsyncMock(return_value=record)
-        rm.cancel = AsyncMock(return_value=True)
+        # cancel() returns the upstream CancelOutcome enum, not a bool.
+        rm.cancel = AsyncMock(return_value=CancelOutcome.cancelled)
         mock_get_rm.return_value = rm
 
         app = _make_app()
