@@ -23,9 +23,12 @@ test("renaming a thread updates the sidebar, header, and document title", async 
   await expect(page.getByText(ORIGINAL_TITLE).first()).toBeVisible({
     timeout: 15_000,
   });
-  await expect(page).toHaveTitle(`${ORIGINAL_TITLE} - DeerFlow`);
+  await expect(page).toHaveTitle(`${ORIGINAL_TITLE} - iDeer`);
 
+  // Scope to the sidebar thread list: the workbench recent-summary mirrors
+  // the same link and updates on a different data path.
   const threadItem = page
+    .getByTestId("thread-list")
     .locator(
       `a[data-sidebar="menu-button"][href="/workspace/chats/${THREAD_ID}"]`,
     )
@@ -41,14 +44,14 @@ test("renaming a thread updates the sidebar, header, and document title", async 
   await expect(dialog).toBeHidden();
   await expect(threadItem).toContainText(RENAMED_TITLE);
   await expect(page.locator("header").getByText(RENAMED_TITLE)).toBeVisible();
-  await expect(page).toHaveTitle(`${RENAMED_TITLE} - DeerFlow`);
+  await expect(page).toHaveTitle(`${RENAMED_TITLE} - iDeer`);
 
   await page.reload();
   await expect(threadItem).toContainText(RENAMED_TITLE);
   await expect(page.locator("header").getByText(RENAMED_TITLE)).toBeVisible({
     timeout: 15_000,
   });
-  await expect(page).toHaveTitle(`${RENAMED_TITLE} - DeerFlow`);
+  await expect(page).toHaveTitle(`${RENAMED_TITLE} - iDeer`);
 });
 
 test("a stale metadata response cannot restore the old title after rename", async ({
@@ -145,7 +148,10 @@ test("a stale metadata response cannot restore the old title after rename", asyn
     .click();
   await staleMetadataRequestStarted;
 
+  // Scope to the sidebar thread list: the workbench recent-summary mirrors
+  // the same link and updates on a different data path.
   const threadItem = page
+    .getByTestId("thread-list")
     .locator(
       `a[data-sidebar="menu-button"][href="/workspace/chats/${THREAD_ID}"]`,
     )
@@ -161,7 +167,7 @@ test("a stale metadata response cannot restore the old title after rename", asyn
   await expect(dialog).toBeHidden();
   await expect(threadItem).toContainText(RENAMED_TITLE);
   await expect(page.locator("header").getByText(RENAMED_TITLE)).toBeVisible();
-  await expect(page).toHaveTitle(`${RENAMED_TITLE} - DeerFlow`);
+  await expect(page).toHaveTitle(`${RENAMED_TITLE} - iDeer`);
 
   releaseStaleMetadataResponse();
   await staleMetadataResponseCompleted;
@@ -176,7 +182,7 @@ test("a stale metadata response cannot restore the old title after rename", asyn
   // The title must remain renamed without relying on the refetch to repair it.
   await expect(threadItem).toContainText(RENAMED_TITLE);
   await expect(page.locator("header").getByText(RENAMED_TITLE)).toBeVisible();
-  await expect(page).toHaveTitle(`${RENAMED_TITLE} - DeerFlow`);
+  await expect(page).toHaveTitle(`${RENAMED_TITLE} - iDeer`);
 
   await freshMetadataRequestStarted;
   releaseFreshMetadataResponse();
@@ -184,5 +190,5 @@ test("a stale metadata response cannot restore the old title after rename", asyn
 
   await expect(threadItem).toContainText(RENAMED_TITLE);
   await expect(page.locator("header").getByText(RENAMED_TITLE)).toBeVisible();
-  await expect(page).toHaveTitle(`${RENAMED_TITLE} - DeerFlow`);
+  await expect(page).toHaveTitle(`${RENAMED_TITLE} - iDeer`);
 });

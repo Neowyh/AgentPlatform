@@ -424,11 +424,35 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
   void page.route(
     /\/(?:api\/langgraph|mock\/api)\/threads\/search$/,
     (route) => {
-      const body = threads.map((t) => ({
+      // Honor the limit/offset pagination contract of POST /threads/search so
+      // useInfiniteThreads actually pages (a full dump would make the first
+      // page contain every thread and the second fetch a no-op).
+      const request = route.request().postDataJSON() as {
+        limit?: number;
+        offset?: number;
+      } | null;
+      const offset = Math.max(0, request?.offset ?? 0);
+      const limit =
+        request?.limit === undefined
+          ? threads.length
+          : Math.max(0, request.limit);
+      // The gateway keeps pinned threads in the first page regardless of
+      // recency, so the mock sorts them before slicing.
+      const isPinned = (t: (typeof threads)[number]) =>
+        t.metadata?.[THREAD_PINNED_METADATA_KEY] === true;
+      const orderedThreads = [...threads].sort(
+        (a, b) =>
+          Number(isPinned(b)) - Number(isPinned(a)) ||
+          Date.parse(b.updated_at ?? "0") - Date.parse(a.updated_at ?? "0"),
+      );
+      const body = orderedThreads.slice(offset, offset + limit).map((t) => ({
         thread_id: t.thread_id,
         created_at: "2025-01-01T00:00:00Z",
         updated_at: t.updated_at ?? "2025-01-01T00:00:00Z",
-        metadata: t.agent_name ? { agent_name: t.agent_name } : {},
+        metadata: {
+          ...(t.metadata ?? {}),
+          ...(t.agent_name ? { agent_name: t.agent_name } : {}),
+        },
         status: "idle",
         values: { title: t.title ?? "Untitled" },
       }));
@@ -459,20 +483,51 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
     return route.fallback();
   });
 
-  // Thread update (PATCH) — metadata update after creation
-  void page.route(
-    /\/(?:api\/langgraph|mock\/api)\/threads\/[^/]+$/,
-    (route) => {
-      if (route.request().method() === "PATCH") {
-        return route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify({ thread_id: MOCK_THREAD_ID }),
-        });
+  // Thread update (PATCH) — metadata update after creation.
+  // The metadata patch must be written back into the seeded thread so a
+  // refetch (the pin mutation invalidates the thread queries) still sees it.
+  void page.route(/\/threads\/([^/]+)$/, (route) => {
+    if (route.request().method() === "GET") {
+      const url = new URL(route.request().url());
+      const threadId = decodeURIComponent(url.pathname.split("/").pop() ?? "");
+      const seeded = threads.find((t) => t.thread_id === threadId);
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          thread_id: threadId,
+          created_at: "2025-01-01T00:00:00Z",
+          updated_at: seeded?.updated_at ?? "2025-01-01T00:00:00Z",
+          metadata: seeded?.metadata ?? {},
+          status: "idle",
+          values: { title: seeded?.title ?? "Untitled" },
+        }),
+      });
+    }
+    if (route.request().method() === "PATCH") {
+      const url = new URL(route.request().url());
+      const threadId = decodeURIComponent(url.pathname.split("/").pop() ?? "");
+      const body = route.request().postDataJSON() as {
+        metadata?: Record<string, unknown>;
+      } | null;
+      const seeded = threads.find((t) => t.thread_id === threadId);
+      if (seeded) {
+        seeded.metadata = {
+          ...(seeded.metadata ?? {}),
+          ...(body?.metadata ?? {}),
+        };
       }
-      return route.fallback();
-    },
-  );
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          thread_id: threadId,
+          metadata: { ...(seeded?.metadata ?? {}), ...(body?.metadata ?? {}) },
+        }),
+      });
+    }
+    return route.fallback();
+  });
 
   // Thread history — useStream fetches state history on mount
   void page.route(
@@ -522,10 +577,30 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
     },
   );
 
-  // Thread state — getState for individual thread
+  // Thread state — getState for individual thread; POST is updateState
+  // (e.g. the rename flow) and must write the new values back into the seed
+  // so post-invalidation refetches observe them.
   void page.route(
-    /\/(?:api\/langgraph|mock\/api)\/threads\/[^/]+\/state$/,
+    /\/(?:api\/langgraph|mock\/api)\/threads\/([^/]+)\/state$/,
     (route) => {
+      if (route.request().method() === "POST") {
+        const url = new URL(route.request().url());
+        const threadId = decodeURIComponent(
+          url.pathname.split("/").at(-2) ?? "",
+        );
+        const body = route.request().postDataJSON() as {
+          values?: { title?: string };
+        } | null;
+        const seeded = threads.find((t) => t.thread_id === threadId);
+        if (seeded && body?.values?.title) {
+          seeded.title = body.values.title;
+        }
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ values: body?.values ?? {} }),
+        });
+      }
       if (route.request().method() === "GET") {
         const url = route.request().url();
         const matchingThread = threads.find((t) => url.includes(t.thread_id));

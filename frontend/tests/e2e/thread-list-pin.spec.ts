@@ -6,7 +6,10 @@ const NEWEST_THREAD_ID = "00000000-0000-0000-0000-000000000901";
 const OLDER_THREAD_ID = "00000000-0000-0000-0000-000000000902";
 
 async function recentChatTitles(page: Page) {
+  // Scope to the sidebar thread list: the workbench recent-summary mirrors
+  // the same titles and would pollute the ordering assertions.
   return page
+    .getByTestId("thread-list")
     .locator('a[data-sidebar="menu-button"][href^="/workspace/chats/"]')
     .evaluateAll((links) =>
       links
@@ -88,7 +91,9 @@ test("server-side search keeps old pinned chats in the first page", async ({
 
   await page.goto("/workspace/chats/new");
 
-  await expect(page.getByText("Old pinned chat")).toBeVisible({
+  await expect(
+    page.getByTestId("thread-list").getByText("Old pinned chat"),
+  ).toBeVisible({
     timeout: 15_000,
   });
   await expect
