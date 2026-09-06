@@ -45,9 +45,13 @@ export async function getServerSideUser(): Promise<AuthResult> {
     };
   }
 
-  if (process.env.IDEER_AUTH_DISABLED === "1") {
+  const authDisabled =
+    process.env.DEER_FLOW_AUTH_DISABLED === "1" ||
+    // Legacy env name kept for pre-convergence deploy scripts.
+    process.env.IDEER_AUTH_DISABLED === "1";
+  if (authDisabled) {
     console.info(
-      "[SSR auth] IDEER_AUTH_DISABLED=1 bypass — returning stub super_admin",
+      "[SSR auth] auth-disabled bypass — returning stub super_admin",
     );
     return {
       tag: "authenticated",

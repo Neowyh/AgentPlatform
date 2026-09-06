@@ -352,6 +352,7 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
   const resources = options?.resources ?? [];
   const systemRole = options?.systemRole ?? "super_admin";
   const mcpConfig = options?.mcpConfig ?? { mcp_servers: {} };
+  const scheduledTasks = options?.scheduledTasks ?? [];
 
   // ── Auth endpoints (defense-in-depth for IDEER_AUTH_DISABLED mode) ──
 
@@ -592,6 +593,132 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
       return route.fallback();
     },
   );
+
+  // Scheduled tasks — sidebar link + scheduled-tasks page reads these.
+  const scheduledTasksState = [...scheduledTasks];
+  void page.route("**/api/scheduled-tasks**", (route) => {
+    const method = route.request().method();
+    const url = route.request().url();
+    if (method === "GET" && !/scheduled-tasks\/[^/?]+\//.test(url)) {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(scheduledTasksState),
+      });
+    }
+    if (method === "POST" && !/scheduled-tasks\/[^/?]+\/(pause|resume|trigger)/.test(url)) {
+      const body =
+        (route.request().postDataJSON() as Record<string, unknown> | null) ?? {};
+      const created: MockScheduledTask = {
+        id: `created-${scheduledTasksState.length + 1}`,
+        thread_id: (body.thread_id as string) ?? MOCK_THREAD_ID,
+        title: (body.title as string) ?? "",
+        prompt: (body.prompt as string) ?? "",
+        schedule_type: (body.schedule_type as MockScheduledTask["schedule_type"]) ?? "once",
+        schedule_spec: (body.schedule_spec as MockScheduledTask["schedule_spec"]) ?? {},
+        timezone: (body.timezone as string) ?? "UTC",
+        status: "enabled",
+        next_run_at: null,
+        last_run_at: null,
+        last_run_id: null,
+        last_thread_id: null,
+        last_error: null,
+        run_count: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      scheduledTasksState.push(created);
+      return route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify(created),
+      });
+    }
+    return route.fallback();
+  });
+  void page.route("**/api/scheduled-tasks/*", (route) => {
+    const method = route.request().method();
+    const url = route.request().url();
+    const taskId = url.match(/scheduled-tasks\/([^/?]+)/)?.[1];
+    const task = scheduledTasksState.find((t) => t.id === taskId);
+    if (method === "PATCH" && task) {
+      const patch =
+        (route.request().postDataJSON() as Record<string, unknown> | null) ??
+        {};
+      Object.assign(task, patch, { updated_at: new Date().toISOString() });
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(task),
+      });
+    }
+    if (method === "DELETE" && task) {
+      scheduledTasksState.splice(scheduledTasksState.indexOf(task), 1);
+      return route.fulfill({ status: 204 });
+    }
+    return route.fallback();
+  });
+  for (const action of ["pause", "resume", "trigger"] as const) {
+    void page.route(`**/api/scheduled-tasks/*/${action}`, (route) => {
+      if (route.request().method() !== "POST") return route.fallback();
+      const url = route.request().url();
+      const taskId = url.match(/scheduled-tasks\/([^/?]+)\//)?.[1];
+      const task = scheduledTasksState.find((t) => t.id === taskId);
+      if (!task) return route.fulfill({ status: 404 });
+      if (action === "pause") task.status = "paused";
+      if (action === "resume") task.status = "enabled";
+      if (action === "trigger") {
+        task.last_run_at = new Date().toISOString();
+        task.run_count += 1;
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(task),
+      });
+    });
+  }
+  void page.route("**/api/scheduled-tasks/*/runs**", (route) => {
+    if (route.request().method() === "GET") {
+      const url = route.request().url();
+      const taskId = url.match(/scheduled-tasks\/([^/?]+)\/runs/)?.[1];
+      const task = scheduledTasksState.find((t) => t.id === taskId);
+      const runs = task?.last_run_at
+        ? [
+            {
+              id: `run-${task.id}`,
+              task_id: task.id,
+              thread_id: task.thread_id,
+              status: "success",
+              trigger: "manual",
+              started_at: task.last_run_at,
+              finished_at: task.last_run_at,
+              error: null,
+            },
+          ]
+        : [];
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(runs),
+      });
+    }
+    return route.fallback();
+  });
+  void page.route("**/api/threads/*/scheduled-tasks**", (route) => {
+    if (route.request().method() === "GET") {
+      const url = route.request().url();
+      const threadId = url.match(/threads\/([^/]+)\/scheduled-tasks/)?.[1] ?? "";
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(
+          scheduledTasks.filter((t) => t.thread_id === threadId),
+        ),
+      });
+    }
+    return route.fallback();
+  });
 
   // Feature flags — capability center reads these on load.
   if (features) {
