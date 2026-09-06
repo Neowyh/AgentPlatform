@@ -54,6 +54,7 @@ logging:
 #   middlewares:
 #     - my_company.deerflow_middlewares:DomainGuardMiddleware
 #     - my_company.deerflow_middlewares:LatencyStampingMiddleware
+#     - app.agentplatform.code_evidence_context_middleware:CodeEvidenceContextMiddleware  # server-expanded code-evidence summary (the intranet profile enables this)
 
 # ============================================================================
 # Tracing / Observability (Monocle)

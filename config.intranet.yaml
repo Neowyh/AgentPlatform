@@ -273,3 +273,9 @@ authorization:
 workflow_runtime:
   upload_max_file_size: 104857600
   upload_max_total_size: 209715200
+extensions:
+  middlewares:
+    # Surfaces the server-expanded code-evidence package summary (fault-zeroing
+    # evidence flow) to the lead agent. Zero-argument AgentMiddleware; see
+    # backend/app/agentplatform/code_evidence_context_middleware.py.
+    - app.agentplatform.code_evidence_context_middleware:CodeEvidenceContextMiddleware
