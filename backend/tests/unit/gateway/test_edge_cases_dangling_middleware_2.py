@@ -12,7 +12,7 @@ from unittest.mock import MagicMock
 
 from langchain_core.messages import AIMessage, ToolMessage
 
-from ideer.agents.middlewares.dangling_tool_call_middleware import (
+from deerflow.agents.middlewares.dangling_tool_call_middleware import (
     DanglingToolCallMiddleware,
 )
 

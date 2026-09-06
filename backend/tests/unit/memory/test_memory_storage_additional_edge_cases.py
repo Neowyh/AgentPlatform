@@ -6,8 +6,8 @@ Targets: 92, 100-101, 131-133
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from ideer.agents.memory.storage import FileMemoryStorage
-from ideer.config.memory_config import MemoryConfig
+from app.agentplatform.legacy.memory.storage import FileMemoryStorage
+from deerflow.config.memory_config import MemoryConfig
 
 # --- Line 92: user_id + absolute storage_path ---
 
@@ -16,8 +16,8 @@ def test_get_memory_file_path_user_id_with_absolute_storage_path():
     """Line 92: When user_id is set and config.storage_path is absolute, use it."""
     storage = FileMemoryStorage()
     with patch(
-        "ideer.agents.memory.storage.get_memory_config",
-        return_value=MemoryConfig(storage_path="/tmp/shared-memory.json"),
+        "app.agentplatform.legacy.memory.storage.get_memory_config",
+        return_value=MemoryConfig(backend_config={"storage_path": "/tmp/shared-memory.json"}),
     ):
         result = storage._get_memory_file_path(user_id="u1")
     assert result == Path("/tmp/shared-memory.json")
@@ -33,8 +33,8 @@ def test_get_memory_file_path_legacy_with_relative_storage_path():
     mock_paths.base_dir = Path("/workspace")
 
     with (
-        patch("ideer.agents.memory.storage.get_memory_config", return_value=MemoryConfig(storage_path=".ideer/memory.json")),
-        patch("ideer.agents.memory.storage.get_paths", return_value=mock_paths),
+        patch("app.agentplatform.legacy.memory.storage.get_memory_config", return_value=MemoryConfig(backend_config={"storage_path": ".ideer/memory.json"})),
+        patch("app.agentplatform.legacy.memory.storage.get_paths", return_value=mock_paths),
     ):
         result = storage._get_memory_file_path()
     assert result == Path("/workspace/.ideer/memory.json")
@@ -44,8 +44,8 @@ def test_get_memory_file_path_legacy_with_absolute_storage_path():
     """Line 100: Legacy path with absolute storage_path uses it as-is."""
     storage = FileMemoryStorage()
     with patch(
-        "ideer.agents.memory.storage.get_memory_config",
-        return_value=MemoryConfig(storage_path="/opt/memory.json"),
+        "app.agentplatform.legacy.memory.storage.get_memory_config",
+        return_value=MemoryConfig(backend_config={"storage_path": "/opt/memory.json"}),
     ):
         result = storage._get_memory_file_path()
     assert result == Path("/opt/memory.json")
@@ -85,14 +85,14 @@ def test_load_memory_from_file_returns_empty_on_os_error(tmp_path):
 
 def test_get_memory_storage_falls_back_on_invalid_class():
     """get_memory_storage falls back to FileMemoryStorage on import error."""
-    import ideer.agents.memory.storage as storage_mod
+    import app.agentplatform.legacy.memory.storage as storage_mod
 
     old_instance = storage_mod._storage_instance
     storage_mod._storage_instance = None
     try:
         with patch(
-            "ideer.agents.memory.storage.get_memory_config",
-            return_value=MemoryConfig(storage_class="nonexistent.module.Class"),
+            "app.agentplatform.legacy.memory.storage.get_memory_config",
+            return_value=MemoryConfig(backend_config={"storage_class": "nonexistent.module.Class"}),
         ):
             result = storage_mod.get_memory_storage()
         assert isinstance(result, FileMemoryStorage)
@@ -102,14 +102,14 @@ def test_get_memory_storage_falls_back_on_invalid_class():
 
 def test_get_memory_storage_falls_back_on_non_subclass():
     """get_memory_storage falls back when class is not a MemoryStorage subclass."""
-    import ideer.agents.memory.storage as storage_mod
+    import app.agentplatform.legacy.memory.storage as storage_mod
 
     old_instance = storage_mod._storage_instance
     storage_mod._storage_instance = None
     try:
         with patch(
-            "ideer.agents.memory.storage.get_memory_config",
-            return_value=MemoryConfig(storage_class="builtins.str"),
+            "app.agentplatform.legacy.memory.storage.get_memory_config",
+            return_value=MemoryConfig(backend_config={"storage_class": "builtins.str"}),
         ):
             result = storage_mod.get_memory_storage()
         assert isinstance(result, FileMemoryStorage)

@@ -9,12 +9,15 @@ import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-import ideer.persistence.models  # noqa: F401
+import app.agentplatform.audit_model  # noqa: F401 - register audit_logs
+import app.agentplatform.rbac_models  # noqa: F401 - register users_ext
+import app.agentplatform.resource_models  # noqa: F401 - register resource tables
+import app.agentplatform.visibility_models  # noqa: F401 - register visibility tables
 from app.agentplatform.resources.publisher import ResourcePublisher
 from app.agentplatform.resources.reconciliation import CatalogConsistencyError, reconcile_catalog_storage
 from app.agentplatform.resources.service import ResourceAction, ResourceActor, ResourceService
 from app.agentplatform.resources.storage import ResourceStorage
-from ideer.persistence.base import Base
+from deerflow.persistence.base import Base
 
 
 @pytest_asyncio.fixture

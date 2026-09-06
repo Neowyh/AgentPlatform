@@ -1718,6 +1718,11 @@ skills:
   # Uncomment to customize:
   # path: /absolute/path/to/custom/skills
 
+  # Storage backend implementing the skill discovery protocol. The enterprise
+  # class adds the intranet (IDEER_NETWORK_MODE=offline) policy that hides
+  # skills declaring `requires-internet: true` in their SKILL.md frontmatter.
+  use: app.agentplatform.skills.storage:EnterpriseSkillStorage
+
   # Path where skills are mounted in the sandbox container
   # This is used by the agent to access skills in both local and Docker sandbox
   # AIO/provisioner and E2B modes require a canonical absolute non-root path

@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 from unittest.mock import patch
 
-from ideer.models.credential_loader import (
+from deerflow.models.credential_loader import (
     ClaudeCodeCredential,
     _credential_from_direct_token,
     _extract_claude_code_credential,

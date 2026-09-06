@@ -1,4 +1,4 @@
-"""Additional tests for ideer.runtime.journal — coverage gaps."""
+"""Additional tests for deerflow.runtime.journal — coverage gaps."""
 
 from __future__ import annotations
 
@@ -10,8 +10,8 @@ import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.types import Command
 
-from ideer.runtime.events.store.memory import MemoryRunEventStore
-from ideer.runtime.journal import RunJournal
+from deerflow.runtime.events.store.memory import MemoryRunEventStore
+from deerflow.runtime.journal import RunJournal
 
 
 @pytest.fixture

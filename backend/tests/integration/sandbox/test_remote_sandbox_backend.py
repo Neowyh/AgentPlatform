@@ -3,8 +3,9 @@ from __future__ import annotations
 import pytest
 import requests
 
-from ideer.community.aio_sandbox.remote_backend import RemoteSandboxBackend
-from ideer.community.aio_sandbox.sandbox_info import SandboxInfo
+from deerflow.community.aio_sandbox import remote_backend as remote_backend_mod
+from deerflow.community.aio_sandbox.remote_backend import RemoteSandboxBackend
+from deerflow.community.aio_sandbox.sandbox_info import SandboxInfo
 
 
 class _StubResponse:
@@ -46,9 +47,10 @@ def test_list_running_delegates_to_provisioner_list(monkeypatch):
 def test_provisioner_list_returns_sandbox_infos_and_filters_invalid_entries(monkeypatch):
     backend = RemoteSandboxBackend("http://provisioner:8002")
 
-    def mock_get(url: str, timeout: int):
+    def mock_get(url: str, timeout: int, headers=None):
         assert url == "http://provisioner:8002/api/sandboxes"
         assert timeout == 10
+        assert headers == {}
         return _StubResponse(
             payload={
                 "sandboxes": [
@@ -70,7 +72,7 @@ def test_provisioner_list_returns_sandbox_infos_and_filters_invalid_entries(monk
 def test_provisioner_list_returns_empty_on_request_exception(monkeypatch):
     backend = RemoteSandboxBackend("http://provisioner:8002")
 
-    def mock_get(url: str, timeout: int):
+    def mock_get(url: str, timeout: int, headers=None):
         raise requests.RequestException("network down")
 
     monkeypatch.setattr(requests, "get", mock_get)
@@ -81,7 +83,7 @@ def test_provisioner_list_returns_empty_on_request_exception(monkeypatch):
 def test_provisioner_list_returns_empty_when_payload_is_not_dict(monkeypatch):
     backend = RemoteSandboxBackend("http://provisioner:8002")
 
-    def mock_get(url: str, timeout: int):
+    def mock_get(url: str, timeout: int, headers=None):
         return _StubResponse(payload=[{"sandbox_id": "abc", "sandbox_url": "http://k3s:31001"}])
 
     monkeypatch.setattr(requests, "get", mock_get)
@@ -92,7 +94,7 @@ def test_provisioner_list_returns_empty_when_payload_is_not_dict(monkeypatch):
 def test_provisioner_list_returns_empty_when_sandboxes_is_not_list(monkeypatch):
     backend = RemoteSandboxBackend("http://provisioner:8002")
 
-    def mock_get(url: str, timeout: int):
+    def mock_get(url: str, timeout: int, headers=None):
         return _StubResponse(payload={"sandboxes": {"sandbox_id": "abc"}})
 
     monkeypatch.setattr(requests, "get", mock_get)
@@ -103,7 +105,7 @@ def test_provisioner_list_returns_empty_when_sandboxes_is_not_list(monkeypatch):
 def test_provisioner_list_skips_non_dict_sandbox_entries(monkeypatch):
     backend = RemoteSandboxBackend("http://provisioner:8002")
 
-    def mock_get(url: str, timeout: int):
+    def mock_get(url: str, timeout: int, headers=None):
         return _StubResponse(
             payload={
                 "sandboxes": [
@@ -127,10 +129,23 @@ def test_create_delegates_to_provisioner_create(monkeypatch):
     backend = RemoteSandboxBackend("http://provisioner:8002")
     expected = SandboxInfo(sandbox_id="abc123", sandbox_url="http://k3s:31001")
 
-    def mock_create(thread_id: str, sandbox_id: str, extra_mounts=None):
+    def mock_create(
+        thread_id: str,
+        sandbox_id: str,
+        extra_mounts=None,
+        *,
+        user_id=None,
+        skills_container_path="/mnt/skills",
+        provision_lark_cli_runtime=False,
+        provision_lark_cli_broker=False,
+    ):
         assert thread_id == "thread-1"
         assert sandbox_id == "abc123"
         assert extra_mounts == [("/host", "/container", False)]
+        assert user_id is None
+        assert skills_container_path == "/mnt/skills"
+        assert provision_lark_cli_runtime is False
+        assert provision_lark_cli_broker is False
         return expected
 
     monkeypatch.setattr(backend, "_provisioner_create", mock_create)
@@ -141,13 +156,18 @@ def test_create_delegates_to_provisioner_create(monkeypatch):
 
 def test_provisioner_create_returns_sandbox_info(monkeypatch):
     backend = RemoteSandboxBackend("http://provisioner:8002")
+    monkeypatch.setattr(remote_backend_mod, "user_should_see_legacy_skills", lambda user_id: True)
 
-    def mock_post(url: str, json: dict, timeout: int):
+    def mock_post(url: str, json: dict, timeout: int, headers=None):
         assert url == "http://provisioner:8002/api/sandboxes"
         assert json == {
             "sandbox_id": "abc123",
             "thread_id": "thread-1",
             "user_id": "test-user-autouse",
+            "include_legacy_skills": True,
+            "skills_container_path": "/mnt/skills",
+            "provision_lark_cli_runtime": False,
+            "provision_lark_cli_broker": False,
         }
         assert timeout == 30
         return _StubResponse(payload={"sandbox_id": "abc123", "sandbox_url": "http://k3s:31001"})
@@ -161,13 +181,18 @@ def test_provisioner_create_returns_sandbox_info(monkeypatch):
 
 def test_provisioner_create_accepts_anonymous_thread_id(monkeypatch):
     backend = RemoteSandboxBackend("http://provisioner:8002")
+    monkeypatch.setattr(remote_backend_mod, "user_should_see_legacy_skills", lambda user_id: False)
 
-    def mock_post(url: str, json: dict, timeout: int):
+    def mock_post(url: str, json: dict, timeout: int, headers=None):
         assert url == "http://provisioner:8002/api/sandboxes"
         assert json == {
             "sandbox_id": "anon123",
             "thread_id": None,
             "user_id": "test-user-autouse",
+            "include_legacy_skills": False,
+            "skills_container_path": "/mnt/skills",
+            "provision_lark_cli_runtime": False,
+            "provision_lark_cli_broker": False,
         }
         assert timeout == 30
         return _StubResponse(payload={"sandbox_id": "anon123", "sandbox_url": "http://k3s:31002"})
@@ -181,8 +206,9 @@ def test_provisioner_create_accepts_anonymous_thread_id(monkeypatch):
 
 def test_provisioner_create_raises_runtime_error_on_request_exception(monkeypatch):
     backend = RemoteSandboxBackend("http://provisioner:8002")
+    monkeypatch.setattr(remote_backend_mod, "user_should_see_legacy_skills", lambda user_id: False)
 
-    def mock_post(url: str, json: dict, timeout: int):
+    def mock_post(url: str, json: dict, timeout: int, headers=None):
         raise requests.RequestException("boom")
 
     monkeypatch.setattr(requests, "post", mock_post)
@@ -207,7 +233,7 @@ def test_destroy_delegates_to_provisioner_destroy(monkeypatch):
 def test_provisioner_destroy_calls_delete(monkeypatch):
     backend = RemoteSandboxBackend("http://provisioner:8002")
 
-    def mock_delete(url: str, timeout: int):
+    def mock_delete(url: str, timeout: int, headers=None):
         assert url == "http://provisioner:8002/api/sandboxes/abc123"
         assert timeout == 15
         return _StubResponse(status_code=200)
@@ -220,7 +246,7 @@ def test_provisioner_destroy_calls_delete(monkeypatch):
 def test_provisioner_destroy_swallows_request_exception(monkeypatch):
     backend = RemoteSandboxBackend("http://provisioner:8002")
 
-    def mock_delete(url: str, timeout: int):
+    def mock_delete(url: str, timeout: int, headers=None):
         raise requests.RequestException("network down")
 
     monkeypatch.setattr(requests, "delete", mock_delete)
@@ -244,27 +270,28 @@ def test_is_alive_delegates_to_provisioner_is_alive(monkeypatch):
 def test_provisioner_is_alive_true_only_when_status_running(monkeypatch):
     backend = RemoteSandboxBackend("http://provisioner:8002")
 
-    def mock_get_running(url: str, timeout: int):
+    def mock_get_running(url: str, timeout: int, headers=None):
         return _StubResponse(payload={"status": "Running"})
 
     monkeypatch.setattr(requests, "get", mock_get_running)
     assert backend._provisioner_is_alive("abc123") is True
 
-    def mock_get_pending(url: str, timeout: int):
+    def mock_get_pending(url: str, timeout: int, headers=None):
         return _StubResponse(payload={"status": "Pending"})
 
     monkeypatch.setattr(requests, "get", mock_get_pending)
     assert backend._provisioner_is_alive("abc123") is False
 
 
-def test_provisioner_is_alive_returns_false_on_request_exception(monkeypatch):
+def test_provisioner_is_alive_raises_on_request_exception(monkeypatch):
     backend = RemoteSandboxBackend("http://provisioner:8002")
 
-    def mock_get(url: str, timeout: int):
+    def mock_get(url: str, timeout: int, headers=None):
         raise requests.RequestException("boom")
 
     monkeypatch.setattr(requests, "get", mock_get)
-    assert backend._provisioner_is_alive("abc123") is False
+    with pytest.raises(RuntimeError, match="Provisioner health check failed for abc123"):
+        backend._provisioner_is_alive("abc123")
 
 
 def test_discover_delegates_to_provisioner_discover(monkeypatch):
@@ -284,7 +311,7 @@ def test_discover_delegates_to_provisioner_discover(monkeypatch):
 def test_provisioner_discover_returns_none_on_404(monkeypatch):
     backend = RemoteSandboxBackend("http://provisioner:8002")
 
-    def mock_get(url: str, timeout: int):
+    def mock_get(url: str, timeout: int, headers=None):
         return _StubResponse(status_code=404)
 
     monkeypatch.setattr(requests, "get", mock_get)
@@ -295,7 +322,7 @@ def test_provisioner_discover_returns_none_on_404(monkeypatch):
 def test_provisioner_discover_returns_info_on_success(monkeypatch):
     backend = RemoteSandboxBackend("http://provisioner:8002")
 
-    def mock_get(url: str, timeout: int):
+    def mock_get(url: str, timeout: int, headers=None):
         return _StubResponse(payload={"sandbox_id": "abc123", "sandbox_url": "http://k3s:31001"})
 
     monkeypatch.setattr(requests, "get", mock_get)
@@ -309,7 +336,7 @@ def test_provisioner_discover_returns_info_on_success(monkeypatch):
 def test_provisioner_discover_returns_none_on_request_exception(monkeypatch):
     backend = RemoteSandboxBackend("http://provisioner:8002")
 
-    def mock_get(url: str, timeout: int):
+    def mock_get(url: str, timeout: int, headers=None):
         raise requests.RequestException("boom")
 
     monkeypatch.setattr(requests, "get", mock_get)

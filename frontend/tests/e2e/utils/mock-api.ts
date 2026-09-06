@@ -88,6 +88,31 @@ export type MockSkill = {
   enabled: boolean;
 };
 
+const DEFAULT_SKILLS: MockSkill[] = [
+  {
+    name: "data-analysis",
+    description: "Analyze structured data and produce charts.",
+    category: "public",
+    enabled: true,
+  },
+  {
+    name: "frontend-design",
+    description: "Create polished frontend interfaces.",
+    category: "public",
+    enabled: true,
+  },
+  {
+    name: "disabled-skill",
+    description: "Hidden from slash autocomplete.",
+    category: "public",
+    enabled: false,
+  },
+];
+
+// Latest goal set through the mock `/goal` endpoint. Module scope so the
+// run-stream builder can re-emit it in thread values.
+let latestGoal: unknown = null;
+
 export type MockUser = {
   id: string;
   username: string;
@@ -245,10 +270,11 @@ export type MockScheduledTask = {
   title: string;
   prompt: string;
   schedule_type: "cron" | "interval" | "once";
-  schedule_spec: { cron?: string; interval_seconds?: number; at?: string } & Record<
-    string,
-    unknown
-  >;
+  schedule_spec: {
+    cron?: string;
+    interval_seconds?: number;
+    at?: string;
+  } & Record<string, unknown>;
   timezone: string;
   status: "enabled" | "paused";
   next_run_at: string | null;
@@ -340,7 +366,7 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
   const artifacts = options?.artifacts ?? {};
   const workflows = options?.workflows ?? [];
   const workflowRuns = options?.workflowRuns ?? {};
-  const skills = options?.skills ?? [];
+  const skills = options?.skills ?? DEFAULT_SKILLS;
   const users = options?.users ?? [];
   const departments = options?.departments ?? [];
   const tools = options?.tools ?? [];
@@ -606,16 +632,22 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
         body: JSON.stringify(scheduledTasksState),
       });
     }
-    if (method === "POST" && !/scheduled-tasks\/[^/?]+\/(pause|resume|trigger)/.test(url)) {
+    if (
+      method === "POST" &&
+      !/scheduled-tasks\/[^/?]+\/(pause|resume|trigger)/.test(url)
+    ) {
       const body =
-        (route.request().postDataJSON() as Record<string, unknown> | null) ?? {};
+        (route.request().postDataJSON() as Record<string, unknown> | null) ??
+        {};
       const created: MockScheduledTask = {
         id: `created-${scheduledTasksState.length + 1}`,
         thread_id: (body.thread_id as string) ?? MOCK_THREAD_ID,
         title: (body.title as string) ?? "",
         prompt: (body.prompt as string) ?? "",
-        schedule_type: (body.schedule_type as MockScheduledTask["schedule_type"]) ?? "once",
-        schedule_spec: (body.schedule_spec as MockScheduledTask["schedule_spec"]) ?? {},
+        schedule_type:
+          (body.schedule_type as MockScheduledTask["schedule_type"]) ?? "once",
+        schedule_spec:
+          (body.schedule_spec as MockScheduledTask["schedule_spec"]) ?? {},
         timezone: (body.timezone as string) ?? "UTC",
         status: "enabled",
         next_run_at: null,
@@ -639,7 +671,7 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
   void page.route("**/api/scheduled-tasks/*", (route) => {
     const method = route.request().method();
     const url = route.request().url();
-    const taskId = url.match(/scheduled-tasks\/([^/?]+)/)?.[1];
+    const taskId = /scheduled-tasks\/([^/?]+)/.exec(url)?.[1];
     const task = scheduledTasksState.find((t) => t.id === taskId);
     if (method === "PATCH" && task) {
       const patch =
@@ -662,7 +694,7 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
     void page.route(`**/api/scheduled-tasks/*/${action}`, (route) => {
       if (route.request().method() !== "POST") return route.fallback();
       const url = route.request().url();
-      const taskId = url.match(/scheduled-tasks\/([^/?]+)\//)?.[1];
+      const taskId = /scheduled-tasks\/([^/?]+)\//.exec(url)?.[1];
       const task = scheduledTasksState.find((t) => t.id === taskId);
       if (!task) return route.fulfill({ status: 404 });
       if (action === "pause") task.status = "paused";
@@ -681,7 +713,7 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
   void page.route("**/api/scheduled-tasks/*/runs**", (route) => {
     if (route.request().method() === "GET") {
       const url = route.request().url();
-      const taskId = url.match(/scheduled-tasks\/([^/?]+)\/runs/)?.[1];
+      const taskId = /scheduled-tasks\/([^/?]+)\/runs/.exec(url)?.[1];
       const task = scheduledTasksState.find((t) => t.id === taskId);
       const runs = task?.last_run_at
         ? [
@@ -705,10 +737,67 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
     }
     return route.fallback();
   });
+  // Goal continuation state — `/goal <objective>` stores a per-thread goal.
+  // The run stream re-emits it in thread values (useStream drops the local
+  // optimistic override once the thread is created).
+  const threadGoals: Record<string, { goal: unknown } | { goal: null }> = {};
+  void page.route("**/api/threads/*/goal", (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    const threadId = url.pathname.split("/")[4] ?? "";
+    if (request.method() === "PUT") {
+      const body = request.postDataJSON() as { objective?: string };
+      latestGoal = {
+        objective: body.objective ?? "",
+        status: "active",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        continuation_count: 0,
+        max_continuations: 3,
+        no_progress_count: 0,
+        max_no_progress_continuations: 2,
+      };
+      threadGoals[threadId] = { goal: latestGoal };
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(threadGoals[threadId]),
+      });
+    }
+    if (request.method() === "DELETE") {
+      latestGoal = null;
+      threadGoals[threadId] = { goal: null };
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ goal: null }),
+      });
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(threadGoals[threadId] ?? { goal: null }),
+    });
+  });
+  // Gateway-enforced upload limits surface on the attachment tooltip.
+  void page.route("**/api/threads/*/uploads/limits", (route) => {
+    if (route.request().method() !== "GET") {
+      return route.fallback();
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        max_files: 10,
+        max_file_size: 50 * 1024 * 1024,
+        max_total_size: 100 * 1024 * 1024,
+      }),
+    });
+  });
   void page.route("**/api/threads/*/scheduled-tasks**", (route) => {
     if (route.request().method() === "GET") {
       const url = route.request().url();
-      const threadId = url.match(/threads\/([^/]+)\/scheduled-tasks/)?.[1] ?? "";
+      const threadId = /threads\/([^/]+)\/scheduled-tasks/.exec(url)?.[1] ?? "";
       return route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -729,7 +818,9 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
     mcp_tasks: { enabled: flat.mcpTasksEnabled ?? true },
     browser_control: { enabled: flat.browserControlEnabled ?? false },
     agents_api: { enabled: flat.agentsApiEnabled ?? true },
-    ...((flat as Record<string, unknown>).mcp_tasks ? { mcp_tasks: (flat as Record<string, unknown>).mcp_tasks } : {}),
+    ...((flat as Record<string, unknown>).mcp_tasks
+      ? { mcp_tasks: (flat as Record<string, unknown>).mcp_tasks }
+      : {}),
   };
   void page.route("**/api/features", (route) => {
     return route.fulfill({
@@ -1969,6 +2060,14 @@ export function handleRunStream(
         ],
       },
     },
+    ...(latestGoal !== null
+      ? [
+          {
+            event: "updates",
+            data: { model: { goal: latestGoal } },
+          } as const,
+        ]
+      : []),
     { event: "end", data: {} },
   ];
 

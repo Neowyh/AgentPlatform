@@ -466,7 +466,7 @@ mkdir -p temp/client_body_temp temp/proxy_temp temp/fastcgi_temp temp/uwsgi_temp
 # backend/.ideer/data/ideer.db, matching Gateway startup (env.py further
 # resolves from config.yaml and ensures the parent dir exists).
 echo "Running database migrations..."
-(cd "$REPO_ROOT/backend" && uv run alembic -c packages/harness/ideer/persistence/migrations/alembic.ini upgrade head) || { echo "✗ Database migrations failed"; cleanup 1; }
+(cd "$REPO_ROOT/backend" && uv run alembic -c app/agentplatform/persistence/migrations/alembic.ini upgrade head) || { echo "✗ Database migrations failed"; cleanup 1; }
 echo "✓ Database migrations completed"
 
 # ── Runtime state directory continuity ───────────────────────────────────────

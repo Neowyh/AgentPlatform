@@ -1,4 +1,4 @@
-"""Tests for ideer.persistence.feedback — FeedbackRow model and FeedbackRepository."""
+"""Tests for deerflow.persistence.feedback — FeedbackRow model and FeedbackRepository."""
 
 from __future__ import annotations
 
@@ -10,10 +10,10 @@ import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from ideer.persistence.base import Base
-from ideer.persistence.feedback.model import FeedbackRow
-from ideer.persistence.feedback.sql import FeedbackRepository
-from ideer.runtime.user_context import _current_user, reset_current_user, set_current_user
+from deerflow.persistence.base import Base
+from deerflow.persistence.feedback.model import FeedbackRow
+from deerflow.persistence.feedback.sql import FeedbackRepository
+from deerflow.runtime.user_context import _current_user, reset_current_user, set_current_user
 
 # ---------------------------------------------------------------------------
 # Fixtures

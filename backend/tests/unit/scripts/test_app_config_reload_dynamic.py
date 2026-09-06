@@ -21,8 +21,8 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-import ideer.config.app_config as app_config_module
-from ideer.config.app_config import (
+import deerflow.config.app_config as app_config_module
+from deerflow.config.app_config import (
     get_app_config,
     pop_current_app_config,
     push_current_app_config,

@@ -1,4 +1,4 @@
-"""Targeted coverage tests for ideer.sandbox.search uncovered lines.
+"""Targeted coverage tests for deerflow.sandbox.search uncovered lines.
 
 Each test is named after the specific source line it exercises.
 """
@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 import pytest
 
-from ideer.sandbox.search import (
+from deerflow.sandbox.search import (
     find_glob_matches,
     find_grep_matches,
     is_binary_file,

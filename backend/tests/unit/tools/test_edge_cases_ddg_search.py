@@ -1,11 +1,11 @@
-"""Additional coverage tests for ideer.community.ddg_search.tools."""
+"""Additional coverage tests for deerflow.community.ddg_search.tools."""
 
 from __future__ import annotations
 
 import json
 from unittest.mock import MagicMock, patch
 
-from ideer.community.ddg_search.tools import _search_text, web_search_tool
+from deerflow.community.ddg_search.tools import _search_text, web_search_tool
 
 # ===========================================================================
 # _search_text — core search function
@@ -73,8 +73,8 @@ class TestWebSearchTool:
             {"title": "Title 1", "href": "http://r1.com", "body": "body1"},
         ]
         with (
-            patch("ideer.community.ddg_search.tools.get_app_config") as mock_config_fn,
-            patch("ideer.community.ddg_search.tools._search_text", return_value=mock_results),
+            patch("deerflow.community.ddg_search.tools.get_app_config") as mock_config_fn,
+            patch("deerflow.community.ddg_search.tools._search_text", return_value=mock_results),
         ):
             mock_config_fn.return_value.get_tool_config.return_value = None
             result = web_search_tool.func(query="python", max_results=5)
@@ -88,8 +88,8 @@ class TestWebSearchTool:
 
     def test_no_results_returns_error(self):
         with (
-            patch("ideer.community.ddg_search.tools.get_app_config") as mock_config_fn,
-            patch("ideer.community.ddg_search.tools._search_text", return_value=[]),
+            patch("deerflow.community.ddg_search.tools.get_app_config") as mock_config_fn,
+            patch("deerflow.community.ddg_search.tools._search_text", return_value=[]),
         ):
             mock_config_fn.return_value.get_tool_config.return_value = None
             result = web_search_tool.func(query="nonexistent")
@@ -101,8 +101,8 @@ class TestWebSearchTool:
     def test_config_override_max_results(self):
         mock_results = [{"title": "T", "href": "http://r.com", "body": "b"}]
         with (
-            patch("ideer.community.ddg_search.tools.get_app_config") as mock_config_fn,
-            patch("ideer.community.ddg_search.tools._search_text", return_value=mock_results) as mock_search,
+            patch("deerflow.community.ddg_search.tools.get_app_config") as mock_config_fn,
+            patch("deerflow.community.ddg_search.tools._search_text", return_value=mock_results) as mock_search,
         ):
             config = MagicMock()
             config.model_extra = {"max_results": 10}
@@ -114,8 +114,8 @@ class TestWebSearchTool:
     def test_no_config_override(self):
         mock_results = [{"title": "T", "href": "http://r.com", "body": "b"}]
         with (
-            patch("ideer.community.ddg_search.tools.get_app_config") as mock_config_fn,
-            patch("ideer.community.ddg_search.tools._search_text", return_value=mock_results) as mock_search,
+            patch("deerflow.community.ddg_search.tools.get_app_config") as mock_config_fn,
+            patch("deerflow.community.ddg_search.tools._search_text", return_value=mock_results) as mock_search,
         ):
             config = MagicMock()
             config.model_extra = {}
@@ -131,8 +131,8 @@ class TestWebSearchTool:
             {},
         ]
         with (
-            patch("ideer.community.ddg_search.tools.get_app_config") as mock_config_fn,
-            patch("ideer.community.ddg_search.tools._search_text", return_value=raw),
+            patch("deerflow.community.ddg_search.tools.get_app_config") as mock_config_fn,
+            patch("deerflow.community.ddg_search.tools._search_text", return_value=raw),
         ):
             mock_config_fn.return_value.get_tool_config.return_value = None
             result = web_search_tool.func(query="test")
@@ -146,8 +146,8 @@ class TestWebSearchTool:
     def test_link_field_fallback(self):
         raw = [{"title": "T", "link": "http://fallback.com", "snippet": "s"}]
         with (
-            patch("ideer.community.ddg_search.tools.get_app_config") as mock_config_fn,
-            patch("ideer.community.ddg_search.tools._search_text", return_value=raw),
+            patch("deerflow.community.ddg_search.tools.get_app_config") as mock_config_fn,
+            patch("deerflow.community.ddg_search.tools._search_text", return_value=raw),
         ):
             mock_config_fn.return_value.get_tool_config.return_value = None
             result = web_search_tool.func(query="test")
@@ -159,8 +159,8 @@ class TestWebSearchTool:
     def test_none_config(self):
         mock_results = [{"title": "T", "href": "http://r.com", "body": "b"}]
         with (
-            patch("ideer.community.ddg_search.tools.get_app_config") as mock_config_fn,
-            patch("ideer.community.ddg_search.tools._search_text", return_value=mock_results) as mock_search,
+            patch("deerflow.community.ddg_search.tools.get_app_config") as mock_config_fn,
+            patch("deerflow.community.ddg_search.tools._search_text", return_value=mock_results) as mock_search,
         ):
             mock_config_fn.return_value.get_tool_config.return_value = None
             web_search_tool.func(query="test", max_results=3)

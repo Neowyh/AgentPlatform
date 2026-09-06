@@ -1,8 +1,8 @@
 """Runs endpoints — create, stream, wait, cancel.
 
 Implements the LangGraph Platform runs API on top of
-:class:`ideer.agents.runs.RunManager` and
-:class:`ideer.agents.stream_bridge.StreamBridge`.
+:class:`deerflow.agents.runs.RunManager` and
+:class:`deerflow.agents.stream_bridge.StreamBridge`.
 
 SSE format is aligned with the LangGraph Platform protocol so that
 the ``useStream`` React hook from ``@langchain/langgraph-sdk/react``

@@ -1,7 +1,7 @@
 """Comprehensive tests for the InfoQuest client.
 
 Targets 98%+ statement coverage of
-``ideer.community.infoquest.infoquest_client``.
+``deerflow.community.infoquest.infoquest_client``.
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ import json
 import logging
 from unittest.mock import MagicMock, patch
 
-from ideer.community.infoquest.infoquest_client import (
+from deerflow.community.infoquest.infoquest_client import (
     InfoQuestClient,
 )
 
@@ -79,7 +79,7 @@ class TestInit:
     @patch.dict("os.environ", {"INFOQUEST_API_KEY": "key123"}, clear=True)
     def test_debug_logging_branch(self, caplog):
         """When DEBUG is enabled the detailed config block is logged."""
-        with caplog.at_level(logging.DEBUG, logger="ideer.community.infoquest.infoquest_client"):
+        with caplog.at_level(logging.DEBUG, logger="deerflow.community.infoquest.infoquest_client"):
             InfoQuestClient(
                 fetch_time=5,
                 fetch_timeout=10,
@@ -94,7 +94,7 @@ class TestInit:
     @patch.dict("os.environ", {}, clear=True)
     def test_debug_logging_branch_no_api_key(self, caplog):
         """Debug logging with no API key shows 'Not set'."""
-        with caplog.at_level(logging.DEBUG, logger="ideer.community.infoquest.infoquest_client"):
+        with caplog.at_level(logging.DEBUG, logger="deerflow.community.infoquest.infoquest_client"):
             InfoQuestClient(image_size="m")
         assert "Not set" in caplog.text
 
@@ -196,7 +196,7 @@ class TestFetch:
     """Tests for InfoQuestClient.fetch."""
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("ideer.community.infoquest.infoquest_client.requests.post")
+    @patch("deerflow.community.infoquest.infoquest_client.requests.post")
     def test_success_reader_result(self, mock_post):
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -209,7 +209,7 @@ class TestFetch:
         mock_post.assert_called_once()
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("ideer.community.infoquest.infoquest_client.requests.post")
+    @patch("deerflow.community.infoquest.infoquest_client.requests.post")
     def test_success_content_fallback(self, mock_post):
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -221,7 +221,7 @@ class TestFetch:
         assert result == "page content"
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("ideer.community.infoquest.infoquest_client.requests.post")
+    @patch("deerflow.community.infoquest.infoquest_client.requests.post")
     def test_success_neither_field_returns_raw(self, mock_post):
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -234,7 +234,7 @@ class TestFetch:
         assert result == raw
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("ideer.community.infoquest.infoquest_client.requests.post")
+    @patch("deerflow.community.infoquest.infoquest_client.requests.post")
     def test_non_200_status(self, mock_post):
         mock_response = MagicMock()
         mock_response.status_code = 500
@@ -247,7 +247,7 @@ class TestFetch:
         assert "status 500" in result
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("ideer.community.infoquest.infoquest_client.requests.post")
+    @patch("deerflow.community.infoquest.infoquest_client.requests.post")
     def test_empty_response_text(self, mock_post):
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -260,7 +260,7 @@ class TestFetch:
         assert "no result found" in result
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("ideer.community.infoquest.infoquest_client.requests.post")
+    @patch("deerflow.community.infoquest.infoquest_client.requests.post")
     def test_whitespace_only_response(self, mock_post):
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -273,7 +273,7 @@ class TestFetch:
         assert "no result found" in result
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("ideer.community.infoquest.infoquest_client.requests.post")
+    @patch("deerflow.community.infoquest.infoquest_client.requests.post")
     def test_json_decode_error_returns_raw_text(self, mock_post):
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -285,7 +285,7 @@ class TestFetch:
         assert result == "not-json"
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("ideer.community.infoquest.infoquest_client.requests.post")
+    @patch("deerflow.community.infoquest.infoquest_client.requests.post")
     def test_exception_returns_error(self, mock_post):
         mock_post.side_effect = ConnectionError("timeout")
 
@@ -295,7 +295,7 @@ class TestFetch:
         assert "timeout" in result
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("ideer.community.infoquest.infoquest_client.requests.post")
+    @patch("deerflow.community.infoquest.infoquest_client.requests.post")
     def test_debug_logging_truncated_url(self, mock_post, caplog):
         """Long URLs are truncated in debug logs."""
         mock_response = MagicMock()
@@ -305,12 +305,12 @@ class TestFetch:
 
         client = InfoQuestClient()
         long_url = "https://example.com/" + "a" * 100
-        with caplog.at_level(logging.DEBUG, logger="ideer.community.infoquest.infoquest_client"):
+        with caplog.at_level(logging.DEBUG, logger="deerflow.community.infoquest.infoquest_client"):
             client.fetch(long_url)
         assert "url_truncated=" in caplog.text
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("ideer.community.infoquest.infoquest_client.requests.post")
+    @patch("deerflow.community.infoquest.infoquest_client.requests.post")
     def test_debug_logging_short_url(self, mock_post, caplog):
         """Short URLs are not truncated."""
         mock_response = MagicMock()
@@ -319,12 +319,12 @@ class TestFetch:
         mock_post.return_value = mock_response
 
         client = InfoQuestClient()
-        with caplog.at_level(logging.DEBUG, logger="ideer.community.infoquest.infoquest_client"):
+        with caplog.at_level(logging.DEBUG, logger="deerflow.community.infoquest.infoquest_client"):
             client.fetch("https://ex.com")
         assert "url_truncated=https://ex.com" in caplog.text
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("ideer.community.infoquest.infoquest_client.requests.post")
+    @patch("deerflow.community.infoquest.infoquest_client.requests.post")
     def test_fetch_with_custom_timeouts(self, mock_post):
         """Custom positive timeouts are passed through."""
         mock_response = MagicMock()
@@ -341,7 +341,7 @@ class TestFetch:
         assert data["navi_timeout"] == 15
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("ideer.community.infoquest.infoquest_client.requests.post")
+    @patch("deerflow.community.infoquest.infoquest_client.requests.post")
     def test_fetch_debug_logging_with_timeouts(self, mock_post, caplog):
         """Debug logging path with positive timeout filters."""
         mock_response = MagicMock()
@@ -354,14 +354,14 @@ class TestFetch:
             fetch_timeout=10,
             fetch_navigation_timeout=15,
         )
-        with caplog.at_level(logging.DEBUG, logger="ideer.community.infoquest.infoquest_client"):
+        with caplog.at_level(logging.DEBUG, logger="deerflow.community.infoquest.infoquest_client"):
             client.fetch("https://example.com")
         assert "has_timeout_filter=True" in caplog.text
         assert "has_fetch_time_filter=True" in caplog.text
         assert "has_navigation_timeout_filter=True" in caplog.text
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("ideer.community.infoquest.infoquest_client.requests.post")
+    @patch("deerflow.community.infoquest.infoquest_client.requests.post")
     def test_fetch_debug_response_sample_long_text(self, mock_post, caplog):
         """The debug branch at lines 100-103 that logs partial response."""
         long_text = json.dumps({"unknown_field": "x" * 300})
@@ -371,13 +371,13 @@ class TestFetch:
         mock_post.return_value = mock_response
 
         client = InfoQuestClient()
-        with caplog.at_level(logging.DEBUG, logger="ideer.community.infoquest.infoquest_client"):
+        with caplog.at_level(logging.DEBUG, logger="deerflow.community.infoquest.infoquest_client"):
             result = client.fetch("https://example.com")
         assert result == long_text
         assert "Successfully received response" in caplog.text
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("ideer.community.infoquest.infoquest_client.requests.post")
+    @patch("deerflow.community.infoquest.infoquest_client.requests.post")
     def test_fetch_debug_response_sample_short_text(self, mock_post, caplog):
         """Short response text does not trigger truncation."""
         short_text = json.dumps({"unknown_field": "short"})
@@ -387,7 +387,7 @@ class TestFetch:
         mock_post.return_value = mock_response
 
         client = InfoQuestClient()
-        with caplog.at_level(logging.DEBUG, logger="ideer.community.infoquest.infoquest_client"):
+        with caplog.at_level(logging.DEBUG, logger="deerflow.community.infoquest.infoquest_client"):
             result = client.fetch("https://example.com")
         assert result == short_text
         assert "Successfully received response" in caplog.text
@@ -402,7 +402,7 @@ class TestWebSearchRawResults:
     """Tests for InfoQuestClient.web_search_raw_results."""
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("ideer.community.infoquest.infoquest_client.requests.post")
+    @patch("deerflow.community.infoquest.infoquest_client.requests.post")
     def test_basic_search(self, mock_post):
         mock_response = MagicMock()
         mock_response.json.return_value = {"results": []}
@@ -421,7 +421,7 @@ class TestWebSearchRawResults:
         assert "time_range" not in params
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("ideer.community.infoquest.infoquest_client.requests.post")
+    @patch("deerflow.community.infoquest.infoquest_client.requests.post")
     def test_with_site(self, mock_post):
         mock_response = MagicMock()
         mock_response.json.return_value = {"results": []}
@@ -436,7 +436,7 @@ class TestWebSearchRawResults:
         assert params["site"] == "example.com"
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("ideer.community.infoquest.infoquest_client.requests.post")
+    @patch("deerflow.community.infoquest.infoquest_client.requests.post")
     def test_with_time_range(self, mock_post):
         mock_response = MagicMock()
         mock_response.json.return_value = {"results": []}
@@ -451,7 +451,7 @@ class TestWebSearchRawResults:
         assert params["time_range"] == 7
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("ideer.community.infoquest.infoquest_client.requests.post")
+    @patch("deerflow.community.infoquest.infoquest_client.requests.post")
     def test_debug_logging(self, mock_post, caplog):
         mock_response = MagicMock()
         mock_response.json.return_value = {"key": "value"}
@@ -459,12 +459,12 @@ class TestWebSearchRawResults:
         mock_post.return_value = mock_response
 
         client = InfoQuestClient()
-        with caplog.at_level(logging.DEBUG, logger="ideer.community.infoquest.infoquest_client"):
+        with caplog.at_level(logging.DEBUG, logger="deerflow.community.infoquest.infoquest_client"):
             client.web_search_raw_results("test query", "")
         assert "Search API request completed successfully" in caplog.text
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("ideer.community.infoquest.infoquest_client.requests.post")
+    @patch("deerflow.community.infoquest.infoquest_client.requests.post")
     def test_debug_logging_long_response(self, mock_post, caplog):
         """Debug logging truncates long JSON response samples."""
         long_data = {"key": "x" * 300}
@@ -474,7 +474,7 @@ class TestWebSearchRawResults:
         mock_post.return_value = mock_response
 
         client = InfoQuestClient()
-        with caplog.at_level(logging.DEBUG, logger="ideer.community.infoquest.infoquest_client"):
+        with caplog.at_level(logging.DEBUG, logger="deerflow.community.infoquest.infoquest_client"):
             client.web_search_raw_results("q", "")
         assert "response_sample=" in caplog.text
 
@@ -624,7 +624,7 @@ class TestWebSearch:
     """Tests for InfoQuestClient.web_search."""
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("ideer.community.infoquest.infoquest_client.requests.post")
+    @patch("deerflow.community.infoquest.infoquest_client.requests.post")
     def test_success_path(self, mock_post):
         search_data = {"search_result": {"results": [{"content": {"results": {"organic": [{"title": "T", "desc": "D", "url": "https://x.com"}]}}}]}}
         mock_response = MagicMock()
@@ -639,7 +639,7 @@ class TestWebSearch:
         assert parsed[0]["title"] == "T"
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("ideer.community.infoquest.infoquest_client.requests.post")
+    @patch("deerflow.community.infoquest.infoquest_client.requests.post")
     def test_content_fallback_returns_error(self, mock_post):
         mock_response = MagicMock()
         mock_response.json.return_value = {"content": "bad format"}
@@ -652,7 +652,7 @@ class TestWebSearch:
         assert "wrong format" in result
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("ideer.community.infoquest.infoquest_client.requests.post")
+    @patch("deerflow.community.infoquest.infoquest_client.requests.post")
     def test_neither_field_returns_raw_json(self, mock_post):
         raw = {"other": "data"}
         mock_response = MagicMock()
@@ -666,7 +666,7 @@ class TestWebSearch:
         assert parsed == raw
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("ideer.community.infoquest.infoquest_client.requests.post")
+    @patch("deerflow.community.infoquest.infoquest_client.requests.post")
     def test_exception_returns_error(self, mock_post):
         mock_post.side_effect = RuntimeError("network down")
 
@@ -676,7 +676,7 @@ class TestWebSearch:
         assert "network down" in result
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("ideer.community.infoquest.infoquest_client.requests.post")
+    @patch("deerflow.community.infoquest.infoquest_client.requests.post")
     def test_debug_logging_truncated_query(self, mock_post, caplog):
         mock_response = MagicMock()
         mock_response.json.return_value = {"search_result": {"results": [{"content": {"results": {}}}]}}
@@ -685,12 +685,12 @@ class TestWebSearch:
 
         client = InfoQuestClient()
         long_query = "x" * 100
-        with caplog.at_level(logging.DEBUG, logger="ideer.community.infoquest.infoquest_client"):
+        with caplog.at_level(logging.DEBUG, logger="deerflow.community.infoquest.infoquest_client"):
             client.web_search(long_query)
         assert "query_truncated=" in caplog.text
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("ideer.community.infoquest.infoquest_client.requests.post")
+    @patch("deerflow.community.infoquest.infoquest_client.requests.post")
     def test_debug_logging_short_query(self, mock_post, caplog):
         mock_response = MagicMock()
         mock_response.json.return_value = {"search_result": {"results": [{"content": {"results": {}}}]}}
@@ -698,12 +698,12 @@ class TestWebSearch:
         mock_post.return_value = mock_response
 
         client = InfoQuestClient()
-        with caplog.at_level(logging.DEBUG, logger="ideer.community.infoquest.infoquest_client"):
+        with caplog.at_level(logging.DEBUG, logger="deerflow.community.infoquest.infoquest_client"):
             client.web_search("short")
         assert "query_truncated=short" in caplog.text
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("ideer.community.infoquest.infoquest_client.requests.post")
+    @patch("deerflow.community.infoquest.infoquest_client.requests.post")
     def test_with_site_and_time_range(self, mock_post):
         mock_response = MagicMock()
         mock_response.json.return_value = {"search_result": {"results": [{"content": {"results": {}}}]}}
@@ -714,7 +714,7 @@ class TestWebSearch:
         client.web_search("python", site="github.com")
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("ideer.community.infoquest.infoquest_client.requests.post")
+    @patch("deerflow.community.infoquest.infoquest_client.requests.post")
     def test_debug_logging_with_filters(self, mock_post, caplog):
         """Debug logging path with time and site filters."""
         mock_response = MagicMock()
@@ -723,13 +723,13 @@ class TestWebSearch:
         mock_post.return_value = mock_response
 
         client = InfoQuestClient(search_time_range=7)
-        with caplog.at_level(logging.DEBUG, logger="ideer.community.infoquest.infoquest_client"):
+        with caplog.at_level(logging.DEBUG, logger="deerflow.community.infoquest.infoquest_client"):
             client.web_search("test", site="github.com")
         assert "has_time_filter=True" in caplog.text
         assert "has_site_filter=True" in caplog.text
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("ideer.community.infoquest.infoquest_client.requests.post")
+    @patch("deerflow.community.infoquest.infoquest_client.requests.post")
     def test_debug_results_count(self, mock_post, caplog):
         """Debug logging reports results_count after cleaning."""
         search_data = {
@@ -753,7 +753,7 @@ class TestWebSearch:
         mock_post.return_value = mock_response
 
         client = InfoQuestClient()
-        with caplog.at_level(logging.DEBUG, logger="ideer.community.infoquest.infoquest_client"):
+        with caplog.at_level(logging.DEBUG, logger="deerflow.community.infoquest.infoquest_client"):
             client.web_search("q")
         assert "results_count=" in caplog.text
 
@@ -852,7 +852,7 @@ class TestImageSearchRawResults:
     """Tests for InfoQuestClient.image_search_raw_results."""
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("ideer.community.infoquest.infoquest_client.requests.post")
+    @patch("deerflow.community.infoquest.infoquest_client.requests.post")
     def test_basic_search(self, mock_post):
         mock_response = MagicMock()
         mock_response.json.return_value = {"results": []}
@@ -870,7 +870,7 @@ class TestImageSearchRawResults:
         assert "site" not in params
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("ideer.community.infoquest.infoquest_client.requests.post")
+    @patch("deerflow.community.infoquest.infoquest_client.requests.post")
     def test_with_site(self, mock_post):
         mock_response = MagicMock()
         mock_response.json.return_value = {"results": []}
@@ -885,7 +885,7 @@ class TestImageSearchRawResults:
         assert params["site"] == "example.com"
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("ideer.community.infoquest.infoquest_client.requests.post")
+    @patch("deerflow.community.infoquest.infoquest_client.requests.post")
     def test_time_range_in_range(self, mock_post):
         mock_response = MagicMock()
         mock_response.json.return_value = {"results": []}
@@ -900,7 +900,7 @@ class TestImageSearchRawResults:
         assert params["time_range"] == 30
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("ideer.community.infoquest.infoquest_client.requests.post")
+    @patch("deerflow.community.infoquest.infoquest_client.requests.post")
     def test_time_range_out_of_range_warning(self, mock_post, caplog):
         mock_response = MagicMock()
         mock_response.json.return_value = {"results": []}
@@ -908,7 +908,7 @@ class TestImageSearchRawResults:
         mock_post.return_value = mock_response
 
         client = InfoQuestClient(image_search_time_range=400)
-        with caplog.at_level(logging.WARNING, logger="ideer.community.infoquest.infoquest_client"):
+        with caplog.at_level(logging.WARNING, logger="deerflow.community.infoquest.infoquest_client"):
             client.image_search_raw_results("cats", "")
 
         call_kwargs = mock_post.call_args
@@ -917,7 +917,7 @@ class TestImageSearchRawResults:
         assert "out of valid range" in caplog.text
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("ideer.community.infoquest.infoquest_client.requests.post")
+    @patch("deerflow.community.infoquest.infoquest_client.requests.post")
     def test_time_range_zero_not_added(self, mock_post):
         mock_response = MagicMock()
         mock_response.json.return_value = {"results": []}
@@ -932,7 +932,7 @@ class TestImageSearchRawResults:
         assert "time_range" not in params
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("ideer.community.infoquest.infoquest_client.requests.post")
+    @patch("deerflow.community.infoquest.infoquest_client.requests.post")
     def test_time_range_boundary_365(self, mock_post):
         mock_response = MagicMock()
         mock_response.json.return_value = {"results": []}
@@ -947,7 +947,7 @@ class TestImageSearchRawResults:
         assert params["time_range"] == 365
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("ideer.community.infoquest.infoquest_client.requests.post")
+    @patch("deerflow.community.infoquest.infoquest_client.requests.post")
     def test_time_range_boundary_1(self, mock_post):
         mock_response = MagicMock()
         mock_response.json.return_value = {"results": []}
@@ -962,7 +962,7 @@ class TestImageSearchRawResults:
         assert params["time_range"] == 1
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("ideer.community.infoquest.infoquest_client.requests.post")
+    @patch("deerflow.community.infoquest.infoquest_client.requests.post")
     def test_image_size_valid(self, mock_post):
         mock_response = MagicMock()
         mock_response.json.return_value = {"results": []}
@@ -977,7 +977,7 @@ class TestImageSearchRawResults:
             assert params["image_size"] == size
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("ideer.community.infoquest.infoquest_client.requests.post")
+    @patch("deerflow.community.infoquest.infoquest_client.requests.post")
     def test_image_size_invalid_warning(self, mock_post, caplog):
         mock_response = MagicMock()
         mock_response.json.return_value = {"results": []}
@@ -985,7 +985,7 @@ class TestImageSearchRawResults:
         mock_post.return_value = mock_response
 
         client = InfoQuestClient(image_size="x")
-        with caplog.at_level(logging.WARNING, logger="ideer.community.infoquest.infoquest_client"):
+        with caplog.at_level(logging.WARNING, logger="deerflow.community.infoquest.infoquest_client"):
             client.image_search_raw_results("cats", "")
 
         call_kwargs = mock_post.call_args
@@ -994,7 +994,7 @@ class TestImageSearchRawResults:
         assert "is not valid" in caplog.text
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("ideer.community.infoquest.infoquest_client.requests.post")
+    @patch("deerflow.community.infoquest.infoquest_client.requests.post")
     def test_image_size_empty_string(self, mock_post):
         """Empty image_size is falsy, so it should not be added."""
         mock_response = MagicMock()
@@ -1010,7 +1010,7 @@ class TestImageSearchRawResults:
         assert "image_size" not in params
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("ideer.community.infoquest.infoquest_client.requests.post")
+    @patch("deerflow.community.infoquest.infoquest_client.requests.post")
     def test_debug_logging(self, mock_post, caplog):
         mock_response = MagicMock()
         mock_response.json.return_value = {"key": "value"}
@@ -1018,12 +1018,12 @@ class TestImageSearchRawResults:
         mock_post.return_value = mock_response
 
         client = InfoQuestClient()
-        with caplog.at_level(logging.DEBUG, logger="ideer.community.infoquest.infoquest_client"):
+        with caplog.at_level(logging.DEBUG, logger="deerflow.community.infoquest.infoquest_client"):
             client.image_search_raw_results("test", "")
         assert "Image Search API request completed successfully" in caplog.text
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("ideer.community.infoquest.infoquest_client.requests.post")
+    @patch("deerflow.community.infoquest.infoquest_client.requests.post")
     def test_debug_logging_long_response(self, mock_post, caplog):
         """Debug logging truncates long JSON response samples for image search."""
         long_data = {"key": "x" * 300}
@@ -1033,7 +1033,7 @@ class TestImageSearchRawResults:
         mock_post.return_value = mock_response
 
         client = InfoQuestClient()
-        with caplog.at_level(logging.DEBUG, logger="ideer.community.infoquest.infoquest_client"):
+        with caplog.at_level(logging.DEBUG, logger="deerflow.community.infoquest.infoquest_client"):
             client.image_search_raw_results("q", "")
         assert "response_sample=" in caplog.text
 
@@ -1047,7 +1047,7 @@ class TestImageSearch:
     """Tests for InfoQuestClient.image_search."""
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("ideer.community.infoquest.infoquest_client.requests.post")
+    @patch("deerflow.community.infoquest.infoquest_client.requests.post")
     def test_success_path(self, mock_post):
         search_data = {"search_result": {"results": [{"content": {"results": {"images_results": [{"original": "https://img.jpg", "title": "Cat"}]}}}]}}
         mock_response = MagicMock()
@@ -1062,7 +1062,7 @@ class TestImageSearch:
         assert parsed[0]["image_url"] == "https://img.jpg"
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("ideer.community.infoquest.infoquest_client.requests.post")
+    @patch("deerflow.community.infoquest.infoquest_client.requests.post")
     def test_content_fallback_returns_error(self, mock_post):
         mock_response = MagicMock()
         mock_response.json.return_value = {"content": "bad format"}
@@ -1075,7 +1075,7 @@ class TestImageSearch:
         assert "wrong format" in result
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("ideer.community.infoquest.infoquest_client.requests.post")
+    @patch("deerflow.community.infoquest.infoquest_client.requests.post")
     def test_neither_field_returns_raw_json(self, mock_post):
         raw = {"other": "data"}
         mock_response = MagicMock()
@@ -1089,7 +1089,7 @@ class TestImageSearch:
         assert parsed == raw
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("ideer.community.infoquest.infoquest_client.requests.post")
+    @patch("deerflow.community.infoquest.infoquest_client.requests.post")
     def test_exception_returns_error(self, mock_post):
         mock_post.side_effect = RuntimeError("connection refused")
 
@@ -1099,7 +1099,7 @@ class TestImageSearch:
         assert "connection refused" in result
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("ideer.community.infoquest.infoquest_client.requests.post")
+    @patch("deerflow.community.infoquest.infoquest_client.requests.post")
     def test_debug_logging_truncated_query(self, mock_post, caplog):
         mock_response = MagicMock()
         mock_response.json.return_value = {"search_result": {"results": [{"content": {"results": {}}}]}}
@@ -1108,12 +1108,12 @@ class TestImageSearch:
 
         client = InfoQuestClient()
         long_query = "x" * 100
-        with caplog.at_level(logging.DEBUG, logger="ideer.community.infoquest.infoquest_client"):
+        with caplog.at_level(logging.DEBUG, logger="deerflow.community.infoquest.infoquest_client"):
             client.image_search(long_query)
         assert "query_truncated=" in caplog.text
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("ideer.community.infoquest.infoquest_client.requests.post")
+    @patch("deerflow.community.infoquest.infoquest_client.requests.post")
     def test_debug_logging_short_query(self, mock_post, caplog):
         mock_response = MagicMock()
         mock_response.json.return_value = {"search_result": {"results": [{"content": {"results": {}}}]}}
@@ -1121,12 +1121,12 @@ class TestImageSearch:
         mock_post.return_value = mock_response
 
         client = InfoQuestClient()
-        with caplog.at_level(logging.DEBUG, logger="ideer.community.infoquest.infoquest_client"):
+        with caplog.at_level(logging.DEBUG, logger="deerflow.community.infoquest.infoquest_client"):
             client.image_search("short")
         assert "query_truncated=short" in caplog.text
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("ideer.community.infoquest.infoquest_client.requests.post")
+    @patch("deerflow.community.infoquest.infoquest_client.requests.post")
     def test_with_site(self, mock_post):
         mock_response = MagicMock()
         mock_response.json.return_value = {"search_result": {"results": [{"content": {"results": {}}}]}}
@@ -1137,7 +1137,7 @@ class TestImageSearch:
         client.image_search("cats", site="example.com")
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("ideer.community.infoquest.infoquest_client.requests.post")
+    @patch("deerflow.community.infoquest.infoquest_client.requests.post")
     def test_debug_logging_with_filters(self, mock_post, caplog):
         """Debug logging path with site and valid time_range."""
         mock_response = MagicMock()
@@ -1146,13 +1146,13 @@ class TestImageSearch:
         mock_post.return_value = mock_response
 
         client = InfoQuestClient(image_search_time_range=14, image_size="l")
-        with caplog.at_level(logging.DEBUG, logger="ideer.community.infoquest.infoquest_client"):
+        with caplog.at_level(logging.DEBUG, logger="deerflow.community.infoquest.infoquest_client"):
             client.image_search("test", site="example.com")
         assert "has_site_filter=True" in caplog.text
         assert "image_search_time_range=14" in caplog.text
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("ideer.community.infoquest.infoquest_client.requests.post")
+    @patch("deerflow.community.infoquest.infoquest_client.requests.post")
     def test_debug_logging_default_time_range(self, mock_post, caplog):
         """Debug logging with default (out of range) time_range shows 'default'."""
         mock_response = MagicMock()
@@ -1161,12 +1161,12 @@ class TestImageSearch:
         mock_post.return_value = mock_response
 
         client = InfoQuestClient(image_search_time_range=-1)
-        with caplog.at_level(logging.DEBUG, logger="ideer.community.infoquest.infoquest_client"):
+        with caplog.at_level(logging.DEBUG, logger="deerflow.community.infoquest.infoquest_client"):
             client.image_search("test")
         assert "image_search_time_range=default" in caplog.text
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("ideer.community.infoquest.infoquest_client.requests.post")
+    @patch("deerflow.community.infoquest.infoquest_client.requests.post")
     def test_debug_logging_out_of_range_time(self, mock_post, caplog):
         """Debug logging with time_range > 365 shows 'default'."""
         mock_response = MagicMock()
@@ -1175,12 +1175,12 @@ class TestImageSearch:
         mock_post.return_value = mock_response
 
         client = InfoQuestClient(image_search_time_range=500)
-        with caplog.at_level(logging.DEBUG, logger="ideer.community.infoquest.infoquest_client"):
+        with caplog.at_level(logging.DEBUG, logger="deerflow.community.infoquest.infoquest_client"):
             client.image_search("test")
         assert "image_search_time_range=default" in caplog.text
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("ideer.community.infoquest.infoquest_client.requests.post")
+    @patch("deerflow.community.infoquest.infoquest_client.requests.post")
     def test_debug_results_count(self, mock_post, caplog):
         """Debug logging reports results_count for image search."""
         search_data = {
@@ -1204,6 +1204,6 @@ class TestImageSearch:
         mock_post.return_value = mock_response
 
         client = InfoQuestClient()
-        with caplog.at_level(logging.DEBUG, logger="ideer.community.infoquest.infoquest_client"):
+        with caplog.at_level(logging.DEBUG, logger="deerflow.community.infoquest.infoquest_client"):
             client.image_search("q")
         assert "results_count=" in caplog.text

@@ -1,11 +1,11 @@
-"""Tests for ideer.agents.features — RuntimeFeatures dataclass and Next/Prev decorators."""
+"""Tests for deerflow.agents.features — RuntimeFeatures dataclass and Next/Prev decorators."""
 
 from __future__ import annotations
 
 import pytest
 from langchain.agents.middleware import AgentMiddleware
 
-from ideer.agents.features import Next, Prev, RuntimeFeatures
+from deerflow.agents.features import Next, Prev, RuntimeFeatures
 
 # ---------------------------------------------------------------------------
 # Helpers

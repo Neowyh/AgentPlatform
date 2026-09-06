@@ -69,8 +69,8 @@ def _make_config(cfg=None):
 def _make_app():
     """Build a test app with the memory router.
 
-    The router calls module-level functions from ``ideer.agents.memory.updater``
-    and ``ideer.config.memory_config`` directly -- there is no store object on
+    The router calls module-level functions from ``app.agentplatform.legacy.memory.updater``
+    and ``deerflow.config.memory_config`` directly -- there is no store object on
     ``app.state``.  Each test patches those functions at their import location
     in the router module.
     """

@@ -13,7 +13,7 @@ from langchain_core.runnables import Runnable
 from langchain_core.tools import tool as as_tool
 from pydantic import PrivateAttr
 
-from ideer.agents.middlewares.loop_detection_middleware import (
+from deerflow.agents.middlewares.loop_detection_middleware import (
     _HARD_STOP_MSG,
     _MAX_PENDING_WARNINGS_PER_RUN,
     LoopDetectionMiddleware,
@@ -1035,7 +1035,7 @@ class TestFromConfig:
 
     @staticmethod
     def _config(**kwargs):
-        from ideer.config.loop_detection_config import LoopDetectionConfig
+        from deerflow.config.loop_detection_config import LoopDetectionConfig
 
         return LoopDetectionConfig(**kwargs)
 

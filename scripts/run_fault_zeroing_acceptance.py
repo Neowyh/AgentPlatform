@@ -36,11 +36,11 @@ from app.agentplatform.workflows.v2.store import WorkflowV2Store
 from app.agentplatform.workflows.v2.worker import WorkflowWorker
 from app.workflow_worker import execute_workflow_task
 from deerflow.persistence.base import Base
-from ideer.config import get_app_config
-from ideer.config.checkpointer_config import CheckpointerConfig
-from ideer.config.paths import get_paths
-from ideer.fault_zeroing.contract import CONTRACT_VERSION
-from ideer.fault_zeroing.kernel import (
+from deerflow.config import get_app_config
+from deerflow.config.checkpointer_config import CheckpointerConfig
+from deerflow.config.paths import get_paths
+from app.agentplatform.fault_zeroing.contract import CONTRACT_VERSION
+from app.agentplatform.fault_zeroing.kernel import (
     COMPLETION_STATUS_COMPLETED,
     FaultZeroingKernel,
 )

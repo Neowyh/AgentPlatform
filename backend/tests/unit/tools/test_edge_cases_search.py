@@ -1,10 +1,10 @@
-"""Additional coverage tests for ideer.sandbox.search."""
+"""Additional coverage tests for deerflow.sandbox.search."""
 
 from __future__ import annotations
 
 import pytest
 
-from ideer.sandbox.search import (
+from deerflow.sandbox.search import (
     find_glob_matches,
     find_grep_matches,
     is_binary_file,

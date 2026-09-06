@@ -167,13 +167,29 @@ if ! uv sync --locked --all-packages $EXTRAS_FLAGS; then
     fi
 fi
 
-# ── Hand off to uvicorn ─────────────────────────────────────────────────────
+# ── Hand off to the requested process ───────────────────────────────────────
+# ${1:-gateway} selects the entrypoint role: "gateway" (default) runs the
+# uvicorn dev server; "worker" runs the durable workflow worker so `make
+# docker-start` environments process durable workflow tasks.
 
-PYTHONPATH=. exec uv run --no-sync uvicorn app.gateway.app:app \
-    --host 0.0.0.0 --port 8001 \
-    --reload \
-    --reload-include='*.yaml' \
-    --reload-include='.env' \
-    --reload-exclude=/app/backend/sandbox \
-    --reload-exclude="$DEER_FLOW_HOME" \
-    --reload-exclude=/app/backend/.deer-flow
+ROLE="${1:-gateway}"
+
+case "$ROLE" in
+    gateway)
+        PYTHONPATH=. exec uv run --no-sync uvicorn app.gateway.app:app \
+            --host 0.0.0.0 --port 8001 \
+            --reload \
+            --reload-include='*.yaml' \
+            --reload-include='.env' \
+            --reload-exclude=/app/backend/sandbox \
+            --reload-exclude="$DEER_FLOW_HOME" \
+            --reload-exclude=/app/backend/.deer-flow
+        ;;
+    worker)
+        PYTHONPATH=. exec uv run --no-sync python -m app.workflow_worker
+        ;;
+    *)
+        echo "[startup] Unknown role '$ROLE' (expected gateway or worker)" >&2
+        exit 1
+        ;;
+esac

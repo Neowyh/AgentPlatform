@@ -1,4 +1,4 @@
-"""Additional coverage tests for ideer.sandbox.middleware.
+"""Additional coverage tests for deerflow.sandbox.middleware.
 
 Targets missed lines:
 - Lines 53-56: _acquire_sandbox_async
@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from ideer.sandbox.middleware import SandboxMiddleware
+from deerflow.sandbox.middleware import SandboxMiddleware
 
 
 class TestAcquireSandboxAsync:
@@ -23,11 +23,11 @@ class TestAcquireSandboxAsync:
         mock_provider = MagicMock()
         mock_provider.acquire_async = AsyncMock(return_value="sandbox-async-123")
 
-        with patch("ideer.sandbox.middleware.get_sandbox_provider", return_value=mock_provider):
-            result = await mw._acquire_sandbox_async("thread-1")
+        with patch("deerflow.sandbox.middleware.get_sandbox_provider", return_value=mock_provider):
+            result = await mw._acquire_sandbox_async("thread-1", user_id="u1", owner_id=None)
 
         assert result == "sandbox-async-123"
-        mock_provider.acquire_async.assert_called_once_with("thread-1")
+        mock_provider.acquire_async.assert_called_once_with("thread-1", user_id="u1")
 
 
 class TestReleaseSandboxAsync:
@@ -40,10 +40,10 @@ class TestReleaseSandboxAsync:
         mock_provider.release = MagicMock()
 
         with (
-            patch("ideer.sandbox.middleware.get_sandbox_provider", return_value=mock_provider),
+            patch("deerflow.sandbox.middleware.get_sandbox_provider", return_value=mock_provider),
             patch("asyncio.to_thread", new_callable=AsyncMock) as mock_to_thread,
         ):
-            await mw._release_sandbox_async("sandbox-123")
+            await mw._release_sandbox_async("sandbox-123", owner_id=None)
 
         mock_to_thread.assert_called_once()
 
@@ -73,11 +73,11 @@ class TestAsyncBeforeAgent:
         mock_provider = MagicMock()
         mock_provider.acquire_async = AsyncMock(return_value="sandbox-abc")
 
-        with patch("ideer.sandbox.middleware.get_sandbox_provider", return_value=mock_provider):
+        with patch("deerflow.sandbox.middleware.get_sandbox_provider", return_value=mock_provider):
             result = await mw.abefore_agent(state, runtime)
 
         assert result == {"sandbox": {"sandbox_id": "sandbox-abc"}}
-        mock_provider.acquire_async.assert_called_once_with("thread-123")
+        mock_provider.acquire_async.assert_called_once_with("thread-123", user_id="test-user-autouse")
 
     @pytest.mark.anyio
     async def test_abefore_agent_eager_no_thread_id(self):
@@ -116,12 +116,12 @@ class TestAsyncAfterAgent:
         mock_provider = MagicMock()
 
         with (
-            patch("ideer.sandbox.middleware.get_sandbox_provider", return_value=mock_provider),
+            patch("deerflow.sandbox.middleware.get_sandbox_provider", return_value=mock_provider),
             patch.object(mw, "_release_sandbox_async", new_callable=AsyncMock) as mock_release,
         ):
             result = await mw.aafter_agent(state, runtime)
 
-        mock_release.assert_called_once_with("sandbox-abc")
+        mock_release.assert_called_once_with("sandbox-abc", owner_id=None)
         assert result is None
 
     @pytest.mark.anyio
@@ -135,12 +135,12 @@ class TestAsyncAfterAgent:
         mock_provider = MagicMock()
 
         with (
-            patch("ideer.sandbox.middleware.get_sandbox_provider", return_value=mock_provider),
+            patch("deerflow.sandbox.middleware.get_sandbox_provider", return_value=mock_provider),
             patch.object(mw, "_release_sandbox_async", new_callable=AsyncMock) as mock_release,
         ):
             result = await mw.aafter_agent(state, runtime)
 
-        mock_release.assert_called_once_with("ctx-sandbox")
+        mock_release.assert_called_once_with("ctx-sandbox", owner_id=None)
         assert result is None
 
     @pytest.mark.anyio

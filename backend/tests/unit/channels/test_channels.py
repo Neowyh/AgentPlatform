@@ -2295,7 +2295,7 @@ class TestChannelService:
             }
         )
 
-        with patch("ideer.config.app_config.get_app_config", side_effect=AssertionError("should not read global config")):
+        with patch("deerflow.config.get_app_config", side_effect=AssertionError("should not read global config")):
             service = ChannelService.from_app_config(app_config)
 
         assert service._config == {"telegram": {"enabled": False}}

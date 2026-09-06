@@ -78,56 +78,56 @@ class TestPathTraversalDefense:
 
     Uses the same validation functions the canonical tools rely on:
     ``SkillStorage.validate_skill_name`` (ideer) and
-    ``ideer.config.agents_config.validate_agent_name``.
+    ``deerflow.config.agents_config.validate_agent_name``.
     """
 
     # --- Skill names ---
 
     def test_skill_name_rejects_slash(self):
-        from ideer.skills.storage.skill_storage import SkillStorage
+        from deerflow.skills.storage.skill_storage import SkillStorage
 
         with pytest.raises(ValueError, match="hyphen-case"):
             SkillStorage.validate_skill_name("my/skill")
 
     def test_skill_name_rejects_dotdot(self):
-        from ideer.skills.storage.skill_storage import SkillStorage
+        from deerflow.skills.storage.skill_storage import SkillStorage
 
         with pytest.raises(ValueError, match="hyphen-case"):
             SkillStorage.validate_skill_name("../etc/passwd")
 
     def test_skill_name_rejects_backslash(self):
-        from ideer.skills.storage.skill_storage import SkillStorage
+        from deerflow.skills.storage.skill_storage import SkillStorage
 
         with pytest.raises(ValueError, match="hyphen-case"):
             SkillStorage.validate_skill_name("skill\\..\\..\\etc")
 
     def test_skill_name_rejects_space(self):
-        from ideer.skills.storage.skill_storage import SkillStorage
+        from deerflow.skills.storage.skill_storage import SkillStorage
 
         with pytest.raises(ValueError, match="hyphen-case"):
             SkillStorage.validate_skill_name("my skill")
 
     def test_skill_name_rejects_dot(self):
-        from ideer.skills.storage.skill_storage import SkillStorage
+        from deerflow.skills.storage.skill_storage import SkillStorage
 
         with pytest.raises(ValueError, match="hyphen-case"):
             SkillStorage.validate_skill_name("my.skill")
 
     def test_skill_name_rejects_special_chars(self):
-        from ideer.skills.storage.skill_storage import SkillStorage
+        from deerflow.skills.storage.skill_storage import SkillStorage
 
         for name in ["skill@name!", "skill#test", "skill$var", "skill%20", "skill&x"]:
             with pytest.raises(ValueError, match="hyphen-case"):
                 SkillStorage.validate_skill_name(name)
 
     def test_skill_name_rejects_empty(self):
-        from ideer.skills.storage.skill_storage import SkillStorage
+        from deerflow.skills.storage.skill_storage import SkillStorage
 
         with pytest.raises(ValueError, match="hyphen-case"):
             SkillStorage.validate_skill_name("")
 
     def test_skill_name_accepts_valid(self):
-        from ideer.skills.storage.skill_storage import SkillStorage
+        from deerflow.skills.storage.skill_storage import SkillStorage
 
         for name in ["my-skill", "skill-123", "a", "a" * 63]:
             SkillStorage.validate_skill_name(name)  # should not raise
@@ -135,70 +135,70 @@ class TestPathTraversalDefense:
     # --- Agent names ---
 
     def test_agent_name_rejects_slash(self):
-        from ideer.config.agents_config import validate_agent_name
+        from deerflow.config.agents_config import validate_agent_name
 
         with pytest.raises(ValueError, match="Invalid agent name"):
             validate_agent_name("my/agent")
 
     def test_agent_name_rejects_dotdot(self):
-        from ideer.config.agents_config import validate_agent_name
+        from deerflow.config.agents_config import validate_agent_name
 
         with pytest.raises(ValueError, match="Invalid agent name"):
             validate_agent_name("../../../etc/shadow")
 
     def test_agent_name_rejects_backslash(self):
-        from ideer.config.agents_config import validate_agent_name
+        from deerflow.config.agents_config import validate_agent_name
 
         with pytest.raises(ValueError, match="Invalid agent name"):
             validate_agent_name("agent\\..\\..\\etc")
 
     def test_agent_name_rejects_space(self):
-        from ideer.config.agents_config import validate_agent_name
+        from deerflow.config.agents_config import validate_agent_name
 
         with pytest.raises(ValueError, match="Invalid agent name"):
             validate_agent_name("my agent")
 
     def test_agent_name_rejects_special_chars(self):
-        from ideer.config.agents_config import validate_agent_name
+        from deerflow.config.agents_config import validate_agent_name
 
         for name in ["agent@name!", "agent#test", "agent.dot"]:
             with pytest.raises(ValueError, match="Invalid agent name"):
                 validate_agent_name(name)
 
     def test_agent_name_rejects_empty(self):
-        from ideer.config.agents_config import validate_agent_name
+        from deerflow.config.agents_config import validate_agent_name
 
         with pytest.raises(ValueError, match="Invalid agent name"):
             validate_agent_name("")
 
     def test_agent_name_accepts_valid(self):
-        from ideer.config.agents_config import validate_agent_name
+        from deerflow.config.agents_config import validate_agent_name
 
         for name in ["my-agent", "agent123", "Agent-Test", "a", "12345"]:
             validate_agent_name(name)  # should not raise
 
     def test_agent_pattern_rejects_unicode(self):
         """Agent name regex should reject non-ASCII characters."""
-        from ideer.config.agents_config import AGENT_NAME_PATTERN
+        from deerflow.config.agents_config import AGENT_NAME_PATTERN
 
         assert not AGENT_NAME_PATTERN.match("agent中文")
         assert not AGENT_NAME_PATTERN.match("agent日本語")
 
     def test_skill_pattern_rejects_unicode(self):
         """Skill name regex should reject non-ASCII characters."""
-        from ideer.skills.storage.skill_storage import _SKILL_NAME_PATTERN
+        from deerflow.skills.storage.skill_storage import _SKILL_NAME_PATTERN
 
         assert not _SKILL_NAME_PATTERN.match("skill中文")
         assert not _SKILL_NAME_PATTERN.match("skill日本語")
 
     def test_agent_pattern_rejects_path_separators(self):
-        from ideer.config.agents_config import AGENT_NAME_PATTERN
+        from deerflow.config.agents_config import AGENT_NAME_PATTERN
 
         assert not AGENT_NAME_PATTERN.match("path/traversal")
         assert not AGENT_NAME_PATTERN.match("path\\traversal")
 
     def test_skill_pattern_rejects_path_separators(self):
-        from ideer.skills.storage.skill_storage import _SKILL_NAME_PATTERN
+        from deerflow.skills.storage.skill_storage import _SKILL_NAME_PATTERN
 
         assert not _SKILL_NAME_PATTERN.match("path/traversal")
         assert not _SKILL_NAME_PATTERN.match("path\\traversal")
@@ -501,7 +501,6 @@ class TestRegularUserToolTestPermission:
 
         with (
             patch("app.gateway.routers.tools.get_available_tools", return_value=[]),
-            patch("app.gateway.routers.tools.get_app_config"),
             patch("app.gateway.routers.tools._load_tool_meta", new_callable=AsyncMock, return_value={}),
         ):
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -520,7 +519,6 @@ class TestRegularUserToolTestPermission:
 
         with (
             patch("app.gateway.routers.tools.get_available_tools", return_value=[]),
-            patch("app.gateway.routers.tools.get_app_config"),
             patch("app.gateway.routers.tools._load_tool_meta", new_callable=AsyncMock, return_value={}),
         ):
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -563,7 +561,7 @@ class TestDisabledUser403:
         mock_session.__aexit__ = AsyncMock(return_value=False)
         mock_sf = MagicMock(return_value=mock_session)
 
-        with patch("ideer.persistence.engine.get_session_factory", return_value=mock_sf):
+        with patch("deerflow.persistence.engine.get_session_factory", return_value=mock_sf):
             with pytest.raises(HTTPException) as exc_info:
                 await real_get_current_rbac_user(req)
 
@@ -588,7 +586,7 @@ class TestDisabledUser403:
         mock_session.__aexit__ = AsyncMock(return_value=False)
         mock_sf = MagicMock(return_value=mock_session)
 
-        with patch("ideer.persistence.engine.get_session_factory", return_value=mock_sf):
+        with patch("deerflow.persistence.engine.get_session_factory", return_value=mock_sf):
             with pytest.raises(HTTPException) as exc_info:
                 await real_get_current_rbac_user(req)
 
@@ -608,7 +606,7 @@ class TestMetadataWhenDbUnavailable:
         """When session_factory is None, tool meta returns empty dict."""
         from app.gateway.routers.tools import _load_tool_meta
 
-        with patch("ideer.persistence.engine.get_session_factory", return_value=None):
+        with patch("deerflow.persistence.engine.get_session_factory", return_value=None):
             result = await _load_tool_meta("some-tool")
 
         assert result == {}
@@ -625,7 +623,7 @@ class TestMetadataWhenDbUnavailable:
         mock_session.__aexit__ = AsyncMock(return_value=False)
         mock_sf.return_value = mock_session
 
-        with patch("ideer.persistence.engine.get_session_factory", return_value=mock_sf):
+        with patch("deerflow.persistence.engine.get_session_factory", return_value=mock_sf):
             result = await _load_tool_meta("some-tool")
 
         assert result == {}

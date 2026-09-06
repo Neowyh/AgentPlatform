@@ -1,4 +1,4 @@
-"""Comprehensive tests for ideer.models.vllm_provider.
+"""Comprehensive tests for deerflow.models.vllm_provider.
 
 Covers every function and code path:
   - _normalize_vllm_chat_template_kwargs
@@ -29,7 +29,7 @@ from langchain_core.messages import (
 )
 from langchain_openai import ChatOpenAI
 
-from ideer.models.vllm_provider import (
+from deerflow.models.vllm_provider import (
     VllmChatModel,
     _convert_delta_to_message_chunk_with_reasoning,
     _normalize_vllm_chat_template_kwargs,

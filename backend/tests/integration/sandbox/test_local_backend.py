@@ -1,4 +1,4 @@
-"""Tests for ideer.community.aio_sandbox.local_backend — LocalContainerBackend."""
+"""Tests for deerflow.community.aio_sandbox.local_backend — LocalContainerBackend."""
 
 from __future__ import annotations
 
@@ -9,8 +9,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from ideer.community.aio_sandbox.local_backend import (
+from deerflow.community.aio_sandbox.local_backend import (
     LocalContainerBackend,
+    _ContainerInspection,
     _extract_host_port,
     _format_container_command_for_log,
     _format_container_mount,
@@ -238,8 +239,15 @@ class TestResolveDockerBindHost:
         assert result == "127.0.0.1"
 
     def test_non_loopback(self):
-        result = _resolve_docker_bind_host(sandbox_host="host.docker.internal")
-        assert result == "0.0.0.0"
+        # Upstream no longer binds 0.0.0.0 for non-loopback (DooD) sandbox
+        # hosts: it binds the address the sandbox host resolves to.
+        with patch.dict("os.environ", {}, clear=True):
+            with patch(
+                "deerflow.community.aio_sandbox.local_backend._resolve_sandbox_host_address",
+                return_value="192.168.65.2",
+            ):
+                result = _resolve_docker_bind_host(sandbox_host="host.docker.internal")
+                assert result == "192.168.65.2"
 
     def test_default_no_args(self):
         with patch.dict("os.environ", {}, clear=True):
@@ -247,12 +255,12 @@ class TestResolveDockerBindHost:
             assert result == "127.0.0.1"
 
     def test_env_override(self):
-        with patch.dict("os.environ", {"IDEER_SANDBOX_BIND_HOST": "10.0.0.1"}):
+        with patch.dict("os.environ", {"DEER_FLOW_SANDBOX_BIND_HOST": "10.0.0.1"}):
             result = _resolve_docker_bind_host()
             assert result == "10.0.0.1"
 
     def test_env_override_empty_string(self):
-        with patch.dict("os.environ", {"IDEER_SANDBOX_BIND_HOST": ""}):
+        with patch.dict("os.environ", {"DEER_FLOW_SANDBOX_BIND_HOST": ""}):
             result = _resolve_docker_bind_host(sandbox_host="localhost")
             assert result == "127.0.0.1"
 
@@ -335,9 +343,9 @@ class TestCreate:
                 environment={"ENV": "test"},
             )
 
-        with patch("ideer.community.aio_sandbox.local_backend.get_free_port", return_value=12345):
+        with patch("deerflow.community.aio_sandbox.local_backend.get_free_port", return_value=12345):
             with patch.object(backend, "_start_container", return_value="container_id_123"):
-                with patch.dict("os.environ", {"IDEER_SANDBOX_HOST": "localhost"}):
+                with patch.dict("os.environ", {"DEER_FLOW_SANDBOX_HOST": "localhost"}):
                     info = backend.create("thread_1", "sandbox_1")
                     assert info.sandbox_id == "sandbox_1"
                     assert ":12345" in info.sandbox_url
@@ -355,17 +363,17 @@ class TestCreate:
 
         call_count = 0
 
-        def mock_start(name, port, extra=None):
+        def mock_start(name, port, extra_mounts=None, *, config_mount_exclusion_root=None, labels=None):
             nonlocal call_count
             call_count += 1
             if call_count == 1:
                 raise RuntimeError("port is already allocated")
             return "container_id"
 
-        with patch("ideer.community.aio_sandbox.local_backend.get_free_port", side_effect=[10001, 10002]):
-            with patch("ideer.community.aio_sandbox.local_backend.release_port"):
+        with patch("deerflow.community.aio_sandbox.local_backend.get_free_port", side_effect=[10001, 10002]):
+            with patch("deerflow.community.aio_sandbox.local_backend.release_port"):
                 with patch.object(backend, "_start_container", side_effect=mock_start):
-                    with patch.dict("os.environ", {"IDEER_SANDBOX_HOST": "localhost"}):
+                    with patch.dict("os.environ", {"DEER_FLOW_SANDBOX_HOST": "localhost"}):
                         info = backend.create("thread_1", "sandbox_1")
                         assert info.container_id == "container_id"
 
@@ -379,8 +387,8 @@ class TestCreate:
                 environment={},
             )
 
-        with patch("ideer.community.aio_sandbox.local_backend.get_free_port", return_value=10001):
-            with patch("ideer.community.aio_sandbox.local_backend.release_port"):
+        with patch("deerflow.community.aio_sandbox.local_backend.get_free_port", return_value=10001):
+            with patch("deerflow.community.aio_sandbox.local_backend.release_port"):
                 with patch.object(backend, "_start_container", side_effect=RuntimeError("port is already allocated")):
                     with pytest.raises(RuntimeError, match="all candidate ports"):
                         backend.create("thread_1", "sandbox_1")
@@ -399,10 +407,11 @@ class TestCreate:
             sandbox_id="sandbox_1",
             sandbox_url="http://localhost:9999",
             container_name="ideer-sandbox-sandbox_1",
+            requires_replacement=False,
         )
 
-        with patch("ideer.community.aio_sandbox.local_backend.get_free_port", return_value=10001):
-            with patch("ideer.community.aio_sandbox.local_backend.release_port"):
+        with patch("deerflow.community.aio_sandbox.local_backend.get_free_port", return_value=10001):
+            with patch("deerflow.community.aio_sandbox.local_backend.release_port"):
                 with patch.object(backend, "_start_container", side_effect=RuntimeError("is already in use by container")):
                     with patch.object(backend, "discover", return_value=existing_info):
                         info = backend.create("thread_1", "sandbox_1")
@@ -430,10 +439,11 @@ class TestDestroy:
             sandbox_url="http://localhost:12345",
             container_name="ideer-s1",
             container_id="cid_123",
+            requires_replacement=False,
         )
 
         with patch.object(backend, "_stop_container") as mock_stop:
-            with patch("ideer.community.aio_sandbox.local_backend.release_port"):
+            with patch("deerflow.community.aio_sandbox.local_backend.release_port"):
                 backend.destroy(info)
                 mock_stop.assert_called_once_with("cid_123")
 
@@ -452,10 +462,11 @@ class TestDestroy:
             sandbox_url="http://localhost:12345",
             container_name="ideer-s1",
             container_id=None,
+            requires_replacement=False,
         )
 
         with patch.object(backend, "_stop_container") as mock_stop:
-            with patch("ideer.community.aio_sandbox.local_backend.release_port"):
+            with patch("deerflow.community.aio_sandbox.local_backend.release_port"):
                 backend.destroy(info)
                 mock_stop.assert_called_once_with("ideer-s1")
 
@@ -553,7 +564,7 @@ class TestDiscover:
 
         with patch.object(backend, "_is_container_running", return_value=True):
             with patch.object(backend, "_get_container_port", return_value=12345):
-                with patch("ideer.community.aio_sandbox.local_backend.wait_for_sandbox_ready", return_value=False):
+                with patch("deerflow.community.aio_sandbox.local_backend.wait_for_sandbox_ready", return_value=False):
                     assert backend.discover("sandbox_1") is None
 
     def test_discover_success(self):
@@ -566,10 +577,18 @@ class TestDiscover:
                 environment={},
             )
 
+        inspection = _ContainerInspection(
+            created_at=100.0,
+            host_port=12345,
+            labels={},
+            image="test",
+            networks=frozenset(),
+        )
+
         with patch.object(backend, "_is_container_running", return_value=True):
-            with patch.object(backend, "_get_container_port", return_value=12345):
-                with patch("ideer.community.aio_sandbox.local_backend.wait_for_sandbox_ready", return_value=True):
-                    with patch.dict("os.environ", {"IDEER_SANDBOX_HOST": "localhost"}):
+            with patch.object(backend, "_batch_inspect", return_value={"ideer-sandbox_1": inspection}):
+                with patch("deerflow.community.aio_sandbox.local_backend.wait_for_sandbox_ready", return_value=True):
+                    with patch.dict("os.environ", {"DEER_FLOW_SANDBOX_HOST": "localhost"}):
                         info = backend.discover("sandbox_1")
                         assert info is not None
                         assert info.sandbox_id == "sandbox_1"
@@ -635,7 +654,7 @@ class TestListRunning:
             return MagicMock(returncode=0, stdout="")
 
         with patch("subprocess.run", side_effect=mock_subprocess_run):
-            with patch.dict("os.environ", {"IDEER_SANDBOX_HOST": "localhost"}):
+            with patch.dict("os.environ", {"DEER_FLOW_SANDBOX_HOST": "localhost"}):
                 result = backend.list_running()
                 assert len(result) == 1
                 assert result[0].sandbox_id == "sandbox-abc"
@@ -718,7 +737,7 @@ class TestBatchInspect:
         with patch("subprocess.run", return_value=mock_result):
             result = backend._batch_inspect(["container-1"])
             assert "container-1" in result
-            assert result["container-1"][1] == 12345
+            assert result["container-1"].host_port == 12345
 
     def test_failure(self):
         with patch.object(LocalContainerBackend, "_detect_runtime", return_value="docker"):
@@ -791,7 +810,7 @@ class TestStartContainer:
         mock_result.stdout = "container_id_abc"
 
         with patch("subprocess.run", return_value=mock_result):
-            with patch.dict("os.environ", {"IDEER_SANDBOX_BIND_HOST": "127.0.0.1"}):
+            with patch.dict("os.environ", {"DEER_FLOW_SANDBOX_BIND_HOST": "127.0.0.1"}):
                 cid = backend._start_container("ideer-test", 12345)
                 assert cid == "container_id_abc"
 
@@ -823,7 +842,7 @@ class TestStartContainer:
         mock_result.stdout = "cid"
 
         with patch("subprocess.run", return_value=mock_result):
-            with patch.dict("os.environ", {"IDEER_SANDBOX_BIND_HOST": "127.0.0.1"}):
+            with patch.dict("os.environ", {"DEER_FLOW_SANDBOX_BIND_HOST": "127.0.0.1"}):
                 cid = backend._start_container("ideer-test", 12345, extra_mounts=[("/host", "/container", False)])
                 assert cid == "cid"
 
@@ -912,7 +931,15 @@ class TestIsContainerRunning:
                 environment={},
             )
 
-        with patch("subprocess.run", side_effect=subprocess.CalledProcessError(1, "docker")):
+        # Upstream contract: a failed inspect only means "not running" when the
+        # daemon definitively reports the container as missing; anything else
+        # raises RuntimeError so transient daemon failures are not mistaken for
+        # a dead container.
+        mock_result = MagicMock()
+        mock_result.returncode = 1
+        mock_result.stderr = "Error: No such container: container-1"
+
+        with patch("subprocess.run", return_value=mock_result):
             assert backend._is_container_running("container-1") is False
 
 

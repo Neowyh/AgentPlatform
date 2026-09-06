@@ -24,7 +24,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 def _build_store(db_path: Path):
     from app.agentplatform.workflows.v2.store import WorkflowV2Store
-    from ideer.persistence import engine as persistence_engine
+    from deerflow.persistence import engine as persistence_engine
 
     persistence_engine.init_engine(f"sqlite+aiosqlite:///{db_path}")
     return WorkflowV2Store(persistence_engine.get_session_factory())
@@ -42,7 +42,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        from ideer.fault_zeroing.legacy import terminate_legacy_runs
+        from app.agentplatform.fault_zeroing.legacy import terminate_legacy_runs
     except ImportError:
         print(
             "ideer package unavailable; run this script with the backend "

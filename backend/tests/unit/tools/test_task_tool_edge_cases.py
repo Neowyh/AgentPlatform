@@ -24,7 +24,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-task_tool_module = importlib.import_module("ideer.tools.builtins.task_tool")
+task_tool_module = importlib.import_module("deerflow.tools.builtins.task_tool")
 
 
 # ---------------------------------------------------------------------------
@@ -58,7 +58,7 @@ def _make_runtime(*, app_config=None, thread_id="thread-1", metadata=None):
 
 
 def _make_subagent_config(name="general-purpose"):
-    from ideer.subagents.config import SubagentConfig
+    from deerflow.subagents.config import SubagentConfig
 
     return SubagentConfig(
         name=name,
@@ -368,7 +368,7 @@ class TestTaskToolThreadIdFallback:
         )
         monkeypatch.setattr(task_tool_module, "get_stream_writer", lambda: events.append)
         monkeypatch.setattr(task_tool_module.asyncio, "sleep", _no_sleep)
-        monkeypatch.setattr("ideer.tools.get_available_tools", lambda **kwargs: [])
+        monkeypatch.setattr("deerflow.tools.get_available_tools", lambda **kwargs: [])
         monkeypatch.setattr(
             task_tool_module,
             "get_app_config",
@@ -424,7 +424,7 @@ class TestTaskToolTaskDisappeared:
         monkeypatch.setattr(task_tool_module, "get_background_task_result", get_result_always_none)
         monkeypatch.setattr(task_tool_module, "get_stream_writer", lambda: events.append)
         monkeypatch.setattr(task_tool_module.asyncio, "sleep", _no_sleep)
-        monkeypatch.setattr("ideer.tools.get_available_tools", lambda **kwargs: [])
+        monkeypatch.setattr("deerflow.tools.get_available_tools", lambda **kwargs: [])
         monkeypatch.setattr(
             task_tool_module,
             "get_app_config",

@@ -1,7 +1,7 @@
 """Parameterized unit tests for config modules without direct tests.
 
 Covers: default values, field types, constraint validation, and boundary
-conditions for each untested config in ideer.config.
+conditions for each untested config in deerflow.config.
 """
 
 from __future__ import annotations
@@ -9,7 +9,8 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from ideer.config.acp_config import (
+from app.agentplatform.config.network_mode import NetworkMode, get_network_mode, is_offline
+from deerflow.config.acp_config import (
     ACPAgentConfig,
     get_acp_agents,
     load_acp_config_from_dict,
@@ -18,14 +19,14 @@ from ideer.config.acp_config import (
 # ---------------------------------------------------------------------------
 # CheckpointerConfig
 # ---------------------------------------------------------------------------
-from ideer.config.checkpointer_config import (
+from deerflow.config.checkpointer_config import (
     CheckpointerConfig,
     get_checkpointer_config,
     load_checkpointer_config_from_dict,
     set_checkpointer_config,
 )
-from ideer.config.database_config import DatabaseConfig
-from ideer.config.guardrails_config import (
+from deerflow.config.database_config import DatabaseConfig
+from deerflow.config.guardrails_config import (
     GuardrailProviderConfig,
     GuardrailsConfig,
     get_guardrails_config,
@@ -36,57 +37,57 @@ from ideer.config.guardrails_config import (
 # ---------------------------------------------------------------------------
 # New config modules
 # ---------------------------------------------------------------------------
-from ideer.config.loop_detection_config import LoopDetectionConfig, ToolFreqOverride
-from ideer.config.memory_config import (
+from deerflow.config.loop_detection_config import LoopDetectionConfig, ToolFreqOverride
+from deerflow.config.memory_config import (
     MemoryConfig,
     get_memory_config,
     load_memory_config_from_dict,
     set_memory_config,
 )
-from ideer.config.model_config import ModelConfig
-from ideer.config.network_mode import NetworkMode, get_network_mode, is_offline
-from ideer.config.run_events_config import RunEventsConfig
-from ideer.config.safety_finish_reason_config import (
+from deerflow.config.model_config import ModelConfig
+from deerflow.config.run_events_config import RunEventsConfig
+from deerflow.config.safety_finish_reason_config import (
     SafetyDetectorConfig,
     SafetyFinishReasonConfig,
 )
-from ideer.config.sandbox_config import SandboxConfig, VolumeMountConfig
-from ideer.config.skill_evolution_config import SkillEvolutionConfig
-from ideer.config.skills_config import SkillsConfig
-from ideer.config.stream_bridge_config import (
+from deerflow.config.sandbox_config import SandboxConfig, VolumeMountConfig
+from deerflow.config.skill_evolution_config import SkillEvolutionConfig
+from deerflow.config.skills_config import SkillsConfig
+from deerflow.config.stream_bridge_config import (
     StreamBridgeConfig,
     get_stream_bridge_config,
     load_stream_bridge_config_from_dict,
     set_stream_bridge_config,
 )
-from ideer.config.subagents_config import (
+from deerflow.config.subagents_config import (
     CustomSubagentConfig,
     SubagentOverrideConfig,
     SubagentsAppConfig,
 )
-from ideer.config.summarization_config import (
+from deerflow.config.summarization_config import (
     ContextSize,
     SummarizationConfig,
     get_summarization_config,
     load_summarization_config_from_dict,
     set_summarization_config,
 )
-from ideer.config.title_config import (
+from deerflow.config.title_config import (
     TitleConfig,
     get_title_config,
     load_title_config_from_dict,
     reset_title_config,
     set_title_config,
 )
-from ideer.config.tool_config import ToolConfig, ToolGroupConfig
-from ideer.config.tool_search_config import (
+from deerflow.config.tool_config import ToolConfig, ToolGroupConfig
+from deerflow.config.tool_search_config import (
     ToolSearchConfig,
     get_tool_search_config,
     load_tool_search_config_from_dict,
 )
-from ideer.config.tracing_config import (
+from deerflow.config.tracing_config import (
     LangfuseTracingConfig,
     LangSmithTracingConfig,
+    MonocleTracingConfig,
     TracingConfig,
     reset_tracing_config,
 )
@@ -159,7 +160,9 @@ class TestDatabaseConfig:
     def test_defaults(self):
         cfg = DatabaseConfig()
         assert cfg.backend == "memory"
-        assert cfg.sqlite_dir == ".ideer/data"
+        # Enterprise deployments pin sqlite_dir to .ideer/data via config.yaml;
+        # the shared upstream default is .deer-flow/data.
+        assert cfg.sqlite_dir == ".deer-flow/data"
         assert cfg.postgres_url == ""
         assert cfg.echo_sql is False
         assert cfg.pool_size == 5
@@ -191,18 +194,9 @@ class TestDatabaseConfig:
         cfg = DatabaseConfig(pool_size=pool_size)
         assert cfg.pool_size == pool_size
 
-    def test_pool_size_zero_rejected_by_ge_constraint(self):
-        # pool_size has ge=1 constraint, so 0 is rejected
-        with pytest.raises(ValidationError):
-            DatabaseConfig(pool_size=0)
-
-    def test_pool_size_negative_rejected(self):
-        with pytest.raises(ValidationError):
-            DatabaseConfig(pool_size=-1)
-
     def test_sqlite_path_construction(self):
         cfg = DatabaseConfig(sqlite_dir="/tmp/db")
-        assert cfg.sqlite_path.endswith("ideer.db")
+        assert cfg.sqlite_path.endswith("deerflow.db")
 
     def test_app_sqlalchemy_url_memory_raises(self):
         cfg = DatabaseConfig(backend="memory")
@@ -273,7 +267,7 @@ class TestGuardrailsConfig:
         finally:
             reset_guardrails_config()
             # restore original
-            import ideer.config.guardrails_config as mod
+            import deerflow.config.guardrails_config as mod
 
             mod._guardrails_config = original
 
@@ -284,76 +278,33 @@ class TestGuardrailsConfig:
 
 
 class TestMemoryConfig:
+    """The shared MemoryConfig is backend-agnostic; ideer-era knobs
+    (storage_path, max_facts, ...) are migrated into backend_config and the
+    legacy memory modules read them with the historical defaults."""
+
     def test_defaults(self):
         cfg = MemoryConfig()
         assert cfg.enabled is True
-        assert cfg.storage_path == ""
-        assert cfg.debounce_seconds == 30
-        assert cfg.model_name is None
-        assert cfg.max_facts == 100
-        assert cfg.fact_confidence_threshold == pytest.approx(0.7)
         assert cfg.injection_enabled is True
-        assert cfg.max_injection_tokens == 2000
+        assert cfg.backend_config == {}
 
-    def test_debounce_seconds_bounds(self):
-        # Below lower bound
-        with pytest.raises(ValidationError):
-            MemoryConfig(debounce_seconds=0)  # < ge=1
-        # Above upper bound
-        with pytest.raises(ValidationError):
-            MemoryConfig(debounce_seconds=301)  # > le=300
-        # Boundary: ge=1
-        cfg = MemoryConfig(debounce_seconds=1)
-        assert cfg.debounce_seconds == 1
-        # Boundary: le=300
-        cfg = MemoryConfig(debounce_seconds=300)
-        assert cfg.debounce_seconds == 300
+    def test_legacy_defaults_via_compat_reader(self):
+        from app.agentplatform.legacy.memory.compat import (
+            LEGACY_DEBOUNCE_SECONDS,
+            LEGACY_FACT_CONFIDENCE_THRESHOLD,
+            LEGACY_MAX_FACTS,
+            LEGACY_MAX_INJECTION_TOKENS,
+            LEGACY_STORAGE_CLASS,
+            legacy_memory_setting,
+        )
 
-    def test_max_facts_bounds(self):
-        # Below lower bound
-        with pytest.raises(ValidationError):
-            MemoryConfig(max_facts=9)  # < ge=10
-        # Above upper bound
-        with pytest.raises(ValidationError):
-            MemoryConfig(max_facts=501)  # > le=500
-        # Boundary: ge=10
-        cfg = MemoryConfig(max_facts=10)
-        assert cfg.max_facts == 10
-        # Boundary: le=500
-        cfg = MemoryConfig(max_facts=500)
-        assert cfg.max_facts == 500
-
-    def test_fact_confidence_threshold_bounds(self):
-        # Below lower bound
-        with pytest.raises(ValidationError):
-            MemoryConfig(fact_confidence_threshold=-0.1)
-        # Above upper bound
-        with pytest.raises(ValidationError):
-            MemoryConfig(fact_confidence_threshold=1.1)
-        # Boundary: ge=0.0
-        cfg = MemoryConfig(fact_confidence_threshold=0.0)
-        assert cfg.fact_confidence_threshold == pytest.approx(0.0)
-        # Boundary: le=1.0
-        cfg = MemoryConfig(fact_confidence_threshold=1.0)
-        assert cfg.fact_confidence_threshold == pytest.approx(1.0)
-
-    def test_max_injection_tokens_bounds(self):
-        # Below lower bound
-        with pytest.raises(ValidationError):
-            MemoryConfig(max_injection_tokens=99)
-        # Above upper bound
-        with pytest.raises(ValidationError):
-            MemoryConfig(max_injection_tokens=8001)
-        # Boundary: ge=100
-        cfg = MemoryConfig(max_injection_tokens=100)
-        assert cfg.max_injection_tokens == 100
-        # Boundary: le=8000
-        cfg = MemoryConfig(max_injection_tokens=8000)
-        assert cfg.max_injection_tokens == 8000
-
-    def test_storage_class_default(self):
         cfg = MemoryConfig()
-        assert "FileMemoryStorage" in cfg.storage_class
+        assert legacy_memory_setting(cfg, "storage_path", "") == ""
+        assert legacy_memory_setting(cfg, "debounce_seconds", LEGACY_DEBOUNCE_SECONDS) == 30
+        assert legacy_memory_setting(cfg, "max_facts", LEGACY_MAX_FACTS) == 100
+        assert legacy_memory_setting(cfg, "fact_confidence_threshold", LEGACY_FACT_CONFIDENCE_THRESHOLD) == pytest.approx(0.7)
+        assert legacy_memory_setting(cfg, "max_injection_tokens", LEGACY_MAX_INJECTION_TOKENS) == 2000
+        assert "FileMemoryStorage" in legacy_memory_setting(cfg, "storage_class", LEGACY_STORAGE_CLASS)
 
     @pytest.mark.parametrize(
         "path",
@@ -364,8 +315,10 @@ class TestMemoryConfig:
         ],
     )
     def test_storage_path_variants(self, path):
-        cfg = MemoryConfig(storage_path=path)
-        assert cfg.storage_path == path
+        from app.agentplatform.legacy.memory.compat import legacy_memory_setting
+
+        cfg = MemoryConfig(backend_config={"storage_path": path})
+        assert legacy_memory_setting(cfg, "storage_path", "") == path
 
     def test_singleton_get_set(self):
         original = get_memory_config()
@@ -381,7 +334,8 @@ class TestMemoryConfig:
             load_memory_config_from_dict({"enabled": False, "max_facts": 50})
             cfg = get_memory_config()
             assert cfg.enabled is False
-            assert cfg.max_facts == 50
+            # Legacy top-level max_facts auto-migrates into backend_config.
+            assert cfg.backend_config["max_facts"] == 50
         finally:
             set_memory_config(original)
 
@@ -394,7 +348,7 @@ class TestMemoryConfig:
 class TestRunEventsConfig:
     def test_defaults(self):
         cfg = RunEventsConfig()
-        assert cfg.backend == "db"
+        assert cfg.backend == "memory"
         assert cfg.max_trace_content == 10240
         assert cfg.track_token_usage is True
 
@@ -566,7 +520,7 @@ class TestStreamBridgeConfig:
 class TestSubagentsAppConfig:
     def test_defaults(self):
         cfg = SubagentsAppConfig()
-        assert cfg.timeout_seconds == 900
+        assert cfg.timeout_seconds == 1800
         assert cfg.max_turns is None
         assert cfg.agents == {}
         assert cfg.custom_agents == {}
@@ -656,24 +610,21 @@ class TestSummarizationConfig:
         assert cfg.keep.type == "messages"
         assert cfg.keep.value == 20
         assert cfg.trim_tokens_to_summarize == 4000
-        assert cfg.preserve_recent_skill_count == 5
-        assert cfg.preserve_recent_skill_tokens == 25000
-        assert cfg.preserve_recent_skill_tokens_per_skill == 5000
 
     def test_context_size_to_tuple(self):
         cs = ContextSize(type="tokens", value=3000)
         assert cs.to_tuple() == ("tokens", 3000)
 
     @pytest.mark.parametrize(
-        "ctype",
+        "ctype,value",
         [
-            pytest.param("fraction", id="fraction"),
-            pytest.param("tokens", id="tokens"),
-            pytest.param("messages", id="messages"),
+            pytest.param("fraction", 0.5, id="fraction"),
+            pytest.param("tokens", 10, id="tokens"),
+            pytest.param("messages", 10, id="messages"),
         ],
     )
-    def test_valid_context_size_types(self, ctype):
-        cs = ContextSize(type=ctype, value=10)
+    def test_valid_context_size_types(self, ctype, value):
+        cs = ContextSize(type=ctype, value=value)
         assert cs.type == ctype
 
     def test_invalid_context_size_type(self):
@@ -687,14 +638,6 @@ class TestSummarizationConfig:
         ]
         cfg = SummarizationConfig(trigger=trigger)
         assert len(cfg.trigger) == 2
-
-    def test_preserve_recent_skill_count_bounds(self):
-        # Below lower bound
-        with pytest.raises(ValidationError):
-            SummarizationConfig(preserve_recent_skill_count=-1)
-        # Boundary: ge=0
-        cfg = SummarizationConfig(preserve_recent_skill_count=0)
-        assert cfg.preserve_recent_skill_count == 0
 
     def test_skill_file_read_tool_names_default(self):
         cfg = SummarizationConfig()
@@ -814,8 +757,7 @@ class TestToolConfig:
         cfg = ToolConfig(name="bash", group="core", use="mod:bash_tool")
         assert cfg.name == "bash"
         assert cfg.group == "core"
-        assert cfg.requires_network is False
-        assert cfg.description == ""
+        assert cfg.use == "mod:bash_tool"
 
     def test_name_group_use_required(self):
         with pytest.raises(ValidationError):
@@ -863,7 +805,7 @@ class TestToolSearchConfig:
         assert cfg.enabled is True
 
     def test_singleton_behavior(self):
-        from ideer.config import tool_search_config as mod
+        from deerflow.config import tool_search_config as mod
 
         original = mod._tool_search_config
         try:
@@ -1112,10 +1054,14 @@ class TestTracingConfig:
         )
         cfg.validate()  # no error
 
+    @staticmethod
+    def _monocle(enabled: bool = False) -> MonocleTracingConfig:
+        return MonocleTracingConfig(enabled=enabled, exporters="otlp", okahu_api_key=None)
+
     def test_tracing_config_defaults(self):
         ls = LangSmithTracingConfig(enabled=False, api_key=None, project="p", endpoint="e")
         lf = LangfuseTracingConfig(enabled=False, public_key=None, secret_key=None, host="h")
-        cfg = TracingConfig(langsmith=ls, langfuse=lf)
+        cfg = TracingConfig(langsmith=ls, langfuse=lf, monocle=self._monocle())
         assert cfg.is_configured is False
         assert cfg.enabled_providers == []
         assert cfg.explicitly_enabled_providers == []
@@ -1123,14 +1069,14 @@ class TestTracingConfig:
     def test_tracing_config_explicitly_enabled(self):
         ls = LangSmithTracingConfig(enabled=True, api_key=None, project="p", endpoint="e")
         lf = LangfuseTracingConfig(enabled=False, public_key=None, secret_key=None, host="h")
-        cfg = TracingConfig(langsmith=ls, langfuse=lf)
+        cfg = TracingConfig(langsmith=ls, langfuse=lf, monocle=self._monocle())
         assert cfg.explicitly_enabled_providers == ["langsmith"]
         assert cfg.enabled_providers == []  # not fully configured
 
     def test_tracing_config_both_configured(self):
         ls = LangSmithTracingConfig(enabled=True, api_key="key", project="p", endpoint="e")
         lf = LangfuseTracingConfig(enabled=True, public_key="pk", secret_key="sk", host="h")
-        cfg = TracingConfig(langsmith=ls, langfuse=lf)
+        cfg = TracingConfig(langsmith=ls, langfuse=lf, monocle=self._monocle())
         assert cfg.enabled_providers == ["langsmith", "langfuse"]
         assert cfg.is_configured is True
 
@@ -1179,7 +1125,7 @@ class TestACPAgentConfig:
 
     def test_get_acp_agents_default_empty(self):
         # Save and restore
-        from ideer.config import acp_config as mod
+        from deerflow.config import acp_config as mod
 
         original = mod._acp_agents.copy()
         try:
@@ -1189,7 +1135,7 @@ class TestACPAgentConfig:
             mod._acp_agents = original
 
     def test_load_acp_config_from_dict(self):
-        from ideer.config import acp_config as mod
+        from deerflow.config import acp_config as mod
 
         original = mod._acp_agents.copy()
         try:
@@ -1207,7 +1153,7 @@ class TestACPAgentConfig:
             mod._acp_agents = original
 
     def test_load_acp_config_none(self):
-        from ideer.config import acp_config as mod
+        from deerflow.config import acp_config as mod
 
         original = mod._acp_agents.copy()
         try:
@@ -1217,7 +1163,7 @@ class TestACPAgentConfig:
             mod._acp_agents = original
 
     def test_load_acp_config_invalid_raises(self):
-        from ideer.config import acp_config as mod
+        from deerflow.config import acp_config as mod
 
         original = mod._acp_agents.copy()
         try:
@@ -1344,7 +1290,7 @@ class TestModelConfig:
 class TestSkillsConfig:
     def test_defaults(self):
         cfg = SkillsConfig()
-        assert cfg.use == "ideer.skills.storage.local_skill_storage:LocalSkillStorage"
+        assert cfg.use == "deerflow.skills.storage.local_skill_storage:LocalSkillStorage"
         assert cfg.path is None
         assert cfg.container_path == "/mnt/skills"
 
@@ -1362,8 +1308,8 @@ class TestSkillsConfig:
 
     def test_get_skill_container_path(self):
         cfg = SkillsConfig(container_path="/mnt/skills")
-        assert cfg.get_skill_container_path("my-skill") == "/mnt/skills/my-skill"
-        assert cfg.get_skill_container_path("custom-skill") == "/mnt/skills/custom-skill"
+        assert cfg.get_skill_container_path("my-skill") == "/mnt/skills/public/my-skill"
+        assert cfg.get_skill_container_path("custom-skill", category="custom") == "/mnt/skills/custom/custom-skill"
 
     def test_get_skills_path_with_explicit_path(self, tmp_path):
         cfg = SkillsConfig(path=str(tmp_path))
@@ -1371,22 +1317,22 @@ class TestSkillsConfig:
         assert result == tmp_path.resolve()
 
     def test_get_skills_path_env_override(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("IDEER_SKILLS_PATH", str(tmp_path))
+        monkeypatch.setenv("DEER_FLOW_SKILLS_PATH", str(tmp_path))
         cfg = SkillsConfig()
         result = cfg.get_skills_path()
         assert result == tmp_path.resolve()
 
     def test_get_skills_path_fallback_to_project_root(self, tmp_path, monkeypatch):
-        monkeypatch.delenv("IDEER_SKILLS_PATH", raising=False)
+        monkeypatch.delenv("DEER_FLOW_SKILLS_PATH", raising=False)
         # Create a fake project root with a skills directory so project_default.is_dir() is True
         fake_root = tmp_path / "project"
         fake_root.mkdir()
-        (fake_root / "resources" / "skills").mkdir(parents=True)
-        monkeypatch.setattr("ideer.config.runtime_paths.project_root", lambda: fake_root)
-        monkeypatch.setattr("ideer.config.skills_config.project_root", lambda: fake_root)
+        (fake_root / "skills").mkdir(parents=True)
+        monkeypatch.setattr("deerflow.config.runtime_paths.project_root", lambda: fake_root)
+        monkeypatch.setattr("deerflow.config.skills_config.project_root", lambda: fake_root)
         cfg = SkillsConfig()
         result = cfg.get_skills_path()
-        assert result == (fake_root / "resources" / "skills").resolve()
+        assert result == (fake_root / "skills").resolve()
 
 
 # ===================================================================

@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
-LEGACY_PATH = REPO_ROOT / "backend" / "packages" / "harness" / "ideer" / "fault_zeroing" / "legacy.py"
+LEGACY_PATH = REPO_ROOT / "backend" / "app" / "agentplatform" / "fault_zeroing" / "legacy.py"
 
 
 def load_legacy():

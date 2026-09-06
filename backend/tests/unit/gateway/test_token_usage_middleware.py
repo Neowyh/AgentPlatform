@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import importlib
 import logging
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -10,7 +9,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
-from ideer.agents.middlewares.token_usage_middleware import (
+from deerflow.agents.middlewares.token_usage_middleware import (
+    SUBAGENT_TOKEN_USAGE_ATTRIBUTED_KEY,
     TOKEN_USAGE_ATTRIBUTION_KEY,
     TokenUsageMiddleware,
     _build_attribution,
@@ -22,6 +22,7 @@ from ideer.agents.middlewares.token_usage_middleware import (
     _string_arg,
     _todo_action_kind,
 )
+from deerflow.subagents.status_contract import SUBAGENT_TOKEN_USAGE_KEY
 
 # ---------------------------------------------------------------------------
 # _string_arg
@@ -556,7 +557,7 @@ class TestTokenUsageMiddleware:
         state = self._make_state([HumanMessage(content="q"), msg])
         with caplog.at_level(
             logging.INFO,
-            logger="ideer.agents.middlewares.token_usage_middleware",
+            logger="deerflow.agents.middlewares.token_usage_middleware",
         ):
             result = mw._apply(state)
         assert result is not None
@@ -572,7 +573,7 @@ class TestTokenUsageMiddleware:
         state = self._make_state([HumanMessage(content="q"), msg])
         with caplog.at_level(
             logging.INFO,
-            logger="ideer.agents.middlewares.token_usage_middleware",
+            logger="deerflow.agents.middlewares.token_usage_middleware",
         ):
             result = mw._apply(state)
         assert result is not None
@@ -592,7 +593,7 @@ class TestTokenUsageMiddleware:
         state = self._make_state([HumanMessage(content="q"), msg])
         with caplog.at_level(
             logging.INFO,
-            logger="ideer.agents.middlewares.token_usage_middleware",
+            logger="deerflow.agents.middlewares.token_usage_middleware",
         ):
             result = mw._apply(state)
         assert result is not None
@@ -613,7 +614,7 @@ class TestTokenUsageMiddleware:
         state = self._make_state([HumanMessage(content="q"), msg])
         with caplog.at_level(
             logging.INFO,
-            logger="ideer.agents.middlewares.token_usage_middleware",
+            logger="deerflow.agents.middlewares.token_usage_middleware",
         ):
             result = mw._apply(state)
         assert result is not None
@@ -636,22 +637,26 @@ class TestTokenUsageMiddleware:
             await mw.aafter_model(state, runtime)
             mock_apply.assert_called_once_with(state)
 
-    def _patch_pop_cached(self, monkeypatch, return_fn):
-        """Patch pop_cached_subagent_usage via importlib since sys.modules is overridden."""
-        real_module = importlib.import_module("ideer.tools.builtins.task_tool")
-        monkeypatch.setattr(real_module, "pop_cached_subagent_usage", return_fn)
+    def _tool_msg_with_usage(self, content: str, tool_call_id: str, usage: dict | None) -> ToolMessage:
+        """Build a terminal task ToolMessage carrying subagent usage metadata.
 
-    def test_subagent_usage_merging(self, monkeypatch):
+        Upstream transports subagent token usage in the ToolMessage's
+        ``additional_kwargs[subagent_token_usage]`` (see
+        ``deerflow.subagents.status_contract``) instead of a task-tool cache.
+        """
+        additional_kwargs = {SUBAGENT_TOKEN_USAGE_KEY: usage} if usage else {}
+        return ToolMessage(content=content, tool_call_id=tool_call_id, additional_kwargs=additional_kwargs)
+
+    def test_subagent_usage_merging(self):
         mw = TokenUsageMiddleware()
         dispatch_msg = AIMessage(
             content="",
             tool_calls=[{"id": "tc_sub", "name": "task", "args": {}}],
             usage_metadata={"input_tokens": 100, "output_tokens": 50, "total_tokens": 150},
         )
-        tool_msg = ToolMessage(content="done", tool_call_id="tc_sub")
+        tool_msg = self._tool_msg_with_usage("done", "tc_sub", {"input_tokens": 20, "output_tokens": 10, "total_tokens": 30})
         last_msg = AIMessage(content="result")
 
-        self._patch_pop_cached(monkeypatch, lambda tcid: {"input_tokens": 20, "output_tokens": 10, "total_tokens": 30} if tcid == "tc_sub" else None)
         state = self._make_state([dispatch_msg, tool_msg, last_msg])
         result = mw._apply(state)
 
@@ -662,7 +667,7 @@ class TestTokenUsageMiddleware:
         assert usage["output_tokens"] == 60
         assert usage["total_tokens"] == 180
 
-    def test_no_subagent_usage(self, monkeypatch):
+    def test_no_subagent_usage(self):
         mw = TokenUsageMiddleware()
         dispatch_msg = AIMessage(
             content="",
@@ -671,29 +676,33 @@ class TestTokenUsageMiddleware:
         tool_msg = ToolMessage(content="done", tool_call_id="tc_sub")
         last_msg = AIMessage(content="result")
 
-        self._patch_pop_cached(monkeypatch, lambda tcid: None)
         state = self._make_state([dispatch_msg, tool_msg, last_msg])
         result = mw._apply(state)
 
         assert result is not None
 
-    def test_last_message_not_ai_with_state_updates(self, monkeypatch):
+    def test_last_message_not_ai_with_state_updates(self):
         mw = TokenUsageMiddleware()
         dispatch_msg = AIMessage(
             content="",
             tool_calls=[{"id": "tc_sub", "name": "task", "args": {}}],
         )
-        tool_msg = ToolMessage(content="done", tool_call_id="tc_sub")
+        tool_msg = self._tool_msg_with_usage("done", "tc_sub", {"input_tokens": 20, "output_tokens": 10, "total_tokens": 30})
         last_msg = ToolMessage(content="another tool result", tool_call_id="tc_other")
 
-        self._patch_pop_cached(monkeypatch, lambda tcid: {"input_tokens": 20, "output_tokens": 10, "total_tokens": 30} if tcid == "tc_sub" else None)
         state = self._make_state([dispatch_msg, tool_msg, last_msg])
         result = mw._apply(state)
 
         assert result is not None
-        assert len(result["messages"]) == 1
+        # Upstream returns both the merged dispatch AIMessage and the marked
+        # ToolMessage (attributed flag), sorted by message index.
+        assert len(result["messages"]) == 2
+        merged_dispatch = result["messages"][0]
+        assert merged_dispatch.usage_metadata["total_tokens"] == 30
+        marked_tool = result["messages"][1]
+        assert marked_tool.additional_kwargs[SUBAGENT_TOKEN_USAGE_ATTRIBUTED_KEY] is True
 
-    def test_last_message_not_ai_no_state_updates_returns_none(self, monkeypatch):
+    def test_last_message_not_ai_no_state_updates_returns_none(self):
         mw = TokenUsageMiddleware()
         dispatch_msg = AIMessage(
             content="",
@@ -702,7 +711,6 @@ class TestTokenUsageMiddleware:
         tool_msg = ToolMessage(content="done", tool_call_id="tc_sub")
         last_msg = ToolMessage(content="another", tool_call_id="tc_other")
 
-        self._patch_pop_cached(monkeypatch, lambda tcid: None)
         state = self._make_state([dispatch_msg, tool_msg, last_msg])
         result = mw._apply(state)
 
@@ -739,7 +747,7 @@ class TestTokenUsageMiddleware:
         result = mw._apply({})
         assert result is None
 
-    def test_multiple_task_tool_calls_merged_into_same_dispatch(self, monkeypatch):
+    def test_multiple_task_tool_calls_merged_into_same_dispatch(self):
         """Multiple ToolMessages for different task calls all merge into one AIMessage."""
         mw = TokenUsageMiddleware()
         dispatch_msg = AIMessage(
@@ -750,16 +758,10 @@ class TestTokenUsageMiddleware:
             ],
             usage_metadata={"input_tokens": 100, "output_tokens": 50, "total_tokens": 150},
         )
-        tool_a = ToolMessage(content="a done", tool_call_id="tc_a")
-        tool_b = ToolMessage(content="b done", tool_call_id="tc_b")
+        tool_a = self._tool_msg_with_usage("a done", "tc_a", {"input_tokens": 10, "output_tokens": 5, "total_tokens": 15})
+        tool_b = self._tool_msg_with_usage("b done", "tc_b", {"input_tokens": 20, "output_tokens": 10, "total_tokens": 30})
         last_msg = AIMessage(content="result")
 
-        usage_map = {
-            "tc_a": {"input_tokens": 10, "output_tokens": 5, "total_tokens": 15},
-            "tc_b": {"input_tokens": 20, "output_tokens": 10, "total_tokens": 30},
-        }
-
-        self._patch_pop_cached(monkeypatch, lambda tcid: usage_map.pop(tcid, None))
         state = self._make_state([dispatch_msg, tool_a, tool_b, last_msg])
         result = mw._apply(state)
 
@@ -770,47 +772,50 @@ class TestTokenUsageMiddleware:
         assert usage["output_tokens"] == 65
         assert usage["total_tokens"] == 195
 
-    def test_non_tool_message_breaks_tool_message_walk(self, monkeypatch):
+    def test_non_tool_message_breaks_tool_message_walk(self):
         """A non-ToolMessage before the AIMessage stops the backward walk."""
         mw = TokenUsageMiddleware()
         human = HumanMessage(content="interrupt")
-        tool_msg = ToolMessage(content="done", tool_call_id="tc_sub")
+        tool_msg = self._tool_msg_with_usage("done", "tc_sub", {"input_tokens": 10, "output_tokens": 5, "total_tokens": 15})
         last_msg = AIMessage(content="result")
 
-        self._patch_pop_cached(monkeypatch, lambda tcid: {"input_tokens": 10, "output_tokens": 5, "total_tokens": 15} if tcid == "tc_sub" else None)
         state = self._make_state([human, tool_msg, last_msg])
         result = mw._apply(state)
 
         assert result is not None
 
-    def test_dispatch_message_without_matching_tool_call(self, monkeypatch):
+    def test_dispatch_message_without_matching_tool_call(self):
         """When tool_call_id is not found on any preceding AIMessage, no merge happens."""
         mw = TokenUsageMiddleware()
         dispatch_msg = AIMessage(
             content="",
             tool_calls=[{"id": "tc_other", "name": "task", "args": {}}],
         )
-        tool_msg = ToolMessage(content="done", tool_call_id="tc_sub")
+        tool_msg = self._tool_msg_with_usage("done", "tc_sub", {"input_tokens": 10, "output_tokens": 5, "total_tokens": 15})
         last_msg = AIMessage(content="result")
 
-        self._patch_pop_cached(monkeypatch, lambda tcid: {"input_tokens": 10, "output_tokens": 5, "total_tokens": 15} if tcid == "tc_sub" else None)
         state = self._make_state([dispatch_msg, tool_msg, last_msg])
         result = mw._apply(state)
 
         assert result is not None
 
-    def test_existing_usage_metadata_merged(self, monkeypatch):
+    def test_existing_usage_metadata_merged(self):
         """When dispatch message already has usage_metadata from a prior merge."""
         mw = TokenUsageMiddleware()
         dispatch_msg = AIMessage(
             content="",
             tool_calls=[{"id": "tc_sub", "name": "task", "args": {}}],
+            usage_metadata={"input_tokens": 5, "output_tokens": 5, "total_tokens": 10},
         )
-        tool_msg = ToolMessage(content="done", tool_call_id="tc_sub")
+        tool_msg = self._tool_msg_with_usage("done", "tc_sub", {"input_tokens": 10, "output_tokens": 5, "total_tokens": 15})
         last_msg = AIMessage(content="result")
 
-        self._patch_pop_cached(monkeypatch, lambda tcid: {"input_tokens": 10, "output_tokens": 5, "total_tokens": 15} if tcid == "tc_sub" else None)
         state = self._make_state([dispatch_msg, tool_msg, last_msg])
         result = mw._apply(state)
 
         assert result is not None
+        updated_dispatch = result["messages"][0]
+        usage = updated_dispatch.usage_metadata
+        assert usage["input_tokens"] == 15
+        assert usage["output_tokens"] == 10
+        assert usage["total_tokens"] == 25

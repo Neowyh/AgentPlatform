@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
-from ideer.config.app_config import (
+from deerflow.config.app_config import (
     AppConfig,
     apply_logging_level,
     get_app_config,
@@ -19,9 +19,9 @@ from ideer.config.app_config import (
     reset_app_config,
     set_app_config,
 )
-from ideer.config.sandbox_config import SandboxConfig
+from deerflow.config.sandbox_config import SandboxConfig
 
-_SANDBOX = SandboxConfig(use="ideer.sandbox.local:LocalSandboxProvider")
+_SANDBOX = SandboxConfig(use="deerflow.sandbox.local:LocalSandboxProvider")
 
 
 # --- Lines 72-73: logging_level_from_config ---
@@ -47,9 +47,9 @@ def test_logging_level_from_config_unknown():
 
 
 def test_apply_logging_level_sets_logger_levels():
-    """Lines 86-91: Sets ideer and app logger levels."""
+    """Lines 86-91: Sets deerflow and app logger levels."""
     apply_logging_level("debug")
-    assert logging.getLogger("ideer").level == logging.DEBUG
+    assert logging.getLogger("deerflow").level == logging.DEBUG
     assert logging.getLogger("app").level == logging.DEBUG
     # Restore
     apply_logging_level("info")
@@ -78,7 +78,7 @@ def test_resolve_config_path_finds_project_config(tmp_path, monkeypatch):
     config_file.write_text("sandbox: {}")
     monkeypatch.delenv("IDEER_CONFIG_PATH", raising=False)
 
-    with patch("ideer.config.app_config.existing_project_file", return_value=config_file):
+    with patch("deerflow.config.app_config.existing_project_file", return_value=config_file):
         result = AppConfig.resolve_config_path()
     assert result == config_file
 
@@ -94,8 +94,8 @@ def test_resolve_config_path_finds_legacy_config(tmp_path, monkeypatch):
     legacy.write_text("sandbox: {}")
 
     with (
-        patch("ideer.config.app_config.existing_project_file", return_value=None),
-        patch("ideer.config.app_config._legacy_config_candidates", return_value=(legacy,)),
+        patch("deerflow.config.app_config.existing_project_file", return_value=None),
+        patch("deerflow.config.app_config._legacy_config_candidates", return_value=(legacy,)),
     ):
         result = AppConfig.resolve_config_path()
     assert result == legacy
@@ -106,8 +106,8 @@ def test_resolve_config_path_raises_when_nothing_found(monkeypatch):
     monkeypatch.delenv("IDEER_CONFIG_PATH", raising=False)
 
     with (
-        patch("ideer.config.app_config.existing_project_file", return_value=None),
-        patch("ideer.config.app_config._legacy_config_candidates", return_value=()),
+        patch("deerflow.config.app_config.existing_project_file", return_value=None),
+        patch("deerflow.config.app_config._legacy_config_candidates", return_value=()),
     ):
         with pytest.raises(FileNotFoundError, match="config.yaml"):
             AppConfig.resolve_config_path()
@@ -150,13 +150,13 @@ def test_get_app_config_returns_custom_config():
 def test_reload_app_config(tmp_path):
     """Line 412: reload_app_config loads config from file."""
     config_file = tmp_path / "config.yaml"
-    config_file.write_text("sandbox:\n  use: ideer.sandbox.local:LocalSandboxProvider\n")
+    config_file.write_text("sandbox:\n  use: deerflow.sandbox.local:LocalSandboxProvider\n")
 
     reset_app_config()
     try:
         result = reload_app_config(str(config_file))
         assert isinstance(result, AppConfig)
-        assert result.sandbox.use == "ideer.sandbox.local:LocalSandboxProvider"
+        assert result.sandbox.use == "deerflow.sandbox.local:LocalSandboxProvider"
     finally:
         reset_app_config()
 
@@ -167,12 +167,12 @@ def test_reload_app_config(tmp_path):
 def test_get_app_config_reloads_on_mtime_change(tmp_path):
     """get_app_config reloads when file mtime changes."""
     config_file = tmp_path / "config.yaml"
-    config_file.write_text("sandbox:\n  use: ideer.sandbox.local:LocalSandboxProvider\nlog_level: info\n")
+    config_file.write_text("sandbox:\n  use: deerflow.sandbox.local:LocalSandboxProvider\nlog_level: info\n")
 
     reset_app_config()
     try:
         # First load
-        with patch("ideer.config.app_config.AppConfig.resolve_config_path", return_value=config_file):
+        with patch("deerflow.config.app_config.AppConfig.resolve_config_path", return_value=config_file):
             cfg1 = get_app_config()
         assert cfg1.log_level == "info"
 
@@ -180,10 +180,10 @@ def test_get_app_config_reloads_on_mtime_change(tmp_path):
         import time
 
         time.sleep(0.1)
-        config_file.write_text("sandbox:\n  use: ideer.sandbox.local:LocalSandboxProvider\nlog_level: debug\n")
+        config_file.write_text("sandbox:\n  use: deerflow.sandbox.local:LocalSandboxProvider\nlog_level: debug\n")
 
         # Second load should pick up changes
-        with patch("ideer.config.app_config.AppConfig.resolve_config_path", return_value=config_file):
+        with patch("deerflow.config.app_config.AppConfig.resolve_config_path", return_value=config_file):
             cfg2 = get_app_config()
         assert cfg2.log_level == "debug"
     finally:

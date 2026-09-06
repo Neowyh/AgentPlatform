@@ -2,22 +2,24 @@ from __future__ import annotations
 
 
 def test_audit_log_has_one_agentplatform_owned_mapper() -> None:
+    import deerflow.persistence.models as deerflow_models
     from app.agentplatform.audit_model import AuditLog
-    from ideer.persistence.models import AuditLog as RegistryAuditLog
-    from ideer.persistence.models.audit_log import AuditLog as LegacyAuditLog
+    from app.agentplatform.audit_model import AuditLog as LegacyAuditLog
 
-    assert RegistryAuditLog is AuditLog
+    # The enterprise control plane owns the AuditLog mapper; the DeerFlow
+    # runtime registry no longer re-exports it after the convergence move.
     assert LegacyAuditLog is AuditLog
+    assert not hasattr(deerflow_models, "AuditLog")
     assert list(AuditLog.metadata.tables).count("audit_logs") == 1
 
 
 def test_visibility_application_has_one_agentplatform_owned_mapper() -> None:
+    import deerflow.persistence.models as deerflow_models
     from app.agentplatform.visibility_models import VisibilityApplication
-    from ideer.persistence.models import VisibilityApplication as RegistryModel
-    from ideer.persistence.models.visibility_application import VisibilityApplication as LegacyModel
+    from app.agentplatform.visibility_models import VisibilityApplication as LegacyModel
 
-    assert RegistryModel is VisibilityApplication
     assert LegacyModel is VisibilityApplication
+    assert not hasattr(deerflow_models, "VisibilityApplication")
     assert list(VisibilityApplication.metadata.tables).count("visibility_applications") == 1
 
 

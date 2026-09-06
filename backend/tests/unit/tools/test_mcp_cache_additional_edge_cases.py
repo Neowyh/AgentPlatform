@@ -13,13 +13,13 @@ class TestGetConfigMtime:
 
     def test_returns_mtime_for_existing_config(self):
         """Lines 26-31: Returns mtime when config file exists."""
-        from ideer.mcp.cache import _get_config_mtime
+        from deerflow.mcp.cache import _get_config_mtime
 
         mock_path = MagicMock()
         mock_path.exists.return_value = True
 
         with (
-            patch("ideer.config.extensions_config.ExtensionsConfig.resolve_config_path", return_value=mock_path),
+            patch("deerflow.config.extensions_config.ExtensionsConfig.resolve_config_path", return_value=mock_path),
             patch("os.path.getmtime", return_value=12345.0),
         ):
             result = _get_config_mtime()
@@ -28,21 +28,21 @@ class TestGetConfigMtime:
 
     def test_returns_none_when_path_is_none(self):
         """Returns None when resolve_config_path returns None."""
-        from ideer.mcp.cache import _get_config_mtime
+        from deerflow.mcp.cache import _get_config_mtime
 
-        with patch("ideer.config.extensions_config.ExtensionsConfig.resolve_config_path", return_value=None):
+        with patch("deerflow.config.extensions_config.ExtensionsConfig.resolve_config_path", return_value=None):
             result = _get_config_mtime()
 
         assert result is None
 
     def test_returns_none_when_file_not_exists(self):
         """Returns None when config file doesn't exist."""
-        from ideer.mcp.cache import _get_config_mtime
+        from deerflow.mcp.cache import _get_config_mtime
 
         mock_path = MagicMock()
         mock_path.exists.return_value = False
 
-        with patch("ideer.config.extensions_config.ExtensionsConfig.resolve_config_path", return_value=mock_path):
+        with patch("deerflow.config.extensions_config.ExtensionsConfig.resolve_config_path", return_value=mock_path):
             result = _get_config_mtime()
 
         assert result is None
@@ -55,7 +55,7 @@ class TestGetCachedMcpToolsStaleCheck:
     """Tests for stale cache detection in get_cached_mcp_tools."""
 
     def setup_method(self):
-        import ideer.mcp.cache as cache_mod
+        import deerflow.mcp.cache as cache_mod
 
         self._cache_mod = cache_mod
         self._orig_initialized = cache_mod._cache_initialized
@@ -74,7 +74,7 @@ class TestGetCachedMcpToolsStaleCheck:
         self._cache_mod._mcp_tools_cache = mock_tools
         self._cache_mod._config_mtime = 100.0
 
-        with patch("ideer.mcp.cache._is_cache_stale", return_value=False):
+        with patch("deerflow.mcp.cache._is_cache_stale", return_value=False):
             result = self._cache_mod.get_cached_mcp_tools()
 
         assert result == mock_tools
@@ -87,7 +87,7 @@ class TestGetCachedMcpToolsRunningLoop:
     """Tests for lazy init when event loop is running."""
 
     def setup_method(self):
-        import ideer.mcp.cache as cache_mod
+        import deerflow.mcp.cache as cache_mod
 
         self._cache_mod = cache_mod
         self._orig_initialized = cache_mod._cache_initialized
@@ -111,7 +111,7 @@ class TestGetCachedMcpToolsRunningLoop:
         mock_loop.is_running.return_value = True
 
         with (
-            patch("ideer.mcp.cache._is_cache_stale", return_value=False),
+            patch("deerflow.mcp.cache._is_cache_stale", return_value=False),
             patch("asyncio.get_event_loop", return_value=mock_loop),
             patch("concurrent.futures.ThreadPoolExecutor") as MockExecutor,
         ):
@@ -147,7 +147,7 @@ class TestGetCachedMcpToolsRunningLoop:
         mock_loop.run_until_complete.side_effect = lambda coro: set_initialized()
 
         with (
-            patch("ideer.mcp.cache._is_cache_stale", return_value=False),
+            patch("deerflow.mcp.cache._is_cache_stale", return_value=False),
             patch("asyncio.get_event_loop", return_value=mock_loop),
         ):
             self._cache_mod.get_cached_mcp_tools()
@@ -160,7 +160,7 @@ class TestGetCachedMcpToolsRuntimeError:
     """Tests for RuntimeError handling in get_cached_mcp_tools."""
 
     def setup_method(self):
-        import ideer.mcp.cache as cache_mod
+        import deerflow.mcp.cache as cache_mod
 
         self._cache_mod = cache_mod
         self._orig_initialized = cache_mod._cache_initialized
@@ -183,7 +183,7 @@ class TestGetCachedMcpToolsRuntimeError:
             raise RuntimeError("no event loop")
 
         with (
-            patch("ideer.mcp.cache._is_cache_stale", return_value=False),
+            patch("deerflow.mcp.cache._is_cache_stale", return_value=False),
             patch("asyncio.get_event_loop", side_effect=raise_runtime_error),
             patch("asyncio.run") as mock_run,
         ):
@@ -201,7 +201,7 @@ class TestGetCachedMcpToolsRuntimeError:
         self._cache_mod._mcp_tools_cache = None
 
         with (
-            patch("ideer.mcp.cache._is_cache_stale", return_value=False),
+            patch("deerflow.mcp.cache._is_cache_stale", return_value=False),
             patch("asyncio.get_event_loop", side_effect=RuntimeError("no loop")),
             patch("asyncio.run", side_effect=Exception("init failed")),
         ):
@@ -231,7 +231,7 @@ class TestGetCachedMcpToolsRuntimeError:
                 pass
 
         with (
-            patch("ideer.mcp.cache._is_cache_stale", return_value=False),
+            patch("deerflow.mcp.cache._is_cache_stale", return_value=False),
             patch.object(cache_mod, "_thread_init_lock", RaceLock()),
         ):
             result = cache_mod.get_cached_mcp_tools()

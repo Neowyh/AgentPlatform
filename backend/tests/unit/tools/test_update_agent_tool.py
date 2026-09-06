@@ -21,12 +21,15 @@ import yaml
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-import ideer.persistence.models  # noqa: F401
-from ideer.persistence.base import Base
-from ideer.persistence.models.resource_catalog import Resource, ResourceDependency, ResourceVersion
-from ideer.persistence.models.user import UserModel
-from ideer.tools.builtins.setup_agent_tool import setup_agent
-from ideer.tools.builtins.update_agent_tool import update_agent
+import app.agentplatform.audit_model  # noqa: F401 - register audit_logs
+import app.agentplatform.rbac_models  # noqa: F401 - register users_ext
+import app.agentplatform.resource_models  # noqa: F401 - register resource tables
+import app.agentplatform.visibility_models  # noqa: F401 - register visibility tables
+from app.agentplatform.rbac_models import UserModel
+from app.agentplatform.resource_models import Resource, ResourceDependency, ResourceVersion
+from deerflow.persistence.base import Base
+from deerflow.tools.builtins.setup_agent_tool import setup_agent
+from deerflow.tools.builtins.update_agent_tool import update_agent
 
 DEFAULT_USER = "test-user-autouse"  # matches the autouse fixture in tests/conftest.py
 
@@ -77,9 +80,9 @@ def _seed_agent(
 @pytest.fixture()
 def patched_paths(tmp_path: Path):
     paths_mock = _make_paths_mock(tmp_path)
-    with patch("ideer.tools.builtins.update_agent_tool.get_paths", return_value=paths_mock):
+    with patch("deerflow.tools.builtins.update_agent_tool.get_paths", return_value=paths_mock):
         # load_agent_config also calls get_paths(); patch the same target it uses.
-        with patch("ideer.config.agents_config.get_paths", return_value=paths_mock):
+        with patch("deerflow.config.agents_config.get_paths", return_value=paths_mock):
             yield paths_mock
 
 
@@ -88,7 +91,7 @@ def stub_app_config():
     """Stub get_app_config so model validation accepts only known names."""
     fake = MagicMock()
     fake.get_model_config.side_effect = lambda name: object() if name in {"gpt-known", "m1"} else None
-    with patch("ideer.tools.builtins.update_agent_tool.get_app_config", return_value=fake):
+    with patch("deerflow.tools.builtins.update_agent_tool.get_app_config", return_value=fake):
         yield fake
 
 
@@ -137,8 +140,8 @@ def _seed_skill_resource(catalog_db: async_sessionmaker[AsyncSession], resource_
 def _create_canonical_agent(tmp_path: Path, catalog_db: async_sessionmaker[AsyncSession], name: str, *, soul: str, description: str) -> str:
     """Create a published canonical agent via setup_agent, returning its resource id."""
     with (
-        patch("ideer.tools.builtins.setup_agent_tool.get_session_factory", return_value=catalog_db),
-        patch("ideer.tools.builtins.setup_agent_tool.get_paths", return_value=_make_paths_mock(tmp_path)),
+        patch("deerflow.tools.builtins.setup_agent_tool.get_session_factory", return_value=catalog_db),
+        patch("deerflow.tools.builtins.setup_agent_tool.get_paths", return_value=_make_paths_mock(tmp_path)),
     ):
         result = setup_agent.func(soul=soul, description=description, runtime=_runtime(agent_name=name))
     return result.update["created_agent_resource_id"]
@@ -170,8 +173,8 @@ class TestUpdateAgentCanonical:
         resource_id = _create_canonical_agent(tmp_path, catalog_db, "canonical-agent", soul="# First Soul", description="First description")
 
         with (
-            patch("ideer.tools.builtins.update_agent_tool.get_session_factory", return_value=catalog_db),
-            patch("ideer.tools.builtins.update_agent_tool.get_paths", return_value=_make_paths_mock(tmp_path)),
+            patch("deerflow.tools.builtins.update_agent_tool.get_session_factory", return_value=catalog_db),
+            patch("deerflow.tools.builtins.update_agent_tool.get_paths", return_value=_make_paths_mock(tmp_path)),
         ):
             result = update_agent.func(runtime=_runtime("canonical-agent"), soul="# Second Soul", description="Second description")
 
@@ -194,8 +197,8 @@ class TestUpdateAgentCanonical:
         resource_id = _create_canonical_agent(tmp_path, catalog_db, "canonical-agent", soul="# Keep Soul", description="Keep description")
 
         with (
-            patch("ideer.tools.builtins.update_agent_tool.get_session_factory", return_value=catalog_db),
-            patch("ideer.tools.builtins.update_agent_tool.get_paths", return_value=_make_paths_mock(tmp_path)),
+            patch("deerflow.tools.builtins.update_agent_tool.get_session_factory", return_value=catalog_db),
+            patch("deerflow.tools.builtins.update_agent_tool.get_paths", return_value=_make_paths_mock(tmp_path)),
         ):
             result = update_agent.func(runtime=_runtime("canonical-agent"), description="Changed description")
 
@@ -217,8 +220,8 @@ class TestUpdateAgentCanonical:
         resource_id = _create_canonical_agent(tmp_path, catalog_db, "canonical-agent", soul="# Skillful", description="desc")
 
         with (
-            patch("ideer.tools.builtins.update_agent_tool.get_session_factory", return_value=catalog_db),
-            patch("ideer.tools.builtins.update_agent_tool.get_paths", return_value=_make_paths_mock(tmp_path)),
+            patch("deerflow.tools.builtins.update_agent_tool.get_session_factory", return_value=catalog_db),
+            patch("deerflow.tools.builtins.update_agent_tool.get_paths", return_value=_make_paths_mock(tmp_path)),
         ):
             result = update_agent.func(runtime=_runtime("canonical-agent"), skills=["research"])
 
@@ -244,8 +247,8 @@ class TestUpdateAgentCanonical:
         resource_id = _create_canonical_agent(tmp_path, catalog_db, "canonical-agent", soul="# Skillful", description="desc")
 
         with (
-            patch("ideer.tools.builtins.update_agent_tool.get_session_factory", return_value=catalog_db),
-            patch("ideer.tools.builtins.update_agent_tool.get_paths", return_value=_make_paths_mock(tmp_path)),
+            patch("deerflow.tools.builtins.update_agent_tool.get_session_factory", return_value=catalog_db),
+            patch("deerflow.tools.builtins.update_agent_tool.get_paths", return_value=_make_paths_mock(tmp_path)),
         ):
             update_agent.func(runtime=_runtime("canonical-agent"), skills=["research"])
             update_agent.func(runtime=_runtime("canonical-agent"), description="bumped")
@@ -263,8 +266,8 @@ class TestUpdateAgentCanonical:
         resource_id = _create_canonical_agent(tmp_path, catalog_db, "canonical-agent", soul="# Soul", description="Same description")
 
         with (
-            patch("ideer.tools.builtins.update_agent_tool.get_session_factory", return_value=catalog_db),
-            patch("ideer.tools.builtins.update_agent_tool.get_paths", return_value=_make_paths_mock(tmp_path)),
+            patch("deerflow.tools.builtins.update_agent_tool.get_session_factory", return_value=catalog_db),
+            patch("deerflow.tools.builtins.update_agent_tool.get_paths", return_value=_make_paths_mock(tmp_path)),
         ):
             result = update_agent.func(runtime=_runtime("canonical-agent"), description="Same description")
 
@@ -280,8 +283,8 @@ class TestUpdateAgentCanonical:
         _seed_user(catalog_db)
 
         with (
-            patch("ideer.tools.builtins.update_agent_tool.get_session_factory", return_value=catalog_db),
-            patch("ideer.tools.builtins.update_agent_tool.get_paths", return_value=_make_paths_mock(tmp_path)),
+            patch("deerflow.tools.builtins.update_agent_tool.get_session_factory", return_value=catalog_db),
+            patch("deerflow.tools.builtins.update_agent_tool.get_paths", return_value=_make_paths_mock(tmp_path)),
         ):
             result = update_agent.func(runtime=_runtime("ghost-agent"), description="x")
 
@@ -294,7 +297,7 @@ class TestUpdateAgentCanonical:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
 
-        with patch("ideer.tools.builtins.update_agent_tool.get_session_factory", return_value=None):
+        with patch("deerflow.tools.builtins.update_agent_tool.get_session_factory", return_value=None):
             result = update_agent.func(runtime=_runtime("canonical-agent"), description="x")
 
         assert "Error" in result.update["messages"][0].content

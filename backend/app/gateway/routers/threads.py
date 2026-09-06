@@ -104,7 +104,7 @@ class ThreadSearchRequest(BaseModel):
         """Reject filter entries the SQL backend cannot compile.
 
         Enforces consistent behaviour across SQL and memory backends.
-        See ``ideer.persistence.json_compat`` for the shared validators.
+        See ``deerflow.persistence.json_compat`` for the shared validators.
         """
         if not v:
             return v
@@ -645,8 +645,22 @@ async def update_thread_state(thread_id: str, body: ThreadStateUpdateRequest, re
     metadata: dict[str, Any] = dict(getattr(checkpoint_tuple, "metadata", {}) or {})
     channel_values: dict[str, Any] = dict(checkpoint.get("channel_values", {}))
 
+    new_versions: dict[str, Any] = {}
     if body.values:
         channel_values.update(body.values)
+        # Bump channel_versions for every written channel. Downstream consumers
+        # (cancel-rollback checkpoint forks, DB-backed saver blob layouts) only
+        # carry channels that have version lineage — a raw write without a
+        # version bump is silently dropped by the next fork. Mirrors the raw
+        # write bumps in deerflow.runtime (goal / title persistence).
+        from deerflow.runtime.runs.worker import _bump_channel_version
+
+        channel_versions = dict(checkpoint.get("channel_versions", {}) or {})
+        for channel in body.values:
+            next_version = _bump_channel_version(checkpointer, channel_versions.get(channel))
+            channel_versions[channel] = next_version
+            new_versions[channel] = next_version
+        checkpoint["channel_versions"] = channel_versions
 
     checkpoint["channel_values"] = channel_values
     metadata["updated_at"] = now_iso()
@@ -666,7 +680,7 @@ async def update_thread_state(thread_id: str, body: ThreadStateUpdateRequest, re
         }
     }
     try:
-        new_config = await checkpointer.aput(write_config, checkpoint, metadata, {})
+        new_config = await checkpointer.aput(write_config, checkpoint, metadata, new_versions)
     except Exception:
         logger.exception("Failed to update state for thread %s", sanitize_log_param(thread_id))
         raise HTTPException(status_code=500, detail="Failed to update thread state")
@@ -701,7 +715,7 @@ async def get_thread_history(thread_id: str, body: ThreadHistoryRequest, request
 
     Messages are read from the checkpointer's channel values (the
     authoritative source) and serialized via
-    :func:`~ideer.runtime.serialization.serialize_channel_values`.
+    :func:`~deerflow.runtime.serialization.serialize_channel_values`.
     Only the latest (first) checkpoint carries the ``messages`` key to
     avoid duplicating them across every entry.
     """

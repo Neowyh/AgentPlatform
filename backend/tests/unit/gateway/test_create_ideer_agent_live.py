@@ -59,7 +59,7 @@ def _make_model():
 @pytest.mark.requires_llm
 def test_minimal_agent_responds():
     """create_ideer_agent(model) produces a graph that returns a response."""
-    from ideer.agents.factory import create_ideer_agent
+    from deerflow.agents.factory import create_ideer_agent
 
     model = _make_model()
     graph = create_ideer_agent(model, features=None, middleware=[])
@@ -82,7 +82,7 @@ def test_minimal_agent_responds():
 @pytest.mark.requires_llm
 def test_agent_with_custom_tool():
     """Agent can invoke a user-provided tool and return the result."""
-    from ideer.agents.factory import create_ideer_agent
+    from deerflow.agents.factory import create_ideer_agent
 
     @tool
     def add(a: int, b: int) -> int:
@@ -110,8 +110,8 @@ def test_agent_with_custom_tool():
 @pytest.mark.requires_llm
 def test_features_mode_middleware_chain():
     """RuntimeFeatures assembles a working middleware chain that executes."""
-    from ideer.agents.factory import create_ideer_agent
-    from ideer.agents.features import RuntimeFeatures
+    from deerflow.agents.factory import create_ideer_agent
+    from deerflow.agents.features import RuntimeFeatures
 
     model = _make_model()
     feat = RuntimeFeatures(sandbox=False, auto_title=False, memory=False)

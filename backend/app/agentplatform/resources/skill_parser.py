@@ -1,6 +1,6 @@
 """SKILL.md front-matter parser for AgentPlatform canonical skills.
 
-Migrated from ``ideer.skills.parser`` (P7) unchanged except for the import
+Migrated from ``deerflow.skills.parser`` (P7) unchanged except for the import
 source: the enterprise :class:`Skill` model lives in
 :mod:`app.agentplatform.resources.skill_types`. The upstream
 ``deerflow.skills.parser`` returns a frozen Skill without the governance

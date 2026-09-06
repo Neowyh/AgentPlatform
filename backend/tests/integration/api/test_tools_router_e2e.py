@@ -58,11 +58,9 @@ def _make_app(role: str = "user", tool_registry=None):
 class TestListTools:
     """Tests for GET /api/tools."""
 
-    @patch("app.gateway.routers.tools.get_app_config")
     @patch("app.gateway.routers.tools.get_available_tools")
-    def test_list_tools_returns_list(self, mock_get_tools, mock_config):
+    def test_list_tools_returns_list(self, mock_get_tools):
         """List tools returns a list of tools wrapped in a dict."""
-        mock_config.return_value = MagicMock()
         mock_get_tools.return_value = []
         app, _ = _make_app()
         with TestClient(app) as client:
@@ -73,11 +71,9 @@ class TestListTools:
         assert "tools" in body
         assert isinstance(body["tools"], list)
 
-    @patch("app.gateway.routers.tools.get_app_config")
     @patch("app.gateway.routers.tools.get_available_tools")
-    def test_list_tools_with_search(self, mock_get_tools, mock_config):
+    def test_list_tools_with_search(self, mock_get_tools):
         """List tools with search filter."""
-        mock_config.return_value = MagicMock()
         mock_get_tools.return_value = []
         app, _ = _make_app()
         with TestClient(app) as client:
@@ -93,11 +89,9 @@ class TestListTools:
 class TestGetToolDetail:
     """Tests for GET /api/tools/{tool_name}."""
 
-    @patch("app.gateway.routers.tools.get_app_config")
     @patch("app.gateway.routers.tools.get_available_tools")
-    def test_get_tool_found(self, mock_get_tools, mock_config):
+    def test_get_tool_found(self, mock_get_tools):
         """Get tool returns tool details."""
-        mock_config.return_value = MagicMock()
         mock_tool = MagicMock()
         mock_tool.name = "web_search"
         mock_tool.description = "Search the web"
@@ -109,11 +103,9 @@ class TestGetToolDetail:
         assert resp.status_code == 200
         assert resp.json()["name"] == "web_search"
 
-    @patch("app.gateway.routers.tools.get_app_config")
     @patch("app.gateway.routers.tools.get_available_tools")
-    def test_get_tool_not_found(self, mock_get_tools, mock_config):
+    def test_get_tool_not_found(self, mock_get_tools):
         """Get tool returns 404 when not found."""
-        mock_config.return_value = MagicMock()
         mock_get_tools.return_value = []
         app, _ = _make_app()
         with TestClient(app) as client:
@@ -130,10 +122,8 @@ class TestTestTool:
     """Tests for POST /api/tools/{tool_name}/test."""
 
     @patch("app.gateway.routers.tools.get_available_tools")
-    @patch("app.gateway.routers.tools.get_app_config")
-    def test_test_tool_success(self, mock_config, mock_get_available_tools):
+    def test_test_tool_success(self, mock_get_available_tools):
         """Test tool executes successfully."""
-        mock_config.return_value = MagicMock()
 
         # Mock the actual tool instance returned by get_available_tools
         mock_instance = MagicMock()
@@ -152,11 +142,9 @@ class TestTestTool:
         assert body["success"] is True
         assert body["tool"] == "test_tool"
 
-    @patch("app.gateway.routers.tools.get_app_config")
     @patch("app.gateway.routers.tools.get_available_tools")
-    def test_test_tool_not_found(self, mock_get_tools, mock_config):
+    def test_test_tool_not_found(self, mock_get_tools):
         """Test tool returns 404 when tool not found."""
-        mock_config.return_value = MagicMock()
         mock_get_tools.return_value = []
         app, _ = _make_app(role="department_admin")
         with TestClient(app) as client:

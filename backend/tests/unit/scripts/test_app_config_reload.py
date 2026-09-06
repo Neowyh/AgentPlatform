@@ -7,18 +7,18 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-import ideer.config.app_config as app_config_module
-from ideer.config.app_config import AppConfig, get_app_config, reset_app_config
-from ideer.config.checkpointer_config import get_checkpointer_config
-from ideer.config.guardrails_config import get_guardrails_config
-from ideer.config.memory_config import get_memory_config
-from ideer.config.stream_bridge_config import get_stream_bridge_config
-from ideer.config.subagents_config import get_subagents_app_config
-from ideer.config.summarization_config import get_summarization_config
-from ideer.config.title_config import get_title_config
-from ideer.config.tool_search_config import get_tool_search_config
-from ideer.runtime.checkpointer import get_checkpointer, reset_checkpointer
-from ideer.runtime.store import get_store, reset_store
+import deerflow.config.app_config as app_config_module
+from deerflow.config.app_config import AppConfig, get_app_config, reset_app_config
+from deerflow.config.checkpointer_config import get_checkpointer_config
+from deerflow.config.guardrails_config import get_guardrails_config
+from deerflow.config.memory_config import get_memory_config
+from deerflow.config.stream_bridge_config import get_stream_bridge_config
+from deerflow.config.subagents_config import get_subagents_app_config
+from deerflow.config.summarization_config import get_summarization_config
+from deerflow.config.title_config import get_title_config
+from deerflow.config.tool_search_config import get_tool_search_config
+from deerflow.runtime.checkpointer import get_checkpointer, reset_checkpointer
+from deerflow.runtime.store import get_store, reset_store
 from tests.helpers.app_config_helpers import (
     _reset_config_singletons,
     _write_config,
@@ -35,7 +35,7 @@ def _write_config_with_agents_api(
     supports_thinking: bool,
 ) -> None:
     config = {
-        "sandbox": {"use": "ideer.sandbox.local:LocalSandboxProvider"},
+        "sandbox": {"use": "deerflow.sandbox.local:LocalSandboxProvider"},
         "models": [
             {
                 "name": model_name,
@@ -51,7 +51,7 @@ def _write_config_with_agents_api(
 
 def _write_config_with_sections(path: Path, sections: dict | None = None) -> None:
     config = {
-        "sandbox": {"use": "ideer.sandbox.local:LocalSandboxProvider"},
+        "sandbox": {"use": "deerflow.sandbox.local:LocalSandboxProvider"},
         "models": [
             {
                 "name": "first-model",
@@ -88,7 +88,7 @@ def test_app_config_defaults_empty_database_to_sqlite(tmp_path, monkeypatch):
         yaml.safe_dump(
             {
                 "database": {},
-                "sandbox": {"use": "ideer.sandbox.local:LocalSandboxProvider"},
+                "sandbox": {"use": "deerflow.sandbox.local:LocalSandboxProvider"},
             }
         ),
         encoding="utf-8",

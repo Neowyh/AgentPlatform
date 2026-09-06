@@ -1,23 +1,23 @@
-"""Tests to cover uncovered lines in ideer.tools.tools."""
+"""Tests to cover uncovered lines in deerflow.tools.tools."""
 
 import logging
 from unittest.mock import MagicMock, patch
 
 from langchain_core.tools import BaseTool
 
-from ideer.tools.tools import get_available_tools
+from deerflow.tools.tools import get_available_tools
 
 
 def _is_host_bash_tool(tool):
     """Wrapper to access the private function under test."""
-    from ideer.tools.tools import _is_host_bash_tool as _impl
+    from deerflow.tools.tools import _is_host_bash_tool as _impl
 
     return _impl(tool)
 
 
 def _ensure_sync_invocable_tool(tool):
     """Wrapper to access the private function under test."""
-    from ideer.tools.tools import _ensure_sync_invocable_tool as _impl
+    from deerflow.tools.tools import _ensure_sync_invocable_tool as _impl
 
     return _impl(tool)
 
@@ -91,16 +91,16 @@ def _make_tool_config(name="my_tool", group="core", use="some.module:my_tool", r
 
 
 # ---------------------------------------------------------------------------
-# Line 34: _is_host_bash_tool – use == "ideer.sandbox.tools:bash_tool"
+# Line 34: _is_host_bash_tool – use == "deerflow.sandbox.tools:bash_tool"
 # ---------------------------------------------------------------------------
 
 
 class TestIsHostBashTool:
     def test_use_field_matches_bash_tool(self):
-        """Line 34: returns True when use == 'ideer.sandbox.tools:bash_tool'."""
+        """Line 34: returns True when use == 'deerflow.sandbox.tools:bash_tool'."""
         tool = MagicMock(spec=BaseTool)
         tool.group = "not_bash"
-        tool.use = "ideer.sandbox.tools:bash_tool"
+        tool.use = "deerflow.sandbox.tools:bash_tool"
         assert _is_host_bash_tool(tool) is True
 
     def test_group_bash(self):
@@ -124,9 +124,9 @@ class TestIsHostBashTool:
 
 
 class TestOfflineModeFiltering:
-    @patch("ideer.tools.tools.is_offline", return_value=True)
-    @patch("ideer.tools.tools.is_host_bash_allowed", return_value=True)
-    @patch("ideer.tools.tools.resolve_variable")
+    @patch("deerflow.tools.tools.is_offline", return_value=True)
+    @patch("deerflow.tools.tools.is_host_bash_allowed", return_value=True)
+    @patch("deerflow.tools.tools.resolve_variable")
     def test_offline_skips_network_tools(self, mock_resolve, mock_bash, mock_offline):
         """Lines 72-79: network-dependent tools are excluded in offline mode."""
         net_tool = _make_tool_config(name="net_tool", requires_network=True)
@@ -145,9 +145,9 @@ class TestOfflineModeFiltering:
         assert "net_tool" not in tool_names
         assert "local_tool" in tool_names
 
-    @patch("ideer.tools.tools.is_offline", return_value=True)
-    @patch("ideer.tools.tools.is_host_bash_allowed", return_value=True)
-    @patch("ideer.tools.tools.resolve_variable")
+    @patch("deerflow.tools.tools.is_offline", return_value=True)
+    @patch("deerflow.tools.tools.is_host_bash_allowed", return_value=True)
+    @patch("deerflow.tools.tools.resolve_variable")
     def test_offline_logs_skipped_tools(self, mock_resolve, mock_bash, mock_offline, caplog):
         """Lines 72-78: logging when offline tools are skipped."""
         net_tool = _make_tool_config(name="web_search", requires_network=True)
@@ -160,9 +160,9 @@ class TestOfflineModeFiltering:
         assert "Offline mode" in caplog.text
         assert "web_search" in caplog.text
 
-    @patch("ideer.tools.tools.is_offline", return_value=False)
-    @patch("ideer.tools.tools.is_host_bash_allowed", return_value=True)
-    @patch("ideer.tools.tools.resolve_variable")
+    @patch("deerflow.tools.tools.is_offline", return_value=False)
+    @patch("deerflow.tools.tools.is_host_bash_allowed", return_value=True)
+    @patch("deerflow.tools.tools.resolve_variable")
     def test_online_keeps_network_tools(self, mock_resolve, mock_bash, mock_offline):
         """Lines 71-79: online mode does not filter network tools."""
         net_tool = _make_tool_config(name="net_tool", requires_network=True)
@@ -186,9 +186,9 @@ class TestOfflineModeFiltering:
 
 
 class TestToolNameMismatch:
-    @patch("ideer.tools.tools.is_offline", return_value=False)
-    @patch("ideer.tools.tools.is_host_bash_allowed", return_value=True)
-    @patch("ideer.tools.tools.resolve_variable")
+    @patch("deerflow.tools.tools.is_offline", return_value=False)
+    @patch("deerflow.tools.tools.is_host_bash_allowed", return_value=True)
+    @patch("deerflow.tools.tools.resolve_variable")
     def test_name_mismatch_logs_warning(self, mock_resolve, mock_bash, mock_offline, caplog):
         """Line 93: warning when config name != tool .name."""
         cfg = _make_tool_config(name="config_name", use="some.module:tool_name")
@@ -206,9 +206,9 @@ class TestToolNameMismatch:
         assert "config name" in caplog.text
         assert "Tool name mismatch" in caplog.text
 
-    @patch("ideer.tools.tools.is_offline", return_value=False)
-    @patch("ideer.tools.tools.is_host_bash_allowed", return_value=True)
-    @patch("ideer.tools.tools.resolve_variable")
+    @patch("deerflow.tools.tools.is_offline", return_value=False)
+    @patch("deerflow.tools.tools.is_host_bash_allowed", return_value=True)
+    @patch("deerflow.tools.tools.resolve_variable")
     def test_name_match_no_warning(self, mock_resolve, mock_bash, mock_offline, caplog):
         """No mismatch warning when names match."""
         cfg = _make_tool_config(name="my_tool", use="some.module:my_tool")
@@ -232,9 +232,9 @@ class TestToolNameMismatch:
 
 
 class TestSkillEvolution:
-    @patch("ideer.tools.tools.is_offline", return_value=False)
-    @patch("ideer.tools.tools.is_host_bash_allowed", return_value=True)
-    @patch("ideer.tools.tools.resolve_variable")
+    @patch("deerflow.tools.tools.is_offline", return_value=False)
+    @patch("deerflow.tools.tools.is_host_bash_allowed", return_value=True)
+    @patch("deerflow.tools.tools.resolve_variable")
     def test_skill_evolution_enabled_adds_tool(self, mock_resolve, mock_bash, mock_offline):
         """Lines 106-108: skill_manage_tool is added when skill_evolution is enabled."""
         mock_resolve.return_value = MagicMock(spec=BaseTool, name="dummy", func=None, coroutine=None)
@@ -244,14 +244,14 @@ class TestSkillEvolution:
         # skill_manage_tool is imported locally inside the function body
         mock_skill_tool = MagicMock(spec=BaseTool)
         mock_skill_tool.name = "skill_manage"
-        with patch("ideer.tools.skill_manage_tool.skill_manage_tool", mock_skill_tool):
+        with patch("deerflow.tools.skill_manage_tool.skill_manage_tool", mock_skill_tool):
             result = get_available_tools(app_config=config, include_mcp=False)
 
         assert mock_skill_tool in result
 
-    @patch("ideer.tools.tools.is_offline", return_value=False)
-    @patch("ideer.tools.tools.is_host_bash_allowed", return_value=True)
-    @patch("ideer.tools.tools.resolve_variable")
+    @patch("deerflow.tools.tools.is_offline", return_value=False)
+    @patch("deerflow.tools.tools.is_host_bash_allowed", return_value=True)
+    @patch("deerflow.tools.tools.resolve_variable")
     def test_skill_evolution_disabled_no_extra(self, mock_resolve, mock_bash, mock_offline):
         """skill_manage_tool is NOT added when skill_evolution is disabled."""
         mock_resolve.return_value = MagicMock(spec=BaseTool, name="dummy", func=None, coroutine=None)
@@ -260,7 +260,7 @@ class TestSkillEvolution:
 
         mock_skill_tool = MagicMock(spec=BaseTool)
         mock_skill_tool.name = "skill_manage"
-        with patch("ideer.tools.skill_manage_tool.skill_manage_tool", mock_skill_tool):
+        with patch("deerflow.tools.skill_manage_tool.skill_manage_tool", mock_skill_tool):
             result = get_available_tools(app_config=config, include_mcp=False)
 
         assert mock_skill_tool not in result
@@ -272,9 +272,9 @@ class TestSkillEvolution:
 
 
 class TestVisionSupport:
-    @patch("ideer.tools.tools.is_offline", return_value=False)
-    @patch("ideer.tools.tools.is_host_bash_allowed", return_value=True)
-    @patch("ideer.tools.tools.resolve_variable")
+    @patch("deerflow.tools.tools.is_offline", return_value=False)
+    @patch("deerflow.tools.tools.is_host_bash_allowed", return_value=True)
+    @patch("deerflow.tools.tools.resolve_variable")
     def test_vision_model_includes_view_image_tool(self, mock_resolve, mock_bash, mock_offline):
         """Lines 122-123: view_image_tool is added when model supports vision."""
         mock_resolve.return_value = MagicMock(spec=BaseTool, name="dummy", func=None, coroutine=None)
@@ -282,14 +282,14 @@ class TestVisionSupport:
         model = _make_model_config(name="gpt-4o", supports_vision=True)
         config = _make_config(tools=[], models=[model])
 
-        with patch("ideer.tools.tools.view_image_tool") as mock_vi:
+        with patch("deerflow.tools.tools.view_image_tool") as mock_vi:
             result = get_available_tools(app_config=config, include_mcp=False)
 
         assert mock_vi in result
 
-    @patch("ideer.tools.tools.is_offline", return_value=False)
-    @patch("ideer.tools.tools.is_host_bash_allowed", return_value=True)
-    @patch("ideer.tools.tools.resolve_variable")
+    @patch("deerflow.tools.tools.is_offline", return_value=False)
+    @patch("deerflow.tools.tools.is_host_bash_allowed", return_value=True)
+    @patch("deerflow.tools.tools.resolve_variable")
     def test_no_vision_no_view_image_tool(self, mock_resolve, mock_bash, mock_offline):
         """view_image_tool is NOT added when model does not support vision."""
         mock_resolve.return_value = MagicMock(spec=BaseTool, name="dummy", func=None, coroutine=None)
@@ -297,28 +297,28 @@ class TestVisionSupport:
         model = _make_model_config(name="gpt-3.5", supports_vision=False)
         config = _make_config(tools=[], models=[model])
 
-        with patch("ideer.tools.tools.view_image_tool") as mock_vi:
+        with patch("deerflow.tools.tools.view_image_tool") as mock_vi:
             result = get_available_tools(app_config=config, include_mcp=False)
 
         assert mock_vi not in result
 
-    @patch("ideer.tools.tools.is_offline", return_value=False)
-    @patch("ideer.tools.tools.is_host_bash_allowed", return_value=True)
-    @patch("ideer.tools.tools.resolve_variable")
+    @patch("deerflow.tools.tools.is_offline", return_value=False)
+    @patch("deerflow.tools.tools.is_host_bash_allowed", return_value=True)
+    @patch("deerflow.tools.tools.resolve_variable")
     def test_no_models_skips_vision_check(self, mock_resolve, mock_bash, mock_offline):
         """When models list is empty and no model_name, vision check is skipped."""
         mock_resolve.return_value = MagicMock(spec=BaseTool, name="dummy", func=None, coroutine=None)
 
         config = _make_config(tools=[], models=[])
 
-        with patch("ideer.tools.tools.view_image_tool") as mock_vi:
+        with patch("deerflow.tools.tools.view_image_tool") as mock_vi:
             result = get_available_tools(app_config=config, include_mcp=False)
 
         assert mock_vi not in result
 
-    @patch("ideer.tools.tools.is_offline", return_value=False)
-    @patch("ideer.tools.tools.is_host_bash_allowed", return_value=True)
-    @patch("ideer.tools.tools.resolve_variable")
+    @patch("deerflow.tools.tools.is_offline", return_value=False)
+    @patch("deerflow.tools.tools.is_host_bash_allowed", return_value=True)
+    @patch("deerflow.tools.tools.resolve_variable")
     def test_explicit_model_name_vision(self, mock_resolve, mock_bash, mock_offline):
         """Lines 115-117: explicit model_name overrides default, triggers vision check."""
         mock_resolve.return_value = MagicMock(spec=BaseTool, name="dummy", func=None, coroutine=None)
@@ -327,7 +327,7 @@ class TestVisionSupport:
         model_no_vision = _make_model_config(name="gpt-3.5", supports_vision=False)
         config = _make_config(tools=[], models=[model_no_vision])
 
-        with patch("ideer.tools.tools.view_image_tool") as mock_vi:
+        with patch("deerflow.tools.tools.view_image_tool") as mock_vi:
             result = get_available_tools(
                 app_config=config,
                 include_mcp=False,
@@ -345,23 +345,23 @@ class TestVisionSupport:
 
 
 class TestMCPErrorHandling:
-    @patch("ideer.tools.tools.is_offline", return_value=False)
-    @patch("ideer.tools.tools.is_host_bash_allowed", return_value=True)
-    @patch("ideer.tools.tools.resolve_variable")
+    @patch("deerflow.tools.tools.is_offline", return_value=False)
+    @patch("deerflow.tools.tools.is_host_bash_allowed", return_value=True)
+    @patch("deerflow.tools.tools.resolve_variable")
     def test_mcp_import_error_handled(self, mock_resolve, mock_bash, mock_offline, caplog):
         """Lines 193-194: ImportError when ExtensionsConfig cannot be imported."""
         mock_resolve.return_value = MagicMock(spec=BaseTool, name="dummy", func=None, coroutine=None)
         config = _make_config(tools=[], tool_search_enabled=False)
 
-        with patch.dict("sys.modules", {"ideer.config.extensions_config": None}):
+        with patch.dict("sys.modules", {"deerflow.config.extensions_config": None}):
             with caplog.at_level(logging.WARNING):
                 get_available_tools(app_config=config, include_mcp=True)
 
         assert "MCP module not available" in caplog.text
 
-    @patch("ideer.tools.tools.is_offline", return_value=False)
-    @patch("ideer.tools.tools.is_host_bash_allowed", return_value=True)
-    @patch("ideer.tools.tools.resolve_variable")
+    @patch("deerflow.tools.tools.is_offline", return_value=False)
+    @patch("deerflow.tools.tools.is_host_bash_allowed", return_value=True)
+    @patch("deerflow.tools.tools.resolve_variable")
     def test_mcp_generic_exception_handled(self, mock_resolve, mock_bash, mock_offline, caplog):
         """Lines 195-196: generic Exception when getting cached MCP tools fails."""
         mock_resolve.return_value = MagicMock(name="dummy", func=None, coroutine=None)
@@ -380,8 +380,8 @@ class TestMCPErrorHandling:
             patch.dict(
                 "sys.modules",
                 {
-                    "ideer.config.extensions_config": mock_extensions,
-                    "ideer.mcp.cache": mock_cache,
+                    "deerflow.config.extensions_config": mock_extensions,
+                    "deerflow.mcp.cache": mock_cache,
                 },
             ),
             caplog.at_level(logging.ERROR),
@@ -397,30 +397,30 @@ class TestMCPErrorHandling:
 
 
 class TestACPErrorHandling:
-    @patch("ideer.tools.tools.is_offline", return_value=False)
-    @patch("ideer.tools.tools.is_host_bash_allowed", return_value=True)
-    @patch("ideer.tools.tools.resolve_variable")
+    @patch("deerflow.tools.tools.is_offline", return_value=False)
+    @patch("deerflow.tools.tools.is_host_bash_allowed", return_value=True)
+    @patch("deerflow.tools.tools.resolve_variable")
     def test_acp_import_error_handled(self, mock_resolve, mock_bash, mock_offline, caplog):
         """Lines 212-213: Exception when ACP tool module import fails."""
         mock_resolve.return_value = MagicMock(spec=BaseTool, name="dummy", func=None, coroutine=None)
         config = _make_config(tools=[], acp_agents={"agent1": {"desc": "test"}})
 
-        with patch.dict("sys.modules", {"ideer.tools.builtins.invoke_acp_agent_tool": None}):
+        with patch.dict("sys.modules", {"deerflow.tools.builtins.invoke_acp_agent_tool": None}):
             with caplog.at_level(logging.WARNING):
                 get_available_tools(app_config=config, include_mcp=False)
 
         assert "Failed to load ACP tool" in caplog.text
 
-    @patch("ideer.tools.tools.is_offline", return_value=False)
-    @patch("ideer.tools.tools.is_host_bash_allowed", return_value=True)
-    @patch("ideer.tools.tools.resolve_variable")
+    @patch("deerflow.tools.tools.is_offline", return_value=False)
+    @patch("deerflow.tools.tools.is_host_bash_allowed", return_value=True)
+    @patch("deerflow.tools.tools.resolve_variable")
     def test_acp_build_raises_exception(self, mock_resolve, mock_bash, mock_offline, caplog):
         """Lines 212-213: exception during build_invoke_acp_agent_tool call."""
         mock_resolve.return_value = MagicMock(spec=BaseTool, name="dummy", func=None, coroutine=None)
         config = _make_config(tools=[], acp_agents={"agent1": {"desc": "test"}})
 
         # build_invoke_acp_agent_tool is imported locally; patch at source module
-        with patch("ideer.tools.builtins.invoke_acp_agent_tool.build_invoke_acp_agent_tool", side_effect=ValueError("bad config")):
+        with patch("deerflow.tools.builtins.invoke_acp_agent_tool.build_invoke_acp_agent_tool", side_effect=ValueError("bad config")):
             with caplog.at_level(logging.WARNING):
                 get_available_tools(app_config=config, include_mcp=False)
 
@@ -434,12 +434,12 @@ class TestACPErrorHandling:
 
 
 class TestBashToolFiltering:
-    @patch("ideer.tools.tools.is_offline", return_value=False)
-    @patch("ideer.tools.tools.is_host_bash_allowed", return_value=False)
-    @patch("ideer.tools.tools.resolve_variable")
+    @patch("deerflow.tools.tools.is_offline", return_value=False)
+    @patch("deerflow.tools.tools.is_host_bash_allowed", return_value=False)
+    @patch("deerflow.tools.tools.resolve_variable")
     def test_bash_tool_excluded_when_not_allowed(self, mock_resolve, mock_bash, mock_offline):
         """Line 83: bash tools are filtered out when is_host_bash_allowed returns False."""
-        bash_tool = _make_tool_config(name="bash_tool", group="bash", use="ideer.sandbox.tools:bash_tool")
+        bash_tool = _make_tool_config(name="bash_tool", group="bash", use="deerflow.sandbox.tools:bash_tool")
         other_tool = _make_tool_config(name="other_tool", group="core", use="some.module:other")
 
         mock_t1 = MagicMock(spec=BaseTool)
@@ -466,9 +466,9 @@ class TestBashToolFiltering:
 
 
 class TestSubagentTools:
-    @patch("ideer.tools.tools.is_offline", return_value=False)
-    @patch("ideer.tools.tools.is_host_bash_allowed", return_value=True)
-    @patch("ideer.tools.tools.resolve_variable")
+    @patch("deerflow.tools.tools.is_offline", return_value=False)
+    @patch("deerflow.tools.tools.is_host_bash_allowed", return_value=True)
+    @patch("deerflow.tools.tools.resolve_variable")
     def test_subagent_enabled_adds_task_tool(self, mock_resolve, mock_bash, mock_offline):
         """Lines 112-113: subagent tools are added when subagent_enabled=True."""
         mock_resolve.return_value = MagicMock(spec=BaseTool, name="dummy", func=None, coroutine=None)
@@ -479,9 +479,9 @@ class TestSubagentTools:
         tool_names = [t.name for t in result]
         assert "task" in tool_names
 
-    @patch("ideer.tools.tools.is_offline", return_value=False)
-    @patch("ideer.tools.tools.is_host_bash_allowed", return_value=True)
-    @patch("ideer.tools.tools.resolve_variable")
+    @patch("deerflow.tools.tools.is_offline", return_value=False)
+    @patch("deerflow.tools.tools.is_host_bash_allowed", return_value=True)
+    @patch("deerflow.tools.tools.resolve_variable")
     def test_subagent_disabled_no_task_tool(self, mock_resolve, mock_bash, mock_offline):
         """subagent tools are NOT added when subagent_enabled=False."""
         mock_resolve.return_value = MagicMock(spec=BaseTool, name="dummy", func=None, coroutine=None)
@@ -499,9 +499,9 @@ class TestSubagentTools:
 
 
 class TestACPWithNoAppConfig:
-    @patch("ideer.tools.tools.is_offline", return_value=False)
-    @patch("ideer.tools.tools.is_host_bash_allowed", return_value=True)
-    @patch("ideer.tools.tools.resolve_variable")
+    @patch("deerflow.tools.tools.is_offline", return_value=False)
+    @patch("deerflow.tools.tools.is_host_bash_allowed", return_value=True)
+    @patch("deerflow.tools.tools.resolve_variable")
     def test_acp_with_app_config_none_uses_get_acp_agents(self, mock_resolve, mock_bash, mock_offline):
         """Lines 203-206: when app_config is None, get_acp_agents() is called."""
         mock_loaded = MagicMock()
@@ -515,19 +515,19 @@ class TestACPWithNoAppConfig:
         # When app_config=None, function falls back to get_app_config()
         # We need to mock get_app_config AND get_acp_agents (local import)
         fallback_config = _make_config(tools=[tool_cfg], acp_agents={})
-        with patch("ideer.tools.tools.get_app_config", return_value=fallback_config):
-            with patch("ideer.config.acp_config.get_acp_agents", return_value=mock_acp) as mock_get:
+        with patch("deerflow.tools.tools.get_app_config", return_value=fallback_config):
+            with patch("deerflow.config.acp_config.get_acp_agents", return_value=mock_acp) as mock_get:
                 mock_tool = MagicMock()
                 mock_tool.name = "invoke_acp_agent"
                 mock_tool.description = "Invoke ACP agent"
-                with patch("ideer.tools.builtins.invoke_acp_agent_tool.build_invoke_acp_agent_tool", return_value=mock_tool):
+                with patch("deerflow.tools.builtins.invoke_acp_agent_tool.build_invoke_acp_agent_tool", return_value=mock_tool):
                     get_available_tools(app_config=None, include_mcp=False)
 
         mock_get.assert_called_once()
 
-    @patch("ideer.tools.tools.is_offline", return_value=False)
-    @patch("ideer.tools.tools.is_host_bash_allowed", return_value=True)
-    @patch("ideer.tools.tools.resolve_variable")
+    @patch("deerflow.tools.tools.is_offline", return_value=False)
+    @patch("deerflow.tools.tools.is_host_bash_allowed", return_value=True)
+    @patch("deerflow.tools.tools.resolve_variable")
     def test_acp_logging_line(self, mock_resolve, mock_bash, mock_offline, caplog):
         """Line 211: logging when ACP agents are configured."""
         mock_resolve.return_value = MagicMock(spec=BaseTool, name="dummy", func=None, coroutine=None)
@@ -535,7 +535,7 @@ class TestACPWithNoAppConfig:
 
         mock_tool = MagicMock(spec=BaseTool)
         mock_tool.name = "invoke_acp_agent"
-        with patch("ideer.tools.builtins.invoke_acp_agent_tool.build_invoke_acp_agent_tool", return_value=mock_tool):
+        with patch("deerflow.tools.builtins.invoke_acp_agent_tool.build_invoke_acp_agent_tool", return_value=mock_tool):
             with caplog.at_level(logging.INFO):
                 get_available_tools(app_config=config, include_mcp=False)
 
@@ -548,9 +548,9 @@ class TestACPWithNoAppConfig:
 
 
 class TestDuplicateToolNames:
-    @patch("ideer.tools.tools.is_offline", return_value=False)
-    @patch("ideer.tools.tools.is_host_bash_allowed", return_value=True)
-    @patch("ideer.tools.tools.resolve_variable")
+    @patch("deerflow.tools.tools.is_offline", return_value=False)
+    @patch("deerflow.tools.tools.is_host_bash_allowed", return_value=True)
+    @patch("deerflow.tools.tools.resolve_variable")
     def test_duplicate_tool_name_skipped(self, mock_resolve, mock_bash, mock_offline, caplog):
         """Line 228: duplicate tool names are detected and skipped."""
         # Create two tool configs with the same resolved name
@@ -586,7 +586,7 @@ class TestEnsureSyncInvocableTool:
         tool.coroutine = MagicMock()
         tool.name = "async_tool"
 
-        with patch("ideer.tools.tools.make_sync_tool_wrapper") as mock_wrapper:
+        with patch("deerflow.tools.tools.make_sync_tool_wrapper") as mock_wrapper:
             mock_wrapper.return_value = MagicMock()
             result = _ensure_sync_invocable_tool(tool)
 

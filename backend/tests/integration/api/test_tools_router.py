@@ -96,11 +96,9 @@ def _session_factory(session):
 class TestListTools:
     """Tests for GET /api/tools."""
 
-    @patch("app.gateway.routers.tools.get_app_config")
     @patch("app.gateway.routers.tools.get_available_tools")
-    def test_list_tools_returns_all(self, mock_get_tools, mock_config):
+    def test_list_tools_returns_all(self, mock_get_tools):
         """List tools returns all registered tools."""
-        mock_config.return_value = MagicMock()
         mock_get_tools.return_value = [
             SimpleNamespace(name="tool_a", description="Tool A", get_input_schema=lambda: _MockToolSchema),
             SimpleNamespace(name="tool_b", description="Tool B", get_input_schema=lambda: _MockToolSchema),
@@ -115,11 +113,9 @@ class TestListTools:
         assert data["total"] == 2
         assert len(data["tools"]) == 2
 
-    @patch("app.gateway.routers.tools.get_app_config")
     @patch("app.gateway.routers.tools.get_available_tools")
-    def test_list_tools_with_search(self, mock_get_tools, mock_config):
+    def test_list_tools_with_search(self, mock_get_tools):
         """List tools with search parameter filters results inline."""
-        mock_config.return_value = MagicMock()
         mock_get_tools.return_value = [
             SimpleNamespace(name="matching_tool", description="A matching tool", get_input_schema=lambda: _MockToolSchema),
             SimpleNamespace(name="other_tool", description="Something else", get_input_schema=lambda: _MockToolSchema),
@@ -141,7 +137,6 @@ class TestListTools:
         session.execute = AsyncMock(return_value=_Result(rows=[private_meta]))
 
         with (
-            patch("app.gateway.routers.tools.get_app_config", return_value=MagicMock()),
             patch(
                 "app.gateway.routers.tools.get_available_tools",
                 return_value=[
@@ -162,7 +157,6 @@ class TestListTools:
         session.execute = AsyncMock(side_effect=RuntimeError("database error"))
 
         with (
-            patch("app.gateway.routers.tools.get_app_config", return_value=MagicMock()),
             patch(
                 "app.gateway.routers.tools.get_available_tools",
                 return_value=[SimpleNamespace(name="public_tool", description="", get_input_schema=lambda: {})],
@@ -182,11 +176,9 @@ class TestListTools:
 class TestGetToolDetail:
     """Tests for GET /api/tools/{tool_name}."""
 
-    @patch("app.gateway.routers.tools.get_app_config")
     @patch("app.gateway.routers.tools.get_available_tools")
-    def test_get_tool_detail_success(self, mock_get_tools, mock_config):
+    def test_get_tool_detail_success(self, mock_get_tools):
         """Get tool detail returns tool info."""
-        mock_config.return_value = MagicMock()
         mock_get_tools.return_value = [
             SimpleNamespace(name="my_tool", description="desc", get_input_schema=lambda: _MockToolSchema),
         ]
@@ -200,11 +192,9 @@ class TestGetToolDetail:
         assert data["name"] == "my_tool"
         assert data["description"] == "desc"
 
-    @patch("app.gateway.routers.tools.get_app_config")
     @patch("app.gateway.routers.tools.get_available_tools")
-    def test_get_tool_detail_not_found(self, mock_get_tools, mock_config):
+    def test_get_tool_detail_not_found(self, mock_get_tools):
         """Get tool detail returns 404 for nonexistent tool."""
-        mock_config.return_value = MagicMock()
         mock_get_tools.return_value = []
 
         app = _make_app()
@@ -233,7 +223,6 @@ class TestGetToolDetail:
     @pytest.mark.asyncio
     async def test_get_tool_detail_denies_private_tool_to_anonymous_user(self):
         with (
-            patch("app.gateway.routers.tools.get_app_config", return_value=MagicMock()),
             patch(
                 "app.gateway.routers.tools.get_available_tools",
                 return_value=[SimpleNamespace(name="private_tool", description="", get_input_schema=lambda: {})],
@@ -248,7 +237,6 @@ class TestGetToolDetail:
     @pytest.mark.asyncio
     async def test_get_tool_detail_denies_when_authenticated_user_lacks_access(self):
         with (
-            patch("app.gateway.routers.tools.get_app_config", return_value=MagicMock()),
             patch(
                 "app.gateway.routers.tools.get_available_tools",
                 return_value=[SimpleNamespace(name="private_tool", description="", get_input_schema=lambda: {})],
@@ -271,10 +259,8 @@ class TestToolExecution:
     """Tests for POST /api/tools/{tool_name}/test."""
 
     @patch("app.gateway.routers.tools.get_available_tools")
-    @patch("app.gateway.routers.tools.get_app_config")
-    def test_test_tool_success(self, mock_config, mock_get_tools):
+    def test_test_tool_success(self, mock_get_tools):
         """Test-execute tool succeeds with valid tool."""
-        mock_config.return_value = MagicMock()
 
         # Use SimpleNamespace so hasattr("ainvoke") returns False
         tool_instance = SimpleNamespace(
@@ -295,11 +281,9 @@ class TestToolExecution:
         assert data["success"] is True
         assert data["tool"] == "my_tool"
 
-    @patch("app.gateway.routers.tools.get_app_config")
     @patch("app.gateway.routers.tools.get_available_tools")
-    def test_test_tool_not_found(self, mock_get_tools, mock_config):
+    def test_test_tool_not_found(self, mock_get_tools):
         """Test-execute returns 404 for nonexistent tool."""
-        mock_config.return_value = MagicMock()
         mock_get_tools.return_value = []
 
         app = _make_app()
@@ -312,10 +296,8 @@ class TestToolExecution:
         assert resp.status_code == 404
 
     @patch("app.gateway.routers.tools.get_available_tools")
-    @patch("app.gateway.routers.tools.get_app_config")
-    def test_test_tool_execution_failure(self, mock_config, mock_get_tools):
+    def test_test_tool_execution_failure(self, mock_get_tools):
         """Test-execute handles tool execution failure gracefully."""
-        mock_config.return_value = MagicMock()
 
         # Use SimpleNamespace so hasattr("ainvoke") returns False
         tool_instance = SimpleNamespace(

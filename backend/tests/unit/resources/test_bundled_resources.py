@@ -9,17 +9,20 @@ import yaml
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-import ideer.persistence.models  # noqa: F401
-from app.agentplatform.resources.bundled import load_bundled_manifest, seed_bundled_resources
-from app.agentplatform.resources.storage import ResourceStorage
-from ideer.persistence.base import Base
-from ideer.persistence.models.resource_catalog import (
+import app.agentplatform.audit_model  # noqa: F401 - register audit_logs
+import app.agentplatform.rbac_models  # noqa: F401 - register users_ext
+import app.agentplatform.resource_models  # noqa: F401 - register resource tables
+import app.agentplatform.visibility_models  # noqa: F401 - register visibility tables
+from app.agentplatform.rbac_models import UserModel, UserRole
+from app.agentplatform.resource_models import (
     Resource,
     ResourceDependency,
     ResourceProvenance,
     ResourceVersion,
 )
-from ideer.persistence.models.user import UserModel, UserRole
+from app.agentplatform.resources.bundled import load_bundled_manifest, seed_bundled_resources
+from app.agentplatform.resources.storage import ResourceStorage
+from deerflow.persistence.base import Base
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 

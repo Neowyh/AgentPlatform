@@ -7,14 +7,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from ideer.runtime.runs.worker import RunContext
+from deerflow.runtime.runs.worker import RunContext
 
 
 @pytest.mark.asyncio
 async def test_agent_build_stage_emits_timing(caplog):
     """run_agent logs stage=agent_build timing around the factory call."""
-    from ideer.runtime.runs.schemas import RunStatus
-    from ideer.runtime.runs.worker import run_agent
+    from deerflow.runtime.runs.schemas import RunStatus
+    from deerflow.runtime.runs.worker import run_agent
 
     bridge = MagicMock()
     bridge.publish = AsyncMock()
@@ -50,11 +50,11 @@ async def test_agent_build_stage_emits_timing(caplog):
     def agent_factory(config=None, app_config=None):
         return mock_agent
 
-    with patch("ideer.runtime.runs.worker.inject_langfuse_metadata"):
-        with patch("ideer.runtime.runs.worker.get_effective_user_id", return_value="user_1"):
-            with patch("ideer.runtime.runs.worker.os.environ", {}):
-                with patch("ideer.runtime.runs.worker.resolve_root_run_name", return_value="test_run"):
-                    with caplog.at_level(logging.INFO, logger="ideer.runtime.runs.worker"):
+    with patch("deerflow.runtime.runs.worker.inject_langfuse_metadata"):
+        with patch("deerflow.runtime.runs.worker.get_effective_user_id", return_value="user_1"):
+            with patch("deerflow.runtime.runs.worker.os.environ", {}):
+                with patch("deerflow.runtime.runs.worker.resolve_root_run_name", return_value="test_run"):
+                    with caplog.at_level(logging.INFO, logger="deerflow.runtime.runs.worker"):
                         await run_agent(
                             bridge,
                             run_manager,

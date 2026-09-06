@@ -13,7 +13,7 @@ from unittest.mock import MagicMock, patch
 
 from langchain_core.messages import ToolMessage
 
-from ideer.agents.middlewares.tool_error_handling_middleware import (
+from deerflow.agents.middlewares.tool_error_handling_middleware import (
     ToolErrorHandlingMiddleware,
     build_lead_runtime_middlewares,
     build_subagent_runtime_middlewares,
@@ -81,28 +81,28 @@ def _stub_runtime_middleware_imports(monkeypatch):
 
     monkeypatch.setitem(
         sys.modules,
-        "ideer.agents.middlewares.llm_error_handling_middleware",
-        _module("ideer.agents.middlewares.llm_error_handling_middleware", LLMErrorHandlingMiddleware=FakeLLMErrorHandlingMiddleware),
+        "deerflow.agents.middlewares.llm_error_handling_middleware",
+        _module("deerflow.agents.middlewares.llm_error_handling_middleware", LLMErrorHandlingMiddleware=FakeLLMErrorHandlingMiddleware),
     )
     monkeypatch.setitem(
         sys.modules,
-        "ideer.agents.middlewares.thread_data_middleware",
-        _module("ideer.agents.middlewares.thread_data_middleware", ThreadDataMiddleware=FakeMiddleware),
+        "deerflow.agents.middlewares.thread_data_middleware",
+        _module("deerflow.agents.middlewares.thread_data_middleware", ThreadDataMiddleware=FakeMiddleware),
     )
     monkeypatch.setitem(
         sys.modules,
-        "ideer.sandbox.middleware",
-        _module("ideer.sandbox.middleware", SandboxMiddleware=FakeMiddleware),
+        "deerflow.sandbox.middleware",
+        _module("deerflow.sandbox.middleware", SandboxMiddleware=FakeMiddleware),
     )
     monkeypatch.setitem(
         sys.modules,
-        "ideer.agents.middlewares.dangling_tool_call_middleware",
-        _module("ideer.agents.middlewares.dangling_tool_call_middleware", DanglingToolCallMiddleware=FakeMiddleware),
+        "deerflow.agents.middlewares.dangling_tool_call_middleware",
+        _module("deerflow.agents.middlewares.dangling_tool_call_middleware", DanglingToolCallMiddleware=FakeMiddleware),
     )
     monkeypatch.setitem(
         sys.modules,
-        "ideer.agents.middlewares.sandbox_audit_middleware",
-        _module("ideer.agents.middlewares.sandbox_audit_middleware", SandboxAuditMiddleware=FakeMiddleware),
+        "deerflow.agents.middlewares.sandbox_audit_middleware",
+        _module("deerflow.agents.middlewares.sandbox_audit_middleware", SandboxAuditMiddleware=FakeMiddleware),
     )
 
 
@@ -115,10 +115,10 @@ def _make_app_config(
     guardrails_passport=None,
     safety_enabled=False,
 ):
-    from ideer.config.app_config import AppConfig, CircuitBreakerConfig
-    from ideer.config.guardrails_config import GuardrailProviderConfig, GuardrailsConfig
-    from ideer.config.model_config import ModelConfig
-    from ideer.config.sandbox_config import SandboxConfig
+    from deerflow.config.app_config import AppConfig, CircuitBreakerConfig
+    from deerflow.config.guardrails_config import GuardrailProviderConfig, GuardrailsConfig
+    from deerflow.config.model_config import ModelConfig
+    from deerflow.config.sandbox_config import SandboxConfig
 
     guardrails_provider = None
     if guardrails_provider_use:
@@ -166,7 +166,7 @@ class TestBuildSubagentRuntimeMiddlewaresNoAppConfig:
         mock_config.safety_finish_reason = MagicMock(enabled=False)
 
         # build_subagent_runtime_middlewares imports get_app_config locally
-        with patch("ideer.config.get_app_config", return_value=mock_config) as mock_get:
+        with patch("deerflow.config.get_app_config", return_value=mock_config) as mock_get:
             middlewares = build_subagent_runtime_middlewares(app_config=None, lazy_init=True)
 
         mock_get.assert_called_once()
@@ -183,8 +183,8 @@ def _stub_guardrails_imports(monkeypatch):
     """Add guardrails middleware mock to sys.modules."""
     monkeypatch.setitem(
         sys.modules,
-        "ideer.guardrails.middleware",
-        _module("ideer.guardrails.middleware", GuardrailMiddleware=FakeGuardrailMiddleware),
+        "deerflow.guardrails.middleware",
+        _module("deerflow.guardrails.middleware", GuardrailMiddleware=FakeGuardrailMiddleware),
     )
 
 
@@ -206,7 +206,7 @@ class TestBuildRuntimeMiddlewaresGuardrails:
             guardrails_fail_closed=True,
         )
 
-        with patch("ideer.reflection.resolve_variable", return_value=mock_provider_cls):
+        with patch("deerflow.reflection.resolve_variable", return_value=mock_provider_cls):
             middlewares = build_lead_runtime_middlewares(app_config=app_config)
 
         guardrail_mws = [m for m in middlewares if isinstance(m, FakeGuardrailMiddleware)]
@@ -228,7 +228,7 @@ class TestBuildRuntimeMiddlewaresGuardrails:
             guardrails_provider_config=None,
         )
 
-        with patch("ideer.reflection.resolve_variable", return_value=ProviderWithKwargs):
+        with patch("deerflow.reflection.resolve_variable", return_value=ProviderWithKwargs):
             middlewares = build_lead_runtime_middlewares(app_config=app_config)
 
         guardrail_mws = [m for m in middlewares if isinstance(m, FakeGuardrailMiddleware)]
@@ -251,7 +251,7 @@ class TestBuildRuntimeMiddlewaresGuardrails:
         )
 
         with (
-            patch("ideer.reflection.resolve_variable", return_value=mock_provider_cls),
+            patch("deerflow.reflection.resolve_variable", return_value=mock_provider_cls),
             patch("inspect.signature", side_effect=ValueError("no signature")),
         ):
             middlewares = build_lead_runtime_middlewares(app_config=app_config)
@@ -272,7 +272,7 @@ class TestBuildRuntimeMiddlewaresGuardrails:
             guardrails_provider_config={"framework": "custom"},
         )
 
-        with patch("ideer.reflection.resolve_variable", return_value=mock_provider_cls):
+        with patch("deerflow.reflection.resolve_variable", return_value=mock_provider_cls):
             middlewares = build_lead_runtime_middlewares(app_config=app_config)
 
         assert len(middlewares) > 0
@@ -292,7 +292,7 @@ class TestBuildRuntimeMiddlewaresGuardrails:
         )
 
         with (
-            patch("ideer.reflection.resolve_variable", return_value=mock_provider_cls),
+            patch("deerflow.reflection.resolve_variable", return_value=mock_provider_cls),
             patch("inspect.signature", side_effect=TypeError("not callable")),
         ):
             middlewares = build_lead_runtime_middlewares(app_config=app_config)

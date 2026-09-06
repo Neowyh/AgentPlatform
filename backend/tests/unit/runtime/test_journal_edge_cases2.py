@@ -23,7 +23,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from ideer.runtime.journal import RunJournal
+from deerflow.runtime.journal import RunJournal
 
 # ---------------------------------------------------------------------------
 # Helpers

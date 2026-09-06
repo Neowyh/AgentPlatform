@@ -1,7 +1,7 @@
 from deerflow.config.app_config import AppConfig
 from deerflow.config.sandbox_config import SandboxConfig
+from deerflow.config.workflow_runtime_config import WorkflowRuntimeConfig
 from deerflow.config.workflow_runtime_config import WorkflowRuntimeConfig as DeerFlowWorkflowRuntimeConfig
-from ideer.config.workflow_runtime_config import WorkflowRuntimeConfig
 
 
 def test_workflow_runtime_config_has_safe_phase_two_defaults() -> None:

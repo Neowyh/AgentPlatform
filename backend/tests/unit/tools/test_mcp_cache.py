@@ -23,7 +23,7 @@ class TestIsCacheStale:
 
     def setup_method(self):
         """Reset module-level globals before each test."""
-        import ideer.mcp.cache as cache_mod
+        import deerflow.mcp.cache as cache_mod
 
         self._cache_mod = cache_mod
         # Save original state
@@ -45,7 +45,7 @@ class TestIsCacheStale:
         self._cache_mod._cache_initialized = True
         self._cache_mod._config_mtime = 100.0
 
-        with patch("ideer.mcp.cache._get_config_mtime", return_value=100.0):
+        with patch("deerflow.mcp.cache._get_config_mtime", return_value=100.0):
             assert self._cache_mod._is_cache_stale() is False
 
     def test_stale_when_mtime_newer(self):
@@ -53,7 +53,7 @@ class TestIsCacheStale:
         self._cache_mod._cache_initialized = True
         self._cache_mod._config_mtime = 100.0
 
-        with patch("ideer.mcp.cache._get_config_mtime", return_value=200.0):
+        with patch("deerflow.mcp.cache._get_config_mtime", return_value=200.0):
             assert self._cache_mod._is_cache_stale() is True
 
     def test_not_stale_when_mtime_older(self):
@@ -61,7 +61,7 @@ class TestIsCacheStale:
         self._cache_mod._cache_initialized = True
         self._cache_mod._config_mtime = 200.0
 
-        with patch("ideer.mcp.cache._get_config_mtime", return_value=100.0):
+        with patch("deerflow.mcp.cache._get_config_mtime", return_value=100.0):
             assert self._cache_mod._is_cache_stale() is False
 
     def test_not_stale_when_no_previous_mtime(self):
@@ -69,7 +69,7 @@ class TestIsCacheStale:
         self._cache_mod._cache_initialized = True
         self._cache_mod._config_mtime = None
 
-        with patch("ideer.mcp.cache._get_config_mtime", return_value=100.0):
+        with patch("deerflow.mcp.cache._get_config_mtime", return_value=100.0):
             assert self._cache_mod._is_cache_stale() is False
 
     def test_not_stale_when_current_mtime_none(self):
@@ -77,7 +77,7 @@ class TestIsCacheStale:
         self._cache_mod._cache_initialized = True
         self._cache_mod._config_mtime = 100.0
 
-        with patch("ideer.mcp.cache._get_config_mtime", return_value=None):
+        with patch("deerflow.mcp.cache._get_config_mtime", return_value=None):
             assert self._cache_mod._is_cache_stale() is False
 
 
@@ -91,7 +91,7 @@ class TestResetMcpToolsCache:
 
     def setup_method(self):
         """Reset module-level globals before each test."""
-        import ideer.mcp.cache as cache_mod
+        import deerflow.mcp.cache as cache_mod
 
         self._cache_mod = cache_mod
         self._orig_cache_initialized = cache_mod._cache_initialized
@@ -104,8 +104,8 @@ class TestResetMcpToolsCache:
         self._cache_mod._config_mtime = self._orig_config_mtime
         self._cache_mod._mcp_tools_cache = self._orig_mcp_tools_cache
 
-    @patch("ideer.mcp.session_pool.reset_session_pool")
-    @patch("ideer.mcp.session_pool.get_session_pool")
+    @patch("deerflow.mcp.session_pool.reset_session_pool")
+    @patch("deerflow.mcp.session_pool.get_session_pool")
     def test_reset_clears_cache_state(self, mock_get_pool, mock_reset_pool):
         """Reset clears all cache state."""
         mock_pool = MagicMock()
@@ -123,8 +123,8 @@ class TestResetMcpToolsCache:
         mock_pool.close_all_sync.assert_called_once()
         mock_reset_pool.assert_called_once()
 
-    @patch("ideer.mcp.session_pool.reset_session_pool")
-    @patch("ideer.mcp.session_pool.get_session_pool")
+    @patch("deerflow.mcp.session_pool.reset_session_pool")
+    @patch("deerflow.mcp.session_pool.get_session_pool")
     def test_reset_handles_pool_close_error(self, mock_get_pool, mock_reset_pool):
         """Reset handles errors during pool close gracefully."""
         mock_pool = MagicMock()
@@ -149,7 +149,7 @@ class TestInitializeMcpTools:
 
     def setup_method(self):
         """Reset module-level globals before each test."""
-        import ideer.mcp.cache as cache_mod
+        import deerflow.mcp.cache as cache_mod
 
         self._cache_mod = cache_mod
         self._orig_cache_initialized = cache_mod._cache_initialized
@@ -171,8 +171,8 @@ class TestInitializeMcpTools:
         mock_tools = [MagicMock(), MagicMock()]
 
         with (
-            patch("ideer.mcp.tools.get_mcp_tools", new_callable=AsyncMock, return_value=mock_tools),
-            patch("ideer.mcp.cache._get_config_mtime", return_value=100.0),
+            patch("deerflow.mcp.tools.get_mcp_tools", new_callable=AsyncMock, return_value=mock_tools),
+            patch("deerflow.mcp.cache._get_config_mtime", return_value=100.0),
         ):
             result = await self._cache_mod.initialize_mcp_tools()
 
@@ -197,8 +197,8 @@ class TestInitializeMcpTools:
         self._cache_mod._mcp_tools_cache = None
 
         with (
-            patch("ideer.mcp.tools.get_mcp_tools", new_callable=AsyncMock, return_value=[]),
-            patch("ideer.mcp.cache._get_config_mtime", return_value=42.0),
+            patch("deerflow.mcp.tools.get_mcp_tools", new_callable=AsyncMock, return_value=[]),
+            patch("deerflow.mcp.cache._get_config_mtime", return_value=42.0),
         ):
             await self._cache_mod.initialize_mcp_tools()
 
@@ -215,7 +215,7 @@ class TestGetCachedMcpTools:
 
     def setup_method(self):
         """Reset module-level globals before each test."""
-        import ideer.mcp.cache as cache_mod
+        import deerflow.mcp.cache as cache_mod
 
         self._cache_mod = cache_mod
         self._orig_cache_initialized = cache_mod._cache_initialized
@@ -235,7 +235,7 @@ class TestGetCachedMcpTools:
         self._cache_mod._mcp_tools_cache = mock_tools
         self._cache_mod._config_mtime = 100.0
 
-        with patch("ideer.mcp.cache._is_cache_stale", return_value=False):
+        with patch("deerflow.mcp.cache._is_cache_stale", return_value=False):
             result = self._cache_mod.get_cached_mcp_tools()
 
         assert result == mock_tools
@@ -258,10 +258,10 @@ class TestGetCachedMcpTools:
             self._cache_mod._config_mtime = None
 
         with (
-            patch("ideer.mcp.cache._is_cache_stale", return_value=True),
-            patch("ideer.mcp.cache.reset_mcp_tools_cache", side_effect=_reset_and_set_state),
-            patch("ideer.mcp.tools.get_mcp_tools", new_callable=AsyncMock, return_value=new_tools),
-            patch("ideer.mcp.cache._get_config_mtime", return_value=200.0),
+            patch("deerflow.mcp.cache._is_cache_stale", return_value=True),
+            patch("deerflow.mcp.cache.reset_mcp_tools_cache", side_effect=_reset_and_set_state),
+            patch("deerflow.mcp.tools.get_mcp_tools", new_callable=AsyncMock, return_value=new_tools),
+            patch("deerflow.mcp.cache._get_config_mtime", return_value=200.0),
         ):
             result = self._cache_mod.get_cached_mcp_tools()
 
@@ -273,8 +273,8 @@ class TestGetCachedMcpTools:
         self._cache_mod._mcp_tools_cache = None
 
         with (
-            patch("ideer.mcp.cache._is_cache_stale", return_value=False),
-            patch("ideer.mcp.cache.initialize_mcp_tools", side_effect=RuntimeError("init failed")),
+            patch("deerflow.mcp.cache._is_cache_stale", return_value=False),
+            patch("deerflow.mcp.cache.initialize_mcp_tools", side_effect=RuntimeError("init failed")),
         ):
             result = self._cache_mod.get_cached_mcp_tools()
 

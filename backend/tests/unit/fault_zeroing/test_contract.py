@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
-CONTRACT_PATH = REPO_ROOT / "backend" / "packages" / "harness" / "ideer" / "fault_zeroing" / "contract.py"
+CONTRACT_PATH = REPO_ROOT / "backend" / "app" / "agentplatform" / "fault_zeroing" / "contract.py"
 VALIDATOR_PATH = REPO_ROOT / "scripts" / "validate_fault_zeroing_outputs.py"
 
 

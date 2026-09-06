@@ -44,7 +44,7 @@ def _write_config_yaml(path: Path, *, log_level: str) -> None:
     path.write_text(
         f"""
 sandbox:
-  use: ideer.sandbox.local.provider:LocalSandboxProvider
+  use: deerflow.sandbox.local.provider:LocalSandboxProvider
 log_level: {log_level}
 """.strip()
         + "\n",

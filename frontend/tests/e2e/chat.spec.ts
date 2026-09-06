@@ -143,7 +143,7 @@ test.describe("Chat workspace", () => {
     const restoredTextarea = page.getByPlaceholder(/how can i assist you/i);
     await expect(restoredTextarea).toHaveValue("Keep this unfinished draft");
     await restoredTextarea.press("Enter");
-    await expect(page.getByText("Hello from DeerFlow!")).toBeVisible({
+    await expect(page.getByText("Hello from iDeer!")).toBeVisible({
       timeout: 10_000,
     });
 
@@ -162,7 +162,7 @@ test.describe("Chat workspace", () => {
     await expect(textarea).toBeVisible({ timeout: 15_000 });
     await textarea.fill("Repeat this request");
     await textarea.press("Enter");
-    await expect(page.getByText("Hello from DeerFlow!")).toBeVisible({
+    await expect(page.getByText("Hello from iDeer!")).toBeVisible({
       timeout: 10_000,
     });
     await expect(textarea).toHaveValue("");
@@ -250,7 +250,7 @@ test.describe("Chat workspace", () => {
     await expect
       .poll(() => submittedText, { timeout: 10_000 })
       .toBe("Send while storage is blocked");
-    await expect(page.getByText("Hello from DeerFlow!")).toBeVisible({
+    await expect(page.getByText("Hello from iDeer!")).toBeVisible({
       timeout: 10_000,
     });
   });
@@ -317,7 +317,7 @@ test.describe("Chat workspace", () => {
     await expect
       .poll(() => submittedText, { timeout: 10_000 })
       .toBe("Send this immediately");
-    await expect(page.getByText("Hello from DeerFlow!")).toBeVisible({
+    await expect(page.getByText("Hello from iDeer!")).toBeVisible({
       timeout: 10_000,
     });
 
@@ -596,35 +596,49 @@ test.describe("Chat workspace", () => {
     page,
   }) => {
     // Registered after the shared mock, so it wins: nothing rejects these
-    // names when the skill is created.
-    await page.route("**/api/skills", (route) =>
-      route.fulfill({
+    // names when the skill is created. The composer loads skills from the
+    // canonical resource catalog, so serve the same list there.
+    const slashSkillSeeds = [
+      {
+        name: "data-analysis",
+        description: "Analyze structured data and produce charts.",
+        category: "public" as const,
+        enabled: true,
+      },
+      {
+        name: "compact",
+        description: "A custom skill named after a builtin command.",
+        category: "custom" as const,
+        enabled: true,
+      },
+      {
+        name: "status",
+        description: "A custom skill named after a reserved command.",
+        category: "custom" as const,
+        enabled: true,
+      },
+    ];
+    await page.route(/\/api\/resources\?.*type=skill/, (route) => {
+      const items = slashSkillSeeds.map((skill) => ({
+        id: `00000000-0000-0000-0000-${`skill-${skill.name}`.slice(-12).padStart(12, "0")}`,
+        type: "skill",
+        slug: skill.name,
+        display_name: skill.name,
+        description: skill.description,
+        owner_id: "e2e-user",
+        visibility: "public",
+        scope_department_id: null,
+        latest_version: 1,
+        draft_revision: 1,
+        system_owned: false,
+        can_modify: skill.category === "custom",
+      }));
+      return route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({
-          skills: [
-            {
-              name: "data-analysis",
-              description: "Analyze structured data and produce charts.",
-              category: "public",
-              enabled: true,
-            },
-            {
-              name: "compact",
-              description: "A custom skill named after a builtin command.",
-              category: "custom",
-              enabled: true,
-            },
-            {
-              name: "status",
-              description: "A custom skill named after a reserved command.",
-              category: "custom",
-              enabled: true,
-            },
-          ],
-        }),
-      }),
-    );
+        body: JSON.stringify({ items, total: items.length }),
+      });
+    });
 
     await page.goto("/workspace/chats/new");
 
@@ -684,7 +698,7 @@ test.describe("Chat workspace", () => {
       page.locator("span.font-medium", { hasText: "finish all tests" }),
     ).toBeVisible();
     await expect.poll(() => streamCalls).toBe(1);
-    await expect(page.getByText("Hello from DeerFlow!")).toBeVisible();
+    await expect(page.getByText("Hello from iDeer!")).toBeVisible();
   });
 
   test("goal command keeps the welcome header clear of the goal status", async ({
@@ -827,7 +841,7 @@ test.describe("Chat workspace", () => {
     await expect.poll(() => streamCalled, { timeout: 10_000 }).toBeTruthy();
 
     // The AI response should appear in the chat
-    await expect(page.getByText("Hello from DeerFlow!")).toBeVisible({
+    await expect(page.getByText("Hello from iDeer!")).toBeVisible({
       timeout: 10_000,
     });
   });
@@ -941,7 +955,7 @@ test.describe("Chat workspace", () => {
     await expect
       .poll(() => submittedText, { timeout: 10_000 })
       .toBe(slashCommand);
-    await expect(page.getByText("Hello from DeerFlow!")).toBeVisible({
+    await expect(page.getByText("Hello from iDeer!")).toBeVisible({
       timeout: 10_000,
     });
   });
@@ -1042,7 +1056,7 @@ test.describe("Chat workspace", () => {
           status: "uploaded",
         },
       ]);
-    await expect(page.getByText("Hello from DeerFlow!")).toBeVisible({
+    await expect(page.getByText("Hello from iDeer!")).toBeVisible({
       timeout: 10_000,
     });
   });
@@ -1138,7 +1152,7 @@ test.describe("Chat workspace", () => {
     const textarea = page.locator('textarea[name="message"]');
     await textarea.fill("Continue without the rejected attachment");
     await textarea.press("Enter");
-    await expect(page.getByText("Hello from DeerFlow!")).toBeVisible({
+    await expect(page.getByText("Hello from iDeer!")).toBeVisible({
       timeout: 10_000,
     });
     expect(uploadCalled).toBe(false);
@@ -1249,7 +1263,7 @@ test.describe("Chat workspace", () => {
     await expect(promptForm.getByText("report.docx")).toBeVisible();
 
     releaseUpload();
-    await expect(page.getByText("Hello from DeerFlow!")).toBeVisible({
+    await expect(page.getByText("Hello from iDeer!")).toBeVisible({
       timeout: 10_000,
     });
     await expect(promptForm.getByText("report.docx")).toBeHidden();
@@ -1291,7 +1305,7 @@ test.describe("Chat workspace", () => {
     await textarea.press("Enter");
 
     await expect.poll(() => streamCalled, { timeout: 10_000 }).toBeTruthy();
-    await expect(page.getByText("Hello from DeerFlow!")).toBeVisible({
+    await expect(page.getByText("Hello from iDeer!")).toBeVisible({
       timeout: 10_000,
     });
     await page.waitForTimeout(1000);

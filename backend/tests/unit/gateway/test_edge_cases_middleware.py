@@ -1,14 +1,14 @@
-"""Additional coverage tests for ideer.sandbox.middleware."""
+"""Additional coverage tests for deerflow.sandbox.middleware."""
 
 from __future__ import annotations
 
 import pytest
 from langgraph.runtime import Runtime
 
-from ideer.sandbox.middleware import SandboxMiddleware
-from ideer.sandbox.sandbox import Sandbox
-from ideer.sandbox.sandbox_provider import SandboxProvider, reset_sandbox_provider, set_sandbox_provider
-from ideer.sandbox.search import GrepMatch
+from deerflow.sandbox.middleware import SandboxMiddleware
+from deerflow.sandbox.sandbox import Sandbox
+from deerflow.sandbox.sandbox_provider import SandboxProvider, reset_sandbox_provider, set_sandbox_provider
+from deerflow.sandbox.search import GrepMatch
 
 # ---------------------------------------------------------------------------
 # Stub sandbox

@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from ideer.agents.memory.updater import (
+from app.agentplatform.legacy.memory.updater import (
     MemoryUpdater,
     _create_empty_memory,
     _extract_text,
@@ -25,7 +25,7 @@ from ideer.agents.memory.updater import (
     update_memory_fact,
     update_memory_from_conversation,
 )
-from ideer.config.memory_config import MemoryConfig
+from deerflow.config.memory_config import MemoryConfig
 
 
 def _make_memory(facts=None):
@@ -46,11 +46,14 @@ def _make_memory(facts=None):
     }
 
 
+_LEGACY_MEMORY_KEYS = {"storage_path", "storage_class", "debounce_seconds", "max_facts", "fact_confidence_threshold", "max_injection_tokens", "model_name"}
+
+
 def _memory_config(**overrides):
-    config = MemoryConfig()
-    for key, value in overrides.items():
-        setattr(config, key, value)
-    return config
+    backend = {key: overrides.pop(key) for key in list(overrides) if key in _LEGACY_MEMORY_KEYS}
+    if backend:
+        overrides["backend_config"] = {**(overrides.get("backend_config") or {}), **backend}
+    return MemoryConfig(**overrides)
 
 
 # --- Lines 43, 48, 53, 58: backward-compatible wrappers ---
@@ -67,7 +70,7 @@ def test_save_memory_to_file_wrapper():
     """Line 48: _save_memory_to_file() delegates to storage."""
     mock_storage = MagicMock()
     mock_storage.save.return_value = True
-    with patch("ideer.agents.memory.updater.get_memory_storage", return_value=mock_storage):
+    with patch("app.agentplatform.legacy.memory.updater.get_memory_storage", return_value=mock_storage):
         result = _save_memory_to_file({"test": True}, "agent1", user_id="u1")
     assert result is True
     mock_storage.save.assert_called_once_with({"test": True}, "agent1", user_id="u1")
@@ -77,7 +80,7 @@ def test_get_memory_data_wrapper():
     """Line 53: get_memory_data() delegates to storage."""
     mock_storage = MagicMock()
     mock_storage.load.return_value = {"version": "1.0"}
-    with patch("ideer.agents.memory.updater.get_memory_storage", return_value=mock_storage):
+    with patch("app.agentplatform.legacy.memory.updater.get_memory_storage", return_value=mock_storage):
         result = get_memory_data("agent1", user_id="u1")
     assert result == {"version": "1.0"}
     mock_storage.load.assert_called_once_with("agent1", user_id="u1")
@@ -87,7 +90,7 @@ def test_reload_memory_data_wrapper():
     """Line 58: reload_memory_data() delegates to storage."""
     mock_storage = MagicMock()
     mock_storage.reload.return_value = {"version": "1.0", "reloaded": True}
-    with patch("ideer.agents.memory.updater.get_memory_storage", return_value=mock_storage):
+    with patch("app.agentplatform.legacy.memory.updater.get_memory_storage", return_value=mock_storage):
         result = reload_memory_data("agent1", user_id="u1")
     assert result["reloaded"] is True
     mock_storage.reload.assert_called_once_with("agent1", user_id="u1")
@@ -100,7 +103,7 @@ def test_import_memory_data_raises_on_save_failure():
     """Line 77: import_memory_data raises OSError when save returns False."""
     mock_storage = MagicMock()
     mock_storage.save.return_value = False
-    with patch("ideer.agents.memory.updater.get_memory_storage", return_value=mock_storage):
+    with patch("app.agentplatform.legacy.memory.updater.get_memory_storage", return_value=mock_storage):
         with pytest.raises(OSError, match="Failed to save imported memory data"):
             import_memory_data(_make_memory())
 
@@ -110,7 +113,7 @@ def test_import_memory_data_raises_on_save_failure():
 
 def test_clear_memory_data_raises_on_save_failure():
     """Line 85: clear_memory_data raises OSError when save returns False."""
-    with patch("ideer.agents.memory.updater._save_memory_to_file", return_value=False):
+    with patch("app.agentplatform.legacy.memory.updater._save_memory_to_file", return_value=False):
         with pytest.raises(OSError, match="Failed to save cleared memory data"):
             clear_memory_data()
 
@@ -121,8 +124,8 @@ def test_clear_memory_data_raises_on_save_failure():
 def test_create_memory_fact_raises_on_save_failure():
     """Line 128: create_memory_fact raises OSError when save returns False."""
     with (
-        patch("ideer.agents.memory.updater.get_memory_data", return_value=_make_memory()),
-        patch("ideer.agents.memory.updater._save_memory_to_file", return_value=False),
+        patch("app.agentplatform.legacy.memory.updater.get_memory_data", return_value=_make_memory()),
+        patch("app.agentplatform.legacy.memory.updater._save_memory_to_file", return_value=False),
     ):
         with pytest.raises(OSError, match="Failed to save memory data after creating fact"):
             create_memory_fact(content="User likes Python")
@@ -135,8 +138,8 @@ def test_delete_memory_fact_raises_on_save_failure():
     """Line 145: delete_memory_fact raises OSError when save returns False."""
     mem = _make_memory(facts=[{"id": "f1", "content": "test", "category": "context", "confidence": 0.9}])
     with (
-        patch("ideer.agents.memory.updater.get_memory_data", return_value=mem),
-        patch("ideer.agents.memory.updater._save_memory_to_file", return_value=False),
+        patch("app.agentplatform.legacy.memory.updater.get_memory_data", return_value=mem),
+        patch("app.agentplatform.legacy.memory.updater._save_memory_to_file", return_value=False),
     ):
         with pytest.raises(OSError, match="Failed to save memory data after deleting fact"):
             delete_memory_fact("f1")
@@ -148,7 +151,7 @@ def test_delete_memory_fact_raises_on_save_failure():
 def test_update_memory_fact_rejects_empty_content():
     """Line 172: update_memory_fact raises ValueError for empty content."""
     mem = _make_memory(facts=[{"id": "f1", "content": "test", "category": "context", "confidence": 0.9}])
-    with patch("ideer.agents.memory.updater.get_memory_data", return_value=mem):
+    with patch("app.agentplatform.legacy.memory.updater.get_memory_data", return_value=mem):
         with pytest.raises(ValueError, match="content"):
             update_memory_fact("f1", content="   ")
 
@@ -160,8 +163,8 @@ def test_update_memory_fact_raises_on_save_failure():
     """Line 188: update_memory_fact raises OSError when save returns False."""
     mem = _make_memory(facts=[{"id": "f1", "content": "test", "category": "context", "confidence": 0.9}])
     with (
-        patch("ideer.agents.memory.updater.get_memory_data", return_value=mem),
-        patch("ideer.agents.memory.updater._save_memory_to_file", return_value=False),
+        patch("app.agentplatform.legacy.memory.updater.get_memory_data", return_value=mem),
+        patch("app.agentplatform.legacy.memory.updater._save_memory_to_file", return_value=False),
     ):
         with pytest.raises(OSError, match="Failed to save memory data after updating fact"):
             update_memory_fact("f1", content="new content")
@@ -191,8 +194,8 @@ def test_get_model_uses_config_model_name():
     updater = MemoryUpdater(model_name="test-model")
     mock_model = MagicMock()
     with (
-        patch("ideer.agents.memory.updater.get_memory_config", return_value=_memory_config()),
-        patch("ideer.agents.memory.updater.create_chat_model", return_value=mock_model) as mock_create,
+        patch("app.agentplatform.legacy.memory.updater.get_memory_config", return_value=_memory_config()),
+        patch("app.agentplatform.legacy.memory.updater.create_chat_model", return_value=mock_model) as mock_create,
     ):
         result = updater._get_model()
     mock_create.assert_called_once_with(name="test-model", thinking_enabled=False)
@@ -204,8 +207,8 @@ def test_get_model_falls_back_to_config_model_name():
     updater = MemoryUpdater()
     mock_model = MagicMock()
     with (
-        patch("ideer.agents.memory.updater.get_memory_config", return_value=_memory_config(model_name="cfg-model")),
-        patch("ideer.agents.memory.updater.create_chat_model", return_value=mock_model) as mock_create,
+        patch("app.agentplatform.legacy.memory.updater.get_memory_config", return_value=_memory_config(model_name="cfg-model")),
+        patch("app.agentplatform.legacy.memory.updater.create_chat_model", return_value=mock_model) as mock_create,
     ):
         updater._get_model()
     mock_create.assert_called_once_with(name="cfg-model", thinking_enabled=False)
@@ -217,7 +220,7 @@ def test_get_model_falls_back_to_config_model_name():
 def test_prepare_update_prompt_returns_none_when_disabled():
     """Line 329: returns None when memory is disabled."""
     updater = MemoryUpdater()
-    with patch("ideer.agents.memory.updater.get_memory_config", return_value=_memory_config(enabled=False)):
+    with patch("app.agentplatform.legacy.memory.updater.get_memory_config", return_value=_memory_config(enabled=False)):
         result = updater._prepare_update_prompt([], None, False, False)
     assert result is None
 
@@ -229,8 +232,8 @@ def test_prepare_update_prompt_returns_none_for_empty_conversation():
     """Line 334: returns None when conversation text is empty."""
     updater = MemoryUpdater()
     with (
-        patch("ideer.agents.memory.updater.get_memory_config", return_value=_memory_config(enabled=True)),
-        patch("ideer.agents.memory.updater.get_memory_data", return_value=_make_memory()),
+        patch("app.agentplatform.legacy.memory.updater.get_memory_config", return_value=_memory_config(enabled=True)),
+        patch("app.agentplatform.legacy.memory.updater.get_memory_data", return_value=_make_memory()),
     ):
         msg = MagicMock()
         msg.type = "system"
@@ -293,7 +296,7 @@ def test_apply_updates_updates_history_sections():
         "newFacts": [],
         "factsToRemove": [],
     }
-    with patch("ideer.agents.memory.updater.get_memory_config", return_value=_memory_config()):
+    with patch("app.agentplatform.legacy.memory.updater.get_memory_config", return_value=_memory_config()):
         result = updater._apply_updates(mem, update_data)
     assert result["history"]["recentMonths"]["summary"] == "Recent work summary"
     assert result["history"]["earlierContext"]["summary"] == "Earlier context"
@@ -317,7 +320,7 @@ def test_apply_updates_skips_non_string_source_error():
             }
         ],
     }
-    with patch("ideer.agents.memory.updater.get_memory_config", return_value=_memory_config()):
+    with patch("app.agentplatform.legacy.memory.updater.get_memory_config", return_value=_memory_config()):
         result = updater._apply_updates(mem, update_data)
     assert "sourceError" not in result["facts"][0]
 
@@ -335,7 +338,7 @@ def test_apply_updates_skips_non_string_content_facts():
             {"content": "valid fact", "category": "context", "confidence": 0.9},
         ],
     }
-    with patch("ideer.agents.memory.updater.get_memory_config", return_value=_memory_config()):
+    with patch("app.agentplatform.legacy.memory.updater.get_memory_config", return_value=_memory_config()):
         result = updater._apply_updates(mem, update_data)
     assert len(result["facts"]) == 1
     assert result["facts"][0]["content"] == "valid fact"
@@ -352,10 +355,10 @@ def test_update_memory_from_conversation_delegates():
     mock_model.invoke.return_value = response
 
     with (
-        patch("ideer.agents.memory.updater.get_memory_config", return_value=_memory_config(enabled=True)),
-        patch("ideer.agents.memory.updater.get_memory_data", return_value=_make_memory()),
-        patch("ideer.agents.memory.updater.get_memory_storage", return_value=MagicMock(save=MagicMock(return_value=True))),
-        patch("ideer.agents.memory.updater.create_chat_model", return_value=mock_model),
+        patch("app.agentplatform.legacy.memory.updater.get_memory_config", return_value=_memory_config(enabled=True)),
+        patch("app.agentplatform.legacy.memory.updater.get_memory_data", return_value=_make_memory()),
+        patch("app.agentplatform.legacy.memory.updater.get_memory_storage", return_value=MagicMock(save=MagicMock(return_value=True))),
+        patch("app.agentplatform.legacy.memory.updater.create_chat_model", return_value=mock_model),
     ):
         msg = MagicMock()
         msg.type = "human"
@@ -411,9 +414,9 @@ def test_update_memory_in_running_loop():
 
     with (
         patch.object(updater, "_get_model", return_value=model),
-        patch("ideer.agents.memory.updater.get_memory_config", return_value=_memory_config(enabled=True)),
-        patch("ideer.agents.memory.updater.get_memory_data", return_value=_make_memory()),
-        patch("ideer.agents.memory.updater.get_memory_storage", return_value=MagicMock(save=MagicMock(return_value=True))),
+        patch("app.agentplatform.legacy.memory.updater.get_memory_config", return_value=_memory_config(enabled=True)),
+        patch("app.agentplatform.legacy.memory.updater.get_memory_data", return_value=_make_memory()),
+        patch("app.agentplatform.legacy.memory.updater.get_memory_storage", return_value=MagicMock(save=MagicMock(return_value=True))),
     ):
         msg = MagicMock()
         msg.type = "human"
@@ -444,7 +447,7 @@ def test_apply_updates_user_sections():
         },
         "newFacts": [],
     }
-    with patch("ideer.agents.memory.updater.get_memory_config", return_value=_memory_config()):
+    with patch("app.agentplatform.legacy.memory.updater.get_memory_config", return_value=_memory_config()):
         result = updater._apply_updates(mem, update_data)
     assert result["user"]["workContext"]["summary"] == "Works on iDeer"
     assert result["user"]["personalContext"]["summary"] == "Prefers Python"

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import asyncio
 
-from ideer.guardrails.builtin import AllowlistProvider
-from ideer.guardrails.provider import GuardrailDecision, GuardrailProvider, GuardrailReason, GuardrailRequest
+from deerflow.guardrails.builtin import AllowlistProvider
+from deerflow.guardrails.provider import GuardrailDecision, GuardrailProvider, GuardrailReason, GuardrailRequest
 
 # ---------------------------------------------------------------------------
 # GuardrailRequest

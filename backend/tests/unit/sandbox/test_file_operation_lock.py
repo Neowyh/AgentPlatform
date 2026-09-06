@@ -1,4 +1,4 @@
-"""Tests for ideer.sandbox.file_operation_lock — file operation lock utilities."""
+"""Tests for deerflow.sandbox.file_operation_lock — file operation lock utilities."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import threading
 import weakref
 from unittest.mock import MagicMock
 
-from ideer.sandbox.file_operation_lock import (
+from deerflow.sandbox.file_operation_lock import (
     _FILE_OPERATION_LOCKS,
     get_file_operation_lock,
     get_file_operation_lock_key,

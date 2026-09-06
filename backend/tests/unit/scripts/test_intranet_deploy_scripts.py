@@ -143,7 +143,7 @@ token_usage:
   enabled: true
 models:
 sandbox:
-  use: ideer.sandbox.local.local_sandbox_provider:LocalSandboxProvider
+  use: deerflow.sandbox.local.local_sandbox_provider:LocalSandboxProvider
 """,
         encoding="utf-8",
     )

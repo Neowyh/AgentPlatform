@@ -1,8 +1,8 @@
-"""Tests for IDeerClient's graph-root tracing wiring.
+"""Tests for DeerFlowClient's graph-root tracing wiring.
 
 Regression coverage for the Copilot review on PR #2944: when the title
 and summarization middlewares request ``attach_tracing=False`` we must
-make sure ``IDeerClient`` injects the tracing callbacks at the graph
+make sure ``DeerFlowClient`` injects the tracing callbacks at the graph
 invocation root instead, otherwise those middlewares produce untraced
 LLM calls.
 """
@@ -14,7 +14,7 @@ from typing import Any
 
 import pytest
 
-from ideer.client import IDeerClient
+from deerflow.client import DeerFlowClient
 
 
 class _FakeAgent:
@@ -32,7 +32,7 @@ class _FakeAgent:
 
 @pytest.fixture(autouse=True)
 def _clear_langfuse_env(monkeypatch):
-    from ideer.config.tracing_config import reset_tracing_config
+    from deerflow.config.tracing_config import reset_tracing_config
 
     for name in ("LANGFUSE_TRACING", "LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY", "LANGFUSE_BASE_URL"):
         monkeypatch.delenv(name, raising=False)
@@ -48,20 +48,24 @@ def _stub_agent_creation(monkeypatch, fake_agent: _FakeAgent) -> dict[str, Any]:
     """
     captured: dict[str, Any] = {}
 
-    def _stub_ensure_agent(self, config):
+    def _stub_ensure_agent(self, config, *, context=None):
         captured["config"] = config
         self._agent = fake_agent
         self._agent_config_key = ("stub",)
 
-    monkeypatch.setattr(IDeerClient, "_ensure_agent", _stub_ensure_agent)
+    monkeypatch.setattr(DeerFlowClient, "_ensure_agent", _stub_ensure_agent)
     return captured
 
 
-def _make_client(_monkeypatch) -> IDeerClient:
+def _make_client(_monkeypatch) -> DeerFlowClient:
     """Build a client without going through ``__init__`` so we never load
     config.yaml or perform any other side-effectful startup work."""
-    fake_app_config = SimpleNamespace(models=[SimpleNamespace(name="stub-model")])
-    client = IDeerClient.__new__(IDeerClient)
+    fake_app_config = SimpleNamespace(
+        models=[SimpleNamespace(name="stub-model")],
+        # _stream_turn consults authorization to mirror the caller identity.
+        authorization=SimpleNamespace(enabled=False, default_role="user"),
+    )
+    client = DeerFlowClient.__new__(DeerFlowClient)
     client._app_config = fake_app_config
     client._extensions_config = None
     client._model_name = "stub-model"
@@ -75,6 +79,10 @@ def _make_client(_monkeypatch) -> IDeerClient:
     client._agent = None
     client._agent_config_key = None
     client._environment = None
+    # Upstream __init__ freezes the checkpoint settings from the database
+    # config; _stream_turn reads the channel mode before streaming.
+    client._checkpoint_channel_mode = "full"
+    client._checkpoint_snapshot_frequency = 1
     return client
 
 
@@ -82,7 +90,7 @@ def test_stream_injects_langfuse_metadata_when_enabled(monkeypatch):
     monkeypatch.setenv("LANGFUSE_TRACING", "true")
     monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-lf-test")
     monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-lf-test")
-    from ideer.config.tracing_config import reset_tracing_config
+    from deerflow.config.tracing_config import reset_tracing_config
 
     reset_tracing_config()
 
@@ -90,7 +98,7 @@ def test_stream_injects_langfuse_metadata_when_enabled(monkeypatch):
         pass
 
     sentinel = _SentinelHandler()
-    monkeypatch.setattr("ideer.client.build_tracing_callbacks", lambda: [sentinel])
+    monkeypatch.setattr("deerflow.client.build_tracing_callbacks", lambda: [sentinel])
 
     fake_agent = _FakeAgent()
     captured = _stub_agent_creation(monkeypatch, fake_agent)
@@ -109,7 +117,7 @@ def test_stream_injects_langfuse_metadata_when_enabled(monkeypatch):
 
 
 def test_stream_is_inert_when_langfuse_disabled(monkeypatch):
-    monkeypatch.setattr("ideer.client.build_tracing_callbacks", lambda: [])
+    monkeypatch.setattr("deerflow.client.build_tracing_callbacks", lambda: [])
 
     fake_agent = _FakeAgent()
     captured = _stub_agent_creation(monkeypatch, fake_agent)
@@ -128,10 +136,10 @@ def test_stream_preserves_caller_metadata_overrides(monkeypatch):
     monkeypatch.setenv("LANGFUSE_TRACING", "true")
     monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-lf-test")
     monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-lf-test")
-    from ideer.config.tracing_config import reset_tracing_config
+    from deerflow.config.tracing_config import reset_tracing_config
 
     reset_tracing_config()
-    monkeypatch.setattr("ideer.client.build_tracing_callbacks", lambda: [])
+    monkeypatch.setattr("deerflow.client.build_tracing_callbacks", lambda: [])
 
     fake_agent = _FakeAgent()
     captured = _stub_agent_creation(monkeypatch, fake_agent)
@@ -139,7 +147,7 @@ def test_stream_preserves_caller_metadata_overrides(monkeypatch):
 
     # Drive stream with a pre-populated metadata so the worker-equivalent
     # ``setdefault`` semantics are exercised.
-    original_get_config = IDeerClient._get_runnable_config
+    original_get_config = DeerFlowClient._get_runnable_config
 
     def patched_get_runnable_config(self, thread_id, **overrides):
         cfg = original_get_config(self, thread_id, **overrides)
@@ -149,7 +157,7 @@ def test_stream_preserves_caller_metadata_overrides(monkeypatch):
         }
         return cfg
 
-    monkeypatch.setattr(IDeerClient, "_get_runnable_config", patched_get_runnable_config)
+    monkeypatch.setattr(DeerFlowClient, "_get_runnable_config", patched_get_runnable_config)
     list(client.stream("hi", thread_id="thread-client-3"))
 
     metadata = captured["config"].get("metadata") or {}

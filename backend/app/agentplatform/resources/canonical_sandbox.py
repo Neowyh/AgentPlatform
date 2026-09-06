@@ -61,3 +61,31 @@ def canonical_run_skill_view_host_path(run_id: str) -> str:
     # is the upstream name deerflow.config.paths resolves, honored as fallback.
     host_base = os.environ.get("IDEER_HOST_BASE_DIR") or os.environ.get("DEER_FLOW_HOST_BASE_DIR") or str(get_paths().base_dir)
     return join_host_path(host_base, "resources", "run-skill-views", canonical_run_id)
+
+
+def _resolve_run_skill_view(sandbox_identity: str) -> tuple[str, Path] | None:
+    """Resolver hook for DeerFlow's local sandbox provider.
+
+    Returns ``(data_thread_id, run_skill_view)`` for canonical run identities
+    so the provider maps ``/mnt/skills`` to the frozen read-only view and keys
+    user-data directories on the underlying thread. ``None`` for ordinary
+    identities (the managed skills projection applies).
+    """
+    scope = parse_canonical_sandbox_scope(sandbox_identity)
+    if scope is None:
+        return None
+    data_thread_id, run_id = scope
+    return data_thread_id, canonical_run_skill_view_path(run_id)
+
+
+def install_run_skill_view_resolver() -> None:
+    """Teach DeerFlow's local sandbox provider about run-frozen skill views.
+
+    Idempotent. DeerFlow keeps a neutral hook (``RUN_SKILL_VIEW_RESOLVER``);
+    installing here preserves the dependency direction — the runtime never
+    imports AgentPlatform, the embedding application injects the behavior.
+    """
+    from deerflow.sandbox.local import local_sandbox_provider
+
+    if local_sandbox_provider.RUN_SKILL_VIEW_RESOLVER is None:
+        local_sandbox_provider.RUN_SKILL_VIEW_RESOLVER = _resolve_run_skill_view

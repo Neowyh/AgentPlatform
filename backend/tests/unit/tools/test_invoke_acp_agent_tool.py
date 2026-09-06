@@ -6,9 +6,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from ideer.config.acp_config import ACPAgentConfig
-from ideer.config.extensions_config import ExtensionsConfig, McpServerConfig, set_extensions_config
-from ideer.tools.builtins.invoke_acp_agent_tool import (
+from deerflow.config.acp_config import ACPAgentConfig
+from deerflow.config.extensions_config import ExtensionsConfig, McpServerConfig, set_extensions_config
+from deerflow.tools.builtins.invoke_acp_agent_tool import (
     _build_acp_mcp_servers,
     _build_mcp_servers,
     _build_permission_response,
@@ -16,7 +16,7 @@ from ideer.tools.builtins.invoke_acp_agent_tool import (
     _get_work_dir,
     build_invoke_acp_agent_tool,
 )
-from ideer.tools.tools import get_available_tools
+from deerflow.tools.tools import get_available_tools
 
 # ---------------------------------------------------------------------------
 # _build_mcp_servers
@@ -35,7 +35,7 @@ def test_build_mcp_servers_filters_disabled_and_maps_transports():
     )
     monkeypatch = pytest.MonkeyPatch()
     monkeypatch.setattr(
-        "ideer.config.extensions_config.ExtensionsConfig.from_file",
+        "deerflow.config.extensions_config.ExtensionsConfig.from_file",
         classmethod(lambda cls: fresh_config),
     )
 
@@ -66,7 +66,7 @@ def test_build_acp_mcp_servers_formats_list_payload():
     )
     monkeypatch = pytest.MonkeyPatch()
     monkeypatch.setattr(
-        "ideer.config.extensions_config.ExtensionsConfig.from_file",
+        "deerflow.config.extensions_config.ExtensionsConfig.from_file",
         classmethod(lambda cls: fresh_config),
     )
 
@@ -101,7 +101,7 @@ def test_build_acp_mcp_servers_sse_transport():
     )
     monkeypatch = pytest.MonkeyPatch()
     monkeypatch.setattr(
-        "ideer.config.extensions_config.ExtensionsConfig.from_file",
+        "deerflow.config.extensions_config.ExtensionsConfig.from_file",
         classmethod(lambda cls: fresh_config),
     )
 
@@ -124,7 +124,7 @@ def test_build_acp_mcp_servers_stdio_missing_command_raises():
     )
     monkeypatch = pytest.MonkeyPatch()
     monkeypatch.setattr(
-        "ideer.config.extensions_config.ExtensionsConfig.from_file",
+        "deerflow.config.extensions_config.ExtensionsConfig.from_file",
         classmethod(lambda cls: fresh_config),
     )
 
@@ -145,7 +145,7 @@ def test_build_acp_mcp_servers_http_missing_url_raises():
     )
     monkeypatch = pytest.MonkeyPatch()
     monkeypatch.setattr(
-        "ideer.config.extensions_config.ExtensionsConfig.from_file",
+        "deerflow.config.extensions_config.ExtensionsConfig.from_file",
         classmethod(lambda cls: fresh_config),
     )
 
@@ -166,7 +166,7 @@ def test_build_acp_mcp_servers_unsupported_transport_raises():
     )
     monkeypatch = pytest.MonkeyPatch()
     monkeypatch.setattr(
-        "ideer.config.extensions_config.ExtensionsConfig.from_file",
+        "deerflow.config.extensions_config.ExtensionsConfig.from_file",
         classmethod(lambda cls: fresh_config),
     )
 
@@ -302,7 +302,7 @@ def test_format_invocation_error_codex_no_codex_binary():
 
 
 def test_get_work_dir_uses_base_dir_when_no_thread_id(monkeypatch, tmp_path):
-    from ideer.config import paths as paths_module
+    from deerflow.config import paths as paths_module
 
     monkeypatch.setattr(paths_module, "get_paths", lambda: paths_module.Paths(base_dir=tmp_path))
     result = _get_work_dir(None)
@@ -312,8 +312,8 @@ def test_get_work_dir_uses_base_dir_when_no_thread_id(monkeypatch, tmp_path):
 
 
 def test_get_work_dir_uses_per_thread_path_when_thread_id_given(monkeypatch, tmp_path):
-    from ideer.config import paths as paths_module
-    from ideer.runtime import user_context as uc_module
+    from deerflow.config import paths as paths_module
+    from deerflow.runtime import user_context as uc_module
 
     monkeypatch.setattr(paths_module, "get_paths", lambda: paths_module.Paths(base_dir=tmp_path))
     monkeypatch.setattr(uc_module, "get_effective_user_id", lambda: None)
@@ -324,7 +324,7 @@ def test_get_work_dir_uses_per_thread_path_when_thread_id_given(monkeypatch, tmp
 
 
 def test_get_work_dir_falls_back_to_global_for_invalid_thread_id(monkeypatch, tmp_path):
-    from ideer.config import paths as paths_module
+    from deerflow.config import paths as paths_module
 
     monkeypatch.setattr(paths_module, "get_paths", lambda: paths_module.Paths(base_dir=tmp_path))
     result = _get_work_dir("../../evil")
@@ -364,12 +364,12 @@ async def test_build_invoke_tool_description_and_unknown_agent_error():
 
 @pytest.mark.anyio
 async def test_invoke_acp_agent_uses_fixed_acp_workspace(monkeypatch, tmp_path):
-    from ideer.config import paths as paths_module
+    from deerflow.config import paths as paths_module
 
     monkeypatch.setattr(paths_module, "get_paths", lambda: paths_module.Paths(base_dir=tmp_path))
 
     monkeypatch.setattr(
-        "ideer.config.extensions_config.ExtensionsConfig.from_file",
+        "deerflow.config.extensions_config.ExtensionsConfig.from_file",
         classmethod(
             lambda cls: ExtensionsConfig(
                 mcp_servers={"github": McpServerConfig(enabled=True, type="stdio", command="npx", args=["github-mcp"])},
@@ -496,14 +496,14 @@ async def test_invoke_acp_agent_uses_fixed_acp_workspace(monkeypatch, tmp_path):
 
 @pytest.mark.anyio
 async def test_invoke_acp_agent_uses_per_thread_workspace_when_thread_id_in_config(monkeypatch, tmp_path):
-    from ideer.config import paths as paths_module
-    from ideer.runtime import user_context as uc_module
+    from deerflow.config import paths as paths_module
+    from deerflow.runtime import user_context as uc_module
 
     monkeypatch.setattr(paths_module, "get_paths", lambda: paths_module.Paths(base_dir=tmp_path))
     monkeypatch.setattr(uc_module, "get_effective_user_id", lambda: None)
 
     monkeypatch.setattr(
-        "ideer.config.extensions_config.ExtensionsConfig.from_file",
+        "deerflow.config.extensions_config.ExtensionsConfig.from_file",
         classmethod(lambda cls: ExtensionsConfig(mcp_servers={}, skills={})),
     )
 
@@ -587,11 +587,11 @@ async def test_invoke_acp_agent_uses_per_thread_workspace_when_thread_id_in_conf
 
 @pytest.mark.anyio
 async def test_invoke_acp_agent_passes_env_to_spawn(monkeypatch, tmp_path):
-    from ideer.config import paths as paths_module
+    from deerflow.config import paths as paths_module
 
     monkeypatch.setattr(paths_module, "get_paths", lambda: paths_module.Paths(base_dir=tmp_path))
     monkeypatch.setattr(
-        "ideer.config.extensions_config.ExtensionsConfig.from_file",
+        "deerflow.config.extensions_config.ExtensionsConfig.from_file",
         classmethod(lambda cls: ExtensionsConfig(mcp_servers={}, skills={})),
     )
     monkeypatch.setenv("TEST_OPENAI_KEY", "sk-from-env")
@@ -676,11 +676,11 @@ async def test_invoke_acp_agent_passes_env_to_spawn(monkeypatch, tmp_path):
 
 @pytest.mark.anyio
 async def test_invoke_acp_agent_skips_invalid_mcp_servers(monkeypatch, tmp_path, caplog):
-    from ideer.config import paths as paths_module
+    from deerflow.config import paths as paths_module
 
     monkeypatch.setattr(paths_module, "get_paths", lambda: paths_module.Paths(base_dir=tmp_path))
     monkeypatch.setattr(
-        "ideer.tools.builtins.invoke_acp_agent_tool._build_acp_mcp_servers",
+        "deerflow.tools.builtins.invoke_acp_agent_tool._build_acp_mcp_servers",
         lambda: (_ for _ in ()).throw(ValueError("missing command")),
     )
 
@@ -760,11 +760,11 @@ async def test_invoke_acp_agent_skips_invalid_mcp_servers(monkeypatch, tmp_path,
 
 @pytest.mark.anyio
 async def test_invoke_acp_agent_passes_none_env_when_not_configured(monkeypatch, tmp_path):
-    from ideer.config import paths as paths_module
+    from deerflow.config import paths as paths_module
 
     monkeypatch.setattr(paths_module, "get_paths", lambda: paths_module.Paths(base_dir=tmp_path))
     monkeypatch.setattr(
-        "ideer.config.extensions_config.ExtensionsConfig.from_file",
+        "deerflow.config.extensions_config.ExtensionsConfig.from_file",
         classmethod(lambda cls: ExtensionsConfig(mcp_servers={}, skills={})),
     )
 
@@ -841,11 +841,11 @@ async def test_invoke_acp_agent_passes_none_env_when_not_configured(monkeypatch,
 @pytest.mark.anyio
 async def test_invoke_acp_agent_returns_no_response_when_empty(monkeypatch, tmp_path):
     """When collected_text is empty, tool returns '(no response)'."""
-    from ideer.config import paths as paths_module
+    from deerflow.config import paths as paths_module
 
     monkeypatch.setattr(paths_module, "get_paths", lambda: paths_module.Paths(base_dir=tmp_path))
     monkeypatch.setattr(
-        "ideer.config.extensions_config.ExtensionsConfig.from_file",
+        "deerflow.config.extensions_config.ExtensionsConfig.from_file",
         classmethod(lambda cls: ExtensionsConfig(mcp_servers={}, skills={})),
     )
 
@@ -920,11 +920,11 @@ async def test_invoke_acp_agent_returns_no_response_when_empty(monkeypatch, tmp_
 @pytest.mark.anyio
 async def test_invoke_acp_agent_handles_spawn_exception(monkeypatch, tmp_path):
     """When spawn_agent_process raises, the tool returns a formatted error."""
-    from ideer.config import paths as paths_module
+    from deerflow.config import paths as paths_module
 
     monkeypatch.setattr(paths_module, "get_paths", lambda: paths_module.Paths(base_dir=tmp_path))
     monkeypatch.setattr(
-        "ideer.config.extensions_config.ExtensionsConfig.from_file",
+        "deerflow.config.extensions_config.ExtensionsConfig.from_file",
         classmethod(lambda cls: ExtensionsConfig(mcp_servers={}, skills={})),
     )
 
@@ -982,7 +982,7 @@ async def test_invoke_acp_agent_handles_spawn_exception(monkeypatch, tmp_path):
 @pytest.mark.anyio
 async def test_invoke_acp_agent_handles_import_error(monkeypatch, tmp_path):
     """When acp package is not installed, returns a helpful error."""
-    from ideer.config import paths as paths_module
+    from deerflow.config import paths as paths_module
 
     monkeypatch.setattr(paths_module, "get_paths", lambda: paths_module.Paths(base_dir=tmp_path))
 
@@ -1008,7 +1008,7 @@ async def test_invoke_acp_agent_handles_import_error(monkeypatch, tmp_path):
 
 
 def test_get_available_tools_includes_invoke_acp_agent_when_agents_configured(monkeypatch):
-    from ideer.config.acp_config import load_acp_config_from_dict
+    from deerflow.config.acp_config import load_acp_config_from_dict
 
     load_acp_config_from_dict(
         {
@@ -1026,9 +1026,9 @@ def test_get_available_tools_includes_invoke_acp_agent_when_agents_configured(mo
         tool_search=SimpleNamespace(enabled=False),
         get_model_config=lambda name: None,
     )
-    monkeypatch.setattr("ideer.tools.tools.get_app_config", lambda: fake_config)
+    monkeypatch.setattr("deerflow.tools.tools.get_app_config", lambda: fake_config)
     monkeypatch.setattr(
-        "ideer.config.extensions_config.ExtensionsConfig.from_file",
+        "deerflow.config.extensions_config.ExtensionsConfig.from_file",
         classmethod(lambda cls: ExtensionsConfig(mcp_servers={}, skills={})),
     )
 
@@ -1058,9 +1058,9 @@ def test_get_available_tools_uses_explicit_app_config_for_acp_agents(monkeypatch
         captured["agents"] = agents
         return sentinel_tool
 
-    monkeypatch.setattr("ideer.tools.tools.is_host_bash_allowed", lambda config=None: True)
-    monkeypatch.setattr("ideer.config.acp_config.get_acp_agents", fail_get_acp_agents)
-    monkeypatch.setattr("ideer.tools.builtins.invoke_acp_agent_tool.build_invoke_acp_agent_tool", fake_build_invoke_acp_agent_tool)
+    monkeypatch.setattr("deerflow.tools.tools.is_host_bash_allowed", lambda config=None: True)
+    monkeypatch.setattr("deerflow.config.acp_config.get_acp_agents", fail_get_acp_agents)
+    monkeypatch.setattr("deerflow.tools.builtins.invoke_acp_agent_tool.build_invoke_acp_agent_tool", fake_build_invoke_acp_agent_tool)
 
     tools = get_available_tools(include_mcp=False, subagent_enabled=False, app_config=explicit_config)
 

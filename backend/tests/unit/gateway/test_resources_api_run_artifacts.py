@@ -17,8 +17,8 @@ from app.agentplatform.resource_models import Resource, ResourceVersion, RunReso
 from app.agentplatform.workflows.v2 import file_roots
 from app.agentplatform.workflows.v2.store import WorkflowV2Store
 from app.gateway.routers import resources
+from deerflow.config.paths import Paths
 from deerflow.persistence.base import Base
-from ideer.config.paths import Paths
 
 WRITE_ROOT = "/mnt/user-data/outputs"
 

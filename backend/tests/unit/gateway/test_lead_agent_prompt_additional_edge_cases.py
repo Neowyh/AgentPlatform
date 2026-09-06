@@ -8,7 +8,7 @@ import threading
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from ideer.agents.lead_agent import prompt as prompt_module
+from deerflow.agents.lead_agent import prompt as prompt_module
 
 
 def _set_skills_cache_state(*, skills=None, active=False, version=0):
@@ -111,9 +111,9 @@ def test_get_memory_context_returns_empty_when_no_content(monkeypatch):
     """Lines 589-591: Returns empty when memory content is empty."""
     config = SimpleNamespace(memory=SimpleNamespace(enabled=True, injection_enabled=True, max_injection_tokens=2000))
 
-    monkeypatch.setattr("ideer.runtime.user_context.get_effective_user_id", lambda: "u1")
-    monkeypatch.setattr("ideer.agents.memory.get_memory_data", lambda *a, **kw: {})
-    monkeypatch.setattr("ideer.agents.memory.format_memory_for_injection", lambda *a, **kw: "")
+    monkeypatch.setattr("deerflow.runtime.user_context.get_effective_user_id", lambda: "u1")
+    monkeypatch.setattr("app.agentplatform.legacy.memory.get_memory_data", lambda *a, **kw: {})
+    monkeypatch.setattr("app.agentplatform.legacy.memory.format_memory_for_injection", lambda *a, **kw: "")
 
     result = prompt_module._get_memory_context("agent1", app_config=config)
     assert result == ""
@@ -123,9 +123,9 @@ def test_get_memory_context_returns_content(monkeypatch):
     """Lines 583-588: Returns memory wrapped in XML tags."""
     config = SimpleNamespace(memory=SimpleNamespace(enabled=True, injection_enabled=True, max_injection_tokens=1000))
 
-    monkeypatch.setattr("ideer.runtime.user_context.get_effective_user_id", lambda: "u1")
-    monkeypatch.setattr("ideer.agents.memory.get_memory_data", lambda *a, **kw: {"facts": []})
-    monkeypatch.setattr("ideer.agents.memory.format_memory_for_injection", lambda *a, **kw: "User likes Python")
+    monkeypatch.setattr("deerflow.runtime.user_context.get_effective_user_id", lambda: "u1")
+    monkeypatch.setattr("app.agentplatform.legacy.memory.get_memory_data", lambda *a, **kw: {"facts": []})
+    monkeypatch.setattr("app.agentplatform.legacy.memory.format_memory_for_injection", lambda *a, **kw: "User likes Python")
 
     result = prompt_module._get_memory_context("agent1", app_config=config)
     assert "<memory>" in result
@@ -139,7 +139,7 @@ def test_get_memory_context_handles_exception(monkeypatch):
     def boom():
         raise RuntimeError("boom")
 
-    monkeypatch.setattr("ideer.runtime.user_context.get_effective_user_id", boom)
+    monkeypatch.setattr("deerflow.runtime.user_context.get_effective_user_id", boom)
 
     result = prompt_module._get_memory_context(app_config=config)
     assert result == ""
@@ -202,7 +202,7 @@ def test_get_deferred_tools_prompt_section_returns_empty_when_disabled():
 def test_get_deferred_tools_prompt_section_returns_empty_when_no_registry():
     """Lines 709-712: Returns empty when registry is empty."""
     config = SimpleNamespace(tool_search=SimpleNamespace(enabled=True))
-    with patch("ideer.tools.builtins.tool_search.get_deferred_registry", return_value=None):
+    with patch("deerflow.tools.builtins.tool_search.get_deferred_registry", return_value=None):
         result = prompt_module.get_deferred_tools_prompt_section(app_config=config)
     assert result == ""
 
@@ -211,7 +211,7 @@ def test_get_deferred_tools_prompt_section_returns_names():
     """Lines 713-714: Returns tool names when registry has entries."""
     config = SimpleNamespace(tool_search=SimpleNamespace(enabled=True))
     entry = SimpleNamespace(name="my_tool")
-    with patch("ideer.tools.builtins.tool_search.get_deferred_registry", return_value=SimpleNamespace(entries=[entry])):
+    with patch("deerflow.tools.builtins.tool_search.get_deferred_registry", return_value=SimpleNamespace(entries=[entry])):
         result = prompt_module.get_deferred_tools_prompt_section(app_config=config)
     assert "my_tool" in result
 
@@ -269,7 +269,7 @@ def test_build_custom_mounts_section_lists_mounts():
 
 def test_build_custom_mounts_section_handles_exception():
     """Lines 748-750: Returns empty on exception from get_app_config."""
-    with patch("ideer.config.get_app_config", side_effect=RuntimeError("no config")):
+    with patch("deerflow.config.get_app_config", side_effect=RuntimeError("no config")):
         result = prompt_module._build_custom_mounts_section()
     assert result == ""
 
@@ -279,7 +279,7 @@ def test_build_custom_mounts_section_handles_exception():
 
 def test_skill_mutability_label():
     """_skill_mutability_label returns correct labels."""
-    from ideer.skills.types import SkillCategory
+    from deerflow.skills.types import SkillCategory
 
     assert prompt_module._skill_mutability_label(SkillCategory.CUSTOM) == "[custom, editable]"
     assert prompt_module._skill_mutability_label("other") == "[built-in]"
@@ -324,14 +324,14 @@ def test_refresh_worker_loops_on_version_mismatch():
 
 def test_get_memory_context_with_global_config(monkeypatch):
     """Lines 570-572: Uses global config when app_config is None."""
-    from ideer.config.memory_config import MemoryConfig
+    from deerflow.config.memory_config import MemoryConfig
 
     mem_config = MemoryConfig(enabled=True, injection_enabled=True, max_injection_tokens=500)
 
-    monkeypatch.setattr("ideer.config.memory_config.get_memory_config", lambda: mem_config)
-    monkeypatch.setattr("ideer.runtime.user_context.get_effective_user_id", lambda: "u1")
-    monkeypatch.setattr("ideer.agents.memory.get_memory_data", lambda *a, **kw: {"facts": []})
-    monkeypatch.setattr("ideer.agents.memory.format_memory_for_injection", lambda *a, **kw: "global memory")
+    monkeypatch.setattr("deerflow.config.memory_config.get_memory_config", lambda: mem_config)
+    monkeypatch.setattr("deerflow.runtime.user_context.get_effective_user_id", lambda: "u1")
+    monkeypatch.setattr("app.agentplatform.legacy.memory.get_memory_data", lambda *a, **kw: {"facts": []})
+    monkeypatch.setattr("app.agentplatform.legacy.memory.format_memory_for_injection", lambda *a, **kw: "global memory")
 
     result = prompt_module._get_memory_context("agent1")
     assert "<memory>" in result
@@ -343,7 +343,7 @@ def test_get_memory_context_with_global_config(monkeypatch):
 
 def test_get_skills_prompt_section_returns_empty_when_no_matching_skills(monkeypatch, tmp_path):
     """Line 649: Returns empty when available_skills filter matches no skills."""
-    from ideer.skills.types import Skill, SkillCategory
+    from deerflow.skills.types import Skill, SkillCategory
 
     skill_dir = tmp_path / "skill"
     skill = Skill(
@@ -393,7 +393,7 @@ def test_get_deferred_tools_prompt_section_with_global_config(monkeypatch):
     def fake_get_app_config():
         return config
 
-    monkeypatch.setattr("ideer.config.get_app_config", fake_get_app_config)
+    monkeypatch.setattr("deerflow.config.get_app_config", fake_get_app_config)
     result = prompt_module.get_deferred_tools_prompt_section()
     assert result == ""
 
@@ -408,7 +408,7 @@ def test_build_custom_mounts_section_with_global_config(monkeypatch):
     def fake_get_app_config():
         return config
 
-    monkeypatch.setattr("ideer.config.get_app_config", fake_get_app_config)
+    monkeypatch.setattr("deerflow.config.get_app_config", fake_get_app_config)
     result = prompt_module._build_custom_mounts_section()
     assert "/data" in result
     assert "read-only" in result

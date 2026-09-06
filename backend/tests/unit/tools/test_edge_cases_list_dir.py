@@ -1,4 +1,4 @@
-"""Additional coverage tests for ideer.sandbox.local.list_dir."""
+"""Additional coverage tests for deerflow.sandbox.local.list_dir."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import os
 
 import pytest
 
-from ideer.sandbox.local.list_dir import list_dir
+from deerflow.sandbox.local.list_dir import list_dir
 
 # ===========================================================================
 # list_dir

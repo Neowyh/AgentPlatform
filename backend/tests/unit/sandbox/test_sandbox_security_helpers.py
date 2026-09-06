@@ -11,7 +11,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from ideer.sandbox.security import (
+from deerflow.sandbox.security import (
     LOCAL_BASH_SUBAGENT_DISABLED_MESSAGE,
     LOCAL_HOST_BASH_DISABLED_MESSAGE,
     is_host_bash_allowed,
@@ -37,15 +37,15 @@ class TestUsesLocalSandboxProvider:
     """Tests for uses_local_sandbox_provider()."""
 
     def test_short_marker(self):
-        config = _make_config("ideer.sandbox.local:LocalSandboxProvider")
+        config = _make_config("deerflow.sandbox.local:LocalSandboxProvider")
         assert uses_local_sandbox_provider(config) is True
 
     def test_full_path_marker(self):
-        config = _make_config("ideer.sandbox.local.local_sandbox_provider:LocalSandboxProvider")
+        config = _make_config("deerflow.sandbox.local.local_sandbox_provider:LocalSandboxProvider")
         assert uses_local_sandbox_provider(config) is True
 
     def test_aio_sandbox_provider(self):
-        config = _make_config("ideer.sandbox.aio:AioSandboxProvider")
+        config = _make_config("deerflow.sandbox.aio:AioSandboxProvider")
         assert uses_local_sandbox_provider(config) is False
 
     def test_empty_use_string(self):
@@ -53,12 +53,12 @@ class TestUsesLocalSandboxProvider:
         assert uses_local_sandbox_provider(config) is False
 
     def test_custom_local_provider_suffix(self):
-        """Any string ending with ':LocalSandboxProvider' and containing 'ideer.sandbox.local'."""
-        config = _make_config("custom.ideer.sandbox.local.foo:LocalSandboxProvider")
+        """Any string ending with ':LocalSandboxProvider' and containing 'deerflow.sandbox.local'."""
+        config = _make_config("custom.deerflow.sandbox.local.foo:LocalSandboxProvider")
         assert uses_local_sandbox_provider(config) is True
 
     def test_local_sandbox_provider_without_local_in_path(self):
-        """':LocalSandboxProvider' without 'ideer.sandbox.local' should be False."""
+        """':LocalSandboxProvider' without 'deerflow.sandbox.local' should be False."""
         config = _make_config("other.module:LocalSandboxProvider")
         assert uses_local_sandbox_provider(config) is False
 
@@ -82,15 +82,15 @@ class TestIsHostBashAllowed:
 
     def test_allowed_when_not_local_provider(self):
         """Non-local providers always allow bash (no restriction)."""
-        config = _make_config("ideer.sandbox.aio:AioSandboxProvider", allow_host_bash=False)
+        config = _make_config("deerflow.sandbox.aio:AioSandboxProvider", allow_host_bash=False)
         assert is_host_bash_allowed(config) is True
 
     def test_disallowed_when_local_provider_and_flag_false(self):
-        config = _make_config("ideer.sandbox.local:LocalSandboxProvider", allow_host_bash=False)
+        config = _make_config("deerflow.sandbox.local:LocalSandboxProvider", allow_host_bash=False)
         assert is_host_bash_allowed(config) is False
 
     def test_allowed_when_local_provider_and_flag_true(self):
-        config = _make_config("ideer.sandbox.local:LocalSandboxProvider", allow_host_bash=True)
+        config = _make_config("deerflow.sandbox.local:LocalSandboxProvider", allow_host_bash=True)
         assert is_host_bash_allowed(config) is True
 
     def test_no_sandbox_attribute(self):

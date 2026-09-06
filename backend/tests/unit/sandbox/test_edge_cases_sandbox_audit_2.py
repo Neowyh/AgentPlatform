@@ -15,7 +15,7 @@ from unittest.mock import MagicMock
 
 from langchain_core.messages import ToolMessage
 
-from ideer.agents.middlewares.sandbox_audit_middleware import (
+from deerflow.agents.middlewares.sandbox_audit_middleware import (
     SandboxAuditMiddleware,
     _classify_single_command,
     _split_compound_command,
@@ -66,20 +66,21 @@ class TestSplitCompoundCommandOrOperator:
 
 
 class TestClassifySingleCommandShlexFailure:
-    """Lines 151-154: shlex.split fails -> classify as block."""
+    """shlex.split failure no longer blocks by itself: heredocs and other
+    multiline bash forms are valid but unparseable, and raw high-risk
+    patterns were already checked before the shlex pass."""
 
-    def test_unclosed_single_quote_blocks(self):
-        """shlex.split fails on unclosed quote -> block."""
+    def test_unclosed_single_quote_passes(self):
         result = _classify_single_command("echo 'unclosed")
-        assert result == "block"
+        assert result == "pass"
 
-    def test_unclosed_double_quote_blocks(self):
+    def test_unclosed_double_quote_passes(self):
         result = _classify_single_command('echo "unclosed')
-        assert result == "block"
+        assert result == "pass"
 
-    def test_trailing_backslash_blocks(self):
+    def test_trailing_backslash_passes(self):
         result = _classify_single_command("echo hello\\")
-        assert result == "block"
+        assert result == "pass"
 
 
 class TestClassifySingleCommandShlexHighRisk:

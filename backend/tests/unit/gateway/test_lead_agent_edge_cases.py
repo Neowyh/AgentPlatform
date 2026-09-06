@@ -1,4 +1,4 @@
-"""Extended coverage tests for ideer.agents.lead_agent.agent and prompt modules.
+"""Extended coverage tests for deerflow.agents.lead_agent.agent and prompt modules.
 
 Targets uncovered lines in _get_runtime_config, _resolve_model_name edge cases,
 _available_skill_names, _create_summarization_middleware config branches,
@@ -11,18 +11,18 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from ideer.agents.lead_agent import agent as lead_mod
-from ideer.agents.lead_agent import prompt as prompt_mod
-from ideer.config.app_config import AppConfig
-from ideer.config.memory_config import MemoryConfig
-from ideer.config.model_config import ModelConfig
-from ideer.config.sandbox_config import SandboxConfig
-from ideer.config.summarization_config import SummarizationConfig
+from deerflow.agents.lead_agent import agent as lead_mod
+from deerflow.agents.lead_agent import prompt as prompt_mod
+from deerflow.config.app_config import AppConfig
+from deerflow.config.memory_config import MemoryConfig
+from deerflow.config.model_config import ModelConfig
+from deerflow.config.sandbox_config import SandboxConfig
+from deerflow.config.summarization_config import SummarizationConfig
 
 
 def _make_app_config(**overrides):
     defaults = dict(
-        sandbox=SandboxConfig(use="ideer.sandbox.local:LocalSandboxProvider"),
+        sandbox=SandboxConfig(use="deerflow.sandbox.local:LocalSandboxProvider"),
         models=[
             ModelConfig(
                 name="default-model",
@@ -290,7 +290,7 @@ class TestBuildMiddlewaresToolSearch:
         mock_dtf = MagicMock()
         mock_dtf_cls = MagicMock(return_value=mock_dtf)
 
-        with patch.dict("sys.modules", {"ideer.agents.middlewares.deferred_tool_filter_middleware": SimpleNamespace(DeferredToolFilterMiddleware=mock_dtf_cls)}):
+        with patch.dict("sys.modules", {"deerflow.agents.middlewares.deferred_tool_filter_middleware": SimpleNamespace(DeferredToolFilterMiddleware=mock_dtf_cls)}):
             middlewares = lead_mod._build_middlewares(
                 {"configurable": {"is_plan_mode": False, "subagent_enabled": False}},
                 model_name="default-model",
@@ -320,7 +320,7 @@ class TestBuildMiddlewaresTokenUsage:
             app_config=app_config,
         )
 
-        from ideer.agents.middlewares.token_usage_middleware import TokenUsageMiddleware
+        from deerflow.agents.middlewares.token_usage_middleware import TokenUsageMiddleware
 
         assert any(isinstance(m, TokenUsageMiddleware) for m in middlewares)
 
@@ -390,9 +390,9 @@ class TestPromptGetDeferredToolsSection:
         def _fake_get_deferred_registry():
             return None  # Falsy value triggers the `if not registry: return ""` path
 
-        # The function does a local import: from ideer.tools.builtins.tool_search import get_deferred_registry
+        # The function does a local import: from deerflow.tools.builtins.tool_search import get_deferred_registry
         # We need to patch the function at the source module level so the local import picks it up
-        import ideer.tools.builtins.tool_search as ts_mod
+        import deerflow.tools.builtins.tool_search as ts_mod
 
         original = ts_mod.get_deferred_registry
         ts_mod.get_deferred_registry = _fake_get_deferred_registry
@@ -416,7 +416,7 @@ class TestPromptGetMemoryContext:
 
     def test_returns_empty_on_exception(self):
         config = SimpleNamespace(memory=SimpleNamespace(enabled=True, injection_enabled=True, max_injection_tokens=2000))
-        with patch("ideer.agents.memory.get_memory_data", side_effect=RuntimeError("boom")):
+        with patch("app.agentplatform.legacy.memory.get_memory_data", side_effect=RuntimeError("boom")):
             result = prompt_mod._get_memory_context(app_config=config)
         assert result == ""
 
@@ -431,7 +431,7 @@ class TestPromptApplyPromptTemplate:
             memory=SimpleNamespace(enabled=False, injection_enabled=True, max_injection_tokens=2000),
             acp_agents={},
         )
-        monkeypatch.setattr("ideer.config.get_app_config", lambda: config)
+        monkeypatch.setattr("deerflow.config.get_app_config", lambda: config)
         monkeypatch.setattr(prompt_mod, "get_or_new_skill_storage", lambda **kw: SimpleNamespace(load_skills=lambda enabled_only=True: []))
         monkeypatch.setattr(prompt_mod, "get_deferred_tools_prompt_section", lambda **kw: "")
         monkeypatch.setattr(prompt_mod, "_build_acp_section", lambda **kw: "")
@@ -449,7 +449,7 @@ class TestPromptApplyPromptTemplate:
             memory=SimpleNamespace(enabled=False, injection_enabled=True, max_injection_tokens=2000),
             acp_agents={},
         )
-        monkeypatch.setattr("ideer.config.get_app_config", lambda: config)
+        monkeypatch.setattr("deerflow.config.get_app_config", lambda: config)
         monkeypatch.setattr(prompt_mod, "get_or_new_skill_storage", lambda **kw: SimpleNamespace(load_skills=lambda enabled_only=True: []))
         monkeypatch.setattr(prompt_mod, "get_deferred_tools_prompt_section", lambda **kw: "")
         monkeypatch.setattr(prompt_mod, "_build_acp_section", lambda **kw: "")
@@ -460,7 +460,7 @@ class TestPromptApplyPromptTemplate:
 
     def test_subagent_enabled(self, monkeypatch):
         config = SimpleNamespace(
-            sandbox=SimpleNamespace(use="ideer.sandbox.local:LocalSandboxProvider", allow_host_bash=False, mounts=[]),
+            sandbox=SimpleNamespace(use="deerflow.sandbox.local:LocalSandboxProvider", allow_host_bash=False, mounts=[]),
             subagents=SimpleNamespace(custom_agents={}),
             skills=SimpleNamespace(container_path="/mnt/skills"),
             skill_evolution=SimpleNamespace(enabled=False),
@@ -468,7 +468,7 @@ class TestPromptApplyPromptTemplate:
             memory=SimpleNamespace(enabled=False, injection_enabled=True, max_injection_tokens=2000),
             acp_agents={},
         )
-        monkeypatch.setattr("ideer.config.get_app_config", lambda: config)
+        monkeypatch.setattr("deerflow.config.get_app_config", lambda: config)
         monkeypatch.setattr(prompt_mod, "get_or_new_skill_storage", lambda **kw: SimpleNamespace(load_skills=lambda enabled_only=True: []))
         monkeypatch.setattr(prompt_mod, "get_deferred_tools_prompt_section", lambda **kw: "")
         monkeypatch.setattr(prompt_mod, "_build_acp_section", lambda **kw: "")

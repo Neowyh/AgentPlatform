@@ -6,7 +6,7 @@ import json
 import os
 import tempfile
 
-from ideer.community.data_analyzer.tools import data_analyzer_tool
+from app.agentplatform.community.data_analyzer.tools import data_analyzer_tool
 
 # ── Tool function basics ─────────────────────────────────────────────
 

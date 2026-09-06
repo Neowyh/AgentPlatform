@@ -196,7 +196,7 @@ detect_sandbox_mode() {
         }
     ' "$IDEER_CONFIG_PATH")
 
-    if [[ "$sandbox_use" == *"ideer.community.aio_sandbox:AioSandboxProvider"* ]]; then
+    if [[ "$sandbox_use" == *"deerflow.community.aio_sandbox:AioSandboxProvider"* ]]; then
         if [ -n "$provisioner_url" ]; then
             echo "provisioner"
         else

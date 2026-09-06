@@ -42,7 +42,7 @@ async def durable_store(tmp_path: Path):
 
 def _resolver(base_dir: Path):
     import app.agentplatform.workflows.v2.file_roots as file_roots
-    from ideer.config.paths import Paths
+    from deerflow.config.paths import Paths
 
     file_roots.get_paths = lambda: Paths(str(base_dir))
     return make_host_resolver("run-1", "user-1")

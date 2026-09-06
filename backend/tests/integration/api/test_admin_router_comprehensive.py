@@ -18,10 +18,10 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import IntegrityError
 
+from app.agentplatform.rbac_models import UserRole
 from app.gateway.authz import get_current_rbac_user
 from app.gateway.routers import admin as admin_module
 from app.gateway.routers.admin import router as admin_router
-from ideer.persistence.models.user import UserRole
 
 # ---------------------------------------------------------------------------
 # Helpers

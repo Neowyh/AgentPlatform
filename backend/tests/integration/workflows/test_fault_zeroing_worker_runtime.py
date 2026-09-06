@@ -18,8 +18,8 @@ from app.agentplatform.workflows.v2.store import WorkflowV2Store
 from app.agentplatform.workflows.v2.worker import WorkflowWorker
 from app.workflow_worker import execute_workflow_task
 from deerflow.config.database_config import DatabaseConfig
+from deerflow.config.paths import Paths
 from deerflow.persistence.base import Base
-from ideer.config.paths import Paths
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 WORKFLOW_PATH = REPO_ROOT / "resources" / "workflows" / "fault-zeroing.yaml"
@@ -48,7 +48,7 @@ async def _make_canonical_run(
     """Freeze a canonical workflow run whose dependency closure is a single workflow root."""
     from uuid import uuid4
 
-    from ideer.persistence.models.resource_catalog import Resource, ResourceVersion
+    from app.agentplatform.resource_models import Resource, ResourceVersion
 
     workflow_id = str(uuid4())
     async with store.session_factory() as session:

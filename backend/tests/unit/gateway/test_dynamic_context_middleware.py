@@ -9,7 +9,7 @@ from unittest import mock
 
 from langchain_core.messages import AIMessage, HumanMessage
 
-from ideer.agents.middlewares.dynamic_context_middleware import (
+from deerflow.agents.middlewares.dynamic_context_middleware import (
     _DYNAMIC_CONTEXT_REMINDER_KEY,
     DynamicContextMiddleware,
 )
@@ -43,7 +43,7 @@ def test_injects_system_reminder_into_first_human_message():
     mw = _make_middleware()
     state = {"messages": [HumanMessage(content="Hello", id="msg-1")]}
 
-    with mock.patch("ideer.agents.lead_agent.prompt._get_memory_context", return_value=""), mock.patch("ideer.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
+    with mock.patch("deerflow.agents.lead_agent.prompt._get_memory_context", return_value=""), mock.patch("deerflow.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
         mock_dt.now.return_value.strftime.return_value = "2026-05-08, Friday"
         result = mw.before_agent(state, _fake_runtime())
 
@@ -71,10 +71,10 @@ def test_memory_included_when_present():
 
     with (
         mock.patch(
-            "ideer.agents.lead_agent.prompt._get_memory_context",
+            "deerflow.agents.lead_agent.prompt._get_memory_context",
             return_value="<memory>\nUser prefers Python.\n</memory>",
         ),
-        mock.patch("ideer.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt,
+        mock.patch("deerflow.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt,
     ):
         mock_dt.now.return_value.strftime.return_value = "2026-05-08, Friday"
         result = mw.before_agent(state, _fake_runtime())
@@ -100,7 +100,7 @@ def test_code_evidence_package_reminder_uses_trusted_summary_and_fixed_root():
             },
         }
     )
-    with mock.patch("ideer.agents.lead_agent.prompt._get_memory_context", return_value=""), mock.patch("ideer.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
+    with mock.patch("deerflow.agents.lead_agent.prompt._get_memory_context", return_value=""), mock.patch("deerflow.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
         mock_dt.now.return_value.strftime.return_value = "2026-05-08, Friday"
         result = mw.before_agent(state, runtime)
 
@@ -130,7 +130,7 @@ def test_skips_injection_if_already_present():
         ]
     }
 
-    with mock.patch("ideer.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
+    with mock.patch("deerflow.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
         mock_dt.now.return_value.strftime.return_value = "2026-05-08, Friday"
         result = mw.before_agent(state, _fake_runtime())
 
@@ -148,7 +148,7 @@ def test_injects_only_into_first_human_message_not_later_ones():
         ]
     }
 
-    with mock.patch("ideer.agents.lead_agent.prompt._get_memory_context", return_value=""), mock.patch("ideer.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
+    with mock.patch("deerflow.agents.lead_agent.prompt._get_memory_context", return_value=""), mock.patch("deerflow.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
         mock_dt.now.return_value.strftime.return_value = "2026-05-08, Friday"
         result = mw.before_agent(state, _fake_runtime())
 
@@ -176,7 +176,7 @@ def test_summary_human_message_is_not_used_as_injection_target():
         ]
     }
 
-    with mock.patch("ideer.agents.lead_agent.prompt._get_memory_context", return_value=""), mock.patch("ideer.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
+    with mock.patch("deerflow.agents.lead_agent.prompt._get_memory_context", return_value=""), mock.patch("deerflow.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
         mock_dt.now.return_value.strftime.return_value = "2026-05-08, Friday"
         result = mw.before_agent(state, _fake_runtime())
 
@@ -203,7 +203,7 @@ def test_no_messages_returns_none():
 def test_no_human_message_returns_none():
     mw = _make_middleware()
     state = {"messages": [AIMessage(content="assistant only")]}
-    with mock.patch("ideer.agents.lead_agent.prompt._get_memory_context", return_value=""):
+    with mock.patch("deerflow.agents.lead_agent.prompt._get_memory_context", return_value=""):
         result = mw.before_agent(state, _fake_runtime())
     assert result is None
 
@@ -214,7 +214,7 @@ def test_list_content_message_handled_as_separate_reminder():
     original_content = [{"type": "text", "text": "Hello"}]
     state = {"messages": [HumanMessage(content=original_content, id="msg-1")]}
 
-    with mock.patch("ideer.agents.lead_agent.prompt._get_memory_context", return_value=""), mock.patch("ideer.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
+    with mock.patch("deerflow.agents.lead_agent.prompt._get_memory_context", return_value=""), mock.patch("deerflow.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
         mock_dt.now.return_value.strftime.return_value = "2026-05-08, Friday"
         result = mw.before_agent(state, _fake_runtime())
 
@@ -235,7 +235,7 @@ def test_reminder_uses_original_id_user_message_uses_derived_id():
     original_id = "original-id-abc"
     state = {"messages": [HumanMessage(content="Hello", id=original_id)]}
 
-    with mock.patch("ideer.agents.lead_agent.prompt._get_memory_context", return_value=""), mock.patch("ideer.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
+    with mock.patch("deerflow.agents.lead_agent.prompt._get_memory_context", return_value=""), mock.patch("deerflow.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
         mock_dt.now.return_value.strftime.return_value = "2026-05-08, Friday"
         result = mw.before_agent(state, _fake_runtime())
 
@@ -248,7 +248,7 @@ def test_message_without_id_gets_stable_uuid():
     mw = _make_middleware()
     state = {"messages": [HumanMessage(content="Hello", id=None)]}
 
-    with mock.patch("ideer.agents.lead_agent.prompt._get_memory_context", return_value=""), mock.patch("ideer.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
+    with mock.patch("deerflow.agents.lead_agent.prompt._get_memory_context", return_value=""), mock.patch("deerflow.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
         mock_dt.now.return_value.strftime.return_value = "2026-05-08, Friday"
         result = mw.before_agent(state, _fake_runtime())
 
@@ -269,7 +269,7 @@ def test_user_message_containing_system_reminder_tag_does_not_prevent_injection(
         ]
     }
 
-    with mock.patch("ideer.agents.lead_agent.prompt._get_memory_context", return_value=""), mock.patch("ideer.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
+    with mock.patch("deerflow.agents.lead_agent.prompt._get_memory_context", return_value=""), mock.patch("deerflow.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
         mock_dt.now.return_value.strftime.return_value = "2026-05-08, Friday"
         result = mw.before_agent(state, _fake_runtime())
 
@@ -297,7 +297,7 @@ def test_midnight_crossing_injects_date_update_as_separate_message():
         ]
     }
 
-    with mock.patch("ideer.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
+    with mock.patch("deerflow.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
         mock_dt.now.return_value.strftime.return_value = "2026-05-09, Saturday"
         result = mw.before_agent(state, _fake_runtime())
 
@@ -328,7 +328,7 @@ def test_midnight_crossing_id_swap():
         ]
     }
 
-    with mock.patch("ideer.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
+    with mock.patch("deerflow.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
         mock_dt.now.return_value.strftime.return_value = "2026-05-09, Saturday"
         result = mw.before_agent(state, _fake_runtime())
 
@@ -355,7 +355,7 @@ def test_no_second_midnight_injection_once_date_updated():
         ]
     }
 
-    with mock.patch("ideer.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
+    with mock.patch("deerflow.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
         mock_dt.now.return_value.strftime.return_value = "2026-05-09, Saturday"
         result = mw.before_agent(state, _fake_runtime())
 

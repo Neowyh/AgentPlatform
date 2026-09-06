@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from ideer.runtime.events.store.jsonl import _SAFE_ID_PATTERN, JsonlRunEventStore
+from deerflow.runtime.events.store.jsonl import _SAFE_ID_PATTERN, JsonlRunEventStore
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -93,7 +93,7 @@ class TestInit:
     def test_init_logs_info(self, tmp_base: Path, caplog):
         import logging
 
-        with caplog.at_level(logging.INFO, logger="ideer.runtime.events.store.jsonl"):
+        with caplog.at_level(logging.INFO, logger="deerflow.runtime.events.store.jsonl"):
             JsonlRunEventStore(base_dir=tmp_base)
         assert "JsonlRunEventStore initialized" in caplog.text
         assert "single-process only" in caplog.text

@@ -1,6 +1,7 @@
 import logging
 import threading
 from collections import OrderedDict
+from collections.abc import Callable
 from pathlib import Path
 
 from deerflow.constants import DEFAULT_SKILLS_CONTAINER_PATH
@@ -10,6 +11,16 @@ from deerflow.sandbox.sandbox_provider import SandboxProvider
 from deerflow.sandbox.security import is_host_bash_allowed
 
 logger = logging.getLogger(__name__)
+
+# Optional embedder hook for run-frozen skill closures (AgentPlatform canonical
+# runs). When installed, it receives the sandbox identity and returns either
+# ``None`` (ordinary sandbox, managed skills projection applies) or a
+# ``(data_thread_id, skills_view_root)`` pair: the identity under which the
+# per-thread host directories are resolved, and a read-only skills root that
+# replaces the managed skills projection for the sandbox lifetime. The harness
+# has no run-snapshot concept of its own, so the resolver hook is the only way
+# to express this contract without importing the embedding application.
+RUN_SKILL_VIEW_RESOLVER: Callable[[str], "tuple[str, Path] | None"] | None = None
 
 # Module-level alias kept for backward compatibility with older callers/tests
 # that reach into ``local_sandbox_provider._singleton`` directly. New code reads
@@ -322,6 +333,16 @@ class LocalSandboxProvider(SandboxProvider):
         from deerflow.config import get_app_config
         from deerflow.config.paths import get_paths
 
+        # A run-scoped sandbox identity carries a frozen skill closure; the
+        # embedder's resolver rewrites the identity to its data thread and
+        # forces the read-only skills root. Fail closed when the closure view
+        # is missing rather than silently serving the mutable projection.
+        forced_skills_view: Path | None = None
+        if RUN_SKILL_VIEW_RESOLVER is not None:
+            run_scope = RUN_SKILL_VIEW_RESOLVER(thread_id)
+            if run_scope is not None:
+                thread_id, forced_skills_view = run_scope
+
         paths = get_paths()
         effective_user_id = LocalSandboxProvider._effective_acquire_user_id(user_id)
         paths.ensure_thread_dirs(thread_id, user_id=effective_user_id)
@@ -361,6 +382,22 @@ class LocalSandboxProvider(SandboxProvider):
 
         # Category mounts stay present for the sandbox lifetime. Their
         # enabled-only contents change beneath these stable roots.
+        if forced_skills_view is not None:
+            # Fail closed, outside the guarded block below: a canonical run
+            # without its frozen skill view must not fall back to the live
+            # per-thread projection.
+            if not forced_skills_view.is_dir():
+                raise RuntimeError(f"Canonical Run Skill view is missing: {forced_skills_view}")
+            skills_container_path = get_app_config().skills.container_path
+            mappings.append(
+                PathMapping(
+                    container_path=skills_container_path,
+                    local_path=str(forced_skills_view),
+                    read_only=True,
+                )
+            )
+            return mappings
+
         try:
             config = get_app_config()
             skills_container_path = config.skills.container_path

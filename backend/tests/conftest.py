@@ -179,6 +179,28 @@ def _isolate_trace_context():
 
 
 @pytest.fixture(autouse=True)
+def _reset_registration_rate_limit():
+    """Reset the per-IP registration limiter around every test.
+
+    ``app.gateway.routers.auth._registration_attempts`` is a process-wide
+    module global, while the production cap is 3 registrations per IP per
+    hour. In a single pytest process the accumulator therefore leaks across
+    test files and every integration suite that exercises the register
+    endpoint starts tripping synthetic 429s after the first three attempts.
+    Clearing it per test keeps the production limit itself under test.
+    """
+    try:
+        from app.gateway.routers.auth import _registration_attempts
+    except ImportError:
+        yield
+        return
+
+    _registration_attempts.clear()
+    yield
+    _registration_attempts.clear()
+
+
+@pytest.fixture(autouse=True)
 def _auto_user_context(request):
     """Inject a default ``test-user-autouse`` into the contextvar.
 

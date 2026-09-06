@@ -1,4 +1,4 @@
-"""Tests for ideer.tools.skill_manage_tool — comprehensive coverage."""
+"""Tests for deerflow.tools.skill_manage_tool — comprehensive coverage."""
 
 from __future__ import annotations
 
@@ -13,10 +13,13 @@ import pytest_asyncio
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-import ideer.persistence.models  # noqa: F401
-from ideer.persistence.base import Base
-from ideer.persistence.models.resource_catalog import Resource, ResourceVersion
-from ideer.persistence.models.user import UserModel
+import app.agentplatform.audit_model  # noqa: F401 - register audit_logs
+import app.agentplatform.rbac_models  # noqa: F401 - register users_ext
+import app.agentplatform.resource_models  # noqa: F401 - register resource tables
+import app.agentplatform.visibility_models  # noqa: F401 - register visibility tables
+from app.agentplatform.rbac_models import UserModel
+from app.agentplatform.resource_models import Resource, ResourceVersion
+from deerflow.persistence.base import Base
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -56,7 +59,7 @@ def _make_scan_result(decision: str = "allow", reason: str = "ok"):
 
 
 def _async_result(decision: str, reason: str):
-    from ideer.skills.security_scanner import ScanResult
+    from deerflow.skills.security_scanner import ScanResult
 
     return ScanResult(decision=decision, reason=reason)
 
@@ -70,10 +73,10 @@ def _async_result(decision: str, reason: str):
 def _patch_deps():
     """Patch heavy dependencies for every test in this module."""
     with (
-        patch("ideer.tools.skill_manage_tool.get_or_new_skill_storage") as mock_storage_fn,
-        patch("ideer.tools.skill_manage_tool.scan_skill_content", new_callable=AsyncMock) as mock_scan,
-        patch("ideer.tools.skill_manage_tool.refresh_skills_system_prompt_cache_async", new_callable=AsyncMock) as mock_refresh,
-        patch("ideer.tools.skill_manage_tool.SKILL_MD_FILE", "SKILL.md"),
+        patch("deerflow.tools.skill_manage_tool.get_or_new_skill_storage") as mock_storage_fn,
+        patch("deerflow.tools.skill_manage_tool.scan_skill_content", new_callable=AsyncMock) as mock_scan,
+        patch("deerflow.tools.skill_manage_tool.refresh_skills_system_prompt_cache_async", new_callable=AsyncMock) as mock_refresh,
+        patch("deerflow.tools.skill_manage_tool.SKILL_MD_FILE", "SKILL.md"),
     ):
         storage = _make_storage()
         mock_storage_fn.return_value = storage
@@ -89,7 +92,7 @@ def _patch_deps():
 # Import the module under test AFTER patching
 # ---------------------------------------------------------------------------
 
-from ideer.tools.skill_manage_tool import (  # noqa: E402
+from deerflow.tools.skill_manage_tool import (  # noqa: E402
     _get_lock,
     _get_thread_id,
     _history_record,
@@ -298,8 +301,8 @@ class TestSkillManageCanonical:
     ) -> None:
         await _seed_user_canonical(_catalog_db)
 
-        with patch("ideer.tools.skill_manage_tool.get_session_factory", return_value=_catalog_db):
-            with patch("ideer.config.paths.get_paths", return_value=SimpleNamespace(base_dir=tmp_path)):
+        with patch("deerflow.tools.skill_manage_tool.get_session_factory", return_value=_catalog_db):
+            with patch("deerflow.config.paths.get_paths", return_value=SimpleNamespace(base_dir=tmp_path)):
                 result = await skill_manage_tool.coroutine(
                     runtime=_make_runtime(),
                     action="create",
@@ -322,8 +325,8 @@ class TestSkillManageCanonical:
     ) -> None:
         await _seed_user_canonical(_catalog_db)
 
-        with patch("ideer.tools.skill_manage_tool.get_session_factory", return_value=_catalog_db):
-            with patch("ideer.config.paths.get_paths", return_value=SimpleNamespace(base_dir=tmp_path)):
+        with patch("deerflow.tools.skill_manage_tool.get_session_factory", return_value=_catalog_db):
+            with patch("deerflow.config.paths.get_paths", return_value=SimpleNamespace(base_dir=tmp_path)):
                 await skill_manage_tool.coroutine(runtime=_make_runtime(), action="create", name="my-skill", content=_skill_content("my-skill"))
                 with pytest.raises(ValueError, match="already exists"):
                     await skill_manage_tool.coroutine(runtime=_make_runtime(), action="create", name="my-skill", content=_skill_content("my-skill"))
@@ -338,8 +341,8 @@ class TestSkillManageCanonical:
     ) -> None:
         await _seed_user_canonical(_catalog_db)
 
-        with patch("ideer.tools.skill_manage_tool.get_session_factory", return_value=_catalog_db):
-            with patch("ideer.config.paths.get_paths", return_value=SimpleNamespace(base_dir=tmp_path)):
+        with patch("deerflow.tools.skill_manage_tool.get_session_factory", return_value=_catalog_db):
+            with patch("deerflow.config.paths.get_paths", return_value=SimpleNamespace(base_dir=tmp_path)):
                 await skill_manage_tool.coroutine(runtime=_make_runtime(), action="create", name="my-skill", content=_skill_content("my-skill"))
                 result = await skill_manage_tool.coroutine(
                     runtime=_make_runtime(),
@@ -363,8 +366,8 @@ class TestSkillManageCanonical:
     ) -> None:
         await _seed_user_canonical(_catalog_db)
 
-        with patch("ideer.tools.skill_manage_tool.get_session_factory", return_value=_catalog_db):
-            with patch("ideer.config.paths.get_paths", return_value=SimpleNamespace(base_dir=tmp_path)):
+        with patch("deerflow.tools.skill_manage_tool.get_session_factory", return_value=_catalog_db):
+            with patch("deerflow.config.paths.get_paths", return_value=SimpleNamespace(base_dir=tmp_path)):
                 await skill_manage_tool.coroutine(runtime=_make_runtime(), action="create", name="my-skill", content=_skill_content("my-skill"))
                 result = await skill_manage_tool.coroutine(runtime=_make_runtime(), action="patch", name="my-skill", find="Demo skill", replace="Patched skill")
 
@@ -382,8 +385,8 @@ class TestSkillManageCanonical:
     ) -> None:
         await _seed_user_canonical(_catalog_db)
 
-        with patch("ideer.tools.skill_manage_tool.get_session_factory", return_value=_catalog_db):
-            with patch("ideer.config.paths.get_paths", return_value=SimpleNamespace(base_dir=tmp_path)):
+        with patch("deerflow.tools.skill_manage_tool.get_session_factory", return_value=_catalog_db):
+            with patch("deerflow.config.paths.get_paths", return_value=SimpleNamespace(base_dir=tmp_path)):
                 await skill_manage_tool.coroutine(runtime=_make_runtime(), action="create", name="my-skill", content=_skill_content("my-skill"))
                 await skill_manage_tool.coroutine(runtime=_make_runtime(), action="write_file", name="my-skill", path="templates/letter.md", content="# Letter")
 
@@ -405,8 +408,8 @@ class TestSkillManageCanonical:
     ) -> None:
         await _seed_user_canonical(_catalog_db)
 
-        with patch("ideer.tools.skill_manage_tool.get_session_factory", return_value=_catalog_db):
-            with patch("ideer.config.paths.get_paths", return_value=SimpleNamespace(base_dir=tmp_path)):
+        with patch("deerflow.tools.skill_manage_tool.get_session_factory", return_value=_catalog_db):
+            with patch("deerflow.config.paths.get_paths", return_value=SimpleNamespace(base_dir=tmp_path)):
                 await skill_manage_tool.coroutine(runtime=_make_runtime(), action="create", name="my-skill", content=_skill_content("my-skill"))
                 result = await skill_manage_tool.coroutine(runtime=_make_runtime(), action="delete", name="my-skill")
 
@@ -424,8 +427,8 @@ class TestSkillManageCanonical:
     ) -> None:
         await _seed_user_canonical(_catalog_db)
 
-        with patch("ideer.tools.skill_manage_tool.get_session_factory", return_value=_catalog_db):
-            with patch("ideer.config.paths.get_paths", return_value=SimpleNamespace(base_dir=tmp_path)):
+        with patch("deerflow.tools.skill_manage_tool.get_session_factory", return_value=_catalog_db):
+            with patch("deerflow.config.paths.get_paths", return_value=SimpleNamespace(base_dir=tmp_path)):
                 with pytest.raises(ValueError, match="does not exist"):
                     await skill_manage_tool.coroutine(runtime=_make_runtime(), action="edit", name="ghost-skill", content="# Ghost")
 
@@ -437,6 +440,6 @@ class TestSkillManageCanonical:
         _patch_deps,
     ) -> None:
 
-        with patch("ideer.tools.skill_manage_tool.get_session_factory", return_value=None):
+        with patch("deerflow.tools.skill_manage_tool.get_session_factory", return_value=None):
             with pytest.raises(RuntimeError, match="persistence is unavailable"):
                 await skill_manage_tool.coroutine(runtime=_make_runtime(), action="create", name="my-skill", content="# X")

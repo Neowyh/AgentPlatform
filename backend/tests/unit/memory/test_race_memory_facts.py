@@ -14,8 +14,8 @@ from unittest.mock import PropertyMock, patch
 
 import pytest
 
-from ideer.agents.memory.storage import FileMemoryStorage
-from ideer.agents.memory.updater import (
+from app.agentplatform.legacy.memory.storage import FileMemoryStorage
+from app.agentplatform.legacy.memory.updater import (
     create_memory_fact,
     delete_memory_fact,
     update_memory_fact,
@@ -77,7 +77,7 @@ def mem_storage():
     mem_file.write_text(json.dumps(_empty_memory(), indent=2))
 
     storage = FileMemoryStorage()
-    with patch("ideer.agents.memory.storage.get_memory_config") as cfg:
+    with patch("app.agentplatform.legacy.memory.storage.get_memory_config") as cfg:
         type(cfg.return_value).storage_path = PropertyMock(return_value=str(mem_file))
         storage.load()
         yield storage, mem_file
@@ -91,7 +91,7 @@ def mem_storage_with_facts():
     mem_file.write_text(json.dumps(_memory_with_facts(), indent=2))
 
     storage = FileMemoryStorage()
-    with patch("ideer.agents.memory.storage.get_memory_config") as cfg:
+    with patch("app.agentplatform.legacy.memory.storage.get_memory_config") as cfg:
         type(cfg.return_value).storage_path = PropertyMock(return_value=str(mem_file))
         storage.load()
         yield storage, mem_file
@@ -105,7 +105,7 @@ def mem_storage_with_10_facts():
     mem_file.write_text(json.dumps(_memory_with_10_facts(), indent=2))
 
     storage = FileMemoryStorage()
-    with patch("ideer.agents.memory.storage.get_memory_config") as cfg:
+    with patch("app.agentplatform.legacy.memory.storage.get_memory_config") as cfg:
         type(cfg.return_value).storage_path = PropertyMock(return_value=str(mem_file))
         storage.load()
         yield storage, mem_file
@@ -115,7 +115,7 @@ def test_concurrent_create_memory_fact_stress(mem_storage):
     """10 concurrent create calls — RMW race loses all but last write."""
     storage, mem_file = mem_storage
 
-    with patch("ideer.agents.memory.updater.get_memory_storage", return_value=storage):
+    with patch("app.agentplatform.legacy.memory.updater.get_memory_storage", return_value=storage):
         with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
             futures = [pool.submit(create_memory_fact, f"fact-{i}") for i in range(10)]
             for f in futures:
@@ -131,7 +131,7 @@ def test_concurrent_delete_memory_fact_stress(mem_storage_with_10_facts):
     """5 concurrent delete calls — RMW race loses some deletes."""
     storage, mem_file = mem_storage_with_10_facts
 
-    with patch("ideer.agents.memory.updater.get_memory_storage", return_value=storage):
+    with patch("app.agentplatform.legacy.memory.updater.get_memory_storage", return_value=storage):
         with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
             futures = [pool.submit(delete_memory_fact, f"fact_{chr(ord('a') + i)}") for i in range(5)]
             for f in futures:
@@ -147,7 +147,7 @@ def test_concurrent_update_memory_fact_stress(mem_storage_with_facts):
     """5 concurrent update calls on different ids — RMW race loses some updates."""
     storage, mem_file = mem_storage_with_facts
 
-    with patch("ideer.agents.memory.updater.get_memory_storage", return_value=storage):
+    with patch("app.agentplatform.legacy.memory.updater.get_memory_storage", return_value=storage):
         with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
             futures = [
                 pool.submit(

@@ -1,6 +1,6 @@
 import pytest
 
-from ideer.mcp.connector import McpConnector
+from app.agentplatform.mcp.connector import McpConnector
 
 
 class _Tool:

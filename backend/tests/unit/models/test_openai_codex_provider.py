@@ -1,6 +1,6 @@
 """Comprehensive tests for the OpenAI Codex model provider.
 
-Targets 98%+ coverage of ideer.models.openai_codex_provider.
+Targets 98%+ coverage of deerflow.models.openai_codex_provider.
 """
 
 import json
@@ -12,8 +12,8 @@ import pytest
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import BaseTool
 
-from ideer.models.credential_loader import CodexCliCredential
-from ideer.models.openai_codex_provider import (
+from deerflow.models.credential_loader import CodexCliCredential
+from deerflow.models.openai_codex_provider import (
     CODEX_BASE_URL,
     MAX_RETRIES,
     CodexChatModel,
@@ -95,7 +95,7 @@ def _patch_codex_stream(events: list[dict], status_code: int = 200):
     mock_resp = _build_mock_stream_response(events, status_code)
     client_ctx = _make_mock_httpx_client([mock_resp])
 
-    with patch("ideer.models.openai_codex_provider.httpx.Client", return_value=client_ctx):
+    with patch("deerflow.models.openai_codex_provider.httpx.Client", return_value=client_ctx):
         yield mock_resp
 
 
@@ -880,7 +880,7 @@ class TestStreamResponse:
         client_ctx.__enter__ = MagicMock(return_value=mock_client)
         client_ctx.__exit__ = MagicMock(return_value=False)
 
-        with patch("ideer.models.openai_codex_provider.httpx.Client", return_value=client_ctx):
+        with patch("deerflow.models.openai_codex_provider.httpx.Client", return_value=client_ctx):
             with pytest.raises(httpx.HTTPStatusError):
                 model._stream_response({}, {})
 
@@ -942,7 +942,7 @@ class TestCallCodexApi:
             return success_response
 
         with patch.object(model, "_stream_response", side_effect=mock_stream):
-            with patch("ideer.models.openai_codex_provider.time.sleep"):
+            with patch("deerflow.models.openai_codex_provider.time.sleep"):
                 result = model._call_codex_api([HumanMessage(content="Hi")])
                 assert "output" in result
 
@@ -963,7 +963,7 @@ class TestCallCodexApi:
             return success_response
 
         with patch.object(model, "_stream_response", side_effect=mock_stream):
-            with patch("ideer.models.openai_codex_provider.time.sleep"):
+            with patch("deerflow.models.openai_codex_provider.time.sleep"):
                 result = model._call_codex_api([HumanMessage(content="Hi")])
                 assert "output" in result
 
@@ -984,7 +984,7 @@ class TestCallCodexApi:
             return success_response
 
         with patch.object(model, "_stream_response", side_effect=mock_stream):
-            with patch("ideer.models.openai_codex_provider.time.sleep"):
+            with patch("deerflow.models.openai_codex_provider.time.sleep"):
                 result = model._call_codex_api([HumanMessage(content="Hi")])
                 assert "output" in result
 
@@ -1007,8 +1007,8 @@ class TestCallCodexApi:
         client_ctx.__enter__ = MagicMock(return_value=mock_client)
         client_ctx.__exit__ = MagicMock(return_value=False)
 
-        with patch("ideer.models.openai_codex_provider.httpx.Client", return_value=client_ctx):
-            with patch("ideer.models.openai_codex_provider.time.sleep"):
+        with patch("deerflow.models.openai_codex_provider.httpx.Client", return_value=client_ctx):
+            with patch("deerflow.models.openai_codex_provider.time.sleep"):
                 with pytest.raises(httpx.HTTPStatusError):
                     model._call_codex_api([HumanMessage(content="Hi")])
 
@@ -1031,7 +1031,7 @@ class TestCallCodexApi:
         client_ctx.__enter__ = MagicMock(return_value=mock_client)
         client_ctx.__exit__ = MagicMock(return_value=False)
 
-        with patch("ideer.models.openai_codex_provider.httpx.Client", return_value=client_ctx):
+        with patch("deerflow.models.openai_codex_provider.httpx.Client", return_value=client_ctx):
             with pytest.raises(httpx.HTTPStatusError):
                 model._call_codex_api([HumanMessage(content="Hi")])
 
@@ -1045,7 +1045,7 @@ class TestCallCodexApi:
         client_ctx.__enter__ = MagicMock(return_value=mock_client)
         client_ctx.__exit__ = MagicMock(return_value=False)
 
-        with patch("ideer.models.openai_codex_provider.httpx.Client", return_value=client_ctx):
+        with patch("deerflow.models.openai_codex_provider.httpx.Client", return_value=client_ctx):
             with pytest.raises(ConnectionError, match="Network down"):
                 model._call_codex_api([HumanMessage(content="Hi")])
 
@@ -1068,8 +1068,8 @@ class TestCallCodexApi:
         client_ctx.__enter__ = MagicMock(return_value=mock_client)
         client_ctx.__exit__ = MagicMock(return_value=False)
 
-        with patch("ideer.models.openai_codex_provider.httpx.Client", return_value=client_ctx):
-            with patch("ideer.models.openai_codex_provider.time.sleep") as mock_sleep:
+        with patch("deerflow.models.openai_codex_provider.httpx.Client", return_value=client_ctx):
+            with patch("deerflow.models.openai_codex_provider.time.sleep") as mock_sleep:
                 with pytest.raises(httpx.HTTPStatusError):
                     model._call_codex_api([HumanMessage(content="Hi")])
                 # First retry: 2000 * 2^0 = 2000ms -> 2.0s

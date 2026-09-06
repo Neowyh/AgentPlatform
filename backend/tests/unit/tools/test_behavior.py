@@ -1002,73 +1002,73 @@ class TestMCPRouterHelpers:
 
 class TestTimeUtils:
     def test_now_iso(self):
-        from ideer.utils.time import now_iso
+        from deerflow.utils.time import now_iso
 
         result = now_iso()
         assert isinstance(result, str)
         assert "T" in result
 
     def test_coerce_iso_none(self):
-        from ideer.utils.time import coerce_iso
+        from deerflow.utils.time import coerce_iso
 
         assert coerce_iso(None) == ""
 
     def test_coerce_iso_empty_string(self):
-        from ideer.utils.time import coerce_iso
+        from deerflow.utils.time import coerce_iso
 
         assert coerce_iso("") == ""
 
     def test_coerce_iso_bool(self):
-        from ideer.utils.time import coerce_iso
+        from deerflow.utils.time import coerce_iso
 
         assert coerce_iso(True) == "True"
         assert coerce_iso(False) == "False"
 
     def test_coerce_iso_datetime(self):
-        from ideer.utils.time import coerce_iso
+        from deerflow.utils.time import coerce_iso
 
         dt = datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC)
         result = coerce_iso(dt)
         assert "2024-01-15" in result
 
     def test_coerce_iso_datetime_naive(self):
-        from ideer.utils.time import coerce_iso
+        from deerflow.utils.time import coerce_iso
 
         dt = datetime(2024, 1, 15, 10, 30, 0)
         result = coerce_iso(dt)
         assert "2024-01-15" in result
 
     def test_coerce_iso_int(self):
-        from ideer.utils.time import coerce_iso
+        from deerflow.utils.time import coerce_iso
 
         result = coerce_iso(1705312200)
         assert "2024" in result
 
     def test_coerce_iso_float(self):
-        from ideer.utils.time import coerce_iso
+        from deerflow.utils.time import coerce_iso
 
         result = coerce_iso(1705312200.5)
         assert "2024" in result
 
     def test_coerce_iso_unix_string(self):
-        from ideer.utils.time import coerce_iso
+        from deerflow.utils.time import coerce_iso
 
         result = coerce_iso("1705312200")
         assert "2024" in result
 
     def test_coerce_iso_iso_string(self):
-        from ideer.utils.time import coerce_iso
+        from deerflow.utils.time import coerce_iso
 
         result = coerce_iso("2024-01-15T10:30:00+00:00")
         assert result == "2024-01-15T10:30:00+00:00"
 
     def test_coerce_iso_other_type(self):
-        from ideer.utils.time import coerce_iso
+        from deerflow.utils.time import coerce_iso
 
         assert coerce_iso([1, 2, 3]) == "[1, 2, 3]"
 
     def test_coerce_iso_overflow(self):
-        from ideer.utils.time import coerce_iso
+        from deerflow.utils.time import coerce_iso
 
         result = coerce_iso(99999999999999999)
         # Should fallback to str()
@@ -1083,47 +1083,47 @@ class TestTimeUtils:
 
 class TestSerialization:
     def test_serialize_lc_object_none(self):
-        from ideer.runtime.serialization import serialize_lc_object
+        from deerflow.runtime.serialization import serialize_lc_object
 
         assert serialize_lc_object(None) is None
 
     def test_serialize_lc_object_str(self):
-        from ideer.runtime.serialization import serialize_lc_object
+        from deerflow.runtime.serialization import serialize_lc_object
 
         assert serialize_lc_object("hello") == "hello"
 
     def test_serialize_lc_object_int(self):
-        from ideer.runtime.serialization import serialize_lc_object
+        from deerflow.runtime.serialization import serialize_lc_object
 
         assert serialize_lc_object(42) == 42
 
     def test_serialize_lc_object_float(self):
-        from ideer.runtime.serialization import serialize_lc_object
+        from deerflow.runtime.serialization import serialize_lc_object
 
         assert serialize_lc_object(3.14) == 3.14
 
     def test_serialize_lc_object_bool(self):
-        from ideer.runtime.serialization import serialize_lc_object
+        from deerflow.runtime.serialization import serialize_lc_object
 
         assert serialize_lc_object(True) is True
 
     def test_serialize_lc_object_dict(self):
-        from ideer.runtime.serialization import serialize_lc_object
+        from deerflow.runtime.serialization import serialize_lc_object
 
         assert serialize_lc_object({"a": 1}) == {"a": 1}
 
     def test_serialize_lc_object_list(self):
-        from ideer.runtime.serialization import serialize_lc_object
+        from deerflow.runtime.serialization import serialize_lc_object
 
         assert serialize_lc_object([1, 2, 3]) == [1, 2, 3]
 
     def test_serialize_lc_object_tuple(self):
-        from ideer.runtime.serialization import serialize_lc_object
+        from deerflow.runtime.serialization import serialize_lc_object
 
         assert serialize_lc_object((1, 2)) == [1, 2]
 
     def test_serialize_lc_object_pydantic_v2(self):
-        from ideer.runtime.serialization import serialize_lc_object
+        from deerflow.runtime.serialization import serialize_lc_object
 
         mock_obj = MagicMock()
         mock_obj.model_dump.return_value = {"key": "value"}
@@ -1131,14 +1131,14 @@ class TestSerialization:
         assert serialize_lc_object(mock_obj) == {"key": "value"}
 
     def test_serialize_lc_object_pydantic_v1(self):
-        from ideer.runtime.serialization import serialize_lc_object
+        from deerflow.runtime.serialization import serialize_lc_object
 
         mock_obj = MagicMock(spec=["dict"])
         mock_obj.dict.return_value = {"key": "value"}
         assert serialize_lc_object(mock_obj) == {"key": "value"}
 
     def test_serialize_lc_object_fallback(self):
-        from ideer.runtime.serialization import serialize_lc_object
+        from deerflow.runtime.serialization import serialize_lc_object
 
         class Custom:
             def __str__(self):
@@ -1148,7 +1148,7 @@ class TestSerialization:
         assert result == "custom"
 
     def test_serialize_channel_values(self):
-        from ideer.runtime.serialization import serialize_channel_values
+        from deerflow.runtime.serialization import serialize_channel_values
 
         result = serialize_channel_values({"messages": [1, 2], "__pregel_meta": "x", "__interrupt__": True})
         assert "messages" in result
@@ -1156,37 +1156,37 @@ class TestSerialization:
         assert "__interrupt__" not in result
 
     def test_serialize_messages_tuple(self):
-        from ideer.runtime.serialization import serialize_messages_tuple
+        from deerflow.runtime.serialization import serialize_messages_tuple
 
         result = serialize_messages_tuple(("hello", {"id": "1"}))
         assert result == ["hello", {"id": "1"}]
 
     def test_serialize_messages_tuple_non_tuple(self):
-        from ideer.runtime.serialization import serialize_messages_tuple
+        from deerflow.runtime.serialization import serialize_messages_tuple
 
         result = serialize_messages_tuple("hello")
         assert result == "hello"
 
     def test_serialize_mode_messages(self):
-        from ideer.runtime.serialization import serialize
+        from deerflow.runtime.serialization import serialize
 
         result = serialize(("hello", {}), mode="messages")
         assert result == ["hello", {}]
 
     def test_serialize_mode_values(self):
-        from ideer.runtime.serialization import serialize
+        from deerflow.runtime.serialization import serialize
 
         result = serialize({"key": "value"}, mode="values")
         assert result == {"key": "value"}
 
     def test_serialize_mode_values_non_dict(self):
-        from ideer.runtime.serialization import serialize
+        from deerflow.runtime.serialization import serialize
 
         result = serialize("hello", mode="values")
         assert result == "hello"
 
     def test_serialize_no_mode(self):
-        from ideer.runtime.serialization import serialize
+        from deerflow.runtime.serialization import serialize
 
         result = serialize({"key": "value"})
         assert result == {"key": "value"}
@@ -1199,7 +1199,7 @@ class TestSerialization:
 
 class TestToolRegistry:
     def test_register_and_get(self):
-        from ideer.tools.registry import ToolInfo, ToolRegistry
+        from app.agentplatform.tools.registry import ToolInfo, ToolRegistry
 
         registry = ToolRegistry()
         tool = ToolInfo(name="test", description="Test tool", group="test")
@@ -1207,13 +1207,13 @@ class TestToolRegistry:
         assert registry.get("test") is tool
 
     def test_get_missing(self):
-        from ideer.tools.registry import ToolRegistry
+        from app.agentplatform.tools.registry import ToolRegistry
 
         registry = ToolRegistry()
         assert registry.get("missing") is None
 
     def test_list_all(self):
-        from ideer.tools.registry import ToolInfo, ToolRegistry
+        from app.agentplatform.tools.registry import ToolInfo, ToolRegistry
 
         registry = ToolRegistry()
         registry.register(ToolInfo(name="a", description="A", group="g1"))
@@ -1221,7 +1221,7 @@ class TestToolRegistry:
         assert len(registry.list_all()) == 2
 
     def test_list_by_group(self):
-        from ideer.tools.registry import ToolInfo, ToolRegistry
+        from app.agentplatform.tools.registry import ToolInfo, ToolRegistry
 
         registry = ToolRegistry()
         registry.register(ToolInfo(name="a", description="A", group="g1"))
@@ -1230,7 +1230,7 @@ class TestToolRegistry:
         assert len(registry.list_by_group("g1")) == 2
 
     def test_search(self):
-        from ideer.tools.registry import ToolInfo, ToolRegistry
+        from app.agentplatform.tools.registry import ToolInfo, ToolRegistry
 
         registry = ToolRegistry()
         registry.register(ToolInfo(name="file_reader", description="Read files", group="io"))
@@ -1240,7 +1240,7 @@ class TestToolRegistry:
         assert results[0].name == "file_reader"
 
     def test_search_description(self):
-        from ideer.tools.registry import ToolInfo, ToolRegistry
+        from app.agentplatform.tools.registry import ToolInfo, ToolRegistry
 
         registry = ToolRegistry()
         registry.register(ToolInfo(name="tool1", description="Read files", group="io"))
@@ -1248,7 +1248,7 @@ class TestToolRegistry:
         assert len(results) == 1
 
     def test_update_config_success(self):
-        from ideer.tools.registry import ToolInfo, ToolRegistry
+        from app.agentplatform.tools.registry import ToolInfo, ToolRegistry
 
         registry = ToolRegistry()
         tool = ToolInfo(name="test", description="Test", group="g", configurable=True)
@@ -1257,13 +1257,13 @@ class TestToolRegistry:
         assert tool.config["key"] == "value"
 
     def test_update_config_not_found(self):
-        from ideer.tools.registry import ToolRegistry
+        from app.agentplatform.tools.registry import ToolRegistry
 
         registry = ToolRegistry()
         assert registry.update_config("missing", {}) is False
 
     def test_update_config_not_configurable(self):
-        from ideer.tools.registry import ToolInfo, ToolRegistry
+        from app.agentplatform.tools.registry import ToolInfo, ToolRegistry
 
         registry = ToolRegistry()
         tool = ToolInfo(name="test", description="Test", group="g", configurable=False)
@@ -1271,7 +1271,7 @@ class TestToolRegistry:
         assert registry.update_config("test", {}) is False
 
     def test_update_config_unexpected_keys(self):
-        from ideer.tools.registry import ToolInfo, ToolRegistry
+        from app.agentplatform.tools.registry import ToolInfo, ToolRegistry
 
         registry = ToolRegistry()
         tool = ToolInfo(
@@ -1285,7 +1285,7 @@ class TestToolRegistry:
         assert registry.update_config("test", {"unexpected_key": "val"}) is False
 
     def test_update_config_type_mismatch(self):
-        from ideer.tools.registry import ToolInfo, ToolRegistry
+        from app.agentplatform.tools.registry import ToolInfo, ToolRegistry
 
         registry = ToolRegistry()
         tool = ToolInfo(
@@ -1299,7 +1299,7 @@ class TestToolRegistry:
         assert registry.update_config("test", {"count": "not_int"}) is False
 
     def test_update_config_enum_violation(self):
-        from ideer.tools.registry import ToolInfo, ToolRegistry
+        from app.agentplatform.tools.registry import ToolInfo, ToolRegistry
 
         registry = ToolRegistry()
         tool = ToolInfo(
@@ -1313,7 +1313,7 @@ class TestToolRegistry:
         assert registry.update_config("test", {"mode": "c"}) is False
 
     def test_register_overwrite(self):
-        from ideer.tools.registry import ToolInfo, ToolRegistry
+        from app.agentplatform.tools.registry import ToolInfo, ToolRegistry
 
         registry = ToolRegistry()
         registry.register(ToolInfo(name="test", description="v1", group="g"))
@@ -1321,7 +1321,7 @@ class TestToolRegistry:
         assert registry.get("test").description == "v2"
 
     def test_get_tool_registry(self):
-        from ideer.tools.registry import get_tool_registry
+        from app.agentplatform.tools.registry import get_tool_registry
 
         registry = get_tool_registry()
         assert registry is not None
@@ -1335,14 +1335,14 @@ class TestToolRegistry:
 
 class TestCredentialLoader:
     def test_is_oauth_token(self):
-        from ideer.models.credential_loader import is_oauth_token
+        from deerflow.models.credential_loader import is_oauth_token
 
         assert is_oauth_token("sk-ant-oat01-xxx") is True
         assert is_oauth_token("sk-xxx") is False
         assert is_oauth_token("") is False
 
     def test_claude_code_credential_expired(self):
-        from ideer.models.credential_loader import ClaudeCodeCredential
+        from deerflow.models.credential_loader import ClaudeCodeCredential
 
         cred = ClaudeCodeCredential(
             access_token="token",
@@ -1351,7 +1351,7 @@ class TestCredentialLoader:
         assert cred.is_expired is True
 
     def test_claude_code_credential_not_expired(self):
-        from ideer.models.credential_loader import ClaudeCodeCredential
+        from deerflow.models.credential_loader import ClaudeCodeCredential
 
         cred = ClaudeCodeCredential(
             access_token="token",
@@ -1360,7 +1360,7 @@ class TestCredentialLoader:
         assert cred.is_expired is False
 
     def test_claude_code_credential_not_expired_future(self):
-        from ideer.models.credential_loader import ClaudeCodeCredential
+        from deerflow.models.credential_loader import ClaudeCodeCredential
 
         cred = ClaudeCodeCredential(
             access_token="token",
@@ -1369,20 +1369,20 @@ class TestCredentialLoader:
         assert cred.is_expired is False
 
     def test_load_json_file_not_found(self):
-        from ideer.models.credential_loader import _load_json_file
+        from deerflow.models.credential_loader import _load_json_file
 
         result = _load_json_file(Path("/nonexistent/file.json"), "test")
         assert result is None
 
     def test_load_json_file_is_dir(self):
-        from ideer.models.credential_loader import _load_json_file
+        from deerflow.models.credential_loader import _load_json_file
 
         with tempfile.TemporaryDirectory() as tmpdir:
             result = _load_json_file(Path(tmpdir), "test")
             assert result is None
 
     def test_load_json_file_invalid_json(self):
-        from ideer.models.credential_loader import _load_json_file
+        from deerflow.models.credential_loader import _load_json_file
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             f.write("not json {{{")
@@ -1394,7 +1394,7 @@ class TestCredentialLoader:
             os.unlink(path)
 
     def test_load_json_file_valid(self):
-        from ideer.models.credential_loader import _load_json_file
+        from deerflow.models.credential_loader import _load_json_file
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump({"key": "value"}, f)
@@ -1406,27 +1406,27 @@ class TestCredentialLoader:
             os.unlink(path)
 
     def test_credential_from_direct_token(self):
-        from ideer.models.credential_loader import _credential_from_direct_token
+        from deerflow.models.credential_loader import _credential_from_direct_token
 
         cred = _credential_from_direct_token("sk-ant-oat01-xxx", "test")
         assert cred is not None
         assert cred.access_token == "sk-ant-oat01-xxx"
 
     def test_credential_from_direct_token_empty(self):
-        from ideer.models.credential_loader import _credential_from_direct_token
+        from deerflow.models.credential_loader import _credential_from_direct_token
 
         assert _credential_from_direct_token("", "test") is None
         assert _credential_from_direct_token("  ", "test") is None
 
     def test_read_secret_from_file_descriptor_invalid(self):
-        from ideer.models.credential_loader import _read_secret_from_file_descriptor
+        from deerflow.models.credential_loader import _read_secret_from_file_descriptor
 
         with patch.dict(os.environ, {"TEST_FD": "not_a_number"}):
             result = _read_secret_from_file_descriptor("TEST_FD")
             assert result is None
 
     def test_read_secret_from_file_descriptor_missing(self):
-        from ideer.models.credential_loader import _read_secret_from_file_descriptor
+        from deerflow.models.credential_loader import _read_secret_from_file_descriptor
 
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("TEST_FD_MISSING", None)
@@ -1434,14 +1434,14 @@ class TestCredentialLoader:
             assert result is None
 
     def test_load_codex_cli_credential_not_found(self):
-        from ideer.models.credential_loader import load_codex_cli_credential
+        from deerflow.models.credential_loader import load_codex_cli_credential
 
         with patch.dict(os.environ, {"CODEX_AUTH_PATH": "/nonexistent/path.json"}):
             result = load_codex_cli_credential()
             assert result is None
 
     def test_load_codex_cli_credential_no_token(self):
-        from ideer.models.credential_loader import load_codex_cli_credential
+        from deerflow.models.credential_loader import load_codex_cli_credential
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump({"tokens": {}}, f)
@@ -1454,7 +1454,7 @@ class TestCredentialLoader:
             os.unlink(path)
 
     def test_load_claude_code_credential_from_env(self):
-        from ideer.models.credential_loader import load_claude_code_credential
+        from deerflow.models.credential_loader import load_claude_code_credential
 
         with patch.dict(os.environ, {"CLAUDE_CODE_OAUTH_TOKEN": "sk-ant-oat01-test"}):
             result = load_claude_code_credential()
@@ -1462,14 +1462,14 @@ class TestCredentialLoader:
             assert result.access_token == "sk-ant-oat01-test"
 
     def test_load_claude_code_credential_from_anthropic_env(self):
-        from ideer.models.credential_loader import load_claude_code_credential
+        from deerflow.models.credential_loader import load_claude_code_credential
 
         with patch.dict(os.environ, {"ANTHROPIC_AUTH_TOKEN": "sk-ant-oat01-test2"}):
             result = load_claude_code_credential()
             assert result is not None
 
     def test_load_claude_code_credential_from_file(self):
-        from ideer.models.credential_loader import load_claude_code_credential
+        from deerflow.models.credential_loader import load_claude_code_credential
 
         cred_data = {
             "claudeAiOauth": {
@@ -1497,7 +1497,7 @@ class TestCredentialLoader:
             os.unlink(path)
 
     def test_extract_claude_code_credential_expired(self):
-        from ideer.models.credential_loader import _extract_claude_code_credential
+        from deerflow.models.credential_loader import _extract_claude_code_credential
 
         data = {
             "claudeAiOauth": {
@@ -1509,7 +1509,7 @@ class TestCredentialLoader:
         assert result is None
 
     def test_extract_claude_code_credential_no_token(self):
-        from ideer.models.credential_loader import _extract_claude_code_credential
+        from deerflow.models.credential_loader import _extract_claude_code_credential
 
         data = {"claudeAiOauth": {}}
         result = _extract_claude_code_credential(data, "test")
@@ -1523,7 +1523,7 @@ class TestCredentialLoader:
 
 class TestOAuthTokenManager:
     def test_from_extensions_config_no_oauth(self):
-        from ideer.mcp.oauth import OAuthTokenManager
+        from deerflow.mcp.oauth import OAuthTokenManager
 
         config = MagicMock()
         config.get_enabled_mcp_servers.return_value = {}
@@ -1531,13 +1531,13 @@ class TestOAuthTokenManager:
         assert mgr.has_oauth_servers() is False
 
     def test_has_oauth_servers(self):
-        from ideer.mcp.oauth import OAuthTokenManager
+        from deerflow.mcp.oauth import OAuthTokenManager
 
         mgr = OAuthTokenManager({"server1": MagicMock()})
         assert mgr.has_oauth_servers() is True
 
     def test_oauth_server_names(self):
-        from ideer.mcp.oauth import OAuthTokenManager
+        from deerflow.mcp.oauth import OAuthTokenManager
 
         mgr = OAuthTokenManager({"a": MagicMock(), "b": MagicMock()})
         names = mgr.oauth_server_names()
@@ -1545,14 +1545,14 @@ class TestOAuthTokenManager:
         assert "b" in names
 
     def test_get_authorization_header_no_server(self):
-        from ideer.mcp.oauth import OAuthTokenManager
+        from deerflow.mcp.oauth import OAuthTokenManager
 
         mgr = OAuthTokenManager({})
         result = asyncio.run(mgr.get_authorization_header("nonexistent"))
         assert result is None
 
     def test_is_expiring(self):
-        from ideer.mcp.oauth import OAuthTokenManager, _OAuthToken
+        from deerflow.mcp.oauth import OAuthTokenManager, _OAuthToken
 
         oauth = MagicMock()
         oauth.refresh_skew_seconds = 60
@@ -1565,7 +1565,7 @@ class TestOAuthTokenManager:
         assert OAuthTokenManager._is_expiring(token, oauth) is True
 
     def test_is_not_expiring(self):
-        from ideer.mcp.oauth import OAuthTokenManager, _OAuthToken
+        from deerflow.mcp.oauth import OAuthTokenManager, _OAuthToken
 
         oauth = MagicMock()
         oauth.refresh_skew_seconds = 60
@@ -1584,50 +1584,50 @@ class TestOAuthTokenManager:
 
 class TestSkillParser:
     def test_parse_allowed_tools_none(self):
-        from ideer.skills.parser import parse_allowed_tools
+        from deerflow.skills.parser import parse_allowed_tools
 
         assert parse_allowed_tools(None, Path("test.md")) is None
 
     def test_parse_allowed_tools_list(self):
-        from ideer.skills.parser import parse_allowed_tools
+        from deerflow.skills.parser import parse_allowed_tools
 
         result = parse_allowed_tools(["tool1", "tool2"], Path("test.md"))
         assert result == ["tool1", "tool2"]
 
     def test_parse_allowed_tools_empty_list(self):
-        from ideer.skills.parser import parse_allowed_tools
+        from deerflow.skills.parser import parse_allowed_tools
 
         result = parse_allowed_tools([], Path("test.md"))
         assert result == []
 
     def test_parse_allowed_tools_not_list(self):
-        from ideer.skills.parser import parse_allowed_tools
+        from deerflow.skills.parser import parse_allowed_tools
 
         with pytest.raises(ValueError):
             parse_allowed_tools("not a list", Path("test.md"))
 
     def test_parse_allowed_tools_non_string_item(self):
-        from ideer.skills.parser import parse_allowed_tools
+        from deerflow.skills.parser import parse_allowed_tools
 
         with pytest.raises(ValueError):
             parse_allowed_tools([123], Path("test.md"))
 
     def test_parse_allowed_tools_empty_name(self):
-        from ideer.skills.parser import parse_allowed_tools
+        from deerflow.skills.parser import parse_allowed_tools
 
         with pytest.raises(ValueError):
             parse_allowed_tools([""], Path("test.md"))
 
     def test_parse_skill_file_not_exists(self):
-        from ideer.skills.parser import parse_skill_file
-        from ideer.skills.types import SkillCategory
+        from deerflow.skills.parser import parse_skill_file
+        from deerflow.skills.types import SkillCategory
 
         result = parse_skill_file(Path("/nonexistent/SKILL.md"), SkillCategory.CUSTOM)
         assert result is None
 
     def test_parse_skill_file_wrong_name(self):
-        from ideer.skills.parser import parse_skill_file
-        from ideer.skills.types import SkillCategory
+        from deerflow.skills.parser import parse_skill_file
+        from deerflow.skills.types import SkillCategory
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
             f.write("---\nname: test\n---\n")
@@ -1639,8 +1639,8 @@ class TestSkillParser:
             os.unlink(path)
 
     def test_parse_skill_file_valid(self):
-        from ideer.skills.parser import parse_skill_file
-        from ideer.skills.types import SkillCategory
+        from deerflow.skills.parser import parse_skill_file
+        from deerflow.skills.types import SkillCategory
 
         with tempfile.TemporaryDirectory() as tmpdir:
             skill_dir = Path(tmpdir) / "my-skill"
@@ -1652,8 +1652,8 @@ class TestSkillParser:
             assert result.name == "my-skill"
 
     def test_parse_skill_file_no_frontmatter(self):
-        from ideer.skills.parser import parse_skill_file
-        from ideer.skills.types import SkillCategory
+        from deerflow.skills.parser import parse_skill_file
+        from deerflow.skills.types import SkillCategory
 
         with tempfile.TemporaryDirectory() as tmpdir:
             skill_dir = Path(tmpdir) / "my-skill"
@@ -1664,8 +1664,8 @@ class TestSkillParser:
             assert result is None
 
     def test_parse_skill_file_invalid_yaml(self):
-        from ideer.skills.parser import parse_skill_file
-        from ideer.skills.types import SkillCategory
+        from deerflow.skills.parser import parse_skill_file
+        from deerflow.skills.types import SkillCategory
 
         with tempfile.TemporaryDirectory() as tmpdir:
             skill_dir = Path(tmpdir) / "my-skill"
@@ -1676,8 +1676,8 @@ class TestSkillParser:
             assert result is None
 
     def test_parse_skill_file_missing_name(self):
-        from ideer.skills.parser import parse_skill_file
-        from ideer.skills.types import SkillCategory
+        from deerflow.skills.parser import parse_skill_file
+        from deerflow.skills.types import SkillCategory
 
         with tempfile.TemporaryDirectory() as tmpdir:
             skill_dir = Path(tmpdir) / "my-skill"
@@ -1688,8 +1688,8 @@ class TestSkillParser:
             assert result is None
 
     def test_parse_skill_file_missing_description(self):
-        from ideer.skills.parser import parse_skill_file
-        from ideer.skills.types import SkillCategory
+        from deerflow.skills.parser import parse_skill_file
+        from deerflow.skills.types import SkillCategory
 
         with tempfile.TemporaryDirectory() as tmpdir:
             skill_dir = Path(tmpdir) / "my-skill"
@@ -1700,8 +1700,8 @@ class TestSkillParser:
             assert result is None
 
     def test_parse_skill_file_with_license(self):
-        from ideer.skills.parser import parse_skill_file
-        from ideer.skills.types import SkillCategory
+        from deerflow.skills.parser import parse_skill_file
+        from deerflow.skills.types import SkillCategory
 
         with tempfile.TemporaryDirectory() as tmpdir:
             skill_dir = Path(tmpdir) / "my-skill"
@@ -1713,8 +1713,8 @@ class TestSkillParser:
             assert result.license == "MIT"
 
     def test_parse_skill_file_with_allowed_tools(self):
-        from ideer.skills.parser import parse_skill_file
-        from ideer.skills.types import SkillCategory
+        from deerflow.skills.parser import parse_skill_file
+        from deerflow.skills.types import SkillCategory
 
         with tempfile.TemporaryDirectory() as tmpdir:
             skill_dir = Path(tmpdir) / "my-skill"
@@ -1726,8 +1726,8 @@ class TestSkillParser:
             assert result.allowed_tools == ["tool1"]
 
     def test_parse_skill_file_invalid_allowed_tools(self):
-        from ideer.skills.parser import parse_skill_file
-        from ideer.skills.types import SkillCategory
+        from deerflow.skills.parser import parse_skill_file
+        from deerflow.skills.types import SkillCategory
 
         with tempfile.TemporaryDirectory() as tmpdir:
             skill_dir = Path(tmpdir) / "my-skill"
@@ -1745,7 +1745,7 @@ class TestSkillParser:
 
 class TestSkillValidation:
     def test_no_skill_md(self):
-        from ideer.skills.validation import _validate_skill_frontmatter
+        from deerflow.skills.validation import _validate_skill_frontmatter
 
         with tempfile.TemporaryDirectory() as tmpdir:
             valid, msg, name = _validate_skill_frontmatter(Path(tmpdir))
@@ -1753,7 +1753,7 @@ class TestSkillValidation:
             assert "not found" in msg
 
     def test_no_frontmatter(self):
-        from ideer.skills.validation import _validate_skill_frontmatter
+        from deerflow.skills.validation import _validate_skill_frontmatter
 
         with tempfile.TemporaryDirectory() as tmpdir:
             skill_md = Path(tmpdir) / "SKILL.md"
@@ -1762,7 +1762,7 @@ class TestSkillValidation:
             assert valid is False
 
     def test_invalid_frontmatter_format(self):
-        from ideer.skills.validation import _validate_skill_frontmatter
+        from deerflow.skills.validation import _validate_skill_frontmatter
 
         with tempfile.TemporaryDirectory() as tmpdir:
             skill_md = Path(tmpdir) / "SKILL.md"
@@ -1771,7 +1771,7 @@ class TestSkillValidation:
             assert valid is False
 
     def test_invalid_yaml(self):
-        from ideer.skills.validation import _validate_skill_frontmatter
+        from deerflow.skills.validation import _validate_skill_frontmatter
 
         with tempfile.TemporaryDirectory() as tmpdir:
             skill_md = Path(tmpdir) / "SKILL.md"
@@ -1781,7 +1781,7 @@ class TestSkillValidation:
             assert "Invalid YAML" in msg
 
     def test_non_dict_frontmatter(self):
-        from ideer.skills.validation import _validate_skill_frontmatter
+        from deerflow.skills.validation import _validate_skill_frontmatter
 
         with tempfile.TemporaryDirectory() as tmpdir:
             skill_md = Path(tmpdir) / "SKILL.md"
@@ -1790,7 +1790,7 @@ class TestSkillValidation:
             assert valid is False
 
     def test_unexpected_keys(self):
-        from ideer.skills.validation import _validate_skill_frontmatter
+        from deerflow.skills.validation import _validate_skill_frontmatter
 
         with tempfile.TemporaryDirectory() as tmpdir:
             skill_md = Path(tmpdir) / "SKILL.md"
@@ -1800,7 +1800,7 @@ class TestSkillValidation:
             assert "Unexpected key" in msg
 
     def test_missing_name(self):
-        from ideer.skills.validation import _validate_skill_frontmatter
+        from deerflow.skills.validation import _validate_skill_frontmatter
 
         with tempfile.TemporaryDirectory() as tmpdir:
             skill_md = Path(tmpdir) / "SKILL.md"
@@ -1810,7 +1810,7 @@ class TestSkillValidation:
             assert "Missing 'name'" in msg
 
     def test_missing_description(self):
-        from ideer.skills.validation import _validate_skill_frontmatter
+        from deerflow.skills.validation import _validate_skill_frontmatter
 
         with tempfile.TemporaryDirectory() as tmpdir:
             skill_md = Path(tmpdir) / "SKILL.md"
@@ -1820,7 +1820,7 @@ class TestSkillValidation:
             assert "Missing 'description'" in msg
 
     def test_name_not_string(self):
-        from ideer.skills.validation import _validate_skill_frontmatter
+        from deerflow.skills.validation import _validate_skill_frontmatter
 
         with tempfile.TemporaryDirectory() as tmpdir:
             skill_md = Path(tmpdir) / "SKILL.md"
@@ -1829,7 +1829,7 @@ class TestSkillValidation:
             assert valid is False
 
     def test_name_empty(self):
-        from ideer.skills.validation import _validate_skill_frontmatter
+        from deerflow.skills.validation import _validate_skill_frontmatter
 
         with tempfile.TemporaryDirectory() as tmpdir:
             skill_md = Path(tmpdir) / "SKILL.md"
@@ -1838,7 +1838,7 @@ class TestSkillValidation:
             assert valid is False
 
     def test_name_invalid_format(self):
-        from ideer.skills.validation import _validate_skill_frontmatter
+        from deerflow.skills.validation import _validate_skill_frontmatter
 
         with tempfile.TemporaryDirectory() as tmpdir:
             skill_md = Path(tmpdir) / "SKILL.md"
@@ -1848,7 +1848,7 @@ class TestSkillValidation:
             assert "hyphen-case" in msg
 
     def test_name_starts_with_hyphen(self):
-        from ideer.skills.validation import _validate_skill_frontmatter
+        from deerflow.skills.validation import _validate_skill_frontmatter
 
         with tempfile.TemporaryDirectory() as tmpdir:
             skill_md = Path(tmpdir) / "SKILL.md"
@@ -1857,7 +1857,7 @@ class TestSkillValidation:
             assert valid is False
 
     def test_name_ends_with_hyphen(self):
-        from ideer.skills.validation import _validate_skill_frontmatter
+        from deerflow.skills.validation import _validate_skill_frontmatter
 
         with tempfile.TemporaryDirectory() as tmpdir:
             skill_md = Path(tmpdir) / "SKILL.md"
@@ -1866,7 +1866,7 @@ class TestSkillValidation:
             assert valid is False
 
     def test_name_consecutive_hyphens(self):
-        from ideer.skills.validation import _validate_skill_frontmatter
+        from deerflow.skills.validation import _validate_skill_frontmatter
 
         with tempfile.TemporaryDirectory() as tmpdir:
             skill_md = Path(tmpdir) / "SKILL.md"
@@ -1875,7 +1875,7 @@ class TestSkillValidation:
             assert valid is False
 
     def test_name_too_long(self):
-        from ideer.skills.validation import _validate_skill_frontmatter
+        from deerflow.skills.validation import _validate_skill_frontmatter
 
         with tempfile.TemporaryDirectory() as tmpdir:
             skill_md = Path(tmpdir) / "SKILL.md"
@@ -1886,7 +1886,7 @@ class TestSkillValidation:
             assert "too long" in msg
 
     def test_description_not_string(self):
-        from ideer.skills.validation import _validate_skill_frontmatter
+        from deerflow.skills.validation import _validate_skill_frontmatter
 
         with tempfile.TemporaryDirectory() as tmpdir:
             skill_md = Path(tmpdir) / "SKILL.md"
@@ -1895,7 +1895,7 @@ class TestSkillValidation:
             assert valid is False
 
     def test_description_angle_brackets(self):
-        from ideer.skills.validation import _validate_skill_frontmatter
+        from deerflow.skills.validation import _validate_skill_frontmatter
 
         with tempfile.TemporaryDirectory() as tmpdir:
             skill_md = Path(tmpdir) / "SKILL.md"
@@ -1905,7 +1905,7 @@ class TestSkillValidation:
             assert "angle brackets" in msg
 
     def test_description_too_long(self):
-        from ideer.skills.validation import _validate_skill_frontmatter
+        from deerflow.skills.validation import _validate_skill_frontmatter
 
         with tempfile.TemporaryDirectory() as tmpdir:
             skill_md = Path(tmpdir) / "SKILL.md"
@@ -1916,7 +1916,7 @@ class TestSkillValidation:
             assert "too long" in msg
 
     def test_valid_skill(self):
-        from ideer.skills.validation import _validate_skill_frontmatter
+        from deerflow.skills.validation import _validate_skill_frontmatter
 
         with tempfile.TemporaryDirectory() as tmpdir:
             skill_md = Path(tmpdir) / "SKILL.md"
@@ -1933,42 +1933,42 @@ class TestSkillValidation:
 
 class TestSkillInstaller:
     def test_is_unsafe_zip_member_absolute(self):
-        from ideer.skills.installer import is_unsafe_zip_member
+        from deerflow.skills.installer import is_unsafe_zip_member
 
         info = MagicMock()
         info.filename = "/etc/passwd"
         assert is_unsafe_zip_member(info) is True
 
     def test_is_unsafe_zip_member_traversal(self):
-        from ideer.skills.installer import is_unsafe_zip_member
+        from deerflow.skills.installer import is_unsafe_zip_member
 
         info = MagicMock()
         info.filename = "../../../etc/passwd"
         assert is_unsafe_zip_member(info) is True
 
     def test_is_unsafe_zip_member_safe(self):
-        from ideer.skills.installer import is_unsafe_zip_member
+        from deerflow.skills.installer import is_unsafe_zip_member
 
         info = MagicMock()
         info.filename = "skill/file.txt"
         assert is_unsafe_zip_member(info) is False
 
     def test_is_unsafe_zip_member_empty(self):
-        from ideer.skills.installer import is_unsafe_zip_member
+        from deerflow.skills.installer import is_unsafe_zip_member
 
         info = MagicMock()
         info.filename = ""
         assert is_unsafe_zip_member(info) is False
 
     def test_is_unsafe_zip_member_windows_absolute(self):
-        from ideer.skills.installer import is_unsafe_zip_member
+        from deerflow.skills.installer import is_unsafe_zip_member
 
         info = MagicMock()
         info.filename = "C:\\Windows\\System32\\file"
         assert is_unsafe_zip_member(info) is True
 
     def test_is_symlink_member(self):
-        from ideer.skills.installer import is_symlink_member
+        from deerflow.skills.installer import is_symlink_member
 
         info = MagicMock()
         # S_ISLNK checks mode bits, need to set the symlink type bits
@@ -1978,21 +1978,21 @@ class TestSkillInstaller:
         assert is_symlink_member(info) is True
 
     def test_is_not_symlink_member(self):
-        from ideer.skills.installer import is_symlink_member
+        from deerflow.skills.installer import is_symlink_member
 
         info = MagicMock()
         info.external_attr = 0
         assert is_symlink_member(info) is False
 
     def test_should_ignore_archive_entry(self):
-        from ideer.skills.installer import should_ignore_archive_entry
+        from deerflow.skills.installer import should_ignore_archive_entry
 
         assert should_ignore_archive_entry(Path(".DS_Store")) is True
         assert should_ignore_archive_entry(Path("__MACOSX")) is True
         assert should_ignore_archive_entry(Path("skill")) is False
 
     def test_resolve_skill_dir_single_dir(self):
-        from ideer.skills.installer import resolve_skill_dir_from_archive
+        from deerflow.skills.installer import resolve_skill_dir_from_archive
 
         with tempfile.TemporaryDirectory() as tmpdir:
             skill_dir = Path(tmpdir) / "my-skill"
@@ -2002,7 +2002,7 @@ class TestSkillInstaller:
             assert result == skill_dir
 
     def test_resolve_skill_dir_multiple_items(self):
-        from ideer.skills.installer import resolve_skill_dir_from_archive
+        from deerflow.skills.installer import resolve_skill_dir_from_archive
 
         with tempfile.TemporaryDirectory() as tmpdir:
             (Path(tmpdir) / "file1.txt").write_text("test")
@@ -2011,14 +2011,14 @@ class TestSkillInstaller:
             assert result == Path(tmpdir)
 
     def test_resolve_skill_dir_empty(self):
-        from ideer.skills.installer import resolve_skill_dir_from_archive
+        from deerflow.skills.installer import resolve_skill_dir_from_archive
 
         with tempfile.TemporaryDirectory() as tmpdir:
             with pytest.raises(ValueError, match="empty"):
                 resolve_skill_dir_from_archive(Path(tmpdir))
 
     def test_resolve_skill_dir_filters_macosx(self):
-        from ideer.skills.installer import resolve_skill_dir_from_archive
+        from deerflow.skills.installer import resolve_skill_dir_from_archive
 
         with tempfile.TemporaryDirectory() as tmpdir:
             (Path(tmpdir) / "__MACOSX").mkdir()
@@ -2029,7 +2029,7 @@ class TestSkillInstaller:
             assert result == skill_dir
 
     def test_safe_extract_skill_archive_unsafe_member(self):
-        from ideer.skills.installer import safe_extract_skill_archive
+        from deerflow.skills.installer import safe_extract_skill_archive
 
         with tempfile.TemporaryDirectory() as tmpdir:
             zip_path = Path(tmpdir) / "test.zip"
@@ -2040,7 +2040,7 @@ class TestSkillInstaller:
                     safe_extract_skill_archive(zf, Path(tmpdir) / "dest")
 
     def test_safe_extract_skill_archive_size_limit(self):
-        from ideer.skills.installer import safe_extract_skill_archive
+        from deerflow.skills.installer import safe_extract_skill_archive
 
         with tempfile.TemporaryDirectory() as tmpdir:
             zip_path = Path(tmpdir) / "test.zip"
@@ -2052,7 +2052,7 @@ class TestSkillInstaller:
 
     def test_safe_extract_skill_archive_symlink_skipped(self):
         """Verify that symlink entries are skipped during extraction."""
-        from ideer.skills.installer import safe_extract_skill_archive
+        from deerflow.skills.installer import safe_extract_skill_archive
 
         with tempfile.TemporaryDirectory() as tmpdir:
             zip_path = Path(tmpdir) / "test.zip"
@@ -2202,7 +2202,7 @@ class TestFileConversion:
 
 class TestReadability:
     def test_article_to_markdown(self):
-        from ideer.utils.readability import Article
+        from deerflow.utils.readability import Article
 
         article = Article(title="Test Title", html_content="<p>Hello world</p>")
         md = article.to_markdown()
@@ -2210,7 +2210,7 @@ class TestReadability:
         assert "Hello world" in md
 
     def test_article_to_markdown_no_title(self):
-        from ideer.utils.readability import Article
+        from deerflow.utils.readability import Article
 
         article = Article(title="Test", html_content="<p>Content</p>")
         md = article.to_markdown(including_title=False)
@@ -2218,21 +2218,21 @@ class TestReadability:
         assert "Content" in md
 
     def test_article_to_markdown_empty_content(self):
-        from ideer.utils.readability import Article
+        from deerflow.utils.readability import Article
 
         article = Article(title="Test", html_content="")
         md = article.to_markdown()
         assert "No content available" in md
 
     def test_article_to_markdown_none_content(self):
-        from ideer.utils.readability import Article
+        from deerflow.utils.readability import Article
 
         article = Article(title="Test", html_content=None)
         md = article.to_markdown()
         assert "No content available" in md
 
     def test_article_to_message(self):
-        from ideer.utils.readability import Article
+        from deerflow.utils.readability import Article
 
         article = Article(title="Test", html_content="<p>Hello</p>")
         article.url = "http://example.com"
@@ -2241,7 +2241,7 @@ class TestReadability:
         assert len(msg) > 0
 
     def test_article_to_message_with_images(self):
-        from ideer.utils.readability import Article
+        from deerflow.utils.readability import Article
 
         article = Article(title="Test", html_content='<p>Text</p><img src="image.png"><p>More</p>')
         article.url = "http://example.com"
@@ -2249,7 +2249,7 @@ class TestReadability:
         assert isinstance(msg, list)
 
     def test_article_to_message_empty(self):
-        from ideer.utils.readability import Article
+        from deerflow.utils.readability import Article
 
         article = Article(title="Test", html_content="")
         article.url = "http://example.com"
@@ -2258,7 +2258,7 @@ class TestReadability:
         assert msg[0]["type"] == "text"
 
     def test_readability_extractor(self):
-        from ideer.utils.readability import ReadabilityExtractor
+        from deerflow.utils.readability import ReadabilityExtractor
 
         extractor = ReadabilityExtractor()
         article = extractor.extract_article("<html><head><title>Test</title></head><body><p>Hello world</p></body></html>")
@@ -2266,7 +2266,7 @@ class TestReadability:
         assert article.html_content is not None
 
     def test_readability_extractor_empty(self):
-        from ideer.utils.readability import ReadabilityExtractor
+        from deerflow.utils.readability import ReadabilityExtractor
 
         extractor = ReadabilityExtractor()
         article = extractor.extract_article("<html><body></body></html>")

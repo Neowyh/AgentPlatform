@@ -1,6 +1,6 @@
 """Restrict workflow subagent filesystem tools to declared roots.
 
-Migrated from ``ideer.agents.middlewares.filesystem_scope_middleware`` (P7):
+Migrated from ``app.agentplatform.workflows.v2.filesystem_scope`` (P7):
 deerflow has no workflow file-access concept, so this enterprise guard lives
 with the workflow runtime. The behavior is unchanged; the workflow executor
 bridge appends it during agent assembly.

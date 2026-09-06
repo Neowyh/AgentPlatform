@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from ideer.config.paths import Paths
+from deerflow.config.paths import Paths
 
 
 @pytest.fixture
@@ -42,16 +42,12 @@ class TestUserMemoryFile:
 
 class TestUserAgentMemoryFile:
     def test_user_agent_memory_file(self, paths: Paths):
-        expected = paths.base_dir / "users" / "bob" / "agent-memory" / "myagent" / "memory.json"
+        expected = paths.base_dir / "users" / "bob" / "agents" / "myagent" / "memory.json"
         assert paths.user_agent_memory_file("bob", "myagent") == expected
 
     def test_user_agent_memory_file_lowercases_name(self, paths: Paths):
-        expected = paths.base_dir / "users" / "bob" / "agent-memory" / "myagent" / "memory.json"
-        assert paths.user_agent_memory_file("bob", "MyAgent") == expected
-
-    def test_legacy_user_agent_memory_file(self, paths: Paths):
         expected = paths.base_dir / "users" / "bob" / "agents" / "myagent" / "memory.json"
-        assert paths.legacy_user_agent_memory_file("bob", "MyAgent") == expected
+        assert paths.user_agent_memory_file("bob", "MyAgent") == expected
 
 
 class TestUserAgentDir:

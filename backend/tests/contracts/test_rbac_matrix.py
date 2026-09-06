@@ -25,6 +25,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import IntegrityError, OperationalError, ProgrammingError
 
+from app.agentplatform.rbac_models import UserRole
 from app.gateway.authz import (
     AuthContext,
     Permissions,
@@ -35,7 +36,6 @@ from app.gateway.authz import (
     require_role,
 )
 from app.gateway.routers.admin import router as admin_router
-from ideer.persistence.models.user import UserRole
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -266,7 +266,7 @@ class TestRoleOperationMatrix:
                 new_callable=AsyncMock,
                 return_value=auth_user,
             ),
-            patch("ideer.persistence.engine.get_session_factory", return_value=mock_sf),
+            patch("deerflow.persistence.engine.get_session_factory", return_value=mock_sf),
         ):
             req = MagicMock()
             req.state = type("S", (), {})()
@@ -853,7 +853,7 @@ class TestFailClosedBehavior:
                 new_callable=AsyncMock,
                 return_value=user,
             ),
-            patch("ideer.persistence.engine.get_session_factory", return_value=mock_sf),
+            patch("deerflow.persistence.engine.get_session_factory", return_value=mock_sf),
         ):
             with pytest.raises(HTTPException) as exc_info:
                 await _authenticate(MagicMock(spec=type("R", (), {"state": type("S", (), {})()})))
@@ -874,7 +874,7 @@ class TestFailClosedBehavior:
                 new_callable=AsyncMock,
                 return_value=user,
             ),
-            patch("ideer.persistence.engine.get_session_factory", return_value=None),
+            patch("deerflow.persistence.engine.get_session_factory", return_value=None),
         ):
             req = MagicMock()
             req.state = type("S", (), {})()
@@ -898,7 +898,7 @@ class TestFailClosedBehavior:
                 new_callable=AsyncMock,
                 return_value=user,
             ),
-            patch("ideer.persistence.engine.get_session_factory", return_value=mock_sf),
+            patch("deerflow.persistence.engine.get_session_factory", return_value=mock_sf),
         ):
             req = MagicMock()
             req.state = type("S", (), {})()
@@ -922,7 +922,7 @@ class TestFailClosedBehavior:
                 new_callable=AsyncMock,
                 return_value=user,
             ),
-            patch("ideer.persistence.engine.get_session_factory", return_value=mock_sf),
+            patch("deerflow.persistence.engine.get_session_factory", return_value=mock_sf),
         ):
             req = MagicMock()
             req.state = type("S", (), {})()
@@ -960,7 +960,7 @@ class TestUnprovisionedAuthenticatedUser:
 
         mock_sf = MagicMock(return_value=mock_session)
 
-        with patch("ideer.persistence.engine.get_session_factory", return_value=mock_sf):
+        with patch("deerflow.persistence.engine.get_session_factory", return_value=mock_sf):
             with pytest.raises(HTTPException) as exc_info:
                 await get_current_rbac_user(req)
         assert exc_info.value.status_code == 403
@@ -985,7 +985,7 @@ class TestUnprovisionedAuthenticatedUser:
 
         mock_sf = MagicMock(return_value=mock_session)
 
-        with patch("ideer.persistence.engine.get_session_factory", return_value=mock_sf):
+        with patch("deerflow.persistence.engine.get_session_factory", return_value=mock_sf):
             with pytest.raises(HTTPException) as exc_info:
                 await get_current_rbac_user(req)
         assert exc_info.value.status_code == 403
@@ -1010,7 +1010,7 @@ class TestUnprovisionedAuthenticatedUser:
 
         mock_sf = MagicMock(return_value=mock_session)
 
-        with patch("ideer.persistence.engine.get_session_factory", return_value=mock_sf):
+        with patch("deerflow.persistence.engine.get_session_factory", return_value=mock_sf):
             result = await get_current_rbac_user(req)
 
         assert result is existing_user
@@ -1036,7 +1036,7 @@ class TestUnprovisionedAuthenticatedUser:
 
         mock_sf = MagicMock(return_value=mock_session)
 
-        with patch("ideer.persistence.engine.get_session_factory", return_value=mock_sf):
+        with patch("deerflow.persistence.engine.get_session_factory", return_value=mock_sf):
             with pytest.raises(HTTPException) as exc_info:
                 await get_current_rbac_user(req)
         assert exc_info.value.status_code == 403
@@ -1137,7 +1137,7 @@ class TestUnprovisionedUserRaceSafety:
 
         mock_sf = MagicMock(return_value=mock_session)
 
-        with patch("ideer.persistence.engine.get_session_factory", return_value=mock_sf):
+        with patch("deerflow.persistence.engine.get_session_factory", return_value=mock_sf):
             with pytest.raises(HTTPException) as exc_info:
                 await get_current_rbac_user(req)
         assert exc_info.value.status_code == 403
@@ -1178,7 +1178,7 @@ class TestUnprovisionedUserRaceSafety:
 
         mock_sf = MagicMock(return_value=mock_session)
 
-        with patch("ideer.persistence.engine.get_session_factory", return_value=mock_sf):
+        with patch("deerflow.persistence.engine.get_session_factory", return_value=mock_sf):
             with pytest.raises(HTTPException) as exc_info:
                 await get_current_rbac_user(req)
         assert exc_info.value.status_code == 403
@@ -1251,7 +1251,7 @@ class TestUnprovisionedUserRaceSafety:
 
         mock_sf = MagicMock(side_effect=sf_factory)
 
-        with patch("ideer.persistence.engine.get_session_factory", return_value=mock_sf):
+        with patch("deerflow.persistence.engine.get_session_factory", return_value=mock_sf):
             with pytest.raises(HTTPException) as exc_info:
                 await get_current_rbac_user(req)
         assert exc_info.value.status_code == 403
@@ -1294,7 +1294,7 @@ class TestUnprovisionedUserRaceSafety:
 
         mock_sf = MagicMock(return_value=mock_session)
 
-        with patch("ideer.persistence.engine.get_session_factory", return_value=mock_sf):
+        with patch("deerflow.persistence.engine.get_session_factory", return_value=mock_sf):
             with pytest.raises(HTTPException) as exc_info:
                 await get_current_rbac_user(req)
         assert exc_info.value.status_code == 403
@@ -1342,7 +1342,7 @@ class TestUnprovisionedUserRaceSafety:
 
         mock_sf = MagicMock(return_value=mock_session)
 
-        with patch("ideer.persistence.engine.get_session_factory", return_value=mock_sf):
+        with patch("deerflow.persistence.engine.get_session_factory", return_value=mock_sf):
             with pytest.raises(HTTPException) as exc_info:
                 await get_current_rbac_user(req)
         assert exc_info.value.status_code == 403
@@ -1389,7 +1389,7 @@ class TestUnprovisionedUserRaceSafety:
 
         mock_sf = MagicMock(return_value=mock_session)
 
-        with patch("ideer.persistence.engine.get_session_factory", return_value=mock_sf):
+        with patch("deerflow.persistence.engine.get_session_factory", return_value=mock_sf):
             with pytest.raises(HTTPException) as exc_info:
                 await get_current_rbac_user(req)
         assert exc_info.value.status_code == 403
@@ -1423,7 +1423,7 @@ class TestInvalidRoleHandling:
 
         mock_sf = MagicMock(return_value=mock_session)
 
-        with patch("ideer.persistence.engine.get_session_factory", return_value=mock_sf):
+        with patch("deerflow.persistence.engine.get_session_factory", return_value=mock_sf):
             result = await get_current_rbac_user(req)
 
         assert result.role == UserRole.VIEWER
@@ -1456,7 +1456,7 @@ class TestInvalidRoleHandling:
                 new_callable=AsyncMock,
                 return_value=user,
             ),
-            patch("ideer.persistence.engine.get_session_factory", return_value=mock_sf),
+            patch("deerflow.persistence.engine.get_session_factory", return_value=mock_sf),
         ):
             req = MagicMock()
             req.state = type("S", (), {})()
@@ -1580,7 +1580,7 @@ class TestGetCurrentRbacUserEdgeCases:
         req = MagicMock()
         req.state = type("S", (), {"user": user})()
 
-        with patch("ideer.persistence.engine.get_session_factory", return_value=None):
+        with patch("deerflow.persistence.engine.get_session_factory", return_value=None):
             with pytest.raises(HTTPException) as exc_info:
                 await get_current_rbac_user(req)
         assert exc_info.value.status_code == 500

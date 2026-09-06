@@ -1105,7 +1105,7 @@ class TestCustomMountResolution:
         host_dir = tmp_path / "eval-host"
         host_dir.mkdir()
         mounts = [SimpleNamespace(host_path=str(host_dir), container_path="/mnt/eval-case", read_only=True)]
-        import ideer.sandbox.tools as sandbox_tools
+        import deerflow.sandbox.tools as sandbox_tools
 
         monkeypatch.setattr(sandbox_tools, "_get_custom_mounts", lambda mounts=mounts: mounts)
         yield host_dir
@@ -1145,7 +1145,7 @@ class TestCustomMountResolution:
     async def test_invisible_mount_gets_deployment_hint(self, tmp_path: Path):
         """A declared mount whose host_path is invisible to this process gets an
         actionable error instead of the generic whitelist message."""
-        from ideer.config import get_app_config as _real  # noqa: F401
+        from deerflow.config import get_app_config as _real  # noqa: F401
 
         fake_config = SimpleNamespace(
             sandbox=SimpleNamespace(
@@ -1161,11 +1161,11 @@ class TestCustomMountResolution:
         # Ensure the shared cache does not know this mount either.
         with (
             patch(
-                "ideer.sandbox.tools._get_custom_mounts",
+                "deerflow.sandbox.tools._get_custom_mounts",
                 return_value=[],
             ),
             patch(
-                "ideer.config.get_app_config",
+                "deerflow.config.get_app_config",
                 return_value=fake_config,
             ),
         ):
@@ -1184,7 +1184,7 @@ class TestCustomMountResolution:
             SimpleNamespace(host_path=str(parent_host), container_path="/mnt/data", read_only=True),
             SimpleNamespace(host_path=str(child_host), container_path="/mnt/data/sub", read_only=True),
         ]
-        import ideer.sandbox.tools as sandbox_tools
+        import deerflow.sandbox.tools as sandbox_tools
 
         monkeypatch.setattr(sandbox_tools, "_get_custom_mounts", lambda mounts=mounts: mounts)
         resolved_child = _resolve_mounted_path("/mnt/data/sub/a.pdf")
@@ -1218,7 +1218,7 @@ class TestMcpServerMountWhitelist:
         md_path = tmp_path / "report.md"
         md_path.write_text("# 经由 MCP 包装读取", encoding="utf-8")
         mounts = [SimpleNamespace(host_path=str(host_dir), container_path="/mnt/mcp-case", read_only=True)]
-        import ideer.sandbox.tools as sandbox_tools
+        import deerflow.sandbox.tools as sandbox_tools
 
         monkeypatch.setattr(sandbox_tools, "_get_custom_mounts", lambda mounts=mounts: mounts)
         with (
@@ -1251,8 +1251,8 @@ class TestCommunityMcpServersSmoke:
         ("module_name", "expected_tool"),
         [
             ("app.agentplatform.community.doc_reader.mcp_server", "read_document"),
-            ("ideer.community.data_analyzer.mcp_server", "data_analyzer"),
-            ("ideer.community.code_interpreter.mcp_server", "code_interpreter"),
+            ("app.agentplatform.community.data_analyzer.mcp_server", "data_analyzer"),
+            ("app.agentplatform.community.code_interpreter.mcp_server", "code_interpreter"),
         ],
     )
     def test_server_boots_with_expected_tool(self, module_name: str, expected_tool: str):

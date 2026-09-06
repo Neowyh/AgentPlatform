@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from ideer.persistence.thread_meta.memory import MemoryThreadMetaStore
+from deerflow.persistence.thread_meta.memory import SEARCH_PAGE_SIZE, MemoryThreadMetaStore
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -62,7 +62,7 @@ async def test_search_with_status_filter():
     store.asearch.assert_awaited_once_with(
         ("threads",),
         filter={"status": "active", "user_id": "u-1"},
-        limit=100,
+        limit=SEARCH_PAGE_SIZE,
         offset=0,
     )
 
@@ -226,10 +226,12 @@ async def test_search_with_metadata_and_status_filters():
     result = await mts.search(metadata={"category": "work"}, status="active", user_id="u-1")
 
     assert result == []
+    # Metadata filters are applied in Python after materializing matches,
+    # so only status/user_id reach the backend search.
     store.asearch.assert_awaited_once_with(
         ("threads",),
-        filter={"category": "work", "status": "active", "user_id": "u-1"},
-        limit=100,
+        filter={"status": "active", "user_id": "u-1"},
+        limit=SEARCH_PAGE_SIZE,
         offset=0,
     )
 
@@ -247,7 +249,7 @@ async def test_search_no_filters_user_id_none():
     store.asearch.assert_awaited_once_with(
         ("threads",),
         filter=None,
-        limit=100,
+        limit=SEARCH_PAGE_SIZE,
         offset=0,
     )
 
@@ -290,20 +292,20 @@ async def test_update_status_record_not_found():
 
 @pytest.mark.asyncio
 async def test_search_with_limit_and_offset():
-    """search passes limit and offset through to store."""
+    """search materializes backend pages, then slices client-side by limit/offset."""
     store = AsyncMock()
-    item1 = _make_item("t-1", {"user_id": "u-1", "status": "idle"})
-    store.asearch.return_value = [item1]
+    items = [_make_item(f"t-{i}", {"user_id": "u-1", "status": "idle"}) for i in range(7)]
+    store.asearch.return_value = items
 
     mts = MemoryThreadMetaStore(store)
     result = await mts.search(limit=10, offset=5, user_id="u-1")
 
-    assert len(result) == 1
+    assert len(result) == 2
     store.asearch.assert_awaited_once_with(
         ("threads",),
         filter={"user_id": "u-1"},
-        limit=10,
-        offset=5,
+        limit=SEARCH_PAGE_SIZE,
+        offset=0,
     )
 
 

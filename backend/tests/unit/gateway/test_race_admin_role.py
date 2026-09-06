@@ -12,9 +12,9 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from app.agentplatform.rbac_models import UserModel, UserRole
 from app.gateway.routers.admin import UpdateRoleRequest, update_user_role
-from ideer.persistence.base import Base
-from ideer.persistence.models.user import UserModel, UserRole
+from deerflow.persistence.base import Base
 
 
 @pytest.mark.asyncio

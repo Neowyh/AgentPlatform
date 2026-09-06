@@ -25,7 +25,7 @@ import pytest
 
 def _reset_engine_module():
     """Reset the module-level singletons in engine.py."""
-    import ideer.persistence.engine as mod
+    import deerflow.persistence.engine as mod
 
     mod._engine = None
     mod._session_factory = None
@@ -39,14 +39,14 @@ def _reset_engine_module():
 
 class TestJsonSerializer:
     def test_returns_json_string(self):
-        from ideer.persistence.engine import _json_serializer
+        from deerflow.persistence.engine import _json_serializer
 
         result = _json_serializer({"key": "value"})
         assert isinstance(result, str)
         assert json.loads(result) == {"key": "value"}
 
     def test_chinese_characters_preserved(self):
-        from ideer.persistence.engine import _json_serializer
+        from deerflow.persistence.engine import _json_serializer
 
         result = _json_serializer({"name": "你好世界"})
         assert "你好世界" in result
@@ -54,14 +54,14 @@ class TestJsonSerializer:
         assert "\\u" not in result
 
     def test_nested_structure(self):
-        from ideer.persistence.engine import _json_serializer
+        from deerflow.persistence.engine import _json_serializer
 
         data = {"a": [1, 2, {"b": "中文"}]}
         result = _json_serializer(data)
         assert json.loads(result) == data
 
     def test_list_input(self):
-        from ideer.persistence.engine import _json_serializer
+        from deerflow.persistence.engine import _json_serializer
 
         result = _json_serializer([1, "two", 3.0])
         assert json.loads(result) == [1, "two", 3.0]
@@ -69,135 +69,6 @@ class TestJsonSerializer:
 
 # ---------------------------------------------------------------------------
 # _stamp_alembic_head
-# ---------------------------------------------------------------------------
-
-
-class TestStampAlembicHead:
-    @pytest.mark.asyncio
-    async def test_stamps_head_revision_successfully(self, tmp_path):
-        """Normal case: finds head revision and stamps it."""
-        import ideer.persistence.engine as engine_mod
-        from ideer.persistence.engine import _stamp_alembic_head
-
-        # Create a fake persistence directory structure
-        persistence_dir = tmp_path / "persistence"
-        versions_dir = persistence_dir / "migrations" / "versions"
-        versions_dir.mkdir(parents=True)
-
-        # Migration A: base (no down_revision)
-        (versions_dir / "001_initial.py").write_text('revision: str = "abc123"\ndown_revision: str | None = None\n')
-        # Migration B: depends on A
-        (versions_dir / "002_add_users.py").write_text('revision: str = "def456"\ndown_revision: str | None = "abc123"\n')
-
-        conn = AsyncMock()
-
-        # Patch __file__ so the function computes the right directory
-        original_file = engine_mod.__file__
-        engine_mod.__file__ = str(persistence_dir / "engine.py")
-        try:
-            await _stamp_alembic_head(conn, "sqlite")
-        finally:
-            engine_mod.__file__ = original_file
-
-        conn.execute.assert_called()
-        calls = conn.execute.call_args_list
-        insert_call = calls[-1]
-        assert "def456" in str(insert_call)
-
-    @pytest.mark.asyncio
-    async def test_skips_when_versions_dir_missing(self, tmp_path):
-        """No versions directory -> skip stamp."""
-        import ideer.persistence.engine as engine_mod
-        from ideer.persistence.engine import _stamp_alembic_head
-
-        conn = AsyncMock()
-
-        original_file = engine_mod.__file__
-        engine_mod.__file__ = str(tmp_path / "engine.py")
-        try:
-            await _stamp_alembic_head(conn, "sqlite")
-        finally:
-            engine_mod.__file__ = original_file
-
-        conn.execute.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_skips_when_no_head_found(self, tmp_path):
-        """All revisions are also down_revisions -> no head."""
-        import ideer.persistence.engine as engine_mod
-        from ideer.persistence.engine import _stamp_alembic_head
-
-        persistence_dir = tmp_path / "persistence"
-        versions_dir = persistence_dir / "migrations" / "versions"
-        versions_dir.mkdir(parents=True)
-
-        # Both revisions appear as down_revision of another (circular)
-        (versions_dir / "m1.py").write_text('revision: str = "aaa"\ndown_revision: str | None = "bbb"\n')
-        (versions_dir / "m2.py").write_text('revision: str = "bbb"\ndown_revision: str | None = "aaa"\n')
-
-        conn = AsyncMock()
-
-        original_file = engine_mod.__file__
-        engine_mod.__file__ = str(persistence_dir / "engine.py")
-        try:
-            await _stamp_alembic_head(conn, "sqlite")
-        finally:
-            engine_mod.__file__ = original_file
-
-        conn.execute.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_skips_non_py_files(self, tmp_path):
-        """Non-.py files and __init__.py are skipped."""
-        import ideer.persistence.engine as engine_mod
-        from ideer.persistence.engine import _stamp_alembic_head
-
-        persistence_dir = tmp_path / "persistence"
-        versions_dir = persistence_dir / "migrations" / "versions"
-        versions_dir.mkdir(parents=True)
-
-        # Only non-migration files
-        (versions_dir / "__init__.py").write_text("")
-        (versions_dir / "readme.txt").write_text("docs")
-        (versions_dir / "001_ok.py").write_text('revision: str = "head1"\ndown_revision: str | None = None\n')
-
-        conn = AsyncMock()
-
-        original_file = engine_mod.__file__
-        engine_mod.__file__ = str(persistence_dir / "engine.py")
-        try:
-            await _stamp_alembic_head(conn, "sqlite")
-        finally:
-            engine_mod.__file__ = original_file
-
-        conn.execute.assert_called()
-
-    @pytest.mark.asyncio
-    async def test_handles_exception_gracefully(self, tmp_path):
-        """Exceptions during stamp are caught and logged."""
-        import ideer.persistence.engine as engine_mod
-        from ideer.persistence.engine import _stamp_alembic_head
-
-        persistence_dir = tmp_path / "persistence"
-        versions_dir = persistence_dir / "migrations" / "versions"
-        versions_dir.mkdir(parents=True)
-
-        (versions_dir / "001.py").write_text('revision: str = "abc"\ndown_revision: str | None = None\n')
-
-        conn = AsyncMock()
-        conn.execute.side_effect = RuntimeError("db error")
-
-        original_file = engine_mod.__file__
-        engine_mod.__file__ = str(persistence_dir / "engine.py")
-        try:
-            # Should not raise
-            await _stamp_alembic_head(conn, "sqlite")
-        finally:
-            engine_mod.__file__ = original_file
-
-
-# ---------------------------------------------------------------------------
-# _auto_create_postgres_db
 # ---------------------------------------------------------------------------
 
 
@@ -227,7 +98,7 @@ class AsyncContextManagerForBegin(AsyncMock):
 class TestAutoCreatePostgresDb:
     @pytest.mark.asyncio
     async def test_creates_database(self):
-        from ideer.persistence.engine import _auto_create_postgres_db
+        from deerflow.persistence.engine import _auto_create_postgres_db
 
         mock_conn = AsyncMock()
         mock_engine = MagicMock()
@@ -239,7 +110,7 @@ class TestAutoCreatePostgresDb:
         mock_parsed.set.return_value = "postgresql:///postgres"
 
         with (
-            patch("ideer.persistence.engine.create_async_engine", return_value=mock_engine),
+            patch("deerflow.persistence.engine.create_async_engine", return_value=mock_engine),
             patch("sqlalchemy.engine.url.make_url", return_value=mock_parsed),
         ):
             await _auto_create_postgres_db("postgresql:///myapp")
@@ -249,7 +120,7 @@ class TestAutoCreatePostgresDb:
 
     @pytest.mark.asyncio
     async def test_raises_when_no_database_name(self):
-        from ideer.persistence.engine import _auto_create_postgres_db
+        from deerflow.persistence.engine import _auto_create_postgres_db
 
         mock_parsed = MagicMock()
         mock_parsed.database = None
@@ -259,8 +130,9 @@ class TestAutoCreatePostgresDb:
                 await _auto_create_postgres_db("postgresql:///")
 
     @pytest.mark.asyncio
-    async def test_escapes_quotes_in_db_name(self):
-        from ideer.persistence.engine import _auto_create_postgres_db
+    async def test_interpolates_db_name_verbatim(self):
+        """Upstream wraps the db name in a quoted identifier without escaping."""
+        from deerflow.persistence.engine import _auto_create_postgres_db
 
         mock_conn = AsyncMock()
         mock_engine = MagicMock()
@@ -272,15 +144,14 @@ class TestAutoCreatePostgresDb:
         mock_parsed.set.return_value = "postgresql:///postgres"
 
         with (
-            patch("ideer.persistence.engine.create_async_engine", return_value=mock_engine),
+            patch("deerflow.persistence.engine.create_async_engine", return_value=mock_engine),
             patch("sqlalchemy.engine.url.make_url", return_value=mock_parsed),
         ):
             await _auto_create_postgres_db("postgresql:///my%22db")
 
-        # The SQL should have escaped quotes
         call_args = mock_conn.execute.call_args
         sql_text = str(call_args[0][0])
-        assert 'my""db' in sql_text
+        assert sql_text == 'CREATE DATABASE "my"db"'
 
 
 # ---------------------------------------------------------------------------
@@ -323,8 +194,7 @@ class TestInitEngine:
         db_path = tmp_path / "test.db"
         url = f"sqlite+aiosqlite:///{db_path}"
 
-        with patch("ideer.persistence.engine._stamp_alembic_head"):
-            await mod.init_engine("sqlite", url=url, sqlite_dir=str(tmp_path))
+        await mod.init_engine("sqlite", url=url, sqlite_dir=str(tmp_path))
 
         assert mod._engine is not None
         assert mod._session_factory is not None
@@ -340,8 +210,7 @@ class TestInitEngine:
         db_path = tmp_path / "test.db"
         url = f"sqlite+aiosqlite:///{db_path}"
 
-        with patch("ideer.persistence.engine._stamp_alembic_head"):
-            await mod.init_engine("sqlite", url=url, sqlite_dir=str(tmp_path))
+        await mod.init_engine("sqlite", url=url, sqlite_dir=str(tmp_path))
 
         factory = mod.get_session_factory()
         assert factory is not None
@@ -369,10 +238,10 @@ class TestInitEngine:
 
         with (
             patch.dict("sys.modules", {"asyncpg": MagicMock()}),
-            patch("ideer.persistence.engine.create_async_engine", return_value=mock_engine),
-            patch("ideer.persistence.engine.async_sessionmaker", return_value=mock_session_factory),
-            patch("ideer.persistence.base.Base") as mock_base,
-            patch("ideer.persistence.engine._stamp_alembic_head"),
+            patch("deerflow.persistence.engine.create_async_engine", return_value=mock_engine),
+            patch("deerflow.persistence.engine.async_sessionmaker", return_value=mock_session_factory),
+            patch("deerflow.persistence.base.Base") as mock_base,
+            patch("deerflow.persistence.bootstrap.bootstrap_schema", new_callable=AsyncMock),
         ):
             mock_base.metadata = MagicMock()
 
@@ -409,19 +278,28 @@ class TestInitEngine:
         mock_engine.begin.return_value = _FailingBegin()
         mock_engine.dispose = AsyncMock()
 
+        bootstrap_calls = 0
+
+        async def _bootstrap(engine, *, backend, postgres_schema=""):
+            nonlocal bootstrap_calls
+            bootstrap_calls += 1
+            if bootstrap_calls == 1:
+                raise RuntimeError('database "mydb" does not exist')
+
         with (
             patch.dict("sys.modules", {"asyncpg": MagicMock()}),
-            patch("ideer.persistence.engine.create_async_engine", return_value=mock_engine),
-            patch("ideer.persistence.engine.async_sessionmaker", return_value=mock_session_factory),
-            patch("ideer.persistence.base.Base") as mock_base,
-            patch("ideer.persistence.engine._auto_create_postgres_db") as mock_auto_create,
-            patch("ideer.persistence.engine._stamp_alembic_head"),
+            patch("deerflow.persistence.engine.create_async_engine", return_value=mock_engine),
+            patch("deerflow.persistence.engine.async_sessionmaker", return_value=mock_session_factory),
+            patch("deerflow.persistence.base.Base") as mock_base,
+            patch("deerflow.persistence.bootstrap.bootstrap_schema", side_effect=_bootstrap),
+            patch("deerflow.persistence.engine._auto_create_postgres_db") as mock_auto_create,
         ):
             mock_base.metadata = MagicMock()
 
             await mod.init_engine("postgres", url="postgresql:///mydb")
 
         mock_auto_create.assert_awaited_once()
+        assert bootstrap_calls == 2
 
     @pytest.mark.asyncio
     async def test_postgres_reraises_unrelated_errors(self):
@@ -435,9 +313,11 @@ class TestInitEngine:
 
         with (
             patch.dict("sys.modules", {"asyncpg": MagicMock()}),
-            patch("ideer.persistence.engine.create_async_engine", return_value=mock_engine),
-            patch("ideer.persistence.engine.async_sessionmaker"),
-            patch("ideer.persistence.base.Base"),
+            patch("deerflow.persistence.engine.create_async_engine", return_value=mock_engine),
+            patch("deerflow.persistence.engine.async_sessionmaker"),
+            patch("deerflow.persistence.base.Base"),
+            # Upstream raises from inside bootstrap_schema; the engine re-raises.
+            patch("deerflow.persistence.bootstrap.bootstrap_schema", side_effect=RuntimeError("connection refused")),
         ):
             with pytest.raises(RuntimeError, match="connection refused"):
                 await mod.init_engine("postgres", url="postgresql:///test")
@@ -451,8 +331,7 @@ class TestInitEngine:
         url = f"sqlite+aiosqlite:///{db_path}"
 
         # First init to create tables
-        with patch("ideer.persistence.engine._stamp_alembic_head"):
-            await mod.init_engine("sqlite", url=url, sqlite_dir=str(tmp_path))
+        await mod.init_engine("sqlite", url=url, sqlite_dir=str(tmp_path))
 
         # Create the alembic_version table manually
         from sqlalchemy import text
@@ -465,11 +344,12 @@ class TestInitEngine:
         mod._engine = None
         mod._session_factory = None
 
-        # Second init should detect alembic_version and skip create_all
-        with patch("ideer.persistence.engine._stamp_alembic_head") as mock_stamp:
+        # Second init should detect alembic_version and skip create_all.
+        # Upstream delegates schema bootstrap to deerflow.persistence.bootstrap.
+        with patch("deerflow.persistence.bootstrap.bootstrap_schema", new_callable=AsyncMock) as mock_bootstrap:
             await mod.init_engine("sqlite", url=url, sqlite_dir=str(tmp_path))
 
-        mock_stamp.assert_not_awaited()
+        mock_bootstrap.assert_awaited_once()
         await mod.close_engine()
 
     @pytest.mark.asyncio
@@ -481,18 +361,18 @@ class TestInitEngine:
         url = f"sqlite+aiosqlite:///{db_path}"
 
         # First init to create tables
-        with patch("ideer.persistence.engine._stamp_alembic_head"):
-            await mod.init_engine("sqlite", url=url, sqlite_dir=str(tmp_path))
+        await mod.init_engine("sqlite", url=url, sqlite_dir=str(tmp_path))
 
         await mod.close_engine()
         mod._engine = None
         mod._session_factory = None
 
-        # Second init: tables exist but no alembic_version -> stamp
-        with patch("ideer.persistence.engine._stamp_alembic_head") as mock_stamp:
+        # Second init: tables exist but no alembic_version -> bootstrap still
+        # owns the stamp/upgrade decision (upstream engine no longer stamps).
+        with patch("deerflow.persistence.bootstrap.bootstrap_schema", new_callable=AsyncMock) as mock_bootstrap:
             await mod.init_engine("sqlite", url=url, sqlite_dir=str(tmp_path))
 
-        mock_stamp.assert_awaited_once()
+        mock_bootstrap.assert_awaited_once()
         await mod.close_engine()
 
     @pytest.mark.asyncio
@@ -504,8 +384,7 @@ class TestInitEngine:
         url = f"sqlite+aiosqlite:///{db_path}"
 
         with (
-            patch("ideer.persistence.engine._stamp_alembic_head"),
-            patch.dict("sys.modules", {"ideer.persistence.models": None}),
+            patch.dict("sys.modules", {"deerflow.persistence.models": None}),
         ):
             # Should not raise despite import error
             await mod.init_engine("sqlite", url=url, sqlite_dir=str(tmp_path))
@@ -523,28 +402,31 @@ class TestInitEngine:
 class TestInitEngineFromConfig:
     @pytest.mark.asyncio
     async def test_memory_config(self):
-        from ideer.persistence.engine import init_engine_from_config
+        from deerflow.persistence.engine import init_engine_from_config
 
         config = SimpleNamespace(backend="memory")
 
-        with patch("ideer.persistence.engine.init_engine", new_callable=AsyncMock) as mock_init:
+        with patch("deerflow.persistence.engine.init_engine", new_callable=AsyncMock) as mock_init:
             await init_engine_from_config(config)
 
         mock_init.assert_awaited_once_with("memory")
 
     @pytest.mark.asyncio
     async def test_sqlite_config(self):
-        from ideer.persistence.engine import init_engine_from_config
+        from deerflow.persistence.engine import init_engine_from_config
 
         config = SimpleNamespace(
             backend="sqlite",
             app_sqlalchemy_url="sqlite+aiosqlite:///test.db",
             echo_sql=True,
             pool_size=5,
+            pool_recycle=1800,
+            command_timeout=30.0,
+            postgres_schema="",
             sqlite_dir="/tmp/sqlite",
         )
 
-        with patch("ideer.persistence.engine.init_engine", new_callable=AsyncMock) as mock_init:
+        with patch("deerflow.persistence.engine.init_engine", new_callable=AsyncMock) as mock_init:
             await init_engine_from_config(config)
 
         mock_init.assert_awaited_once_with(
@@ -552,22 +434,28 @@ class TestInitEngineFromConfig:
             url="sqlite+aiosqlite:///test.db",
             echo=True,
             pool_size=5,
+            pool_recycle=1800,
+            command_timeout=30.0,
             sqlite_dir="/tmp/sqlite",
+            postgres_schema="",
         )
 
     @pytest.mark.asyncio
     async def test_postgres_config_no_sqlite_dir(self):
-        from ideer.persistence.engine import init_engine_from_config
+        from deerflow.persistence.engine import init_engine_from_config
 
         config = SimpleNamespace(
             backend="postgres",
             app_sqlalchemy_url="postgresql:///test",
             echo_sql=False,
             pool_size=10,
+            pool_recycle=1800,
+            command_timeout=30.0,
+            postgres_schema="enterprise",
             sqlite_dir="/tmp/sqlite",
         )
 
-        with patch("ideer.persistence.engine.init_engine", new_callable=AsyncMock) as mock_init:
+        with patch("deerflow.persistence.engine.init_engine", new_callable=AsyncMock) as mock_init:
             await init_engine_from_config(config)
 
         mock_init.assert_awaited_once_with(
@@ -575,7 +463,10 @@ class TestInitEngineFromConfig:
             url="postgresql:///test",
             echo=False,
             pool_size=10,
+            pool_recycle=1800,
+            command_timeout=30.0,
             sqlite_dir="",  # Should be empty for non-sqlite
+            postgres_schema="enterprise",
         )
 
 
@@ -641,8 +532,7 @@ class TestSqliteWalPragma:
         db_path = tmp_path / "test.db"
         url = f"sqlite+aiosqlite:///{db_path}"
 
-        with patch("ideer.persistence.engine._stamp_alembic_head"):
-            await mod.init_engine("sqlite", url=url, sqlite_dir=str(tmp_path))
+        await mod.init_engine("sqlite", url=url, sqlite_dir=str(tmp_path))
 
         # Verify WAL mode is set by checking the journal_mode pragma
         from sqlalchemy import text

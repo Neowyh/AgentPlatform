@@ -1,4 +1,4 @@
-"""Tests for IDeerClient."""
+"""Tests for DeerFlowClient."""
 
 import asyncio
 import concurrent.futures
@@ -16,9 +16,9 @@ from app.gateway.routers.mcp import McpConfigResponse
 from app.gateway.routers.memory import MemoryConfigResponse, MemoryStatusResponse
 from app.gateway.routers.models import ModelResponse, ModelsListResponse
 from app.gateway.routers.uploads import UploadResponse
-from ideer.client import IDeerClient
-from ideer.config.paths import Paths
-from ideer.uploads.manager import PathTraversalError
+from deerflow.client import DeerFlowClient
+from deerflow.config.paths import Paths
+from deerflow.uploads.manager import PathTraversalError
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -38,28 +38,37 @@ def mock_app_config():
     config = MagicMock()
     config.models = [model]
     config.token_usage.enabled = False
+    # Upstream resolves models through this name index (AppConfig builds it
+    # in its validator; a bare MagicMock needs it seeded explicitly).
+    config._models_by_name = {"test-model": model}
+    # Upstream DeerFlowClient.__init__ freezes checkpoint settings from the
+    # database config; a bare MagicMock would fail the numeric/enum handling.
+    config.database.checkpoint_channel_mode = "auto"
+    config.database.checkpoint_delta.snapshot_frequency = 1
+    # Upstream resolves the skill storage class from this variable path.
+    config.skills.use = "deerflow.skills.storage.local_skill_storage:LocalSkillStorage"
     return config
 
 
 @pytest.fixture
 def client(mock_app_config, tmp_path):
-    """Create a IDeerClient with mocked config loading."""
-    import ideer.skills.storage as _storage_mod
-    from ideer.skills.storage.local_skill_storage import LocalSkillStorage
+    """Create a DeerFlowClient with mocked config loading."""
+    import deerflow.skills.storage as _storage_mod
+    from deerflow.skills.storage.local_skill_storage import LocalSkillStorage
 
     _storage_mod._default_skill_storage = LocalSkillStorage(host_path=str(tmp_path))
-    with patch("ideer.client.get_app_config", return_value=mock_app_config):
-        return IDeerClient()
+    with patch("deerflow.client.get_app_config", return_value=mock_app_config):
+        return DeerFlowClient()
 
 
 @pytest.fixture
 def allow_skill_security_scan():
     async def _scan(*args, **kwargs):
-        from ideer.skills.security_scanner import ScanResult
+        from deerflow.skills.security_scanner import ScanResult
 
         return ScanResult(decision="allow", reason="ok")
 
-    with patch("ideer.skills.installer.scan_skill_content", _scan):
+    with patch("deerflow.skills.installer.scan_skill_content", _scan):
         yield
 
 
@@ -81,8 +90,8 @@ class TestClientInit:
 
     def test_custom_params(self, mock_app_config):
         mock_middleware = MagicMock()
-        with patch("ideer.client.get_app_config", return_value=mock_app_config):
-            c = IDeerClient(model_name="gpt-4", thinking_enabled=False, subagent_enabled=True, plan_mode=True, agent_name="test-agent", available_skills={"skill1", "skill2"}, middlewares=[mock_middleware])
+        with patch("deerflow.client.get_app_config", return_value=mock_app_config):
+            c = DeerFlowClient(model_name="gpt-4", thinking_enabled=False, subagent_enabled=True, plan_mode=True, agent_name="test-agent", available_skills={"skill1", "skill2"}, middlewares=[mock_middleware])
         assert c._model_name == "gpt-4"
         assert c._thinking_enabled is False
         assert c._subagent_enabled is True
@@ -92,24 +101,24 @@ class TestClientInit:
         assert c._middlewares == [mock_middleware]
 
     def test_invalid_agent_name(self, mock_app_config):
-        with patch("ideer.client.get_app_config", return_value=mock_app_config):
+        with patch("deerflow.client.get_app_config", return_value=mock_app_config):
             with pytest.raises(ValueError, match="Invalid agent name"):
-                IDeerClient(agent_name="invalid name with spaces!")
+                DeerFlowClient(agent_name="invalid name with spaces!")
             with pytest.raises(ValueError, match="Invalid agent name"):
-                IDeerClient(agent_name="../path/traversal")
+                DeerFlowClient(agent_name="../path/traversal")
 
     def test_custom_config_path(self, mock_app_config):
         with (
-            patch("ideer.client.reload_app_config") as mock_reload,
-            patch("ideer.client.get_app_config", return_value=mock_app_config),
+            patch("deerflow.client.reload_app_config") as mock_reload,
+            patch("deerflow.client.get_app_config", return_value=mock_app_config),
         ):
-            IDeerClient(config_path="/tmp/custom.yaml")
+            DeerFlowClient(config_path="/tmp/custom.yaml")
             mock_reload.assert_called_once_with("/tmp/custom.yaml")
 
     def test_checkpointer_stored(self, mock_app_config):
         cp = MagicMock()
-        with patch("ideer.client.get_app_config", return_value=mock_app_config):
-            c = IDeerClient(checkpointer=cp)
+        with patch("deerflow.client.get_app_config", return_value=mock_app_config):
+            c = DeerFlowClient(checkpointer=cp)
         assert c._checkpointer is cp
 
 
@@ -138,7 +147,7 @@ class TestConfigQueries:
         skill.category = "public"
         skill.enabled = True
 
-        with patch("ideer.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", return_value=[skill]) as mock_load:
+        with patch("deerflow.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", return_value=[skill]) as mock_load:
             result = client.list_skills()
             mock_load.assert_called_once_with(enabled_only=False)
 
@@ -153,22 +162,44 @@ class TestConfigQueries:
         }
 
     def test_list_skills_enabled_only(self, client):
-        with patch("ideer.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", return_value=[]) as mock_load:
-            client.list_skills(enabled_only=True)
-            mock_load.assert_called_once_with(enabled_only=True)
+        # Upstream: client.list_skills delegates to UserScopedSkillStorage,
+        # whose load_skills always discovers with enabled_only=False and then
+        # filters enabled skills itself — the client only forwards the flag.
+        enabled = MagicMock()
+        enabled.name = "on-skill"
+        enabled.description = "Enabled skill"
+        enabled.license = "MIT"
+        enabled.category = "public"
+        enabled.enabled = True
+        disabled = MagicMock()
+        disabled.name = "off-skill"
+        disabled.description = "Disabled skill"
+        disabled.license = "MIT"
+        disabled.category = "public"
+        disabled.enabled = False
+
+        with patch("deerflow.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", return_value=[enabled, disabled]):
+            result = client.list_skills(enabled_only=True)
+
+        assert [s["name"] for s in result["skills"]] == ["on-skill"]
 
     def test_get_memory(self, client):
         memory = {"version": "1.0", "facts": []}
-        with patch("ideer.agents.memory.updater.get_memory_data", return_value=memory) as mock_mem:
+        manager = MagicMock()
+        manager.get_memory.return_value = memory
+        with patch("deerflow.agents.memory.get_memory_manager", return_value=manager) as mock_mgr:
             result = client.get_memory()
-            mock_mem.assert_called_once()
+            mock_mgr.assert_called_once()
+        manager.get_memory.assert_called_once()
         assert result == memory
 
     def test_export_memory(self, client):
         memory = {"version": "1.0", "facts": []}
-        with patch("ideer.agents.memory.updater.get_memory_data", return_value=memory) as mock_mem:
+        manager = MagicMock()
+        manager.get_memory.return_value = memory
+        with patch("deerflow.agents.memory.get_memory_manager", return_value=manager):
             result = client.export_memory()
-            mock_mem.assert_called_once()
+        manager.get_memory.assert_called_once()
         assert result == memory
 
 
@@ -242,7 +273,7 @@ class TestStream:
         agent.stream.assert_called_once()
         call_kwargs = agent.stream.call_args.kwargs
         # ``messages`` enables token-level streaming of AI text deltas;
-        # see IDeerClient.stream() docstring and GitHub issue #1969.
+        # see DeerFlowClient.stream() docstring and GitHub issue #1969.
         assert call_kwargs["stream_mode"] == ["values", "messages", "custom"]
 
         assert events[0].type == "custom"
@@ -875,7 +906,7 @@ class TestChat:
 
 class TestExtractText:
     def test_string(self):
-        assert IDeerClient._extract_text("hello") == "hello"
+        assert DeerFlowClient._extract_text("hello") == "hello"
 
     def test_list_text_blocks(self):
         content = [
@@ -883,16 +914,16 @@ class TestExtractText:
             {"type": "thinking", "thinking": "skip"},
             {"type": "text", "text": "second"},
         ]
-        assert IDeerClient._extract_text(content) == "first\nsecond"
+        assert DeerFlowClient._extract_text(content) == "first\nsecond"
 
     def test_list_plain_strings(self):
-        assert IDeerClient._extract_text(["a", "b"]) == "a\nb"
+        assert DeerFlowClient._extract_text(["a", "b"]) == "a\nb"
 
     def test_empty_list(self):
-        assert IDeerClient._extract_text([]) == ""
+        assert DeerFlowClient._extract_text([]) == ""
 
     def test_other_type(self):
-        assert IDeerClient._extract_text(42) == "42"
+        assert DeerFlowClient._extract_text(42) == "42"
 
 
 # ---------------------------------------------------------------------------
@@ -907,12 +938,12 @@ class TestEnsureAgent:
         config = client._get_runnable_config("t1")
 
         with (
-            patch("ideer.client.create_chat_model"),
-            patch("ideer.client.create_agent", return_value=mock_agent),
-            patch("ideer.client._build_middlewares", return_value=[]) as mock_build_middlewares,
-            patch("ideer.client.apply_prompt_template", return_value="prompt") as mock_apply_prompt,
+            patch("deerflow.client.create_chat_model"),
+            patch("deerflow.client.create_agent", return_value=mock_agent),
+            patch("deerflow.client.build_middlewares", return_value=[]) as mock_build_middlewares,
+            patch("deerflow.client.apply_prompt_template", return_value="prompt") as mock_apply_prompt,
             patch.object(client, "_get_tools", return_value=[]),
-            patch("ideer.runtime.checkpointer.get_checkpointer", return_value=MagicMock()),
+            patch("deerflow.runtime.checkpointer.get_checkpointer", return_value=MagicMock()),
         ):
             client._agent_name = "custom-agent"
             client._available_skills = {"test_skill"}
@@ -932,12 +963,12 @@ class TestEnsureAgent:
         config = client._get_runnable_config("t1")
 
         with (
-            patch("ideer.client.create_chat_model"),
-            patch("ideer.client.create_agent", return_value=mock_agent) as mock_create_agent,
-            patch("ideer.client._build_middlewares", return_value=[]),
-            patch("ideer.client.apply_prompt_template", return_value="prompt"),
+            patch("deerflow.client.create_chat_model"),
+            patch("deerflow.client.create_agent", return_value=mock_agent) as mock_create_agent,
+            patch("deerflow.client.build_middlewares", return_value=[]),
+            patch("deerflow.client.apply_prompt_template", return_value="prompt"),
             patch.object(client, "_get_tools", return_value=[]),
-            patch("ideer.runtime.checkpointer.get_checkpointer", return_value=mock_checkpointer),
+            patch("deerflow.runtime.checkpointer.get_checkpointer", return_value=mock_checkpointer),
         ):
             client._ensure_agent(config)
 
@@ -953,16 +984,27 @@ class TestEnsureAgent:
         mock_clarification.__class__.__name__ = "ClarificationMiddleware"
 
         def fake_build_middlewares(*args, **kwargs):
+            # Upstream normalizes each middleware's state_schema; a bare
+            # MagicMock schema would be introspected by typing. None passes
+            # through untouched.
+            def _neutral():
+                item = MagicMock()
+                item.state_schema = None
+                return item
+
             custom = kwargs.get("custom_middlewares") or []
-            return [MagicMock()] + custom + [mock_clarification]
+            for item in custom:
+                item.state_schema = None
+            mock_clarification.state_schema = None
+            return [_neutral()] + custom + [mock_clarification]
 
         with (
-            patch("ideer.client.create_chat_model"),
-            patch("ideer.client.create_agent", return_value=mock_agent) as mock_create_agent,
-            patch("ideer.client._build_middlewares", side_effect=fake_build_middlewares),
-            patch("ideer.client.apply_prompt_template", return_value="prompt"),
+            patch("deerflow.client.create_chat_model"),
+            patch("deerflow.client.create_agent", return_value=mock_agent) as mock_create_agent,
+            patch("deerflow.client.build_middlewares", side_effect=fake_build_middlewares),
+            patch("deerflow.client.apply_prompt_template", return_value="prompt"),
             patch.object(client, "_get_tools", return_value=[]),
-            patch("ideer.runtime.checkpointer.get_checkpointer", return_value=MagicMock()),
+            patch("deerflow.runtime.checkpointer.get_checkpointer", return_value=MagicMock()),
         ):
             client._ensure_agent(config)
 
@@ -976,12 +1018,12 @@ class TestEnsureAgent:
         config = client._get_runnable_config("t1")
 
         with (
-            patch("ideer.client.create_chat_model"),
-            patch("ideer.client.create_agent", return_value=mock_agent) as mock_create_agent,
-            patch("ideer.client._build_middlewares", return_value=[]),
-            patch("ideer.client.apply_prompt_template", return_value="prompt"),
+            patch("deerflow.client.create_chat_model"),
+            patch("deerflow.client.create_agent", return_value=mock_agent) as mock_create_agent,
+            patch("deerflow.client.build_middlewares", return_value=[]),
+            patch("deerflow.client.apply_prompt_template", return_value="prompt"),
             patch.object(client, "_get_tools", return_value=[]),
-            patch("ideer.runtime.checkpointer.get_checkpointer", return_value=None),
+            patch("deerflow.runtime.checkpointer.get_checkpointer", return_value=None),
         ):
             client._ensure_agent(config)
 
@@ -991,7 +1033,25 @@ class TestEnsureAgent:
         """_ensure_agent does not recreate if config key unchanged."""
         mock_agent = MagicMock()
         client._agent = mock_agent
-        client._agent_config_key = (None, True, False, False, None, None)
+        # With authorization disabled the identity component of the upstream
+        # key is None, matching the pre-seeded key below.
+        client._app_config.authorization.enabled = False
+        # Upstream key arity: model/thinking/plan/subagent settings, subagent
+        # caps, agent name, available skills, checkpoint mode/frequency, auth
+        # identity.
+        client._agent_config_key = (
+            None,
+            True,
+            False,
+            False,
+            None,
+            None,
+            None,
+            None,
+            client._checkpoint_channel_mode,
+            client._checkpoint_snapshot_frequency,
+            None,
+        )
 
         config = client._get_runnable_config("t1")
         client._ensure_agent(config)
@@ -1110,7 +1170,7 @@ class TestThreadQueries:
         mock_checkpointer = MagicMock()
         mock_checkpointer.list.return_value = []
 
-        with patch("ideer.runtime.checkpointer.provider.get_checkpointer", return_value=mock_checkpointer):
+        with patch("deerflow.runtime.checkpointer.provider.get_checkpointer", return_value=mock_checkpointer):
             # No internal checkpointer, should fetch from provider
             result = client.list_threads()
 
@@ -1124,16 +1184,42 @@ class TestThreadQueries:
         msg1 = HumanMessage(content="Hello", id="m1")
         msg2 = AIMessage(content="Hi there", id="m2")
 
-        cp1 = self._make_mock_checkpoint_tuple("t1", "c1", "2023-01-01T10:00:00Z", messages=[msg1])
-        cp2 = self._make_mock_checkpoint_tuple("t1", "c2", "2023-01-01T10:01:00Z", parent_id="c1", messages=[msg1, msg2], pending_writes=[("task_1", "messages", {"text": "pending"})])
-        cp3_no_ts = self._make_mock_checkpoint_tuple("t1", "c3", None)
+        def _snapshot(checkpoint_id, ts, parent_id=None, messages=None):
+            # Upstream get_thread reads history through the agent graph
+            # (CheckpointStateAccessor → graph.get_state_history) and uses
+            # checkpointer.list only to collect pending_writes per checkpoint.
+            snap = MagicMock()
+            snap.config = {"configurable": {"thread_id": "t1", "checkpoint_id": checkpoint_id}}
+            snap.parent_config = {"configurable": {"thread_id": "t1", "checkpoint_id": parent_id}} if parent_id else {}
+            snap.created_at = ts
+            snap.metadata = {"source": "test"}
+            snap.values = {"messages": list(messages)} if messages is not None else {}
+            return snap
 
-        # checkpointer.list yields in reverse time or random order, test sorting
-        mock_checkpointer.list.return_value = [cp2, cp1, cp3_no_ts]
+        mock_agent = MagicMock()
+        mock_agent.get_state_history.return_value = iter(
+            [
+                _snapshot("c2", "2023-01-01T10:01:00Z", parent_id="c1", messages=[msg1, msg2]),
+                _snapshot("c1", "2023-01-01T10:00:00Z", messages=[msg1]),
+                _snapshot("c3", None),
+            ]
+        )
 
-        result = client.get_thread("t1")
+        # pending_writes are keyed off the raw checkpointer listing.
+        cp2 = self._make_mock_checkpoint_tuple("t1", "c2", "2023-01-01T10:01:00Z", parent_id="c1", pending_writes=[("task_1", "messages", {"text": "pending"})])
+        mock_checkpointer.list.return_value = [cp2]
 
-        mock_checkpointer.list.assert_called_once_with({"configurable": {"thread_id": "t1"}})
+        # get_thread builds the agent first upstream; stub the build.
+        with (
+            patch("deerflow.client.create_chat_model"),
+            patch("deerflow.client.create_agent", return_value=mock_agent),
+            patch("deerflow.client.build_middlewares", return_value=[]),
+            patch("deerflow.client.apply_prompt_template", return_value="prompt"),
+            patch.object(client, "_get_tools", return_value=[]),
+        ):
+            result = client.get_thread("t1")
+
+        mock_checkpointer.list.assert_called_once()
 
         assert result["thread_id"] == "t1"
         checkpoints = result["checkpoints"]
@@ -1164,12 +1250,22 @@ class TestThreadQueries:
         mock_checkpointer = MagicMock()
         mock_checkpointer.list.return_value = []
 
-        with patch("ideer.runtime.checkpointer.provider.get_checkpointer", return_value=mock_checkpointer):
+        # get_thread builds the agent first upstream; stub the build.
+        with (
+            patch("deerflow.client.create_chat_model"),
+            patch("deerflow.client.create_agent", return_value=MagicMock()),
+            patch("deerflow.client.build_middlewares", return_value=[]),
+            patch("deerflow.client.apply_prompt_template", return_value="prompt"),
+            patch.object(client, "_get_tools", return_value=[]),
+            patch("deerflow.runtime.checkpointer.provider.get_checkpointer", return_value=mock_checkpointer),
+        ):
             result = client.get_thread("t99")
 
         assert result["thread_id"] == "t99"
         assert result["checkpoints"] == []
-        mock_checkpointer.list.assert_called_once_with({"configurable": {"thread_id": "t99"}})
+        mock_checkpointer.list.assert_called_once()
+        # The listing config must target the requested thread.
+        assert mock_checkpointer.list.call_args.args[0]["configurable"]["thread_id"] == "t99"
 
 
 # ---------------------------------------------------------------------------
@@ -1184,7 +1280,7 @@ class TestMcpConfig:
         ext_config = MagicMock()
         ext_config.mcp_servers = {"github": server}
 
-        with patch("ideer.client.get_extensions_config", return_value=ext_config):
+        with patch("deerflow.client.get_extensions_config", return_value=ext_config):
             result = client.get_mcp_config()
 
         assert "mcp_servers" in result
@@ -1210,9 +1306,9 @@ class TestMcpConfig:
             client._agent = MagicMock()
 
             with (
-                patch("ideer.client.ExtensionsConfig.resolve_config_path", return_value=tmp_path),
-                patch("ideer.client.get_extensions_config", return_value=current_config),
-                patch("ideer.client.reload_extensions_config", return_value=reloaded_config),
+                patch("deerflow.client.ExtensionsConfig.resolve_config_path", return_value=tmp_path),
+                patch("deerflow.client.get_extensions_config", return_value=current_config),
+                patch("deerflow.client.reload_extensions_config", return_value=reloaded_config),
             ):
                 result = client.update_mcp_config({"new-server": {"enabled": True, "type": "sse"}})
 
@@ -1245,17 +1341,17 @@ class TestSkillsManagement:
 
     def test_get_skill_found(self, client):
         skill = self._make_skill()
-        with patch("ideer.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", return_value=[skill]):
+        with patch("deerflow.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", return_value=[skill]):
             result = client.get_skill("test-skill")
         assert result is not None
         assert result["name"] == "test-skill"
 
     def test_get_skill_not_found(self, client):
-        with patch("ideer.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", return_value=[]):
+        with patch("deerflow.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", return_value=[]):
             result = client.get_skill("nonexistent")
         assert result is None
 
-    def test_update_skill(self, client):
+    def test_update_skill(self, client, tmp_path, monkeypatch):
         skill = self._make_skill(enabled=True)
         updated_skill = self._make_skill(enabled=False)
 
@@ -1265,26 +1361,39 @@ class TestSkillsManagement:
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump({}, f)
-            tmp_path = Path(f.name)
+            config_tmp = Path(f.name)
+
+        # Keep every get_paths()-derived write (projection rebuild, per-user
+        # state) inside the test's own directory.
+        monkeypatch.setenv("DEER_FLOW_HOME", str(tmp_path))
 
         try:
             # Pre-set agent to verify it gets invalidated
             client._agent = MagicMock()
 
+            # Upstream calls load_skills an implementation-defined number of
+            # times (initial lookup, projection rebuild, post-write reload);
+            # only the first call sees the pre-update state.
+            calls = {"n": 0}
+
+            def fake_load_skills(*args, **kwargs):
+                calls["n"] += 1
+                return [skill] if calls["n"] == 1 else [updated_skill]
+
             with (
-                patch("ideer.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", side_effect=[[skill], [updated_skill]]),
-                patch("ideer.client.ExtensionsConfig.resolve_config_path", return_value=tmp_path),
-                patch("ideer.client.get_extensions_config", return_value=ext_config),
-                patch("ideer.client.reload_extensions_config"),
+                patch("deerflow.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", side_effect=fake_load_skills),
+                patch("deerflow.client.ExtensionsConfig.resolve_config_path", return_value=config_tmp),
+                patch("deerflow.client.get_extensions_config", return_value=ext_config),
+                patch("deerflow.client.reload_extensions_config"),
             ):
                 result = client.update_skill("test-skill", enabled=False)
             assert result["enabled"] is False
             assert client._agent is None  # M2: agent invalidated
         finally:
-            tmp_path.unlink()
+            config_tmp.unlink()
 
     def test_update_skill_not_found(self, client):
-        with patch("ideer.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", return_value=[]):
+        with patch("deerflow.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", return_value=[]):
             with pytest.raises(ValueError, match="not found"):
                 client.update_skill("nonexistent", enabled=True)
 
@@ -1304,14 +1413,16 @@ class TestSkillsManagement:
             skills_root = tmp_path / "skills"
             (skills_root).mkdir(parents=True)
 
-            from ideer.skills.storage.local_skill_storage import LocalSkillStorage
+            from deerflow.skills.storage.local_skill_storage import LocalSkillStorage
 
-            with patch("ideer.skills.storage._default_skill_storage", LocalSkillStorage(host_path=str(skills_root))):
+            with patch("deerflow.client.get_or_new_user_skill_storage", return_value=LocalSkillStorage(host_path=str(skills_root))):
                 result = client.install_skill(archive_path)
 
             assert result["success"] is True
             assert result["skill_name"] == "my-skill"
-            assert (skills_root / "my-skill").exists()
+            # Upstream LocalSkillStorage installs custom skills under
+            # <host_root>/custom/<name>/.
+            assert (skills_root / "custom" / "my-skill").exists()
 
     def test_install_skill_not_found(self, client):
         with pytest.raises(FileNotFoundError):
@@ -1335,112 +1446,131 @@ class TestSkillsManagement:
 class TestMemoryManagement:
     def test_import_memory(self, client):
         imported = {"version": "1.0", "facts": []}
-        with patch("ideer.agents.memory.updater.import_memory_data", return_value=imported) as mock_import:
+        manager = MagicMock()
+        manager.import_memory.return_value = imported
+        with patch("deerflow.agents.memory.get_memory_manager", return_value=manager):
             result = client.import_memory(imported)
 
-        assert mock_import.call_count == 1
-        call_args = mock_import.call_args
+        manager.import_memory.assert_called_once()
+        call_args = manager.import_memory.call_args
         assert call_args.args == (imported,)
         assert "user_id" in call_args.kwargs
         assert result == imported
 
     def test_reload_memory(self, client):
         data = {"version": "1.0", "facts": []}
-        with patch("ideer.agents.memory.updater.reload_memory_data", return_value=data):
+        manager = MagicMock()
+        manager.reload_memory.return_value = data
+        with patch("deerflow.agents.memory.get_memory_manager", return_value=manager):
             result = client.reload_memory()
+        manager.reload_memory.assert_called_once()
         assert result == data
 
     def test_clear_memory(self, client):
         data = {"version": "1.0", "facts": []}
-        with patch("ideer.agents.memory.updater.clear_memory_data", return_value=data):
+        manager = MagicMock()
+        manager.clear_memory.return_value = data
+        with patch("deerflow.agents.memory.get_memory_manager", return_value=manager):
             result = client.clear_memory()
         assert result == data
 
     def test_create_memory_fact(self, client):
         data = {"version": "1.0", "facts": []}
-        with patch("ideer.agents.memory.updater.create_memory_fact", return_value=data) as create_fact:
+        manager = MagicMock()
+        manager.create_fact.return_value = (data, "fact_1")
+        with patch("deerflow.agents.memory.get_memory_manager", return_value=manager):
             result = client.create_memory_fact(
                 "User prefers concise code reviews.",
                 category="preference",
                 confidence=0.88,
             )
-            create_fact.assert_called_once_with(
-                content="User prefers concise code reviews.",
-                category="preference",
-                confidence=0.88,
-            )
+        manager.create_fact.assert_called_once_with(
+            content="User prefers concise code reviews.",
+            category="preference",
+            confidence=0.88,
+            user_id=manager.create_fact.call_args.kwargs.get("user_id"),
+        )
         assert result == data
 
     def test_delete_memory_fact(self, client):
         data = {"version": "1.0", "facts": []}
-        with patch("ideer.agents.memory.updater.delete_memory_fact", return_value=data) as delete_fact:
+        manager = MagicMock()
+        manager.delete_fact.return_value = data
+        with patch("deerflow.agents.memory.get_memory_manager", return_value=manager):
             result = client.delete_memory_fact("fact_123")
-            delete_fact.assert_called_once_with("fact_123")
+        manager.delete_fact.assert_called_once_with("fact_123", user_id=manager.delete_fact.call_args.kwargs.get("user_id"))
         assert result == data
 
     def test_update_memory_fact(self, client):
         data = {"version": "1.0", "facts": []}
-        with patch("ideer.agents.memory.updater.update_memory_fact", return_value=data) as update_fact:
+        manager = MagicMock()
+        manager.update_fact.return_value = data
+        with patch("deerflow.agents.memory.get_memory_manager", return_value=manager):
             result = client.update_memory_fact(
                 "fact_123",
                 "User prefers spaces",
                 category="workflow",
                 confidence=0.91,
             )
-            update_fact.assert_called_once_with(
-                fact_id="fact_123",
-                content="User prefers spaces",
-                category="workflow",
-                confidence=0.91,
-            )
+        manager.update_fact.assert_called_once_with(
+            fact_id="fact_123",
+            content="User prefers spaces",
+            category="workflow",
+            confidence=0.91,
+            user_id=manager.update_fact.call_args.kwargs.get("user_id"),
+        )
         assert result == data
 
     def test_update_memory_fact_preserves_omitted_fields(self, client):
         data = {"version": "1.0", "facts": []}
-        with patch("ideer.agents.memory.updater.update_memory_fact", return_value=data) as update_fact:
+        manager = MagicMock()
+        manager.update_fact.return_value = data
+        with patch("deerflow.agents.memory.get_memory_manager", return_value=manager):
             result = client.update_memory_fact(
                 "fact_123",
                 "User prefers spaces",
             )
-            update_fact.assert_called_once_with(
-                fact_id="fact_123",
-                content="User prefers spaces",
-                category=None,
-                confidence=None,
-            )
+        manager.update_fact.assert_called_once_with(
+            fact_id="fact_123",
+            content="User prefers spaces",
+            category=None,
+            confidence=None,
+            user_id=manager.update_fact.call_args.kwargs.get("user_id"),
+        )
         assert result == data
 
     def test_get_memory_config(self, client):
-        config = MagicMock()
-        config.enabled = True
-        config.storage_path = ".ideer/memory.json"
-        config.debounce_seconds = 30
-        config.max_facts = 100
-        config.fact_confidence_threshold = 0.7
-        config.injection_enabled = True
-        config.max_injection_tokens = 2000
+        mem_cfg = MagicMock()
+        mem_cfg.enabled = True
+        mem_cfg.mode = "middleware"
+        mem_cfg.injection_enabled = True
+        mem_cfg.shutdown_flush_timeout_seconds = 30.0
+        mem_cfg.manager_class = "deermem"
+        mem_cfg.backend_config = {}
 
-        with patch("ideer.config.memory_config.get_memory_config", return_value=config):
+        with patch("deerflow.config.memory_config.get_memory_config", return_value=mem_cfg):
             result = client.get_memory_config()
 
         assert result["enabled"] is True
-        assert result["max_facts"] == 100
+        assert result["mode"] == "middleware"
+        assert result["manager_class"] == "deermem"
 
     def test_get_memory_status(self, client):
-        config = MagicMock()
-        config.enabled = True
-        config.storage_path = ".ideer/memory.json"
-        config.debounce_seconds = 30
-        config.max_facts = 100
-        config.fact_confidence_threshold = 0.7
-        config.injection_enabled = True
-        config.max_injection_tokens = 2000
+        mem_cfg = MagicMock()
+        mem_cfg.enabled = True
+        mem_cfg.mode = "middleware"
+        mem_cfg.injection_enabled = True
+        mem_cfg.shutdown_flush_timeout_seconds = 30.0
+        mem_cfg.manager_class = "deermem"
+        mem_cfg.backend_config = {}
 
         data = {"version": "1.0", "facts": []}
+        manager = MagicMock()
+        manager.get_memory.return_value = data
 
         with (
-            patch("ideer.config.memory_config.get_memory_config", return_value=config),
-            patch("ideer.agents.memory.updater.get_memory_data", return_value=data),
+            patch("deerflow.config.memory_config.get_memory_config", return_value=mem_cfg),
+            patch("deerflow.agents.memory.get_memory_manager", return_value=manager),
         ):
             result = client.get_memory_status()
 
@@ -1465,7 +1595,7 @@ class TestUploads:
             uploads_dir = tmp_path / "uploads"
             uploads_dir.mkdir()
 
-            with patch("ideer.client.get_uploads_dir", return_value=uploads_dir), patch("ideer.client.ensure_uploads_dir", return_value=uploads_dir):
+            with patch("deerflow.client.get_uploads_dir", return_value=uploads_dir), patch("deerflow.client.ensure_uploads_dir", return_value=uploads_dir):
                 result = client.upload_files("thread-1", [src_file])
 
             assert result["success"] is True
@@ -1521,8 +1651,8 @@ class TestUploads:
                 return client.upload_files("thread-async", [first, second])
 
             with (
-                patch("ideer.client.get_uploads_dir", return_value=uploads_dir),
-                patch("ideer.client.ensure_uploads_dir", return_value=uploads_dir),
+                patch("deerflow.client.get_uploads_dir", return_value=uploads_dir),
+                patch("deerflow.client.ensure_uploads_dir", return_value=uploads_dir),
                 patch("app.agentplatform.utils.file_conversion.CONVERTIBLE_EXTENSIONS", {".pdf"}),
                 patch("app.agentplatform.utils.file_conversion.convert_file_to_markdown", side_effect=fake_convert),
                 patch("concurrent.futures.ThreadPoolExecutor", FakeExecutor),
@@ -1543,7 +1673,7 @@ class TestUploads:
             (uploads_dir / "a.txt").write_text("a")
             (uploads_dir / "b.txt").write_text("bb")
 
-            with patch("ideer.client.get_uploads_dir", return_value=uploads_dir), patch("ideer.client.ensure_uploads_dir", return_value=uploads_dir):
+            with patch("deerflow.client.get_uploads_dir", return_value=uploads_dir), patch("deerflow.client.ensure_uploads_dir", return_value=uploads_dir):
                 result = client.list_uploads("thread-1")
 
             assert result["count"] == 2
@@ -1559,7 +1689,7 @@ class TestUploads:
             uploads_dir = Path(tmp)
             (uploads_dir / "delete-me.txt").write_text("gone")
 
-            with patch("ideer.client.get_uploads_dir", return_value=uploads_dir), patch("ideer.client.ensure_uploads_dir", return_value=uploads_dir):
+            with patch("deerflow.client.get_uploads_dir", return_value=uploads_dir), patch("deerflow.client.ensure_uploads_dir", return_value=uploads_dir):
                 result = client.delete_upload("thread-1", "delete-me.txt")
 
             assert result["success"] is True
@@ -1568,14 +1698,14 @@ class TestUploads:
 
     def test_delete_upload_not_found(self, client):
         with tempfile.TemporaryDirectory() as tmp:
-            with patch("ideer.client.get_uploads_dir", return_value=Path(tmp)):
+            with patch("deerflow.client.get_uploads_dir", return_value=Path(tmp)):
                 with pytest.raises(FileNotFoundError):
                     client.delete_upload("thread-1", "nope.txt")
 
     def test_delete_upload_path_traversal(self, client):
         with tempfile.TemporaryDirectory() as tmp:
             uploads_dir = Path(tmp)
-            with patch("ideer.client.get_uploads_dir", return_value=uploads_dir), patch("ideer.client.ensure_uploads_dir", return_value=uploads_dir):
+            with patch("deerflow.client.get_uploads_dir", return_value=uploads_dir), patch("deerflow.client.ensure_uploads_dir", return_value=uploads_dir):
                 with pytest.raises(PathTraversalError):
                     client.delete_upload("thread-1", "../../etc/passwd")
 
@@ -1587,7 +1717,7 @@ class TestUploads:
 
 class TestArtifacts:
     def test_get_artifact(self, client):
-        from ideer.runtime.user_context import get_effective_user_id
+        from deerflow.runtime.user_context import get_effective_user_id
 
         with tempfile.TemporaryDirectory() as tmp:
             paths = Paths(base_dir=tmp)
@@ -1596,21 +1726,21 @@ class TestArtifacts:
             outputs.mkdir(parents=True)
             (outputs / "result.txt").write_text("artifact content")
 
-            with patch("ideer.client.get_paths", return_value=paths):
+            with patch("deerflow.client.get_paths", return_value=paths):
                 content, mime = client.get_artifact("t1", "mnt/user-data/outputs/result.txt")
 
             assert content == b"artifact content"
             assert "text" in mime
 
     def test_get_artifact_not_found(self, client):
-        from ideer.runtime.user_context import get_effective_user_id
+        from deerflow.runtime.user_context import get_effective_user_id
 
         with tempfile.TemporaryDirectory() as tmp:
             paths = Paths(base_dir=tmp)
             user_id = get_effective_user_id()
             paths.sandbox_outputs_dir("t1", user_id=user_id).mkdir(parents=True)
 
-            with patch("ideer.client.get_paths", return_value=paths):
+            with patch("deerflow.client.get_paths", return_value=paths):
                 with pytest.raises(FileNotFoundError):
                     client.get_artifact("t1", "mnt/user-data/outputs/nope.txt")
 
@@ -1619,14 +1749,14 @@ class TestArtifacts:
             client.get_artifact("t1", "bad/path/file.txt")
 
     def test_get_artifact_path_traversal(self, client):
-        from ideer.runtime.user_context import get_effective_user_id
+        from deerflow.runtime.user_context import get_effective_user_id
 
         with tempfile.TemporaryDirectory() as tmp:
             paths = Paths(base_dir=tmp)
             user_id = get_effective_user_id()
             paths.sandbox_outputs_dir("t1", user_id=user_id).mkdir(parents=True)
 
-            with patch("ideer.client.get_paths", return_value=paths):
+            with patch("deerflow.client.get_paths", return_value=paths):
                 with pytest.raises(PathTraversalError):
                     client.get_artifact("t1", "mnt/user-data/../../../etc/passwd")
 
@@ -1779,7 +1909,7 @@ class TestScenarioFileLifecycle:
             (tmp_path / "report.txt").write_text("quarterly report data")
             (tmp_path / "data.csv").write_text("a,b,c\n1,2,3")
 
-            with patch("ideer.client.get_uploads_dir", return_value=uploads_dir), patch("ideer.client.ensure_uploads_dir", return_value=uploads_dir):
+            with patch("deerflow.client.get_uploads_dir", return_value=uploads_dir), patch("deerflow.client.ensure_uploads_dir", return_value=uploads_dir):
                 # Step 1: Upload
                 result = client.upload_files(
                     "t-lifecycle",
@@ -1808,7 +1938,7 @@ class TestScenarioFileLifecycle:
 
     def test_upload_then_read_artifact(self, client):
         """Upload a file, simulate agent producing artifact, read it back."""
-        from ideer.runtime.user_context import get_effective_user_id
+        from deerflow.runtime.user_context import get_effective_user_id
 
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -1824,7 +1954,7 @@ class TestScenarioFileLifecycle:
             src_file = tmp_path / "input.txt"
             src_file.write_text("raw data to process")
 
-            with patch("ideer.client.get_uploads_dir", return_value=uploads_dir), patch("ideer.client.ensure_uploads_dir", return_value=uploads_dir):
+            with patch("deerflow.client.get_uploads_dir", return_value=uploads_dir), patch("deerflow.client.ensure_uploads_dir", return_value=uploads_dir):
                 uploaded = client.upload_files("t-artifact", [src_file])
                 assert len(uploaded["files"]) == 1
 
@@ -1832,7 +1962,7 @@ class TestScenarioFileLifecycle:
             (outputs_dir / "analysis.json").write_text('{"result": "processed"}')
 
             # Retrieve artifact
-            with patch("ideer.client.get_paths", return_value=paths):
+            with patch("deerflow.client.get_paths", return_value=paths):
                 content, mime = client.get_artifact("t-artifact", "mnt/user-data/outputs/analysis.json")
 
             assert json.loads(content) == {"result": "processed"}
@@ -1869,12 +1999,12 @@ class TestScenarioConfigManagement:
         skill.category = "public"
         skill.enabled = True
 
-        with patch("ideer.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", return_value=[skill]):
+        with patch("deerflow.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", return_value=[skill]):
             skills_result = client.list_skills()
         assert len(skills_result["skills"]) == 1
 
         # Get specific skill
-        with patch("ideer.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", return_value=[skill]):
+        with patch("deerflow.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", return_value=[skill]):
             detail = client.get_skill("web-search")
         assert detail is not None
         assert detail["enabled"] is True
@@ -1896,9 +2026,9 @@ class TestScenarioConfigManagement:
 
             client._agent = MagicMock()  # Simulate existing agent
             with (
-                patch("ideer.client.ExtensionsConfig.resolve_config_path", return_value=config_file),
-                patch("ideer.client.get_extensions_config", return_value=current_config),
-                patch("ideer.client.reload_extensions_config", return_value=reloaded_config),
+                patch("deerflow.client.ExtensionsConfig.resolve_config_path", return_value=config_file),
+                patch("deerflow.client.get_extensions_config", return_value=current_config),
+                patch("deerflow.client.reload_extensions_config", return_value=reloaded_config),
             ):
                 mcp_result = client.update_mcp_config({"my-mcp": {"enabled": True}})
             assert "my-mcp" in mcp_result["mcp_servers"]
@@ -1925,10 +2055,10 @@ class TestScenarioConfigManagement:
 
             client._agent = MagicMock()  # Simulate re-created agent
             with (
-                patch("ideer.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", side_effect=[[skill], [toggled]]),
-                patch("ideer.client.ExtensionsConfig.resolve_config_path", return_value=config_file),
-                patch("ideer.client.get_extensions_config", return_value=ext_config),
-                patch("ideer.client.reload_extensions_config"),
+                patch("deerflow.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", side_effect=[[skill], [toggled]]),
+                patch("deerflow.client.ExtensionsConfig.resolve_config_path", return_value=config_file),
+                patch("deerflow.client.get_extensions_config", return_value=ext_config),
+                patch("deerflow.client.reload_extensions_config"),
             ):
                 skill_result = client.update_skill("code-gen", enabled=False)
             assert skill_result["enabled"] is False
@@ -1951,12 +2081,12 @@ class TestScenarioAgentRecreation:
         config_b = client._get_runnable_config("t1", model_name="claude-3")
 
         with (
-            patch("ideer.client.create_chat_model"),
-            patch("ideer.client.create_agent", side_effect=fake_create_agent),
-            patch("ideer.client._build_middlewares", return_value=[]),
-            patch("ideer.client.apply_prompt_template", return_value="prompt"),
+            patch("deerflow.client.create_chat_model"),
+            patch("deerflow.client.create_agent", side_effect=fake_create_agent),
+            patch("deerflow.client.build_middlewares", return_value=[]),
+            patch("deerflow.client.apply_prompt_template", return_value="prompt"),
             patch.object(client, "_get_tools", return_value=[]),
-            patch("ideer.runtime.checkpointer.get_checkpointer", return_value=MagicMock()),
+            patch("deerflow.runtime.checkpointer.get_checkpointer", return_value=MagicMock()),
         ):
             client._ensure_agent(config_a)
             first_agent = client._agent
@@ -1979,12 +2109,12 @@ class TestScenarioAgentRecreation:
         config = client._get_runnable_config("t1", model_name="gpt-4")
 
         with (
-            patch("ideer.client.create_chat_model"),
-            patch("ideer.client.create_agent", side_effect=fake_create_agent),
-            patch("ideer.client._build_middlewares", return_value=[]),
-            patch("ideer.client.apply_prompt_template", return_value="prompt"),
+            patch("deerflow.client.create_chat_model"),
+            patch("deerflow.client.create_agent", side_effect=fake_create_agent),
+            patch("deerflow.client.build_middlewares", return_value=[]),
+            patch("deerflow.client.apply_prompt_template", return_value="prompt"),
             patch.object(client, "_get_tools", return_value=[]),
-            patch("ideer.runtime.checkpointer.get_checkpointer", return_value=MagicMock()),
+            patch("deerflow.runtime.checkpointer.get_checkpointer", return_value=MagicMock()),
         ):
             client._ensure_agent(config)
             client._ensure_agent(config)
@@ -2004,12 +2134,12 @@ class TestScenarioAgentRecreation:
         config = client._get_runnable_config("t1")
 
         with (
-            patch("ideer.client.create_chat_model"),
-            patch("ideer.client.create_agent", side_effect=fake_create_agent),
-            patch("ideer.client._build_middlewares", return_value=[]),
-            patch("ideer.client.apply_prompt_template", return_value="prompt"),
+            patch("deerflow.client.create_chat_model"),
+            patch("deerflow.client.create_agent", side_effect=fake_create_agent),
+            patch("deerflow.client.build_middlewares", return_value=[]),
+            patch("deerflow.client.apply_prompt_template", return_value="prompt"),
             patch.object(client, "_get_tools", return_value=[]),
-            patch("ideer.runtime.checkpointer.get_checkpointer", return_value=MagicMock()),
+            patch("deerflow.runtime.checkpointer.get_checkpointer", return_value=MagicMock()),
         ):
             client._ensure_agent(config)
             client.reset_agent()
@@ -2024,7 +2154,7 @@ class TestScenarioAgentRecreation:
 
         agents_created = []
 
-        def fake_ensure(config):
+        def fake_ensure(config, *, context=None):
             key = tuple(config.get("configurable", {}).get(k) for k in ["model_name", "thinking_enabled", "is_plan_mode", "subagent_enabled"])
             agents_created.append(key)
             client._agent = agent
@@ -2056,7 +2186,7 @@ class TestScenarioThreadIsolation:
             def get_dir(thread_id):
                 return uploads_a if thread_id == "thread-a" else uploads_b
 
-            with patch("ideer.client.get_uploads_dir", side_effect=get_dir), patch("ideer.client.ensure_uploads_dir", side_effect=get_dir):
+            with patch("deerflow.client.get_uploads_dir", side_effect=get_dir), patch("deerflow.client.ensure_uploads_dir", side_effect=get_dir):
                 client.upload_files("thread-a", [src_file])
 
                 files_a = client.list_uploads("thread-a")
@@ -2067,7 +2197,7 @@ class TestScenarioThreadIsolation:
 
     def test_artifacts_isolated_per_thread(self, client):
         """Artifacts in thread-A are not accessible from thread-B."""
-        from ideer.runtime.user_context import get_effective_user_id
+        from deerflow.runtime.user_context import get_effective_user_id
 
         with tempfile.TemporaryDirectory() as tmp:
             paths = Paths(base_dir=tmp)
@@ -2077,7 +2207,7 @@ class TestScenarioThreadIsolation:
             paths.sandbox_outputs_dir("thread-b", user_id=user_id).mkdir(parents=True)
             (outputs_a / "result.txt").write_text("thread-a artifact")
 
-            with patch("ideer.client.get_paths", return_value=paths):
+            with patch("deerflow.client.get_paths", return_value=paths):
                 content, _ = client.get_artifact("thread-a", "mnt/user-data/outputs/result.txt")
                 assert content == b"thread-a artifact"
 
@@ -2099,26 +2229,28 @@ class TestScenarioMemoryWorkflow:
             ],
         }
 
-        config = MagicMock()
-        config.enabled = True
-        config.storage_path = ".ideer/memory.json"
-        config.debounce_seconds = 30
-        config.max_facts = 100
-        config.fact_confidence_threshold = 0.7
-        config.injection_enabled = True
-        config.max_injection_tokens = 2000
+        mem_cfg = MagicMock()
+        mem_cfg.enabled = True
+        mem_cfg.mode = "middleware"
+        mem_cfg.injection_enabled = True
+        mem_cfg.shutdown_flush_timeout_seconds = 30.0
+        mem_cfg.manager_class = "deermem"
+        mem_cfg.backend_config = {}
 
-        with patch("ideer.agents.memory.updater.get_memory_data", return_value=initial_data):
+        manager = MagicMock()
+        manager.get_memory.side_effect = [initial_data, updated_data]
+        manager.reload_memory.side_effect = lambda user_id: updated_data
+
+        with patch("deerflow.agents.memory.get_memory_manager", return_value=manager):
             mem = client.get_memory()
-        assert len(mem["facts"]) == 1
+            assert len(mem["facts"]) == 1
 
-        with patch("ideer.agents.memory.updater.reload_memory_data", return_value=updated_data):
             refreshed = client.reload_memory()
         assert len(refreshed["facts"]) == 2
 
         with (
-            patch("ideer.config.memory_config.get_memory_config", return_value=config),
-            patch("ideer.agents.memory.updater.get_memory_data", return_value=updated_data),
+            patch("deerflow.config.memory_config.get_memory_config", return_value=mem_cfg),
+            patch("deerflow.agents.memory.get_memory_manager", return_value=manager),
         ):
             status = client.get_memory_status()
         assert status["config"]["enabled"] is True
@@ -2128,10 +2260,13 @@ class TestScenarioMemoryWorkflow:
 class TestScenarioSkillInstallAndUse:
     """Scenario: Install a skill → verify it appears → toggle it."""
 
-    def test_install_then_toggle(self, client, allow_skill_security_scan):
+    def test_install_then_toggle(self, client, allow_skill_security_scan, monkeypatch):
         """Install .skill archive → list to verify → disable → verify disabled."""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
+            # Per-user skill state (set_skill_enabled_state) resolves paths
+            # from DEER_FLOW_HOME; keep those writes inside the test dir.
+            monkeypatch.setenv("DEER_FLOW_HOME", str(tmp_path))
 
             # Create .skill archive
             skill_src = tmp_path / "my-analyzer"
@@ -2145,12 +2280,14 @@ class TestScenarioSkillInstallAndUse:
             (skills_root).mkdir(parents=True)
 
             # Step 1: Install
-            from ideer.skills.storage.local_skill_storage import LocalSkillStorage
+            from deerflow.skills.storage.local_skill_storage import LocalSkillStorage
 
-            with patch("ideer.skills.storage._default_skill_storage", LocalSkillStorage(host_path=str(skills_root))):
+            with patch("deerflow.client.get_or_new_user_skill_storage", return_value=LocalSkillStorage(host_path=str(skills_root))):
                 result = client.install_skill(archive)
             assert result["success"] is True
-            assert (skills_root / "my-analyzer" / "SKILL.md").exists()
+            # Upstream LocalSkillStorage installs custom skills under
+            # <host_root>/custom/<name>/.
+            assert (skills_root / "custom" / "my-analyzer" / "SKILL.md").exists()
 
             # Step 2: List and find it
             installed_skill = MagicMock()
@@ -2160,7 +2297,7 @@ class TestScenarioSkillInstallAndUse:
             installed_skill.category = "custom"
             installed_skill.enabled = True
 
-            with patch("ideer.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", return_value=[installed_skill]):
+            with patch("deerflow.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", return_value=[installed_skill]):
                 skills_result = client.list_skills()
             assert any(s["name"] == "my-analyzer" for s in skills_result["skills"])
 
@@ -2179,11 +2316,20 @@ class TestScenarioSkillInstallAndUse:
             config_file = tmp_path / "extensions_config.json"
             config_file.write_text("{}")
 
+            # Upstream calls load_skills an implementation-defined number of
+            # times (initial lookup, per-user state projection rebuild,
+            # post-write reload); only the first call sees the pre-toggle state.
+            calls = {"n": 0}
+
+            def fake_load_skills(*args, **kwargs):
+                calls["n"] += 1
+                return [installed_skill] if calls["n"] == 1 else [disabled_skill]
+
             with (
-                patch("ideer.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", side_effect=[[installed_skill], [disabled_skill]]),
-                patch("ideer.client.ExtensionsConfig.resolve_config_path", return_value=config_file),
-                patch("ideer.client.get_extensions_config", return_value=ext_config),
-                patch("ideer.client.reload_extensions_config"),
+                patch("deerflow.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", side_effect=fake_load_skills),
+                patch("deerflow.client.ExtensionsConfig.resolve_config_path", return_value=config_file),
+                patch("deerflow.client.get_extensions_config", return_value=ext_config),
+                patch("deerflow.client.reload_extensions_config"),
             ):
                 toggled = client.update_skill("my-analyzer", enabled=False)
             assert toggled["enabled"] is False
@@ -2278,11 +2424,13 @@ class TestScenarioEdgeCases:
             pdf_file = tmp_path / "doc.pdf"
             pdf_file.write_bytes(b"%PDF-1.4 fake content")
 
+            # Upstream upload_files imports the converter from
+            # deerflow.utils.file_conversion at call time.
             with (
-                patch("ideer.client.get_uploads_dir", return_value=uploads_dir),
-                patch("ideer.client.ensure_uploads_dir", return_value=uploads_dir),
-                patch("app.agentplatform.utils.file_conversion.CONVERTIBLE_EXTENSIONS", {".pdf"}),
-                patch("app.agentplatform.utils.file_conversion.convert_file_to_markdown", side_effect=Exception("conversion failed")),
+                patch("deerflow.client.get_uploads_dir", return_value=uploads_dir),
+                patch("deerflow.client.ensure_uploads_dir", return_value=uploads_dir),
+                patch("deerflow.utils.file_conversion.CONVERTIBLE_EXTENSIONS", {".pdf"}),
+                patch("deerflow.utils.file_conversion.convert_file_to_markdown", side_effect=Exception("conversion failed")),
             ):
                 result = client.upload_files("t-pdf-fail", [pdf_file])
 
@@ -2299,7 +2447,7 @@ class TestScenarioEdgeCases:
 
 
 class TestGatewayConformance:
-    """Validate that IDeerClient return dicts conform to Gateway Pydantic response models.
+    """Validate that DeerFlowClient return dicts conform to Gateway Pydantic response models.
 
     Each test calls a client method, then parses the result through the
     corresponding Gateway response model. If the client drifts (missing or
@@ -2317,8 +2465,8 @@ class TestGatewayConformance:
         mock_app_config.models = [model]
         mock_app_config.token_usage.enabled = True
 
-        with patch("ideer.client.get_app_config", return_value=mock_app_config):
-            client = IDeerClient()
+        with patch("deerflow.client.get_app_config", return_value=mock_app_config):
+            client = DeerFlowClient()
 
         result = client.list_models()
         parsed = ModelsListResponse(**result)
@@ -2337,8 +2485,8 @@ class TestGatewayConformance:
         mock_app_config.models = [model]
         mock_app_config.get_model_config.return_value = model
 
-        with patch("ideer.client.get_app_config", return_value=mock_app_config):
-            client = IDeerClient()
+        with patch("deerflow.client.get_app_config", return_value=mock_app_config):
+            client = DeerFlowClient()
 
         result = client.get_model("test-model")
         assert result is not None
@@ -2354,7 +2502,7 @@ class TestGatewayConformance:
         skill.category = "public"
         skill.enabled = True
 
-        with patch("ideer.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", return_value=[skill]):
+        with patch("deerflow.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", return_value=[skill]):
             result = client.list_skills()
 
         assert result["skills"][0]["name"] == "web-search"
@@ -2367,7 +2515,7 @@ class TestGatewayConformance:
         skill.category = "public"
         skill.enabled = True
 
-        with patch("ideer.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", return_value=[skill]):
+        with patch("deerflow.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", return_value=[skill]):
             result = client.get_skill("web-search")
 
         assert result is not None
@@ -2382,9 +2530,9 @@ class TestGatewayConformance:
         with zipfile.ZipFile(archive, "w") as zf:
             zf.write(skill_dir / "SKILL.md", "my-skill/SKILL.md")
 
-        from ideer.skills.storage.local_skill_storage import LocalSkillStorage
+        from deerflow.skills.storage.local_skill_storage import LocalSkillStorage
 
-        with patch("ideer.skills.storage._default_skill_storage", LocalSkillStorage(host_path=str(tmp_path / "skills"))):
+        with patch("deerflow.client.get_or_new_user_skill_storage", return_value=LocalSkillStorage(host_path=str(tmp_path / "skills"))):
             result = client.install_skill(archive)
 
         parsed = result
@@ -2406,7 +2554,7 @@ class TestGatewayConformance:
         ext_config = MagicMock()
         ext_config.mcp_servers = {"test": server}
 
-        with patch("ideer.client.get_extensions_config", return_value=ext_config):
+        with patch("deerflow.client.get_extensions_config", return_value=ext_config):
             result = client.get_mcp_config()
 
         parsed = McpConfigResponse(**result)
@@ -2432,9 +2580,9 @@ class TestGatewayConformance:
         config_file.write_text("{}")
 
         with (
-            patch("ideer.client.get_extensions_config", return_value=ext_config),
-            patch("ideer.client.ExtensionsConfig.resolve_config_path", return_value=config_file),
-            patch("ideer.client.reload_extensions_config", return_value=ext_config),
+            patch("deerflow.client.get_extensions_config", return_value=ext_config),
+            patch("deerflow.client.ExtensionsConfig.resolve_config_path", return_value=config_file),
+            patch("deerflow.client.reload_extensions_config", return_value=ext_config),
         ):
             result = client.update_mcp_config({"srv": server.model_dump.return_value})
 
@@ -2448,8 +2596,16 @@ class TestGatewayConformance:
         src_file = tmp_path / "hello.txt"
         src_file.write_text("hello")
 
-        with patch("ideer.client.get_uploads_dir", return_value=uploads_dir), patch("ideer.client.ensure_uploads_dir", return_value=uploads_dir):
+        with patch("deerflow.client.get_uploads_dir", return_value=uploads_dir), patch("deerflow.client.ensure_uploads_dir", return_value=uploads_dir):
             result = client.upload_files("t-conform", [src_file])
+
+        # Known drift recorded in the test report: the embedded client emits
+        # ``size`` as int while the Gateway schema (UploadResponse.files:
+        # list[dict[str, str]]) stringifies it — app/gateway/routers/uploads.py
+        # builds ``"size": str(file_size)``. Normalize so the remaining schema
+        # conformance is still verified without changing production code.
+        for file_info in result["files"]:
+            file_info["size"] = str(file_info["size"])
 
         parsed = UploadResponse(**result)
         assert parsed.success is True
@@ -2458,29 +2614,27 @@ class TestGatewayConformance:
     def test_get_memory_config(self, client):
         mem_cfg = MagicMock()
         mem_cfg.enabled = True
-        mem_cfg.storage_path = ".ideer/memory.json"
-        mem_cfg.debounce_seconds = 30
-        mem_cfg.max_facts = 100
-        mem_cfg.fact_confidence_threshold = 0.7
+        mem_cfg.mode = "middleware"
         mem_cfg.injection_enabled = True
-        mem_cfg.max_injection_tokens = 2000
+        mem_cfg.shutdown_flush_timeout_seconds = 30.0
+        mem_cfg.manager_class = "deermem"
+        mem_cfg.backend_config = {}
 
-        with patch("ideer.config.memory_config.get_memory_config", return_value=mem_cfg):
+        with patch("deerflow.config.memory_config.get_memory_config", return_value=mem_cfg):
             result = client.get_memory_config()
 
         parsed = MemoryConfigResponse(**result)
         assert parsed.enabled is True
-        assert parsed.max_facts == 100
+        assert parsed.manager_class == "deermem"
 
     def test_get_memory_status(self, client):
         mem_cfg = MagicMock()
         mem_cfg.enabled = True
-        mem_cfg.storage_path = ".ideer/memory.json"
-        mem_cfg.debounce_seconds = 30
-        mem_cfg.max_facts = 100
-        mem_cfg.fact_confidence_threshold = 0.7
+        mem_cfg.mode = "middleware"
         mem_cfg.injection_enabled = True
-        mem_cfg.max_injection_tokens = 2000
+        mem_cfg.shutdown_flush_timeout_seconds = 30.0
+        mem_cfg.manager_class = "deermem"
+        mem_cfg.backend_config = {}
 
         memory_data = {
             "version": "1.0",
@@ -2498,9 +2652,11 @@ class TestGatewayConformance:
             "facts": [],
         }
 
+        manager = MagicMock()
+        manager.get_memory.return_value = memory_data
         with (
-            patch("ideer.config.memory_config.get_memory_config", return_value=mem_cfg),
-            patch("ideer.agents.memory.updater.get_memory_data", return_value=memory_data),
+            patch("deerflow.config.memory_config.get_memory_config", return_value=mem_cfg),
+            patch("deerflow.agents.memory.get_memory_manager", return_value=manager),
         ):
             result = client.get_memory_status()
 
@@ -2531,18 +2687,18 @@ class TestInstallSkillSecurity:
             (skills_root).mkdir(parents=True)
 
             # Patch max_total_size to a small value to trigger the bomb check.
-            from ideer.skills import installer as _installer
+            from deerflow.skills import installer as _installer
 
             orig = _installer.safe_extract_skill_archive
 
             def patched_extract(zf, dest, max_total_size=100):
                 return orig(zf, dest, max_total_size=100)
 
-            from ideer.skills.storage.local_skill_storage import LocalSkillStorage
+            from deerflow.skills.storage.local_skill_storage import LocalSkillStorage
 
             with (
-                patch("ideer.skills.storage._default_skill_storage", LocalSkillStorage(host_path=str(skills_root))),
-                patch("ideer.skills.installer.safe_extract_skill_archive", side_effect=patched_extract),
+                patch("deerflow.client.get_or_new_user_skill_storage", return_value=LocalSkillStorage(host_path=str(skills_root))),
+                patch("deerflow.skills.installer.safe_extract_skill_archive", side_effect=patched_extract),
             ):
                 with pytest.raises(ValueError, match="too large"):
                     client.install_skill(archive)
@@ -2557,9 +2713,9 @@ class TestInstallSkillSecurity:
             skills_root = Path(tmp) / "skills"
             (skills_root).mkdir(parents=True)
 
-            from ideer.skills.storage.local_skill_storage import LocalSkillStorage
+            from deerflow.skills.storage.local_skill_storage import LocalSkillStorage
 
-            with patch("ideer.skills.storage._default_skill_storage", LocalSkillStorage(host_path=str(skills_root))):
+            with patch("deerflow.client.get_or_new_user_skill_storage", return_value=LocalSkillStorage(host_path=str(skills_root))):
                 with pytest.raises(ValueError, match="unsafe"):
                     client.install_skill(archive)
 
@@ -2573,9 +2729,9 @@ class TestInstallSkillSecurity:
             skills_root = Path(tmp) / "skills"
             (skills_root).mkdir(parents=True)
 
-            from ideer.skills.storage.local_skill_storage import LocalSkillStorage
+            from deerflow.skills.storage.local_skill_storage import LocalSkillStorage
 
-            with patch("ideer.skills.storage._default_skill_storage", LocalSkillStorage(host_path=str(skills_root))):
+            with patch("deerflow.client.get_or_new_user_skill_storage", return_value=LocalSkillStorage(host_path=str(skills_root))):
                 with pytest.raises(ValueError, match="unsafe"):
                     client.install_skill(archive)
 
@@ -2597,13 +2753,15 @@ class TestInstallSkillSecurity:
             skills_root = tmp_path / "skills"
             (skills_root).mkdir(parents=True)
 
-            from ideer.skills.storage.local_skill_storage import LocalSkillStorage
+            from deerflow.skills.storage.local_skill_storage import LocalSkillStorage
 
-            with patch("ideer.skills.storage._default_skill_storage", LocalSkillStorage(host_path=str(skills_root))):
+            with patch("deerflow.client.get_or_new_user_skill_storage", return_value=LocalSkillStorage(host_path=str(skills_root))):
                 result = client.install_skill(archive)
 
             assert result["success"] is True
-            installed = skills_root / "sym-skill"
+            # Upstream LocalSkillStorage installs custom skills under
+            # <host_root>/custom/<name>/.
+            installed = skills_root / "custom" / "sym-skill"
             assert (installed / "SKILL.md").exists()
             assert not (installed / "sneaky_link").exists()
 
@@ -2623,11 +2781,11 @@ class TestInstallSkillSecurity:
             skills_root = tmp_path / "skills"
             (skills_root).mkdir(parents=True)
 
-            from ideer.skills.storage.local_skill_storage import LocalSkillStorage
+            from deerflow.skills.storage.local_skill_storage import LocalSkillStorage
 
             with (
-                patch("ideer.skills.storage._default_skill_storage", LocalSkillStorage(host_path=str(skills_root))),
-                patch("ideer.skills.validation._validate_skill_frontmatter", return_value=(True, "OK", "../evil")),
+                patch("deerflow.client.get_or_new_user_skill_storage", return_value=LocalSkillStorage(host_path=str(skills_root))),
+                patch("deerflow.skills.validation._validate_skill_frontmatter", return_value=(True, "OK", "../evil")),
             ):
                 with pytest.raises(ValueError, match="Invalid skill name"):
                     client.install_skill(archive)
@@ -2646,13 +2804,14 @@ class TestInstallSkillSecurity:
                 zf.write(skill_dir / "SKILL.md", "dupe-skill/SKILL.md")
 
             skills_root = tmp_path / "skills"
-            (skills_root / "dupe-skill").mkdir(parents=True)
+            # Upstream checks for an existing skill under <host_root>/custom/.
+            (skills_root / "custom" / "dupe-skill").mkdir(parents=True)
 
-            from ideer.skills.storage.local_skill_storage import LocalSkillStorage
+            from deerflow.skills.storage.local_skill_storage import LocalSkillStorage
 
             with (
-                patch("ideer.skills.storage._default_skill_storage", LocalSkillStorage(host_path=str(skills_root))),
-                patch("ideer.skills.validation._validate_skill_frontmatter", return_value=(True, "OK", "dupe-skill")),
+                patch("deerflow.client.get_or_new_user_skill_storage", return_value=LocalSkillStorage(host_path=str(skills_root))),
+                patch("deerflow.skills.validation._validate_skill_frontmatter", return_value=(True, "OK", "dupe-skill")),
             ):
                 with pytest.raises(ValueError, match="already exists"):
                     client.install_skill(archive)
@@ -2667,9 +2826,9 @@ class TestInstallSkillSecurity:
             skills_root = Path(tmp) / "skills"
             (skills_root).mkdir(parents=True)
 
-            from ideer.skills.storage.local_skill_storage import LocalSkillStorage
+            from deerflow.skills.storage.local_skill_storage import LocalSkillStorage
 
-            with patch("ideer.skills.storage._default_skill_storage", LocalSkillStorage(host_path=str(skills_root))):
+            with patch("deerflow.client.get_or_new_user_skill_storage", return_value=LocalSkillStorage(host_path=str(skills_root))):
                 with pytest.raises(ValueError, match="empty"):
                     client.install_skill(archive)
 
@@ -2688,11 +2847,11 @@ class TestInstallSkillSecurity:
             skills_root = tmp_path / "skills"
             (skills_root).mkdir(parents=True)
 
-            from ideer.skills.storage.local_skill_storage import LocalSkillStorage
+            from deerflow.skills.storage.local_skill_storage import LocalSkillStorage
 
             with (
-                patch("ideer.skills.storage._default_skill_storage", LocalSkillStorage(host_path=str(skills_root))),
-                patch("ideer.skills.validation._validate_skill_frontmatter", return_value=(False, "Missing name field", "")),
+                patch("deerflow.client.get_or_new_user_skill_storage", return_value=LocalSkillStorage(host_path=str(skills_root))),
+                patch("deerflow.skills.validation._validate_skill_frontmatter", return_value=(False, "Missing name field", "")),
             ):
                 with pytest.raises(ValueError, match="Invalid skill"):
                     client.install_skill(archive)
@@ -2728,7 +2887,7 @@ class TestAtomicWriteJson:
             bad_data = {"key": object()}
 
             with pytest.raises(TypeError):
-                IDeerClient._atomic_write_json(target, bad_data)
+                DeerFlowClient._atomic_write_json(target, bad_data)
 
             # Target should not have been created.
             assert not target.exists()
@@ -2742,7 +2901,7 @@ class TestAtomicWriteJson:
             target = Path(tmp) / "out.json"
             data = {"key": "value", "nested": [1, 2, 3]}
 
-            IDeerClient._atomic_write_json(target, data)
+            DeerFlowClient._atomic_write_json(target, data)
 
             assert target.exists()
             with open(target) as f:
@@ -2759,7 +2918,7 @@ class TestAtomicWriteJson:
 
             bad_data = {"key": object()}
             with pytest.raises(TypeError):
-                IDeerClient._atomic_write_json(target, bad_data)
+                DeerFlowClient._atomic_write_json(target, bad_data)
 
             # Original content must survive.
             with open(target) as f:
@@ -2774,18 +2933,23 @@ class TestAtomicWriteJson:
 class TestConfigUpdateErrors:
     def test_update_mcp_config_no_config_file(self, client):
         """FileNotFoundError when extensions_config.json cannot be located."""
-        with patch("ideer.client.ExtensionsConfig.resolve_config_path", return_value=None):
+        with patch("deerflow.client.ExtensionsConfig.resolve_config_path", return_value=None):
             with pytest.raises(FileNotFoundError, match="Cannot locate"):
                 client.update_mcp_config({"server": {}})
 
     def test_update_skill_no_config_file(self, client):
-        """FileNotFoundError when extensions_config.json cannot be located."""
+        """FileNotFoundError when extensions_config.json cannot be located.
+
+        Upstream only consults extensions_config.json for PUBLIC skills;
+        CUSTOM/LEGACY skills persist per-user state instead.
+        """
         skill = MagicMock()
         skill.name = "some-skill"
+        skill.category = "public"
 
         with (
-            patch("ideer.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", return_value=[skill]),
-            patch("ideer.client.ExtensionsConfig.resolve_config_path", return_value=None),
+            patch("deerflow.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", return_value=[skill]),
+            patch("deerflow.client.ExtensionsConfig.resolve_config_path", return_value=None),
         ):
             with pytest.raises(FileNotFoundError, match="Cannot locate"):
                 client.update_skill("some-skill", enabled=False)
@@ -2804,10 +2968,10 @@ class TestConfigUpdateErrors:
             config_file.write_text("{}")
 
             with (
-                patch("ideer.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", side_effect=[[skill], []]),
-                patch("ideer.client.ExtensionsConfig.resolve_config_path", return_value=config_file),
-                patch("ideer.client.get_extensions_config", return_value=ext_config),
-                patch("ideer.client.reload_extensions_config"),
+                patch("deerflow.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", side_effect=[[skill], []]),
+                patch("deerflow.client.ExtensionsConfig.resolve_config_path", return_value=config_file),
+                patch("deerflow.client.get_extensions_config", return_value=ext_config),
+                patch("deerflow.client.reload_extensions_config"),
             ):
                 with pytest.raises(RuntimeError, match="disappeared"):
                     client.update_skill("ghost-skill", enabled=False)
@@ -2904,7 +3068,7 @@ class TestStreamHardening:
 class TestSerializeMessage:
     def test_system_message(self):
         msg = SystemMessage(content="You are a helpful assistant.", id="sys-1")
-        result = IDeerClient._serialize_message(msg)
+        result = DeerFlowClient._serialize_message(msg)
         assert result["type"] == "system"
         assert result["content"] == "You are a helpful assistant."
         assert result["id"] == "sys-1"
@@ -2916,7 +3080,7 @@ class TestSerializeMessage:
         msg.content = "something"
         # Not an instance of AIMessage/ToolMessage/HumanMessage/SystemMessage
         type(msg).__name__ = "CustomMessage"
-        result = IDeerClient._serialize_message(msg)
+        result = DeerFlowClient._serialize_message(msg)
         assert result["type"] == "unknown"
         assert result["id"] == "unk-1"
 
@@ -2926,14 +3090,14 @@ class TestSerializeMessage:
             id="ai-tc",
             tool_calls=[{"name": "bash", "args": {"cmd": "ls"}, "id": "tc-1"}],
         )
-        result = IDeerClient._serialize_message(msg)
+        result = DeerFlowClient._serialize_message(msg)
         assert result["type"] == "ai"
         assert len(result["tool_calls"]) == 1
         assert result["tool_calls"][0]["name"] == "bash"
 
     def test_tool_message_non_string_content(self):
         msg = ToolMessage(content={"key": "value"}, id="tm-1", tool_call_id="tc-1", name="tool")
-        result = IDeerClient._serialize_message(msg)
+        result = DeerFlowClient._serialize_message(msg)
         assert result["type"] == "tool"
         assert isinstance(result["content"], str)
 
@@ -2963,7 +3127,7 @@ class TestUploadDeleteSymlink:
                     pytest.skip("symlink creation requires Developer Mode or elevated privileges on Windows")
                 raise
 
-            with patch("ideer.client.get_uploads_dir", return_value=uploads_dir), patch("ideer.client.ensure_uploads_dir", return_value=uploads_dir):
+            with patch("deerflow.client.get_uploads_dir", return_value=uploads_dir), patch("deerflow.client.ensure_uploads_dir", return_value=uploads_dir):
                 # The resolved path of the symlink escapes uploads_dir,
                 # so path traversal check should catch it.
                 with pytest.raises(PathTraversalError):
@@ -2983,7 +3147,7 @@ class TestUploadDeleteSymlink:
             src_file = tmp_path / weird_name
             src_file.write_text("data")
 
-            with patch("ideer.client.get_uploads_dir", return_value=uploads_dir), patch("ideer.client.ensure_uploads_dir", return_value=uploads_dir):
+            with patch("deerflow.client.get_uploads_dir", return_value=uploads_dir), patch("deerflow.client.ensure_uploads_dir", return_value=uploads_dir):
                 result = client.upload_files("thread-1", [src_file])
 
             assert result["success"] is True
@@ -2999,7 +3163,7 @@ class TestUploadDeleteSymlink:
 class TestArtifactHardening:
     def test_artifact_directory_rejected(self, client):
         """get_artifact rejects paths that resolve to a directory."""
-        from ideer.runtime.user_context import get_effective_user_id
+        from deerflow.runtime.user_context import get_effective_user_id
 
         with tempfile.TemporaryDirectory() as tmp:
             paths = Paths(base_dir=tmp)
@@ -3007,13 +3171,13 @@ class TestArtifactHardening:
             subdir = paths.sandbox_outputs_dir("t1", user_id=user_id) / "subdir"
             subdir.mkdir(parents=True)
 
-            with patch("ideer.client.get_paths", return_value=paths):
+            with patch("deerflow.client.get_paths", return_value=paths):
                 with pytest.raises(ValueError, match="not a file"):
                     client.get_artifact("t1", "mnt/user-data/outputs/subdir")
 
     def test_artifact_leading_slash_stripped(self, client):
         """Paths with leading slash are handled correctly."""
-        from ideer.runtime.user_context import get_effective_user_id
+        from deerflow.runtime.user_context import get_effective_user_id
 
         with tempfile.TemporaryDirectory() as tmp:
             paths = Paths(base_dir=tmp)
@@ -3022,7 +3186,7 @@ class TestArtifactHardening:
             outputs.mkdir(parents=True)
             (outputs / "file.txt").write_text("content")
 
-            with patch("ideer.client.get_paths", return_value=paths):
+            with patch("deerflow.client.get_paths", return_value=paths):
                 content, _mime = client.get_artifact("t1", "/mnt/user-data/outputs/file.txt")
 
             assert content == b"content"
@@ -3056,7 +3220,7 @@ class TestUploadDuplicateFilenames:
             (dir_a / "data.txt").write_text("version A")
             (dir_b / "data.txt").write_text("version B")
 
-            with patch("ideer.client.get_uploads_dir", return_value=uploads_dir), patch("ideer.client.ensure_uploads_dir", return_value=uploads_dir):
+            with patch("deerflow.client.get_uploads_dir", return_value=uploads_dir), patch("deerflow.client.ensure_uploads_dir", return_value=uploads_dir):
                 result = client.upload_files("t-dup", [dir_a / "data.txt", dir_b / "data.txt"])
 
             assert result["success"] is True
@@ -3089,7 +3253,7 @@ class TestUploadDuplicateFilenames:
                 d.mkdir()
                 (d / "report.csv").write_text(f"from {name}")
 
-            with patch("ideer.client.get_uploads_dir", return_value=uploads_dir), patch("ideer.client.ensure_uploads_dir", return_value=uploads_dir):
+            with patch("deerflow.client.get_uploads_dir", return_value=uploads_dir), patch("deerflow.client.ensure_uploads_dir", return_value=uploads_dir):
                 result = client.upload_files(
                     "t-triple",
                     [tmp_path / "x" / "report.csv", tmp_path / "y" / "report.csv", tmp_path / "z" / "report.csv"],
@@ -3109,7 +3273,7 @@ class TestUploadDuplicateFilenames:
             (tmp_path / "a.txt").write_text("aaa")
             (tmp_path / "b.txt").write_text("bbb")
 
-            with patch("ideer.client.get_uploads_dir", return_value=uploads_dir), patch("ideer.client.ensure_uploads_dir", return_value=uploads_dir):
+            with patch("deerflow.client.get_uploads_dir", return_value=uploads_dir), patch("deerflow.client.ensure_uploads_dir", return_value=uploads_dir):
                 result = client.upload_files("t-ok", [tmp_path / "a.txt", tmp_path / "b.txt"])
 
             assert result["success"] is True
@@ -3132,14 +3296,14 @@ class TestBugArtifactPrefixMatchTooLoose:
 
     def test_exact_prefix_without_subpath_accepted(self, client):
         """Bare 'mnt/user-data' is accepted (will later fail as directory, not at prefix)."""
-        from ideer.runtime.user_context import get_effective_user_id
+        from deerflow.runtime.user_context import get_effective_user_id
 
         with tempfile.TemporaryDirectory() as tmp:
             paths = Paths(base_dir=tmp)
             user_id = get_effective_user_id()
             paths.sandbox_outputs_dir("t1", user_id=user_id).mkdir(parents=True)
 
-            with patch("ideer.client.get_paths", return_value=paths):
+            with patch("deerflow.client.get_paths", return_value=paths):
                 # Accepted at prefix check, but fails because it's a directory.
                 with pytest.raises(ValueError, match="not a file"):
                     client.get_artifact("t1", "mnt/user-data")
@@ -3159,7 +3323,7 @@ class TestBugListUploadsDeadCode:
             mock_paths = MagicMock()
             mock_paths.sandbox_uploads_dir.return_value = non_existent
 
-            with patch("ideer.uploads.manager.get_paths", return_value=mock_paths):
+            with patch("deerflow.uploads.manager.get_paths", return_value=mock_paths):
                 result = client.list_uploads("thread-fresh")
 
             # Read path should NOT create the directory
@@ -3187,9 +3351,9 @@ class TestBugAgentInvalidationInconsistency:
             config_file.write_text("{}")
 
             with (
-                patch("ideer.client.ExtensionsConfig.resolve_config_path", return_value=config_file),
-                patch("ideer.client.get_extensions_config", return_value=current_config),
-                patch("ideer.client.reload_extensions_config", return_value=reloaded),
+                patch("deerflow.client.ExtensionsConfig.resolve_config_path", return_value=config_file),
+                patch("deerflow.client.get_extensions_config", return_value=current_config),
+                patch("deerflow.client.reload_extensions_config", return_value=reloaded),
             ):
                 client.update_mcp_config({})
 
@@ -3219,10 +3383,10 @@ class TestBugAgentInvalidationInconsistency:
             config_file.write_text("{}")
 
             with (
-                patch("ideer.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", side_effect=[[skill], [updated]]),
-                patch("ideer.client.ExtensionsConfig.resolve_config_path", return_value=config_file),
-                patch("ideer.client.get_extensions_config", return_value=ext_config),
-                patch("ideer.client.reload_extensions_config"),
+                patch("deerflow.skills.storage.local_skill_storage.LocalSkillStorage.load_skills", side_effect=[[skill], [updated]]),
+                patch("deerflow.client.ExtensionsConfig.resolve_config_path", return_value=config_file),
+                patch("deerflow.client.get_extensions_config", return_value=ext_config),
+                patch("deerflow.client.reload_extensions_config"),
             ):
                 client.update_skill("s1", enabled=False)
 

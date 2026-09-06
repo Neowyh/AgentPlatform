@@ -58,7 +58,7 @@ class TestRunFunction:
         cred_path = tmp_path / "admin_initial_credentials.txt"
 
         with (
-            patch("ideer.config.get_app_config"),
+            patch("deerflow.config.get_app_config"),
             patch("deerflow.persistence.engine.init_engine_from_config", new_callable=AsyncMock),
             patch("deerflow.persistence.engine.get_session_factory", return_value=mock_sf),
             patch("deerflow.persistence.engine.close_engine", new_callable=AsyncMock),
@@ -88,7 +88,7 @@ class TestRunFunction:
         mock_sf = _make_session_factory(admin_row=None)
 
         with (
-            patch("ideer.config.get_app_config"),
+            patch("deerflow.config.get_app_config"),
             patch("deerflow.persistence.engine.init_engine_from_config", new_callable=AsyncMock),
             patch("deerflow.persistence.engine.get_session_factory", return_value=mock_sf),
             patch("deerflow.persistence.engine.close_engine", new_callable=AsyncMock),
@@ -121,7 +121,7 @@ class TestRunFunction:
         cred_path = tmp_path / "admin_initial_credentials.txt"
 
         with (
-            patch("ideer.config.get_app_config"),
+            patch("deerflow.config.get_app_config"),
             patch("deerflow.persistence.engine.init_engine_from_config", new_callable=AsyncMock),
             patch("deerflow.persistence.engine.get_session_factory", return_value=mock_sf),
             patch("deerflow.persistence.engine.close_engine", new_callable=AsyncMock),
@@ -151,7 +151,7 @@ class TestRunFunction:
         mock_sf = MagicMock(return_value=mock_session)
 
         with (
-            patch("ideer.config.get_app_config"),
+            patch("deerflow.config.get_app_config"),
             patch("deerflow.persistence.engine.init_engine_from_config", new_callable=AsyncMock),
             patch("deerflow.persistence.engine.get_session_factory", return_value=mock_sf),
             patch("deerflow.persistence.engine.close_engine", new_callable=AsyncMock),
@@ -167,7 +167,7 @@ class TestRunFunction:
     async def test_session_factory_none_returns_1(self) -> None:
         """When get_session_factory returns None, _run returns 1."""
         with (
-            patch("ideer.config.get_app_config"),
+            patch("deerflow.config.get_app_config"),
             patch("deerflow.persistence.engine.init_engine_from_config", new_callable=AsyncMock),
             patch("deerflow.persistence.engine.get_session_factory", return_value=None),
             patch("deerflow.persistence.engine.close_engine", new_callable=AsyncMock),
@@ -190,7 +190,7 @@ class TestRunFunction:
         cred_path = tmp_path / "creds.txt"
 
         with (
-            patch("ideer.config.get_app_config"),
+            patch("deerflow.config.get_app_config"),
             patch("deerflow.persistence.engine.init_engine_from_config", new_callable=AsyncMock),
             patch("deerflow.persistence.engine.get_session_factory", return_value=mock_sf),
             patch("deerflow.persistence.engine.close_engine", new_callable=AsyncMock) as mock_close,
@@ -208,7 +208,7 @@ class TestRunFunction:
     async def test_close_engine_called_on_failure(self) -> None:
         """close_engine() is called even when the function returns 1."""
         with (
-            patch("ideer.config.get_app_config"),
+            patch("deerflow.config.get_app_config"),
             patch("deerflow.persistence.engine.init_engine_from_config", new_callable=AsyncMock),
             patch("deerflow.persistence.engine.get_session_factory", return_value=None),
             patch("deerflow.persistence.engine.close_engine", new_callable=AsyncMock) as mock_close,
@@ -231,7 +231,7 @@ class TestRunFunction:
         cred_path = tmp_path / "creds.txt"
 
         with (
-            patch("ideer.config.get_app_config"),
+            patch("deerflow.config.get_app_config"),
             patch("deerflow.persistence.engine.init_engine_from_config", new_callable=AsyncMock),
             patch("deerflow.persistence.engine.get_session_factory", return_value=mock_sf),
             patch("deerflow.persistence.engine.close_engine", new_callable=AsyncMock),
@@ -258,7 +258,7 @@ class TestRunFunction:
         cred_path = tmp_path / "creds.txt"
 
         with (
-            patch("ideer.config.get_app_config"),
+            patch("deerflow.config.get_app_config"),
             patch("deerflow.persistence.engine.init_engine_from_config", new_callable=AsyncMock),
             patch("deerflow.persistence.engine.get_session_factory", return_value=mock_sf),
             patch("deerflow.persistence.engine.close_engine", new_callable=AsyncMock),

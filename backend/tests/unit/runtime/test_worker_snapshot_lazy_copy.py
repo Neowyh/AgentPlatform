@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from ideer.runtime.runs.worker import RunContext
+from deerflow.runtime.runs.worker import RunContext
 
 
 def _success_harness():
@@ -29,7 +29,7 @@ def _success_harness():
     record.model_name = "gpt-4"
     record.abort_event = MagicMock()
     record.abort_event.is_set.return_value = False
-    from ideer.runtime.runs.schemas import RunStatus
+    from deerflow.runtime.runs.schemas import RunStatus
 
     record.status = RunStatus.success
 
@@ -60,15 +60,15 @@ def _success_harness():
 @pytest.mark.asyncio
 async def test_success_path_copies_nothing():
     """The happy path must not pay deepcopy: rollback-only data stays by reference."""
-    import ideer.runtime.runs.worker as worker_mod
-    from ideer.runtime.runs.worker import run_agent
+    import deerflow.runtime.runs.worker as worker_mod
+    from deerflow.runtime.runs.worker import run_agent
 
     bridge, run_manager, record, ctx, agent_factory = _success_harness()
     with patch.object(worker_mod, "copy") as mock_copy:
-        with patch("ideer.runtime.runs.worker.inject_langfuse_metadata"):
-            with patch("ideer.runtime.runs.worker.get_effective_user_id", return_value="user_1"):
-                with patch("ideer.runtime.runs.worker.os.environ", {}):
-                    with patch("ideer.runtime.runs.worker.resolve_root_run_name", return_value="test_run"):
+        with patch("deerflow.runtime.runs.worker.inject_langfuse_metadata"):
+            with patch("deerflow.runtime.runs.worker.get_effective_user_id", return_value="user_1"):
+                with patch("deerflow.runtime.runs.worker.os.environ", {}):
+                    with patch("deerflow.runtime.runs.worker.resolve_root_run_name", return_value="test_run"):
                         await run_agent(
                             bridge,
                             run_manager,

@@ -2,7 +2,7 @@
 
 import pytest
 
-from ideer.runtime.events.store.memory import MemoryRunEventStore
+from deerflow.runtime.events.store.memory import MemoryRunEventStore
 
 
 @pytest.fixture

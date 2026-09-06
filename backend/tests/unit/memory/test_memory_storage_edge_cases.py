@@ -1,4 +1,4 @@
-"""Tests covering missing error paths in ideer.agents.memory.storage.
+"""Tests covering missing error paths in app.agentplatform.legacy.memory.storage.
 
 Targets:
 - Lines 49, 54, 59: abstract method ``pass`` bodies (via concrete subclass calling super)
@@ -11,13 +11,13 @@ Targets:
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from ideer.agents.memory.storage import (
+from app.agentplatform.legacy.memory.storage import (
     FileMemoryStorage,
     MemoryStorage,
     create_empty_memory,
     get_memory_storage,
 )
-from ideer.config.memory_config import MemoryConfig
+from deerflow.config.memory_config import MemoryConfig
 
 # ---------------------------------------------------------------------------
 # Lines 49, 54, 59 -- abstract method ``pass`` bodies
@@ -169,10 +169,10 @@ class TestSaveOSErrorPath:
         mock_paths = MagicMock()
         mock_paths.memory_file = memory_file
 
-        with patch("ideer.agents.memory.storage.get_paths", return_value=mock_paths):
+        with patch("app.agentplatform.legacy.memory.storage.get_paths", return_value=mock_paths):
             with patch(
-                "ideer.agents.memory.storage.get_memory_config",
-                return_value=MemoryConfig(storage_path=""),
+                "app.agentplatform.legacy.memory.storage.get_memory_config",
+                return_value=MemoryConfig(backend_config={"storage_path": ""}),
             ):
                 storage = FileMemoryStorage()
 
@@ -217,7 +217,7 @@ class TestGetMemoryStorageDoubleCheckedLocking:
     def test_second_check_returns_instance_set_by_another_thread(self):
         """Line 228: if another thread sets _storage_instance between the outer
         check and acquiring the lock, the second check should return it."""
-        import ideer.agents.memory.storage as storage_mod
+        import app.agentplatform.legacy.memory.storage as storage_mod
 
         storage_mod._storage_instance = None
 
@@ -246,8 +246,8 @@ class TestGetMemoryStorageDoubleCheckedLocking:
         try:
             with patch.object(storage_mod, "_storage_lock", _InterceptingLock()):
                 with patch(
-                    "ideer.agents.memory.storage.get_memory_config",
-                    return_value=MemoryConfig(storage_class="ideer.agents.memory.storage.FileMemoryStorage"),
+                    "app.agentplatform.legacy.memory.storage.get_memory_config",
+                    return_value=MemoryConfig(backend_config={"storage_class": "app.agentplatform.legacy.memory.storage.FileMemoryStorage"}),
                 ):
                     result = get_memory_storage()
 

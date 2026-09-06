@@ -17,7 +17,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi.testclient import TestClient
 
 from app.gateway.routers import thread_runs
-from ideer.runtime import RunRecord, RunStatus
+from deerflow.runtime import RunRecord, RunStatus
 
 # ---------------------------------------------------------------------------
 # Helpers

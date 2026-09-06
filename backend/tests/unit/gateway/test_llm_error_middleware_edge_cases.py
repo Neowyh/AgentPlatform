@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 from langchain_core.messages import AIMessage
 
-from ideer.agents.middlewares.llm_error_handling_middleware import (
+from deerflow.agents.middlewares.llm_error_handling_middleware import (
     LLMErrorHandlingMiddleware,
     _extract_error_code,
     _extract_error_detail,
@@ -15,8 +15,8 @@ from ideer.agents.middlewares.llm_error_handling_middleware import (
     _extract_status_code,
     _matches_any,
 )
-from ideer.config.app_config import AppConfig
-from ideer.config.sandbox_config import SandboxConfig
+from deerflow.config.app_config import AppConfig
+from deerflow.config.sandbox_config import SandboxConfig
 
 
 def _make_app_config() -> AppConfig:

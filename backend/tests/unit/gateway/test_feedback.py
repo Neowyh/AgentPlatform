@@ -5,15 +5,15 @@ Uses temp SQLite DB for ORM tests.
 
 import pytest
 
-from ideer.persistence.feedback import FeedbackRepository
-from ideer.runtime.user_context import reset_current_user, set_current_user
+from deerflow.persistence.feedback import FeedbackRepository
+from deerflow.runtime.user_context import reset_current_user, set_current_user
 
 _TEST_USER_ID = "test-user-1"
 _user_token: list = []
 
 
 async def _make_feedback_repo(tmp_path):
-    from ideer.persistence.engine import get_session_factory, init_engine
+    from deerflow.persistence.engine import get_session_factory, init_engine
 
     url = f"sqlite+aiosqlite:///{tmp_path / 'test.db'}"
     await init_engine("sqlite", url=url, sqlite_dir=str(tmp_path))
@@ -24,7 +24,7 @@ async def _make_feedback_repo(tmp_path):
 
 
 async def _cleanup():
-    from ideer.persistence.engine import close_engine
+    from deerflow.persistence.engine import close_engine
 
     await close_engine()
     while _user_token:
@@ -245,7 +245,7 @@ class TestFollowUpAssociation:
     @pytest.mark.anyio
     async def test_run_records_follow_up_via_memory_store(self):
         """MemoryRunStore stores follow_up_to_run_id in kwargs."""
-        from ideer.runtime.runs.store.memory import MemoryRunStore
+        from deerflow.runtime.runs.store.memory import MemoryRunStore
 
         store = MemoryRunStore()
         await store.put("r1", thread_id="t1", status="success")
@@ -258,7 +258,7 @@ class TestFollowUpAssociation:
     @pytest.mark.anyio
     async def test_human_message_has_follow_up_metadata(self):
         """human_message event metadata includes follow_up_to_run_id."""
-        from ideer.runtime.events.store.memory import MemoryRunEventStore
+        from deerflow.runtime.events.store.memory import MemoryRunEventStore
 
         event_store = MemoryRunEventStore()
         await event_store.put(
@@ -275,7 +275,7 @@ class TestFollowUpAssociation:
     @pytest.mark.anyio
     async def test_follow_up_auto_detection_logic(self):
         """Simulate the auto-detection: latest successful run becomes follow_up_to."""
-        from ideer.runtime.runs.store.memory import MemoryRunStore
+        from deerflow.runtime.runs.store.memory import MemoryRunStore
 
         store = MemoryRunStore()
         await store.put("r1", thread_id="t1", status="success")

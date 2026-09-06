@@ -1,12 +1,12 @@
-"""Additional coverage tests for ideer.community.code_interpreter.tools."""
+"""Additional coverage tests for app.agentplatform.community.code_interpreter.tools."""
 
 from __future__ import annotations
 
 import json
 from unittest.mock import MagicMock, patch
 
-from ideer.community.code_interpreter import tools as ci_tools
-from ideer.community.code_interpreter.tools import (
+from app.agentplatform.community.code_interpreter import tools as ci_tools
+from app.agentplatform.community.code_interpreter.tools import (
     _MAX_CODE_SIZE,
     _truncate_output,
     code_interpreter_tool,

@@ -13,11 +13,14 @@ import pytest_asyncio
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-import ideer.persistence.models  # noqa: F401
-from ideer.persistence.base import Base
-from ideer.persistence.models.resource_catalog import Resource, ResourceDependency, ResourceVersion
-from ideer.persistence.models.user import UserModel
-from ideer.tools.builtins.setup_agent_tool import (
+import app.agentplatform.audit_model  # noqa: F401 - register audit_logs
+import app.agentplatform.rbac_models  # noqa: F401 - register users_ext
+import app.agentplatform.resource_models  # noqa: F401 - register resource tables
+import app.agentplatform.visibility_models  # noqa: F401 - register visibility tables
+from app.agentplatform.rbac_models import UserModel
+from app.agentplatform.resource_models import Resource, ResourceDependency, ResourceVersion
+from deerflow.persistence.base import Base
+from deerflow.tools.builtins.setup_agent_tool import (
     setup_agent,
 )
 
@@ -46,7 +49,7 @@ def _make_paths_mock(tmp_path: Path):
 
 def _call_setup_agent(tmp_path: Path, soul: str, description: str, agent_name: str = "test-agent"):
     """Call the underlying setup_agent function directly, bypassing langchain tool wrapper."""
-    with patch("ideer.tools.builtins.setup_agent_tool.get_paths", return_value=_make_paths_mock(tmp_path)):
+    with patch("deerflow.tools.builtins.setup_agent_tool.get_paths", return_value=_make_paths_mock(tmp_path)):
         return setup_agent.func(
             soul=soul,
             description=description,
@@ -149,8 +152,8 @@ class TestSetupAgentCanonical:
         _seed_user(catalog_db)
 
         with (
-            patch("ideer.tools.builtins.setup_agent_tool.get_session_factory", return_value=catalog_db),
-            patch("ideer.tools.builtins.setup_agent_tool.get_paths", return_value=_make_paths_mock(tmp_path)),
+            patch("deerflow.tools.builtins.setup_agent_tool.get_session_factory", return_value=catalog_db),
+            patch("deerflow.tools.builtins.setup_agent_tool.get_paths", return_value=_make_paths_mock(tmp_path)),
         ):
             result = setup_agent.func(
                 soul="# Canonical Agent",
@@ -177,8 +180,8 @@ class TestSetupAgentCanonical:
         _seed_user(catalog_db)
 
         with (
-            patch("ideer.tools.builtins.setup_agent_tool.get_session_factory", return_value=catalog_db),
-            patch("ideer.tools.builtins.setup_agent_tool.get_paths", return_value=_make_paths_mock(tmp_path)),
+            patch("deerflow.tools.builtins.setup_agent_tool.get_session_factory", return_value=catalog_db),
+            patch("deerflow.tools.builtins.setup_agent_tool.get_paths", return_value=_make_paths_mock(tmp_path)),
         ):
             first = setup_agent.func(
                 soul="# First Soul",
@@ -213,8 +216,8 @@ class TestSetupAgentCanonical:
         asyncio.run(_seed_skill())
 
         with (
-            patch("ideer.tools.builtins.setup_agent_tool.get_session_factory", return_value=catalog_db),
-            patch("ideer.tools.builtins.setup_agent_tool.get_paths", return_value=_make_paths_mock(tmp_path)),
+            patch("deerflow.tools.builtins.setup_agent_tool.get_session_factory", return_value=catalog_db),
+            patch("deerflow.tools.builtins.setup_agent_tool.get_paths", return_value=_make_paths_mock(tmp_path)),
         ):
             result = setup_agent.func(
                 soul="# Skillful Agent",
@@ -239,7 +242,7 @@ class TestSetupAgentCanonical:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
 
-        with patch("ideer.tools.builtins.setup_agent_tool.get_session_factory", return_value=None):
+        with patch("deerflow.tools.builtins.setup_agent_tool.get_session_factory", return_value=None):
             result = setup_agent.func(
                 soul="# No DB",
                 description="desc",

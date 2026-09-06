@@ -1,15 +1,15 @@
-"""Tests for ideer.models.factory.create_chat_model."""
+"""Tests for deerflow.models.factory.create_chat_model."""
 
 from __future__ import annotations
 
 import pytest
 from langchain.chat_models import BaseChatModel
 
-from ideer.config.app_config import AppConfig
-from ideer.config.model_config import ModelConfig
-from ideer.config.sandbox_config import SandboxConfig
-from ideer.models import factory as factory_module
-from ideer.models import openai_codex_provider as codex_provider_module
+from deerflow.config.app_config import AppConfig
+from deerflow.config.model_config import ModelConfig
+from deerflow.config.sandbox_config import SandboxConfig
+from deerflow.models import factory as factory_module
+from deerflow.models import openai_codex_provider as codex_provider_module
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -19,7 +19,7 @@ from ideer.models import openai_codex_provider as codex_provider_module
 def _make_app_config(models: list[ModelConfig]) -> AppConfig:
     return AppConfig(
         models=models,
-        sandbox=SandboxConfig(use="ideer.sandbox.local:LocalSandboxProvider"),
+        sandbox=SandboxConfig(use="deerflow.sandbox.local:LocalSandboxProvider"),
     )
 
 
@@ -584,6 +584,11 @@ def test_openai_compatible_provider_passes_base_url(monkeypatch):
     captured: dict = {}
 
     class CapturingModel(FakeChatModel):
+        # The upstream factory only injects the stream_usage default when the
+        # resolved model class's pydantic schema declares the field (real
+        # ChatOpenAI does); declare it here to simulate that schema.
+        stream_usage: bool | None = None
+
         def __init__(self, **kwargs):
             captured.update(kwargs)
             BaseChatModel.__init__(self, **kwargs)
@@ -650,6 +655,9 @@ def test_openai_compatible_provider_enables_stream_usage_for_openai_api_base(mon
     captured: dict = {}
 
     class CapturingModel(FakeChatModel):
+        # Simulate ChatOpenAI's pydantic schema, which declares stream_usage.
+        stream_usage: bool | None = None
+
         def __init__(self, **kwargs):
             captured.update(kwargs)
             BaseChatModel.__init__(self, **kwargs)
@@ -753,7 +761,7 @@ def test_codex_provider_disables_reasoning_when_thinking_disabled(monkeypatch):
         [
             _make_model(
                 "codex",
-                use="ideer.models.openai_codex_provider:CodexChatModel",
+                use="deerflow.models.openai_codex_provider:CodexChatModel",
                 supports_thinking=True,
                 supports_reasoning_effort=True,
             )
@@ -773,7 +781,7 @@ def test_codex_provider_preserves_explicit_reasoning_effort(monkeypatch):
         [
             _make_model(
                 "codex",
-                use="ideer.models.openai_codex_provider:CodexChatModel",
+                use="deerflow.models.openai_codex_provider:CodexChatModel",
                 supports_thinking=True,
                 supports_reasoning_effort=True,
             )
@@ -793,7 +801,7 @@ def test_codex_provider_defaults_reasoning_effort_to_medium(monkeypatch):
         [
             _make_model(
                 "codex",
-                use="ideer.models.openai_codex_provider:CodexChatModel",
+                use="deerflow.models.openai_codex_provider:CodexChatModel",
                 supports_thinking=True,
                 supports_reasoning_effort=True,
             )
@@ -813,7 +821,7 @@ def test_codex_provider_strips_unsupported_max_tokens(monkeypatch):
         [
             _make_model(
                 "codex",
-                use="ideer.models.openai_codex_provider:CodexChatModel",
+                use="deerflow.models.openai_codex_provider:CodexChatModel",
                 supports_thinking=True,
                 supports_reasoning_effort=True,
                 max_tokens=4096,
@@ -833,7 +841,7 @@ def test_thinking_disabled_vllm_chat_template_format(monkeypatch):
     wte = {"extra_body": {"chat_template_kwargs": {"thinking": True}}}
     model = _make_model(
         "vllm-qwen",
-        use="ideer.models.vllm_provider:VllmChatModel",
+        use="deerflow.models.vllm_provider:VllmChatModel",
         supports_thinking=True,
         when_thinking_enabled=wte,
     )
@@ -860,7 +868,7 @@ def test_thinking_disabled_vllm_enable_thinking_format(monkeypatch):
     wte = {"extra_body": {"chat_template_kwargs": {"enable_thinking": True}}}
     model = _make_model(
         "vllm-qwen-enable",
-        use="ideer.models.vllm_provider:VllmChatModel",
+        use="deerflow.models.vllm_provider:VllmChatModel",
         supports_thinking=True,
         when_thinking_enabled=wte,
     )
@@ -1010,7 +1018,7 @@ def test_no_duplicate_kwarg_when_reasoning_effort_in_config_and_thinking_disable
         name="doubao-model",
         display_name="Doubao 1.8",
         description=None,
-        use="ideer.models.patched_deepseek:PatchedChatDeepSeek",
+        use="deerflow.models.patched_deepseek:PatchedChatDeepSeek",
         model="doubao-seed-1-8-250315",
         reasoning_effort="high",  # user-set extra field in config.yaml
         supports_thinking=True,

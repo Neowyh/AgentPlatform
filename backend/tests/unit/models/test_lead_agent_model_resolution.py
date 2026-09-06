@@ -7,20 +7,20 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from ideer.agents.lead_agent import agent as lead_agent_module
-from ideer.agents.middlewares.loop_detection_middleware import LoopDetectionMiddleware
-from ideer.config.app_config import AppConfig
-from ideer.config.loop_detection_config import LoopDetectionConfig
-from ideer.config.memory_config import MemoryConfig
-from ideer.config.model_config import ModelConfig
-from ideer.config.sandbox_config import SandboxConfig
-from ideer.config.summarization_config import SummarizationConfig
+from deerflow.agents.lead_agent import agent as lead_agent_module
+from deerflow.agents.middlewares.loop_detection_middleware import LoopDetectionMiddleware
+from deerflow.config.app_config import AppConfig
+from deerflow.config.loop_detection_config import LoopDetectionConfig
+from deerflow.config.memory_config import MemoryConfig
+from deerflow.config.model_config import ModelConfig
+from deerflow.config.sandbox_config import SandboxConfig
+from deerflow.config.summarization_config import SummarizationConfig
 
 
 def _make_app_config(models: list[ModelConfig], loop_detection: LoopDetectionConfig | None = None) -> AppConfig:
     return AppConfig(
         models=models,
-        sandbox=SandboxConfig(use="ideer.sandbox.local:LocalSandboxProvider"),
+        sandbox=SandboxConfig(use="deerflow.sandbox.local:LocalSandboxProvider"),
         loop_detection=loop_detection or LoopDetectionConfig(),
     )
 
@@ -52,18 +52,18 @@ def test_make_lead_agent_attaches_tracing_callbacks_at_graph_root(monkeypatch):
     """
     app_config = _make_app_config([_make_model("safe-model", supports_thinking=False)])
 
-    import ideer.tools as tools_module
+    import deerflow.tools as tools_module
 
     monkeypatch.setattr(lead_agent_module, "get_app_config", lambda: app_config)
     monkeypatch.setattr(tools_module, "get_available_tools", lambda **kwargs: [])
-    monkeypatch.setattr(lead_agent_module, "_build_middlewares", lambda config, model_name, agent_name=None, **kwargs: [])
+    monkeypatch.setattr(lead_agent_module, "build_middlewares", lambda config, model_name, agent_name=None, **kwargs: [])
 
     sentinel_handler = object()
     monkeypatch.setattr(lead_agent_module, "build_tracing_callbacks", lambda: [sentinel_handler])
 
     seen_attach_tracing: list[bool] = []
 
-    def _fake_create_chat_model(*, name, thinking_enabled, reasoning_effort=None, app_config=None, attach_tracing=True):
+    def _fake_create_chat_model(*, name, thinking_enabled, reasoning_effort=None, app_config=None, attach_tracing=True, model_overrides=None):
         seen_attach_tracing.append(attach_tracing)
         return object()
 
@@ -87,18 +87,18 @@ def test_make_lead_agent_attaches_tracing_callbacks_at_graph_root(monkeypatch):
 def test_internal_make_lead_agent_uses_explicit_app_config(monkeypatch):
     app_config = _make_app_config([_make_model("explicit-model", supports_thinking=False)])
 
-    import ideer.tools as tools_module
+    import deerflow.tools as tools_module
 
     def _raise_get_app_config():
         raise AssertionError("ambient get_app_config() must not be used when app_config is explicit")
 
     monkeypatch.setattr(lead_agent_module, "get_app_config", _raise_get_app_config)
     monkeypatch.setattr(tools_module, "get_available_tools", lambda **kwargs: [])
-    monkeypatch.setattr(lead_agent_module, "_build_middlewares", lambda config, model_name, agent_name=None, **kwargs: [])
+    monkeypatch.setattr(lead_agent_module, "build_middlewares", lambda config, model_name, agent_name=None, **kwargs: [])
 
     captured: dict[str, object] = {}
 
-    def _fake_create_chat_model(*, name, thinking_enabled, reasoning_effort=None, app_config=None, attach_tracing=True):
+    def _fake_create_chat_model(*, name, thinking_enabled, reasoning_effort=None, app_config=None, attach_tracing=True, model_overrides=None):
         captured["name"] = name
         captured["app_config"] = app_config
         return object()
@@ -121,18 +121,18 @@ def test_internal_make_lead_agent_uses_explicit_app_config(monkeypatch):
 def test_make_lead_agent_uses_runtime_app_config_from_context_without_global_read(monkeypatch):
     app_config = _make_app_config([_make_model("context-model", supports_thinking=False)])
 
-    import ideer.tools as tools_module
+    import deerflow.tools as tools_module
 
     def _raise_get_app_config():
         raise AssertionError("ambient get_app_config() must not be used when runtime context already carries app_config")
 
     monkeypatch.setattr(lead_agent_module, "get_app_config", _raise_get_app_config)
     monkeypatch.setattr(tools_module, "get_available_tools", lambda **kwargs: [])
-    monkeypatch.setattr(lead_agent_module, "_build_middlewares", lambda config, model_name, agent_name=None, **kwargs: [])
+    monkeypatch.setattr(lead_agent_module, "build_middlewares", lambda config, model_name, agent_name=None, **kwargs: [])
 
     captured: dict[str, object] = {}
 
-    def _fake_create_chat_model(*, name, thinking_enabled, reasoning_effort=None, app_config=None, attach_tracing=True):
+    def _fake_create_chat_model(*, name, thinking_enabled, reasoning_effort=None, app_config=None, attach_tracing=True, model_overrides=None):
         captured["name"] = name
         captured["app_config"] = app_config
         return object()
@@ -203,15 +203,15 @@ def test_resolve_model_name_raises_when_no_models_configured(monkeypatch):
 def test_make_lead_agent_disables_thinking_when_model_does_not_support_it(monkeypatch):
     app_config = _make_app_config([_make_model("safe-model", supports_thinking=False)])
 
-    import ideer.tools as tools_module
+    import deerflow.tools as tools_module
 
     monkeypatch.setattr(lead_agent_module, "get_app_config", lambda: app_config)
     monkeypatch.setattr(tools_module, "get_available_tools", lambda **kwargs: [])
-    monkeypatch.setattr(lead_agent_module, "_build_middlewares", lambda config, model_name, agent_name=None, **kwargs: [])
+    monkeypatch.setattr(lead_agent_module, "build_middlewares", lambda config, model_name, agent_name=None, **kwargs: [])
 
     captured: dict[str, object] = {}
 
-    def _fake_create_chat_model(*, name, thinking_enabled, reasoning_effort=None, app_config=None, attach_tracing=True):
+    def _fake_create_chat_model(*, name, thinking_enabled, reasoning_effort=None, app_config=None, attach_tracing=True, model_overrides=None):
         captured["name"] = name
         captured["thinking_enabled"] = thinking_enabled
         captured["reasoning_effort"] = reasoning_effort
@@ -246,16 +246,16 @@ def test_make_lead_agent_reads_runtime_options_from_context(monkeypatch):
         ]
     )
 
-    import ideer.tools as tools_module
+    import deerflow.tools as tools_module
 
     get_available_tools = MagicMock(return_value=[])
     monkeypatch.setattr(lead_agent_module, "get_app_config", lambda: app_config)
     monkeypatch.setattr(tools_module, "get_available_tools", get_available_tools)
-    monkeypatch.setattr(lead_agent_module, "_build_middlewares", lambda config, model_name, agent_name=None, **kwargs: [])
+    monkeypatch.setattr(lead_agent_module, "build_middlewares", lambda config, model_name, agent_name=None, **kwargs: [])
 
     captured: dict[str, object] = {}
 
-    def _fake_create_chat_model(*, name, thinking_enabled, reasoning_effort=None, app_config=None, attach_tracing=True):
+    def _fake_create_chat_model(*, name, thinking_enabled, reasoning_effort=None, app_config=None, attach_tracing=True, model_overrides=None):
         captured["name"] = name
         captured["thinking_enabled"] = thinking_enabled
         captured["reasoning_effort"] = reasoning_effort
@@ -328,7 +328,7 @@ def test_build_middlewares_uses_resolved_model_name_for_vision(monkeypatch):
     monkeypatch.setattr(lead_agent_module, "_create_summarization_middleware", lambda **kwargs: None)
     monkeypatch.setattr(lead_agent_module, "_create_todo_list_middleware", lambda is_plan_mode: None)
 
-    middlewares = lead_agent_module._build_middlewares(
+    middlewares = lead_agent_module.build_middlewares(
         {"configurable": {"model_name": "stale-model", "is_plan_mode": False, "subagent_enabled": False}},
         model_name="vision-model",
         custom_middlewares=[MagicMock()],
@@ -336,11 +336,10 @@ def test_build_middlewares_uses_resolved_model_name_for_vision(monkeypatch):
     )
 
     assert any(isinstance(m, lead_agent_module.ViewImageMiddleware) for m in middlewares)
-    # verify the custom middleware is injected correctly.
-    # Chain tail order after the custom middleware is:
-    #   ..., custom, SafetyFinishReasonMiddleware, ClarificationMiddleware
-    # so the custom mock sits at index [-3].
-    assert len(middlewares) > 0 and isinstance(middlewares[-3], MagicMock)
+    # verify the custom middleware is injected correctly: exactly one custom
+    # mock in the chain, and ClarificationMiddleware still terminates it.
+    assert sum(1 for m in middlewares if isinstance(m, MagicMock)) == 1
+    assert isinstance(middlewares[-1], lead_agent_module.ClarificationMiddleware)
 
 
 def test_build_middlewares_passes_explicit_app_config_to_shared_factory(monkeypatch):
@@ -366,7 +365,7 @@ def test_build_middlewares_passes_explicit_app_config_to_shared_factory(monkeypa
     monkeypatch.setattr(
         lead_agent_module,
         "TitleMiddleware",
-        lambda *, app_config: captured.setdefault("title_app_config", app_config) or "title-middleware",
+        lambda *, app_config, extensions=None: captured.setdefault("title_app_config", app_config) or "title-middleware",
     )
     monkeypatch.setattr(
         lead_agent_module,
@@ -374,7 +373,7 @@ def test_build_middlewares_passes_explicit_app_config_to_shared_factory(monkeypa
         lambda agent_name=None, *, memory_config: captured.setdefault("memory_config", memory_config) or "memory-middleware",
     )
 
-    middlewares = lead_agent_module._build_middlewares(
+    middlewares = lead_agent_module.build_middlewares(
         {"configurable": {"is_plan_mode": False, "subagent_enabled": False}},
         model_name="safe-model",
         app_config=app_config,
@@ -404,10 +403,10 @@ def test_build_middlewares_uses_loop_detection_config(monkeypatch):
 
     monkeypatch.setattr(lead_agent_module, "get_app_config", lambda: app_config)
     monkeypatch.setattr(lead_agent_module, "build_lead_runtime_middlewares", lambda *, app_config, lazy_init=True: [])
-    monkeypatch.setattr(lead_agent_module, "_create_summarization_middleware", lambda *, app_config=None: None)
+    monkeypatch.setattr(lead_agent_module, "_create_summarization_middleware", lambda **kwargs: None)
     monkeypatch.setattr(lead_agent_module, "_create_todo_list_middleware", lambda is_plan_mode: None)
 
-    middlewares = lead_agent_module._build_middlewares(
+    middlewares = lead_agent_module.build_middlewares(
         {"configurable": {"is_plan_mode": False, "subagent_enabled": False}},
         model_name="safe-model",
         app_config=app_config,
@@ -430,10 +429,10 @@ def test_build_middlewares_omits_loop_detection_when_disabled(monkeypatch):
 
     monkeypatch.setattr(lead_agent_module, "get_app_config", lambda: app_config)
     monkeypatch.setattr(lead_agent_module, "build_lead_runtime_middlewares", lambda *, app_config, lazy_init=True: [])
-    monkeypatch.setattr(lead_agent_module, "_create_summarization_middleware", lambda *, app_config=None: None)
+    monkeypatch.setattr(lead_agent_module, "_create_summarization_middleware", lambda **kwargs: None)
     monkeypatch.setattr(lead_agent_module, "_create_todo_list_middleware", lambda is_plan_mode: None)
 
-    middlewares = lead_agent_module._build_middlewares(
+    middlewares = lead_agent_module.build_middlewares(
         {"configurable": {"is_plan_mode": False, "subagent_enabled": False}},
         model_name="safe-model",
         app_config=app_config,
@@ -447,25 +446,27 @@ def test_create_summarization_middleware_uses_configured_model_alias(monkeypatch
     app_config.summarization = SummarizationConfig(enabled=True, model_name="model-masswork")
     app_config.memory = MemoryConfig(enabled=False)
 
-    from unittest.mock import MagicMock
+    # Upstream _create_summarization_middleware delegates to
+    # create_summarization_middleware() in the summarization_middleware
+    # module; the model anchor is built and tagged there.
+    from deerflow.agents.middlewares import summarization_middleware as summarization_module
 
     captured: dict[str, object] = {}
     fake_model = MagicMock()
     fake_model.with_config.return_value = fake_model
 
-    def _fake_create_chat_model(*, name=None, thinking_enabled, reasoning_effort=None, app_config=None, attach_tracing=True):
+    def _fake_create_chat_model(*, name=None, thinking_enabled=False, app_config=None, **kwargs):
         captured["name"] = name
         captured["thinking_enabled"] = thinking_enabled
-        captured["reasoning_effort"] = reasoning_effort
         captured["app_config"] = app_config
         return fake_model
 
     def _raise_get_app_config():
         raise AssertionError("ambient get_app_config() must not be used when app_config is explicit")
 
-    monkeypatch.setattr(lead_agent_module, "get_app_config", _raise_get_app_config)
-    monkeypatch.setattr(lead_agent_module, "create_chat_model", _fake_create_chat_model)
-    monkeypatch.setattr(lead_agent_module, "IDeerSummarizationMiddleware", lambda **kwargs: kwargs)
+    monkeypatch.setattr(summarization_module, "get_app_config", _raise_get_app_config)
+    monkeypatch.setattr(summarization_module, "create_chat_model", _fake_create_chat_model)
+    monkeypatch.setattr(summarization_module, "DeerFlowSummarizationMiddleware", lambda **kwargs: kwargs)
 
     middleware = lead_agent_module._create_summarization_middleware(app_config=app_config)
 
@@ -481,19 +482,19 @@ def test_create_summarization_middleware_threads_resolved_app_config_to_model(mo
     fallback_app_config.summarization = SummarizationConfig(enabled=True, model_name="fallback-model")
     fallback_app_config.memory = MemoryConfig(enabled=False)
 
-    from unittest.mock import MagicMock
+    from deerflow.agents.middlewares import summarization_middleware as summarization_module
 
     captured: dict[str, object] = {}
     fake_model = MagicMock()
     fake_model.with_config.return_value = fake_model
 
-    def _fake_create_chat_model(*, name=None, thinking_enabled, reasoning_effort=None, app_config=None, attach_tracing=True):
+    def _fake_create_chat_model(*, name=None, thinking_enabled=False, app_config=None, **kwargs):
         captured["app_config"] = app_config
         return fake_model
 
-    monkeypatch.setattr(lead_agent_module, "get_app_config", lambda: fallback_app_config)
-    monkeypatch.setattr(lead_agent_module, "create_chat_model", _fake_create_chat_model)
-    monkeypatch.setattr(lead_agent_module, "IDeerSummarizationMiddleware", lambda **kwargs: kwargs)
+    monkeypatch.setattr(summarization_module, "get_app_config", lambda: fallback_app_config)
+    monkeypatch.setattr(summarization_module, "create_chat_model", _fake_create_chat_model)
+    monkeypatch.setattr(summarization_module, "DeerFlowSummarizationMiddleware", lambda **kwargs: kwargs)
 
     lead_agent_module._create_summarization_middleware()
 
@@ -501,8 +502,8 @@ def test_create_summarization_middleware_threads_resolved_app_config_to_model(mo
 
 
 def test_memory_middleware_uses_explicit_memory_config_without_global_read(monkeypatch):
-    from ideer.agents.middlewares import memory_middleware as memory_middleware_module
-    from ideer.agents.middlewares.memory_middleware import MemoryMiddleware
+    from deerflow.agents.middlewares import memory_middleware as memory_middleware_module
+    from deerflow.agents.middlewares.memory_middleware import MemoryMiddleware
 
     def _raise_get_memory_config():
         raise AssertionError("ambient get_memory_config() must not be used when memory_config is explicit")

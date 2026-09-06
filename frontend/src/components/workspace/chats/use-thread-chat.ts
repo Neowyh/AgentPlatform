@@ -8,6 +8,10 @@ import { uuid } from "@/core/utils/uuid";
 
 export const THREAD_CHAT_RESET_EVENT = "deer-flow:thread-chat-reset";
 
+// Session-scoped storage for the generated new-thread id. The composer draft
+// keys off this id, so it must survive a page reload within the same tab.
+const NEW_THREAD_ID_STORAGE_KEY = "deerflow:new-thread-id:v1";
+
 type ThreadChatResetDetail = {
   deletedThreadId: string;
   nextPath: string;
@@ -34,12 +38,42 @@ export function useThreadChat() {
   const actualPathname =
     typeof window === "undefined" ? pathname : window.location.pathname;
   const isNewPath = actualPathname.endsWith("/new");
+
+  // The generated new-thread id doubles as the composer-draft storage scope,
+  // so it must survive a full page reload (the draft lives in sessionStorage
+  // too). Client-side navigation and explicit resets still mint a fresh id;
+  // only a reload of the same tab reuses the persisted one.
+  const resolveNewThreadId = () => {
+    if (typeof window === "undefined") {
+      return uuid();
+    }
+    try {
+      const existing = window.sessionStorage.getItem(NEW_THREAD_ID_STORAGE_KEY);
+      if (existing) {
+        return existing;
+      }
+      const generated = uuid();
+      window.sessionStorage.setItem(NEW_THREAD_ID_STORAGE_KEY, generated);
+      return generated;
+    } catch {
+      return uuid();
+    }
+  };
+
+  const clearPersistedNewThreadId = () => {
+    try {
+      window.sessionStorage.removeItem(NEW_THREAD_ID_STORAGE_KEY);
+    } catch {
+      // Storage can be disabled; a fresh id on the next mount is fine.
+    }
+  };
+
   const newThreadIdRef = useRef<string | null>(
-    threadIdFromPath === "new" ? uuid() : null,
+    threadIdFromPath === "new" ? resolveNewThreadId() : null,
   );
 
   if (isNewPath && !newThreadIdRef.current) {
-    newThreadIdRef.current = uuid();
+    newThreadIdRef.current = resolveNewThreadId();
   }
 
   const searchParams = useSearchParams();
@@ -56,19 +90,26 @@ export function useThreadChat() {
   const resetToNewThread = useCallback(() => {
     const nextThreadId = uuid();
     newThreadIdRef.current = nextThreadId;
+    clearPersistedNewThreadId();
+    try {
+      window.sessionStorage.setItem(NEW_THREAD_ID_STORAGE_KEY, nextThreadId);
+    } catch {
+      // Storage can be disabled; the ref still covers this mount.
+    }
     setIsNewThreadState(true);
     setThreadIdState(nextThreadId);
   }, []);
 
   useEffect(() => {
     if (pathname.endsWith("/new")) {
-      const nextThreadId = newThreadIdRef.current ?? uuid();
+      const nextThreadId = newThreadIdRef.current ?? resolveNewThreadId();
       newThreadIdRef.current = nextThreadId;
       setIsNewThreadState(true);
       setThreadIdState(nextThreadId);
       return;
     }
     newThreadIdRef.current = null;
+    clearPersistedNewThreadId();
     // Native history updates the canonical pathname but preserves the route
     // tree, so useParams may still return the stale "new" value. Avoid passing
     // it to downstream hooks (e.g. useStream), which would cause a 422.

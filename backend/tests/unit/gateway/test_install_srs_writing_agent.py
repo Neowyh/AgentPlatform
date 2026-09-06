@@ -19,12 +19,12 @@ tool_groups:
 tools:
 - name: read_file
   group: file:read
-  use: ideer.sandbox.tools:read_file_tool
+  use: deerflow.sandbox.tools:read_file_tool
 - name: bash
   group: bash
-  use: ideer.sandbox.tools:bash_tool
+  use: deerflow.sandbox.tools:bash_tool
 sandbox:
-  use: ideer.sandbox.local:LocalSandboxProvider
+  use: deerflow.sandbox.local:LocalSandboxProvider
   allow_host_bash: false
 """
 

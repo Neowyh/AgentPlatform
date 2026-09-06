@@ -13,6 +13,9 @@ from fastapi.responses import JSONResponse
 
 import deerflow.extensions as deerflow_extensions
 from app.gateway.auth_middleware import AuthMiddleware
+
+# Alias legacy IDEER_* deployment env names before any config resolution.
+from app.gateway.compat_env import apply_legacy_env_aliases  # noqa: F401
 from app.gateway.config import get_gateway_config
 from app.gateway.csrf_middleware import CSRFMiddleware, get_configured_cors_origins
 from app.gateway.deps import langgraph_runtime

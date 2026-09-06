@@ -9,8 +9,8 @@ from unittest.mock import patch
 
 import pytest
 
-from ideer.community.code_interpreter import tools as ci_tools
-from ideer.community.code_interpreter.tools import code_interpreter_tool
+from app.agentplatform.community.code_interpreter import tools as ci_tools
+from app.agentplatform.community.code_interpreter.tools import code_interpreter_tool
 
 # ── Mock sandbox for testing ──────────────────────────────────────────
 

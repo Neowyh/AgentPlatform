@@ -40,13 +40,13 @@ async def _seed(args: argparse.Namespace) -> int:
 
     from app.agentplatform.resources.bundled import seed_bundled_resources
     from app.agentplatform.resources.storage import ResourceStorage
-    from ideer.config import get_app_config, get_paths
-    from ideer.persistence.engine import (
+    from deerflow.config import get_app_config, get_paths
+    from deerflow.persistence.engine import (
         close_engine,
         get_session_factory,
         init_engine_from_config,
     )
-    from ideer.persistence.models.user import UserModel
+    from app.agentplatform.rbac_models import UserModel
 
     manifest_path = Path(args.manifest).resolve()
     source_root = Path(args.source_root).resolve()

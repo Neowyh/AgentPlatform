@@ -18,7 +18,7 @@ from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy import exc as sa_exc
 
-MIGRATIONS_DIR = Path(__file__).resolve().parents[3] / "packages" / "harness" / "ideer" / "persistence" / "migrations"
+MIGRATIONS_DIR = Path(__file__).resolve().parents[3] / "app" / "agentplatform" / "persistence" / "migrations"
 
 # The alembic URL uses the async driver.  For post-migration verification
 # we open the same SQLite file with a synchronous engine (no greenlet needed).
@@ -91,8 +91,8 @@ def _get_table_schema(db_url: str) -> dict[str, dict[str, tuple[str, bool]]]:
 
 def _get_orm_tables() -> set[str]:
     """Return the set of ORM-model table names registered on Base.metadata."""
-    import ideer.persistence.models  # noqa: F401 — registers models with Base.metadata
-    from ideer.persistence.base import Base
+    import deerflow.persistence.models  # noqa: F401 — registers models with Base.metadata
+    from deerflow.persistence.base import Base
 
     return set(Base.metadata.tables.keys())
 
@@ -250,7 +250,7 @@ class TestAlembicMigrations:
                 missing = orm_tables - db_table_names
                 assert not missing, f"ORM tables missing from DB: {missing}"
 
-                from ideer.persistence.base import Base
+                from deerflow.persistence.base import Base
 
                 for table_name in sorted(orm_tables):
                     db_cols: dict[str, tuple[object, bool]] = {c["name"]: (c["type"], c.get("nullable", True)) for c in inspector.get_columns(table_name)}
@@ -311,10 +311,10 @@ class TestAlembicMigrations:
 
         from sqlalchemy.ext.asyncio import create_async_engine
 
-        import ideer.persistence.engine as engine_mod
-        import ideer.persistence.models  # noqa: F401
-        from ideer.persistence.base import Base
-        from ideer.persistence.engine import _stamp_alembic_head
+        import deerflow.persistence.engine as engine_mod
+        import deerflow.persistence.models  # noqa: F401
+        from deerflow.persistence.base import Base
+        from deerflow.persistence.engine import _stamp_alembic_head
 
         db_path = tmp_path / "test_stamp.db"
         db_url = f"sqlite+aiosqlite:///{db_path}"
@@ -335,7 +335,7 @@ class TestAlembicMigrations:
             '"""Alembic env."""\n'
             "from alembic import context\n"
             "from sqlalchemy import create_engine\n"
-            "from ideer.persistence.base import Base\n\n"
+            "from deerflow.persistence.base import Base\n\n"
             "config = context.config\n"
             "target_metadata = Base.metadata\n\n"
             "url = config.get_main_option('sqlalchemy.url')\n"

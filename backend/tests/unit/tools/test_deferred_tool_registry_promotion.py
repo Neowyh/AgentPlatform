@@ -21,9 +21,9 @@ B. **At the graph-execution boundary** — drive a real ``create_agent`` graph
    ``get_available_tools`` were to run again between the two turns and reset
    the registry, the second turn's filter would strip the tool.
 
-Strategy: use the production ``ideer.tools.tools.get_available_tools``
+Strategy: use the production ``deerflow.tools.tools.get_available_tools``
 unmodified; mock only the LLM and the MCP tool source. Patch
-``ideer.mcp.cache.get_cached_mcp_tools`` (the symbol that
+``deerflow.mcp.cache.get_cached_mcp_tools`` (the symbol that
 ``get_available_tools`` resolves via lazy import) to return our fixture
 tools so we don't need a real MCP server.
 """
@@ -91,7 +91,7 @@ def _reset_deferred_registry_between_tests():
     in a synchronous test runner, so one test's promotion can leak into the
     next and silently break filter assertions.
     """
-    from ideer.tools.builtins.tool_search import reset_deferred_registry
+    from deerflow.tools.builtins.tool_search import reset_deferred_registry
 
     reset_deferred_registry()
     yield
@@ -107,16 +107,16 @@ def _patch_mcp_pipeline(monkeypatch: pytest.MonkeyPatch, mcp_tools: list) -> Non
     (which calls ``ExtensionsConfig.from_file().get_enabled_mcp_servers()``)
     see a valid instance. Then point the MCP tool cache at our fixture tools.
     """
-    from ideer.config.extensions_config import ExtensionsConfig, McpServerConfig
+    from deerflow.config.extensions_config import ExtensionsConfig, McpServerConfig
 
     real_ext = ExtensionsConfig(
         mcpServers={"fake-server": McpServerConfig(type="stdio", command="echo", enabled=True)},
     )
     monkeypatch.setattr(
-        "ideer.config.extensions_config.ExtensionsConfig.from_file",
+        "deerflow.config.extensions_config.ExtensionsConfig.from_file",
         classmethod(lambda cls: real_ext),
     )
-    monkeypatch.setattr("ideer.mcp.cache.get_cached_mcp_tools", lambda: list(mcp_tools))
+    monkeypatch.setattr("deerflow.mcp.cache.get_cached_mcp_tools", lambda: list(mcp_tools))
 
 
 def _force_tool_search_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -132,8 +132,8 @@ def _force_tool_search_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
 
     Build a minimal mock AppConfig instead and never call the real loader.
     """
-    from ideer.config.app_config import AppConfig
-    from ideer.config.tool_search_config import ToolSearchConfig
+    from deerflow.config.app_config import AppConfig
+    from deerflow.config.tool_search_config import ToolSearchConfig
 
     mock_cfg = AppConfig.model_construct(
         log_level="info",
@@ -143,7 +143,7 @@ def _force_tool_search_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
         sandbox=AppConfig.model_fields["sandbox"].annotation.model_construct(use="x"),
         tool_search=ToolSearchConfig(enabled=True),
     )
-    monkeypatch.setattr("ideer.tools.tools.get_app_config", lambda: mock_cfg)
+    monkeypatch.setattr("deerflow.tools.tools.get_app_config", lambda: mock_cfg)
 
 
 # ---------------------------------------------------------------------------
@@ -165,8 +165,8 @@ def test_get_available_tools_preserves_promotions_across_reentrant_calls(monkeyp
     every MCP tool as deferred — this assertion fired with
     ``REGRESSION (#2884)``.
     """
-    from ideer.tools.builtins.tool_search import get_deferred_registry
-    from ideer.tools.tools import get_available_tools
+    from deerflow.tools.builtins.tool_search import get_deferred_registry
+    from deerflow.tools.tools import get_available_tools
 
     _patch_mcp_pipeline(monkeypatch, [fake_mcp_search, fake_mcp_fetch])
     _force_tool_search_enabled(monkeypatch)
@@ -191,9 +191,9 @@ def test_get_available_tools_preserves_promotions_across_reentrant_calls(monkeyp
 
 def test_config_tool_collision_stays_active_when_mcp_tools_are_deferred(monkeypatch: pytest.MonkeyPatch):
     """A config tool wins a name collision without being deferred with MCP tools."""
-    from ideer.config.extensions_config import ExtensionsConfig, McpServerConfig
-    from ideer.tools.builtins.tool_search import get_deferred_registry
-    from ideer.tools.tools import get_available_tools
+    from deerflow.config.extensions_config import ExtensionsConfig, McpServerConfig
+    from deerflow.tools.builtins.tool_search import get_deferred_registry
+    from deerflow.tools.tools import get_available_tools
 
     config_tool = MagicMock(name="config_tool")
     config_tool.name = "duplicate_tool"
@@ -208,10 +208,10 @@ def test_config_tool_collision_stays_active_when_mcp_tools_are_deferred(monkeypa
         acp_agents={},
     )
     config.get_model_config.return_value = None
-    monkeypatch.setattr("ideer.tools.tools.get_app_config", lambda: config)
-    monkeypatch.setattr("ideer.tools.tools.resolve_variable", lambda *_args: duplicate_tool)
+    monkeypatch.setattr("deerflow.tools.tools.get_app_config", lambda: config)
+    monkeypatch.setattr("deerflow.tools.tools.resolve_variable", lambda *_args: duplicate_tool)
     monkeypatch.setattr(
-        "ideer.config.extensions_config.ExtensionsConfig.from_file",
+        "deerflow.config.extensions_config.ExtensionsConfig.from_file",
         classmethod(
             lambda cls: ExtensionsConfig(
                 mcpServers={"fake-server": McpServerConfig(type="stdio", command="echo", enabled=True)},
@@ -219,7 +219,7 @@ def test_config_tool_collision_stays_active_when_mcp_tools_are_deferred(monkeypa
         ),
     )
     monkeypatch.setattr(
-        "ideer.mcp.cache.get_cached_mcp_tools",
+        "deerflow.mcp.cache.get_cached_mcp_tools",
         lambda: [duplicate_tool, fake_mcp_search],
     )
 
@@ -302,8 +302,8 @@ def test_promoted_tool_is_visible_to_model_on_second_turn(monkeypatch: pytest.Mo
     """
     from langchain.agents import create_agent
 
-    from ideer.agents.middlewares.deferred_tool_filter_middleware import DeferredToolFilterMiddleware
-    from ideer.tools.tools import get_available_tools
+    from deerflow.agents.middlewares.deferred_tool_filter_middleware import DeferredToolFilterMiddleware
+    from deerflow.tools.tools import get_available_tools
 
     _patch_mcp_pipeline(monkeypatch, [fake_mcp_search, fake_mcp_fetch])
     _force_tool_search_enabled(monkeypatch)
@@ -360,8 +360,8 @@ def test_reentrant_get_available_tools_preserves_promotion(monkeypatch: pytest.M
     """
     from langchain.agents import create_agent
 
-    from ideer.agents.middlewares.deferred_tool_filter_middleware import DeferredToolFilterMiddleware
-    from ideer.tools.tools import get_available_tools
+    from deerflow.agents.middlewares.deferred_tool_filter_middleware import DeferredToolFilterMiddleware
+    from deerflow.tools.tools import get_available_tools
 
     _patch_mcp_pipeline(monkeypatch, [fake_mcp_search, fake_mcp_fetch])
     _force_tool_search_enabled(monkeypatch)

@@ -5,8 +5,8 @@ from __future__ import annotations
 import logging
 from unittest.mock import MagicMock, patch
 
-from ideer.agents.memory.storage import FileMemoryStorage
-from ideer.config.memory_config import MemoryConfig
+from app.agentplatform.legacy.memory.storage import FileMemoryStorage
+from deerflow.config.memory_config import MemoryConfig
 
 
 def test_memory_load_stage_emits_timing(caplog, tmp_path):
@@ -17,13 +17,13 @@ def test_memory_load_stage_emits_timing(caplog, tmp_path):
         mock_paths.memory_file = tmp_path / "memory.json"
         return mock_paths
 
-    with patch("ideer.agents.memory.storage.get_paths", side_effect=mock_get_paths):
+    with patch("app.agentplatform.legacy.memory.storage.get_paths", side_effect=mock_get_paths):
         with patch(
-            "ideer.agents.memory.storage.get_memory_config",
-            return_value=MemoryConfig(storage_path=""),
+            "app.agentplatform.legacy.memory.storage.get_memory_config",
+            return_value=MemoryConfig(backend_config={"storage_path": ""}),
         ):
             storage = FileMemoryStorage()
-            with caplog.at_level(logging.INFO, logger="ideer.agents.memory.storage"):
+            with caplog.at_level(logging.INFO, logger="app.agentplatform.legacy.memory.storage"):
                 storage.load(None)
 
     assert any("first_token_timing" in message and "stage=memory_load" in message for message in caplog.messages)

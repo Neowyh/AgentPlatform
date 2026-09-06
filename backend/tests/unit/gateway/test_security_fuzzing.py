@@ -13,7 +13,7 @@ from hypothesis import strategies as st
 
 from app.gateway.auth.config import AuthConfig, set_auth_config
 from app.gateway.auth.errors import TokenError
-from ideer.sandbox.tools import _reject_path_traversal
+from deerflow.sandbox.tools import _reject_path_traversal
 
 _JWT_SECRET = "test-secret-for-hypothesis-fuzzing"
 _JWT_CONFIG = AuthConfig(jwt_secret=_JWT_SECRET)
@@ -178,7 +178,7 @@ class TestRoleComparisonSafety:
     def test_role_comparison_is_case_sensitive(self, role_input):
         """require_role rejects roles with wrong casing."""
         _setup_auth()
-        from ideer.persistence.models.user import UserRole
+        from app.agentplatform.rbac_models import UserRole
 
         test_role = role_input
         try:

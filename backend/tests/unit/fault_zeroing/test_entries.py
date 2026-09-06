@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
-PKG_DIR = REPO_ROOT / "backend" / "packages" / "harness" / "ideer" / "fault_zeroing"
+PKG_DIR = REPO_ROOT / "backend" / "app" / "agentplatform" / "fault_zeroing"
 
 
 def load_module(name: str, path: Path):

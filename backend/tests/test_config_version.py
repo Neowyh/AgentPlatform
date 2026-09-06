@@ -290,9 +290,9 @@ def test_config_upgrade_migrates_legacy_runtime_paths_at_current_schema_version(
         yaml.safe_dump(
             {
                 "config_version": 27,
-                "models": [{"use": "ideer.models.patched_deepseek:PatchedChatDeepSeek"}],
-                "sandbox": {"use": "ideer.sandbox.local:LocalSandboxProvider"},
-                "tools": [{"use": "ideer.community.ddg_search.tools:web_search_tool"}],
+                "models": [{"use": "deerflow.models.patched_deepseek:PatchedChatDeepSeek"}],
+                "sandbox": {"use": "deerflow.sandbox.local:LocalSandboxProvider"},
+                "tools": [{"use": "deerflow.community.ddg_search.tools:web_search_tool"}],
                 # Product-only extensions stay explicit until DeerFlow provides
                 # an equivalent implementation.
                 "custom": {"use": "app.agentplatform.community.doc_reader.tools:read_document_tool"},

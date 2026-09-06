@@ -1,6 +1,6 @@
-"""Extended coverage tests for ideer.config.app_config module.
+"""Extended coverage tests for deerflow.config.app_config module.
 
-Targets the uncovered lines in CircuitBreakerConfig, UploadsConfig,
+Targets the uncovered lines in CircuitBreakerConfig,
 _resolve_config_path, resolve_env_variables, get_model_config,
 get_tool_config, get_tool_group_config, singleton management,
 and ContextVar push/pop logic.
@@ -15,10 +15,9 @@ from unittest.mock import MagicMock
 import pytest
 import yaml
 
-from ideer.config.app_config import (
+from deerflow.config.app_config import (
     AppConfig,
     CircuitBreakerConfig,
-    UploadsConfig,
     _get_config_mtime,
     _legacy_config_candidates,
     get_app_config,
@@ -28,9 +27,9 @@ from ideer.config.app_config import (
     reset_app_config,
     set_app_config,
 )
-from ideer.config.sandbox_config import SandboxConfig
+from deerflow.config.sandbox_config import SandboxConfig
 
-_SANDBOX = SandboxConfig(use="ideer.sandbox.local:LocalSandboxProvider")
+_SANDBOX = SandboxConfig(use="deerflow.sandbox.local:LocalSandboxProvider")
 
 
 # ---------------------------------------------------------------------------
@@ -51,25 +50,6 @@ class TestCircuitBreakerConfig:
 
 
 # ---------------------------------------------------------------------------
-# UploadsConfig defaults
-# ---------------------------------------------------------------------------
-
-
-class TestUploadsConfig:
-    def test_default_values(self):
-        cfg = UploadsConfig()
-        assert cfg.max_files == 20
-        assert cfg.max_file_size == 52428800
-        assert cfg.max_total_size == 209715200
-        assert cfg.auto_convert_documents is True
-        assert cfg.pdf_converter == "default"
-
-    def test_custom_values(self):
-        cfg = UploadsConfig(max_files=5, max_file_size=1024)
-        assert cfg.max_files == 5
-        assert cfg.max_file_size == 1024
-
-
 # ---------------------------------------------------------------------------
 # _legacy_config_candidates
 # ---------------------------------------------------------------------------
@@ -121,18 +101,18 @@ class TestResolveConfigPath:
     def test_env_var_config_path(self, tmp_path, monkeypatch):
         config_file = tmp_path / "config.yaml"
         config_file.write_text("sandbox: {}")
-        monkeypatch.setenv("IDEER_CONFIG_PATH", str(config_file))
+        monkeypatch.setenv("DEER_FLOW_CONFIG_PATH", str(config_file))
         result = AppConfig.resolve_config_path()
         assert result == config_file
 
     def test_env_var_config_path_not_found(self, monkeypatch):
-        monkeypatch.setenv("IDEER_CONFIG_PATH", "/nonexistent/config.yaml")
-        with pytest.raises(FileNotFoundError, match="IDEER_CONFIG_PATH"):
+        monkeypatch.setenv("DEER_FLOW_CONFIG_PATH", "/nonexistent/config.yaml")
+        with pytest.raises(FileNotFoundError, match="DEER_FLOW_CONFIG_PATH"):
             AppConfig.resolve_config_path()
 
     def test_legacy_candidate_fallback(self, tmp_path, monkeypatch):
         """When no explicit path or env var is set, check legacy candidates."""
-        monkeypatch.delenv("IDEER_CONFIG_PATH", raising=False)
+        monkeypatch.delenv("DEER_FLOW_CONFIG_PATH", raising=False)
         candidates = _legacy_config_candidates()
         # If neither legacy candidate exists, it should raise FileNotFoundError
         # (since existing_project_file also won't find it)
@@ -201,7 +181,7 @@ class TestAppConfigExtraAllow:
 
 class TestGetModelConfig:
     def test_returns_matching_model(self):
-        from ideer.config.model_config import ModelConfig
+        from deerflow.config.model_config import ModelConfig
 
         model = ModelConfig(
             name="gpt-4",
@@ -226,9 +206,9 @@ class TestGetModelConfig:
 
 class TestGetToolConfig:
     def test_returns_matching_tool(self):
-        from ideer.config.tool_config import ToolConfig
+        from deerflow.config.tool_config import ToolConfig
 
-        tool = ToolConfig(name="web_search", group="search", use="ideer.tools:web_search")
+        tool = ToolConfig(name="web_search", group="search", use="deerflow.tools:web_search")
         cfg = AppConfig(
             sandbox=_SANDBOX,
             tools=[tool],
@@ -245,7 +225,7 @@ class TestGetToolConfig:
 
 class TestGetToolGroupConfig:
     def test_returns_matching_group(self):
-        from ideer.config.tool_config import ToolGroupConfig
+        from deerflow.config.tool_config import ToolGroupConfig
 
         group = ToolGroupConfig(name="file:read")
         cfg = AppConfig(
@@ -274,7 +254,7 @@ class TestCheckConfigVersionEdgeCases:
         example_file = tmp_path / "config.example.yaml"
         example_file.write_text(yaml.dump({"config_version": 1}))
 
-        with caplog.at_level(logging.WARNING, logger="ideer.config.app_config"):
+        with caplog.at_level(logging.WARNING, logger="deerflow.config.app_config"):
             AppConfig._check_config_version({"config_version": "not_a_number"}, config_file)
         assert "outdated" in caplog.text
 
@@ -285,7 +265,7 @@ class TestCheckConfigVersionEdgeCases:
         example_file.write_text(yaml.dump({"config_version": "abc"}))
 
         # User has version 5, example has non-numeric "abc" -> 0, no warning
-        with caplog.at_level(logging.WARNING, logger="ideer.config.app_config"):
+        with caplog.at_level(logging.WARNING, logger="deerflow.config.app_config"):
             AppConfig._check_config_version({"config_version": 5}, config_file)
         assert "outdated" not in caplog.text
 
@@ -295,7 +275,7 @@ class TestCheckConfigVersionEdgeCases:
         example_file = tmp_path / "config.example.yaml"
         example_file.write_bytes(b"\x00\x01\x02")  # invalid YAML
 
-        with caplog.at_level(logging.WARNING, logger="ideer.config.app_config"):
+        with caplog.at_level(logging.WARNING, logger="deerflow.config.app_config"):
             AppConfig._check_config_version({"config_version": 1}, config_file)
         # Should not raise, just return silently
         assert "outdated" not in caplog.text
@@ -326,7 +306,7 @@ class TestSingletonManagement:
             # After reset, get_app_config should try to load from file
             # Since we can't guarantee a config.yaml exists, just verify
             # the singleton is cleared
-            from ideer.config import app_config as ac_module
+            from deerflow.config import app_config as ac_module
 
             assert ac_module._app_config is None
         finally:
@@ -385,13 +365,13 @@ class TestApplyDatabaseDefaults:
         config_data = {}
         AppConfig._apply_database_defaults(config_data)
         assert config_data["database"]["backend"] == "sqlite"
-        assert config_data["database"]["sqlite_dir"] == ".ideer/data"
+        assert config_data["database"]["sqlite_dir"] == ".deer-flow/data"
 
     def test_does_not_overwrite_existing_values(self):
         config_data = {"database": {"backend": "postgres"}}
         AppConfig._apply_database_defaults(config_data)
         assert config_data["database"]["backend"] == "postgres"
-        assert config_data["database"]["sqlite_dir"] == ".ideer/data"
+        assert config_data["database"]["sqlite_dir"] == ".deer-flow/data"
 
     def test_non_dict_database_section_is_noop(self):
         config_data = {"database": "not-a-dict"}
@@ -414,7 +394,7 @@ class TestValidateAcpAgents:
         assert isinstance(result, type(None))  # _apply_database_defaults is in-place
 
     def test_valid_acp_agents(self):
-        from ideer.config.acp_config import ACPAgentConfig
+        from deerflow.config.acp_config import ACPAgentConfig
 
         result = AppConfig._validate_acp_agents({"codex": {"command": "codex", "description": "Codex agent"}})
         assert "codex" in result
@@ -430,19 +410,19 @@ class TestBuildMiddlewaresSafetyFinishReason:
     """Test the safety_finish_reason middleware path in _build_middlewares."""
 
     def test_safety_finish_reason_enabled(self, monkeypatch):
-        from ideer.config.safety_finish_reason_config import SafetyFinishReasonConfig
+        from deerflow.config.safety_finish_reason_config import SafetyFinishReasonConfig
 
         app_config = AppConfig(
             sandbox=_SANDBOX,
             safety_finish_reason=SafetyFinishReasonConfig(enabled=True),
         )
 
-        from ideer.agents.lead_agent import agent as lead_mod
+        from deerflow.agents.lead_agent import agent as lead_mod
 
         monkeypatch.setattr(lead_mod, "get_app_config", lambda: app_config)
         monkeypatch.setattr(lead_mod, "build_lead_runtime_middlewares", lambda **kw: [])
 
-        from ideer.agents.lead_agent.agent import SafetyFinishReasonMiddleware
+        from deerflow.agents.lead_agent.agent import SafetyFinishReasonMiddleware
 
         safety_instance = MagicMock()
 
@@ -450,7 +430,7 @@ class TestBuildMiddlewaresSafetyFinishReason:
         monkeypatch.setattr(lead_mod, "_create_summarization_middleware", lambda **kw: None)
         monkeypatch.setattr(lead_mod, "_create_todo_list_middleware", lambda is_plan_mode: None)
 
-        middlewares = lead_mod._build_middlewares(
+        middlewares = lead_mod.build_middlewares(
             {"configurable": {"is_plan_mode": False, "subagent_enabled": False}},
             model_name=None,
             app_config=app_config,

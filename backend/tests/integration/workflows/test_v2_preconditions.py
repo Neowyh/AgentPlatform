@@ -114,7 +114,7 @@ def _executor(
         assert run is not None
         definition = parse_workflow_v2(workflow)
         import app.agentplatform.workflows.v2.file_roots as file_roots
-        from ideer.config.paths import Paths
+        from deerflow.config.paths import Paths
 
         file_roots.get_paths = lambda: Paths(str(base_dir))
 
@@ -202,7 +202,7 @@ async def test_precondition_failure_fails_node_with_specific_reason(
     tmp_path: Path,
 ) -> None:
     import app.agentplatform.workflows.v2.file_roots as file_roots
-    from ideer.config.paths import Paths
+    from deerflow.config.paths import Paths
 
     file_roots.get_paths = lambda: Paths(str(tmp_path))
     await durable_store.save_definition("precond", {}, "hash", "user-1")
@@ -237,7 +237,7 @@ async def test_precondition_pass_runs_the_node(
     tmp_path: Path,
 ) -> None:
     import app.agentplatform.workflows.v2.file_roots as file_roots
-    from ideer.config.paths import Paths
+    from deerflow.config.paths import Paths
 
     file_roots.get_paths = lambda: Paths(str(tmp_path))
     await durable_store.save_definition("precond", {}, "hash", "user-1")
@@ -267,7 +267,7 @@ async def test_precondition_failure_skips_node_and_continues(
     tmp_path: Path,
 ) -> None:
     import app.agentplatform.workflows.v2.file_roots as file_roots
-    from ideer.config.paths import Paths
+    from deerflow.config.paths import Paths
 
     file_roots.get_paths = lambda: Paths(str(tmp_path))
     await durable_store.save_definition("precond", {}, "hash", "user-1")

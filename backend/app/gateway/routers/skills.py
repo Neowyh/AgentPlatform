@@ -33,7 +33,7 @@ from deerflow.skills.security_static_scanner import (
     StaticScannerError,
     enforce_static_scan,
 )
-from deerflow.skills.storage import SkillStorage, get_or_new_user_skill_storage
+from deerflow.skills.storage import SkillStorage
 from deerflow.skills.types import SKILL_MD_FILE, SkillCategory
 from deerflow.utils.thread_id import ThreadId
 
@@ -174,8 +174,11 @@ def _get_user_skill_storage(config: AppConfig) -> SkillStorage:
 
     Uses the effective user_id from the request context (set by auth middleware).
     For public skill reads, the global singleton storage is still used.
+    The enterprise storage applies the offline (intranet) skill policy.
     """
-    return get_or_new_user_skill_storage(get_effective_user_id(), app_config=config)
+    from app.agentplatform.skills.storage import get_or_new_enterprise_user_skill_storage
+
+    return get_or_new_enterprise_user_skill_storage(get_effective_user_id(), app_config=config)
 
 
 def _copy_uploaded_skill_archive(source: BinaryIO) -> Path:

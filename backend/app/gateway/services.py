@@ -21,6 +21,11 @@ from fastapi import HTTPException, Request
 from langchain_core.messages import BaseMessage
 from langchain_core.messages.utils import convert_to_messages
 
+# Canonical (Resource-catalog) bootstrap for in-run agent creation. The gateway
+# composition owns the enterprise behavior, so the wrap is installed once at
+# import — before any lead-agent graph can be assembled in this process.
+from app.agentplatform.agent_bootstrap import install as _install_canonical_agent_bootstrap
+from app.agentplatform.resources.canonical_sandbox import install_run_skill_view_resolver as _install_run_skill_view_resolver
 from app.gateway.auth_disabled import AUTH_SOURCE_INTERNAL
 from app.gateway.authz import _cached_rbac_identity
 from app.gateway.deps import get_checkpointer, get_run_context, get_run_manager, get_stream_bridge
@@ -49,6 +54,11 @@ from deerflow.runtime.checkpoint_mode import (
 from deerflow.runtime.checkpoint_state import graph_state_schema
 from deerflow.runtime.runs.naming import resolve_root_run_name
 from deerflow.trace_context import ensure_trace_context
+
+_install_canonical_agent_bootstrap()
+# Canonical runs key their sandboxes on a run-scoped identity; teach the
+# runtime's local provider to mount the run's frozen read-only skill view.
+_install_run_skill_view_resolver()
 
 logger = logging.getLogger(__name__)
 

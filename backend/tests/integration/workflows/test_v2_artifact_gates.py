@@ -127,7 +127,7 @@ def _executor(
         assert run is not None
         definition = parse_workflow_v2(definition_yaml)
         import app.agentplatform.workflows.v2.file_roots as file_roots
-        from ideer.config.paths import Paths
+        from deerflow.config.paths import Paths
 
         file_roots.get_paths = lambda: Paths(str(base_dir))
 

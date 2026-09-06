@@ -2,7 +2,7 @@
 
 import pytest
 
-from ideer.config.loop_detection_config import LoopDetectionConfig
+from deerflow.config.loop_detection_config import LoopDetectionConfig
 
 
 class TestLoopDetectionConfig:

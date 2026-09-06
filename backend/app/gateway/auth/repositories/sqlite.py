@@ -6,7 +6,7 @@ same database as ``threads_meta``, ``runs``, ``run_events``, and
 ``feedback``.
 
 Constructor takes the session factory directly (same pattern as the
-other four repositories in ``ideer.persistence.*``). Callers
+other four repositories in ``deerflow.persistence.*``). Callers
 construct this after ``init_engine_from_config()`` has run.
 """
 

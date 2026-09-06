@@ -81,7 +81,7 @@ class _OpRecorder:
 
 
 def _load(module_name: str):
-    return importlib.import_module(f"ideer.persistence.migrations.versions.{module_name}")
+    return importlib.import_module(f"app.agentplatform.persistence.migrations.versions.{module_name}")
 
 
 def test_not_null_constraints_migration_backfills_and_toggles_nullable(monkeypatch):

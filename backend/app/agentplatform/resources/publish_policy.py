@@ -1,6 +1,6 @@
 """Publication policy for catalog-managed skills.
 
-Migrated from ``ideer.skills.publish_policy`` (P7) so the enterprise policy
+Migrated from ``deerflow.skills.publish_policy`` (P7) so the enterprise policy
 lives beside its only production consumer
 (:mod:`app.agentplatform.resources.publisher`).
 """

@@ -1,4 +1,4 @@
-"""Tests for ideer.mcp.session_pool — comprehensive coverage."""
+"""Tests for deerflow.mcp.session_pool — comprehensive coverage."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from ideer.mcp.session_pool import MCPSessionPool, get_session_pool, reset_session_pool
+from deerflow.mcp.session_pool import MCPSessionPool, get_session_pool, reset_session_pool
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -474,7 +474,7 @@ async def test_session_pool_tool_wrapping():
     from langchain_core.tools import StructuredTool
     from pydantic import BaseModel, Field
 
-    from ideer.mcp.tools import _make_session_pool_tool
+    from deerflow.mcp.tools import _make_session_pool_tool
 
     class Args(BaseModel):
         url: str = Field(..., description="url")
@@ -513,7 +513,7 @@ async def test_session_pool_tool_extracts_thread_id():
     from langchain_core.tools import StructuredTool
     from pydantic import BaseModel, Field
 
-    from ideer.mcp.tools import _make_session_pool_tool
+    from deerflow.mcp.tools import _make_session_pool_tool
 
     class Args(BaseModel):
         x: int = Field(..., description="x")
@@ -551,7 +551,7 @@ async def test_session_pool_tool_default_scope():
     from langchain_core.tools import StructuredTool
     from pydantic import BaseModel, Field
 
-    from ideer.mcp.tools import _make_session_pool_tool
+    from deerflow.mcp.tools import _make_session_pool_tool
 
     class Args(BaseModel):
         x: int = Field(..., description="x")
@@ -584,7 +584,7 @@ async def test_session_pool_tool_get_config_fallback():
     from langchain_core.tools import StructuredTool
     from pydantic import BaseModel, Field
 
-    from ideer.mcp.tools import _make_session_pool_tool
+    from deerflow.mcp.tools import _make_session_pool_tool
 
     class Args(BaseModel):
         x: int = Field(..., description="x")
@@ -607,7 +607,7 @@ async def test_session_pool_tool_get_config_fallback():
 
     with (
         patch("langchain_mcp_adapters.sessions.create_session", return_value=mock_cm),
-        patch("ideer.mcp.tools.get_config", return_value=fake_config),
+        patch("deerflow.mcp.tools.get_config", return_value=fake_config),
     ):
         wrapped = _make_session_pool_tool(original_tool, "server", {"transport": "stdio", "command": "x", "args": []})
         await wrapped.coroutine(runtime=None, x=1)
@@ -621,8 +621,8 @@ def test_session_pool_tool_sync_wrapper_path_is_safe():
     from langchain_core.tools import StructuredTool
     from pydantic import BaseModel, Field
 
-    from ideer.mcp.tools import _make_session_pool_tool
-    from ideer.tools.sync import make_sync_tool_wrapper
+    from deerflow.mcp.tools import _make_session_pool_tool
+    from deerflow.tools.sync import make_sync_tool_wrapper
 
     class Args(BaseModel):
         url: str = Field(..., description="url")
@@ -662,7 +662,7 @@ async def test_http_transport_tools_not_pooled():
     from langchain_core.tools import StructuredTool
     from pydantic import BaseModel, Field
 
-    from ideer.mcp.tools import get_mcp_tools
+    from deerflow.mcp.tools import get_mcp_tools
 
     class Args(BaseModel):
         query: str = Field(..., description="query")
@@ -701,10 +701,10 @@ async def test_http_transport_tools_not_pooled():
     }
 
     with (
-        patch("ideer.mcp.tools.ExtensionsConfig.from_file", return_value=extensions_config),
-        patch("ideer.mcp.tools.build_servers_config", return_value=servers_config),
-        patch("ideer.mcp.tools.get_initial_oauth_headers", return_value={}),
-        patch("ideer.mcp.tools.build_oauth_tool_interceptor", return_value=None),
+        patch("deerflow.mcp.tools.ExtensionsConfig.from_file", return_value=extensions_config),
+        patch("deerflow.mcp.tools.build_servers_config", return_value=servers_config),
+        patch("deerflow.mcp.tools.get_initial_oauth_headers", return_value={}),
+        patch("deerflow.mcp.tools.build_oauth_tool_interceptor", return_value=None),
         patch("langchain_mcp_adapters.client.MultiServerMCPClient") as MockClient,
         patch("langchain_mcp_adapters.sessions.create_session", return_value=mock_cm),
     ):

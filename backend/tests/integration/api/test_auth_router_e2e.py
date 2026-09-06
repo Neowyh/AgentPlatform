@@ -45,7 +45,7 @@ pytestmark = pytest.mark.no_auto_user
 @pytest.fixture(autouse=True)
 def _auth_db(tmp_path):
     from app.gateway import deps
-    from ideer.persistence.engine import close_engine, init_engine
+    from deerflow.persistence.engine import close_engine, init_engine
 
     asyncio.run(init_engine("sqlite", url=f"sqlite+aiosqlite:///{tmp_path}/auth_router_e2e.db", sqlite_dir=str(tmp_path)))
     deps._cached_local_provider = None

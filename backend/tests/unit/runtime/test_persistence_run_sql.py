@@ -1,4 +1,4 @@
-"""Tests for ideer.persistence.run.sql — SQLAlchemy-backed RunStore."""
+"""Tests for deerflow.persistence.run.sql — SQLAlchemy-backed RunStore."""
 
 from __future__ import annotations
 
@@ -15,41 +15,41 @@ import pytest
 
 class TestNormalizeModelName:
     def test_none(self):
-        from ideer.persistence.run.sql import RunRepository
+        from deerflow.persistence.run.sql import RunRepository
 
         assert RunRepository._normalize_model_name(None) is None
 
     def test_strips_whitespace(self):
-        from ideer.persistence.run.sql import RunRepository
+        from deerflow.persistence.run.sql import RunRepository
 
         assert RunRepository._normalize_model_name("  gpt-4  ") == "gpt-4"
 
     def test_truncates_long_name(self):
-        from ideer.persistence.run.sql import RunRepository
+        from deerflow.persistence.run.sql import RunRepository
 
         long = "a" * 200
         result = RunRepository._normalize_model_name(long)
         assert len(result) == 128
 
     def test_non_string_converted(self):
-        from ideer.persistence.run.sql import RunRepository
+        from deerflow.persistence.run.sql import RunRepository
 
         assert RunRepository._normalize_model_name(123) == "123"
 
     def test_empty_string(self):
-        from ideer.persistence.run.sql import RunRepository
+        from deerflow.persistence.run.sql import RunRepository
 
         assert RunRepository._normalize_model_name("") == ""
 
 
 class TestSafeJson:
     def test_none(self):
-        from ideer.persistence.run.sql import RunRepository
+        from deerflow.persistence.run.sql import RunRepository
 
         assert RunRepository._safe_json(None) is None
 
     def test_primitives(self):
-        from ideer.persistence.run.sql import RunRepository
+        from deerflow.persistence.run.sql import RunRepository
 
         assert RunRepository._safe_json("str") == "str"
         assert RunRepository._safe_json(42) == 42
@@ -57,30 +57,30 @@ class TestSafeJson:
         assert RunRepository._safe_json(True) is True
 
     def test_dict_recursive(self):
-        from ideer.persistence.run.sql import RunRepository
+        from deerflow.persistence.run.sql import RunRepository
 
         data = {"a": 1, "b": {"c": "d"}}
         assert RunRepository._safe_json(data) == {"a": 1, "b": {"c": "d"}}
 
     def test_list_recursive(self):
-        from ideer.persistence.run.sql import RunRepository
+        from deerflow.persistence.run.sql import RunRepository
 
         assert RunRepository._safe_json([1, [2, 3]]) == [1, [2, 3]]
 
     def test_tuple(self):
-        from ideer.persistence.run.sql import RunRepository
+        from deerflow.persistence.run.sql import RunRepository
 
         assert RunRepository._safe_json((1, 2)) == [1, 2]
 
     def test_pydantic_model_dump(self):
-        from ideer.persistence.run.sql import RunRepository
+        from deerflow.persistence.run.sql import RunRepository
 
         obj = MagicMock()
         obj.model_dump.return_value = {"key": "value"}
         assert RunRepository._safe_json(obj) == {"key": "value"}
 
     def test_model_dump_fails_fallback_to_dict(self):
-        from ideer.persistence.run.sql import RunRepository
+        from deerflow.persistence.run.sql import RunRepository
 
         class HasDict:
             def dict(self):
@@ -90,14 +90,14 @@ class TestSafeJson:
         assert RunRepository._safe_json(obj) == {"fallback": True}
 
     def test_both_dumps_fail_fallback_to_str(self):
-        from ideer.persistence.run.sql import RunRepository
+        from deerflow.persistence.run.sql import RunRepository
 
         obj = object()  # plain object, no model_dump/dict, not JSON serializable
         result = RunRepository._safe_json(obj)
         assert isinstance(result, str)
 
     def test_json_serializable_object(self):
-        from ideer.persistence.run.sql import RunRepository
+        from deerflow.persistence.run.sql import RunRepository
 
         # An object that json.dumps can handle but isn't a primitive
         obj = {"key": [1, 2]}
@@ -111,7 +111,7 @@ class TestSafeJson:
 
 class TestRowToDict:
     def test_remapping(self):
-        from ideer.persistence.run.sql import RunRepository
+        from deerflow.persistence.run.sql import RunRepository
 
         now = datetime.now(UTC)
         row = SimpleNamespace()
@@ -136,7 +136,7 @@ class TestRowToDict:
 
 
 def _make_repo():
-    from ideer.persistence.run.sql import RunRepository
+    from deerflow.persistence.run.sql import RunRepository
 
     mock_session = AsyncMock()
     mock_session.__aenter__ = AsyncMock(return_value=mock_session)
@@ -155,7 +155,7 @@ class TestPut:
         repo, mock_session = _make_repo()
         mock_session.get = AsyncMock(return_value=None)
 
-        with patch("ideer.persistence.run.sql.resolve_user_id", return_value="user1"):
+        with patch("deerflow.persistence.run.sql.resolve_user_id", return_value="user1"):
             await repo.put("run1", thread_id="t1", model_name="gpt-4")
             mock_session.add.assert_called_once()
             mock_session.commit.assert_called_once()
@@ -166,7 +166,7 @@ class TestPut:
         existing_row = MagicMock()
         mock_session.get = AsyncMock(return_value=existing_row)
 
-        with patch("ideer.persistence.run.sql.resolve_user_id", return_value="user1"):
+        with patch("deerflow.persistence.run.sql.resolve_user_id", return_value="user1"):
             await repo.put("run1", thread_id="t1", status="running")
             mock_session.commit.assert_called_once()
 
@@ -175,7 +175,7 @@ class TestPut:
         repo, mock_session = _make_repo()
         mock_session.get = AsyncMock(return_value=None)
 
-        with patch("ideer.persistence.run.sql.resolve_user_id", return_value="user1"):
+        with patch("deerflow.persistence.run.sql.resolve_user_id", return_value="user1"):
             await repo.put("run1", thread_id="t1", created_at="2024-01-01T00:00:00+00:00")
             mock_session.add.assert_called_once()
 
@@ -197,7 +197,7 @@ class TestGet:
         row.user_id = "user1"
         mock_session.get = AsyncMock(return_value=row)
 
-        with patch("ideer.persistence.run.sql.resolve_user_id", return_value="user1"):
+        with patch("deerflow.persistence.run.sql.resolve_user_id", return_value="user1"):
             result = await repo.get("r1")
             assert result is not None
             assert result["metadata"] == {}
@@ -207,7 +207,7 @@ class TestGet:
         repo, mock_session = _make_repo()
         mock_session.get = AsyncMock(return_value=None)
 
-        with patch("ideer.persistence.run.sql.resolve_user_id", return_value="user1"):
+        with patch("deerflow.persistence.run.sql.resolve_user_id", return_value="user1"):
             result = await repo.get("r1")
             assert result is None
 
@@ -218,7 +218,7 @@ class TestGet:
         row.user_id = "other_user"
         mock_session.get = AsyncMock(return_value=row)
 
-        with patch("ideer.persistence.run.sql.resolve_user_id", return_value="user1"):
+        with patch("deerflow.persistence.run.sql.resolve_user_id", return_value="user1"):
             result = await repo.get("r1")
             assert result is None
 
@@ -238,7 +238,7 @@ class TestGet:
         row.user_id = "any"
         mock_session.get = AsyncMock(return_value=row)
 
-        with patch("ideer.persistence.run.sql.resolve_user_id", return_value=None):
+        with patch("deerflow.persistence.run.sql.resolve_user_id", return_value=None):
             result = await repo.get("r1")
             assert result is not None
 
@@ -293,7 +293,7 @@ class TestDelete:
         row.user_id = "user1"
         mock_session.get = AsyncMock(return_value=row)
 
-        with patch("ideer.persistence.run.sql.resolve_user_id", return_value="user1"):
+        with patch("deerflow.persistence.run.sql.resolve_user_id", return_value="user1"):
             await repo.delete("r1")
             mock_session.delete.assert_called_once_with(row)
 
@@ -302,7 +302,7 @@ class TestDelete:
         repo, mock_session = _make_repo()
         mock_session.get = AsyncMock(return_value=None)
 
-        with patch("ideer.persistence.run.sql.resolve_user_id", return_value="user1"):
+        with patch("deerflow.persistence.run.sql.resolve_user_id", return_value="user1"):
             await repo.delete("r1")
             mock_session.delete.assert_not_called()
 
@@ -313,7 +313,7 @@ class TestDelete:
         row.user_id = "other"
         mock_session.get = AsyncMock(return_value=row)
 
-        with patch("ideer.persistence.run.sql.resolve_user_id", return_value="user1"):
+        with patch("deerflow.persistence.run.sql.resolve_user_id", return_value="user1"):
             await repo.delete("r1")
             mock_session.delete.assert_not_called()
 
@@ -335,7 +335,7 @@ class TestListByThread:
         mock_result.scalars.return_value = [row]
         mock_session.execute = AsyncMock(return_value=mock_result)
 
-        with patch("ideer.persistence.run.sql.resolve_user_id", return_value="user1"):
+        with patch("deerflow.persistence.run.sql.resolve_user_id", return_value="user1"):
             result = await repo.list_by_thread("t1")
             assert len(result) == 1
 

@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.agentplatform import rbac_models as _rbac_models  # noqa: F401
 from app.agentplatform import resource_models as _resource_models  # noqa: F401
+from app.agentplatform.rbac_models import UserModel, UserRole
 from app.agentplatform.resource_models import (
     Resource,
     ResourceVersion,
@@ -19,18 +20,17 @@ from app.agentplatform.resources.service import ResourceAction
 from app.agentplatform.resources.storage import ResourceStorage
 from app.gateway.routers import resources
 from app.gateway.routers.resources import WorkflowRunRequest
+from deerflow.config.workflow_runtime_config import WorkflowRuntimeConfig
+from deerflow.persistence.base import Base
 from deerflow.persistence.base import Base as DeerFlowBase
 from deerflow.persistence.models.workflow_v2 import WorkflowV2RunRow
-from ideer.config.workflow_runtime_config import WorkflowRuntimeConfig
-from ideer.persistence.base import Base
-from ideer.persistence.models.user import UserModel, UserRole
 
 
 def test_resources_router_uses_deerflow_runtime_paths() -> None:
     source = (Path(__file__).parents[3] / "app" / "gateway" / "routers" / "resources.py").read_text(encoding="utf-8")
 
     assert "from deerflow.config.paths import get_paths" in source
-    assert "from ideer.config import get_paths" not in source
+    assert "from deerflow.config import get_paths" not in source
 
 
 def _user(role: UserRole, *, user_id: str = "user", department_id: str | None = "dept-a") -> UserModel:
@@ -360,7 +360,7 @@ class TestCanonicalRunRecordDownload:
 
         app.dependency_overrides[get_current_rbac_user] = _stub_user
 
-        from ideer.config.paths import Paths
+        from deerflow.config.paths import Paths
 
         async def _stub_run(_resource_id: str, _run_id: str, _user) -> SimpleNamespace:
             return SimpleNamespace(run_id="run-1", workflow_resource_id="workflow-id", created_by="user-1", status="completed")

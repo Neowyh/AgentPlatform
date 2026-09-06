@@ -9,9 +9,13 @@ import pytest_asyncio
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-import ideer.persistence.models  # noqa: F401
+import app.agentplatform.audit_model  # noqa: F401 - register audit_logs
+import app.agentplatform.rbac_models  # noqa: F401 - register users_ext
+import app.agentplatform.resource_models  # noqa: F401 - register resource tables
+import app.agentplatform.visibility_models  # noqa: F401 - register visibility tables
 from app.agentplatform import rbac_models as _rbac_models  # noqa: F401
 from app.agentplatform import resource_models as _resource_models  # noqa: F401
+from app.agentplatform.rbac_models import UserModel, UserRole
 from app.agentplatform.resource_models import (
     Resource,
     ResourceDependency,
@@ -28,11 +32,10 @@ from app.agentplatform.resources.service import (
     ResourcePermissionDenied,
     ResourceService,
 )
+from app.agentplatform.visibility_models import VisibilityApplication
+from deerflow.persistence.base import Base
 from deerflow.persistence.base import Base as DeerFlowBase
 from deerflow.persistence.models.workflow_v2 import WorkflowCommandRow, WorkflowTaskRow, WorkflowV2RunRow
-from ideer.persistence.base import Base
-from ideer.persistence.models.user import UserModel, UserRole
-from ideer.persistence.models.visibility_application import VisibilityApplication
 
 
 @pytest_asyncio.fixture

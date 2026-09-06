@@ -117,7 +117,7 @@ def _executor(
         assert run is not None
         definition = parse_workflow_v2(workflow_text)
         import app.agentplatform.workflows.v2.file_roots as file_roots
-        from ideer.config.paths import Paths
+        from deerflow.config.paths import Paths
 
         file_roots.get_paths = lambda: Paths(str(base_dir))
 
@@ -190,7 +190,7 @@ async def test_schema_violation_fails_node_with_specific_reason(
     tmp_path: Path,
 ) -> None:
     import app.agentplatform.workflows.v2.file_roots as file_roots
-    from ideer.config.paths import Paths
+    from deerflow.config.paths import Paths
 
     file_roots.get_paths = lambda: Paths(str(tmp_path))
     await durable_store.save_definition("schema-gated", {}, "hash", "user-1")
@@ -227,7 +227,7 @@ async def test_schema_conforming_write_completes_the_node(
     tmp_path: Path,
 ) -> None:
     import app.agentplatform.workflows.v2.file_roots as file_roots
-    from ideer.config.paths import Paths
+    from deerflow.config.paths import Paths
 
     file_roots.get_paths = lambda: Paths(str(tmp_path))
     await durable_store.save_definition("schema-gated", {}, "hash", "user-1")
@@ -260,7 +260,7 @@ async def test_schema_violation_feedback_injected_on_retry(
     tmp_path: Path,
 ) -> None:
     import app.agentplatform.workflows.v2.file_roots as file_roots
-    from ideer.config.paths import Paths
+    from deerflow.config.paths import Paths
 
     file_roots.get_paths = lambda: Paths(str(tmp_path))
     await durable_store.save_definition("schema-gated", {}, "hash", "user-1")
@@ -308,7 +308,7 @@ async def test_schema_violations_aggregated_in_error(
     tmp_path: Path,
 ) -> None:
     import app.agentplatform.workflows.v2.file_roots as file_roots
-    from ideer.config.paths import Paths
+    from deerflow.config.paths import Paths
 
     aggregate_schema = json.dumps(
         {
@@ -363,7 +363,7 @@ async def test_unparsable_json_write_feeds_syntax_error_back_on_retry(
     so the agent can repair the file.
     """
     import app.agentplatform.workflows.v2.file_roots as file_roots
-    from ideer.config.paths import Paths
+    from deerflow.config.paths import Paths
 
     file_roots.get_paths = lambda: Paths(str(tmp_path))
     await durable_store.save_definition("json-gated", {}, "hash", "user-1")

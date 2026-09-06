@@ -23,7 +23,7 @@ import sys
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO_ROOT, "backend"))
 
-from ideer.community.aio_sandbox import AioSandboxProvider  # noqa: E402
+from deerflow.community.aio_sandbox import AioSandboxProvider  # noqa: E402
 
 THREAD_ID = "officecli-experiment"
 WORKSPACE = "/mnt/user-data/workspace"

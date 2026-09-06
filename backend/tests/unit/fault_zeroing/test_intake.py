@@ -8,8 +8,8 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
-INTAKE_PATH = REPO_ROOT / "backend" / "packages" / "harness" / "ideer" / "fault_zeroing" / "intake.py"
-CONTRACT_PATH = REPO_ROOT / "backend" / "packages" / "harness" / "ideer" / "fault_zeroing" / "contract.py"
+INTAKE_PATH = REPO_ROOT / "backend" / "app" / "agentplatform" / "fault_zeroing" / "intake.py"
+CONTRACT_PATH = REPO_ROOT / "backend" / "app" / "agentplatform" / "fault_zeroing" / "contract.py"
 
 
 def load_module(name: str, path: Path):

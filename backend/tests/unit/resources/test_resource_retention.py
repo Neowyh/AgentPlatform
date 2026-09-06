@@ -7,18 +7,21 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-import ideer.persistence.models  # noqa: F401
-from app.agentplatform.resources.retention import RetentionPurgeError, build_retention_report, purge_eligible_versions
-from app.agentplatform.resources.storage import ResourceStorage
-from ideer.persistence.base import Base
-from ideer.persistence.models.resource_catalog import (
+import app.agentplatform.audit_model  # noqa: F401 - register audit_logs
+import app.agentplatform.rbac_models  # noqa: F401 - register users_ext
+import app.agentplatform.resource_models  # noqa: F401 - register resource tables
+import app.agentplatform.visibility_models  # noqa: F401 - register visibility tables
+from app.agentplatform.rbac_models import UserModel, UserRole
+from app.agentplatform.resource_models import (
     Resource,
     ResourceDependency,
     ResourceType,
     ResourceVersion,
     RunResourceSnapshot,
 )
-from ideer.persistence.models.user import UserModel, UserRole
+from app.agentplatform.resources.retention import RetentionPurgeError, build_retention_report, purge_eligible_versions
+from app.agentplatform.resources.storage import ResourceStorage
+from deerflow.persistence.base import Base
 
 
 @pytest.mark.asyncio

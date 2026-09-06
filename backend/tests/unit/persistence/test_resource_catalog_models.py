@@ -16,8 +16,8 @@ from app.agentplatform.resource_models import (
     ResourceVersion,
     RunResourceSnapshot,
 )
+from app.agentplatform.visibility_models import VisibilityApplication
 from deerflow.persistence.models.workflow_v2 import WorkflowV2RunRow
-from ideer.persistence.models.visibility_application import VisibilityApplication
 
 
 def _unique_column_sets(model: type) -> set[tuple[str, ...]]:

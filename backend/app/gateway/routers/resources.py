@@ -45,6 +45,7 @@ from app.agentplatform.resource_service import (
     ResourceService,
     VisibilityClosureError,
 )
+from app.agentplatform.resources.skill_validation import _validate_skill_frontmatter
 from app.agentplatform.workflow_runtime import (
     WorkflowRunError,
     WorkflowV2Store,
@@ -60,7 +61,6 @@ from deerflow.config.app_config import get_app_config
 from deerflow.config.paths import get_paths
 from deerflow.persistence.engine import get_session_factory
 from deerflow.persistence.models.workflow_v2 import WorkflowV2RunRow
-from deerflow.skills.validation import _validate_skill_frontmatter
 from deerflow.uploads.manager import claim_unique_filename, normalize_filename, open_upload_file_no_symlink
 
 router = APIRouter(prefix="/api/resources", tags=["resources"])
@@ -878,8 +878,10 @@ async def get_published_resource(
             )
             payload["content"] = {"config": config.model_dump(mode="json"), "soul": soul}
         else:
-            from deerflow.skills.parser import parse_skill_file
-            from deerflow.skills.types import SkillCategory
+            # Enterprise parser: the canonical Skill carries requires_internet
+            # and the governance fields the payload below exposes.
+            from app.agentplatform.resources.skill_parser import parse_skill_file
+            from app.agentplatform.resources.skill_types import SkillCategory
 
             skill = await asyncio.to_thread(
                 parse_skill_file,

@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 
+from app.agentplatform.resource_models import ResourceType
 from app.agentplatform.resources.storage import ResourceStorage, StorageLimits, StorageValidationError
-from ideer.persistence.models.resource_catalog import ResourceType
 
 
 def _uuid() -> str:

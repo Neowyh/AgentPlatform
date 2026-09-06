@@ -12,6 +12,9 @@ from typing import Any
 import yaml
 from langgraph.types import Command
 
+# Canonical runs key their sandboxes on a run-scoped identity; teach the
+# runtime's local provider to mount the run's frozen read-only skill view.
+from app.agentplatform.resources.canonical_sandbox import install_run_skill_view_resolver as _install_run_skill_view_resolver
 from app.agentplatform.workflow_runtime import (
     RunRecordWriter,
     WorkflowCancelled,
@@ -30,10 +33,19 @@ from app.agentplatform.workflow_runtime import (
     workflow_log_root,
     workflow_snapshot,
 )
+
+# Alias legacy IDEER_* deployment env names before any config resolution.
+# The alias runs at import time inside compat_env, so importing it here first
+# is sufficient (see app/gateway/app.py for the same pattern).
+from app.gateway.compat_env import apply_legacy_env_aliases as _apply_legacy_env_aliases  # noqa: F401
 from deerflow.config import get_app_config
 from deerflow.persistence.engine import close_engine, get_session_factory, init_engine_from_config
 from deerflow.persistence.models.workflow_v2 import WorkflowTaskRow
 from deerflow.runtime.checkpointer.async_provider import make_checkpointer
+
+# Canonical runs key their sandboxes on a run-scoped identity; teach the
+# runtime's local provider to mount the run's frozen read-only skill view.
+_install_run_skill_view_resolver()
 
 
 @contextmanager

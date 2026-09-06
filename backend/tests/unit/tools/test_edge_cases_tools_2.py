@@ -1,4 +1,4 @@
-"""Additional coverage tests for ideer.tools.tools.
+"""Additional coverage tests for deerflow.tools.tools.
 
 Targets missed lines 139-192: MCP tool_search with existing registry path.
 """
@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 from langchain_core.tools import BaseTool
 
-from ideer.tools.tools import get_available_tools
+from deerflow.tools.tools import get_available_tools
 
 
 def _make_config(
@@ -40,9 +40,9 @@ def _make_tool_config(name="my_tool", group="core", use="some.module:my_tool", r
 class TestMCPToolSearchNewRegistry:
     """Lines 139-148: tool_search enabled, no existing registry -> create new registry."""
 
-    @patch("ideer.tools.tools.is_offline", return_value=False)
-    @patch("ideer.tools.tools.is_host_bash_allowed", return_value=True)
-    @patch("ideer.tools.tools.resolve_variable")
+    @patch("deerflow.tools.tools.is_offline", return_value=False)
+    @patch("deerflow.tools.tools.is_host_bash_allowed", return_value=True)
+    @patch("deerflow.tools.tools.resolve_variable")
     def test_tool_search_creates_new_registry(self, mock_resolve, mock_bash, mock_offline, caplog):
         import sys
 
@@ -81,9 +81,9 @@ class TestMCPToolSearchNewRegistry:
             patch.dict(
                 sys.modules,
                 {
-                    "ideer.config.extensions_config": mock_ext_module,
-                    "ideer.mcp.cache": mock_mcp_cache_module,
-                    "ideer.tools.builtins.tool_search": mock_tool_search_module,
+                    "deerflow.config.extensions_config": mock_ext_module,
+                    "deerflow.mcp.cache": mock_mcp_cache_module,
+                    "deerflow.tools.builtins.tool_search": mock_tool_search_module,
                 },
             ),
             caplog.at_level(logging.INFO),
@@ -100,10 +100,10 @@ class TestMCPToolSearchNewRegistry:
 class TestMCPToolSearchExistingRegistry:
     """Lines 149-191: tool_search enabled with existing registry -> preserve promotions."""
 
-    @patch("ideer.tools.tools.is_offline", return_value=False)
-    @patch("ideer.tools.tools.is_host_bash_allowed", return_value=True)
-    @patch("ideer.tools.tools.resolve_variable")
-    @patch("ideer.tools.tools.get_deferred_registry")
+    @patch("deerflow.tools.tools.is_offline", return_value=False)
+    @patch("deerflow.tools.tools.is_host_bash_allowed", return_value=True)
+    @patch("deerflow.tools.tools.resolve_variable")
+    @patch("deerflow.tools.tools.get_deferred_registry")
     def test_tool_search_preserves_existing_registry(self, mock_get_registry, mock_resolve, mock_bash, mock_offline, caplog):
         import sys
 
@@ -140,9 +140,9 @@ class TestMCPToolSearchExistingRegistry:
             patch.dict(
                 sys.modules,
                 {
-                    "ideer.config.extensions_config": mock_ext_module,
-                    "ideer.mcp.cache": mock_mcp_cache_module,
-                    "ideer.tools.builtins.tool_search": mock_tool_search_module,
+                    "deerflow.config.extensions_config": mock_ext_module,
+                    "deerflow.mcp.cache": mock_mcp_cache_module,
+                    "deerflow.tools.builtins.tool_search": mock_tool_search_module,
                 },
             ),
             caplog.at_level(logging.INFO),
@@ -155,9 +155,9 @@ class TestMCPToolSearchExistingRegistry:
 class TestMCPToolsWithoutToolSearch:
     """Lines 138-139: MCP tools loaded but tool_search disabled."""
 
-    @patch("ideer.tools.tools.is_offline", return_value=False)
-    @patch("ideer.tools.tools.is_host_bash_allowed", return_value=True)
-    @patch("ideer.tools.tools.resolve_variable")
+    @patch("deerflow.tools.tools.is_offline", return_value=False)
+    @patch("deerflow.tools.tools.is_host_bash_allowed", return_value=True)
+    @patch("deerflow.tools.tools.resolve_variable")
     def test_mcp_tools_without_tool_search(self, mock_resolve, mock_bash, mock_offline, caplog):
         mock_resolve.return_value = MagicMock(spec=BaseTool, name="dummy", func=None, coroutine=None)
         config = _make_config(tools=[], tool_search_enabled=False)
@@ -181,8 +181,8 @@ class TestMCPToolsWithoutToolSearch:
             patch.dict(
                 sys.modules,
                 {
-                    "ideer.config.extensions_config": mock_ext_module,
-                    "ideer.mcp.cache": mock_mcp_cache_module,
+                    "deerflow.config.extensions_config": mock_ext_module,
+                    "deerflow.mcp.cache": mock_mcp_cache_module,
                 },
             ),
             caplog.at_level(logging.INFO),
@@ -197,9 +197,9 @@ class TestMCPToolsWithoutToolSearch:
 class TestMCPNoEnabledServers:
     """No MCP servers enabled -> no MCP tools loaded."""
 
-    @patch("ideer.tools.tools.is_offline", return_value=False)
-    @patch("ideer.tools.tools.is_host_bash_allowed", return_value=True)
-    @patch("ideer.tools.tools.resolve_variable")
+    @patch("deerflow.tools.tools.is_offline", return_value=False)
+    @patch("deerflow.tools.tools.is_host_bash_allowed", return_value=True)
+    @patch("deerflow.tools.tools.resolve_variable")
     def test_no_enabled_mcp_servers(self, mock_resolve, mock_bash, mock_offline):
         mock_resolve.return_value = MagicMock(spec=BaseTool, name="dummy", func=None, coroutine=None)
         config = _make_config(tools=[], tool_search_enabled=False)
@@ -215,7 +215,7 @@ class TestMCPNoEnabledServers:
         with patch.dict(
             sys.modules,
             {
-                "ideer.config.extensions_config": mock_ext_module,
+                "deerflow.config.extensions_config": mock_ext_module,
             },
         ):
             result = get_available_tools(app_config=config, include_mcp=True)

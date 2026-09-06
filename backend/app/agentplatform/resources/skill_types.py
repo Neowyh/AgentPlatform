@@ -1,9 +1,9 @@
 """Enterprise Skill model for AgentPlatform canonical resources.
 
-Migrated from ``ideer.skills.types`` (P7): the upstream ``deerflow.skills.types``
+Migrated from ``deerflow.skills.types`` (P7): the upstream ``deerflow.skills.types``
 ``Skill`` is frozen and carries no governance fields, while canonical resource
 loading must attach visibility / owner / department and mutate ``enabled``.
-The defunct ``ideer.persistence.models.user`` import is replaced by the
+The defunct ``app.agentplatform.rbac_models`` import is replaced by the
 AgentPlatform-owned enum in :mod:`app.agentplatform.rbac_models`.
 """
 

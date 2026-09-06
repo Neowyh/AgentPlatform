@@ -1,4 +1,4 @@
-"""Tests targeting uncovered conditional branches in ideer.agents.lead_agent.prompt.
+"""Tests targeting uncovered conditional branches in deerflow.agents.lead_agent.prompt.
 
 Each test function is named after the line range it covers.
 """
@@ -6,7 +6,7 @@ Each test function is named after the line range it covers.
 import threading
 from types import SimpleNamespace
 
-from ideer.agents.lead_agent import prompt as prompt_module
+from deerflow.agents.lead_agent import prompt as prompt_module
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -137,19 +137,19 @@ class TestGetMemoryContextGlobalConfig:
             max_injection_tokens=4096,
         )
         monkeypatch.setattr(
-            "ideer.config.memory_config.get_memory_config",
+            "deerflow.config.memory_config.get_memory_config",
             lambda: mem_config,
         )
         monkeypatch.setattr(
-            "ideer.runtime.user_context.get_effective_user_id",
+            "deerflow.runtime.user_context.get_effective_user_id",
             lambda: "u-1",
         )
         monkeypatch.setattr(
-            "ideer.agents.memory.get_memory_data",
+            "app.agentplatform.legacy.memory.get_memory_data",
             lambda agent_name=None, **kw: {"facts": []},
         )
         monkeypatch.setattr(
-            "ideer.agents.memory.format_memory_for_injection",
+            "app.agentplatform.legacy.memory.format_memory_for_injection",
             lambda data, *, max_tokens: "global-memory-text",
         )
 
@@ -161,7 +161,7 @@ class TestGetMemoryContextGlobalConfig:
     def test_returns_empty_when_memory_disabled_globally(self, monkeypatch):
         mem_config = SimpleNamespace(enabled=False, injection_enabled=True, max_injection_tokens=100)
         monkeypatch.setattr(
-            "ideer.config.memory_config.get_memory_config",
+            "deerflow.config.memory_config.get_memory_config",
             lambda: mem_config,
         )
 
@@ -185,7 +185,7 @@ class TestGetSkillsPromptSectionEmptySignature:
             lambda app_config=None: [],
         )
         monkeypatch.setattr(
-            "ideer.config.get_app_config",
+            "deerflow.config.get_app_config",
             lambda: SimpleNamespace(
                 skills=SimpleNamespace(container_path="/mnt/skills"),
                 skill_evolution=SimpleNamespace(enabled=False),
@@ -211,7 +211,7 @@ class TestGetSkillsPromptSectionEmptySignature:
             lambda app_config=None: [skill],
         )
         monkeypatch.setattr(
-            "ideer.config.get_app_config",
+            "deerflow.config.get_app_config",
             lambda: SimpleNamespace(
                 skills=SimpleNamespace(container_path="/mnt/skills"),
                 skill_evolution=SimpleNamespace(enabled=False),
@@ -237,7 +237,7 @@ class TestGetDeferredToolsPromptSectionException:
         def raise_config():
             raise RuntimeError("config unavailable")
 
-        monkeypatch.setattr("ideer.config.get_app_config", raise_config)
+        monkeypatch.setattr("deerflow.config.get_app_config", raise_config)
 
         result = prompt_module.get_deferred_tools_prompt_section(app_config=None)
         assert result == ""
@@ -255,7 +255,7 @@ class TestBuildAcpSectionException:
         def raise_acp():
             raise RuntimeError("acp agents unavailable")
 
-        monkeypatch.setattr("ideer.config.acp_config.get_acp_agents", raise_acp)
+        monkeypatch.setattr("deerflow.config.acp_config.get_acp_agents", raise_acp)
 
         result = prompt_module._build_acp_section(app_config=None)
         assert result == ""
@@ -273,7 +273,7 @@ class TestBuildCustomMountsSectionException:
         def raise_config():
             raise RuntimeError("config broken")
 
-        monkeypatch.setattr("ideer.config.get_app_config", raise_config)
+        monkeypatch.setattr("deerflow.config.get_app_config", raise_config)
 
         with caplog.at_level("ERROR"):
             result = prompt_module._build_custom_mounts_section(app_config=None)
