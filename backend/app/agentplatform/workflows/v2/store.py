@@ -390,6 +390,79 @@ class WorkflowV2Store:
             await session.commit()
             return run
 
+    async def create_canonical_paused_run(
+        self,
+        run_id: str,
+        workflow_resource_id: str,
+        inputs: dict,
+        actor,
+        *,
+        intake_snapshot: dict | None = None,
+    ) -> WorkflowV2RunRow:
+        """Freeze a canonical dependency closure but park the run paused.
+
+        The fault-zeroing intake gate decides execute-vs-pause before any model
+        execution; this variant gives that gate the canonical contract — the
+        UUID/version/hash closure is frozen exactly like ``create_canonical_run``
+        (so the worker only ever consumes the snapshot), but the paired task is
+        parked in ``paused``. Inputs are stored as submitted without
+        creation-time root validation: a paused run is precisely the case where
+        a declared evidence root may not exist yet.
+        """
+
+        from app.agentplatform.resource_models import Resource, ResourceVersion
+        from app.agentplatform.resources.service import ResourceConflict, ResourceService
+
+        async with self.session_factory() as session:
+            service = ResourceService(session, actor)
+            snapshots = await service.create_run_snapshot(run_id, workflow_resource_id)
+            resource = await session.get(Resource, workflow_resource_id)
+            if resource is None or resource.type != "workflow":
+                raise ResourceConflict(f"Resource {workflow_resource_id} is not a Workflow")
+            root_snapshot = next(
+                (snapshot for snapshot in snapshots if snapshot.resource_id == workflow_resource_id),
+                None,
+            )
+            if root_snapshot is None:
+                raise ResourceConflict("Canonical Workflow snapshot is missing its root")
+            version = (
+                await session.execute(
+                    select(ResourceVersion).where(
+                        ResourceVersion.resource_id == workflow_resource_id,
+                        ResourceVersion.version == root_snapshot.version,
+                    )
+                )
+            ).scalar_one()
+            if not isinstance(version.content, dict):
+                raise ResourceConflict("Canonical Workflow version has no definition content")
+
+            run = WorkflowV2RunRow(
+                run_id=run_id,
+                workflow_name=resource.slug,
+                workflow_resource_id=resource.id,
+                definition_version=root_snapshot.version,
+                checkpoint_thread_id=f"wf-{run_id}",
+                status="paused",
+                inputs=dict(inputs),
+                snapshot={**(intake_snapshot or {}), "run_evidence": _canonical_run_evidence(snapshots, actor, workflow_resource_id)},
+                runner_tool_groups=sorted(actor.tool_groups) if actor.tool_groups is not None else None,
+                created_by=actor.user_id,
+                department_id=actor.department_id,
+            )
+            session.add(run)
+            await session.flush()
+            session.add(
+                WorkflowTaskRow(
+                    task_id=str(uuid4()),
+                    run_id=run_id,
+                    status="paused",
+                    attempts=0,
+                    cancel_requested=False,
+                )
+            )
+            await session.commit()
+            return run
+
     async def cancel_legacy_run(self, run_id: str, *, status: str = "cancelled", reason_code: str | None = None) -> bool:
         """Explicitly cancel one queued/paused run (legacy cutover support)."""
 

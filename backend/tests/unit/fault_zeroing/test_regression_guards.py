@@ -116,14 +116,22 @@ def test_missing_report_section_fails(tmp_path: Path) -> None:
 
 
 def test_acceptance_harness_points_at_real_workflow_and_runs_contract() -> None:
-    """Regressions 5+6: real YAML path; contract evaluation recorded."""
+    """Regressions 5+6: the harness consumes the canonical bundled workflow
+    (its manifest source IS resources/workflows/fault-zeroing.yaml); the
+    contract evaluation is still recorded."""
 
     source = (REPO_ROOT / "scripts" / "run_fault_zeroing_acceptance.py").read_text(encoding="utf-8")
 
     workflow_path = REPO_ROOT / "resources" / "workflows" / "fault-zeroing.yaml"
     assert workflow_path.is_file()
-    assert 'REPO_ROOT / "resources" / "workflows" / "fault-zeroing.yaml"' in source
+    # The canonical seam seeds the bundled manifest and freezes the workflow
+    # resource whose source is the real YAML — not a stale local copy.
+    assert 'REPO_ROOT / "bundled-resources.json"' in source
+    assert "seed_bundled_resources" in source
     assert 'REPO_ROOT / "workflows" / "fault-zeroing.yaml"' not in source
+    manifest = json.loads((REPO_ROOT / "bundled-resources.json").read_text(encoding="utf-8"))
+    workflow_entry = next(entry for entry in manifest["resources"] if entry["type"] == "workflow" and entry["slug"] == "fault-zeroing")
+    assert workflow_entry["source"] == "resources/workflows/fault-zeroing.yaml"
 
     assert '"validator_run": True' in source
     assert "evaluate_completion" in source

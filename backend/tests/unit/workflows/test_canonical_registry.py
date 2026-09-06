@@ -93,8 +93,9 @@ async def test_canonical_registry_uses_uuid_and_frozen_runner_tool_groups(
 
     assert registry.resolve("agent", agent_id).definition.resource_id == agent_id
     assert registry.resolve("tool", "read_file").tool.name == "read_file"
-    with pytest.raises(ActionResolutionError):
-        registry.resolve("agent", "writer")
+    # Workflow definitions author agent actions by slug; the slug resolves to
+    # the same snapshot-frozen adapter (an alias, never a re-resolution).
+    assert registry.resolve("agent", "writer").definition.resource_id == agent_id
     with pytest.raises(ActionResolutionError):
         registry.resolve("tool", "write_file")
     assert (tmp_path / "resources" / "run-skill-views" / canonical_run_key("run-1") / "custom").is_dir()

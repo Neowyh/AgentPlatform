@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import hashlib
 import json
 import shutil
 import sys
@@ -20,7 +19,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
-import yaml
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -46,8 +45,6 @@ from app.agentplatform.fault_zeroing.kernel import (
 )
 
 CASES_ROOT = REPO_ROOT / "docs" / "zero_agent_eval_cases"
-# Ticket 07 regression: the canonical bundled workflow lives under resources/.
-WORKFLOW_PATH = REPO_ROOT / "resources" / "workflows" / "fault-zeroing.yaml"
 EXPECTED_OUTPUTS = (
     "fault_tree.json",
     "fault_tree.svg",
@@ -117,16 +114,37 @@ async def _run(user_id: str, case_name: str | None = None) -> dict:
     )
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
-    store = WorkflowV2Store(async_sessionmaker(engine, expire_on_commit=False))
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    store = WorkflowV2Store(factory)
     kernel = FaultZeroingKernel(store)
 
-    workflow_text = WORKFLOW_PATH.read_text(encoding="utf-8")
-    workflow_raw = yaml.safe_load(workflow_text)
-    version = await store.save_definition(
-        "fault-zeroing",
-        workflow_raw,
-        hashlib.sha256(workflow_text.encode()).hexdigest(),
-        user_id,
+    # The canonical run contract freezes the bundled workflow → agent → skill
+    # closure, so seed the manifest into this acceptance catalog first.
+    from sqlalchemy import text
+
+    from app.agentplatform.resources.bundled import seed_bundled_resources
+    from app.agentplatform.resources.service import ResourceAction, ResourceActor
+    from app.agentplatform.resources.storage import ResourceStorage
+
+    await seed_bundled_resources(
+        factory,
+        ResourceStorage(str(get_paths().base_dir), allow_scanned_executables=True),
+        manifest_path=REPO_ROOT / "bundled-resources.json",
+        source_root=REPO_ROOT,
+        owner_id=user_id,
+    )
+    async with factory() as session:
+        workflow_resource_id = await session.execute(
+            text("SELECT id FROM resources WHERE slug = 'fault-zeroing' AND type = 'workflow'")
+        )
+        workflow_resource_id = workflow_resource_id.scalar_one_or_none()
+    if workflow_resource_id is None:
+        raise RuntimeError("bundled fault-zeroing workflow resource was not seeded")
+    actor = ResourceActor(
+        user_id=user_id,
+        department_id=None,
+        role="super_admin",
+        permissions=frozenset({ResourceAction.READ, ResourceAction.USE}),
     )
     config = get_app_config().model_copy(
         update={
@@ -158,7 +176,7 @@ async def _run(user_id: str, case_name: str | None = None) -> dict:
             # so the operator confirms the missing code-evidence side.
             started_result = await kernel.start_run(
                 workflow_name="fault-zeroing",
-                definition_version=version.version,
+                definition_version=1,
                 inputs={
                     "upload_dir": "/mnt/user-data/uploads",
                     "problem_description": problem_description,
@@ -167,6 +185,8 @@ async def _run(user_id: str, case_name: str | None = None) -> dict:
                 },
                 created_by=user_id,
                 run_id=run_id,
+                workflow_resource_id=workflow_resource_id,
+                actor=actor,
             )
             if started_result.status == "paused":
                 await _confirm_single_side_intake(kernel, store, run_id, user_id)

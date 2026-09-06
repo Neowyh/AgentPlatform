@@ -121,10 +121,10 @@ async def build_canonical_registry(run: Any, config: Any, session_factory: Any, 
     async with session_factory() as session:
         loader = CanonicalResourceLoader(session, storage)
         frozen_skill_versions: dict[str, tuple[int, str]] = {}
-        agent_ids = list(
+        agent_rows = list(
             (
                 await session.execute(
-                    select(Resource.id)
+                    select(Resource.id, Resource.slug)
                     .join(RunResourceSnapshot, RunResourceSnapshot.resource_id == Resource.id)
                     .where(
                         RunResourceSnapshot.run_id == run.run_id,
@@ -132,24 +132,27 @@ async def build_canonical_registry(run: Any, config: Any, session_factory: Any, 
                     )
                     .order_by(Resource.id)
                 )
-            ).scalars()
+            ).all()
         )
-        for resource_id in agent_ids:
+        for resource_id, resource_slug in agent_rows:
             definition = await loader.load_agent(run.run_id, resource_id)
             skill_definitions = await loader.load_agent_skill_definitions(run.run_id, resource_id)
             skills = [value.skill for value in skill_definitions]
             for value in skill_definitions:
                 frozen_skill_versions[value.resource_id] = (value.version, value.content_hash)
-            registry.register(
-                "agent",
-                resource_id,
-                _CanonicalAgentAdapter(
-                    definition,
-                    skills,
-                    run.created_by,
-                    allowed_tool_groups=allowed_groups,
-                ),
+            adapter = _CanonicalAgentAdapter(
+                definition,
+                skills,
+                run.created_by,
+                allowed_tool_groups=allowed_groups,
             )
+            # The version is already frozen by the run snapshot; the slug is
+            # registered only as an alias to that same frozen adapter because
+            # workflow definitions author agent actions by slug. The alias never
+            # re-resolves a resource version at execution time.
+            registry.register("agent", resource_id, adapter)
+            if resource_slug and resource_slug != resource_id:
+                registry.register("agent", resource_slug, adapter)
         await asyncio.to_thread(
             storage.create_run_skill_view,
             run.run_id,
@@ -170,12 +173,13 @@ async def execute_workflow_task(
     run = await store.get_run(run_id)
     if run is None:
         raise RuntimeError(f"workflow run '{run_id}' not found")
-    storage = None
-    if run.workflow_resource_id:
-        from app.agentplatform.resource_runtime import ResourceStorage
-        from deerflow.config.paths import get_paths
+    # Resource storage is needed by every canonical-registry build (the frozen
+    # run skill view is written for any snapshot carrying skills, PATCH-012),
+    # so construct it unconditionally — legacy name/version runs included.
+    from app.agentplatform.resource_runtime import ResourceStorage
+    from deerflow.config.paths import get_paths
 
-        storage = ResourceStorage(get_paths().base_dir)
+    storage = ResourceStorage(get_paths().base_dir)
     definition_payload = await load_workflow_definition_for_run(
         run,
         store,

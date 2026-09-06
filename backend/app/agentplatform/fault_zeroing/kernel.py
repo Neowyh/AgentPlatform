@@ -169,6 +169,8 @@ class FaultZeroingKernel:
         created_by: str,
         run_id: str | None = None,
         department_id: str | None = None,
+        workflow_resource_id: str | None = None,
+        actor: Any | None = None,
     ) -> KernelStartResult:
         """Start a run through hybrid evidence intake.
 
@@ -177,6 +179,12 @@ class FaultZeroingKernel:
           awaiting explicit user confirmation (no task to claim, so no model
           execution can happen);
         - both sides missing: reject before model execution — no usable run.
+
+        When ``workflow_resource_id`` and ``actor`` are supplied the run is
+        created through the canonical contract — the UUID/version/hash closure
+        is frozen before the run becomes claimable (or pausable) — while the
+        legacy name+version path stays available for runs created before the
+        canonical cutover.
         """
 
         run_id = run_id or str(self._id_factory())
@@ -197,15 +205,24 @@ class FaultZeroingKernel:
 
         if decision.status == intake_mod.PAUSE:
             payload = intake_mod.interrupt_payload(decision)
-            await self._store.create_paused_run(
-                run_id,
-                workflow_name,
-                definition_version,
-                dict(inputs),
-                created_by,
-                snapshot={**pinned_snapshot, "interrupt": [payload]},
-                department_id=department_id,
-            )
+            if workflow_resource_id is not None:
+                await self._store.create_canonical_paused_run(
+                    run_id,
+                    workflow_resource_id,
+                    dict(inputs),
+                    actor,
+                    intake_snapshot={**pinned_snapshot, "interrupt": [payload]},
+                )
+            else:
+                await self._store.create_paused_run(
+                    run_id,
+                    workflow_name,
+                    definition_version,
+                    dict(inputs),
+                    created_by,
+                    snapshot={**pinned_snapshot, "interrupt": [payload]},
+                    department_id=department_id,
+                )
             await self._store.append_event(
                 run_id,
                 EVENT_INTERRUPTED,
@@ -219,15 +236,25 @@ class FaultZeroingKernel:
                 reason_code=decision.reason_code,
             )
 
-        await self._store.create_run(
-            run_id,
-            workflow_name,
-            definition_version,
-            dict(inputs),
-            created_by,
-            department_id=department_id,
-            snapshot=pinned_snapshot,
-        )
+        if workflow_resource_id is not None:
+            run = await self._store.create_canonical_run(run_id, workflow_resource_id, dict(inputs), actor)
+            # Keep the intake contract pinned on the canonical run snapshot
+            # (create_canonical_run only stores the run evidence envelope).
+            await self._store.update_snapshot(
+                run_id,
+                {**dict(run.snapshot or {}), **pinned_snapshot},
+                worker_id=KERNEL_WORKER_ID,
+            )
+        else:
+            await self._store.create_run(
+                run_id,
+                workflow_name,
+                definition_version,
+                dict(inputs),
+                created_by,
+                department_id=department_id,
+                snapshot=pinned_snapshot,
+            )
         await self._store.append_event(
             run_id,
             "run_started",
