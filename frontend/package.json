@@ -17,6 +17,7 @@
     "start": "next start",
     "test": "rstest run && vitest run",
     "test:e2e": "playwright test",
+    "test:e2e:smoke": "playwright test tests/e2e/landing.spec.ts tests/e2e/sidebar.spec.ts tests/e2e/scheduled-tasks.spec.ts tests/e2e/background-tasks.spec.ts tests/e2e/agents-feature-disabled.spec.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
