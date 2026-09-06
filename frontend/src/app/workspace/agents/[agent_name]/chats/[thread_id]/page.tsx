@@ -84,8 +84,10 @@ export default function AgentChatPage() {
     isNewThread || isMock ? undefined : threadId,
     { enabled: !isMock },
   );
+  // Keep the canonical-title metadata GET on in mock mode too, so a rename
+  // reaches the agent chat header through the same query as production.
   const threadMetadata = useThreadMetadata(threadId, {
-    enabled: !isNewThread && !isMock,
+    enabled: !isNewThread,
     isMock,
   });
   const backendTokenUsage = threadTokenUsageToTokenUsage(threadTokenUsage.data);
@@ -269,12 +271,12 @@ export default function AgentChatPage() {
               {/* Agent badge */}
               <div className="flex min-w-0 shrink-0 items-center gap-1.5 rounded-md border px-2 py-1">
                 <BotIcon className="text-primary h-3.5 w-3.5" />
-                <span className="hidden max-w-24 truncate type-compact font-medium sm:inline sm:max-w-none">
+                <span className="type-compact hidden max-w-24 truncate font-medium sm:inline sm:max-w-none">
                   {agent?.name ?? agent_name}
                 </span>
               </div>
 
-              <div className="flex min-w-0 flex-1 items-center type-supporting font-medium">
+              <div className="type-supporting flex min-w-0 flex-1 items-center font-medium">
                 <ThreadTitle
                   threadId={threadId}
                   thread={thread}
@@ -450,7 +452,7 @@ export default function AgentChatPage() {
                     onStop={handleStop}
                   />
                   {env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true" && (
-                    <div className="text-muted-foreground/67 w-full translate-y-12 text-center type-compact">
+                    <div className="text-muted-foreground/67 type-compact w-full translate-y-12 text-center">
                       {t.common.notAvailableInDemoMode}
                     </div>
                   )}

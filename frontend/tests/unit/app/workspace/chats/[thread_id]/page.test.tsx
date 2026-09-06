@@ -172,6 +172,7 @@ vi.mock("@/core/settings", () => ({
 }));
 
 vi.mock("@/core/threads/hooks", () => ({
+  useThreadMetadata: () => ({ data: null }),
   useThreadStream: (...args: any[]) => mockUseThreadStream(...args),
   useThreadTokenUsage: () => ({ data: null }),
   useThreads: () => ({ data: [] }),

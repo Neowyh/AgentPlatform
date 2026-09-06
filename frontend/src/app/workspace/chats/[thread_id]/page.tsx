@@ -13,8 +13,6 @@ import {
   useThreadChat,
 } from "@/components/workspace/chats";
 import { ExportTrigger } from "@/components/workspace/export-trigger";
-import { ThreadBackgroundTasks } from "@/components/workspace/thread-background-tasks";
-import { ThreadScheduledTasksLink } from "@/components/workspace/thread-scheduled-tasks-link";
 import { InputBox } from "@/components/workspace/input-box";
 import {
   MessageList,
@@ -24,6 +22,8 @@ import { ThreadContext } from "@/components/workspace/messages/context";
 import { ScenarioCascadeBar } from "@/components/workspace/scenario";
 import { ScenarioTabs } from "@/components/workspace/scenario/scenario-tabs";
 import type { SelectedTag } from "@/components/workspace/scenario/selected-tags";
+import { ThreadBackgroundTasks } from "@/components/workspace/thread-background-tasks";
+import { ThreadScheduledTasksLink } from "@/components/workspace/thread-scheduled-tasks-link";
 import { ThreadTitle } from "@/components/workspace/thread-title";
 import { TodoList } from "@/components/workspace/todo-list";
 import { TokenUsageIndicator } from "@/components/workspace/token-usage-indicator";
@@ -42,6 +42,7 @@ import type { ScenarioId } from "@/core/scenarios/types";
 import { useLocalSettings, useThreadSettings } from "@/core/settings";
 import { useSkills } from "@/core/skills/hooks";
 import {
+  useThreadMetadata,
   useThreadStream,
   useThreadTokenUsage,
   useThreads,
@@ -275,6 +276,13 @@ export default function ChatPage() {
     isNewThread || isMock ? undefined : threadId,
     { enabled: tokenUsageEnabled && !isMock },
   );
+  // The metadata GET is the header's canonical title source; keeping it on in
+  // mock mode is what lets a rename reach the header (the mock implements the
+  // single-thread GET and the rename's updateState write-back).
+  const threadMetadata = useThreadMetadata(threadId, {
+    enabled: !isNewThread,
+    isMock,
+  });
   const backendTokenUsage = threadTokenUsageToTokenUsage(threadTokenUsage.data);
   const mountedRef = useRef(false);
   useSpecificChatMode();
@@ -388,7 +396,11 @@ export default function ChatPage() {
             )}
           >
             <div className="type-body flex w-full items-center font-medium">
-              <ThreadTitle threadId={threadId} thread={thread} />
+              <ThreadTitle
+                threadId={threadId}
+                thread={thread}
+                canonicalTitle={threadMetadata.data?.values?.title}
+              />
             </div>
             <div className="flex items-center gap-2">
               <TokenUsageIndicator

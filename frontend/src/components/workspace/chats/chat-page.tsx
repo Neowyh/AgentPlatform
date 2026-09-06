@@ -81,8 +81,11 @@ export default function ChatPage() {
     isNewThread || isMock ? undefined : threadId,
     { enabled: !isMock },
   );
+  // The metadata GET is the header's canonical title source; keeping it on in
+  // mock mode is what lets a rename reach the header (the mock implements the
+  // single-thread GET and the rename's updateState write-back).
   const threadMetadata = useThreadMetadata(threadId, {
-    enabled: !isNewThread && !isMock,
+    enabled: !isNewThread,
     isMock,
   });
   const branchThread = useBranchThread();
@@ -287,7 +290,7 @@ export default function ChatPage() {
               )}
             >
               {!isMock && <SidebarTrigger className="md:hidden" />}
-              <div className="flex min-w-0 flex-1 items-center type-supporting font-medium">
+              <div className="type-supporting flex min-w-0 flex-1 items-center font-medium">
                 <ThreadTitle
                   threadId={threadId}
                   thread={thread}
@@ -467,7 +470,7 @@ export default function ChatPage() {
                     />
                   )}
                   {env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true" && (
-                    <div className="text-muted-foreground/67 w-full translate-y-12 text-center type-compact">
+                    <div className="text-muted-foreground/67 type-compact w-full translate-y-12 text-center">
                       {t.common.notAvailableInDemoMode}
                     </div>
                   )}
