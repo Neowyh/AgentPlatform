@@ -529,6 +529,48 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
     return route.fallback();
   });
 
+  // Branch from turn — creates a child thread that copies the parent's
+  // messages and links it through branch metadata, mirroring the gateway's
+  // POST /threads/{id}/branches so the sidebar renders the branch lineage.
+  void page.route(/\/api\/threads\/([^/]+)\/branches$/, (route) => {
+    if (route.request().method() !== "POST") {
+      return route.fallback();
+    }
+    const url = new URL(route.request().url());
+    const threadId = decodeURIComponent(url.pathname.split("/")[3] ?? "");
+    const parent = threads.find((t) => t.thread_id === threadId);
+    const body = route.request().postDataJSON() as {
+      message_id?: string;
+      message_ids?: string[];
+    } | null;
+    const branchedFromMessageId = body?.message_id ?? "";
+    const branchThreadId = MOCK_THREAD_ID_2;
+    if (!threads.some((t) => t.thread_id === branchThreadId)) {
+      threads.push({
+        thread_id: branchThreadId,
+        title: `${parent?.title ?? "Untitled"} (2)`,
+        updated_at: new Date().toISOString(),
+        metadata: {
+          deerflow_branch: true,
+          branch_parent_thread_id: threadId,
+          branched_from_message_id: branchedFromMessageId,
+        },
+        messages: parent?.messages ?? [],
+      });
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        thread_id: branchThreadId,
+        parent_thread_id: threadId,
+        parent_checkpoint_id: "mock-checkpoint",
+        branched_from_message_id: branchedFromMessageId,
+        workspace_clone_mode: "none",
+      }),
+    });
+  });
+
   // Thread history — useStream fetches state history on mount
   void page.route(
     /\/(?:api\/langgraph|mock\/api)\/threads\/[^/]+\/history$/,
@@ -1038,7 +1080,9 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
           config: {
             description: agent?.description ?? "",
             model: agent?.model ?? null,
-            tool_groups: agent?.tool_groups ?? [],
+            // Preserve null: the gateway publishes unrestricted agents with
+            // no tool_groups, and `[]` means "no groups allowed" downstream.
+            tool_groups: agent?.tool_groups ?? null,
             skills: agent?.skills ?? [],
           },
           soul: agent?.soul ?? agent?.system_prompt ?? "",

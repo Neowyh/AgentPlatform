@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -13,7 +13,11 @@ import {
   useThreadChat,
 } from "@/components/workspace/chats";
 import { ExportTrigger } from "@/components/workspace/export-trigger";
-import { InputBox } from "@/components/workspace/input-box";
+import { GoalStatus } from "@/components/workspace/goal-status";
+import {
+  InputBox,
+  type InputBoxSubmitOptions,
+} from "@/components/workspace/input-box";
 import {
   MessageList,
   MESSAGE_LIST_DEFAULT_PADDING_BOTTOM,
@@ -27,6 +31,7 @@ import { ThreadScheduledTasksLink } from "@/components/workspace/thread-schedule
 import { ThreadTitle } from "@/components/workspace/thread-title";
 import { TodoList } from "@/components/workspace/todo-list";
 import { TokenUsageIndicator } from "@/components/workspace/token-usage-indicator";
+import { useActiveGoal } from "@/components/workspace/use-active-goal";
 import { Welcome } from "@/components/workspace/welcome";
 import { useAgent, useAgents } from "@/core/agents/hooks";
 import { getAPIClient } from "@/core/api";
@@ -42,6 +47,7 @@ import type { ScenarioId } from "@/core/scenarios/types";
 import { useLocalSettings, useThreadSettings } from "@/core/settings";
 import { useSkills } from "@/core/skills/hooks";
 import {
+  useBranchThread,
   useThreadMetadata,
   useThreadStream,
   useThreadTokenUsage,
@@ -125,6 +131,7 @@ function RecentTaskCards({
 
 export default function ChatPage() {
   const { t } = useI18n();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const requestedAgent = searchParams.get("agent");
   const {
@@ -157,6 +164,7 @@ export default function ChatPage() {
   } = useScenarioBinding();
   const { agents } = useAgents();
   const { data: recentThreads = [] } = useThreads();
+  const branchThread = useBranchThread();
   const selectedAgent = agents.find(
     (item) => (item.slug ?? item.name) === selectedPill?.agentSlug,
   );
@@ -311,6 +319,10 @@ export default function ChatPage() {
     loadMoreHistory,
   } = useThreadStream({
     threadId: isNewThread ? undefined : threadId,
+    // Keep the client-visible thread id flowing into the stream hooks so
+    // optimistic messages and live-message attribution stay attached to the
+    // view while `threadId` itself is gated on backend thread creation.
+    displayThreadId: threadId,
     context: selectionContext,
     isMock,
     prepareSubmit: async () => {
@@ -357,7 +369,7 @@ export default function ChatPage() {
   });
 
   const handleSubmit = useCallback(
-    (message: PromptInputMessage) => {
+    (message: PromptInputMessage, options?: InputBoxSubmitOptions) => {
       if (!selectionBinding.valid) {
         toast.error(selectionBinding.reason);
         return;
@@ -366,6 +378,7 @@ export default function ChatPage() {
         threadId,
         message,
         selectionBinding.context,
+        options,
       );
       if (message.files.length > 0) {
         return sendPromise;
@@ -377,11 +390,41 @@ export default function ChatPage() {
   const handleStop = useCallback(async () => {
     await thread.stop();
   }, [thread]);
+  const handleBranchTurn = useCallback(
+    async (messageId: string, messageIds: string[]) => {
+      if (
+        isNewThread ||
+        isMock ||
+        env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true"
+      ) {
+        return;
+      }
+
+      try {
+        const response = await branchThread.mutateAsync({
+          threadId,
+          messageId,
+          messageIds,
+        });
+        toast.success(t.conversation.branchCreated);
+        router.push(`/workspace/chats/${response.thread_id}`);
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : t.conversation.branchFailed,
+        );
+      }
+    },
+    [branchThread, isMock, isNewThread, router, t, threadId],
+  );
 
   const tokenUsageInlineMode = tokenUsageEnabled
     ? localSettings.tokenUsage.inlineMode
     : "off";
   const hasTodos = (thread.values.todos?.length ?? 0) > 0;
+  const { activeGoal, hasGoal, setLocalGoal } = useActiveGoal(
+    threadId,
+    thread.values.goal,
+  );
 
   return (
     <ThreadContext.Provider value={{ thread, isMock }}>
@@ -441,6 +484,15 @@ export default function ChatPage() {
                   loadMoreHistory={loadMoreHistory}
                   isHistoryLoading={isHistoryLoading}
                   tokenUsageInlineMode={tokenUsageInlineMode}
+                  canBranch={
+                    !isNewThread &&
+                    !isMock &&
+                    env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY !== "true" &&
+                    !isUploading &&
+                    !thread.isLoading &&
+                    !branchThread.isPending
+                  }
+                  onBranchTurn={handleBranchTurn}
                 />
               </div>
             )}
@@ -485,13 +537,16 @@ export default function ChatPage() {
                     </div>
                   </div>
                 )}
-                {hasTodos && (
-                  <div className="relative z-0">
-                    <TodoList
-                      className="bg-background/5"
-                      todos={thread.values.todos ?? []}
-                      hidden={false}
-                    />
+                {(hasGoal || hasTodos) && (
+                  <div className="relative z-0 flex flex-col">
+                    {activeGoal && <GoalStatus goal={activeGoal} />}
+                    {hasTodos && (
+                      <TodoList
+                        className="bg-background/5"
+                        todos={thread.values.todos ?? []}
+                        hidden={false}
+                      />
+                    )}
                   </div>
                 )}
                 {mountedRef.current ? (
@@ -534,6 +589,7 @@ export default function ChatPage() {
                       onContextChange={(context) =>
                         setSettings("context", context)
                       }
+                      onGoalChange={setLocalGoal}
                       onSubmit={handleSubmit}
                       onStop={handleStop}
                     />

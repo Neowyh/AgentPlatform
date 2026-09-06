@@ -176,6 +176,23 @@ vi.mock("@/core/threads/hooks", () => ({
   useThreadStream: (...args: any[]) => mockUseThreadStream(...args),
   useThreadTokenUsage: () => ({ data: null }),
   useThreads: () => ({ data: [] }),
+  useBranchThread: () => ({
+    mutateAsync: vi.fn().mockResolvedValue({ thread_id: "branch-thread" }),
+    isPending: false,
+  }),
+}));
+
+vi.mock("@/components/workspace/goal-status", () => ({
+  GoalStatus: () => <div data-testid="goal-status" />,
+}));
+
+const mockSetLocalGoal = vi.fn();
+vi.mock("@/components/workspace/use-active-goal", () => ({
+  useActiveGoal: () => ({
+    activeGoal: null,
+    hasGoal: false,
+    setLocalGoal: mockSetLocalGoal,
+  }),
 }));
 
 vi.mock("@/core/threads/token-usage", () => ({
@@ -1106,6 +1123,7 @@ describe("ChatPage", () => {
         connector_name: undefined,
         mode: "flash",
       },
+      undefined,
     );
   });
 
@@ -1156,7 +1174,104 @@ describe("ChatPage", () => {
         connector_name: undefined,
         mode: "flash",
       },
+      undefined,
     );
+  });
+
+  test("forwards submit options (onSent) so composer cleanup can run", () => {
+    const sendMessageMock = vi.fn().mockResolvedValue(undefined);
+    mockUseThreadStream.mockReturnValue({
+      thread: {
+        messages: [],
+        isLoading: false,
+        isThreadLoading: false,
+        error: null,
+        values: {},
+        stop: vi.fn(),
+        getMessagesMetadata: vi.fn(),
+      },
+      pendingUsageMessages: [],
+      sendMessage: sendMessageMock,
+      isUploading: false,
+      isHistoryLoading: false,
+      hasMoreHistory: false,
+      loadMoreHistory: vi.fn(),
+    });
+
+    const client = new QueryClient();
+    const { rerender } = render(
+      <QueryClientProvider client={client}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
+    rerender(
+      <QueryClientProvider client={client}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
+
+    // InputBox relies on the forwarded options to clear the composer draft
+    // once the send proceeds past the in-flight guard; dropping them would
+    // let a stale debounced draft save resurrect cleared text.
+    const options = { onSent: vi.fn() };
+    const file = new File(["content"], "test.txt", { type: "text/plain" });
+    mockLastInputBoxProps.current.onSubmit(
+      { text: "hello", files: [file] },
+      options,
+    );
+    expect(sendMessageMock).toHaveBeenCalledWith(
+      "test-thread",
+      { text: "hello", files: [file] },
+      {
+        connector_name: undefined,
+        mode: "flash",
+      },
+      options,
+    );
+  });
+
+  test("passes displayThreadId so optimistic messages attach to the view", () => {
+    let capturedStreamArgs: any = null;
+    mockUseThreadStream.mockImplementation((args: any) => {
+      capturedStreamArgs = args;
+      return {
+        thread: {
+          messages: [],
+          isLoading: false,
+          isThreadLoading: false,
+          error: null,
+          values: {},
+          stop: vi.fn(),
+          getMessagesMetadata: vi.fn(),
+        },
+        pendingUsageMessages: [],
+        sendMessage: vi.fn(),
+        isUploading: false,
+        isHistoryLoading: false,
+        hasMoreHistory: false,
+        loadMoreHistory: vi.fn(),
+      };
+    });
+
+    mockUseThreadChat.mockReturnValue({
+      threadId: "client-thread-id",
+      setThreadId: vi.fn(),
+      isNewThread: true,
+      setIsNewThread: vi.fn(),
+      isMock: false,
+    });
+
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ChatPage />
+      </QueryClientProvider>,
+    );
+
+    // While the backend thread does not exist yet, `threadId` stays gated
+    // (undefined) but the client-visible id must still flow through so
+    // optimistic messages and live-message attribution match the view.
+    expect(capturedStreamArgs.threadId).toBeUndefined();
+    expect(capturedStreamArgs.displayThreadId).toBe("client-thread-id");
   });
 
   test("handleStop calls thread.stop", async () => {

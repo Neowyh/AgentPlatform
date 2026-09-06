@@ -26,8 +26,9 @@ test.describe("Agent chat", () => {
 
     await page.goto("/workspace/agents");
 
-    // The agent card should appear with the agent name
-    await expect(page.getByText("test-agent")).toBeVisible({
+    // The agent card links to the agent chat; scope to the link so the card
+    // description (which also carries the agent name) cannot trip strict mode.
+    await expect(page.getByRole("link", { name: "test-agent" })).toBeVisible({
       timeout: 15_000,
     });
   });

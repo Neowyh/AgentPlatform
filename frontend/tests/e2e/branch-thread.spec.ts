@@ -101,9 +101,9 @@ test.describe("Branch from turn", () => {
       new RegExp(`/workspace/chats/${MOCK_THREAD_ID_2}$`),
     );
     await expect(page.getByText("Final answer")).toBeVisible();
-    const branchThreadLink = page.locator(
-      `a[href="/workspace/chats/${MOCK_THREAD_ID_2}"]`,
-    );
+    const branchThreadLink = page
+      .getByTestId("thread-list")
+      .locator(`a[href="/workspace/chats/${MOCK_THREAD_ID_2}"]`);
     await expect(branchThreadLink).toContainText("Original chat (2)");
     await expect(branchThreadLink).not.toContainText("Branch:");
     await expect(branchThreadLink).toHaveAttribute(
@@ -155,9 +155,11 @@ test.describe("Branch from turn", () => {
 
     await page.goto("/workspace/chats/new");
 
-    const branchLink = page.locator(
-      `a[href="/workspace/chats/${MOCK_THREAD_ID_2}"]`,
-    );
+    // The workbench new-chat page also renders recent-task cards that link to
+    // the seeded threads; scope to the sidebar thread list.
+    const branchLink = page
+      .getByTestId("thread-list")
+      .locator(`a[href="/workspace/chats/${MOCK_THREAD_ID_2}"]`);
     await expect(branchLink).toBeVisible();
     await expect(branchLink).not.toHaveAttribute("data-branch-depth");
     await expect(branchLink.getByTestId("thread-branch-stem")).toHaveCount(0);
