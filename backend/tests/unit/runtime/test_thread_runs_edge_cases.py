@@ -17,7 +17,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi.testclient import TestClient
 
 from app.gateway.routers import thread_runs
-from deerflow.runtime import RunRecord, RunStatus
+from deerflow.runtime import CancelOutcome, RunRecord, RunStatus
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -208,7 +208,7 @@ class TestCancelRunWaitCancelled:
 
         rm = MagicMock()
         rm.get = AsyncMock(return_value=record)
-        rm.cancel = AsyncMock(return_value=True)
+        rm.cancel = AsyncMock(return_value=CancelOutcome.cancelled)
         mock_get_rm.return_value = rm
 
         app = _make_app()
@@ -233,7 +233,7 @@ class TestCancelRunWaitCancelled:
 
         rm = MagicMock()
         rm.get = AsyncMock(return_value=record)
-        rm.cancel = AsyncMock(return_value=True)
+        rm.cancel = AsyncMock(return_value=CancelOutcome.cancelled)
         mock_get_rm.return_value = rm
 
         app = _make_app()
@@ -307,7 +307,7 @@ class TestStreamExistingRunCancelFailure:
         record = _make_run_record("run-1", "thread-1", status=RunStatus.success)
         rm = MagicMock()
         rm.get = AsyncMock(return_value=record)
-        rm.cancel = AsyncMock(return_value=False)
+        rm.cancel = AsyncMock(return_value=CancelOutcome.not_cancellable)
         mock_get_rm.return_value = rm
 
         app = _make_app()
@@ -326,7 +326,7 @@ class TestStreamExistingRunCancelFailure:
         record = _make_run_record("run-1", "thread-1", status=RunStatus.running)
         rm = MagicMock()
         rm.get = AsyncMock(return_value=record)
-        rm.cancel = AsyncMock(return_value=False)
+        rm.cancel = AsyncMock(return_value=CancelOutcome.not_cancellable)
         mock_get_rm.return_value = rm
 
         app = _make_app()
@@ -360,7 +360,7 @@ class TestStreamExistingRunWaitWithException:
 
         rm = MagicMock()
         rm.get = AsyncMock(return_value=record)
-        rm.cancel = AsyncMock(return_value=True)
+        rm.cancel = AsyncMock(return_value=CancelOutcome.cancelled)
         mock_get_rm.return_value = rm
 
         app = _make_app()
@@ -384,7 +384,7 @@ class TestStreamExistingRunWaitWithException:
 
         rm = MagicMock()
         rm.get = AsyncMock(return_value=record)
-        rm.cancel = AsyncMock(return_value=True)
+        rm.cancel = AsyncMock(return_value=CancelOutcome.cancelled)
         mock_get_rm.return_value = rm
 
         app = _make_app()
@@ -410,7 +410,7 @@ class TestStreamExistingRunWaitWithException:
 
         rm = MagicMock()
         rm.get = AsyncMock(return_value=record)
-        rm.cancel = AsyncMock(return_value=True)
+        rm.cancel = AsyncMock(return_value=CancelOutcome.cancelled)
         mock_get_rm.return_value = rm
         mock_get_bridge.return_value = MagicMock()
         mock_sse.return_value = iter([b"data: test\n\n"])
@@ -440,7 +440,7 @@ class TestStreamExistingRunWithStoreOnlyAndAction:
 
         rm = MagicMock()
         rm.get = AsyncMock(return_value=record)
-        rm.cancel = AsyncMock(return_value=False)
+        rm.cancel = AsyncMock(return_value=CancelOutcome.not_cancellable)
         mock_get_rm.return_value = rm
 
         app = _make_app()

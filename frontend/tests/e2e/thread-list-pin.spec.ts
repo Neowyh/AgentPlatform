@@ -33,7 +33,12 @@ test("sidebar recent chats can be pinned and unpinned", async ({ page }) => {
 
   await page.goto("/workspace/chats/new");
 
-  await expect(page.getByText("Newest chat")).toBeVisible({ timeout: 15_000 });
+  // Scope to the sidebar thread list: the workbench recent-summary mirrors
+  // the same titles and would trip strict mode.
+  const threadList = page.getByTestId("thread-list");
+  await expect(threadList.getByText("Newest chat")).toBeVisible({
+    timeout: 15_000,
+  });
   await expect
     .poll(() => recentChatTitles(page))
     .toEqual(["Newest chat", "Older chat"]);

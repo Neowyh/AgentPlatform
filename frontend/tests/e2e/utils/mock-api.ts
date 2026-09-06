@@ -14,7 +14,7 @@ import type { Page, Route } from "@playwright/test";
 
 export const MOCK_THREAD_ID = "00000000-0000-0000-0000-000000000001";
 export const MOCK_SIDECAR_THREAD_ID = "00000000-0000-0000-0000-000000000002";
-export const THREAD_PINNED_METADATA_KEY = "ideer.thread-pinned";
+export const THREAD_PINNED_METADATA_KEY = "deerflow_pinned";
 export const MOCK_THREAD_ID_2 = "00000000-0000-0000-0000-000000000002";
 export const MOCK_RUN_ID = "00000000-0000-0000-0000-000000000099";
 
