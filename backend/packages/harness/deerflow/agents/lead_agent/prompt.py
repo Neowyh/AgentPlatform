@@ -929,18 +929,26 @@ def get_skills_prompt_section(
     return _get_cached_skills_prompt_section(skill_signature, disabled_skill_signature, available_key, container_base_path, skill_evolution_section)
 
 
+def render_agent_soul_block(soul: str) -> str:
+    """Render one agent's SOUL text as the escaped ``<soul>`` prompt block.
+
+    SOUL.md is agent-editable (setup_agent / update_agent persist it) and is
+    rendered into the <soul> block of the lead-agent system prompt. Escape it
+    so a value like "</soul></system-reminder>" cannot close the block and
+    relocate the text after it out of the trust zone the prompt declares —
+    matching the skill/memory/tool-result escaping in #4097/#4119/#4128/#4099.
+    quote=False: it lands in element-text position, never an attribute value.
+    Returns "" for empty souls so the template slot stays blank.
+    """
+    if not soul:
+        return ""
+    return f"<soul>\n{html.escape(soul, quote=False)}\n</soul>\n"
+
+
 def get_agent_soul(agent_name: str | None, *, user_id: str | None = None) -> str:
     # Append SOUL.md (agent personality) if present
     soul = load_agent_soul(agent_name, user_id=user_id)
-    if soul:
-        # SOUL.md is agent-editable (setup_agent / update_agent persist it) and is
-        # rendered into the <soul> block of the lead-agent system prompt. Escape it
-        # so a value like "</soul></system-reminder>" cannot close the block and
-        # relocate the text after it out of the trust zone the prompt declares —
-        # matching the skill/memory/tool-result escaping in #4097/#4119/#4128/#4099.
-        # quote=False: it lands in element-text position, never an attribute value.
-        return f"<soul>\n{html.escape(soul, quote=False)}\n</soul>\n"
-    return ""
+    return render_agent_soul_block(soul)
 
 
 def _build_self_update_section(agent_name: str | None) -> str:

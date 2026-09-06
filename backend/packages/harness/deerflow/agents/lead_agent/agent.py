@@ -34,7 +34,7 @@ from langchain.agents import create_agent
 from langchain.agents.middleware import AgentMiddleware
 from langchain_core.runnables import RunnableConfig
 
-from deerflow.agents.lead_agent.prompt import apply_prompt_template
+from deerflow.agents.lead_agent.prompt import apply_prompt_template, render_agent_soul_block
 from deerflow.agents.middlewares.clarification_middleware import ClarificationMiddleware
 from deerflow.agents.middlewares.configured_extensions import load_configured_extension_middlewares
 from deerflow.agents.middlewares.loop_detection_middleware import LoopDetectionMiddleware
@@ -1234,7 +1234,10 @@ def _assemble_lead_agent(config: RunnableConfig, *, app_config: AppConfig, froze
         skill_names=skill_setup.skill_names or None,
         allowed_subagents=allowed_subagents,
         subagent_execution_capacity=subagent_execution_capacity,
-        soul_override=frozen.soul if frozen is not None else None,
+        # The frozen soul is raw SOUL.md text from the published resource; render
+        # it through the same escaping + <soul> boundary block as the on-disk
+        # path (get_agent_soul) so frozen and mutable agents share one trust zone.
+        soul_override=render_agent_soul_block(frozen.soul) if frozen is not None and frozen.soul else None,
         requested_skill_name=frozen.requested_skill_name if frozen is not None else None,
     )
     graph = create_agent(
