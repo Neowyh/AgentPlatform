@@ -1,5 +1,4 @@
 import builtins
-from types import SimpleNamespace
 
 import deerflow.sandbox.local.local_sandbox as local_sandbox
 from deerflow.sandbox.local.local_sandbox import LocalSandbox, PathMapping

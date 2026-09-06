@@ -102,7 +102,11 @@ def _setup_executor_classes():
 
     from langchain_core.messages import AIMessage, HumanMessage
 
-    from deerflow.subagents import executor as executor_mod
+    # Import the executor by its fully-qualified name: a plain
+    # ``from deerflow.subagents import executor`` rebinds the package attribute
+    # left over from the conftest warm-up import, so ``get_app_config`` would be
+    # patched on a stale module object instead of the one backing the class.
+    import deerflow.subagents.executor as executor_mod
     from deerflow.subagents.config import SubagentConfig
     from deerflow.subagents.executor import (
         SubagentExecutor,
@@ -894,7 +898,7 @@ class TestBuildInitialState:
         # (RFC #4651 PR3); with no system_prompt and no skills the messages are
         # [SystemMessage(report contract), HumanMessage(task)].
         assert len(state["messages"]) == 2
-        from langchain_core.messages import SystemMessage
+        from langchain_core.messages import HumanMessage, SystemMessage
 
         assert isinstance(state["messages"][0], SystemMessage)
         assert isinstance(state["messages"][1], HumanMessage)
@@ -1686,10 +1690,7 @@ class TestAgentConstructionExtended:
         sk2_dir.mkdir()
         (sk2_dir / "SKILL.md").write_text("Skill2 content", encoding="utf-8")
 
-        all_skills = [
-            dataclasses.replace(sk, skill_file=d / "SKILL.md")
-            for sk, d in zip([_skill("sk1", None), _skill("sk2", None)], [sk1_dir, sk2_dir])
-        ]
+        all_skills = [dataclasses.replace(sk, skill_file=d / "SKILL.md") for sk, d in zip([_skill("sk1", None), _skill("sk2", None)], [sk1_dir, sk2_dir])]
 
         monkeypatch.setattr(
             sys.modules["deerflow.skills.storage"],
@@ -1697,10 +1698,6 @@ class TestAgentConstructionExtended:
             lambda user_id=None, **kw: SimpleNamespace(load_skills=lambda *, enabled_only: all_skills),
         )
         executor = SubagentExecutor(config=config, tools=[])
-        import sys as _sys
-        import deerflow.subagents.executor as _em
-        print("\nDEBUG mod id:", id(_em), "cls id:", id(SubagentExecutor), "gac:", _em.get_app_config)
-        print("DEBUG in sys.modules same:", _sys.modules["deerflow.subagents.executor"] is _em)
         state, _final_tools, _deferred_setup = await executor._build_initial_state("task")
         from langchain_core.messages import SystemMessage
 

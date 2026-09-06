@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -11,7 +10,6 @@ import pytest
 from deerflow.runtime.runs.manager import RunStartOutcome
 from deerflow.runtime.runs.schemas import RunStatus
 from deerflow.runtime.runs.worker import (
-    RunContext,
     _build_runtime_context,
     _install_runtime_context,
     _unpack_stream_item,
