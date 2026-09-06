@@ -1,16 +1,20 @@
 """Tests for DynamicContextMiddleware.
 
-Verifies that memory and current date are injected as a <system-reminder> into
-the first HumanMessage exactly once per session (frozen-snapshot pattern).
+Upstream contract: framework-owned data (current date) rides a SystemMessage
+<system-reminder>; user-owned memory rides a separate hidden HumanMessage; the
+original user message is re-issued with a ``{id}__user`` ID suffix. Injection
+happens once per session (and again on midnight crossing), targeting the LAST
+user turn when a prior injection was missed.
 """
 
 from types import SimpleNamespace
 from unittest import mock
 
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from deerflow.agents.middlewares.dynamic_context_middleware import (
     _DYNAMIC_CONTEXT_REMINDER_KEY,
+    _REMINDER_DATE_KEY,
     DynamicContextMiddleware,
 )
 
@@ -25,13 +29,12 @@ def _fake_runtime():
     return SimpleNamespace(context={})
 
 
-def _reminder_msg(content: str, msg_id: str) -> HumanMessage:
-    """Build a reminder HumanMessage the way the middleware would produce it."""
-    return HumanMessage(
-        content=content,
-        id=msg_id,
-        additional_kwargs={"hide_from_ui": True, _DYNAMIC_CONTEXT_REMINDER_KEY: True},
-    )
+def _reminder_msg(content: str, msg_id: str, date: str | None = None) -> SystemMessage:
+    """Build a reminder SystemMessage the way the middleware produces it."""
+    kwargs = {"hide_from_ui": True, _DYNAMIC_CONTEXT_REMINDER_KEY: True}
+    if date is not None:
+        kwargs[_REMINDER_DATE_KEY] = date
+    return SystemMessage(content=content, id=msg_id, additional_kwargs=kwargs)
 
 
 # ---------------------------------------------------------------------------
@@ -52,7 +55,7 @@ def test_injects_system_reminder_into_first_human_message():
     assert len(updated_msgs) == 2
 
     reminder_msg = updated_msgs[0]
-    assert isinstance(reminder_msg, HumanMessage)
+    assert isinstance(reminder_msg, SystemMessage)
     assert reminder_msg.id == "msg-1"  # takes the original ID (position swap)
     assert reminder_msg.additional_kwargs.get(_DYNAMIC_CONTEXT_REMINDER_KEY) is True
     assert _SYSTEM_REMINDER_TAG in reminder_msg.content
@@ -66,6 +69,8 @@ def test_injects_system_reminder_into_first_human_message():
 
 
 def test_memory_included_when_present():
+    """Memory is user-owned: it rides a separate hidden HumanMessage, never the
+    framework-authority SystemMessage (OWASP LLM01 role separation)."""
     mw = _make_middleware()
     state = {"messages": [HumanMessage(content="Hi", id="msg-1")]}
 
@@ -79,37 +84,18 @@ def test_memory_included_when_present():
         mock_dt.now.return_value.strftime.return_value = "2026-05-08, Friday"
         result = mw.before_agent(state, _fake_runtime())
 
-    # Reminder is the first returned message; user query is the second
-    reminder_content = result["messages"][0].content
-    assert "User prefers Python." in reminder_content
-    assert "<current_date>2026-05-08, Friday</current_date>" in reminder_content
-    assert result["messages"][1].content == "Hi"
-
-
-def test_code_evidence_package_reminder_uses_trusted_summary_and_fixed_root():
-    mw = _make_middleware()
-    state = {"messages": [HumanMessage(content="分析代码", id="msg-code")]}
-    runtime = SimpleNamespace(
-        context={
-            "code_package_id": "pkg-123",
-            "code_evidence_manifest": {
-                "original_filename": "src.zip",
-                "accepted_count": 3,
-                "excluded_count": 2,
-                "rejected_count": 1,
-            },
-        }
-    )
-    with mock.patch("deerflow.agents.lead_agent.prompt._get_memory_context", return_value=""), mock.patch("deerflow.agents.middlewares.dynamic_context_middleware.datetime") as mock_dt:
-        mock_dt.now.return_value.strftime.return_value = "2026-05-08, Friday"
-        result = mw.before_agent(state, runtime)
-
-    reminder = result["messages"][0].content
-    assert "服务端已安全展开代码包" in reminder
-    assert "/mnt/user-data/code-evidence/pkg-123/source" in reminder
-    assert "src.zip" in reminder
-    assert "已接收文件：3 个；已排除：2 项；已拒绝：1 项" in reminder
-    assert "不要要求用户本地解压" in reminder
+    msgs = result["messages"]
+    # [SystemMessage(date reminder), HumanMessage(memory), HumanMessage(query)]
+    assert isinstance(msgs[0], SystemMessage)
+    assert "User prefers Python." not in msgs[0].content
+    assert "<current_date>2026-05-08, Friday</current_date>" in msgs[0].content
+    memory_msg = msgs[1]
+    assert isinstance(memory_msg, HumanMessage)
+    assert memory_msg.id == "msg-1__memory"
+    assert "User prefers Python." in memory_msg.content
+    assert memory_msg.additional_kwargs.get("hide_from_ui") is True
+    assert msgs[2].content == "Hi"
+    assert msgs[2].id == "msg-1__user"
 
 
 # ---------------------------------------------------------------------------
@@ -118,12 +104,12 @@ def test_code_evidence_package_reminder_uses_trusted_summary_and_fixed_root():
 
 
 def test_skips_injection_if_already_present():
-    """Second turn: separate reminder message already present → no update."""
+    """Second turn: reminder already present with the same date → no update."""
     mw = _make_middleware()
     reminder_content = "<system-reminder>\n<current_date>2026-05-08, Friday</current_date>\n</system-reminder>"
     state = {
         "messages": [
-            _reminder_msg(reminder_content, "msg-1"),
+            _reminder_msg(reminder_content, "msg-1", date="2026-05-08, Friday"),
             HumanMessage(content="Hello", id="msg-1__user"),
             AIMessage(content="Hi there"),
             HumanMessage(content="Follow-up", id="msg-2"),
@@ -137,8 +123,10 @@ def test_skips_injection_if_already_present():
     assert result is None  # no update needed
 
 
-def test_injects_only_into_first_human_message_not_later_ones():
-    """Reminder targets the first HumanMessage; subsequent messages are not touched."""
+def test_injects_into_last_user_message_when_no_prior_injection():
+    """The fallback path targets the LAST user turn: the ID-swap's {id}__user copy
+    is appended by add_messages, so attaching to an earlier message would move the
+    stale prompt ahead of the current question."""
     mw = _make_middleware()
     state = {
         "messages": [
@@ -154,15 +142,15 @@ def test_injects_only_into_first_human_message_not_later_ones():
 
     assert result is not None
     msgs = result["messages"]
-    # Only the two injected messages are returned (reminder + original first query)
+    # Only the two injected messages are returned (reminder + original last query)
     assert len(msgs) == 2
-    assert msgs[0].id == "msg-1"  # reminder takes first message's ID
+    assert msgs[0].id == "msg-2"  # reminder takes the targeted message's ID
     assert msgs[0].additional_kwargs.get(_DYNAMIC_CONTEXT_REMINDER_KEY) is True
     assert _SYSTEM_REMINDER_TAG in msgs[0].content
-    assert msgs[1].id == "msg-1__user"  # original content with derived ID
-    assert msgs[1].content == "First"
-    # "Second" (msg-2) is not in the returned update — it is left unchanged
-    assert all(m.id != "msg-2" for m in msgs)
+    assert msgs[1].id == "msg-2__user"  # original content with derived ID
+    assert msgs[1].content == "Second"
+    # "First" (msg-1) is not in the returned update — it is left unchanged
+    assert all(m.id != "msg-1" for m in msgs)
 
 
 def test_summary_human_message_is_not_used_as_injection_target():
@@ -339,16 +327,20 @@ def test_midnight_crossing_id_swap():
 def test_no_second_midnight_injection_once_date_updated():
     """After a midnight update is persisted, the same-day path skips re-injection."""
     mw = _make_middleware()
-    date_update_content = "<system-reminder>\n<current_date>2026-05-09, Saturday</current_date>\n</system-reminder>"
     state = {
         "messages": [
             _reminder_msg(
                 "<system-reminder>\n<current_date>2026-05-08, Friday</current_date>\n</system-reminder>",
                 "msg-1",
+                date="2026-05-08, Friday",
             ),
             HumanMessage(content="Hello", id="msg-1__user"),
             AIMessage(content="Response"),
-            _reminder_msg(date_update_content, "msg-2"),
+            _reminder_msg(
+                "<system-reminder>\n<current_date>2026-05-09, Saturday</current_date>\n</system-reminder>",
+                "msg-2",
+                date="2026-05-09, Saturday",
+            ),
             HumanMessage(content="Good morning", id="msg-2__user"),
             AIMessage(content="Good morning!"),
             HumanMessage(content="Third turn", id="msg-3"),

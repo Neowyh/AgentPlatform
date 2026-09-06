@@ -41,7 +41,7 @@ class TestClampSubagentLimit:
         assert _clamp_subagent_limit(1) == MIN_SUBAGENT_LIMIT
 
     def test_above_max_clamped_to_max(self):
-        assert _clamp_subagent_limit(10) == MAX_SUBAGENT_LIMIT
+        # Upstream raised MAX_CONCURRENT_SUBAGENT_CALLS from 10 to 64.
         assert _clamp_subagent_limit(100) == MAX_SUBAGENT_LIMIT
 
     def test_within_range_unchanged(self):
@@ -59,7 +59,7 @@ class TestSubagentLimitMiddlewareInit:
         mw = SubagentLimitMiddleware(max_concurrent=1)
         assert mw.max_concurrent == MIN_SUBAGENT_LIMIT
 
-        mw = SubagentLimitMiddleware(max_concurrent=10)
+        mw = SubagentLimitMiddleware(max_concurrent=100)
         assert mw.max_concurrent == MAX_SUBAGENT_LIMIT
 
 

@@ -41,7 +41,7 @@ def test_build_subagent_section_includes_bash_when_available(monkeypatch) -> Non
 
     section = prompt_module._build_subagent_section(3)
 
-    assert "For command execution (git, build, test, deploy operations)" in section
+    assert "For bounded shell workflows with clear context-isolation or independent-parallel benefit" in section
     assert 'bash("npm test")' in section
     assert "available tools (bash, ls, read_file, web_search, etc.)" in section
 

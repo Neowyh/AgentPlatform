@@ -65,6 +65,8 @@ class TestRuntimeFeaturesDefaults:
             "auto_title",
             "guardrail",
             "loop_detection",
+            "token_budget",
+            "memory_config",
         }
         assert set(features.__dataclass_fields__) == expected_flags
 

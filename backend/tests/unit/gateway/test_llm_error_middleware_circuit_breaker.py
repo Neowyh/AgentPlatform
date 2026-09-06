@@ -79,7 +79,7 @@ class TestEmitRetryEventFailure:
             _raise,
         )
         # Should not raise
-        middleware._emit_retry_event(1, 1000, "busy")
+        middleware._emit_retry_event(1, 1000, "busy", max_attempts=3)
 
 
 # ---------------------------------------------------------------------------

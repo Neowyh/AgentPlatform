@@ -304,8 +304,9 @@ class TestLoopDetection:
         mw.wrap_model_call(request_a, handler)
         assert any(isinstance(message, HumanMessage) and message.name == "loop_warning" for message in captured[1].messages)
 
-    def test_missing_run_id_uses_default_pending_scope(self):
-        """When runtime has no run_id, warning handling falls back to the default run scope."""
+    def test_missing_run_id_uses_its_own_pending_scope(self):
+        """When runtime has no run_id key, the warning scope falls back to a
+        runtime-object-derived id (no cross-run sharing)."""
         mw = LoopDetectionMiddleware(warn_threshold=3, hard_limit=10)
         runtime = MagicMock()
         runtime.context = {"thread_id": "test-thread"}
@@ -314,7 +315,10 @@ class TestLoopDetection:
         for _ in range(3):
             mw._apply(_make_state(tool_calls=call), runtime)
 
-        assert mw._pending_warnings.get(_pending_key(run_id="default"))
+        expected_key = mw._pending_key(runtime)
+        assert mw._pending_warnings.get(expected_key)
+        # The fallback run scope must not collide with the shared "default" literal.
+        assert expected_key[1] != "default"
 
         request = _make_request([AIMessage(content="hi")], runtime)
         captured, handler = _capture_handler()
@@ -323,7 +327,7 @@ class TestLoopDetection:
         loop_warnings = [message for message in captured[0].messages if isinstance(message, HumanMessage) and message.name == "loop_warning"]
         assert len(loop_warnings) == 1
         assert "LOOP DETECTED" in loop_warnings[0].content
-        assert not mw._pending_warnings.get(_pending_key(run_id="default"))
+        assert not mw._pending_warnings.get(expected_key)
 
     def test_before_agent_clears_stale_pending_warnings_for_thread(self):
         """Starting a new run drops stale warnings from prior runs in the same thread."""
@@ -493,7 +497,7 @@ class TestLoopDetection:
         mw._apply(_make_state(tool_calls=call), runtime_new)
 
         assert "thread-0" not in mw._history
-        assert "thread-0" not in mw._tool_freq
+        assert "thread-0" not in mw._tool_name_counter
         assert "thread-0" not in mw._tool_freq_warned
         assert "thread-new" in mw._history
         assert len(mw._history) == 3
@@ -555,15 +559,15 @@ class TestLoopDetection:
         assert isinstance(mw._lock, type(mw._lock))
 
     def test_fallback_thread_id_when_missing(self):
-        """When runtime context has no thread_id, should use anon-{id(runtime)}."""
+        """When runtime context has no thread_id, tracking falls back to "default"."""
         mw = LoopDetectionMiddleware(warn_threshold=2)
         runtime = MagicMock()
         runtime.context = {}
         call = [_bash_call("ls")]
 
         mw._apply(_make_state(tool_calls=call), runtime)
-        # Fallback is now anon-{id(runtime)} instead of "default"
-        assert any(k.startswith("anon-") for k in mw._history)
+        # Upstream thread fallback is the "default" bucket
+        assert "default" in mw._history
 
 
 class TestLoopDetectionAgentGraphIntegration:
@@ -921,7 +925,7 @@ class TestToolFrequencyDetection:
         # Reset only thread-A
         mw.reset(thread_id="thread-A")
 
-        assert "thread-A" not in mw._tool_freq
+        assert "thread-A" not in mw._tool_name_counter
         assert "thread-A" not in mw._tool_freq_warned
 
         # thread-B state should still be intact — 3rd call queues a warn.

@@ -133,12 +133,19 @@ class TestAllowlistProvider:
         assert decision.reasons[0].code == "oap.tool_not_allowed"
         assert "not in allowlist" in decision.reasons[0].message
 
-    def test_empty_list_treated_as_no_allowlist(self):
-        """Empty allowed_tools list is falsy, so treated as None (no restrictions)."""
+    def test_empty_list_is_an_explicit_deny_all_allowlist(self):
+        """Upstream distinguishes None (no allowlist -> allow all) from [] (allow
+        nothing): an empty allowlist must fail closed, not open."""
         provider = AllowlistProvider(allowed_tools=[])
         req = GuardrailRequest(tool_name="bash", tool_input={})
         decision = provider.evaluate(req)
-        assert decision.allow is True
+        assert decision.allow is False
+        assert decision.reasons[0].code == "oap.tool_not_allowed"
+
+    def test_none_allowlist_allows_everything(self):
+        provider = AllowlistProvider()
+        req = GuardrailRequest(tool_name="bash", tool_input={})
+        assert provider.evaluate(req).allow is True
 
     def test_tool_in_denylist_denied(self):
         provider = AllowlistProvider(denied_tools=["bash"])

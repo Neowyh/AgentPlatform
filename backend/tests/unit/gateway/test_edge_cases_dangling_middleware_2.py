@@ -144,7 +144,7 @@ class TestRawProviderToolCalls:
         )
         calls = mw._message_tool_calls(msg)
         assert len(calls) == 1
-        assert calls[0]["name"] == "unknown"
+        assert calls[0]["name"] == "unknown_tool"
 
     def test_raw_non_dict_entries_skipped(self):
         """Line 57-58: non-dict entries in raw_tool_calls are skipped."""
@@ -289,10 +289,17 @@ class TestToolCallWithNoId:
                 tool_calls=[{"name": "bash", "id": None, "args": {}}],
             )
         ]
-        # The tool call has no id, so no synthetic message is created.
-        # _build_patched_messages should return None since there's nothing to patch.
+        # Upstream normalizes the missing id to a synthetic one and injects an
+        # error placeholder, so the provider never sees an unanswered tool call.
         result = mw._build_patched_messages(msgs)
-        assert result is None
+        assert result is not None
+        patched_ai = result[0]
+        synthetic = patched_ai.tool_calls[0]
+        assert synthetic["id"].startswith("deerflow_synthetic_tool_call_")
+        placeholders = [m for m in result if isinstance(m, ToolMessage)]
+        assert len(placeholders) == 1
+        assert placeholders[0].tool_call_id == synthetic["id"]
+        assert placeholders[0].status == "error"
 
     def test_raw_provider_tool_call_patched_in_build(self):
         """Lines 57-75 + 137-155: raw tool calls get patched end-to-end."""

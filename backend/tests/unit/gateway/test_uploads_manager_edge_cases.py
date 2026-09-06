@@ -234,10 +234,10 @@ class TestOpenUploadWindowsBranch:
         def selective_lstat(path, *args, **kwargs):
             if str(path) == target:
                 call_count[0] += 1
-                # Call #1: line 134 (first lstat)
-                # Call #2: dest.resolve() in validate_path_traversal
-                # Call #3: line 183 (second lstat) — this is the one we fake
-                if call_count[0] == 3:
+                # Call #1: the initial lstat (must see a regular file so the
+                # nlink check passes). Every later lstat of the target is the
+                # pre-open re-check — fake a directory there.
+                if call_count[0] >= 2:
                     return SimpleNamespace(
                         st_mode=stat.S_IFDIR,
                         st_nlink=1,

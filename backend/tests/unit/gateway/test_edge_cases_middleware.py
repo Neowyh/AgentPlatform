@@ -58,7 +58,7 @@ class _SyncProvider(SandboxProvider):
         self.thread_ids: list[str | None] = []
         self.released_ids: list[str] = []
 
-    def acquire(self, thread_id: str | None = None) -> str:
+    def acquire(self, thread_id: str | None = None, *, user_id: str | None = None) -> str:
         self.thread_ids.append(thread_id)
         return "sync-sandbox"
 
@@ -75,10 +75,10 @@ class _AsyncProvider(SandboxProvider):
         self.released_ids: list[str] = []
         self.sandbox = _SandboxStub()
 
-    def acquire(self, thread_id: str | None = None) -> str:
+    def acquire(self, thread_id: str | None = None, *, user_id: str | None = None) -> str:
         raise AssertionError("should not call sync acquire")
 
-    async def acquire_async(self, thread_id: str | None = None) -> str:
+    async def acquire_async(self, thread_id: str | None = None, *, user_id: str | None = None) -> str:
         self.thread_ids.append(thread_id)
         return "async-sandbox"
 

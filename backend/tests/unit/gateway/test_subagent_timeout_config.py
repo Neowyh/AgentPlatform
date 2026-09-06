@@ -96,8 +96,9 @@ class TestSubagentOverrideConfig:
 
 class TestSubagentsAppConfigDefaults:
     def test_default_timeout(self):
+        # Upstream raised the default to 1800s (30 minutes) for built-in subagents.
         config = SubagentsAppConfig()
-        assert config.timeout_seconds == 900
+        assert config.timeout_seconds == 1800
 
     def test_default_max_turns_override_is_none(self):
         config = SubagentsAppConfig()
@@ -281,7 +282,7 @@ class TestLoadSubagentsConfig:
     def test_load_empty_dict_uses_defaults(self):
         load_subagents_config_from_dict({})
         cfg = get_subagents_app_config()
-        assert cfg.timeout_seconds == 900
+        assert cfg.timeout_seconds == 1800
         assert cfg.max_turns is None
         assert cfg.agents == {}
 
@@ -322,10 +323,10 @@ class TestRegistryGetSubagentConfig:
     def test_default_timeout_preserved_when_no_config(self):
         from deerflow.subagents.registry import get_subagent_config
 
-        _reset_subagents_config(timeout_seconds=900)
+        _reset_subagents_config(timeout_seconds=1800)
         config = get_subagent_config("general-purpose")
-        assert config.timeout_seconds == 900
-        assert config.max_turns == 100
+        assert config.timeout_seconds == 1800
+        assert config.max_turns == 150  # upstream raised the general-purpose turn budget
 
     def test_global_timeout_override_applied(self):
         from deerflow.subagents.registry import get_subagent_config
