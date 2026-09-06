@@ -104,7 +104,9 @@ def test_serialize_channel_values_strips_pregel_keys():
     assert "title" in result
     assert "__pregel_tasks" not in result
     assert "__pregel_resuming" not in result
-    assert "__interrupt__" not in result
+    # __interrupt__ is deliberately preserved (upstream issue #3595) so the
+    # LangGraph SDK can detect interrupt events from values chunks.
+    assert result["__interrupt__"] == "stop"
 
 
 def test_serialize_channel_values_serializes_objects():

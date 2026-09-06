@@ -1,5 +1,6 @@
 """Unit tests for checkpointer config, packaging metadata, and factories."""
 
+import contextlib
 import sys
 import tomllib
 from pathlib import Path
@@ -89,7 +90,7 @@ class TestHarnessPackaging:
         assert "postgres" in optional_dependencies
         assert optional_dependencies["postgres"] == [
             "asyncpg>=0.29",
-            "langgraph-checkpoint-postgres>=3.0.5",
+            "langgraph-checkpoint-postgres>=3.1.1,<3.2",
             "psycopg[binary]>=3.3.3",
             "psycopg-pool>=3.3.0",
         ]
@@ -99,11 +100,11 @@ class TestHarnessPackaging:
         data = tomllib.loads(pyproject_path.read_text())
 
         optional_dependencies = data["project"]["optional-dependencies"]
-        assert optional_dependencies["postgres"] == ["ideer-harness[postgres]"]
+        assert optional_dependencies["postgres"] == ["deerflow-harness[postgres]"]
 
     def test_postgres_missing_dependency_messages_recommend_package_extra(self):
-        assert "ideer-harness[postgres]" in POSTGRES_INSTALL
-        assert "ideer-harness[postgres]" in POSTGRES_STORE_INSTALL
+        assert "deerflow-harness[postgres]" in POSTGRES_INSTALL
+        assert "deerflow-harness[postgres]" in POSTGRES_STORE_INSTALL
         assert "uv sync --all-packages --extra postgres" in POSTGRES_INSTALL
         assert "uv sync --all-packages --extra postgres" in POSTGRES_STORE_INSTALL
 
@@ -389,6 +390,53 @@ class TestAppConfigLoadsCheckpointer:
 
 
 class TestClientCheckpointerFallback:
+    @staticmethod
+    def _client_patches(captured_kwargs: dict, explicit_checkpointer=None):
+        """Stub every heavy dependency of DeerFlowClient._ensure_agent.
+
+        The checkpointer plumbing is left real so get_checkpointer() is
+        exercised through the configured checkpointer singleton.
+        """
+        from types import SimpleNamespace
+
+        model_mock = MagicMock()
+        config_mock = MagicMock()
+        config_mock.models = [model_mock]
+        config_mock.skills.deferred_discovery = False
+        config_mock.skills.container_path = "/mnt/skills"
+        config_mock.tool_search.enabled = False
+        config_mock.database.checkpoint_channel_mode = "full"
+        config_mock.database.checkpoint_delta.snapshot_frequency = 10
+        config_mock.authorization = SimpleNamespace(enabled=False)
+        config_mock.checkpointer = None
+
+        skill_setup = SimpleNamespace(describe_skill_tool=None, skill_names=[])
+        deferred_setup = SimpleNamespace(deferred_names=[])
+
+        def fake_create_agent(**kwargs):
+            captured_kwargs.update(kwargs)
+            return MagicMock()
+
+        return (
+            patch("deerflow.client.get_app_config", return_value=config_mock),
+            patch("deerflow.client._authorize_model_name", side_effect=lambda name, **kw: name),
+            patch("deerflow.config.subagents_config.effective_subagent_concurrency", return_value=3),
+            patch("deerflow.client.create_agent", side_effect=fake_create_agent),
+            patch("deerflow.client.create_chat_model", return_value=MagicMock()),
+            patch("deerflow.client.DeerFlowClient._get_tools", return_value=[]),
+            patch("deerflow.client.get_enabled_skills_for_config", return_value=[]),
+            patch("deerflow.client.build_skill_search_setup", return_value=skill_setup),
+            patch("deerflow.authz.tool_filter.apply_tool_authorization", return_value=([], None)),
+            patch("deerflow.client.assemble_deferred_tools", return_value=([], deferred_setup)),
+            patch("deerflow.client.build_mcp_routing_middleware", return_value=MagicMock()),
+            patch("deerflow.client.get_mcp_routing_hints_prompt_section", return_value=""),
+            patch("deerflow.client.get_effective_user_id", return_value="test-user"),
+            patch("deerflow.client.build_middlewares", return_value=[]),
+            patch("deerflow.client.normalize_middleware_state_schemas", side_effect=lambda m, *a, **kw: m),
+            patch("deerflow.client.apply_prompt_template", return_value=""),
+            patch("deerflow.client.get_thread_state_schema", return_value=MagicMock()),
+        )
+
     def test_client_uses_config_checkpointer_when_none_provided(self):
         """DeerFlowClient._ensure_agent falls back to get_checkpointer() when checkpointer=None."""
         from langgraph.checkpoint.memory import InMemorySaver
@@ -398,25 +446,10 @@ class TestClientCheckpointerFallback:
         load_checkpointer_config_from_dict({"type": "memory"})
 
         captured_kwargs = {}
-
-        def fake_create_agent(**kwargs):
-            captured_kwargs.update(kwargs)
-            return MagicMock()
-
-        model_mock = MagicMock()
-        config_mock = MagicMock()
-        config_mock.models = [model_mock]
-        config_mock.get_model_config.return_value = MagicMock(supports_vision=False)
-        config_mock.checkpointer = None
-
-        with (
-            patch("deerflow.client.get_app_config", return_value=config_mock),
-            patch("deerflow.client.create_agent", side_effect=fake_create_agent),
-            patch("deerflow.client.create_chat_model", return_value=MagicMock()),
-            patch("deerflow.client._build_middlewares", return_value=[]),
-            patch("deerflow.client.apply_prompt_template", return_value=""),
-            patch("deerflow.client.DeerFlowClient._get_tools", return_value=[]),
-        ):
+        patches = self._client_patches(captured_kwargs)
+        with contextlib.ExitStack() as stack:
+            for p in patches:
+                stack.enter_context(p)
             client = DeerFlowClient(checkpointer=None)
             config = client._get_runnable_config("test-thread")
             client._ensure_agent(config)
@@ -432,25 +465,10 @@ class TestClientCheckpointerFallback:
 
         explicit_cp = MagicMock()
         captured_kwargs = {}
-
-        def fake_create_agent(**kwargs):
-            captured_kwargs.update(kwargs)
-            return MagicMock()
-
-        model_mock = MagicMock()
-        config_mock = MagicMock()
-        config_mock.models = [model_mock]
-        config_mock.get_model_config.return_value = MagicMock(supports_vision=False)
-        config_mock.checkpointer = None
-
-        with (
-            patch("deerflow.client.get_app_config", return_value=config_mock),
-            patch("deerflow.client.create_agent", side_effect=fake_create_agent),
-            patch("deerflow.client.create_chat_model", return_value=MagicMock()),
-            patch("deerflow.client._build_middlewares", return_value=[]),
-            patch("deerflow.client.apply_prompt_template", return_value=""),
-            patch("deerflow.client.DeerFlowClient._get_tools", return_value=[]),
-        ):
+        patches = self._client_patches(captured_kwargs)
+        with contextlib.ExitStack() as stack:
+            for p in patches:
+                stack.enter_context(p)
             client = DeerFlowClient(checkpointer=explicit_cp)
             config = client._get_runnable_config("test-thread")
             client._ensure_agent(config)

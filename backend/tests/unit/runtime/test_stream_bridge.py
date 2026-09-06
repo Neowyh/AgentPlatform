@@ -6,7 +6,7 @@ import re
 import anyio
 import pytest
 
-from deerflow.runtime import END_SENTINEL, HEARTBEAT_SENTINEL, MemoryStreamBridge, make_stream_bridge
+from deerflow.runtime import END_SENTINEL, HEARTBEAT_SENTINEL, MemoryStreamBridge, StreamGap, make_stream_bridge
 
 # ---------------------------------------------------------------------------
 # Unit tests for MemoryStreamBridge
@@ -170,7 +170,8 @@ async def test_subscribe_replays_after_last_event_id(bridge: MemoryStreamBridge)
 
 @pytest.mark.anyio
 async def test_slow_subscriber_does_not_skip_after_buffer_trim():
-    """A slow subscriber should continue from the correct absolute offset."""
+    """A subscriber resuming from a trimmed cursor gets an explicit StreamGap;
+    a subscriber resuming from a retained cursor continues without skipping."""
     bridge = MemoryStreamBridge(queue_maxsize=2)
     run_id = "run-slow-subscriber"
     await bridge.publish(run_id, "e1", {"step": 1})
@@ -184,6 +185,9 @@ async def test_slow_subscriber_does_not_skip_after_buffer_trim():
     assert stream.start_offset == 1
     assert [entry.event for entry in stream.events] == ["e2", "e3"]
 
+    # Resuming from the trimmed e1 cursor cannot be a complete replay: the
+    # bridge reports an explicit gap bounded by the retained events and stops
+    # so the caller can reload durable state instead of silently skipping.
     resumed_after_e1 = []
     async for entry in bridge.subscribe(
         run_id,
@@ -191,11 +195,16 @@ async def test_slow_subscriber_does_not_skip_after_buffer_trim():
         heartbeat_interval=1.0,
     ):
         resumed_after_e1.append(entry)
-        if len(resumed_after_e1) == 2:
-            break
 
-    assert [entry.event for entry in resumed_after_e1] == ["e2", "e3"]
-    e2_id = resumed_after_e1[0].id
+    assert len(resumed_after_e1) == 1
+    gap = resumed_after_e1[0]
+    assert isinstance(gap, StreamGap)
+    assert gap.requested_event_id == e1_id
+    assert gap.earliest_available_event_id == stream.events[0].id  # e2
+    assert gap.latest_available_event_id == stream.events[1].id  # e3
+
+    # Resuming from a retained cursor (e2) continues without skipping.
+    e2_id = stream.events[0].id
 
     await bridge.publish_end(run_id)
 
@@ -295,6 +304,10 @@ async def test_concurrent_tasks_end_sentinel():
     async def producer(run_id: str):
         for i in range(10):  # More events than queue capacity
             await bridge.publish(run_id, f"event-{i}", {"i": i})
+            # Yield so the consumer drains each event and keeps up with the
+            # retained buffer — a subscriber that falls behind now terminates
+            # with a StreamGap by design instead of reaching END.
+            await asyncio.sleep(0)
         await bridge.publish_end(run_id)
 
     async def consumer(run_id: str) -> list:

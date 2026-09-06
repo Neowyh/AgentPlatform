@@ -468,16 +468,18 @@ class TestAggregateTokensByThread:
     async def test_with_data(self):
         repo, mock_session = _make_repo()
 
+        # Upstream selects per-run rows and aggregates in Python; the fake row
+        # shape mirrors the RunRow columns named in aggregate_tokens_by_thread.
         rows = [
             SimpleNamespace(
-                model="gpt-4",
-                runs=2,
+                model_name="gpt-4",
                 total_tokens=200,
                 total_input_tokens=100,
                 total_output_tokens=100,
-                lead_agent=50,
-                subagent=30,
-                middleware=20,
+                lead_agent_tokens=50,
+                subagent_tokens=30,
+                middleware_tokens=20,
+                token_usage_by_model=None,
             ),
         ]
         mock_result = MagicMock()
@@ -486,5 +488,6 @@ class TestAggregateTokensByThread:
 
         result = await repo.aggregate_tokens_by_thread("t1", include_active=True)
         assert result["total_tokens"] == 200
-        assert result["total_runs"] == 2
-        assert "gpt-4" in result["by_model"]
+        assert result["total_runs"] == 1
+        assert result["by_model"]["gpt-4"] == {"tokens": 200, "runs": 1}
+        assert result["by_caller"] == {"lead_agent": 50, "subagent": 30, "middleware": 20}

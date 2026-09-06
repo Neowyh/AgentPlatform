@@ -20,16 +20,41 @@ from deerflow.runtime.checkpointer.async_provider import (
 # ---------------------------------------------------------------------------
 
 
-def _make_config(backend_type: str = "memory", connection_string: str | None = None) -> SimpleNamespace:
-    return SimpleNamespace(type=backend_type, connection_string=connection_string)
+def _make_config(backend_type: str = "memory", connection_string: str | None = None, postgres_schema: str = "") -> SimpleNamespace:
+    return SimpleNamespace(type=backend_type, connection_string=connection_string, postgres_schema=postgres_schema)
 
 
-def _make_db_config(backend: str = "memory", postgres_url: str | None = None, checkpointer_sqlite_path: str = "/tmp/test.db") -> SimpleNamespace:
+def _make_db_config(
+    backend: str = "memory",
+    postgres_url: str | None = None,
+    checkpointer_sqlite_path: str = "/tmp/test.db",
+    postgres_schema: str = "",
+    checkpoint_channel_mode: str = "full",
+) -> SimpleNamespace:
     return SimpleNamespace(
         backend=backend,
         postgres_url=postgres_url,
         checkpointer_sqlite_path=checkpointer_sqlite_path,
+        postgres_schema=postgres_schema,
+        checkpoint_channel_mode=checkpoint_channel_mode,
     )
+
+
+def _postgres_module_patches(mock_saver_cls: MagicMock) -> dict:
+    """sys.modules entries that satisfy the upstream postgres import chain.
+
+    The upstream async provider imports ``AsyncPostgresSaver`` from
+    ``langgraph.checkpoint.postgres.aio`` and ``AsyncConnectionPool`` from
+    ``psycopg_pool`` (plus ``psycopg.rows.dict_row`` for the pool row
+    factory). Neither package is installed in the unit-test environment, so
+    all three are stubbed here.
+    """
+    return {
+        "langgraph.checkpoint.postgres.aio": MagicMock(AsyncPostgresSaver=mock_saver_cls),
+        "psycopg": MagicMock(),
+        "psycopg.rows": MagicMock(),
+        "psycopg_pool": MagicMock(),
+    }
 
 
 # ===================================================================
@@ -139,17 +164,14 @@ class TestAsyncCheckpointerPostgres:
     async def test_postgres_success(self):
         mock_saver = MagicMock()
         mock_saver.setup = AsyncMock()
-        mock_cm = AsyncMock()
-        mock_cm.__aenter__ = AsyncMock(return_value=mock_saver)
-        mock_cm.__aexit__ = AsyncMock(return_value=False)
+        # Upstream instantiates AsyncPostgresSaver(conn=pool) over a pool it owns.
+        mock_saver_cls = MagicMock(return_value=mock_saver)
 
-        mock_pg_mod = MagicMock()
-        mock_pg_mod.AsyncPostgresSaver.from_conn_string.return_value = mock_cm
-
-        with patch.dict("sys.modules", {"langgraph.checkpoint.postgres.aio": mock_pg_mod}):
+        with patch.dict("sys.modules", _postgres_module_patches(mock_saver_cls)):
             async with _async_checkpointer(_make_config("postgres", "postgresql://localhost/db")) as cp:
                 assert cp is mock_saver
             mock_saver.setup.assert_awaited_once()
+        mock_saver_cls.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_postgres_no_connection_string_raises(self):
@@ -237,17 +259,15 @@ class TestAsyncCheckpointerFromDatabasePostgres:
     async def test_postgres_success(self):
         mock_saver = MagicMock()
         mock_saver.setup = AsyncMock()
-        mock_cm = AsyncMock()
-        mock_cm.__aenter__ = AsyncMock(return_value=mock_saver)
-        mock_cm.__aexit__ = AsyncMock(return_value=False)
+        # Upstream instantiates AsyncPostgresSaver(conn=pool) over a pool it owns.
+        mock_saver_cls = MagicMock(return_value=mock_saver)
 
-        mock_pg_mod = MagicMock()
-        mock_pg_mod.AsyncPostgresSaver.from_conn_string.return_value = mock_cm
-
-        with patch.dict("sys.modules", {"langgraph.checkpoint.postgres.aio": mock_pg_mod}):
-            db_config = _make_db_config("postgres", postgres_url="pg://localhost/db")
+        with patch.dict("sys.modules", _postgres_module_patches(mock_saver_cls)):
+            db_config = _make_db_config("postgres", postgres_url="postgresql://localhost/db")
             async with _async_checkpointer_from_database(db_config) as cp:
                 assert cp is mock_saver
+            mock_saver.setup.assert_awaited_once()
+        mock_saver_cls.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_postgres_no_url_raises(self):

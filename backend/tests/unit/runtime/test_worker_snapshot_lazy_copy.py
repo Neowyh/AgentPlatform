@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from deerflow.runtime.runs.manager import RunStartOutcome
 from deerflow.runtime.runs.worker import RunContext
 
 
@@ -21,6 +22,14 @@ def _success_harness():
     run_manager.update_model_name = AsyncMock()
     run_manager.update_run_completion = AsyncMock()
     run_manager.update_run_progress = MagicMock()
+    run_manager.wait_for_prior_finalizing = AsyncMock()
+    run_manager.try_start = AsyncMock(return_value=RunStartOutcome.started)
+    run_manager.set_status_if_not_cancelled = AsyncMock(return_value=None)
+    run_manager.set_finalizing = AsyncMock()
+    run_manager.update_finalizing_progress = AsyncMock()
+    run_manager.persist_current_status = AsyncMock()
+    run_manager.has_later_started_run = AsyncMock(return_value=False)
+    run_manager.cleanup = AsyncMock()
 
     record = MagicMock()
     record.run_id = "run_1"

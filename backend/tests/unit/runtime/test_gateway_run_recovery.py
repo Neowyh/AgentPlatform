@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import FastAPI
@@ -28,15 +29,21 @@ class _FakeRunManager:
     recovered_runs = [SimpleNamespace(run_id="run-1", thread_id="thread-1")]
     latest_by_thread: dict[str, list[SimpleNamespace]] = {}
 
-    def __init__(self, *, store):
+    def __init__(self, *, store, run_ownership_config=None, event_store=None, on_orphans_recovered=None, **kwargs):
         self.store = store
         self.reconcile_calls: list[dict] = []
         self.list_by_thread_calls: list[dict] = []
         _FakeRunManager.instances.append(self)
 
-    async def reconcile_orphaned_inflight_runs(self, *, error: str, before: str | None = None):
+    async def reconcile_orphaned_inflight_runs(self, *, error: str, before: str | None = None, stop_reason: str | None = None):
         self.reconcile_calls.append({"error": error, "before": before})
         return self.recovered_runs
+
+    async def start_heartbeat(self) -> None:
+        return None
+
+    async def shutdown(self, *, timeout: float = 0) -> None:
+        return None
 
     async def list_by_thread(self, thread_id: str, *, user_id=None, limit: int = 100):
         self.list_by_thread_calls.append({"thread_id": thread_id, "user_id": user_id, "limit": limit})
@@ -56,7 +63,13 @@ async def test_sqlite_runtime_reconciles_orphaned_runs_on_startup(monkeypatch):
     """SQLite startup should recover stale active runs before serving requests."""
     app = FastAPI()
     config = SimpleNamespace(
-        database=SimpleNamespace(backend="sqlite"),
+        checkpointer=None,
+        database=SimpleNamespace(
+            backend="sqlite",
+            checkpoint_channel_mode="full",
+            checkpoint_delta=SimpleNamespace(snapshot_frequency=10),
+            checkpointer_sqlite_path="/tmp/ideer-test.db",
+        ),
         run_events=SimpleNamespace(backend="memory"),
     )
     thread_store = _FakeThreadStore()
@@ -73,7 +86,11 @@ async def test_sqlite_runtime_reconciles_orphaned_runs_on_startup(monkeypatch):
     monkeypatch.setattr(engine_module, "init_engine_from_config", fake_init_engine_from_config)
     monkeypatch.setattr(engine_module, "get_session_factory", lambda: None)
     monkeypatch.setattr(engine_module, "close_engine", fake_close_engine)
-    monkeypatch.setattr(runtime_module, "make_stream_bridge", lambda _config: _fake_context(object()))
+    monkeypatch.setattr(
+        runtime_module,
+        "make_stream_bridge",
+        lambda _config: _fake_context(SimpleNamespace(publish=AsyncMock(), publish_end=AsyncMock(), cleanup=AsyncMock())),
+    )
     monkeypatch.setattr(checkpointer_module, "make_checkpointer", lambda _config: _fake_context(object()))
     monkeypatch.setattr(runtime_module, "make_store", lambda _config: _fake_context(object()))
     monkeypatch.setattr(thread_meta_module, "make_thread_store", lambda _sf, _store: thread_store)
@@ -95,7 +112,13 @@ async def test_sqlite_runtime_does_not_mark_thread_error_when_newer_run_is_succe
     """Startup recovery should not let an old orphaned run overwrite a newer terminal thread state."""
     app = FastAPI()
     config = SimpleNamespace(
-        database=SimpleNamespace(backend="sqlite"),
+        checkpointer=None,
+        database=SimpleNamespace(
+            backend="sqlite",
+            checkpoint_channel_mode="full",
+            checkpoint_delta=SimpleNamespace(snapshot_frequency=10),
+            checkpointer_sqlite_path="/tmp/ideer-test.db",
+        ),
         run_events=SimpleNamespace(backend="memory"),
     )
     thread_store = _FakeThreadStore()
@@ -112,7 +135,11 @@ async def test_sqlite_runtime_does_not_mark_thread_error_when_newer_run_is_succe
     monkeypatch.setattr(engine_module, "init_engine_from_config", fake_init_engine_from_config)
     monkeypatch.setattr(engine_module, "get_session_factory", lambda: None)
     monkeypatch.setattr(engine_module, "close_engine", fake_close_engine)
-    monkeypatch.setattr(runtime_module, "make_stream_bridge", lambda _config: _fake_context(object()))
+    monkeypatch.setattr(
+        runtime_module,
+        "make_stream_bridge",
+        lambda _config: _fake_context(SimpleNamespace(publish=AsyncMock(), publish_end=AsyncMock(), cleanup=AsyncMock())),
+    )
     monkeypatch.setattr(checkpointer_module, "make_checkpointer", lambda _config: _fake_context(object()))
     monkeypatch.setattr(runtime_module, "make_store", lambda _config: _fake_context(object()))
     monkeypatch.setattr(thread_meta_module, "make_thread_store", lambda _sf, _store: thread_store)

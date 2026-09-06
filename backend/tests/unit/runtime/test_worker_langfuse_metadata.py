@@ -36,13 +36,44 @@ class _FakeAgent:
 
 
 class _FakeRunManager:
+    """Expose the RunManager surface upstream ``run_agent`` awaits."""
+
+    async def wait_for_prior_finalizing(self, *_args, **_kwargs) -> None:
+        return None
+
+    async def try_start(self, *_args, **_kwargs):
+        from deerflow.runtime.runs.manager import RunStartOutcome
+
+        return RunStartOutcome.started
+
     async def set_status(self, *_args, **_kwargs) -> None:
         return None
+
+    async def set_status_if_not_cancelled(self, *_args, **_kwargs):
+        return None
+
+    async def set_finalizing(self, *_args, **_kwargs) -> None:
+        return None
+
+    async def update_run_progress(self, *_args, **_kwargs) -> None:
+        return None
+
+    async def update_finalizing_progress(self, *_args, **_kwargs) -> None:
+        return None
+
+    async def persist_current_status(self, *_args, **_kwargs) -> None:
+        return None
+
+    async def has_later_started_run(self, *_args, **_kwargs) -> bool:
+        return False
 
     async def update_model_name(self, *_args, **_kwargs) -> None:
         return None
 
     async def update_run_completion(self, *_args, **_kwargs) -> None:
+        return None
+
+    async def cleanup(self, *_args, **_kwargs) -> None:
         return None
 
 
@@ -118,12 +149,16 @@ async def test_run_agent_injects_langfuse_metadata(monkeypatch):
     assert "model:gpt-4o" in tags
 
 
+@pytest.mark.no_auto_user
 @pytest.mark.asyncio
 async def test_run_agent_falls_back_to_default_user_when_unset(monkeypatch):
-    """When no user is in the contextvar, langfuse_user_id falls back to 'default'.
+    """When no user identity is available, langfuse_user_id falls back to 'default'.
 
-    Uses ``monkeypatch.setattr`` to redirect ``get_effective_user_id`` to return
-    ``"default"`` rather than directly mutating the contextvar — direct contextvar
+    Upstream resolves the langfuse user via ``resolve_runtime_user_id`` over the
+    run runtime (server_info → langgraph auth configurable → runtime.context →
+    contextvar → DEFAULT_USER_ID). The ``no_auto_user`` marker opts this test
+    out of the conftest autouse contextvar injection so every channel is empty
+    and the DEFAULT_USER_ID fallback is exercised — direct contextvar
     operations across pytest test boundaries have produced spooky cross-file
     pollution when combined with the langfuse OTel global tracer provider.
     """
@@ -131,11 +166,8 @@ async def test_run_agent_falls_back_to_default_user_when_unset(monkeypatch):
     monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-lf-test")
     monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-lf-test")
     from deerflow.config.tracing_config import reset_tracing_config
-    from deerflow.runtime.runs import worker as worker_module
-    from deerflow.runtime.user_context import DEFAULT_USER_ID
 
     reset_tracing_config()
-    monkeypatch.setattr(worker_module, "get_effective_user_id", lambda: DEFAULT_USER_ID)
 
     fake_agent = _FakeAgent()
 
