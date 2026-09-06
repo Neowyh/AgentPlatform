@@ -319,7 +319,7 @@ async def test_concurrent_claims_never_duplicate_a_task(durable_store: WorkflowV
 @pytest.mark.serial
 def test_v1_runs_stay_readable_but_active_runs_are_failed_by_the_v2_migration(tmp_path: Path) -> None:
     """Upgrade a real v1 database instead of asserting migration call shapes."""
-    migrations_dir = Path(__file__).resolve().parents[3] / "packages" / "harness" / "ideer" / "persistence" / "migrations"
+    migrations_dir = Path(__file__).resolve().parents[3] / "app" / "agentplatform" / "persistence" / "migrations"
     db_path = tmp_path / "legacy.db"
     config = AlembicConfig(str(migrations_dir / "alembic.ini"))
     config.set_main_option("script_location", str(migrations_dir))

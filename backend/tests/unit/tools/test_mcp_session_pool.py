@@ -77,7 +77,7 @@ class TestInit:
     def test_initial_state(self):
         pool = MCPSessionPool()
         assert len(pool._entries) == 0
-        assert len(pool._context_managers) == 0
+        assert len(pool._inflight) == 0
         assert pool.MAX_SESSIONS == 256
         assert pool.SESSION_CLOSE_TIMEOUT == 5.0
 
