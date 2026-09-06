@@ -569,8 +569,17 @@ describe("run stream method wrapping", () => {
 
     // The wrapped method is a lazy async generator: options sanitization
     // (via forceChatRunStreamOptions) happens on the first iteration.
-    const stream = client.runs.stream(mockThreadId, mockAssistantId, mockPayload);
-    void stream.next().then(() => stream.return?.(undefined));
+    const stream = client.runs.stream(
+      mockThreadId,
+      mockAssistantId,
+      mockPayload,
+    );
+    // The generator's later iterations reject once the mocked network layer is
+    // torn down; nothing consumes them, so swallow to avoid unhandled rejections.
+    void stream
+      .next()
+      .then(() => stream.return?.(undefined))
+      .catch(() => undefined);
     await vi.waitFor(() =>
       expect(mockForceChatRunStreamOptions).toHaveBeenCalledWith(mockPayload),
     );
@@ -586,7 +595,12 @@ describe("run stream method wrapping", () => {
     const mockOptions = { streamMode: ["updates"] } as any;
 
     const stream = client.runs.joinStream(mockThreadId, mockRunId, mockOptions);
-    void stream.next().then(() => stream.return?.(undefined));
+    // The generator's later iterations reject once the mocked network layer is
+    // torn down; nothing consumes them, so swallow to avoid unhandled rejections.
+    void stream
+      .next()
+      .then(() => stream.return?.(undefined))
+      .catch(() => undefined);
     await vi.waitFor(() =>
       expect(mockForceChatRunStreamOptions).toHaveBeenCalledWith(mockOptions),
     );
