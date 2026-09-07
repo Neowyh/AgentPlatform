@@ -35,7 +35,6 @@ import {
 } from "react";
 import { toast } from "sonner";
 
-
 import {
   PromptInput,
   PromptInputActionMenu,
@@ -156,10 +155,7 @@ import {
 } from "./input-box-helpers";
 import { useThread } from "./messages/context";
 import { ModeHoverGuide } from "./mode-hover-guide";
-import {
-  InlineSelectedTag,
-  type SelectedTag,
-} from "./scenario/selected-tags";
+import { InlineSelectedTag, type SelectedTag } from "./scenario/selected-tags";
 import { ReferenceAttachmentSummary, useMaybeSidecar } from "./sidecar";
 import { SkillPicker } from "./slash-overlay";
 import { SlashSkillChip } from "./slash-skill-chip";
@@ -1764,8 +1760,7 @@ export function InputBox({
         }
         event.preventDefault();
         const selected =
-          skillPickerSuggestions[skillPickerIndex] ??
-          skillPickerSuggestions[0];
+          skillPickerSuggestions[skillPickerIndex] ?? skillPickerSuggestions[0];
         if (selected) {
           insertSkillAtCursor(selected.name);
         }
@@ -2309,7 +2304,7 @@ export function InputBox({
         <div className="flex items-center justify-center pb-1">
           <div className="flex items-center gap-2">
             {followupsLoading ? (
-              <div className="text-muted-foreground bg-background/80 rounded-full border px-4 py-1.5 type-compact backdrop-blur-sm">
+              <div className="text-muted-foreground bg-background/80 type-compact rounded-full border px-4 py-1.5 backdrop-blur-sm">
                 {t.inputBox.followupLoading}
               </div>
             ) : (
@@ -2324,7 +2319,7 @@ export function InputBox({
                 ))}
                 <Button
                   aria-label={t.common.close}
-                  className="text-muted-foreground h-auto cursor-pointer rounded-full px-2.5 py-1.5 type-compact font-normal"
+                  className="text-muted-foreground type-compact h-auto cursor-pointer rounded-full px-2.5 py-1.5 font-normal"
                   variant="outline"
                   size="sm"
                   type="button"
@@ -2342,6 +2337,7 @@ export function InputBox({
           <div
             aria-label="Skill suggestions"
             className="bg-popover/95 text-popover-foreground border-border max-h-72 overflow-y-auto rounded-xl border p-1 shadow-lg backdrop-blur-sm"
+            data-testid="slash-overlay"
             role="listbox"
           >
             {skillSuggestions.map((suggestion, index) => {
@@ -2355,6 +2351,7 @@ export function InputBox({
                       ? "bg-accent text-accent-foreground"
                       : "text-popover-foreground hover:bg-accent/70 hover:text-accent-foreground",
                   )}
+                  data-testid={`slash-option-${suggestion.name}`}
                   key={`${suggestion.kind}:${suggestion.name}`}
                   onClick={() => applySkillSuggestion(suggestion)}
                   onMouseDown={(event) => event.preventDefault()}
@@ -2368,11 +2365,11 @@ export function InputBox({
                     <SparklesIcon className="text-muted-foreground size-4 shrink-0" />
                   )}
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate type-supporting font-medium">
+                    <span className="type-supporting block truncate font-medium">
                       /{suggestion.name}
                     </span>
                     {suggestion.description && (
-                      <span className="text-muted-foreground block truncate type-compact">
+                      <span className="text-muted-foreground type-compact block truncate">
                         {suggestion.description}
                       </span>
                     )}
@@ -2434,7 +2431,7 @@ export function InputBox({
           {polishingInput && (
             <div
               aria-live="polite"
-              className="text-primary bg-primary/10 border-primary/20 relative z-30 flex h-7 items-center gap-1.5 rounded-full border py-0 pr-1 pl-2.5 type-compact font-medium"
+              className="text-primary bg-primary/10 border-primary/20 type-compact relative z-30 flex h-7 items-center gap-1.5 rounded-full border py-0 pr-1 pl-2.5 font-medium"
               role="status"
             >
               <Loader2Icon className="size-3 animate-spin" />
@@ -2461,7 +2458,7 @@ export function InputBox({
         <div className="relative min-h-16 w-full min-w-0 px-3 py-3">
           {selectedSlashSkill ? (
             <div
-              className="max-h-48 min-h-6 w-full min-w-0 cursor-text overflow-y-auto type-body leading-6 break-all whitespace-pre-wrap md:text-[length:var(--text-supporting)]"
+              className="type-body max-h-48 min-h-6 w-full min-w-0 cursor-text overflow-y-auto leading-6 break-all whitespace-pre-wrap md:text-[length:var(--text-supporting)]"
               onClick={(event) => {
                 if (event.target === event.currentTarget) {
                   focusContentEditableEnd(inlineSkillTextRef.current);
@@ -2509,9 +2506,10 @@ export function InputBox({
               className={cn(
                 "w-full min-w-0 p-0! text-left",
                 isWelcomeMode
-                  ? "min-h-40 type-body leading-7"
+                  ? "type-body min-h-40 leading-7"
                   : "min-h-6! leading-6!",
               )}
+              data-testid="chat-input"
               disabled={composerLocked}
               placeholder={t.inputBox.placeholder}
               autoFocus={autoFocus}
@@ -2610,7 +2608,7 @@ export function InputBox({
                   </div>
                   <div
                     className={cn(
-                      "truncate type-compact font-normal",
+                      "type-compact truncate font-normal",
                       context.mode === "ultra" ? "golden-text" : "",
                     )}
                   >
@@ -2647,7 +2645,7 @@ export function InputBox({
                           />
                           {t.inputBox.flashMode}
                         </div>
-                        <div className="pl-7 type-compact">
+                        <div className="type-compact pl-7">
                           {t.inputBox.flashModeDescription}
                         </div>
                       </div>
@@ -2677,7 +2675,7 @@ export function InputBox({
                             />
                             {t.inputBox.reasoningMode}
                           </div>
-                          <div className="pl-7 type-compact">
+                          <div className="type-compact pl-7">
                             {t.inputBox.reasoningModeDescription}
                           </div>
                         </div>
@@ -2707,7 +2705,7 @@ export function InputBox({
                           />
                           {t.inputBox.proMode}
                         </div>
-                        <div className="pl-7 type-compact">
+                        <div className="type-compact pl-7">
                           {t.inputBox.proModeDescription}
                         </div>
                       </div>
@@ -2741,7 +2739,7 @@ export function InputBox({
                             {t.inputBox.ultraMode}
                           </div>
                         </div>
-                        <div className="pl-7 type-compact">
+                        <div className="type-compact pl-7">
                           {t.inputBox.ultraModeDescription}
                         </div>
                       </div>
@@ -2792,7 +2790,7 @@ export function InputBox({
                           <div className="flex items-center gap-1 font-bold">
                             {t.inputBox.reasoningEffortMinimal}
                           </div>
-                          <div className="pl-2 type-compact">
+                          <div className="type-compact pl-2">
                             {t.inputBox.reasoningEffortMinimalDescription}
                           </div>
                         </div>
@@ -2814,7 +2812,7 @@ export function InputBox({
                           <div className="flex items-center gap-1 font-bold">
                             {t.inputBox.reasoningEffortLow}
                           </div>
-                          <div className="pl-2 type-compact">
+                          <div className="type-compact pl-2">
                             {t.inputBox.reasoningEffortLowDescription}
                           </div>
                         </div>
@@ -2837,7 +2835,7 @@ export function InputBox({
                           <div className="flex items-center gap-1 font-bold">
                             {t.inputBox.reasoningEffortMedium}
                           </div>
-                          <div className="pl-2 type-compact">
+                          <div className="type-compact pl-2">
                             {t.inputBox.reasoningEffortMediumDescription}
                           </div>
                         </div>
@@ -2860,7 +2858,7 @@ export function InputBox({
                           <div className="flex items-center gap-1 font-bold">
                             {t.inputBox.reasoningEffortHigh}
                           </div>
-                          <div className="pl-2 type-compact">
+                          <div className="type-compact pl-2">
                             {t.inputBox.reasoningEffortHighDescription}
                           </div>
                         </div>
@@ -2885,7 +2883,7 @@ export function InputBox({
                   )
                   .replace("{max}", () => String(goalObjectiveCounter.max))}
                 className={cn(
-                  "shrink-0 type-compact tabular-nums",
+                  "type-compact shrink-0 tabular-nums",
                   goalObjectiveCounter.overLimit
                     ? "text-destructive font-medium"
                     : "text-muted-foreground",
@@ -2924,7 +2922,7 @@ export function InputBox({
                     >
                       <div className="flex min-w-0 flex-1 flex-col">
                         <ModelSelectorName>{m.display_name}</ModelSelectorName>
-                        <span className="text-muted-foreground truncate type-compact">
+                        <span className="text-muted-foreground type-compact truncate">
                           {m.model}
                         </span>
                       </div>
@@ -2983,7 +2981,7 @@ export function InputBox({
 
       <p
         className={cn(
-          "text-muted-foreground/67 z-10 px-4 text-center type-compact leading-4",
+          "text-muted-foreground/67 type-compact z-10 px-4 text-center leading-4",
           !isWelcomeMode && "absolute top-full right-0 left-0",
         )}
       >
@@ -3077,7 +3075,7 @@ function SuggestionList({
   return (
     <Suggestions className="min-h-16 w-full max-w-full justify-center px-4 sm:w-fit sm:px-0">
       <ConfettiButton
-        className="text-muted-foreground cursor-pointer rounded-full px-4 type-compact font-normal"
+        className="text-muted-foreground type-compact cursor-pointer rounded-full px-4 font-normal"
         variant="outline"
         size="sm"
         onClick={() => handleSuggestionClick(t.inputBox.surpriseMePrompt)}
