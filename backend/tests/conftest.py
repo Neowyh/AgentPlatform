@@ -227,3 +227,36 @@ def _auto_user_context(request):
         yield
     finally:
         reset_current_user(token)
+
+
+# ── Gateway-level integration fixtures ──────────────────────────────────────
+# Staging helpers live in ``tests/_gateway_e2e_env.py``. Defined here (root
+# conftest) rather than a nested conftest so the module name ``conftest``
+# keeps resolving to this file for suites that import from it directly.
+
+
+@pytest.fixture
+def isolated_deer_flow_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    from _gateway_e2e_env import stage_isolated_home
+
+    return stage_isolated_home(tmp_path, monkeypatch)
+
+
+@pytest.fixture
+def isolated_app(isolated_deer_flow_home: Path, monkeypatch: pytest.MonkeyPatch):
+    from _gateway_e2e_env import (
+        preserve_process_config_singletons,
+        reset_process_singletons,
+    )
+
+    preserve_process_config_singletons(monkeypatch)
+    reset_process_singletons(monkeypatch)
+
+    from deerflow.config import app_config as app_config_module
+
+    cfg = app_config_module.get_app_config()
+    cfg.database.sqlite_dir = str(isolated_deer_flow_home / "db")
+
+    from app.gateway.app import create_app
+
+    return create_app()
