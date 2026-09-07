@@ -80,3 +80,11 @@ fault-zeroing 低延迟端点三项外部验收。
 | closure-round focused suites | 13 passed（initialized-DB 验收 + canonical sandbox focused）；run-manager 129 passed；threads 单测 224/224；chat/sidecar/agent-chat E2E 55/55 | 本轮提交前聚焦验证 |
 | fault-zeroing bounded attempt | incomplete（环境性）：`node_timeout=10800`，case-01 进入真实 subagent 链仍在预算内执行；chatgpt.com 不可达故 codex 备选不可用 | BASELINE_REPORT 2026-09-08 增补 |
 | external handoff | 交接清单就绪 | `EXTERNAL_ACCEPTANCE_HANDOFF.md` |
+
+## Final lane record (2026-09-08)
+
+| Lane | 结果 |
+|---|---|
+| pr-standard（完整重跑，含本轮全部改动） | **passed**（exit 0）：backend-standard 546s ✓、frontend-standard 79s ✓（356 files / 9913 tests）、frontend-smoke 69s ✓（21 specs） |
+| 附加修复 | `settings-dialog` 单测两条断言停留在 Skills 分区恢复前状态（基线 e40049f2 worktree 复验既有失败），更新至恢复后语义 23/23 绿；`make test` 的 PYTHONPATH 基线缺陷修复（`.:tests`，对齐 canonical lane）；nested conftest 遮蔽根 conftest 模块名导致 contracts 收集失败——fixtures 上移根 conftest |
+| fault-zeroing bounded attempt | `node_timeout=10800` 尝试在合并时点仍在预算内执行（fz-01 running）；codex 备选因 chatgpt.com 不可达未启用；维持 incomplete honest-record |
