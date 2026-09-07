@@ -44,7 +44,9 @@ test.describe("Thread history", () => {
     await page.goto("/workspace/chats/new");
 
     // Wait for sidebar to populate
-    const firstThread = page.getByTestId("thread-list").getByText("First conversation");
+    const firstThread = page
+      .getByTestId("thread-list")
+      .getByText("First conversation");
     await expect(firstThread).toBeVisible({ timeout: 15_000 });
 
     // Click on the first thread
@@ -279,20 +281,33 @@ test.describe("Thread history", () => {
         created_at: "2025-06-03T12:00:03Z",
       };
     });
-    const shiftedRows = Array.from({ length: 50 }, (_, index) => {
-      const seq = index + 101;
-      return {
+    const shiftedRows = [
+      ...Array.from({ length: 50 }, (_, index) => {
+        const seq = index + 101;
+        return {
+          run_id: "run-shifted",
+          seq,
+          content: {
+            type: "ai",
+            id: `shifted-step-${seq}`,
+            content: `New presentation step ${seq}`,
+          },
+          metadata: { caller: "lead_agent" },
+          created_at: "2025-06-03T12:01:00Z",
+        };
+      }),
+      {
         run_id: "run-shifted",
-        seq,
+        seq: 151,
         content: {
-          type: "ai",
-          id: `shifted-step-${seq}`,
-          content: `New presentation step ${seq}`,
+          type: "human",
+          id: "follow-up-prompt",
+          content: [{ type: "text", text: followUpPrompt }],
         },
         metadata: { caller: "lead_agent" },
-        created_at: "2025-06-03T12:01:00Z",
-      };
-    });
+        created_at: "2025-06-03T12:02:00Z",
+      },
+    ];
     let latestPageRequestCount = 0;
     let cursorPageRequestCount = 0;
 
@@ -419,12 +434,14 @@ test.describe("Thread history", () => {
             {
               type: "ai",
               id: "msg-ai-duration-1",
+              run_id: "run-duration",
               content: "Intermediate result",
               additional_kwargs: { turn_duration: 114 },
             },
             {
               type: "ai",
               id: "msg-ai-duration-2",
+              run_id: "run-duration",
               content: "Final result",
               additional_kwargs: {
                 turn_duration: 114,
@@ -535,6 +552,7 @@ test.describe("Thread history", () => {
     await inactiveThreadItem.hover();
     await inactiveThreadItem.getByRole("button", { name: /more/i }).click();
     await page.getByRole("menuitem", { name: /delete/i }).click();
+    await page.getByTestId("thread-delete-confirm").click();
 
     await expect(page).toHaveURL(new RegExp(MOCK_THREAD_ID));
     await expect(
@@ -660,7 +678,7 @@ test.describe("Thread history", () => {
     await expect(textarea).toBeVisible({ timeout: 15_000 });
     await textarea.fill("Message that must disappear in the next new chat");
     await textarea.press("Enter");
-    await expect(page.getByText("Hello from DeerFlow!")).toBeVisible({
+    await expect(page.getByText("Hello from iDeer!")).toBeVisible({
       timeout: 15_000,
     });
 
@@ -683,7 +701,7 @@ test.describe("Thread history", () => {
     // interaction forcing another render.
     await newChatLink.click();
     await expect(page).toHaveURL(/\/workspace\/chats\/new$/);
-    await expect(page.getByText("Hello from DeerFlow!")).toHaveCount(0);
+    await expect(page.getByText("Hello from iDeer!")).toHaveCount(0);
     await expect(textarea).toBeVisible();
   });
 
@@ -708,7 +726,7 @@ test.describe("Thread history", () => {
     await textarea.fill("What should disappear after deletion?");
     await textarea.press("Enter");
 
-    await expect(page.getByText("Hello from DeerFlow!")).toBeVisible({
+    await expect(page.getByText("Hello from iDeer!")).toBeVisible({
       timeout: 15_000,
     });
 
@@ -724,15 +742,16 @@ test.describe("Thread history", () => {
     await recentThreadItem.hover();
     await recentThreadItem.getByRole("button", { name: /more/i }).click();
     await page.getByRole("menuitem", { name: /delete/i }).click();
+    await page.getByTestId("thread-delete-confirm").click();
 
     await expect(page).toHaveURL(/\/workspace\/chats\/new$/);
     await expect(page.getByText("Previous question")).toHaveCount(0);
-    await expect(page.getByText("Hello from DeerFlow!")).toHaveCount(0);
+    await expect(page.getByText("Hello from iDeer!")).toHaveCount(0);
     await expect(page.getByPlaceholder(/how can i assist you/i)).toBeVisible();
 
     await page.goto(`/workspace/chats/${MOCK_THREAD_ID}`);
     await page.waitForURL("**/workspace/chats/new");
-    await expect(page.getByText("Hello from DeerFlow!")).toHaveCount(0);
+    await expect(page.getByText("Hello from iDeer!")).toHaveCount(0);
     await expect(page.getByPlaceholder(/how can i assist you/i)).toBeVisible();
   });
 
@@ -830,7 +849,9 @@ test.describe("Thread history", () => {
     await expect(main.getByText("First conversation")).toBeVisible({
       timeout: 15_000,
     });
-    await expect(main.getByText("Second conversation")).toBeVisible();
+    await expect(main.getByText("Second conversation")).toBeVisible({
+      timeout: 15_000,
+    });
   });
 
   test("IM channel threads show their source in thread lists", async ({
@@ -855,9 +876,10 @@ test.describe("Thread history", () => {
 
     await page.goto("/workspace/chats/new");
 
-    const sidebarThread = page.locator(
-      `a[href='/workspace/chats/${MOCK_THREAD_ID}']`,
-    );
+    const sidebarThread = page
+      .locator("[data-sidebar='sidebar']")
+      .locator(`a[href='/workspace/chats/${MOCK_THREAD_ID}']`)
+      .first();
     await expect(sidebarThread).toBeVisible({ timeout: 15_000 });
     await expect(sidebarThread.getByLabel("Feishu channel")).toBeVisible();
 

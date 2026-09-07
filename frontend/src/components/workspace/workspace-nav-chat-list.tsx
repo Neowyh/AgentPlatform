@@ -32,7 +32,7 @@ export function WorkspaceNavChatList() {
       <SidebarMenu>
         <SidebarMenuItem>
           <SidebarMenuButton isActive={pathname === "/workspace/chats"} asChild>
-            <Link className="text-muted-foreground" href="/workspace/chats">
+            <Link href="/workspace/chats">
               <MessagesSquare />
               <span>{t.sidebar.chats}</span>
             </Link>
@@ -44,7 +44,7 @@ export function WorkspaceNavChatList() {
               isActive={pathname.startsWith("/workspace/agents")}
               asChild
             >
-              <Link className="text-muted-foreground" href="/workspace/agents">
+              <Link href="/workspace/agents">
                 <BotIcon />
                 <span>{t.sidebar.agents}</span>
               </Link>
@@ -85,10 +85,7 @@ export function WorkspaceNavChatList() {
             isActive={pathname.startsWith("/workspace/scheduled-tasks")}
             asChild
           >
-            <Link
-              className="text-muted-foreground"
-              href="/workspace/scheduled-tasks"
-            >
+            <Link href="/workspace/scheduled-tasks">
               <CalendarClock />
               <span>{t.sidebar.scheduledTasks}</span>
             </Link>
@@ -99,7 +96,7 @@ export function WorkspaceNavChatList() {
             isActive={pathname.startsWith("/workspace/workflows")}
             asChild
           >
-            <Link className="text-muted-foreground" href="/workspace/workflows">
+            <Link href="/workspace/workflows">
               <WorkflowIcon />
               <span>{t.sidebar.workflows}</span>
             </Link>

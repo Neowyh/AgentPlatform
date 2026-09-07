@@ -39,6 +39,7 @@ import { TodoList } from "@/components/workspace/todo-list";
 import { TokenUsageIndicator } from "@/components/workspace/token-usage-indicator";
 import { useActiveGoal } from "@/components/workspace/use-active-goal";
 import { Welcome } from "@/components/workspace/welcome";
+import { RecentChatsCard } from "@/components/workspace/workbench/recent-chats-card";
 import { useAgent, useAgents } from "@/core/agents/hooks";
 import { getAPIClient } from "@/core/api";
 import { useBrowserControlEnabled } from "@/core/features";
@@ -375,6 +376,33 @@ export default function ChatPage() {
     },
   });
 
+  const hasThreadMessages = thread.messages.length > 0;
+
+  useEffect(() => {
+    if (
+      !isNewThread &&
+      !isMock &&
+      threadMetadata.data == null &&
+      !threadMetadata.isLoading &&
+      !threadMetadata.isFetching &&
+      !isHistoryLoading &&
+      !hasMoreHistory &&
+      !hasThreadMessages
+    ) {
+      router.replace("/workspace/chats/new");
+    }
+  }, [
+    hasMoreHistory,
+    hasThreadMessages,
+    isHistoryLoading,
+    isMock,
+    isNewThread,
+    router,
+    threadMetadata.data,
+    threadMetadata.isFetching,
+    threadMetadata.isLoading,
+  ]);
+
   const handleSubmit = useCallback(
     (message: PromptInputMessage, options?: InputBoxSubmitOptions) => {
       if (!selectionBinding.valid) {
@@ -497,6 +525,7 @@ export default function ChatPage() {
                     testId="main-message-list"
                     threadId={threadId}
                     thread={thread}
+                    enableConversationOutline
                     paddingBottom={MESSAGE_LIST_DEFAULT_PADDING_BOTTOM}
                     hasMoreHistory={hasMoreHistory}
                     loadMoreHistory={loadMoreHistory}
@@ -527,6 +556,7 @@ export default function ChatPage() {
                       data-testid="workbench-home"
                     >
                       <Welcome mode={settings.context.mode} />
+                      <RecentChatsCard />
                       <div
                         className="workbench-quick-entry-module"
                         data-testid="workbench-quick-entry-module"

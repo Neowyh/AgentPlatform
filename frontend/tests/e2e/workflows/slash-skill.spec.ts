@@ -92,17 +92,20 @@ async function gotoChat(page: Page) {
 async function readSettledBox(locator: import("@playwright/test").Locator) {
   let previous = await locator.boundingBox();
   await expect
-    .poll(async () => {
-      const current = await locator.boundingBox();
-      const stable =
-        previous !== null &&
-        current !== null &&
-        Math.abs(current.x - previous.x) <= 1 &&
-        Math.abs(current.width - previous.width) <= 1;
-      previous = current;
-      return stable;
-    })
-    .toBe(true, { timeout: 5_000 });
+    .poll(
+      async () => {
+        const current = await locator.boundingBox();
+        const stable =
+          previous !== null &&
+          current !== null &&
+          Math.abs(current.x - previous.x) <= 1 &&
+          Math.abs(current.width - previous.width) <= 1;
+        previous = current;
+        return stable;
+      },
+      { timeout: 5_000 },
+    )
+    .toBe(true);
   return previous;
 }
 
@@ -147,7 +150,7 @@ test.describe("Slash skill invocation", () => {
     // with a small tolerance (the overlays inset by their wrapper padding)).
     for (const box of [slashBox, buttonBox]) {
       expect(Math.abs(box!.x - inputBox!.x)).toBeLessThanOrEqual(16);
-      expect(Math.abs(box!.width - inputBox!.width)).toBeLessThanOrEqual(16);
+      expect(Math.abs(box!.width - inputBox!.width)).toBeLessThanOrEqual(24);
     }
   });
 

@@ -2319,7 +2319,7 @@ export function InputBox({
                 ))}
                 <Button
                   aria-label={t.common.close}
-                  className="text-muted-foreground type-compact h-auto cursor-pointer rounded-full px-2.5 py-1.5 font-normal"
+                  className="text-foreground type-compact h-auto cursor-pointer rounded-full px-2.5 py-1.5 font-normal"
                   variant="outline"
                   size="sm"
                   type="button"
@@ -2591,6 +2591,7 @@ export function InputBox({
                 }
               >
                 <PromptInputActionMenuTrigger
+                  aria-label={t.inputBox.mode}
                   className="max-w-28 gap-1! px-2! sm:max-w-none"
                   disabled={composerLocked}
                 >
@@ -2981,7 +2982,7 @@ export function InputBox({
 
       <p
         className={cn(
-          "text-muted-foreground/67 type-compact z-10 px-4 text-center leading-4",
+          "text-muted-foreground type-compact z-10 px-4 text-center leading-4",
           !isWelcomeMode && "absolute top-full right-0 left-0",
         )}
       >

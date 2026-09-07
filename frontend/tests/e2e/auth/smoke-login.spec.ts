@@ -12,7 +12,8 @@ import { test, expect } from "@playwright/test";
 // non-auth E2E tests to pass SSR mocks), these tests can't run.
 // Run with: npx playwright test --project=auth
 test.skip(
-  process.env.IDEER_AUTH_DISABLED === "1",
+  process.env.IDEER_AUTH_DISABLED === "1" ||
+    process.env.DEER_FLOW_AUTH_DISABLED === "1",
   "IDEER_AUTH_DISABLED — SSR always returns authenticated, login page unreachable",
 );
 

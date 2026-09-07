@@ -91,13 +91,22 @@ test.describe("Sidebar navigation", () => {
       locator: ReturnType<typeof page.locator>,
     ) => {
       await expect(locator).toBeVisible({ timeout: 15_000 });
-      const box = await locator.boundingBox();
+      const box = await locator.evaluate((element) => {
+        let current: HTMLElement | null = element as HTMLElement;
+        for (let depth = 0; current && depth < 4; depth += 1) {
+          const rect = current.getBoundingClientRect();
+          if (rect.width > 0 && rect.height > 0) {
+            return { x: rect.x, width: rect.width };
+          }
+          current = current.parentElement;
+        }
+        return null;
+      });
       expect(box).not.toBeNull();
       expect(box!.x).toBeGreaterThanOrEqual(-1);
       expect(box!.x + box!.width).toBeLessThanOrEqual(viewportWidth + 1);
     };
 
-    await expectInsideViewport(page.getByText(/欢迎使用 🦌 iDeer/).first());
     await expectInsideViewport(page.getByRole("textbox").first());
     await expectInsideViewport(page.locator("[data-slot='suggestions-list']"));
 

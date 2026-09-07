@@ -44,7 +44,10 @@ import {
   reconcileArtifactDraft,
 } from "@/core/artifacts/editing";
 import { useArtifactContent } from "@/core/artifacts/hooks";
-import { getArtifactViewState } from "@/core/artifacts/preview";
+import {
+  getArtifactViewState,
+  isFaultTreeArtifact,
+} from "@/core/artifacts/preview";
 import { urlOfArtifact } from "@/core/artifacts/utils";
 import {
   resolveArtifactOpenURL,
@@ -59,6 +62,7 @@ import {
   canBrowserPreviewFile,
   checkCodeFile,
   getFileName,
+  isImageFile,
 } from "@/core/utils/files";
 import { env } from "@/env";
 import { cn } from "@/lib/utils";
@@ -73,6 +77,7 @@ import {
   formatArtifactBytes,
 } from "./artifact-file-preview";
 import { useArtifacts } from "./context";
+import { FaultTreeViewer } from "./fault-tree-viewer";
 
 const WRITE_FILE_PREVIEW_REFRESH_INTERVAL_MS = 3000;
 
@@ -188,6 +193,7 @@ export function ArtifactFileDetail({
     isSupportPreview,
     toolResult,
   });
+  const isFaultTree = isFaultTreeArtifact(filepath);
   const {
     content,
     url,
@@ -433,10 +439,10 @@ export function ArtifactFileDetail({
                 }
               }}
             >
-              <ToggleGroupItem value="code">
+              <ToggleGroupItem value="code" aria-label="Code">
                 <Code2Icon />
               </ToggleGroupItem>
-              <ToggleGroupItem value="preview">
+              <ToggleGroupItem value="preview" aria-label="Preview">
                 <EyeIcon />
               </ToggleGroupItem>
             </ToggleGroup>
@@ -444,7 +450,7 @@ export function ArtifactFileDetail({
           {(isSaving || isDirty || activeDraft.conflict) && (
             <span
               className={cn(
-                "text-muted-foreground max-w-32 truncate type-compact",
+                "text-muted-foreground type-compact max-w-32 truncate",
                 activeDraft.conflict && "text-destructive",
               )}
               aria-live="polite"
@@ -609,7 +615,7 @@ export function ArtifactFileDetail({
       </ArtifactHeader>
       <ArtifactContent className="flex flex-col p-0">
         {truncated && (
-          <div className="border-border bg-muted/40 flex shrink-0 items-center justify-between gap-3 border-b px-4 py-2 type-supporting">
+          <div className="border-border bg-muted/40 type-supporting flex shrink-0 items-center justify-between gap-3 border-b px-4 py-2">
             <span className="text-muted-foreground">
               {t.artifactPreview.limited(
                 formatArtifactBytes(previewBytes) ?? "1 MiB",
@@ -622,7 +628,7 @@ export function ArtifactFileDetail({
           </div>
         )}
         {isLoadingFullContent && (
-          <div className="border-border text-muted-foreground flex shrink-0 items-center gap-2 border-b px-4 py-2 type-supporting">
+          <div className="border-border text-muted-foreground type-supporting flex shrink-0 items-center gap-2 border-b px-4 py-2">
             <LoaderIcon className="size-4 animate-spin" />
             {t.artifactPreview.loadingFullFile}
           </div>
@@ -642,14 +648,18 @@ export function ArtifactFileDetail({
             effectiveViewMode === "preview" &&
             !isLoading &&
             (!truncated || language === "markdown") &&
-            (language === "markdown" || language === "html") && (
-              <ArtifactFilePreview
-                content={editorContent}
-                language={language}
-                scrollKey={filepathFromProps}
-                url={url}
-              />
-            )}
+            (isFaultTree ? (
+              <FaultTreeViewer content={editorContent} />
+            ) : (
+              (language === "markdown" || language === "html") && (
+                <ArtifactFilePreview
+                  content={editorContent}
+                  language={language}
+                  scrollKey={filepathFromProps}
+                  url={url}
+                />
+              )
+            ))}
           {isCodeFile &&
             !error &&
             effectiveViewMode === "code" &&
@@ -678,11 +688,18 @@ export function ArtifactFileDetail({
             !error &&
             truncated &&
             effectiveViewMode === "code" && (
-              <pre className="size-full overflow-auto p-4 font-mono type-supporting whitespace-pre-wrap">
+              <pre className="type-supporting size-full overflow-auto p-4 font-mono whitespace-pre-wrap">
                 {visibleContent}
               </pre>
             )}
-          {!isCodeFile && canPreviewInBrowser && (
+          {!isCodeFile && canPreviewInBrowser && isImageFile(filepath) && (
+            <img
+              className="size-full object-contain"
+              src={urlOfArtifact({ filepath, threadId, isMock })}
+              alt={getFileName(filepath)}
+            />
+          )}
+          {!isCodeFile && canPreviewInBrowser && !isImageFile(filepath) && (
             <iframe
               className="size-full"
               sandbox=""

@@ -35,9 +35,9 @@ test.describe("Agent management", () => {
       mockLangGraphAPI(page, { agents: MOCK_AGENTS });
       await page.goto("/workspace/capabilities/experts");
 
-      await expect(
-        page.getByRole("button", { name: /new agent/i }),
-      ).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByRole("link", { name: /new expert/i })).toBeVisible(
+        { timeout: 15_000 },
+      );
       await expect(page.getByRole("button", { name: /import/i })).toBeVisible();
     });
 
@@ -45,9 +45,9 @@ test.describe("Agent management", () => {
       mockLangGraphAPI(page, { agents: MOCK_AGENTS });
       await page.goto("/workspace/capabilities/experts");
 
-      await page.getByRole("button", { name: /new agent/i }).click();
+      await page.getByRole("link", { name: /new expert/i }).click();
 
-      await expect(page).toHaveURL(/\/workspace\/agents\/new/);
+      await expect(page).toHaveURL(/\/workspace\/capabilities\/experts\/new/);
     });
 
     test("gallery shows empty state when no agents", async ({ page }) => {
@@ -151,16 +151,14 @@ test.describe("Agent management", () => {
       await expect(page.getByText("A test agent for E2E tests")).toBeVisible();
 
       // Should show Edit Agent link
-      await expect(
-        page.getByRole("link", { name: /edit agent/i }),
-      ).toBeVisible();
+      await expect(page.getByRole("link", { name: /edit/i })).toBeVisible();
     });
 
     test("detail page shows Edit Agent link", async ({ page }) => {
       mockLangGraphAPI(page, { agents: MOCK_AGENTS });
       await page.goto("/workspace/capabilities/experts/test-agent");
 
-      const editLink = page.getByRole("link", { name: /edit agent/i });
+      const editLink = page.getByRole("link", { name: /edit/i });
       await expect(editLink).toBeVisible({ timeout: 15_000 });
     });
   });

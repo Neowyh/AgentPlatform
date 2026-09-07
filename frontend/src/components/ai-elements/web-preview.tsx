@@ -107,6 +107,7 @@ export const WebPreviewNavigationButton = ({
     <Tooltip>
       <TooltipTrigger asChild>
         <Button
+          aria-label={tooltip}
           className="hover:text-foreground h-8 w-8 p-0"
           disabled={disabled}
           onClick={onClick}
@@ -155,7 +156,7 @@ export const WebPreviewUrl = ({
 
   return (
     <Input
-      className="h-8 flex-1 type-supporting"
+      className="type-supporting h-8 flex-1"
       onChange={onChange ?? handleChange}
       onKeyDown={handleKeyDown}
       placeholder="Enter URL..."
@@ -165,10 +166,7 @@ export const WebPreviewUrl = ({
   );
 };
 
-export type WebPreviewBodyProps = Omit<
-  ComponentProps<"iframe">,
-  "loading"
-> & {
+export type WebPreviewBodyProps = Omit<ComponentProps<"iframe">, "loading"> & {
   loading?: ReactNode;
 };
 
@@ -212,7 +210,10 @@ export const WebPreviewConsole = ({
 
   return (
     <Collapsible
-      className={cn("bg-muted/50 border-t font-mono type-supporting", className)}
+      className={cn(
+        "bg-muted/50 type-supporting border-t font-mono",
+        className,
+      )}
       onOpenChange={setConsoleOpen}
       open={consoleOpen}
       {...props}

@@ -159,7 +159,7 @@ export default function ChatPage() {
     if (
       !isNewThread &&
       !isMock &&
-      threadMetadata.data === null &&
+      threadMetadata.data == null &&
       !threadMetadata.isLoading &&
       !threadMetadata.isFetching &&
       !isHistoryLoading &&

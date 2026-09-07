@@ -5,7 +5,13 @@ import {
   loginAsRealUser,
   requireRealE2EEnvironment,
   runScopedName,
+  hasRealE2EEnvironment,
 } from "./real-e2e";
+
+test.skip(
+  !hasRealE2EEnvironment(),
+  "requires the Real E2E harness (GitHub Actions Real E2E lane), not the mock lane",
+);
 
 const emptyStorageState = { cookies: [], origins: [] };
 

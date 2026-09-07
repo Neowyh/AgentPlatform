@@ -31,11 +31,14 @@ async function waitForLanguageSelector(page: Page) {
 
 /** Set the locale cookie before navigating so the app boots with that locale. */
 async function setLocaleCookie(page: Page, locale: string) {
+  const domain = new URL(
+    process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000",
+  ).hostname;
   await page.context().addCookies([
     {
       name: "locale",
       value: locale,
-      domain: "localhost",
+      domain,
       path: "/",
     },
   ]);
@@ -81,11 +84,14 @@ const LOCALE_TEXT = {
 test.describe("i18n — Language switching", () => {
   test.beforeEach(async ({ page }) => {
     // Clear any leftover locale cookie from previous tests or storageState.
+    const domain = new URL(
+      process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000",
+    ).hostname;
     await page.context().addCookies([
       {
         name: "locale",
         value: "",
-        domain: "localhost",
+        domain,
         path: "/",
         expires: 1,
       },

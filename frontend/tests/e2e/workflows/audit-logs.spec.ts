@@ -43,12 +43,14 @@ test.describe("Audit logs", () => {
       mockLangGraphAPI(page, { auditLogs: MOCK_AUDIT_LOGS });
       await page.goto("/workspace/admin/audit-logs");
 
-      // Should show the page title "审计日志"
-      await expect(page.getByText("审计日志")).toBeVisible({
+      // The playwright locale is en-US; the page renders the en-US strings.
+      await expect(page.getByText("Audit Logs")).toBeVisible({
         timeout: 15_000,
       });
       // Should show the subtitle
-      await expect(page.getByText("浏览和查询系统操作审计记录")).toBeVisible();
+      await expect(
+        page.getByText("Browse and search system operation audit records"),
+      ).toBeVisible();
 
       // Should show log cards with truncated IDs
       const logCards = page.locator(
@@ -64,11 +66,11 @@ test.describe("Audit logs", () => {
       await page.goto("/workspace/admin/audit-logs");
 
       // Action labels: create → 创建, delete → 删除, update → 更新
-      await expect(page.getByText("创建").first()).toBeVisible({
+      await expect(page.getByText("Create").first()).toBeVisible({
         timeout: 15_000,
       });
-      await expect(page.getByText("删除").first()).toBeVisible();
-      await expect(page.getByText("更新").first()).toBeVisible();
+      await expect(page.getByText("Delete").first()).toBeVisible();
+      await expect(page.getByText("Update").first()).toBeVisible();
     });
 
     test("log cards display resource type badges", async ({ page }) => {
@@ -76,10 +78,10 @@ test.describe("Audit logs", () => {
       await page.goto("/workspace/admin/audit-logs");
 
       // Resource type labels: agent → 智能体, tool → 工具, skill → Skill
-      await expect(page.getByText("智能体").first()).toBeVisible({
+      await expect(page.getByText("Agent").first()).toBeVisible({
         timeout: 15_000,
       });
-      await expect(page.getByText("工具").first()).toBeVisible();
+      await expect(page.getByText("Tool").first()).toBeVisible();
       await expect(page.getByText("Skill").first()).toBeVisible();
     });
 
@@ -87,15 +89,15 @@ test.describe("Audit logs", () => {
       mockLangGraphAPI(page, { auditLogs: MOCK_AUDIT_LOGS });
       await page.goto("/workspace/admin/audit-logs");
 
-      // Actor info: "操作者:" followed by actor_id
-      await expect(page.getByText("操作者:").first()).toBeVisible({
+      // Actor info: "Operator:" followed by actor_id
+      await expect(page.getByText("Operator:").first()).toBeVisible({
         timeout: 15_000,
       });
       await expect(page.getByText("user-1").first()).toBeVisible();
       await expect(page.getByText("user-2").first()).toBeVisible();
 
-      // Resource info: "资源:" followed by resource_id
-      await expect(page.getByText("资源:").first()).toBeVisible();
+      // Resource info: "Resource:" followed by resource_id
+      await expect(page.getByText("Resource:").first()).toBeVisible();
       await expect(page.getByText("agent-alpha").first()).toBeVisible();
     });
 
@@ -113,7 +115,7 @@ test.describe("Audit logs", () => {
       mockLangGraphAPI(page, { auditLogs: MOCK_AUDIT_LOGS });
       await page.goto("/workspace/admin/audit-logs");
 
-      await expect(page.getByText("共 3 条")).toBeVisible({
+      await expect(page.getByText("3 records in total")).toBeVisible({
         timeout: 15_000,
       });
     });
@@ -122,7 +124,7 @@ test.describe("Audit logs", () => {
       mockLangGraphAPI(page, { auditLogs: [] });
       await page.goto("/workspace/admin/audit-logs");
 
-      await expect(page.getByText("没有找到审计日志")).toBeVisible({
+      await expect(page.getByText("No audit logs found")).toBeVisible({
         timeout: 15_000,
       });
     });
@@ -135,7 +137,9 @@ test.describe("Audit logs", () => {
 
       // The action filter select trigger shows "操作类型"
       await expect(
-        page.locator('[data-testid="audit-logs-page"]').getByText("操作类型"),
+        page
+          .locator('[data-testid="audit-logs-page"]')
+          .getByText("Action Type"),
       ).toBeVisible({ timeout: 15_000 });
     });
 
@@ -144,7 +148,9 @@ test.describe("Audit logs", () => {
       await page.goto("/workspace/admin/audit-logs");
 
       await expect(
-        page.locator('[data-testid="audit-logs-page"]').getByText("资源类型"),
+        page
+          .locator('[data-testid="audit-logs-page"]')
+          .getByText("Resource Type"),
       ).toBeVisible({ timeout: 15_000 });
     });
 
@@ -152,8 +158,8 @@ test.describe("Audit logs", () => {
       mockLangGraphAPI(page, { auditLogs: MOCK_AUDIT_LOGS });
       await page.goto("/workspace/admin/audit-logs");
 
-      // The actor filter input has placeholder "用户 ID"
-      await expect(page.getByPlaceholder("用户 ID")).toBeVisible({
+      // The actor filter input has the en-US placeholder.
+      await expect(page.getByPlaceholder("User ID")).toBeVisible({
         timeout: 15_000,
       });
     });
@@ -164,10 +170,10 @@ test.describe("Audit logs", () => {
 
       // Start and end date inputs
       await expect(
-        page.locator('[data-testid="audit-logs-page"]').getByText("开始时间"),
+        page.locator('[data-testid="audit-logs-page"]').getByText("Start Time"),
       ).toBeVisible({ timeout: 15_000 });
       await expect(
-        page.locator('[data-testid="audit-logs-page"]').getByText("结束时间"),
+        page.locator('[data-testid="audit-logs-page"]').getByText("End Time"),
       ).toBeVisible();
     });
 
@@ -176,12 +182,12 @@ test.describe("Audit logs", () => {
       await page.goto("/workspace/admin/audit-logs");
 
       // Type into actor filter
-      const actorInput = page.getByPlaceholder("用户 ID");
+      const actorInput = page.getByPlaceholder("User ID");
       await actorInput.fill("user-1");
       await expect(actorInput).toHaveValue("user-1");
 
       // Click reset button
-      const resetBtn = page.getByRole("button", { name: /重置/i });
+      const resetBtn = page.getByRole("button", { name: /reset/i });
       await expect(resetBtn).toBeVisible({ timeout: 15_000 });
       await resetBtn.click();
 
@@ -201,8 +207,8 @@ test.describe("Audit logs", () => {
         .first();
       await firstCard.click();
 
-      // Detail dialog should open with title "审计日志详情"
-      await expect(page.getByText("审计日志详情")).toBeVisible({
+      // Detail dialog should open with the details title
+      await expect(page.getByText("Audit Log Details")).toBeVisible({
         timeout: 10_000,
       });
     });
@@ -218,7 +224,7 @@ test.describe("Audit logs", () => {
       await firstCard.click();
 
       // Detail dialog should show the JSON content
-      await expect(page.getByText("审计日志详情")).toBeVisible({
+      await expect(page.getByText("Audit Log Details")).toBeVisible({
         timeout: 10_000,
       });
       // The first log has detail: '{"name":"agent-alpha"}'
@@ -250,7 +256,7 @@ test.describe("Audit logs", () => {
       await page.goto("/workspace/admin");
 
       // Should show audit logs link/card on admin dashboard and be clickable
-      const auditLogsLink = page.getByRole("link", { name: /审计日志/i });
+      const auditLogsLink = page.getByRole("link", { name: /audit logs/i });
       await expect(auditLogsLink.first()).toBeVisible({
         timeout: 15_000,
       });

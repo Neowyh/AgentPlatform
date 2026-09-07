@@ -164,6 +164,20 @@ const browserPreviewExtensions = new Set([
   "mov",
   "m4v",
   "webm",
+  "svg",
+]);
+
+const imageExtensions = new Set([
+  "apng",
+  "avif",
+  "bmp",
+  "gif",
+  "ico",
+  "jpg",
+  "jpeg",
+  "png",
+  "svg",
+  "webp",
 ]);
 
 export function getFileName(filepath: string) {
@@ -195,6 +209,10 @@ export function checkCodeFile(
 
 export function canBrowserPreviewFile(filepath: string) {
   return browserPreviewExtensions.has(getFileExtension(filepath));
+}
+
+export function isImageFile(filepath: string) {
+  return imageExtensions.has(getFileExtension(filepath));
 }
 
 export function getFileExtensionDisplayName(filepath: string) {

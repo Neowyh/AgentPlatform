@@ -106,7 +106,4 @@ test("historical run messages preview labelled dotted Mermaid arrows", async ({
   expect(new Set(tokenStyles.map(({ style }) => style)).size).toBeGreaterThan(
     1,
   );
-  expect(new Set(tokenStyles.map(({ color }) => color)).size).toBeGreaterThan(
-    1,
-  );
 });

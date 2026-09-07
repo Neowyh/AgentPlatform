@@ -28,6 +28,10 @@ test.describe("Accessibility — WCAG 2.1 AA", () => {
       await page.goto(pageInfo.path);
       await page.waitForLoadState("networkidle");
       await expect(page.locator("body")).toBeVisible();
+      // Suggestions intentionally stagger their fade-in; wait for the final
+      // item to settle so axe measures the steady-state contrast, not a
+      // partially transparent animation frame.
+      await page.waitForTimeout(1_000);
 
       const results = await new AxeBuilder({ page })
         .withTags(["wcag2a", "wcag2aa", "best-practice"])

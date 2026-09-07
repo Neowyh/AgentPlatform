@@ -69,11 +69,12 @@ test("thread page links to filtered scheduled tasks", async ({ page }) => {
   });
 
   await page.goto(`/workspace/chats/${MOCK_THREAD_ID}`);
-  await page
-    .locator("header")
-    .getByRole("link", { name: /scheduled tasks/i })
-    .click();
-  await page.waitForURL(new RegExp(`thread_id=${MOCK_THREAD_ID}`));
+  await expect(
+    page.locator("header").getByRole("link", { name: /scheduled tasks/i }),
+  ).toHaveAttribute(
+    "href",
+    `/workspace/scheduled-tasks?thread_id=${MOCK_THREAD_ID}`,
+  );
 });
 
 test("user can create a scheduled task from the page", async ({ page }) => {

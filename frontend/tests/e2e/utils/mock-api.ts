@@ -8,6 +8,8 @@
 
 import type { Page, Route } from "@playwright/test";
 
+import { DEMO_THREAD_IDS } from "@/core/threads/static-demo";
+
 // ---------------------------------------------------------------------------
 // Constants — deterministic IDs used across tests
 // ---------------------------------------------------------------------------
@@ -17,6 +19,15 @@ export const MOCK_SIDECAR_THREAD_ID = "00000000-0000-0000-0000-000000000002";
 export const THREAD_PINNED_METADATA_KEY = "deerflow_pinned";
 export const MOCK_THREAD_ID_2 = "00000000-0000-0000-0000-000000000002";
 export const MOCK_RUN_ID = "00000000-0000-0000-0000-000000000099";
+
+const STATIC_DEMO_THREAD_IDS = new Set<string>(DEMO_THREAD_IDS);
+
+function isStaticDemoRequest(url: URL, threadId: string): boolean {
+  return (
+    url.pathname.startsWith("/mock/api/") &&
+    STATIC_DEMO_THREAD_IDS.has(threadId)
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -474,6 +485,17 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
   // Thread create — called when user sends first message in a new chat
   void page.route(/\/(?:api\/langgraph|mock\/api)\/threads$/, (route) => {
     if (route.request().method() === "POST") {
+      if (
+        !threads.some((thread) => thread.thread_id === MOCK_THREAD_ID) &&
+        !createdThreads.some((thread) => thread.thread_id === MOCK_THREAD_ID)
+      ) {
+        createdThreads.push({
+          thread_id: MOCK_THREAD_ID,
+          title: "New Chat",
+          updated_at: new Date().toISOString(),
+          messages: [],
+        });
+      }
       return route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -529,17 +551,29 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
     if (route.request().method() === "GET") {
       const url = new URL(route.request().url());
       const threadId = decodeURIComponent(url.pathname.split("/").pop() ?? "");
+      if (isStaticDemoRequest(url, threadId)) {
+        return route.fallback();
+      }
       const seeded = threads.find((t) => t.thread_id === threadId);
+      const created = createdThreads.find((t) => t.thread_id === threadId);
+      if (!seeded && !created) {
+        return route.fulfill({
+          status: 404,
+          contentType: "application/json",
+          body: JSON.stringify({ detail: `Thread ${threadId} not found` }),
+        });
+      }
       return route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({
           thread_id: threadId,
           created_at: "2025-01-01T00:00:00Z",
-          updated_at: seeded?.updated_at ?? "2025-01-01T00:00:00Z",
-          metadata: seeded?.metadata ?? {},
+          updated_at:
+            seeded?.updated_at ?? created?.updated_at ?? "2025-01-01T00:00:00Z",
+          metadata: seeded?.metadata ?? created?.metadata ?? {},
           status: "idle",
-          values: { title: seeded?.title ?? "Untitled" },
+          values: { title: seeded?.title ?? created?.title ?? "Untitled" },
         }),
       });
     }
@@ -574,14 +608,21 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
       // gateway route, so this reproduces the real double-delete 404 the
       // frontend must treat as idempotent success.
       const index = threads.findIndex((t) => t.thread_id === threadId);
-      if (index < 0) {
+      const createdIndex = createdThreads.findIndex(
+        (t) => t.thread_id === threadId,
+      );
+      if (index < 0 && createdIndex < 0) {
         return route.fulfill({
           status: 404,
           contentType: "application/json",
           body: JSON.stringify({ detail: `Thread ${threadId} not found` }),
         });
       }
-      threads.splice(index, 1);
+      if (index >= 0) {
+        threads.splice(index, 1);
+      } else {
+        createdThreads.splice(createdIndex, 1);
+      }
       return route.fulfill({ status: 204 });
     }
     return route.fallback();
@@ -633,10 +674,16 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
   void page.route(
     /\/(?:api\/langgraph|mock\/api)\/threads\/[^/]+\/history$/,
     (route) => {
-      const url = route.request().url();
+      const url = new URL(route.request().url());
+      const threadId = decodeURIComponent(url.pathname.split("/").at(-2) ?? "");
+      if (isStaticDemoRequest(url, threadId)) {
+        return route.fallback();
+      }
 
       // For threads that exist in our mock data, return history with messages
-      const matchingThread = threads.find((t) => url.includes(t.thread_id));
+      const matchingThread = threads.find((t) =>
+        url.href.includes(t.thread_id),
+      );
       if (matchingThread) {
         return route.fulfill({
           status: 200,
@@ -677,6 +724,39 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
     },
   );
 
+  // Durable thread history is now loaded through the gateway's paginated
+  // message feed. Keep the mock contract in sync with the legacy checkpoint
+  // history above so long-history and persisted-duration scenarios exercise
+  // the same UI path as production.
+  void page.route(
+    /\/api\/threads\/([^/]+)\/messages\/page(?:\?.*)?$/,
+    (route) => {
+      const url = new URL(route.request().url());
+      const threadId = decodeURIComponent(url.pathname.split("/").at(-3) ?? "");
+      if (STATIC_DEMO_THREAD_IDS.has(threadId)) {
+        return route.fallback();
+      }
+      const matchingThread = threads.find((t) => t.thread_id === threadId);
+      const messages = matchingThread?.messages ?? [];
+      const rows = messages.map((content, index) => ({
+        run_id: `run-${threadId}`,
+        seq: index + 1,
+        content,
+        metadata: { caller: "lead_agent" },
+        created_at: `2025-01-01T00:00:${String(index).padStart(2, "0")}Z`,
+      }));
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: rows,
+          has_more: false,
+          next_before_seq: null,
+        }),
+      });
+    },
+  );
+
   // Thread state — getState for individual thread; POST is updateState
   // (e.g. the rename flow) and must write the new values back into the seed
   // so post-invalidation refetches observe them.
@@ -688,6 +768,9 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
         const threadId = decodeURIComponent(
           url.pathname.split("/").at(-2) ?? "",
         );
+        if (isStaticDemoRequest(url, threadId)) {
+          return route.fallback();
+        }
         const body = route.request().postDataJSON() as {
           values?: { title?: string };
         } | null;
@@ -702,8 +785,16 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
         });
       }
       if (route.request().method() === "GET") {
-        const url = route.request().url();
-        const matchingThread = threads.find((t) => url.includes(t.thread_id));
+        const url = new URL(route.request().url());
+        const threadId = decodeURIComponent(
+          url.pathname.split("/").at(-2) ?? "",
+        );
+        if (isStaticDemoRequest(url, threadId)) {
+          return route.fallback();
+        }
+        const matchingThread = threads.find((t) =>
+          url.href.includes(t.thread_id),
+        );
         return route.fulfill({
           status: 200,
           contentType: "application/json",

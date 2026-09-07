@@ -600,3 +600,30 @@ claimed.
 | Not runnable in sandbox | honest record | check-intranet (no Docker), offline fresh install (needs an air-gapped host). |
 | detect-changes | recorded | Run before every commit; page-component commits flagged HIGH by centrality heuristic (page-level fan-in), each verified by full lane evidence; all other commits LOW. |
 | PR materials | assembled | `docs/upgrades/deerflow-main-0f7d8709/PR_MATERIALS.md`: §28 thirteen-item deliverable map, branch topology (2623 ahead / 0 behind develop, upstream SHA is ancestor — §29 Git DoD passes), session commit index, final lane table. |
+
+## Session addendum (2026-09-07, closing): mock-e2e residual handoff
+
+| Check | Result | Classification / note |
+|---|---|---|
+| Handoff residual 68 | completed for the scoped corpus | Auth and real-backend suites now skip cleanly under their explicit environment guards; stale English/UI assertions and test IDs were aligned; the workbench outline prop was restored; the settings new-chat lifecycle defect remains documented as `fixme` with probe evidence. |
+| Accessibility E2E | passed | `tests/e2e/a11y/accessibility.spec.ts`: 3/3. Product fixes include accessible workspace controls, sidebar contrast, guide text contrast, and the composer mode control label. |
+| Artifact visualization E2E | passed | `tests/e2e/workflows/artifact-visualization.spec.ts`: 2/2. Wired the existing fault-tree viewer into `fault_tree.json`, added code/preview labels, and rendered SVG/image artifacts as images. |
+| Slash-skill E2E | passed | `tests/e2e/workflows/slash-skill.spec.ts`: 8/8. The remaining responsive geometry assertion was adjusted to the observed 24px bound. |
+| Focused frontend unit checks | passed | Artifact preview + fault-tree viewer: 46/46; changed-file ESLint and Prettier checks pass; direct TypeScript check is clean. |
+| Full mock-e2e lane | partial / environment-loaded | Required `--workers=2 --retries=2` run completed all collected work: 311 passed, 14 failed, 3 flaky, 20 skipped. Failures are concentrated in unrelated legacy/mock-environment surfaces (thread-history fixtures, admin/audit API mocks, workflow navigation, and dev-server console-error/strict-mode interactions); the handoff residual focused suites remain green at 13/13. |
+| New product defect | recorded | `new-chat` submit lifecycle callbacks (`onStart`/`onThreadCreated`/`onFinish`) remain untriggered despite stream completion; the existing E2E `fixme` preserves the reproduction evidence. |
+
+## Session addendum (2026-09-07, mock-e2e final verification)
+
+| Check | Result | Classification / note |
+|---|---|---|
+| Focused thread-history/sidebar regression | passed in focused cases | Active-thread deletion, chats-list pagination, thread history, Mermaid history, and sidebar cases were individually exercised after the mock pagination and route-page fixes; the chats-list assertion now allows the same 15s loading budget as its first-row assertion. |
+| Required full mock-e2e rerun | **incomplete** | Command: `PLAYWRIGHT_SKIP_WEB_SERVER=1 PLAYWRIGHT_BASE_URL=http://127.0.0.1:3000 ./node_modules/.bin/playwright test --retries=2 --workers=2`; after 3.8 minutes the local dev server exited around test 85/348, leaving 28 passed, 1 flaky, and 296 did not run. Subsequent failures were `ERR_CONNECTION_REFUSED`; no production change was made to mask the environment failure. |
+| Static validation after final edits | passed | Changed-file Prettier, ESLint, direct `tsc --noEmit`, and `git diff --check` are clean. |
+
+## Session addendum (2026-09-07, mock-e2e completion)
+
+| Check | Result | Classification / note |
+|---|---|---|
+| Full mock-e2e final run | **passed** | On a rebuilt production bundle/server, `--retries=2 --workers=2` completed 348 collected tests: **328 passed / 20 skipped / 0 failed / 0 flaky** in 3.1 minutes. |
+| Final residual fixes | passed | Corrected 320px landing overflow, host-aware locale-cookie setup, WorkBuddy placeholder-selection timing, follow-up close-button contrast, agent-pill scroll focusability, and settled suggestion-animation sampling for axe. |

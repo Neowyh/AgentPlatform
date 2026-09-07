@@ -67,6 +67,7 @@ export function ChipBar<T extends string>({
     <div
       className="w-full overflow-x-auto [&::-webkit-scrollbar]:hidden"
       data-testid={testId ? `${testId}-wrap` : undefined}
+      tabIndex={0}
     >
       <div
         className="justify-[safe_center] mx-auto flex w-max min-w-full flex-nowrap items-center justify-center gap-2 overflow-x-auto [&::-webkit-scrollbar]:hidden"

@@ -17,6 +17,10 @@ export function isWriteFileArtifact(filepath: string) {
   return filepath.startsWith("write-file:");
 }
 
+export function isFaultTreeArtifact(filepath: string) {
+  return filepath.split("/").pop()?.toLowerCase() === "fault_tree.json";
+}
+
 function hasSuccessfulWriteResult(toolResult: string | undefined) {
   return toolResult?.trim() === "OK";
 }
@@ -156,8 +160,10 @@ export function getArtifactViewState({
   initialViewMode: ArtifactViewMode;
 } {
   const isWriteArtifact = isWriteFileArtifact(filepath);
+  const isFaultTree = isFaultTreeArtifact(filepath);
   const canPreview =
-    isSupportPreview && (!isWriteArtifact || !hasFailedWriteResult(toolResult));
+    (isSupportPreview || isFaultTree) &&
+    (!isWriteArtifact || !hasFailedWriteResult(toolResult));
   return {
     canPreview,
     initialViewMode: canPreview ? "preview" : "code",

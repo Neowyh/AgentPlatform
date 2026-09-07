@@ -12,6 +12,14 @@ function requiredEnv(name: string) {
   return value;
 }
 
+/** True when the Real E2E harness (GitHub Actions Real E2E lane) is present. */
+export function hasRealE2EEnvironment() {
+  if (!process.env.E2E_STATE_DIR || !process.env.E2E_RUN_ID) {
+    return false;
+  }
+  return existsSync(join(process.env.E2E_STATE_DIR, "manifest.json"));
+}
+
 export function requireRealE2EEnvironment() {
   const stateDir = requiredEnv("E2E_STATE_DIR");
   requiredEnv("E2E_RUN_ID");

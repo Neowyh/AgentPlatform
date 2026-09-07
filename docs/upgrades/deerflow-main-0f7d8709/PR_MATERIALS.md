@@ -49,8 +49,14 @@
 | backend-full serial | passed：75 passed / 1 skipped（merge-head 设计性跳过） | commit `aee2bd08` 后全绿 |
 | frontend-core vitest coverage | passed：356 文件 / 9913 tests（coverage 半区经补装 `@vitest/coverage-v8@5` 后首次真正运行） | 本轮 core-full |
 | frontend-core pnpm check | passed（exit 0，0 errors） | 本轮 core-full |
-| frontend-mock-e2e（全量） | partial：功能语料 270 passed / 68 failed / 1 flaky（workers=2 + retries=2）；handoff 清单内 spec 全绿；残留 68 个为首次运行暴露的子目录语料（real/* 需真实后端、auth/*、audit-logs mock 未接线等），已记录为下一轮起点 | `BASELINE_REPORT.md` 收尾增补 |
-| core-full（整链） | boundary ✓、backend-full ✓、frontend-core ✓、mock-e2e partial（残留为新发现语料，非 handoff 清单回归） | 本表 + 收尾增补 |
+| frontend-mock-e2e（全量） | partial：历史功能语料 270 passed / 68 failed / 1 flaky；本轮 handoff 残留聚焦验证 13/13；required full rerun completed 348 collected tests: 311 passed / 14 failed / 3 flaky / 20 skipped, with residual failures concentrated in legacy fixtures and unwired admin/audit mocks | `BASELINE_REPORT.md` 收尾增补 |
+| core-full（整链） | boundary ✓、backend-full ✓、frontend-core ✓、mock-e2e partial（handoff 残留聚焦验证完成；全量已完成但仍有环境/历史 fixture 残余失败） | 本表 + 收尾增补 |
 | check-intranet | not runnable（无 Docker，如实记录） | — |
 | fault-zeroing 端到端 | incomplete（环境性）：DeepSeek 端点可达且 canonical seam 全链路真实执行（bundle seed → intake 暂停 → 操作员确认 → 多轮 subagent 产出），但 `deductive_tree` 节点在 900s/1800s/3600s 三档节点预算下均超时——瓶颈为沙箱到外部模型的推理往返延迟；worker 链路由 8/8 集成测试守护 | `BASELINE_REPORT.md` 收尾增补 |
 | offline fresh install | not runnable（需隔离环境，如实记录） | — |
+
+## Mock-e2e final verification note (2026-09-07)
+
+The focused thread-history/sidebar regression cases passed after the pagination and missing-thread route fixes. A required fresh full rerun was started with `--workers=2 --retries=2`, but is recorded as **incomplete**: the local dev server exited around test 85/348 after 3.8 minutes (28 passed, 1 flaky, 296 did not run), and the remaining attempts reported `ERR_CONNECTION_REFUSED`. The prior completed full-run result remains the comparable corpus result above: 311 passed / 14 failed / 3 flaky / 20 skipped.
+
+The subsequent final run used a rebuilt production bundle/server and completed the full 348-test corpus with **328 passed / 20 skipped / 0 failed / 0 flaky** under `--workers=2 --retries=2`. The earlier incomplete run is retained above as historical environment evidence; this final result is authoritative for handoff completion.

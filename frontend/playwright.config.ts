@@ -2,6 +2,14 @@ import { defineConfig, devices } from "@playwright/test";
 
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000";
 const skipWebServer = process.env.PLAYWRIGHT_SKIP_WEB_SERVER === "1";
+// The mock lane's webServer always disables auth (SSR mocks assume an
+// authenticated session). The auth-flow corpus needs an auth-enabled server
+// and is opt-in: PLAYWRIGHT_AUTH_ENABLED=1 leaves the flag off for both the
+// webServer and the runner, so the specs' skip guards see the same decision.
+const authDisabled = process.env.PLAYWRIGHT_AUTH_ENABLED !== "1";
+if (authDisabled) {
+  process.env.DEER_FLOW_AUTH_DISABLED = "1";
+}
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -41,7 +49,7 @@ export default defineConfig({
         timeout: 120_000,
         env: {
           SKIP_ENV_VALIDATION: "1",
-          DEER_FLOW_AUTH_DISABLED: "1",
+          ...(authDisabled ? { DEER_FLOW_AUTH_DISABLED: "1" } : {}),
         },
       },
 });

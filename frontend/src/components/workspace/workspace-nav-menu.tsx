@@ -44,7 +44,7 @@ function NavMenuButtonContent({
   t: ReturnType<typeof useI18n>["t"];
 }) {
   return isSidebarOpen ? (
-    <div className="text-muted-foreground flex w-full items-center gap-2 text-left type-supporting">
+    <div className="text-muted-foreground type-supporting flex w-full items-center gap-2 text-left">
       <SettingsIcon className="size-4" />
       <span>{t.workspace.settingsAndMore}</span>
       <ChevronsUpDown className="text-muted-foreground ml-auto size-4" />
@@ -85,6 +85,7 @@ export function WorkspaceNavMenu() {
                 size="lg"
                 className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
                 data-testid="nav-menu-trigger"
+                aria-label={t.workspace.settingsAndMore}
               >
                 <NavMenuButtonContent isSidebarOpen={isSidebarOpen} t={t} />
               </SidebarMenuButton>

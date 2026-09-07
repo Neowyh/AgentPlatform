@@ -225,9 +225,10 @@ export const VirtualMessageList = forwardRef<
 
   useLayoutEffect(() => {
     let settleFrame: number | undefined;
+    const isFirstLoadedWindow = previousCountRef.current === 0;
     if (
       shouldVirtualize &&
-      isAtBottom &&
+      (isAtBottom || isFirstLoadedWindow) &&
       !positionedInitialVirtualWindowRef.current
     ) {
       positionedInitialVirtualWindowRef.current = true;
