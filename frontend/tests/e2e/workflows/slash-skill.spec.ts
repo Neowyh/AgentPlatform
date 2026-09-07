@@ -84,6 +84,28 @@ async function gotoChat(page: Page) {
   throw lastError;
 }
 
+/**
+ * Read the box only after two consecutive measurements agree: the overlays
+ * animate in, and a box captured mid-transition (likely when the machine is
+ * loaded) would report shifted x/width.
+ */
+async function readSettledBox(locator: import("@playwright/test").Locator) {
+  let previous = await locator.boundingBox();
+  await expect
+    .poll(async () => {
+      const current = await locator.boundingBox();
+      const stable =
+        previous !== null &&
+        current !== null &&
+        Math.abs(current.x - previous.x) <= 1 &&
+        Math.abs(current.width - previous.width) <= 1;
+      previous = current;
+      return stable;
+    })
+    .toBe(true, { timeout: 5_000 });
+  return previous;
+}
+
 test.describe("Slash skill invocation", () => {
   test("typing slash and clicking Skill anchor skill pickers to the composer", async ({
     page,
@@ -93,14 +115,19 @@ test.describe("Slash skill invocation", () => {
     const textarea = page.getByTestId("chat-input");
     const picker = page.getByTestId("slash-overlay");
 
-    // Typing "/" surfaces the inline suggestions listbox.
+    // Typing "/" surfaces the inline suggestions listbox. Disable transitions
+    // so box measurements below cannot race a mid-flight animation.
+    await page.addStyleTag({
+      content:
+        "*, *::before, *::after { transition: none !important; animation: none !important; }",
+    });
     await textarea.pressSequentially("/");
     await expect(picker).toBeVisible({ timeout: 8000 });
 
-    const slashBox = await picker.boundingBox();
     await expect(
       picker.getByRole("option").filter({ hasText: "deep-research" }).first(),
     ).toBeVisible();
+    const slashBox = await readSettledBox(picker);
 
     await textarea.press("Escape");
     await expect(picker).not.toBeVisible();
@@ -109,11 +136,9 @@ test.describe("Slash skill invocation", () => {
     await page.getByTestId("skill-selector-trigger").click();
     await expect(picker).toBeVisible({ timeout: 8000 });
 
-    const buttonBox = await picker.boundingBox();
-    expect(
-      await picker.getByTestId("slash-option-deep-research"),
-    ).toBeVisible();
-    const inputBox = await textarea.boundingBox();
+    await expect(page.getByTestId("slash-option-deep-research")).toBeVisible();
+    const buttonBox = await readSettledBox(picker);
+    const inputBox = await readSettledBox(textarea);
 
     expect(slashBox).not.toBeNull();
     expect(buttonBox).not.toBeNull();

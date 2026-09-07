@@ -5,6 +5,12 @@ const skipWebServer = process.env.PLAYWRIGHT_SKIP_WEB_SERVER === "1";
 
 export default defineConfig({
   testDir: "./tests/e2e",
+  // The visual-regression specs belong to the frontend-visual lane
+  // (screenshots depend on machine font rendering); keep them out of the
+  // default functional collection unless that lane opts in.
+  testIgnore: process.env.PLAYWRIGHT_VISUAL
+    ? []
+    : ["tests/e2e/visual/**/*.spec.ts"],
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
