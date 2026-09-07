@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
-PKG_DIR = REPO_ROOT / "backend" / "packages" / "harness" / "ideer" / "fault_zeroing"
+PKG_DIR = REPO_ROOT / "backend" / "app" / "agentplatform" / "fault_zeroing"
 
 
 def load_module(name: str, path: Path):
@@ -54,6 +54,7 @@ class FakeStore:
         self.runs: dict[str, FakeRun] = {}
         self.events: list[tuple[str, str, dict]] = []
         self.commands: list[tuple[str, str, str, dict]] = []
+        self.canonical_calls: list[tuple] = []
 
     async def create_run(self, run_id, workflow_name, definition_version, inputs, created_by, *, snapshot=None, department_id=None):
         run = FakeRun(run_id, workflow_name, definition_version, dict(inputs), created_by, snapshot=dict(snapshot or {}))
@@ -86,6 +87,26 @@ class FakeStore:
     async def submit_command(self, command_id, run_id, command_type, payload, created_by):
         self.commands.append((command_id, run_id, command_type, dict(payload)))
         return type("Cmd", (), {"command_id": command_id})()
+
+    async def create_canonical_run(self, run_id, workflow_resource_id, inputs, actor, **kwargs):
+        self.canonical_calls.append(("create_canonical_run", run_id, workflow_resource_id, actor))
+        run = FakeRun(run_id, "fault-zeroing", 1, dict(inputs), actor.user_id, snapshot={"run_evidence": {}})
+        self.runs[run_id] = run
+        return run
+
+    async def create_canonical_paused_run(self, run_id, workflow_resource_id, inputs, actor, *, intake_snapshot=None):
+        self.canonical_calls.append(("create_canonical_paused_run", run_id, workflow_resource_id, actor))
+        run = FakeRun(
+            run_id,
+            "fault-zeroing",
+            1,
+            dict(inputs),
+            actor.user_id,
+            status="paused",
+            snapshot=dict(intake_snapshot or {}),
+        )
+        self.runs[run_id] = run
+        return run
 
 
 # ---------------------------------------------------------------------------
@@ -179,6 +200,85 @@ def test_start_run_rejects_when_both_sides_missing(kernel_env) -> None:
 
     assert excinfo.value.reason_code == "intake_evidence_missing_both"
     assert store.runs == {}  # no usable run is created
+
+
+# ---------------------------------------------------------------------------
+# Canonical resource runs (frozen UUID closure through the same intake gate).
+# ---------------------------------------------------------------------------
+
+
+def _actor():
+    return type("Actor", (), {"user_id": "user-1", "department_id": None, "tool_groups": None})()
+
+
+def test_start_canonical_run_queues_through_frozen_closure(kernel_env) -> None:
+    _, _, _, _, kernel, store, _ = kernel_env
+    actor = _actor()
+
+    result = asyncio.run(
+        kernel.start_run(
+            workflow_name="fault-zeroing",
+            definition_version=1,
+            inputs=dict(BASE_INPUTS),
+            created_by="user-1",
+            workflow_resource_id="wf-resource-uuid",
+            actor=actor,
+        )
+    )
+
+    assert result.status == "queued"
+    # The canonical contract, not the legacy name+version rows.
+    assert [call[0] for call in store.canonical_calls] == ["create_canonical_run"]
+    assert store.canonical_calls[0][2] == "wf-resource-uuid"
+    # The intake contract stays pinned on the canonical run snapshot.
+    assert store.runs[result.run_id].snapshot["contract_version"] == kernel._contract_version
+    assert any(event_type == "run_started" for _, event_type, _ in store.events)
+
+
+def test_start_canonical_run_pauses_with_intake_snapshot(kernel_env) -> None:
+    _, _, _, _, kernel, store, _ = kernel_env
+    actor = _actor()
+    inputs = {"upload_dir": "/mnt/user-data/uploads", "evidence_mode": "hybrid"}
+
+    result = asyncio.run(
+        kernel.start_run(
+            workflow_name="fault-zeroing",
+            definition_version=1,
+            inputs=inputs,
+            created_by="user-1",
+            workflow_resource_id="wf-resource-uuid",
+            actor=actor,
+        )
+    )
+
+    assert result.status == "paused"
+    assert [call[0] for call in store.canonical_calls] == ["create_canonical_paused_run"]
+    run = store.runs[result.run_id]
+    assert run.status == "paused"
+    # The paused canonical run keeps the intake record the confirm path reads.
+    assert run.snapshot["interrupt"][0]["type"] == "evidence_confirmation"
+    assert run.snapshot["contract_version"] == kernel._contract_version
+    assert any(event_type == "interrupted" for _, event_type, _ in store.events)
+
+
+def test_start_canonical_run_rejects_before_creating_anything(kernel_env) -> None:
+    _, _, _, kernel_mod, kernel, store, _ = kernel_env
+    actor = _actor()
+
+    with pytest.raises(kernel_mod.EvidenceIntakeRejected):
+        asyncio.run(
+            kernel.start_run(
+                workflow_name="fault-zeroing",
+                definition_version=1,
+                inputs={"evidence_mode": "hybrid"},
+                created_by="user-1",
+                workflow_resource_id="wf-resource-uuid",
+                actor=actor,
+            )
+        )
+
+    assert store.canonical_calls == []
+    assert store.runs == {}
 
 
 def test_confirm_evidence_resumes_paused_run(kernel_env) -> None:

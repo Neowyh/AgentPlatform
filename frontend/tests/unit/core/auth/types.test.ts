@@ -17,6 +17,7 @@ describe("userSchema", () => {
       email: "alice@example.com",
       system_role: "super_admin",
       needs_setup: true,
+      oauth_provider: null,
     };
     const result = userSchema.safeParse(input);
     expect(result.success).toBe(true);

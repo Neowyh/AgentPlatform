@@ -1,7 +1,7 @@
 """Comprehensive tests for doc_reader/tools.py targeting 98%+ coverage.
 
 Covers every function and branch in
-``packages/harness/ideer/community/doc_reader/tools.py``.
+``app/agentplatform/community/doc_reader/tools.py``.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from ideer.community.doc_reader.tools import (
+from app.agentplatform.community.doc_reader.tools import (
     _ALLOWED_PATH_PREFIXES,
     _DEFAULT_MAX_CHARS,
     _MAX_FILE_SIZE,
@@ -335,7 +335,7 @@ class TestReadDocumentToolErrors:
         try:
             import stat as stat_mod
 
-            with patch("ideer.community.doc_reader.tools.Path.stat") as mock_stat:
+            with patch("app.agentplatform.community.doc_reader.tools.Path.stat") as mock_stat:
                 mock_stat_result = MagicMock()
                 mock_stat_result.st_size = _MAX_FILE_SIZE + 1
                 # is_file() also calls stat() and checks S_ISREG(st_mode)
@@ -354,7 +354,7 @@ class TestReadDocumentToolErrors:
         path = _make_tmp_file(suffix=".docx")
         try:
             with patch(
-                "ideer.community.doc_reader.tools.convert_file_to_markdown",
+                "app.agentplatform.community.doc_reader.tools.convert_file_to_markdown",
                 new_callable=AsyncMock,
                 side_effect=RuntimeError("boom"),
             ):
@@ -370,7 +370,7 @@ class TestReadDocumentToolErrors:
         path = _make_tmp_file(suffix=".docx")
         try:
             with patch(
-                "ideer.community.doc_reader.tools.convert_file_to_markdown",
+                "app.agentplatform.community.doc_reader.tools.convert_file_to_markdown",
                 new_callable=AsyncMock,
                 return_value=None,
             ):
@@ -387,7 +387,7 @@ class TestReadDocumentToolErrors:
         try:
             fake_md_path = Path("/tmp/nonexistent_output.md")
             with patch(
-                "ideer.community.doc_reader.tools.convert_file_to_markdown",
+                "app.agentplatform.community.doc_reader.tools.convert_file_to_markdown",
                 new_callable=AsyncMock,
                 return_value=fake_md_path,
             ):
@@ -407,7 +407,7 @@ class TestReadDocumentToolErrors:
             md_path.write_text("placeholder", encoding="utf-8")
             with (
                 patch(
-                    "ideer.community.doc_reader.tools.convert_file_to_markdown",
+                    "app.agentplatform.community.doc_reader.tools.convert_file_to_markdown",
                     new_callable=AsyncMock,
                     return_value=md_path,
                 ),
@@ -431,7 +431,7 @@ class TestReadDocumentToolErrors:
         try:
             md_path.write_text("   \n  ", encoding="utf-8")
             with patch(
-                "ideer.community.doc_reader.tools.convert_file_to_markdown",
+                "app.agentplatform.community.doc_reader.tools.convert_file_to_markdown",
                 new_callable=AsyncMock,
                 return_value=md_path,
             ):
@@ -464,12 +464,12 @@ class TestReadDocumentToolSuccess:
             md_path.write_text("# Hello World\n\nSome content.", encoding="utf-8")
             with (
                 patch(
-                    "ideer.community.doc_reader.tools.convert_file_to_markdown",
+                    "app.agentplatform.community.doc_reader.tools.convert_file_to_markdown",
                     new_callable=AsyncMock,
                     return_value=md_path,
                 ),
                 patch(
-                    "ideer.community.doc_reader.tools._get_page_count",
+                    "app.agentplatform.community.doc_reader.tools._get_page_count",
                     return_value=None,
                 ),
             ):
@@ -494,12 +494,12 @@ class TestReadDocumentToolSuccess:
             md_path.write_text("# PDF Content\n\nSome text.", encoding="utf-8")
             with (
                 patch(
-                    "ideer.community.doc_reader.tools.convert_file_to_markdown",
+                    "app.agentplatform.community.doc_reader.tools.convert_file_to_markdown",
                     new_callable=AsyncMock,
                     return_value=md_path,
                 ),
                 patch(
-                    "ideer.community.doc_reader.tools._get_page_count",
+                    "app.agentplatform.community.doc_reader.tools._get_page_count",
                     return_value=10,
                 ),
             ):
@@ -522,7 +522,7 @@ class TestReadDocumentToolSuccess:
         try:
             md_path.write_text("| Col1 | Col2 |\n|---|---|\n| A | B |", encoding="utf-8")
             with patch(
-                "ideer.community.doc_reader.tools.convert_file_to_markdown",
+                "app.agentplatform.community.doc_reader.tools.convert_file_to_markdown",
                 new_callable=AsyncMock,
                 return_value=md_path,
             ):
@@ -543,7 +543,7 @@ class TestReadDocumentToolSuccess:
         try:
             md_path.write_text("# Slide 1\n\nContent here.", encoding="utf-8")
             with patch(
-                "ideer.community.doc_reader.tools.convert_file_to_markdown",
+                "app.agentplatform.community.doc_reader.tools.convert_file_to_markdown",
                 new_callable=AsyncMock,
                 return_value=md_path,
             ):
@@ -564,7 +564,7 @@ class TestReadDocumentToolSuccess:
         try:
             md_path.write_text("Body text.", encoding="utf-8")
             with patch(
-                "ideer.community.doc_reader.tools.convert_file_to_markdown",
+                "app.agentplatform.community.doc_reader.tools.convert_file_to_markdown",
                 new_callable=AsyncMock,
                 return_value=md_path,
             ):
@@ -592,7 +592,7 @@ class TestReadDocumentToolSuccess:
         try:
             md_path.write_text("Body.", encoding="utf-8")
             with patch(
-                "ideer.community.doc_reader.tools.convert_file_to_markdown",
+                "app.agentplatform.community.doc_reader.tools.convert_file_to_markdown",
                 new_callable=AsyncMock,
                 return_value=md_path,
             ):
@@ -619,7 +619,7 @@ class TestReadDocumentToolSuccess:
             large_content = "x" * (_DEFAULT_MAX_CHARS + 10000)
             md_path.write_text(large_content, encoding="utf-8")
             with patch(
-                "ideer.community.doc_reader.tools.convert_file_to_markdown",
+                "app.agentplatform.community.doc_reader.tools.convert_file_to_markdown",
                 new_callable=AsyncMock,
                 return_value=md_path,
             ):
@@ -641,7 +641,7 @@ class TestReadDocumentToolSuccess:
         try:
             md_path.write_text("Content.", encoding="utf-8")
             with patch(
-                "ideer.community.doc_reader.tools.convert_file_to_markdown",
+                "app.agentplatform.community.doc_reader.tools.convert_file_to_markdown",
                 new_callable=AsyncMock,
                 return_value=md_path,
             ):
@@ -671,11 +671,11 @@ class TestReadDocumentToolPdfPageRange:
         try:
             with (
                 patch(
-                    "ideer.community.doc_reader.tools._extract_pdf_pages",
+                    "app.agentplatform.community.doc_reader.tools._extract_pdf_pages",
                     return_value="# Pages 1-3 content",
                 ),
                 patch(
-                    "ideer.community.doc_reader.tools._get_page_count",
+                    "app.agentplatform.community.doc_reader.tools._get_page_count",
                     return_value=10,
                 ),
             ):
@@ -693,11 +693,11 @@ class TestReadDocumentToolPdfPageRange:
         try:
             with (
                 patch(
-                    "ideer.community.doc_reader.tools._extract_pdf_pages",
+                    "app.agentplatform.community.doc_reader.tools._extract_pdf_pages",
                     return_value="# Extracted pages",
                 ),
                 patch(
-                    "ideer.community.doc_reader.tools._get_page_count",
+                    "app.agentplatform.community.doc_reader.tools._get_page_count",
                     return_value=None,
                 ),
             ):
@@ -716,16 +716,16 @@ class TestReadDocumentToolPdfPageRange:
             md_path.write_text("# Full Document Content", encoding="utf-8")
             with (
                 patch(
-                    "ideer.community.doc_reader.tools._extract_pdf_pages",
+                    "app.agentplatform.community.doc_reader.tools._extract_pdf_pages",
                     return_value=None,
                 ),
                 patch(
-                    "ideer.community.doc_reader.tools.convert_file_to_markdown",
+                    "app.agentplatform.community.doc_reader.tools.convert_file_to_markdown",
                     new_callable=AsyncMock,
                     return_value=md_path,
                 ),
                 patch(
-                    "ideer.community.doc_reader.tools._get_page_count",
+                    "app.agentplatform.community.doc_reader.tools._get_page_count",
                     return_value=5,
                 ),
             ):
@@ -747,11 +747,11 @@ class TestReadDocumentToolPdfPageRange:
             large_text = "x" * (_DEFAULT_MAX_CHARS + 5000)
             with (
                 patch(
-                    "ideer.community.doc_reader.tools._extract_pdf_pages",
+                    "app.agentplatform.community.doc_reader.tools._extract_pdf_pages",
                     return_value=large_text,
                 ),
                 patch(
-                    "ideer.community.doc_reader.tools._get_page_count",
+                    "app.agentplatform.community.doc_reader.tools._get_page_count",
                     return_value=100,
                 ),
             ):
@@ -770,10 +770,10 @@ class TestReadDocumentToolPdfPageRange:
             md_path.write_text("Word content.", encoding="utf-8")
             with (
                 patch(
-                    "ideer.community.doc_reader.tools._extract_pdf_pages",
+                    "app.agentplatform.community.doc_reader.tools._extract_pdf_pages",
                 ) as mock_extract,
                 patch(
-                    "ideer.community.doc_reader.tools.convert_file_to_markdown",
+                    "app.agentplatform.community.doc_reader.tools.convert_file_to_markdown",
                     new_callable=AsyncMock,
                     return_value=md_path,
                 ),
@@ -797,12 +797,12 @@ class TestReadDocumentToolPdfPageRange:
             md_path.write_text("# Full PDF Content", encoding="utf-8")
             with (
                 patch(
-                    "ideer.community.doc_reader.tools.convert_file_to_markdown",
+                    "app.agentplatform.community.doc_reader.tools.convert_file_to_markdown",
                     new_callable=AsyncMock,
                     return_value=md_path,
                 ),
                 patch(
-                    "ideer.community.doc_reader.tools._get_page_count",
+                    "app.agentplatform.community.doc_reader.tools._get_page_count",
                     return_value=20,
                 ),
             ):
@@ -834,7 +834,7 @@ class TestReadDocumentToolCleanup:
             md_path.write_text("Content.", encoding="utf-8")
             with (
                 patch(
-                    "ideer.community.doc_reader.tools.convert_file_to_markdown",
+                    "app.agentplatform.community.doc_reader.tools.convert_file_to_markdown",
                     new_callable=AsyncMock,
                     return_value=md_path,
                 ),
@@ -856,7 +856,7 @@ class TestReadDocumentToolCleanup:
         path = _make_tmp_file(suffix=".docx")
         try:
             with patch(
-                "ideer.community.doc_reader.tools.convert_file_to_markdown",
+                "app.agentplatform.community.doc_reader.tools.convert_file_to_markdown",
                 new_callable=AsyncMock,
                 side_effect=RuntimeError("fail"),
             ):
@@ -887,12 +887,12 @@ class TestSupportedExtensions:
             md_path.write_text("Content.", encoding="utf-8")
             with (
                 patch(
-                    "ideer.community.doc_reader.tools.convert_file_to_markdown",
+                    "app.agentplatform.community.doc_reader.tools.convert_file_to_markdown",
                     new_callable=AsyncMock,
                     return_value=md_path,
                 ),
                 patch(
-                    "ideer.community.doc_reader.tools._get_page_count",
+                    "app.agentplatform.community.doc_reader.tools._get_page_count",
                     return_value=None,
                 ),
             ):
@@ -923,12 +923,12 @@ class TestSupportedExtensions:
             md_path.write_text("Legacy doc content.", encoding="utf-8")
             with (
                 patch(
-                    "ideer.community.doc_reader.tools.convert_file_to_markdown",
+                    "app.agentplatform.community.doc_reader.tools.convert_file_to_markdown",
                     new_callable=AsyncMock,
                     return_value=md_path,
                 ),
                 patch(
-                    "ideer.community.doc_reader.tools._get_page_count",
+                    "app.agentplatform.community.doc_reader.tools._get_page_count",
                     return_value=None,
                 ),
             ):
@@ -946,7 +946,7 @@ class TestSupportedExtensions:
         path = _make_tmp_file(suffix=".doc")
         try:
             with patch(
-                "ideer.community.doc_reader.tools.convert_file_to_markdown",
+                "app.agentplatform.community.doc_reader.tools.convert_file_to_markdown",
                 new_callable=AsyncMock,
                 return_value=None,
             ):
@@ -1018,12 +1018,12 @@ class TestVirtualPathResolution:
 
         with (
             patch(
-                "ideer.community.doc_reader.tools.convert_file_to_markdown",
+                "app.agentplatform.community.doc_reader.tools.convert_file_to_markdown",
                 new_callable=AsyncMock,
                 return_value=md_path,
             ),
             patch(
-                "ideer.community.doc_reader.tools._get_page_count",
+                "app.agentplatform.community.doc_reader.tools._get_page_count",
                 return_value=None,
             ),
         ):
@@ -1039,7 +1039,7 @@ class TestVirtualPathResolution:
         doc.write_bytes(b"%PDF-1.4 fake")
         # page-range extraction path avoids convert_file_to_markdown entirely.
         with patch(
-            "ideer.community.doc_reader.tools._extract_pdf_pages",
+            "app.agentplatform.community.doc_reader.tools._extract_pdf_pages",
             return_value="# 页面内容",
         ):
             result = await read_document_tool.ainvoke(
@@ -1105,7 +1105,7 @@ class TestCustomMountResolution:
         host_dir = tmp_path / "eval-host"
         host_dir.mkdir()
         mounts = [SimpleNamespace(host_path=str(host_dir), container_path="/mnt/eval-case", read_only=True)]
-        import ideer.sandbox.tools as sandbox_tools
+        import deerflow.sandbox.tools as sandbox_tools
 
         monkeypatch.setattr(sandbox_tools, "_get_custom_mounts", lambda mounts=mounts: mounts)
         yield host_dir
@@ -1113,12 +1113,12 @@ class TestCustomMountResolution:
     def _patch_conversion(self, md_path: Path):
         return (
             patch(
-                "ideer.community.doc_reader.tools.convert_file_to_markdown",
+                "app.agentplatform.community.doc_reader.tools.convert_file_to_markdown",
                 new_callable=AsyncMock,
                 return_value=md_path,
             ),
             patch(
-                "ideer.community.doc_reader.tools._get_page_count",
+                "app.agentplatform.community.doc_reader.tools._get_page_count",
                 return_value=None,
             ),
         )
@@ -1145,7 +1145,7 @@ class TestCustomMountResolution:
     async def test_invisible_mount_gets_deployment_hint(self, tmp_path: Path):
         """A declared mount whose host_path is invisible to this process gets an
         actionable error instead of the generic whitelist message."""
-        from ideer.config import get_app_config as _real  # noqa: F401
+        from deerflow.config import get_app_config as _real  # noqa: F401
 
         fake_config = SimpleNamespace(
             sandbox=SimpleNamespace(
@@ -1161,11 +1161,11 @@ class TestCustomMountResolution:
         # Ensure the shared cache does not know this mount either.
         with (
             patch(
-                "ideer.sandbox.tools._get_custom_mounts",
+                "deerflow.sandbox.tools._get_custom_mounts",
                 return_value=[],
             ),
             patch(
-                "ideer.config.get_app_config",
+                "deerflow.config.get_app_config",
                 return_value=fake_config,
             ),
         ):
@@ -1184,7 +1184,7 @@ class TestCustomMountResolution:
             SimpleNamespace(host_path=str(parent_host), container_path="/mnt/data", read_only=True),
             SimpleNamespace(host_path=str(child_host), container_path="/mnt/data/sub", read_only=True),
         ]
-        import ideer.sandbox.tools as sandbox_tools
+        import deerflow.sandbox.tools as sandbox_tools
 
         monkeypatch.setattr(sandbox_tools, "_get_custom_mounts", lambda mounts=mounts: mounts)
         resolved_child = _resolve_mounted_path("/mnt/data/sub/a.pdf")
@@ -1202,7 +1202,7 @@ class TestMcpServerMountWhitelist:
     """
 
     def _import_mcp_server(self):
-        from ideer.community.doc_reader import mcp_server
+        from app.agentplatform.community.doc_reader import mcp_server
 
         return mcp_server
 
@@ -1218,16 +1218,16 @@ class TestMcpServerMountWhitelist:
         md_path = tmp_path / "report.md"
         md_path.write_text("# 经由 MCP 包装读取", encoding="utf-8")
         mounts = [SimpleNamespace(host_path=str(host_dir), container_path="/mnt/mcp-case", read_only=True)]
-        import ideer.sandbox.tools as sandbox_tools
+        import deerflow.sandbox.tools as sandbox_tools
 
         monkeypatch.setattr(sandbox_tools, "_get_custom_mounts", lambda mounts=mounts: mounts)
         with (
             patch(
-                "ideer.community.doc_reader.tools.convert_file_to_markdown",
+                "app.agentplatform.community.doc_reader.tools.convert_file_to_markdown",
                 new_callable=AsyncMock,
                 return_value=md_path,
             ),
-            patch("ideer.community.doc_reader.tools._get_page_count", return_value=None),
+            patch("app.agentplatform.community.doc_reader.tools._get_page_count", return_value=None),
         ):
             result = await mcp_server.read_document(file_path="/mnt/mcp-case/case/report.docx")
         assert "经由 MCP 包装读取" in result
@@ -1250,9 +1250,9 @@ class TestCommunityMcpServersSmoke:
     @pytest.mark.parametrize(
         ("module_name", "expected_tool"),
         [
-            ("ideer.community.doc_reader.mcp_server", "read_document"),
-            ("ideer.community.data_analyzer.mcp_server", "data_analyzer"),
-            ("ideer.community.code_interpreter.mcp_server", "code_interpreter"),
+            ("app.agentplatform.community.doc_reader.mcp_server", "read_document"),
+            ("app.agentplatform.community.data_analyzer.mcp_server", "data_analyzer"),
+            ("app.agentplatform.community.code_interpreter.mcp_server", "code_interpreter"),
         ],
     )
     def test_server_boots_with_expected_tool(self, module_name: str, expected_tool: str):

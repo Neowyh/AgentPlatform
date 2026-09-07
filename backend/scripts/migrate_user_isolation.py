@@ -10,7 +10,7 @@ import argparse
 import logging
 import shutil
 
-from ideer.config.paths import Paths, get_paths
+from deerflow.config.paths import Paths, get_paths
 
 logger = logging.getLogger(__name__)
 
@@ -162,6 +162,56 @@ def migrate_memory(
         shutil.move(str(legacy_mem), str(dest))
 
 
+def migrate_skills(
+    paths: Paths,
+    user_id: str = "default",
+    *,
+    dry_run: bool = False,
+) -> list[dict]:
+    """Move legacy custom skills into the user-scoped layout.
+
+    The migration script intentionally computes these paths from ``base_dir``
+    instead of calling a newer ``Paths`` helper: this keeps the one-time script
+    usable against both the legacy iDeer path object and the DeerFlow path
+    object while the rest of the process is still in the dual-runtime bridge.
+    Public skills remain in ``skills/public`` and the shared ``skills`` parent
+    is never removed.
+    """
+
+    report: list[dict] = []
+    legacy_custom = paths.base_dir / "skills" / "custom"
+    if not legacy_custom.exists():
+        logger.info("No legacy custom skills directory found — nothing to migrate.")
+        return report
+
+    destination_root = paths.base_dir / "users" / user_id / "skills" / "custom"
+    for skill_dir in sorted(legacy_custom.iterdir()):
+        if not skill_dir.is_dir():
+            continue
+        skill_name = skill_dir.name
+        destination = destination_root / skill_name
+        entry = {"skill": skill_name, "user_id": user_id, "action": ""}
+
+        if destination.exists():
+            conflicts_dir = paths.base_dir / "migration-conflicts" / "skills" / skill_name
+            entry["action"] = f"conflict -> {conflicts_dir}"
+            if not dry_run:
+                conflicts_dir.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(skill_dir), str(conflicts_dir))
+            logger.warning("Conflict for skill %s: moved to %s", skill_name, conflicts_dir)
+        else:
+            entry["action"] = f"moved -> {destination}"
+            if not dry_run:
+                destination_root.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(skill_dir), str(destination))
+            logger.info("Migrated skill %s -> user %s", skill_name, user_id)
+        report.append(entry)
+
+    if not dry_run and legacy_custom.exists() and not any(legacy_custom.iterdir()):
+        legacy_custom.rmdir()
+    return report
+
+
 def _build_owner_map_from_db(paths: Paths) -> dict[str, str]:
     """Query threads_meta table for thread_id -> user_id mapping.
 
@@ -186,7 +236,7 @@ def _build_owner_map_from_db(paths: Paths) -> dict[str, str]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Migrate iDeer data to per-user layout")
+    parser = argparse.ArgumentParser(description="Migrate DeerFlow data to per-user layout")
     parser.add_argument("--dry-run", action="store_true", help="Log actions without making changes")
     parser.add_argument(
         "--user-id",
@@ -209,6 +259,7 @@ def main() -> None:
     report = migrate_thread_dirs(paths, owner_map, dry_run=args.dry_run)
     migrate_memory(paths, user_id=args.user_id, dry_run=args.dry_run)
     agent_report = migrate_agents(paths, user_id=args.user_id, dry_run=args.dry_run)
+    skill_report = migrate_skills(paths, user_id=args.user_id, dry_run=args.dry_run)
 
     if report:
         logger.info("Thread migration report:")
@@ -223,6 +274,13 @@ def main() -> None:
             logger.info("  agent=%s user=%s action=%s", entry["agent"], entry["user_id"], entry["action"])
     else:
         logger.info("No agents to migrate.")
+
+    if skill_report:
+        logger.info("Skill migration report:")
+        for entry in skill_report:
+            logger.info("  skill=%s user=%s action=%s", entry["skill"], entry["user_id"], entry["action"])
+    else:
+        logger.info("No skills to migrate.")
 
     unowned = [e for e in report if e["user_id"] == "default"]
     if unowned:

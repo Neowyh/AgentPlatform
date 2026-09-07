@@ -71,7 +71,12 @@ describe("useModels", () => {
       wrapper: createWrapper(),
     });
 
-    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    // The hook retains one retry for transient network errors (#4840/#5021),
+    // so the error state settles after the ~1s retry delay.
+    await waitFor(
+      () => expect(result.current.isLoading).toBe(false),
+      { timeout: 4000 },
+    );
 
     expect(result.current.models).toEqual([]);
     expect(result.current.error).toBeDefined();

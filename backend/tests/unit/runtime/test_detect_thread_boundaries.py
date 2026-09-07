@@ -160,7 +160,9 @@ def test_json_output_and_min_severity_filter(tmp_path, capsys):
 
     assert exit_code == 0
     payload = json.loads(capsys.readouterr().out)
-    categories = {finding["category"] for finding in payload}
+    # Upstream emits an inventory envelope with the findings listed under
+    # "static_findings" (plus schema_version / runtime / summary keys).
+    categories = {finding["category"] for finding in payload["static_findings"]}
     assert categories == {"SYNC_INVOKE_IN_ASYNC"}
 
 

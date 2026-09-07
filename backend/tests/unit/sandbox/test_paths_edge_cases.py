@@ -1,4 +1,4 @@
-"""Extended coverage tests for ideer.config.paths module.
+"""Extended coverage tests for deerflow.config.paths module.
 
 Targets the uncovered lines in host_base_dir, _host_base_dir_str,
 _join_host_path (Windows paths), _validate_thread_id, _validate_user_id,
@@ -14,7 +14,7 @@ from unittest.mock import patch
 
 import pytest
 
-from ideer.config.paths import (
+from deerflow.config.paths import (
     Paths,
     _join_host_path,
     _validate_thread_id,
@@ -109,20 +109,20 @@ class TestJoinHostPath:
 class TestHostBaseDir:
     def test_falls_back_to_base_dir(self, paths: Paths):
         with patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("IDEER_HOST_BASE_DIR", None)
+            os.environ.pop("DEER_FLOW_HOST_BASE_DIR", None)
             assert paths.host_base_dir == paths.base_dir
 
     def test_uses_env_var(self, paths: Paths, monkeypatch):
-        monkeypatch.setenv("IDEER_HOST_BASE_DIR", "/host/path")
+        monkeypatch.setenv("DEER_FLOW_HOST_BASE_DIR", "/host/path")
         assert paths.host_base_dir == Path("/host/path")
 
     def test_host_base_dir_str_falls_back(self, paths: Paths):
         with patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("IDEER_HOST_BASE_DIR", None)
+            os.environ.pop("DEER_FLOW_HOST_BASE_DIR", None)
             assert paths._host_base_dir_str() == str(paths.base_dir)
 
     def test_host_base_dir_str_uses_env(self, paths: Paths, monkeypatch):
-        monkeypatch.setenv("IDEER_HOST_BASE_DIR", "/host/path")
+        monkeypatch.setenv("DEER_FLOW_HOST_BASE_DIR", "/host/path")
         assert paths._host_base_dir_str() == "/host/path"
 
 
@@ -148,10 +148,8 @@ class TestPathsProperties:
         assert paths.agent_dir("MyAgent") == paths.base_dir / "agents" / "myagent"
 
     def test_agent_memory_file(self, paths: Paths):
-        assert paths.agent_memory_file("test") == paths.base_dir / "agent-memory" / "test" / "memory.json"
-
-    def test_legacy_agent_memory_file(self, paths: Paths):
-        assert paths.legacy_agent_memory_file("test") == paths.base_dir / "agents" / "test" / "memory.json"
+        # Upstream keeps the legacy agents/<name>/memory.json layout.
+        assert paths.agent_memory_file("test") == paths.base_dir / "agents" / "test" / "memory.json"
 
 
 # ---------------------------------------------------------------------------

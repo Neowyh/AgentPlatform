@@ -14,7 +14,7 @@ import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
-from ideer.persistence.base import Base
+from deerflow.persistence.base import Base
 
 # ---------------------------------------------------------------------------
 # Raw DDL — visibility_applications with the OLD (global) pending index
@@ -71,8 +71,8 @@ def _run(session, *, dry_run=False):
 
     url = session.get_bind().url.render_as_string(hide_password=False).replace("sqlite://", "sqlite+aiosqlite://")
     sf = async_sessionmaker(bind=create_async_engine(url), expire_on_commit=False)
-    with patch("ideer.scripts.migrate_visibility_app_pending_index.get_session_factory", return_value=sf):
-        from ideer.scripts.migrate_visibility_app_pending_index import migrate_visibility_app_pending_index
+    with patch("app.agentplatform.persistence.scripts.migrate_visibility_app_pending_index.get_session_factory", return_value=sf):
+        from app.agentplatform.persistence.scripts.migrate_visibility_app_pending_index import migrate_visibility_app_pending_index
 
         return asyncio.run(migrate_visibility_app_pending_index(dry_run=dry_run))
 
@@ -118,8 +118,8 @@ class TestMigration:
         assert len([idx for idx in indexes if idx[1] == "uq_visibility_app_pending"]) == 1
 
     def test_uninitialized_db_returns_skipped(self):
-        with patch("ideer.scripts.migrate_visibility_app_pending_index.get_session_factory", return_value=None):
-            from ideer.scripts.migrate_visibility_app_pending_index import migrate_visibility_app_pending_index
+        with patch("app.agentplatform.persistence.scripts.migrate_visibility_app_pending_index.get_session_factory", return_value=None):
+            from app.agentplatform.persistence.scripts.migrate_visibility_app_pending_index import migrate_visibility_app_pending_index
 
             assert asyncio.run(migrate_visibility_app_pending_index())["action"] == "skipped"
 

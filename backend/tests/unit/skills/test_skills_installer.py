@@ -1,4 +1,4 @@
-"""Tests for ideer.skills.installer — shared skill installation logic."""
+"""Tests for deerflow.skills.installer — shared skill installation logic."""
 
 import shutil
 import stat
@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from ideer.skills.installer import (
+from deerflow.skills.installer import (
     SkillSecurityScanError,
     is_symlink_member,
     is_unsafe_zip_member,
@@ -15,8 +15,8 @@ from ideer.skills.installer import (
     safe_extract_skill_archive,
     should_ignore_archive_entry,
 )
-from ideer.skills.security_scanner import ScanResult
-from ideer.skills.storage import get_or_new_skill_storage
+from deerflow.skills.security_scanner import ScanResult
+from deerflow.skills.storage import get_or_new_skill_storage
 
 # ---------------------------------------------------------------------------
 # is_unsafe_zip_member
@@ -177,7 +177,7 @@ class TestInstallSkillFromArchive:
         async def _scan(*args, **kwargs):
             return ScanResult(decision="allow", reason="ok")
 
-        monkeypatch.setattr("ideer.skills.installer.scan_skill_content", _scan)
+        monkeypatch.setattr("deerflow.skills.installer.scan_skill_content", _scan)
 
     def _make_skill_zip(self, tmp_path: Path, skill_name: str = "test-skill") -> Path:
         """Create a valid .skill archive."""
@@ -196,7 +196,7 @@ class TestInstallSkillFromArchive:
         result = get_or_new_skill_storage(skills_path=skills_root).install_skill_from_archive(zip_path)
         assert result["success"] is True
         assert result["skill_name"] == "test-skill"
-        assert (skills_root / "test-skill" / "SKILL.md").exists()
+        assert (skills_root / "custom" / "test-skill" / "SKILL.md").exists()
 
     def test_scans_skill_markdown_before_install(self, tmp_path, monkeypatch):
         zip_path = self._make_skill_zip(tmp_path)
@@ -204,11 +204,11 @@ class TestInstallSkillFromArchive:
         skills_root.mkdir()
         calls = []
 
-        async def _scan(content, *, executable, location):
+        async def _scan(content, *, executable, location, static_findings=None):
             calls.append({"content": content, "executable": executable, "location": location})
             return ScanResult(decision="allow", reason="ok")
 
-        monkeypatch.setattr("ideer.skills.installer.scan_skill_content", _scan)
+        monkeypatch.setattr("deerflow.skills.installer.scan_skill_content", _scan)
 
         get_or_new_skill_storage(skills_path=skills_root).install_skill_from_archive(zip_path)
 
@@ -234,11 +234,11 @@ class TestInstallSkillFromArchive:
         skills_root.mkdir()
         calls = []
 
-        async def _scan(content, *, executable, location):
+        async def _scan(content, *, executable, location, static_findings=None):
             calls.append({"content": content, "executable": executable, "location": location})
             return ScanResult(decision="allow", reason="ok")
 
-        monkeypatch.setattr("ideer.skills.installer.scan_skill_content", _scan)
+        monkeypatch.setattr("deerflow.skills.installer.scan_skill_content", _scan)
 
         get_or_new_skill_storage(skills_path=skills_root).install_skill_from_archive(zip_path)
 
@@ -277,7 +277,7 @@ class TestInstallSkillFromArchive:
         with pytest.raises(SkillSecurityScanError, match="nested SKILL.md"):
             get_or_new_skill_storage(skills_path=skills_root).install_skill_from_archive(zip_path)
 
-        assert not (skills_root / "test-skill").exists()
+        assert not (skills_root / "custom" / "test-skill").exists()
 
     def test_script_warn_prevents_install(self, tmp_path, monkeypatch):
         zip_path = tmp_path / "test-skill.skill"
@@ -287,17 +287,17 @@ class TestInstallSkillFromArchive:
         skills_root = tmp_path / "skills"
         skills_root.mkdir()
 
-        async def _scan(*args, executable, **kwargs):
+        async def _scan(*args, executable, static_findings=None, **kwargs):
             if executable:
                 return ScanResult(decision="warn", reason="script needs review")
             return ScanResult(decision="allow", reason="ok")
 
-        monkeypatch.setattr("ideer.skills.installer.scan_skill_content", _scan)
+        monkeypatch.setattr("deerflow.skills.installer.scan_skill_content", _scan)
 
         with pytest.raises(SkillSecurityScanError, match="rejected executable.*script needs review"):
             get_or_new_skill_storage(skills_path=skills_root).install_skill_from_archive(zip_path)
 
-        assert not (skills_root / "test-skill").exists()
+        assert not (skills_root / "custom" / "test-skill").exists()
 
     def test_security_scan_block_prevents_install(self, tmp_path, monkeypatch):
         zip_path = self._make_skill_zip(tmp_path, skill_name="blocked-skill")
@@ -307,12 +307,12 @@ class TestInstallSkillFromArchive:
         async def _scan(*args, **kwargs):
             return ScanResult(decision="block", reason="prompt injection")
 
-        monkeypatch.setattr("ideer.skills.installer.scan_skill_content", _scan)
+        monkeypatch.setattr("deerflow.skills.installer.scan_skill_content", _scan)
 
         with pytest.raises(SkillSecurityScanError, match="Security scan blocked.*prompt injection"):
             get_or_new_skill_storage(skills_path=skills_root).install_skill_from_archive(zip_path)
 
-        assert not (skills_root / "blocked-skill").exists()
+        assert not (skills_root / "custom" / "blocked-skill").exists()
 
     def test_copy_failure_does_not_leave_partial_install(self, tmp_path, monkeypatch):
         zip_path = self._make_skill_zip(tmp_path)
@@ -325,19 +325,19 @@ class TestInstallSkillFromArchive:
             (partial / "partial.txt").write_text("partial", encoding="utf-8")
             raise OSError("copy failed")
 
-        monkeypatch.setattr("ideer.skills.installer.shutil.copytree", _copytree)
+        monkeypatch.setattr("deerflow.skills.installer.shutil.copytree", _copytree)
 
         with pytest.raises(OSError, match="copy failed"):
             get_or_new_skill_storage(skills_path=skills_root).install_skill_from_archive(zip_path)
 
-        assert not (skills_root / "test-skill").exists()
-        assert not [path for path in skills_root.iterdir() if path.name.startswith(".installing-test-skill-")]
+        assert not (skills_root / "custom" / "test-skill").exists()
+        assert not [path for path in (skills_root / "custom").iterdir() if path.name.startswith(".installing-test-skill-")]
 
     def test_concurrent_target_creation_does_not_get_clobbered(self, tmp_path, monkeypatch):
         zip_path = self._make_skill_zip(tmp_path)
         skills_root = tmp_path / "skills"
         skills_root.mkdir()
-        target = skills_root / "test-skill"
+        target = skills_root / "custom" / "test-skill"
         original_copytree = shutil.copytree
 
         def _copytree(src, dst):
@@ -345,7 +345,7 @@ class TestInstallSkillFromArchive:
             (target / "marker.txt").write_text("external", encoding="utf-8")
             return original_copytree(src, dst)
 
-        monkeypatch.setattr("ideer.skills.installer.shutil.copytree", _copytree)
+        monkeypatch.setattr("deerflow.skills.installer.shutil.copytree", _copytree)
 
         with pytest.raises(ValueError, match="already exists"):
             get_or_new_skill_storage(skills_path=skills_root).install_skill_from_archive(zip_path)
@@ -362,17 +362,17 @@ class TestInstallSkillFromArchive:
             Path(dst).write_text("partial", encoding="utf-8")
             raise OSError("move failed")
 
-        monkeypatch.setattr("ideer.skills.installer.shutil.move", _move)
+        monkeypatch.setattr("deerflow.skills.installer.shutil.move", _move)
 
         with pytest.raises(OSError, match="move failed"):
             get_or_new_skill_storage(skills_path=skills_root).install_skill_from_archive(zip_path)
 
-        assert not (skills_root / "test-skill").exists()
+        assert not (skills_root / "custom" / "test-skill").exists()
 
     def test_duplicate_raises(self, tmp_path):
         zip_path = self._make_skill_zip(tmp_path)
         skills_root = tmp_path / "skills"
-        (skills_root / "test-skill").mkdir(parents=True)
+        (skills_root / "custom" / "test-skill").mkdir(parents=True)
         with pytest.raises(ValueError, match="already exists"):
             get_or_new_skill_storage(skills_path=skills_root).install_skill_from_archive(zip_path)
 

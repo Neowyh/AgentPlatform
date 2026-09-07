@@ -57,24 +57,27 @@ describe("mcp api", () => {
       );
     });
 
-    test("calls extractError on failure", async () => {
+    test("throws MCPConfigRequestError with backend detail on failure", async () => {
       const { fetch: fetcher } = await import("@/core/api/fetcher");
-      const errorResponse = new Response(
-        JSON.stringify({ detail: "Unauthorized" }),
-        { status: 401, statusText: "Unauthorized" },
+      vi.mocked(fetcher).mockResolvedValue(
+        new Response(JSON.stringify({ detail: "Unauthorized" }), {
+          status: 401,
+          statusText: "Unauthorized",
+        }),
       );
-      vi.mocked(fetcher).mockResolvedValue(errorResponse);
 
-      const { extractError } = await import("@/core/api/errors");
-      vi.mocked(extractError).mockRejectedValue(new Error("Unauthorized"));
-
-      const { loadMCPConfig } = await import("@/core/mcp/api");
-      await expect(loadMCPConfig()).rejects.toThrow("Unauthorized");
-
-      expect(extractError).toHaveBeenCalledWith(
-        errorResponse,
-        "Failed to load MCP config",
+      const { loadMCPConfig, MCPConfigRequestError } = await import(
+        "@/core/mcp/api"
       );
+      const error = await loadMCPConfig().then(
+        () => null,
+        (e: unknown) => e,
+      );
+
+      // The backend's `detail` is surfaced as the error message.
+      expect(error).toBeInstanceOf(MCPConfigRequestError);
+      expect((error as Error).message).toBe("Unauthorized");
+      expect((error as { status: number }).status).toBe(401);
     });
   });
 
@@ -99,26 +102,27 @@ describe("mcp api", () => {
       expect(result.mcp_servers["test-server"]?.enabled).toBe(true);
     });
 
-    test("calls extractError on failure", async () => {
+    test("throws MCPConfigRequestError with backend detail on failure", async () => {
       const { fetch: fetcher } = await import("@/core/api/fetcher");
-      const errorResponse = new Response(
-        JSON.stringify({ detail: "Bad request" }),
-        { status: 400, statusText: "Bad Request" },
-      );
-      vi.mocked(fetcher).mockResolvedValue(errorResponse);
-
-      const { extractError } = await import("@/core/api/errors");
-      vi.mocked(extractError).mockRejectedValue(new Error("Bad request"));
-
-      const { updateMCPConfig } = await import("@/core/mcp/api");
-      await expect(updateMCPConfig(MOCK_MCP_CONFIG)).rejects.toThrow(
-        "Bad request",
+      vi.mocked(fetcher).mockResolvedValue(
+        new Response(JSON.stringify({ detail: "Bad request" }), {
+          status: 400,
+          statusText: "Bad Request",
+        }),
       );
 
-      expect(extractError).toHaveBeenCalledWith(
-        errorResponse,
-        "Failed to update MCP config",
+      const { updateMCPConfig, MCPConfigRequestError } = await import(
+        "@/core/mcp/api"
       );
+      const error = await updateMCPConfig(MOCK_MCP_CONFIG).then(
+        () => null,
+        (e: unknown) => e,
+      );
+
+      // The backend's `detail` is surfaced as the error message.
+      expect(error).toBeInstanceOf(MCPConfigRequestError);
+      expect((error as Error).message).toBe("Bad request");
+      expect((error as { status: number }).status).toBe(400);
     });
   });
 });

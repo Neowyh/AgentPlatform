@@ -11,9 +11,9 @@ import asyncio
 
 import pytest
 
-from ideer.runtime.runs.manager import RunRecord
-from ideer.runtime.runs.schemas import DisconnectMode, RunStatus
-from ideer.runtime.runs.worker import RunContext, run_agent
+from deerflow.runtime.runs.manager import RunRecord
+from deerflow.runtime.runs.schemas import DisconnectMode, RunStatus
+from deerflow.runtime.runs.worker import RunContext, run_agent
 
 
 class _FakeAgent:
@@ -36,13 +36,44 @@ class _FakeAgent:
 
 
 class _FakeRunManager:
+    """Expose the RunManager surface upstream ``run_agent`` awaits."""
+
+    async def wait_for_prior_finalizing(self, *_args, **_kwargs) -> None:
+        return None
+
+    async def try_start(self, *_args, **_kwargs):
+        from deerflow.runtime.runs.manager import RunStartOutcome
+
+        return RunStartOutcome.started
+
     async def set_status(self, *_args, **_kwargs) -> None:
         return None
+
+    async def set_status_if_not_cancelled(self, *_args, **_kwargs):
+        return None
+
+    async def set_finalizing(self, *_args, **_kwargs) -> None:
+        return None
+
+    async def update_run_progress(self, *_args, **_kwargs) -> None:
+        return None
+
+    async def update_finalizing_progress(self, *_args, **_kwargs) -> None:
+        return None
+
+    async def persist_current_status(self, *_args, **_kwargs) -> None:
+        return None
+
+    async def has_later_started_run(self, *_args, **_kwargs) -> bool:
+        return False
 
     async def update_model_name(self, *_args, **_kwargs) -> None:
         return None
 
     async def update_run_completion(self, *_args, **_kwargs) -> None:
+        return None
+
+    async def cleanup(self, *_args, **_kwargs) -> None:
         return None
 
 
@@ -62,7 +93,7 @@ class _FakeBridge:
 
 @pytest.fixture(autouse=True)
 def _clear_tracing_env(monkeypatch):
-    from ideer.config.tracing_config import reset_tracing_config
+    from deerflow.config.tracing_config import reset_tracing_config
 
     for name in ("LANGFUSE_TRACING", "LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY", "LANGFUSE_BASE_URL"):
         monkeypatch.delenv(name, raising=False)
@@ -76,7 +107,7 @@ async def test_run_agent_injects_langfuse_metadata(monkeypatch):
     monkeypatch.setenv("LANGFUSE_TRACING", "true")
     monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-lf-test")
     monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-lf-test")
-    from ideer.config.tracing_config import reset_tracing_config
+    from deerflow.config.tracing_config import reset_tracing_config
 
     reset_tracing_config()
 
@@ -118,24 +149,25 @@ async def test_run_agent_injects_langfuse_metadata(monkeypatch):
     assert "model:gpt-4o" in tags
 
 
+@pytest.mark.no_auto_user
 @pytest.mark.asyncio
 async def test_run_agent_falls_back_to_default_user_when_unset(monkeypatch):
-    """When no user is in the contextvar, langfuse_user_id falls back to 'default'.
+    """When no user identity is available, langfuse_user_id falls back to 'default'.
 
-    Uses ``monkeypatch.setattr`` to redirect ``get_effective_user_id`` to return
-    ``"default"`` rather than directly mutating the contextvar — direct contextvar
+    Upstream resolves the langfuse user via ``resolve_runtime_user_id`` over the
+    run runtime (server_info → langgraph auth configurable → runtime.context →
+    contextvar → DEFAULT_USER_ID). The ``no_auto_user`` marker opts this test
+    out of the conftest autouse contextvar injection so every channel is empty
+    and the DEFAULT_USER_ID fallback is exercised — direct contextvar
     operations across pytest test boundaries have produced spooky cross-file
     pollution when combined with the langfuse OTel global tracer provider.
     """
     monkeypatch.setenv("LANGFUSE_TRACING", "true")
     monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-lf-test")
     monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-lf-test")
-    from ideer.config.tracing_config import reset_tracing_config
-    from ideer.runtime.runs import worker as worker_module
-    from ideer.runtime.user_context import DEFAULT_USER_ID
+    from deerflow.config.tracing_config import reset_tracing_config
 
     reset_tracing_config()
-    monkeypatch.setattr(worker_module, "get_effective_user_id", lambda: DEFAULT_USER_ID)
 
     fake_agent = _FakeAgent()
 
@@ -172,7 +204,7 @@ async def test_run_agent_preserves_caller_metadata_overrides(monkeypatch):
     monkeypatch.setenv("LANGFUSE_TRACING", "true")
     monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-lf-test")
     monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-lf-test")
-    from ideer.config.tracing_config import reset_tracing_config
+    from deerflow.config.tracing_config import reset_tracing_config
 
     reset_tracing_config()
 

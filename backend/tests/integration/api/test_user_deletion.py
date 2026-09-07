@@ -5,9 +5,9 @@ from unittest.mock import AsyncMock, call
 
 import pytest
 
+from app.agentplatform.rbac_models import UserModel, UserRole
 from app.gateway import user_deletion
-from ideer.config.paths import Paths
-from ideer.persistence.models.user import UserModel, UserRole
+from deerflow.config.paths import Paths
 
 
 def _stub_database_steps(monkeypatch):
@@ -81,7 +81,7 @@ async def test_cleanup_failure_happens_after_commit_and_is_retryable(tmp_path, m
 
 @pytest.mark.asyncio
 async def test_report_user_state_anomalies_returns_empty_report_without_session_factory(tmp_path, monkeypatch):
-    monkeypatch.setattr("ideer.persistence.engine.get_session_factory", lambda: None)
+    monkeypatch.setattr("app.gateway.user_deletion.get_session_factory", lambda: None)
 
     assert await user_deletion.report_user_state_anomalies(Paths(tmp_path)) == {
         "unexpected_directories": [],
@@ -123,7 +123,7 @@ async def test_report_user_state_anomalies_reports_disk_and_database_mismatches(
 
             return Context()
 
-    monkeypatch.setattr("ideer.persistence.engine.get_session_factory", lambda: Factory())
+    monkeypatch.setattr("app.gateway.user_deletion.get_session_factory", lambda: Factory())
 
     assert await user_deletion.report_user_state_anomalies(paths) == {
         "unexpected_directories": ["disk-only"],

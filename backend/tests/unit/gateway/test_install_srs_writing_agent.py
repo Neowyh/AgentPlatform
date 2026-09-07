@@ -19,12 +19,12 @@ tool_groups:
 tools:
 - name: read_file
   group: file:read
-  use: ideer.sandbox.tools:read_file_tool
+  use: deerflow.sandbox.tools:read_file_tool
 - name: bash
   group: bash
-  use: ideer.sandbox.tools:bash_tool
+  use: deerflow.sandbox.tools:bash_tool
 sandbox:
-  use: ideer.sandbox.local:LocalSandboxProvider
+  use: deerflow.sandbox.local:LocalSandboxProvider
   allow_host_bash: false
 """
 
@@ -59,7 +59,7 @@ def test_wire_srs_config_adds_and_is_idempotent(tmp_path: Path) -> None:
     assert {
         "name": "read_document",
         "group": "document",
-        "use": "ideer.community.doc_reader.tools:read_document_tool",
+        "use": "app.agentplatform.community.doc_reader.tools:read_document_tool",
     } in parsed["tools"]
     assert parsed["sandbox"]["allow_host_bash"] is True
 

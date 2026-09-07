@@ -10,14 +10,15 @@ from types import SimpleNamespace
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-import ideer.persistence.models  # noqa: F401
+import deerflow.persistence.models  # noqa: F401  -- registers DeerFlow ORM tables
+import deerflow.persistence.models.workflow_v2  # noqa: F401
+from app.agentplatform.rbac_models import UserModel, UserRole
+from app.agentplatform.resource_models import Resource, ResourceVersion, RunResourceSnapshot
+from app.agentplatform.workflows.v2 import file_roots
+from app.agentplatform.workflows.v2.store import WorkflowV2Store
 from app.gateway.routers import resources
-from ideer.config.paths import Paths
-from ideer.persistence.base import Base
-from ideer.persistence.models.resource_catalog import Resource, ResourceVersion, RunResourceSnapshot
-from ideer.persistence.models.user import UserModel, UserRole
-from ideer.workflows.v2 import file_roots
-from ideer.workflows.v2.store import WorkflowV2Store
+from deerflow.config.paths import Paths
+from deerflow.persistence.base import Base
 
 WRITE_ROOT = "/mnt/user-data/outputs"
 

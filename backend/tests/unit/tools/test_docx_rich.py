@@ -1,4 +1,4 @@
-"""Tests for ideer.utils.docx_rich (rich Word -> Markdown parsing).
+"""Tests for app.agentplatform.utils.docx_rich (rich Word -> Markdown parsing).
 
 Builds real .docx fixtures programmatically with python-docx and verifies the
 end-to-end conversion: headings, inline formatting, lists, tables, image
@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from ideer.utils.docx_rich import convert_docx, is_available, libreoffice_available
+from app.agentplatform.utils.docx_rich import convert_docx, is_available, libreoffice_available
 
 pytestmark = pytest.mark.skipif(not is_available(), reason="python-docx is not installed")
 
@@ -112,7 +112,7 @@ class TestLegacyDocGuard:
 class TestParseDocTempCleanup:
     def test_converted_docx_temp_dir_removed(self, tmp_path, monkeypatch):
         """.doc 转换用的临时目录在解析完成后必须被清理。"""
-        from ideer.utils.docx_rich.parser import DocxDocumentParser
+        from app.agentplatform.utils.docx_rich.parser import DocxDocumentParser
 
         src = tmp_path / "legacy.doc"
         src.write_bytes(b"\xd0\xcf\x11\xe0 fake OLE")
@@ -128,7 +128,7 @@ class TestParseDocTempCleanup:
                 return str(converted)
 
         monkeypatch.setattr(
-            "ideer.utils.docx_rich.libreoffice.get_libreoffice_manager",
+            "app.agentplatform.utils.docx_rich.libreoffice.get_libreoffice_manager",
             lambda: FakeLibre(),
         )
 

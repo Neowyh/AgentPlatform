@@ -1,4 +1,4 @@
-"""Tests for ideer.runtime.checkpointer.async_provider — comprehensive coverage."""
+"""Tests for deerflow.runtime.checkpointer.async_provider — comprehensive coverage."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from ideer.runtime.checkpointer.async_provider import (
+from deerflow.runtime.checkpointer.async_provider import (
     _async_checkpointer,
     _async_checkpointer_from_database,
     _prepare_database_sqlite_checkpointer_path,
@@ -20,16 +20,41 @@ from ideer.runtime.checkpointer.async_provider import (
 # ---------------------------------------------------------------------------
 
 
-def _make_config(backend_type: str = "memory", connection_string: str | None = None) -> SimpleNamespace:
-    return SimpleNamespace(type=backend_type, connection_string=connection_string)
+def _make_config(backend_type: str = "memory", connection_string: str | None = None, postgres_schema: str = "") -> SimpleNamespace:
+    return SimpleNamespace(type=backend_type, connection_string=connection_string, postgres_schema=postgres_schema)
 
 
-def _make_db_config(backend: str = "memory", postgres_url: str | None = None, checkpointer_sqlite_path: str = "/tmp/test.db") -> SimpleNamespace:
+def _make_db_config(
+    backend: str = "memory",
+    postgres_url: str | None = None,
+    checkpointer_sqlite_path: str = "/tmp/test.db",
+    postgres_schema: str = "",
+    checkpoint_channel_mode: str = "full",
+) -> SimpleNamespace:
     return SimpleNamespace(
         backend=backend,
         postgres_url=postgres_url,
         checkpointer_sqlite_path=checkpointer_sqlite_path,
+        postgres_schema=postgres_schema,
+        checkpoint_channel_mode=checkpoint_channel_mode,
     )
+
+
+def _postgres_module_patches(mock_saver_cls: MagicMock) -> dict:
+    """sys.modules entries that satisfy the upstream postgres import chain.
+
+    The upstream async provider imports ``AsyncPostgresSaver`` from
+    ``langgraph.checkpoint.postgres.aio`` and ``AsyncConnectionPool`` from
+    ``psycopg_pool`` (plus ``psycopg.rows.dict_row`` for the pool row
+    factory). Neither package is installed in the unit-test environment, so
+    all three are stubbed here.
+    """
+    return {
+        "langgraph.checkpoint.postgres.aio": MagicMock(AsyncPostgresSaver=mock_saver_cls),
+        "psycopg": MagicMock(),
+        "psycopg.rows": MagicMock(),
+        "psycopg_pool": MagicMock(),
+    }
 
 
 # ===================================================================
@@ -40,8 +65,8 @@ def _make_db_config(backend: str = "memory", postgres_url: str | None = None, ch
 class TestPrepareSqlitePath:
     def test_resolves_and_ensures_dir(self):
         with (
-            patch("ideer.runtime.checkpointer.async_provider.resolve_sqlite_conn_str", return_value="/tmp/resolved.db") as mock_resolve,
-            patch("ideer.runtime.checkpointer.async_provider.ensure_sqlite_parent_dir") as mock_ensure,
+            patch("deerflow.runtime.checkpointer.async_provider.resolve_sqlite_conn_str", return_value="/tmp/resolved.db") as mock_resolve,
+            patch("deerflow.runtime.checkpointer.async_provider.ensure_sqlite_parent_dir") as mock_ensure,
         ):
             result = _prepare_sqlite_checkpointer_path("store.db")
             assert result == "/tmp/resolved.db"
@@ -57,7 +82,7 @@ class TestPrepareSqlitePath:
 class TestPrepareDatabaseSqlitePath:
     def test_uses_checkpointer_sqlite_path(self):
         db_config = _make_db_config(checkpointer_sqlite_path="/data/cp.db")
-        with patch("ideer.runtime.checkpointer.async_provider.ensure_sqlite_parent_dir") as mock_ensure:
+        with patch("deerflow.runtime.checkpointer.async_provider.ensure_sqlite_parent_dir") as mock_ensure:
             result = _prepare_database_sqlite_checkpointer_path(db_config)
             assert result == "/data/cp.db"
             mock_ensure.assert_called_once_with("/data/cp.db")
@@ -96,7 +121,7 @@ class TestAsyncCheckpointerSqlite:
 
         with (
             patch.dict("sys.modules", {"langgraph.checkpoint.sqlite.aio": mock_sqlite_mod}),
-            patch("ideer.runtime.checkpointer.async_provider._prepare_sqlite_checkpointer_path", return_value="/tmp/test.db"),
+            patch("deerflow.runtime.checkpointer.async_provider._prepare_sqlite_checkpointer_path", return_value="/tmp/test.db"),
         ):
             async with _async_checkpointer(_make_config("sqlite", "test.db")) as cp:
                 assert cp is mock_saver
@@ -115,7 +140,7 @@ class TestAsyncCheckpointerSqlite:
 
         with (
             patch.dict("sys.modules", {"langgraph.checkpoint.sqlite.aio": mock_sqlite_mod}),
-            patch("ideer.runtime.checkpointer.async_provider._prepare_sqlite_checkpointer_path", return_value="/tmp/store.db"),
+            patch("deerflow.runtime.checkpointer.async_provider._prepare_sqlite_checkpointer_path", return_value="/tmp/store.db"),
         ):
             # connection_string is None → defaults to "store.db"
             async with _async_checkpointer(_make_config("sqlite", None)) as cp:
@@ -139,17 +164,14 @@ class TestAsyncCheckpointerPostgres:
     async def test_postgres_success(self):
         mock_saver = MagicMock()
         mock_saver.setup = AsyncMock()
-        mock_cm = AsyncMock()
-        mock_cm.__aenter__ = AsyncMock(return_value=mock_saver)
-        mock_cm.__aexit__ = AsyncMock(return_value=False)
+        # Upstream instantiates AsyncPostgresSaver(conn=pool) over a pool it owns.
+        mock_saver_cls = MagicMock(return_value=mock_saver)
 
-        mock_pg_mod = MagicMock()
-        mock_pg_mod.AsyncPostgresSaver.from_conn_string.return_value = mock_cm
-
-        with patch.dict("sys.modules", {"langgraph.checkpoint.postgres.aio": mock_pg_mod}):
+        with patch.dict("sys.modules", _postgres_module_patches(mock_saver_cls)):
             async with _async_checkpointer(_make_config("postgres", "postgresql://localhost/db")) as cp:
                 assert cp is mock_saver
             mock_saver.setup.assert_awaited_once()
+        mock_saver_cls.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_postgres_no_connection_string_raises(self):
@@ -213,7 +235,7 @@ class TestAsyncCheckpointerFromDatabaseSqlite:
 
         with (
             patch.dict("sys.modules", {"langgraph.checkpoint.sqlite.aio": mock_sqlite_mod}),
-            patch("ideer.runtime.checkpointer.async_provider._prepare_database_sqlite_checkpointer_path", return_value="/tmp/test.db"),
+            patch("deerflow.runtime.checkpointer.async_provider._prepare_database_sqlite_checkpointer_path", return_value="/tmp/test.db"),
         ):
             db_config = _make_db_config("sqlite")
             async with _async_checkpointer_from_database(db_config) as cp:
@@ -237,17 +259,15 @@ class TestAsyncCheckpointerFromDatabasePostgres:
     async def test_postgres_success(self):
         mock_saver = MagicMock()
         mock_saver.setup = AsyncMock()
-        mock_cm = AsyncMock()
-        mock_cm.__aenter__ = AsyncMock(return_value=mock_saver)
-        mock_cm.__aexit__ = AsyncMock(return_value=False)
+        # Upstream instantiates AsyncPostgresSaver(conn=pool) over a pool it owns.
+        mock_saver_cls = MagicMock(return_value=mock_saver)
 
-        mock_pg_mod = MagicMock()
-        mock_pg_mod.AsyncPostgresSaver.from_conn_string.return_value = mock_cm
-
-        with patch.dict("sys.modules", {"langgraph.checkpoint.postgres.aio": mock_pg_mod}):
-            db_config = _make_db_config("postgres", postgres_url="pg://localhost/db")
+        with patch.dict("sys.modules", _postgres_module_patches(mock_saver_cls)):
+            db_config = _make_db_config("postgres", postgres_url="postgresql://localhost/db")
             async with _async_checkpointer_from_database(db_config) as cp:
                 assert cp is mock_saver
+            mock_saver.setup.assert_awaited_once()
+        mock_saver_cls.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_postgres_no_url_raises(self):
@@ -294,7 +314,7 @@ class TestMakeCheckpointer:
         mock_app.database = None
 
         with (
-            patch("ideer.runtime.checkpointer.async_provider.get_app_config", return_value=mock_app),
+            patch("deerflow.runtime.checkpointer.async_provider.get_app_config", return_value=mock_app),
             patch("langgraph.checkpoint.memory.InMemorySaver", return_value=mock_saver),
         ):
             async with make_checkpointer() as cp:
@@ -308,7 +328,7 @@ class TestMakeCheckpointer:
         mock_app.database = None
 
         with (
-            patch("ideer.runtime.checkpointer.async_provider.get_app_config", return_value=mock_app),
+            patch("deerflow.runtime.checkpointer.async_provider.get_app_config", return_value=mock_app),
             patch("langgraph.checkpoint.memory.InMemorySaver", return_value=mock_saver),
         ):
             async with make_checkpointer() as cp:
@@ -330,9 +350,9 @@ class TestMakeCheckpointer:
         mock_sqlite_mod.AsyncSqliteSaver.from_conn_string.return_value = mock_cm
 
         with (
-            patch("ideer.runtime.checkpointer.async_provider.get_app_config", return_value=mock_app),
+            patch("deerflow.runtime.checkpointer.async_provider.get_app_config", return_value=mock_app),
             patch.dict("sys.modules", {"langgraph.checkpoint.sqlite.aio": mock_sqlite_mod}),
-            patch("ideer.runtime.checkpointer.async_provider._prepare_database_sqlite_checkpointer_path", return_value="/tmp/test.db"),
+            patch("deerflow.runtime.checkpointer.async_provider._prepare_database_sqlite_checkpointer_path", return_value="/tmp/test.db"),
         ):
             async with make_checkpointer() as cp:
                 assert cp is mock_sqlite_saver
@@ -345,7 +365,7 @@ class TestMakeCheckpointer:
         mock_app.database = _make_db_config("sqlite")
 
         with (
-            patch("ideer.runtime.checkpointer.async_provider.get_app_config", return_value=mock_app),
+            patch("deerflow.runtime.checkpointer.async_provider.get_app_config", return_value=mock_app),
             patch("langgraph.checkpoint.memory.InMemorySaver", return_value=mock_saver),
         ):
             async with make_checkpointer() as cp:
@@ -369,7 +389,7 @@ class TestMakeCheckpointer:
         mock_app.database = _make_db_config("memory")
 
         with (
-            patch("ideer.runtime.checkpointer.async_provider.get_app_config", return_value=mock_app),
+            patch("deerflow.runtime.checkpointer.async_provider.get_app_config", return_value=mock_app),
             patch("langgraph.checkpoint.memory.InMemorySaver", return_value=mock_saver),
         ):
             async with make_checkpointer() as cp:

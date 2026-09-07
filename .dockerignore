@@ -65,7 +65,12 @@ frontend/node_modules
 backend/.venv
 backend/htmlcov
 backend/.coverage
+**/.deer-flow/
+backend/sandbox/
 *.md
 !README.md
 !frontend/README.md
 !backend/README.md
+!backend/extensions/
+!backend/extensions/sources/
+!backend/extensions/sources/**

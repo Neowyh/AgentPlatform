@@ -36,6 +36,7 @@ Inspired by LangGraph Auth system: https://github.com/langchain-ai/langgraph/blo
 
 from __future__ import annotations
 
+import asyncio
 import functools
 import inspect
 import logging
@@ -45,9 +46,14 @@ from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar
 
 from fastapi import HTTPException, Request, status
 
+from deerflow.authz.principal import build_principal_from_context
+from deerflow.authz.provider import AuthorizationProvider, AuthzDecision, AuthzRequest
+from deerflow.authz.runtime import resolve_authorization_provider
+from deerflow.config.authorization_config import AuthorizationConfig
+
 if TYPE_CHECKING:
+    from app.agentplatform.rbac_models import UserModel
     from app.gateway.auth.models import User
-    from ideer.persistence.models.user import UserModel
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +132,15 @@ def get_auth_context(request: Request) -> AuthContext | None:
     return getattr(request.state, "auth", None)
 
 
+def require_cancel_permission_if(request: Request, can_cancel: bool) -> None:
+    """Require ``runs:cancel`` when a request carries cancellation capability."""
+    if not can_cancel:
+        return
+    auth = getattr(request.state, "auth", None)
+    if auth is not None and not auth.has_permission("runs", "cancel"):
+        raise HTTPException(status_code=403, detail="Permission denied: runs:cancel")
+
+
 _ALL_PERMISSIONS: list[str] = [
     Permissions.THREADS_READ,
     Permissions.THREADS_WRITE,
@@ -145,6 +160,87 @@ def _make_test_request_stub() -> Any:
     request injection. Includes fields accessed by auth helpers.
     """
     return SimpleNamespace(state=SimpleNamespace(), cookies={}, _ideer_test_bypass_auth=True)
+
+
+def _get_route_authorization_config() -> AuthorizationConfig:
+    """Return hot-reloaded route authorization settings."""
+    from deerflow.config.app_config import get_app_config
+
+    try:
+        return get_app_config().authorization
+    except (FileNotFoundError, RuntimeError):
+        return AuthorizationConfig()
+
+
+_route_provider_cache: dict[str, AuthorizationProvider] = {}
+_route_provider_config_id: int | None = None
+_route_provider_config_sig: str | None = None
+
+
+def _get_cached_route_provider(config: AuthorizationConfig) -> AuthorizationProvider | None:
+    """Resolve and cache the configured route authorization provider."""
+    global _route_provider_config_id, _route_provider_config_sig
+    config_id = id(config)
+    if config_id == _route_provider_config_id and _route_provider_cache:
+        return _route_provider_cache.get("provider")
+    sig = repr(sorted(config.model_dump().items()))
+    if sig == _route_provider_config_sig and _route_provider_cache:
+        _route_provider_config_id = config_id
+        return _route_provider_cache.get("provider")
+    _route_provider_cache.clear()
+    provider = resolve_authorization_provider(config)
+    if provider is not None:
+        _route_provider_cache["provider"] = provider
+    _route_provider_config_id = config_id
+    _route_provider_config_sig = sig
+    return provider
+
+
+async def resolve_route_permissions(user: User, *, is_internal: bool) -> list[str]:
+    """Return route permissions for *user*, evaluating each action independently."""
+    config = _get_route_authorization_config()
+    if config.enabled is not True:
+        return list(_ALL_PERMISSIONS)
+    try:
+        provider = _get_cached_route_provider(config)
+        if provider is None:
+            raise ValueError("authorization is enabled but provider resolution returned None")
+    except Exception:
+        logger.warning("Failed to resolve authorization provider for Gateway routes", exc_info=True)
+        return [] if config.fail_closed else list(_ALL_PERMISSIONS)
+
+    from app.gateway.internal_auth import INTERNAL_SYSTEM_ROLE
+
+    user_role = getattr(user, "system_role", None)
+    if user_role == INTERNAL_SYSTEM_ROLE:
+        user_role = None
+    principal = build_principal_from_context(
+        {
+            "user_id": str(user.id),
+            "user_role": user_role,
+            "oauth_provider": getattr(user, "oauth_provider", None),
+            "oauth_id": getattr(user, "oauth_id", None),
+            "is_internal": is_internal,
+        },
+        default_role=config.default_role,
+    )
+
+    async def _evaluate(permission: str) -> str | None:
+        _, action = permission.split(":", maxsplit=1)
+        request = AuthzRequest(principal=principal, resource="route", action=action, target=permission)
+        try:
+            decision = await provider.aauthorize(request)
+            if not isinstance(decision, AuthzDecision):
+                raise TypeError("AuthorizationProvider.aauthorize must return AuthzDecision")
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.warning("Authorization provider failed while evaluating route permission %s", permission, exc_info=True)
+            return permission if not config.fail_closed else None
+        return permission if decision.allow else None
+
+    results = await asyncio.gather(*[_evaluate(permission) for permission in _ALL_PERMISSIONS])
+    return [permission for permission in results if permission is not None]
 
 
 _RBAC_IDENTITY_ATTR = "_ideer_rbac_user"
@@ -177,8 +273,8 @@ async def _authenticate(request: Request) -> AuthContext:
     - super_admin / department_admin / user: all permissions
     - viewer: read-only (threads:read, runs:read)
     """
+    from app.agentplatform.rbac_models import UserRole
     from app.gateway.deps import get_optional_user_from_request
-    from ideer.persistence.models.user import UserRole
 
     user = await get_optional_user_from_request(request)
     if user is None:
@@ -193,8 +289,8 @@ async def _authenticate(request: Request) -> AuthContext:
     try:
         from sqlalchemy import select
 
-        from ideer.persistence.engine import get_session_factory
-        from ideer.persistence.models.user import UserModel
+        from app.agentplatform.rbac_models import UserModel
+        from deerflow.persistence.engine import get_session_factory
 
         sf = get_session_factory()
         if sf is None:
@@ -512,7 +608,7 @@ def check_resource_access(
 
     Returns ``True`` when access is granted, ``False`` otherwise.
     """
-    from ideer.persistence.models.user import ResourceVisibility, UserRole
+    from app.agentplatform.rbac_models import ResourceVisibility, UserRole
 
     # super_admin: access everything
     if user.role == UserRole.SUPER_ADMIN:
@@ -588,8 +684,8 @@ async def get_current_rbac_user(request: Request) -> UserModel:
     Raises:
         HTTPException 401 if the request is not authenticated.
     """
-    from ideer.persistence.engine import get_session_factory
-    from ideer.persistence.models.user import UserModel, UserRole
+    from app.agentplatform.rbac_models import UserModel, UserRole
+    from deerflow.persistence.engine import get_session_factory
 
     user = getattr(request.state, "user", None)
     if user is None:

@@ -1,4 +1,4 @@
-"""Additional coverage tests for ideer.sandbox.local.local_sandbox."""
+"""Additional coverage tests for deerflow.sandbox.local.local_sandbox."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import os
 
 import pytest
 
-from ideer.sandbox.local.local_sandbox import LocalSandbox, PathMapping
+from deerflow.sandbox.local.local_sandbox import LocalSandbox, PathMapping
 
 # ===========================================================================
 # _shell_name / _is_powershell / _is_cmd_shell / _is_msys_shell

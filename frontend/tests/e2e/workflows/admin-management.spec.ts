@@ -84,9 +84,11 @@ test.describe("Admin management", () => {
       await page.goto("/workspace/admin");
 
       // The dashboard owns six current product statistics.
-      await expect(page.getByText("用户总数")).toBeVisible({ timeout: 15_000 });
-      await expect(page.getByText("部门总数")).toBeVisible();
-      await expect(page.getByText("资源总数")).toBeVisible();
+      await expect(page.getByText("Total Users")).toBeVisible({
+        timeout: 15_000,
+      });
+      await expect(page.getByText("Total Departments")).toBeVisible();
+      await expect(page.getByText("Total Resources")).toBeVisible();
       await expect(page.getByTestId("admin-stat-card")).toHaveCount(6);
     });
   });
@@ -108,7 +110,7 @@ test.describe("Admin management", () => {
       await page.goto("/workspace/admin/users");
 
       // Role badges use Chinese labels: "超级管理员" for super_admin
-      await expect(page.getByText(/超级管理员/i).first()).toBeVisible({
+      await expect(page.getByText(/super admin/i).first()).toBeVisible({
         timeout: 15_000,
       });
     });
@@ -184,14 +186,14 @@ test.describe("Admin management", () => {
       });
 
       // Delete button has title="删除"
-      const deleteBtn = page.locator('button[title="删除"]').first();
+      const deleteBtn = page.locator('button[title="Delete"]').first();
       await expect(deleteBtn).toBeVisible({ timeout: 15_000 });
       await deleteBtn.click();
 
       // Verify the native confirm dialog was shown with expected message
       await expect
         .poll(() => dialogMessage, { timeout: 5_000 })
-        .toContain("确定");
+        .toContain("Are you sure");
     });
   });
 
@@ -212,7 +214,7 @@ test.describe("Admin management", () => {
       await page.goto("/workspace/admin/tools");
 
       // Network badge shows "需联网" in Chinese
-      await expect(page.getByText(/联网|需联网/i).first()).toBeVisible({
+      await expect(page.getByText(/Network Required/i).first()).toBeVisible({
         timeout: 15_000,
       });
     });
@@ -231,9 +233,9 @@ test.describe("Admin management", () => {
       await openSidebarMenu(page);
 
       // Should show admin-related menu items
-      await expect(page.getByText(/admin panel|管理后台/i).first()).toBeVisible(
-        { timeout: 10_000 },
-      );
+      await expect(
+        page.getByText(/admin console|admin panel/i).first(),
+      ).toBeVisible({ timeout: 10_000 });
     });
   });
 
@@ -319,11 +321,11 @@ test.describe("Admin management", () => {
       await expect(legacyRow).toBeVisible();
 
       await expect(
-        canonicalRow.getByRole("button", { name: /归档/ }),
+        canonicalRow.getByRole("button", { name: /archive/i }),
       ).toBeVisible();
-      await expect(legacyRow.getByRole("button", { name: /归档/ })).toHaveCount(
-        0,
-      );
+      await expect(
+        legacyRow.getByRole("button", { name: /archive/i }),
+      ).toHaveCount(0);
     });
 
     test("super admin suspends and restores a canonical resource", async ({
@@ -346,10 +348,12 @@ test.describe("Admin management", () => {
       const agentRow = page
         .locator('tr[data-testid="resource-row"]')
         .filter({ hasText: "reviewer" });
-      await expect(agentRow.getByRole("button", { name: /下架/ })).toBeVisible({
+      await expect(
+        agentRow.getByRole("button", { name: /suspend/i }),
+      ).toBeVisible({
         timeout: 15_000,
       });
-      await agentRow.getByRole("button", { name: /下架/ }).click();
+      await agentRow.getByRole("button", { name: /suspend/i }).click();
 
       await expect
         .poll(() => suspendRequests.length, { timeout: 5_000 })
@@ -362,9 +366,9 @@ test.describe("Admin management", () => {
         .locator('tr[data-testid="resource-row"]')
         .filter({ hasText: "review-skill" });
       await expect(
-        suspendedRow.getByRole("button", { name: /恢复/ }),
+        suspendedRow.getByRole("button", { name: /restore/i }),
       ).toBeVisible({ timeout: 15_000 });
-      await suspendedRow.getByRole("button", { name: /恢复/ }).click();
+      await suspendedRow.getByRole("button", { name: /restore/i }).click();
 
       await expect
         .poll(() => restoreRequests.length, { timeout: 5_000 })
@@ -400,10 +404,10 @@ test.describe("Admin management", () => {
       await expect(agentRow).toBeVisible({ timeout: 15_000 });
 
       await expect(
-        agentRow.getByRole("button", { name: /归档/ }),
+        agentRow.getByRole("button", { name: /archive/i }),
       ).toBeVisible();
 
-      await agentRow.getByRole("button", { name: /归档/ }).click();
+      await agentRow.getByRole("button", { name: /archive/i }).click();
 
       await expect
         .poll(() => archiveRequests.length, { timeout: 5_000 })

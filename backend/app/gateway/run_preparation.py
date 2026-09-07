@@ -19,14 +19,19 @@ Callers learn one function; all orchestration, parallelism, and cleanup have
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import logging
 import time
 import uuid
 from dataclasses import dataclass
 from typing import Any
 
+from agentplatform_extension.evidence import AuthorizationContext, RunEvidenceBinding
 from fastapi import HTTPException, Request
 
+from app.agentplatform.code_evidence import read_manifest
+from app.agentplatform.memory_adapter import get_memory_data
 from app.gateway.canonical_agent_run_preparation import (
     prepare_canonical_agent_run as _prepare_canonical_agent_run,
 )
@@ -36,8 +41,7 @@ from app.gateway.services import (
     _discard_canonical_run_snapshot,
     validate_evidence_selection,
 )
-from ideer.agents.memory import get_memory_data
-from ideer.config.app_config import get_app_config
+from deerflow.config.app_config import get_app_config
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +58,7 @@ class PreparedRun:
     body_context: dict[str, Any]
     model_name: str | None
     run_metadata: dict[str, Any]
+    evidence_binding: RunEvidenceBinding | None = None
     # T5: background Memory cache warmer (may be None when injection is off
     # or no user is on the request). start_run retrieves it before spawning
     # the worker; the graph-time load then hits the warmed cache.
@@ -63,8 +68,6 @@ class PreparedRun:
 async def _read_manifest_if_needed(thread_id: str, code_package_id: str | None) -> dict[str, Any] | None:
     if not code_package_id:
         return
-    from ideer.uploads.code_evidence import read_manifest
-
     try:
         return await asyncio.to_thread(read_manifest, thread_id, str(code_package_id))
     except FileNotFoundError as exc:
@@ -87,6 +90,13 @@ def _memory_injection_enabled() -> bool:
     except Exception:
         return False
     return bool(getattr(memory_config, "enabled", False)) and bool(getattr(memory_config, "injection_enabled", False))
+
+
+def _runtime_assembly_fingerprint(agent_id: str, snapshots: Any) -> str:
+    """Derive a stable evidence fingerprint from the frozen runtime assembly."""
+    payload = {"agent_id": agent_id, "resource_snapshots": snapshots}
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode()
+    return hashlib.sha256(encoded).hexdigest()
 
 
 async def _preload_memory(agent_name: str | None, user_id: str) -> None:
@@ -198,6 +208,30 @@ async def prepare_run(body: Any, thread_id: str, request: Request) -> PreparedRu
     if canonical_run_id and canonical_resource_id:
         run_metadata.update(await _canonical_selection_metadata(canonical_run_id, canonical_resource_id, body_context))
 
+    user_id = getattr(getattr(request.state, "user", None), "id", None)
+    selection = run_metadata.get("selection_snapshot")
+    evidence_binding = None
+    if user_id is not None:
+        snapshots = selection.get("resource_snapshots", ()) if isinstance(selection, dict) else ()
+        policy_revision = selection.get("policy_revision", "runtime-default") if isinstance(selection, dict) else "runtime-default"
+        evidence_binding = RunEvidenceBinding(
+            snapshots=snapshots,
+            authorization=AuthorizationContext(
+                caller_user_id=str(user_id),
+                effective_agent_id=canonical_resource_id or str(getattr(body, "assistant_id", None) or "lead_agent"),
+                policy_revision=str(policy_revision),
+                memory_scope=str(user_id),
+            ),
+            runtime_assembly_fingerprint=_runtime_assembly_fingerprint(
+                canonical_resource_id or str(getattr(body, "assistant_id", None) or "lead_agent"),
+                snapshots,
+            ),
+        )
+        # Persist the same caller-safe projection that the Extension binds to
+        # the task lifecycle. This keeps Run metadata and runtime evidence on
+        # one envelope boundary without persisting credentials or secrets.
+        run_metadata["run_evidence"] = evidence_binding.as_mapping()
+
     logger.info(
         "first_token_timing stage=snapshot elapsed_ms=%.1f thread_id=%s has_canonical=%s",
         (time.perf_counter() - snapshot_started) * 1000,
@@ -213,6 +247,7 @@ async def prepare_run(body: Any, thread_id: str, request: Request) -> PreparedRu
         body_context=body_context,
         model_name=model_name,
         run_metadata=run_metadata,
+        evidence_binding=evidence_binding,
         memory_preload_task=memory_preload_task,
     )
 

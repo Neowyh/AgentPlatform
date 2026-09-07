@@ -17,6 +17,10 @@ export function isWriteFileArtifact(filepath: string) {
   return filepath.startsWith("write-file:");
 }
 
+export function isFaultTreeArtifact(filepath: string) {
+  return filepath.split("/").pop()?.toLowerCase() === "fault_tree.json";
+}
+
 function hasSuccessfulWriteResult(toolResult: string | undefined) {
   return toolResult?.trim() === "OK";
 }
@@ -156,8 +160,10 @@ export function getArtifactViewState({
   initialViewMode: ArtifactViewMode;
 } {
   const isWriteArtifact = isWriteFileArtifact(filepath);
+  const isFaultTree = isFaultTreeArtifact(filepath);
   const canPreview =
-    isSupportPreview && (!isWriteArtifact || !hasFailedWriteResult(toolResult));
+    (isSupportPreview || isFaultTree) &&
+    (!isWriteArtifact || !hasFailedWriteResult(toolResult));
   return {
     canPreview,
     initialViewMode: canPreview ? "preview" : "code",
@@ -175,8 +181,14 @@ export function appendHtmlPreviewBaseHref(
 
   const baseHref = htmlBaseHref(url, currentHref);
   const baseElement = `<base href="${escapeHtmlAttribute(baseHref)}">`;
-  if (/<head[^>]*>/i.exec(content)) {
-    return content.replace(/<head([^>]*)>/i, `<head$1>${baseElement}`);
+  // "(?:\s[^>]*)?" keeps the tag-name boundary so `<header>` (a common
+  // leading tag in agent-generated fragments) is not mistaken for `<head>`;
+  // mirrors appendHtmlPreviewScrollRestoration below.
+  if (/<head(?:\s[^>]*)?>/i.test(content)) {
+    return content.replace(
+      /<head(?:\s[^>]*)?>/i,
+      (headTag) => `${headTag}${baseElement}`,
+    );
   }
   return `${baseElement}${content}`;
 }

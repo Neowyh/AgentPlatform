@@ -10,34 +10,15 @@ vi.mock("next/navigation", () => ({
   redirect: (...args: unknown[]) => mockRedirect(...args),
 }));
 
-let mockStaticWebsiteOnly = false;
+import { DEMO_THREAD_IDS } from "@/core/threads/static-demo";
 
-vi.mock("@/core/static-mode", () => ({
-  isStaticWebsiteOnly: () => mockStaticWebsiteOnly,
-}));
+let mockStaticWebsiteOnly = false;
 
 vi.mock("@/env", () => ({
   env: {
     get NEXT_PUBLIC_STATIC_WEBSITE_ONLY() {
       return mockStaticWebsiteOnly ? "true" : undefined;
     },
-  },
-}));
-
-// Mock fs and path for static mode
-const mockReaddirSync = vi.fn();
-
-vi.mock("fs", () => ({
-  default: {
-    readdirSync: (...args: unknown[]) => mockReaddirSync(...args),
-  },
-}));
-
-const mockResolve = vi.fn((_cwd: string, p: string) => `/resolved/${p}`);
-
-vi.mock("path", () => ({
-  default: {
-    resolve: (cwd: string, p: string) => mockResolve(cwd, p),
   },
 }));
 
@@ -55,13 +36,32 @@ describe("WorkspacePage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockStaticWebsiteOnly = false;
-    // Default: resolve returns a sensible path
-    mockResolve.mockImplementation(
-      (_cwd: string, p: string) => `/resolved/${p}`,
+  });
+
+  // ── Static website mode ────────────────────────────────────────────────
+
+  test("redirects to the first demo thread when static website only", () => {
+    mockStaticWebsiteOnly = true;
+
+    WorkspacePage();
+
+    expect(mockRedirect).toHaveBeenCalledTimes(1);
+    expect(mockRedirect).toHaveBeenCalledWith(
+      `/workspace/chats/${DEMO_THREAD_IDS[0]}`,
     );
   });
 
-  // ── Default (non-static) mode ─────────────────────────────────────────
+  test("still redirects to the demo thread when the flag is exactly 'true'", () => {
+    mockStaticWebsiteOnly = true;
+
+    WorkspacePage();
+
+    expect(mockRedirect).toHaveBeenCalledWith(
+      `/workspace/chats/${DEMO_THREAD_IDS[0]}`,
+    );
+  });
+
+  // ── Normal mode ─────────────────────────────────────────────────────────
 
   test("redirects to /workspace/chats/new when not in static mode", () => {
     WorkspacePage();
@@ -73,114 +73,8 @@ describe("WorkspacePage", () => {
     expect(mockRedirect).toHaveBeenCalledTimes(1);
   });
 
-  // ── Static mode: no threads directory or empty ────────────────────────
-
-  test("redirects to /workspace/chats/new when static mode but no threads found", () => {
-    mockStaticWebsiteOnly = true;
-    mockReaddirSync.mockReturnValue([]);
-
+  test("redirects to /workspace/chats/new when the flag is set but not 'true'", () => {
     WorkspacePage();
     expect(mockRedirect).toHaveBeenCalledWith("/workspace/chats/new");
-  });
-
-  test("redirects to /workspace/chats/new when static mode but only hidden dirs", () => {
-    mockStaticWebsiteOnly = true;
-    mockReaddirSync.mockReturnValue([
-      { name: ".hidden", isDirectory: () => true },
-      { name: ".git", isDirectory: () => true },
-    ]);
-
-    WorkspacePage();
-    expect(mockRedirect).toHaveBeenCalledWith("/workspace/chats/new");
-  });
-
-  test("redirects to /workspace/chats/new when static mode but only files (no dirs)", () => {
-    mockStaticWebsiteOnly = true;
-    mockReaddirSync.mockReturnValue([
-      { name: "readme.md", isDirectory: () => false },
-      { name: "config.json", isDirectory: () => false },
-    ]);
-
-    WorkspacePage();
-    expect(mockRedirect).toHaveBeenCalledWith("/workspace/chats/new");
-  });
-
-  // ── Static mode: threads found ────────────────────────────────────────
-
-  test("redirects to first non-hidden thread directory in static mode", () => {
-    mockStaticWebsiteOnly = true;
-    mockReaddirSync.mockReturnValue([
-      { name: ".hidden", isDirectory: () => true },
-      { name: "thread-abc", isDirectory: () => true },
-      { name: "thread-def", isDirectory: () => true },
-    ]);
-
-    WorkspacePage();
-    expect(mockRedirect).toHaveBeenCalledWith("/workspace/chats/thread-abc");
-  });
-
-  test("picks the first directory among multiple non-hidden ones", () => {
-    mockStaticWebsiteOnly = true;
-    mockReaddirSync.mockReturnValue([
-      { name: "zzz-thread", isDirectory: () => true },
-      { name: "aaa-thread", isDirectory: () => true },
-    ]);
-
-    WorkspacePage();
-    expect(mockRedirect).toHaveBeenCalledWith("/workspace/chats/zzz-thread");
-  });
-
-  test("skips files and picks the first directory", () => {
-    mockStaticWebsiteOnly = true;
-    mockReaddirSync.mockReturnValue([
-      { name: "notes.md", isDirectory: () => false },
-      { name: "my-chat", isDirectory: () => true },
-    ]);
-
-    WorkspacePage();
-    expect(mockRedirect).toHaveBeenCalledWith("/workspace/chats/my-chat");
-  });
-
-  // ── Static mode: directory reading ────────────────────────────────────
-
-  test("reads from public/demo/threads in static mode", () => {
-    mockStaticWebsiteOnly = true;
-    mockReaddirSync.mockReturnValue([]);
-
-    WorkspacePage();
-    expect(mockReaddirSync).toHaveBeenCalledWith(
-      "/resolved/public/demo/threads",
-      {
-        withFileTypes: true,
-      },
-    );
-  });
-
-  test("uses process.cwd() as base for path.resolve", () => {
-    mockStaticWebsiteOnly = true;
-    mockReaddirSync.mockReturnValue([]);
-
-    WorkspacePage();
-    expect(mockResolve).toHaveBeenCalledWith(
-      expect.any(String),
-      "public/demo/threads",
-    );
-  });
-
-  // ── Static mode: edge cases ───────────────────────────────────────────
-
-  test("only reads directory when NEXT_PUBLIC_STATIC_WEBSITE_ONLY is 'true'", () => {
-    mockStaticWebsiteOnly = true;
-    mockReaddirSync.mockReturnValue([]);
-
-    WorkspacePage();
-    expect(mockReaddirSync).toHaveBeenCalled();
-  });
-
-  test("does NOT read filesystem when NEXT_PUBLIC_STATIC_WEBSITE_ONLY is not 'true'", () => {
-    mockStaticWebsiteOnly = false;
-
-    WorkspacePage();
-    expect(mockReaddirSync).not.toHaveBeenCalled();
   });
 });

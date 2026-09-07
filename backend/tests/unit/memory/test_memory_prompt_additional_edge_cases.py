@@ -6,7 +6,7 @@ Targets: 11-12, 175, 180-182, 194-195, 212, 219-234, 242-257, 278, 281,
 
 from unittest.mock import MagicMock, patch
 
-from ideer.agents.memory.prompt import (
+from app.agentplatform.legacy.memory.prompt import (
     _coerce_confidence,
     _count_tokens,
     format_conversation_for_update,
@@ -18,7 +18,7 @@ from ideer.agents.memory.prompt import (
 
 def test_count_tokens_fallback_when_tiktoken_unavailable():
     """Lines 174-175: Falls back to char//4 when tiktoken is not available."""
-    with patch("ideer.agents.memory.prompt.TIKTOKEN_AVAILABLE", False):
+    with patch("app.agentplatform.legacy.memory.prompt.TIKTOKEN_AVAILABLE", False):
         result = _count_tokens("hello world test")
     assert result == len("hello world test") // 4
 
@@ -29,8 +29,8 @@ def test_count_tokens_fallback_when_tiktoken_unavailable():
 def test_count_tokens_fallback_on_tiktoken_exception():
     """Lines 180-182: Falls back to char//4 when tiktoken raises."""
     with (
-        patch("ideer.agents.memory.prompt.TIKTOKEN_AVAILABLE", True),
-        patch("ideer.agents.memory.prompt.tiktoken.get_encoding", side_effect=RuntimeError("bad encoding")),
+        patch("app.agentplatform.legacy.memory.prompt.TIKTOKEN_AVAILABLE", True),
+        patch("app.agentplatform.legacy.memory.prompt.tiktoken.get_encoding", side_effect=RuntimeError("bad encoding")),
     ):
         result = _count_tokens("hello world test")
     assert result == len("hello world test") // 4
@@ -186,7 +186,7 @@ def test_format_memory_correction_with_empty_source_error():
 
 def test_format_memory_truncates_when_over_token_limit(monkeypatch):
     """Lines 313-315: Truncates result when it exceeds max_tokens."""
-    monkeypatch.setattr("ideer.agents.memory.prompt._count_tokens", lambda text, **kw: len(text))
+    monkeypatch.setattr("app.agentplatform.legacy.memory.prompt._count_tokens", lambda text, **kw: len(text))
     memory_data = {
         "user": {
             "workContext": {"summary": "A" * 500},

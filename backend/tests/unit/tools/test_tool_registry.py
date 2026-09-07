@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ideer.tools.registry import ToolInfo, ToolRegistry
+from app.agentplatform.tools.registry import ToolInfo, ToolRegistry
 
 
 class TestToolRegistry:

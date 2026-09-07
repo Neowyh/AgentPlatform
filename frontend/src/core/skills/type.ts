@@ -21,4 +21,5 @@ export interface Skill {
   requires_internet?: boolean;
   skill_md?: string;
   published_at?: string | null;
+  editable: boolean;
 }

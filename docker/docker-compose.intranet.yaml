@@ -70,6 +70,14 @@ services:
       - IDEER_HOST_BASE_DIR=${IDEER_HOME}
       - IDEER_HOST_SKILLS_PATH=${IDEER_REPO_ROOT}/resources/skills
       - IDEER_SANDBOX_HOST=host.docker.internal
+      # The runtime (deerflow.*) resolves its state through DEER_FLOW_*;
+      # these mirror the IDEER_* values so the mounted .ideer volume keeps
+      # holding database, memory, skills views and thread data.
+      - DEER_FLOW_PROJECT_ROOT=/app
+      - DEER_FLOW_HOME=/app/backend/.ideer
+      - DEER_FLOW_SKILLS_PATH=/app/skills
+      - DEER_FLOW_HOST_BASE_DIR=${IDEER_HOME}
+      - DEER_FLOW_HOST_SKILLS_PATH=${IDEER_REPO_ROOT}/resources/skills
     env_file:
       - ${IDEER_ENV_FILE:?IDEER_ENV_FILE must be set}
     extra_hosts:
@@ -109,6 +117,12 @@ services:
       - IDEER_HOST_SKILLS_PATH=${IDEER_REPO_ROOT}/resources/skills
       - IDEER_SANDBOX_HOST=host.docker.internal
       - WORKFLOW_WORKER_ID=${WORKFLOW_WORKER_ID:-workflow-worker}
+      # Runtime state mirrors (see gateway service note above).
+      - DEER_FLOW_PROJECT_ROOT=/app
+      - DEER_FLOW_HOME=/app/backend/.ideer
+      - DEER_FLOW_SKILLS_PATH=/app/skills
+      - DEER_FLOW_HOST_BASE_DIR=${IDEER_HOME}
+      - DEER_FLOW_HOST_SKILLS_PATH=${IDEER_REPO_ROOT}/resources/skills
     env_file:
       - ${IDEER_ENV_FILE:?IDEER_ENV_FILE must be set}
     extra_hosts:

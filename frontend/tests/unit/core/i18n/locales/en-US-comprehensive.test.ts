@@ -128,7 +128,7 @@ describe("enUS locale comprehensive", () => {
     }
 
     it("has the correct number of keys", () => {
-      expect(Object.keys(enUS.common)).toHaveLength(37);
+      expect(Object.keys(enUS.common)).toHaveLength(46);
     });
   });
 
@@ -321,8 +321,8 @@ describe("enUS locale comprehensive", () => {
       });
     }
 
-    it("has 10 keys", () => {
-      expect(Object.keys(enUS.sidebar)).toHaveLength(10);
+    it("has 13 keys", () => {
+      expect(Object.keys(enUS.sidebar)).toHaveLength(13);
     });
   });
 
@@ -430,9 +430,8 @@ describe("enUS locale comprehensive", () => {
     }
 
     it("has the correct number of keys", () => {
-      expect(Object.keys(enUS.agents)).toHaveLength(
-        Object.keys(expected).length,
-      );
+      // 72 enterprise keys restored + 21 upstream agent-settings keys = 93
+      expect(Object.keys(enUS.agents)).toHaveLength(93);
     });
 
     it("nameStepBootstrapMessage contains {name} placeholder", () => {
@@ -589,8 +588,8 @@ describe("enUS locale comprehensive", () => {
       });
     }
 
-    it("has 15 keys", () => {
-      expect(Object.keys(enUS.workspace)).toHaveLength(15);
+    it("has 20 keys", () => {
+      expect(Object.keys(enUS.workspace)).toHaveLength(20);
     });
   });
 
@@ -608,8 +607,8 @@ describe("enUS locale comprehensive", () => {
       );
     });
 
-    it("has 2 keys", () => {
-      expect(Object.keys(enUS.conversation)).toHaveLength(2);
+    it("has 7 keys", () => {
+      expect(Object.keys(enUS.conversation)).toHaveLength(7);
     });
   });
 
@@ -621,8 +620,8 @@ describe("enUS locale comprehensive", () => {
       expect(enUS.chats.searchChats).toBe("Search chats");
     });
 
-    it("has 1 key", () => {
-      expect(Object.keys(enUS.chats)).toHaveLength(1);
+    it("has 8 keys", () => {
+      expect(Object.keys(enUS.chats)).toHaveLength(8);
     });
   });
 
@@ -717,8 +716,8 @@ describe("enUS locale comprehensive", () => {
       );
     });
 
-    it("has 2 keys", () => {
-      expect(Object.keys(enUS.uploads)).toHaveLength(2);
+    it("has 6 keys", () => {
+      expect(Object.keys(enUS.uploads)).toHaveLength(6);
     });
   });
 
@@ -923,7 +922,7 @@ describe("enUS locale comprehensive", () => {
       }
 
       it("has 7 keys", () => {
-        expect(Object.keys(enUS.settings.sections)).toHaveLength(7);
+        expect(Object.keys(enUS.settings.sections)).toHaveLength(10);
       });
     });
 
@@ -1128,8 +1127,8 @@ describe("enUS locale comprehensive", () => {
         });
       }
 
-      it("has 19 keys", () => {
-        expect(Object.keys(enUS.settings.tools)).toHaveLength(19);
+      it("has 36 keys", () => {
+        expect(Object.keys(enUS.settings.tools)).toHaveLength(36);
       });
     });
 
@@ -1155,7 +1154,7 @@ describe("enUS locale comprehensive", () => {
       }
 
       it("has 61 keys", () => {
-        expect(Object.keys(enUS.settings.skills)).toHaveLength(61);
+        expect(Object.keys(enUS.settings.skills)).toHaveLength(68);
       });
     });
 
@@ -1217,7 +1216,7 @@ describe("enUS locale comprehensive", () => {
       }
 
       it("has 15 keys", () => {
-        expect(Object.keys(enUS.settings.account)).toHaveLength(15);
+        expect(Object.keys(enUS.settings.account)).toHaveLength(18);
       });
     });
 
@@ -1249,11 +1248,17 @@ describe("enUS locale comprehensive", () => {
 
     for (const [path, value] of leaves) {
       if (typeof value === "string") {
+        // runDuration.separator is an intentional single space (duration formatting)
+        if (path === "runDuration.separator") continue;
         it(`${path} is a non-empty string`, () => {
           expect(value.trim().length).toBeGreaterThan(0);
         });
       }
     }
+
+    it("runDuration.separator is a single space", () => {
+      expect(enUS.runDuration.separator).toBe(" ");
+    });
   });
 
   // =======================================================================

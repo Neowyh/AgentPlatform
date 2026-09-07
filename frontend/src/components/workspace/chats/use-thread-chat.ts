@@ -1,46 +1,176 @@
 "use client";
 
 import { useParams, usePathname, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
+import { SHOWCASE_ROUTE_PREFIX } from "@/core/threads/static-demo";
 import { uuid } from "@/core/utils/uuid";
+
+export const THREAD_CHAT_RESET_EVENT = "deer-flow:thread-chat-reset";
+
+// Session-scoped storage for the generated new-thread id. The composer draft
+// keys off this id, so it must survive a page reload within the same tab.
+const NEW_THREAD_ID_STORAGE_KEY = "deerflow:new-thread-id:v1";
+
+type ThreadChatResetDetail = {
+  deletedThreadId: string;
+  nextPath: string;
+  force?: boolean;
+};
+
+export function resetThreadChatAfterDelete(detail: ThreadChatResetDetail) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.dispatchEvent(
+    new CustomEvent<ThreadChatResetDetail>(THREAD_CHAT_RESET_EVENT, {
+      detail,
+    }),
+  );
+}
 
 export function useThreadChat() {
   const { thread_id: threadIdFromPath } = useParams<{ thread_id: string }>();
   const pathname = usePathname();
+  // Render-time values use the committed browser URL. The sync effect below
+  // intentionally watches the reactive pathname so client navigation still
+  // schedules a reset when window.location is stale during render.
+  const actualPathname =
+    typeof window === "undefined" ? pathname : window.location.pathname;
+  const isNewPath = actualPathname.endsWith("/new");
+
+  // The generated new-thread id doubles as the composer-draft storage scope,
+  // so it must survive a full page reload (the draft lives in sessionStorage
+  // too). Client-side navigation and explicit resets still mint a fresh id;
+  // only a reload of the same tab reuses the persisted one.
+  const resolveNewThreadId = () => {
+    if (typeof window === "undefined") {
+      return uuid();
+    }
+    try {
+      const existing = window.sessionStorage.getItem(NEW_THREAD_ID_STORAGE_KEY);
+      if (existing) {
+        return existing;
+      }
+      const generated = uuid();
+      window.sessionStorage.setItem(NEW_THREAD_ID_STORAGE_KEY, generated);
+      return generated;
+    } catch {
+      return uuid();
+    }
+  };
+
+  const clearPersistedNewThreadId = () => {
+    try {
+      window.sessionStorage.removeItem(NEW_THREAD_ID_STORAGE_KEY);
+    } catch {
+      // Storage can be disabled; a fresh id on the next mount is fine.
+    }
+  };
+
+  const newThreadIdRef = useRef<string | null>(
+    threadIdFromPath === "new" ? resolveNewThreadId() : null,
+  );
+
+  if (isNewPath && !newThreadIdRef.current) {
+    newThreadIdRef.current = resolveNewThreadId();
+  }
 
   const searchParams = useSearchParams();
-  const [threadId, setThreadId] = useState(() => {
-    return threadIdFromPath === "new" ? uuid() : threadIdFromPath;
+  const [threadId, setThreadIdState] = useState(() => {
+    return threadIdFromPath === "new"
+      ? (newThreadIdRef.current ?? uuid())
+      : threadIdFromPath;
   });
 
-  const [isNewThread, setIsNewThread] = useState(
+  const [isNewThreadState, setIsNewThreadState] = useState(
     () => threadIdFromPath === "new",
   );
 
+  const resetToNewThread = useCallback(() => {
+    const nextThreadId = uuid();
+    newThreadIdRef.current = nextThreadId;
+    clearPersistedNewThreadId();
+    try {
+      window.sessionStorage.setItem(NEW_THREAD_ID_STORAGE_KEY, nextThreadId);
+    } catch {
+      // Storage can be disabled; the ref still covers this mount.
+    }
+    setIsNewThreadState(true);
+    setThreadIdState(nextThreadId);
+  }, []);
+
   useEffect(() => {
     if (pathname.endsWith("/new")) {
-      setIsNewThread(true);
-      setThreadId(uuid());
+      const nextThreadId = newThreadIdRef.current ?? resolveNewThreadId();
+      newThreadIdRef.current = nextThreadId;
+      setIsNewThreadState(true);
+      setThreadIdState(nextThreadId);
       return;
     }
-    // Guard: after history.replaceState updates the URL from /chats/new to
-    // /chats/{UUID}, Next.js useParams may still return the stale "new" value
-    // because replaceState does not trigger router updates.  Avoid propagating
-    // this invalid thread ID to downstream hooks (e.g. useStream), which would
-    // cause a 422 from LangGraph Server.
+    newThreadIdRef.current = null;
+    clearPersistedNewThreadId();
+    // Native history updates the canonical pathname but preserves the route
+    // tree, so useParams may still return the stale "new" value. Avoid passing
+    // it to downstream hooks (e.g. useStream), which would cause a 422.
     if (threadIdFromPath === "new") {
       return;
     }
-    setIsNewThread(false);
-    setThreadId(threadIdFromPath);
+    setIsNewThreadState(false);
+    setThreadIdState(threadIdFromPath);
   }, [pathname, threadIdFromPath]);
-  const isMock = searchParams.get("mock") === "true";
+
+  useEffect(() => {
+    const handleReset = (event: Event) => {
+      const detail = (event as CustomEvent<ThreadChatResetDetail>).detail;
+      if (!detail?.nextPath) {
+        return;
+      }
+
+      const currentPathname = window.location.pathname;
+      const isDeletingCurrentThread =
+        detail.force === true ||
+        detail.deletedThreadId === threadId ||
+        detail.deletedThreadId === threadIdFromPath ||
+        currentPathname.endsWith(`/${detail.deletedThreadId}`);
+
+      if (!isDeletingCurrentThread) {
+        return;
+      }
+
+      // URL replacement is owned by the caller's Next router action; this hook
+      // only resets local chat state so the router state and browser URL stay
+      // in sync.
+      resetToNewThread();
+    };
+
+    window.addEventListener(THREAD_CHAT_RESET_EVENT, handleReset);
+    return () =>
+      window.removeEventListener(THREAD_CHAT_RESET_EVENT, handleReset);
+  }, [resetToNewThread, threadId, threadIdFromPath]);
+
+  const setThreadId = useCallback((nextThreadId: string) => {
+    newThreadIdRef.current = null;
+    setThreadIdState(nextThreadId);
+  }, []);
+
+  const setIsNewThread = useCallback((nextIsNewThread: boolean) => {
+    if (!nextIsNewThread) {
+      newThreadIdRef.current = null;
+    }
+    setIsNewThreadState(nextIsNewThread);
+  }, []);
+
+  const isMock =
+    actualPathname.startsWith(`${SHOWCASE_ROUTE_PREFIX}/`) ||
+    searchParams.get("mock") === "true";
+  // Connector chosen in the capability center travels via ?connector= and
+  // must survive into the scenario binding of every new message.
   const selectedConnector = searchParams.get("connector");
   return {
-    threadId,
+    threadId: isNewPath ? (newThreadIdRef.current ?? threadId) : threadId,
     setThreadId,
-    isNewThread,
+    isNewThread: isNewPath ? true : isNewThreadState,
     setIsNewThread,
     isMock,
     selectedConnector,

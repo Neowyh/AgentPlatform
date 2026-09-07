@@ -18,15 +18,15 @@ import sys
 
 from sqlalchemy import select
 
+from app.agentplatform.rbac_models import UserModel, UserRole
 from app.gateway.auth.credential_file import write_initial_credentials
 from app.gateway.auth.password import hash_password
 from app.gateway.auth.repositories.sqlite import SQLiteUserRepository
-from ideer.persistence.models.user import UserModel, UserRole
 
 
 async def _run(email: str | None) -> int:
-    from ideer.config import get_app_config
-    from ideer.persistence.engine import (
+    from deerflow.config import get_app_config
+    from deerflow.persistence.engine import (
         close_engine,
         get_session_factory,
         init_engine_from_config,

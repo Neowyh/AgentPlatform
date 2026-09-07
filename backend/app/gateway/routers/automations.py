@@ -7,8 +7,8 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from app.agentplatform.rbac_models import UserModel
 from app.gateway.authz import get_current_rbac_user
-from ideer.persistence.models.user import UserModel
 
 router = APIRouter(prefix="/api/automations", tags=["automations"])
 

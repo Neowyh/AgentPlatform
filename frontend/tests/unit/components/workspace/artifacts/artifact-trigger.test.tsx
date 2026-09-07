@@ -13,10 +13,15 @@ vi.mock("@/core/i18n/hooks", () => ({
     t: {
       common: {
         artifacts: "Artifacts",
+        showArtifacts: "Show artifacts of this conversation",
       },
     },
     changeLocale: vi.fn(),
   }),
+}));
+
+vi.mock("@/components/workspace/sidecar/context", () => ({
+  useMaybeSidecar: () => null,
 }));
 
 vi.mock("@/components/workspace/tooltip", () => ({
@@ -86,7 +91,7 @@ describe("ArtifactTrigger", () => {
 
   test("renders the trigger button when artifacts exist", () => {
     render(<ArtifactTrigger />);
-    expect(screen.getByTestId("artifact-trigger-button")).toBeInTheDocument();
+    expect(screen.getByTestId("artifact-trigger")).toBeInTheDocument();
   });
 
   test("displays the artifacts label text", () => {
@@ -105,7 +110,7 @@ describe("ArtifactTrigger", () => {
 
   test("button has ghost variant attribute", () => {
     render(<ArtifactTrigger />);
-    const button = screen.getByTestId("artifact-trigger-button");
+    const button = screen.getByTestId("artifact-trigger");
     expect(button).toHaveAttribute("data-variant", "ghost");
   });
 
@@ -113,13 +118,13 @@ describe("ArtifactTrigger", () => {
 
   test("clicking the button calls setOpen(true)", () => {
     render(<ArtifactTrigger />);
-    fireEvent.click(screen.getByTestId("artifact-trigger-button"));
+    fireEvent.click(screen.getByTestId("artifact-trigger"));
     expect(mockSetArtifactsOpen).toHaveBeenCalledWith(true);
   });
 
   test("clicking the button only calls setOpen once", () => {
     render(<ArtifactTrigger />);
-    fireEvent.click(screen.getByTestId("artifact-trigger-button"));
+    fireEvent.click(screen.getByTestId("artifact-trigger"));
     expect(mockSetArtifactsOpen).toHaveBeenCalledTimes(1);
   });
 
@@ -131,7 +136,7 @@ describe("ArtifactTrigger", () => {
       setOpen: mockSetArtifactsOpen,
     };
     render(<ArtifactTrigger />);
-    expect(screen.getByTestId("artifact-trigger-button")).toBeInTheDocument();
+    expect(screen.getByTestId("artifact-trigger")).toBeInTheDocument();
   });
 
   // ── Multiple artifacts ───────────────────────────────────────────────────
@@ -142,14 +147,14 @@ describe("ArtifactTrigger", () => {
       setOpen: mockSetArtifactsOpen,
     };
     render(<ArtifactTrigger />);
-    expect(screen.getByTestId("artifact-trigger-button")).toBeInTheDocument();
+    expect(screen.getByTestId("artifact-trigger")).toBeInTheDocument();
   });
 
   // ── Icon rendering ──────────────────────────────────────────────────────
 
   test("renders an svg icon inside the button", () => {
     render(<ArtifactTrigger />);
-    const button = screen.getByTestId("artifact-trigger-button");
+    const button = screen.getByTestId("artifact-trigger");
     const svg = button.querySelector("svg");
     expect(svg).toBeInTheDocument();
   });
@@ -158,7 +163,7 @@ describe("ArtifactTrigger", () => {
 
   test("multiple clicks call setOpen each time", () => {
     render(<ArtifactTrigger />);
-    const button = screen.getByTestId("artifact-trigger-button");
+    const button = screen.getByTestId("artifact-trigger");
     fireEvent.click(button);
     fireEvent.click(button);
     fireEvent.click(button);
@@ -170,7 +175,7 @@ describe("ArtifactTrigger", () => {
 
   test("button has text-muted-foreground class", () => {
     render(<ArtifactTrigger />);
-    const button = screen.getByTestId("artifact-trigger-button");
+    const button = screen.getByTestId("artifact-trigger");
     expect(button.className).toContain("text-muted-foreground");
   });
 });

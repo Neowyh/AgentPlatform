@@ -1,6 +1,6 @@
 """Tests for the workflow template engine (render_value, render_params, _resolve)."""
 
-from ideer.workflows.template import render_params, render_value
+from app.agentplatform.workflows.template import render_params, render_value
 
 # ── render_value ────────────────────────────────────────────────────
 

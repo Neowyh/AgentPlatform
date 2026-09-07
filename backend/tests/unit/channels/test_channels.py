@@ -2054,7 +2054,6 @@ class TestWeComChannel:
 
         async def go():
             bus = MessageBus()
-            bus.publish_inbound = AsyncMock()
             channel = WeComChannel(bus, config={})
             channel._ws_client = SimpleNamespace(reply_stream=AsyncMock())
 
@@ -2077,9 +2076,9 @@ class TestWeComChannel:
             await channel._publish_ws_inbound(frame, "hello", files=files)
 
             channel._ws_client.reply_stream.assert_awaited_once_with(frame, "stream-1", "Working on it...", False)
-            bus.publish_inbound.assert_awaited_once()
 
-            inbound = bus.publish_inbound.await_args.args[0]
+            inbound = bus.get_inbound_nowait()
+            bus.inbound_task_done()
             assert inbound.channel_name == "wecom"
             assert inbound.chat_id == "user-1"
             assert inbound.user_id == "user-1"
@@ -2087,7 +2086,7 @@ class TestWeComChannel:
             assert inbound.thread_ts == "msg-1"
             assert inbound.topic_id == "user-1"
             assert inbound.files == files
-            assert inbound.metadata == {"aibotid": "bot-1", "chattype": "single"}
+            assert inbound.metadata == {"aibotid": "bot-1", "chattype": "single", "message_id": "msg-1"}
             assert channel._ws_frames["msg-1"] is frame
             assert channel._ws_stream_ids["msg-1"] == "stream-1"
 
@@ -2296,7 +2295,7 @@ class TestChannelService:
             }
         )
 
-        with patch("ideer.config.app_config.get_app_config", side_effect=AssertionError("should not read global config")):
+        with patch("deerflow.config.get_app_config", side_effect=AssertionError("should not read global config")):
             service = ChannelService.from_app_config(app_config)
 
         assert service._config == {"telegram": {"enabled": False}}
@@ -2395,16 +2394,10 @@ class TestSlackSendRetry:
 
 
 class TestSlackAllowedUsers:
-    @staticmethod
-    def _submit_coro(coro, loop):
-        coro.close()
-        return MagicMock()
-
     def test_numeric_allowed_users_match_string_event_user_id(self):
         from app.channels.slack import SlackChannel
 
         bus = MessageBus()
-        bus.publish_inbound = AsyncMock()
         channel = SlackChannel(
             bus=bus,
             config={"allowed_users": [123456]},
@@ -2421,16 +2414,13 @@ class TestSlackAllowedUsers:
             "ts": "1710000000.000100",
         }
 
-        with patch(
-            "app.channels.slack.asyncio.run_coroutine_threadsafe",
-            side_effect=self._submit_coro,
-        ) as submit:
-            channel._handle_message_event(event)
+        channel._handle_message_event(event)
 
         channel._add_reaction.assert_called_once_with("C123", "1710000000.000100", "eyes")
         channel._send_running_reply.assert_called_once_with("C123", "1710000000.000100")
-        submit.assert_called_once()
-        inbound = bus.publish_inbound.call_args.args[0]
+        channel._loop.call_soon_threadsafe.assert_called_once()
+        commit_fn, reservation, inbound = channel._loop.call_soon_threadsafe.call_args.args
+        commit_fn(reservation, inbound)
         assert inbound.user_id == "123456"
         assert inbound.chat_id == "C123"
         assert inbound.text == "hello from slack"
@@ -2439,7 +2429,6 @@ class TestSlackAllowedUsers:
         from app.channels.slack import SlackChannel
 
         bus = MessageBus()
-        bus.publish_inbound = AsyncMock()
         channel = SlackChannel(
             bus=bus,
             config={"allowed_users": "U123456"},
@@ -2456,16 +2445,13 @@ class TestSlackAllowedUsers:
             "ts": "1710000000.000100",
         }
 
-        with patch(
-            "app.channels.slack.asyncio.run_coroutine_threadsafe",
-            side_effect=self._submit_coro,
-        ) as submit:
-            channel._handle_message_event(event)
+        channel._handle_message_event(event)
 
         channel._add_reaction.assert_called_once_with("C123", "1710000000.000100", "eyes")
         channel._send_running_reply.assert_called_once_with("C123", "1710000000.000100")
-        submit.assert_called_once()
-        inbound = bus.publish_inbound.call_args.args[0]
+        channel._loop.call_soon_threadsafe.assert_called_once()
+        commit_fn, reservation, inbound = channel._loop.call_soon_threadsafe.call_args.args
+        commit_fn(reservation, inbound)
         assert inbound.user_id == "U123456"
         assert inbound.chat_id == "C123"
         assert inbound.text == "hello from slack"
@@ -2474,7 +2460,6 @@ class TestSlackAllowedUsers:
         from app.channels.slack import SlackChannel
 
         bus = MessageBus()
-        bus.publish_inbound = AsyncMock()
         with caplog.at_level("WARNING"):
             channel = SlackChannel(
                 bus=bus,
@@ -2492,15 +2477,12 @@ class TestSlackAllowedUsers:
             "ts": "1710000000.000100",
         }
 
-        with patch(
-            "app.channels.slack.asyncio.run_coroutine_threadsafe",
-            side_effect=self._submit_coro,
-        ) as submit:
-            channel._handle_message_event(event)
+        channel._handle_message_event(event)
 
         assert "Slack allowed_users should be a list" in caplog.text
-        submit.assert_called_once()
-        inbound = bus.publish_inbound.call_args.args[0]
+        channel._loop.call_soon_threadsafe.assert_called_once()
+        commit_fn, reservation, inbound = channel._loop.call_soon_threadsafe.call_args.args
+        commit_fn(reservation, inbound)
         assert inbound.user_id == "123456"
 
     def test_raises_after_all_retries_exhausted(self):

@@ -466,12 +466,21 @@ mkdir -p temp/client_body_temp temp/proxy_temp temp/fastcgi_temp temp/uwsgi_temp
 # backend/.ideer/data/ideer.db, matching Gateway startup (env.py further
 # resolves from config.yaml and ensures the parent dir exists).
 echo "Running database migrations..."
-(cd "$REPO_ROOT/backend" && uv run alembic -c packages/harness/ideer/persistence/migrations/alembic.ini upgrade head) || { echo "✗ Database migrations failed"; cleanup 1; }
+(cd "$REPO_ROOT/backend" && uv run alembic -c app/agentplatform/persistence/migrations/alembic.ini upgrade head) || { echo "✗ Database migrations failed"; cleanup 1; }
 echo "✓ Database migrations completed"
+
+# ── Runtime state directory continuity ───────────────────────────────────────
+# Existing pre-convergence installs keep their backend/.ideer state directory:
+# when DEER_FLOW_HOME was not set explicitly and the legacy directory exists,
+# adopt it so memory, agents, threads and skills views stay with the data
+# written by the legacy runtime. Fresh installs default to .deer-flow.
+if [ -z "${DEER_FLOW_HOME:-}" ] && [ -d "$REPO_ROOT/backend/.ideer" ]; then
+    export DEER_FLOW_HOME="$REPO_ROOT/backend/.ideer"
+fi
 
 # 1. Gateway API
 run_service "Gateway" \
-    "cd backend && PYTHONPATH=. uv run uvicorn app.gateway.app:app --host 0.0.0.0 --port 8001 $GATEWAY_EXTRA_FLAGS > ../logs/gateway.log 2>&1" \
+    "cd backend && PYTHONPATH=. uv run --no-sync uvicorn app.gateway.app:app --host 0.0.0.0 --port 8001 $GATEWAY_EXTRA_FLAGS > ../logs/gateway.log 2>&1" \
     8001 30
 
 # 2. Durable workflow task consumer
@@ -479,8 +488,8 @@ run_workflow_worker
 
 # 3. Frontend
 run_service "Frontend" \
-    "cd frontend && $FRONTEND_CMD > ../logs/frontend.log 2>&1" \
-    3000 120
+    "cd frontend && env PORT=3000 $FRONTEND_CMD > ../logs/frontend.log 2>&1" \
+    3000 300
 
 # 4. Nginx
 run_service "Nginx" \

@@ -18,7 +18,7 @@ from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy import exc as sa_exc
 
-MIGRATIONS_DIR = Path(__file__).resolve().parents[3] / "packages" / "harness" / "ideer" / "persistence" / "migrations"
+MIGRATIONS_DIR = Path(__file__).resolve().parents[3] / "app" / "agentplatform" / "persistence" / "migrations"
 
 # The alembic URL uses the async driver.  For post-migration verification
 # we open the same SQLite file with a synchronous engine (no greenlet needed).
@@ -91,8 +91,8 @@ def _get_table_schema(db_url: str) -> dict[str, dict[str, tuple[str, bool]]]:
 
 def _get_orm_tables() -> set[str]:
     """Return the set of ORM-model table names registered on Base.metadata."""
-    import ideer.persistence.models  # noqa: F401 — registers models with Base.metadata
-    from ideer.persistence.base import Base
+    import deerflow.persistence.models  # noqa: F401 — registers models with Base.metadata
+    from deerflow.persistence.base import Base
 
     return set(Base.metadata.tables.keys())
 
@@ -100,6 +100,29 @@ def _get_orm_tables() -> set[str]:
 def _get_all_revisions() -> list:
     cfg = make_alembic_config("sqlite+aiosqlite:///:memory:")
     return list(ScriptDirectory.from_config(cfg).walk_revisions())
+
+
+def _bootstrap_runtime_schema(db_url: str) -> None:
+    """Run the deerflow runtime schema bootstrap against a migrated DB.
+
+    Production enterprise deployments apply the enterprise Alembic tree first
+    and let ``deerflow.persistence.bootstrap`` backfill the deerflow-owned
+    tables at startup; tests that assert full ORM coverage mirror that order.
+    """
+    import asyncio
+
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    from deerflow.persistence.bootstrap import bootstrap_schema
+
+    async def _run() -> None:
+        engine = create_async_engine(db_url)
+        try:
+            await bootstrap_schema(engine, backend="sqlite")
+        finally:
+            await engine.dispose()
+
+    asyncio.run(_run())
 
 
 def _get_non_merge_revisions() -> list[str]:
@@ -140,12 +163,13 @@ class TestAlembicMigrations:
     # -----------------------------------------------------------------------
 
     def test_upgrade_from_scratch_to_head(self, tmp_path: Path) -> None:
-        """Verify a full migration from blank DB to head creates all tables."""
+        """Verify enterprise migrations plus runtime bootstrap create all tables."""
         db_path = tmp_path / "test.db"
         db_url = f"sqlite+aiosqlite:///{db_path}"
         cfg = make_alembic_config(db_url)
 
         upgrade(cfg, "head")
+        _bootstrap_runtime_schema(db_url)
 
         current = _get_current_revision(db_url)
         assert current == get_head_revision(), f"Expected head revision {get_head_revision()}, got {current}"
@@ -230,13 +254,15 @@ class TestAlembicMigrations:
 
     def test_head_schema_matches_orm_models(self, tmp_path: Path) -> None:
         """Verify every ORM-model table + column exists in the DB at head
-        and that column types and nullability match.
+        (after the runtime bootstrap backfill) and that column types and
+        nullability match.
         """
         db_path = tmp_path / "test.db"
         db_url = f"sqlite+aiosqlite:///{db_path}"
         cfg = make_alembic_config(db_url)
 
         upgrade(cfg, "head")
+        _bootstrap_runtime_schema(db_url)
 
         orm_tables = _get_orm_tables()
         sync_url = _sync_url(db_url)
@@ -250,7 +276,7 @@ class TestAlembicMigrations:
                 missing = orm_tables - db_table_names
                 assert not missing, f"ORM tables missing from DB: {missing}"
 
-                from ideer.persistence.base import Base
+                from deerflow.persistence.base import Base
 
                 for table_name in sorted(orm_tables):
                     db_cols: dict[str, tuple[object, bool]] = {c["name"]: (c["type"], c.get("nullable", True)) for c in inspector.get_columns(table_name)}
@@ -300,92 +326,64 @@ class TestAlembicMigrations:
 
     @pytest.mark.asyncio
     async def test_stamp_alembic_head_interaction(self, tmp_path: Path) -> None:
-        """End-to-end test for _stamp_alembic_head.
+        """End-to-end dual-tree version-table interaction test.
 
-        1. Creates ORM tables via Base.metadata.create_all
-        2. Stamps alembic head via _stamp_alembic_head
-        3. Verifies alembic_version table and revision
-        4. Verifies alembic upgrade head is idempotent
+        The historic ``engine._stamp_alembic_head`` helper was superseded by
+        the ``deerflow.persistence.bootstrap`` state machine, which records
+        its revisions in a dedicated ``deerflow_alembic_version`` table. This
+        test verifies the production coexistence contract:
+
+        1. Applies the enterprise tree to head (standard ``alembic_version``).
+        2. Runs the runtime bootstrap, which takes the legacy branch,
+           backfills deerflow-owned tables and stamps the deerflow head.
+        3. Verifies full ORM coverage and that each version table records
+           its own tree's head.
+        4. Verifies a second bootstrap run is a no-op and leaves both
+           version tables untouched.
         """
-        import shutil
-
         from sqlalchemy.ext.asyncio import create_async_engine
 
-        import ideer.persistence.engine as engine_mod
-        import ideer.persistence.models  # noqa: F401
-        from ideer.persistence.base import Base
-        from ideer.persistence.engine import _stamp_alembic_head
+        import deerflow.persistence.models  # noqa: F401
+        from deerflow.persistence.base import Base
+        from deerflow.persistence.bootstrap import _get_head_revision, bootstrap_schema
 
         db_path = tmp_path / "test_stamp.db"
         db_url = f"sqlite+aiosqlite:///{db_path}"
 
-        # -- temp persistence dir for _stamp_alembic_head (parses migration files)
-        persistence_dir = tmp_path / "persistence"
-        pv_dir = persistence_dir / "migrations" / "versions"
-        pv_dir.mkdir(parents=True)
-        (pv_dir / "001_initial.py").write_text('revision: str = "abc123"\ndown_revision: str | None = None\n')
-        (pv_dir / "002_add_table.py").write_text('revision: str = "def456"\ndown_revision: str | None = "abc123"\n')
-
-        # -- temp Alembic env for upgrade("head") idempotency check
-        alembic_dir = tmp_path / "alembic"
-        av_dir = alembic_dir / "versions"
-        av_dir.mkdir(parents=True)
-        (alembic_dir / "alembic.ini").write_text(f"[alembic]\nscript_location = {alembic_dir}\nsqlalchemy.url = {db_url}\n")
-        (alembic_dir / "env.py").write_text(
-            '"""Alembic env."""\n'
-            "from alembic import context\n"
-            "from sqlalchemy import create_engine\n"
-            "from ideer.persistence.base import Base\n\n"
-            "config = context.config\n"
-            "target_metadata = Base.metadata\n\n"
-            "url = config.get_main_option('sqlalchemy.url')\n"
-            "url = url.replace('sqlite+aiosqlite://', 'sqlite://')\n"
-            "connectable = create_engine(url)\n"
-            "with connectable.connect() as connection:\n"
-            "    context.configure(connection=connection, "
-            "target_metadata=target_metadata, render_as_batch=True)\n"
-            "    with context.begin_transaction():\n"
-            "        context.run_migrations()\n"
-        )
-        shutil.copy(str(MIGRATIONS_DIR / "script.py.mako"), str(alembic_dir / "script.py.mako"))
-        (av_dir / "001_initial.py").write_text(
-            '"""initial"""\nrevision: str = "abc123"\ndown_revision: str | None = None\n\nfrom alembic import op\nimport sqlalchemy as sa\n\ndef upgrade() -> None:\n    pass\n\ndef downgrade() -> None:\n    pass\n'
-        )
-        (av_dir / "002_add_table.py").write_text(
-            '"""add table"""\nrevision: str = "def456"\ndown_revision: str | None = "abc123"\n\nfrom alembic import op\nimport sqlalchemy as sa\n\ndef upgrade() -> None:\n    pass\n\ndef downgrade() -> None:\n    pass\n'
-        )
-
-        head_rev = "def456"
+        upgrade(make_alembic_config(db_url), "head")
 
         engine = create_async_engine(db_url)
         try:
+            await bootstrap_schema(engine, backend="sqlite")
+
+            head_rev = _get_head_revision()
+            enterprise_rev = _get_current_revision(db_url)
+
+            def _read_versions(sync_conn):
+                from sqlalchemy import inspect as sa_inspect
+
+                insp = sa_inspect(sync_conn)
+                deer_rows = []
+                if "deerflow_alembic_version" in insp.get_table_names():
+                    deer_rows = [str(r[0]) for r in sync_conn.execute(text("SELECT version_num FROM deerflow_alembic_version")).fetchall()]
+                ent_rows = [str(r[0]) for r in sync_conn.execute(text("SELECT version_num FROM alembic_version")).fetchall()]
+                return deer_rows, ent_rows
+
             async with engine.begin() as conn:
-                await conn.run_sync(Base.metadata.create_all)
+                deer_rows, ent_rows = await conn.run_sync(_read_versions)
+                tables = set(await conn.run_sync(lambda c: inspect(c).get_table_names()))
 
-                original_file = engine_mod.__file__
-                engine_mod.__file__ = str(persistence_dir / "engine.py")
-                try:
-                    await _stamp_alembic_head(conn, "sqlite")
-                finally:
-                    engine_mod.__file__ = original_file
+            assert deer_rows == [head_rev], f"Expected deerflow version table at {head_rev}, got {deer_rows}"
+            assert ent_rows == [enterprise_rev], f"Expected enterprise version table at {enterprise_rev}, got {ent_rows}"
 
-            sync_url = _sync_url(db_url)
-            sync_engine = create_engine(sync_url)
-            try:
-                with sync_engine.connect() as conn:
-                    result = conn.execute(text("SELECT version_num FROM alembic_version"))
-                    row = result.fetchone()
-                    assert row is not None, "alembic_version table missing"
-                    assert row[0] == head_rev, f"Expected {head_rev}, got {row[0]}"
-            finally:
-                sync_engine.dispose()
+            missing = set(Base.metadata.tables) - tables
+            assert not missing, f"ORM tables missing after bootstrap: {missing}"
 
-            from alembic.config import Config as AlembicConfig
-
-            temp_cfg = AlembicConfig(str(alembic_dir / "alembic.ini"))
-            upgrade(temp_cfg, "head")
-
-            current = _get_current_revision(db_url)
-            assert current == head_rev, f"After idempotent upgrade, expected {head_rev}, got {current}"
+            # Second bootstrap run must be a no-op on the versioned branch.
+            await bootstrap_schema(engine, backend="sqlite")
+            async with engine.begin() as conn:
+                deer_rows_after, ent_rows_after = await conn.run_sync(_read_versions)
+            assert deer_rows_after == deer_rows
+            assert ent_rows_after == ent_rows
         finally:
             await engine.dispose()

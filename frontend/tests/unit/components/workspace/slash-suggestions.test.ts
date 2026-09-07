@@ -15,6 +15,7 @@ const makeSkill = (name: string, description = `${name} desc`): Skill => ({
   category: "public",
   license: "",
   enabled: true,
+  editable: true,
 });
 
 const SKILLS: Skill[] = [

@@ -8,7 +8,7 @@ import threading
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from ideer.agents.lead_agent import prompt as prompt_module
+from deerflow.agents.lead_agent import prompt as prompt_module
 
 
 def _set_skills_cache_state(*, skills=None, active=False, version=0):
@@ -41,7 +41,8 @@ def test_start_enabled_skills_refresh_thread():
 
 
 def test_refresh_worker_handles_exception():
-    """Lines 70-71: Worker handles exception from load_skills gracefully."""
+    """Upstream: on load failure the worker keeps the cache untouched (stays None),
+    clears the refresh flag, and delivers the error to waiters."""
     _set_skills_cache_state()
     try:
         with patch.object(prompt_module, "_load_enabled_skills_sync", side_effect=RuntimeError("load failed")):
@@ -52,9 +53,9 @@ def test_refresh_worker_handles_exception():
 
             prompt_module._refresh_enabled_skills_cache_worker()
 
-        # Worker should have set cache to empty list despite exception
+        # Worker leaves the previous cache value in place on error
         with prompt_module._enabled_skills_lock:
-            assert prompt_module._enabled_skills_cache == []
+            assert prompt_module._enabled_skills_cache is None
             assert prompt_module._enabled_skills_refresh_active is False
     finally:
         _set_skills_cache_state()
@@ -108,38 +109,36 @@ def test_get_memory_context_returns_empty_when_injection_disabled(monkeypatch):
 
 
 def test_get_memory_context_returns_empty_when_no_content(monkeypatch):
-    """Lines 589-591: Returns empty when memory content is empty."""
+    """Upstream: empty manager context renders no <memory> block."""
     config = SimpleNamespace(memory=SimpleNamespace(enabled=True, injection_enabled=True, max_injection_tokens=2000))
 
-    monkeypatch.setattr("ideer.runtime.user_context.get_effective_user_id", lambda: "u1")
-    monkeypatch.setattr("ideer.agents.memory.get_memory_data", lambda *a, **kw: {})
-    monkeypatch.setattr("ideer.agents.memory.format_memory_for_injection", lambda *a, **kw: "")
+    manager = SimpleNamespace(get_context=lambda *, user_id, agent_name: "  ")
+    monkeypatch.setattr("deerflow.agents.memory.get_memory_manager", lambda: manager)
 
-    result = prompt_module._get_memory_context("agent1", app_config=config)
+    result = prompt_module._get_memory_context("agent1", app_config=config, user_id="u1")
     assert result == ""
 
 
 def test_get_memory_context_returns_content(monkeypatch):
-    """Lines 583-588: Returns memory wrapped in XML tags."""
+    """Upstream loads memory via the pluggable MemoryManager and wraps it in <memory>."""
     config = SimpleNamespace(memory=SimpleNamespace(enabled=True, injection_enabled=True, max_injection_tokens=1000))
 
-    monkeypatch.setattr("ideer.runtime.user_context.get_effective_user_id", lambda: "u1")
-    monkeypatch.setattr("ideer.agents.memory.get_memory_data", lambda *a, **kw: {"facts": []})
-    monkeypatch.setattr("ideer.agents.memory.format_memory_for_injection", lambda *a, **kw: "User likes Python")
+    manager = SimpleNamespace(get_context=lambda *, user_id, agent_name: "User likes Python")
+    monkeypatch.setattr("deerflow.agents.memory.get_memory_manager", lambda: manager)
 
-    result = prompt_module._get_memory_context("agent1", app_config=config)
+    result = prompt_module._get_memory_context("agent1", app_config=config, user_id="u1")
     assert "<memory>" in result
     assert "User likes Python" in result
 
 
 def test_get_memory_context_handles_exception(monkeypatch):
-    """Lines 589-591: Returns empty on exception."""
-    config = SimpleNamespace(memory=SimpleNamespace(enabled=True, injection_enabled=True, max_injection_tokens=1000))
+    """Upstream: manager failures render empty (default read failure policy)."""
+    config = SimpleNamespace(memory=SimpleNamespace(enabled=True, injection_enabled=True, max_injection_tokens=1000, backend_config={}))
 
     def boom():
         raise RuntimeError("boom")
 
-    monkeypatch.setattr("ideer.runtime.user_context.get_effective_user_id", boom)
+    monkeypatch.setattr("deerflow.agents.memory.get_memory_manager", boom)
 
     result = prompt_module._get_memory_context(app_config=config)
     assert result == ""
@@ -149,31 +148,34 @@ def test_get_memory_context_handles_exception(monkeypatch):
 
 
 def test_get_skills_prompt_section_returns_empty_when_no_skills_and_no_evolution(monkeypatch):
-    """Lines 649: Returns empty when no skills and no evolution."""
+    """Returns empty when no skills and no evolution."""
     config = SimpleNamespace(
         skills=SimpleNamespace(container_path="/mnt/skills"),
         skill_evolution=SimpleNamespace(enabled=False),
     )
     monkeypatch.setattr(prompt_module, "get_enabled_skills_for_config", lambda *a, **kw: [])
+    monkeypatch.setattr(prompt_module, "get_or_new_skill_storage", lambda app_config=None: SimpleNamespace(load_skills=lambda enabled_only: []))
+    prompt_module._get_cached_skills_prompt_section.cache_clear()
 
     result = prompt_module.get_skills_prompt_section(app_config=config)
     assert result == ""
 
 
-def test_apply_prompt_template_read_only_uses_frozen_soul_and_skips_self_update(monkeypatch):
-    """Read-only shared agents get soul from the frozen override and no self-update section."""
+def test_apply_prompt_template_uses_frozen_soul_override(monkeypatch):
+    """The pre-rendered frozen soul block is used verbatim instead of a soul lookup."""
     monkeypatch.setattr(prompt_module, "get_skills_prompt_section", lambda *a, **kw: "")
     monkeypatch.setattr(prompt_module, "get_deferred_tools_prompt_section", lambda *a, **kw: "")
     monkeypatch.setattr(prompt_module, "_build_acp_section", lambda *a, **kw: "")
     monkeypatch.setattr(prompt_module, "_build_custom_mounts_section", lambda *a, **kw: "")
+    monkeypatch.setattr(prompt_module, "get_agent_soul", lambda *a, **kw: (_ for _ in ()).throw(AssertionError("soul lookup must not run when a frozen override is supplied")))
 
-    result = prompt_module.apply_prompt_template(agent_name="my-agent", soul_override="shared", read_only=True)
+    result = prompt_module.apply_prompt_template(agent_name="my-agent", soul_override="<soul>\nshared\n</soul>\n")
 
     assert "<soul>\nshared\n</soul>" in result
-    assert "<self_update>" not in result
 
 
-def test_apply_prompt_template_accepts_frozen_soul_without_legacy_owner_lookup(monkeypatch):
+def test_apply_prompt_template_self_update_depends_on_agent_name(monkeypatch):
+    """Upstream renders the self-update block for named custom agents only."""
     monkeypatch.setattr(prompt_module, "get_skills_prompt_section", lambda *args, **kwargs: "")
     monkeypatch.setattr(prompt_module, "get_deferred_tools_prompt_section", lambda **kwargs: "")
     monkeypatch.setattr(prompt_module, "_build_acp_section", lambda **kwargs: "")
@@ -181,39 +183,29 @@ def test_apply_prompt_template_accepts_frozen_soul_without_legacy_owner_lookup(m
 
     result = prompt_module.apply_prompt_template(
         agent_name="canonical-agent",
-        soul_override="Frozen identity",
-        read_only=True,
+        soul_override="<soul>\nFrozen identity\n</soul>\n",
     )
 
     assert "<soul>\nFrozen identity\n</soul>" in result
-    assert "<self_update>" not in result
+    assert "<self_update>" in result
+
+    anonymous = prompt_module.apply_prompt_template(soul_override="<soul>\nFrozen identity\n</soul>\n")
+    assert "<self_update>" not in anonymous
 
 
 # --- Lines 697-702: get_deferred_tools_prompt_section ---
 
 
-def test_get_deferred_tools_prompt_section_returns_empty_when_disabled():
-    """Lines 697-702: Returns empty when tool_search is disabled."""
-    config = SimpleNamespace(tool_search=SimpleNamespace(enabled=False))
-    result = prompt_module.get_deferred_tools_prompt_section(app_config=config)
-    assert result == ""
-
-
-def test_get_deferred_tools_prompt_section_returns_empty_when_no_registry():
-    """Lines 709-712: Returns empty when registry is empty."""
-    config = SimpleNamespace(tool_search=SimpleNamespace(enabled=True))
-    with patch("ideer.tools.builtins.tool_search.get_deferred_registry", return_value=None):
-        result = prompt_module.get_deferred_tools_prompt_section(app_config=config)
-    assert result == ""
+def test_get_deferred_tools_prompt_section_returns_empty_when_no_deferred():
+    """Upstream renders from an explicit deferred-name set; empty set -> empty."""
+    assert prompt_module.get_deferred_tools_prompt_section(deferred_names=frozenset()) == ""
 
 
 def test_get_deferred_tools_prompt_section_returns_names():
-    """Lines 713-714: Returns tool names when registry has entries."""
-    config = SimpleNamespace(tool_search=SimpleNamespace(enabled=True))
-    entry = SimpleNamespace(name="my_tool")
-    with patch("ideer.tools.builtins.tool_search.get_deferred_registry", return_value=SimpleNamespace(entries=[entry])):
-        result = prompt_module.get_deferred_tools_prompt_section(app_config=config)
+    """Deferred tool names are listed so the agent can promote them via tool_search."""
+    result = prompt_module.get_deferred_tools_prompt_section(deferred_names=frozenset({"my_tool"}))
     assert "my_tool" in result
+    assert "<available-deferred-tools>" in result
 
 
 # --- Lines 709-714: _build_acp_section ---
@@ -269,7 +261,7 @@ def test_build_custom_mounts_section_lists_mounts():
 
 def test_build_custom_mounts_section_handles_exception():
     """Lines 748-750: Returns empty on exception from get_app_config."""
-    with patch("ideer.config.get_app_config", side_effect=RuntimeError("no config")):
+    with patch("deerflow.config.get_app_config", side_effect=RuntimeError("no config")):
         result = prompt_module._build_custom_mounts_section()
     assert result == ""
 
@@ -279,7 +271,7 @@ def test_build_custom_mounts_section_handles_exception():
 
 def test_skill_mutability_label():
     """_skill_mutability_label returns correct labels."""
-    from ideer.skills.types import SkillCategory
+    from deerflow.skills.types import SkillCategory
 
     assert prompt_module._skill_mutability_label(SkillCategory.CUSTOM) == "[custom, editable]"
     assert prompt_module._skill_mutability_label("other") == "[built-in]"
@@ -323,17 +315,17 @@ def test_refresh_worker_loops_on_version_mismatch():
 
 
 def test_get_memory_context_with_global_config(monkeypatch):
-    """Lines 570-572: Uses global config when app_config is None."""
-    from ideer.config.memory_config import MemoryConfig
+    """Uses the global memory config and MemoryManager when app_config is None."""
+    from deerflow.config.memory_config import MemoryConfig
 
     mem_config = MemoryConfig(enabled=True, injection_enabled=True, max_injection_tokens=500)
 
-    monkeypatch.setattr("ideer.config.memory_config.get_memory_config", lambda: mem_config)
-    monkeypatch.setattr("ideer.runtime.user_context.get_effective_user_id", lambda: "u1")
-    monkeypatch.setattr("ideer.agents.memory.get_memory_data", lambda *a, **kw: {"facts": []})
-    monkeypatch.setattr("ideer.agents.memory.format_memory_for_injection", lambda *a, **kw: "global memory")
+    manager = SimpleNamespace(get_context=lambda *, user_id, agent_name: "global memory")
 
-    result = prompt_module._get_memory_context("agent1")
+    monkeypatch.setattr("deerflow.config.memory_config.get_memory_config", lambda: mem_config)
+    monkeypatch.setattr("deerflow.agents.memory.get_memory_manager", lambda: manager)
+
+    result = prompt_module._get_memory_context("agent1", user_id="u1")
     assert "<memory>" in result
     assert "global memory" in result
 
@@ -342,8 +334,8 @@ def test_get_memory_context_with_global_config(monkeypatch):
 
 
 def test_get_skills_prompt_section_returns_empty_when_no_matching_skills(monkeypatch, tmp_path):
-    """Line 649: Returns empty when available_skills filter matches no skills."""
-    from ideer.skills.types import Skill, SkillCategory
+    """Returns empty when available_skills filter matches no skills."""
+    from deerflow.skills.types import Skill, SkillCategory
 
     skill_dir = tmp_path / "skill"
     skill = Skill(
@@ -362,6 +354,8 @@ def test_get_skills_prompt_section_returns_empty_when_no_matching_skills(monkeyp
         skill_evolution=SimpleNamespace(enabled=False),
     )
     monkeypatch.setattr(prompt_module, "get_enabled_skills_for_config", lambda *a, **kw: [skill])
+    monkeypatch.setattr(prompt_module, "get_or_new_skill_storage", lambda app_config=None: SimpleNamespace(load_skills=lambda enabled_only: [skill]))
+    prompt_module._get_cached_skills_prompt_section.cache_clear()
 
     # Filter for a skill that doesn't exist
     result = prompt_module.get_skills_prompt_section(available_skills={"nonexistent-skill"}, app_config=config)
@@ -372,12 +366,14 @@ def test_get_skills_prompt_section_returns_empty_when_no_matching_skills(monkeyp
 
 
 def test_get_skills_prompt_section_returns_empty_when_signature_empty_and_key_not_none(monkeypatch):
-    """Line 654: Returns empty when skill_signature is empty but available_key is not None."""
+    """Returns empty when skill_signature is empty but available_key is not None."""
     config = SimpleNamespace(
         skills=SimpleNamespace(container_path="/mnt/skills"),
         skill_evolution=SimpleNamespace(enabled=False),
     )
     monkeypatch.setattr(prompt_module, "get_enabled_skills_for_config", lambda *a, **kw: [])
+    monkeypatch.setattr(prompt_module, "get_or_new_skill_storage", lambda app_config=None: SimpleNamespace(load_skills=lambda enabled_only: []))
+    prompt_module._get_cached_skills_prompt_section.cache_clear()
 
     result = prompt_module.get_skills_prompt_section(available_skills={"some-skill"}, app_config=config)
     assert result == ""
@@ -393,7 +389,7 @@ def test_get_deferred_tools_prompt_section_with_global_config(monkeypatch):
     def fake_get_app_config():
         return config
 
-    monkeypatch.setattr("ideer.config.get_app_config", fake_get_app_config)
+    monkeypatch.setattr("deerflow.config.get_app_config", fake_get_app_config)
     result = prompt_module.get_deferred_tools_prompt_section()
     assert result == ""
 
@@ -408,7 +404,7 @@ def test_build_custom_mounts_section_with_global_config(monkeypatch):
     def fake_get_app_config():
         return config
 
-    monkeypatch.setattr("ideer.config.get_app_config", fake_get_app_config)
+    monkeypatch.setattr("deerflow.config.get_app_config", fake_get_app_config)
     result = prompt_module._build_custom_mounts_section()
     assert "/data" in result
     assert "read-only" in result

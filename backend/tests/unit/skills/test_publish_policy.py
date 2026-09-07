@@ -1,6 +1,6 @@
 import pytest
 
-from ideer.skills.publish_policy import SkillPublishDenied, SkillPublishPolicy
+from app.agentplatform.resources.publish_policy import SkillPublishDenied, SkillPublishPolicy
 
 
 def test_skill_publish_policy_allows_legacy_and_non_blocking_results() -> None:

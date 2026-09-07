@@ -1,10 +1,10 @@
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from ideer.community.aio_sandbox.aio_sandbox import AioSandbox
-from ideer.sandbox.local.local_sandbox import LocalSandbox
-from ideer.sandbox.search import GrepMatch, find_glob_matches, find_grep_matches
-from ideer.sandbox.tools import glob_tool, grep_tool, ls_tool
+from deerflow.community.aio_sandbox.aio_sandbox import AioSandbox
+from deerflow.sandbox.local.local_sandbox import LocalSandbox, PathMapping
+from deerflow.sandbox.search import GrepMatch, find_glob_matches, find_grep_matches
+from deerflow.sandbox.tools import glob_tool, grep_tool, ls_tool
 
 
 def _make_runtime(tmp_path):
@@ -36,7 +36,7 @@ def test_glob_tool_returns_virtual_paths_and_ignores_common_dirs(tmp_path, monke
     (workspace / "node_modules").mkdir()
     (workspace / "node_modules" / "skip.py").write_text("ignored\n", encoding="utf-8")
 
-    monkeypatch.setattr("ideer.sandbox.tools.ensure_sandbox_initialized", lambda runtime: LocalSandbox(id="local"))
+    monkeypatch.setattr("deerflow.sandbox.tools.ensure_sandbox_initialized", lambda runtime: LocalSandbox(id="local"))
 
     result = glob_tool.func(
         runtime=runtime,
@@ -57,18 +57,17 @@ def test_glob_tool_supports_skills_virtual_paths(tmp_path, monkeypatch) -> None:
     (skills_dir / "demo").mkdir(parents=True)
     (skills_dir / "demo" / "SKILL.md").write_text("# Demo\n", encoding="utf-8")
 
-    monkeypatch.setattr("ideer.sandbox.tools.ensure_sandbox_initialized", lambda runtime: LocalSandbox(id="local"))
+    # Upstream resolves mounted skills paths via the sandbox's PathMapping
+    # (acquire-time identity), not via tool-layer host-path helpers.
+    sandbox = LocalSandbox(id="local", path_mappings=[PathMapping(container_path="/mnt/skills", local_path=str(skills_dir))])
+    monkeypatch.setattr("deerflow.sandbox.tools.ensure_sandbox_initialized", lambda runtime: sandbox)
 
-    with (
-        patch("ideer.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"),
-        patch("ideer.sandbox.tools._get_skills_host_path", return_value=str(skills_dir)),
-    ):
-        result = glob_tool.func(
-            runtime=runtime,
-            description="find skills",
-            pattern="**/SKILL.md",
-            path="/mnt/skills",
-        )
+    result = glob_tool.func(
+        runtime=runtime,
+        description="find skills",
+        pattern="**/SKILL.md",
+        path="/mnt/skills",
+    )
 
     assert "/mnt/skills/demo/SKILL.md" in result
     assert str(skills_dir) not in result
@@ -81,7 +80,7 @@ def test_grep_tool_filters_by_glob_and_skips_binary_files(tmp_path, monkeypatch)
     (workspace / "notes.txt").write_text("TODO in txt should be filtered\n", encoding="utf-8")
     (workspace / "image.bin").write_bytes(b"\0binary TODO")
 
-    monkeypatch.setattr("ideer.sandbox.tools.ensure_sandbox_initialized", lambda runtime: LocalSandbox(id="local"))
+    monkeypatch.setattr("deerflow.sandbox.tools.ensure_sandbox_initialized", lambda runtime: LocalSandbox(id="local"))
 
     result = grep_tool.func(
         runtime=runtime,
@@ -102,9 +101,9 @@ def test_grep_tool_truncates_results(tmp_path, monkeypatch) -> None:
     workspace = tmp_path / "workspace"
     (workspace / "main.py").write_text("TODO one\nTODO two\nTODO three\n", encoding="utf-8")
 
-    monkeypatch.setattr("ideer.sandbox.tools.ensure_sandbox_initialized", lambda runtime: LocalSandbox(id="local"))
+    monkeypatch.setattr("deerflow.sandbox.tools.ensure_sandbox_initialized", lambda runtime: LocalSandbox(id="local"))
     # Prevent config.yaml tool config from overriding the caller-supplied max_results=2.
-    monkeypatch.setattr("ideer.sandbox.tools.get_app_config", lambda: SimpleNamespace(get_tool_config=lambda name: None))
+    monkeypatch.setattr("deerflow.sandbox.tools.get_app_config", lambda: SimpleNamespace(get_tool_config=lambda name: None))
 
     result = grep_tool.func(
         runtime=runtime,
@@ -129,7 +128,7 @@ def test_glob_tool_include_dirs_filters_nested_ignored_paths(tmp_path, monkeypat
     (workspace / "node_modules").mkdir()
     (workspace / "node_modules" / "lib").mkdir()
 
-    monkeypatch.setattr("ideer.sandbox.tools.ensure_sandbox_initialized", lambda runtime: LocalSandbox(id="local"))
+    monkeypatch.setattr("deerflow.sandbox.tools.ensure_sandbox_initialized", lambda runtime: LocalSandbox(id="local"))
 
     result = glob_tool.func(
         runtime=runtime,
@@ -148,7 +147,7 @@ def test_grep_tool_literal_mode(tmp_path, monkeypatch) -> None:
     workspace = tmp_path / "workspace"
     (workspace / "file.py").write_text("price = (a+b)\nresult = a+b\n", encoding="utf-8")
 
-    monkeypatch.setattr("ideer.sandbox.tools.ensure_sandbox_initialized", lambda runtime: LocalSandbox(id="local"))
+    monkeypatch.setattr("deerflow.sandbox.tools.ensure_sandbox_initialized", lambda runtime: LocalSandbox(id="local"))
 
     # literal=True should treat (a+b) as a plain string, not a regex group
     result = grep_tool.func(
@@ -168,7 +167,7 @@ def test_grep_tool_case_sensitive(tmp_path, monkeypatch) -> None:
     workspace = tmp_path / "workspace"
     (workspace / "file.py").write_text("TODO: fix\ntodo: also fix\n", encoding="utf-8")
 
-    monkeypatch.setattr("ideer.sandbox.tools.ensure_sandbox_initialized", lambda runtime: LocalSandbox(id="local"))
+    monkeypatch.setattr("deerflow.sandbox.tools.ensure_sandbox_initialized", lambda runtime: LocalSandbox(id="local"))
 
     result = grep_tool.func(
         runtime=runtime,
@@ -185,7 +184,7 @@ def test_grep_tool_case_sensitive(tmp_path, monkeypatch) -> None:
 def test_grep_tool_invalid_regex_returns_error(tmp_path, monkeypatch) -> None:
     runtime = _make_runtime(tmp_path)
 
-    monkeypatch.setattr("ideer.sandbox.tools.ensure_sandbox_initialized", lambda runtime: LocalSandbox(id="local"))
+    monkeypatch.setattr("deerflow.sandbox.tools.ensure_sandbox_initialized", lambda runtime: LocalSandbox(id="local"))
 
     result = grep_tool.func(
         runtime=runtime,
@@ -198,7 +197,7 @@ def test_grep_tool_invalid_regex_returns_error(tmp_path, monkeypatch) -> None:
 
 
 def test_aio_sandbox_glob_include_dirs_filters_nested_ignored(monkeypatch) -> None:
-    with patch("ideer.community.aio_sandbox.aio_sandbox.AioSandboxClient"):
+    with patch("deerflow.community.aio_sandbox.aio_sandbox.AioSandboxClient"):
         sandbox = AioSandbox(id="test-sandbox", base_url="http://localhost:8080")
     monkeypatch.setattr(
         sandbox._client.file,
@@ -224,7 +223,7 @@ def test_aio_sandbox_glob_include_dirs_filters_nested_ignored(monkeypatch) -> No
 
 
 def test_aio_sandbox_grep_invalid_regex_raises() -> None:
-    with patch("ideer.community.aio_sandbox.aio_sandbox.AioSandboxClient"):
+    with patch("deerflow.community.aio_sandbox.aio_sandbox.AioSandboxClient"):
         sandbox = AioSandbox(id="test-sandbox", base_url="http://localhost:8080")
 
     import re
@@ -237,7 +236,7 @@ def test_aio_sandbox_grep_invalid_regex_raises() -> None:
 
 
 def test_aio_sandbox_glob_parses_json(monkeypatch) -> None:
-    with patch("ideer.community.aio_sandbox.aio_sandbox.AioSandboxClient"):
+    with patch("deerflow.community.aio_sandbox.aio_sandbox.AioSandboxClient"):
         sandbox = AioSandbox(id="test-sandbox", base_url="http://localhost:8080")
     monkeypatch.setattr(
         sandbox._client.file,
@@ -252,28 +251,22 @@ def test_aio_sandbox_glob_parses_json(monkeypatch) -> None:
 
 
 def test_aio_sandbox_grep_parses_json(monkeypatch) -> None:
-    with patch("ideer.community.aio_sandbox.aio_sandbox.AioSandboxClient"):
+    with patch("deerflow.community.aio_sandbox.aio_sandbox.AioSandboxClient"):
         sandbox = AioSandbox(id="test-sandbox", base_url="http://localhost:8080")
-    monkeypatch.setattr(
-        sandbox._client.file,
-        "list_path",
-        lambda **kwargs: SimpleNamespace(
-            data=SimpleNamespace(
-                files=[
-                    SimpleNamespace(
-                        name="app.py",
-                        path="/mnt/user-data/workspace/app.py",
-                        is_directory=False,
-                    )
-                ]
-            )
-        ),
+    # Upstream grep consumes provider grep_files records, one per match.
+    payload = SimpleNamespace(
+        data=SimpleNamespace(
+            truncated=False,
+            matches=[
+                SimpleNamespace(
+                    file="/mnt/user-data/workspace/app.py",
+                    line_number=7,
+                    line_content="TODO = True",
+                )
+            ],
+        )
     )
-    monkeypatch.setattr(
-        sandbox._client.file,
-        "search_in_file",
-        lambda **kwargs: SimpleNamespace(data=SimpleNamespace(line_numbers=[7], matches=["TODO = True"])),
-    )
+    monkeypatch.setattr(sandbox._client.file, "grep_files", lambda **kwargs: payload)
 
     matches, truncated = sandbox.grep("/mnt/user-data/workspace", "TODO")
 
@@ -292,15 +285,16 @@ def test_find_glob_matches_raises_not_a_directory(tmp_path) -> None:
         pass
 
 
-def test_find_grep_matches_raises_not_a_directory(tmp_path) -> None:
+def test_find_grep_matches_supports_single_file_root(tmp_path) -> None:
+    """Upstream greps the file itself when the root is a file, not a directory."""
     file_path = tmp_path / "file.txt"
     file_path.write_text("TODO\n", encoding="utf-8")
 
-    try:
-        find_grep_matches(file_path, "TODO")
-        assert False, "Expected NotADirectoryError"
-    except NotADirectoryError:
-        pass
+    matches, truncated = find_grep_matches(file_path, "TODO")
+
+    assert truncated is False
+    assert [m.line_number for m in matches] == [1]
+    assert "TODO" in matches[0].line
 
 
 def test_find_grep_matches_skips_symlink_outside_root(tmp_path) -> None:
@@ -323,9 +317,9 @@ def test_glob_tool_honors_smaller_requested_max_results(tmp_path, monkeypatch) -
     (workspace / "b.py").write_text("print('b')\n", encoding="utf-8")
     (workspace / "c.py").write_text("print('c')\n", encoding="utf-8")
 
-    monkeypatch.setattr("ideer.sandbox.tools.ensure_sandbox_initialized", lambda runtime: LocalSandbox(id="local"))
+    monkeypatch.setattr("deerflow.sandbox.tools.ensure_sandbox_initialized", lambda runtime: LocalSandbox(id="local"))
     monkeypatch.setattr(
-        "ideer.sandbox.tools.get_app_config",
+        "deerflow.sandbox.tools.get_app_config",
         lambda: SimpleNamespace(get_tool_config=lambda name: SimpleNamespace(model_extra={"max_results": 50})),
     )
 
@@ -342,7 +336,7 @@ def test_glob_tool_honors_smaller_requested_max_results(tmp_path, monkeypatch) -
 
 
 def test_aio_sandbox_glob_include_dirs_enforces_root_boundary(monkeypatch) -> None:
-    with patch("ideer.community.aio_sandbox.aio_sandbox.AioSandboxClient"):
+    with patch("deerflow.community.aio_sandbox.aio_sandbox.AioSandboxClient"):
         sandbox = AioSandbox(id="test-sandbox", base_url="http://localhost:8080")
     monkeypatch.setattr(
         sandbox._client.file,
@@ -363,29 +357,28 @@ def test_aio_sandbox_glob_include_dirs_enforces_root_boundary(monkeypatch) -> No
     assert truncated is False
 
 
-def test_aio_sandbox_grep_skips_mismatched_line_number_payloads(monkeypatch) -> None:
-    with patch("ideer.community.aio_sandbox.aio_sandbox.AioSandboxClient"):
+def test_aio_sandbox_grep_skips_matches_outside_requested_root(monkeypatch) -> None:
+    """Provider records outside the requested root must not leak into results."""
+    with patch("deerflow.community.aio_sandbox.aio_sandbox.AioSandboxClient"):
         sandbox = AioSandbox(id="test-sandbox", base_url="http://localhost:8080")
-    monkeypatch.setattr(
-        sandbox._client.file,
-        "list_path",
-        lambda **kwargs: SimpleNamespace(
-            data=SimpleNamespace(
-                files=[
-                    SimpleNamespace(
-                        name="app.py",
-                        path="/mnt/user-data/workspace/app.py",
-                        is_directory=False,
-                    )
-                ]
-            )
-        ),
+    payload = SimpleNamespace(
+        data=SimpleNamespace(
+            truncated=False,
+            matches=[
+                SimpleNamespace(
+                    file="/mnt/user-data/workspace/app.py",
+                    line_number=7,
+                    line_content="TODO = True",
+                ),
+                SimpleNamespace(
+                    file="/mnt/user-data/other/secret.py",
+                    line_number=1,
+                    line_content="TODO = leak",
+                ),
+            ],
+        )
     )
-    monkeypatch.setattr(
-        sandbox._client.file,
-        "search_in_file",
-        lambda **kwargs: SimpleNamespace(data=SimpleNamespace(line_numbers=[7], matches=["TODO = True", "extra"])),
-    )
+    monkeypatch.setattr(sandbox._client.file, "grep_files", lambda **kwargs: payload)
 
     matches, truncated = sandbox.grep("/mnt/user-data/workspace", "TODO")
 
@@ -405,7 +398,7 @@ def test_ls_tool_masks_user_data_host_paths(tmp_path, monkeypatch) -> None:
     (workspace / "report.txt").write_text("hello\n", encoding="utf-8")
     (workspace / "subdir").mkdir()
 
-    monkeypatch.setattr("ideer.sandbox.tools.ensure_sandbox_initialized", lambda runtime: LocalSandbox(id="local"))
+    monkeypatch.setattr("deerflow.sandbox.tools.ensure_sandbox_initialized", lambda runtime: LocalSandbox(id="local"))
 
     result = ls_tool.func(
         runtime=runtime,
@@ -427,17 +420,14 @@ def test_ls_tool_masks_skills_host_paths(tmp_path, monkeypatch) -> None:
     (skills_dir / "demo").mkdir(parents=True)
     (skills_dir / "demo" / "SKILL.md").write_text("# Skill\n", encoding="utf-8")
 
-    monkeypatch.setattr("ideer.sandbox.tools.ensure_sandbox_initialized", lambda runtime: LocalSandbox(id="local"))
+    sandbox = LocalSandbox(id="local", path_mappings=[PathMapping(container_path="/mnt/skills", local_path=str(skills_dir))])
+    monkeypatch.setattr("deerflow.sandbox.tools.ensure_sandbox_initialized", lambda runtime: sandbox)
 
-    with (
-        patch("ideer.sandbox.tools._get_skills_container_path", return_value="/mnt/skills"),
-        patch("ideer.sandbox.tools._get_skills_host_path", return_value=str(skills_dir)),
-    ):
-        result = ls_tool.func(
-            runtime=runtime,
-            description="list skills",
-            path="/mnt/skills",
-        )
+    result = ls_tool.func(
+        runtime=runtime,
+        description="list skills",
+        path="/mnt/skills",
+    )
 
     # Virtual paths must be present
     assert "/mnt/skills/demo/SKILL.md" in result
@@ -450,7 +440,7 @@ def test_ls_tool_returns_empty_for_empty_directory(tmp_path, monkeypatch) -> Non
     """ls_tool should return '(empty)' for an empty directory."""
     runtime = _make_runtime(tmp_path)
 
-    monkeypatch.setattr("ideer.sandbox.tools.ensure_sandbox_initialized", lambda runtime: LocalSandbox(id="local"))
+    monkeypatch.setattr("deerflow.sandbox.tools.ensure_sandbox_initialized", lambda runtime: LocalSandbox(id="local"))
 
     result = ls_tool.func(
         runtime=runtime,
@@ -462,7 +452,7 @@ def test_ls_tool_returns_empty_for_empty_directory(tmp_path, monkeypatch) -> Non
 
 
 def _custom_mount_sandbox(tmp_path):
-    from ideer.sandbox.local.local_sandbox import PathMapping
+    from deerflow.sandbox.local.local_sandbox import PathMapping
 
     mount_dir = tmp_path / "custom_mount"
     mount_dir.mkdir()
@@ -483,8 +473,8 @@ def test_glob_tool_works_on_custom_mount_paths(tmp_path, monkeypatch) -> None:
     (mount_host / "case").mkdir()
     (mount_host / "case" / "01_data.md").write_text("data\n", encoding="utf-8")
 
-    monkeypatch.setattr("ideer.sandbox.tools.ensure_sandbox_initialized", lambda runtime: sandbox)
-    with patch("ideer.sandbox.tools._get_custom_mounts", return_value=[mount]):
+    monkeypatch.setattr("deerflow.sandbox.tools.ensure_sandbox_initialized", lambda runtime: sandbox)
+    with patch("deerflow.sandbox.tools._get_custom_mounts", return_value=[mount]):
         result = glob_tool.func(
             runtime=runtime,
             description="scan case dir",
@@ -504,8 +494,8 @@ def test_grep_tool_works_on_custom_mount_paths(tmp_path, monkeypatch) -> None:
     (mount_host / "case").mkdir()
     (mount_host / "case" / "01_data.md").write_text("top event data\n", encoding="utf-8")
 
-    monkeypatch.setattr("ideer.sandbox.tools.ensure_sandbox_initialized", lambda runtime: sandbox)
-    with patch("ideer.sandbox.tools._get_custom_mounts", return_value=[mount]):
+    monkeypatch.setattr("deerflow.sandbox.tools.ensure_sandbox_initialized", lambda runtime: sandbox)
+    with patch("deerflow.sandbox.tools._get_custom_mounts", return_value=[mount]):
         result = grep_tool.func(
             runtime=runtime,
             description="find top event",

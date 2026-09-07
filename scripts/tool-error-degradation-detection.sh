@@ -35,14 +35,14 @@ from requests.exceptions import SSLError
 from langchain.agents.middleware import AgentMiddleware
 from langchain_core.messages import ToolMessage
 
-from ideer.agents.lead_agent.agent import _build_middlewares
-from ideer.config import get_app_config
-from ideer.sandbox.middleware import SandboxMiddleware
+from deerflow.agents.lead_agent.agent import build_middlewares
+from deerflow.config import get_app_config
+from deerflow.sandbox.middleware import SandboxMiddleware
 
-from ideer.agents.middlewares.thread_data_middleware import ThreadDataMiddleware
+from deerflow.agents.middlewares.thread_data_middleware import ThreadDataMiddleware
 
 HANDSHAKE_ERROR = "[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1000)"
-logging.getLogger("ideer.agents.middlewares.tool_error_handling_middleware").setLevel(logging.CRITICAL)
+logging.getLogger("deerflow.agents.middlewares.tool_error_handling_middleware").setLevel(logging.CRITICAL)
 
 
 def _make_ssl_error():
@@ -150,7 +150,7 @@ def _validate_outputs(label, outputs):
 
 def _build_sub_middlewares():
     try:
-        from ideer.agents.middlewares.tool_error_handling_middleware import build_subagent_runtime_middlewares
+        from deerflow.agents.middlewares.tool_error_handling_middleware import build_subagent_runtime_middlewares
     except Exception:
         return [
             ThreadDataMiddleware(lazy_init=True),
@@ -188,7 +188,7 @@ if not model_name:
     print("[FAIL] No model configured; cannot evaluate lead middleware chain.")
     raise SystemExit(8)
 
-lead_middlewares = _build_middlewares({"configurable": {}}, model_name=model_name)
+lead_middlewares = build_middlewares({"configurable": {}}, model_name=model_name)
 sub_middlewares = _build_sub_middlewares()
 
 print("[STEP 3] Simulate two sequential tool calls and check whether conversation flow aborts.")

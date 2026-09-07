@@ -427,7 +427,7 @@ class TestWithForUpdateRowLock:
         """
         from sqlalchemy import text
 
-        from ideer.persistence.engine import get_session_factory
+        from deerflow.persistence.engine import get_session_factory
 
         sf = get_session_factory()
         if sf is None:

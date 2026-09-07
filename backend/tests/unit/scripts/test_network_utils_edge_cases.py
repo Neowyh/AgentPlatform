@@ -1,4 +1,4 @@
-"""Additional tests for ideer.utils.network — PortAllocator."""
+"""Additional tests for deerflow.utils.network — PortAllocator."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import threading
 
 import pytest
 
-from ideer.utils.network import (
+from deerflow.utils.network import (
     PortAllocator,
     get_free_port,
     release_port,

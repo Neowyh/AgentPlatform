@@ -9,18 +9,28 @@ import pytest
 import yaml
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from app.gateway.routers import resources
-from app.gateway.routers.resources import WorkflowRunRequest
-from ideer.config.workflow_runtime_config import WorkflowRuntimeConfig
-from ideer.persistence.base import Base
-from ideer.persistence.models.resource_catalog import (
+from app.agentplatform import rbac_models as _rbac_models  # noqa: F401
+from app.agentplatform import resource_models as _resource_models  # noqa: F401
+from app.agentplatform.rbac_models import UserModel, UserRole
+from app.agentplatform.resource_models import (
     Resource,
     ResourceVersion,
 )
-from ideer.persistence.models.user import UserModel, UserRole
-from ideer.persistence.models.workflow_v2 import WorkflowV2RunRow
-from ideer.resources.service import ResourceAction
-from ideer.resources.storage import ResourceStorage
+from app.agentplatform.resources.service import ResourceAction
+from app.agentplatform.resources.storage import ResourceStorage
+from app.gateway.routers import resources
+from app.gateway.routers.resources import WorkflowRunRequest
+from deerflow.config.workflow_runtime_config import WorkflowRuntimeConfig
+from deerflow.persistence.base import Base
+from deerflow.persistence.base import Base as DeerFlowBase
+from deerflow.persistence.models.workflow_v2 import WorkflowV2RunRow
+
+
+def test_resources_router_uses_deerflow_runtime_paths() -> None:
+    source = (Path(__file__).parents[3] / "app" / "gateway" / "routers" / "resources.py").read_text(encoding="utf-8")
+
+    assert "from deerflow.config.paths import get_paths" in source
+    assert "from deerflow.config import get_paths" not in source
 
 
 def _user(role: UserRole, *, user_id: str = "user", department_id: str | None = "dept-a") -> UserModel:
@@ -255,6 +265,7 @@ async def test_published_workflow_response_includes_real_yaml(
     engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'published.db'}")
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
+        await connection.run_sync(DeerFlowBase.metadata.create_all)
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as session:
         session.add(
@@ -323,7 +334,7 @@ async def test_published_workflow_response_includes_real_yaml(
 
 
 def _record_host(tmp_path: Path, run_id: str, created_by: str, ext: str) -> Path:
-    from ideer.workflows.v2.file_roots import make_host_resolver, workflow_record_path
+    from app.agentplatform.workflows.v2.file_roots import make_host_resolver, workflow_record_path
 
     host = make_host_resolver(run_id, created_by)(workflow_record_path(ext))
     assert host is not None, "record virtual path must resolve under the workspace"
@@ -349,17 +360,17 @@ class TestCanonicalRunRecordDownload:
 
         app.dependency_overrides[get_current_rbac_user] = _stub_user
 
-        from ideer.config.paths import Paths
+        from deerflow.config.paths import Paths
 
         async def _stub_run(_resource_id: str, _run_id: str, _user) -> SimpleNamespace:
             return SimpleNamespace(run_id="run-1", workflow_resource_id="workflow-id", created_by="user-1", status="completed")
 
         monkeypatch.setattr(resources, "_get_canonical_run", _stub_run)
         monkeypatch.setattr(
-            "ideer.workflows.v2.file_roots.get_paths",
+            "app.agentplatform.workflows.v2.file_roots.get_paths",
             lambda: Paths(str(tmp_path / "runtime")),
         )
-        monkeypatch.setattr("ideer.workflows.v2.file_roots._get_custom_mounts", lambda: [])
+        monkeypatch.setattr("app.agentplatform.workflows.v2.file_roots._get_custom_mounts", lambda: [])
 
         with TestClient(app) as test_client:
             yield test_client

@@ -7,18 +7,18 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-import ideer.config.app_config as app_config_module
-from ideer.config.app_config import AppConfig, get_app_config, reset_app_config
-from ideer.config.checkpointer_config import get_checkpointer_config
-from ideer.config.guardrails_config import get_guardrails_config
-from ideer.config.memory_config import get_memory_config
-from ideer.config.stream_bridge_config import get_stream_bridge_config
-from ideer.config.subagents_config import get_subagents_app_config
-from ideer.config.summarization_config import get_summarization_config
-from ideer.config.title_config import get_title_config
-from ideer.config.tool_search_config import get_tool_search_config
-from ideer.runtime.checkpointer import get_checkpointer, reset_checkpointer
-from ideer.runtime.store import get_store, reset_store
+import deerflow.config.app_config as app_config_module
+from deerflow.config.app_config import AppConfig, get_app_config, reset_app_config
+from deerflow.config.checkpointer_config import get_checkpointer_config
+from deerflow.config.guardrails_config import get_guardrails_config
+from deerflow.config.memory_config import get_memory_config
+from deerflow.config.stream_bridge_config import get_stream_bridge_config
+from deerflow.config.subagents_config import get_subagents_app_config
+from deerflow.config.summarization_config import get_summarization_config
+from deerflow.config.title_config import get_title_config
+from deerflow.config.tool_search_config import get_tool_search_config
+from deerflow.runtime.checkpointer import get_checkpointer, reset_checkpointer
+from deerflow.runtime.store import get_store, reset_store
 from tests.helpers.app_config_helpers import (
     _reset_config_singletons,
     _write_config,
@@ -35,7 +35,7 @@ def _write_config_with_agents_api(
     supports_thinking: bool,
 ) -> None:
     config = {
-        "sandbox": {"use": "ideer.sandbox.local:LocalSandboxProvider"},
+        "sandbox": {"use": "deerflow.sandbox.local:LocalSandboxProvider"},
         "models": [
             {
                 "name": model_name,
@@ -51,7 +51,7 @@ def _write_config_with_agents_api(
 
 def _write_config_with_sections(path: Path, sections: dict | None = None) -> None:
     config = {
-        "sandbox": {"use": "ideer.sandbox.local:LocalSandboxProvider"},
+        "sandbox": {"use": "deerflow.sandbox.local:LocalSandboxProvider"},
         "models": [
             {
                 "name": "first-model",
@@ -72,12 +72,12 @@ def test_app_config_defaults_missing_database_to_sqlite(tmp_path, monkeypatch):
     _write_extensions_config(extensions_path)
     _write_config(config_path, model_name="first-model", supports_thinking=False)
 
-    monkeypatch.setenv("IDEER_EXTENSIONS_CONFIG_PATH", str(extensions_path))
+    monkeypatch.setenv("DEER_FLOW_EXTENSIONS_CONFIG_PATH", str(extensions_path))
 
     config = AppConfig.from_file(str(config_path))
 
     assert config.database.backend == "sqlite"
-    assert config.database.sqlite_dir == ".ideer/data"
+    assert config.database.sqlite_dir == ".deer-flow/data"
 
 
 def test_app_config_defaults_empty_database_to_sqlite(tmp_path, monkeypatch):
@@ -88,18 +88,18 @@ def test_app_config_defaults_empty_database_to_sqlite(tmp_path, monkeypatch):
         yaml.safe_dump(
             {
                 "database": {},
-                "sandbox": {"use": "ideer.sandbox.local:LocalSandboxProvider"},
+                "sandbox": {"use": "deerflow.sandbox.local:LocalSandboxProvider"},
             }
         ),
         encoding="utf-8",
     )
 
-    monkeypatch.setenv("IDEER_EXTENSIONS_CONFIG_PATH", str(extensions_path))
+    monkeypatch.setenv("DEER_FLOW_EXTENSIONS_CONFIG_PATH", str(extensions_path))
 
     config = AppConfig.from_file(str(config_path))
 
     assert config.database.backend == "sqlite"
-    assert config.database.sqlite_dir == ".ideer/data"
+    assert config.database.sqlite_dir == ".deer-flow/data"
 
 
 def test_get_app_config_reloads_when_file_changes(tmp_path, monkeypatch):
@@ -108,8 +108,8 @@ def test_get_app_config_reloads_when_file_changes(tmp_path, monkeypatch):
     _write_extensions_config(extensions_path)
     _write_config(config_path, model_name="first-model", supports_thinking=False)
 
-    monkeypatch.setenv("IDEER_CONFIG_PATH", str(config_path))
-    monkeypatch.setenv("IDEER_EXTENSIONS_CONFIG_PATH", str(extensions_path))
+    monkeypatch.setenv("DEER_FLOW_CONFIG_PATH", str(config_path))
+    monkeypatch.setenv("DEER_FLOW_EXTENSIONS_CONFIG_PATH", str(extensions_path))
     reset_app_config()
 
     try:
@@ -135,15 +135,15 @@ def test_get_app_config_reloads_when_config_path_changes(tmp_path, monkeypatch):
     _write_config(config_a, model_name="model-a", supports_thinking=False)
     _write_config(config_b, model_name="model-b", supports_thinking=True)
 
-    monkeypatch.setenv("IDEER_EXTENSIONS_CONFIG_PATH", str(extensions_path))
-    monkeypatch.setenv("IDEER_CONFIG_PATH", str(config_a))
+    monkeypatch.setenv("DEER_FLOW_EXTENSIONS_CONFIG_PATH", str(extensions_path))
+    monkeypatch.setenv("DEER_FLOW_CONFIG_PATH", str(config_a))
     reset_app_config()
 
     try:
         first = get_app_config()
         assert first.models[0].name == "model-a"
 
-        monkeypatch.setenv("IDEER_CONFIG_PATH", str(config_b))
+        monkeypatch.setenv("DEER_FLOW_CONFIG_PATH", str(config_b))
         second = get_app_config()
         assert second.models[0].name == "model-b"
         assert second is not first
@@ -169,8 +169,8 @@ def test_get_app_config_resets_singleton_configs_when_sections_removed(tmp_path,
         },
     )
 
-    monkeypatch.setenv("IDEER_CONFIG_PATH", str(config_path))
-    monkeypatch.setenv("IDEER_EXTENSIONS_CONFIG_PATH", str(extensions_path))
+    monkeypatch.setenv("DEER_FLOW_CONFIG_PATH", str(config_path))
+    monkeypatch.setenv("DEER_FLOW_EXTENSIONS_CONFIG_PATH", str(extensions_path))
     reset_app_config()
 
     try:
@@ -192,7 +192,7 @@ def test_get_app_config_resets_singleton_configs_when_sections_removed(tmp_path,
         assert get_title_config().enabled is True
         assert get_summarization_config().enabled is False
         assert get_memory_config().enabled is True
-        assert get_subagents_app_config().timeout_seconds == 900
+        assert get_subagents_app_config().timeout_seconds == 1800
         assert get_tool_search_config().enabled is False
         assert get_guardrails_config().enabled is False
         assert get_checkpointer_config() is None
@@ -207,8 +207,8 @@ def test_get_app_config_resets_persistence_runtime_singletons_when_checkpointer_
     _write_extensions_config(extensions_path)
     _write_config_with_sections(config_path, {"checkpointer": {"type": "memory"}})
 
-    monkeypatch.setenv("IDEER_CONFIG_PATH", str(config_path))
-    monkeypatch.setenv("IDEER_EXTENSIONS_CONFIG_PATH", str(extensions_path))
+    monkeypatch.setenv("DEER_FLOW_CONFIG_PATH", str(config_path))
+    monkeypatch.setenv("DEER_FLOW_EXTENSIONS_CONFIG_PATH", str(extensions_path))
     reset_checkpointer()
     reset_store()
     reset_app_config()
@@ -243,8 +243,8 @@ def test_get_app_config_keeps_persistence_runtime_singletons_when_checkpointer_u
         },
     )
 
-    monkeypatch.setenv("IDEER_CONFIG_PATH", str(config_path))
-    monkeypatch.setenv("IDEER_EXTENSIONS_CONFIG_PATH", str(extensions_path))
+    monkeypatch.setenv("DEER_FLOW_CONFIG_PATH", str(config_path))
+    monkeypatch.setenv("DEER_FLOW_EXTENSIONS_CONFIG_PATH", str(extensions_path))
     _reset_config_singletons()
 
     try:
@@ -283,8 +283,8 @@ def test_get_app_config_does_not_mutate_singletons_when_reload_validation_fails(
         },
     )
 
-    monkeypatch.setenv("IDEER_CONFIG_PATH", str(config_path))
-    monkeypatch.setenv("IDEER_EXTENSIONS_CONFIG_PATH", str(extensions_path))
+    monkeypatch.setenv("DEER_FLOW_CONFIG_PATH", str(config_path))
+    monkeypatch.setenv("DEER_FLOW_EXTENSIONS_CONFIG_PATH", str(extensions_path))
     _reset_config_singletons()
 
     try:

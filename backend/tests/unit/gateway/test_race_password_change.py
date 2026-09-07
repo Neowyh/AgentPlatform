@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.gateway.auth.local_provider import LocalAuthProvider
 from app.gateway.auth.repositories.sqlite import SQLiteUserRepository
 from app.gateway.routers.auth import ChangePasswordRequest, change_password
-from ideer.persistence.base import Base
+from deerflow.persistence.base import Base
 
 
 @pytest.mark.asyncio

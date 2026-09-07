@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from ideer.skills.validation import _validate_skill_frontmatter
+from app.agentplatform.resources.skill_validation import _validate_skill_frontmatter
 
 SKILLS_DIR = Path(__file__).resolve().parents[4] / "resources" / "skills"
 BUNDLED_SKILL_DIRS = sorted(p.parent for p in SKILLS_DIR.rglob("SKILL.md"))

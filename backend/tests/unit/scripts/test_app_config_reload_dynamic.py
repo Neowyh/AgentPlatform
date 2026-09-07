@@ -21,8 +21,8 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-import ideer.config.app_config as app_config_module
-from ideer.config.app_config import (
+import deerflow.config.app_config as app_config_module
+from deerflow.config.app_config import (
     get_app_config,
     pop_current_app_config,
     push_current_app_config,
@@ -46,8 +46,8 @@ def test_get_app_config_reloads_broken_yaml_preserves_old_config(tmp_path, monke
     _write_extensions_config(extensions_path)
     _write_config(config_path, model_name="first-model", supports_thinking=False)
 
-    monkeypatch.setenv("IDEER_CONFIG_PATH", str(config_path))
-    monkeypatch.setenv("IDEER_EXTENSIONS_CONFIG_PATH", str(extensions_path))
+    monkeypatch.setenv("DEER_FLOW_CONFIG_PATH", str(config_path))
+    monkeypatch.setenv("DEER_FLOW_EXTENSIONS_CONFIG_PATH", str(extensions_path))
     reset_app_config()
 
     try:
@@ -82,8 +82,8 @@ def test_get_app_config_reloads_empty_file_preserves_old_config(tmp_path, monkey
     _write_extensions_config(extensions_path)
     _write_config(config_path, model_name="first-model", supports_thinking=False)
 
-    monkeypatch.setenv("IDEER_CONFIG_PATH", str(config_path))
-    monkeypatch.setenv("IDEER_EXTENSIONS_CONFIG_PATH", str(extensions_path))
+    monkeypatch.setenv("DEER_FLOW_CONFIG_PATH", str(config_path))
+    monkeypatch.setenv("DEER_FLOW_EXTENSIONS_CONFIG_PATH", str(extensions_path))
     reset_app_config()
 
     try:
@@ -117,8 +117,8 @@ def test_get_app_config_reloads_deleted_file_keeps_cached_config(tmp_path, monke
     _write_extensions_config(extensions_path)
     _write_config(config_path, model_name="first-model", supports_thinking=False)
 
-    monkeypatch.setenv("IDEER_CONFIG_PATH", str(config_path))
-    monkeypatch.setenv("IDEER_EXTENSIONS_CONFIG_PATH", str(extensions_path))
+    monkeypatch.setenv("DEER_FLOW_CONFIG_PATH", str(config_path))
+    monkeypatch.setenv("DEER_FLOW_EXTENSIONS_CONFIG_PATH", str(extensions_path))
     reset_app_config()
 
     try:
@@ -149,8 +149,8 @@ def test_get_app_config_reloads_rapid_changes(tmp_path, monkeypatch):
     extensions_path = tmp_path / "extensions_config.json"
     _write_extensions_config(extensions_path)
 
-    monkeypatch.setenv("IDEER_CONFIG_PATH", str(config_path))
-    monkeypatch.setenv("IDEER_EXTENSIONS_CONFIG_PATH", str(extensions_path))
+    monkeypatch.setenv("DEER_FLOW_CONFIG_PATH", str(config_path))
+    monkeypatch.setenv("DEER_FLOW_EXTENSIONS_CONFIG_PATH", str(extensions_path))
     reset_app_config()
 
     try:
@@ -189,8 +189,8 @@ def test_get_app_config_reloads_ignores_file_when_contextvar_active(tmp_path, mo
     _write_extensions_config(extensions_path)
     _write_config(config_path, model_name="first-model", supports_thinking=False)
 
-    monkeypatch.setenv("IDEER_CONFIG_PATH", str(config_path))
-    monkeypatch.setenv("IDEER_EXTENSIONS_CONFIG_PATH", str(extensions_path))
+    monkeypatch.setenv("DEER_FLOW_CONFIG_PATH", str(config_path))
+    monkeypatch.setenv("DEER_FLOW_EXTENSIONS_CONFIG_PATH", str(extensions_path))
     reset_app_config()
 
     try:
@@ -218,8 +218,8 @@ def test_get_app_config_reloads_ignores_file_when_custom_config_set(tmp_path, mo
     _write_extensions_config(extensions_path)
     _write_config(config_path, model_name="first-model", supports_thinking=False)
 
-    monkeypatch.setenv("IDEER_CONFIG_PATH", str(config_path))
-    monkeypatch.setenv("IDEER_EXTENSIONS_CONFIG_PATH", str(extensions_path))
+    monkeypatch.setenv("DEER_FLOW_CONFIG_PATH", str(config_path))
+    monkeypatch.setenv("DEER_FLOW_EXTENSIONS_CONFIG_PATH", str(extensions_path))
     reset_app_config()
 
     try:
@@ -261,8 +261,8 @@ def test_get_app_config_reloads_from_symlink_update(tmp_path, monkeypatch):
 
     link_path.symlink_to(config_a)
 
-    monkeypatch.setenv("IDEER_CONFIG_PATH", str(link_path))
-    monkeypatch.setenv("IDEER_EXTENSIONS_CONFIG_PATH", str(extensions_path))
+    monkeypatch.setenv("DEER_FLOW_CONFIG_PATH", str(link_path))
+    monkeypatch.setenv("DEER_FLOW_EXTENSIONS_CONFIG_PATH", str(extensions_path))
     reset_app_config()
 
     try:
@@ -288,8 +288,8 @@ def test_get_app_config_reloads_file_permission_change(tmp_path, monkeypatch):
     _write_extensions_config(extensions_path)
     _write_config(config_path, model_name="first-model", supports_thinking=False)
 
-    monkeypatch.setenv("IDEER_CONFIG_PATH", str(config_path))
-    monkeypatch.setenv("IDEER_EXTENSIONS_CONFIG_PATH", str(extensions_path))
+    monkeypatch.setenv("DEER_FLOW_CONFIG_PATH", str(config_path))
+    monkeypatch.setenv("DEER_FLOW_EXTENSIONS_CONFIG_PATH", str(extensions_path))
     reset_app_config()
 
     try:

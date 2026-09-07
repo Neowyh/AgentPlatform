@@ -27,7 +27,7 @@ export async function Header({ className, homeURL, locale }: HeaderProps) {
           target={isExternalHome ? "_blank" : "_self"}
           rel={isExternalHome ? "noopener noreferrer" : undefined}
         >
-          <h1 className="text-foreground type-body font-serif">iDeer</h1>
+          <span className="text-foreground type-body font-serif">iDeer</span>
         </a>
       </div>
       <nav className="type-body mr-8 ml-auto flex items-center gap-8 font-medium">

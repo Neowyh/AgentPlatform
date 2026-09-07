@@ -10,7 +10,7 @@ Tests input sanitization across user-facing content paths:
 import pytest
 
 from app.gateway.utils import sanitize_log_param
-from ideer.skills.storage.skill_storage import SkillStorage
+from deerflow.skills.storage.skill_storage import SkillStorage
 
 # ---------------------------------------------------------------------------
 # sanitize_log_param

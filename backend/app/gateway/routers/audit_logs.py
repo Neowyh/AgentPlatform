@@ -9,10 +9,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy import func, select
 
+from app.agentplatform.audit_model import AuditLog
+from app.agentplatform.rbac_models import UserModel, UserRole
 from app.gateway.authz import get_current_rbac_user, require_role
-from ideer.persistence.engine import get_session_factory
-from ideer.persistence.models.audit_log import AuditLog
-from ideer.persistence.models.user import UserModel, UserRole
+from deerflow.persistence.engine import get_session_factory
 
 logger = logging.getLogger(__name__)
 

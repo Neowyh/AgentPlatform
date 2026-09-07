@@ -12,11 +12,14 @@ import pytest_asyncio
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-import ideer.persistence.models  # noqa: F401
+import app.agentplatform.audit_model  # noqa: F401 - register audit_logs
+import app.agentplatform.rbac_models  # noqa: F401 - register users_ext
+import app.agentplatform.resource_models  # noqa: F401 - register resource tables
+import app.agentplatform.visibility_models  # noqa: F401 - register visibility tables
+from app.agentplatform.rbac_models import UserModel
+from app.agentplatform.resource_models import Resource
 from app.gateway.services import _resolve_canonical_alias
-from ideer.persistence.base import Base
-from ideer.persistence.models.resource_catalog import Resource
-from ideer.persistence.models.user import UserModel
+from deerflow.persistence.base import Base
 
 
 @pytest_asyncio.fixture
@@ -67,7 +70,7 @@ def _no_db(monkeypatch: pytest.MonkeyPatch) -> None:
     def explode() -> None:
         raise AssertionError("database must not be consulted")
 
-    monkeypatch.setattr("ideer.persistence.engine.get_session_factory", explode)
+    monkeypatch.setattr("deerflow.persistence.engine.get_session_factory", explode)
 
 
 class TestResolveCanonicalAlias:
@@ -83,7 +86,7 @@ class TestResolveCanonicalAlias:
                 ]
             )
             await session.commit()
-        monkeypatch.setattr("ideer.persistence.engine.get_session_factory", lambda: session_factory)
+        monkeypatch.setattr("deerflow.persistence.engine.get_session_factory", lambda: session_factory)
 
         resolved = await _resolve_canonical_alias("writer", _request("user-1"))
 
@@ -100,7 +103,7 @@ class TestResolveCanonicalAlias:
                 ]
             )
             await session.commit()
-        monkeypatch.setattr("ideer.persistence.engine.get_session_factory", lambda: session_factory)
+        monkeypatch.setattr("deerflow.persistence.engine.get_session_factory", lambda: session_factory)
 
         resolved = await _resolve_canonical_alias("poet", _request("user-1"))
 
@@ -119,7 +122,7 @@ class TestResolveCanonicalAlias:
                 ]
             )
             await session.commit()
-        monkeypatch.setattr("ideer.persistence.engine.get_session_factory", lambda: session_factory)
+        monkeypatch.setattr("deerflow.persistence.engine.get_session_factory", lambda: session_factory)
 
         with pytest.raises(HTTPException) as exc_info:
             await _resolve_canonical_alias("critic", _request("user-1"))
@@ -131,7 +134,7 @@ class TestResolveCanonicalAlias:
         async with session_factory() as session:
             session.add(_user("user-1"))
             await session.commit()
-        monkeypatch.setattr("ideer.persistence.engine.get_session_factory", lambda: session_factory)
+        monkeypatch.setattr("deerflow.persistence.engine.get_session_factory", lambda: session_factory)
 
         with pytest.raises(HTTPException) as exc_info:
             await _resolve_canonical_alias("ghost", _request("user-1"))
@@ -149,7 +152,7 @@ class TestResolveCanonicalAlias:
                 ]
             )
             await session.commit()
-        monkeypatch.setattr("ideer.persistence.engine.get_session_factory", lambda: session_factory)
+        monkeypatch.setattr("deerflow.persistence.engine.get_session_factory", lambda: session_factory)
 
         with pytest.raises(HTTPException) as exc_info:
             await _resolve_canonical_alias("diarist", _request("user-1"))

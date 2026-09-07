@@ -10,6 +10,7 @@ export const userSchema = z.object({
     z.enum(["viewer", "user", "department_admin", "super_admin"]),
   ),
   needs_setup: z.boolean().optional().default(false),
+  oauth_provider: z.string().nullable().optional().default(null),
 });
 
 export type User = z.infer<typeof userSchema>;

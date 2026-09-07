@@ -1,7 +1,7 @@
 """Regression test: tool args schemas must not emit Pydantic serialization warnings.
 
 iDeer tools annotate their runtime parameter as ``Runtime``
-(``ideer.tools.types.Runtime`` = ``ToolRuntime[dict[str, Any], ThreadState]``)
+(``deerflow.tools.types.Runtime`` = ``ToolRuntime[dict[str, Any], ThreadState]``)
 so the LangChain tool framework injects the runtime automatically.
 When the inner ``Runtime.context`` field is left as the unbound ``ContextT``
 TypeVar (default ``None``), Pydantic's ``model_dump()`` on the auto-generated
@@ -18,7 +18,7 @@ import warnings
 import pytest
 from langchain.tools import ToolRuntime
 
-from ideer.sandbox.tools import (
+from deerflow.sandbox.tools import (
     bash_tool,
     glob_tool,
     grep_tool,
@@ -27,12 +27,12 @@ from ideer.sandbox.tools import (
     str_replace_tool,
     write_file_tool,
 )
-from ideer.tools.builtins.present_file_tool import present_file_tool
-from ideer.tools.builtins.setup_agent_tool import setup_agent
-from ideer.tools.builtins.task_tool import task_tool
-from ideer.tools.builtins.update_agent_tool import update_agent
-from ideer.tools.builtins.view_image_tool import view_image_tool
-from ideer.tools.skill_manage_tool import skill_manage_tool
+from deerflow.tools.builtins.present_file_tool import present_file_tool
+from deerflow.tools.builtins.setup_agent_tool import setup_agent
+from deerflow.tools.builtins.task_tool import task_tool
+from deerflow.tools.builtins.update_agent_tool import update_agent
+from deerflow.tools.builtins.view_image_tool import view_image_tool
+from deerflow.tools.skill_manage_tool import skill_manage_tool
 
 
 def _make_runtime(context: dict) -> ToolRuntime:

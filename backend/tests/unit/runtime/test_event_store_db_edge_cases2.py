@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from ideer.runtime.events.store.db import DbRunEventStore
+from deerflow.runtime.events.store.db import DbRunEventStore
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -87,7 +87,7 @@ async def test_list_events_with_event_types():
 
     store = DbRunEventStore(sf)
 
-    with patch("ideer.runtime.events.store.db.resolve_user_id", return_value=None):
+    with patch("deerflow.runtime.events.store.db.resolve_user_id", return_value=None):
         result = await store.list_events(
             "t1",
             "r1",
@@ -116,7 +116,7 @@ async def test_list_messages_by_run_with_after_seq():
 
     store = DbRunEventStore(sf)
 
-    with patch("ideer.runtime.events.store.db.resolve_user_id", return_value="u1"):
+    with patch("deerflow.runtime.events.store.db.resolve_user_id", return_value="u1"):
         result = await store.list_messages_by_run(
             "t1",
             "r1",
@@ -143,7 +143,7 @@ async def test_list_messages_by_run_with_before_seq():
 
     store = DbRunEventStore(sf)
 
-    with patch("ideer.runtime.events.store.db.resolve_user_id", return_value="u1"):
+    with patch("deerflow.runtime.events.store.db.resolve_user_id", return_value="u1"):
         result = await store.list_messages_by_run(
             "t1",
             "r1",
@@ -172,7 +172,7 @@ async def test_list_messages_by_run_default_latest():
 
     store = DbRunEventStore(sf)
 
-    with patch("ideer.runtime.events.store.db.resolve_user_id", return_value=None):
+    with patch("deerflow.runtime.events.store.db.resolve_user_id", return_value=None):
         result = await store.list_messages_by_run(
             "t1",
             "r1",
@@ -194,7 +194,7 @@ async def test_list_messages_by_run_with_user_id_filter():
 
     store = DbRunEventStore(sf)
 
-    with patch("ideer.runtime.events.store.db.resolve_user_id", return_value="u42"):
+    with patch("deerflow.runtime.events.store.db.resolve_user_id", return_value="u42"):
         result = await store.list_messages_by_run(
             "t1",
             "r1",
@@ -218,7 +218,7 @@ async def test_list_messages_by_run_with_both_cursors():
 
     store = DbRunEventStore(sf)
 
-    with patch("ideer.runtime.events.store.db.resolve_user_id", return_value=None):
+    with patch("deerflow.runtime.events.store.db.resolve_user_id", return_value=None):
         result = await store.list_messages_by_run(
             "t1",
             "r1",

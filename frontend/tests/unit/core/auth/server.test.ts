@@ -108,6 +108,7 @@ describe("getServerSideUser", () => {
       user: {
         id: "e2e-user",
         email: "e2e@test.local",
+        oauth_provider: null,
         system_role: "super_admin",
         needs_setup: false,
       },

@@ -245,7 +245,7 @@
   --secondary: #ece4d9;
   --secondary-foreground: #59463a;
   --muted: #ece4d9;
-  --muted-foreground: #817568;
+  --muted-foreground: #6b5c50;
   --accent: #e6d8c8;
   --accent-foreground: #59463a;
   --destructive: oklch(0.577 0.245 27.325);
@@ -450,7 +450,7 @@
 
   .workbench-guide-answer {
     margin-inline-start: 0.5rem;
-    color: #a86443;
+    color: #6f412c;
     font-weight: 600;
   }
 

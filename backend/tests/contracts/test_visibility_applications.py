@@ -10,10 +10,10 @@ from fastapi import FastAPI, HTTPException
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.exc import IntegrityError
 
+from app.agentplatform.rbac_models import ResourceVisibility
 from app.gateway.authz import get_current_rbac_user
 from app.gateway.routers import visibility_applications
 from app.gateway.routers.visibility_applications import CreateApplicationRequest, router
-from ideer.persistence.models.user import ResourceVisibility
 
 # ---------------------------------------------------------------------------
 # Helpers

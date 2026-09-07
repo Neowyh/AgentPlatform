@@ -14,8 +14,8 @@ from unittest.mock import patch
 
 import pytest
 
-from ideer.config.database_config import DatabaseConfig
-from ideer.runtime.runs.store.memory import MemoryRunStore
+from deerflow.config.database_config import DatabaseConfig
+from deerflow.runtime.runs.store.memory import MemoryRunStore
 
 # -- DatabaseConfig --
 
@@ -28,7 +28,7 @@ class TestDatabaseConfig:
 
     def test_sqlite_paths_unified(self):
         c = DatabaseConfig(backend="sqlite", sqlite_dir="./mydata")
-        assert c.sqlite_path.endswith("ideer.db")
+        assert c.sqlite_path.endswith("deerflow.db")
         assert "mydata" in c.sqlite_path
         # Backward-compatible aliases point to the same file
         assert c.checkpointer_sqlite_path == c.sqlite_path
@@ -38,7 +38,7 @@ class TestDatabaseConfig:
         c = DatabaseConfig(backend="sqlite", sqlite_dir="./data")
         url = c.app_sqlalchemy_url
         assert url.startswith("sqlite+aiosqlite:///")
-        assert "ideer.db" in url
+        assert "deerflow.db" in url
 
     def test_app_sqlalchemy_url_postgres(self):
         c = DatabaseConfig(
@@ -169,7 +169,7 @@ class TestBaseToDictMixin:
         from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
         from sqlalchemy.orm import Mapped, mapped_column
 
-        from ideer.persistence.base import Base
+        from deerflow.persistence.base import Base
 
         class _Tmp(Base):
             __tablename__ = "_tmp_test"
@@ -201,7 +201,7 @@ class TestBaseToDictMixin:
 class TestEngineLifecycle:
     @pytest.mark.anyio
     async def test_memory_is_noop(self):
-        from ideer.persistence.engine import close_engine, get_session_factory, init_engine
+        from deerflow.persistence.engine import close_engine, get_session_factory, init_engine
 
         await init_engine("memory")
         assert get_session_factory() is None
@@ -209,7 +209,7 @@ class TestEngineLifecycle:
 
     @pytest.mark.anyio
     async def test_sqlite_creates_engine(self, tmp_path):
-        from ideer.persistence.engine import close_engine, get_session_factory, init_engine
+        from deerflow.persistence.engine import close_engine, get_session_factory, init_engine
 
         url = f"sqlite+aiosqlite:///{tmp_path / 'test.db'}"
         await init_engine("sqlite", url=url, sqlite_dir=str(tmp_path))
@@ -223,7 +223,7 @@ class TestEngineLifecycle:
     @pytest.mark.anyio
     async def test_postgres_without_asyncpg_gives_actionable_error(self):
         """If asyncpg is not installed, error message tells user what to do."""
-        from ideer.persistence.engine import init_engine
+        from deerflow.persistence.engine import init_engine
 
         with (
             patch.dict(sys.modules, {"asyncpg": None}),

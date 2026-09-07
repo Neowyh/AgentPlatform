@@ -37,15 +37,15 @@ from langchain_core.messages import HumanMessage
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from app.agentplatform.rbac_models import UserModel, UserRole
+from app.agentplatform.resource_models import Resource
 from app.gateway.services import (
     build_run_config,
     inject_authenticated_user_context,
     merge_run_context_overrides,
 )
-from ideer.persistence.base import Base
-from ideer.persistence.models.resource_catalog import Resource
-from ideer.persistence.models.user import UserModel, UserRole
-from ideer.runtime.runs.worker import _build_runtime_context, _install_runtime_context
+from deerflow.persistence.base import Base
+from deerflow.runtime.runs.worker import _build_runtime_context, _install_runtime_context
 
 
 def _make_request(user_id_str: str | None) -> SimpleNamespace:
@@ -91,12 +91,12 @@ def _create_canonical_agent(tmp_path: Path, catalog_db: async_sessionmaker, name
     and never wrap it in another asyncio.run. The catalog user owning the
     agent is seeded here so setup_agent's owner check passes.
     """
-    from ideer.tools.builtins.setup_agent_tool import setup_agent
+    from app.agentplatform.tools.setup_agent_tool import setup_agent
 
     asyncio.run(_seed_user(catalog_db, owner_id))
     with (
-        patch("ideer.tools.builtins.setup_agent_tool.get_session_factory", return_value=catalog_db),
-        patch("ideer.tools.builtins.setup_agent_tool.get_paths", return_value=_make_paths_mock(tmp_path)),
+        patch("app.agentplatform.tools.setup_agent_tool.get_session_factory", return_value=catalog_db),
+        patch("app.agentplatform.tools.setup_agent_tool.get_paths", return_value=_make_paths_mock(tmp_path)),
     ):
         runtime = SimpleNamespace(context={"agent_name": name, "user_id": owner_id}, tool_call_id="tool-setup")
         result = setup_agent.func(soul=soul, description=description, runtime=runtime)
@@ -119,15 +119,15 @@ def _patch_update_agent_dependencies(tmp_path: Path, catalog_db: async_sessionma
 
     return [
         patch(
-            "ideer.tools.builtins.update_agent_tool.get_paths",
+            "app.agentplatform.tools.update_agent_tool.get_paths",
             return_value=_make_paths_mock(tmp_path),
         ),
         patch(
-            "ideer.tools.builtins.update_agent_tool.get_app_config",
+            "app.agentplatform.tools.update_agent_tool.get_app_config",
             return_value=fake_app_cfg,
         ),
         patch(
-            "ideer.tools.builtins.update_agent_tool.get_session_factory",
+            "app.agentplatform.tools.update_agent_tool.get_session_factory",
             return_value=catalog_db,
         ),
     ]
@@ -136,7 +136,7 @@ def _patch_update_agent_dependencies(tmp_path: Path, catalog_db: async_sessionma
 def _build_update_graph(*, soul_payload: str):
     from langchain.agents import create_agent
 
-    from ideer.tools.builtins.update_agent_tool import update_agent
+    from app.agentplatform.tools.update_agent_tool import update_agent
 
     fake_model = build_single_tool_call_model(
         tool_name="update_agent",
@@ -241,7 +241,7 @@ def test_update_agent_uses_contextvar_when_present(tmp_path: Path, monkeypatch, 
     keep working regardless of how runtime.context is populated."""
     from types import SimpleNamespace as _SN
 
-    from ideer.runtime.user_context import reset_current_user, set_current_user
+    from deerflow.runtime.user_context import reset_current_user, set_current_user
 
     auth_uid = "11112222-3333-4444-5555-666677778888"
     asyncio.run(_seed_user(catalog_db, auth_uid))

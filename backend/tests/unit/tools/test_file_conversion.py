@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from ideer.utils.file_conversion import (
+from app.agentplatform.utils.file_conversion import (
     _ASYNC_THRESHOLD_BYTES,
     _MIN_CHARS_PER_PAGE,
     MAX_OUTLINE_ENTRIES,
@@ -106,9 +106,9 @@ class TestDoConvert:
         xlsx.write_bytes(b"PK fake xlsx")
 
         with (
-            patch("ideer.utils.file_conversion._convert_word_with_rich") as mock_rich,
+            patch("app.agentplatform.utils.file_conversion._convert_word_with_rich") as mock_rich,
             patch(
-                "ideer.utils.file_conversion._convert_with_markitdown",
+                "app.agentplatform.utils.file_conversion._convert_with_markitdown",
                 return_value="# Markdown from MarkItDown",
             ) as mock_md,
         ):
@@ -124,9 +124,9 @@ class TestDoConvert:
         docx.write_bytes(b"PK fake docx")
 
         with (
-            patch("ideer.utils.file_conversion._convert_word_with_rich") as mock_rich,
+            patch("app.agentplatform.utils.file_conversion._convert_word_with_rich") as mock_rich,
             patch(
-                "ideer.utils.file_conversion._convert_with_markitdown",
+                "app.agentplatform.utils.file_conversion._convert_with_markitdown",
                 return_value="# Markdown from MarkItDown",
             ) as mock_md,
         ):
@@ -143,10 +143,10 @@ class TestDoConvert:
 
         with (
             patch(
-                "ideer.utils.file_conversion._convert_word_with_rich",
+                "app.agentplatform.utils.file_conversion._convert_word_with_rich",
                 return_value="# Rich Heading\n",
             ) as mock_rich,
-            patch("ideer.utils.file_conversion._convert_with_markitdown") as mock_md,
+            patch("app.agentplatform.utils.file_conversion._convert_with_markitdown") as mock_md,
         ):
             result = _do_convert(docx, "auto", "auto")
 
@@ -161,11 +161,11 @@ class TestDoConvert:
 
         with (
             patch(
-                "ideer.utils.file_conversion._convert_word_with_rich",
+                "app.agentplatform.utils.file_conversion._convert_word_with_rich",
                 return_value=None,
             ),
             patch(
-                "ideer.utils.file_conversion._convert_with_markitdown",
+                "app.agentplatform.utils.file_conversion._convert_with_markitdown",
                 return_value="MarkItDown fallback",
             ) as mock_md,
         ):
@@ -181,10 +181,10 @@ class TestDoConvert:
 
         with (
             patch(
-                "ideer.utils.file_conversion._convert_word_with_rich",
+                "app.agentplatform.utils.file_conversion._convert_word_with_rich",
                 return_value=None,
             ),
-            patch("ideer.utils.file_conversion._convert_with_markitdown") as mock_md,
+            patch("app.agentplatform.utils.file_conversion._convert_with_markitdown") as mock_md,
         ):
             try:
                 _do_convert(docx, "auto", "rich")
@@ -204,14 +204,14 @@ class TestDoConvert:
 
         with (
             patch(
-                "ideer.utils.file_conversion._convert_pdf_with_pymupdf4llm",
+                "app.agentplatform.utils.file_conversion._convert_pdf_with_pymupdf4llm",
                 return_value=dense_text,
             ),
             patch(
-                "ideer.utils.file_conversion._pymupdf_output_too_sparse",
+                "app.agentplatform.utils.file_conversion._pymupdf_output_too_sparse",
                 return_value=False,
             ),
-            patch("ideer.utils.file_conversion._convert_with_markitdown") as mock_md,
+            patch("app.agentplatform.utils.file_conversion._convert_with_markitdown") as mock_md,
         ):
             result = _do_convert(pdf, "auto")
 
@@ -225,15 +225,15 @@ class TestDoConvert:
 
         with (
             patch(
-                "ideer.utils.file_conversion._convert_pdf_with_pymupdf4llm",
+                "app.agentplatform.utils.file_conversion._convert_pdf_with_pymupdf4llm",
                 return_value="x" * 612,  # 19.7 chars/page for 31-page doc
             ),
             patch(
-                "ideer.utils.file_conversion._pymupdf_output_too_sparse",
+                "app.agentplatform.utils.file_conversion._pymupdf_output_too_sparse",
                 return_value=True,
             ),
             patch(
-                "ideer.utils.file_conversion._convert_with_markitdown",
+                "app.agentplatform.utils.file_conversion._convert_with_markitdown",
                 return_value="OCR result via MarkItDown",
             ) as mock_md,
         ):
@@ -251,10 +251,10 @@ class TestDoConvert:
 
         with (
             patch(
-                "ideer.utils.file_conversion._convert_pdf_with_pymupdf4llm",
+                "app.agentplatform.utils.file_conversion._convert_pdf_with_pymupdf4llm",
                 return_value=sparse_text,
             ),
-            patch("ideer.utils.file_conversion._convert_with_markitdown") as mock_md,
+            patch("app.agentplatform.utils.file_conversion._convert_with_markitdown") as mock_md,
         ):
             result = _do_convert(pdf, "pymupdf4llm")
 
@@ -267,9 +267,9 @@ class TestDoConvert:
         pdf.write_bytes(b"%PDF-1.4 fake")
 
         with (
-            patch("ideer.utils.file_conversion._convert_pdf_with_pymupdf4llm") as mock_pymu,
+            patch("app.agentplatform.utils.file_conversion._convert_pdf_with_pymupdf4llm") as mock_pymu,
             patch(
-                "ideer.utils.file_conversion._convert_with_markitdown",
+                "app.agentplatform.utils.file_conversion._convert_with_markitdown",
                 return_value="MarkItDown result",
             ),
         ):
@@ -285,11 +285,11 @@ class TestDoConvert:
 
         with (
             patch(
-                "ideer.utils.file_conversion._convert_pdf_with_pymupdf4llm",
+                "app.agentplatform.utils.file_conversion._convert_pdf_with_pymupdf4llm",
                 return_value=None,  # None signals not installed
             ),
             patch(
-                "ideer.utils.file_conversion._convert_with_markitdown",
+                "app.agentplatform.utils.file_conversion._convert_with_markitdown",
                 return_value="MarkItDown fallback",
             ) as mock_md,
         ):
@@ -304,21 +304,21 @@ class TestGetPdfConverter:
         cfg = MagicMock()
         cfg.uploads = {"pdf_converter": "markitdown"}
 
-        with patch("ideer.utils.file_conversion.get_app_config", return_value=cfg):
+        with patch("app.agentplatform.utils.file_conversion.get_app_config", return_value=cfg):
             assert _get_pdf_converter() == "markitdown"
 
     def test_reads_attribute_backed_uploads_config(self):
         cfg = MagicMock()
         cfg.uploads = MagicMock(pdf_converter="pymupdf4llm")
 
-        with patch("ideer.utils.file_conversion.get_app_config", return_value=cfg):
+        with patch("app.agentplatform.utils.file_conversion.get_app_config", return_value=cfg):
             assert _get_pdf_converter() == "pymupdf4llm"
 
     def test_invalid_value_falls_back_to_auto(self):
         cfg = MagicMock()
         cfg.uploads = {"pdf_converter": "not-a-real-converter"}
 
-        with patch("ideer.utils.file_conversion.get_app_config", return_value=cfg):
+        with patch("app.agentplatform.utils.file_conversion.get_app_config", return_value=cfg):
             assert _get_pdf_converter() == "auto"
 
 
@@ -327,21 +327,21 @@ class TestGetDocxConverter:
         cfg = MagicMock()
         cfg.uploads = {"docx_converter": "markitdown"}
 
-        with patch("ideer.utils.file_conversion.get_app_config", return_value=cfg):
+        with patch("app.agentplatform.utils.file_conversion.get_app_config", return_value=cfg):
             assert _get_docx_converter() == "markitdown"
 
     def test_reads_attribute_backed_uploads_config(self):
         cfg = MagicMock()
         cfg.uploads = MagicMock(docx_converter="rich")
 
-        with patch("ideer.utils.file_conversion.get_app_config", return_value=cfg):
+        with patch("app.agentplatform.utils.file_conversion.get_app_config", return_value=cfg):
             assert _get_docx_converter() == "rich"
 
     def test_invalid_value_falls_back_to_auto(self):
         cfg = MagicMock()
         cfg.uploads = {"docx_converter": "not-a-real-converter"}
 
-        with patch("ideer.utils.file_conversion.get_app_config", return_value=cfg):
+        with patch("app.agentplatform.utils.file_conversion.get_app_config", return_value=cfg):
             assert _get_docx_converter() == "auto"
 
 
@@ -375,7 +375,7 @@ class TestConvertWordWithRich:
         doc.save(str(path))
 
     def test_relocates_artifacts_and_rewrites_refs(self, tmp_path):
-        from ideer.utils.file_conversion import _convert_word_with_rich
+        from app.agentplatform.utils.file_conversion import _convert_word_with_rich
 
         src = tmp_path / "report.docx"
         self._build_docx_with_image_and_prose(src)
@@ -394,15 +394,15 @@ class TestConvertWordWithRich:
 
     def test_guard_rail_runtime_error_propagates(self, tmp_path):
         """Deliberate RuntimeErrors (e.g. .doc without soffice) are not masked."""
-        from ideer.utils.file_conversion import _convert_word_with_rich
+        from app.agentplatform.utils.file_conversion import _convert_word_with_rich
 
         src = tmp_path / "legacy.doc"
         src.write_bytes(b"\xd0\xcf\x11\xe0 fake OLE")
 
         with (
-            patch("ideer.utils.docx_rich.is_available", return_value=True),
+            patch("app.agentplatform.utils.docx_rich.is_available", return_value=True),
             patch(
-                "ideer.utils.docx_rich.convert_docx",
+                "app.agentplatform.utils.docx_rich.convert_docx",
                 side_effect=RuntimeError("LibreOffice (soffice) is required"),
             ),
         ):
@@ -417,9 +417,9 @@ class TestConvertFileToMarkdown:
         pdf.write_bytes(b"%PDF-1.4 " + b"x" * 100)  # well under 1 MB
 
         with (
-            patch("ideer.utils.file_conversion._get_pdf_converter", return_value="auto"),
+            patch("app.agentplatform.utils.file_conversion._get_pdf_converter", return_value="auto"),
             patch(
-                "ideer.utils.file_conversion._do_convert",
+                "app.agentplatform.utils.file_conversion._do_convert",
                 return_value="# Small PDF",
             ) as mock_convert,
             patch("asyncio.to_thread") as mock_thread,
@@ -442,9 +442,9 @@ class TestConvertFileToMarkdown:
             return fn(*args, **kwargs)
 
         with (
-            patch("ideer.utils.file_conversion._get_pdf_converter", return_value="auto"),
+            patch("app.agentplatform.utils.file_conversion._get_pdf_converter", return_value="auto"),
             patch(
-                "ideer.utils.file_conversion._do_convert",
+                "app.agentplatform.utils.file_conversion._do_convert",
                 return_value="# Large PDF",
             ),
             patch("asyncio.to_thread", side_effect=fake_to_thread) as mock_thread,
@@ -461,9 +461,9 @@ class TestConvertFileToMarkdown:
         pdf.write_bytes(b"%PDF-1.4 fake")
 
         with (
-            patch("ideer.utils.file_conversion._get_pdf_converter", return_value="auto"),
+            patch("app.agentplatform.utils.file_conversion._get_pdf_converter", return_value="auto"),
             patch(
-                "ideer.utils.file_conversion._do_convert",
+                "app.agentplatform.utils.file_conversion._do_convert",
                 side_effect=RuntimeError("conversion failed"),
             ),
         ):
@@ -478,9 +478,9 @@ class TestConvertFileToMarkdown:
         chinese_content = "# 中文报告\n\n这是测试内容。"
 
         with (
-            patch("ideer.utils.file_conversion._get_pdf_converter", return_value="auto"),
+            patch("app.agentplatform.utils.file_conversion._get_pdf_converter", return_value="auto"),
             patch(
-                "ideer.utils.file_conversion._do_convert",
+                "app.agentplatform.utils.file_conversion._do_convert",
                 return_value=chinese_content,
             ),
         ):

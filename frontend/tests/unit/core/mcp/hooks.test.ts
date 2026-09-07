@@ -3,10 +3,28 @@ import { renderHook, waitFor } from "@testing-library/react";
 import React from "react";
 import { describe, test, expect, vi, afterEach } from "vitest";
 
-vi.mock("@/core/mcp/api", () => ({
-  loadMCPConfig: vi.fn(),
-  updateMCPConfig: vi.fn(),
-}));
+vi.mock("@/core/mcp/api", () => {
+  class MCPConfigRequestError extends Error {
+    readonly status: number;
+    constructor(status: number, message: string) {
+      super(message);
+      this.name = "MCPConfigRequestError";
+      this.status = status;
+    }
+    get isAdminRequired(): boolean {
+      return this.status === 403;
+    }
+  }
+  return {
+    MCPConfigRequestError,
+    loadMCPConfig: vi.fn(),
+    updateMCPConfig: vi.fn(),
+    createMCPServers: vi.fn(),
+    updateMCPServer: vi.fn(),
+    deleteMCPServer: vi.fn(),
+    updateMCPServerState: vi.fn(),
+  };
+});
 
 vi.mock("@/env", () => ({
   env: {
@@ -81,8 +99,14 @@ describe("useMCPConfig", () => {
   });
 
   test("returns undefined config on error", async () => {
-    const { loadMCPConfig } = await import("@/core/mcp/api");
-    vi.mocked(loadMCPConfig).mockRejectedValue(new Error("Network error"));
+    const { loadMCPConfig, MCPConfigRequestError } = await import(
+      "@/core/mcp/api"
+    );
+    // A typed MCPConfigRequestError skips the query's retry policy so the
+    // error settles immediately.
+    vi.mocked(loadMCPConfig).mockRejectedValue(
+      new MCPConfigRequestError(500, "Network error"),
+    );
 
     const { useMCPConfig } = await import("@/core/mcp/hooks");
     const { wrapper } = makeWrapper();
@@ -101,75 +125,37 @@ describe("useEnableMCPServer", () => {
     vi.resetModules();
   });
 
-  test("enables a disabled server", async () => {
-    const { loadMCPConfig, updateMCPConfig } = await import("@/core/mcp/api");
-    vi.mocked(loadMCPConfig).mockResolvedValue(MOCK_MCP_CONFIG);
-    vi.mocked(updateMCPConfig).mockResolvedValue({
-      mcp_servers: {
-        ...MOCK_MCP_CONFIG.mcp_servers,
-        "another-server": {
-          ...MOCK_MCP_CONFIG.mcp_servers["another-server"],
-          enabled: true,
-        },
-      },
-    });
-
-    // Pre-populate the query cache so useEnableMCPServer's internal
-    // useMCPConfig() call resolves immediately.
-    const queryClient = createQueryClient();
-    queryClient.setQueryData(["mcpConfig"], MOCK_MCP_CONFIG);
+  test("enables a disabled server via the state endpoint", async () => {
+    const { updateMCPServerState } = await import("@/core/mcp/api");
+    vi.mocked(updateMCPServerState).mockResolvedValue(MOCK_MCP_CONFIG);
 
     const { useEnableMCPServer } = await import("@/core/mcp/hooks");
-    const { wrapper } = makeWrapper(queryClient);
+    const { wrapper } = makeWrapper();
     const { result } = renderHook(() => useEnableMCPServer(), { wrapper });
 
     result.current.mutate({ serverName: "another-server", enabled: true });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-    expect(updateMCPConfig).toHaveBeenCalledWith(
-      expect.objectContaining({
-        mcp_servers: expect.objectContaining({
-          "another-server": expect.objectContaining({ enabled: true }),
-        }),
-      }),
+    expect(updateMCPServerState).toHaveBeenCalledWith(
+      "another-server",
+      true,
     );
   });
 
-  test("throws when config is not loaded", async () => {
-    const { loadMCPConfig } = await import("@/core/mcp/api");
-    vi.mocked(loadMCPConfig).mockRejectedValue(new Error("Network error"));
+  test("surfaces an error when the state update fails", async () => {
+    const { updateMCPServerState, MCPConfigRequestError } = await import(
+      "@/core/mcp/api"
+    );
+    vi.mocked(updateMCPServerState).mockRejectedValue(
+      new MCPConfigRequestError(500, "Failed to update server state"),
+    );
 
     const { useEnableMCPServer } = await import("@/core/mcp/hooks");
     const { wrapper } = makeWrapper();
     const { result } = renderHook(() => useEnableMCPServer(), { wrapper });
 
-    // Wait for the internal query to settle with an error
-    await waitFor(() => expect(result.current.status).toBeDefined());
-
     result.current.mutate({ serverName: "test-server", enabled: false });
-
-    await waitFor(() => expect(result.current.isError).toBe(true));
-
-    expect(result.current.error).toBeDefined();
-  });
-
-  test("throws when server name does not exist", async () => {
-    const { loadMCPConfig } = await import("@/core/mcp/api");
-    vi.mocked(loadMCPConfig).mockResolvedValue(MOCK_MCP_CONFIG);
-
-    // Pre-populate cache so the hook has config immediately
-    const queryClient = createQueryClient();
-    queryClient.setQueryData(["mcpConfig"], MOCK_MCP_CONFIG);
-
-    const { useEnableMCPServer } = await import("@/core/mcp/hooks");
-    const { wrapper } = makeWrapper(queryClient);
-    const { result } = renderHook(() => useEnableMCPServer(), { wrapper });
-
-    result.current.mutate({
-      serverName: "nonexistent-server",
-      enabled: true,
-    });
 
     await waitFor(() => expect(result.current.isError).toBe(true));
 
@@ -183,145 +169,94 @@ describe("MCP config mutations", () => {
     vi.resetModules();
   });
 
-  test("adds a new server", async () => {
-    const { updateMCPConfig } = await import("@/core/mcp/api");
-    vi.mocked(updateMCPConfig).mockResolvedValue(MOCK_MCP_CONFIG);
+  test("creates servers via the create endpoint", async () => {
+    const { createMCPServers } = await import("@/core/mcp/api");
+    vi.mocked(createMCPServers).mockResolvedValue(MOCK_MCP_CONFIG);
     const queryClient = createQueryClient();
-    queryClient.setQueryData(["mcpConfig"], MOCK_MCP_CONFIG);
 
-    const { useAddMCPServer } = await import("@/core/mcp/hooks");
+    const { useMCPServerMutation } = await import("@/core/mcp/hooks");
     const { wrapper } = makeWrapper(queryClient);
-    const { result } = renderHook(() => useAddMCPServer(), { wrapper });
+    const { result } = renderHook(() => useMCPServerMutation(), { wrapper });
 
     result.current.mutate({
-      name: "new-server",
-      serverConfig: {
-        enabled: true,
-        type: "http",
-        url: "http://localhost:3333",
-        args: [],
-        env: {},
-        headers: {},
-        description: "New server",
+      operation: "create",
+      servers: {
+        "new-server": {
+          enabled: true,
+          type: "http",
+          url: "http://localhost:3333",
+          args: [],
+          env: {},
+          headers: {},
+          description: "New server",
+        },
       },
     });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(updateMCPConfig).toHaveBeenCalledWith(
+    expect(createMCPServers).toHaveBeenCalledWith(
       expect.objectContaining({
-        mcp_servers: expect.objectContaining({
-          "new-server": expect.objectContaining({ type: "http" }),
-        }),
+        "new-server": expect.objectContaining({ type: "http" }),
       }),
     );
   });
 
-  test("rejects adding without loaded config or with duplicate name", async () => {
+  test("updates an existing server via the update endpoint", async () => {
+    const { updateMCPServer } = await import("@/core/mcp/api");
+    vi.mocked(updateMCPServer).mockResolvedValue(MOCK_MCP_CONFIG);
     const queryClient = createQueryClient();
-    const { useAddMCPServer } = await import("@/core/mcp/hooks");
-    const { wrapper, queryClient: client } = makeWrapper(queryClient);
-    const { result, rerender } = renderHook(() => useAddMCPServer(), {
-      wrapper,
-    });
 
-    result.current.mutate({
-      name: "new-server",
-      serverConfig: MOCK_MCP_CONFIG.mcp_servers["test-server"],
-    });
-    await waitFor(() => expect(result.current.isError).toBe(true));
-    expect(result.current.error).toEqual(new Error("MCP config not found"));
-
-    client.setQueryData(["mcpConfig"], MOCK_MCP_CONFIG);
-    rerender();
-    result.current.reset();
-    result.current.mutate({
-      name: "test-server",
-      serverConfig: MOCK_MCP_CONFIG.mcp_servers["test-server"],
-    });
-    await waitFor(() => expect(result.current.isError).toBe(true));
-    expect(result.current.error).toEqual(
-      new Error("MCP server test-server already exists"),
-    );
-  });
-
-  test("updates an existing server and rejects missing state", async () => {
-    const { updateMCPConfig } = await import("@/core/mcp/api");
-    vi.mocked(updateMCPConfig).mockResolvedValue(MOCK_MCP_CONFIG);
-    const queryClient = createQueryClient();
-    queryClient.setQueryData(["mcpConfig"], MOCK_MCP_CONFIG);
-
-    const { useUpdateMCPServer } = await import("@/core/mcp/hooks");
+    const { useMCPServerMutation } = await import("@/core/mcp/hooks");
     const { wrapper } = makeWrapper(queryClient);
-    const { result } = renderHook(() => useUpdateMCPServer(), { wrapper });
+    const { result } = renderHook(() => useMCPServerMutation(), { wrapper });
 
     result.current.mutate({
-      name: "test-server",
-      serverConfig: {
+      operation: "update",
+      serverName: "test-server",
+      server: {
         ...MOCK_MCP_CONFIG.mcp_servers["test-server"],
         command: "python",
       },
     });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(updateMCPConfig).toHaveBeenCalledWith(
-      expect.objectContaining({
-        mcp_servers: expect.objectContaining({
-          "test-server": expect.objectContaining({ command: "python" }),
-        }),
-      }),
-    );
-
-    result.current.reset();
-    result.current.mutate({
-      name: "missing",
-      serverConfig: MOCK_MCP_CONFIG.mcp_servers["test-server"],
-    });
-    await waitFor(() => expect(result.current.isError).toBe(true));
-    expect(result.current.error).toEqual(
-      new Error("MCP server missing not found"),
+    expect(updateMCPServer).toHaveBeenCalledWith(
+      "test-server",
+      expect.objectContaining({ command: "python" }),
     );
   });
 
-  test("deletes a server and preserves the rest", async () => {
-    const { updateMCPConfig } = await import("@/core/mcp/api");
-    vi.mocked(updateMCPConfig).mockResolvedValue(MOCK_MCP_CONFIG);
+  test("deletes a server via the delete endpoint", async () => {
+    const { deleteMCPServer } = await import("@/core/mcp/api");
+    vi.mocked(deleteMCPServer).mockResolvedValue(MOCK_MCP_CONFIG);
     const queryClient = createQueryClient();
-    queryClient.setQueryData(["mcpConfig"], MOCK_MCP_CONFIG);
 
-    const { useDeleteMCPServer } = await import("@/core/mcp/hooks");
+    const { useMCPServerMutation } = await import("@/core/mcp/hooks");
     const { wrapper } = makeWrapper(queryClient);
-    const { result } = renderHook(() => useDeleteMCPServer(), { wrapper });
+    const { result } = renderHook(() => useMCPServerMutation(), { wrapper });
 
-    result.current.mutate({ name: "test-server" });
+    result.current.mutate({ operation: "delete", serverName: "test-server" });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(updateMCPConfig).toHaveBeenCalledWith({
-      mcp_servers: {
-        "another-server": MOCK_MCP_CONFIG.mcp_servers["another-server"],
-      },
-    });
+    expect(deleteMCPServer).toHaveBeenCalledWith("test-server");
   });
 
-  test("rejects delete and update when config is absent", async () => {
-    const { useDeleteMCPServer, useUpdateMCPServer } =
-      await import("@/core/mcp/hooks");
-    const { wrapper } = makeWrapper();
-
-    const deleteHook = renderHook(() => useDeleteMCPServer(), { wrapper });
-    deleteHook.result.current.mutate({ name: "test-server" });
-    await waitFor(() => expect(deleteHook.result.current.isError).toBe(true));
-    expect(deleteHook.result.current.error).toEqual(
-      new Error("MCP config not found"),
+  test("surfaces an error when the mutation fails", async () => {
+    const { deleteMCPServer, MCPConfigRequestError } = await import(
+      "@/core/mcp/api"
     );
-
-    const updateHook = renderHook(() => useUpdateMCPServer(), { wrapper });
-    updateHook.result.current.mutate({
-      name: "test-server",
-      serverConfig: MOCK_MCP_CONFIG.mcp_servers["test-server"],
-    });
-    await waitFor(() => expect(updateHook.result.current.isError).toBe(true));
-    expect(updateHook.result.current.error).toEqual(
-      new Error("MCP config not found"),
+    vi.mocked(deleteMCPServer).mockRejectedValue(
+      new MCPConfigRequestError(500, "Failed to delete server"),
     );
+    const queryClient = createQueryClient();
+
+    const { useMCPServerMutation } = await import("@/core/mcp/hooks");
+    const { wrapper } = makeWrapper(queryClient);
+    const { result } = renderHook(() => useMCPServerMutation(), { wrapper });
+
+    result.current.mutate({ operation: "delete", serverName: "test-server" });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(result.current.error).toBeDefined();
   });
 });

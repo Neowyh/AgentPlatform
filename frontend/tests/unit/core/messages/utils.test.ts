@@ -139,12 +139,18 @@ describe("getMessageGroups", () => {
     expect(groups[0]!.messages).toHaveLength(2);
   });
 
-  test("logs error for tool message outside a processing group", () => {
+  test("keeps an orphan tool message visible in a processing group", () => {
+    // Post-#4399 behavior: a tool message with no open processing group
+    // (out-of-order replay, history pagination starting mid-turn) is no longer
+    // dropped with console.error — it opens a processing group so the result
+    // stays visible.
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
     const tool = toolMessage("orphan", { id: "t-orphan" });
     const groups = getMessageGroups([tool]);
-    expect(groups).toHaveLength(0);
-    expect(spy).toHaveBeenCalledOnce();
+    expect(groups).toHaveLength(1);
+    expect(groups[0]!.type).toBe("assistant:processing");
+    expect(groups[0]!.messages.map((m) => m.id)).toEqual(["t-orphan"]);
+    expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
   });
 
@@ -225,12 +231,16 @@ describe("getMessageGroups", () => {
     ]);
   });
 
-  test("AI message with reasoning + content goes into both processing and assistant groups", () => {
+  test("AI message with reasoning + content becomes a single assistant bubble", () => {
+    // Post-#3868 behavior: a message with answer content and no tool calls
+    // becomes only an assistant bubble — the bubble renders the reasoning in
+    // its own collapsible, so also feeding a processing group would paint the
+    // identical reasoning twice in the ChainOfThought panel.
     const msg = aiMessage("<think>reasoning</think>answer", { id: "ai-1" });
     const groups = getMessageGroups([msg]);
-    expect(groups).toHaveLength(2);
-    expect(groups[0]!.type).toBe("assistant:processing");
-    expect(groups[1]!.type).toBe("assistant");
+    expect(groups).toHaveLength(1);
+    expect(groups[0]!.type).toBe("assistant");
+    expect(groups[0]!.messages.map((m) => m.id)).toEqual(["ai-1"]);
   });
 
   test("AI message with only reasoning (no content) goes into processing only", () => {
@@ -442,11 +452,12 @@ describe("getAssistantTurnCopyData", () => {
     expect(getAssistantTurnCopyData(messages)).toBe("second");
   });
 
-  test("returns null when only reasoning content exists (empty visible content)", () => {
+  test("falls back to reasoning content when only reasoning exists", () => {
     const messages = [aiMessage("<think>deep thought</think>", { id: "ai-1" })];
-    // After think stripping, content is empty string "" which is not nullish,
-    // so ?? does not fall through to reasoning. The find skips it since length is 0.
-    expect(getAssistantTurnCopyData(messages)).toBeNull();
+    // After think stripping the visible content is empty; the copy data falls
+    // back to the reasoning text so a reasoning-only turn keeps its copy
+    // button instead of losing it entirely.
+    expect(getAssistantTurnCopyData(messages)).toBe("deep thought");
   });
 
   test("returns null when no AI messages have content", () => {
@@ -1173,7 +1184,9 @@ describe("stripUploadedFilesTag", () => {
 describe("INTERNAL_MARKER_TAGS", () => {
   test("contains expected tag names", () => {
     expect(INTERNAL_MARKER_TAGS).toEqual([
+      "current_uploads",
       "uploaded_files",
+      "slash_skill_activation",
       "system-reminder",
       "memory",
       "current_date",
@@ -1251,8 +1264,10 @@ describe("parseUploadedFiles", () => {
   });
 
   test("parses a single file entry", () => {
+    // Backend _format_file_entry emits human-readable sizes ("<n> KB"/"<n> MB");
+    // parseUploadedFiles converts them back to bytes.
     const content = `<uploaded_files>
-- document.pdf (1024)
+- document.pdf (1.0 KB)
   Path: /uploads/document.pdf
 </uploaded_files>`;
     const files = parseUploadedFiles(content);
@@ -1266,9 +1281,9 @@ describe("parseUploadedFiles", () => {
 
   test("parses multiple file entries", () => {
     const content = `<uploaded_files>
-- file1.txt (512)
+- file1.txt (0.5 KB)
   Path: /uploads/file1.txt
-- file2.pdf (2048)
+- file2.pdf (2.0 KB)
   Path: /uploads/file2.pdf
 </uploaded_files>`;
     const files = parseUploadedFiles(content);
@@ -1288,11 +1303,12 @@ describe("parseUploadedFiles", () => {
 
   test("trims filenames and paths", () => {
     const content = `<uploaded_files>
--  spaced file.txt  (100)
+-  spaced file.txt  (100 B)
   Path:  /some/path/  </uploaded_files>`;
     const files = parseUploadedFiles(content);
     expect(files).toHaveLength(1);
     expect(files[0]!.filename).toBe("spaced file.txt");
+    expect(files[0]!.size).toBe(100);
     expect(files[0]!.path).toBe("/some/path/");
   });
 });
@@ -1318,15 +1334,15 @@ describe("getMessageGroups - additional edge cases", () => {
     expect(groups[1]!.type).toBe("assistant");
   });
 
-  test("AI message with reasoning content in additional_kwargs creates processing group", () => {
+  test("AI message with reasoning content in additional_kwargs becomes a single assistant bubble", () => {
     const msg = aiMessage("answer", {
       additional_kwargs: { reasoning_content: "thought" },
     });
     const groups = getMessageGroups([msg]);
-    // Has reasoning -> processing, has content -> assistant
-    expect(groups).toHaveLength(2);
-    expect(groups[0]!.type).toBe("assistant:processing");
-    expect(groups[1]!.type).toBe("assistant");
+    // Post-#3868 behavior: the assistant bubble renders reasoning_content in
+    // its own collapsible, so no separate processing group is created.
+    expect(groups).toHaveLength(1);
+    expect(groups[0]!.type).toBe("assistant");
   });
 
   test("AI message with only tool calls (no reasoning, no content) creates processing group only", () => {
@@ -1346,11 +1362,15 @@ describe("getMessageGroups - additional edge cases", () => {
     expect(groups[0]!.type).toBe("assistant:processing");
   });
 
-  test("tool message with no open group logs error", () => {
+  test("tool message with no open group stays visible in a new processing group", () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
     const tool = toolMessage("result");
-    getMessageGroups([tool]);
-    expect(spy).toHaveBeenCalledOnce();
+    const groups = getMessageGroups([tool]);
+    // Post-#4399: no dropped message, no console.error — a processing group
+    // keeps the result visible.
+    expect(groups).toHaveLength(1);
+    expect(groups[0]!.type).toBe("assistant:processing");
+    expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
   });
 
@@ -1410,8 +1430,11 @@ describe("getMessageGroups - additional edge cases", () => {
   });
 
   test("lastOpenGroup returns null for assistant:clarification type", () => {
-    // Create a clarification group, then add a tool message
-    // The tool message should not be added to the clarification group
+    // Create a clarification group, then add a tool message.
+    // The clarification group is terminal (lastOpenGroup returns null), so the
+    // regular tool message falls into the orphan fallback instead of an open
+    // processing group — post-#4399 it attaches to the most recent group and
+    // no console.error fires.
     const clarificationTool = toolMessage("clarify?", {
       id: "t-1",
       name: "ask_clarification",
@@ -1423,9 +1446,11 @@ describe("getMessageGroups - additional edge cases", () => {
     });
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
     const groups = getMessageGroups([clarificationTool, regularTool]);
-    // The clarification group is not open, so the regular tool logs an error
-    expect(spy).toHaveBeenCalledOnce();
+    expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
+    expect(groups).toHaveLength(1);
+    expect(groups[0]!.type).toBe("assistant:clarification");
+    expect(groups[0]!.messages.map((m) => m.id)).toEqual(["t-1", "t-2"]);
   });
 });
 describe("hasContent - extra edge cases", () => {
@@ -1659,7 +1684,7 @@ describe("stripInternalMarkers - extra edge cases", () => {
 describe("parseUploadedFiles - extra edge cases", () => {
   test("parses file with large size", () => {
     const content = `<uploaded_files>
-- bigfile.zip (1073741824)
+- bigfile.zip (1.0 GB)
   Path: /uploads/bigfile.zip
 </uploaded_files>`;
     const files = parseUploadedFiles(content);
@@ -1670,12 +1695,13 @@ describe("parseUploadedFiles - extra edge cases", () => {
 
   test("parses file with spaces in filename", () => {
     const content = `<uploaded_files>
-- my document file.pdf (2048)
+- my document file.pdf (2.0 KB)
   Path: /uploads/my document file.pdf
 </uploaded_files>`;
     const files = parseUploadedFiles(content);
     expect(files).toHaveLength(1);
     expect(files[0]!.filename).toBe("my document file.pdf");
+    expect(files[0]!.size).toBe(2048);
   });
 
   test("returns empty for non-matching uploaded_files content", () => {
@@ -1687,13 +1713,14 @@ describe("parseUploadedFiles - extra edge cases", () => {
   test("handles multiple lines between file entries", () => {
     const content = `<uploaded_files>
 
-- a.txt (10)
+- a.txt (10 B)
   Path: /a.txt
 
 </uploaded_files>`;
     const files = parseUploadedFiles(content);
     expect(files).toHaveLength(1);
     expect(files[0]!.filename).toBe("a.txt");
+    expect(files[0]!.size).toBe(10);
   });
 });
 

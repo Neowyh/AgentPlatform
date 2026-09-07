@@ -44,3 +44,4 @@ class UserResponse(BaseModel):
     email: str
     system_role: Literal["viewer", "user", "department_admin", "super_admin"]
     needs_setup: bool = False
+    oauth_provider: str | None = Field(None, description="OAuth/SSO provider ID if the user logged in via SSO (e.g. 'keycloak')")

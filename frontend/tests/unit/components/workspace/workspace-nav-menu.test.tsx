@@ -95,23 +95,22 @@ vi.mock("@/core/auth/AuthProvider", () => ({
   useAuth: () => ({ user: mockUser }),
 }));
 
-// SettingsDialog – capture props for assertions
-let capturedSettingsProps: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  defaultSection: string;
-} | null = null;
+// SettingsDialog store – the dialog itself is rendered by the global
+// SettingsDialogHost; the menu only requests a section via openSettings.
+const { mockOpenSettings } = vi.hoisted(() => ({
+  mockOpenSettings: vi.fn(),
+}));
 vi.mock("@/components/workspace/settings", () => ({
-  SettingsDialog: (props: {
-    open: boolean;
-    onOpenChange: (open: boolean) => void;
-    defaultSection: string;
-  }) => {
-    capturedSettingsProps = props;
-    return props.open ? (
-      <div data-testid="settings-dialog">Settings Dialog Open</div>
-    ) : null;
-  },
+  SettingsDialog: () => null,
+  SettingsDialogHost: () => null,
+  useSettingsDialog: () => ({
+    open: false,
+    section: "appearance",
+    openSettings: mockOpenSettings,
+    closeSettings: () => {},
+  }),
+  openSettingsDialog: () => {},
+  setSettingsDialogOpen: () => {},
 }));
 
 // Radix dropdown-menu – lightweight passthrough so clicks still fire
@@ -181,7 +180,6 @@ let WorkspaceNavMenu: typeof import("@/components/workspace/workspace-nav-menu")
 beforeEach(async () => {
   vi.clearAllMocks();
   mockUser = null;
-  capturedSettingsProps = null;
   mockNotifications = { unread_count: 0, items: [] };
   const mod = await import("@/components/workspace/workspace-nav-menu");
   WorkspaceNavMenu = mod.WorkspaceNavMenu;
@@ -218,7 +216,8 @@ describe("WorkspaceNavMenu", () => {
 
   test("renders the SettingsDialog component", () => {
     render(<WorkspaceNavMenu />);
-    // SettingsDialog is always rendered (closed by default)
+    // The dialog is owned by the global SettingsDialogHost; the nav menu must
+    // not render a local copy (closed by default → nothing mounted here).
     expect(screen.queryByTestId("settings-dialog")).not.toBeInTheDocument();
   });
 
@@ -267,10 +266,10 @@ describe("WorkspaceNavMenu", () => {
     const settingsItem = screen.getByText("Settings");
     await user.click(settingsItem);
 
+    // The menu requests the section from the shared dialog store, which the
+    // global SettingsDialogHost renders.
     await waitFor(() => {
-      expect(capturedSettingsProps).not.toBeNull();
-      expect(capturedSettingsProps!.open).toBe(true);
-      expect(capturedSettingsProps!.defaultSection).toBe("appearance");
+      expect(mockOpenSettings).toHaveBeenCalledWith("appearance");
     });
   });
 
@@ -289,9 +288,7 @@ describe("WorkspaceNavMenu", () => {
     await user.click(aboutItem);
 
     await waitFor(() => {
-      expect(capturedSettingsProps).not.toBeNull();
-      expect(capturedSettingsProps!.open).toBe(true);
-      expect(capturedSettingsProps!.defaultSection).toBe("about");
+      expect(mockOpenSettings).toHaveBeenCalledWith("about");
     });
   });
 
@@ -455,16 +452,16 @@ describe("WorkspaceNavMenu", () => {
     const user = userEvent.setup();
     render(<WorkspaceNavMenu />);
 
-    // Open settings
+    // Opening requests sections on the shared dialog store; closing is owned
+    // by the global host, so the menu never drives onOpenChange itself.
     await user.click(screen.getByText("Settings"));
     await waitFor(() => {
-      expect(capturedSettingsProps!.open).toBe(true);
+      expect(mockOpenSettings).toHaveBeenCalledWith("appearance");
     });
 
-    // Simulate closing via the callback
-    capturedSettingsProps!.onOpenChange(false);
+    await user.click(screen.getByText("About iDeer"));
     await waitFor(() => {
-      expect(capturedSettingsProps!.open).toBe(false);
+      expect(mockOpenSettings).toHaveBeenCalledWith("about");
     });
   });
 

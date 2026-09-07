@@ -34,7 +34,7 @@ import { useAuth } from "@/core/auth/AuthProvider";
 import { useI18n } from "@/core/i18n/hooks";
 
 import { ResourceNotificationCenter } from "./resource-notification-center";
-import { SettingsDialog } from "./settings";
+import { useSettingsDialog } from "./settings";
 
 function NavMenuButtonContent({
   isSidebarOpen,
@@ -44,7 +44,7 @@ function NavMenuButtonContent({
   t: ReturnType<typeof useI18n>["t"];
 }) {
   return isSidebarOpen ? (
-    <div className="text-sidebar-foreground type-body flex w-full items-center gap-2 text-left">
+    <div className="text-muted-foreground type-supporting flex w-full items-center gap-2 text-left">
       <SettingsIcon className="size-4" />
       <span>{t.workspace.settingsAndMore}</span>
       <ChevronsUpDown className="text-muted-foreground ml-auto size-4" />
@@ -57,15 +57,15 @@ function NavMenuButtonContent({
 }
 
 export function WorkspaceNavMenu() {
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsDefaultSection, setSettingsDefaultSection] = useState<
-    "appearance" | "memory" | "notification" | "about"
-  >("appearance");
+  const { openSettings } = useSettingsDialog();
   const [mounted, setMounted] = useState(false);
   const { open: isSidebarOpen } = useSidebar();
   const { t } = useI18n();
   const { user } = useAuth();
 
+  // Enterprise RBAC: only super admins and department admins get the
+  // management entries. The dialog itself is owned by the global
+  // SettingsDialogHost; this menu only requests a section.
   const isAdmin =
     user?.system_role === "super_admin" ||
     user?.system_role === "department_admin";
@@ -75,113 +75,105 @@ export function WorkspaceNavMenu() {
   }, []);
 
   return (
-    <>
-      <SettingsDialog
-        open={settingsOpen}
-        onOpenChange={setSettingsOpen}
-        defaultSection={settingsDefaultSection}
-      />
-      <SidebarMenu className="w-full">
-        <ResourceNotificationCenter />
-        <SidebarMenuItem>
-          {mounted ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <SidebarMenuButton
-                  size="lg"
-                  className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
-                  data-testid="nav-menu-trigger"
-                >
-                  <NavMenuButtonContent isSidebarOpen={isSidebarOpen} t={t} />
-                </SidebarMenuButton>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                className="w-(--radix-dropdown-menu-trigger-width) min-w-56 rounded-lg"
-                align="end"
-                sideOffset={4}
+    <SidebarMenu className="w-full">
+      <ResourceNotificationCenter />
+      <SidebarMenuItem>
+        {mounted ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <SidebarMenuButton
+                size="lg"
+                className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+                data-testid="nav-menu-trigger"
+                aria-label={t.workspace.settingsAndMore}
               >
-                <DropdownMenuGroup>
-                  <DropdownMenuItem
-                    onClick={() => {
-                      setSettingsDefaultSection("appearance");
-                      setSettingsOpen(true);
-                    }}
-                    data-testid="settings-menu-item"
-                  >
-                    <Settings2Icon />
-                    {t.common.settings}
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                </DropdownMenuGroup>
-                {isAdmin && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuGroup>
-                      <DropdownMenuItem asChild>
-                        <Link href="/workspace/admin">
-                          <ShieldIcon />
-                          {t.workspace.adminPanel}
-                        </Link>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem asChild>
-                        <Link href="/workspace/admin/users">
-                          <UsersIcon />
-                          {t.workspace.userManagement}
-                        </Link>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem asChild>
-                        <Link href="/workspace/admin/departments">
-                          <Building2Icon />
-                          {t.workspace.departmentManagement}
-                        </Link>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem asChild>
-                        <Link href="/workspace/admin/tools">
-                          <WrenchIcon />
-                          {t.workspace.toolManagement}
-                        </Link>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem asChild>
-                        <Link href="/workspace/admin/resources">
-                          <BoxIcon />
-                          {t.workspace.resourceManagement}
-                        </Link>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem asChild>
-                        <Link href="/workspace/admin/visibility-applications">
-                          <ClipboardCheckIcon />
-                          {t.workspace.applicationManagement}
-                        </Link>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem asChild>
-                        <Link href="/workspace/admin/audit-logs">
-                          <ScrollTextIcon />
-                          {t.workspace.auditLogManagement}
-                        </Link>
-                      </DropdownMenuItem>
-                    </DropdownMenuGroup>
-                  </>
-                )}
-                <DropdownMenuSeparator />
+                <NavMenuButtonContent isSidebarOpen={isSidebarOpen} t={t} />
+              </SidebarMenuButton>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              className="w-(--radix-dropdown-menu-trigger-width) min-w-56 rounded-lg"
+              align="end"
+              sideOffset={4}
+            >
+              <DropdownMenuGroup>
                 <DropdownMenuItem
                   onClick={() => {
-                    setSettingsDefaultSection("about");
-                    setSettingsOpen(true);
+                    openSettings("appearance");
                   }}
-                  data-testid="about-settings-menu-item"
+                  data-testid="settings-menu-item"
                 >
-                  <InfoIcon />
-                  {t.workspace.about}
+                  <Settings2Icon />
+                  {t.common.settings}
                 </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ) : (
-            <SidebarMenuButton size="lg" className="pointer-events-none">
-              <NavMenuButtonContent isSidebarOpen={isSidebarOpen} t={t} />
-            </SidebarMenuButton>
-          )}
-        </SidebarMenuItem>
-      </SidebarMenu>
-    </>
+                <DropdownMenuSeparator />
+              </DropdownMenuGroup>
+              {isAdmin && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuGroup>
+                    <DropdownMenuItem asChild>
+                      <Link href="/workspace/admin">
+                        <ShieldIcon />
+                        {t.workspace.adminPanel}
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/workspace/admin/users">
+                        <UsersIcon />
+                        {t.workspace.userManagement}
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/workspace/admin/departments">
+                        <Building2Icon />
+                        {t.workspace.departmentManagement}
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/workspace/admin/tools">
+                        <WrenchIcon />
+                        {t.workspace.toolManagement}
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/workspace/admin/resources">
+                        <BoxIcon />
+                        {t.workspace.resourceManagement}
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/workspace/admin/visibility-applications">
+                        <ClipboardCheckIcon />
+                        {t.workspace.applicationManagement}
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/workspace/admin/audit-logs">
+                        <ScrollTextIcon />
+                        {t.workspace.auditLogManagement}
+                      </Link>
+                    </DropdownMenuItem>
+                  </DropdownMenuGroup>
+                </>
+              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={() => {
+                  openSettings("about");
+                }}
+                data-testid="about-settings-menu-item"
+              >
+                <InfoIcon />
+                {t.workspace.about}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : (
+          <SidebarMenuButton size="lg" className="pointer-events-none">
+            <NavMenuButtonContent isSidebarOpen={isSidebarOpen} t={t} />
+          </SidebarMenuButton>
+        )}
+      </SidebarMenuItem>
+    </SidebarMenu>
   );
 }

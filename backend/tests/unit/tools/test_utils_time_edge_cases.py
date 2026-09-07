@@ -1,4 +1,4 @@
-"""Targeted tests for ``ideer.utils.time`` covering uncovered lines.
+"""Targeted tests for ``deerflow.utils.time`` covering uncovered lines.
 
 These tests exercise the exception branches and the fallback path that
 the baseline suite does not hit:
@@ -18,7 +18,7 @@ _backend_root = os.path.join(os.path.dirname(__file__), os.pardir)
 if _backend_root not in sys.path:
     sys.path.insert(0, os.path.abspath(_backend_root))
 
-from ideer.utils.time import coerce_iso  # noqa: E402
+from deerflow.utils.time import coerce_iso  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Lines 66-67: int/float values that raise ValueError, OverflowError, OSError
@@ -81,7 +81,7 @@ class TestCoerceIsoStringUnixOverflow:
         # (year > 2286 or similar). We need the except branch to catch it.
         # Use a value that definitely overflows datetime.fromtimestamp.
         huge_str = "9999999999"
-        from ideer.utils.time import _UNIX_TIMESTAMP_PATTERN
+        from deerflow.utils.time import _UNIX_TIMESTAMP_PATTERN
 
         assert _UNIX_TIMESTAMP_PATTERN.match(huge_str)
         # This should either convert successfully or hit the except branch
@@ -95,7 +95,7 @@ class TestCoerceIsoStringUnixOverflow:
         so we test by monkeypatching the module-level ``datetime`` reference
         with a subclass whose ``fromtimestamp`` raises.
         """
-        import ideer.utils.time as time_mod
+        import deerflow.utils.time as time_mod
 
         class _FakeDatetime(datetime):
             """Subclass that overrides fromtimestamp to raise."""
@@ -114,7 +114,7 @@ class TestCoerceIsoStringUnixOverflow:
 
     def test_string_timestamp_with_oserror_returns_value(self) -> None:
         """Same pattern but OSError."""
-        import ideer.utils.time as time_mod
+        import deerflow.utils.time as time_mod
 
         class _FakeDatetime(datetime):
             @classmethod

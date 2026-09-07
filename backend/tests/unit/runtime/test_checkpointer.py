@@ -1,5 +1,6 @@
 """Unit tests for checkpointer config, packaging metadata, and factories."""
 
+import contextlib
 import sys
 import tomllib
 from pathlib import Path
@@ -7,16 +8,16 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-import ideer.config.app_config as app_config_module
-from ideer.config.checkpointer_config import (
+import deerflow.config.app_config as app_config_module
+from deerflow.config.checkpointer_config import (
     CheckpointerConfig,
     get_checkpointer_config,
     load_checkpointer_config_from_dict,
     set_checkpointer_config,
 )
-from ideer.runtime.checkpointer import get_checkpointer, reset_checkpointer
-from ideer.runtime.checkpointer.provider import POSTGRES_INSTALL
-from ideer.runtime.store.provider import POSTGRES_STORE_INSTALL
+from deerflow.runtime.checkpointer import get_checkpointer, reset_checkpointer
+from deerflow.runtime.checkpointer.provider import POSTGRES_INSTALL
+from deerflow.runtime.store.provider import POSTGRES_STORE_INSTALL
 
 
 @pytest.fixture(autouse=True)
@@ -89,7 +90,7 @@ class TestHarnessPackaging:
         assert "postgres" in optional_dependencies
         assert optional_dependencies["postgres"] == [
             "asyncpg>=0.29",
-            "langgraph-checkpoint-postgres>=3.0.5",
+            "langgraph-checkpoint-postgres>=3.1.1,<3.2",
             "psycopg[binary]>=3.3.3",
             "psycopg-pool>=3.3.0",
         ]
@@ -99,11 +100,11 @@ class TestHarnessPackaging:
         data = tomllib.loads(pyproject_path.read_text())
 
         optional_dependencies = data["project"]["optional-dependencies"]
-        assert optional_dependencies["postgres"] == ["ideer-harness[postgres]"]
+        assert optional_dependencies["postgres"] == ["deerflow-harness[postgres]"]
 
     def test_postgres_missing_dependency_messages_recommend_package_extra(self):
-        assert "ideer-harness[postgres]" in POSTGRES_INSTALL
-        assert "ideer-harness[postgres]" in POSTGRES_STORE_INSTALL
+        assert "deerflow-harness[postgres]" in POSTGRES_INSTALL
+        assert "deerflow-harness[postgres]" in POSTGRES_STORE_INSTALL
         assert "uv sync --all-packages --extra postgres" in POSTGRES_INSTALL
         assert "uv sync --all-packages --extra postgres" in POSTGRES_STORE_INSTALL
 
@@ -118,7 +119,7 @@ class TestGetCheckpointer:
         """get_checkpointer should return InMemorySaver when not configured."""
         from langgraph.checkpoint.memory import InMemorySaver
 
-        with patch("ideer.runtime.checkpointer.provider.get_app_config", side_effect=FileNotFoundError):
+        with patch("deerflow.runtime.checkpointer.provider.get_app_config", side_effect=FileNotFoundError):
             cp = get_checkpointer()
         assert cp is not None
         assert isinstance(cp, InMemorySaver)
@@ -214,9 +215,9 @@ class TestGetCheckpointer:
 
         with (
             patch.dict(sys.modules, {"langgraph.checkpoint.sqlite": mock_module}),
-            patch("ideer.runtime.checkpointer.provider.ensure_sqlite_parent_dir") as mock_ensure,
+            patch("deerflow.runtime.checkpointer.provider.ensure_sqlite_parent_dir") as mock_ensure,
             patch(
-                "ideer.runtime.checkpointer.provider.resolve_sqlite_conn_str",
+                "deerflow.runtime.checkpointer.provider.resolve_sqlite_conn_str",
                 return_value="/tmp/resolved/relative/test.db",
             ),
         ):
@@ -250,11 +251,11 @@ class TestGetCheckpointer:
         with (
             patch.dict(sys.modules, {"langgraph.checkpoint.sqlite": mock_module}),
             patch(
-                "ideer.runtime.checkpointer.provider.ensure_sqlite_parent_dir",
+                "deerflow.runtime.checkpointer.provider.ensure_sqlite_parent_dir",
                 side_effect=record_ensure,
             ),
             patch(
-                "ideer.runtime.checkpointer.provider.resolve_sqlite_conn_str",
+                "deerflow.runtime.checkpointer.provider.resolve_sqlite_conn_str",
                 return_value="/tmp/resolved/relative/test.db",
             ),
         ):
@@ -291,7 +292,7 @@ class TestAsyncCheckpointer:
     @pytest.mark.anyio
     async def test_sqlite_creates_parent_dir_via_to_thread(self):
         """Async SQLite setup should move mkdir off the event loop."""
-        from ideer.runtime.checkpointer.async_provider import _prepare_sqlite_checkpointer_path, make_checkpointer
+        from deerflow.runtime.checkpointer.async_provider import _prepare_sqlite_checkpointer_path, make_checkpointer
 
         mock_config = MagicMock()
         mock_config.checkpointer = CheckpointerConfig(type="sqlite", connection_string="relative/test.db")
@@ -308,10 +309,10 @@ class TestAsyncCheckpointer:
         mock_module.AsyncSqliteSaver = mock_saver_cls
 
         with (
-            patch("ideer.runtime.checkpointer.async_provider.get_app_config", return_value=mock_config),
+            patch("deerflow.runtime.checkpointer.async_provider.get_app_config", return_value=mock_config),
             patch.dict(sys.modules, {"langgraph.checkpoint.sqlite.aio": mock_module}),
             patch(
-                "ideer.runtime.checkpointer.async_provider.asyncio.to_thread",
+                "deerflow.runtime.checkpointer.async_provider.asyncio.to_thread",
                 new_callable=AsyncMock,
                 return_value="/tmp/resolved/test.db",
             ) as mock_to_thread,
@@ -329,8 +330,8 @@ class TestAsyncCheckpointer:
     @pytest.mark.anyio
     async def test_database_sqlite_creates_parent_dir_via_to_thread(self):
         """Unified database SQLite setup should also move path IO off the event loop."""
-        from ideer.config.database_config import DatabaseConfig
-        from ideer.runtime.checkpointer.async_provider import _prepare_database_sqlite_checkpointer_path, make_checkpointer
+        from deerflow.config.database_config import DatabaseConfig
+        from deerflow.runtime.checkpointer.async_provider import _prepare_database_sqlite_checkpointer_path, make_checkpointer
 
         db_config = DatabaseConfig(backend="sqlite", sqlite_dir="relative-data")
         mock_config = MagicMock()
@@ -349,10 +350,10 @@ class TestAsyncCheckpointer:
         mock_module.AsyncSqliteSaver = mock_saver_cls
 
         with (
-            patch("ideer.runtime.checkpointer.async_provider.get_app_config", return_value=mock_config),
+            patch("deerflow.runtime.checkpointer.async_provider.get_app_config", return_value=mock_config),
             patch.dict(sys.modules, {"langgraph.checkpoint.sqlite.aio": mock_module}),
             patch(
-                "ideer.runtime.checkpointer.async_provider.asyncio.to_thread",
+                "deerflow.runtime.checkpointer.async_provider.asyncio.to_thread",
                 new_callable=AsyncMock,
                 return_value="/tmp/data/ideer.db",
             ) as mock_to_thread,
@@ -384,40 +385,72 @@ class TestAppConfigLoadsCheckpointer:
 
 
 # ---------------------------------------------------------------------------
-# IDeerClient falls back to config checkpointer
+# DeerFlowClient falls back to config checkpointer
 # ---------------------------------------------------------------------------
 
 
 class TestClientCheckpointerFallback:
-    def test_client_uses_config_checkpointer_when_none_provided(self):
-        """IDeerClient._ensure_agent falls back to get_checkpointer() when checkpointer=None."""
-        from langgraph.checkpoint.memory import InMemorySaver
+    @staticmethod
+    def _client_patches(captured_kwargs: dict, explicit_checkpointer=None):
+        """Stub every heavy dependency of DeerFlowClient._ensure_agent.
 
-        from ideer.client import IDeerClient
+        The checkpointer plumbing is left real so get_checkpointer() is
+        exercised through the configured checkpointer singleton.
+        """
+        from types import SimpleNamespace
 
-        load_checkpointer_config_from_dict({"type": "memory"})
+        model_mock = MagicMock()
+        config_mock = MagicMock()
+        config_mock.models = [model_mock]
+        config_mock.skills.deferred_discovery = False
+        config_mock.skills.container_path = "/mnt/skills"
+        config_mock.tool_search.enabled = False
+        config_mock.database.checkpoint_channel_mode = "full"
+        config_mock.database.checkpoint_delta.snapshot_frequency = 10
+        config_mock.authorization = SimpleNamespace(enabled=False)
+        config_mock.checkpointer = None
 
-        captured_kwargs = {}
+        skill_setup = SimpleNamespace(describe_skill_tool=None, skill_names=[])
+        deferred_setup = SimpleNamespace(deferred_names=[])
 
         def fake_create_agent(**kwargs):
             captured_kwargs.update(kwargs)
             return MagicMock()
 
-        model_mock = MagicMock()
-        config_mock = MagicMock()
-        config_mock.models = [model_mock]
-        config_mock.get_model_config.return_value = MagicMock(supports_vision=False)
-        config_mock.checkpointer = None
+        return (
+            patch("deerflow.client.get_app_config", return_value=config_mock),
+            patch("deerflow.client._authorize_model_name", side_effect=lambda name, **kw: name),
+            patch("deerflow.config.subagents_config.effective_subagent_concurrency", return_value=3),
+            patch("deerflow.client.create_agent", side_effect=fake_create_agent),
+            patch("deerflow.client.create_chat_model", return_value=MagicMock()),
+            patch("deerflow.client.DeerFlowClient._get_tools", return_value=[]),
+            patch("deerflow.client.get_enabled_skills_for_config", return_value=[]),
+            patch("deerflow.client.build_skill_search_setup", return_value=skill_setup),
+            patch("deerflow.authz.tool_filter.apply_tool_authorization", return_value=([], None)),
+            patch("deerflow.client.assemble_deferred_tools", return_value=([], deferred_setup)),
+            patch("deerflow.client.build_mcp_routing_middleware", return_value=MagicMock()),
+            patch("deerflow.client.get_mcp_routing_hints_prompt_section", return_value=""),
+            patch("deerflow.client.get_effective_user_id", return_value="test-user"),
+            patch("deerflow.client.build_middlewares", return_value=[]),
+            patch("deerflow.client.normalize_middleware_state_schemas", side_effect=lambda m, *a, **kw: m),
+            patch("deerflow.client.apply_prompt_template", return_value=""),
+            patch("deerflow.client.get_thread_state_schema", return_value=MagicMock()),
+        )
 
-        with (
-            patch("ideer.client.get_app_config", return_value=config_mock),
-            patch("ideer.client.create_agent", side_effect=fake_create_agent),
-            patch("ideer.client.create_chat_model", return_value=MagicMock()),
-            patch("ideer.client._build_middlewares", return_value=[]),
-            patch("ideer.client.apply_prompt_template", return_value=""),
-            patch("ideer.client.IDeerClient._get_tools", return_value=[]),
-        ):
-            client = IDeerClient(checkpointer=None)
+    def test_client_uses_config_checkpointer_when_none_provided(self):
+        """DeerFlowClient._ensure_agent falls back to get_checkpointer() when checkpointer=None."""
+        from langgraph.checkpoint.memory import InMemorySaver
+
+        from deerflow.client import DeerFlowClient
+
+        load_checkpointer_config_from_dict({"type": "memory"})
+
+        captured_kwargs = {}
+        patches = self._client_patches(captured_kwargs)
+        with contextlib.ExitStack() as stack:
+            for p in patches:
+                stack.enter_context(p)
+            client = DeerFlowClient(checkpointer=None)
             config = client._get_runnable_config("test-thread")
             client._ensure_agent(config)
 
@@ -426,32 +459,17 @@ class TestClientCheckpointerFallback:
 
     def test_client_explicit_checkpointer_takes_precedence(self):
         """An explicitly provided checkpointer is used even when config checkpointer is set."""
-        from ideer.client import IDeerClient
+        from deerflow.client import DeerFlowClient
 
         load_checkpointer_config_from_dict({"type": "memory"})
 
         explicit_cp = MagicMock()
         captured_kwargs = {}
-
-        def fake_create_agent(**kwargs):
-            captured_kwargs.update(kwargs)
-            return MagicMock()
-
-        model_mock = MagicMock()
-        config_mock = MagicMock()
-        config_mock.models = [model_mock]
-        config_mock.get_model_config.return_value = MagicMock(supports_vision=False)
-        config_mock.checkpointer = None
-
-        with (
-            patch("ideer.client.get_app_config", return_value=config_mock),
-            patch("ideer.client.create_agent", side_effect=fake_create_agent),
-            patch("ideer.client.create_chat_model", return_value=MagicMock()),
-            patch("ideer.client._build_middlewares", return_value=[]),
-            patch("ideer.client.apply_prompt_template", return_value=""),
-            patch("ideer.client.IDeerClient._get_tools", return_value=[]),
-        ):
-            client = IDeerClient(checkpointer=explicit_cp)
+        patches = self._client_patches(captured_kwargs)
+        with contextlib.ExitStack() as stack:
+            for p in patches:
+                stack.enter_context(p)
+            client = DeerFlowClient(checkpointer=explicit_cp)
             config = client._get_runnable_config("test-thread")
             client._ensure_agent(config)
 

@@ -40,8 +40,8 @@ class TestAioSandboxExtraCoverage:
 
     @pytest.fixture()
     def sb(self):
-        with patch("ideer.community.aio_sandbox.aio_sandbox.AioSandboxClient"):
-            from ideer.community.aio_sandbox.aio_sandbox import AioSandbox
+        with patch("deerflow.community.aio_sandbox.aio_sandbox.AioSandboxClient"):
+            from deerflow.community.aio_sandbox.aio_sandbox import AioSandbox
 
             return AioSandbox(id="t", base_url="http://localhost:8080")
 
@@ -83,7 +83,7 @@ class TestAioSandboxExtraCoverage:
         assert sb.read_file("/f") == ""
 
     def test_download_file_too_large(self, sb):
-        from ideer.community.aio_sandbox.aio_sandbox import _MAX_DOWNLOAD_SIZE
+        from deerflow.community.aio_sandbox.aio_sandbox import _MAX_DOWNLOAD_SIZE
 
         sb._client.file.download_file.return_value = [b"x" * (_MAX_DOWNLOAD_SIZE + 1)]
         with pytest.raises(OSError) as exc_info:
@@ -115,39 +115,42 @@ class TestAioSandboxExtraCoverage:
         assert truncated is True
 
     def test_grep_with_glob(self, sb):
-        sb._client.file.find_files.return_value = SimpleNamespace(data=SimpleNamespace(files=["/r/a.py"]))
-        sb._client.file.search_in_file.return_value = SimpleNamespace(data=SimpleNamespace(line_numbers=[1], matches=["hello"]))
-        matches, _ = sb.grep("/r", "hello", glob="*.py")
+        sb._client.file.grep_files.return_value = SimpleNamespace(
+            data=SimpleNamespace(
+                matches=[SimpleNamespace(file="/r/a.py", line_number=1, line_content="hello")],
+                truncated=False,
+            )
+        )
+        matches, truncated = sb.grep("/r", "hello", glob="*.py")
         assert len(matches) == 1
+        assert matches[0].path == "/r/a.py"
+        assert truncated is False
 
     def test_grep_ignores_path(self, sb):
-        sb._client.file.list_path.return_value = SimpleNamespace(
+        sb._client.file.grep_files.return_value = SimpleNamespace(
             data=SimpleNamespace(
-                files=[
-                    SimpleNamespace(path="/r/.git/config", is_directory=False),
-                    SimpleNamespace(path="/r/app.py", is_directory=False),
-                ]
+                matches=[
+                    SimpleNamespace(file="/r/.git/config", line_number=1, line_content="x"),
+                    SimpleNamespace(file="/r/app.py", line_number=2, line_content="x"),
+                ],
+                truncated=False,
             )
         )
-        sb._client.file.search_in_file.return_value = SimpleNamespace(data=SimpleNamespace(line_numbers=[1], matches=["x"]))
-        sb.grep("/r", "x")
-        sb._client.file.search_in_file.assert_called_once()
+        matches, _ = sb.grep("/r", "x")
+        assert [m.path for m in matches] == ["/r/app.py"]
 
     def test_grep_data_none(self, sb):
-        sb._client.file.list_path.return_value = SimpleNamespace(
-            data=SimpleNamespace(
-                files=[
-                    SimpleNamespace(path="/r/a.txt", is_directory=False),
-                ]
-            )
-        )
-        sb._client.file.search_in_file.return_value = SimpleNamespace(data=None)
+        sb._client.file.grep_files.return_value = SimpleNamespace(data=None)
         matches, _ = sb.grep("/r", "x")
         assert matches == []
 
     def test_grep_truncation(self, sb):
-        sb._client.file.list_path.return_value = SimpleNamespace(data=SimpleNamespace(files=[SimpleNamespace(path=f"/r/f{i}.txt", is_directory=False) for i in range(5)]))
-        sb._client.file.search_in_file.return_value = SimpleNamespace(data=SimpleNamespace(line_numbers=[1], matches=["m"]))
+        sb._client.file.grep_files.return_value = SimpleNamespace(
+            data=SimpleNamespace(
+                matches=[SimpleNamespace(file=f"/r/f{i}.txt", line_number=1, line_content="m") for i in range(5)],
+                truncated=False,
+            )
+        )
         matches, truncated = sb.grep("/r", "m", max_results=2)
         assert len(matches) == 2
         assert truncated is True
@@ -176,7 +179,7 @@ class TestAioSandboxExtraCoverage:
 def _provider():
     import importlib
 
-    mod = importlib.import_module("ideer.community.aio_sandbox.aio_sandbox_provider")
+    mod = importlib.import_module("deerflow.community.aio_sandbox.aio_sandbox_provider")
     p = mod.AioSandboxProvider.__new__(mod.AioSandboxProvider)
     p._lock = threading.Lock()
     p._sandboxes = {}
@@ -200,39 +203,50 @@ def _provider():
     }
     p._backend = MagicMock()
     p._backend.list_running.return_value = []
+    # Upstream acquire/teardown machinery the bare provider now relies on.
+    p._local_teardown = set()
+    p._unowned_since = {}
+    p._active_sandbox_identity = {}
+    p._warm_pool_identity = {}
+    p._acquire_inflight = {}
+    p._acquire_epoch = {}
+    p._acquire_epoch_counter = 0
+    p._ownership = MagicMock()
+    p._ownership.supports_cross_process = False
+    p._ownership_config = SimpleNamespace(renewal_interval_seconds=30)
     return p
 
 
 def _info(sid="s1", url="http://localhost:8080"):
-    from ideer.community.aio_sandbox.sandbox_info import SandboxInfo
+    from deerflow.community.aio_sandbox.sandbox_info import SandboxInfo
 
     return SandboxInfo(sandbox_id=sid, sandbox_url=url, container_name=f"c-{sid}", container_id=f"cid-{sid}", created_at=time.time())
 
 
 class TestIdleCheckerError:
-    """Lines 362-363: loop continues after cleanup error."""
+    """The warm-pool idle checker loop keeps running after a cleanup error."""
 
     def test_continues_after_error(self):
         import importlib
 
-        mod = importlib.import_module("ideer.community.aio_sandbox.aio_sandbox_provider")
+        mod = importlib.import_module("deerflow.community.aio_sandbox.aio_sandbox_provider")
         p = _provider()
         count = [0]
 
-        def cleanup(t):
+        def cleanup(idle_timeout):
             count[0] += 1
             if count[0] == 1:
                 raise RuntimeError("err")
             p._idle_checker_stop.set()
 
-        p._cleanup_idle_sandboxes = cleanup
-        orig = mod.IDLE_CHECK_INTERVAL
-        mod.IDLE_CHECK_INTERVAL = 0
-        try:
-            p._idle_checker_loop()
-        finally:
-            mod.IDLE_CHECK_INTERVAL = orig
+        # Upstream loop catches cleanup errors itself and keeps polling; the
+        # per-instance interval shadows the mixin default so wait() returns
+        # immediately.
+        p._cleanup_idle_resources = cleanup
+        p.IDLE_CHECK_INTERVAL = 0
+        p._idle_checker_loop()
         assert count[0] == 2
+        assert mod.IDLE_CHECK_INTERVAL == 60
 
 
 class TestCleanupIdleReverify:
@@ -315,7 +329,7 @@ class TestSignalHandlerBranches:
         import importlib
         import signal as sig
 
-        importlib.import_module("ideer.community.aio_sandbox.aio_sandbox_provider")
+        importlib.import_module("deerflow.community.aio_sandbox.aio_sandbox_provider")
         p = _provider()
         p.shutdown = MagicMock()
         p._register_signal_handlers()
@@ -333,7 +347,7 @@ class TestSignalHandlerBranches:
         import importlib
         import signal as sig
 
-        importlib.import_module("ideer.community.aio_sandbox.aio_sandbox_provider")
+        importlib.import_module("deerflow.community.aio_sandbox.aio_sandbox_provider")
         p = _provider()
         p.shutdown = MagicMock()
         p._register_signal_handlers()
@@ -350,7 +364,7 @@ class TestSignalHandlerBranches:
         import importlib
         import signal as sig
 
-        importlib.import_module("ideer.community.aio_sandbox.aio_sandbox_provider")
+        importlib.import_module("deerflow.community.aio_sandbox.aio_sandbox_provider")
         p = _provider()
         p.shutdown = MagicMock()
         p._register_signal_handlers()
@@ -369,7 +383,7 @@ class TestSignalHandlerBranches:
         import importlib
         import signal as sig
 
-        importlib.import_module("ideer.community.aio_sandbox.aio_sandbox_provider")
+        importlib.import_module("deerflow.community.aio_sandbox.aio_sandbox_provider")
         p = _provider()
         p.shutdown = MagicMock()
         p._register_signal_handlers()
@@ -389,7 +403,7 @@ class TestSignalHandlerBranches:
         import logging
         import signal as sig
 
-        mod = importlib.import_module("ideer.community.aio_sandbox.aio_sandbox_provider")
+        mod = importlib.import_module("deerflow.community.aio_sandbox.aio_sandbox_provider")
         p = _provider()
         logger = logging.getLogger(mod.__name__)
         with patch.object(sig, "signal", side_effect=ValueError("no")):
@@ -405,8 +419,8 @@ class TestDiscoverOrCreateAsync:
     async def test_discovers_existing(self, tmp_path, monkeypatch):
         import importlib
 
-        mod = importlib.import_module("ideer.community.aio_sandbox.aio_sandbox_provider")
-        from ideer.config.paths import Paths
+        mod = importlib.import_module("deerflow.community.aio_sandbox.aio_sandbox_provider")
+        from deerflow.config.paths import Paths
 
         p = _provider()
         info = _info("d1")
@@ -420,14 +434,21 @@ class TestDiscoverOrCreateAsync:
     async def test_creates_new(self, tmp_path, monkeypatch):
         import importlib
 
-        mod = importlib.import_module("ideer.community.aio_sandbox.aio_sandbox_provider")
-        from ideer.config.paths import Paths
+        mod = importlib.import_module("deerflow.community.aio_sandbox.aio_sandbox_provider")
+        from deerflow.config.paths import Paths
 
         p = _provider()
         p._backend.discover.return_value = None
         p._backend.create.return_value = _info("n1")
         monkeypatch.setattr(mod, "get_paths", lambda: Paths(base_dir=tmp_path))
         monkeypatch.setattr(mod, "get_effective_user_id", lambda: None)
+
+        # Stub environment-probing collaborators unrelated to the create flow.
+        p._get_extra_mounts = lambda *a, **k: []
+        p._lark_integration_active = lambda user_id=None: False
+        p._lark_broker_active = lambda user_id=None: False
+        p._local_config_mount_exclusion_root = lambda *a, **k: None
+        p._register_created_sandbox = lambda thread_id, sandbox_id, info, user_id=None: sandbox_id
 
         async def fw(url, timeout=30, poll_interval=1.0):
             return True
@@ -440,11 +461,13 @@ class TestDiscoverOrCreateAsync:
     async def test_rechecks_cache(self, tmp_path, monkeypatch):
         import importlib
 
-        mod = importlib.import_module("ideer.community.aio_sandbox.aio_sandbox_provider")
-        from ideer.config.paths import Paths
+        mod = importlib.import_module("deerflow.community.aio_sandbox.aio_sandbox_provider")
+        from deerflow.config.paths import Paths
 
         p = _provider()
-        p._thread_sandboxes["t1"] = "c1"
+        # Thread keys are (user_id, thread_id) tuples upstream; the patched
+        # effective user resolves to None here.
+        p._thread_sandboxes[(None, "t1")] = "c1"
         p._sandboxes["c1"] = MagicMock()
         monkeypatch.setattr(mod, "get_paths", lambda: Paths(base_dir=tmp_path))
         monkeypatch.setattr(mod, "get_effective_user_id", lambda: None)
@@ -453,18 +476,32 @@ class TestDiscoverOrCreateAsync:
 
 
 class TestCreateSandboxAsyncEviction:
-    """Lines 759-760: async eviction."""
+    """Replica soft-cap eviction on the async create path."""
 
     @pytest.mark.anyio
     async def test_evicts(self, tmp_path, monkeypatch):
         import importlib
 
-        mod = importlib.import_module("ideer.community.aio_sandbox.aio_sandbox_provider")
+        mod = importlib.import_module("deerflow.community.aio_sandbox.aio_sandbox_provider")
         p = _provider()
         p._config["replicas"] = 1
         p._sandboxes = {"a": MagicMock()}
         p._warm_pool["w1"] = (_info("w1"), 100.0)
         p._backend.create.return_value = _info("n1")
+
+        # Stub environment probing and the warm-entry teardown (ownership-lease
+        # machinery covered by the dedicated provider tests).
+        p._get_extra_mounts = lambda *a, **k: []
+        p._lark_integration_active = lambda user_id=None: False
+        p._lark_broker_active = lambda user_id=None: False
+        p._local_config_mount_exclusion_root = lambda *a, **k: None
+        p._register_created_sandbox = lambda thread_id, sandbox_id, info, user_id=None: sandbox_id
+
+        def fake_destroy_warm_entry(sandbox_id, entry, *, reason, still_reapable):
+            p._backend.destroy(entry)
+            return True
+
+        p._destroy_warm_entry = fake_destroy_warm_entry
 
         async def fw(url, timeout=30, poll_interval=1.0):
             return True
@@ -481,19 +518,21 @@ class TestCreateSandboxAsyncEviction:
 
 
 class TestWaitReady:
-    """Lines 28-37: wait_for_sandbox_ready."""
+    """wait_for_sandbox_ready polls a session until 200 or timeout."""
 
     def test_ready(self):
-        from ideer.community.aio_sandbox.backend import wait_for_sandbox_ready
+        from deerflow.community.aio_sandbox.backend import wait_for_sandbox_ready
 
-        with patch("ideer.community.aio_sandbox.backend.requests.get", return_value=SimpleNamespace(status_code=200)):
-            with patch("ideer.community.aio_sandbox.backend.time.sleep"):
+        with patch("deerflow.community.aio_sandbox.backend.requests.Session") as mock_session_cls:
+            session = mock_session_cls.return_value.__enter__.return_value
+            session.get.return_value = SimpleNamespace(status_code=200)
+            with patch("deerflow.community.aio_sandbox.backend.time.sleep"):
                 assert wait_for_sandbox_ready("http://x:80", timeout=5) is True
 
     def test_timeout(self):
         import requests as req_lib
 
-        from ideer.community.aio_sandbox.backend import wait_for_sandbox_ready
+        from deerflow.community.aio_sandbox.backend import wait_for_sandbox_ready
 
         call_count = 0
 
@@ -504,13 +543,15 @@ class TestWaitReady:
             # so the while-loop condition is immediately False.
             return 0.0 if call_count == 1 else float("inf")
 
-        with patch("ideer.community.aio_sandbox.backend.requests.get", side_effect=req_lib.exceptions.ConnectionError("refused")):
-            with patch("ideer.community.aio_sandbox.backend.time.time", side_effect=fake_time):
-                with patch("ideer.community.aio_sandbox.backend.time.sleep"):
+        with patch("deerflow.community.aio_sandbox.backend.requests.Session") as mock_session_cls:
+            session = mock_session_cls.return_value.__enter__.return_value
+            session.get.side_effect = req_lib.exceptions.ConnectionError("refused")
+            with patch("deerflow.community.aio_sandbox.backend.time.time", side_effect=fake_time):
+                with patch("deerflow.community.aio_sandbox.backend.time.sleep"):
                     assert wait_for_sandbox_ready("http://x:80", timeout=5) is False
 
     def test_non_200(self):
-        from ideer.community.aio_sandbox.backend import wait_for_sandbox_ready
+        from deerflow.community.aio_sandbox.backend import wait_for_sandbox_ready
 
         call_count = 0
 
@@ -519,9 +560,11 @@ class TestWaitReady:
             call_count += 1
             return 0.0 if call_count == 1 else float("inf")
 
-        with patch("ideer.community.aio_sandbox.backend.requests.get", return_value=SimpleNamespace(status_code=503)):
-            with patch("ideer.community.aio_sandbox.backend.time.time", side_effect=fake_time):
-                with patch("ideer.community.aio_sandbox.backend.time.sleep"):
+        with patch("deerflow.community.aio_sandbox.backend.requests.Session") as mock_session_cls:
+            session = mock_session_cls.return_value.__enter__.return_value
+            session.get.return_value = SimpleNamespace(status_code=503)
+            with patch("deerflow.community.aio_sandbox.backend.time.time", side_effect=fake_time):
+                with patch("deerflow.community.aio_sandbox.backend.time.sleep"):
                     assert wait_for_sandbox_ready("http://x:80", timeout=5) is False
 
 
@@ -530,7 +573,7 @@ class TestWaitReadyAsync:
 
     @pytest.mark.anyio
     async def test_ready(self):
-        from ideer.community.aio_sandbox.backend import wait_for_sandbox_ready_async
+        from deerflow.community.aio_sandbox.backend import wait_for_sandbox_ready_async
 
         class MC:
             def __init__(self, **kwargs):
@@ -545,14 +588,14 @@ class TestWaitReadyAsync:
             async def get(self, url, **kwargs):
                 return SimpleNamespace(status_code=200)
 
-        with patch("ideer.community.aio_sandbox.backend.httpx.AsyncClient", MC):
+        with patch("deerflow.community.aio_sandbox.backend.httpx.AsyncClient", MC):
             assert await wait_for_sandbox_ready_async("http://x:80", timeout=5) is True
 
     @pytest.mark.anyio
     async def test_timeout(self):
         import httpx
 
-        from ideer.community.aio_sandbox.backend import wait_for_sandbox_ready_async
+        from deerflow.community.aio_sandbox.backend import wait_for_sandbox_ready_async
 
         class MC:
             def __init__(self, **kwargs):
@@ -569,13 +612,13 @@ class TestWaitReadyAsync:
 
         times = iter([0.0, 0.0, 100.0])
         ml = SimpleNamespace(time=lambda: next(times))
-        with patch("ideer.community.aio_sandbox.backend.httpx.AsyncClient", MC):
-            with patch("ideer.community.aio_sandbox.backend.asyncio.get_running_loop", return_value=ml):
+        with patch("deerflow.community.aio_sandbox.backend.httpx.AsyncClient", MC):
+            with patch("deerflow.community.aio_sandbox.backend.asyncio.get_running_loop", return_value=ml):
                 assert await wait_for_sandbox_ready_async("http://x:80", timeout=5) is False
 
     @pytest.mark.anyio
     async def test_non_200(self):
-        from ideer.community.aio_sandbox.backend import wait_for_sandbox_ready_async
+        from deerflow.community.aio_sandbox.backend import wait_for_sandbox_ready_async
 
         class MC:
             def __init__(self, **kwargs):
@@ -592,8 +635,8 @@ class TestWaitReadyAsync:
 
         times = iter([0.0, 0.0, 100.0])
         ml = SimpleNamespace(time=lambda: next(times))
-        with patch("ideer.community.aio_sandbox.backend.httpx.AsyncClient", MC):
-            with patch("ideer.community.aio_sandbox.backend.asyncio.get_running_loop", return_value=ml):
+        with patch("deerflow.community.aio_sandbox.backend.httpx.AsyncClient", MC):
+            with patch("deerflow.community.aio_sandbox.backend.asyncio.get_running_loop", return_value=ml):
                 assert await wait_for_sandbox_ready_async("http://x:80", timeout=5) is False
 
 
@@ -606,11 +649,11 @@ class TestImageSearchToolWrapper:
     """Lines 49-74."""
 
     def test_config_override(self):
-        from ideer.community.image_search.tools import image_search_tool
+        from deerflow.community.image_search.tools import image_search_tool
 
         with (
-            patch("ideer.community.image_search.tools.get_app_config") as mc,
-            patch("ideer.community.image_search.tools._search_images", return_value=[{"title": "t", "thumbnail": "u"}]) as ms,
+            patch("deerflow.community.image_search.tools.get_app_config") as mc,
+            patch("deerflow.community.image_search.tools._search_images", return_value=[{"title": "t", "thumbnail": "u"}]) as ms,
         ):
             cfg = MagicMock()
             cfg.model_extra = {"max_results": 10}
@@ -619,11 +662,11 @@ class TestImageSearchToolWrapper:
         assert ms.call_args[1]["max_results"] == 10
 
     def test_no_results(self):
-        from ideer.community.image_search.tools import image_search_tool
+        from deerflow.community.image_search.tools import image_search_tool
 
         with (
-            patch("ideer.community.image_search.tools.get_app_config") as mc,
-            patch("ideer.community.image_search.tools._search_images", return_value=[]),
+            patch("deerflow.community.image_search.tools.get_app_config") as mc,
+            patch("deerflow.community.image_search.tools._search_images", return_value=[]),
         ):
             mc.return_value.get_tool_config.return_value = None
             result = image_search_tool.func(query="q")
@@ -631,11 +674,11 @@ class TestImageSearchToolWrapper:
         assert "error" in data
 
     def test_with_filters(self):
-        from ideer.community.image_search.tools import image_search_tool
+        from deerflow.community.image_search.tools import image_search_tool
 
         with (
-            patch("ideer.community.image_search.tools.get_app_config") as mc,
-            patch("ideer.community.image_search.tools._search_images", return_value=[{"title": "t", "thumbnail": "u"}]) as ms,
+            patch("deerflow.community.image_search.tools.get_app_config") as mc,
+            patch("deerflow.community.image_search.tools._search_images", return_value=[{"title": "t", "thumbnail": "u"}]) as ms,
         ):
             mc.return_value.get_tool_config.return_value = None
             image_search_tool.func(query="q", max_results=3, size="Large", type_image="photo", layout="Wide")
@@ -645,21 +688,22 @@ class TestImageSearchToolWrapper:
         assert kw["layout"] == "Wide"
 
     def test_result_normalization(self):
-        from ideer.community.image_search.tools import image_search_tool
+        from deerflow.community.image_search.tools import image_search_tool
 
         results = [
-            {"title": "A", "thumbnail": "http://a.jpg"},
-            {"title": "B", "thumbnail": "http://b.jpg"},
+            {"title": "A", "image": "http://a.jpg", "thumbnail": "http://a_t.jpg"},
+            {"title": "B", "image": "http://b.jpg", "thumbnail": "http://b_t.jpg"},
         ]
         with (
-            patch("ideer.community.image_search.tools.get_app_config") as mc,
-            patch("ideer.community.image_search.tools._search_images", return_value=results),
+            patch("deerflow.community.image_search.tools.get_app_config") as mc,
+            patch("deerflow.community.image_search.tools._search_images", return_value=results),
         ):
             mc.return_value.get_tool_config.return_value = None
             result = image_search_tool.func(query="q")
         data = json.loads(result)
         assert data["total_results"] == 2
         assert data["results"][0]["image_url"] == "http://a.jpg"
+        assert data["results"][0]["thumbnail_url"] == "http://a_t.jpg"
 
 
 # ===================================================================
@@ -671,7 +715,7 @@ class TestOAuthExtraCoverage:
     """Lines 50, 60, 81, 83, 87, 90-99, 108, 115-116, 131, 144."""
 
     def _cfg(self, **kw):
-        from ideer.config.extensions_config import ExtensionsConfig
+        from deerflow.config.extensions_config import ExtensionsConfig
 
         base = {
             "mcpServers": {
@@ -693,13 +737,13 @@ class TestOAuthExtraCoverage:
         return ExtensionsConfig.model_validate(base)
 
     def test_no_server_returns_none(self):
-        from ideer.mcp.oauth import OAuthTokenManager
+        from deerflow.mcp.oauth import OAuthTokenManager
 
         mgr = OAuthTokenManager({})
         assert asyncio.run(mgr.get_authorization_header("x")) is None
 
     def test_cached_token(self):
-        from ideer.mcp.oauth import OAuthTokenManager, _OAuthToken
+        from deerflow.mcp.oauth import OAuthTokenManager, _OAuthToken
 
         mock_oauth = MagicMock()
         mock_oauth.refresh_skew_seconds = 60
@@ -732,7 +776,7 @@ class TestOAuthExtraCoverage:
                 )
 
         monkeypatch.setattr("httpx.AsyncClient", MC)
-        from ideer.mcp.oauth import OAuthTokenManager
+        from deerflow.mcp.oauth import OAuthTokenManager
 
         mgr = OAuthTokenManager.from_extensions_config(self._cfg(scope="r w"))
         asyncio.run(mgr.get_authorization_header("s1"))
@@ -759,15 +803,15 @@ class TestOAuthExtraCoverage:
                 )
 
         monkeypatch.setattr("httpx.AsyncClient", MC)
-        from ideer.mcp.oauth import OAuthTokenManager
+        from deerflow.mcp.oauth import OAuthTokenManager
 
         mgr = OAuthTokenManager.from_extensions_config(self._cfg(audience="https://api.example.com"))
         asyncio.run(mgr.get_authorization_header("s1"))
         assert calls[0]["audience"] == "https://api.example.com"
 
     def test_client_credentials_missing_raises(self):
-        from ideer.config.extensions_config import ExtensionsConfig
-        from ideer.mcp.oauth import OAuthTokenManager
+        from deerflow.config.extensions_config import ExtensionsConfig
+        from deerflow.mcp.oauth import OAuthTokenManager
 
         cfg = ExtensionsConfig.model_validate({"mcpServers": {"s1": {"enabled": True, "type": "http", "url": "x", "oauth": {"enabled": True, "token_url": "x", "grant_type": "client_credentials"}}}})
         mgr = OAuthTokenManager.from_extensions_config(cfg)
@@ -795,8 +839,8 @@ class TestOAuthExtraCoverage:
                 )
 
         monkeypatch.setattr("httpx.AsyncClient", MC)
-        from ideer.config.extensions_config import ExtensionsConfig
-        from ideer.mcp.oauth import OAuthTokenManager
+        from deerflow.config.extensions_config import ExtensionsConfig
+        from deerflow.mcp.oauth import OAuthTokenManager
 
         cfg = ExtensionsConfig.model_validate(
             {"mcpServers": {"s1": {"enabled": True, "type": "http", "url": "x", "oauth": {"enabled": True, "token_url": "x", "grant_type": "refresh_token", "refresh_token": "rt", "client_id": "c", "client_secret": "s"}}}}
@@ -827,8 +871,8 @@ class TestOAuthExtraCoverage:
                 )
 
         monkeypatch.setattr("httpx.AsyncClient", MC)
-        from ideer.config.extensions_config import ExtensionsConfig
-        from ideer.mcp.oauth import OAuthTokenManager
+        from deerflow.config.extensions_config import ExtensionsConfig
+        from deerflow.mcp.oauth import OAuthTokenManager
 
         cfg = ExtensionsConfig.model_validate({"mcpServers": {"s1": {"enabled": True, "type": "http", "url": "x", "oauth": {"enabled": True, "token_url": "x", "grant_type": "refresh_token", "refresh_token": "rt"}}}})
         mgr = OAuthTokenManager.from_extensions_config(cfg)
@@ -836,7 +880,7 @@ class TestOAuthExtraCoverage:
         assert "client_id" not in calls[0]
 
     def test_unsupported_grant_raises(self):
-        from ideer.config.extensions_config import ExtensionsConfig
+        from deerflow.config.extensions_config import ExtensionsConfig
 
         with pytest.raises(Exception):
             ExtensionsConfig.model_validate({"mcpServers": {"s1": {"enabled": True, "type": "http", "url": "x", "oauth": {"enabled": True, "token_url": "x", "grant_type": "password", "client_id": "c", "client_secret": "s"}}}})
@@ -859,7 +903,7 @@ class TestOAuthExtraCoverage:
                 )
 
         monkeypatch.setattr("httpx.AsyncClient", MC)
-        from ideer.mcp.oauth import OAuthTokenManager
+        from deerflow.mcp.oauth import OAuthTokenManager
 
         mgr = OAuthTokenManager.from_extensions_config(self._cfg())
         with pytest.raises(ValueError, match="missing"):
@@ -883,29 +927,29 @@ class TestOAuthExtraCoverage:
                 )
 
         monkeypatch.setattr("httpx.AsyncClient", MC)
-        from ideer.mcp.oauth import OAuthTokenManager
+        from deerflow.mcp.oauth import OAuthTokenManager
 
         mgr = OAuthTokenManager.from_extensions_config(self._cfg())
         result = asyncio.run(mgr.get_authorization_header("s1"))
         assert result == "Bearer t"
 
     def test_interceptor_no_oauth_passthrough(self):
-        from ideer.config.extensions_config import ExtensionsConfig
-        from ideer.mcp.oauth import build_oauth_tool_interceptor
+        from deerflow.config.extensions_config import ExtensionsConfig
+        from deerflow.mcp.oauth import build_oauth_tool_interceptor
 
         cfg = ExtensionsConfig.model_validate({"mcpServers": {}})
         assert build_oauth_tool_interceptor(cfg) is None
 
     def test_get_initial_empty(self):
-        from ideer.config.extensions_config import ExtensionsConfig
-        from ideer.mcp.oauth import get_initial_oauth_headers
+        from deerflow.config.extensions_config import ExtensionsConfig
+        from deerflow.mcp.oauth import get_initial_oauth_headers
 
         cfg = ExtensionsConfig.model_validate({"mcpServers": {}})
         assert asyncio.run(get_initial_oauth_headers(cfg)) == {}
 
     def test_interceptor_passthrough_no_auth(self, monkeypatch):
-        from ideer.config.extensions_config import ExtensionsConfig
-        from ideer.mcp.oauth import build_oauth_tool_interceptor
+        from deerflow.config.extensions_config import ExtensionsConfig
+        from deerflow.mcp.oauth import build_oauth_tool_interceptor
 
         cfg = ExtensionsConfig.model_validate({"mcpServers": {"s1": {"enabled": True, "type": "http", "url": "x", "oauth": {"enabled": True, "token_url": "x", "grant_type": "client_credentials", "client_id": "c", "client_secret": "s"}}}})
         interceptor = build_oauth_tool_interceptor(cfg)
@@ -931,34 +975,41 @@ class TestOAuthExtraCoverage:
 
 
 class TestMcpCacheExtra:
-    """Lines 30, 111, 116-126, 134-136."""
+    """Extra coverage for the MCP tools cache."""
 
     def setup_method(self):
-        import ideer.mcp.cache as cm
+        import deerflow.mcp.cache as cm
 
         self.m = cm
         self._oi = cm._cache_initialized
-        self._om = cm._config_mtime
+        self._op = cm._config_path
+        self._os = cm._config_signature
         self._ot = cm._mcp_tools_cache
 
     def teardown_method(self):
         self.m._cache_initialized = self._oi
-        self.m._config_mtime = self._om
+        self.m._config_path = self._op
+        self.m._config_signature = self._os
         self.m._mcp_tools_cache = self._ot
 
-    def test_get_config_mtime_with_file(self, tmp_path):
-        from ideer.config.extensions_config import ExtensionsConfig
+    def test_get_config_state_with_file(self, tmp_path):
+        from deerflow.config.extensions_config import ExtensionsConfig
+        from deerflow.config.file_signature import get_config_signature
 
         f = tmp_path / "ext.json"
         f.write_text("{}")
         with patch.object(ExtensionsConfig, "resolve_config_path", return_value=f):
-            assert self.m._get_config_mtime() is not None
+            path, signature = self.m._current_config_state()
 
-    def test_get_config_mtime_no_file(self):
-        from ideer.config.extensions_config import ExtensionsConfig
+        assert path == f
+        assert signature is not None
+        assert signature == get_config_signature(f)
+
+    def test_get_config_state_no_file(self):
+        from deerflow.config.extensions_config import ExtensionsConfig
 
         with patch.object(ExtensionsConfig, "resolve_config_path", return_value=None):
-            assert self.m._get_config_mtime() is None
+            assert self.m._current_config_state() == (None, None)
 
     def test_thread_double_check(self):
         self.m._cache_initialized = True
@@ -977,9 +1028,9 @@ class TestMcpCacheExtra:
             self.m._cache_initialized = True
 
         with (
-            patch("ideer.mcp.cache._is_cache_stale", return_value=False),
+            patch("deerflow.mcp.cache._is_cache_stale", return_value=False),
             patch("asyncio.get_event_loop", return_value=mock_loop),
-            patch("ideer.mcp.cache.initialize_mcp_tools", side_effect=mock_init),
+            patch("deerflow.mcp.cache.initialize_mcp_tools", side_effect=mock_init),
         ):
             result = self.m.get_cached_mcp_tools()
         assert result == tools
@@ -998,9 +1049,9 @@ class TestMcpCacheExtra:
             self.m._cache_initialized = True
 
         with (
-            patch("ideer.mcp.cache._is_cache_stale", return_value=False),
+            patch("deerflow.mcp.cache._is_cache_stale", return_value=False),
             patch("asyncio.get_event_loop", return_value=ml),
-            patch("ideer.mcp.cache.initialize_mcp_tools", side_effect=mock_init),
+            patch("deerflow.mcp.cache.initialize_mcp_tools", side_effect=mock_init),
         ):
             result = self.m.get_cached_mcp_tools()
         assert result == tools
@@ -1015,9 +1066,9 @@ class TestMcpCacheExtra:
             self.m._cache_initialized = True
 
         with (
-            patch("ideer.mcp.cache._is_cache_stale", return_value=False),
+            patch("deerflow.mcp.cache._is_cache_stale", return_value=False),
             patch("asyncio.get_event_loop", side_effect=RuntimeError("no")),
-            patch("ideer.mcp.cache.initialize_mcp_tools", side_effect=mock_init),
+            patch("deerflow.mcp.cache.initialize_mcp_tools", side_effect=mock_init),
         ):
             result = self.m.get_cached_mcp_tools()
         assert result == tools
@@ -1025,10 +1076,15 @@ class TestMcpCacheExtra:
     def test_no_loop_init_fails(self):
         self.m._cache_initialized = False
         self.m._mcp_tools_cache = None
+
+        def failing_run(coro):
+            coro.close()
+            raise RuntimeError("fail")
+
         with (
-            patch("ideer.mcp.cache._is_cache_stale", return_value=False),
+            patch("deerflow.mcp.cache._is_cache_stale", return_value=False),
             patch("asyncio.get_event_loop", side_effect=RuntimeError("no")),
-            patch("asyncio.run", side_effect=RuntimeError("fail")),
+            patch("asyncio.run", side_effect=failing_run),
         ):
             result = self.m.get_cached_mcp_tools()
         assert result == []
@@ -1043,29 +1099,29 @@ class TestMiniMaxExtra:
     """Lines 42, 84, 116, 126, 133-140, 145, 155, 157, 161, 169."""
 
     def _model(self):
-        from ideer.models.patched_minimax import PatchedChatMiniMax
+        from deerflow.models.patched_minimax import PatchedChatMiniMax
 
         return PatchedChatMiniMax(model="m", api_key="k", base_url="https://x.com/v1")
 
     def test_extract_non_mapping_item(self):
-        from ideer.models.patched_minimax import _extract_reasoning_text
+        from deerflow.models.patched_minimax import _extract_reasoning_text
 
         assert _extract_reasoning_text([123, {"text": "ok"}]) == "ok"
 
     def test_extract_non_list(self):
-        from ideer.models.patched_minimax import _extract_reasoning_text
+        from deerflow.models.patched_minimax import _extract_reasoning_text
 
         assert _extract_reasoning_text("str") is None
 
     def test_extract_whitespace_only(self):
-        from ideer.models.patched_minimax import _extract_reasoning_text
+        from deerflow.models.patched_minimax import _extract_reasoning_text
 
         assert _extract_reasoning_text([{"text": "   "}]) is None
 
     def test_with_reasoning_empty(self):
         from langchain_core.messages import AIMessage
 
-        from ideer.models.patched_minimax import _with_reasoning_content
+        from deerflow.models.patched_minimax import _with_reasoning_content
 
         msg = AIMessage(content="x")
         assert _with_reasoning_content(msg, None) is msg
@@ -1173,7 +1229,7 @@ class TestOpenAIExtra:
     def test_fallback_positional_matching(self):
         from langchain_core.messages import AIMessage
 
-        from ideer.models.patched_openai import _restore_tool_call_signatures
+        from deerflow.models.patched_openai import _restore_tool_call_signatures
 
         # Payload tool call has id "c2" which doesn't match raw id "c1",
         # triggering the positional fallback in _restore_tool_call_signatures.
@@ -1185,7 +1241,7 @@ class TestOpenAIExtra:
     def test_no_raw_no_positional_continue(self):
         from langchain_core.messages import AIMessage
 
-        from ideer.models.patched_openai import _restore_tool_call_signatures
+        from deerflow.models.patched_openai import _restore_tool_call_signatures
 
         raw = [{"id": "c1", "type": "function", "function": {"name": "f", "arguments": "{}"}, "thought_signature": "S=="}]
         payload_msg = {
@@ -1210,11 +1266,11 @@ class TestFirecrawlExtra:
     """Lines 45-46, 69-71."""
 
     def test_search_exception(self):
-        from ideer.community.firecrawl.tools import web_search_tool
+        from deerflow.community.firecrawl.tools import web_search_tool
 
         with (
-            patch("ideer.community.firecrawl.tools.get_app_config") as mc,
-            patch("ideer.community.firecrawl.tools.FirecrawlApp") as mf,
+            patch("deerflow.community.firecrawl.tools.get_app_config") as mc,
+            patch("deerflow.community.firecrawl.tools.FirecrawlApp") as mf,
         ):
             mc.return_value.get_tool_config.return_value = None
             mf.return_value.search.side_effect = RuntimeError("down")
@@ -1222,11 +1278,11 @@ class TestFirecrawlExtra:
         assert result.startswith("Error:")
 
     def test_fetch_no_content(self):
-        from ideer.community.firecrawl.tools import web_fetch_tool
+        from deerflow.community.firecrawl.tools import web_fetch_tool
 
         with (
-            patch("ideer.community.firecrawl.tools.get_app_config") as mc,
-            patch("ideer.community.firecrawl.tools.FirecrawlApp") as mf,
+            patch("deerflow.community.firecrawl.tools.get_app_config") as mc,
+            patch("deerflow.community.firecrawl.tools.FirecrawlApp") as mf,
         ):
             mc.return_value.get_tool_config.return_value = None
             r = MagicMock()
@@ -1237,11 +1293,11 @@ class TestFirecrawlExtra:
         assert result == "Error: No content found"
 
     def test_fetch_exception(self):
-        from ideer.community.firecrawl.tools import web_fetch_tool
+        from deerflow.community.firecrawl.tools import web_fetch_tool
 
         with (
-            patch("ideer.community.firecrawl.tools.get_app_config") as mc,
-            patch("ideer.community.firecrawl.tools.FirecrawlApp") as mf,
+            patch("deerflow.community.firecrawl.tools.get_app_config") as mc,
+            patch("deerflow.community.firecrawl.tools.FirecrawlApp") as mf,
         ):
             mc.return_value.get_tool_config.return_value = None
             mf.return_value.scrape.side_effect = RuntimeError("timeout")
@@ -1250,11 +1306,11 @@ class TestFirecrawlExtra:
         assert "timeout" in result
 
     def test_fetch_no_metadata_title(self):
-        from ideer.community.firecrawl.tools import web_fetch_tool
+        from deerflow.community.firecrawl.tools import web_fetch_tool
 
         with (
-            patch("ideer.community.firecrawl.tools.get_app_config") as mc,
-            patch("ideer.community.firecrawl.tools.FirecrawlApp") as mf,
+            patch("deerflow.community.firecrawl.tools.get_app_config") as mc,
+            patch("deerflow.community.firecrawl.tools.FirecrawlApp") as mf,
         ):
             mc.return_value.get_tool_config.return_value = None
             r = MagicMock()
@@ -1265,11 +1321,11 @@ class TestFirecrawlExtra:
         assert result.startswith("# Untitled")
 
     def test_fetch_none_metadata(self):
-        from ideer.community.firecrawl.tools import web_fetch_tool
+        from deerflow.community.firecrawl.tools import web_fetch_tool
 
         with (
-            patch("ideer.community.firecrawl.tools.get_app_config") as mc,
-            patch("ideer.community.firecrawl.tools.FirecrawlApp") as mf,
+            patch("deerflow.community.firecrawl.tools.get_app_config") as mc,
+            patch("deerflow.community.firecrawl.tools.FirecrawlApp") as mf,
         ):
             mc.return_value.get_tool_config.return_value = None
             r = MagicMock()

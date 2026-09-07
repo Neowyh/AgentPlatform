@@ -1,7 +1,7 @@
 import subprocess
 from pathlib import Path
 
-from ideer.uploads.code_analysis import confidence_for_finding, fixed_scanner_commands, inventory_package, normalize_scanner_output, run_fixed_scanner
+from deerflow.uploads.code_analysis import confidence_for_finding, fixed_scanner_commands, inventory_package, normalize_scanner_output, run_fixed_scanner
 
 
 def test_inventory_finds_cross_file_sources_and_build_metadata(tmp_path: Path):
@@ -27,7 +27,7 @@ def test_static_alert_alone_is_never_confirmed():
 
 
 def test_scanner_commands_are_fixed_and_shell_free(tmp_path: Path, monkeypatch):
-    monkeypatch.setattr("ideer.uploads.code_analysis.shutil.which", lambda name: "/usr/bin/" + name)
+    monkeypatch.setattr("deerflow.uploads.code_analysis.shutil.which", lambda name: "/usr/bin/" + name)
     (tmp_path / "source").mkdir()
     (tmp_path / "source" / "main.c").write_text("int main(void) { return 0; }")
     commands = fixed_scanner_commands(tmp_path, tmp_path / "output")
@@ -65,7 +65,7 @@ def test_scanner_timeout_is_recorded_and_bounded(tmp_path: Path, monkeypatch):
         assert kwargs["timeout"] > 0
         raise subprocess.TimeoutExpired(kwargs.get("args", args[0]), kwargs["timeout"])
 
-    monkeypatch.setattr("ideer.uploads.code_analysis.subprocess.run", timeout)
+    monkeypatch.setattr("deerflow.uploads.code_analysis.subprocess.run", timeout)
     output = tmp_path / "scanner.txt"
 
     returncode, raw = run_fixed_scanner(["cppcheck", "source"], cwd=tmp_path, output_file=output)

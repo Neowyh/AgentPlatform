@@ -107,6 +107,7 @@ export const WebPreviewNavigationButton = ({
     <Tooltip>
       <TooltipTrigger asChild>
         <Button
+          aria-label={tooltip}
           className="hover:text-foreground h-8 w-8 p-0"
           disabled={disabled}
           onClick={onClick}
@@ -155,7 +156,7 @@ export const WebPreviewUrl = ({
 
   return (
     <Input
-      className="type-body h-8 flex-1"
+      className="type-supporting h-8 flex-1"
       onChange={onChange ?? handleChange}
       onKeyDown={handleKeyDown}
       placeholder="Enter URL..."
@@ -209,7 +210,10 @@ export const WebPreviewConsole = ({
 
   return (
     <Collapsible
-      className={cn("bg-muted/50 type-body border-t font-mono", className)}
+      className={cn(
+        "bg-muted/50 type-supporting border-t font-mono",
+        className,
+      )}
       onOpenChange={setConsoleOpen}
       open={consoleOpen}
       {...props}
@@ -241,7 +245,7 @@ export const WebPreviewConsole = ({
             logs.map((log, index) => (
               <div
                 className={cn(
-                  "type-body",
+                  "type-compact",
                   log.level === "error" && "text-destructive",
                   log.level === "warn" && "text-yellow-600",
                   log.level === "log" && "text-foreground",

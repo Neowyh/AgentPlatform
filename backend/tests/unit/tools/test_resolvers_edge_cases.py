@@ -1,4 +1,4 @@
-"""Tests for ideer.reflection.resolvers covering uncovered lines."""
+"""Tests for deerflow.reflection.resolvers covering uncovered lines."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from ideer.reflection.resolvers import (
+from deerflow.reflection.resolvers import (
     _build_missing_dependency_hint,
     resolve_class,
     resolve_variable,
@@ -82,7 +82,7 @@ class TestBuildMissingDependencyHint:
 class TestResolveVariableLine57:
     """Cover the non-ModuleNotFoundError ImportError branch."""
 
-    @patch("ideer.reflection.resolvers.import_module")
+    @patch("deerflow.reflection.resolvers.import_module")
     def test_plain_importerror_preserved(self, mock_import):
         """Line 57: When import_module raises a plain ImportError (not
         ModuleNotFoundError) and err.name != module_root, the original error
@@ -94,7 +94,7 @@ class TestResolveVariableLine57:
         with pytest.raises(ImportError, match="Error importing module foo.baz"):
             resolve_variable("foo.baz:Bar")
 
-    @patch("ideer.reflection.resolvers.import_module")
+    @patch("deerflow.reflection.resolvers.import_module")
     def test_importerror_without_name_attr(self, mock_import):
         """Line 57: ImportError without a .name attribute, where the error is
         not a ModuleNotFoundError."""
@@ -108,7 +108,7 @@ class TestResolveVariableLine57:
         with pytest.raises(ImportError, match="Error importing module some_pkg.mod"):
             resolve_variable("some_pkg.mod:Thing")
 
-    @patch("ideer.reflection.resolvers.import_module")
+    @patch("deerflow.reflection.resolvers.import_module")
     def test_module_not_found_error_reaches_hint(self, mock_import):
         """ModuleNotFoundError should go through the hint path (line 53-55),
         NOT line 57."""
@@ -182,7 +182,7 @@ class TestResolveVariableTupleType:
 class TestResolveClassNotAType:
     """Cover the 'not a type' branch in resolve_class."""
 
-    @patch("ideer.reflection.resolvers.resolve_variable")
+    @patch("deerflow.reflection.resolvers.resolve_variable")
     def test_line_90_resolved_value_is_not_type(self, mock_resolve):
         """Line 90: When resolve_variable returns a non-type value despite
         expected_type=type, resolve_class raises ValueError."""
@@ -201,7 +201,7 @@ class TestResolveClassNotAType:
 class TestResolveClassNotSubclass:
     """Cover the 'not a subclass' branch in resolve_class."""
 
-    @patch("ideer.reflection.resolvers.resolve_variable")
+    @patch("deerflow.reflection.resolvers.resolve_variable")
     def test_line_93_not_subclass_of_base(self, mock_resolve):
         """Line 93: When the resolved class is a type but not a subclass of
         base_class, resolve_class raises ValueError."""
@@ -211,7 +211,7 @@ class TestResolveClassNotSubclass:
         with pytest.raises(ValueError, match="is not a subclass of list"):
             resolve_class("builtins:int", base_class=list)
 
-    @patch("ideer.reflection.resolvers.resolve_variable")
+    @patch("deerflow.reflection.resolvers.resolve_variable")
     def test_subclass_check_passes(self, mock_resolve):
         """Happy path: the resolved class IS a subclass of base_class."""
         mock_resolve.return_value = bool  # bool is a subclass of int
@@ -219,7 +219,7 @@ class TestResolveClassNotSubclass:
         result = resolve_class("builtins:bool", base_class=int)
         assert result is bool
 
-    @patch("ideer.reflection.resolvers.resolve_variable")
+    @patch("deerflow.reflection.resolvers.resolve_variable")
     def test_no_base_class_check(self, mock_resolve):
         """When base_class is None, the subclass check is skipped."""
         mock_resolve.return_value = int

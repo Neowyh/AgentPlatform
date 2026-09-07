@@ -13,9 +13,7 @@ test.describe("Sidebar navigation", () => {
     await expect(sidebar.locator("a[href='/workspace/chats']")).toBeVisible({
       timeout: 15_000,
     });
-    await expect(
-      sidebar.locator("a[href='/workspace/capabilities/experts']"),
-    ).toBeVisible();
+    await expect(sidebar.locator("a[href='/workspace/agents']")).toBeVisible();
   });
 
   test("Agents link navigates to agents page", async ({ page }) => {
@@ -24,13 +22,10 @@ test.describe("Sidebar navigation", () => {
     await page.goto("/workspace/chats/new");
 
     const sidebar = page.locator("[data-sidebar='sidebar']");
-    const agentsLink = sidebar.locator(
-      "a[href='/workspace/capabilities/experts']",
-    );
+    const agentsLink = sidebar.locator("a[href='/workspace/agents']");
     await expect(agentsLink).toBeVisible({ timeout: 15_000 });
     await agentsLink.click();
 
-    await page.waitForURL("**/workspace/capabilities/experts");
-    await expect(page).toHaveURL(/\/workspace\/agents/);
+    await page.waitForURL("**/workspace/agents");
   });
 });

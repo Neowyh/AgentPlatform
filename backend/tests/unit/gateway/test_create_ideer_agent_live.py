@@ -18,6 +18,14 @@ from langchain_core.tools import tool
 # Load .env from project root (for OPENAI_API_KEY etc.)
 load_dotenv(os.path.join(os.path.dirname(__file__), "../../.env"))
 
+# The conftest ``_skip_llm_if_no_key`` helper this docstring references no
+# longer exists; guard at module level like tests/test_create_deerflow_agent_live.py
+# so the standard lane skips instead of attempting real LLM calls.
+if not os.getenv("OPENAI_API_KEY"):
+    pytest.skip("Requires LLM API key — skipped in CI or when OPENAI_API_KEY is unset", allow_module_level=True)
+
+pytestmark = pytest.mark.requires_llm
+
 
 def _make_model():
     """Create a real chat model from environment variables.
@@ -51,7 +59,7 @@ def _make_model():
 @pytest.mark.requires_llm
 def test_minimal_agent_responds():
     """create_ideer_agent(model) produces a graph that returns a response."""
-    from ideer.agents.factory import create_ideer_agent
+    from deerflow.agents.factory import create_ideer_agent
 
     model = _make_model()
     graph = create_ideer_agent(model, features=None, middleware=[])
@@ -74,7 +82,7 @@ def test_minimal_agent_responds():
 @pytest.mark.requires_llm
 def test_agent_with_custom_tool():
     """Agent can invoke a user-provided tool and return the result."""
-    from ideer.agents.factory import create_ideer_agent
+    from deerflow.agents.factory import create_ideer_agent
 
     @tool
     def add(a: int, b: int) -> int:
@@ -102,8 +110,8 @@ def test_agent_with_custom_tool():
 @pytest.mark.requires_llm
 def test_features_mode_middleware_chain():
     """RuntimeFeatures assembles a working middleware chain that executes."""
-    from ideer.agents.factory import create_ideer_agent
-    from ideer.agents.features import RuntimeFeatures
+    from deerflow.agents.factory import create_ideer_agent
+    from deerflow.agents.features import RuntimeFeatures
 
     model = _make_model()
     feat = RuntimeFeatures(sandbox=False, auto_title=False, memory=False)

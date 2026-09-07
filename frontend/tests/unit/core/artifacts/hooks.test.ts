@@ -29,6 +29,22 @@ vi.mock("@/components/workspace/messages/context", () => ({
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
 
+// The loader reads status/ok/headers/arrayBuffer from the fetch response
+// (Content-Range previews, ETag fingerprints). Build a Response-like object.
+function mockArtifactResponse(
+  content: string,
+  { ok = true, status = 200, headers = {} as Record<string, string> } = {},
+) {
+  const bytes = new TextEncoder().encode(content);
+  return {
+    ok,
+    status,
+    headers: new Headers(headers),
+    arrayBuffer: () => bytes.buffer.slice(bytes.byteOffset, bytes.byteLength),
+    text: () => Promise.resolve(content),
+  };
+}
+
 function createWrapper() {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -63,9 +79,9 @@ describe("useArtifactContent", () => {
       isMock: false,
     });
 
-    mockFetch.mockResolvedValueOnce({
-      text: () => Promise.resolve("<html>artifact content</html>"),
-    });
+    mockFetch.mockResolvedValueOnce(
+      mockArtifactResponse("<html>artifact content</html>"),
+    );
 
     const { useArtifactContent } = await import("@/core/artifacts/hooks");
     const { result } = renderHook(
@@ -206,9 +222,7 @@ describe("useArtifactContent", () => {
 
     expect(result.current.isLoading).toBe(true);
 
-    resolveFetch!({
-      text: () => Promise.resolve("resolved content"),
-    });
+    resolveFetch!(mockArtifactResponse("resolved content"));
 
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(result.current.content).toBe("resolved content");
@@ -249,9 +263,7 @@ describe("useArtifactContent", () => {
       isMock: true,
     });
 
-    mockFetch.mockResolvedValueOnce({
-      text: () => Promise.resolve("mock content"),
-    });
+    mockFetch.mockResolvedValueOnce(mockArtifactResponse("mock content"));
 
     const { useArtifactContent } = await import("@/core/artifacts/hooks");
     const { result } = renderHook(
@@ -308,9 +320,7 @@ describe("useArtifactContent", () => {
       isMock: false,
     });
 
-    mockFetch.mockResolvedValueOnce({
-      text: () => Promise.resolve("# Skill content"),
-    });
+    mockFetch.mockResolvedValueOnce(mockArtifactResponse("# Skill content"));
 
     const { useArtifactContent } = await import("@/core/artifacts/hooks");
     const { result } = renderHook(

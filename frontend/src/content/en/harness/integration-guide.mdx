@@ -1,32 +1,32 @@
 ---
 title: Integration Guide
-description: iDeer Harness is not only a standalone application. It is a Python library you can import and use inside your own backend, API server, automation system, or multi-agent orchestrator.
+description: DeerFlow Harness is not only a standalone application. It is a Python library you can import and use inside your own backend, API server, automation system, or multi-agent orchestrator.
 ---
 
-import { Callout, Cards } from "nextra/components";
+import { Callout } from "nextra/components";
 
 # Integration Guide
 
 <Callout type="info" emoji="🔌">
-  iDeer Harness can be embedded into any Python application. This guide
-  covers the integration patterns for using iDeer as a library inside your
+  DeerFlow Harness can be embedded into any Python application. This guide
+  covers the integration patterns for using DeerFlow as a library inside your
   own system.
 </Callout>
 
-iDeer Harness is not only a standalone application. It is a Python library you can import and use inside your own backend, API server, automation system, or multi-agent orchestrator.
+DeerFlow Harness is not only a standalone application. It is a Python library you can import and use inside your own backend, API server, automation system, or multi-agent orchestrator.
 
-## Embedding iDeerClient
+## Embedding DeerFlowClient
 
-The primary integration point is `iDeerClient`. It wraps the LangGraph runtime and exposes a clean API for sending messages and streaming responses from any Python application.
+The primary integration point is `DeerFlowClient`. It wraps the LangGraph runtime and exposes a clean API for sending messages and streaming responses from any Python application.
 
 ```python
-from ideer.client import iDeerClient
-from ideer.config import load_config
+from deerflow.client import DeerFlowClient
+from deerflow.config import load_config
 
-# Load configuration (reads config.yaml or IDEER_CONFIG_PATH)
+# Load configuration (reads config.yaml or DEER_FLOW_CONFIG_PATH)
 load_config()
 
-client = iDeerClient()
+client = DeerFlowClient()
 ```
 
 The client is thread-safe and designed to be instantiated once and reused across requests.
@@ -90,9 +90,7 @@ await client.ainvoke(thread_id=existing_thread_id, message="Follow up question")
 Build domain-specific agents by creating named agent configs and passing the `agent_name` at runtime:
 
 ```python
-# The custom agent must first be created and published via the unified resource
-# catalog (/api/resources); at runtime the agent_name resolves to the resource UUID
-# and the config carries skills and tool config
+# agents/research-assistant/config.yaml must exist with skills and tool config
 
 result = await client.ainvoke(
     thread_id=thread_id,
@@ -108,30 +106,30 @@ result = await client.ainvoke(
 
 ## Integrating with FastAPI
 
-iDeer Gateway is itself a FastAPI application. You can mount it as a sub-application or router:
+DeerFlow Gateway is itself a FastAPI application. You can mount it as a sub-application or router:
 
 ```python
 from fastapi import FastAPI
-from ideer.config import load_config
+from deerflow.config import load_config
 
 load_config()
 
 app = FastAPI()
 
-# Mount the iDeer gateway router
-from ideer.app.gateway.main import app as gateway_app
-app.mount("/ideer", gateway_app)
+# Mount the DeerFlow gateway router
+from deerflow.app.gateway.main import app as gateway_app
+app.mount("/deerflow", gateway_app)
 ```
 
-Or use `iDeerClient` directly in your own FastAPI routes with streaming:
+Or use `DeerFlowClient` directly in your own FastAPI routes with streaming:
 
 ```python
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
-from ideer.client import iDeerClient
+from deerflow.client import DeerFlowClient
 
 app = FastAPI()
-client = iDeerClient()
+client = DeerFlowClient()
 
 @app.post("/chat/{thread_id}")
 async def chat(thread_id: str, body: dict):
@@ -143,10 +141,10 @@ async def chat(thread_id: str, body: dict):
 
 ## Integrating with LangGraph
 
-iDeer Harness is built on LangGraph. The Lead Agent is a standard LangGraph graph. You can compose it with your own LangGraph nodes and graphs:
+DeerFlow Harness is built on LangGraph. The Lead Agent is a standard LangGraph graph. You can compose it with your own LangGraph nodes and graphs:
 
 ```python
-from ideer.agents.lead_agent.agent import make_lead_agent
+from deerflow.agents.lead_agent.agent import make_lead_agent
 from langgraph.graph import StateGraph
 
 # Access the underlying LangGraph agent factory
@@ -159,22 +157,22 @@ When embedded in another application, set the config path explicitly to avoid am
 
 ```python
 import os
-os.environ["IDEER_CONFIG_PATH"] = "/path/to/my-ideer-config.yaml"
+os.environ["DEER_FLOW_CONFIG_PATH"] = "/path/to/my-deerflow-config.yaml"
 
-from ideer.config import load_config
+from deerflow.config import load_config
 load_config()
 ```
 
 Or pass the path directly:
 
 ```python
-from ideer.config import load_config
-load_config(config_path="/path/to/my-ideer-config.yaml")
+from deerflow.config import load_config
+load_config(config_path="/path/to/my-deerflow-config.yaml")
 ```
 
 ## MCP server integration
 
-iDeer can expose its agent as an MCP server, allowing other MCP-compatible systems to call it as a tool. Refer to the iDeer repository for MCP server integration examples.
+DeerFlow can expose its agent as an MCP server, allowing other MCP-compatible systems to call it as a tool. Refer to the DeerFlow repository for MCP server integration examples.
 
 <Cards num={2}>
   <Cards.Card title="Customization" href="/docs/harness/customization" />

@@ -15,8 +15,8 @@ from sqlalchemy.orm import sessionmaker
 
 # Import the migration module once at module level so its SkillApplication(Base)
 # class registers on Base.metadata exactly once.  Subsequent imports are cached.
-import ideer.scripts.migrate_skill_applications as _migrate_mod  # noqa: F401
-from ideer.persistence.base import Base
+import app.agentplatform.persistence.scripts.migrate_skill_applications as _migrate_mod  # noqa: F401
+from deerflow.persistence.base import Base
 
 # ---------------------------------------------------------------------------
 # Raw DDL — every table the migration touches
@@ -157,8 +157,8 @@ def session(engine):
 
 def _run(session, *, dry_run=False):
     sf = MagicMock(return_value=session)
-    with patch("ideer.scripts.migrate_skill_applications.get_session_factory", return_value=sf):
-        from ideer.scripts.migrate_skill_applications import migrate_skill_applications
+    with patch("app.agentplatform.persistence.scripts.migrate_skill_applications.get_session_factory", return_value=sf):
+        from app.agentplatform.persistence.scripts.migrate_skill_applications import migrate_skill_applications
 
         return migrate_skill_applications(dry_run=dry_run)
 
@@ -321,8 +321,8 @@ class TestErrorHandling:
             c.execute(text(_INS_SA), _sa_row(id="sa-bad", skill_id="skill-bad"))
 
         orig = None
-        with patch("ideer.scripts.migrate_skill_applications.get_session_factory", return_value=MagicMock(return_value=session)):
-            from ideer.scripts.migrate_skill_applications import _resolve_current_visibility
+        with patch("app.agentplatform.persistence.scripts.migrate_skill_applications.get_session_factory", return_value=MagicMock(return_value=session)):
+            from app.agentplatform.persistence.scripts.migrate_skill_applications import _resolve_current_visibility
 
             orig = _resolve_current_visibility
 
@@ -331,8 +331,11 @@ class TestErrorHandling:
                 raise RuntimeError("boom")
             return orig(skill_id, sess)
 
-        with patch("ideer.scripts.migrate_skill_applications.get_session_factory", return_value=MagicMock(return_value=session)), patch("ideer.scripts.migrate_skill_applications._resolve_current_visibility", side_effect=_boom):
-            from ideer.scripts.migrate_skill_applications import migrate_skill_applications
+        with (
+            patch("app.agentplatform.persistence.scripts.migrate_skill_applications.get_session_factory", return_value=MagicMock(return_value=session)),
+            patch("app.agentplatform.persistence.scripts.migrate_skill_applications._resolve_current_visibility", side_effect=_boom),
+        ):
+            from app.agentplatform.persistence.scripts.migrate_skill_applications import migrate_skill_applications
 
             r = migrate_skill_applications()
 
@@ -340,8 +343,8 @@ class TestErrorHandling:
         assert r["failed"] == 1
 
     def test_uninitialized_db_returns_zeros(self):
-        with patch("ideer.scripts.migrate_skill_applications.get_session_factory", return_value=None):
-            from ideer.scripts.migrate_skill_applications import migrate_skill_applications
+        with patch("app.agentplatform.persistence.scripts.migrate_skill_applications.get_session_factory", return_value=None):
+            from app.agentplatform.persistence.scripts.migrate_skill_applications import migrate_skill_applications
 
             assert migrate_skill_applications() == {"migrated": 0, "skipped": 0, "failed": 0}
 

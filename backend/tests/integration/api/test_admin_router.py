@@ -20,9 +20,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from app.agentplatform.rbac_models import UserRole
 from app.gateway.authz import get_current_rbac_user
 from app.gateway.routers.admin import router as admin_router
-from ideer.persistence.models.user import UserRole
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -184,9 +184,9 @@ class TestAdminUserManagement:
 
     def test_create_user_writes_auth_user_role_as_user_and_rbac_role(self, tmp_path):
         """Admin-created super_admin stores permission only in users_ext."""
-        from ideer.persistence.engine import close_engine, get_session_factory, init_engine
-        from ideer.persistence.models.user import UserModel
-        from ideer.persistence.user.model import UserRow
+        from app.agentplatform.rbac_models import UserModel
+        from deerflow.persistence.engine import close_engine, get_session_factory, init_engine
+        from deerflow.persistence.user.model import UserRow
 
         asyncio.run(init_engine("sqlite", url=f"sqlite+aiosqlite:///{tmp_path}/admin_create.db", sqlite_dir=str(tmp_path)))
         try:
@@ -1206,9 +1206,9 @@ class TestDeleteUser:
 
         Returns (user_id, target_user_id) for use in tests.
         """
-        from ideer.persistence.engine import get_session_factory, init_engine
-        from ideer.persistence.models.user import UserModel, UserRole
-        from ideer.persistence.user.model import UserRow
+        from app.agentplatform.rbac_models import UserModel, UserRole
+        from deerflow.persistence.engine import get_session_factory, init_engine
+        from deerflow.persistence.user.model import UserRow
 
         db_url = f"sqlite+aiosqlite:///{tmp_path}/test_delete_user.db"
 
@@ -1235,7 +1235,7 @@ class TestDeleteUser:
 
     def _teardown_db(self):
         """Close the engine and clean up."""
-        from ideer.persistence.engine import close_engine
+        from deerflow.persistence.engine import close_engine
 
         try:
             asyncio.run(close_engine())
@@ -1263,9 +1263,9 @@ class TestDeleteUser:
             assert data["user_id"] == user_id
 
             async def _verify():
-                from ideer.persistence.engine import get_session_factory
-                from ideer.persistence.models.user import UserModel
-                from ideer.persistence.user.model import UserRow
+                from app.agentplatform.rbac_models import UserModel
+                from deerflow.persistence.engine import get_session_factory
+                from deerflow.persistence.user.model import UserRow
 
                 sf = get_session_factory()
                 assert sf is not None
@@ -1295,9 +1295,9 @@ class TestDeleteUser:
             assert resp.json()["success"] is True
 
             async def _verify():
-                from ideer.persistence.engine import get_session_factory
-                from ideer.persistence.models.user import UserModel
-                from ideer.persistence.user.model import UserRow
+                from app.agentplatform.rbac_models import UserModel
+                from deerflow.persistence.engine import get_session_factory
+                from deerflow.persistence.user.model import UserRow
 
                 sf = get_session_factory()
                 assert sf is not None

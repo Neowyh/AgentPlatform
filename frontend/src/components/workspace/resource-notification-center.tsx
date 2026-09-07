@@ -103,6 +103,7 @@ export function ResourceNotificationCenter() {
             tooltip={t.resources.notificationsTitle}
             className="relative"
             data-testid="resource-notification-trigger"
+            aria-label={t.resources.notificationsTitle}
           >
             <BellIcon className="size-4" />
             {unreadCount > 0 && (

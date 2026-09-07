@@ -1,6 +1,7 @@
-"""Additional coverage tests for ideer.tools.tools.
+"""Additional coverage tests for deerflow.tools.tools and deferred-tool assembly.
 
-Targets missed lines 139-192: MCP tool_search with existing registry path.
+Covers: MCP tool loading in get_available_tools (with and without enabled
+servers) and the upstream deferred-tool setup built from MCP candidates.
 """
 
 import logging
@@ -8,7 +9,17 @@ from unittest.mock import MagicMock, patch
 
 from langchain_core.tools import BaseTool
 
-from ideer.tools.tools import get_available_tools
+from deerflow.tools.builtins.tool_search import assemble_deferred_tools, build_deferred_tool_setup
+from deerflow.tools.mcp_metadata import tag_mcp_tool
+from deerflow.tools.tools import get_available_tools
+
+
+class _StubTool(BaseTool):
+    name: str = "stub"
+    description: str = "stub tool"
+
+    def _run(self, *args, **kwargs):
+        return ""
 
 
 def _make_config(
@@ -28,137 +39,51 @@ def _make_config(
     return cfg
 
 
-def _make_tool_config(name="my_tool", group="core", use="some.module:my_tool", requires_network=False):
-    tc = MagicMock()
-    tc.name = name
-    tc.group = group
-    tc.use = use
-    tc.requires_network = requires_network
-    return tc
+class TestDeferredToolSetupFromMcpCandidates:
+    """Deferred-tool assembly: MCP candidates are withheld behind tool_search."""
+
+    def test_enabled_with_mcp_candidates_builds_search_tool(self):
+        mcp_a = _StubTool(name="mcp_a", description="MCP tool a")
+        mcp_b = _StubTool(name="mcp_b", description="MCP tool b")
+        plain = _StubTool(name="plain", description="plain tool")
+        tag_mcp_tool(mcp_a)
+        tag_mcp_tool(mcp_b)
+        candidates = [plain, mcp_a, mcp_b]
+
+        setup = build_deferred_tool_setup(candidates, enabled=True)
+
+        assert setup.tool_search_tool is not None
+        assert setup.tool_search_tool.name == "tool_search"
+        assert setup.deferred_names == frozenset({"mcp_a", "mcp_b"})
+        assert setup.catalog_hash
+
+        final_tools, assembled_setup = assemble_deferred_tools(candidates, enabled=True)
+        assert [t.name for t in final_tools] == ["plain", "mcp_a", "mcp_b", "tool_search"]
+        assert assembled_setup.deferred_names == setup.deferred_names
+        assert assembled_setup.catalog_hash == setup.catalog_hash
+
+    def test_disabled_binds_all_tools_without_deferral(self):
+        mcp_a = _StubTool(name="mcp_a", description="MCP tool a")
+        tag_mcp_tool(mcp_a)
+        candidates = [mcp_a]
+
+        setup = build_deferred_tool_setup(candidates, enabled=False)
+
+        assert setup.tool_search_tool is None
+        assert setup.deferred_names == frozenset()
+        assert setup.catalog_hash is None
+
+        final_tools, assembled_setup = assemble_deferred_tools(candidates, enabled=False)
+        assert final_tools == candidates
+        assert assembled_setup == setup
 
 
-class TestMCPToolSearchNewRegistry:
-    """Lines 139-148: tool_search enabled, no existing registry -> create new registry."""
+class TestMCPToolsLoadedByGetAvailableTools:
+    """MCP tools loaded; tool_search assembly happens at agent build, not here."""
 
-    @patch("ideer.tools.tools.is_offline", return_value=False)
-    @patch("ideer.tools.tools.is_host_bash_allowed", return_value=True)
-    @patch("ideer.tools.tools.resolve_variable")
-    def test_tool_search_creates_new_registry(self, mock_resolve, mock_bash, mock_offline, caplog):
-        import sys
-
-        mock_resolve.return_value = MagicMock(spec=BaseTool, name="dummy", func=None, coroutine=None)
-        config = _make_config(tools=[], tool_search_enabled=True)
-
-        mock_mcp_tool = MagicMock(spec=BaseTool)
-        mock_mcp_tool.name = "mcp_search"
-        mock_mcp_tool.description = "Search tool"
-        mock_mcp_tool.func = None
-        mock_mcp_tool.coroutine = None
-
-        mock_registry = MagicMock()
-        mock_registry.__len__ = MagicMock(return_value=1)
-
-        mock_ext_config = MagicMock()
-        mock_ext_config.get_enabled_mcp_servers.return_value = ["server1"]
-
-        mock_tool_search_tool = MagicMock(spec=BaseTool)
-        mock_tool_search_tool.name = "tool_search"
-        mock_tool_search_tool.func = None
-        mock_tool_search_tool.coroutine = None
-
-        mock_ext_module = MagicMock()
-        mock_ext_module.ExtensionsConfig.from_file.return_value = mock_ext_config
-        mock_mcp_cache_module = MagicMock()
-        mock_mcp_cache_module.get_cached_mcp_tools.return_value = [mock_mcp_tool]
-
-        mock_tool_search_module = MagicMock()
-        mock_tool_search_module.DeferredToolRegistry.return_value = mock_registry
-        mock_tool_search_module.get_deferred_registry.return_value = None
-        mock_tool_search_module.set_deferred_registry = MagicMock()
-        mock_tool_search_module.tool_search = mock_tool_search_tool
-
-        with (
-            patch.dict(
-                sys.modules,
-                {
-                    "ideer.config.extensions_config": mock_ext_module,
-                    "ideer.mcp.cache": mock_mcp_cache_module,
-                    "ideer.tools.builtins.tool_search": mock_tool_search_module,
-                },
-            ),
-            caplog.at_level(logging.INFO),
-        ):
-            get_available_tools(app_config=config, include_mcp=True)
-
-        # Verify registry was created and tool was registered
-        mock_tool_search_module.DeferredToolRegistry.assert_called_once()
-        mock_registry.register.assert_called_once_with(mock_mcp_tool)
-        mock_tool_search_module.set_deferred_registry.assert_called_once()
-        assert "Tool search active" in caplog.text
-
-
-class TestMCPToolSearchExistingRegistry:
-    """Lines 149-191: tool_search enabled with existing registry -> preserve promotions."""
-
-    @patch("ideer.tools.tools.is_offline", return_value=False)
-    @patch("ideer.tools.tools.is_host_bash_allowed", return_value=True)
-    @patch("ideer.tools.tools.resolve_variable")
-    @patch("ideer.tools.tools.get_deferred_registry")
-    def test_tool_search_preserves_existing_registry(self, mock_get_registry, mock_resolve, mock_bash, mock_offline, caplog):
-        import sys
-
-        mock_resolve.return_value = MagicMock(spec=BaseTool, name="dummy", func=None, coroutine=None)
-        config = _make_config(tools=[], tool_search_enabled=True)
-
-        mock_mcp_tool = MagicMock(spec=BaseTool)
-        mock_mcp_tool.name = "mcp_search"
-        mock_mcp_tool.description = "Search tool"
-        mock_mcp_tool.func = None
-        mock_mcp_tool.coroutine = None
-
-        existing_registry = MagicMock()
-        existing_registry.__len__ = MagicMock(return_value=0)
-        mock_get_registry.return_value = existing_registry
-
-        mock_ext_config = MagicMock()
-        mock_ext_config.get_enabled_mcp_servers.return_value = ["server1"]
-
-        mock_tool_search_tool = MagicMock(spec=BaseTool)
-        mock_tool_search_tool.name = "tool_search"
-        mock_tool_search_tool.func = None
-        mock_tool_search_tool.coroutine = None
-
-        mock_ext_module = MagicMock()
-        mock_ext_module.ExtensionsConfig.from_file.return_value = mock_ext_config
-        mock_mcp_cache_module = MagicMock()
-        mock_mcp_cache_module.get_cached_mcp_tools.return_value = [mock_mcp_tool]
-
-        mock_tool_search_module = MagicMock()
-        mock_tool_search_module.tool_search = mock_tool_search_tool
-
-        with (
-            patch.dict(
-                sys.modules,
-                {
-                    "ideer.config.extensions_config": mock_ext_module,
-                    "ideer.mcp.cache": mock_mcp_cache_module,
-                    "ideer.tools.builtins.tool_search": mock_tool_search_module,
-                },
-            ),
-            caplog.at_level(logging.INFO),
-        ):
-            get_available_tools(app_config=config, include_mcp=True)
-
-        assert "preserved promotions" in caplog.text
-
-
-class TestMCPToolsWithoutToolSearch:
-    """Lines 138-139: MCP tools loaded but tool_search disabled."""
-
-    @patch("ideer.tools.tools.is_offline", return_value=False)
-    @patch("ideer.tools.tools.is_host_bash_allowed", return_value=True)
-    @patch("ideer.tools.tools.resolve_variable")
-    def test_mcp_tools_without_tool_search(self, mock_resolve, mock_bash, mock_offline, caplog):
+    @patch("deerflow.tools.tools.is_host_bash_allowed", return_value=True)
+    @patch("deerflow.tools.tools.resolve_variable")
+    def test_mcp_tools_without_tool_search(self, mock_resolve, mock_bash, caplog):
         mock_resolve.return_value = MagicMock(spec=BaseTool, name="dummy", func=None, coroutine=None)
         config = _make_config(tools=[], tool_search_enabled=False)
 
@@ -181,8 +106,8 @@ class TestMCPToolsWithoutToolSearch:
             patch.dict(
                 sys.modules,
                 {
-                    "ideer.config.extensions_config": mock_ext_module,
-                    "ideer.mcp.cache": mock_mcp_cache_module,
+                    "deerflow.config.extensions_config": mock_ext_module,
+                    "deerflow.mcp.cache": mock_mcp_cache_module,
                 },
             ),
             caplog.at_level(logging.INFO),
@@ -197,10 +122,9 @@ class TestMCPToolsWithoutToolSearch:
 class TestMCPNoEnabledServers:
     """No MCP servers enabled -> no MCP tools loaded."""
 
-    @patch("ideer.tools.tools.is_offline", return_value=False)
-    @patch("ideer.tools.tools.is_host_bash_allowed", return_value=True)
-    @patch("ideer.tools.tools.resolve_variable")
-    def test_no_enabled_mcp_servers(self, mock_resolve, mock_bash, mock_offline):
+    @patch("deerflow.tools.tools.is_host_bash_allowed", return_value=True)
+    @patch("deerflow.tools.tools.resolve_variable")
+    def test_no_enabled_mcp_servers(self, mock_resolve, mock_bash):
         mock_resolve.return_value = MagicMock(spec=BaseTool, name="dummy", func=None, coroutine=None)
         config = _make_config(tools=[], tool_search_enabled=False)
 
@@ -215,7 +139,7 @@ class TestMCPNoEnabledServers:
         with patch.dict(
             sys.modules,
             {
-                "ideer.config.extensions_config": mock_ext_module,
+                "deerflow.config.extensions_config": mock_ext_module,
             },
         ):
             result = get_available_tools(app_config=config, include_mcp=True)

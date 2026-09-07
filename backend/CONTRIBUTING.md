@@ -1,6 +1,6 @@
-# Contributing to iDeer Backend
+# Contributing to DeerFlow Backend
 
-Thank you for your interest in contributing to iDeer! This document provides guidelines and instructions for contributing to the backend codebase.
+Thank you for your interest in contributing to DeerFlow! This document provides guidelines and instructions for contributing to the backend codebase.
 
 ## Table of Contents
 
@@ -27,8 +27,8 @@ Thank you for your interest in contributing to iDeer! This document provides gui
 1. Fork the repository on GitHub
 2. Clone your fork locally:
    ```bash
-   git clone https://github.com/YOUR_USERNAME/ideer.git
-   cd ideer
+   git clone https://github.com/YOUR_USERNAME/deer-flow.git
+   cd deer-flow
    ```
 
 ## Development Setup
@@ -63,65 +63,41 @@ make dev
 ## Project Structure
 
 ```
-backend/src/
-├── agents/                  # Agent system
-│   ├── lead_agent/         # Main agent implementation
-│   │   └── agent.py        # Agent factory and creation
-│   ├── middlewares/        # Agent middlewares
-│   │   ├── thread_data_middleware.py
-│   │   ├── sandbox_middleware.py
-│   │   ├── title_middleware.py
-│   │   ├── uploads_middleware.py
-│   │   ├── view_image_middleware.py
-│   │   └── clarification_middleware.py
-│   └── thread_state.py     # Thread state definition
-│
-├── gateway/                 # FastAPI Gateway
-│   ├── app.py              # FastAPI application
-│   └── routers/            # Route handlers
-│       ├── models.py       # /api/models endpoints
-│       ├── mcp.py          # /api/mcp endpoints
-│       ├── skills.py       # /api/skills endpoints
-│       ├── artifacts.py    # /api/threads/.../artifacts
-│       └── uploads.py      # /api/threads/.../uploads
-│
-├── sandbox/                 # Sandbox execution
-│   ├── __init__.py         # Sandbox interface
-│   ├── local.py            # Local sandbox provider
-│   └── tools.py            # Sandbox tools (bash, file ops)
-│
-├── tools/                   # Agent tools
-│   └── builtins/           # Built-in tools
-│       ├── present_file_tool.py
-│       ├── ask_clarification_tool.py
-│       └── view_image_tool.py
-│
-├── mcp/                     # MCP integration
-│   └── manager.py          # MCP server management
-│
-├── models/                  # Model system
-│   └── factory.py          # Model factory
-│
-├── skills/                  # Skills system
-│   └── loader.py           # Skills loader
-│
-├── config/                  # Configuration
-│   ├── app_config.py       # Main app config
-│   ├── extensions_config.py # Extensions config
-│   └── summarization_config.py
-│
-├── community/               # Community tools
-│   ├── tavily/             # Tavily web search
-│   ├── jina/               # Jina web fetch
-│   ├── firecrawl/          # Firecrawl scraping
-│   └── aio_sandbox/        # Docker sandbox
-│
-├── reflection/              # Dynamic loading
-│   └── __init__.py         # Module resolution
-│
-└── utils/                   # Utilities
-    └── __init__.py
+backend/
+├── packages/harness/deerflow/  # deerflow-harness package (import: deerflow.*)
+│   ├── agents/                 # Agent system
+│   │   ├── lead_agent/         # Main agent (agent.py factory, prompt.py)
+│   │   ├── middlewares/        # Agent middleware chain
+│   │   ├── memory/             # Memory extraction & storage
+│   │   └── thread_state.py     # Thread state definition
+│   ├── sandbox/                # Sandbox execution
+│   │   ├── local/              # Local sandbox provider
+│   │   ├── sandbox.py          # Abstract interface
+│   │   ├── tools.py            # Sandbox tools (bash, file ops)
+│   │   └── middleware.py       # Sandbox lifecycle
+│   ├── subagents/              # Subagent delegation
+│   ├── tools/builtins/         # Built-in tools
+│   ├── mcp/                    # MCP integration
+│   ├── models/                 # Model factory
+│   ├── skills/                 # Skills system
+│   ├── config/                 # Configuration system
+│   ├── runtime/                # Embedded run execution (RunManager, StreamBridge)
+│   ├── persistence/            # Checkpointer/store engines & schema migrations
+│   ├── guardrails/             # Pre-tool-call authorization providers
+│   ├── tracing/                # Tracer factory & trace metadata
+│   ├── uploads/                # Uploads manager
+│   ├── tui/                    # Terminal UI (`deerflow` console script)
+│   ├── community/              # Community tools (tavily/, jina_ai/, firecrawl/, …)
+│   ├── reflection/             # Dynamic module loading
+│   └── utils/                  # Utilities
+└── app/                        # FastAPI Gateway + IM channels (import: app.*)
+    ├── gateway/                # Gateway API
+    │   ├── app.py              # FastAPI application
+    │   └── routers/            # Route handlers (threads, models, mcp, skills, uploads, …)
+    └── channels/               # IM channel integrations (Feishu, Slack, Telegram, …)
 ```
+
+See [AGENTS.md](AGENTS.md) for the full module-by-module breakdown.
 
 ## Code Style
 
@@ -224,7 +200,7 @@ Example test:
 
 ```python
 import pytest
-from ideer.models.factory import create_chat_model
+from deerflow.models.factory import create_chat_model
 
 def test_create_chat_model_with_valid_name():
     """Test that a valid model name creates a model instance."""
@@ -266,10 +242,10 @@ Include in your PR description:
 
 ### Adding New Tools
 
-1. Create tool in `packages/harness/ideer/tools/builtins/` or `packages/harness/ideer/community/`:
+1. Create tool in `packages/harness/deerflow/tools/builtins/` or `packages/harness/deerflow/community/`:
 
 ```python
-# packages/harness/ideer/tools/builtins/my_tool.py
+# packages/harness/deerflow/tools/builtins/my_tool.py
 from langchain_core.tools import tool
 
 @tool
@@ -291,37 +267,37 @@ def my_tool(param: str) -> str:
 tools:
   - name: my_tool
     group: my_group
-    use: ideer.tools.builtins.my_tool:my_tool
+    use: deerflow.tools.builtins.my_tool:my_tool
 ```
 
 ### Adding New Middleware
 
-1. Create middleware in `packages/harness/ideer/agents/middlewares/`:
+1. Create middleware in `packages/harness/deerflow/agents/middlewares/`:
 
 ```python
-# packages/harness/ideer/agents/middlewares/my_middleware.py
-from langchain.agents.middleware import BaseMiddleware
-from langchain_core.runnables import RunnableConfig
+# packages/harness/deerflow/agents/middlewares/my_middleware.py
+from langchain.agents import AgentState
+from langchain.agents.middleware import AgentMiddleware
+from langgraph.runtime import Runtime
 
-class MyMiddleware(BaseMiddleware):
+class MyMiddleware(AgentMiddleware[AgentState]):
     """Middleware description."""
 
-    def transform_state(self, state: dict, config: RunnableConfig) -> dict:
-        """Transform the state before agent execution."""
-        # Modify state as needed
-        return state
+    def before_model(self, state: AgentState, runtime: Runtime) -> dict | None:
+        """Runs before each model call. Return a dict of state updates, or None."""
+        return None
+
+    def after_model(self, state: AgentState, runtime: Runtime) -> dict | None:
+        """Runs after each model call. Inspect or modify the result."""
+        return None
 ```
 
-2. Register in `packages/harness/ideer/agents/lead_agent/agent.py`:
+2. Register via `custom_middlewares` when building the agent:
 
 ```python
-middlewares = [
-    ThreadDataMiddleware(),
-    SandboxMiddleware(),
-    MyMiddleware(),  # Add your middleware
-    TitleMiddleware(),
-    ClarificationMiddleware(),
-]
+middlewares = build_middlewares(
+    config, model_name, custom_middlewares=[MyMiddleware()], ...
+)
 ```
 
 ### Adding New API Endpoints
@@ -357,7 +333,7 @@ app.include_router(my_router.router)
 
 When adding new configuration options:
 
-1. Update `packages/harness/ideer/config/app_config.py` with new fields
+1. Update `packages/harness/deerflow/config/app_config.py` with new fields
 2. Add default values in `config.example.yaml`
 3. Document in `docs/CONFIGURATION.md`
 
@@ -387,10 +363,10 @@ To add support for a new MCP server:
 
 To create a new skill:
 
-1. Create directory in `resources/skills/` or `resources/skills/`:
+1. Create directory in `skills/public/` or `skills/custom/`:
 
 ```
-resources/skills/my-skill/
+skills/public/my-skill/
 └── SKILL.md
 ```
 
@@ -420,4 +396,4 @@ If you have questions about contributing:
 2. Look for similar issues or PRs on GitHub
 3. Open a discussion or issue on GitHub
 
-Thank you for contributing to iDeer!
+Thank you for contributing to DeerFlow!

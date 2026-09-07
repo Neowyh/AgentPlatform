@@ -1,11 +1,11 @@
-"""Tests for ideer.agents.features — RuntimeFeatures dataclass and Next/Prev decorators."""
+"""Tests for deerflow.agents.features — RuntimeFeatures dataclass and Next/Prev decorators."""
 
 from __future__ import annotations
 
 import pytest
 from langchain.agents.middleware import AgentMiddleware
 
-from ideer.agents.features import Next, Prev, RuntimeFeatures
+from deerflow.agents.features import Next, Prev, RuntimeFeatures
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -65,6 +65,8 @@ class TestRuntimeFeaturesDefaults:
             "auto_title",
             "guardrail",
             "loop_detection",
+            "token_budget",
+            "memory_config",
         }
         assert set(features.__dataclass_fields__) == expected_flags
 

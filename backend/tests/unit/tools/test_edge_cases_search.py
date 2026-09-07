@@ -1,10 +1,10 @@
-"""Additional coverage tests for ideer.sandbox.search."""
+"""Additional coverage tests for deerflow.sandbox.search."""
 
 from __future__ import annotations
 
 import pytest
 
-from ideer.sandbox.search import (
+from deerflow.sandbox.search import (
     find_glob_matches,
     find_grep_matches,
     is_binary_file,
@@ -219,11 +219,15 @@ class TestFindGrepMatches:
         with pytest.raises(FileNotFoundError):
             find_grep_matches(tmp_path / "nonexistent", "TODO")
 
-    def test_not_a_directory(self, tmp_path):
+    def test_file_root_is_searched_directly(self, tmp_path):
+        # Upstream supports a plain-file root (searched as a single file);
+        # NotADirectoryError now only applies to special files.
         f = tmp_path / "file.txt"
         f.write_text("TODO\n")
-        with pytest.raises(NotADirectoryError):
-            find_grep_matches(f, "TODO")
+        matches, _ = find_grep_matches(f, "TODO")
+        assert len(matches) == 1
+        assert matches[0].line_number == 1
+        assert "TODO" in matches[0].line
 
     def test_symlink_skipped(self, tmp_path):
         workspace = tmp_path / "workspace"

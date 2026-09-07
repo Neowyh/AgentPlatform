@@ -221,7 +221,7 @@ def test_registry_module_import_does_not_eagerly_import_executor() -> None:
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path('backend/packages/harness').resolve()))
-from ideer.subagents.registry import get_subagent_config
+from deerflow.subagents.registry import get_subagent_config
 print(callable(get_subagent_config))
 """
     env = os.environ.copy()

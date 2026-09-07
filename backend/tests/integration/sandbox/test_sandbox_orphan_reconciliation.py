@@ -18,14 +18,14 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from ideer.community.aio_sandbox.sandbox_info import SandboxInfo
+from deerflow.community.aio_sandbox.sandbox_info import SandboxInfo
 
 # ── SandboxBackend.list_running() default ────────────────────────────────────
 
 
 def test_backend_list_running_default_returns_empty():
     """Base SandboxBackend.list_running() returns empty list (backward compat for RemoteSandboxBackend)."""
-    from ideer.community.aio_sandbox.backend import SandboxBackend
+    from deerflow.community.aio_sandbox.backend import SandboxBackend
 
     class StubBackend(SandboxBackend):
         def create(self, thread_id, sandbox_id, extra_mounts=None):
@@ -49,7 +49,7 @@ def test_backend_list_running_default_returns_empty():
 
 def _make_local_backend():
     """Create a LocalContainerBackend with minimal config."""
-    from ideer.community.aio_sandbox.local_backend import LocalContainerBackend
+    from deerflow.community.aio_sandbox.local_backend import LocalContainerBackend
 
     return LocalContainerBackend(
         image="test-image:latest",
@@ -277,7 +277,7 @@ def test_list_running_uses_single_batch_inspect_call(monkeypatch):
 
 def test_parse_docker_timestamp_with_nanoseconds():
     """Should correctly parse Docker's ISO 8601 timestamp with nanoseconds."""
-    from ideer.community.aio_sandbox.local_backend import _parse_docker_timestamp
+    from deerflow.community.aio_sandbox.local_backend import _parse_docker_timestamp
 
     ts = _parse_docker_timestamp("2026-04-08T01:22:50.123456789Z")
     assert ts > 0
@@ -287,7 +287,7 @@ def test_parse_docker_timestamp_with_nanoseconds():
 
 def test_parse_docker_timestamp_without_fractional_seconds():
     """Should parse plain ISO 8601 timestamps without fractional seconds."""
-    from ideer.community.aio_sandbox.local_backend import _parse_docker_timestamp
+    from deerflow.community.aio_sandbox.local_backend import _parse_docker_timestamp
 
     ts = _parse_docker_timestamp("2026-04-08T01:22:50Z")
     expected = datetime(2026, 4, 8, 1, 22, 50, tzinfo=UTC).timestamp()
@@ -295,7 +295,7 @@ def test_parse_docker_timestamp_without_fractional_seconds():
 
 
 def test_parse_docker_timestamp_empty_returns_zero():
-    from ideer.community.aio_sandbox.local_backend import _parse_docker_timestamp
+    from deerflow.community.aio_sandbox.local_backend import _parse_docker_timestamp
 
     assert _parse_docker_timestamp("") == 0.0
     assert _parse_docker_timestamp("not a timestamp") == 0.0
@@ -305,21 +305,21 @@ def test_parse_docker_timestamp_empty_returns_zero():
 
 
 def test_extract_host_port_returns_mapped_port():
-    from ideer.community.aio_sandbox.local_backend import _extract_host_port
+    from deerflow.community.aio_sandbox.local_backend import _extract_host_port
 
     entry = {"NetworkSettings": {"Ports": {"8080/tcp": [{"HostIp": "0.0.0.0", "HostPort": "8081"}]}}}
     assert _extract_host_port(entry, 8080) == 8081
 
 
 def test_extract_host_port_returns_none_when_unmapped():
-    from ideer.community.aio_sandbox.local_backend import _extract_host_port
+    from deerflow.community.aio_sandbox.local_backend import _extract_host_port
 
     entry = {"NetworkSettings": {"Ports": {}}}
     assert _extract_host_port(entry, 8080) is None
 
 
 def test_extract_host_port_handles_missing_fields():
-    from ideer.community.aio_sandbox.local_backend import _extract_host_port
+    from deerflow.community.aio_sandbox.local_backend import _extract_host_port
 
     assert _extract_host_port({}, 8080) is None
     assert _extract_host_port({"NetworkSettings": None}, 8080) is None
@@ -339,7 +339,7 @@ def _make_provider_for_reconciliation():
     this helper must be updated in lockstep — otherwise tests will fail with a
     confusing ``AttributeError`` instead of a meaningful assertion failure.
     """
-    aio_mod = importlib.import_module("ideer.community.aio_sandbox.aio_sandbox_provider")
+    aio_mod = importlib.import_module("deerflow.community.aio_sandbox.aio_sandbox_provider")
     provider = aio_mod.AioSandboxProvider.__new__(aio_mod.AioSandboxProvider)
     provider._lock = threading.Lock()
     provider._sandboxes = {}
@@ -356,6 +356,14 @@ def _make_provider_for_reconciliation():
         "replicas": 3,
     }
     provider._backend = MagicMock()
+    # Attributes added by the upstream provider after this helper was written
+    # (ownership/lease hardening); the helper bypasses __init__, so they must
+    # be seeded here in lockstep (see the WARNING above).
+    provider._unowned_since = {}
+    provider._warm_pool_identity = {}
+    provider._local_teardown = set()
+    provider._ownership = MagicMock()
+    provider._ownership.supports_cross_process = False
     return provider
 
 
@@ -532,7 +540,7 @@ def test_sighup_handler_registered():
     original_sigterm = signal.getsignal(signal.SIGTERM)
     original_sigint = signal.getsignal(signal.SIGINT)
     try:
-        aio_mod = importlib.import_module("ideer.community.aio_sandbox.aio_sandbox_provider")
+        aio_mod = importlib.import_module("deerflow.community.aio_sandbox.aio_sandbox_provider")
         provider._original_sighup = original_sighup
         provider._original_sigterm = original_sigterm
         provider._original_sigint = original_sigint

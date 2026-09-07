@@ -6,10 +6,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 from langchain_core.messages import AIMessage, HumanMessage
 
-from ideer.agents.middlewares import title_middleware as title_middleware_module
-from ideer.agents.middlewares.dynamic_context_middleware import _DYNAMIC_CONTEXT_REMINDER_KEY
-from ideer.agents.middlewares.title_middleware import TitleMiddleware
-from ideer.config.title_config import TitleConfig, get_title_config, set_title_config
+from deerflow.agents.middlewares import title_middleware as title_middleware_module
+from deerflow.agents.middlewares.dynamic_context_middleware import _DYNAMIC_CONTEXT_REMINDER_KEY
+from deerflow.agents.middlewares.title_middleware import TitleMiddleware
+from deerflow.config.title_config import TitleConfig, get_title_config, set_title_config
 
 
 def _clone_title_config(config: TitleConfig) -> TitleConfig:
@@ -93,7 +93,7 @@ class TestTitleMiddlewareCoreLogic:
         assert middleware._should_generate_title(state) is False
 
     def test_generate_title_uses_async_model_and_respects_max_chars(self, monkeypatch):
-        _set_test_title_config(max_chars=12, model_name=None)
+        _set_test_title_config(max_chars=12, model_name="title-model")
         middleware = TitleMiddleware()
         model = MagicMock()
         model.ainvoke = AsyncMock(return_value=AIMessage(content="短标题"))
@@ -109,12 +109,32 @@ class TestTitleMiddlewareCoreLogic:
         title = result["title"]
 
         assert title == "短标题"
-        title_middleware_module.create_chat_model.assert_called_once_with(thinking_enabled=False, attach_tracing=False)
+        created_kwargs = title_middleware_module.create_chat_model.call_args.kwargs
+        assert created_kwargs["name"] == "title-model"
+        assert created_kwargs["thinking_enabled"] is False
+        assert created_kwargs["attach_tracing"] is False
         model.ainvoke.assert_awaited_once()
-        assert model.ainvoke.await_args.kwargs["config"] == {
-            "run_name": "title_agent",
-            "tags": ["middleware:title"],
+        assert model.ainvoke.await_args.kwargs["config"]["run_name"] == "title_agent"
+        tags = model.ainvoke.await_args.kwargs["config"]["tags"]
+        assert "middleware:title" in tags
+        assert "nostream" in tags  # upstream keeps title calls off the event stream
+
+    def test_generate_title_without_model_name_falls_back_locally(self, monkeypatch):
+        """model_name=None means local truncation fallback — no LLM call."""
+        _set_test_title_config(max_chars=12, model_name=None)
+        middleware = TitleMiddleware()
+        monkeypatch.setattr(title_middleware_module, "create_chat_model", MagicMock())
+
+        state = {
+            "messages": [
+                HumanMessage(content="请帮我写一个很长很长的脚本标题"),
+                AIMessage(content="好的，先确认需求"),
+            ]
         }
+        result = asyncio.run(middleware._agenerate_title_result(state))
+
+        assert result["title"] == "请帮我写一个很长很..."
+        title_middleware_module.create_chat_model.assert_not_called()
 
     def test_generate_title_uses_explicit_app_config_without_global_config(self, monkeypatch):
         title_config = TitleConfig(enabled=True, model_name="title-model", max_chars=20)
@@ -282,7 +302,7 @@ class TestTitleMiddlewareCoreLogic:
 
     def test_generate_title_async_strips_think_tags_in_response(self, monkeypatch):
         """Async title generation strips <think> blocks from the model response."""
-        _set_test_title_config(max_chars=50)
+        _set_test_title_config(max_chars=50, model_name="title-model")
         middleware = TitleMiddleware()
         model = MagicMock()
         model.ainvoke = AsyncMock(return_value=AIMessage(content="<think>用户想研究贵阳。</think>贵阳发展研究"))

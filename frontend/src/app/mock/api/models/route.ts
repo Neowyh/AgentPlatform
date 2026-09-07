@@ -16,6 +16,13 @@ export function GET() {
         supports_thinking: true,
       },
       {
+        id: "deepseek-v4",
+        name: "deepseek-v4",
+        model: "deepseek-v4-pro",
+        display_name: "DeepSeek V4",
+        supports_thinking: true,
+      },
+      {
         id: "gpt-5",
         name: "gpt-5",
         model: "gpt-5",

@@ -116,24 +116,21 @@ vi.mock("@/components/ui/dialog", () => ({
   ),
 }));
 
-vi.mock("@/components/workspace/settings/settings-dialog", () => ({
-  SettingsDialog: ({
-    open,
-    onOpenChange,
-  }: {
-    open: boolean;
-    onOpenChange: (open: boolean) => void;
-  }) =>
-    open ? (
-      <div data-testid="settings-dialog">
-        <button
-          data-testid="settings-close"
-          onClick={() => onOpenChange(false)}
-        >
-          Close
-        </button>
-      </div>
-    ) : null,
+// The palette no longer renders the settings dialog itself: it calls
+// openSettings(section) on the shared settings-dialog store, and the
+// workspace-root SettingsDialogHost renders the dialog.
+const mockOpenSettings = vi.fn();
+vi.mock("@/components/workspace/settings", () => ({
+  useSettingsDialog: () => ({
+    open: false,
+    section: "appearance",
+    openSettings: mockOpenSettings,
+    closeSettings: vi.fn(),
+  }),
+  openSettingsDialog: mockOpenSettings,
+  setSettingsDialogOpen: vi.fn(),
+  SettingsDialogHost: () => null,
+  SettingsDialog: () => null,
 }));
 
 // ── Dynamic import ───────────────────────────────────────────────────────────
@@ -160,9 +157,9 @@ describe("CommandPalette", () => {
     expect(screen.queryByTestId("command-dialog")).not.toBeInTheDocument();
   });
 
-  test("does not render settings dialog initially", () => {
+  test("does not open settings initially", () => {
     render(<CommandPalette />);
-    expect(screen.queryByTestId("settings-dialog")).not.toBeInTheDocument();
+    expect(mockOpenSettings).not.toHaveBeenCalled();
   });
 
   test("does not render shortcuts dialog initially", () => {
@@ -191,7 +188,7 @@ describe("CommandPalette", () => {
     expect(commaShortcut).toBeDefined();
     commaShortcut!.action();
     await waitFor(() => {
-      expect(screen.getByTestId("settings-dialog")).toBeInTheDocument();
+      expect(mockOpenSettings).toHaveBeenCalledWith("appearance");
     });
   });
 
@@ -253,7 +250,7 @@ describe("CommandPalette", () => {
     const settingsItem = commandItems[1];
     settingsItem!.click();
     await waitFor(() => {
-      expect(screen.getByTestId("settings-dialog")).toBeInTheDocument();
+      expect(mockOpenSettings).toHaveBeenCalledWith("appearance");
     });
   });
 
@@ -283,17 +280,13 @@ describe("CommandPalette", () => {
     expect(screen.getByTestId("dialog-content")).toBeInTheDocument();
   });
 
-  test("settings dialog can be closed", async () => {
+  test("settings shortcut opens the dialog through the store each time", async () => {
     render(<CommandPalette />);
     const commaShortcut = capturedShortcuts.find((s) => s.key === ",");
     commaShortcut!.action();
+    commaShortcut!.action();
     await waitFor(() => {
-      expect(screen.getByTestId("settings-dialog")).toBeInTheDocument();
-    });
-    const closeBtn = screen.getByTestId("settings-close");
-    closeBtn.click();
-    await waitFor(() => {
-      expect(screen.queryByTestId("settings-dialog")).not.toBeInTheDocument();
+      expect(mockOpenSettings).toHaveBeenCalledTimes(2);
     });
   });
 

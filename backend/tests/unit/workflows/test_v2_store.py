@@ -5,8 +5,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from ideer.persistence.models.workflow_v2 import WorkflowCommandRow, WorkflowDefinitionVersionRow, WorkflowTaskRow, WorkflowV2RunRow
-from ideer.workflows.v2.store import WorkflowV2Store
+from app.agentplatform.workflows.v2.store import WorkflowV2Store
+from deerflow.persistence.models.workflow_v2 import WorkflowCommandRow, WorkflowDefinitionVersionRow, WorkflowTaskRow, WorkflowV2RunRow
 
 
 class _Context:
@@ -246,7 +246,7 @@ async def test_resume_command_does_not_reset_attempts_for_paused_task() -> None:
 
 
 def test_workflow_tasks_include_an_expiring_lease() -> None:
-    from ideer.persistence.models.workflow_v2 import WorkflowTaskRow
+    from deerflow.persistence.models.workflow_v2 import WorkflowTaskRow
 
     assert "lease_expires_at" in WorkflowTaskRow.__table__.columns
 

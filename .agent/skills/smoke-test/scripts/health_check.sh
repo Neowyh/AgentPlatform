@@ -53,7 +53,7 @@ detect_mode() {
             ;;
     esac
 
-    if docker_available && docker ps --format "{{.Names}}" | grep -q "ideer"; then
+    if docker_available && docker ps --format "{{.Names}}" | grep -q "deer-flow"; then
         echo "docker"
     else
         echo "local"
@@ -68,20 +68,19 @@ echo ""
 if [ "$mode" = "docker" ]; then
     summary_hint="make docker-logs"
     print_step "1. Checking container status..."
-    if docker ps --format "{{.Names}}" | grep -q "ideer"; then
+    if docker ps --format "{{.Names}}" | grep -q "deer-flow"; then
         echo "✓ Containers are running:"
         docker ps --format "  - {{.Names}} ({{.Status}})"
     else
-        echo "✗ No iDeer-related containers are running"
+        echo "✗ No DeerFlow-related containers are running"
         all_passed=false
     fi
 else
-    summary_hint="logs/{langgraph,gateway,frontend,nginx}.log"
+    summary_hint="logs/{gateway,frontend,nginx}.log"
     print_step "1. Checking local service ports..."
     check_listen_port "Nginx" 2026
     check_listen_port "Frontend" 3000
     check_listen_port "Gateway" 8001
-    check_listen_port "LangGraph" 2024
 fi
 echo ""
 
@@ -104,8 +103,8 @@ else
 fi
 echo ""
 
-echo "5. Checking LangGraph service..."
-check_http_status "LangGraph service" "http://localhost:2024/" "200|301|302|307|308|404"
+echo "5. Checking LangGraph-compatible Gateway API..."
+check_http_status "LangGraph-compatible Gateway API" "http://localhost:2026/api/langgraph/assistants/lead_agent" "200|401"
 echo ""
 
 echo "=========================================="

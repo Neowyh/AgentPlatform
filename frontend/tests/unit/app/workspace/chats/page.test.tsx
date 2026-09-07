@@ -16,26 +16,42 @@ vi.mock("@/core/i18n/hooks", () => ({
 }));
 
 vi.mock("@/core/threads/hooks", () => ({
-  useThreads: () => ({
-    data: [
-      {
-        thread_id: "thread-1",
-        title: "First Thread",
-        updated_at: new Date("2025-01-15").toISOString(),
-      },
-      {
-        thread_id: "thread-2",
-        title: "Second Thread",
-        updated_at: null,
-      },
-    ],
+  useInfiniteThreads: () => ({
+    data: {
+      pages: [
+        [
+          {
+            thread_id: "thread-1",
+            title: "First Thread",
+            updated_at: new Date("2025-01-15").toISOString(),
+          },
+          {
+            thread_id: "thread-2",
+            title: "Second Thread",
+            updated_at: null,
+          },
+        ],
+      ],
+      pageParams: [0],
+    },
+    fetchNextPage: vi.fn(),
+    hasNextPage: false,
+    isFetchingNextPage: false,
   }),
 }));
 
-vi.mock("@/core/threads/utils", () => ({
+vi.mock("@/core/threads/utils", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   pathOfThread: (thread: any) =>
     `/workspace/chats/${thread.thread_id ?? thread}`,
   titleOfThread: (thread: any) => thread.title ?? "Untitled",
+  channelSourceOfThread: () => null,
+}));
+
+vi.mock("@/components/workspace/thread-list-virtualizer", () => ({
+  VirtualThreadList: ({ items, renderItem }: any) => (
+    <>{items.map((item: any) => renderItem(item))}</>
+  ),
 }));
 
 vi.mock("@/core/utils/datetime", () => ({

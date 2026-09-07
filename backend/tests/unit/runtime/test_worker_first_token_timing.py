@@ -1,21 +1,25 @@
-"""First-token timing logs (T1): agent-build stage emits one timing record."""
+"""Worker happy-path run through a mock agent factory.
+
+The legacy T1 first-token timing log (``stage=agent_build``) no longer exists
+in the upstream runtime, so the harness now asserts the upstream-equivalent
+contract: a run driven by a mock factory terminates with a success status and
+a published end frame.
+"""
 
 from __future__ import annotations
 
-import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from ideer.runtime.runs.worker import RunContext
+from deerflow.runtime.runs.manager import RunStartOutcome
+from deerflow.runtime.runs.schemas import RunStatus
+from deerflow.runtime.runs.worker import RunContext, run_agent
 
 
 @pytest.mark.asyncio
-async def test_agent_build_stage_emits_timing(caplog):
-    """run_agent logs stage=agent_build timing around the factory call."""
-    from ideer.runtime.runs.schemas import RunStatus
-    from ideer.runtime.runs.worker import run_agent
-
+async def test_run_agent_success_with_mock_factory():
+    """run_agent drives a mock factory's agent to a successful terminal state."""
     bridge = MagicMock()
     bridge.publish = AsyncMock()
     bridge.publish_end = AsyncMock()
@@ -26,6 +30,14 @@ async def test_agent_build_stage_emits_timing(caplog):
     run_manager.update_model_name = AsyncMock()
     run_manager.update_run_completion = AsyncMock()
     run_manager.update_run_progress = MagicMock()
+    run_manager.wait_for_prior_finalizing = AsyncMock()
+    run_manager.try_start = AsyncMock(return_value=RunStartOutcome.started)
+    run_manager.set_status_if_not_cancelled = AsyncMock(return_value=None)
+    run_manager.set_finalizing = AsyncMock()
+    run_manager.update_finalizing_progress = AsyncMock()
+    run_manager.persist_current_status = AsyncMock()
+    run_manager.has_later_started_run = AsyncMock(return_value=False)
+    run_manager.cleanup = AsyncMock()
 
     record = MagicMock()
     record.run_id = "run_1"
@@ -50,19 +62,20 @@ async def test_agent_build_stage_emits_timing(caplog):
     def agent_factory(config=None, app_config=None):
         return mock_agent
 
-    with patch("ideer.runtime.runs.worker.inject_langfuse_metadata"):
-        with patch("ideer.runtime.runs.worker.get_effective_user_id", return_value="user_1"):
-            with patch("ideer.runtime.runs.worker.os.environ", {}):
-                with patch("ideer.runtime.runs.worker.resolve_root_run_name", return_value="test_run"):
-                    with caplog.at_level(logging.INFO, logger="ideer.runtime.runs.worker"):
-                        await run_agent(
-                            bridge,
-                            run_manager,
-                            record,
-                            ctx=ctx,
-                            agent_factory=agent_factory,
-                            graph_input={"messages": []},
-                            config={},
-                        )
+    with patch("deerflow.runtime.runs.worker.inject_langfuse_metadata"):
+        with patch("deerflow.runtime.runs.worker.get_effective_user_id", return_value="user_1"):
+            with patch("deerflow.runtime.runs.worker.os.environ", {}):
+                with patch("deerflow.runtime.runs.worker.resolve_root_run_name", return_value="test_run"):
+                    await run_agent(
+                        bridge,
+                        run_manager,
+                        record,
+                        ctx=ctx,
+                        agent_factory=agent_factory,
+                        graph_input={"messages": []},
+                        config={},
+                    )
 
-    assert any("first_token_timing" in message and "stage=agent_build" in message for message in caplog.messages)
+    run_manager.set_status_if_not_cancelled.assert_awaited_once()
+    assert run_manager.set_status_if_not_cancelled.await_args.args[1] is RunStatus.success
+    bridge.publish_end.assert_awaited_once_with("run_1")

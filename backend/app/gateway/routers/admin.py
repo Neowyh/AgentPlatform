@@ -12,19 +12,18 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 
+from app.agentplatform.audit_model import AuditLog
+from app.agentplatform.rbac_models import DepartmentModel, UserModel, UserRole
+from app.agentplatform.resource_models import Resource, ResourceMetadata
+from app.agentplatform.resource_service import ResourceAction, ResourceActor, ResourceService
+from app.agentplatform.visibility_models import VisibilityApplication, VisibilityApplicationStatus
 from app.gateway.authz import get_current_rbac_user, require_role
 from app.gateway.rbac_users import create_auth_user_with_rbac
 from app.gateway.user_deletion import delete_user as service_delete_user
-from ideer.config.app_config import get_app_config
-from ideer.config.paths import get_paths
-from ideer.persistence.engine import get_session_factory
-from ideer.persistence.models.audit_log import AuditLog
-from ideer.persistence.models.resource_catalog import Resource
-from ideer.persistence.models.resource_metadata import ResourceMetadata
-from ideer.persistence.models.user import DepartmentModel, UserModel, UserRole
-from ideer.persistence.models.visibility_application import VisibilityApplication, VisibilityApplicationStatus
-from ideer.resources.service import ResourceAction, ResourceActor, ResourceService
-from ideer.tools.tools import get_available_tools
+from deerflow.config.app_config import get_app_config
+from deerflow.config.paths import get_paths
+from deerflow.persistence.engine import get_session_factory
+from deerflow.tools.tools import get_available_tools
 
 logger = logging.getLogger(__name__)
 

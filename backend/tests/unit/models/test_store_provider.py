@@ -1,4 +1,4 @@
-"""Tests for ideer.runtime.store.provider — comprehensive coverage."""
+"""Tests for deerflow.runtime.store.provider — comprehensive coverage."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-import ideer.runtime.store.provider as mod
+import deerflow.runtime.store.provider as mod
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -16,7 +16,8 @@ import ideer.runtime.store.provider as mod
 
 def _make_config(backend_type: str = "memory", connection_string: str | None = None) -> SimpleNamespace:
     """Build a minimal CheckpointerConfig-like object."""
-    return SimpleNamespace(type=backend_type, connection_string=connection_string)
+    # Upstream CheckpointerConfig now carries postgres_schema for the postgres backend.
+    return SimpleNamespace(type=backend_type, connection_string=connection_string, postgres_schema=None)
 
 
 # ---------------------------------------------------------------------------
@@ -136,9 +137,9 @@ class TestGetStore:
     def test_returns_singleton(self):
         mock_inmem = MagicMock()
         with (
-            patch("ideer.config.checkpointer_config.get_checkpointer_config", return_value=None),
-            patch("ideer.config.app_config._app_config", None),
-            patch("ideer.runtime.store.provider.get_app_config", side_effect=FileNotFoundError),
+            patch("deerflow.config.checkpointer_config.get_checkpointer_config", return_value=None),
+            patch("deerflow.config.app_config._app_config", None),
+            patch("deerflow.runtime.store.provider.get_app_config", side_effect=FileNotFoundError),
             patch("langgraph.store.memory.InMemoryStore", return_value=mock_inmem),
         ):
             store1 = mod.get_store()
@@ -153,7 +154,7 @@ class TestGetStore:
         config = _make_config("memory")
 
         with (
-            patch("ideer.config.checkpointer_config.get_checkpointer_config", return_value=config),
+            patch("deerflow.config.checkpointer_config.get_checkpointer_config", return_value=config),
             patch.object(mod, "_sync_store_cm", return_value=mock_cm),
         ):
             store = mod.get_store()
@@ -162,9 +163,9 @@ class TestGetStore:
     def test_no_config_no_app_config_fallback_inmemory(self):
         mock_inmem = MagicMock()
         with (
-            patch("ideer.config.checkpointer_config.get_checkpointer_config", return_value=None),
-            patch("ideer.config.app_config._app_config", None),
-            patch("ideer.runtime.store.provider.get_app_config", side_effect=FileNotFoundError),
+            patch("deerflow.config.checkpointer_config.get_checkpointer_config", return_value=None),
+            patch("deerflow.config.app_config._app_config", None),
+            patch("deerflow.runtime.store.provider.get_app_config", side_effect=FileNotFoundError),
             patch("langgraph.store.memory.InMemoryStore", return_value=mock_inmem),
         ):
             store = mod.get_store()
@@ -173,10 +174,14 @@ class TestGetStore:
     def test_no_config_but_app_config_exists_then_gets_config(self):
         mock_inmem = MagicMock()
         mock_app = MagicMock()
+        # No legacy checkpointer and no unified database section resolve to
+        # the in-memory store under the upstream contract.
+        mock_app.checkpointer = None
+        mock_app.database = None
         with (
-            patch("ideer.config.checkpointer_config.get_checkpointer_config", side_effect=[None, None]),
-            patch("ideer.config.app_config._app_config", None),
-            patch("ideer.runtime.store.provider.get_app_config", return_value=mock_app),
+            patch("deerflow.config.checkpointer_config.get_checkpointer_config", side_effect=[None, None]),
+            patch("deerflow.config.app_config._app_config", None),
+            patch("deerflow.runtime.store.provider.get_app_config", return_value=mock_app),
             patch("langgraph.store.memory.InMemoryStore", return_value=mock_inmem),
         ):
             store = mod.get_store()
@@ -192,9 +197,9 @@ class TestResetStore:
     def test_reset_clears_singleton(self):
         mock_inmem = MagicMock()
         with (
-            patch("ideer.config.checkpointer_config.get_checkpointer_config", return_value=None),
-            patch("ideer.config.app_config._app_config", None),
-            patch("ideer.runtime.store.provider.get_app_config", side_effect=FileNotFoundError),
+            patch("deerflow.config.checkpointer_config.get_checkpointer_config", return_value=None),
+            patch("deerflow.config.app_config._app_config", None),
+            patch("deerflow.runtime.store.provider.get_app_config", side_effect=FileNotFoundError),
             patch("langgraph.store.memory.InMemoryStore", return_value=mock_inmem),
         ):
             mod.get_store()
@@ -231,8 +236,9 @@ class TestStoreContext:
         mock_inmem = MagicMock()
         mock_app = MagicMock()
         mock_app.checkpointer = None
+        mock_app.database = None
         with (
-            patch("ideer.runtime.store.provider.get_app_config", return_value=mock_app),
+            patch("deerflow.runtime.store.provider.get_app_config", return_value=mock_app),
             patch("langgraph.store.memory.InMemoryStore", return_value=mock_inmem),
         ):
             with mod.store_context() as store:
@@ -247,7 +253,7 @@ class TestStoreContext:
         mock_app.checkpointer = _make_config("memory")
 
         with (
-            patch("ideer.runtime.store.provider.get_app_config", return_value=mock_app),
+            patch("deerflow.runtime.store.provider.get_app_config", return_value=mock_app),
             patch.object(mod, "_sync_store_cm", return_value=mock_cm),
         ):
             with mod.store_context() as store:

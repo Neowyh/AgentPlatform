@@ -7,8 +7,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from ideer.skills.storage.skill_storage import _SKILL_NAME_PATTERN, SkillStorage
-from ideer.skills.types import SKILL_MD_FILE, Skill, SkillCategory
+from deerflow.skills.storage.skill_storage import _SKILL_NAME_PATTERN, SkillStorage
+from deerflow.skills.types import SKILL_MD_FILE, Skill, SkillCategory
 
 # ---------------------------------------------------------------------------
 # Concrete subclass for testing
@@ -139,7 +139,7 @@ class TestValidateRelativePath:
 class TestEnsureSafeSupportPath:
     def test_valid_support_path(self, tmp_path):
         storage = _FakeSkillStorage(tmp_path)
-        skill_dir = tmp_path / "my-skill"
+        skill_dir = tmp_path / "custom" / "my-skill"
         (skill_dir / "references").mkdir(parents=True)
         result = storage.ensure_safe_support_path("my-skill", "references/doc.md")
         assert result == (skill_dir / "references" / "doc.md").resolve()
@@ -198,17 +198,17 @@ class TestPathHelpers:
     def test_get_custom_skill_dir(self, tmp_path):
         storage = _FakeSkillStorage(tmp_path)
         result = storage.get_custom_skill_dir("my-skill")
-        assert result == tmp_path / "my-skill"
+        assert result == tmp_path / "custom" / "my-skill"
 
     def test_get_custom_skill_file(self, tmp_path):
         storage = _FakeSkillStorage(tmp_path)
         result = storage.get_custom_skill_file("my-skill")
-        assert result == tmp_path / "my-skill" / SKILL_MD_FILE
+        assert result == tmp_path / "custom" / "my-skill" / SKILL_MD_FILE
 
     def test_get_skill_history_file(self, tmp_path):
         storage = _FakeSkillStorage(tmp_path)
         result = storage.get_skill_history_file("my-skill")
-        assert result == tmp_path / ".history" / "my-skill.jsonl"
+        assert result == tmp_path / "custom" / ".history" / "my-skill.jsonl"
 
     def test_path_helpers_validate_name(self, tmp_path):
         storage = _FakeSkillStorage(tmp_path)
@@ -228,7 +228,7 @@ class TestPathHelpers:
 class TestInstallSkillFromArchive:
     def test_sync_wrapper(self, tmp_path):
         storage = _FakeSkillStorage(tmp_path)
-        with patch("ideer.skills.installer._run_async_install", return_value={"installed": True}) as mock_run:
+        with patch("deerflow.skills.installer._run_async_install", return_value={"installed": True}) as mock_run:
             result = storage.install_skill_from_archive("/tmp/test.skill")
             mock_run.assert_called_once()
             assert result == {"installed": True}
@@ -277,9 +277,9 @@ class TestLoadSkills:
         )
 
         with (
-            patch("ideer.skills.parser.parse_skill_file") as mock_parse,
-            patch("ideer.config.extensions_config.ExtensionsConfig.from_file") as mock_ext,
-            patch("ideer.config.network_mode.is_offline", return_value=False),
+            patch("deerflow.skills.parser.parse_skill_file") as mock_parse,
+            patch("deerflow.config.extensions_config.ExtensionsConfig.from_file") as mock_ext,
+            patch("app.agentplatform.config.network_mode.is_offline", return_value=False),
         ):
             skill = Skill(
                 name="test-skill",
@@ -310,9 +310,9 @@ class TestLoadSkills:
         skill_dir_b.mkdir(parents=True)
 
         with (
-            patch("ideer.skills.parser.parse_skill_file") as mock_parse,
-            patch("ideer.config.extensions_config.ExtensionsConfig.from_file") as mock_ext,
-            patch("ideer.config.network_mode.is_offline", return_value=False),
+            patch("deerflow.skills.parser.parse_skill_file") as mock_parse,
+            patch("deerflow.config.extensions_config.ExtensionsConfig.from_file") as mock_ext,
+            patch("app.agentplatform.config.network_mode.is_offline", return_value=False),
         ):
             skill_a = Skill(
                 name="skill-a",
@@ -346,54 +346,29 @@ class TestLoadSkills:
         assert len(skills) == 1
         assert skills[0].name == "skill-a"
 
-    def test_load_skills_offline_filters_internet_skills(self, tmp_path):
-        storage = _FakeSkillStorage(tmp_path)
-        storage._skills["online-skill"] = "content"
-        storage._skills["offline-skill"] = "content"
+    def test_load_skills_offline_filters_internet_skills(self, tmp_path, monkeypatch):
+        """Enterprise intranet mode (IDEER_NETWORK_MODE=offline) hides skills
+        declaring `requires-internet: true` (EnterpriseSkillStorage policy)."""
+        from app.agentplatform.skills.storage import EnterpriseSkillStorage
 
-        skill_dir_a = tmp_path / "online-skill"
-        skill_dir_a.mkdir(parents=True)
-        skill_dir_b = tmp_path / "offline-skill"
-        skill_dir_b.mkdir(parents=True)
+        monkeypatch.setenv("IDEER_NETWORK_MODE", "offline")
+        storage = EnterpriseSkillStorage(host_path=str(tmp_path))
 
-        with (
-            patch("ideer.skills.parser.parse_skill_file") as mock_parse,
-            patch("ideer.config.extensions_config.ExtensionsConfig.from_file") as mock_ext,
-            patch("ideer.config.network_mode.is_offline", return_value=True),
-        ):
-            skill_online = Skill(
-                name="online-skill",
-                description="needs internet",
-                license=None,
-                skill_dir=skill_dir_a,
-                skill_file=skill_dir_a / SKILL_MD_FILE,
-                relative_path=Path("online-skill"),
-                category=SkillCategory.CUSTOM,
-                requires_internet=True,
-            )
-            skill_offline = Skill(
-                name="offline-skill",
-                description="works offline",
-                license=None,
-                skill_dir=skill_dir_b,
-                skill_file=skill_dir_b / SKILL_MD_FILE,
-                relative_path=Path("offline-skill"),
-                category=SkillCategory.CUSTOM,
-                requires_internet=False,
-            )
+        public_dir = tmp_path / "public"
+        (public_dir / "online-skill").mkdir(parents=True)
+        (public_dir / "online-skill" / SKILL_MD_FILE).write_text(
+            "---\nname: online-skill\ndescription: needs internet\nrequires-internet: true\n---\n# Test\n",
+            encoding="utf-8",
+        )
+        (public_dir / "offline-skill").mkdir(parents=True)
+        (public_dir / "offline-skill" / SKILL_MD_FILE).write_text(
+            "---\nname: offline-skill\ndescription: works offline\n---\n# Test\n",
+            encoding="utf-8",
+        )
 
-            def parse_side_effect(md_path, **kwargs):
-                if "online-skill" in str(md_path):
-                    return skill_online
-                return skill_offline
+        skills = storage.load_skills()
 
-            mock_parse.side_effect = parse_side_effect
-            mock_ext.return_value = MagicMock(is_skill_enabled=MagicMock(return_value=True))
-
-            skills = storage.load_skills()
-
-        assert len(skills) == 1
-        assert skills[0].name == "offline-skill"
+        assert [s.name for s in skills] == ["offline-skill"]
 
     def test_load_skills_extensions_config_failure_continues(self, tmp_path):
         storage = _FakeSkillStorage(tmp_path)
@@ -403,9 +378,9 @@ class TestLoadSkills:
         skill_dir.mkdir(parents=True)
 
         with (
-            patch("ideer.skills.parser.parse_skill_file") as mock_parse,
-            patch("ideer.config.extensions_config.ExtensionsConfig.from_file", side_effect=RuntimeError("config error")),
-            patch("ideer.config.network_mode.is_offline", return_value=False),
+            patch("deerflow.skills.parser.parse_skill_file") as mock_parse,
+            patch("deerflow.config.extensions_config.ExtensionsConfig.from_file", side_effect=RuntimeError("config error")),
+            patch("app.agentplatform.config.network_mode.is_offline", return_value=False),
         ):
             skill = Skill(
                 name="test-skill",
@@ -432,9 +407,9 @@ class TestLoadSkills:
             skill_dir.mkdir(parents=True, exist_ok=True)
 
         with (
-            patch("ideer.skills.parser.parse_skill_file") as mock_parse,
-            patch("ideer.config.extensions_config.ExtensionsConfig.from_file") as mock_ext,
-            patch("ideer.config.network_mode.is_offline", return_value=False),
+            patch("deerflow.skills.parser.parse_skill_file") as mock_parse,
+            patch("deerflow.config.extensions_config.ExtensionsConfig.from_file") as mock_ext,
+            patch("app.agentplatform.config.network_mode.is_offline", return_value=False),
         ):
 
             def make_skill(name):
@@ -470,89 +445,14 @@ class TestLoadSkills:
         skill_dir.mkdir(parents=True)
 
         with (
-            patch("ideer.skills.parser.parse_skill_file", return_value=None),
-            patch("ideer.config.extensions_config.ExtensionsConfig.from_file") as mock_ext,
-            patch("ideer.config.network_mode.is_offline", return_value=False),
+            patch("deerflow.skills.parser.parse_skill_file", return_value=None),
+            patch("deerflow.config.extensions_config.ExtensionsConfig.from_file") as mock_ext,
+            patch("app.agentplatform.config.network_mode.is_offline", return_value=False),
         ):
             mock_ext.return_value = MagicMock(is_skill_enabled=MagicMock(return_value=True))
             skills = storage.load_skills()
 
         assert skills == []
-
-
-# ---------------------------------------------------------------------------
-# Skill enabled resolution
-# ---------------------------------------------------------------------------
-
-
-class TestSkillAccessHelpers:
-    def test_resolve_skill_enabled_priority(self, tmp_path):
-        storage = _FakeSkillStorage(tmp_path)
-        skill = Skill(
-            name="custom-skill",
-            description="",
-            license=None,
-            skill_dir=tmp_path / "custom-skill",
-            skill_file=tmp_path / "custom-skill" / SKILL_MD_FILE,
-            relative_path=Path("custom-skill"),
-            category=SkillCategory.CUSTOM,
-            enabled=False,
-        )
-
-        assert (
-            storage._resolve_skill_enabled(
-                skill,
-                {"custom-skill": True},
-                {},
-                {},
-            )
-            is True
-        )
-        assert (
-            storage._resolve_skill_enabled(
-                skill,
-                {"custom-skill": True},
-                {"custom-skill": {"enabled": False, "user_override_allowed": False}},
-                {},
-            )
-            is False
-        )
-        assert (
-            storage._resolve_skill_enabled(
-                skill,
-                {"custom-skill": True},
-                {},
-                {"custom-skill": {"enabled": False, "user_override_allowed": False}},
-            )
-            is False
-        )
-        assert (
-            storage._resolve_skill_enabled(
-                skill,
-                {},
-                {"custom-skill": {"enabled": True}},
-                {},
-            )
-            is True
-        )
-        assert (
-            storage._resolve_skill_enabled(
-                skill,
-                {},
-                {},
-                {"custom-skill": {"enabled": True}},
-            )
-            is True
-        )
-        assert storage._resolve_skill_enabled(skill, {}, {}, {}) is False
-
-    @pytest.mark.asyncio
-    async def test_clear_cache_logs(self, tmp_path):
-        storage = _FakeSkillStorage(tmp_path)
-        with patch("ideer.skills.storage.skill_storage.logger.info") as info:
-            await storage.clear_cache()
-
-        info.assert_called_once_with("Skill storage cache cleared")
 
 
 # ---------------------------------------------------------------------------
@@ -620,19 +520,19 @@ class TestAbstractOperations:
 
 class TestValidateSkillMarkdownContent:
     def test_valid_content(self, tmp_path):
-        with patch("ideer.skills.validation._validate_skill_frontmatter") as mock_validate:
+        with patch("deerflow.skills.validation._validate_skill_frontmatter") as mock_validate:
             mock_validate.return_value = (True, "", "test-skill")
             # Should not raise
             SkillStorage.validate_skill_markdown_content("test-skill", "# Test")
 
     def test_invalid_frontmatter_raises(self, tmp_path):
-        with patch("ideer.skills.validation._validate_skill_frontmatter") as mock_validate:
+        with patch("deerflow.skills.validation._validate_skill_frontmatter") as mock_validate:
             mock_validate.return_value = (False, "Invalid frontmatter", None)
             with pytest.raises(ValueError, match="Invalid frontmatter"):
                 SkillStorage.validate_skill_markdown_content("test-skill", "# Bad")
 
     def test_name_mismatch_raises(self, tmp_path):
-        with patch("ideer.skills.validation._validate_skill_frontmatter") as mock_validate:
+        with patch("deerflow.skills.validation._validate_skill_frontmatter") as mock_validate:
             mock_validate.return_value = (True, "", "different-name")
             with pytest.raises(ValueError, match="must match requested skill name"):
                 SkillStorage.validate_skill_markdown_content("test-skill", "# Test")

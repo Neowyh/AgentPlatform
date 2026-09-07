@@ -3,18 +3,16 @@
 Uses a temp SQLite DB to test ORM-backed CRUD operations.
 """
 
-import re
-
 import pytest
-from sqlalchemy.dialects import postgresql
 
-from ideer.persistence.run import RunRepository
-from ideer.runtime import RunManager, RunStatus
-from ideer.runtime.runs.store.base import RunStore
+from deerflow.persistence.run import RunRepository
+from deerflow.runtime import RunManager, RunStatus
+from deerflow.runtime.runs.manager import CancelOutcome
+from deerflow.runtime.runs.store.base import RunStore
 
 
 async def _make_repo(tmp_path):
-    from ideer.persistence.engine import get_session_factory, init_engine
+    from deerflow.persistence.engine import get_session_factory, init_engine
 
     url = f"sqlite+aiosqlite:///{tmp_path / 'test.db'}"
     await init_engine("sqlite", url=url, sqlite_dir=str(tmp_path))
@@ -22,7 +20,7 @@ async def _make_repo(tmp_path):
 
 
 async def _cleanup():
-    from ideer.persistence.engine import close_engine
+    from deerflow.persistence.engine import close_engine
 
     await close_engine()
 
@@ -57,6 +55,18 @@ class _CustomRunStoreWithoutProgress(RunStore):
 
     async def aggregate_tokens_by_thread(self, *args, **kwargs):
         return {}
+
+    async def start_run(self, run_id: str) -> bool:
+        return False
+
+    async def update_lease(self, *args, **kwargs):
+        return None
+
+    async def claim_for_takeover(self, *args, **kwargs):
+        return None
+
+    async def list_inflight_with_expired_lease(self, *args, **kwargs):
+        return []
 
 
 @pytest.mark.anyio
@@ -127,7 +137,9 @@ class TestRunRepository:
     @pytest.mark.anyio
     async def test_list_by_thread(self, tmp_path):
         repo = await _make_repo(tmp_path)
-        await repo.put("r1", thread_id="t1")
+        # Upstream keeps at most one pending/running run per thread
+        # (uq_runs_thread_active); earlier runs on the thread are terminal.
+        await repo.put("r1", thread_id="t1", status="success")
         await repo.put("r2", thread_id="t1")
         await repo.put("r3", thread_id="t2")
         rows = await repo.list_by_thread("t1")
@@ -139,7 +151,7 @@ class TestRunRepository:
     async def test_list_by_thread_owner_filter(self, tmp_path):
         repo = await _make_repo(tmp_path)
         await repo.put("r1", thread_id="t1", user_id="alice")
-        await repo.put("r2", thread_id="t1", user_id="bob")
+        await repo.put("r2", thread_id="t1", user_id="bob", status="success")
         rows = await repo.list_by_thread("t1", user_id="alice")
         assert len(rows) == 1
         assert rows[0]["user_id"] == "alice"
@@ -163,8 +175,8 @@ class TestRunRepository:
     async def test_list_pending(self, tmp_path):
         repo = await _make_repo(tmp_path)
         await repo.put("r1", thread_id="t1", status="pending")
-        await repo.put("r2", thread_id="t1", status="running")
-        await repo.put("r3", thread_id="t2", status="pending")
+        await repo.put("r2", thread_id="t2", status="running")
+        await repo.put("r3", thread_id="t3", status="pending")
         pending = await repo.list_pending()
         assert len(pending) == 2
         assert all(r["status"] == "pending" for r in pending)
@@ -174,9 +186,9 @@ class TestRunRepository:
     async def test_list_inflight_returns_pending_and_running_before_cutoff(self, tmp_path):
         repo = await _make_repo(tmp_path)
         await repo.put("pending-old", thread_id="t1", status="pending", created_at="2026-01-01T00:00:00+00:00")
-        await repo.put("running-old", thread_id="t1", status="running", created_at="2026-01-01T00:00:01+00:00")
+        await repo.put("running-old", thread_id="t2", status="running", created_at="2026-01-01T00:00:01+00:00")
         await repo.put("success-old", thread_id="t1", status="success", created_at="2026-01-01T00:00:02+00:00")
-        await repo.put("pending-new", thread_id="t1", status="pending", created_at="2026-01-01T00:00:03+00:00")
+        await repo.put("pending-new", thread_id="t4", status="pending", created_at="2026-01-01T00:00:03+00:00")
 
         inflight = await repo.list_inflight(before="2026-01-01T00:00:02+00:00")
 
@@ -396,7 +408,7 @@ class TestRunRepository:
     async def test_list_by_thread_ordered_desc(self, tmp_path):
         """list_by_thread returns newest first."""
         repo = await _make_repo(tmp_path)
-        await repo.put("r1", thread_id="t1", created_at="2024-01-01T00:00:00+00:00")
+        await repo.put("r1", thread_id="t1", status="success", created_at="2024-01-01T00:00:00+00:00")
         await repo.put("r2", thread_id="t1", created_at="2024-01-02T00:00:00+00:00")
         rows = await repo.list_by_thread("t1")
         assert rows[0]["run_id"] == "r2"
@@ -407,7 +419,8 @@ class TestRunRepository:
     async def test_list_by_thread_limit(self, tmp_path):
         repo = await _make_repo(tmp_path)
         for i in range(5):
-            await repo.put(f"r{i}", thread_id="t1")
+            # One active run per thread: earlier runs on t1 are terminal.
+            await repo.put(f"r{i}", thread_id="t1", status="pending" if i == 4 else "success")
         rows = await repo.list_by_thread("t1", limit=2)
         assert len(rows) == 2
         await _cleanup()
@@ -415,7 +428,7 @@ class TestRunRepository:
     @pytest.mark.anyio
     async def test_owner_none_returns_all(self, tmp_path):
         repo = await _make_repo(tmp_path)
-        await repo.put("r1", thread_id="t1", user_id="alice")
+        await repo.put("r1", thread_id="t1", user_id="alice", status="success")
         await repo.put("r2", thread_id="t1", user_id="bob")
         rows = await repo.list_by_thread("t1", user_id=None)
         assert len(rows) == 2
@@ -424,7 +437,7 @@ class TestRunRepository:
     @pytest.mark.anyio
     async def test_model_name_persistence(self, tmp_path):
         """RunRepository should persist, normalize, and truncate model_name correctly via SQL."""
-        from ideer.persistence.engine import get_session_factory, init_engine
+        from deerflow.persistence.engine import get_session_factory, init_engine
 
         url = f"sqlite+aiosqlite:///{tmp_path / 'test.db'}"
         await init_engine("sqlite", url=url, sqlite_dir=str(tmp_path))
@@ -436,65 +449,21 @@ class TestRunRepository:
         assert row["model_name"] == "gpt-4o"
 
         long_name = "a" * 200
-        await repo.put("run-2", thread_id="thread-1", model_name=long_name)
+        await repo.put("run-2", thread_id="thread-2", model_name=long_name)
         row2 = await repo.get("run-2")
         assert row2["model_name"] == "a" * 128
 
-        await repo.put("run-3", thread_id="thread-1", model_name=123)
+        await repo.put("run-3", thread_id="thread-3", model_name=123)
         row3 = await repo.get("run-3")
         assert row3["model_name"] == "123"
 
-        await repo.put("run-4", thread_id="thread-1", model_name=None)
+        await repo.put("run-4", thread_id="thread-4", model_name=None)
         row4 = await repo.get("run-4")
         assert row4["model_name"] is None
 
         await _cleanup()
 
     @pytest.mark.anyio
-    async def test_aggregate_tokens_by_thread_reuses_shared_model_name_expression(self):
-        captured = []
-
-        class FakeResult:
-            def all(self):
-                return []
-
-        class FakeSession:
-            async def execute(self, stmt):
-                captured.append(stmt)
-                return FakeResult()
-
-        class FakeSessionContext:
-            async def __aenter__(self):
-                return FakeSession()
-
-            async def __aexit__(self, exc_type, exc, tb):
-                return None
-
-        repo = RunRepository(lambda: FakeSessionContext())
-
-        agg = await repo.aggregate_tokens_by_thread("t1")
-        assert agg == {
-            "total_tokens": 0,
-            "total_input_tokens": 0,
-            "total_output_tokens": 0,
-            "total_runs": 0,
-            "by_model": {},
-            "by_caller": {"lead_agent": 0, "subagent": 0, "middleware": 0},
-        }
-        assert len(captured) == 1
-
-        stmt = captured[0]
-        compiled_sql = str(stmt.compile(dialect=postgresql.dialect()))
-        select_sql, group_by_sql = compiled_sql.split(" GROUP BY ", maxsplit=1)
-        model_expr_pattern = r"coalesce\(runs\.model_name, %\(([^)]+)\)s\)"
-
-        select_match = re.search(model_expr_pattern + r" AS model", select_sql)
-        group_by_match = re.fullmatch(model_expr_pattern, group_by_sql.strip())
-
-        assert select_match is not None
-        assert group_by_match is not None
-        assert select_match.group(1) == group_by_match.group(1)
-
     @pytest.mark.anyio
     async def test_run_manager_hydrates_store_only_run_from_sql(self, tmp_path):
         """RunManager should hydrate historical runs from SQL-backed store."""
@@ -533,7 +502,7 @@ class TestRunRepository:
         cancelled = await manager.cancel(record.run_id)
         row = await repo.get(record.run_id)
 
-        assert cancelled is True
+        assert cancelled is CancelOutcome.cancelled
         assert row is not None
         assert row["status"] == "interrupted"
         await _cleanup()

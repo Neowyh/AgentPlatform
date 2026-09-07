@@ -4,7 +4,7 @@ Combines the existing thread-local filesystem cleanup with LangGraph
 Platform-compatible thread management backed by the checkpointer.
 
 Channel values returned in state responses are serialized through
-:func:`ideer.runtime.serialization.serialize_channel_values` to
+:func:`deerflow.runtime.serialize_channel_values` to
 ensure LangChain message objects are converted to JSON-safe dicts
 matching the LangGraph Platform wire format expected by the
 ``useStream`` React hook.
@@ -22,11 +22,14 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.gateway.authz import require_permission
 from app.gateway.deps import get_checkpointer
+from app.gateway.internal_auth import get_trusted_internal_owner_user_id
 from app.gateway.utils import sanitize_log_param
-from ideer.config.paths import Paths, get_paths
-from ideer.runtime import serialize_channel_values
-from ideer.runtime.user_context import get_effective_user_id
-from ideer.utils.time import coerce_iso, now_iso
+from deerflow.config.paths import Paths, get_paths
+from deerflow.runtime import serialize_channel_values
+from deerflow.runtime.goal import DEFAULT_MAX_GOAL_CONTINUATIONS, build_goal_state, ensure_thread_checkpoint, goal_thread_lock, read_thread_goal, write_thread_goal
+from deerflow.runtime.secret_context import redact_metadata_secrets
+from deerflow.runtime.user_context import get_effective_user_id
+from deerflow.utils.time import coerce_iso, now_iso
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/threads", tags=["threads"])
@@ -71,6 +74,11 @@ class ThreadResponse(BaseModel):
     values: dict[str, Any] = Field(default_factory=dict, description="Current state channel values")
     interrupts: dict[str, Any] = Field(default_factory=dict, description="Pending interrupts")
 
+    @field_validator("metadata", mode="before")
+    @classmethod
+    def _redact_metadata_secrets(cls, value: Any) -> Any:
+        return redact_metadata_secrets(value)
+
 
 class ThreadCreateRequest(BaseModel):
     """Request body for creating a thread."""
@@ -96,11 +104,11 @@ class ThreadSearchRequest(BaseModel):
         """Reject filter entries the SQL backend cannot compile.
 
         Enforces consistent behaviour across SQL and memory backends.
-        See ``ideer.persistence.json_compat`` for the shared validators.
+        See ``deerflow.persistence.json_compat`` for the shared validators.
         """
         if not v:
             return v
-        from ideer.persistence.json_compat import validate_metadata_filter_key, validate_metadata_filter_value
+        from deerflow.persistence.json_compat import validate_metadata_filter_key, validate_metadata_filter_value
 
         bad_entries: list[str] = []
         for key, value in v.items():
@@ -125,6 +133,11 @@ class ThreadStateResponse(BaseModel):
     created_at: str | None = Field(default=None, description="Checkpoint timestamp")
     tasks: list[dict[str, Any]] = Field(default_factory=list, description="Interrupted task details")
 
+    @field_validator("metadata", mode="before")
+    @classmethod
+    def _redact_metadata_secrets(cls, value: Any) -> Any:
+        return redact_metadata_secrets(value)
+
 
 class ThreadPatchRequest(BaseModel):
     """Request body for patching thread metadata."""
@@ -143,6 +156,24 @@ class ThreadStateUpdateRequest(BaseModel):
     as_node: str | None = Field(default=None, description="Node identity for the update")
 
 
+class ThreadGoalRequest(BaseModel):
+    """Request body for setting a thread-scoped goal."""
+
+    objective: str = Field(..., min_length=1, max_length=4000, description="Completion condition for the agent to keep pursuing")
+    max_continuations: int = Field(
+        default=DEFAULT_MAX_GOAL_CONTINUATIONS,
+        ge=0,
+        le=DEFAULT_MAX_GOAL_CONTINUATIONS,
+        description="Maximum automatic hidden continuation turns before stopping",
+    )
+
+
+class ThreadGoalResponse(BaseModel):
+    """Response model for a thread goal."""
+
+    goal: dict[str, Any] | None = Field(default=None, description="Current goal state, or null when no goal is active")
+
+
 class HistoryEntry(BaseModel):
     """Single checkpoint history entry."""
 
@@ -152,6 +183,11 @@ class HistoryEntry(BaseModel):
     values: dict[str, Any] = Field(default_factory=dict)
     created_at: str | None = None
     next: list[str] = Field(default_factory=list)
+
+    @field_validator("metadata", mode="before")
+    @classmethod
+    def _redact_metadata_secrets(cls, value: Any) -> Any:
+        return redact_metadata_secrets(value)
 
 
 class ThreadHistoryRequest(BaseModel):
@@ -202,6 +238,36 @@ def _derive_thread_status(checkpoint_tuple) -> str:
         return "interrupted"
 
     return "idle"
+
+
+async def _ensure_thread_for_goal(thread_id: str, request: Request) -> None:
+    """Ensure a thread_meta row and root checkpoint exist for goal commands."""
+    from app.gateway.deps import get_thread_store
+
+    thread_store = get_thread_store(request)
+    checkpointer = get_checkpointer(request)
+    thread_owner_user_id = get_trusted_internal_owner_user_id(request)
+    thread_owner_kwargs = {"user_id": thread_owner_user_id} if thread_owner_user_id else {}
+
+    record = await thread_store.get(thread_id, **thread_owner_kwargs)
+    if record is None and thread_owner_user_id:
+        unscoped_record = await thread_store.get(thread_id, user_id=None)
+        if unscoped_record is not None:
+            if unscoped_record.get("user_id") != thread_owner_user_id:
+                await thread_store.update_owner(thread_id, thread_owner_user_id, user_id=None)
+            record = await thread_store.get(thread_id, **thread_owner_kwargs)
+    if record is None:
+        try:
+            await thread_store.create(thread_id, metadata={}, **thread_owner_kwargs)
+        except Exception:
+            logger.exception("Failed to create thread_meta for goal thread %s", sanitize_log_param(thread_id))
+            raise HTTPException(status_code=500, detail="Failed to create thread") from None
+
+    try:
+        await ensure_thread_checkpoint(checkpointer, thread_id)
+    except Exception:
+        logger.exception("Failed to create goal checkpoint for thread %s", sanitize_log_param(thread_id))
+        raise HTTPException(status_code=500, detail="Failed to create thread checkpoint") from None
 
 
 # ---------------------------------------------------------------------------
@@ -316,7 +382,7 @@ async def search_threads(body: ThreadSearchRequest, request: Request) -> list[Th
     (SQL-backed for sqlite/postgres, Store-backed for memory mode).
     """
     from app.gateway.deps import get_thread_store
-    from ideer.persistence.thread_meta import InvalidMetadataFilterError
+    from deerflow.persistence.thread_meta import InvalidMetadataFilterError
 
     repo = get_thread_store(request)
     try:
@@ -432,6 +498,60 @@ async def get_thread(thread_id: str, request: Request) -> ThreadResponse:
 
 
 # ---------------------------------------------------------------------------
+@router.get("/{thread_id}/goal", response_model=ThreadGoalResponse)
+@require_permission("threads", "read", owner_check=True)
+async def get_thread_goal(thread_id: str, request: Request) -> ThreadGoalResponse:
+    """Return the active Claude-style goal for a thread, if any."""
+    checkpointer = get_checkpointer(request)
+    try:
+        goal = await read_thread_goal(checkpointer, thread_id)
+    except Exception:
+        logger.exception("Failed to read goal for thread %s", sanitize_log_param(thread_id))
+        raise HTTPException(status_code=500, detail="Failed to read thread goal") from None
+    return ThreadGoalResponse(goal=goal)
+
+
+@router.put("/{thread_id}/goal", response_model=ThreadGoalResponse)
+@require_permission("threads", "write", owner_check=True)
+async def set_thread_goal(thread_id: str, body: ThreadGoalRequest, request: Request) -> ThreadGoalResponse:
+    """Set or replace the active goal for a thread.
+
+    ``/chats/new`` pages already hold a generated UUID before the first run, so
+    this endpoint creates the missing thread checkpoint on demand.
+    """
+    checkpointer = get_checkpointer(request)
+    await _ensure_thread_for_goal(thread_id, request)
+    try:
+        goal = build_goal_state(body.objective, max_continuations=body.max_continuations)
+        async with goal_thread_lock(thread_id):
+            await write_thread_goal(checkpointer, thread_id, goal, as_node="goal", create_if_missing=True)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception:
+        logger.exception("Failed to set goal for thread %s", sanitize_log_param(thread_id))
+        raise HTTPException(status_code=500, detail="Failed to set thread goal") from None
+    return ThreadGoalResponse(goal=goal)
+
+
+@router.delete("/{thread_id}/goal", response_model=ThreadGoalResponse)
+@require_permission("threads", "write", owner_check=True)
+async def clear_thread_goal(thread_id: str, request: Request) -> ThreadGoalResponse:
+    """Clear the active goal for a thread."""
+    checkpointer = get_checkpointer(request)
+    try:
+        async with goal_thread_lock(thread_id):
+            await write_thread_goal(checkpointer, thread_id, None, as_node="goal")
+    except LookupError:
+        return ThreadGoalResponse(goal=None)
+    except Exception:
+        logger.exception("Failed to clear goal for thread %s", sanitize_log_param(thread_id))
+        raise HTTPException(status_code=500, detail="Failed to clear thread goal") from None
+    return ThreadGoalResponse(goal=None)
+
+
+# ---------------------------------------------------------------------------
+
+
 @router.get("/{thread_id}/state", response_model=ThreadStateResponse)
 @require_permission("threads", "read", owner_check=True)
 async def get_thread_state(thread_id: str, request: Request) -> ThreadStateResponse:
@@ -525,8 +645,22 @@ async def update_thread_state(thread_id: str, body: ThreadStateUpdateRequest, re
     metadata: dict[str, Any] = dict(getattr(checkpoint_tuple, "metadata", {}) or {})
     channel_values: dict[str, Any] = dict(checkpoint.get("channel_values", {}))
 
+    new_versions: dict[str, Any] = {}
     if body.values:
         channel_values.update(body.values)
+        # Bump channel_versions for every written channel. Downstream consumers
+        # (cancel-rollback checkpoint forks, DB-backed saver blob layouts) only
+        # carry channels that have version lineage — a raw write without a
+        # version bump is silently dropped by the next fork. Mirrors the raw
+        # write bumps in deerflow.runtime (goal / title persistence).
+        from deerflow.runtime.runs.worker import _bump_channel_version
+
+        channel_versions = dict(checkpoint.get("channel_versions", {}) or {})
+        for channel in body.values:
+            next_version = _bump_channel_version(checkpointer, channel_versions.get(channel))
+            channel_versions[channel] = next_version
+            new_versions[channel] = next_version
+        checkpoint["channel_versions"] = channel_versions
 
     checkpoint["channel_values"] = channel_values
     metadata["updated_at"] = now_iso()
@@ -546,7 +680,7 @@ async def update_thread_state(thread_id: str, body: ThreadStateUpdateRequest, re
         }
     }
     try:
-        new_config = await checkpointer.aput(write_config, checkpoint, metadata, {})
+        new_config = await checkpointer.aput(write_config, checkpoint, metadata, new_versions)
     except Exception:
         logger.exception("Failed to update state for thread %s", sanitize_log_param(thread_id))
         raise HTTPException(status_code=500, detail="Failed to update thread state")
@@ -581,7 +715,7 @@ async def get_thread_history(thread_id: str, body: ThreadHistoryRequest, request
 
     Messages are read from the checkpointer's channel values (the
     authoritative source) and serialized via
-    :func:`~ideer.runtime.serialization.serialize_channel_values`.
+    :func:`~deerflow.runtime.serialization.serialize_channel_values`.
     Only the latest (first) checkpoint carries the ``messages`` key to
     avoid duplicating them across every entry.
     """

@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from ideer.persistence.thread_meta.memory import MemoryThreadMetaStore
+from deerflow.persistence.thread_meta.memory import MemoryThreadMetaStore
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -177,7 +177,9 @@ async def test_search_returns_items():
     results = await mts.search(user_id="u-1")
 
     assert len(results) == 2
-    assert results[0]["thread_id"] == "t-1"
-    assert results[0]["display_name"] == "Thread 1"
-    assert results[1]["thread_id"] == "t-2"
-    assert results[1]["metadata"] == {"k": "v"}
+    # Records sort by updated_at descending: t-2 (2025-01-04) precedes t-1 (2025-01-02).
+    assert results[0]["thread_id"] == "t-2"
+    assert results[0]["display_name"] == "Thread 2"
+    assert results[1]["thread_id"] == "t-1"
+    assert results[1]["display_name"] == "Thread 1"
+    assert results[0]["metadata"] == {"k": "v"}

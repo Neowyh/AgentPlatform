@@ -279,19 +279,19 @@ class TestThreadSearchRequest:
         req = ThreadSearchRequest(metadata={})
         assert req.metadata == {}
 
-    @patch("ideer.persistence.json_compat.validate_metadata_filter_key", return_value=True)
-    @patch("ideer.persistence.json_compat.validate_metadata_filter_value", return_value=True)
+    @patch("deerflow.persistence.json_compat.validate_metadata_filter_key", return_value=True)
+    @patch("deerflow.persistence.json_compat.validate_metadata_filter_value", return_value=True)
     def test_valid_metadata_filters(self, mock_val, mock_key):
         req = ThreadSearchRequest(metadata={"key": "value"})
         assert req.metadata == {"key": "value"}
 
-    @patch("ideer.persistence.json_compat.validate_metadata_filter_key", return_value=False)
+    @patch("deerflow.persistence.json_compat.validate_metadata_filter_key", return_value=False)
     def test_invalid_metadata_key_raises(self, mock_key):
         with pytest.raises(Exception):
             ThreadSearchRequest(metadata={"bad!key": "val"})
 
-    @patch("ideer.persistence.json_compat.validate_metadata_filter_key", return_value=True)
-    @patch("ideer.persistence.json_compat.validate_metadata_filter_value", return_value=False)
+    @patch("deerflow.persistence.json_compat.validate_metadata_filter_key", return_value=True)
+    @patch("deerflow.persistence.json_compat.validate_metadata_filter_value", return_value=False)
     def test_invalid_metadata_value_raises(self, mock_val, mock_key):
         with pytest.raises(Exception):
             ThreadSearchRequest(metadata={"key": [1, 2, 3]})
@@ -606,7 +606,7 @@ class TestSearchThreads:
 
     @patch("app.gateway.routers.threads.coerce_iso", side_effect=lambda x: x)
     def test_search_invalid_metadata_filter_raises_400(self, mock_coerce):
-        from ideer.persistence.thread_meta import InvalidMetadataFilterError
+        from deerflow.persistence.thread_meta import InvalidMetadataFilterError
 
         app, cp, ts = _make_app()
         ts.search = AsyncMock(side_effect=InvalidMetadataFilterError("bad filter"))

@@ -156,11 +156,13 @@ describe("UsersPage", () => {
         email: "admin@example.com",
         system_role: "super_admin",
         needs_setup: false,
+        oauth_provider: null,
       },
       isAuthenticated: true,
       isLoading: false,
       logout: vi.fn(),
       refreshUser: vi.fn(),
+applyUser: vi.fn(),
     });
     mockListUsers.mockResolvedValue({
       users: mockUsers,
@@ -1357,11 +1359,13 @@ describe("UsersPage", () => {
         email: "user@example.com",
         system_role: "user",
         needs_setup: false,
+        oauth_provider: null,
       },
       isAuthenticated: true,
       isLoading: false,
       logout: vi.fn(),
       refreshUser: vi.fn(),
+applyUser: vi.fn(),
     });
 
     render(<UsersPage />);

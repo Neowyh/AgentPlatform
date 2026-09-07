@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 from langchain_core.messages import AIMessage
 
-from ideer.agents.middlewares.llm_error_handling_middleware import (
+from deerflow.agents.middlewares.llm_error_handling_middleware import (
     LLMErrorHandlingMiddleware,
     _extract_error_code,
     _extract_error_detail,
@@ -15,8 +15,8 @@ from ideer.agents.middlewares.llm_error_handling_middleware import (
     _extract_status_code,
     _matches_any,
 )
-from ideer.config.app_config import AppConfig
-from ideer.config.sandbox_config import SandboxConfig
+from deerflow.config.app_config import AppConfig
+from deerflow.config.sandbox_config import SandboxConfig
 
 
 def _make_app_config() -> AppConfig:
@@ -252,24 +252,26 @@ class TestBuildRetryDelayMs:
         middleware = _build_middleware(retry_base_delay_ms=1000)
         exc = Exception("error")
         exc.response = SimpleNamespace(headers={"retry-after-ms": "300"})
-        delay = middleware._build_retry_delay_ms(1, exc)
+        delay = middleware._build_retry_delay_ms(None, exc)
         assert delay == 300
 
-    def test_exponential_backoff(self):
+    def test_decorrelated_jitter_within_window(self):
+        """Upstream replaced deterministic exponential backoff with AWS-style
+        decorrelated jitter: delay = randint(base, min(cap, max(base, seed*3)))."""
         middleware = _build_middleware(retry_base_delay_ms=1000, retry_cap_delay_ms=8000)
         exc = Exception("error")
-        delay1 = middleware._build_retry_delay_ms(1, exc)
-        delay2 = middleware._build_retry_delay_ms(2, exc)
-        delay3 = middleware._build_retry_delay_ms(3, exc)
-        assert delay1 == 1000
-        assert delay2 == 2000
-        assert delay3 == 4000
+        first = middleware._build_retry_delay_ms(None, exc)
+        assert 1000 <= first <= 3000  # seed = base → window [base, base*3] pre-cap
+        spread = {middleware._build_retry_delay_ms(1000, exc) for _ in range(60)}
+        assert all(1000 <= d <= min(8000, 3000) for d in spread)
+        assert len(spread) > 1  # jitter actually spreads retries
 
     def test_cap_delay(self):
         middleware = _build_middleware(retry_base_delay_ms=1000, retry_cap_delay_ms=3000)
         exc = Exception("error")
-        delay = middleware._build_retry_delay_ms(10, exc)
-        assert delay == 3000
+        for _ in range(30):
+            delay = middleware._build_retry_delay_ms(1000, exc)
+            assert delay <= 3000
 
 
 # ---------------------------------------------------------------------------
@@ -280,14 +282,14 @@ class TestBuildRetryDelayMs:
 class TestBuildRetryMessage:
     def test_busy_reason(self):
         middleware = _build_middleware(retry_max_attempts=3)
-        msg = middleware._build_retry_message(1, 2000, "busy")
+        msg = middleware._build_retry_message(1, 2000, "busy", max_attempts=3)
         assert "provider is busy" in msg
         assert "1/3" in msg
         assert "2s" in msg
 
     def test_transient_reason(self):
         middleware = _build_middleware(retry_max_attempts=3)
-        msg = middleware._build_retry_message(2, 1500, "transient")
+        msg = middleware._build_retry_message(2, 1500, "transient", max_attempts=3)
         assert "provider request failed temporarily" in msg
         assert "2/3" in msg
         assert "2s" in msg

@@ -19,6 +19,29 @@ export const DEFAULT_LOCAL_SETTINGS: LocalSettings = {
 export const LOCAL_SETTINGS_KEY = "ideer.local-settings";
 export const THREAD_MODEL_KEY_PREFIX = "ideer.thread-model.";
 
+/**
+ * SSR-safe `localStorage` facade: `getItem`/`setItem` are no-ops when
+ * `window.localStorage` is unavailable (server rendering, privacy settings).
+ */
+export const safeLocalStorage = {
+  getItem(key: string): string | null {
+    if (typeof window === "undefined") return null;
+    try {
+      return window.localStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  },
+  setItem(key: string, value: string): void {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(key, value);
+    } catch {
+      // Storage can be full or blocked; the hint is best-effort.
+    }
+  },
+};
+
 // Legacy keys from before the rebrand (deer-flow → iDeer)
 const LEGACY_LOCAL_SETTINGS_KEY = "deerflow.local-settings";
 const LEGACY_THREAD_MODEL_KEY_PREFIX = "deerflow.thread-model.";

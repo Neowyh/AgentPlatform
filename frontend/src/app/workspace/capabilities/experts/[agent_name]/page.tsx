@@ -231,7 +231,7 @@ export default function AgentDetailPage() {
               </DialogHeader>
               <VisibilityImpactPanel
                 resourceId={resourceId}
-                currentVisibility={agent.visibility}
+                currentVisibility={agent.visibility ?? "private"}
                 targetVisibility={targetVisibility}
                 onCascadeChange={setCascade}
               />

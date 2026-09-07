@@ -16,7 +16,7 @@ from fastapi.testclient import TestClient
 from app.gateway.routers.runs import _resolve_thread_id
 from app.gateway.routers.runs import router as runs_router
 from app.gateway.routers.thread_runs import RunCreateRequest
-from ideer.runtime import RunRecord, RunStatus
+from deerflow.runtime import RunRecord, RunStatus
 
 # ---------------------------------------------------------------------------
 # _resolve_thread_id unit tests

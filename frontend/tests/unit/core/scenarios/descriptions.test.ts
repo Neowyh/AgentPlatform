@@ -30,6 +30,7 @@ function skill(overrides: Partial<Skill> = {}): Skill {
     category: "general",
     license: "MIT",
     enabled: true,
+    editable: true,
     ...overrides,
   };
 }

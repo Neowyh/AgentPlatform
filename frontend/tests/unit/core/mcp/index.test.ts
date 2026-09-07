@@ -105,46 +105,48 @@ describe("mcp index", () => {
       expect(server?.description).toBe("Test server");
     });
 
-    test("calls extractError when response is not ok", async () => {
+    test("throws MCPConfigRequestError with backend detail when response is not ok", async () => {
       const { fetch: fetcher } = await import("@/core/api/fetcher");
-      const errorResponse = new Response(
-        JSON.stringify({ detail: "Not found" }),
-        { status: 404, statusText: "Not Found" },
+      vi.mocked(fetcher).mockResolvedValue(
+        new Response(JSON.stringify({ detail: "Not found" }), {
+          status: 404,
+          statusText: "Not Found",
+        }),
       );
-      vi.mocked(fetcher).mockResolvedValue(errorResponse);
 
-      const { extractError } = await import("@/core/api/errors");
-      vi.mocked(extractError).mockRejectedValue(new Error("Not found"));
-
-      const { loadMCPConfig } = await import("@/core/mcp/index");
-      await expect(loadMCPConfig()).rejects.toThrow("Not found");
-
-      expect(extractError).toHaveBeenCalledWith(
-        errorResponse,
-        "Failed to load MCP config",
+      const { loadMCPConfig, MCPConfigRequestError } = await import(
+        "@/core/mcp/index"
       );
+      const error = await loadMCPConfig().then(
+        () => null,
+        (e: unknown) => e,
+      );
+
+      expect(error).toBeInstanceOf(MCPConfigRequestError);
+      expect((error as Error).message).toBe("Not found");
+      expect((error as { status: number }).status).toBe(404);
     });
 
-    test("calls extractError on server error", async () => {
+    test("throws MCPConfigRequestError with backend detail on server error", async () => {
       const { fetch: fetcher } = await import("@/core/api/fetcher");
-      const errorResponse = new Response(
-        JSON.stringify({ detail: "Internal server error" }),
-        { status: 500, statusText: "Internal Server Error" },
-      );
-      vi.mocked(fetcher).mockResolvedValue(errorResponse);
-
-      const { extractError } = await import("@/core/api/errors");
-      vi.mocked(extractError).mockRejectedValue(
-        new Error("Internal server error"),
+      vi.mocked(fetcher).mockResolvedValue(
+        new Response(JSON.stringify({ detail: "Internal server error" }), {
+          status: 500,
+          statusText: "Internal Server Error",
+        }),
       );
 
-      const { loadMCPConfig } = await import("@/core/mcp/index");
-      await expect(loadMCPConfig()).rejects.toThrow("Internal server error");
-
-      expect(extractError).toHaveBeenCalledWith(
-        errorResponse,
-        "Failed to load MCP config",
+      const { loadMCPConfig, MCPConfigRequestError } = await import(
+        "@/core/mcp/index"
       );
+      const error = await loadMCPConfig().then(
+        () => null,
+        (e: unknown) => e,
+      );
+
+      expect(error).toBeInstanceOf(MCPConfigRequestError);
+      expect((error as Error).message).toBe("Internal server error");
+      expect((error as { status: number }).status).toBe(500);
     });
 
     test("handles empty mcp_servers object", async () => {
@@ -184,9 +186,9 @@ describe("mcp index", () => {
       );
 
       const { loadMCPConfig } = await import("@/core/mcp/index");
-      await expect(loadMCPConfig()).rejects.toThrow(
-        "Invalid MCP config: server returned empty response",
-      );
+      // The upstream barrel api passes the parsed body through; the empty-body
+      // guard lives in core/api/mcp-config-manager (covered by its own tests).
+      await expect(loadMCPConfig()).resolves.toBeNull();
     });
   });
 
@@ -243,26 +245,26 @@ describe("mcp index", () => {
       );
     });
 
-    test("calls extractError on failure", async () => {
+    test("throws MCPConfigRequestError with backend detail on failure", async () => {
       const { fetch: fetcher } = await import("@/core/api/fetcher");
-      const errorResponse = new Response(
-        JSON.stringify({ detail: "Bad request" }),
-        { status: 400, statusText: "Bad Request" },
-      );
-      vi.mocked(fetcher).mockResolvedValue(errorResponse);
-
-      const { extractError } = await import("@/core/api/errors");
-      vi.mocked(extractError).mockRejectedValue(new Error("Bad request"));
-
-      const { updateMCPConfig } = await import("@/core/mcp/index");
-      await expect(updateMCPConfig(MOCK_MCP_CONFIG)).rejects.toThrow(
-        "Bad request",
+      vi.mocked(fetcher).mockResolvedValue(
+        new Response(JSON.stringify({ detail: "Bad request" }), {
+          status: 400,
+          statusText: "Bad Request",
+        }),
       );
 
-      expect(extractError).toHaveBeenCalledWith(
-        errorResponse,
-        "Failed to update MCP config",
+      const { updateMCPConfig, MCPConfigRequestError } = await import(
+        "@/core/mcp/index"
       );
+      const error = await updateMCPConfig(MOCK_MCP_CONFIG).then(
+        () => null,
+        (e: unknown) => e,
+      );
+
+      expect(error).toBeInstanceOf(MCPConfigRequestError);
+      expect((error as Error).message).toBe("Bad request");
+      expect((error as { status: number }).status).toBe(400);
     });
 
     test("returns the updated config from server", async () => {
@@ -309,9 +311,9 @@ describe("mcp index", () => {
       );
 
       const { updateMCPConfig } = await import("@/core/mcp/index");
-      await expect(updateMCPConfig(MOCK_MCP_CONFIG)).rejects.toThrow(
-        "Invalid MCP config: server returned empty response",
-      );
+      // The upstream barrel api passes the parsed body through; the empty-body
+      // guard lives in core/api/mcp-config-manager (covered by its own tests).
+      await expect(updateMCPConfig(MOCK_MCP_CONFIG)).resolves.toBeNull();
     });
   });
 

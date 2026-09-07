@@ -68,9 +68,9 @@ async def _list_canonical_assistants(request: Request) -> list[AssistantResponse
 
     from sqlalchemy import select
 
-    from ideer.persistence.engine import get_session_factory
-    from ideer.persistence.models.user import UserModel
-    from ideer.resources.service import ResourceAction, ResourceActor, ResourceService
+    from app.agentplatform.rbac_models import UserModel
+    from app.agentplatform.resource_service import ResourceAction, ResourceActor, ResourceService
+    from deerflow.persistence.engine import get_session_factory
 
     user_id = getattr(getattr(request.state, "user", None), "id", None)
     session_factory = get_session_factory()

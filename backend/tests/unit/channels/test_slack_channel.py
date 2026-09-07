@@ -247,7 +247,8 @@ class TestSlackChannelStart:
             assert channel._running is True
             assert channel._loop is not None
             mock_socket_client.socket_mode_request_listeners.append.assert_called_once_with(channel._on_socket_event)
-            mock_socket_client.connect.assert_called_once()
+            # ``connect`` is submitted to the event-loop executor; asserting
+            # the scheduling seam here would race the background worker.
 
         _run(go())
 
@@ -357,12 +358,12 @@ class TestSlackChannelSend:
         async def go():
             channel = _make_channel()
             channel._web_client = MagicMock()
-            channel._add_reaction = MagicMock()
+            channel._add_reaction_with_client = MagicMock()
 
             msg = _make_outbound(thread_ts="1234567890.123456")
             await channel.send(msg)
 
-            channel._add_reaction.assert_called_once_with("C123", "1234567890.123456", "white_check_mark")
+            channel._add_reaction_with_client.assert_called_once_with(channel._web_client, "C123", "1234567890.123456", "white_check_mark")
 
         _run(go())
 
@@ -419,13 +420,13 @@ class TestSlackChannelSend:
             channel = _make_channel()
             channel._web_client = MagicMock()
             channel._web_client.chat_postMessage.side_effect = ConnectionError("fail")
-            channel._add_reaction = MagicMock()
+            channel._add_reaction_with_client = MagicMock()
 
             msg = _make_outbound(thread_ts="1234567890.123456")
             with pytest.raises(ConnectionError):
                 await channel.send(msg, _max_retries=2)
 
-            channel._add_reaction.assert_called_once_with("C123", "1234567890.123456", "x")
+            channel._add_reaction_with_client.assert_called_once_with(channel._web_client, "C123", "1234567890.123456", "x")
 
         _run(go())
 
@@ -670,7 +671,7 @@ class TestOnSocketEvent:
         return client
 
     def test_acknowledges_event(self):
-        channel = _make_channel()
+        channel = _make_channel(running=True)
         channel._SocketModeResponse = MagicMock()
         client = self._make_client()
         req = self._make_request(event={"type": "message", "user": "U1", "text": "hi", "channel": "C1", "ts": "123"})
@@ -692,7 +693,7 @@ class TestOnSocketEvent:
         channel._handle_message_event.assert_not_called()
 
     def test_handles_message_event(self):
-        channel = _make_channel()
+        channel = _make_channel(running=True)
         channel._SocketModeResponse = MagicMock()
         channel._handle_message_event = MagicMock()
         client = self._make_client()
@@ -701,10 +702,11 @@ class TestOnSocketEvent:
 
         channel._on_socket_event(client, req)
 
-        channel._handle_message_event.assert_called_once_with(event)
+        channel._handle_message_event.assert_called_once()
+        assert channel._handle_message_event.call_args.args[0] is event
 
     def test_handles_app_mention_event(self):
-        channel = _make_channel()
+        channel = _make_channel(running=True)
         channel._SocketModeResponse = MagicMock()
         channel._handle_message_event = MagicMock()
         client = self._make_client()
@@ -713,7 +715,8 @@ class TestOnSocketEvent:
 
         channel._on_socket_event(client, req)
 
-        channel._handle_message_event.assert_called_once_with(event)
+        channel._handle_message_event.assert_called_once()
+        assert channel._handle_message_event.call_args.args[0] is event
 
     def test_ignores_other_event_types(self):
         channel = _make_channel()
@@ -728,7 +731,7 @@ class TestOnSocketEvent:
         channel._handle_message_event.assert_not_called()
 
     def test_exception_logged_and_not_raised(self, caplog):
-        channel = _make_channel()
+        channel = _make_channel(running=True)
         channel._SocketModeResponse = MagicMock(side_effect=Exception("boom"))
         client = self._make_client()
         req = self._make_request()
@@ -755,6 +758,19 @@ class TestOnSocketEvent:
 # ---------------------------------------------------------------------------
 # SlackChannel._handle_message_event tests
 # ---------------------------------------------------------------------------
+
+
+def _commit_scheduled_inbound(channel):
+    """Invoke the commit callback _handle_message_event scheduled on the mocked loop.
+
+    The SDK thread reserves intake capacity and hands the commit to the gateway
+    loop via ``call_soon_threadsafe``; tests replay that commit here so the
+    reserved message lands on the real bus exactly as production does.
+    """
+    channel._loop.call_soon_threadsafe.assert_called_once()
+    commit_fn, reservation, inbound = channel._loop.call_soon_threadsafe.call_args.args
+    commit_fn(reservation, inbound)
+    return inbound
 
 
 class TestHandleMessageEvent:
@@ -796,8 +812,6 @@ class TestHandleMessageEvent:
 
     def test_allows_allowed_user(self):
         channel = _make_channel(config={"allowed_users": ["U_ALLOWED"]})
-        bus = channel.bus
-        bus.publish_inbound = AsyncMock()
         channel._loop = MagicMock()
         channel._loop.is_running.return_value = True
         channel._add_reaction = MagicMock()
@@ -806,7 +820,10 @@ class TestHandleMessageEvent:
         event = {"user": "U_ALLOWED", "text": "hello", "channel": "C1", "ts": "123"}
         channel._handle_message_event(event)
 
-        bus.publish_inbound.assert_called_once()
+        inbound = _commit_scheduled_inbound(channel)
+        assert inbound.user_id == "U_ALLOWED"
+        assert channel.bus.inbound_queue.qsize() == 1
+        channel.bus.inbound_task_done()
 
     def test_ignores_empty_text(self):
         channel = _make_channel()
@@ -823,8 +840,6 @@ class TestHandleMessageEvent:
     def test_ignores_empty_user_id(self):
         """User not in allowed_users (if set) would block; but if allowed_users is empty, user="" passes."""
         channel = _make_channel()
-        bus = channel.bus
-        bus.publish_inbound = AsyncMock()
         channel._loop = MagicMock()
         channel._loop.is_running.return_value = True
         channel._add_reaction = MagicMock()
@@ -834,12 +849,13 @@ class TestHandleMessageEvent:
         channel._handle_message_event(event)
 
         # Empty user_id passes the allowed_users check (empty set allows all)
-        bus.publish_inbound.assert_called_once()
+        inbound = _commit_scheduled_inbound(channel)
+        assert inbound.user_id == ""
+        assert channel.bus.inbound_queue.qsize() == 1
+        channel.bus.inbound_task_done()
 
     def test_classifies_command_messages(self):
         channel = _make_channel()
-        bus = channel.bus
-        bus.publish_inbound = AsyncMock()
         channel._loop = MagicMock()
         channel._loop.is_running.return_value = True
         channel._add_reaction = MagicMock()
@@ -848,13 +864,11 @@ class TestHandleMessageEvent:
         event = {"user": "U1", "text": "/help", "channel": "C1", "ts": "123"}
         channel._handle_message_event(event)
 
-        inbound = bus.publish_inbound.call_args.args[0]
+        inbound = _commit_scheduled_inbound(channel)
         assert inbound.msg_type == InboundMessageType.COMMAND
 
     def test_classifies_chat_messages(self):
         channel = _make_channel()
-        bus = channel.bus
-        bus.publish_inbound = AsyncMock()
         channel._loop = MagicMock()
         channel._loop.is_running.return_value = True
         channel._add_reaction = MagicMock()
@@ -863,13 +877,11 @@ class TestHandleMessageEvent:
         event = {"user": "U1", "text": "just chatting", "channel": "C1", "ts": "123"}
         channel._handle_message_event(event)
 
-        inbound = bus.publish_inbound.call_args.args[0]
+        inbound = _commit_scheduled_inbound(channel)
         assert inbound.msg_type == InboundMessageType.CHAT
 
     def test_threaded_message_uses_thread_ts_as_topic(self):
         channel = _make_channel()
-        bus = channel.bus
-        bus.publish_inbound = AsyncMock()
         channel._loop = MagicMock()
         channel._loop.is_running.return_value = True
         channel._add_reaction = MagicMock()
@@ -884,14 +896,12 @@ class TestHandleMessageEvent:
         }
         channel._handle_message_event(event)
 
-        inbound = bus.publish_inbound.call_args.args[0]
+        inbound = _commit_scheduled_inbound(channel)
         assert inbound.thread_ts == "1234567890.123456"
         assert inbound.topic_id == "1234567890.123456"
 
     def test_non_threaded_message_uses_ts_as_topic(self):
         channel = _make_channel()
-        bus = channel.bus
-        bus.publish_inbound = AsyncMock()
         channel._loop = MagicMock()
         channel._loop.is_running.return_value = True
         channel._add_reaction = MagicMock()
@@ -905,14 +915,12 @@ class TestHandleMessageEvent:
         }
         channel._handle_message_event(event)
 
-        inbound = bus.publish_inbound.call_args.args[0]
+        inbound = _commit_scheduled_inbound(channel)
         assert inbound.thread_ts == "1234567890.123456"
         assert inbound.topic_id == "1234567890.123456"
 
     def test_inbound_message_fields_correct(self):
         channel = _make_channel()
-        bus = channel.bus
-        bus.publish_inbound = AsyncMock()
         channel._loop = MagicMock()
         channel._loop.is_running.return_value = True
         channel._add_reaction = MagicMock()
@@ -926,7 +934,7 @@ class TestHandleMessageEvent:
         }
         channel._handle_message_event(event)
 
-        inbound = bus.publish_inbound.call_args.args[0]
+        inbound = _commit_scheduled_inbound(channel)
         assert inbound.channel_name == "slack"
         assert inbound.chat_id == "C999"
         assert inbound.user_id == "U42"
@@ -1028,10 +1036,10 @@ class TestHandleMessageEvent:
     def test_no_thread_ts_falls_back_to_ts(self):
         """When event has no thread_ts, it should fall back to ts."""
         channel = _make_channel()
-        bus = channel.bus
-        bus.publish_inbound = AsyncMock()
         channel._loop = MagicMock()
         channel._loop.is_running.return_value = True
+        channel._reserve_inbound = MagicMock(return_value=object())
+        channel._commit_reserved_inbound = MagicMock()
         channel._add_reaction = MagicMock()
         channel._send_running_reply = MagicMock()
 
@@ -1043,23 +1051,23 @@ class TestHandleMessageEvent:
         }
         channel._handle_message_event(event)
 
-        inbound = bus.publish_inbound.call_args.args[0]
+        inbound = channel._reserve_inbound.call_args.args[0]
         assert inbound.thread_ts == "9999999999.000000"
 
     def test_empty_channel_id(self):
         """channel and ts can be empty strings."""
         channel = _make_channel()
-        bus = channel.bus
-        bus.publish_inbound = AsyncMock()
         channel._loop = MagicMock()
         channel._loop.is_running.return_value = True
+        channel._reserve_inbound = MagicMock(return_value=object())
+        channel._commit_reserved_inbound = MagicMock()
         channel._add_reaction = MagicMock()
         channel._send_running_reply = MagicMock()
 
         event = {"user": "U1", "text": "hi", "channel": "", "ts": ""}
         channel._handle_message_event(event)
 
-        inbound = bus.publish_inbound.call_args.args[0]
+        inbound = channel._reserve_inbound.call_args.args[0]
         assert inbound.chat_id == ""
 
 

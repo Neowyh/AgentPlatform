@@ -5,8 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
-from ideer.sandbox.local.local_sandbox import LocalSandbox, PathMapping
-from ideer.sandbox.local.local_sandbox_provider import LocalSandboxProvider
+from deerflow.sandbox.local.local_sandbox import LocalSandbox, PathMapping
+from deerflow.sandbox.local.local_sandbox_provider import LocalSandboxProvider
 
 
 def _symlink_to(target, link, *, target_is_directory=False):
@@ -488,17 +488,16 @@ class TestMultipleMounts:
             ],
         )
 
-        # Mock subprocess to capture the resolved command
+        # Capture the resolved command at the _run_posix_command seam —
+        # upstream executes via Popen + drain threads there, not subprocess.run.
         captured = {}
-        original_run = __import__("subprocess").run
 
-        def mock_run(*args, **kwargs):
-            if len(args) > 0:
-                captured["command"] = args[0]
-            return original_run(*args, **kwargs)
+        def _fake_run_posix(args, timeout, env=None):
+            captured["command"] = args
+            return ("hello", "", 0, False)
 
-        monkeypatch.setattr("ideer.sandbox.local.local_sandbox.subprocess.run", mock_run)
-        monkeypatch.setattr("ideer.sandbox.local.local_sandbox.LocalSandbox._get_shell", lambda self: "/bin/sh")
+        monkeypatch.setattr("deerflow.sandbox.local.local_sandbox.LocalSandbox._run_posix_command", staticmethod(_fake_run_posix))
+        monkeypatch.setattr("deerflow.sandbox.local.local_sandbox.LocalSandbox._get_shell", lambda self: "/bin/sh")
 
         sandbox.execute_command("cat /mnt/data/test.txt")
         # Verify the command received the resolved local path
@@ -548,45 +547,48 @@ class TestLocalSandboxProviderMounts:
         custom_dir = tmp_path / "custom"
         custom_dir.mkdir()
 
-        from ideer.config.sandbox_config import SandboxConfig, VolumeMountConfig
+        from deerflow.config.sandbox_config import SandboxConfig, VolumeMountConfig
 
         sandbox_config = SandboxConfig(
-            use="ideer.sandbox.local:LocalSandboxProvider",
+            use="deerflow.sandbox.local:LocalSandboxProvider",
             mounts=[
                 VolumeMountConfig(host_path=str(custom_dir), container_path="/custom-skills/nested", read_only=False),
             ],
         )
         config = SimpleNamespace(
-            skills=SimpleNamespace(container_path="/custom-skills", get_skills_path=lambda: skills_dir, use="ideer.skills.storage.local_skill_storage:LocalSkillStorage"),
+            skills=SimpleNamespace(container_path="/custom-skills", get_skills_path=lambda: skills_dir, use="deerflow.skills.storage.local_skill_storage:LocalSkillStorage"),
             sandbox=sandbox_config,
         )
 
-        with patch("ideer.config.get_app_config", return_value=config):
+        with patch("deerflow.config.get_app_config", return_value=config):
             provider = LocalSandboxProvider()
 
-        assert [m.container_path for m in provider._path_mappings] == ["/custom-skills"]
+        # Upstream mounts only the PUBLIC skills projection under the
+        # configured container path ({container}/public); a custom mount nested
+        # under the skills root is kept as its own mapping.
+        assert [m.container_path for m in provider._path_mappings] == ["/custom-skills/public", "/custom-skills/nested"]
 
     def test_setup_path_mappings_skips_relative_host_path(self, tmp_path):
         skills_dir = tmp_path / "skills"
         skills_dir.mkdir()
 
-        from ideer.config.sandbox_config import SandboxConfig, VolumeMountConfig
+        from deerflow.config.sandbox_config import SandboxConfig, VolumeMountConfig
 
         sandbox_config = SandboxConfig(
-            use="ideer.sandbox.local:LocalSandboxProvider",
+            use="deerflow.sandbox.local:LocalSandboxProvider",
             mounts=[
                 VolumeMountConfig(host_path="relative/path", container_path="/mnt/data", read_only=False),
             ],
         )
         config = SimpleNamespace(
-            skills=SimpleNamespace(container_path="/mnt/skills", get_skills_path=lambda: skills_dir, use="ideer.skills.storage.local_skill_storage:LocalSkillStorage"),
+            skills=SimpleNamespace(container_path="/mnt/skills", get_skills_path=lambda: skills_dir, use="deerflow.skills.storage.local_skill_storage:LocalSkillStorage"),
             sandbox=sandbox_config,
         )
 
-        with patch("ideer.config.get_app_config", return_value=config):
+        with patch("deerflow.config.get_app_config", return_value=config):
             provider = LocalSandboxProvider()
 
-        assert [m.container_path for m in provider._path_mappings] == ["/mnt/skills"]
+        assert [m.container_path for m in provider._path_mappings] == ["/mnt/skills/public"]
 
     def test_setup_path_mappings_skips_non_absolute_container_path(self, tmp_path):
         skills_dir = tmp_path / "skills"
@@ -594,23 +596,23 @@ class TestLocalSandboxProviderMounts:
         custom_dir = tmp_path / "custom"
         custom_dir.mkdir()
 
-        from ideer.config.sandbox_config import SandboxConfig, VolumeMountConfig
+        from deerflow.config.sandbox_config import SandboxConfig, VolumeMountConfig
 
         sandbox_config = SandboxConfig(
-            use="ideer.sandbox.local:LocalSandboxProvider",
+            use="deerflow.sandbox.local:LocalSandboxProvider",
             mounts=[
                 VolumeMountConfig(host_path=str(custom_dir), container_path="mnt/data", read_only=False),
             ],
         )
         config = SimpleNamespace(
-            skills=SimpleNamespace(container_path="/mnt/skills", get_skills_path=lambda: skills_dir, use="ideer.skills.storage.local_skill_storage:LocalSkillStorage"),
+            skills=SimpleNamespace(container_path="/mnt/skills", get_skills_path=lambda: skills_dir, use="deerflow.skills.storage.local_skill_storage:LocalSkillStorage"),
             sandbox=sandbox_config,
         )
 
-        with patch("ideer.config.get_app_config", return_value=config):
+        with patch("deerflow.config.get_app_config", return_value=config):
             provider = LocalSandboxProvider()
 
-        assert [m.container_path for m in provider._path_mappings] == ["/mnt/skills"]
+        assert [m.container_path for m in provider._path_mappings] == ["/mnt/skills/public"]
 
     def test_write_file_resolves_container_paths_in_content(self, tmp_path):
         """write_file should replace container paths in file content with local paths."""
@@ -710,23 +712,23 @@ class TestLocalSandboxProviderMounts:
         custom_dir = tmp_path / "custom"
         custom_dir.mkdir()
 
-        from ideer.config.sandbox_config import SandboxConfig, VolumeMountConfig
+        from deerflow.config.sandbox_config import SandboxConfig, VolumeMountConfig
 
         sandbox_config = SandboxConfig(
-            use="ideer.sandbox.local:LocalSandboxProvider",
+            use="deerflow.sandbox.local:LocalSandboxProvider",
             mounts=[
                 VolumeMountConfig(host_path=str(custom_dir), container_path="/mnt/data/", read_only=False),
             ],
         )
         config = SimpleNamespace(
-            skills=SimpleNamespace(container_path="/mnt/skills", get_skills_path=lambda: skills_dir, use="ideer.skills.storage.local_skill_storage:LocalSkillStorage"),
+            skills=SimpleNamespace(container_path="/mnt/skills", get_skills_path=lambda: skills_dir, use="deerflow.skills.storage.local_skill_storage:LocalSkillStorage"),
             sandbox=sandbox_config,
         )
 
-        with patch("ideer.config.get_app_config", return_value=config):
+        with patch("deerflow.config.get_app_config", return_value=config):
             provider = LocalSandboxProvider()
 
-        assert [m.container_path for m in provider._path_mappings] == ["/mnt/skills", "/mnt/data"]
+        assert [m.container_path for m in provider._path_mappings] == ["/mnt/skills/public", "/mnt/data"]
 
 
 class TestLocalSandboxProviderResetClearsSingleton:
@@ -738,26 +740,26 @@ class TestLocalSandboxProviderResetClearsSingleton:
     """
 
     def _build_config(self, skills_dir, mounts):
-        from ideer.config.sandbox_config import SandboxConfig
+        from deerflow.config.sandbox_config import SandboxConfig
 
         sandbox_config = SandboxConfig(
-            use="ideer.sandbox.local:LocalSandboxProvider",
+            use="deerflow.sandbox.local:LocalSandboxProvider",
             mounts=mounts,
         )
         return SimpleNamespace(
             skills=SimpleNamespace(
                 container_path="/mnt/skills",
                 get_skills_path=lambda: skills_dir,
-                use="ideer.skills.storage.local_skill_storage:LocalSkillStorage",
+                use="deerflow.skills.storage.local_skill_storage:LocalSkillStorage",
             ),
             sandbox=sandbox_config,
         )
 
     def test_reset_sandbox_provider_clears_local_singleton(self, tmp_path):
-        from ideer.config.sandbox_config import VolumeMountConfig
-        from ideer.sandbox import local as local_module
-        from ideer.sandbox.local import local_sandbox_provider as lsp_module
-        from ideer.sandbox.sandbox_provider import (
+        from deerflow.config.sandbox_config import VolumeMountConfig
+        from deerflow.sandbox import local as local_module
+        from deerflow.sandbox.local import local_sandbox_provider as lsp_module
+        from deerflow.sandbox.sandbox_provider import (
             get_sandbox_provider,
             reset_sandbox_provider,
         )
@@ -783,7 +785,7 @@ class TestLocalSandboxProviderResetClearsSingleton:
         reset_sandbox_provider()
 
         try:
-            with patch("ideer.sandbox.sandbox_provider.get_app_config", return_value=first_cfg), patch("ideer.config.get_app_config", return_value=first_cfg):
+            with patch("deerflow.sandbox.sandbox_provider.get_app_config", return_value=first_cfg), patch("deerflow.config.get_app_config", return_value=first_cfg):
                 provider = get_sandbox_provider()
                 provider.acquire()
 
@@ -796,7 +798,7 @@ class TestLocalSandboxProviderResetClearsSingleton:
             # The whole point of the regression: reset must drop the cached LocalSandbox.
             assert lsp_module._singleton is None
 
-            with patch("ideer.sandbox.sandbox_provider.get_app_config", return_value=second_cfg), patch("ideer.config.get_app_config", return_value=second_cfg):
+            with patch("deerflow.sandbox.sandbox_provider.get_app_config", return_value=second_cfg), patch("deerflow.config.get_app_config", return_value=second_cfg):
                 provider2 = get_sandbox_provider()
                 provider2.acquire()
 
@@ -813,9 +815,9 @@ class TestLocalSandboxProviderResetClearsSingleton:
         assert hasattr(local_module.local_sandbox_provider, "_singleton")
 
     def test_shutdown_sandbox_provider_clears_local_singleton(self, tmp_path):
-        from ideer.config.sandbox_config import VolumeMountConfig
-        from ideer.sandbox.local import local_sandbox_provider as lsp_module
-        from ideer.sandbox.sandbox_provider import (
+        from deerflow.config.sandbox_config import VolumeMountConfig
+        from deerflow.sandbox.local import local_sandbox_provider as lsp_module
+        from deerflow.sandbox.sandbox_provider import (
             get_sandbox_provider,
             reset_sandbox_provider,
             shutdown_sandbox_provider,
@@ -835,7 +837,7 @@ class TestLocalSandboxProviderResetClearsSingleton:
         reset_sandbox_provider()
 
         try:
-            with patch("ideer.sandbox.sandbox_provider.get_app_config", return_value=cfg), patch("ideer.config.get_app_config", return_value=cfg):
+            with patch("deerflow.sandbox.sandbox_provider.get_app_config", return_value=cfg), patch("deerflow.config.get_app_config", return_value=cfg):
                 provider = get_sandbox_provider()
                 provider.acquire()
 
@@ -849,8 +851,8 @@ class TestLocalSandboxProviderResetClearsSingleton:
             reset_sandbox_provider()
 
     def test_provider_reset_method_is_idempotent(self, tmp_path):
-        from ideer.sandbox.local import local_sandbox_provider as lsp_module
-        from ideer.sandbox.local.local_sandbox_provider import LocalSandboxProvider
+        from deerflow.sandbox.local import local_sandbox_provider as lsp_module
+        from deerflow.sandbox.local.local_sandbox_provider import LocalSandboxProvider
 
         skills_dir = tmp_path / "skills"
         skills_dir.mkdir()
@@ -859,7 +861,7 @@ class TestLocalSandboxProviderResetClearsSingleton:
         lsp_module._singleton = None
 
         try:
-            with patch("ideer.config.get_app_config", return_value=cfg):
+            with patch("deerflow.config.get_app_config", return_value=cfg):
                 provider = LocalSandboxProvider()
                 provider.acquire()
             assert lsp_module._singleton is not None

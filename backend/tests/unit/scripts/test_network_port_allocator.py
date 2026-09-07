@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from ideer.utils.network import PortAllocator, get_free_port, release_port
+from deerflow.utils.network import PortAllocator, get_free_port, release_port
 
 # ---------------------------------------------------------------------------
 # _is_port_available socket bind behavior on 0.0.0.0

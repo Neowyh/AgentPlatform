@@ -32,7 +32,7 @@
       "enabled": false,
       "type": "stdio",
       "command": "python",
-      "args": ["-m", "ideer.community.doc_reader.mcp_server"],
+      "args": ["-m", "app.agentplatform.community.doc_reader.mcp_server"],
       "env": {},
       "description": "Read and extract text from documents (PDF, Word, Excel, PowerPoint)"
     },
@@ -40,7 +40,7 @@
       "enabled": false,
       "type": "stdio",
       "command": "python",
-      "args": ["-m", "ideer.community.code_interpreter.mcp_server"],
+      "args": ["-m", "app.agentplatform.community.code_interpreter.mcp_server"],
       "env": {},
       "description": "Execute Python or JavaScript code in a secure sandbox"
     },
@@ -48,7 +48,7 @@
       "enabled": false,
       "type": "stdio",
       "command": "python",
-      "args": ["-m", "ideer.community.data_analyzer.mcp_server"],
+      "args": ["-m", "app.agentplatform.community.data_analyzer.mcp_server"],
       "env": {},
       "description": "Analyze structured data files (CSV, Excel, JSON) and generate statistical insights"
     }

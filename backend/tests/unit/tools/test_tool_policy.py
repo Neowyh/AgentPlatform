@@ -12,11 +12,11 @@ import logging
 from pathlib import Path
 from types import SimpleNamespace
 
-from ideer.skills.tool_policy import (
+from deerflow.skills.tool_policy import (
     allowed_tool_names_for_skills,
     filter_tools_by_skill_allowed_tools,
 )
-from ideer.skills.types import Skill, SkillCategory
+from deerflow.skills.types import Skill, SkillCategory
 
 # ---------------------------------------------------------------------------
 # Helpers

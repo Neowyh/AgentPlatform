@@ -41,6 +41,7 @@ export async function loadSkills(): Promise<Skill[]> {
       resource_id: resource.id,
       slug: resource.slug,
       read_only: !resource.can_modify,
+      editable: resource.can_modify,
       name: resource.display_name,
       description: resource.description ?? resource.display_name,
       summary: getResourceSummary(
@@ -98,6 +99,7 @@ export async function getSkill(resourceId: string): Promise<Skill> {
     owner_id: resource.owner_id,
     department_id: resource.scope_department_id,
     read_only: !resource.can_modify,
+      editable: resource.can_modify,
     is_favorited: resource.is_favorited,
     latest_version: resource.latest_version,
     draft_revision: resource.draft_revision,
@@ -253,6 +255,25 @@ export interface InstallSkillResponse {
   success: boolean;
   skill_name: string;
   message: string;
+}
+
+/**
+ * Error thrown by skill management requests. `isAdminRequired` mirrors the
+ * gateway's 403 (visibility/administrator) contract so callers can render an
+ * actionable message instead of a raw failure.
+ */
+export class SkillRequestError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "SkillRequestError";
+    this.status = status;
+  }
+
+  get isAdminRequired(): boolean {
+    return this.status === 403;
+  }
 }
 
 export async function installSkill(

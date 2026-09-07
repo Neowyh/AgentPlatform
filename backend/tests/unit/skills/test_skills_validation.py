@@ -1,12 +1,20 @@
-"""Tests for skill frontmatter validation.
+"""Tests for enterprise skill frontmatter validation.
 
 Consolidates all _validate_skill_frontmatter tests (previously split across
 test_skills_router.py and this module) into a single dedicated module.
+
+The enterprise validator (``app.agentplatform.resources.skill_validation``)
+extends the upstream key set with i18n / governance frontmatter keys and
+keeps ``allowed-tools`` list-only, matching the bundled skills under
+``resources/skills/``.
 """
 
 from pathlib import Path
 
-from ideer.skills.validation import ALLOWED_FRONTMATTER_PROPERTIES, _validate_skill_frontmatter
+from app.agentplatform.resources.skill_validation import (
+    ALLOWED_FRONTMATTER_PROPERTIES,
+    _validate_skill_frontmatter,
+)
 
 
 def _write_skill(tmp_path: Path, content: str) -> Path:

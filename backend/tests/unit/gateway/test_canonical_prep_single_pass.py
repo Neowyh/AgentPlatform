@@ -17,14 +17,17 @@ import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-import ideer.persistence.models  # noqa: F401
+import app.agentplatform.audit_model  # noqa: F401 - register audit_logs
+import app.agentplatform.rbac_models  # noqa: F401 - register users_ext
+import app.agentplatform.resource_models  # noqa: F401 - register resource tables
+import app.agentplatform.visibility_models  # noqa: F401 - register visibility tables
+from app.agentplatform.rbac_models import UserModel
+from app.agentplatform.resources.publisher import ResourcePublisher
+from app.agentplatform.resources.runtime import CanonicalResourceLoader
+from app.agentplatform.resources.service import ResourceAction, ResourceActor, ResourceService
+from app.agentplatform.resources.storage import ResourceStorage
 from app.gateway.canonical_agent_run_preparation import prepare_canonical_agent_run
-from ideer.persistence.base import Base
-from ideer.persistence.models.user import UserModel
-from ideer.resources.publisher import ResourcePublisher
-from ideer.resources.runtime import CanonicalResourceLoader
-from ideer.resources.service import ResourceAction, ResourceActor, ResourceService
-from ideer.resources.storage import ResourceStorage
+from deerflow.persistence.base import Base
 
 
 @pytest_asyncio.fixture
@@ -92,9 +95,9 @@ async def test_prepare_resolves_closure_and_loads_agent_once(
         await session.commit()
         agent_id, skill_id = agent.id, skill.id
 
-    monkeypatch.setattr("ideer.persistence.engine.get_session_factory", lambda: session_factory)
+    monkeypatch.setattr("deerflow.persistence.engine.get_session_factory", lambda: session_factory)
     monkeypatch.setattr("app.gateway.audit.get_session_factory", lambda: session_factory)
-    monkeypatch.setattr("ideer.config.get_paths", lambda: SimpleNamespace(base_dir=tmp_path))
+    monkeypatch.setattr("deerflow.config.paths.get_paths", lambda: SimpleNamespace(base_dir=tmp_path))
 
     closure_calls: list[str] = []
     original_resolve = ResourceService.resolve_dependency_closure

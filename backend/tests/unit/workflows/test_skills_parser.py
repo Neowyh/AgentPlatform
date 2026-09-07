@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ideer.skills.parser import parse_skill_file
+from app.agentplatform.resources.skill_parser import parse_skill_file
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -1,4 +1,4 @@
-"""Comprehensive tests for ideer.mcp.tools module.
+"""Comprehensive tests for deerflow.mcp.tools module.
 
 Covers:
   - _extract_thread_id: all branches (runtime provided, context/config sources, get_config fallback, RuntimeError)
@@ -26,7 +26,7 @@ class TestExtractThreadId:
     """Tests for _extract_thread_id."""
 
     def _call(self, runtime=None):
-        from ideer.mcp.tools import _extract_thread_id
+        from deerflow.mcp.tools import _extract_thread_id
 
         return _extract_thread_id(runtime)
 
@@ -53,34 +53,34 @@ class TestExtractThreadId:
 
     def test_runtime_config_no_configurable(self):
         """config dict without 'configurable' key -> falls to get_config."""
-        with patch("ideer.mcp.tools.get_config", return_value={"configurable": {"thread_id": "gc-tid"}}):
+        with patch("deerflow.mcp.tools.get_config", return_value={"configurable": {"thread_id": "gc-tid"}}):
             runtime = SimpleNamespace(context={}, config={})
             assert self._call(runtime) == "gc-tid"
 
     def test_runtime_config_none_falls_to_get_config(self):
-        with patch("ideer.mcp.tools.get_config", return_value={"configurable": {"thread_id": "gc2"}}):
+        with patch("deerflow.mcp.tools.get_config", return_value={"configurable": {"thread_id": "gc2"}}):
             runtime = SimpleNamespace(context={}, config=None)
             assert self._call(runtime) == "gc2"
 
     def test_runtime_none_uses_get_config(self):
-        with patch("ideer.mcp.tools.get_config", return_value={"configurable": {"thread_id": "langgraph-tid"}}):
+        with patch("deerflow.mcp.tools.get_config", return_value={"configurable": {"thread_id": "langgraph-tid"}}):
             assert self._call(None) == "langgraph-tid"
 
     def test_runtime_none_get_config_no_thread_id_returns_default(self):
-        with patch("ideer.mcp.tools.get_config", return_value={}):
+        with patch("deerflow.mcp.tools.get_config", return_value={}):
             assert self._call(None) == "default"
 
     def test_runtime_none_get_config_configurable_no_thread_id(self):
-        with patch("ideer.mcp.tools.get_config", return_value={"configurable": {}}):
+        with patch("deerflow.mcp.tools.get_config", return_value={"configurable": {}}):
             assert self._call(None) == "default"
 
     def test_runtime_none_get_config_runtime_error_returns_default(self):
-        with patch("ideer.mcp.tools.get_config", side_effect=RuntimeError("no config")):
+        with patch("deerflow.mcp.tools.get_config", side_effect=RuntimeError("no config")):
             assert self._call(None) == "default"
 
     def test_runtime_config_empty_configurable(self):
         """config has 'configurable' but no 'thread_id' -> falls to get_config."""
-        with patch("ideer.mcp.tools.get_config", return_value={"configurable": {"thread_id": "fallback"}}):
+        with patch("deerflow.mcp.tools.get_config", return_value={"configurable": {"thread_id": "fallback"}}):
             runtime = SimpleNamespace(context={}, config={"configurable": {}})
             assert self._call(runtime) == "fallback"
 
@@ -94,7 +94,7 @@ class TestConvertCallToolResult:
     """Tests for _convert_call_tool_result."""
 
     def _call(self, result):
-        from ideer.mcp.tools import _convert_call_tool_result
+        from deerflow.mcp.tools import _convert_call_tool_result
 
         return _convert_call_tool_result(result)
 
@@ -116,7 +116,7 @@ class TestConvertCallToolResult:
             # Re-import to pick up the patched Command type
             import importlib
 
-            import ideer.mcp.tools as mod
+            import deerflow.mcp.tools as mod
 
             importlib.reload(mod)
             content, artifact = mod._convert_call_tool_result(cmd)
@@ -387,22 +387,22 @@ class TestMakeSessionPoolTool:
         return tool
 
     def test_strips_server_prefix(self):
-        from ideer.mcp.tools import _make_session_pool_tool
+        from deerflow.mcp.tools import _make_session_pool_tool
 
         mock_tool = self._make_mock_tool(name="srv_myTool")
         pool = MagicMock()
-        with patch("ideer.mcp.tools.get_session_pool", return_value=pool):
+        with patch("deerflow.mcp.tools.get_session_pool", return_value=pool):
             result = _make_session_pool_tool(mock_tool, "srv", {"transport": "stdio"})
 
         assert result.name == "srv_myTool"
         assert result.description == "desc"
 
     def test_no_prefix_match_keeps_original_name(self):
-        from ideer.mcp.tools import _make_session_pool_tool
+        from deerflow.mcp.tools import _make_session_pool_tool
 
         mock_tool = self._make_mock_tool(name="otherPrefix_tool")
         pool = MagicMock()
-        with patch("ideer.mcp.tools.get_session_pool", return_value=pool):
+        with patch("deerflow.mcp.tools.get_session_pool", return_value=pool):
             result = _make_session_pool_tool(mock_tool, "server1", {"transport": "stdio"})
 
         assert result.name == "otherPrefix_tool"
@@ -410,20 +410,20 @@ class TestMakeSessionPoolTool:
     def test_returns_structured_tool(self):
         from langchain_core.tools import StructuredTool
 
-        from ideer.mcp.tools import _make_session_pool_tool
+        from deerflow.mcp.tools import _make_session_pool_tool
 
         mock_tool = self._make_mock_tool()
         pool = MagicMock()
-        with patch("ideer.mcp.tools.get_session_pool", return_value=pool):
+        with patch("deerflow.mcp.tools.get_session_pool", return_value=pool):
             result = _make_session_pool_tool(mock_tool, "server1", {"transport": "stdio"})
 
         assert isinstance(result, StructuredTool)
         assert result.response_format == "content_and_artifact"
         assert result.metadata == {"meta": "data"}
 
-    def test_call_without_interceptors(self):
+    def test_call_without_interceptors(self, tmp_path):
         """call_with_persistent_session delegates to session.call_tool when no interceptors."""
-        from ideer.mcp.tools import _make_session_pool_tool
+        from deerflow.mcp.tools import _make_session_pool_tool
 
         mock_session = AsyncMock()
         mock_session.call_tool = AsyncMock(return_value=MagicMock(content=[], isError=False, structuredContent=None))
@@ -432,21 +432,36 @@ class TestMakeSessionPoolTool:
         pool.get_session = AsyncMock(return_value=mock_session)
 
         mock_tool = self._make_mock_tool(name="srv_tool1")
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        tmp_dir = tmp_path / "tmp"
         with (
-            patch("ideer.mcp.tools.get_session_pool", return_value=pool),
-            patch("ideer.mcp.tools._extract_thread_id", return_value="t1"),
-            patch("ideer.mcp.tools._convert_call_tool_result", return_value=("converted", None)),
+            patch("deerflow.mcp.tools.get_session_pool", return_value=pool),
+            patch("deerflow.mcp.tools._extract_thread_id", return_value="t1"),
+            patch("deerflow.mcp.tools.resolve_runtime_user_id", return_value="test-user-autouse"),
+            patch("deerflow.mcp.tools._prepare_stdio_workspace", return_value=(workspace, tmp_dir, frozenset())),
+            patch("deerflow.mcp.tools._convert_call_tool_result", return_value=("converted", None)),
         ):
             wrapped = _make_session_pool_tool(mock_tool, "srv", {"transport": "stdio"}, tool_interceptors=None)
             result = asyncio.run(wrapped.coroutine(runtime=None, arg1="val1"))
 
-        pool.get_session.assert_awaited_once_with("srv", "t1", {"transport": "stdio"})
+        # Upstream scopes sessions per user+thread and pins the stdio process
+        # cwd/temp dirs inside the thread's user-data tree.
+        pool.get_session.assert_awaited_once_with(
+            "srv",
+            "test-user-autouse:t1",
+            {
+                "transport": "stdio",
+                "cwd": str(workspace),
+                "env": {"TMPDIR": str(tmp_dir), "TMP": str(tmp_dir), "TEMP": str(tmp_dir)},
+            },
+        )
         mock_session.call_tool.assert_awaited_once_with("tool1", {"arg1": "val1"})
         assert result == ("converted", None)
 
     def test_call_with_interceptors(self):
         """call_with_persistent_session chains interceptors before session.call_tool."""
-        from ideer.mcp.tools import _make_session_pool_tool
+        from deerflow.mcp.tools import _make_session_pool_tool
 
         mock_session = AsyncMock()
         call_result = MagicMock(content=[], isError=False, structuredContent=None)
@@ -463,9 +478,9 @@ class TestMakeSessionPoolTool:
 
         mock_tool = self._make_mock_tool(name="srv_toolX")
         with (
-            patch("ideer.mcp.tools.get_session_pool", return_value=pool),
-            patch("ideer.mcp.tools._extract_thread_id", return_value="t2"),
-            patch("ideer.mcp.tools._convert_call_tool_result", return_value=("ok", None)),
+            patch("deerflow.mcp.tools.get_session_pool", return_value=pool),
+            patch("deerflow.mcp.tools._extract_thread_id", return_value="t2"),
+            patch("deerflow.mcp.tools._convert_call_tool_result", return_value=("ok", None)),
         ):
             wrapped = _make_session_pool_tool(mock_tool, "srv", {"transport": "stdio"}, tool_interceptors=[my_interceptor])
             result = asyncio.run(wrapped.coroutine(runtime=None))
@@ -475,7 +490,7 @@ class TestMakeSessionPoolTool:
 
     def test_call_with_multiple_interceptors(self):
         """Multiple interceptors are chained in order (reversed for wrapping)."""
-        from ideer.mcp.tools import _make_session_pool_tool
+        from deerflow.mcp.tools import _make_session_pool_tool
 
         mock_session = AsyncMock()
         call_result = MagicMock(content=[], isError=False, structuredContent=None)
@@ -496,9 +511,9 @@ class TestMakeSessionPoolTool:
 
         mock_tool = self._make_mock_tool(name="srv_toolY")
         with (
-            patch("ideer.mcp.tools.get_session_pool", return_value=pool),
-            patch("ideer.mcp.tools._extract_thread_id", return_value="t3"),
-            patch("ideer.mcp.tools._convert_call_tool_result", return_value=("ok", None)),
+            patch("deerflow.mcp.tools.get_session_pool", return_value=pool),
+            patch("deerflow.mcp.tools._extract_thread_id", return_value="t3"),
+            patch("deerflow.mcp.tools._convert_call_tool_result", return_value=("ok", None)),
         ):
             wrapped = _make_session_pool_tool(mock_tool, "srv", {"transport": "stdio"}, tool_interceptors=[interceptor_a, interceptor_b])
             result = asyncio.run(wrapped.coroutine(runtime=None))
@@ -537,20 +552,20 @@ class TestGetMcpTools:
 
         return {
             "from_file": patch(
-                "ideer.config.extensions_config.ExtensionsConfig.from_file",
+                "deerflow.config.extensions_config.ExtensionsConfig.from_file",
                 return_value=mock_ext_config,
             ),
             "build_servers": patch(
-                "ideer.mcp.tools.build_servers_config",
+                "deerflow.mcp.tools.build_servers_config",
                 return_value=servers_config,
             ),
             "oauth_headers": patch(
-                "ideer.mcp.tools.get_initial_oauth_headers",
+                "deerflow.mcp.tools.get_initial_oauth_headers",
                 new_callable=AsyncMock,
                 return_value=oauth_headers,
             ),
             "oauth_interceptor": patch(
-                "ideer.mcp.tools.build_oauth_tool_interceptor",
+                "deerflow.mcp.tools.build_oauth_tool_interceptor",
                 return_value=oauth_interceptor,
             ),
         }
@@ -559,7 +574,7 @@ class TestGetMcpTools:
         """If langchain_mcp_adapters is not importable, returns []."""
         import importlib
 
-        import ideer.mcp.tools as mod
+        import deerflow.mcp.tools as mod
 
         original_import = __builtins__.__import__ if hasattr(__builtins__, "__import__") else __import__
 
@@ -584,7 +599,7 @@ class TestGetMcpTools:
             p["oauth_headers"],
             p["oauth_interceptor"],
         ):
-            from ideer.mcp.tools import get_mcp_tools
+            from deerflow.mcp.tools import get_mcp_tools
 
             result = asyncio.run(get_mcp_tools())
         assert result == []
@@ -608,7 +623,7 @@ class TestGetMcpTools:
             p["oauth_interceptor"],
             patch("langchain_mcp_adapters.client.MultiServerMCPClient", return_value=mock_client),
         ):
-            from ideer.mcp.tools import get_mcp_tools
+            from deerflow.mcp.tools import get_mcp_tools
 
             asyncio.run(get_mcp_tools())
 
@@ -633,7 +648,7 @@ class TestGetMcpTools:
             p["oauth_interceptor"],
             patch("langchain_mcp_adapters.client.MultiServerMCPClient", return_value=mock_client),
         ):
-            from ideer.mcp.tools import get_mcp_tools
+            from deerflow.mcp.tools import get_mcp_tools
 
             asyncio.run(get_mcp_tools())
 
@@ -657,7 +672,7 @@ class TestGetMcpTools:
             p["oauth_interceptor"],
             patch("langchain_mcp_adapters.client.MultiServerMCPClient", return_value=mock_client),
         ):
-            from ideer.mcp.tools import get_mcp_tools
+            from deerflow.mcp.tools import get_mcp_tools
 
             asyncio.run(get_mcp_tools())
 
@@ -675,10 +690,10 @@ class TestGetMcpTools:
             p["from_file"],
             p["build_servers"],
             p["oauth_headers"],
-            patch("ideer.mcp.tools.build_oauth_tool_interceptor", return_value=oauth_fn),
+            patch("deerflow.mcp.tools.build_oauth_tool_interceptor", return_value=oauth_fn),
             patch("langchain_mcp_adapters.client.MultiServerMCPClient", return_value=mock_client) as mock_cls,
         ):
-            from ideer.mcp.tools import get_mcp_tools
+            from deerflow.mcp.tools import get_mcp_tools
 
             asyncio.run(get_mcp_tools())
 
@@ -705,10 +720,10 @@ class TestGetMcpTools:
             p["oauth_headers"],
             p["oauth_interceptor"],
             patch("langchain_mcp_adapters.client.MultiServerMCPClient", return_value=mock_client),
-            patch("ideer.mcp.tools._make_session_pool_tool") as mock_wrap,
+            patch("deerflow.mcp.tools._make_session_pool_tool") as mock_wrap,
         ):
             mock_wrap.return_value = MagicMock(name="wrapped_tool")
-            from ideer.mcp.tools import get_mcp_tools
+            from deerflow.mcp.tools import get_mcp_tools
 
             result = asyncio.run(get_mcp_tools())
 
@@ -735,9 +750,9 @@ class TestGetMcpTools:
             p["oauth_headers"],
             p["oauth_interceptor"],
             patch("langchain_mcp_adapters.client.MultiServerMCPClient", return_value=mock_client),
-            patch("ideer.mcp.tools._make_session_pool_tool") as mock_wrap,
+            patch("deerflow.mcp.tools._make_session_pool_tool") as mock_wrap,
         ):
-            from ideer.mcp.tools import get_mcp_tools
+            from deerflow.mcp.tools import get_mcp_tools
 
             result = asyncio.run(get_mcp_tools())
 
@@ -745,8 +760,12 @@ class TestGetMcpTools:
         assert len(result) == 1
         assert result[0] is mock_tool
 
-    def test_tool_with_no_matching_server_returned_as_is(self):
-        """A tool whose name does not match any server prefix is returned as-is."""
+    def test_unprefixed_tool_is_pooled_under_its_producing_server(self):
+        """Routing is per producing server: even an unprefixed tool is pooled.
+
+        Upstream attributes each discovered tool to the server that produced it,
+        so the name-prefix scan (and its "no matching server" fallback) is gone.
+        """
         mock_tool = MagicMock()
         mock_tool.name = "orphan_tool"
         mock_tool.description = "d"
@@ -759,19 +778,23 @@ class TestGetMcpTools:
         servers_config = {"s1": {"transport": "stdio", "command": "x"}}
         p = self._base_patches(servers_config=servers_config)
 
+        wrapped = MagicMock(name="wrapped")
         with (
             p["from_file"],
             p["build_servers"],
             p["oauth_headers"],
             p["oauth_interceptor"],
             patch("langchain_mcp_adapters.client.MultiServerMCPClient", return_value=mock_client),
+            patch("deerflow.mcp.tools._make_session_pool_tool", return_value=wrapped) as mock_wrap,
         ):
-            from ideer.mcp.tools import get_mcp_tools
+            from deerflow.mcp.tools import get_mcp_tools
 
             result = asyncio.run(get_mcp_tools())
 
         assert len(result) == 1
-        assert result[0] is mock_tool
+        assert result[0] is wrapped
+        assert mock_wrap.call_args.args[0] is mock_tool
+        assert mock_wrap.call_args.args[1] == "s1"
 
     def test_sse_tool_returned_as_is(self):
         """SSE transport tools are returned directly (no session-pool wrap)."""
@@ -794,7 +817,7 @@ class TestGetMcpTools:
             p["oauth_interceptor"],
             patch("langchain_mcp_adapters.client.MultiServerMCPClient", return_value=mock_client),
         ):
-            from ideer.mcp.tools import get_mcp_tools
+            from deerflow.mcp.tools import get_mcp_tools
 
             result = asyncio.run(get_mcp_tools())
 
@@ -823,10 +846,10 @@ class TestGetMcpTools:
             p["oauth_headers"],
             p["oauth_interceptor"],
             patch("langchain_mcp_adapters.client.MultiServerMCPClient", return_value=mock_client),
-            patch("ideer.mcp.tools._make_session_pool_tool", return_value=mock_tool),
-            patch("ideer.mcp.tools.make_sync_tool_wrapper", return_value=lambda: "sync") as mock_sync,
+            patch("deerflow.mcp.tools._make_session_pool_tool", return_value=mock_tool),
+            patch("deerflow.mcp.tools.make_sync_tool_wrapper", return_value=lambda: "sync") as mock_sync,
         ):
-            from ideer.mcp.tools import get_mcp_tools
+            from deerflow.mcp.tools import get_mcp_tools
 
             asyncio.run(get_mcp_tools())
 
@@ -855,10 +878,10 @@ class TestGetMcpTools:
             p["oauth_headers"],
             p["oauth_interceptor"],
             patch("langchain_mcp_adapters.client.MultiServerMCPClient", return_value=mock_client),
-            patch("ideer.mcp.tools._make_session_pool_tool", return_value=mock_tool),
-            patch("ideer.mcp.tools.make_sync_tool_wrapper") as mock_sync,
+            patch("deerflow.mcp.tools._make_session_pool_tool", return_value=mock_tool),
+            patch("deerflow.mcp.tools.make_sync_tool_wrapper") as mock_sync,
         ):
-            from ideer.mcp.tools import get_mcp_tools
+            from deerflow.mcp.tools import get_mcp_tools
 
             asyncio.run(get_mcp_tools())
 
@@ -875,7 +898,7 @@ class TestGetMcpTools:
             p["oauth_interceptor"],
             patch("langchain_mcp_adapters.client.MultiServerMCPClient", side_effect=RuntimeError("boom")),
         ):
-            from ideer.mcp.tools import get_mcp_tools
+            from deerflow.mcp.tools import get_mcp_tools
 
             result = asyncio.run(get_mcp_tools())
 
@@ -895,7 +918,7 @@ class TestGetMcpTools:
             p["oauth_interceptor"],
             patch("langchain_mcp_adapters.client.MultiServerMCPClient", return_value=mock_client),
         ):
-            from ideer.mcp.tools import get_mcp_tools
+            from deerflow.mcp.tools import get_mcp_tools
 
             result = asyncio.run(get_mcp_tools())
 
@@ -916,7 +939,8 @@ class TestGetMcpTools:
         http_tool.metadata = {}
 
         mock_client = MagicMock()
-        mock_client.get_tools = AsyncMock(return_value=[stdio_tool, http_tool])
+        # Upstream discovers tools per server: get_tools(server_name=...).
+        mock_client.get_tools = AsyncMock(side_effect=lambda server_name=None: [stdio_tool] if server_name == "srv1" else [http_tool])
 
         servers_config = {
             "srv1": {"transport": "stdio", "command": "node"},
@@ -934,10 +958,10 @@ class TestGetMcpTools:
             p["oauth_headers"],
             p["oauth_interceptor"],
             patch("langchain_mcp_adapters.client.MultiServerMCPClient", return_value=mock_client),
-            patch("ideer.mcp.tools._make_session_pool_tool", return_value=wrapped_stdio) as mock_wrap,
-            patch("ideer.mcp.tools.make_sync_tool_wrapper", return_value=lambda: "sync"),
+            patch("deerflow.mcp.tools._make_session_pool_tool", return_value=wrapped_stdio) as mock_wrap,
+            patch("deerflow.mcp.tools.make_sync_tool_wrapper", return_value=lambda: "sync"),
         ):
-            from ideer.mcp.tools import get_mcp_tools
+            from deerflow.mcp.tools import get_mcp_tools
 
             result = asyncio.run(get_mcp_tools())
 

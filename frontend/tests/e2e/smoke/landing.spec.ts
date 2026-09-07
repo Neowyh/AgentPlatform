@@ -6,12 +6,14 @@ test.describe("Landing page", () => {
   test("renders the header and hero section", async ({ page }) => {
     await page.goto("/");
 
-    // Header brand name
-    await expect(page.locator("header h1", { hasText: "iDeer" })).toBeVisible();
-
-    // "Get Started" call-to-action button in hero
+    // Brand link in the header banner
     await expect(
-      page.getByRole("link", { name: /get started|开始创造/i }),
+      page.getByRole("banner").getByRole("link", { name: "iDeer" }),
+    ).toBeVisible();
+
+    // Hero call-to-action link
+    await expect(
+      page.getByRole("link", { name: /start creating|开始创造/i }),
     ).toBeVisible();
   });
 
@@ -20,13 +22,13 @@ test.describe("Landing page", () => {
 
     await page.goto("/");
 
-    const getStarted = page.getByRole("link", {
-      name: /get started|开始创造/i,
+    const startCreating = page.getByRole("link", {
+      name: /start creating|开始创造/i,
     });
-    await getStarted.click();
+    await startCreating.click();
 
-    // Should redirect to /workspace/chats/new
-    await page.waitForURL("**/workspace/chats/new");
-    await expect(page).toHaveURL(/\/workspace\/chats\/new/);
+    // Auth is disabled in the mock lane, so the login hop bounces straight
+    // into the workspace.
+    await page.waitForURL(/\/workspace/, { timeout: 15_000 });
   });
 });

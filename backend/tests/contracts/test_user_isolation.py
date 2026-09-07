@@ -29,7 +29,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from ideer.runtime.user_context import (
+from deerflow.runtime.user_context import (
     reset_current_user,
     set_current_user,
 )
@@ -43,7 +43,7 @@ async def _make_engines(tmp_path):
 
     Returns a cleanup coroutine the caller should await at the end.
     """
-    from ideer.persistence.engine import close_engine, init_engine
+    from deerflow.persistence.engine import close_engine, init_engine
 
     url = f"sqlite+aiosqlite:///{tmp_path / 'isolation.db'}"
     await init_engine("sqlite", url=url, sqlite_dir=str(tmp_path))
@@ -70,8 +70,8 @@ def _as_user(user):
 @pytest.mark.anyio
 @pytest.mark.no_auto_user
 async def test_thread_meta_cross_user_isolation(tmp_path):
-    from ideer.persistence.engine import get_session_factory
-    from ideer.persistence.thread_meta import ThreadMetaRepository
+    from deerflow.persistence.engine import get_session_factory
+    from deerflow.persistence.thread_meta import ThreadMetaRepository
 
     cleanup = await _make_engines(tmp_path)
     try:
@@ -118,8 +118,8 @@ async def test_thread_meta_cross_user_isolation(tmp_path):
 @pytest.mark.no_auto_user
 async def test_thread_meta_cross_user_mutation_denied(tmp_path):
     """User B cannot update or delete a thread owned by User A."""
-    from ideer.persistence.engine import get_session_factory
-    from ideer.persistence.thread_meta import ThreadMetaRepository
+    from deerflow.persistence.engine import get_session_factory
+    from deerflow.persistence.thread_meta import ThreadMetaRepository
 
     cleanup = await _make_engines(tmp_path)
     try:
@@ -156,8 +156,8 @@ async def test_thread_meta_cross_user_mutation_denied(tmp_path):
 @pytest.mark.anyio
 @pytest.mark.no_auto_user
 async def test_runs_cross_user_isolation(tmp_path):
-    from ideer.persistence.engine import get_session_factory
-    from ideer.persistence.run import RunRepository
+    from deerflow.persistence.engine import get_session_factory
+    from deerflow.persistence.run import RunRepository
 
     cleanup = await _make_engines(tmp_path)
     try:
@@ -165,7 +165,9 @@ async def test_runs_cross_user_isolation(tmp_path):
 
         with _as_user(USER_A):
             await repo.put("run-a1", thread_id="t-alpha")
-            await repo.put("run-a2", thread_id="t-alpha")
+            # At most one active run per thread is allowed (uq_runs_thread_active);
+            # the second run on the same thread must be terminal.
+            await repo.put("run-a2", thread_id="t-alpha", status="success")
 
         with _as_user(USER_B):
             await repo.put("run-b1", thread_id="t-beta")
@@ -200,8 +202,8 @@ async def test_runs_cross_user_isolation(tmp_path):
 @pytest.mark.anyio
 @pytest.mark.no_auto_user
 async def test_runs_cross_user_delete_denied(tmp_path):
-    from ideer.persistence.engine import get_session_factory
-    from ideer.persistence.run import RunRepository
+    from deerflow.persistence.engine import get_session_factory
+    from deerflow.persistence.run import RunRepository
 
     cleanup = await _make_engines(tmp_path)
     try:
@@ -229,8 +231,8 @@ async def test_runs_cross_user_delete_denied(tmp_path):
 @pytest.mark.no_auto_user
 async def test_run_events_cross_user_isolation(tmp_path):
     """run_events holds raw conversation content — most sensitive leak vector."""
-    from ideer.persistence.engine import get_session_factory
-    from ideer.runtime.events.store.db import DbRunEventStore
+    from deerflow.persistence.engine import get_session_factory
+    from deerflow.runtime.events.store.db import DbRunEventStore
 
     cleanup = await _make_engines(tmp_path)
     try:
@@ -299,8 +301,8 @@ async def test_run_events_cross_user_isolation(tmp_path):
 @pytest.mark.no_auto_user
 async def test_run_events_cross_user_delete_denied(tmp_path):
     """User B cannot delete User A's event stream."""
-    from ideer.persistence.engine import get_session_factory
-    from ideer.runtime.events.store.db import DbRunEventStore
+    from deerflow.persistence.engine import get_session_factory
+    from deerflow.runtime.events.store.db import DbRunEventStore
 
     cleanup = await _make_engines(tmp_path)
     try:
@@ -334,8 +336,8 @@ async def test_run_events_cross_user_delete_denied(tmp_path):
 @pytest.mark.anyio
 @pytest.mark.no_auto_user
 async def test_feedback_cross_user_isolation(tmp_path):
-    from ideer.persistence.engine import get_session_factory
-    from ideer.persistence.feedback import FeedbackRepository
+    from deerflow.persistence.engine import get_session_factory
+    from deerflow.persistence.feedback import FeedbackRepository
 
     cleanup = await _make_engines(tmp_path)
     try:
@@ -388,8 +390,8 @@ async def test_feedback_cross_user_isolation(tmp_path):
 @pytest.mark.anyio
 @pytest.mark.no_auto_user
 async def test_feedback_cross_user_delete_denied(tmp_path):
-    from ideer.persistence.engine import get_session_factory
-    from ideer.persistence.feedback import FeedbackRepository
+    from deerflow.persistence.engine import get_session_factory
+    from deerflow.persistence.feedback import FeedbackRepository
 
     cleanup = await _make_engines(tmp_path)
     try:
@@ -418,8 +420,8 @@ async def test_feedback_cross_user_delete_denied(tmp_path):
 @pytest.mark.no_auto_user
 async def test_repository_without_context_raises(tmp_path):
     """Defense-in-depth: calling repo methods without a user context errors."""
-    from ideer.persistence.engine import get_session_factory
-    from ideer.persistence.thread_meta import ThreadMetaRepository
+    from deerflow.persistence.engine import get_session_factory
+    from deerflow.persistence.thread_meta import ThreadMetaRepository
 
     cleanup = await _make_engines(tmp_path)
     try:
@@ -438,8 +440,8 @@ async def test_repository_without_context_raises(tmp_path):
 @pytest.mark.no_auto_user
 async def test_explicit_none_bypasses_filter(tmp_path):
     """Migration scripts pass user_id=None to see all rows regardless of owner."""
-    from ideer.persistence.engine import get_session_factory
-    from ideer.persistence.thread_meta import ThreadMetaRepository
+    from deerflow.persistence.engine import get_session_factory
+    from deerflow.persistence.thread_meta import ThreadMetaRepository
 
     cleanup = await _make_engines(tmp_path)
     try:

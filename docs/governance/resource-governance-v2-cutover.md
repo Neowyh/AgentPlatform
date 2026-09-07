@@ -13,7 +13,7 @@
 
    ```bash
    cd backend
-   uv run python -m alembic -c packages/harness/ideer/persistence/migrations/alembic.ini heads
+   uv run python -m alembic -c app/agentplatform/persistence/migrations/alembic.ini heads
    # 输出必须只有 20260814_resource_catalog_v2 (head)
    ```
 

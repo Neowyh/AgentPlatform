@@ -54,6 +54,13 @@ vi.mock("@/components/workspace/workspace-nav-menu", () => ({
   WorkspaceNavMenu: () => <div data-testid="workspace-nav-menu">NavMenu</div>,
 }));
 
+// Channels list (new sidebar section)
+vi.mock("@/components/workspace/channels/workspace-channels-list", () => ({
+  WorkspaceChannelsList: () => (
+    <div data-testid="workspace-channels-list">Channels</div>
+  ),
+}));
+
 // ── Dynamic import ───────────────────────────────────────────────────────────
 
 let WorkspaceSidebar: typeof import("@/components/workspace/workspace-sidebar").WorkspaceSidebar;

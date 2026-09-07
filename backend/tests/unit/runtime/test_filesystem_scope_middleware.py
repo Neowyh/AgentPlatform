@@ -6,7 +6,7 @@ import pytest
 from langchain_core.messages import ToolMessage
 from langgraph.prebuilt.tool_node import ToolCallRequest
 
-from ideer.agents.middlewares.filesystem_scope_middleware import FilesystemScopeMiddleware
+from app.agentplatform.workflows.v2.filesystem_scope import FilesystemScopeMiddleware
 
 
 def _request(name: str, **args: str) -> ToolCallRequest:

@@ -25,7 +25,7 @@ export function Hero({ className }: { className?: string }) {
       <div className="absolute inset-0 z-0 bg-[#f8f1e5]" />
       <div className="absolute inset-0 z-0 bg-[#8a6a4a]/8 mask-[url(/images/deer.svg)] mask-size-[100vw] mask-center mask-no-repeat md:mask-size-[72vh]" />
       <div className="container-md relative z-10 mx-auto flex h-screen flex-col items-center justify-center">
-        <h1 className="type-display-hero flex items-center gap-2 text-center font-bold text-[#3d2b1f]">
+        <h1 className="type-display-hero flex w-full max-w-full flex-wrap items-center justify-center gap-2 px-4 text-center font-bold text-[#3d2b1f]">
           <div>{t.landing.heroTitlePrefix}</div>{" "}
           <WordRotate words={t.landing.heroWords} />
         </h1>

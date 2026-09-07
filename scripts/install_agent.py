@@ -4,7 +4,7 @@
 Generic installer for agents that are NOT covered by the canonical bundled
 resource module.  The fault-zeroing Skill–Expert–Workflow dependency closure
 is lifecycle-managed exclusively by the canonical bundle
-(``ideer.resources.bundled`` / ``scripts/seed_bundled_resources.py``); the
+(``app.agentplatform.resources.bundled`` / ``scripts/seed_bundled_resources.py``); the
 legacy fault-zeroing install, subagent merge and standalone workflow seed
 paths have been removed.
 """

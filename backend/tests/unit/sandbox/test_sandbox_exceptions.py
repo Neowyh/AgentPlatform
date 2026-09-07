@@ -1,8 +1,8 @@
-"""Tests for ideer.sandbox.exceptions — structured sandbox error types."""
+"""Tests for deerflow.sandbox.exceptions — structured sandbox error types."""
 
 from __future__ import annotations
 
-from ideer.sandbox.exceptions import (
+from deerflow.sandbox.exceptions import (
     SandboxCommandError,
     SandboxError,
     SandboxFileError,

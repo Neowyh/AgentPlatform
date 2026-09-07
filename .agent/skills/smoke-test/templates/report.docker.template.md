@@ -1,4 +1,4 @@
-# iDeer Smoke Test Report
+# DeerFlow Smoke Test Report
 
 **Test Date**: {{test_date}}  
 **Test Environment**: {{test_environment}}  
@@ -78,7 +78,7 @@
 - [x] Container status - {{status_containers}}
 - [x] Frontend service - {{status_frontend}}
 - [x] API Gateway - {{status_api_gateway}}
-- [x] LangGraph service - {{status_langgraph}}
+- [x] LangGraph-compatible Gateway API - {{status_langgraph}}
 
 **Phase Status**: {{stage5_status}}
 
@@ -144,17 +144,16 @@ Commit Message: {{git_commit_message}}
 
 | Container Name | Status | Uptime |
 |----------|------|----------|
-| ideer-nginx | {{nginx_status}} | {{nginx_uptime}} |
-| ideer-frontend | {{frontend_status}} | {{frontend_uptime}} |
-| ideer-gateway | {{gateway_status}} | {{gateway_uptime}} |
-| ideer-langgraph | {{langgraph_status}} | {{langgraph_uptime}} |
+| deer-flow-nginx | {{nginx_status}} | {{nginx_uptime}} |
+| deer-flow-frontend | {{frontend_status}} | {{frontend_uptime}} |
+| deer-flow-gateway | {{gateway_status}} | {{gateway_uptime}} |
 
 ---
 
 ## Recommendations and Next Steps
 
 ### If the Test Passes
-1. [ ] Visit http://localhost:2026 to start using iDeer
+1. [ ] Visit http://localhost:2026 to start using DeerFlow
 2. [ ] Configure your preferred model if it is not configured yet
 3. [ ] Explore available skills
 4. [ ] Refer to the documentation to learn more features

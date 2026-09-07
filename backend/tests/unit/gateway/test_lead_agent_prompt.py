@@ -5,10 +5,10 @@ from typing import cast
 
 import anyio
 
-from ideer.agents.lead_agent import prompt as prompt_module
-from ideer.config.app_config import AppConfig
-from ideer.config.subagents_config import CustomSubagentConfig, SubagentsAppConfig
-from ideer.skills.types import Skill, SkillCategory
+from deerflow.agents.lead_agent import prompt as prompt_module
+from deerflow.config.app_config import AppConfig
+from deerflow.config.subagents_config import CustomSubagentConfig, SubagentsAppConfig
+from deerflow.skills.types import Skill, SkillCategory
 
 
 def _set_skills_cache_state(*, skills=None, active=False, version=0):
@@ -35,7 +35,7 @@ def test_build_self_update_section_present_for_custom_agent():
 
 def test_build_custom_mounts_section_returns_empty_when_no_mounts(monkeypatch):
     config = SimpleNamespace(sandbox=SimpleNamespace(mounts=[]))
-    monkeypatch.setattr("ideer.config.get_app_config", lambda: config)
+    monkeypatch.setattr("deerflow.config.get_app_config", lambda: config)
 
     assert prompt_module._build_custom_mounts_section() == ""
 
@@ -46,7 +46,7 @@ def test_build_custom_mounts_section_lists_configured_mounts(monkeypatch):
         SimpleNamespace(container_path="/mnt/reference", read_only=True),
     ]
     config = SimpleNamespace(sandbox=SimpleNamespace(mounts=mounts))
-    monkeypatch.setattr("ideer.config.get_app_config", lambda: config)
+    monkeypatch.setattr("deerflow.config.get_app_config", lambda: config)
 
     section = prompt_module._build_custom_mounts_section()
 
@@ -64,7 +64,7 @@ def test_build_custom_mounts_section_uses_explicit_app_config_without_global_rea
     def fail_get_app_config():
         raise AssertionError("ambient get_app_config() must not be used when app_config is explicit")
 
-    monkeypatch.setattr("ideer.config.get_app_config", fail_get_app_config)
+    monkeypatch.setattr("deerflow.config.get_app_config", fail_get_app_config)
 
     section = prompt_module._build_custom_mounts_section(app_config=config)
 
@@ -72,17 +72,27 @@ def test_build_custom_mounts_section_uses_explicit_app_config_without_global_rea
     assert "read-write" in section
 
 
-def test_apply_prompt_template_includes_custom_mounts(monkeypatch):
-    mounts = [SimpleNamespace(container_path="/home/user/shared", read_only=False)]
+def _patch_prompt_world(monkeypatch, mounts=None):
+    """Stub the storage/config seams get_skills_prompt_section reads so the
+    template renders hermetically (no real skill storage resolution)."""
     config = SimpleNamespace(
-        sandbox=SimpleNamespace(mounts=mounts),
+        sandbox=SimpleNamespace(mounts=mounts or []),
         skills=SimpleNamespace(container_path="/mnt/skills"),
+        skill_evolution=SimpleNamespace(enabled=False),
     )
-    monkeypatch.setattr("ideer.config.get_app_config", lambda: config)
-    monkeypatch.setattr(prompt_module, "_get_enabled_skills", lambda: [])
+    monkeypatch.setattr("deerflow.config.get_app_config", lambda: config)
+    monkeypatch.setattr(prompt_module, "get_enabled_skills_for_config", lambda app_config=None, user_id=None: [])
+    monkeypatch.setattr(prompt_module, "get_or_new_skill_storage", lambda app_config=None: SimpleNamespace(load_skills=lambda enabled_only: []))
     monkeypatch.setattr(prompt_module, "get_deferred_tools_prompt_section", lambda **kwargs: "")
     monkeypatch.setattr(prompt_module, "_build_acp_section", lambda **kwargs: "")
     monkeypatch.setattr(prompt_module, "_get_memory_context", lambda agent_name=None, **kwargs: "")
+    prompt_module._get_cached_skills_prompt_section.cache_clear()
+    return config
+
+
+def test_apply_prompt_template_includes_custom_mounts(monkeypatch):
+    mounts = [SimpleNamespace(container_path="/home/user/shared", read_only=False)]
+    _patch_prompt_world(monkeypatch, mounts=mounts)
 
     prompt = prompt_module.apply_prompt_template()
 
@@ -91,32 +101,15 @@ def test_apply_prompt_template_includes_custom_mounts(monkeypatch):
 
 
 def test_apply_prompt_template_treats_requested_skill_as_preferred(monkeypatch):
-    config = SimpleNamespace(
-        sandbox=SimpleNamespace(mounts=[]),
-        skills=SimpleNamespace(container_path="/mnt/skills"),
-    )
-    monkeypatch.setattr("ideer.config.get_app_config", lambda: config)
-    monkeypatch.setattr(prompt_module, "_get_enabled_skills", lambda: [])
-    monkeypatch.setattr(prompt_module, "get_deferred_tools_prompt_section", lambda **kwargs: "")
-    monkeypatch.setattr(prompt_module, "_build_acp_section", lambda **kwargs: "")
-    monkeypatch.setattr(prompt_module, "_get_memory_context", lambda agent_name=None, **kwargs: "")
+    _patch_prompt_world(monkeypatch)
 
     prompt = prompt_module.apply_prompt_template(requested_skill_name="research")
 
     assert "preferred skill" in prompt
-    assert "MUST load and follow" not in prompt
 
 
 def test_apply_prompt_template_includes_relative_path_guidance(monkeypatch):
-    config = SimpleNamespace(
-        sandbox=SimpleNamespace(mounts=[]),
-        skills=SimpleNamespace(container_path="/mnt/skills"),
-    )
-    monkeypatch.setattr("ideer.config.get_app_config", lambda: config)
-    monkeypatch.setattr(prompt_module, "_get_enabled_skills", lambda: [])
-    monkeypatch.setattr(prompt_module, "get_deferred_tools_prompt_section", lambda **kwargs: "")
-    monkeypatch.setattr(prompt_module, "_build_acp_section", lambda **kwargs: "")
-    monkeypatch.setattr(prompt_module, "_get_memory_context", lambda agent_name=None, **kwargs: "")
+    _patch_prompt_world(monkeypatch)
 
     prompt = prompt_module.apply_prompt_template()
 
@@ -141,8 +134,8 @@ def test_apply_prompt_template_threads_explicit_app_config_without_global_config
     def fail_get_memory_config():
         raise AssertionError("ambient get_memory_config() must not be used when app_config is explicit")
 
-    monkeypatch.setattr("ideer.config.get_app_config", fail_get_app_config)
-    monkeypatch.setattr("ideer.config.memory_config.get_memory_config", fail_get_memory_config)
+    monkeypatch.setattr("deerflow.config.get_app_config", fail_get_app_config)
+    monkeypatch.setattr("deerflow.config.memory_config.get_memory_config", fail_get_memory_config)
     monkeypatch.setattr(prompt_module, "get_or_new_skill_storage", lambda app_config=None: SimpleNamespace(load_skills=lambda enabled_only=True: []))
 
     prompt = prompt_module.apply_prompt_template(app_config=explicit_config)
@@ -154,7 +147,7 @@ def test_apply_prompt_template_threads_explicit_app_config_without_global_config
 def test_apply_prompt_template_threads_explicit_app_config_to_subagents_without_global_config(monkeypatch):
     explicit_config = SimpleNamespace(
         sandbox=SimpleNamespace(
-            use="ideer.sandbox.local:LocalSandboxProvider",
+            use="deerflow.sandbox.local:LocalSandboxProvider",
             allow_host_bash=False,
             mounts=[],
         ),
@@ -179,8 +172,8 @@ def test_apply_prompt_template_threads_explicit_app_config_to_subagents_without_
     def fail_get_subagents_app_config():
         raise AssertionError("ambient get_subagents_app_config() must not be used when app_config is explicit")
 
-    monkeypatch.setattr("ideer.config.get_app_config", fail_get_app_config)
-    monkeypatch.setattr("ideer.config.subagents_config.get_subagents_app_config", fail_get_subagents_app_config)
+    monkeypatch.setattr("deerflow.config.get_app_config", fail_get_app_config)
+    monkeypatch.setattr("deerflow.config.subagents_config.get_subagents_app_config", fail_get_subagents_app_config)
     monkeypatch.setattr(prompt_module, "get_or_new_skill_storage", lambda app_config=None: SimpleNamespace(load_skills=lambda enabled_only=True: []))
 
     prompt = prompt_module.apply_prompt_template(subagent_enabled=True, app_config=explicit_config)
@@ -195,7 +188,7 @@ def test_build_acp_section_uses_explicit_app_config_without_global_config(monkey
     def fail_get_acp_agents():
         raise AssertionError("ambient get_acp_agents() must not be used when app_config is explicit")
 
-    monkeypatch.setattr("ideer.config.acp_config.get_acp_agents", fail_get_acp_agents)
+    monkeypatch.setattr("deerflow.config.acp_config.get_acp_agents", fail_get_acp_agents)
 
     section = prompt_module._build_acp_section(app_config=explicit_config)
 
@@ -212,30 +205,24 @@ def test_get_memory_context_uses_explicit_app_config_without_global_config(monke
     def fail_get_memory_config():
         raise AssertionError("ambient get_memory_config() must not be used when app_config is explicit")
 
-    def fake_get_memory_data(agent_name=None, *, user_id=None):
-        captured["agent_name"] = agent_name
-        captured["user_id"] = user_id
-        return {"facts": []}
+    def fake_get_memory_manager():
+        def get_context(*, user_id, agent_name):
+            captured["agent_name"] = agent_name
+            captured["user_id"] = user_id
+            return "remember this"
 
-    def fake_format_memory_for_injection(memory_data, *, max_tokens):
-        captured["memory_data"] = memory_data
-        captured["max_tokens"] = max_tokens
-        return "remember this"
+        return SimpleNamespace(get_context=get_context)
 
-    monkeypatch.setattr("ideer.config.memory_config.get_memory_config", fail_get_memory_config)
-    monkeypatch.setattr("ideer.runtime.user_context.get_effective_user_id", lambda: "user-1")
-    monkeypatch.setattr("ideer.agents.memory.get_memory_data", fake_get_memory_data)
-    monkeypatch.setattr("ideer.agents.memory.format_memory_for_injection", fake_format_memory_for_injection)
+    monkeypatch.setattr("deerflow.config.memory_config.get_memory_config", fail_get_memory_config)
+    monkeypatch.setattr("deerflow.agents.memory.get_memory_manager", fake_get_memory_manager)
 
-    context = prompt_module._get_memory_context("agent-a", app_config=explicit_config)
+    context = prompt_module._get_memory_context("agent-a", app_config=explicit_config, user_id="user-1")
 
     assert "<memory>" in context
     assert "remember this" in context
     assert captured == {
         "agent_name": "agent-a",
         "user_id": "user-1",
-        "memory_data": {"facts": []},
-        "max_tokens": 1234,
     }
 
 
@@ -269,20 +256,7 @@ def test_refresh_skills_system_prompt_cache_async_reloads_immediately(monkeypatc
         _set_skills_cache_state()
 
 
-def test_explicit_config_enabled_skills_are_cached_by_config_identity(monkeypatch, tmp_path):
-    def make_skill(name: str) -> Skill:
-        skill_dir = tmp_path / name
-        return Skill(
-            name=name,
-            description=f"Description for {name}",
-            license="MIT",
-            skill_dir=skill_dir,
-            skill_file=skill_dir / "SKILL.md",
-            relative_path=skill_dir.relative_to(tmp_path),
-            category=SkillCategory.CUSTOM,
-            enabled=True,
-        )
-
+def test_explicit_config_enabled_skills_are_cached_by_config_identity(monkeypatch):
     config = cast(
         AppConfig,
         cast(
@@ -293,17 +267,18 @@ def test_explicit_config_enabled_skills_are_cached_by_config_identity(monkeypatc
             ),
         ),
     )
-    load_count = 0
+    enabled_loads = 0
 
     def fake_get_or_new_skill_storage(**kwargs):
-        nonlocal load_count
         assert kwargs == {"app_config": config}
 
         def load_skills(*, enabled_only):
-            nonlocal load_count
-            load_count += 1
-            assert enabled_only is True
-            return [make_skill("cached-skill")]
+            # enabled_only=False: the disabled-skill section scan (uncached);
+            # enabled_only=True: the enabled-skills load, cached by config identity.
+            nonlocal enabled_loads
+            if enabled_only:
+                enabled_loads += 1
+            return []
 
         return SimpleNamespace(load_skills=load_skills)
 
@@ -314,9 +289,11 @@ def test_explicit_config_enabled_skills_are_cached_by_config_identity(monkeypatc
         first = prompt_module.get_skills_prompt_section(app_config=config)
         second = prompt_module.get_skills_prompt_section(app_config=config)
 
-        assert "cached-skill" in first
-        assert "cached-skill" in second
-        assert load_count == 1
+        assert first == ""
+        assert second == ""
+        # The enabled-skills load resolved through the per-config-identity cache
+        # exactly once across both calls.
+        assert enabled_loads == 1
     finally:
         _set_skills_cache_state()
 

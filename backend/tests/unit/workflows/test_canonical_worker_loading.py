@@ -9,11 +9,14 @@ from unittest.mock import AsyncMock
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-import ideer.persistence.models  # noqa: F401
+import app.agentplatform.audit_model  # noqa: F401 - register audit_logs
+import app.agentplatform.rbac_models  # noqa: F401 - register users_ext
+import app.agentplatform.resource_models  # noqa: F401 - register resource tables
+import app.agentplatform.visibility_models  # noqa: F401 - register visibility tables
+from app.agentplatform.resource_models import Resource, ResourceVersion, RunResourceSnapshot
+from app.agentplatform.resources.storage import ResourceStorage
 from app.workflow_worker import load_workflow_definition_for_run
-from ideer.persistence.base import Base
-from ideer.persistence.models.resource_catalog import Resource, ResourceVersion, RunResourceSnapshot
-from ideer.resources.storage import ResourceStorage
+from deerflow.persistence.base import Base
 
 
 @pytest.mark.asyncio
@@ -24,7 +27,7 @@ async def test_canonical_worker_definition_never_reloads_legacy_name(tmp_path: P
     factory = async_sessionmaker(engine, expire_on_commit=False)
     resource_id = "a234742a-9df8-4d2a-b7f4-b3f39f63ab65"
     content = {"schema_version": 2, "nodes": [], "edges": []}
-    from ideer.resources.runtime import _json_hash
+    from app.agentplatform.resources.runtime import _json_hash
 
     content_hash = _json_hash(content)
     async with factory() as session:

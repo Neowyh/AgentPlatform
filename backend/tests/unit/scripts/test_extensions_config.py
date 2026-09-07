@@ -1,4 +1,4 @@
-"""Tests for ideer.config.extensions_config — MCP and skill extension config."""
+"""Tests for deerflow.config.extensions_config — MCP and skill extension config."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
-from ideer.config.extensions_config import (
+from deerflow.config.extensions_config import (
     ExtensionsConfig,
     McpOAuthConfig,
     McpServerConfig,
@@ -115,10 +115,11 @@ class TestResolveEnvVariables:
         with patch.dict(os.environ, {"TEST_SECRET_KEY": "secret123"}):
             assert ExtensionsConfig.resolve_env_variables("$TEST_SECRET_KEY") == "secret123"
 
-    def test_env_var_missing_raises(self):
+    def test_env_var_missing_resolves_to_empty(self):
+        # Unresolved placeholders resolve to "" so downstream consumers (e.g.
+        # MCP servers) never receive the literal "$VAR" token.
         with patch.dict(os.environ, {}, clear=True):
-            with pytest.raises(ValueError, match="Required environment variable 'MISSING_VAR' is not set"):
-                ExtensionsConfig.resolve_env_variables("$MISSING_VAR")
+            assert ExtensionsConfig.resolve_env_variables("$MISSING_VAR") == ""
 
     def test_dict_recursion(self):
         with patch.dict(os.environ, {"KEY1": "val1", "KEY2": "val2"}):
@@ -160,18 +161,18 @@ class TestResolveConfigPath:
     def test_env_variable(self, tmp_path):
         p = tmp_path / "env_ext.json"
         p.write_text("{}")
-        with patch.dict(os.environ, {"IDEER_EXTENSIONS_CONFIG_PATH": str(p)}):
+        with patch.dict(os.environ, {"DEER_FLOW_EXTENSIONS_CONFIG_PATH": str(p)}):
             assert ExtensionsConfig.resolve_config_path() == p
 
     def test_env_variable_not_found(self, tmp_path):
-        with patch.dict(os.environ, {"IDEER_EXTENSIONS_CONFIG_PATH": str(tmp_path / "nope.json")}):
+        with patch.dict(os.environ, {"DEER_FLOW_EXTENSIONS_CONFIG_PATH": str(tmp_path / "nope.json")}):
             with pytest.raises(FileNotFoundError, match="environment variable"):
                 ExtensionsConfig.resolve_config_path()
 
     def test_no_config_returns_none(self, tmp_path):
         with patch.dict(os.environ, {}, clear=True):
-            with patch("ideer.config.extensions_config.existing_project_file", return_value=None):
-                with patch("ideer.config.extensions_config.Path.exists", return_value=False):
+            with patch("deerflow.config.extensions_config.existing_project_file", return_value=None):
+                with patch("deerflow.config.extensions_config.Path.exists", return_value=False):
                     result = ExtensionsConfig.resolve_config_path()
                     assert result is None
 
@@ -237,7 +238,7 @@ class TestFromFile:
 
         assert cfg.mcp_servers["github"].enabled is False
 
-    def test_enabled_mcp_server_still_requires_missing_environment_variable(self, tmp_path):
+    def test_enabled_mcp_server_missing_environment_variable_resolves_to_empty(self, tmp_path):
         data = {
             "mcpServers": {
                 "github": {
@@ -251,8 +252,11 @@ class TestFromFile:
 
         with patch.dict(os.environ, {}, clear=True):
             with patch.object(ExtensionsConfig, "resolve_config_path", return_value=p):
-                with pytest.raises(RuntimeError, match="Required environment variable 'GITHUB_TOKEN' is not set"):
-                    ExtensionsConfig.from_file()
+                cfg = ExtensionsConfig.from_file()
+
+        # The enabled server loads; the unresolved placeholder becomes "".
+        assert cfg.mcp_servers["github"].enabled is True
+        assert cfg.mcp_servers["github"].env["GITHUB_TOKEN"] == ""
 
 
 # ---------------------------------------------------------------------------

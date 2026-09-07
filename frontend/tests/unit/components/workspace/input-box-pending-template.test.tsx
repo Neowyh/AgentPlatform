@@ -1,6 +1,28 @@
-import { render, screen, waitFor, act } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render as renderBase, screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useSearchParams } from "next/navigation";
 import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
+
+vi.mock("@/core/suggestions/hooks", () => ({
+  useSuggestionsConfig: () => ({
+    data: { enabled: true, max_suggestions: 3 },
+  }),
+}));
+
+vi.mock("@/core/auth/AuthProvider", () => ({
+  useAuth: () => ({ user: { id: "u1", email: "user@test.com", system_role: "user" } }),
+}));
+
+const render = (ui: React.ReactElement, options?: any) =>
+  renderBase(
+    <QueryClientProvider
+      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+    >
+      {ui}
+    </QueryClientProvider>,
+    options,
+  );
 
 // ---------------------------------------------------------------------------
 // Mocks -- must be declared before the component import
@@ -15,6 +37,7 @@ vi.mock("@/core/i18n/hooks", () => ({
     changeLocale: vi.fn(),
     t: {
       common: { close: "Close", cancel: "Cancel", create: "Create" },
+      uploads: { limitsHint: () => "" },
       inputBox: {
         placeholder: "How can I assist you today?",
         addAttachments: "Add attachments",
@@ -201,7 +224,12 @@ vi.mock("@/components/ai-elements/prompt-input", () => {
       <button {...props}>{children}</button>
     ),
     PromptInputAttachment: () => <div />,
-    PromptInputAttachments: ({ children }: any) => <div>{children}</div>,
+    PromptInputAttachments: ({ children, ...props }: any) => (
+      <div {...props}>{typeof children === "function" ? null : children}</div>
+    ),
+    PromptInputHeader: ({ children, ...props }: any) => (
+      <div {...props}>{children}</div>
+    ),
     PromptInputBody: ({ children, ...props }: any) => (
       <div {...props}>{children}</div>
     ),
@@ -251,7 +279,6 @@ import { InputBox } from "@/components/workspace/input-box";
 import { useThread } from "@/components/workspace/messages/context";
 import { fetch } from "@/core/api/fetcher";
 import { useModels } from "@/core/models/hooks";
-import { useSearchParams } from "next/navigation";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -382,7 +409,11 @@ describe("InputBox pendingTemplate", () => {
       />,
     );
 
-    expect(mockSetInput).not.toHaveBeenCalled();
+    // The composer's own draft-reset may still write an empty string; what
+    // matters is that the template itself is not injected without consent.
+    expect(mockSetInput).not.toHaveBeenCalledWith(
+      "请帮我处理以下文档：[描述需求]",
+    );
     expect(screen.getByText("Send suggestion?")).toBeInTheDocument();
   });
 
@@ -399,11 +430,15 @@ describe("InputBox pendingTemplate", () => {
 
     mockTextInputContext.value = template;
     rerender(
-      <InputBox
-        {...defaultProps()}
-        onPendingTemplateConsumed={vi.fn()}
-        clearInjectedTemplateKey={1}
-      />,
+      <QueryClientProvider
+        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+      >
+        <InputBox
+          {...defaultProps()}
+          onPendingTemplateConsumed={vi.fn()}
+          clearInjectedTemplateKey={1}
+        />
+      </QueryClientProvider>,
     );
 
     expect(mockTextInputContext.clear).toHaveBeenCalled();
@@ -459,11 +494,15 @@ describe("InputBox pendingTemplate", () => {
     );
 
     rerender(
-      <InputBox
-        {...defaultProps()}
-        status="ready"
-        context={makeContext({ model_name: "gpt-4o", mode: "flash" })}
-      />,
+      <QueryClientProvider
+        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+      >
+        <InputBox
+          {...defaultProps()}
+          status="ready"
+          context={makeContext({ model_name: "gpt-4o", mode: "flash" })}
+        />
+      </QueryClientProvider>,
     );
 
     await waitFor(() => {

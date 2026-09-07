@@ -417,7 +417,7 @@ patch_sandbox_image() {
 
     local provider current
     provider="$(awk '/^sandbox:/{f=1;next} f&&/^[^[:space:]]/{exit} f&&/^[[:space:]]*use:/{sub(/^[[:space:]]*use:[[:space:]]*/,"");print;exit}' "$config" 2>/dev/null || true)"
-    [ "$provider" = "ideer.community.aio_sandbox:AioSandboxProvider" ] || return 0
+    [ "$provider" = "deerflow.community.aio_sandbox:AioSandboxProvider" ] || return 0
 
     current="$(awk '/^sandbox:/{f=1;next} f&&/^[^[:space:]]/{exit} f&&/^[[:space:]]*image:/{sub(/^[[:space:]]*image:[[:space:]]*/,"");gsub(/"/,"");print;exit}' "$config" 2>/dev/null || true)"
     [ -n "$current" ] || return 0
@@ -513,7 +513,7 @@ validate_runtime() {
     # switch sandbox.use to a provider that needs no image.
     local sandbox_provider sandbox_image
     sandbox_provider="$(awk '/^sandbox:/{f=1;next} f&&/^[^[:space:]]/{exit} f&&/^[[:space:]]*use:/{sub(/^[[:space:]]*use:[[:space:]]*/,"");print;exit}' "$config_path" 2>/dev/null || true)"
-    if [ "$sandbox_provider" = "ideer.community.aio_sandbox:AioSandboxProvider" ]; then
+    if [ "$sandbox_provider" = "deerflow.community.aio_sandbox:AioSandboxProvider" ]; then
         sandbox_image="$(awk '/^sandbox:/{f=1;next} f&&/^[^[:space:]]/{exit} f&&/^[[:space:]]*image:/{sub(/^[[:space:]]*image:[[:space:]]*/,"");gsub(/"/,"");print;exit}' "$config_path" 2>/dev/null || true)"
         if [ -n "$sandbox_image" ] && [ "$sandbox_image" != "null" ] && ! docker image inspect "$sandbox_image" >/dev/null 2>&1; then
             warn "sandbox.image '${sandbox_image}' is not present in the local Docker daemon; sandboxed tools (bash, file writes) will fail until the image is loaded or sandbox.use is changed"

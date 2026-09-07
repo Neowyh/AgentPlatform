@@ -8,10 +8,10 @@ const meta: MetaRecord = {
     title: "简介",
   },
   harness: {
-    title: "iDeer Harness",
+    title: "DeerFlow Harness",
   },
   application: {
-    title: "iDeer 应用",
+    title: "DeerFlow 应用",
   },
   tutorials: {
     title: "教程",
@@ -19,8 +19,20 @@ const meta: MetaRecord = {
   reference: {
     title: "参考",
   },
-  manual: {
-    title: "用户手册",
+  workspace: {
+    type: "page",
+  },
+  blog: {
+    type: "page",
+  },
+  posts: {
+    type: "page",
+  },
+  login: {
+    type: "page",
+  },
+  setup: {
+    type: "page",
   },
 };
 

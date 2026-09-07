@@ -8,7 +8,7 @@ import tempfile
 
 import pytest
 
-from ideer.community.doc_reader.tools import (
+from app.agentplatform.community.doc_reader.tools import (
     _parse_page_range,
     read_document_tool,
 )

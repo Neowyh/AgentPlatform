@@ -1,19 +1,25 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { type PromptInputMessage } from "@/components/ai-elements/prompt-input";
+import { SidebarTrigger } from "@/components/ui/sidebar";
 import { ArtifactTrigger } from "@/components/workspace/artifacts";
+import { BrowserTrigger } from "@/components/workspace/browser-view";
 import {
   ChatBox,
   useSpecificChatMode,
   useThreadChat,
 } from "@/components/workspace/chats";
 import { ExportTrigger } from "@/components/workspace/export-trigger";
-import { InputBox } from "@/components/workspace/input-box";
+import { GoalStatus } from "@/components/workspace/goal-status";
+import {
+  InputBox,
+  type InputBoxSubmitOptions,
+} from "@/components/workspace/input-box";
 import {
   MessageList,
   MESSAGE_LIST_DEFAULT_PADDING_BOTTOM,
@@ -22,12 +28,21 @@ import { ThreadContext } from "@/components/workspace/messages/context";
 import { ScenarioCascadeBar } from "@/components/workspace/scenario";
 import { ScenarioTabs } from "@/components/workspace/scenario/scenario-tabs";
 import type { SelectedTag } from "@/components/workspace/scenario/selected-tags";
+import {
+  SidecarProvider,
+  SidecarTrigger,
+} from "@/components/workspace/sidecar";
+import { ThreadBackgroundTasks } from "@/components/workspace/thread-background-tasks";
+import { ThreadScheduledTasksLink } from "@/components/workspace/thread-scheduled-tasks-link";
 import { ThreadTitle } from "@/components/workspace/thread-title";
 import { TodoList } from "@/components/workspace/todo-list";
 import { TokenUsageIndicator } from "@/components/workspace/token-usage-indicator";
+import { useActiveGoal } from "@/components/workspace/use-active-goal";
 import { Welcome } from "@/components/workspace/welcome";
+import { RecentChatsCard } from "@/components/workspace/workbench/recent-chats-card";
 import { useAgent, useAgents } from "@/core/agents/hooks";
 import { getAPIClient } from "@/core/api";
+import { useBrowserControlEnabled } from "@/core/features";
 import { useI18n } from "@/core/i18n/hooks";
 import { useModels } from "@/core/models/hooks";
 import { useNotification } from "@/core/notification/hooks";
@@ -40,6 +55,8 @@ import type { ScenarioId } from "@/core/scenarios/types";
 import { useLocalSettings, useThreadSettings } from "@/core/settings";
 import { useSkills } from "@/core/skills/hooks";
 import {
+  useBranchThread,
+  useThreadMetadata,
   useThreadStream,
   useThreadTokenUsage,
   useThreads,
@@ -81,8 +98,10 @@ function RecentTaskCards({
               textOfMessage(message as Parameters<typeof textOfMessage>[0]),
             )
             .find((text): text is string => Boolean(text?.trim()));
-          const taskType =
-            context?.task_label ??
+          const taskType: string =
+            (typeof context?.task_label === "string"
+              ? context.task_label
+              : undefined) ??
             (typeof metadata?.task_type === "string"
               ? metadata.task_type
               : undefined) ??
@@ -120,6 +139,7 @@ function RecentTaskCards({
 
 export default function ChatPage() {
   const { t } = useI18n();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const requestedAgent = searchParams.get("agent");
   const {
@@ -152,6 +172,7 @@ export default function ChatPage() {
   } = useScenarioBinding();
   const { agents } = useAgents();
   const { data: recentThreads = [] } = useThreads();
+  const branchThread = useBranchThread();
   const selectedAgent = agents.find(
     (item) => (item.slug ?? item.name) === selectedPill?.agentSlug,
   );
@@ -271,6 +292,13 @@ export default function ChatPage() {
     isNewThread || isMock ? undefined : threadId,
     { enabled: tokenUsageEnabled && !isMock },
   );
+  // The metadata GET is the header's canonical title source; keeping it on in
+  // mock mode is what lets a rename reach the header (the mock implements the
+  // single-thread GET and the rename's updateState write-back).
+  const threadMetadata = useThreadMetadata(threadId, {
+    enabled: !isNewThread,
+    isMock,
+  });
   const backendTokenUsage = threadTokenUsageToTokenUsage(threadTokenUsage.data);
   const mountedRef = useRef(false);
   useSpecificChatMode();
@@ -299,6 +327,10 @@ export default function ChatPage() {
     loadMoreHistory,
   } = useThreadStream({
     threadId: isNewThread ? undefined : threadId,
+    // Keep the client-visible thread id flowing into the stream hooks so
+    // optimistic messages and live-message attribution stay attached to the
+    // view while `threadId` itself is gated on backend thread creation.
+    displayThreadId: threadId,
     context: selectionContext,
     isMock,
     prepareSubmit: async () => {
@@ -344,8 +376,35 @@ export default function ChatPage() {
     },
   });
 
+  const hasThreadMessages = thread.messages.length > 0;
+
+  useEffect(() => {
+    if (
+      !isNewThread &&
+      !isMock &&
+      threadMetadata.data == null &&
+      !threadMetadata.isLoading &&
+      !threadMetadata.isFetching &&
+      !isHistoryLoading &&
+      !hasMoreHistory &&
+      !hasThreadMessages
+    ) {
+      router.replace("/workspace/chats/new");
+    }
+  }, [
+    hasMoreHistory,
+    hasThreadMessages,
+    isHistoryLoading,
+    isMock,
+    isNewThread,
+    router,
+    threadMetadata.data,
+    threadMetadata.isFetching,
+    threadMetadata.isLoading,
+  ]);
+
   const handleSubmit = useCallback(
-    (message: PromptInputMessage) => {
+    (message: PromptInputMessage, options?: InputBoxSubmitOptions) => {
       if (!selectionBinding.valid) {
         toast.error(selectionBinding.reason);
         return;
@@ -354,6 +413,7 @@ export default function ChatPage() {
         threadId,
         message,
         selectionBinding.context,
+        options,
       );
       if (message.files.length > 0) {
         return sendPromise;
@@ -365,176 +425,245 @@ export default function ChatPage() {
   const handleStop = useCallback(async () => {
     await thread.stop();
   }, [thread]);
+  const handleBranchTurn = useCallback(
+    async (messageId: string, messageIds: string[]) => {
+      if (
+        isNewThread ||
+        isMock ||
+        env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true"
+      ) {
+        return;
+      }
+
+      try {
+        const response = await branchThread.mutateAsync({
+          threadId,
+          messageId,
+          messageIds,
+        });
+        toast.success(t.conversation.branchCreated);
+        router.push(`/workspace/chats/${response.thread_id}`);
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : t.conversation.branchFailed,
+        );
+      }
+    },
+    [branchThread, isMock, isNewThread, router, t, threadId],
+  );
 
   const tokenUsageInlineMode = tokenUsageEnabled
     ? localSettings.tokenUsage.inlineMode
     : "off";
   const hasTodos = (thread.values.todos?.length ?? 0) > 0;
+  const { enabled: browserControlEnabled } = useBrowserControlEnabled();
+  const browserEnabled = !isNewThread && !isMock && browserControlEnabled;
+  const { activeGoal, hasGoal, setLocalGoal } = useActiveGoal(
+    threadId,
+    thread.values.goal,
+  );
 
   return (
     <ThreadContext.Provider value={{ thread, isMock }}>
-      <ChatBox threadId={threadId}>
-        <div className="workbench-conversation relative flex size-full min-h-0 justify-between">
-          <header
-            className={cn(
-              "workbench-conversation-header absolute top-0 right-0 left-0 z-30 flex h-12 shrink-0 items-center px-4",
-              isWelcomeMode
-                ? "bg-background/0 backdrop-blur-none"
-                : "bg-background/80 shadow-xs backdrop-blur",
-            )}
-          >
-            <div className="type-body flex w-full items-center font-medium">
-              <ThreadTitle threadId={threadId} thread={thread} />
-            </div>
-            <div className="flex items-center gap-2">
-              <TokenUsageIndicator
-                threadId={isNewThread ? undefined : threadId}
-                backendUsage={backendTokenUsage}
-                enabled={tokenUsageEnabled}
-                messages={thread.messages}
-                pendingMessages={pendingUsageMessages}
-                preferences={localSettings.tokenUsage}
-                onPreferencesChange={(preferences) =>
-                  setLocalSettings("tokenUsage", preferences)
-                }
-              />
-              <ExportTrigger threadId={threadId} />
-              <ArtifactTrigger />
-            </div>
-          </header>
-          <main
-            className={cn(
-              "workbench-conversation-main flex min-h-0 max-w-full grow flex-col",
-              isWelcomeMode && "justify-center",
-            )}
-          >
-            {!isWelcomeMode && (
-              <div className="flex min-h-0 flex-1 justify-center">
-                <MessageList
-                  className="size-full pt-10"
-                  threadId={threadId}
-                  thread={thread}
-                  paddingBottom={MESSAGE_LIST_DEFAULT_PADDING_BOTTOM}
-                  hasMoreHistory={hasMoreHistory}
-                  loadMoreHistory={loadMoreHistory}
-                  isHistoryLoading={isHistoryLoading}
-                  tokenUsageInlineMode={tokenUsageInlineMode}
-                />
-              </div>
-            )}
-            <div
+      <SidecarProvider
+        parentThreadId={threadId}
+        context={settings.context}
+        isMock={isMock}
+      >
+        <ChatBox threadId={threadId} browserEnabled={browserEnabled}>
+          <div className="workbench-conversation relative flex size-full min-h-0 justify-between">
+            <header
               className={cn(
-                "relative z-30 flex shrink-0 justify-center px-4",
-                isWelcomeMode ? "pb-0" : "pb-4",
+                "workbench-conversation-header absolute top-0 right-0 left-0 flex h-12 shrink-0 items-center px-4",
+                isWelcomeMode
+                  ? "bg-background/0 z-40 backdrop-blur-none"
+                  : "bg-background/80 z-30 shadow-xs backdrop-blur",
               )}
             >
-              <div className="relative w-full max-w-(--container-width-md)">
-                {isWelcomeMode && (
-                  <div
-                    className="workbench-home flex flex-col items-center"
-                    data-testid="workbench-home"
-                  >
-                    <Welcome mode={settings.context.mode} />
+              {!isMock && <SidebarTrigger className="md:hidden" />}
+              <div className="type-body flex w-full items-center font-medium">
+                <ThreadTitle
+                  threadId={threadId}
+                  thread={thread}
+                  canonicalTitle={threadMetadata.data?.values?.title}
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <TokenUsageIndicator
+                  threadId={isNewThread ? undefined : threadId}
+                  backendUsage={backendTokenUsage}
+                  enabled={tokenUsageEnabled}
+                  messages={thread.messages}
+                  pendingMessages={pendingUsageMessages}
+                  preferences={localSettings.tokenUsage}
+                  onPreferencesChange={(preferences) =>
+                    setLocalSettings("tokenUsage", preferences)
+                  }
+                />
+                {!isNewThread && !isMock && (
+                  <ThreadBackgroundTasks threadId={threadId} />
+                )}
+                {!isNewThread && !isMock && (
+                  <ThreadScheduledTasksLink threadId={threadId} />
+                )}
+                <SidecarTrigger />
+                {browserEnabled && <BrowserTrigger />}
+                <ExportTrigger threadId={threadId} />
+                <ArtifactTrigger />
+              </div>
+            </header>
+            <main
+              className={cn(
+                "workbench-conversation-main flex min-h-0 max-w-full grow flex-col",
+                isWelcomeMode && "justify-center",
+              )}
+            >
+              {!isWelcomeMode && (
+                <div className="flex min-h-0 flex-1 justify-center">
+                  <MessageList
+                    className="size-full pt-10"
+                    testId="main-message-list"
+                    threadId={threadId}
+                    thread={thread}
+                    enableConversationOutline
+                    paddingBottom={MESSAGE_LIST_DEFAULT_PADDING_BOTTOM}
+                    hasMoreHistory={hasMoreHistory}
+                    loadMoreHistory={loadMoreHistory}
+                    isHistoryLoading={isHistoryLoading}
+                    tokenUsageInlineMode={tokenUsageInlineMode}
+                    canBranch={
+                      !isNewThread &&
+                      !isMock &&
+                      env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY !== "true" &&
+                      !isUploading &&
+                      !thread.isLoading &&
+                      !branchThread.isPending
+                    }
+                    onBranchTurn={handleBranchTurn}
+                  />
+                </div>
+              )}
+              <div
+                className={cn(
+                  "relative z-30 flex shrink-0 justify-center px-4",
+                  isWelcomeMode ? "pb-0" : "pb-4",
+                )}
+              >
+                <div className="relative w-full max-w-(--container-width-md)">
+                  {isWelcomeMode && (
                     <div
-                      className="workbench-quick-entry-module"
-                      data-testid="workbench-quick-entry-module"
+                      className="workbench-home flex flex-col items-center"
+                      data-testid="workbench-home"
                     >
-                      <p className="workbench-module-guide workbench-scenario-guide">
-                        <span className="workbench-guide-question">
-                          方向不明？
-                        </span>
-                        <span className="workbench-guide-answer">
-                          iDeer帮你找对帮手
-                        </span>
-                      </p>
-                      <ScenarioTabs
-                        selected={activeScenario}
-                        onSelect={handleSelectScenario}
-                      />
-                      <div className="workbench-scenario-cascade">
-                        <ScenarioCascadeBar
-                          selectedScenario={activeScenario}
-                          selectedPill={selectedPill}
-                          selectedChip={selectedChip}
-                          onTogglePill={togglePill}
-                          onToggleChip={toggleChip}
+                      <Welcome mode={settings.context.mode} />
+                      <RecentChatsCard />
+                      <div
+                        className="workbench-quick-entry-module"
+                        data-testid="workbench-quick-entry-module"
+                      >
+                        <p className="workbench-module-guide workbench-scenario-guide">
+                          <span className="workbench-guide-question">
+                            方向不明？
+                          </span>
+                          <span className="workbench-guide-answer">
+                            iDeer帮你找对帮手
+                          </span>
+                        </p>
+                        <ScenarioTabs
+                          selected={activeScenario}
+                          onSelect={handleSelectScenario}
                         />
+                        <div className="workbench-scenario-cascade">
+                          <ScenarioCascadeBar
+                            selectedScenario={activeScenario}
+                            selectedPill={selectedPill}
+                            selectedChip={selectedChip}
+                            onTogglePill={togglePill}
+                            onToggleChip={toggleChip}
+                          />
+                        </div>
                       </div>
                     </div>
-                  </div>
-                )}
-                {hasTodos && (
-                  <div className="relative z-0">
-                    <TodoList
-                      className="bg-background/5"
-                      todos={thread.values.todos ?? []}
-                      hidden={false}
+                  )}
+                  {(hasGoal || hasTodos) && (
+                    <div className="relative z-0 flex flex-col">
+                      {activeGoal && <GoalStatus goal={activeGoal} />}
+                      {hasTodos && (
+                        <TodoList
+                          className="bg-background/5"
+                          todos={thread.values.todos ?? []}
+                          hidden={false}
+                        />
+                      )}
+                    </div>
+                  )}
+                  {mountedRef.current ? (
+                    <>
+                      {isWelcomeMode && (
+                        <p className="workbench-module-guide workbench-input-guide">
+                          <span className="workbench-guide-question">
+                            目标明确？
+                          </span>
+                          <span className="workbench-guide-answer">
+                            iDeer帮你落地实现
+                          </span>
+                        </p>
+                      )}
+                      <InputBox
+                        className="workbench-input-surface bg-background/5 w-full"
+                        isWelcomeMode={isWelcomeMode}
+                        threadId={threadId}
+                        autoFocus={isWelcomeMode}
+                        status={
+                          thread.error
+                            ? "error"
+                            : thread.isLoading
+                              ? "streaming"
+                              : "ready"
+                        }
+                        context={selectionContext}
+                        allowedSkillNames={allowedSkillNames}
+                        skillInvocationEnabled={!selectedPill}
+                        pendingTemplate={pendingTemplate}
+                        clearInjectedTemplateKey={templateResetKey}
+                        onPendingTemplateConsumed={() =>
+                          setPendingTemplate(null)
+                        }
+                        selectedTags={selectedTags}
+                        onRemoveTag={handleRemoveTag}
+                        disabled={
+                          isMock ||
+                          env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true" ||
+                          isUploading
+                        }
+                        onContextChange={(context) =>
+                          setSettings("context", context)
+                        }
+                        onGoalChange={setLocalGoal}
+                        onSubmit={handleSubmit}
+                        onStop={handleStop}
+                      />
+                      {isWelcomeMode && (
+                        <RecentTaskCards threads={recentThreads} />
+                      )}
+                    </>
+                  ) : (
+                    <div
+                      aria-hidden="true"
+                      className="bg-background/5 h-32 w-full rounded-2xl"
                     />
-                  </div>
-                )}
-                {mountedRef.current ? (
-                  <>
-                    {isWelcomeMode && (
-                      <p className="workbench-module-guide workbench-input-guide">
-                        <span className="workbench-guide-question">
-                          目标明确？
-                        </span>
-                        <span className="workbench-guide-answer">
-                          iDeer帮你落地实现
-                        </span>
-                      </p>
-                    )}
-                    <InputBox
-                      className="workbench-input-surface bg-background/5 w-full"
-                      isWelcomeMode={isWelcomeMode}
-                      threadId={threadId}
-                      autoFocus={isWelcomeMode}
-                      status={
-                        thread.error
-                          ? "error"
-                          : thread.isLoading
-                            ? "streaming"
-                            : "ready"
-                      }
-                      context={selectionContext}
-                      allowedSkillNames={allowedSkillNames}
-                      skillInvocationEnabled={!selectedPill}
-                      pendingTemplate={pendingTemplate}
-                      clearInjectedTemplateKey={templateResetKey}
-                      onPendingTemplateConsumed={() => setPendingTemplate(null)}
-                      selectedTags={selectedTags}
-                      onRemoveTag={handleRemoveTag}
-                      disabled={
-                        isMock ||
-                        env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true" ||
-                        isUploading
-                      }
-                      onContextChange={(context) =>
-                        setSettings("context", context)
-                      }
-                      onSubmit={handleSubmit}
-                      onStop={handleStop}
-                    />
-                    {isWelcomeMode && (
-                      <RecentTaskCards threads={recentThreads} />
-                    )}
-                  </>
-                ) : (
-                  <div
-                    aria-hidden="true"
-                    className="bg-background/5 h-32 w-full rounded-2xl"
-                  />
-                )}
-                {env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true" && (
-                  <div className="text-muted-foreground/67 type-body w-full translate-y-12 text-center">
-                    {t.common.notAvailableInDemoMode}
-                  </div>
-                )}
+                  )}
+                  {env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true" && (
+                    <div className="text-muted-foreground/67 type-body w-full translate-y-12 text-center">
+                      {t.common.notAvailableInDemoMode}
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          </main>
-        </div>
-      </ChatBox>
+            </main>
+          </div>
+        </ChatBox>
+      </SidecarProvider>
     </ThreadContext.Provider>
   );
 }

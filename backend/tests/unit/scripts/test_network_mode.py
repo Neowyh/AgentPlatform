@@ -12,7 +12,7 @@ from __future__ import annotations
 import os
 from unittest.mock import patch
 
-from ideer.config.network_mode import NetworkMode, get_network_mode, is_offline
+from app.agentplatform.config.network_mode import NetworkMode, get_network_mode, is_offline
 
 
 class TestNetworkModeEnum:

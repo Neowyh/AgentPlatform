@@ -1,19 +1,19 @@
 ---
 title: 自定义与扩展
-description: iDeer 的可插拔架构意味着系统的大多数部分都可以在不 fork 核心的情况下被替换或扩展。本页面列举了扩展点，并解释如何使用每一个。
+description: DeerFlow 的可插拔架构意味着系统的大多数部分都可以在不 fork 核心的情况下被替换或扩展。本页面列举了扩展点，并解释如何使用每一个。
 ---
 
-import { Callout, Cards } from "nextra/components";
+import { Callout } from "nextra/components";
 
 # 自定义与扩展
 
 <Callout type="info" emoji="🔧">
-  iDeer
+  DeerFlow
   设计为可适配的。你可以通过编写自定义中间件、添加新工具、构建技能包以及通过
   config.yaml 的 <code>use:</code> 字段替换任何内置组件来扩展 Agent 行为。
 </Callout>
 
-iDeer 的可插拔架构意味着系统的大多数部分都可以在不 fork 核心的情况下被替换或扩展。本页面列举了扩展点，并解释如何使用每一个。
+DeerFlow 的可插拔架构意味着系统的大多数部分都可以在不 fork 核心的情况下被替换或扩展。本页面列举了扩展点，并解释如何使用每一个。
 
 ## 自定义中间件
 
@@ -25,19 +25,21 @@ iDeer 的可插拔架构意味着系统的大多数部分都可以在不 fork �
 2. 在构建 Agent 时通过 `custom_middlewares` 参数传入你的中间件。
 
 ```python
+from langchain.agents import AgentState
 from langchain.agents.middleware import AgentMiddleware
-from ideer.agents.thread_state import ThreadState
+from langgraph.runtime import Runtime
 
-class AuditMiddleware(AgentMiddleware):
-    async def on_start(self, state: ThreadState, config):
-        # 在每次模型调用前运行
+
+class AuditMiddleware(AgentMiddleware[AgentState]):
+    def before_model(self, state: AgentState, runtime: Runtime) -> dict | None:
+        """在每次模型调用前运行。"""
         print(f"[审计] 轮次开始：上下文中有 {len(state.messages)} 条消息")
-        return state, config
+        return None
 
-    async def on_end(self, state: ThreadState, config):
-        # 在每次模型调用后运行
+    def after_model(self, state: AgentState, runtime: Runtime) -> dict | None:
+        """在每次模型调用后运行。"""
         print(f"[审计] 轮次结束：最后一条消息类型 = {state.messages[-1].type}")
-        return state, config
+        return None
 ```
 
 自定义中间件在链末尾 `ClarificationMiddleware` 之前注入，后者始终最后运行。
@@ -69,7 +71,7 @@ def my_custom_tool(query: str) -> str:
 沙箱可以通过实现 `SandboxProvider` 接口来替换：
 
 ```python
-from ideer.sandbox.sandbox_provider import SandboxProvider
+from deerflow.sandbox.sandbox_provider import SandboxProvider
 
 class MyCustomSandboxProvider(SandboxProvider):
     def acquire(self, thread_id: str | None = None) -> str:
@@ -97,7 +99,7 @@ sandbox:
 通过实现 `MemoryStorage` 将基于文件的记忆替换为任何持久化存储：
 
 ```python
-from ideer.agents.memory.storage import MemoryStorage
+from deerflow.agents.memory.storage import MemoryStorage
 from typing import Any
 
 class RedisMemoryStorage(MemoryStorage):
@@ -120,7 +122,7 @@ memory:
 
 ## 自定义技能
 
-技能是最简单的扩展点。在 `resources/skills/your-skill-name/` 下创建一个目录，并在其中添加 `SKILL.md` 文件。技能将在下次 `load_skills()` 调用时自动被发现。
+技能是最简单的扩展点。在 `skills/custom/your-skill-name/` 下创建一个目录，并在其中添加 `SKILL.md` 文件。技能将在下次 `load_skills()` 调用时自动被发现。
 
 参见[技能](/docs/harness/skills)页面了解完整的目录结构和 `SKILL.md` 格式。
 
@@ -149,7 +151,7 @@ checkpointer:
   connection_string: ./my-checkpoints.db
 ```
 
-对于自定义后端，实现 LangGraph 的 `BaseCheckpointSaver` 接口，并在初始化 `iDeerClient` 时以编程方式配置它。
+对于自定义后端，实现 LangGraph 的 `BaseCheckpointSaver` 接口，并在初始化 `DeerFlowClient` 时以编程方式配置它。
 
 <Cards num={2}>
   <Cards.Card title="集成指南" href="/docs/harness/integration-guide" />

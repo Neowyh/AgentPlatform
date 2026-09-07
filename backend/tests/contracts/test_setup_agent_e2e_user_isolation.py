@@ -9,7 +9,7 @@ We intentionally exercise the full pipeline:
 
     HTTP body shape (mimics LangGraph SDK wire format)
       -> app.gateway.services.start_run config-assembly chain
-      -> ideer.runtime.runs.worker._build_runtime_context
+      -> deerflow.runtime.runs.worker._build_runtime_context
       -> langchain.agents.create_agent graph
       -> ToolNode dispatch
       -> setup_agent tool
@@ -39,15 +39,15 @@ from langchain_core.messages import AIMessage, HumanMessage
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.agentplatform.rbac_models import UserModel, UserRole
+from app.agentplatform.resource_models import Resource
 from app.gateway.services import (
     build_run_config,
     inject_authenticated_user_context,
     merge_run_context_overrides,
 )
-from ideer.persistence.base import Base
-from ideer.persistence.models.resource_catalog import Resource
-from ideer.persistence.models.user import UserModel, UserRole
-from ideer.runtime.runs.worker import _build_runtime_context, _install_runtime_context
+from deerflow.persistence.base import Base
+from deerflow.runtime.runs.worker import _build_runtime_context, _install_runtime_context
 
 # ---------------------------------------------------------------------------
 # Helpers — real production code paths
@@ -196,7 +196,7 @@ def _build_real_bootstrap_graph(authenticated_user_id: str):
     """
     from langchain.agents import create_agent
 
-    from ideer.tools.builtins.setup_agent_tool import setup_agent
+    from app.agentplatform.tools.setup_agent_tool import setup_agent
 
     # First model turn: emit a tool_call for setup_agent
     # Second model turn (after tool result): final answer (terminates the loop)
@@ -263,10 +263,10 @@ async def test_real_graph_real_setup_agent_writes_to_authenticated_user_dir(tmp_
     # everything else is real
     with (
         patch(
-            "ideer.tools.builtins.setup_agent_tool.get_paths",
+            "app.agentplatform.tools.setup_agent_tool.get_paths",
             return_value=_make_paths_mock(tmp_path),
         ),
-        patch("ideer.tools.builtins.setup_agent_tool.get_session_factory", return_value=catalog_db),
+        patch("app.agentplatform.tools.setup_agent_tool.get_session_factory", return_value=catalog_db),
     ):
         # Drive the real graph. This goes through real ToolNode + real Runtime merge.
         final_state = await graph.ainvoke(
@@ -313,10 +313,10 @@ async def test_inject_failure_falls_back_to_default_proving_test_is_load_bearing
 
     with (
         patch(
-            "ideer.tools.builtins.setup_agent_tool.get_paths",
+            "app.agentplatform.tools.setup_agent_tool.get_paths",
             return_value=_make_paths_mock(tmp_path),
         ),
-        patch("ideer.tools.builtins.setup_agent_tool.get_session_factory", return_value=catalog_db),
+        patch("app.agentplatform.tools.setup_agent_tool.get_session_factory", return_value=catalog_db),
     ):
         await graph.ainvoke(
             {"messages": [HumanMessage(content="Create fallback-agent")]},
@@ -349,7 +349,7 @@ async def test_subgraph_invocation_preserves_user_id_in_runtime(tmp_path: Path, 
     from langchain.agents import create_agent
     from langgraph.runtime import Runtime
 
-    from ideer.tools.builtins.setup_agent_tool import setup_agent
+    from app.agentplatform.tools.setup_agent_tool import setup_agent
 
     auth_uid = "deadbeef-0000-1111-2222-333344445555"
     await _seed_user(catalog_db, auth_uid)
@@ -390,10 +390,10 @@ async def test_subgraph_invocation_preserves_user_id_in_runtime(tmp_path: Path, 
 
     with (
         patch(
-            "ideer.tools.builtins.setup_agent_tool.get_paths",
+            "app.agentplatform.tools.setup_agent_tool.get_paths",
             return_value=_make_paths_mock(tmp_path),
         ),
-        patch("ideer.tools.builtins.setup_agent_tool.get_session_factory", return_value=catalog_db),
+        patch("app.agentplatform.tools.setup_agent_tool.get_session_factory", return_value=catalog_db),
     ):
         # Direct sub-graph invoke (mimics what a subagent invocation looks like
         # — distinct ainvoke call, but parent config carries the same runtime).
@@ -419,7 +419,7 @@ def test_sync_tool_dispatch_through_thread_pool_uses_runtime_context(tmp_path: P
     from langchain.agents import create_agent
     from langgraph.runtime import Runtime
 
-    from ideer.tools.builtins.setup_agent_tool import setup_agent
+    from app.agentplatform.tools.setup_agent_tool import setup_agent
 
     auth_uid = "11112222-3333-4444-5555-666677778888"
     asyncio.run(_seed_user(catalog_db, auth_uid))
@@ -455,10 +455,10 @@ def test_sync_tool_dispatch_through_thread_pool_uses_runtime_context(tmp_path: P
 
     with (
         patch(
-            "ideer.tools.builtins.setup_agent_tool.get_paths",
+            "app.agentplatform.tools.setup_agent_tool.get_paths",
             return_value=_make_paths_mock(tmp_path),
         ),
-        patch("ideer.tools.builtins.setup_agent_tool.get_session_factory", return_value=catalog_db),
+        patch("app.agentplatform.tools.setup_agent_tool.get_session_factory", return_value=catalog_db),
     ):
         # Use SYNC invoke to hit the ContextThreadPoolExecutor path
         graph.invoke(

@@ -3,7 +3,6 @@
 Covers:
 - SubagentStatus enum and is_terminal property
 - SubagentResult dataclass, __post_init__, try_set_terminal (all branches)
-- _evict_stale_tasks (stale + non-stale)
 - _run_isolated_subagent_loop / _shutdown_isolated_subagent_loop / _get_isolated_subagent_loop
 - _submit_to_isolated_loop_in_context
 - _filter_tools (allowlist, denylist, both, neither)
@@ -11,8 +10,7 @@ Covers:
 - _create_agent (deferred model resolution, explicit tools)
 - _load_skills (empty list, None, whitelist, exception, no skills found)
 - _apply_skill_allowed_tools
-- _load_skill_messages (empty, content, exception per-skill)
-- _build_initial_state (system_prompt + skills, sandbox, thread_data)
+- _build_initial_state (report-contract system message, sandbox, thread_data)
 - _aexecute (all result extraction branches, cancellation, exception)
 - _execute_in_isolated_loop (timeout, generic exception)
 - execute (running loop, standard path, exception fallback)
@@ -25,61 +23,98 @@ Covers:
 from __future__ import annotations
 
 import asyncio
+import dataclasses
+import importlib
 import logging
 import sys
 import threading
+import time
 from concurrent.futures import Future
 from concurrent.futures import TimeoutError as FuturesTimeoutError
-from datetime import datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from ideer.skills.types import Skill
+from deerflow.skills.types import Skill
 
 # ---------------------------------------------------------------------------
 # Module setup: mock heavy transitive imports to allow real executor import
 # ---------------------------------------------------------------------------
 
 _MOCKED_MODULE_NAMES = [
-    "ideer.agents",
-    "ideer.agents.thread_state",
-    "ideer.agents.middlewares",
-    "ideer.agents.middlewares.thread_data_middleware",
-    "ideer.agents.middlewares.tool_error_handling_middleware",
-    "ideer.sandbox",
-    "ideer.sandbox.middleware",
-    "ideer.sandbox.security",
-    "ideer.models",
-    "ideer.skills.storage",
+    "deerflow.agents",
+    "deerflow.agents.thread_state",
+    "deerflow.agents.middlewares",
+    "deerflow.agents.middlewares.thread_data_middleware",
+    "deerflow.agents.middlewares.tool_error_handling_middleware",
+    "deerflow.sandbox",
+    "deerflow.sandbox.middleware",
+    "deerflow.sandbox.security",
+    "deerflow.models",
+    "deerflow.skills.storage",
 ]
+
+# Leaf modules the executor imports from *inside* the mocked parent packages.
+# A MagicMock parent has no ``__path__``, so a live submodule import raises
+# ModuleNotFoundError. Preload the real leaf modules first, then re-seed them
+# into sys.modules after the parents are mocked.
+_PRELOADED_LEAF_MODULES = [
+    "deerflow.agents.middlewares.audit_context",
+]
+
+
+def _default_app_config():
+    """Hermetic AppConfig stand-in: CI checkouts do not include the gitignored
+    config.yaml, and executor control-flow tests must not read real config."""
+    return SimpleNamespace(
+        tool_search=SimpleNamespace(enabled=False),
+        authorization=SimpleNamespace(enabled=False),
+        skills=SimpleNamespace(
+            deferred_discovery=True,
+            container_path="/mnt/skills",
+        ),
+        skill_evolution=SimpleNamespace(enabled=False),
+    )
 
 
 @pytest.fixture(autouse=True)
 def _setup_executor_classes():
     """Set up mocked modules and import real executor classes."""
     original_modules = {name: sys.modules.get(name) for name in _MOCKED_MODULE_NAMES}
-    original_executor = sys.modules.get("ideer.subagents.executor")
+    original_leaves = {name: sys.modules.get(name) for name in _PRELOADED_LEAF_MODULES}
+    original_executor = sys.modules.get("deerflow.subagents.executor")
 
-    if "ideer.subagents.executor" in sys.modules:
-        del sys.modules["ideer.subagents.executor"]
+    leaf_modules = {name: importlib.import_module(name) for name in _PRELOADED_LEAF_MODULES}
+
+    if "deerflow.subagents.executor" in sys.modules:
+        del sys.modules["deerflow.subagents.executor"]
 
     for name in _MOCKED_MODULE_NAMES:
         sys.modules[name] = MagicMock()
-    storage_module = ModuleType("ideer.skills.storage")
-    storage_module.get_or_new_skill_storage = lambda **kw: SimpleNamespace(load_skills=lambda *, enabled_only: [])
-    sys.modules["ideer.skills.storage"] = storage_module
+    storage_module = ModuleType("deerflow.skills.storage")
+    storage_module.get_or_new_user_skill_storage = lambda user_id=None, **kw: SimpleNamespace(load_skills=lambda *, enabled_only: [])
+    sys.modules["deerflow.skills.storage"] = storage_module
+    for name, module in leaf_modules.items():
+        sys.modules[name] = module
 
     from langchain_core.messages import AIMessage, HumanMessage
 
-    from ideer.subagents.config import SubagentConfig
-    from ideer.subagents.executor import (
+    # Import the executor by its fully-qualified name: a plain
+    # ``from deerflow.subagents import executor`` rebinds the package attribute
+    # left over from the conftest warm-up import, so ``get_app_config`` would be
+    # patched on a stale module object instead of the one backing the class.
+    import deerflow.subagents.executor as executor_mod
+    from deerflow.subagents.config import SubagentConfig
+    from deerflow.subagents.executor import (
         SubagentExecutor,
         SubagentResult,
         SubagentStatus,
     )
+
+    executor_mod.get_app_config = _default_app_config
 
     classes = {
         "AIMessage": AIMessage,
@@ -98,10 +133,16 @@ def _setup_executor_classes():
         elif name in sys.modules:
             del sys.modules[name]
 
+    for name in _PRELOADED_LEAF_MODULES:
+        if original_leaves[name] is not None:
+            sys.modules[name] = original_leaves[name]
+        elif name in sys.modules:
+            del sys.modules[name]
+
     if original_executor is not None:
-        sys.modules["ideer.subagents.executor"] = original_executor
-    elif "ideer.subagents.executor" in sys.modules:
-        del sys.modules["ideer.subagents.executor"]
+        sys.modules["deerflow.subagents.executor"] = original_executor
+    elif "deerflow.subagents.executor" in sys.modules:
+        del sys.modules["deerflow.subagents.executor"]
 
 
 # ---------------------------------------------------------------------------
@@ -185,7 +226,7 @@ def msg(classes):
 def executor_module(_setup_executor_classes):
     import importlib
 
-    from ideer.subagents import executor
+    from deerflow.subagents import executor
 
     return importlib.reload(executor)
 
@@ -326,9 +367,9 @@ class TestSubagentResult:
             trace_id="tr1",
             status=SubagentStatus.RUNNING,
         )
-        before = datetime.now()
+        before = datetime.now(UTC)
         r.try_set_terminal(SubagentStatus.COMPLETED)
-        after = datetime.now()
+        after = datetime.now(UTC)
         assert before <= r.completed_at <= after
 
     def test_token_usage_records_default_factory(self, classes):
@@ -337,69 +378,6 @@ class TestSubagentResult:
         r1 = SubagentResult(task_id="t1", trace_id="tr1", status=SubagentStatus.PENDING)
         r2 = SubagentResult(task_id="t2", trace_id="tr2", status=SubagentStatus.PENDING)
         assert r1.token_usage_records is not r2.token_usage_records
-
-
-# =========================================================================
-# _evict_stale_tasks
-# =========================================================================
-
-
-class TestEvictStaleTasks:
-    def test_evicts_old_completed_tasks(self, executor_module, classes):
-        SubagentResult = classes["SubagentResult"]
-        SubagentStatus = classes["SubagentStatus"]
-        stale = SubagentResult(
-            task_id="stale",
-            trace_id="tr",
-            status=SubagentStatus.COMPLETED,
-            completed_at=datetime.now() - timedelta(seconds=executor_module._MAX_TASK_AGE_SECONDS + 100),
-        )
-        fresh = SubagentResult(
-            task_id="fresh",
-            trace_id="tr",
-            status=SubagentStatus.COMPLETED,
-            completed_at=datetime.now(),
-        )
-        executor_module._background_tasks["stale"] = stale
-        executor_module._background_tasks["fresh"] = fresh
-
-        executor_module._evict_stale_tasks()
-
-        assert "stale" not in executor_module._background_tasks
-        assert "fresh" in executor_module._background_tasks
-
-    def test_evict_keeps_tasks_without_completed_at(self, executor_module, classes):
-        SubagentResult = classes["SubagentResult"]
-        SubagentStatus = classes["SubagentStatus"]
-        running = SubagentResult(
-            task_id="running",
-            trace_id="tr",
-            status=SubagentStatus.RUNNING,
-            started_at=datetime.now() - timedelta(seconds=9999),
-        )
-        executor_module._background_tasks["running"] = running
-        executor_module._evict_stale_tasks()
-        assert "running" in executor_module._background_tasks
-
-    def test_evict_logs_when_stale_tasks_found(self, executor_module, classes, caplog):
-        SubagentResult = classes["SubagentResult"]
-        SubagentStatus = classes["SubagentStatus"]
-        stale = SubagentResult(
-            task_id="stale-log",
-            trace_id="tr",
-            status=SubagentStatus.COMPLETED,
-            completed_at=datetime.now() - timedelta(seconds=executor_module._MAX_TASK_AGE_SECONDS + 100),
-        )
-        executor_module._background_tasks["stale-log"] = stale
-        with caplog.at_level(logging.INFO):
-            executor_module._evict_stale_tasks()
-        assert "Evicted" in caplog.text
-
-    def test_evict_no_stale_tasks_no_log(self, executor_module, classes, caplog):
-        executor_module._background_tasks.clear()
-        with caplog.at_level(logging.INFO):
-            executor_module._evict_stale_tasks()
-        assert "Evicted" not in caplog.text
 
 
 # =========================================================================
@@ -543,6 +521,8 @@ class TestSubmitToIsolatedLoopInContext:
         from contextvars import copy_context
 
         ctx = copy_context()
+        # Upstream takes a zero-arg coroutine *factory* so the coroutine is
+        # created only after the isolated loop has been resolved.
         future = executor_module._submit_to_isolated_loop_in_context(ctx, coro)
         result = future.result(timeout=5)
         assert result.result == "done"
@@ -697,7 +677,7 @@ class TestExecutorInit:
 class TestCreateAgent:
     def test_deferred_model_resolution(self, classes, base_config, monkeypatch):
         SubagentExecutor = classes["SubagentExecutor"]
-        from ideer.subagents import executor as executor_mod
+        from deerflow.subagents import executor as executor_mod
 
         app_cfg = SimpleNamespace(models=[SimpleNamespace(name="deferred-m")])
         # Patch get_app_config on the executor module (where it was imported)
@@ -718,7 +698,7 @@ class TestCreateAgent:
 
     def test_passes_explicit_tools(self, classes, base_config, monkeypatch):
         SubagentExecutor = classes["SubagentExecutor"]
-        from ideer.subagents import executor as executor_mod
+        from deerflow.subagents import executor as executor_mod
 
         captured = {}
 
@@ -739,52 +719,10 @@ class TestCreateAgent:
         executor._create_agent(tools=custom_tools)
         assert captured["tools"] == custom_tools
 
-    def test_adds_filesystem_scope_only_when_configured(self, classes, monkeypatch):
-        SubagentConfig = classes["SubagentConfig"]
-        SubagentExecutor = classes["SubagentExecutor"]
-        from ideer.subagents import executor as executor_mod
-
-        captured = {}
-        middleware_builder = sys.modules["ideer.agents.middlewares.tool_error_handling_middleware"]
-        middleware_builder.build_subagent_runtime_middlewares = lambda **_kw: ["base"]
-
-        scope_module = ModuleType("ideer.agents.middlewares.filesystem_scope_middleware")
-
-        class Scope:
-            def __init__(self, *, read_roots, write_roots):
-                self.read_roots = read_roots
-                self.write_roots = write_roots
-
-        scope_module.FilesystemScopeMiddleware = Scope
-        monkeypatch.setitem(
-            sys.modules,
-            "ideer.agents.middlewares.filesystem_scope_middleware",
-            scope_module,
-        )
-        monkeypatch.setattr(
-            executor_mod,
-            "create_chat_model",
-            lambda **kw: SimpleNamespace(name=kw["name"]),
-        )
-        monkeypatch.setattr(
-            executor_mod,
-            "create_agent",
-            lambda **kw: captured.update(kw) or kw,
-        )
-        app_cfg = SimpleNamespace(models=[SimpleNamespace(name="m")])
-        config = SubagentConfig(
-            name="scoped",
-            description="scoped",
-            model="m",
-            file_access={"read": ["/inputs"], "write": ["/outputs"]},
-        )
-
-        SubagentExecutor(config=config, tools=[], app_config=app_cfg)._create_agent()
-
-        assert captured["middleware"][0] == "base"
-        assert isinstance(captured["middleware"][1], Scope)
-        assert captured["middleware"][1].read_roots == ["/inputs"]
-        assert captured["middleware"][1].write_roots == ["/outputs"]
+        # NOTE: workflow-node ``file_access`` scope injection moved out of the
+        # upstream executor into the app-layer bridge
+        # (app/agentplatform/workflows/v2/executor_bridge.py, covered by
+        # tests/unit/workflows/test_v2_agent_adapter.py).
 
 
 # =========================================================================
@@ -820,9 +758,9 @@ class TestLoadSkills:
         all_skills = [_skill("a", None), _skill("b", None)]
 
         monkeypatch.setattr(
-            sys.modules["ideer.skills.storage"],
-            "get_or_new_skill_storage",
-            lambda **kw: SimpleNamespace(load_skills=lambda *, enabled_only: all_skills),
+            sys.modules["deerflow.skills.storage"],
+            "get_or_new_user_skill_storage",
+            lambda user_id=None, **kw: SimpleNamespace(load_skills=lambda *, enabled_only: all_skills),
         )
         executor = SubagentExecutor(config=config, tools=[])
         result = await executor._load_skills()
@@ -841,9 +779,9 @@ class TestLoadSkills:
         all_skills = [_skill("a", None), _skill("b", None), _skill("c", None)]
 
         monkeypatch.setattr(
-            sys.modules["ideer.skills.storage"],
-            "get_or_new_skill_storage",
-            lambda **kw: SimpleNamespace(load_skills=lambda *, enabled_only: all_skills),
+            sys.modules["deerflow.skills.storage"],
+            "get_or_new_user_skill_storage",
+            lambda user_id=None, **kw: SimpleNamespace(load_skills=lambda *, enabled_only: all_skills),
         )
         executor = SubagentExecutor(config=config, tools=[])
         result = await executor._load_skills()
@@ -861,9 +799,9 @@ class TestLoadSkills:
         )
 
         monkeypatch.setattr(
-            sys.modules["ideer.skills.storage"],
-            "get_or_new_skill_storage",
-            lambda **kw: SimpleNamespace(load_skills=lambda *, enabled_only: []),
+            sys.modules["deerflow.skills.storage"],
+            "get_or_new_user_skill_storage",
+            lambda user_id=None, **kw: SimpleNamespace(load_skills=lambda *, enabled_only: []),
         )
         executor = SubagentExecutor(config=config, tools=[])
         result = await executor._load_skills()
@@ -880,12 +818,12 @@ class TestLoadSkills:
             skills=None,
         )
 
-        def bad_storage(**kw):
+        def bad_storage(user_id=None, **kw):
             raise RuntimeError("disk error")
 
         monkeypatch.setattr(
-            sys.modules["ideer.skills.storage"],
-            "get_or_new_skill_storage",
+            sys.modules["deerflow.skills.storage"],
+            "get_or_new_user_skill_storage",
             bad_storage,
         )
         executor = SubagentExecutor(config=config, tools=[])
@@ -904,13 +842,13 @@ class TestLoadSkills:
         )
         captured = {}
 
-        def fake_storage(**kw):
+        def fake_storage(user_id=None, **kw):
             captured.update(kw)
             return SimpleNamespace(load_skills=lambda *, enabled_only: [])
 
         monkeypatch.setattr(
-            sys.modules["ideer.skills.storage"],
-            "get_or_new_skill_storage",
+            sys.modules["deerflow.skills.storage"],
+            "get_or_new_user_skill_storage",
             fake_storage,
         )
         app_cfg = SimpleNamespace(models=[SimpleNamespace(name="m")])
@@ -919,82 +857,9 @@ class TestLoadSkills:
         assert captured["app_config"] is app_cfg
 
 
-# =========================================================================
-# _apply_skill_allowed_tools
-# =========================================================================
-
-
-class TestApplySkillAllowedTools:
-    def test_no_skills_returns_base_tools(self, classes, base_config):
-        SubagentExecutor = classes["SubagentExecutor"]
-        tools = [NamedTool("a"), NamedTool("b")]
-        executor = SubagentExecutor(config=base_config, tools=tools)
-        result = executor._apply_skill_allowed_tools([])
-        assert result == tools
-
-    def test_skills_with_allowed_tools_filters(self, classes, base_config):
-        SubagentExecutor = classes["SubagentExecutor"]
-        tools = [NamedTool("a"), NamedTool("b"), NamedTool("c")]
-        executor = SubagentExecutor(config=base_config, tools=tools)
-        skills = [_skill("s1", ["a", "b"])]
-        result = executor._apply_skill_allowed_tools(skills)
-        assert [t.name for t in result] == ["a", "b"]
-
-
-# =========================================================================
-# _load_skill_messages
-# =========================================================================
-
-
-class TestLoadSkillMessages:
-    @pytest.mark.anyio
-    async def test_empty_skills_returns_empty(self, classes, base_config):
-        SubagentExecutor = classes["SubagentExecutor"]
-        executor = SubagentExecutor(config=base_config, tools=[])
-        result = await executor._load_skill_messages([])
-        assert result == []
-
-    @pytest.mark.anyio
-    async def test_reads_skill_content(self, classes, base_config, tmp_path):
-        SubagentExecutor = classes["SubagentExecutor"]
-        skill_dir = tmp_path / "sk"
-        skill_dir.mkdir()
-        skill_file = skill_dir / "SKILL.md"
-        skill_file.write_text("hello world", encoding="utf-8")
-        sk = _skill("sk", None)
-        sk.skill_file = skill_file
-
-        executor = SubagentExecutor(config=base_config, tools=[])
-        msgs = await executor._load_skill_messages([sk])
-        assert len(msgs) == 1
-        assert "hello world" in msgs[0].content
-        assert 'name="sk"' in msgs[0].content
-
-    @pytest.mark.anyio
-    async def test_empty_content_skipped(self, classes, base_config, tmp_path):
-        SubagentExecutor = classes["SubagentExecutor"]
-        skill_dir = tmp_path / "empty-sk"
-        skill_dir.mkdir()
-        skill_file = skill_dir / "SKILL.md"
-        skill_file.write_text("   ", encoding="utf-8")
-        sk = _skill("empty-sk", None)
-        sk.skill_file = skill_file
-
-        executor = SubagentExecutor(config=base_config, tools=[])
-        msgs = await executor._load_skill_messages([sk])
-        assert msgs == []
-
-    @pytest.mark.anyio
-    async def test_read_exception_logged_and_skipped(self, classes, base_config, monkeypatch):
-        SubagentExecutor = classes["SubagentExecutor"]
-        sk = _skill("bad-skill", None)
-        sk.skill_file = MagicMock()
-        sk.skill_file.read_text.side_effect = OSError("permission denied")
-
-        executor = SubagentExecutor(config=base_config, tools=[])
-        msgs = await executor._load_skill_messages([sk])
-        assert msgs == []
-
+# NOTE: ``_apply_skill_allowed_tools`` was removed upstream - a skill's
+# allowed-tools policy is now enforced at runtime by SkillToolPolicyMiddleware
+# instead of being applied eagerly to the executor's tool list.
 
 # =========================================================================
 # _build_initial_state
@@ -1016,9 +881,9 @@ class TestBuildInitialState:
         td = {"workspace_path": "/ws"}
 
         monkeypatch.setattr(
-            sys.modules["ideer.skills.storage"],
-            "get_or_new_skill_storage",
-            lambda **kw: SimpleNamespace(load_skills=lambda *, enabled_only: []),
+            sys.modules["deerflow.skills.storage"],
+            "get_or_new_user_skill_storage",
+            lambda user_id=None, **kw: SimpleNamespace(load_skills=lambda *, enabled_only: []),
         )
         executor = SubagentExecutor(
             config=config,
@@ -1026,10 +891,17 @@ class TestBuildInitialState:
             sandbox_state=sb,
             thread_data=td,
         )
-        state, filtered = await executor._build_initial_state("do it")
+        state, _final_tools, _deferred_setup = await executor._build_initial_state("do it")
         assert state["sandbox"] == sb
         assert state["thread_data"] == td
-        assert len(state["messages"]) == 1  # Only HumanMessage (no system_prompt, no skills)
+        # Upstream always appends the report-contract SystemMessage
+        # (RFC #4651 PR3); with no system_prompt and no skills the messages are
+        # [SystemMessage(report contract), HumanMessage(task)].
+        assert len(state["messages"]) == 2
+        from langchain_core.messages import HumanMessage, SystemMessage
+
+        assert isinstance(state["messages"][0], SystemMessage)
+        assert isinstance(state["messages"][1], HumanMessage)
 
     @pytest.mark.anyio
     async def test_without_sandbox_or_thread_data(self, classes, monkeypatch):
@@ -1043,12 +915,12 @@ class TestBuildInitialState:
         )
 
         monkeypatch.setattr(
-            sys.modules["ideer.skills.storage"],
-            "get_or_new_skill_storage",
-            lambda **kw: SimpleNamespace(load_skills=lambda *, enabled_only: []),
+            sys.modules["deerflow.skills.storage"],
+            "get_or_new_user_skill_storage",
+            lambda user_id=None, **kw: SimpleNamespace(load_skills=lambda *, enabled_only: []),
         )
         executor = SubagentExecutor(config=config, tools=[])
-        state, _ = await executor._build_initial_state("do it")
+        state, _final_tools, _deferred_setup = await executor._build_initial_state("do it")
         assert "sandbox" not in state
         assert "thread_data" not in state
 
@@ -1064,16 +936,19 @@ class TestBuildInitialState:
         )
 
         monkeypatch.setattr(
-            sys.modules["ideer.skills.storage"],
-            "get_or_new_skill_storage",
-            lambda **kw: SimpleNamespace(load_skills=lambda *, enabled_only: []),
+            sys.modules["deerflow.skills.storage"],
+            "get_or_new_user_skill_storage",
+            lambda user_id=None, **kw: SimpleNamespace(load_skills=lambda *, enabled_only: []),
         )
         executor = SubagentExecutor(config=config, tools=[])
-        state, _ = await executor._build_initial_state("task")
-        from langchain_core.messages import HumanMessage
+        state, _final_tools, _deferred_setup = await executor._build_initial_state("task")
+        from langchain_core.messages import HumanMessage, SystemMessage
 
-        assert len(state["messages"]) == 1
-        assert isinstance(state["messages"][0], HumanMessage)
+        # Report-contract SystemMessage is always prepended upstream
+        # (RFC #4651 PR3) — even with no system_prompt and no skills.
+        assert len(state["messages"]) == 2
+        assert isinstance(state["messages"][0], SystemMessage)
+        assert isinstance(state["messages"][1], HumanMessage)
 
 
 # =========================================================================
@@ -1196,7 +1071,7 @@ class TestAExecute:
         executor = SubagentExecutor(config=base_config, tools=[], thread_id="t")
         with patch.object(executor, "_create_agent", return_value=mock_agent):
             result = await executor._aexecute("T")
-        assert result.result == "str1str2"
+        assert result.result == "str1\nstr2"
 
     @pytest.mark.anyio
     async def test_list_content_mixed_str_and_dict(self, classes, base_config, mock_agent, msg):
@@ -1221,7 +1096,7 @@ class TestAExecute:
         executor = SubagentExecutor(config=base_config, tools=[], thread_id="t")
         with patch.object(executor, "_create_agent", return_value=mock_agent):
             result = await executor._aexecute("T")
-        assert result.result == "No text content in response"
+        assert result.result == "No response generated"
 
     @pytest.mark.anyio
     async def test_list_content_empty(self, classes, base_config, mock_agent, msg):
@@ -1232,7 +1107,7 @@ class TestAExecute:
         executor = SubagentExecutor(config=base_config, tools=[], thread_id="t")
         with patch.object(executor, "_create_agent", return_value=mock_agent):
             result = await executor._aexecute("T")
-        assert result.result == "No text content in response"
+        assert result.result == "No response generated"
 
     @pytest.mark.anyio
     async def test_non_str_non_list_content(self, classes, base_config, mock_agent, msg):
@@ -1385,7 +1260,7 @@ class TestAExecute:
         assert result.result is not None
 
     @pytest.mark.anyio
-    async def test_thread_id_and_app_config_passed_to_run_config(self, classes, base_config, msg):
+    async def test_thread_id_and_app_config_passed_via_context(self, classes, base_config, msg):
         SubagentExecutor = classes["SubagentExecutor"]
         captured_config = {}
         captured_context = {}
@@ -1397,21 +1272,22 @@ class TestAExecute:
 
         mock_agent = MagicMock()
         mock_agent.astream = capturing_astream
-        app_cfg = SimpleNamespace(models=[SimpleNamespace(name="m")])
+        app_cfg = _default_app_config()
+        app_cfg.models = [SimpleNamespace(name="m")]
         executor = SubagentExecutor(
             config=base_config,
             tools=[],
             thread_id="tid-123",
             app_config=app_cfg,
         )
-        executor.canonical_run_id = "run-uuid"
         with patch.object(executor, "_create_agent", return_value=mock_agent):
             await executor._aexecute("T")
-        assert captured_config.get("configurable", {}).get("thread_id") == "tid-123"
-        assert captured_config.get("configurable", {}).get("canonical_run_id") == "run-uuid"
+        # Upstream keeps checkpoint coordinates out of the child RunnableConfig;
+        # thread_id and app_config travel through the graph context instead.
+        assert "configurable" not in captured_config
         assert captured_context.get("thread_id") == "tid-123"
-        assert captured_context.get("canonical_run_id") == "run-uuid"
         assert captured_context.get("app_config") is app_cfg
+        assert captured_context.get("is_subagent") is True
 
     @pytest.mark.anyio
     async def test_no_thread_id_no_configurable(self, classes, base_config, msg):
@@ -1470,7 +1346,7 @@ class TestAExecute:
         executor = SubagentExecutor(config=base_config, tools=[], thread_id="t")
         with patch.object(executor, "_create_agent", return_value=mock_agent):
             result = await executor._aexecute("T")
-        assert result.result == "No text content in response"
+        assert result.result == "No response generated"
 
     @pytest.mark.anyio
     async def test_fallback_list_content_non_str_non_list_items(self, classes, base_config, mock_agent):
@@ -1484,7 +1360,7 @@ class TestAExecute:
         with patch.object(executor, "_create_agent", return_value=mock_agent):
             result = await executor._aexecute("T")
         # int items in list are neither str nor dict, so no text_parts collected
-        assert result.result == "No text content in response"
+        assert result.result == "No response generated"
 
 
 # =========================================================================
@@ -1523,7 +1399,7 @@ class TestExecuteInIsolatedLoop:
             tools=[],
         )
 
-        from ideer.subagents import executor as executor_mod
+        from deerflow.subagents import executor as executor_mod
 
         with patch.object(executor_mod, "_submit_to_isolated_loop_in_context", fake_submit):
             with pytest.raises(FuturesTimeoutError):
@@ -1538,7 +1414,7 @@ class TestExecuteInIsolatedLoop:
             raise RuntimeError("submit failed")
 
         executor = SubagentExecutor(config=base_config, tools=[])
-        from ideer.subagents import executor as executor_mod
+        from deerflow.subagents import executor as executor_mod
 
         with patch.object(executor_mod, "_submit_to_isolated_loop_in_context", fake_submit):
             with pytest.raises(RuntimeError, match="submit failed"):
@@ -1605,53 +1481,55 @@ class TestExecute:
 class TestExecuteAsync:
     def test_custom_task_id(self, executor_module, classes, base_config):
         SubagentExecutor = classes["SubagentExecutor"]
+        SubagentStatus = classes["SubagentStatus"]
         executor = SubagentExecutor(config=base_config, tools=[], thread_id="t")
-        # Just verify the task_id is stored
         executor_module._background_tasks.clear()
-
-        # Patch _scheduler_pool.submit to run inline
-        def run_inline(fn):
-            fn()
 
         async def fake_aexecute(task, result_holder=None):
             if result_holder:
-                result_holder.status = classes["SubagentStatus"].COMPLETED
-                result_holder.result = "ok"
-                result_holder.completed_at = datetime.now()
+                result_holder.try_set_terminal(SubagentStatus.COMPLETED, result="ok")
             return result_holder
 
-        with (
-            patch.object(executor_module._scheduler_pool, "submit", run_inline),
-            patch.object(executor, "_aexecute", side_effect=fake_aexecute),
-        ):
+        # Upstream never uses the caller task_id as the registry key: it mints
+        # a fresh uuid execution_id and records the caller id as external_task_id.
+        with patch.object(executor, "_aexecute", side_effect=fake_aexecute):
             tid = executor.execute_async("T", task_id="custom-id")
+            for _ in range(50):
+                r = executor_module.get_background_task_result(tid)
+                if r and r.status.is_terminal:
+                    break
+                time.sleep(0.1)
 
-        assert tid == "custom-id"
-        assert "custom-id" in executor_module._background_tasks
+        result = executor_module.get_background_task_result(tid)
+        assert result is not None
+        assert tid != "custom-id"
+        assert len(tid) == 36
+        assert result.external_task_id == "custom-id"
+        assert result.status == SubagentStatus.COMPLETED
 
     def test_generate_task_id(self, executor_module, classes, base_config):
         SubagentExecutor = classes["SubagentExecutor"]
+        SubagentStatus = classes["SubagentStatus"]
         executor = SubagentExecutor(config=base_config, tools=[], thread_id="t")
         executor_module._background_tasks.clear()
 
-        def run_inline(fn):
-            fn()
-
         async def fake_aexecute(task, result_holder=None):
             if result_holder:
-                result_holder.status = classes["SubagentStatus"].COMPLETED
-                result_holder.result = "ok"
-                result_holder.completed_at = datetime.now()
+                result_holder.try_set_terminal(SubagentStatus.COMPLETED, result="ok")
             return result_holder
 
-        with (
-            patch.object(executor_module._scheduler_pool, "submit", run_inline),
-            patch.object(executor, "_aexecute", side_effect=fake_aexecute),
-        ):
+        with patch.object(executor, "_aexecute", side_effect=fake_aexecute):
             tid = executor.execute_async("T")
+            for _ in range(50):
+                r = executor_module.get_background_task_result(tid)
+                if r and r.status.is_terminal:
+                    break
+                time.sleep(0.1)
 
-        assert tid is not None
-        assert len(tid) == 8
+        result = executor_module.get_background_task_result(tid)
+        assert result is not None
+        assert result.external_task_id is None
+        assert result.status == SubagentStatus.COMPLETED
 
 
 # =========================================================================
@@ -1743,8 +1621,9 @@ class TestConstants:
     def test_max_concurrent_subagents(self, executor_module):
         assert executor_module.MAX_CONCURRENT_SUBAGENTS == 3
 
-    def test_max_task_age_seconds(self, executor_module):
-        assert executor_module._MAX_TASK_AGE_SECONDS == 3600
+    # NOTE: `_MAX_TASK_AGE_SECONDS` / `_evict_stale_tasks` were removed upstream
+    # (background registry cleanup now happens via future done-callbacks and
+    # cleanup_background_task / force_cleanup_background_task).
 
 
 # =========================================================================
@@ -1811,27 +1690,29 @@ class TestAgentConstructionExtended:
         sk2_dir.mkdir()
         (sk2_dir / "SKILL.md").write_text("Skill2 content", encoding="utf-8")
 
-        all_skills = [_skill("sk1", None), _skill("sk2", None)]
-        for s, d in zip(all_skills, [sk1_dir, sk2_dir]):
-            s.skill_file = d / "SKILL.md"
+        all_skills = [dataclasses.replace(sk, skill_file=d / "SKILL.md") for sk, d in zip([_skill("sk1", None), _skill("sk2", None)], [sk1_dir, sk2_dir])]
 
         monkeypatch.setattr(
-            sys.modules["ideer.skills.storage"],
-            "get_or_new_skill_storage",
-            lambda **kw: SimpleNamespace(load_skills=lambda *, enabled_only: all_skills),
+            sys.modules["deerflow.skills.storage"],
+            "get_or_new_user_skill_storage",
+            lambda user_id=None, **kw: SimpleNamespace(load_skills=lambda *, enabled_only: all_skills),
         )
         executor = SubagentExecutor(config=config, tools=[])
-        state, _ = await executor._build_initial_state("task")
+        state, _final_tools, _deferred_setup = await executor._build_initial_state("task")
         from langchain_core.messages import SystemMessage
 
+        # Upstream defers full SKILL.md bodies: the system message carries the
+        # base prompt plus a name-only <skill_index> section (describe_skill
+        # loads metadata on demand).
         sys_msg = state["messages"][0]
         assert isinstance(sys_msg, SystemMessage)
         assert "Base prompt" in sys_msg.content
-        assert "Skill1 content" in sys_msg.content
-        assert "Skill2 content" in sys_msg.content
+        assert "sk1" in sys_msg.content
+        assert "sk2" in sys_msg.content
+        assert "<skill_index>" in sys_msg.content
 
     @pytest.mark.anyio
-    async def test_no_system_parts_skips_system_message(self, classes, monkeypatch):
+    async def test_report_contract_system_message_always_present(self, classes, monkeypatch):
         SubagentConfig = classes["SubagentConfig"]
         SubagentExecutor = classes["SubagentExecutor"]
         config = SubagentConfig(
@@ -1842,16 +1723,19 @@ class TestAgentConstructionExtended:
             skills=[],
         )
         monkeypatch.setattr(
-            sys.modules["ideer.skills.storage"],
-            "get_or_new_skill_storage",
-            lambda **kw: SimpleNamespace(load_skills=lambda *, enabled_only: []),
+            sys.modules["deerflow.skills.storage"],
+            "get_or_new_user_skill_storage",
+            lambda user_id=None, **kw: SimpleNamespace(load_skills=lambda *, enabled_only: []),
         )
         executor = SubagentExecutor(config=config, tools=[])
-        state, _ = await executor._build_initial_state("task")
-        from langchain_core.messages import HumanMessage
+        state, _final_tools, _deferred_setup = await executor._build_initial_state("task")
+        from langchain_core.messages import HumanMessage, SystemMessage
 
-        assert len(state["messages"]) == 1
-        assert isinstance(state["messages"][0], HumanMessage)
+        # Report-contract SystemMessage is always prepended upstream
+        # (RFC #4651 PR3) — even with no system_prompt and no skills.
+        assert len(state["messages"]) == 2
+        assert isinstance(state["messages"][0], SystemMessage)
+        assert isinstance(state["messages"][1], HumanMessage)
 
 
 # =========================================================================
@@ -1899,7 +1783,7 @@ class TestAexecuteFallbackEdgeCases:
         with patch.object(executor, "_create_agent", return_value=mock_agent):
             result = await executor._aexecute("T")
         # text=123 is not isinstance str, so it's skipped
-        assert result.result == "No text content in response"
+        assert result.result == "No response generated"
 
     @pytest.mark.anyio
     async def test_fallback_dict_block_with_non_string_text(self, classes, base_config, mock_agent):
@@ -1912,7 +1796,7 @@ class TestAexecuteFallbackEdgeCases:
         executor = SubagentExecutor(config=base_config, tools=[], thread_id="t")
         with patch.object(executor, "_create_agent", return_value=mock_agent):
             result = await executor._aexecute("T")
-        assert result.result == "No text content in response"
+        assert result.result == "No response generated"
 
     @pytest.mark.anyio
     async def test_fallback_list_empty_with_str_items(self, classes, base_config, mock_agent):
@@ -1925,7 +1809,7 @@ class TestAexecuteFallbackEdgeCases:
         executor = SubagentExecutor(config=base_config, tools=[], thread_id="t")
         with patch.object(executor, "_create_agent", return_value=mock_agent):
             result = await executor._aexecute("T")
-        assert result.result == "No text content in response"
+        assert result.result == "No response generated"
 
 
 # =========================================================================
@@ -1936,7 +1820,7 @@ class TestAexecuteFallbackEdgeCases:
 class TestCreateAgentWiring:
     def test_middleware_and_state_schema(self, classes, base_config, monkeypatch):
         SubagentExecutor = classes["SubagentExecutor"]
-        from ideer.subagents import executor as executor_mod
+        from deerflow.subagents import executor as executor_mod
 
         captured = {}
 
@@ -1978,13 +1862,13 @@ class TestLoadSkillsWithAppConfig:
         )
         captured = {}
 
-        def fake_storage(**kw):
+        def fake_storage(user_id=None, **kw):
             captured.update(kw)
             return SimpleNamespace(load_skills=lambda *, enabled_only: [])
 
         monkeypatch.setattr(
-            sys.modules["ideer.skills.storage"],
-            "get_or_new_skill_storage",
+            sys.modules["deerflow.skills.storage"],
+            "get_or_new_user_skill_storage",
             fake_storage,
         )
         app_cfg = SimpleNamespace(models=[SimpleNamespace(name="m")])
@@ -2004,13 +1888,13 @@ class TestLoadSkillsWithAppConfig:
         )
         captured = {}
 
-        def fake_storage(**kw):
+        def fake_storage(user_id=None, **kw):
             captured.update(kw)
             return SimpleNamespace(load_skills=lambda *, enabled_only: [])
 
         monkeypatch.setattr(
-            sys.modules["ideer.skills.storage"],
-            "get_or_new_skill_storage",
+            sys.modules["deerflow.skills.storage"],
+            "get_or_new_user_skill_storage",
             fake_storage,
         )
         executor = SubagentExecutor(config=config, tools=[])
@@ -2019,16 +1903,15 @@ class TestLoadSkillsWithAppConfig:
 
 
 # =========================================================================
-# execute_async: timeout path in run_task
+# execute_async: timeout and submit-failure paths
 # =========================================================================
 
 
 class TestExecuteAsyncTimeout:
     def test_run_task_timeout_sets_timed_out(self, executor_module, classes, base_config):
         SubagentExecutor = classes["SubagentExecutor"]
-        classes["SubagentResult"]
         # Use the executor_module's SubagentStatus to match the enum class used
-        # inside the reloaded module's run_task (importlib.reload creates a new class).
+        # inside the reloaded module's run_with_timeout (importlib.reload creates a new class).
         SubagentStatus = executor_module.SubagentStatus
 
         short_config = classes["SubagentConfig"](
@@ -2039,33 +1922,24 @@ class TestExecuteAsyncTimeout:
             timeout_seconds=0,
         )
 
-        blocking_future: Future = Future()
-
-        def fake_submit(ctx, coro_factory):
-            return blocking_future
-
         executor = SubagentExecutor(config=short_config, tools=[], thread_id="t")
         executor_module._background_tasks.clear()
 
-        def run_inline(fn):
-            fn()
+        tid = executor.execute_async("T")
+        for _ in range(50):
+            result = executor_module.get_background_task_result(tid)
+            if result and result.status.is_terminal:
+                break
+            time.sleep(0.1)
 
-        with (
-            patch.object(executor_module._scheduler_pool, "submit", run_inline),
-            patch.object(executor_module, "_submit_to_isolated_loop_in_context", fake_submit),
-        ):
-            tid = executor.execute_async("T")
-
-        result = executor_module._background_tasks.get(tid)
+        result = executor_module.get_background_task_result(tid)
         assert result is not None
         assert result.status == SubagentStatus.TIMED_OUT
         assert "timed out" in result.error
         assert result.cancel_event.is_set()
-        blocking_future.cancel()
 
     def test_run_task_exception_sets_failed(self, executor_module, classes, base_config):
         SubagentExecutor = classes["SubagentExecutor"]
-        SubagentStatus = executor_module.SubagentStatus
 
         def fake_submit(ctx, coro_factory):
             raise RuntimeError("submit exploded")
@@ -2073,19 +1947,16 @@ class TestExecuteAsyncTimeout:
         executor = SubagentExecutor(config=base_config, tools=[], thread_id="t")
         executor_module._background_tasks.clear()
 
-        def run_inline(fn):
-            fn()
-
+        # Upstream drops the just-registered PENDING entry and re-raises when
+        # the submit itself fails — no zombie entry is left in the registry.
         with (
-            patch.object(executor_module._scheduler_pool, "submit", run_inline),
             patch.object(executor_module, "_submit_to_isolated_loop_in_context", fake_submit),
+            pytest.raises(RuntimeError, match="submit exploded"),
         ):
-            tid = executor.execute_async("T")
+            executor.execute_async("T")
 
-        result = executor_module._background_tasks.get(tid)
-        assert result is not None
-        assert result.status == SubagentStatus.FAILED
-        assert "submit exploded" in result.error
+        assert executor_module._background_tasks == {}
+        assert executor_module._background_futures == {}
 
 
 # =========================================================================

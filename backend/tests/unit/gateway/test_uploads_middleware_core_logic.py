@@ -2,9 +2,17 @@
 
 Covers:
 - _files_from_kwargs: parsing, validation, existence check, virtual-path construction
-- _create_files_message: output format with new-only and new+historical files
+- _create_files_message: output format for current-message files and omitted-file notes
 - before_agent: full injection pipeline (string & list content, preserved
-  additional_kwargs, historical files from uploads dir, edge-cases)
+  additional_kwargs, uploaded_files state, edge-cases)
+
+Upstream contract notes (deerflow runtime is the source of truth):
+- The prompt block is ``<current_uploads>`` and lists only the files uploaded
+  in the current message; historical uploads are discovered on demand via the
+  ``list_uploaded_files`` tool and never injected.
+- Hook results are ``{"uploaded_files": [...]}`` state updates, never ``None``.
+- Outlines are attached to the copies rendered into the prompt; the
+  ``uploaded_files`` state entries stay the raw metadata dicts.
 """
 
 from pathlib import Path
@@ -12,8 +20,8 @@ from unittest.mock import MagicMock
 
 from langchain_core.messages import AIMessage, HumanMessage
 
-from ideer.agents.middlewares.uploads_middleware import UploadsMiddleware
-from ideer.config.paths import Paths
+from deerflow.agents.middlewares.uploads_middleware import UploadsMiddleware
+from deerflow.config.paths import Paths
 
 THREAD_ID = "thread-abc123"
 
@@ -34,7 +42,7 @@ def _runtime(thread_id: str | None = THREAD_ID) -> MagicMock:
 
 
 def _uploads_dir(tmp_path: Path, thread_id: str = THREAD_ID) -> Path:
-    from ideer.runtime.user_context import get_effective_user_id
+    from deerflow.runtime.user_context import get_effective_user_id
 
     d = Paths(str(tmp_path)).sandbox_uploads_dir(thread_id, user_id=get_effective_user_id())
     d.mkdir(parents=True, exist_ok=True)
@@ -157,45 +165,47 @@ class TestCreateFilesMessage:
 
     def test_new_files_section_always_present(self, tmp_path):
         mw = _middleware(tmp_path)
-        msg = mw._create_files_message([self._new_file()], [])
-        assert "<uploaded_files>" in msg
-        assert "</uploaded_files>" in msg
+        msg = mw._create_files_message([self._new_file()])
+        assert "<current_uploads>" in msg
+        assert "</current_uploads>" in msg
         assert "uploaded in this message" in msg
         assert "notes.txt" in msg
         assert "/mnt/user-data/uploads/notes.txt" in msg
 
-    def test_historical_section_present_only_when_non_empty(self, tmp_path):
+    def test_omitted_files_note_rendered(self, tmp_path):
+        """Files over the per-section cap are summarised with recovery hints."""
         mw = _middleware(tmp_path)
 
-        msg_no_hist = mw._create_files_message([self._new_file()], [])
-        assert "previous messages" not in msg_no_hist
+        msg_no_omitted = mw._create_files_message([self._new_file()])
+        assert "omitted" not in msg_no_omitted
 
-        hist = self._new_file("old.txt")
-        msg_with_hist = mw._create_files_message([self._new_file()], [hist])
-        assert "previous messages" in msg_with_hist
-        assert "old.txt" in msg_with_hist
+        omitted = self._new_file("overflow.bin")
+        msg_with_omitted = mw._create_files_message([self._new_file()], omitted_files=[omitted])
+        assert "omitted from this context" in msg_with_omitted
+        assert "glob" in msg_with_omitted
+        assert "grep" in msg_with_omitted
 
     def test_size_formatting_kb(self, tmp_path):
         mw = _middleware(tmp_path)
-        msg = mw._create_files_message([self._new_file(size=2048)], [])
+        msg = mw._create_files_message([self._new_file(size=2048)])
         assert "2.0 KB" in msg
 
     def test_size_formatting_mb(self, tmp_path):
         mw = _middleware(tmp_path)
-        msg = mw._create_files_message([self._new_file(size=2 * 1024 * 1024)], [])
+        msg = mw._create_files_message([self._new_file(size=2 * 1024 * 1024)])
         assert "2.0 MB" in msg
 
     def test_read_file_instruction_included(self, tmp_path):
         mw = _middleware(tmp_path)
-        msg = mw._create_files_message([self._new_file()], [])
+        msg = mw._create_files_message([self._new_file()])
         assert "read_file" in msg
 
     def test_empty_new_files_produces_empty_marker(self, tmp_path):
         mw = _middleware(tmp_path)
-        msg = mw._create_files_message([], [])
+        msg = mw._create_files_message([])
         assert "(empty)" in msg
-        assert "<uploaded_files>" in msg
-        assert "</uploaded_files>" in msg
+        assert "<current_uploads>" in msg
+        assert "</current_uploads>" in msg
 
 
 # ---------------------------------------------------------------------------
@@ -207,26 +217,26 @@ class TestBeforeAgent:
     def _state(self, *messages):
         return {"messages": list(messages)}
 
-    def test_returns_none_when_messages_empty(self, tmp_path):
+    def test_clears_uploaded_files_when_messages_empty(self, tmp_path):
         mw = _middleware(tmp_path)
-        assert mw.before_agent({"messages": []}, _runtime()) is None
+        assert mw.before_agent({"messages": []}, _runtime()) == {"uploaded_files": []}
 
-    def test_returns_none_when_last_message_is_not_human(self, tmp_path):
+    def test_clears_uploaded_files_when_last_message_is_not_human(self, tmp_path):
         mw = _middleware(tmp_path)
         state = self._state(HumanMessage(content="q"), AIMessage(content="a"))
-        assert mw.before_agent(state, _runtime()) is None
+        assert mw.before_agent(state, _runtime()) == {"uploaded_files": []}
 
-    def test_returns_none_when_no_files_in_kwargs(self, tmp_path):
+    def test_clears_uploaded_files_when_no_files_in_kwargs(self, tmp_path):
         mw = _middleware(tmp_path)
         state = self._state(_human("plain message"))
-        assert mw.before_agent(state, _runtime()) is None
+        assert mw.before_agent(state, _runtime()) == {"uploaded_files": []}
 
-    def test_returns_none_when_all_files_missing_from_disk(self, tmp_path):
+    def test_clears_uploaded_files_when_all_files_missing_from_disk(self, tmp_path):
         mw = _middleware(tmp_path)
         _uploads_dir(tmp_path)  # directory exists but is empty
         msg = _human("hi", files=[{"filename": "ghost.txt", "size": 10, "path": "/mnt/user-data/uploads/ghost.txt"}])
         state = self._state(msg)
-        assert mw.before_agent(state, _runtime()) is None
+        assert mw.before_agent(state, _runtime()) == {"uploaded_files": []}
 
     def test_injects_uploaded_files_tag_into_string_content(self, tmp_path):
         mw = _middleware(tmp_path)
@@ -240,7 +250,7 @@ class TestBeforeAgent:
         assert result is not None
         updated_msg = result["messages"][-1]
         assert isinstance(updated_msg.content, str)
-        assert "<uploaded_files>" in updated_msg.content
+        assert "<current_uploads>" in updated_msg.content
         assert "report.pdf" in updated_msg.content
         assert "please analyse" in updated_msg.content
 
@@ -260,7 +270,7 @@ class TestBeforeAgent:
         updated_msg = result["messages"][-1]
         assert isinstance(updated_msg.content, list)
         combined_text = "\n".join(block.get("text", "") for block in updated_msg.content if isinstance(block, dict))
-        assert "<uploaded_files>" in combined_text
+        assert "<current_uploads>" in combined_text
         assert "analyse this" in combined_text
 
     def test_preserves_additional_kwargs_on_updated_message(self, tmp_path):
@@ -279,6 +289,7 @@ class TestBeforeAgent:
         assert updated_kwargs.get("element") == "task"
 
     def test_uploaded_files_returned_in_state_update(self, tmp_path):
+        """State entries stay the raw metadata dicts; outlines only decorate the prompt copy."""
         mw = _middleware(tmp_path)
         uploads_dir = _uploads_dir(tmp_path)
         (uploads_dir / "notes.txt").write_bytes(b"hello")
@@ -293,12 +304,11 @@ class TestBeforeAgent:
                 "size": 5,
                 "path": "/mnt/user-data/uploads/notes.txt",
                 "extension": ".txt",
-                "outline": [],
-                "outline_preview": [],
             }
         ]
 
-    def test_historical_files_from_uploads_dir_excluding_new(self, tmp_path):
+    def test_historical_files_not_listed_in_prompt(self, tmp_path):
+        """Upstream discovers historical uploads on demand; only current-message files are listed."""
         mw = _middleware(tmp_path)
         uploads_dir = _uploads_dir(tmp_path)
         (uploads_dir / "old.txt").write_bytes(b"old")
@@ -311,8 +321,8 @@ class TestBeforeAgent:
         content = result["messages"][-1].content
         assert "uploaded in this message" in content
         assert "new.txt" in content
-        assert "previous messages" in content
-        assert "old.txt" in content
+        assert "old.txt" not in content
+        assert [f["filename"] for f in result["uploaded_files"]] == ["new.txt"]
 
     def test_no_historical_section_when_upload_dir_is_empty(self, tmp_path):
         mw = _middleware(tmp_path)
@@ -334,7 +344,7 @@ class TestBeforeAgent:
         assert result is not None
 
     def test_code_package_keeps_pdf_attachment_visible(self, tmp_path):
-        """A code package must not hide ordinary evidence uploaded with it."""
+        """Upstream middleware applies no code-package hiding: the evidence stays listed."""
         mw = _middleware(tmp_path)
         uploads_dir = _uploads_dir(tmp_path)
         (uploads_dir / "failure-report.pdf").write_bytes(b"pdf")
@@ -355,7 +365,7 @@ class TestBeforeAgent:
         assert result is not None
         content = result["messages"][-1].content
         assert "failure-report.pdf" in content
-        assert "read_document" in content
+        assert [f["filename"] for f in result["uploaded_files"]] == ["failure-report.pdf"]
 
     def test_message_id_preserved_on_updated_message(self, tmp_path):
         mw = _middleware(tmp_path)
@@ -405,7 +415,7 @@ class TestBeforeAgent:
 
     def test_outline_truncation_hint_shown(self, tmp_path):
         """When outline is truncated, a hint line is appended after the last visible entry."""
-        from ideer.utils.file_conversion import MAX_OUTLINE_ENTRIES
+        from app.agentplatform.utils.file_conversion import MAX_OUTLINE_ENTRIES
 
         mw = _middleware(tmp_path)
         uploads_dir = _uploads_dir(tmp_path)
@@ -436,11 +446,11 @@ class TestBeforeAgent:
         content = result["messages"][-1].content
         assert "showing first" not in content
 
-    def test_historical_file_outline_injected(self, tmp_path):
-        """Outline is also shown for historical (previously uploaded) files."""
+    def test_outline_not_rendered_for_historical_files(self, tmp_path):
+        """Outline extraction only runs for current-message files; historical uploads are on-demand."""
         mw = _middleware(tmp_path)
         uploads_dir = _uploads_dir(tmp_path)
-        # Historical file with .md
+        # Historical file with a converted .md outline
         (uploads_dir / "old_report.pdf").write_bytes(b"%PDF old")
         (uploads_dir / "old_report.md").write_text(
             "# Chapter 1\n\n# Chapter 2\n",
@@ -454,8 +464,9 @@ class TestBeforeAgent:
 
         assert result is not None
         content = result["messages"][-1].content
-        assert "Chapter 1" in content
-        assert "Chapter 2" in content
+        assert "old_report.pdf" not in content
+        assert "Chapter 1" not in content
+        assert "new.txt" in content
 
     def test_fallback_preview_shown_when_outline_empty(self, tmp_path):
         """When .md exists but has no headings, first lines are shown as a preview."""

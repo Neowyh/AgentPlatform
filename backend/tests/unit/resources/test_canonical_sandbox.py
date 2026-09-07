@@ -7,14 +7,14 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from ideer.resources.canonical_sandbox import (
+from app.agentplatform.resources.canonical_sandbox import (
     CANONICAL_SKILLS_CONTAINER_PATH,
     canonical_sandbox_scope,
     parse_canonical_sandbox_scope,
 )
-from ideer.resources.storage import ResourceStorage, StorageConflict
-from ideer.sandbox.local.local_sandbox_provider import LocalSandboxProvider
-from ideer.sandbox.tools import ensure_sandbox_initialized, validate_local_tool_path
+from app.agentplatform.resources.storage import ResourceStorage, StorageConflict
+from deerflow.sandbox.local.local_sandbox_provider import LocalSandboxProvider
+from deerflow.sandbox.tools import ensure_sandbox_initialized, validate_local_tool_path
 
 
 def test_scope_round_trip_keeps_data_thread_separate_from_run_identity() -> None:
@@ -22,7 +22,17 @@ def test_scope_round_trip_keeps_data_thread_separate_from_run_identity() -> None
 
     scope = canonical_sandbox_scope("thread-42", run_id)
 
-    assert parse_canonical_sandbox_scope(scope) == ("thread-42", run_id)
+    # The scope must fit DeerFlow's 64-character thread-id budget, so the
+    # thread component is a per-(run, thread) digest; it stays stable across
+    # retries and distinct across runs and threads.
+    assert len(scope) <= 64
+    key, parsed_run_id = parse_canonical_sandbox_scope(scope)
+    assert parsed_run_id == run_id
+    assert key != "thread-42"
+    assert key == parse_canonical_sandbox_scope(canonical_sandbox_scope("thread-42", run_id))[0]
+    other_run = str(uuid.uuid4())
+    assert parse_canonical_sandbox_scope(canonical_sandbox_scope("thread-42", other_run))[0] != key
+    assert parse_canonical_sandbox_scope(canonical_sandbox_scope("thread-43", run_id))[0] != key
     assert parse_canonical_sandbox_scope("thread-42") is None
 
 
@@ -61,7 +71,7 @@ def test_canonical_skill_path_is_read_only_at_the_tool_gate() -> None:
     path = f"{CANONICAL_SKILLS_CONTAINER_PATH}/custom/example/SKILL.md"
 
     validate_local_tool_path(path, thread_data, read_only=True)
-    with pytest.raises(PermissionError, match="canonical Run skills"):
+    with pytest.raises(PermissionError, match="skills path"):
         validate_local_tool_path(path, thread_data, read_only=False)
     with pytest.raises(PermissionError, match="path traversal"):
         validate_local_tool_path(f"{CANONICAL_SKILLS_CONTAINER_PATH}/../secrets", thread_data, read_only=True)
@@ -72,9 +82,16 @@ def test_local_provider_scopes_mount_to_exact_run_view(monkeypatch: pytest.Monke
     view = tmp_path / "resources" / "run-skill-views" / run_id
     (view / "custom").mkdir(parents=True)
     scope = canonical_sandbox_scope("thread-42", run_id)
-    monkeypatch.setenv("IDEER_HOME", str(tmp_path))
+    # get_paths() resolves through deerflow now; the deployment layer maps
+    # the legacy IDEER_HOME to DEER_FLOW_HOME.
+    monkeypatch.setenv("DEER_FLOW_HOME", str(tmp_path))
+    from app.agentplatform.resources import canonical_sandbox
+    from deerflow.sandbox.local import local_sandbox_provider
+
+    # The gateway/worker install the enterprise resolver at startup; install
+    # it here so the provider serves the frozen run view for the scoped id.
+    monkeypatch.setattr(local_sandbox_provider, "RUN_SKILL_VIEW_RESOLVER", canonical_sandbox._resolve_run_skill_view)
     monkeypatch.setattr(LocalSandboxProvider, "_setup_path_mappings", lambda self: [])
-    monkeypatch.setattr(LocalSandboxProvider, "_build_thread_path_mappings", lambda self, thread_id: [])
     provider = LocalSandboxProvider()
 
     sandbox_id = provider.acquire(scope)
@@ -84,6 +101,26 @@ def test_local_provider_scopes_mount_to_exact_run_view(monkeypatch: pytest.Monke
     mapping = next(value for value in sandbox.path_mappings if value.container_path == CANONICAL_SKILLS_CONTAINER_PATH)
     assert mapping.local_path == str(view)
     assert mapping.read_only is True
+    # User-data directories key on the run workspace — the same
+    # ``thread_dir(run_id)`` layout the workflow file-roots resolver and the
+    # artifact gate verify against.
+    user_data = next(value for value in sandbox.path_mappings if value.container_path == "/mnt/user-data")
+    assert run_id in user_data.local_path
+
+
+def test_local_provider_fails_closed_when_run_skill_view_is_missing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    run_id = str(uuid.uuid4())
+    scope = canonical_sandbox_scope("thread-42", run_id)
+    monkeypatch.setenv("DEER_FLOW_HOME", str(tmp_path))
+    from app.agentplatform.resources import canonical_sandbox
+    from deerflow.sandbox.local import local_sandbox_provider
+
+    monkeypatch.setattr(local_sandbox_provider, "RUN_SKILL_VIEW_RESOLVER", canonical_sandbox._resolve_run_skill_view)
+    monkeypatch.setattr(LocalSandboxProvider, "_setup_path_mappings", lambda self: [])
+    provider = LocalSandboxProvider()
+
+    with pytest.raises(RuntimeError, match="Canonical Run Skill view is missing"):
+        provider.acquire(scope)
 
 
 def test_lazy_tool_acquisition_uses_run_scoped_sandbox_identity(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -92,12 +129,16 @@ def test_lazy_tool_acquisition_uses_run_scoped_sandbox_identity(monkeypatch: pyt
     provider = MagicMock()
     provider.acquire.return_value = "sandbox-id"
     provider.get.return_value = sandbox
-    monkeypatch.setattr("ideer.sandbox.tools.get_sandbox_provider", lambda: provider)
+    monkeypatch.setattr("deerflow.sandbox.tools.get_sandbox_provider", lambda: provider)
+    # The executor bridge rewrites context["thread_id"] to the canonical
+    # run scope before runtime tools see it (workflows/v2/executor_bridge.py),
+    # so the upstream tool keys the sandbox on the already-scoped thread id.
+    scoped = canonical_sandbox_scope("thread-42", run_id)
     runtime = SimpleNamespace(
         state={},
-        context={"thread_id": "thread-42", "canonical_run_id": run_id},
+        context={"thread_id": scoped},
         config={},
     )
 
     assert ensure_sandbox_initialized(runtime) is sandbox
-    provider.acquire.assert_called_once_with(canonical_sandbox_scope("thread-42", run_id))
+    assert provider.acquire.call_args.args[0] == scoped

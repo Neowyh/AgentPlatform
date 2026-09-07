@@ -50,7 +50,7 @@ test("counts later usage-bearing snapshots for the same AI message id", () => {
   });
 });
 
-test("keeps header and per-turn aggregation consistent for duplicated UI groups", () => {
+test("keeps header and per-turn aggregation consistent for a single-bubble turn", () => {
   const messages = [
     {
       id: "human-1",
@@ -69,15 +69,10 @@ test("keeps header and per-turn aggregation consistent for duplicated UI groups"
   const usageMessagesByGroupIndex = getAssistantTurnUsageMessages(groups);
   const turnUsageMessages = usageMessagesByGroupIndex.at(-1);
 
-  expect(groups.map((group) => group.type)).toEqual([
-    "human",
-    "assistant:processing",
-    "assistant",
-  ]);
-  expect(turnUsageMessages?.map((message) => message.id)).toEqual([
-    "ai-1",
-    "ai-1",
-  ]);
+  // Post-#3868: inline-reasoning + content renders as one assistant bubble,
+  // so the turn has a single AI-bearing group.
+  expect(groups.map((group) => group.type)).toEqual(["human", "assistant"]);
+  expect(turnUsageMessages?.map((message) => message.id)).toEqual(["ai-1"]);
   expect(accumulateUsage(messages)).toEqual(
     accumulateUsage(turnUsageMessages!),
   );

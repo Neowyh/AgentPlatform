@@ -1,8 +1,8 @@
 """Runs endpoints — create, stream, wait, cancel.
 
 Implements the LangGraph Platform runs API on top of
-:class:`ideer.agents.runs.RunManager` and
-:class:`ideer.agents.stream_bridge.StreamBridge`.
+:class:`deerflow.agents.runs.RunManager` and
+:class:`deerflow.agents.stream_bridge.StreamBridge`.
 
 SSE format is aligned with the LangGraph Platform protocol so that
 the ``useStream`` React hook from ``@langchain/langgraph-sdk/react``
@@ -22,7 +22,8 @@ from pydantic import BaseModel, Field
 from app.gateway.authz import require_permission
 from app.gateway.deps import get_checkpointer, get_current_user, get_feedback_repo, get_run_event_store, get_run_manager, get_run_store, get_stream_bridge
 from app.gateway.services import sse_consumer, start_run
-from ideer.runtime import RunRecord, RunStatus, serialize_channel_values
+from deerflow.runtime import CancelOutcome, RunRecord, RunStatus, serialize_channel_values
+from deerflow.runtime.secret_context import redact_config_secrets, redact_metadata_secrets
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/threads", tags=["runs"])
@@ -112,14 +113,32 @@ def _cancel_conflict_detail(run_id: str, record: RunRecord) -> str:
     return f"Run {run_id} is not cancellable (status: {record.status.value})"
 
 
+# Outcomes that mean the cancellation was accepted and the run is stopping:
+# a local cancel, a durable request recorded for the live owner, or a takeover
+# after the owner's lease expired. Every other outcome is a conflict (409) —
+# ``cancel()`` returns a CancelOutcome (a non-empty StrEnum), so the old
+# ``if not cancelled:`` truthiness test could never reject anything.
+_CANCEL_ACCEPTED_OUTCOMES = frozenset({CancelOutcome.cancelled, CancelOutcome.requested, CancelOutcome.taken_over})
+
+
+def _cancel_rejected(run_id: str, record: RunRecord, outcome: CancelOutcome) -> HTTPException:
+    headers = {"Retry-After": "5"} if outcome is CancelOutcome.lease_valid_elsewhere else None
+    return HTTPException(status_code=409, detail=_cancel_conflict_detail(run_id, record), headers=headers)
+
+
 def _record_to_response(record: RunRecord) -> RunResponse:
+    redacted_kwargs = redact_config_secrets(record.kwargs)
+    if isinstance(redacted_kwargs, dict) and isinstance(redacted_kwargs.get("config"), dict):
+        redacted_kwargs = dict(redacted_kwargs)
+        redacted_kwargs["config"] = redact_config_secrets(redacted_kwargs["config"])
+
     return RunResponse(
         run_id=record.run_id,
         thread_id=record.thread_id,
         assistant_id=record.assistant_id,
         status=record.status.value,
-        metadata=record.metadata,
-        kwargs=record.kwargs,
+        metadata=redact_metadata_secrets(record.metadata),
+        kwargs=redacted_kwargs,
         multitask_strategy=record.multitask_strategy,
         created_at=record.created_at,
         updated_at=record.updated_at,
@@ -265,8 +284,8 @@ async def cancel_run(
         raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
 
     cancelled = await run_mgr.cancel(run_id, action=action)
-    if not cancelled:
-        raise HTTPException(status_code=409, detail=_cancel_conflict_detail(run_id, record))
+    if cancelled not in _CANCEL_ACCEPTED_OUTCOMES:
+        raise _cancel_rejected(run_id, record, cancelled)
 
     if wait and record.task is not None:
         try:
@@ -327,8 +346,8 @@ async def stream_existing_run(
     # Cancel if an action was requested (stop-button / interrupt flow)
     if action is not None:
         cancelled = await run_mgr.cancel(run_id, action=action)
-        if not cancelled:
-            raise HTTPException(status_code=409, detail=_cancel_conflict_detail(run_id, record))
+        if cancelled not in _CANCEL_ACCEPTED_OUTCOMES:
+            raise _cancel_rejected(run_id, record, cancelled)
         if wait and record.task is not None:
             try:
                 await record.task

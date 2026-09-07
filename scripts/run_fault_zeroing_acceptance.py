@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import hashlib
 import json
 import shutil
 import sys
@@ -20,28 +19,32 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
-import yaml
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "backend" / "packages" / "harness"))
+# The production worker lives in the backend application package, while the
+# DeerFlow harness is a separate workspace member.  Add both roots so this
+# acceptance script works from the repository root as documented.
+sys.path.insert(0, str(REPO_ROOT / "backend"))
 
-from app.workflow_worker import execute_workflow_task  # noqa: E402
-from ideer.config import get_app_config  # noqa: E402
-from ideer.config.checkpointer_config import CheckpointerConfig  # noqa: E402
-from ideer.config.paths import get_paths  # noqa: E402
-from ideer.fault_zeroing.contract import CONTRACT_VERSION  # noqa: E402
-from ideer.fault_zeroing.kernel import (  # noqa: E402
+from app.agentplatform import rbac_models as _rbac_models  # noqa: F401
+from app.agentplatform import resource_models as _resource_models  # noqa: F401
+from app.agentplatform.workflows.v2.store import WorkflowV2Store
+from app.agentplatform.workflows.v2.worker import WorkflowWorker
+from app.workflow_worker import execute_workflow_task
+from deerflow.persistence.base import Base
+from deerflow.config import get_app_config
+from deerflow.config.checkpointer_config import CheckpointerConfig
+from deerflow.config.paths import get_paths
+from app.agentplatform.fault_zeroing.contract import CONTRACT_VERSION
+from app.agentplatform.fault_zeroing.kernel import (
     COMPLETION_STATUS_COMPLETED,
     FaultZeroingKernel,
 )
-from ideer.persistence.base import Base  # noqa: E402
-from ideer.workflows.v2.store import WorkflowV2Store  # noqa: E402
-from ideer.workflows.v2.worker import WorkflowWorker  # noqa: E402
 
 CASES_ROOT = REPO_ROOT / "docs" / "zero_agent_eval_cases"
-# Ticket 07 regression: the canonical bundled workflow lives under resources/.
-WORKFLOW_PATH = REPO_ROOT / "resources" / "workflows" / "fault-zeroing.yaml"
 EXPECTED_OUTPUTS = (
     "fault_tree.json",
     "fault_tree.svg",
@@ -55,7 +58,11 @@ CONTROL_NODE_IDS = {"fork_start", "join_review"}
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--user-id", required=True, help="Owner of the installed fault-zeroing custom agent")
+    parser.add_argument(
+        "--user-id",
+        required=True,
+        help="Owner of the installed fault-zeroing custom agent",
+    )
     parser.add_argument(
         "--case",
         choices=sorted(path.name for path in CASES_ROOT.glob("case_*")),
@@ -102,19 +109,42 @@ async def _run(user_id: str, case_name: str | None = None) -> dict:
     session_id = started_at.strftime("%Y%m%dT%H%M%SZ")
     acceptance_dir = get_paths().base_dir / "acceptance" / "fault-zeroing" / session_id
     acceptance_dir.mkdir(parents=True, exist_ok=False)
-    engine = create_async_engine(f"sqlite+aiosqlite:///{acceptance_dir / 'workflow.db'}")
+    engine = create_async_engine(
+        f"sqlite+aiosqlite:///{acceptance_dir / 'workflow.db'}"
+    )
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
-    store = WorkflowV2Store(async_sessionmaker(engine, expire_on_commit=False))
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    store = WorkflowV2Store(factory)
     kernel = FaultZeroingKernel(store)
 
-    workflow_text = WORKFLOW_PATH.read_text(encoding="utf-8")
-    workflow_raw = yaml.safe_load(workflow_text)
-    version = await store.save_definition(
-        "fault-zeroing",
-        workflow_raw,
-        hashlib.sha256(workflow_text.encode()).hexdigest(),
-        user_id,
+    # The canonical run contract freezes the bundled workflow → agent → skill
+    # closure, so seed the manifest into this acceptance catalog first.
+    from sqlalchemy import text
+
+    from app.agentplatform.resources.bundled import seed_bundled_resources
+    from app.agentplatform.resources.service import ResourceAction, ResourceActor
+    from app.agentplatform.resources.storage import ResourceStorage
+
+    await seed_bundled_resources(
+        factory,
+        ResourceStorage(str(get_paths().base_dir), allow_scanned_executables=True),
+        manifest_path=REPO_ROOT / "bundled-resources.json",
+        source_root=REPO_ROOT,
+        owner_id=user_id,
+    )
+    async with factory() as session:
+        workflow_resource_id = await session.execute(
+            text("SELECT id FROM resources WHERE slug = 'fault-zeroing' AND type = 'workflow'")
+        )
+        workflow_resource_id = workflow_resource_id.scalar_one_or_none()
+    if workflow_resource_id is None:
+        raise RuntimeError("bundled fault-zeroing workflow resource was not seeded")
+    actor = ResourceActor(
+        user_id=user_id,
+        department_id=None,
+        role="super_admin",
+        permissions=frozenset({ResourceAction.READ, ResourceAction.USE}),
     )
     config = get_app_config().model_copy(
         update={
@@ -134,15 +164,19 @@ async def _run(user_id: str, case_name: str | None = None) -> dict:
             outputs_dir = paths.sandbox_outputs_dir(run_id, user_id=user_id)
             staged_files = _stage_case(case_dir, uploads_dir)
             if any(name.endswith("_expected_analysis.md") for name in staged_files):
-                raise AssertionError(f"expected analysis leaked into runtime inputs for {case_dir.name}")
-            problem_description = (case_dir / "00_problem_statement.md").read_text(encoding="utf-8")
+                raise AssertionError(
+                    f"expected analysis leaked into runtime inputs for {case_dir.name}"
+                )
+            problem_description = (case_dir / "00_problem_statement.md").read_text(
+                encoding="utf-8"
+            )
 
             # Unified Run seam: intake decides execute vs pause before any
             # model execution; the eval cases provide document evidence only,
             # so the operator confirms the missing code-evidence side.
             started_result = await kernel.start_run(
                 workflow_name="fault-zeroing",
-                definition_version=version.version,
+                definition_version=1,
                 inputs={
                     "upload_dir": "/mnt/user-data/uploads",
                     "problem_description": problem_description,
@@ -151,6 +185,8 @@ async def _run(user_id: str, case_name: str | None = None) -> dict:
                 },
                 created_by=user_id,
                 run_id=run_id,
+                workflow_resource_id=workflow_resource_id,
+                actor=actor,
             )
             if started_result.status == "paused":
                 await _confirm_single_side_intake(kernel, store, run_id, user_id)
@@ -173,23 +209,34 @@ async def _run(user_id: str, case_name: str | None = None) -> dict:
             completed_nodes = [
                 event.payload.get("node_id")
                 for event in events
-                if event.event_type == "node_completed" and event.payload.get("node_id") not in CONTROL_NODE_IDS
+                if event.event_type == "node_completed"
+                and event.payload.get("node_id") not in CONTROL_NODE_IDS
             ]
             skipped_nodes = [
                 event.payload.get("node_id")
                 for event in events
-                if event.event_type == "node_skipped" and event.payload.get("node_id") not in CONTROL_NODE_IDS
+                if event.event_type == "node_skipped"
+                and event.payload.get("node_id") not in CONTROL_NODE_IDS
             ]
             terminal_action_nodes = completed_nodes + skipped_nodes
             artifacts = {name: str(outputs_dir / name) for name in EXPECTED_OUTPUTS}
             if run is None or run.status != "completed":
-                raise RuntimeError(f"{case_dir.name} failed: {None if run is None else run.error}")
-            if len(terminal_action_nodes) != ACTION_NODE_COUNT or len(set(terminal_action_nodes)) != ACTION_NODE_COUNT:
-                raise AssertionError(f"{case_dir.name} terminal action nodes mismatch: {terminal_action_nodes}")
+                raise RuntimeError(
+                    f"{case_dir.name} failed: {None if run is None else run.error}"
+                )
+            if (
+                len(terminal_action_nodes) != ACTION_NODE_COUNT
+                or len(set(terminal_action_nodes)) != ACTION_NODE_COUNT
+            ):
+                raise AssertionError(
+                    f"{case_dir.name} terminal action nodes mismatch: {terminal_action_nodes}"
+                )
             for name, raw_path in artifacts.items():
                 path = Path(raw_path)
                 if not path.is_file() or path.stat().st_size == 0:
-                    raise AssertionError(f"{case_dir.name} missing or empty artifact: {name}")
+                    raise AssertionError(
+                        f"{case_dir.name} missing or empty artifact: {name}"
+                    )
 
             # Contract-gated completion: full five artifacts + semantic
             # consistency, never file existence alone.
@@ -231,14 +278,20 @@ async def _run(user_id: str, case_name: str | None = None) -> dict:
         "results": results,
     }
     record_path = acceptance_dir / "acceptance.json"
-    record_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+    record_path.write_text(
+        json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
     summary["record_path"] = str(record_path)
     return summary
 
 
 def main() -> int:
     args = _parse_args()
-    print(json.dumps(asyncio.run(_run(args.user_id, args.case)), ensure_ascii=False, indent=2))
+    print(
+        json.dumps(
+            asyncio.run(_run(args.user_id, args.case)), ensure_ascii=False, indent=2
+        )
+    )
     return 0
 
 

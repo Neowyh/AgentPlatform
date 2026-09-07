@@ -1,11 +1,11 @@
-"""Coverage tests for ideer.sandbox.sandbox (abstract base class)."""
+"""Coverage tests for deerflow.sandbox.sandbox (abstract base class)."""
 
 from __future__ import annotations
 
 import pytest
 
-from ideer.sandbox.sandbox import Sandbox
-from ideer.sandbox.search import GrepMatch
+from deerflow.sandbox.sandbox import Sandbox
+from deerflow.sandbox.search import GrepMatch
 
 # ===========================================================================
 # Concrete implementation for testing the ABC

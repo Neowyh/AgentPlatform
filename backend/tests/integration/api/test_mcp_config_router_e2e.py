@@ -14,16 +14,25 @@ from _router_auth_helpers import make_authed_test_app
 from fastapi.testclient import TestClient
 
 from app.gateway.routers.mcp import router as mcp_router
-from ideer.config.extensions_config import ExtensionsConfig, McpServerConfig
+from deerflow.config.extensions_config import ExtensionsConfig, McpServerConfig
 
 pytestmark = pytest.mark.no_auto_user
 
 
-def _make_app(role: str = "user"):
+def _make_app(role: str = "admin"):
 
+    from app.gateway.auth.models import User
     from app.gateway.authz import get_current_rbac_user
 
-    app = make_authed_test_app()
+    # MCP config management is admin-gated via `is_admin_user`, which reads
+    # `request.state.user.system_role` — the stub user must be an admin.
+    app = make_authed_test_app(
+        user_factory=lambda: User(
+            email="router-admin@example.com",
+            password_hash="x",
+            system_role=role,
+        )
+    )
     app.include_router(mcp_router)
 
     # Mock the RBAC user for @require_role decorators
@@ -65,10 +74,12 @@ def _make_extensions_config(servers=None):
 class TestGetMcpConfig:
     """Tests for GET /api/mcp/config."""
 
-    @patch("app.gateway.routers.mcp.get_extensions_config")
-    def test_get_mcp_config(self, mock_get_ext):
-        """Get MCP config returns configuration."""
-        mock_get_ext.return_value = _make_extensions_config()
+    @patch.object(ExtensionsConfig, "resolve_config_path")
+    def test_get_mcp_config(self, mock_resolve, tmp_path):
+        """Get MCP config returns configuration from the raw config file."""
+        config_file = tmp_path / "extensions_config.json"
+        config_file.write_text('{"mcpServers": {"test-server": {"enabled": true, "type": "stdio", "command": "npx", "args": []}}}')
+        mock_resolve.return_value = config_file
         app = _make_app()
         with TestClient(app) as client:
             resp = client.get("/api/mcp/config")
@@ -77,20 +88,12 @@ class TestGetMcpConfig:
         assert "mcp_servers" in data
         assert "test-server" in data["mcp_servers"]
 
-    @patch("app.gateway.routers.mcp.get_extensions_config")
-    def test_get_mcp_config_masks_secrets(self, mock_get_ext):
+    @patch.object(ExtensionsConfig, "resolve_config_path")
+    def test_get_mcp_config_masks_secrets(self, mock_resolve, tmp_path):
         """Get MCP config masks sensitive fields."""
-        mock_get_ext.return_value = _make_extensions_config(
-            servers={
-                "test-server": McpServerConfig(
-                    enabled=True,
-                    type="stdio",
-                    command="test",
-                    args=[],
-                    env={"API_KEY": "secret-value"},
-                )
-            }
-        )
+        config_file = tmp_path / "extensions_config.json"
+        config_file.write_text('{"mcpServers": {"test-server": {"enabled": true, "type": "stdio", "command": "npx", "args": [], "env": {"API_KEY": "secret-value"}}}}')
+        mock_resolve.return_value = config_file
         app = _make_app()
         with TestClient(app) as client:
             resp = client.get("/api/mcp/config")
@@ -115,7 +118,7 @@ class TestUpdateMcpConfig:
     def test_update_mcp_config_success(self, mock_resolve, mock_get_ext, mock_reload, tmp_path):
         """Update MCP config succeeds."""
         config_file = tmp_path / "extensions_config.json"
-        config_file.write_text('{"mcpServers": {"test-server": {"enabled": true, "command": "old-command", "args": []}}}')
+        config_file.write_text('{"mcpServers": {"test-server": {"enabled": true, "command": "npx", "args": []}}}')
         mock_resolve.return_value = config_file
 
         mock_get_ext.return_value = _make_extensions_config()
@@ -132,7 +135,7 @@ class TestUpdateMcpConfig:
         )
         mock_reload.return_value = updated_config
 
-        app = _make_app(role="super_admin")
+        app = _make_app(role="admin")
         with TestClient(app) as client:
             resp = client.put(
                 "/api/mcp/config",
@@ -141,7 +144,7 @@ class TestUpdateMcpConfig:
                         "test-server": {
                             "enabled": True,
                             "type": "stdio",
-                            "command": "updated-command",
+                            "command": "npx",
                             "args": [],
                         }
                     }
@@ -149,7 +152,7 @@ class TestUpdateMcpConfig:
             )
         assert resp.status_code == 200
         data = resp.json()
-        assert data["mcp_servers"]["test-server"]["command"] == "updated-command"
+        assert data["mcp_servers"]["test-server"]["command"] == "npx"
 
     @patch("app.gateway.routers.mcp.reload_extensions_config")
     @patch("app.gateway.routers.mcp.get_extensions_config")
@@ -157,7 +160,7 @@ class TestUpdateMcpConfig:
     def test_update_mcp_config_preserves_secrets(self, mock_resolve, mock_get_ext, mock_reload, tmp_path):
         """Update MCP config preserves secrets on round-trip."""
         config_file = tmp_path / "extensions_config.json"
-        config_file.write_text('{"mcpServers": {"test-server": {"enabled": true, "command": "test", "args": [], "env": {"API_KEY": "real-secret"}}}}')
+        config_file.write_text('{"mcpServers": {"test-server": {"enabled": true, "command": "npx", "args": [], "env": {"API_KEY": "real-secret"}}}}')
         mock_resolve.return_value = config_file
 
         mock_get_ext.return_value = _make_extensions_config()
@@ -175,7 +178,7 @@ class TestUpdateMcpConfig:
         )
         mock_reload.return_value = updated_config
 
-        app = _make_app(role="super_admin")
+        app = _make_app(role="admin")
         with TestClient(app) as client:
             resp = client.put(
                 "/api/mcp/config",
@@ -184,7 +187,7 @@ class TestUpdateMcpConfig:
                         "test-server": {
                             "enabled": True,
                             "type": "stdio",
-                            "command": "test",
+                            "command": "npx",
                             "args": [],
                             "env": {"API_KEY": "***"},
                         }

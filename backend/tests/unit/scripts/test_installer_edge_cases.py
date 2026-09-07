@@ -1,4 +1,4 @@
-"""Tests targeting uncovered lines in ideer.skills.installer."""
+"""Tests targeting uncovered lines in deerflow.skills.installer."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from ideer.skills.installer import (
+from deerflow.skills.installer import (
     SkillSecurityScanError,
     _run_async_install,
     _scan_skill_file_or_raise,
@@ -136,7 +136,7 @@ class TestScanSkillFileUnicodeError:
 
 class TestScanSkillFileScanException:
     @pytest.mark.asyncio
-    @patch("ideer.skills.installer.scan_skill_content", new_callable=AsyncMock)
+    @patch("deerflow.skills.installer.scan_skill_content", new_callable=AsyncMock)
     async def test_scan_raises_generic_exception(self, mock_scan, tmp_path: Path):
         mock_scan.side_effect = RuntimeError("model unavailable")
         skill_md = tmp_path / "SKILL.md"
@@ -153,9 +153,9 @@ class TestScanSkillFileScanException:
 
 class TestScanSkillFileBlockNonSkillMd:
     @pytest.mark.asyncio
-    @patch("ideer.skills.installer.scan_skill_content", new_callable=AsyncMock)
+    @patch("deerflow.skills.installer.scan_skill_content", new_callable=AsyncMock)
     async def test_block_on_support_file(self, mock_scan, tmp_path: Path):
-        from ideer.skills.security_scanner import ScanResult
+        from deerflow.skills.security_scanner import ScanResult
 
         mock_scan.return_value = ScanResult(decision="block", reason="malicious pattern")
         scripts_dir = tmp_path / "scripts"
@@ -174,9 +174,9 @@ class TestScanSkillFileBlockNonSkillMd:
 
 class TestScanSkillFileInvalidDecision:
     @pytest.mark.asyncio
-    @patch("ideer.skills.installer.scan_skill_content", new_callable=AsyncMock)
+    @patch("deerflow.skills.installer.scan_skill_content", new_callable=AsyncMock)
     async def test_unknown_decision_raises(self, mock_scan, tmp_path: Path):
-        from ideer.skills.security_scanner import ScanResult
+        from deerflow.skills.security_scanner import ScanResult
 
         mock_scan.return_value = ScanResult(decision="unknown_value", reason="???")
         skill_md = tmp_path / "SKILL.md"

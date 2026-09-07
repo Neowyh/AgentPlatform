@@ -63,6 +63,33 @@ vi.mock("@/components/workspace/workspace-sidebar", () => ({
   WorkspaceSidebar: () => <div data-testid="workspace-sidebar" />,
 }));
 
+vi.mock("@/components/workspace/gateway-offline-banner", () => ({
+  GatewayOfflineBanner: ({
+    gatewayUnavailable,
+  }: {
+    gatewayUnavailable?: boolean;
+  }) => (
+    <div
+      data-testid="gateway-offline-banner"
+      data-gateway-unavailable={String(gatewayUnavailable)}
+    />
+  ),
+}));
+
+vi.mock("@/components/workspace/model-load-error-banner", () => ({
+  ModelLoadErrorBanner: () => <div data-testid="model-load-error-banner" />,
+}));
+
+vi.mock("@/components/workspace/settings", () => ({
+  SettingsDialogHost: () => <div data-testid="settings-dialog-host" />,
+}));
+
+vi.mock("@/components/workspace/workspace-settings-deep-link", () => ({
+  WorkspaceSettingsDeepLink: () => (
+    <div data-testid="workspace-settings-deep-link" />
+  ),
+}));
+
 // ---------------------------------------------------------------------------
 // Import component after mocks
 // ---------------------------------------------------------------------------

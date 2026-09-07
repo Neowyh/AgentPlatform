@@ -1,6 +1,6 @@
 from langchain_core.tools import StructuredTool
 
-from ideer.tools.assembly import ToolSet, assemble_tools
+from app.agentplatform.tools.assembly import ToolSet, assemble_tools
 
 
 def _tool(name: str):

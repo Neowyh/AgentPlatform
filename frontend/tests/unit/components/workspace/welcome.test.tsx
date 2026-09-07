@@ -59,11 +59,12 @@ describe("Welcome", () => {
     expect(screen.getByText("iDeer，落地你的idea")).toBeInTheDocument();
   });
 
-  test("does not render a description by default", () => {
+  test("renders a description by default", () => {
     render(<Welcome />);
+    // The merged welcome now shows the localized description under the title.
     expect(
-      screen.queryByText("How can I help you today?"),
-    ).not.toBeInTheDocument();
+      screen.getByText("How can I help you today?"),
+    ).toBeInTheDocument();
   });
 
   test("renders in skill mode when search param mode=skill", () => {
@@ -96,11 +97,11 @@ describe("Welcome", () => {
     );
   });
 
-  test("renders with display font in non-ultra mode", () => {
+  test("renders the greeting in a wrapping title row in non-ultra mode", () => {
     render(<Welcome />);
     expect(screen.getByText("iDeer，落地你的idea")).toBeInTheDocument();
     const title = screen.getByText("iDeer，落地你的idea").closest("div");
-    expect(title?.className).toMatch(/tracking-\[-0\.04em\]/);
+    expect(title?.className).toContain("items-center");
   });
 
   test("renders same title in ultra mode (no AuroraText)", () => {
@@ -109,9 +110,9 @@ describe("Welcome", () => {
     expect(screen.getByText("iDeer，落地你的idea")).toBeInTheDocument();
   });
 
-  test("does not render a greeting emoji", () => {
+  test("renders a greeting emoji in non-ultra mode", () => {
     render(<Welcome />);
-    expect(screen.queryByText("👋")).not.toBeInTheDocument();
+    expect(screen.getByText("👋")).toBeInTheDocument();
   });
 
   test("keeps the localized greeting in ultra mode", () => {

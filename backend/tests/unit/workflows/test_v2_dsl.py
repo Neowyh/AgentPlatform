@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from ideer.workflows.v2.parser import parse_workflow_v2, parse_workflow_v2_file
+from app.agentplatform.workflows.v2.parser import parse_workflow_v2, parse_workflow_v2_file
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 

@@ -44,17 +44,24 @@ def _persistence_engine(tmp_path):
     import asyncio
 
     from app.gateway import deps
-    from ideer.persistence.engine import close_engine, init_engine
+    from app.gateway.routers import auth as auth_router
+    from deerflow.persistence.engine import close_engine, init_engine
 
     url = f"sqlite+aiosqlite:///{tmp_path}/auth_types.db"
     asyncio.run(init_engine("sqlite", url=url, sqlite_dir=str(tmp_path)))
     deps._cached_local_provider = None
     deps._cached_repo = None
+    # Reset per-IP rate limiter state so register/login tests do not leak
+    # quota into each other (each test simulates a fresh server process).
+    auth_router._registration_attempts.clear()
+    auth_router._login_attempts.clear()
     try:
         yield
     finally:
         deps._cached_local_provider = None
         deps._cached_repo = None
+        auth_router._registration_attempts.clear()
+        auth_router._login_attempts.clear()
         asyncio.run(close_engine())
 
 

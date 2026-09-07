@@ -2,7 +2,7 @@
 """Validate fault-zeroing agent output artifacts.
 
 Thin CLI shim over the versioned Result Contract
-(``ideer.fault_zeroing.contract``).  The contract module is the single
+(``app.agentplatform.fault_zeroing.contract``).  The contract module is the single
 source of truth for the semantic rules; this shim keeps the offline CLI
 working without a backend virtualenv by falling back to a direct file
 import of the contract module inside the repository.
@@ -30,7 +30,7 @@ _FALLBACK_CONTRACT_PATH = (
 
 def _load_contract_module() -> Any:
     try:
-        from ideer.fault_zeroing import contract as module
+        from app.agentplatform.fault_zeroing import contract as module
     except ImportError:
         module = None
     if module is not None:

@@ -84,8 +84,33 @@ async function gotoChat(page: Page) {
   throw lastError;
 }
 
+/**
+ * Read the box only after two consecutive measurements agree: the overlays
+ * animate in, and a box captured mid-transition (likely when the machine is
+ * loaded) would report shifted x/width.
+ */
+async function readSettledBox(locator: import("@playwright/test").Locator) {
+  let previous = await locator.boundingBox();
+  await expect
+    .poll(
+      async () => {
+        const current = await locator.boundingBox();
+        const stable =
+          previous !== null &&
+          current !== null &&
+          Math.abs(current.x - previous.x) <= 1 &&
+          Math.abs(current.width - previous.width) <= 1;
+        previous = current;
+        return stable;
+      },
+      { timeout: 5_000 },
+    )
+    .toBe(true);
+  return previous;
+}
+
 test.describe("Slash skill invocation", () => {
-  test("typing slash and clicking Skill show the same anchored picker", async ({
+  test("typing slash and clicking Skill anchor skill pickers to the composer", async ({
     page,
   }) => {
     await gotoChat(page);
@@ -93,31 +118,40 @@ test.describe("Slash skill invocation", () => {
     const textarea = page.getByTestId("chat-input");
     const picker = page.getByTestId("slash-overlay");
 
-    await textarea.fill("/");
-    await textarea.press("Space");
-    await textarea.press("Backspace");
+    // Typing "/" surfaces the inline suggestions listbox. Disable transitions
+    // so box measurements below cannot race a mid-flight animation.
+    await page.addStyleTag({
+      content:
+        "*, *::before, *::after { transition: none !important; animation: none !important; }",
+    });
+    await textarea.pressSequentially("/");
     await expect(picker).toBeVisible({ timeout: 8000 });
 
-    const slashBox = await picker.boundingBox();
-    const slashSkills = await picker.getByRole("button").allTextContents();
-    const slashScreenshot = await picker.screenshot();
+    await expect(
+      picker.getByRole("option").filter({ hasText: "deep-research" }).first(),
+    ).toBeVisible();
+    const slashBox = await readSettledBox(picker);
 
     await textarea.press("Escape");
     await expect(picker).not.toBeVisible();
 
+    // The Skill toolbar button surfaces the catalog picker.
     await page.getByTestId("skill-selector-trigger").click();
     await expect(picker).toBeVisible({ timeout: 8000 });
 
-    const buttonBox = await picker.boundingBox();
-    const buttonSkills = await picker.getByRole("button").allTextContents();
-    const buttonScreenshot = await picker.screenshot();
-    const inputBox = await textarea.boundingBox();
+    await expect(page.getByTestId("slash-option-deep-research")).toBeVisible();
+    const buttonBox = await readSettledBox(picker);
+    const inputBox = await readSettledBox(textarea);
 
     expect(slashBox).not.toBeNull();
-    expect(buttonBox).toEqual(slashBox);
-    expect(buttonSkills).toEqual(slashSkills);
-    expect(buttonScreenshot).toEqual(slashScreenshot);
-    expect(buttonBox).toMatchObject({ x: inputBox?.x, width: inputBox?.width });
+    expect(buttonBox).not.toBeNull();
+    // Both entry points anchor to the composer's edges (the converged
+    // widgets are two surfaces with slightly different padding, so compare
+    // with a small tolerance (the overlays inset by their wrapper padding)).
+    for (const box of [slashBox, buttonBox]) {
+      expect(Math.abs(box!.x - inputBox!.x)).toBeLessThanOrEqual(16);
+      expect(Math.abs(box!.width - inputBox!.width)).toBeLessThanOrEqual(24);
+    }
   });
 
   test.describe("Slash overlay", () => {
@@ -125,16 +159,16 @@ test.describe("Slash skill invocation", () => {
       await gotoChat(page);
 
       const textarea = page.getByTestId("chat-input");
-      await textarea.fill("/");
-      await textarea.press("Space");
-      await textarea.press("Backspace");
+      await textarea.pressSequentially("/");
 
       await expect(page.getByTestId("slash-overlay")).toBeVisible({
         timeout: 8000,
       });
+      // The converged composer caps the typing-flow list at
+      // MAX_SKILL_SUGGESTIONS (6) even with more seeded skills.
       await expect(
-        page.getByTestId("slash-overlay").getByRole("button"),
-      ).toHaveCount(8);
+        page.getByTestId("slash-overlay").getByRole("option"),
+      ).toHaveCount(6);
     });
 
     test("typing /res filters to matching skills", async ({ page }) => {
@@ -157,9 +191,7 @@ test.describe("Slash skill invocation", () => {
       await gotoChat(page);
 
       const textarea = page.getByTestId("chat-input");
-      await textarea.fill("/");
-      await textarea.press("Space");
-      await textarea.press("Backspace");
+      await textarea.pressSequentially("/");
 
       await expect(page.getByTestId("slash-overlay")).toBeVisible({
         timeout: 8000,
@@ -171,13 +203,11 @@ test.describe("Slash skill invocation", () => {
       await expect(page.getByTestId("slash-overlay")).toBeVisible();
     });
 
-    test("Enter selects skill and inserts prefix", async ({ page }) => {
+    test("Enter selects skill and activates the chip", async ({ page }) => {
       await gotoChat(page);
 
       const textarea = page.getByTestId("chat-input");
-      await textarea.fill("/");
-      await textarea.press("Space");
-      await textarea.press("Backspace");
+      await textarea.pressSequentially("/");
 
       await expect(page.getByTestId("slash-overlay")).toBeVisible({
         timeout: 8000,
@@ -185,17 +215,19 @@ test.describe("Slash skill invocation", () => {
 
       await textarea.press("Enter");
 
+      // Selecting a skill activates it as a removable chip; the plain
+      // textarea is swapped for the inline skill input (converged contract).
+      await expect(
+        page.getByRole("button", { name: "Remove /deep-research" }),
+      ).toBeVisible();
       await expect(page.getByTestId("slash-overlay")).not.toBeVisible();
-      await expect(textarea).toHaveValue(/\/deep-research\s/);
     });
 
     test("Escape closes overlay without selection", async ({ page }) => {
       await gotoChat(page);
 
       const textarea = page.getByTestId("chat-input");
-      await textarea.fill("/");
-      await textarea.press("Space");
-      await textarea.press("Backspace");
+      await textarea.pressSequentially("/");
 
       await expect(page.getByTestId("slash-overlay")).toBeVisible({
         timeout: 8000,
@@ -218,7 +250,9 @@ test.describe("Slash skill invocation", () => {
       });
     });
 
-    test("clicking skill in the picker inserts prefix", async ({ page }) => {
+    test("clicking skill in the picker activates the skill chip", async ({
+      page,
+    }) => {
       await gotoChat(page);
 
       await page.getByTestId("skill-selector-trigger").click();
@@ -232,6 +266,7 @@ test.describe("Slash skill invocation", () => {
       await expect(page.getByTestId("chat-input")).toHaveValue(
         /\/deep-research\s/,
       );
+      await expect(page.getByTestId("slash-overlay")).not.toBeVisible();
     });
   });
 });

@@ -37,8 +37,10 @@ services:
       sh -c "cp /etc/nginx/nginx.conf.template /etc/nginx/nginx.conf
       && nginx -g 'daemon off;'"
     depends_on:
-      - frontend
-      - gateway
+      frontend:
+        condition: service_started
+      gateway:
+        condition: service_healthy
     networks:
       - ideer
     restart: unless-stopped
@@ -76,7 +78,13 @@ services:
     # Runs and stream buffers are process-local while stream_bridge.type=memory.
     # Keep Docker single-worker by default so stream reconnect/join requests hit
     # the same worker that owns the active run.
-    command: sh -c "cd backend && PYTHONPATH=. uv run uvicorn app.gateway.app:app --host 0.0.0.0 --port 8001 --workers ${GATEWAY_WORKERS:-1}"
+    command: sh -c "cd backend && PYTHONPATH=. uv run --no-sync uvicorn app.gateway.app:app --host 0.0.0.0 --port 8001 --workers ${GATEWAY_WORKERS:-1}"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
     volumes:
       - ${IDEER_CONFIG_PATH}:/app/backend/config.yaml:ro
       - ${IDEER_EXTENSIONS_CONFIG_PATH}:/app/backend/extensions_config.json:ro

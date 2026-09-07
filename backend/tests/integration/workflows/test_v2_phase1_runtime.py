@@ -21,13 +21,15 @@ from langgraph.types import Command
 from sqlalchemy import create_engine, func, select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from ideer.persistence.base import Base
-from ideer.persistence.models.workflow_v2 import WorkflowLeaseAuditRow, WorkflowTaskRow
-from ideer.workflows.v2.adapters import ActionAdapterRegistry
-from ideer.workflows.v2.compiler import WorkflowGraphCompiler
-from ideer.workflows.v2.parser import parse_workflow_v2
-from ideer.workflows.v2.store import WorkflowV2Store
-from ideer.workflows.v2.worker import WorkflowPaused, WorkflowWorker, workflow_snapshot
+from app.agentplatform import rbac_models as _rbac_models  # noqa: F401
+from app.agentplatform import resource_models as _resource_models  # noqa: F401
+from app.agentplatform.workflows.v2.adapters import ActionAdapterRegistry
+from app.agentplatform.workflows.v2.compiler import WorkflowGraphCompiler
+from app.agentplatform.workflows.v2.parser import parse_workflow_v2
+from app.agentplatform.workflows.v2.store import WorkflowV2Store
+from app.agentplatform.workflows.v2.worker import WorkflowPaused, WorkflowWorker, workflow_snapshot
+from deerflow.persistence.base import Base
+from deerflow.persistence.models.workflow_v2 import WorkflowLeaseAuditRow, WorkflowTaskRow
 
 _APPROVAL_WORKFLOW = """
 schema_version: 2
@@ -317,7 +319,7 @@ async def test_concurrent_claims_never_duplicate_a_task(durable_store: WorkflowV
 @pytest.mark.serial
 def test_v1_runs_stay_readable_but_active_runs_are_failed_by_the_v2_migration(tmp_path: Path) -> None:
     """Upgrade a real v1 database instead of asserting migration call shapes."""
-    migrations_dir = Path(__file__).resolve().parents[3] / "packages" / "harness" / "ideer" / "persistence" / "migrations"
+    migrations_dir = Path(__file__).resolve().parents[3] / "app" / "agentplatform" / "persistence" / "migrations"
     db_path = tmp_path / "legacy.db"
     config = AlembicConfig(str(migrations_dir / "alembic.ini"))
     config.set_main_option("script_location", str(migrations_dir))

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from ideer.skills.chip_software_package import (
+from app.agentplatform.skills.chip_software_package import (
     ChipSoftwareDocument,
     extract_chip_software_package,
     validate_source_set,

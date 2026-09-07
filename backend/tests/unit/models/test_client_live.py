@@ -1,4 +1,4 @@
-"""Live integration tests for IDeerClient with real API.
+"""Live integration tests for DeerFlowClient with real API.
 
 These tests require a working config.yaml with valid API credentials.
 They are skipped in CI and must be run explicitly:
@@ -11,9 +11,9 @@ from pathlib import Path
 
 import pytest
 
-from ideer.client import IDeerClient, StreamEvent
-from ideer.sandbox.security import is_host_bash_allowed
-from ideer.uploads.manager import PathTraversalError
+from deerflow.client import DeerFlowClient, StreamEvent
+from deerflow.sandbox.security import is_host_bash_allowed
+from deerflow.uploads.manager import PathTraversalError
 
 # Skip entire module when no config.yaml exists (the rest is handled by the
 # conftest _skip_llm_if_no_key fixture using the initial env state).
@@ -29,8 +29,8 @@ pytestmark = pytest.mark.requires_llm
 
 @pytest.fixture(scope="module")
 def client():
-    """Create a real IDeerClient (no mocks)."""
-    return IDeerClient(model_name="deepseek-v4-flash", thinking_enabled=False)
+    """Create a real DeerFlowClient (no mocks)."""
+    return DeerFlowClient(model_name="deepseek-v4-flash", thinking_enabled=False)
 
 
 @pytest.fixture

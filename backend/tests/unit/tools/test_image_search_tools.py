@@ -1,11 +1,11 @@
-"""Tests for ideer.community.image_search.tools — comprehensive coverage."""
+"""Tests for deerflow.community.image_search.tools — comprehensive coverage."""
 
 from __future__ import annotations
 
 import json
 from unittest.mock import MagicMock, patch
 
-from ideer.community.image_search.tools import _search_images, image_search_tool
+from deerflow.community.image_search.tools import _search_images, image_search_tool
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -13,9 +13,10 @@ from ideer.community.image_search.tools import _search_images, image_search_tool
 
 
 def _sample_ddgs_results():
+    # Upstream maps image_url from the "image" field with no fallback to "thumbnail".
     return [
-        {"title": "Image 1", "thumbnail": "http://img1.jpg", "url": "http://page1"},
-        {"title": "Image 2", "thumbnail": "http://img2.jpg", "url": "http://page2"},
+        {"title": "Image 1", "image": "http://img1.jpg", "thumbnail": "http://img1.jpg", "url": "http://page1"},
+        {"title": "Image 2", "image": "http://img2.jpg", "thumbnail": "http://img2.jpg", "url": "http://page2"},
     ]
 
 
@@ -143,8 +144,8 @@ class TestImageSearchTool:
         mock_results = _sample_ddgs_results()
 
         with (
-            patch("ideer.community.image_search.tools.get_app_config") as mock_config_fn,
-            patch("ideer.community.image_search.tools._search_images", return_value=mock_results),
+            patch("deerflow.community.image_search.tools.get_app_config") as mock_config_fn,
+            patch("deerflow.community.image_search.tools._search_images", return_value=mock_results),
         ):
             mock_config_fn.return_value.get_tool_config.return_value = None
             result = image_search_tool.func(query="cats")
@@ -160,8 +161,8 @@ class TestImageSearchTool:
 
     def test_returns_error_on_no_results(self):
         with (
-            patch("ideer.community.image_search.tools.get_app_config") as mock_config_fn,
-            patch("ideer.community.image_search.tools._search_images", return_value=[]),
+            patch("deerflow.community.image_search.tools.get_app_config") as mock_config_fn,
+            patch("deerflow.community.image_search.tools._search_images", return_value=[]),
         ):
             mock_config_fn.return_value.get_tool_config.return_value = None
             result = image_search_tool.func(query="nonexistent")
@@ -174,8 +175,8 @@ class TestImageSearchTool:
         mock_results = _sample_ddgs_results()
 
         with (
-            patch("ideer.community.image_search.tools.get_app_config") as mock_config_fn,
-            patch("ideer.community.image_search.tools._search_images", return_value=mock_results) as mock_search,
+            patch("deerflow.community.image_search.tools.get_app_config") as mock_config_fn,
+            patch("deerflow.community.image_search.tools._search_images", return_value=mock_results) as mock_search,
         ):
             config = _make_tool_config(max_results=10)
             mock_config_fn.return_value.get_tool_config.return_value = config
@@ -189,8 +190,8 @@ class TestImageSearchTool:
         mock_results = _sample_ddgs_results()
 
         with (
-            patch("ideer.community.image_search.tools.get_app_config") as mock_config_fn,
-            patch("ideer.community.image_search.tools._search_images", return_value=mock_results) as mock_search,
+            patch("deerflow.community.image_search.tools.get_app_config") as mock_config_fn,
+            patch("deerflow.community.image_search.tools._search_images", return_value=mock_results) as mock_search,
         ):
             config = _make_tool_config()  # no max_results in model_extra
             mock_config_fn.return_value.get_tool_config.return_value = config
@@ -203,8 +204,8 @@ class TestImageSearchTool:
         mock_results = _sample_ddgs_results()
 
         with (
-            patch("ideer.community.image_search.tools.get_app_config") as mock_config_fn,
-            patch("ideer.community.image_search.tools._search_images", return_value=mock_results) as mock_search,
+            patch("deerflow.community.image_search.tools.get_app_config") as mock_config_fn,
+            patch("deerflow.community.image_search.tools._search_images", return_value=mock_results) as mock_search,
         ):
             mock_config_fn.return_value.get_tool_config.return_value = None
             image_search_tool.func(query="cats", max_results=3)
@@ -216,8 +217,8 @@ class TestImageSearchTool:
         mock_results = _sample_ddgs_results()
 
         with (
-            patch("ideer.community.image_search.tools.get_app_config") as mock_config_fn,
-            patch("ideer.community.image_search.tools._search_images", return_value=mock_results) as mock_search,
+            patch("deerflow.community.image_search.tools.get_app_config") as mock_config_fn,
+            patch("deerflow.community.image_search.tools._search_images", return_value=mock_results) as mock_search,
         ):
             mock_config_fn.return_value.get_tool_config.return_value = None
             image_search_tool.func(
@@ -235,8 +236,8 @@ class TestImageSearchTool:
 
     def test_default_values(self):
         with (
-            patch("ideer.community.image_search.tools.get_app_config") as mock_config_fn,
-            patch("ideer.community.image_search.tools._search_images", return_value=[]) as mock_search,
+            patch("deerflow.community.image_search.tools.get_app_config") as mock_config_fn,
+            patch("deerflow.community.image_search.tools._search_images", return_value=[]) as mock_search,
         ):
             mock_config_fn.return_value.get_tool_config.return_value = None
             image_search_tool.func(query="test")
@@ -256,8 +257,8 @@ class TestImageSearchTool:
         ]
 
         with (
-            patch("ideer.community.image_search.tools.get_app_config") as mock_config_fn,
-            patch("ideer.community.image_search.tools._search_images", return_value=raw_results),
+            patch("deerflow.community.image_search.tools.get_app_config") as mock_config_fn,
+            patch("deerflow.community.image_search.tools._search_images", return_value=raw_results),
         ):
             mock_config_fn.return_value.get_tool_config.return_value = None
             result = image_search_tool.func(query="test")

@@ -21,6 +21,7 @@ from app.channels.commands import KNOWN_CHANNEL_COMMANDS
 EXPECTED_COMMANDS: frozenset[str] = frozenset(
     {
         "/bootstrap",
+        "/goal",
         "/new",
         "/status",
         "/models",
@@ -41,8 +42,8 @@ class TestTypeAndStructure:
     def test_is_frozenset(self):
         assert isinstance(KNOWN_CHANNEL_COMMANDS, frozenset)
 
-    def test_contains_exactly_six_commands(self):
-        assert len(KNOWN_CHANNEL_COMMANDS) == 6
+    def test_contains_exactly_seven_commands(self):
+        assert len(KNOWN_CHANNEL_COMMANDS) == 7
 
     def test_all_elements_are_strings(self):
         for cmd in KNOWN_CHANNEL_COMMANDS:
@@ -77,6 +78,9 @@ class TestExactMembership:
 
     def test_contains_bootstrap(self):
         assert "/bootstrap" in KNOWN_CHANNEL_COMMANDS
+
+    def test_contains_goal(self):
+        assert "/goal" in KNOWN_CHANNEL_COMMANDS
 
     def test_contains_new(self):
         assert "/new" in KNOWN_CHANNEL_COMMANDS
@@ -161,13 +165,13 @@ class TestImmutability:
     def test_intersection_returns_new_set(self):
         result = KNOWN_CHANNEL_COMMANDS & {"/help", "/new"}
         assert result == {"/help", "/new"}
-        assert len(KNOWN_CHANNEL_COMMANDS) == 6
+        assert len(KNOWN_CHANNEL_COMMANDS) == 7
 
     def test_symmetric_difference_returns_new_set(self):
         result = KNOWN_CHANNEL_COMMANDS ^ {"/help", "/extra"}
         assert "/help" not in result
         assert "/extra" in result
-        assert len(KNOWN_CHANNEL_COMMANDS) == 6
+        assert len(KNOWN_CHANNEL_COMMANDS) == 7
 
 
 # ---------------------------------------------------------------------------
@@ -293,9 +297,10 @@ class TestCrossConsumerConsistency:
 
         import app.channels.feishu as feishu_mod
 
-        # KNOWN_CHANNEL_COMMANDS is used in the module-level _is_feishu_command
+        # Feishu classifies commands through the shared helper that reads
+        # KNOWN_CHANNEL_COMMANDS, so referencing it keeps the parser in sync.
         source = inspect.getsource(feishu_mod)
-        assert "KNOWN_CHANNEL_COMMANDS" in source
+        assert "is_known_channel_command" in source
 
     def test_manager_uses_same_set(self):
         """ChannelManager should reference KNOWN_CHANNEL_COMMANDS."""
@@ -312,9 +317,10 @@ class TestCrossConsumerConsistency:
 
         import app.channels.dingtalk as dingtalk_mod
 
-        # KNOWN_CHANNEL_COMMANDS is used in the module-level _is_dingtalk_command
+        # DingTalk classifies commands through the shared helper that reads
+        # KNOWN_CHANNEL_COMMANDS, so referencing it keeps the parser in sync.
         source = inspect.getsource(dingtalk_mod)
-        assert "KNOWN_CHANNEL_COMMANDS" in source
+        assert "is_known_channel_command" in source
 
 
 # ---------------------------------------------------------------------------

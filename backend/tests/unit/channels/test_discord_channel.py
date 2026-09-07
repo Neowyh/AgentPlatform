@@ -188,7 +188,7 @@ class TestInit:
     def test_default_thread_store_path(self):
         config = {"bot_token": "t"}
         ch = _make_channel(config=config)
-        assert ch._thread_store_path == Path.home() / ".ideer" / "channels" / "discord_threads.json"
+        assert ch._thread_store_path == Path.home() / ".deer-flow" / "channels" / "discord_threads.json"
 
     def test_empty_bot_token(self):
         config = {"bot_token": ""}
@@ -299,76 +299,84 @@ class TestThreadPersistence:
         # Should not raise; old data preserved
         assert ch._active_threads == {}
 
-    def test_save_thread_creates_file(self, tmp_path):
+    def test_record_thread_creates_file(self, tmp_path):
         ch = _make_channel()
         ch._thread_store_path = tmp_path / "discord_threads.json"
-        ch._save_thread("ch1", "t1")
+        ch._record_thread_mapping("ch1", "t1")
+        ch._persist_thread_mappings()
 
         assert ch._thread_store_path.exists()
         data = json.loads(ch._thread_store_path.read_text())
         assert data == {"ch1": "t1"}
         assert ch._active_thread_ids == {"t1"}
 
-    def test_save_thread_updates_existing(self, tmp_path):
+    def test_record_thread_updates_existing(self, tmp_path):
         store_file = tmp_path / "discord_threads.json"
         store_file.write_text(json.dumps({"ch1": "old_t"}))
 
         ch = _make_channel()
         ch._thread_store_path = store_file
+        ch._active_threads = {"ch1": "old_t"}
         ch._active_thread_ids = {"old_t"}
-        ch._save_thread("ch1", "new_t")
+        ch._record_thread_mapping("ch1", "new_t")
+        ch._persist_thread_mappings()
 
         data = json.loads(store_file.read_text())
         assert data == {"ch1": "new_t"}
         assert "old_t" not in ch._active_thread_ids
         assert "new_t" in ch._active_thread_ids
 
-    def test_save_thread_creates_parent_dirs(self, tmp_path):
+    def test_record_thread_creates_parent_dirs(self, tmp_path):
         ch = _make_channel()
         ch._thread_store_path = tmp_path / "nested" / "dir" / "threads.json"
-        ch._save_thread("ch1", "t1")
+        ch._record_thread_mapping("ch1", "t1")
+        ch._persist_thread_mappings()
         assert ch._thread_store_path.exists()
 
-    def test_save_thread_handles_write_error(self, tmp_path, caplog):
+    def test_record_thread_handles_write_error(self, tmp_path, caplog):
         ch = _make_channel()
-        ch._thread_store_path = tmp_path / "discord_threads.json"
-        ch._thread_store_path.write_text(json.dumps({"existing": "data"}))
-        # Make the file unreadable to trigger read error during save
+        ch._record_thread_mapping("ch1", "t1")
         ch._thread_store_path = Path("/nonexistent/dir/file.json")
-        ch._save_thread("ch1", "t1")
+        ch._persist_thread_mappings()
         # Should not raise
 
 
 # ---------------------------------------------------------------------------
-# _publish tests
+# _publish_reserved tests
 # ---------------------------------------------------------------------------
 
 
-class TestPublish:
-    def test_publish_when_main_loop_running(self):
+class TestPublishReserved:
+    def test_publish_reserved_when_main_loop_running(self):
         ch = _make_channel()
         main_loop = MagicMock()
         main_loop.is_running.return_value = True
         ch._main_loop = main_loop
 
+        reservation = MagicMock()
         inbound = MagicMock()
-        ch._publish(inbound)
 
-        main_loop.create_task.assert_not_called()  # uses run_coroutine_threadsafe
+        assert ch._publish_reserved(inbound, reservation) is True
+        main_loop.call_soon_threadsafe.assert_called_once()
+        reservation.release.assert_not_called()
 
-    def test_publish_when_no_main_loop(self):
+    def test_publish_reserved_when_no_main_loop(self):
         ch = _make_channel()
         ch._main_loop = None
-        # Should not raise
-        ch._publish(MagicMock())
 
-    def test_publish_when_main_loop_not_running(self):
+        reservation = MagicMock()
+        assert ch._publish_reserved(MagicMock(), reservation) is False
+        reservation.release.assert_called_once()
+
+    def test_publish_reserved_when_main_loop_not_running(self):
         ch = _make_channel()
         main_loop = MagicMock()
         main_loop.is_running.return_value = False
         ch._main_loop = main_loop
-        # Should not call run_coroutine_threadsafe
-        ch._publish(MagicMock())
+
+        reservation = MagicMock()
+        assert ch._publish_reserved(MagicMock(), reservation) is False
+        reservation.release.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -508,23 +516,26 @@ class TestLifecycle:
         ch = _make_channel()
         ch._running = True
 
-        # Create mock typing tasks
-        task1 = MagicMock()
-        task1.done.return_value = False
-        task2 = MagicMock()
-        task2.done.return_value = True
-        ch._typing_tasks = {"target1": task1, "target2": task2}
-
         loop = asyncio.new_event_loop()
 
         async def _stop():
+            async def _hang():
+                await asyncio.sleep(30)
+
+            pending = asyncio.create_task(_hang())
+            finished = asyncio.create_task(asyncio.sleep(0))
+            await finished
+            ch._typing_tasks = {"target1": pending, "target2": finished}
+
             await ch.stop()
 
-        loop.run_until_complete(_stop())
+            assert pending.cancelled()
+            assert ch._typing_tasks == {}
 
-        task1.cancel.assert_called_once()
-        task2.cancel.assert_not_called()  # already done
-        assert ch._typing_tasks == {}
+        try:
+            loop.run_until_complete(_stop())
+        finally:
+            loop.close()
 
     def test_stop_closes_client(self):
         ch = _make_channel()
@@ -606,6 +617,7 @@ class TestTyping:
     @pytest.mark.anyio
     async def test_start_typing_creates_task(self):
         ch = _make_channel()
+        ch._running = True
         channel = MagicMock()
         channel.trigger_typing = AsyncMock()
 
@@ -625,6 +637,7 @@ class TestTyping:
     @pytest.mark.anyio
     async def test_start_typing_uses_chat_id_when_no_thread(self):
         ch = _make_channel()
+        ch._running = True
         channel = MagicMock()
         channel.trigger_typing = AsyncMock()
 
@@ -640,6 +653,7 @@ class TestTyping:
     @pytest.mark.anyio
     async def test_start_typing_no_duplicate(self):
         ch = _make_channel()
+        ch._running = True
         channel = MagicMock()
         channel.trigger_typing = AsyncMock()
 
@@ -658,6 +672,7 @@ class TestTyping:
     @pytest.mark.anyio
     async def test_stop_typing_cancels_task(self):
         ch = _make_channel()
+        ch._running = True
         channel = MagicMock()
         channel.trigger_typing = AsyncMock()
 
@@ -1201,10 +1216,11 @@ class TestOnMessage:
         client.user.mention = "<@bot123>"
         ch._client = client
 
-        # Mock main loop for _publish
+        # Mock reserved publish for inbound routing
         main_loop = MagicMock()
         main_loop.is_running.return_value = True
         ch._main_loop = main_loop
+        ch._publish_reserved = MagicMock(return_value=True)
 
         return ch
 
@@ -1263,12 +1279,10 @@ class TestOnMessage:
                 "allowed_guilds": [100],
             }
         )
-        ch._publish = MagicMock()
-
         msg = _make_mock_message(guild_id=100)
         await ch._on_message(msg)
 
-        ch._publish.assert_called_once()
+        ch._publish_reserved.assert_called_once()
 
     @pytest.mark.anyio
     async def test_on_message_no_guild_when_guilds_required(self):
@@ -1303,24 +1317,20 @@ class TestOnMessage:
     @pytest.mark.anyio
     async def test_on_message_strips_mention(self):
         ch = self._setup_channel()
-        ch._publish = MagicMock()
-
         msg = _make_mock_message(content="<@bot123> hello there")
         await ch._on_message(msg)
 
-        ch._publish.assert_called_once()
-        inbound = ch._publish.call_args[0][0]
+        ch._publish_reserved.assert_called_once()
+        inbound = ch._publish_reserved.call_args[0][0]
         assert inbound.text == "hello there"
 
     @pytest.mark.anyio
     async def test_on_message_alt_mention_format(self):
         ch = self._setup_channel()
-        ch._publish = MagicMock()
-
         msg = _make_mock_message(content="<@!bot123> hello")
         await ch._on_message(msg)
 
-        inbound = ch._publish.call_args[0][0]
+        inbound = ch._publish_reserved.call_args[0][0]
         assert inbound.text == "hello"
 
     @pytest.mark.anyio
@@ -1331,13 +1341,11 @@ class TestOnMessage:
                 "mention_only": True,
             }
         )
-        ch._publish = MagicMock()
-
         msg = _make_mock_message(content="<@bot123>")
         await ch._on_message(msg)
 
         # Should still process (empty text is ok for mention-only)
-        ch._publish.assert_called_once()
+        ch._publish_reserved.assert_called_once()
 
     @pytest.mark.anyio
     async def test_on_message_mention_only_no_mention_skips(self):
@@ -1347,12 +1355,10 @@ class TestOnMessage:
                 "mention_only": True,
             }
         )
-        ch._publish = MagicMock()
-
         msg = _make_mock_message(content="just talking without mention")
         await ch._on_message(msg)
 
-        ch._publish.assert_not_called()
+        ch._publish_reserved.assert_not_called()
 
     @pytest.mark.anyio
     async def test_on_message_mention_only_allowed_channel_no_mention(self):
@@ -1363,12 +1369,10 @@ class TestOnMessage:
                 "allowed_channels": ["200001"],
             }
         )
-        ch._publish = MagicMock()
-
         msg = _make_mock_message(content="hello", channel_id="200001")
         await ch._on_message(msg)
 
-        ch._publish.assert_called_once()
+        ch._publish_reserved.assert_called_once()
 
     @pytest.mark.anyio
     async def test_on_message_mention_creates_thread(self):
@@ -1378,8 +1382,6 @@ class TestOnMessage:
                 "mention_only": True,
             }
         )
-        ch._publish = MagicMock()
-
         mock_discord = ch._discord_module
         text_type = MagicMock()
         text_type.value = 0
@@ -1394,8 +1396,8 @@ class TestOnMessage:
 
         await ch._on_message(msg)
 
-        ch._publish.assert_called_once()
-        inbound = ch._publish.call_args[0][0]
+        ch._publish_reserved.assert_called_once()
+        inbound = ch._publish_reserved.call_args[0][0]
         assert inbound.thread_ts == "thread_001"
         assert ch._active_threads["200001"] == "thread_001"
 
@@ -1407,8 +1409,6 @@ class TestOnMessage:
                 "mention_only": True,
             }
         )
-        ch._publish = MagicMock()
-
         mock_discord = ch._discord_module
         text_type = MagicMock()
         text_type.value = 0
@@ -1421,8 +1421,8 @@ class TestOnMessage:
 
         await ch._on_message(msg)
 
-        ch._publish.assert_called_once()
-        inbound = ch._publish.call_args[0][0]
+        ch._publish_reserved.assert_called_once()
+        inbound = ch._publish_reserved.call_args[0][0]
         # Falls back to channel ID
         assert inbound.thread_ts == "200001"
 
@@ -1434,8 +1434,6 @@ class TestOnMessage:
                 "thread_mode": True,
             }
         )
-        ch._publish = MagicMock()
-
         mock_discord = ch._discord_module
         text_type = MagicMock()
         text_type.value = 0
@@ -1450,7 +1448,7 @@ class TestOnMessage:
 
         await ch._on_message(msg)
 
-        ch._publish.assert_called_once()
+        ch._publish_reserved.assert_called_once()
         assert ch._active_threads["200001"] == "thread_002"
 
     @pytest.mark.anyio
@@ -1461,8 +1459,6 @@ class TestOnMessage:
                 "thread_mode": True,
             }
         )
-        ch._publish = MagicMock()
-
         mock_discord = ch._discord_module
         text_type = MagicMock()
         text_type.value = 0
@@ -1475,53 +1471,45 @@ class TestOnMessage:
 
         await ch._on_message(msg)
 
-        ch._publish.assert_called_once()
-        inbound = ch._publish.call_args[0][0]
+        ch._publish_reserved.assert_called_once()
+        inbound = ch._publish_reserved.call_args[0][0]
         assert inbound.thread_ts == "200001"  # Falls back to channel
 
     @pytest.mark.anyio
     async def test_on_message_no_thread_mode_direct_reply(self):
         ch = self._setup_channel()
-        ch._publish = MagicMock()
-
         msg = _make_mock_message(content="hello bot")
         await ch._on_message(msg)
 
-        ch._publish.assert_called_once()
-        inbound = ch._publish.call_args[0][0]
+        ch._publish_reserved.assert_called_once()
+        inbound = ch._publish_reserved.call_args[0][0]
         assert inbound.thread_ts == "200001"  # channel_id
 
     @pytest.mark.anyio
     async def test_on_message_command_type(self):
         ch = self._setup_channel()
-        ch._publish = MagicMock()
-
         msg = _make_mock_message(content="/help")
         await ch._on_message(msg)
 
-        inbound = ch._publish.call_args[0][0]
+        inbound = ch._publish_reserved.call_args[0][0]
         assert inbound.msg_type == InboundMessageType.COMMAND
 
     @pytest.mark.anyio
     async def test_on_message_chat_type(self):
         ch = self._setup_channel()
-        ch._publish = MagicMock()
-
         msg = _make_mock_message(content="just chatting")
         await ch._on_message(msg)
 
-        inbound = ch._publish.call_args[0][0]
+        inbound = ch._publish_reserved.call_args[0][0]
         assert inbound.msg_type == InboundMessageType.CHAT
 
     @pytest.mark.anyio
     async def test_on_message_metadata(self):
         ch = self._setup_channel()
-        ch._publish = MagicMock()
-
         msg = _make_mock_message(guild_id=42, channel_id="200001", message_id="msg_999")
         await ch._on_message(msg)
 
-        inbound = ch._publish.call_args[0][0]
+        inbound = ch._publish_reserved.call_args[0][0]
         assert inbound.metadata["guild_id"] == "42"
         assert inbound.metadata["channel_id"] == "200001"
         assert inbound.metadata["message_id"] == "msg_999"
@@ -1529,12 +1517,10 @@ class TestOnMessage:
     @pytest.mark.anyio
     async def test_on_message_no_guild_metadata(self):
         ch = self._setup_channel()
-        ch._publish = MagicMock()
-
         msg = _make_mock_message(guild_id=None)
         await ch._on_message(msg)
 
-        inbound = ch._publish.call_args[0][0]
+        inbound = ch._publish_reserved.call_args[0][0]
         assert inbound.metadata["guild_id"] is None
 
     # --- Thread-based message routing ---
@@ -1542,7 +1528,6 @@ class TestOnMessage:
     @pytest.mark.anyio
     async def test_on_message_in_active_thread(self):
         ch = self._setup_channel()
-        ch._publish = MagicMock()
         ch._active_threads = {"200001": "thread_123"}
         ch._active_thread_ids = {"thread_123"}
 
@@ -1558,15 +1543,14 @@ class TestOnMessage:
 
         await ch._on_message(msg)
 
-        ch._publish.assert_called_once()
-        inbound = ch._publish.call_args[0][0]
+        ch._publish_reserved.assert_called_once()
+        inbound = ch._publish_reserved.call_args[0][0]
         assert inbound.thread_ts == "thread_123"
         assert inbound.chat_id == "200001"
 
     @pytest.mark.anyio
     async def test_on_message_in_orphaned_thread(self):
         ch = self._setup_channel()
-        ch._publish = MagicMock()
         # Thread is not in active_thread_ids
 
         mock_discord = ch._discord_module
@@ -1591,7 +1575,7 @@ class TestOnMessage:
         await ch._on_message(msg)
 
         # Should process as a new message (orphaned thread falls through)
-        ch._publish.assert_called_once()
+        ch._publish_reserved.assert_called_once()
 
     @pytest.mark.anyio
     async def test_on_message_existing_session_mention_replaces_thread(self):
@@ -1601,7 +1585,6 @@ class TestOnMessage:
                 "mention_only": True,
             }
         )
-        ch._publish = MagicMock()
         ch._active_threads = {"200001": "old_thread"}
         ch._active_thread_ids = {"old_thread"}
 
@@ -1619,8 +1602,8 @@ class TestOnMessage:
 
         await ch._on_message(msg)
 
-        ch._publish.assert_called_once()
-        inbound = ch._publish.call_args[0][0]
+        ch._publish_reserved.assert_called_once()
+        inbound = ch._publish_reserved.call_args[0][0]
         assert inbound.thread_ts == "new_thread_001"
         assert ch._active_threads["200001"] == "new_thread_001"
 
@@ -1632,7 +1615,6 @@ class TestOnMessage:
                 "mention_only": True,
             }
         )
-        ch._publish = MagicMock()
         ch._active_threads = {"200001": "old_thread"}
         ch._active_thread_ids = {"old_thread"}
 
@@ -1648,8 +1630,8 @@ class TestOnMessage:
 
         await ch._on_message(msg)
 
-        ch._publish.assert_called_once()
-        inbound = ch._publish.call_args[0][0]
+        ch._publish_reserved.assert_called_once()
+        inbound = ch._publish_reserved.call_args[0][0]
         # Falls back to channel_id
         assert inbound.thread_ts == "200001"
 
@@ -1661,7 +1643,6 @@ class TestOnMessage:
                 "mention_only": True,
             }
         )
-        ch._publish = MagicMock()
         ch._active_threads = {"200001": "thread_abc"}
         ch._active_thread_ids = {"thread_abc"}
 
@@ -1673,7 +1654,7 @@ class TestOnMessage:
         await ch._on_message(msg)
 
         # With mention_only=True and no mention, message is skipped
-        ch._publish.assert_not_called()
+        ch._publish_reserved.assert_not_called()
 
     @pytest.mark.anyio
     async def test_on_message_mention_only_existing_session_skips_no_mention(self):
@@ -1683,7 +1664,6 @@ class TestOnMessage:
                 "mention_only": True,
             }
         )
-        ch._publish = MagicMock()
         ch._active_threads = {"200001": "thread_abc"}
         ch._active_thread_ids = {"thread_abc"}
 
@@ -1693,7 +1673,7 @@ class TestOnMessage:
         # mention_only is true, no mention, not in allowed_channels -> skip
         await ch._on_message(msg)
 
-        ch._publish.assert_not_called()
+        ch._publish_reserved.assert_not_called()
 
     @pytest.mark.anyio
     async def test_on_message_mention_only_allowed_channel_existing_session(self):
@@ -1704,7 +1684,6 @@ class TestOnMessage:
                 "allowed_channels": ["200001"],
             }
         )
-        ch._publish = MagicMock()
         ch._active_threads = {"200001": "thread_abc"}
         ch._active_thread_ids = {"thread_abc"}
 
@@ -1715,12 +1694,11 @@ class TestOnMessage:
         msg = _make_mock_message(content="no mention but allowed channel")
         await ch._on_message(msg)
 
-        ch._publish.assert_called_once()
+        ch._publish_reserved.assert_called_once()
 
     @pytest.mark.anyio
     async def test_on_message_thread_command_type(self):
         ch = self._setup_channel()
-        ch._publish = MagicMock()
         ch._active_threads = {"200001": "thread_123"}
         ch._active_thread_ids = {"thread_123"}
 
@@ -1736,13 +1714,12 @@ class TestOnMessage:
 
         await ch._on_message(msg)
 
-        inbound = ch._publish.call_args[0][0]
+        inbound = ch._publish_reserved.call_args[0][0]
         assert inbound.msg_type == InboundMessageType.COMMAND
 
     @pytest.mark.anyio
     async def test_on_message_thread_parent_id_fallback(self):
         ch = self._setup_channel()
-        ch._publish = MagicMock()
         ch._active_threads = {"thread_123": "thread_123"}
         ch._active_thread_ids = {"thread_123"}
 
@@ -1758,7 +1735,7 @@ class TestOnMessage:
 
         await ch._on_message(msg)
 
-        inbound = ch._publish.call_args[0][0]
+        inbound = ch._publish_reserved.call_args[0][0]
         # Falls back to channel.id when parent_id is None
         assert inbound.chat_id == "thread_123"
 

@@ -1,12 +1,12 @@
-"""Additional coverage tests for ideer.sandbox.local.local_sandbox_provider."""
+"""Additional coverage tests for deerflow.sandbox.local.local_sandbox_provider."""
 
 from __future__ import annotations
 
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from ideer.sandbox.local import local_sandbox_provider as lsp_module
-from ideer.sandbox.local.local_sandbox_provider import LocalSandboxProvider
+from deerflow.sandbox.local import local_sandbox_provider as lsp_module
+from deerflow.sandbox.local.local_sandbox_provider import LocalSandboxProvider
 
 # ===========================================================================
 # acquire — thread caching and LRU eviction
@@ -23,7 +23,7 @@ class TestLocalSandboxProviderAcquire:
         )
         lsp_module._singleton = None
         try:
-            with patch("ideer.config.get_app_config", return_value=config):
+            with patch("deerflow.config.get_app_config", return_value=config):
                 provider = LocalSandboxProvider()
                 id1 = provider.acquire()
                 id2 = provider.acquire()
@@ -41,12 +41,12 @@ class TestLocalSandboxProviderAcquire:
         )
         lsp_module._singleton = None
         try:
-            with patch("ideer.config.get_app_config", return_value=config):
+            with patch("deerflow.config.get_app_config", return_value=config):
                 provider = LocalSandboxProvider()
                 with patch.object(provider, "_build_thread_path_mappings", return_value=[]):
                     id1 = provider.acquire("thread-1")
                     id2 = provider.acquire("thread-1")
-                    assert id1 == "local:thread-1"
+                    assert id1 == "local:test-user-autouse:thread-1"
                     assert id1 == id2
         finally:
             lsp_module._singleton = None
@@ -60,7 +60,7 @@ class TestLocalSandboxProviderAcquire:
         )
         lsp_module._singleton = None
         try:
-            with patch("ideer.config.get_app_config", return_value=config):
+            with patch("deerflow.config.get_app_config", return_value=config):
                 provider = LocalSandboxProvider()
                 with patch.object(provider, "_build_thread_path_mappings", return_value=[]):
                     id1 = provider.acquire("thread-1")
@@ -78,16 +78,16 @@ class TestLocalSandboxProviderAcquire:
         )
         lsp_module._singleton = None
         try:
-            with patch("ideer.config.get_app_config", return_value=config):
+            with patch("deerflow.config.get_app_config", return_value=config):
                 provider = LocalSandboxProvider(max_cached_threads=2)
                 with patch.object(provider, "_build_thread_path_mappings", return_value=[]):
                     provider.acquire("t1")
                     provider.acquire("t2")
                     provider.acquire("t3")  # should evict t1
-                    # t1 should be evicted
-                    assert "t1" not in provider._thread_sandboxes
-                    assert "t2" in provider._thread_sandboxes
-                    assert "t3" in provider._thread_sandboxes
+                    # t1 should be evicted (cache keys are (user_id, thread_id))
+                    assert ("test-user-autouse", "t1") not in provider._thread_sandboxes
+                    assert ("test-user-autouse", "t2") in provider._thread_sandboxes
+                    assert ("test-user-autouse", "t3") in provider._thread_sandboxes
         finally:
             lsp_module._singleton = None
 
@@ -100,15 +100,15 @@ class TestLocalSandboxProviderAcquire:
         )
         lsp_module._singleton = None
         try:
-            with patch("ideer.config.get_app_config", return_value=config):
+            with patch("deerflow.config.get_app_config", return_value=config):
                 provider = LocalSandboxProvider(max_cached_threads=2)
                 with patch.object(provider, "_build_thread_path_mappings", return_value=[]):
                     provider.acquire("t1")
                     provider.acquire("t2")
                     provider.acquire("t1")  # promote t1
                     provider.acquire("t3")  # should evict t2, not t1
-                    assert "t1" in provider._thread_sandboxes
-                    assert "t2" not in provider._thread_sandboxes
+                    assert ("test-user-autouse", "t1") in provider._thread_sandboxes
+                    assert ("test-user-autouse", "t2") not in provider._thread_sandboxes
         finally:
             lsp_module._singleton = None
 
@@ -128,7 +128,7 @@ class TestLocalSandboxProviderGet:
         )
         lsp_module._singleton = None
         try:
-            with patch("ideer.config.get_app_config", return_value=config):
+            with patch("deerflow.config.get_app_config", return_value=config):
                 provider = LocalSandboxProvider()
                 provider.acquire()
                 sandbox = provider.get("local")
@@ -145,11 +145,11 @@ class TestLocalSandboxProviderGet:
         )
         lsp_module._singleton = None
         try:
-            with patch("ideer.config.get_app_config", return_value=config):
+            with patch("deerflow.config.get_app_config", return_value=config):
                 provider = LocalSandboxProvider()
                 with patch.object(provider, "_build_thread_path_mappings", return_value=[]):
                     provider.acquire("t1")
-                    sandbox = provider.get("local:t1")
+                    sandbox = provider.get("local:test-user-autouse:t1")
                     assert sandbox is not None
         finally:
             lsp_module._singleton = None
@@ -163,7 +163,7 @@ class TestLocalSandboxProviderGet:
         )
         lsp_module._singleton = None
         try:
-            with patch("ideer.config.get_app_config", return_value=config):
+            with patch("deerflow.config.get_app_config", return_value=config):
                 provider = LocalSandboxProvider()
                 result = provider.get("unknown-id")
                 assert result is None
@@ -179,7 +179,7 @@ class TestLocalSandboxProviderGet:
         )
         lsp_module._singleton = None
         try:
-            with patch("ideer.config.get_app_config", return_value=config):
+            with patch("deerflow.config.get_app_config", return_value=config):
                 provider = LocalSandboxProvider()
                 result = provider.get(123)
                 assert result is None
@@ -195,7 +195,7 @@ class TestLocalSandboxProviderGet:
         )
         lsp_module._singleton = None
         try:
-            with patch("ideer.config.get_app_config", return_value=config):
+            with patch("deerflow.config.get_app_config", return_value=config):
                 provider = LocalSandboxProvider()
                 # get("local") without prior acquire should auto-acquire
                 sandbox = provider.get("local")
@@ -212,15 +212,15 @@ class TestLocalSandboxProviderGet:
         )
         lsp_module._singleton = None
         try:
-            with patch("ideer.config.get_app_config", return_value=config):
+            with patch("deerflow.config.get_app_config", return_value=config):
                 provider = LocalSandboxProvider(max_cached_threads=2)
                 with patch.object(provider, "_build_thread_path_mappings", return_value=[]):
                     provider.acquire("t1")
                     provider.acquire("t2")
-                    provider.get("local:t1")  # promote t1
+                    provider.get("local:test-user-autouse:t1")  # promote t1
                     provider.acquire("t3")  # should evict t2
-                    assert "t1" in provider._thread_sandboxes
-                    assert "t2" not in provider._thread_sandboxes
+                    assert ("test-user-autouse", "t1") in provider._thread_sandboxes
+                    assert ("test-user-autouse", "t2") not in provider._thread_sandboxes
         finally:
             lsp_module._singleton = None
 
@@ -240,7 +240,7 @@ class TestLocalSandboxProviderLifecycle:
         )
         lsp_module._singleton = None
         try:
-            with patch("ideer.config.get_app_config", return_value=config):
+            with patch("deerflow.config.get_app_config", return_value=config):
                 provider = LocalSandboxProvider()
                 provider.acquire()
                 provider.release("local")  # should not raise
@@ -256,7 +256,7 @@ class TestLocalSandboxProviderLifecycle:
         )
         lsp_module._singleton = None
         try:
-            with patch("ideer.config.get_app_config", return_value=config):
+            with patch("deerflow.config.get_app_config", return_value=config):
                 provider = LocalSandboxProvider()
                 with patch.object(provider, "_build_thread_path_mappings", return_value=[]):
                     provider.acquire("t1")
@@ -275,7 +275,7 @@ class TestLocalSandboxProviderLifecycle:
         )
         lsp_module._singleton = None
         try:
-            with patch("ideer.config.get_app_config", return_value=config):
+            with patch("deerflow.config.get_app_config", return_value=config):
                 provider = LocalSandboxProvider()
                 provider.acquire()
                 provider.shutdown()
@@ -292,7 +292,7 @@ class TestLocalSandboxProviderLifecycle:
         )
         lsp_module._singleton = None
         try:
-            with patch("ideer.config.get_app_config", return_value=config):
+            with patch("deerflow.config.get_app_config", return_value=config):
                 provider = LocalSandboxProvider()
                 provider.acquire()
                 provider.reset()
@@ -308,7 +308,7 @@ class TestLocalSandboxProviderLifecycle:
 
 class TestSetupPathMappings:
     def test_config_exception(self):
-        with patch("ideer.config.get_app_config", side_effect=Exception("fail")):
+        with patch("deerflow.config.get_app_config", side_effect=Exception("fail")):
             provider = LocalSandboxProvider()
             assert provider._path_mappings == []
 
@@ -323,7 +323,7 @@ class TestSetupPathMappings:
                 ]
             ),
         )
-        with patch("ideer.config.get_app_config", return_value=config):
+        with patch("deerflow.config.get_app_config", return_value=config):
             provider = LocalSandboxProvider()
             # Should not include mount with non-existent host path
             container_paths = [m.container_path for m in provider._path_mappings]

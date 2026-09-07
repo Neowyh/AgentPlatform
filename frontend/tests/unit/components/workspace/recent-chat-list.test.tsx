@@ -201,6 +201,17 @@ const mockT = {
   conversation: {
     noMessages: "No messages to export",
   },
+  chats: {
+    branchLabel: "Branch",
+    loadOlderChats: "Load older chats",
+    loadingMore: "Loading more",
+    pinChat: "Pin chat",
+    pinChatFailed: "Failed to update pinned chat",
+    unpinChat: "Unpin chat",
+  },
+  threads: {
+    getState: (state: string) => state,
+  },
   clipboard: {
     linkCopied: "Link copied",
     failedToCopyToClipboard: "Failed to copy",
@@ -227,6 +238,14 @@ vi.mock("@/core/threads/hooks", () => ({
   useThreads: () => ({ data: mockThreads }),
   useDeleteThread: () => ({ mutate: mockDeleteMutate }),
   useRenameThread: () => ({ mutate: mockRenameMutate }),
+  usePinThread: () => ({ mutate: vi.fn() }),
+  // The list reads from the paginated feed; expose the same fixture threads.
+  useInfiniteThreads: () => ({
+    data: { pages: [mockThreads], pageParams: [0] },
+    fetchNextPage: vi.fn(),
+    hasNextPage: false,
+    isFetchingNextPage: false,
+  }),
 }));
 
 // Thread utils
@@ -246,6 +265,9 @@ vi.mock("@/core/threads/utils", () => ({
       ? `/workspace/capabilities/experts/${agentName}/chats/${thread.thread_id}`
       : `/workspace/chats/${thread.thread_id}`;
   },
+  isThreadPinned: () => false,
+  sortPinnedThreads: <T,>(threads: T[]): T[] => threads,
+  channelSourceOfThread: () => undefined,
   titleOfThread: (thread: { values?: { title?: string }; thread_id: string }) =>
     thread.values?.title ?? "Untitled",
 }));
@@ -263,6 +285,11 @@ const mockExportJSON = vi.fn();
 vi.mock("@/core/threads/export", () => ({
   exportThreadAsMarkdown: (...args: unknown[]) => mockExportMarkdown(...args),
   exportThreadAsJSON: (...args: unknown[]) => mockExportJSON(...args),
+  // The list calls the format-dispatching wrapper.
+  exportThread: (thread: unknown, messages: unknown, format: string) =>
+    format === "json"
+      ? mockExportJSON(thread, messages)
+      : mockExportMarkdown(thread, messages),
 }));
 
 // API client
@@ -356,8 +383,15 @@ describe("RecentChatList", () => {
     ];
     render(<RecentChatList />);
     const links = screen.getAllByText(/Chat (One|Two)/);
-    expect(links[0]).toHaveAttribute("href", "/workspace/chats/t1");
-    expect(links[1]).toHaveAttribute("href", "/workspace/chats/t2");
+    // The merged list wraps the title in a truncating span inside the link.
+    expect(links[0]!.closest("a")).toHaveAttribute(
+      "href",
+      "/workspace/chats/t1",
+    );
+    expect(links[1]!.closest("a")).toHaveAttribute(
+      "href",
+      "/workspace/chats/t2",
+    );
   });
 
   test("marks the active thread based on pathname", () => {
@@ -506,10 +540,10 @@ describe("RecentChatList", () => {
     const saveButton = screen.getByText("Save");
     await user.click(saveButton);
 
-    expect(mockRenameMutate).toHaveBeenCalledWith({
-      threadId: "t1",
-      title: "New Title",
-    });
+    expect(mockRenameMutate).toHaveBeenCalledWith(
+      { threadId: "t1", title: "New Title" },
+      expect.anything(),
+    );
   });
 
   test("does not submit rename when value is empty", async () => {
@@ -570,10 +604,10 @@ describe("RecentChatList", () => {
     await user.type(input, "New Name");
     await user.keyboard("{Enter}");
 
-    expect(mockRenameMutate).toHaveBeenCalledWith({
-      threadId: "t1",
-      title: "New Name",
-    });
+    expect(mockRenameMutate).toHaveBeenCalledWith(
+      { threadId: "t1", title: "New Name" },
+      expect.anything(),
+    );
   });
 
   // ── Share ────────────────────────────────────────────────────────────────

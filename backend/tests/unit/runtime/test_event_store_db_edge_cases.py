@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from ideer.runtime.events.store.db import DbRunEventStore
+from deerflow.runtime.events.store.db import DbRunEventStore
 
 # ---------------------------------------------------------------------------
 # _truncate_trace
@@ -162,13 +162,13 @@ class TestRowToDict:
 
 class TestUserIdFromContext:
     def test_no_user_returns_none(self):
-        with patch("ideer.runtime.events.store.db.get_current_user", return_value=None):
+        with patch("deerflow.runtime.events.store.db.get_current_user", return_value=None):
             assert DbRunEventStore._user_id_from_context() is None
 
     def test_with_user_returns_str_id(self):
         user = MagicMock()
         user.id = "test-uuid-123"
-        with patch("ideer.runtime.events.store.db.get_current_user", return_value=user):
+        with patch("deerflow.runtime.events.store.db.get_current_user", return_value=user):
             assert DbRunEventStore._user_id_from_context() == "test-uuid-123"
 
 

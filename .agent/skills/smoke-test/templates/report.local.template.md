@@ -1,4 +1,4 @@
-# iDeer Smoke Test Report
+# DeerFlow Smoke Test Report
 
 **Test Date**: {{test_date}}  
 **Test Environment**: {{test_environment}}  
@@ -80,7 +80,7 @@
 - [x] Process status - {{status_processes}}
 - [x] Frontend service - {{status_frontend}}
 - [x] API Gateway - {{status_api_gateway}}
-- [x] LangGraph service - {{status_langgraph}}
+- [x] LangGraph-compatible Gateway API - {{status_langgraph}}
 
 **Phase Status**: {{stage5_status}}
 
@@ -152,21 +152,21 @@ Commit Message: {{git_commit_message}}
 | Nginx | {{nginx_status}} | {{nginx_endpoint}} |
 | Frontend | {{frontend_status}} | {{frontend_endpoint}} |
 | Gateway | {{gateway_status}} | {{gateway_endpoint}} |
-| LangGraph | {{langgraph_status}} | {{langgraph_endpoint}} |
+| Gateway LangGraph API | {{langgraph_status}} | {{langgraph_endpoint}} |
 
 ---
 
 ## Recommendations and Next Steps
 
 ### If the Test Passes
-1. [ ] Visit http://localhost:2026 to start using iDeer
+1. [ ] Visit http://localhost:2026 to start using DeerFlow
 2. [ ] Configure your preferred model if it is not configured yet
 3. [ ] Explore available skills
 4. [ ] Refer to the documentation to learn more features
 
 ### If the Test Fails
 1. [ ] Review references/troubleshooting.md for common solutions
-2. [ ] Check local logs: `logs/{langgraph,gateway,frontend,nginx}.log`
+2. [ ] Check local logs: `logs/{gateway,frontend,nginx}.log`
 3. [ ] Verify configuration file format and content
 4. [ ] If needed, fully reset the environment: `make stop && make clean && make install && make dev-daemon`
 

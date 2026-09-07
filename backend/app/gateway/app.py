@@ -5,12 +5,17 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+from deerflow_extension_api import EXTENSION_PRINCIPAL_RESOLVER_KEY, ExtensionPrincipal
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+import deerflow.extensions as deerflow_extensions
 from app.gateway.auth_middleware import AuthMiddleware
+
+# Alias legacy IDEER_* deployment env names before any config resolution.
+from app.gateway.compat_env import apply_legacy_env_aliases  # noqa: F401
 from app.gateway.config import get_gateway_config
 from app.gateway.csrf_middleware import CSRFMiddleware, get_configured_cors_origins
 from app.gateway.deps import langgraph_runtime
@@ -37,11 +42,12 @@ from app.gateway.routers import (
     uploads,
     visibility_applications,
 )
-from ideer.config import app_config as ideer_app_config
-from ideer.config.app_config import apply_logging_level
+from deerflow.config import app_config as deerflow_app_config
+from deerflow.config.app_config import apply_logging_level
+from deerflow.extensions.gateway import include_contributed_routers
 
-AppConfig = ideer_app_config.AppConfig
-get_app_config = ideer_app_config.get_app_config
+AppConfig = deerflow_app_config.AppConfig
+get_app_config = deerflow_app_config.get_app_config
 
 # Default logging; lifespan overrides from config.yaml log_level.
 logging.basicConfig(
@@ -56,6 +62,56 @@ logger = logging.getLogger(__name__)
 # Bounds worker exit time so uvicorn's reload supervisor does not keep
 # firing signals into a worker that is stuck waiting for shutdown cleanup.
 _SHUTDOWN_HOOK_TIMEOUT_SECONDS = 5.0
+
+
+def _extension_principal(request: Request) -> ExtensionPrincipal | None:
+    """Project the authenticated Gateway caller into the extension contract."""
+    state = getattr(request, "state", None)
+    user = getattr(state, "user", None)
+    if user is None:
+        return None
+
+    from app.gateway.auth_disabled import AUTH_SOURCE_INTERNAL, AUTH_SOURCE_PAT
+
+    source = getattr(state, "auth_source", None)
+    role = getattr(user, "system_role", None)
+    roles = (str(role),) if role else ()
+    is_pat = source == AUTH_SOURCE_PAT
+    return ExtensionPrincipal(
+        user_id=str(getattr(user, "id", "")),
+        is_admin=bool(role == "admin" and not is_pat),
+        is_internal=bool(source == AUTH_SOURCE_INTERNAL),
+        roles=() if is_pat and role == "admin" else roles,
+    )
+
+
+def _configure_extensions(app: FastAPI) -> None:
+    """Load configured extensions and mount their contributions after host routes."""
+    try:
+        config = get_app_config()
+    except FileNotFoundError:
+        raw_specs = []
+    else:
+        raw_specs = getattr(config, "plugins", []) or []
+
+    from deerflow.extensions.loader import ExtensionSpec
+
+    specs = [spec if isinstance(spec, ExtensionSpec) else ExtensionSpec.model_validate(spec) for spec in raw_specs]
+
+    try:
+        loaded, diagnostics = deerflow_extensions.load_extensions(specs)
+    except deerflow_extensions.ExtensionLoadError:
+        raise
+    except Exception:
+        logger.exception("Extension loading failed; continuing without extensions")
+        loaded, diagnostics = deerflow_extensions.EMPTY_EXTENSIONS, []
+
+    deerflow_extensions.set_loaded_extensions(loaded)
+    live_diagnostics = deerflow_extensions.initialize_runtime_diagnostics(list(diagnostics))
+    app.state.extensions = loaded
+    app.state.extension_diagnostics = live_diagnostics
+    setattr(app.state, EXTENSION_PRINCIPAL_RESOLVER_KEY, _extension_principal)
+    deerflow_extensions.record_runtime_diagnostics(include_contributed_routers(app, loaded))
 
 
 async def _ensure_admin_user(app: FastAPI) -> None:
@@ -81,8 +137,8 @@ async def _ensure_admin_user(app: FastAPI) -> None:
     """
     from sqlalchemy import select
 
-    from ideer.persistence.engine import get_session_factory
-    from ideer.persistence.models.user import UserModel, UserRole
+    from app.agentplatform.rbac_models import UserModel, UserRole
+    from deerflow.persistence.engine import get_session_factory
 
     sf = get_session_factory()
     if sf is None:
@@ -168,8 +224,8 @@ async def _reconcile_workflow_and_agent_metadata() -> None:
     """
     from sqlalchemy import select
 
-    from ideer.persistence.engine import get_session_factory
-    from ideer.persistence.models.user import UserModel, UserRole
+    from app.agentplatform.rbac_models import UserModel, UserRole
+    from deerflow.persistence.engine import get_session_factory
 
     sf = get_session_factory()
     if sf is None:
@@ -199,11 +255,10 @@ async def _seed_bundled_resources() -> None:
     """Provision manifest resources once an active super admin exists."""
     from sqlalchemy import select
 
-    from ideer.config.paths import get_paths
-    from ideer.persistence.engine import get_session_factory
-    from ideer.persistence.models.user import UserModel, UserRole
-    from ideer.resources.bundled import seed_bundled_resources
-    from ideer.resources.storage import ResourceStorage
+    from app.agentplatform.rbac_models import UserModel, UserRole
+    from app.agentplatform.resource_runtime import ResourceStorage, seed_bundled_resources
+    from deerflow.config.paths import get_paths
+    from deerflow.persistence.engine import get_session_factory
 
     sf = get_session_factory()
     if sf is None:
@@ -233,7 +288,7 @@ async def _resolve_resource_owner(sf, raw_owner: str | None) -> tuple[str | None
     """
     from sqlalchemy import or_, select
 
-    from ideer.persistence.models.user import UserModel
+    from app.agentplatform.rbac_models import UserModel
 
     if not raw_owner or raw_owner == "system":
         return None, None
@@ -257,8 +312,8 @@ async def _reconcile_workflow_metadata(sf, admin_id: str) -> None:
     super_admin when creator resolution fails). Idempotent — existing records
     are never touched.
     """
+    from app.agentplatform.workflow_runtime import WorkflowV2Store
     from app.gateway.utils import ResourceMetadataStore
-    from ideer.workflows.v2.store import WorkflowV2Store
 
     try:
         definitions, _ = await WorkflowV2Store(sf).list_latest_definitions(limit=100_000, offset=0)
@@ -292,8 +347,8 @@ async def _reconcile_agent_metadata(sf, admin_id: str) -> None:
     """
     from sqlalchemy import select
 
+    from app.agentplatform.resource_models import Resource
     from app.gateway.utils import ResourceMetadataStore
-    from ideer.persistence.models.resource_catalog import Resource
 
     store = ResourceMetadataStore("agent")
     reconciled = 0
@@ -332,10 +387,9 @@ async def _reconcile_agent_metadata(sf, admin_id: str) -> None:
 async def _reconcile_canonical_resource_storage() -> None:
     """Fail startup on broken DB pointers and report recoverable orphan files."""
 
-    from ideer.config.paths import get_paths
-    from ideer.persistence.engine import get_session_factory
-    from ideer.resources.reconciliation import reconcile_catalog_storage
-    from ideer.resources.storage import ResourceStorage
+    from app.agentplatform.resource_runtime import ResourceStorage, reconcile_catalog_storage
+    from deerflow.config.paths import get_paths
+    from deerflow.persistence.engine import get_session_factory
 
     session_factory = get_session_factory()
     if session_factory is None:
@@ -384,7 +438,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         # Detection only: startup must never remove user state automatically.
         try:
             from app.gateway.user_deletion import report_user_state_anomalies
-            from ideer.config.paths import get_paths
+            from deerflow.config.paths import get_paths
 
             await report_user_state_anomalies(get_paths())
         except Exception:
@@ -743,6 +797,10 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
             Service health status information.
         """
         return {"status": "healthy", "service": "ideer-gateway"}
+
+    # Extension routes are deliberately mounted after every host route so a
+    # plugin can never shadow a canonical Gateway endpoint.
+    _configure_extensions(app)
 
     return app
 

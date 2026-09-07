@@ -14,23 +14,23 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from ideer.agents.memory.prompt import (
+from app.agentplatform.legacy.memory.prompt import (
     _count_tokens,
     format_conversation_for_update,
     format_memory_for_injection,
 )
-from ideer.agents.memory.queue import (
+from app.agentplatform.legacy.memory.queue import (
     ConversationContext,
     MemoryUpdateQueue,
     get_memory_queue,
     reset_memory_queue,
 )
-from ideer.agents.memory.storage import (
+from app.agentplatform.legacy.memory.storage import (
     FileMemoryStorage,
     create_empty_memory,
     utc_now_iso_z,
 )
-from ideer.agents.memory.updater import (
+from app.agentplatform.legacy.memory.updater import (
     MemoryUpdater,
     _extract_text,
     _fact_content_key,
@@ -43,7 +43,7 @@ from ideer.agents.memory.updater import (
     update_memory_fact,
     update_memory_from_conversation,
 )
-from ideer.config.memory_config import MemoryConfig
+from deerflow.config.memory_config import MemoryConfig
 
 
 def _make_memory(facts=None):
@@ -64,11 +64,14 @@ def _make_memory(facts=None):
     }
 
 
+_LEGACY_MEMORY_KEYS = {"storage_path", "storage_class", "debounce_seconds", "max_facts", "fact_confidence_threshold", "max_injection_tokens", "model_name"}
+
+
 def _memory_config(**overrides):
-    config = MemoryConfig()
-    for key, value in overrides.items():
-        setattr(config, key, value)
-    return config
+    backend = {key: overrides.pop(key) for key in list(overrides) if key in _LEGACY_MEMORY_KEYS}
+    if backend:
+        overrides["backend_config"] = {**(overrides.get("backend_config") or {}), **backend}
+    return MemoryConfig(**overrides)
 
 
 # ---------------------------------------------------------------------------
@@ -78,14 +81,14 @@ def _memory_config(**overrides):
 
 class TestCountTokens:
     def test_fallback_when_tiktoken_unavailable(self, monkeypatch):
-        monkeypatch.setattr("ideer.agents.memory.prompt.TIKTOKEN_AVAILABLE", False)
+        monkeypatch.setattr("app.agentplatform.legacy.memory.prompt.TIKTOKEN_AVAILABLE", False)
         result = _count_tokens("hello world")
         assert result == len("hello world") // 4
 
     def test_fallback_on_exception(self, monkeypatch):
         """When tiktoken raises, should fallback to char-based estimation."""
-        monkeypatch.setattr("ideer.agents.memory.prompt.TIKTOKEN_AVAILABLE", True)
-        import ideer.agents.memory.prompt as prompt_mod
+        monkeypatch.setattr("app.agentplatform.legacy.memory.prompt.TIKTOKEN_AVAILABLE", True)
+        import app.agentplatform.legacy.memory.prompt as prompt_mod
 
         prompt_mod.tiktoken if hasattr(prompt_mod, "tiktoken") else None
 
@@ -195,7 +198,7 @@ class TestFormatMemoryForInjectionExtended:
 
     def test_truncation_when_exceeds_token_limit(self, monkeypatch):
         """When result exceeds max_tokens, should be truncated."""
-        monkeypatch.setattr("ideer.agents.memory.prompt._count_tokens", lambda text, **kw: len(text))
+        monkeypatch.setattr("app.agentplatform.legacy.memory.prompt._count_tokens", lambda text, **kw: len(text))
 
         data = {
             "user": {"workContext": {"summary": "A very long summary " * 100}},
@@ -332,13 +335,13 @@ class TestFormatConversationForUpdateExtended:
 class TestMemoryQueueExtended:
     def test_add_disabled_memory(self):
         queue = MemoryUpdateQueue()
-        with patch("ideer.agents.memory.queue.get_memory_config", return_value=_memory_config(enabled=False)):
+        with patch("app.agentplatform.legacy.memory.queue.get_memory_config", return_value=_memory_config(enabled=False)):
             queue.add(thread_id="t1", messages=["msg"])
         assert queue.pending_count == 0
 
     def test_add_nowait_disabled_memory(self):
         queue = MemoryUpdateQueue()
-        with patch("ideer.agents.memory.queue.get_memory_config", return_value=_memory_config(enabled=False)):
+        with patch("app.agentplatform.legacy.memory.queue.get_memory_config", return_value=_memory_config(enabled=False)):
             queue.add_nowait(thread_id="t1", messages=["msg"])
         assert queue.pending_count == 0
 
@@ -348,7 +351,7 @@ class TestMemoryQueueExtended:
         queue._timer = timer_mock
 
         # Mock MemoryUpdater to avoid actual processing
-        with patch("ideer.agents.memory.updater.MemoryUpdater"):
+        with patch("app.agentplatform.legacy.memory.updater.MemoryUpdater"):
             queue.flush()
         timer_mock.cancel.assert_called_once()
 
@@ -377,7 +380,7 @@ class TestMemoryQueueExtended:
         mock_updater = MagicMock()
         mock_updater.update_memory.return_value = True
 
-        with patch("ideer.agents.memory.updater.MemoryUpdater", return_value=mock_updater):
+        with patch("app.agentplatform.legacy.memory.updater.MemoryUpdater", return_value=mock_updater):
             queue.flush()
 
         mock_updater.update_memory.assert_called_once()
@@ -388,7 +391,7 @@ class TestMemoryQueueExtended:
         mock_updater = MagicMock()
         mock_updater.update_memory.return_value = False
 
-        with patch("ideer.agents.memory.updater.MemoryUpdater", return_value=mock_updater):
+        with patch("app.agentplatform.legacy.memory.updater.MemoryUpdater", return_value=mock_updater):
             queue.flush()  # should not raise
 
     def test_process_queue_with_exception(self):
@@ -397,7 +400,7 @@ class TestMemoryQueueExtended:
         mock_updater = MagicMock()
         mock_updater.update_memory.side_effect = RuntimeError("boom")
 
-        with patch("ideer.agents.memory.updater.MemoryUpdater", return_value=mock_updater):
+        with patch("app.agentplatform.legacy.memory.updater.MemoryUpdater", return_value=mock_updater):
             queue.flush()  # should not raise
 
     def test_process_queue_multiple_with_delay(self):
@@ -410,8 +413,8 @@ class TestMemoryQueueExtended:
         mock_updater.update_memory.return_value = True
 
         with (
-            patch("ideer.agents.memory.updater.MemoryUpdater", return_value=mock_updater),
-            patch("ideer.agents.memory.queue.time.sleep"),
+            patch("app.agentplatform.legacy.memory.updater.MemoryUpdater", return_value=mock_updater),
+            patch("app.agentplatform.legacy.memory.queue.time.sleep"),
         ):
             queue.flush()
 
@@ -432,7 +435,7 @@ class TestMemoryQueueExtended:
 
 class TestMemoryQueueSingleton:
     def test_get_memory_queue_singleton(self):
-        import ideer.agents.memory.queue as queue_mod
+        import app.agentplatform.legacy.memory.queue as queue_mod
 
         old = queue_mod._memory_queue
         try:
@@ -444,7 +447,7 @@ class TestMemoryQueueSingleton:
             queue_mod._memory_queue = old
 
     def test_reset_memory_queue(self):
-        import ideer.agents.memory.queue as queue_mod
+        import app.agentplatform.legacy.memory.queue as queue_mod
 
         old = queue_mod._memory_queue
         try:
@@ -457,13 +460,13 @@ class TestMemoryQueueSingleton:
             queue_mod._memory_queue = old
 
     def test_reset_clears_existing(self):
-        import ideer.agents.memory.queue as queue_mod
+        import app.agentplatform.legacy.memory.queue as queue_mod
 
         old = queue_mod._memory_queue
         try:
             queue_mod._memory_queue = None
             q = get_memory_queue()
-            with patch("ideer.agents.memory.queue.get_memory_config", return_value=_memory_config(enabled=True)):
+            with patch("app.agentplatform.legacy.memory.queue.get_memory_config", return_value=_memory_config(enabled=True)):
                 with patch.object(q, "_reset_timer"):
                     q.add(thread_id="t1", messages=["msg"])
             assert q.pending_count == 1
@@ -501,13 +504,13 @@ class TestFileMemoryStorageExtended:
     def test_get_memory_file_path_with_user_id(self, tmp_path):
         with (
             patch(
-                "ideer.agents.memory.storage.get_paths",
+                "app.agentplatform.legacy.memory.storage.get_paths",
                 return_value=SimpleNamespace(
                     user_memory_file=lambda uid: tmp_path / "users" / uid / "memory.json",
                     user_agent_memory_file=lambda uid, name: tmp_path / "users" / uid / "agent-memory" / name / "memory.json",
                 ),
             ),
-            patch("ideer.agents.memory.storage.get_memory_config", return_value=MemoryConfig(storage_path="")),
+            patch("app.agentplatform.legacy.memory.storage.get_memory_config", return_value=MemoryConfig(backend_config={"storage_path": ""})),
         ):
             storage = FileMemoryStorage()
             path = storage._get_memory_file_path(None, user_id="u1")
@@ -516,12 +519,12 @@ class TestFileMemoryStorageExtended:
     def test_get_memory_file_path_with_user_id_and_agent(self, tmp_path):
         with (
             patch(
-                "ideer.agents.memory.storage.get_paths",
+                "app.agentplatform.legacy.memory.storage.get_paths",
                 return_value=SimpleNamespace(
                     user_agent_memory_file=lambda uid, name: tmp_path / "users" / uid / "agent-memory" / name / "memory.json",
                 ),
             ),
-            patch("ideer.agents.memory.storage.get_memory_config", return_value=MemoryConfig(storage_path="")),
+            patch("app.agentplatform.legacy.memory.storage.get_memory_config", return_value=MemoryConfig(backend_config={"storage_path": ""})),
         ):
             storage = FileMemoryStorage()
             path = storage._get_memory_file_path("my-agent", user_id="u1")
@@ -530,15 +533,15 @@ class TestFileMemoryStorageExtended:
 
     def test_get_memory_file_path_storage_path_absolute(self, tmp_path):
         abs_path = str(tmp_path / "custom_memory.json")
-        with patch("ideer.agents.memory.storage.get_memory_config", return_value=MemoryConfig(storage_path=abs_path)):
+        with patch("app.agentplatform.legacy.memory.storage.get_memory_config", return_value=MemoryConfig(backend_config={"storage_path": abs_path})):
             storage = FileMemoryStorage()
             path = storage._get_memory_file_path(None, user_id="u1")
             assert str(path) == abs_path
 
     def test_get_memory_file_path_storage_path_relative(self, tmp_path):
         with (
-            patch("ideer.agents.memory.storage.get_paths", return_value=SimpleNamespace(base_dir=tmp_path)),
-            patch("ideer.agents.memory.storage.get_memory_config", return_value=MemoryConfig(storage_path="custom/memory.json")),
+            patch("app.agentplatform.legacy.memory.storage.get_paths", return_value=SimpleNamespace(base_dir=tmp_path)),
+            patch("app.agentplatform.legacy.memory.storage.get_memory_config", return_value=MemoryConfig(backend_config={"storage_path": "custom/memory.json"})),
         ):
             storage = FileMemoryStorage()
             path = storage._get_memory_file_path(None)
@@ -549,8 +552,8 @@ class TestFileMemoryStorageExtended:
         bad_file.write_text("not valid json {{{")
 
         with (
-            patch("ideer.agents.memory.storage.get_paths", return_value=SimpleNamespace(memory_file=bad_file)),
-            patch("ideer.agents.memory.storage.get_memory_config", return_value=MemoryConfig(storage_path="")),
+            patch("app.agentplatform.legacy.memory.storage.get_paths", return_value=SimpleNamespace(memory_file=bad_file)),
+            patch("app.agentplatform.legacy.memory.storage.get_memory_config", return_value=MemoryConfig(backend_config={"storage_path": ""})),
         ):
             storage = FileMemoryStorage()
             memory = storage._load_memory_from_file()
@@ -558,8 +561,8 @@ class TestFileMemoryStorageExtended:
 
     def test_load_creates_empty_when_file_missing(self):
         with (
-            patch("ideer.agents.memory.storage.get_paths", return_value=SimpleNamespace(memory_file=Path("/nonexistent/memory.json"))),
-            patch("ideer.agents.memory.storage.get_memory_config", return_value=MemoryConfig(storage_path="")),
+            patch("app.agentplatform.legacy.memory.storage.get_paths", return_value=SimpleNamespace(memory_file=Path("/nonexistent/memory.json"))),
+            patch("app.agentplatform.legacy.memory.storage.get_memory_config", return_value=MemoryConfig(backend_config={"storage_path": ""})),
         ):
             storage = FileMemoryStorage()
             memory = storage._load_memory_from_file()
@@ -628,8 +631,8 @@ class TestUpdaterHelpers:
 
     def test_create_memory_fact_empty_category_defaults(self):
         with (
-            patch("ideer.agents.memory.updater.get_memory_data", return_value=_make_memory()),
-            patch("ideer.agents.memory.updater._save_memory_to_file", return_value=True),
+            patch("app.agentplatform.legacy.memory.updater.get_memory_data", return_value=_make_memory()),
+            patch("app.agentplatform.legacy.memory.updater._save_memory_to_file", return_value=True),
         ):
             result = create_memory_fact(content="Test fact", category="")
         assert result["facts"][0]["category"] == "context"
@@ -638,22 +641,22 @@ class TestUpdaterHelpers:
 class TestMemoryUpdaterPrepareUpdatePrompt:
     def test_returns_none_when_disabled(self):
         updater = MemoryUpdater()
-        with patch("ideer.agents.memory.updater.get_memory_config", return_value=_memory_config(enabled=False)):
+        with patch("app.agentplatform.legacy.memory.updater.get_memory_config", return_value=_memory_config(enabled=False)):
             result = updater._prepare_update_prompt([], None, False, False)
         assert result is None
 
     def test_returns_none_when_messages_empty(self):
         updater = MemoryUpdater()
-        with patch("ideer.agents.memory.updater.get_memory_config", return_value=_memory_config(enabled=True)):
+        with patch("app.agentplatform.legacy.memory.updater.get_memory_config", return_value=_memory_config(enabled=True)):
             result = updater._prepare_update_prompt([], None, False, False)
         assert result is None
 
     def test_returns_none_when_conversation_empty(self):
         updater = MemoryUpdater()
         with (
-            patch("ideer.agents.memory.updater.get_memory_config", return_value=_memory_config(enabled=True)),
-            patch("ideer.agents.memory.updater.get_memory_data", return_value=_make_memory()),
-            patch("ideer.agents.memory.updater.format_conversation_for_update", return_value=""),
+            patch("app.agentplatform.legacy.memory.updater.get_memory_config", return_value=_memory_config(enabled=True)),
+            patch("app.agentplatform.legacy.memory.updater.get_memory_data", return_value=_make_memory()),
+            patch("app.agentplatform.legacy.memory.updater.format_conversation_for_update", return_value=""),
         ):
             result = updater._prepare_update_prompt([], None, False, False)
         assert result is None
@@ -662,7 +665,7 @@ class TestMemoryUpdaterPrepareUpdatePrompt:
 class TestMemoryUpdaterDoUpdateSync:
     def test_returns_false_when_disabled(self):
         updater = MemoryUpdater()
-        with patch("ideer.agents.memory.updater.get_memory_config", return_value=_memory_config(enabled=False)):
+        with patch("app.agentplatform.legacy.memory.updater.get_memory_config", return_value=_memory_config(enabled=False)):
             result = updater._do_update_memory_sync([], None, None)
         assert result is False
 
@@ -675,9 +678,9 @@ class TestMemoryUpdaterDoUpdateSync:
 
         with (
             patch.object(updater, "_get_model", return_value=mock_model),
-            patch("ideer.agents.memory.updater.get_memory_config", return_value=_memory_config(enabled=True)),
-            patch("ideer.agents.memory.updater.get_memory_data", return_value=_make_memory()),
-            patch("ideer.agents.memory.updater.format_conversation_for_update", return_value="conversation"),
+            patch("app.agentplatform.legacy.memory.updater.get_memory_config", return_value=_memory_config(enabled=True)),
+            patch("app.agentplatform.legacy.memory.updater.get_memory_data", return_value=_make_memory()),
+            patch("app.agentplatform.legacy.memory.updater.format_conversation_for_update", return_value="conversation"),
         ):
             msg = MagicMock()
             msg.type = "human"
@@ -692,9 +695,9 @@ class TestMemoryUpdaterDoUpdateSync:
 
         with (
             patch.object(updater, "_get_model", return_value=mock_model),
-            patch("ideer.agents.memory.updater.get_memory_config", return_value=_memory_config(enabled=True)),
-            patch("ideer.agents.memory.updater.get_memory_data", return_value=_make_memory()),
-            patch("ideer.agents.memory.updater.format_conversation_for_update", return_value="conversation"),
+            patch("app.agentplatform.legacy.memory.updater.get_memory_config", return_value=_memory_config(enabled=True)),
+            patch("app.agentplatform.legacy.memory.updater.get_memory_data", return_value=_make_memory()),
+            patch("app.agentplatform.legacy.memory.updater.format_conversation_for_update", return_value="conversation"),
         ):
             msg = MagicMock()
             msg.type = "human"
@@ -709,8 +712,8 @@ class TestMemoryUpdaterFinalizeUpdate:
         json_content = '{"user": {}, "history": {}, "newFacts": [], "factsToRemove": []}'
 
         with (
-            patch("ideer.agents.memory.updater.get_memory_config", return_value=_memory_config(enabled=True, fact_confidence_threshold=0.7)),
-            patch("ideer.agents.memory.updater.get_memory_storage") as mock_storage_fn,
+            patch("app.agentplatform.legacy.memory.updater.get_memory_config", return_value=_memory_config(enabled=True, fact_confidence_threshold=0.7)),
+            patch("app.agentplatform.legacy.memory.updater.get_memory_storage") as mock_storage_fn,
         ):
             mock_storage = MagicMock()
             mock_storage.save.return_value = True
@@ -730,8 +733,8 @@ class TestMemoryUpdaterFinalizeUpdate:
         json_content = '{"user": {}, "history": {}, "newFacts": [], "factsToRemove": []}'
 
         with (
-            patch("ideer.agents.memory.updater.get_memory_config", return_value=_memory_config(enabled=True, fact_confidence_threshold=0.7)),
-            patch("ideer.agents.memory.updater.get_memory_storage") as mock_storage_fn,
+            patch("app.agentplatform.legacy.memory.updater.get_memory_config", return_value=_memory_config(enabled=True, fact_confidence_threshold=0.7)),
+            patch("app.agentplatform.legacy.memory.updater.get_memory_storage") as mock_storage_fn,
         ):
             mock_storage = MagicMock()
             mock_storage.save.return_value = True
@@ -773,7 +776,7 @@ class TestMemoryUpdaterBuildCorrectionHint:
 class TestUpdateMemoryFromConvenience:
     def test_calls_updater(self):
         messages = [MagicMock(type="human", content="Hi")]
-        with patch("ideer.agents.memory.updater.MemoryUpdater") as MockUpdater:
+        with patch("app.agentplatform.legacy.memory.updater.MemoryUpdater") as MockUpdater:
             mock_updater = MagicMock()
             mock_updater.update_memory.return_value = True
             MockUpdater.return_value = mock_updater
@@ -802,14 +805,14 @@ class TestImportMemoryDataFailure:
         mock_storage = MagicMock()
         mock_storage.save.return_value = False
 
-        with patch("ideer.agents.memory.updater.get_memory_storage", return_value=mock_storage):
+        with patch("app.agentplatform.legacy.memory.updater.get_memory_storage", return_value=mock_storage):
             with pytest.raises(OSError, match="Failed to save"):
                 import_memory_data({"version": "1.0"})
 
 
 class TestClearMemoryDataFailure:
     def test_raises_on_save_failure(self):
-        with patch("ideer.agents.memory.updater._save_memory_to_file", return_value=False):
+        with patch("app.agentplatform.legacy.memory.updater._save_memory_to_file", return_value=False):
             with pytest.raises(OSError, match="Failed to save"):
                 clear_memory_data()
 
@@ -818,8 +821,8 @@ class TestDeleteMemoryFactSaveFailure:
     def test_raises_on_save_failure(self):
         memory = _make_memory(facts=[{"id": "f1", "content": "test"}])
         with (
-            patch("ideer.agents.memory.updater.get_memory_data", return_value=memory),
-            patch("ideer.agents.memory.updater._save_memory_to_file", return_value=False),
+            patch("app.agentplatform.legacy.memory.updater.get_memory_data", return_value=memory),
+            patch("app.agentplatform.legacy.memory.updater._save_memory_to_file", return_value=False),
         ):
             with pytest.raises(OSError, match="Failed to save"):
                 delete_memory_fact("f1")
@@ -829,23 +832,23 @@ class TestUpdateMemoryFactSaveFailure:
     def test_raises_on_save_failure(self):
         memory = _make_memory(facts=[{"id": "f1", "content": "test", "category": "ctx", "confidence": 0.5}])
         with (
-            patch("ideer.agents.memory.updater.get_memory_data", return_value=memory),
-            patch("ideer.agents.memory.updater._save_memory_to_file", return_value=False),
+            patch("app.agentplatform.legacy.memory.updater.get_memory_data", return_value=memory),
+            patch("app.agentplatform.legacy.memory.updater._save_memory_to_file", return_value=False),
         ):
             with pytest.raises(OSError, match="Failed to save"):
                 update_memory_fact("f1", content="updated")
 
     def test_raises_on_empty_content(self):
         memory = _make_memory(facts=[{"id": "f1", "content": "test"}])
-        with patch("ideer.agents.memory.updater.get_memory_data", return_value=memory):
+        with patch("app.agentplatform.legacy.memory.updater.get_memory_data", return_value=memory):
             with pytest.raises(ValueError, match="content"):
                 update_memory_fact("f1", content="   ")
 
     def test_category_empty_defaults_to_context(self):
         memory = _make_memory(facts=[{"id": "f1", "content": "test", "category": "old"}])
         with (
-            patch("ideer.agents.memory.updater.get_memory_data", return_value=memory),
-            patch("ideer.agents.memory.updater._save_memory_to_file", return_value=True),
+            patch("app.agentplatform.legacy.memory.updater.get_memory_data", return_value=memory),
+            patch("app.agentplatform.legacy.memory.updater._save_memory_to_file", return_value=True),
         ):
             result = update_memory_fact("f1", category="")
         assert result["facts"][0]["category"] == "context"
@@ -854,8 +857,8 @@ class TestUpdateMemoryFactSaveFailure:
 class TestCreateMemoryFactSaveFailure:
     def test_raises_on_save_failure(self):
         with (
-            patch("ideer.agents.memory.updater.get_memory_data", return_value=_make_memory()),
-            patch("ideer.agents.memory.updater._save_memory_to_file", return_value=False),
+            patch("app.agentplatform.legacy.memory.updater.get_memory_data", return_value=_make_memory()),
+            patch("app.agentplatform.legacy.memory.updater._save_memory_to_file", return_value=False),
         ):
             with pytest.raises(OSError, match="Failed to save"):
                 create_memory_fact(content="test fact")

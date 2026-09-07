@@ -97,8 +97,8 @@ class TestInjectAuthenticatedUserContextNoUser:
         config = {"configurable": {"thread_id": "t1"}}
         request = SimpleNamespace(state=SimpleNamespace(user=None))
         inject_authenticated_user_context(config, request)
-        # Should not have added user_id
-        assert "context" not in config
+        # Context container is always created, but no user_id is injected.
+        assert "user_id" not in config["context"]
 
     def test_user_with_no_id(self):
         from app.gateway.services import inject_authenticated_user_context
@@ -107,7 +107,7 @@ class TestInjectAuthenticatedUserContextNoUser:
         user_no_id = SimpleNamespace()  # no id attribute
         request = SimpleNamespace(state=SimpleNamespace(user=user_no_id))
         inject_authenticated_user_context(config, request)
-        assert "context" not in config
+        assert "user_id" not in config["context"]
 
     def test_no_state_user_attr(self):
         from app.gateway.services import inject_authenticated_user_context
@@ -115,7 +115,7 @@ class TestInjectAuthenticatedUserContextNoUser:
         config = {"configurable": {"thread_id": "t1"}}
         request = SimpleNamespace(state=SimpleNamespace())  # no user attr
         inject_authenticated_user_context(config, request)
-        assert "context" not in config
+        assert "user_id" not in config["context"]
 
 
 # ---------------------------------------------------------------------------
@@ -276,6 +276,9 @@ class TestStartRun:
             from app.gateway.services import start_run
 
             result = await start_run(body, "thread-1", request)
+            # run_agent now executes in a background task scheduled by
+            # start_run; drive it to completion while the patches are active.
+            await record.task
 
         assert result is record
         prepare.assert_awaited_once_with(
@@ -294,7 +297,7 @@ class TestStartRun:
     @pytest.mark.asyncio
     async def test_start_run_uuid_discards_prepared_snapshot_when_run_is_rejected(self, mock_deps):
         bridge, run_mgr, run_ctx, request = mock_deps
-        from ideer.runtime import ConflictError
+        from deerflow.runtime import ConflictError
 
         run_mgr.create_or_reject.side_effect = ConflictError("already running")
         body = SimpleNamespace(
@@ -450,7 +453,7 @@ class TestStartRun:
         """Cover the ConflictError -> HTTPException 409 path."""
         bridge, run_mgr, run_ctx, request = mock_deps
 
-        from ideer.runtime import ConflictError
+        from deerflow.runtime import ConflictError
 
         run_mgr.create_or_reject.side_effect = ConflictError("already running")
 
@@ -487,7 +490,7 @@ class TestStartRun:
         """Cover the UnsupportedStrategyError -> HTTPException 501 path."""
         bridge, run_mgr, run_ctx, request = mock_deps
 
-        from ideer.runtime import UnsupportedStrategyError
+        from deerflow.runtime import UnsupportedStrategyError
 
         run_mgr.create_or_reject.side_effect = UnsupportedStrategyError("not supported")
 
@@ -651,7 +654,7 @@ class TestNormalizeInputAdditional:
 class TestResolveAgentFactoryAdditional:
     def test_returns_make_lead_agent(self):
         from app.gateway.services import resolve_agent_factory
-        from ideer.agents.lead_agent.agent import make_lead_agent
+        from deerflow.agents.lead_agent.agent import make_lead_agent
 
         assert resolve_agent_factory(None) is make_lead_agent
         assert resolve_agent_factory("lead_agent") is make_lead_agent
@@ -669,7 +672,9 @@ class TestBuildRunConfigContextAdditional:
         )
         assert "context" in config
         assert config["context"]["user_id"] == "u-42"
-        assert "configurable" not in config
+        # Caller data stays in context; configurable only carries the
+        # checkpoint-facing thread id.
+        assert config["configurable"] == {"thread_id": "thread-1"}
 
     def test_context_plus_configurable_warns(self, caplog):
         import logging
@@ -689,7 +694,7 @@ class TestBuildRunConfigContextAdditional:
         from app.gateway.services import build_run_config
 
         config = build_run_config("thread-1", {"context": None}, None)
-        assert config["context"] == {}
+        assert config["context"] == {"thread_id": "thread-1"}
 
     def test_rejects_non_mapping_context(self):
         import pytest
@@ -709,13 +714,13 @@ class TestBuildRunConfigContextAdditional:
             assistant_id="finalis",
         )
         assert config["context"]["agent_name"] == "finalis"
-        assert "configurable" not in config
+        assert config["configurable"] == {"thread_id": "thread-1", "agent_name": "finalis"}
 
     def test_null_context_custom_agent(self):
         from app.gateway.services import build_run_config
 
         config = build_run_config("thread-1", {"context": None}, None, assistant_id="finalis")
-        assert config["context"] == {"agent_name": "finalis"}
+        assert config["context"] == {"thread_id": "thread-1", "agent_name": "finalis"}
 
 
 class TestSSEConsumer:

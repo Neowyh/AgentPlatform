@@ -1,8 +1,7 @@
 "use client";
 
-import { PenLineIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import { PencilIcon, Trash2Icon } from "lucide-react";
 import { useState } from "react";
-import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -13,7 +12,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import {
   Item,
   ItemActions,
@@ -21,490 +19,322 @@ import {
   ItemDescription,
   ItemTitle,
 } from "@/components/ui/item";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useI18n } from "@/core/i18n/hooks";
+import { MCPConfigRequestError } from "@/core/mcp/api";
 import {
-  useAddMCPServer,
-  useDeleteMCPServer,
   useEnableMCPServer,
   useMCPConfig,
-  useUpdateMCPServer,
+  useMCPServerMutation,
 } from "@/core/mcp/hooks";
+import {
+  formatMCPServerDefinition,
+  MCPServerDefinitionError,
+  parseMCPServerDefinition,
+} from "@/core/mcp/parse";
 import type { MCPServerConfig } from "@/core/mcp/types";
 import { env } from "@/env";
 
 import { SettingsSection } from "./settings-section";
 
-type MCPServerFormState = {
-  name: string;
-  type: "stdio" | "sse" | "http";
-  command: string;
-  args: string;
-  url: string;
-  env: Record<string, string>;
-  headers: Record<string, string>;
-  description: string;
-  enabled: boolean;
-};
-
-const DEFAULT_MCP_FORM: MCPServerFormState = {
-  name: "",
-  type: "stdio",
-  command: "",
-  args: "",
-  url: "",
-  env: {},
-  headers: {},
-  description: "",
-  enabled: true,
-};
-
-function buildFormFromConfig(
-  name: string,
-  config: MCPServerConfig,
-): MCPServerFormState {
-  return {
-    name,
-    type: config.type,
-    command: config.command ?? "",
-    args: (config.args ?? []).join("\n"),
-    url: config.url ?? "",
-    env: { ...config.env },
-    headers: { ...config.headers },
-    description: config.description,
-    enabled: config.enabled,
-  };
-}
-
-function buildConfigFromForm(form: MCPServerFormState): MCPServerConfig {
-  return {
-    enabled: form.enabled,
-    type: form.type,
-    command: form.type === "stdio" ? form.command : undefined,
-    args: form.type === "stdio" ? form.args.split("\n").filter(Boolean) : [],
-    env: form.env,
-    url: form.type !== "stdio" ? form.url : undefined,
-    headers: form.type !== "stdio" ? form.headers : {},
-    description: form.description,
-  };
-}
-
-function KeyValueEditor({
-  value,
-  onChange,
-}: {
-  value: Record<string, string>;
-  onChange: (next: Record<string, string>) => void;
-}) {
-  const entries = Object.entries(value);
-  return (
-    <div className="space-y-2">
-      {entries.map(([key, val]) => (
-        <div key={key} className="flex items-center gap-2">
-          <Input value={key} readOnly className="flex-1" />
-          <Input
-            value={val}
-            onChange={(e) => onChange({ ...value, [key]: e.target.value })}
-            className="flex-1"
-          />
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="shrink-0"
-            onClick={() => {
-              const next = { ...value };
-              delete next[key];
-              onChange(next);
-            }}
-          >
-            <Trash2Icon className="h-4 w-4" />
-          </Button>
-        </div>
-      ))}
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        onClick={() => {
-          let newKey = "key";
-          let i = 0;
-          while (newKey in value) {
-            i++;
-            newKey = `key_${i}`;
-          }
-          onChange({ ...value, [newKey]: "" });
-        }}
-      >
-        <PlusIcon className="mr-1 h-3 w-3" />
-        Add
-      </Button>
-    </div>
-  );
-}
-
-function getMCPErrorMessage(err: unknown): string {
-  const msg = err instanceof Error ? err.message : String(err);
-  if (msg.toLowerCase().includes("forbidden") || msg.includes("403")) {
-    return "MCP configuration is managed by super administrators. Please contact your admin.";
-  }
-  return msg;
-}
-
 export function ToolSettingsPage() {
   const { t } = useI18n();
   const { config, isLoading, error } = useMCPConfig();
-  const [formOpen, setFormOpen] = useState(false);
-  const [editingServer, setEditingServer] = useState<string | null>(null);
-  const [form, setForm] = useState<MCPServerFormState>(DEFAULT_MCP_FORM);
-  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const adminRequired =
+    error instanceof MCPConfigRequestError && error.isAdminRequired;
+  return (
+    <SettingsSection
+      title={t.settings.tools.title}
+      description={t.settings.tools.description}
+    >
+      {isLoading ? (
+        <div className="text-muted-foreground type-body">
+          {t.common.loading}
+        </div>
+      ) : adminRequired ? (
+        <div className="text-muted-foreground type-body">
+          {t.settings.tools.adminRequired}
+        </div>
+      ) : error ? (
+        <div>Error: {error.message}</div>
+      ) : (
+        config && <MCPServerList servers={config.mcp_servers} />
+      )}
+    </SettingsSection>
+  );
+}
 
-  const addServer = useAddMCPServer();
-  const updateServer = useUpdateMCPServer();
-  const deleteServer = useDeleteMCPServer();
-  const enableServer = useEnableMCPServer();
+function MCPServerList({
+  servers,
+}: {
+  servers?: Record<string, MCPServerConfig>;
+}) {
+  const { t } = useI18n();
+  const { isPending, mutate: enableMCPServer } = useEnableMCPServer();
+  const { isPending: isWriting, mutate: mutateServer } = useMCPServerMutation();
+  const [editor, setEditor] = useState<
+    { mode: "add" } | { mode: "edit"; name: string } | null
+  >(null);
+  const [definition, setDefinition] = useState("");
+  const [definitionError, setDefinitionError] = useState<string | null>(null);
+  const [pendingRemoval, setPendingRemoval] = useState<string | null>(null);
 
-  function openAddForm() {
-    setEditingServer(null);
-    setForm(DEFAULT_MCP_FORM);
-    setFormOpen(true);
+  const readOnly = env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true";
+  const current = servers ?? {};
+  const entries = Object.entries(current);
+  const isMutating = isPending || isWriting;
+
+  function displayServerName(name: string | null) {
+    return name === null || name.length === 0
+      ? t.settings.tools.unnamedServer
+      : name;
   }
 
-  function openEditForm(name: string, serverConfig: MCPServerConfig) {
-    setEditingServer(name);
-    setForm(buildFormFromConfig(name, serverConfig));
-    setFormOpen(true);
+  function closeEditor() {
+    setEditor(null);
+    setDefinition("");
+    setDefinitionError(null);
   }
 
-  function closeForm() {
-    setFormOpen(false);
-    setEditingServer(null);
-    setForm(DEFAULT_MCP_FORM);
+  function openAddEditor() {
+    setDefinition("");
+    setDefinitionError(null);
+    setEditor({ mode: "add" });
   }
 
-  async function handleSave() {
-    const trimmedName = form.name.trim();
-    if (!trimmedName) {
-      toast.error(t.settings.tools.validationNameRequired);
+  function openEditEditor(name: string, config: MCPServerConfig) {
+    setDefinition(formatMCPServerDefinition(name, config));
+    setDefinitionError(null);
+    setEditor({ mode: "edit", name });
+  }
+
+  function handleSaveDefinition() {
+    if (editor === null) {
       return;
     }
 
-    if (editingServer === null) {
-      if (addServer.isPending || updateServer.isPending) return;
-      try {
-        await addServer.mutateAsync({
-          name: trimmedName,
-          serverConfig: buildConfigFromForm(form),
-        });
-        toast.success(t.settings.tools.addSuccess);
-        closeForm();
-      } catch (err) {
-        toast.error(getMCPErrorMessage(err));
-      }
-    } else {
-      if (updateServer.isPending) return;
-      try {
-        await updateServer.mutateAsync({
-          name: editingServer,
-          serverConfig: buildConfigFromForm(form),
-        });
-        toast.success(t.settings.tools.editSuccess);
-        closeForm();
-      } catch (err) {
-        toast.error(getMCPErrorMessage(err));
-      }
-    }
-  }
-
-  async function handleDelete() {
-    if (!deleteTarget || deleteServer.isPending) return;
+    let parsed: Record<string, MCPServerConfig>;
     try {
-      await deleteServer.mutateAsync({ name: deleteTarget });
-      toast.success(t.settings.tools.deleteSuccess);
-      setDeleteTarget(null);
-    } catch (err) {
-      toast.error(getMCPErrorMessage(err));
+      parsed = parseMCPServerDefinition(definition);
+    } catch (parseError) {
+      if (parseError instanceof MCPServerDefinitionError) {
+        const messages = {
+          emptyDefinition: t.settings.tools.definitionEmpty,
+          invalidJson: t.settings.tools.definitionInvalidJson,
+          rootNotObject: t.settings.tools.definitionRootNotObject,
+          emptyServerMap: t.settings.tools.definitionNoServers,
+          serverConfigNotObject:
+            t.settings.tools.definitionServerNotObject.replace(
+              "{name}",
+              parseError.serverName ?? "",
+            ),
+        };
+        setDefinitionError(messages[parseError.code]);
+      } else {
+        setDefinitionError(t.settings.tools.definitionInvalidJson);
+      }
+      return;
+    }
+
+    if (editor.mode === "add") {
+      const duplicate = Object.keys(parsed).find((name) =>
+        Object.hasOwn(current, name),
+      );
+      if (duplicate !== undefined) {
+        setDefinitionError(
+          t.settings.tools.serverAlreadyExists.replace("{name}", duplicate),
+        );
+        return;
+      }
+      setDefinitionError(null);
+      mutateServer(
+        { operation: "create", servers: parsed },
+        { onSuccess: closeEditor },
+      );
+    } else {
+      const editedEntries = Object.entries(parsed);
+      if (editedEntries.length !== 1) {
+        setDefinitionError(t.settings.tools.editSingleServer);
+        return;
+      }
+      const [editedName, editedConfig] = editedEntries[0]!;
+      if (editedName !== editor.name) {
+        setDefinitionError(
+          t.settings.tools.editServerNameMismatch.replace(
+            "{name}",
+            editor.name,
+          ),
+        );
+        return;
+      }
+      setDefinitionError(null);
+      mutateServer(
+        {
+          operation: "update",
+          serverName: editor.name,
+          server: editedConfig,
+        },
+        { onSuccess: closeEditor },
+      );
     }
   }
 
-  const servers = config?.mcp_servers ?? {};
-  const isFormPending = addServer.isPending || updateServer.isPending;
+  function handleRemove(name: string) {
+    mutateServer(
+      { operation: "delete", serverName: name },
+      { onSuccess: () => setPendingRemoval(null) },
+    );
+  }
 
   return (
-    <>
-      <SettingsSection
-        title={t.settings.tools.title}
-        description={t.settings.tools.description}
-      >
-        {isLoading ? (
-          <div className="text-muted-foreground type-body">
-            {t.common.loading}
-          </div>
-        ) : error ? (
-          <div>Error: {error.message}</div>
-        ) : (
-          <div className="flex w-full flex-col gap-4">
-            <div className="flex justify-end">
-              <Button variant="outline" onClick={openAddForm}>
-                <PlusIcon className="mr-2 h-4 w-4" />
-                {t.settings.tools.addServer}
-              </Button>
-            </div>
+    <div className="flex w-full flex-col gap-4">
+      <div className="flex justify-end">
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={readOnly || isMutating}
+          onClick={openAddEditor}
+        >
+          {t.settings.tools.addServer}
+        </Button>
+      </div>
 
-            {Object.keys(servers).length === 0 ? (
-              <div className="text-muted-foreground type-body rounded-lg border border-dashed p-4">
-                {t.settings.tools.emptyState}
-              </div>
-            ) : (
-              Object.entries(servers).map(([name, serverConfig]) => (
-                <Item className="w-full" variant="outline" key={name}>
-                  <ItemContent>
-                    <ItemTitle>
-                      <div className="flex items-center gap-2">
-                        <div>{name}</div>
-                      </div>
-                    </ItemTitle>
-                    <ItemDescription className="line-clamp-4">
-                      {serverConfig.description}
-                    </ItemDescription>
-                  </ItemContent>
-                  <ItemActions>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="shrink-0"
-                      onClick={() => openEditForm(name, serverConfig)}
-                      title={t.common.edit}
-                      aria-label={t.common.edit}
-                    >
-                      <PenLineIcon className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="text-destructive hover:text-destructive shrink-0"
-                      onClick={() => setDeleteTarget(name)}
-                      title={t.common.delete}
-                      aria-label={t.common.delete}
-                    >
-                      <Trash2Icon className="h-4 w-4" />
-                    </Button>
-                    <Switch
-                      checked={serverConfig.enabled}
-                      disabled={env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true"}
-                      onCheckedChange={(checked) =>
-                        enableServer.mutate(
-                          { serverName: name, enabled: checked },
-                          {
-                            onError: (err) => {
-                              toast.error(getMCPErrorMessage(err));
-                            },
-                          },
-                        )
-                      }
-                    />
-                  </ItemActions>
-                </Item>
-              ))
-            )}
-          </div>
-        )}
-      </SettingsSection>
-
-      <Dialog
-        open={formOpen}
-        onOpenChange={(open) => {
-          if (!open) closeForm();
-        }}
-      >
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>
-              {editingServer === null
-                ? t.settings.tools.addServer
-                : t.settings.tools.editServer}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <label className="type-body font-medium">
-                {t.settings.tools.serverName}
-              </label>
-              <Input
-                value={form.name}
-                onChange={(e) =>
-                  setForm((prev) => ({ ...prev, name: e.target.value }))
-                }
-                disabled={editingServer !== null}
-                placeholder="e.g. github"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label className="type-body font-medium">
-                {t.settings.tools.serverType}
-              </label>
-              <Select
-                value={form.type}
-                onValueChange={(v) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    type: v as MCPServerFormState["type"],
-                  }))
-                }
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="stdio">stdio</SelectItem>
-                  <SelectItem value="sse">sse</SelectItem>
-                  <SelectItem value="http">http</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {form.type === "stdio" && (
-              <>
-                <div className="space-y-2">
-                  <label className="type-body font-medium">
-                    {t.settings.tools.command}
-                  </label>
-                  <Input
-                    value={form.command}
-                    onChange={(e) =>
-                      setForm((prev) => ({ ...prev, command: e.target.value }))
-                    }
-                    placeholder="e.g. npx"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="type-body font-medium">
-                    {t.settings.tools.args}
-                  </label>
-                  <Textarea
-                    value={form.args}
-                    onChange={(e) =>
-                      setForm((prev) => ({ ...prev, args: e.target.value }))
-                    }
-                    placeholder={
-                      "One argument per line, e.g.\n-y\n@modelcontextprotocol/server-github"
-                    }
-                    rows={3}
-                  />
-                </div>
-              </>
-            )}
-
-            {form.type !== "stdio" && (
-              <div className="space-y-2">
-                <label className="type-body font-medium">
-                  {t.settings.tools.url}
-                </label>
-                <Input
-                  value={form.url}
-                  onChange={(e) =>
-                    setForm((prev) => ({ ...prev, url: e.target.value }))
-                  }
-                  placeholder="e.g. http://localhost:3000/sse"
-                />
-              </div>
-            )}
-
-            <div className="space-y-2">
-              <label className="type-body font-medium">
-                {t.settings.tools.env}
-              </label>
-              <KeyValueEditor
-                value={form.env}
-                onChange={(env) => setForm((prev) => ({ ...prev, env }))}
-              />
-            </div>
-
-            {form.type !== "stdio" && (
-              <div className="space-y-2">
-                <label className="type-body font-medium">
-                  {t.settings.tools.headers}
-                </label>
-                <KeyValueEditor
-                  value={form.headers}
-                  onChange={(headers) =>
-                    setForm((prev) => ({ ...prev, headers }))
+      {entries.length === 0 ? (
+        <div className="text-muted-foreground type-body">
+          {t.settings.tools.empty}
+        </div>
+      ) : (
+        entries.map(([name, config]) => {
+          const displayName = displayServerName(name);
+          return (
+            <Item className="w-full" variant="outline" key={name}>
+              <ItemContent>
+                <ItemTitle>
+                  <div className="flex items-center gap-2">
+                    <div>{displayName}</div>
+                  </div>
+                </ItemTitle>
+                <ItemDescription className="line-clamp-4">
+                  {config.description}
+                </ItemDescription>
+              </ItemContent>
+              <ItemActions className="gap-1">
+                <Switch
+                  checked={config.enabled}
+                  disabled={readOnly || isMutating}
+                  onCheckedChange={(checked) =>
+                    enableMCPServer({ serverName: name, enabled: checked })
                   }
                 />
-              </div>
-            )}
-
-            <div className="space-y-2">
-              <label className="type-body font-medium">Description</label>
-              <Textarea
-                value={form.description}
-                onChange={(e) =>
-                  setForm((prev) => ({ ...prev, description: e.target.value }))
-                }
-                rows={2}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={closeForm}
-              disabled={isFormPending}
-            >
-              {t.common.cancel}
-            </Button>
-            <Button onClick={() => void handleSave()} disabled={isFormPending}>
-              {isFormPending ? t.common.loading : t.common.save}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="shrink-0"
+                  aria-label={`${t.common.edit} ${displayName}`}
+                  disabled={readOnly || isMutating}
+                  onClick={() => openEditEditor(name, config)}
+                >
+                  <PencilIcon className="size-4" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="shrink-0"
+                  aria-label={`${t.common.delete} ${displayName}`}
+                  disabled={readOnly || isMutating}
+                  onClick={() => setPendingRemoval(name)}
+                >
+                  <Trash2Icon className="size-4" />
+                </Button>
+              </ItemActions>
+            </Item>
+          );
+        })
+      )}
 
       <Dialog
-        open={deleteTarget !== null}
-        onOpenChange={(open) => {
-          if (!open) setDeleteTarget(null);
-        }}
+        open={editor !== null}
+        onOpenChange={(open) => !open && !isWriting && closeEditor()}
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{t.settings.tools.deleteConfirmTitle}</DialogTitle>
+            <DialogTitle>
+              {editor?.mode === "edit"
+                ? t.settings.tools.editServer
+                : t.settings.tools.addServer}
+            </DialogTitle>
             <DialogDescription>
-              {t.settings.tools.deleteConfirmDescription}
+              {editor?.mode === "edit"
+                ? t.settings.tools.editServerDescription.replace(
+                    "{name}",
+                    editor.name,
+                  )
+                : t.settings.tools.addServerDescription}
             </DialogDescription>
           </DialogHeader>
-          {deleteTarget && (
-            <div className="bg-muted type-body rounded-md border p-3">
-              <p className="font-medium">{deleteTarget}</p>
+          <Textarea
+            className="min-h-52 font-mono type-compact"
+            aria-label={t.settings.tools.serverDefinitionLabel}
+            spellCheck={false}
+            value={definition}
+            placeholder={t.settings.tools.addServerPlaceholder}
+            onChange={(event) => setDefinition(event.target.value)}
+          />
+          {definitionError && (
+            <div className="text-destructive type-body" role="alert">
+              {definitionError}
             </div>
           )}
           <DialogFooter>
             <Button
               variant="outline"
-              onClick={() => setDeleteTarget(null)}
-              disabled={deleteServer.isPending}
+              disabled={isWriting}
+              onClick={closeEditor}
+            >
+              {t.common.cancel}
+            </Button>
+            <Button disabled={isWriting} onClick={handleSaveDefinition}>
+              {isWriting ? t.common.loading : t.common.save}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={pendingRemoval !== null}
+        onOpenChange={(open) => !open && setPendingRemoval(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t.settings.tools.removeServer}</DialogTitle>
+            <DialogDescription>
+              {t.settings.tools.removeServerDescription.replace(
+                "{name}",
+                displayServerName(pendingRemoval),
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={isWriting}
+              onClick={() => setPendingRemoval(null)}
             >
               {t.common.cancel}
             </Button>
             <Button
               variant="destructive"
-              onClick={() => void handleDelete()}
-              disabled={deleteServer.isPending}
+              disabled={isWriting}
+              onClick={() =>
+                pendingRemoval !== null && handleRemove(pendingRemoval)
+              }
             >
-              {deleteServer.isPending ? t.common.loading : t.common.delete}
+              {isWriting ? t.common.loading : t.common.delete}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </>
+    </div>
   );
 }

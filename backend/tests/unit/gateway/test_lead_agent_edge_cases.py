@@ -1,4 +1,4 @@
-"""Extended coverage tests for ideer.agents.lead_agent.agent and prompt modules.
+"""Extended coverage tests for deerflow.agents.lead_agent.agent and prompt modules.
 
 Targets uncovered lines in _get_runtime_config, _resolve_model_name edge cases,
 _available_skill_names, _create_summarization_middleware config branches,
@@ -11,18 +11,18 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from ideer.agents.lead_agent import agent as lead_mod
-from ideer.agents.lead_agent import prompt as prompt_mod
-from ideer.config.app_config import AppConfig
-from ideer.config.memory_config import MemoryConfig
-from ideer.config.model_config import ModelConfig
-from ideer.config.sandbox_config import SandboxConfig
-from ideer.config.summarization_config import SummarizationConfig
+from deerflow.agents.lead_agent import agent as lead_mod
+from deerflow.agents.lead_agent import prompt as prompt_mod
+from deerflow.config.app_config import AppConfig
+from deerflow.config.memory_config import MemoryConfig
+from deerflow.config.model_config import ModelConfig
+from deerflow.config.sandbox_config import SandboxConfig
+from deerflow.config.summarization_config import SummarizationConfig
 
 
 def _make_app_config(**overrides):
     defaults = dict(
-        sandbox=SandboxConfig(use="ideer.sandbox.local:LocalSandboxProvider"),
+        sandbox=SandboxConfig(use="deerflow.sandbox.local:LocalSandboxProvider"),
         models=[
             ModelConfig(
                 name="default-model",
@@ -156,95 +156,52 @@ class TestCreateSummarizationMiddlewareBranches:
         result = lead_mod._create_summarization_middleware(app_config=app_config)
         assert result is None
 
-    def test_trigger_none(self, monkeypatch):
+    def test_forwards_run_model_name_and_extensions(self, monkeypatch):
         app_config = _make_app_config()
         app_config.summarization = SummarizationConfig(enabled=True, trigger=None)
         app_config.memory = MemoryConfig(enabled=False)
 
-        fake_model = MagicMock()
-        fake_model.with_config.return_value = fake_model
+        captured = {}
+        sentinel = object()
 
-        monkeypatch.setattr(lead_mod, "create_chat_model", lambda **kw: fake_model)
-        monkeypatch.setattr(lead_mod, "IDeerSummarizationMiddleware", lambda **kw: kw)
+        def fake_factory(**kw):
+            captured.update(kw)
+            return sentinel
 
-        result = lead_mod._create_summarization_middleware(app_config=app_config)
-        assert result is not None
-        assert result["trigger"] is None
+        monkeypatch.setattr(lead_mod, "create_summarization_middleware", fake_factory)
+        extensions = object()
 
-    def test_trim_tokens_to_summarize_set(self, monkeypatch):
+        result = lead_mod._create_summarization_middleware(app_config=app_config, run_model_name="run-model", extensions=extensions)
+        assert result is sentinel
+        assert captured["app_config"] is app_config
+        assert captured["run_model_name"] == "run-model"
+        assert captured["extensions"] is extensions
+
+    def test_returns_none_when_factory_returns_none(self, monkeypatch):
         app_config = _make_app_config()
-        app_config.summarization = SummarizationConfig(
-            enabled=True,
-            trigger=None,
-            trim_tokens_to_summarize=5000,
-        )
-        app_config.memory = MemoryConfig(enabled=False)
+        app_config.summarization = SummarizationConfig(enabled=True)
 
-        fake_model = MagicMock()
-        fake_model.with_config.return_value = fake_model
+        monkeypatch.setattr(lead_mod, "create_summarization_middleware", lambda **kw: None)
+        assert lead_mod._create_summarization_middleware(app_config=app_config) is None
 
-        monkeypatch.setattr(lead_mod, "create_chat_model", lambda **kw: fake_model)
-        monkeypatch.setattr(lead_mod, "IDeerSummarizationMiddleware", lambda **kw: kw)
-
-        result = lead_mod._create_summarization_middleware(app_config=app_config)
-        assert result["trim_tokens_to_summarize"] == 5000
-
-    def test_summary_prompt_set(self, monkeypatch):
-        app_config = _make_app_config()
-        app_config.summarization = SummarizationConfig(
-            enabled=True,
-            trigger=None,
-            summary_prompt="Custom prompt",
-        )
-        app_config.memory = MemoryConfig(enabled=False)
-
-        fake_model = MagicMock()
-        fake_model.with_config.return_value = fake_model
-
-        monkeypatch.setattr(lead_mod, "create_chat_model", lambda **kw: fake_model)
-        monkeypatch.setattr(lead_mod, "IDeerSummarizationMiddleware", lambda **kw: kw)
-
-        result = lead_mod._create_summarization_middleware(app_config=app_config)
-        assert result["summary_prompt"] == "Custom prompt"
-
-    def test_memory_enabled_adds_flush_hook(self, monkeypatch):
+    def test_memory_enabled_still_forwards_to_factory(self, monkeypatch):
+        """Memory flush hook wiring is the factory's job (skip_memory_flush=False on the lead path)."""
         app_config = _make_app_config()
         app_config.summarization = SummarizationConfig(enabled=True, trigger=None)
         app_config.memory = MemoryConfig(enabled=True)
 
-        fake_model = MagicMock()
-        fake_model.with_config.return_value = fake_model
+        captured = {}
+        sentinel = object()
 
-        monkeypatch.setattr(lead_mod, "create_chat_model", lambda **kw: fake_model)
-        monkeypatch.setattr(lead_mod, "IDeerSummarizationMiddleware", lambda **kw: kw)
-        monkeypatch.setattr(lead_mod, "memory_flush_hook", MagicMock())
+        def fake_factory(**kw):
+            captured.update(kw)
+            return sentinel
+
+        monkeypatch.setattr(lead_mod, "create_summarization_middleware", fake_factory)
 
         result = lead_mod._create_summarization_middleware(app_config=app_config)
-        assert len(result["before_summarization"]) > 0
-
-    def test_model_name_configured(self, monkeypatch):
-        app_config = _make_app_config()
-        app_config.summarization = SummarizationConfig(
-            enabled=True,
-            model_name="custom-model",
-            trigger=None,
-        )
-        app_config.memory = MemoryConfig(enabled=False)
-
-        fake_model = MagicMock()
-        fake_model.with_config.return_value = fake_model
-
-        captured = {}
-
-        def fake_create_chat_model(*, name=None, thinking_enabled, **kwargs):
-            captured["name"] = name
-            return fake_model
-
-        monkeypatch.setattr(lead_mod, "create_chat_model", fake_create_chat_model)
-        monkeypatch.setattr(lead_mod, "IDeerSummarizationMiddleware", lambda **kw: kw)
-
-        lead_mod._create_summarization_middleware(app_config=app_config)
-        assert captured["name"] == "custom-model"
+        assert result is sentinel
+        assert captured["app_config"] is app_config
 
 
 # ---------------------------------------------------------------------------
@@ -261,66 +218,93 @@ class TestBuildMiddlewaresSubagent:
         monkeypatch.setattr(lead_mod, "_create_todo_list_middleware", lambda is_plan_mode: None)
 
         mock_subagent_mw = MagicMock()
-        monkeypatch.setattr(lead_mod, "SubagentLimitMiddleware", lambda max_concurrent: mock_subagent_mw)
+        captured = {}
 
-        middlewares = lead_mod._build_middlewares(
+        def fake_limit_middleware(**kw):
+            captured.update(kw)
+            return mock_subagent_mw
+
+        monkeypatch.setattr(lead_mod, "SubagentLimitMiddleware", fake_limit_middleware)
+
+        middlewares = lead_mod.build_middlewares(
             {"configurable": {"is_plan_mode": False, "subagent_enabled": True, "max_concurrent_subagents": 5}},
             model_name="default-model",
             app_config=app_config,
         )
 
         assert mock_subagent_mw in middlewares
+        # Upstream clamps the configured concurrency to the process execution
+        # capacity (subagent_runtime.max_running, default 3), so a request of 5
+        # resolves to 3 for both the middleware and the advertised prompt limits.
+        assert captured["max_concurrent"] == 3
+        assert captured["max_total"] >= 1
 
 
 # ---------------------------------------------------------------------------
-# _build_middlewares - tool_search enabled
+# build_middlewares - deferred tool search
 # ---------------------------------------------------------------------------
 
 
 class TestBuildMiddlewaresToolSearch:
     def test_deferred_tool_filter_middleware_added(self, monkeypatch):
+        """A deferred setup with names attaches the real DeferredToolFilterMiddleware."""
         app_config = _make_app_config()
-        app_config.tool_search = SimpleNamespace(enabled=True)
         monkeypatch.setattr(lead_mod, "get_app_config", lambda: app_config)
         monkeypatch.setattr(lead_mod, "build_lead_runtime_middlewares", lambda **kw: [])
         monkeypatch.setattr(lead_mod, "_create_summarization_middleware", lambda **kw: None)
         monkeypatch.setattr(lead_mod, "_create_todo_list_middleware", lambda is_plan_mode: None)
 
-        # Need to mock DeferredToolFilterMiddleware
-        mock_dtf = MagicMock()
-        mock_dtf_cls = MagicMock(return_value=mock_dtf)
+        deferred_setup = SimpleNamespace(deferred_names=frozenset({"t1"}), catalog_hash="hash-1")
+        middlewares = lead_mod.build_middlewares(
+            {"configurable": {"is_plan_mode": False, "subagent_enabled": False}},
+            model_name="default-model",
+            app_config=app_config,
+            deferred_setup=deferred_setup,
+        )
 
-        with patch.dict("sys.modules", {"ideer.agents.middlewares.deferred_tool_filter_middleware": SimpleNamespace(DeferredToolFilterMiddleware=mock_dtf_cls)}):
-            middlewares = lead_mod._build_middlewares(
-                {"configurable": {"is_plan_mode": False, "subagent_enabled": False}},
-                model_name="default-model",
-                app_config=app_config,
-            )
+        from deerflow.agents.middlewares.deferred_tool_filter_middleware import DeferredToolFilterMiddleware
 
-        assert mock_dtf in middlewares
+        assert any(isinstance(m, DeferredToolFilterMiddleware) for m in middlewares)
+
+    def test_no_deferred_filter_without_setup(self, monkeypatch):
+        app_config = _make_app_config()
+        monkeypatch.setattr(lead_mod, "get_app_config", lambda: app_config)
+        monkeypatch.setattr(lead_mod, "build_lead_runtime_middlewares", lambda **kw: [])
+        monkeypatch.setattr(lead_mod, "_create_summarization_middleware", lambda **kw: None)
+        monkeypatch.setattr(lead_mod, "_create_todo_list_middleware", lambda is_plan_mode: None)
+
+        middlewares = lead_mod.build_middlewares(
+            {"configurable": {"is_plan_mode": False, "subagent_enabled": False}},
+            model_name="default-model",
+            app_config=app_config,
+        )
+
+        from deerflow.agents.middlewares.deferred_tool_filter_middleware import DeferredToolFilterMiddleware
+
+        assert not any(isinstance(m, DeferredToolFilterMiddleware) for m in middlewares)
 
 
 # ---------------------------------------------------------------------------
-# _build_middlewares - token usage
+# build_middlewares - token usage
 # ---------------------------------------------------------------------------
 
 
 class TestBuildMiddlewaresTokenUsage:
     def test_token_usage_middleware_added(self, monkeypatch):
         app_config = _make_app_config()
-        app_config.token_usage = SimpleNamespace(enabled=True)
         monkeypatch.setattr(lead_mod, "get_app_config", lambda: app_config)
         monkeypatch.setattr(lead_mod, "build_lead_runtime_middlewares", lambda **kw: [])
         monkeypatch.setattr(lead_mod, "_create_summarization_middleware", lambda **kw: None)
         monkeypatch.setattr(lead_mod, "_create_todo_list_middleware", lambda is_plan_mode: None)
+        app_config.token_usage = SimpleNamespace(enabled=True)
 
-        middlewares = lead_mod._build_middlewares(
+        middlewares = lead_mod.build_middlewares(
             {"configurable": {"is_plan_mode": False, "subagent_enabled": False}},
             model_name="default-model",
             app_config=app_config,
         )
 
-        from ideer.agents.middlewares.token_usage_middleware import TokenUsageMiddleware
+        from deerflow.agents.middlewares.token_usage_middleware import TokenUsageMiddleware
 
         assert any(isinstance(m, TokenUsageMiddleware) for m in middlewares)
 
@@ -379,28 +363,16 @@ class TestPromptBuildCustomMountsSection:
 
 
 class TestPromptGetDeferredToolsSection:
-    def test_empty_when_disabled(self):
-        config = SimpleNamespace(tool_search=SimpleNamespace(enabled=False))
-        result = prompt_mod.get_deferred_tools_prompt_section(app_config=config)
-        assert result == ""
+    """Upstream renders the section from an explicit deferred-name set computed at
+    agent build time; there is no app_config parameter and no registry lookup."""
 
-    def test_empty_when_no_deferred(self, monkeypatch):
-        config = SimpleNamespace(tool_search=SimpleNamespace(enabled=True))
+    def test_empty_when_no_deferred(self):
+        assert prompt_mod.get_deferred_tools_prompt_section(deferred_names=frozenset()) == ""
 
-        def _fake_get_deferred_registry():
-            return None  # Falsy value triggers the `if not registry: return ""` path
-
-        # The function does a local import: from ideer.tools.builtins.tool_search import get_deferred_registry
-        # We need to patch the function at the source module level so the local import picks it up
-        import ideer.tools.builtins.tool_search as ts_mod
-
-        original = ts_mod.get_deferred_registry
-        ts_mod.get_deferred_registry = _fake_get_deferred_registry
-        try:
-            result = prompt_mod.get_deferred_tools_prompt_section(app_config=config)
-        finally:
-            ts_mod.get_deferred_registry = original
-        assert result == ""
+    def test_lists_names_when_deferred_present(self):
+        result = prompt_mod.get_deferred_tools_prompt_section(deferred_names=frozenset({"mcp_tool_a"}))
+        assert "<available-deferred-tools>" in result
+        assert "mcp_tool_a" in result
 
 
 class TestPromptGetMemoryContext:
@@ -416,7 +388,7 @@ class TestPromptGetMemoryContext:
 
     def test_returns_empty_on_exception(self):
         config = SimpleNamespace(memory=SimpleNamespace(enabled=True, injection_enabled=True, max_injection_tokens=2000))
-        with patch("ideer.agents.memory.get_memory_data", side_effect=RuntimeError("boom")):
+        with patch("app.agentplatform.legacy.memory.get_memory_data", side_effect=RuntimeError("boom")):
             result = prompt_mod._get_memory_context(app_config=config)
         assert result == ""
 
@@ -431,13 +403,13 @@ class TestPromptApplyPromptTemplate:
             memory=SimpleNamespace(enabled=False, injection_enabled=True, max_injection_tokens=2000),
             acp_agents={},
         )
-        monkeypatch.setattr("ideer.config.get_app_config", lambda: config)
+        monkeypatch.setattr("deerflow.config.get_app_config", lambda: config)
         monkeypatch.setattr(prompt_mod, "get_or_new_skill_storage", lambda **kw: SimpleNamespace(load_skills=lambda enabled_only=True: []))
         monkeypatch.setattr(prompt_mod, "get_deferred_tools_prompt_section", lambda **kw: "")
         monkeypatch.setattr(prompt_mod, "_build_acp_section", lambda **kw: "")
 
         result = prompt_mod.apply_prompt_template(app_config=config)
-        assert "iDeer 2.0" in result
+        assert "DeerFlow 2.0" in result
         assert "<role>" in result
 
     def test_custom_agent_name(self, monkeypatch):
@@ -449,7 +421,7 @@ class TestPromptApplyPromptTemplate:
             memory=SimpleNamespace(enabled=False, injection_enabled=True, max_injection_tokens=2000),
             acp_agents={},
         )
-        monkeypatch.setattr("ideer.config.get_app_config", lambda: config)
+        monkeypatch.setattr("deerflow.config.get_app_config", lambda: config)
         monkeypatch.setattr(prompt_mod, "get_or_new_skill_storage", lambda **kw: SimpleNamespace(load_skills=lambda enabled_only=True: []))
         monkeypatch.setattr(prompt_mod, "get_deferred_tools_prompt_section", lambda **kw: "")
         monkeypatch.setattr(prompt_mod, "_build_acp_section", lambda **kw: "")
@@ -460,7 +432,7 @@ class TestPromptApplyPromptTemplate:
 
     def test_subagent_enabled(self, monkeypatch):
         config = SimpleNamespace(
-            sandbox=SimpleNamespace(use="ideer.sandbox.local:LocalSandboxProvider", allow_host_bash=False, mounts=[]),
+            sandbox=SimpleNamespace(use="deerflow.sandbox.local:LocalSandboxProvider", allow_host_bash=False, mounts=[]),
             subagents=SimpleNamespace(custom_agents={}),
             skills=SimpleNamespace(container_path="/mnt/skills"),
             skill_evolution=SimpleNamespace(enabled=False),
@@ -468,15 +440,17 @@ class TestPromptApplyPromptTemplate:
             memory=SimpleNamespace(enabled=False, injection_enabled=True, max_injection_tokens=2000),
             acp_agents={},
         )
-        monkeypatch.setattr("ideer.config.get_app_config", lambda: config)
+        monkeypatch.setattr("deerflow.config.get_app_config", lambda: config)
         monkeypatch.setattr(prompt_mod, "get_or_new_skill_storage", lambda **kw: SimpleNamespace(load_skills=lambda enabled_only=True: []))
         monkeypatch.setattr(prompt_mod, "get_deferred_tools_prompt_section", lambda **kw: "")
         monkeypatch.setattr(prompt_mod, "_build_acp_section", lambda **kw: "")
 
         result = prompt_mod.apply_prompt_template(subagent_enabled=True, max_concurrent_subagents=5, app_config=config)
-        assert "SUBAGENT MODE ACTIVE" in result
-        assert "5" in result
-        assert "Orchestrator Mode" in result
+        # Upstream renders a <subagent_system> section; the requested concurrency
+        # of 5 is clamped to the process execution capacity (default 3).
+        assert "<subagent_system>" in result
+        assert "HARD LIMITS" in result
+        assert "max 3 `task` calls per response" in result
 
 
 # ---------------------------------------------------------------------------
@@ -485,12 +459,18 @@ class TestPromptApplyPromptTemplate:
 
 
 class TestGetSkillsPromptSection:
+    def _patch_storage(self, monkeypatch, skills=()):
+        monkeypatch.setattr(prompt_mod, "get_enabled_skills_for_config", lambda app_config=None, user_id=None: list(skills))
+        monkeypatch.setattr(prompt_mod, "get_or_new_skill_storage", lambda app_config=None: SimpleNamespace(load_skills=lambda enabled_only: list(skills)))
+        monkeypatch.setattr(prompt_mod, "get_or_new_user_skill_storage", lambda user_id=None, app_config=None: SimpleNamespace(load_skills=lambda enabled_only: list(skills)))
+        prompt_mod._get_cached_skills_prompt_section.cache_clear()
+
     def test_empty_when_no_skills_and_no_evolution(self, monkeypatch):
         config = SimpleNamespace(
             skills=SimpleNamespace(container_path="/mnt/skills"),
             skill_evolution=SimpleNamespace(enabled=False),
         )
-        monkeypatch.setattr(prompt_mod, "get_enabled_skills_for_config", lambda app_config=None: [])
+        self._patch_storage(monkeypatch)
 
         result = prompt_mod.get_skills_prompt_section(app_config=config)
         assert result == ""
@@ -505,9 +485,10 @@ class TestGetSkillsPromptSection:
             name="real-skill",
             description="desc",
             category="custom",
+            enabled=True,
             get_container_file_path=lambda base: f"{base}/real-skill/SKILL.md",
         )
-        monkeypatch.setattr(prompt_mod, "get_enabled_skills_for_config", lambda app_config=None: [skill])
+        self._patch_storage(monkeypatch, skills=[skill])
 
         result = prompt_mod.get_skills_prompt_section(available_skills={"other-skill"}, app_config=config)
         assert result == ""
@@ -522,10 +503,10 @@ class TestGetSkillsPromptSection:
             name="real-skill",
             description="desc",
             category="custom",
+            enabled=True,
             get_container_file_path=lambda base: f"{base}/real-skill/SKILL.md",
         )
-        monkeypatch.setattr(prompt_mod, "get_enabled_skills_for_config", lambda app_config=None: [skill])
-        prompt_mod._get_cached_skills_prompt_section.cache_clear()
+        self._patch_storage(monkeypatch, skills=[skill])
 
         result = prompt_mod.get_skills_prompt_section(available_skills=set(), app_config=config)
         assert result == ""

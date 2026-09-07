@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from ideer.persistence.models.resource_catalog import ResourceType
-from ideer.resources.storage import ResourceStorage, StorageLimits, StorageValidationError
+from app.agentplatform.resource_models import ResourceType
+from app.agentplatform.resources.storage import ResourceStorage, StorageLimits, StorageValidationError
 
 
 def _uuid() -> str:

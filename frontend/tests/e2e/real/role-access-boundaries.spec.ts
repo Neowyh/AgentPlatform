@@ -2,11 +2,17 @@ import { expect, test } from "@playwright/test";
 
 import {
   assertRbacSeed,
+  hasRealE2EEnvironment,
   loginAsRealUser,
   requireRealE2EEnvironment,
 } from "./real-e2e";
 
 const emptyStorageState = { cookies: [], origins: [] };
+
+test.skip(
+  !hasRealE2EEnvironment(),
+  "requires the Real E2E harness (GitHub Actions Real E2E lane), not the mock lane",
+);
 
 test.describe("real RBAC boundaries", () => {
   test.use({ storageState: emptyStorageState });

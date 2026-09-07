@@ -13,9 +13,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from app.agentplatform.rbac_models import UserRole
 from app.gateway.authz import get_current_rbac_user
 from app.gateway.routers.audit_logs import router as audit_router
-from ideer.persistence.models.user import UserRole
 
 # ---------------------------------------------------------------------------
 # Helpers

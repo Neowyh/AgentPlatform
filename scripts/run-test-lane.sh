@@ -74,7 +74,11 @@ backend_pytest() {
 
   (
     cd "$ROOT_DIR/backend"
-    PYTHONPATH=. PYTHONIOENCODING=utf-8 PYTHONUTF8=1 uv run pytest "${args[@]}"
+    # A number of compatibility tests intentionally use the shared helpers as
+    # top-level modules (for example ``_router_auth_helpers``).  Keep the
+    # lane's collection roots on PYTHONPATH so those modules resolve exactly
+    # as they do under the backend Make targets.
+    PYTHONPATH=.:tests PYTHONIOENCODING=utf-8 PYTHONUTF8=1 uv run pytest "${args[@]}"
   )
 }
 
@@ -114,11 +118,13 @@ case "$LANE" in
     (cd "$ROOT_DIR/frontend" && pnpm test:e2e:a11y)
     ;;
   pr-standard)
+    "$ROOT_DIR/scripts/check-runtime-boundary.sh"
     "$ROOT_DIR/scripts/run-test-lane.sh" backend-standard
     "$ROOT_DIR/scripts/run-test-lane.sh" frontend-standard
     "$ROOT_DIR/scripts/run-test-lane.sh" frontend-smoke
     ;;
   core-full)
+    "$ROOT_DIR/scripts/check-runtime-boundary.sh"
     "$ROOT_DIR/scripts/run-test-lane.sh" backend-full
     "$ROOT_DIR/scripts/run-test-lane.sh" frontend-core
     "$ROOT_DIR/scripts/run-test-lane.sh" frontend-mock-e2e

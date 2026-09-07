@@ -9,16 +9,17 @@ import pytest_asyncio
 import yaml
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from app.agentplatform.resources.runtime import _json_hash
+from app.agentplatform.resources.service import ResourceAction, ResourceActor
+from app.agentplatform.workflows.v2.adapters import ActionAdapterRegistry, _ToolAdapter
+from app.agentplatform.workflows.v2.errors import WorkflowInvalidRootsError
+from app.agentplatform.workflows.v2.file_roots import make_host_resolver
+from app.agentplatform.workflows.v2.store import WorkflowV2Store
+from app.agentplatform.workflows.v2.worker import WorkflowWorker
 from app.workflow_worker import execute_workflow_task
-from ideer.config.paths import Paths
-from ideer.persistence.base import Base
-from ideer.resources.runtime import _json_hash
-from ideer.resources.service import ResourceAction, ResourceActor
-from ideer.workflows.v2.adapters import ActionAdapterRegistry, _ToolAdapter
-from ideer.workflows.v2.errors import WorkflowInvalidRootsError
-from ideer.workflows.v2.file_roots import make_host_resolver
-from ideer.workflows.v2.store import WorkflowV2Store
-from ideer.workflows.v2.worker import WorkflowWorker
+from deerflow.config.database_config import DatabaseConfig
+from deerflow.config.paths import Paths
+from deerflow.persistence.base import Base
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 WORKFLOW_PATH = REPO_ROOT / "resources" / "workflows" / "fault-zeroing.yaml"
@@ -47,7 +48,7 @@ async def _make_canonical_run(
     """Freeze a canonical workflow run whose dependency closure is a single workflow root."""
     from uuid import uuid4
 
-    from ideer.persistence.models.resource_catalog import Resource, ResourceVersion
+    from app.agentplatform.resource_models import Resource, ResourceVersion
 
     workflow_id = str(uuid4())
     async with store.session_factory() as session:
@@ -145,7 +146,7 @@ class RecordingAgent:
 def _make_config(tmp_path: Path) -> SimpleNamespace:
     return SimpleNamespace(
         checkpointer=SimpleNamespace(type="sqlite", connection_string=str(tmp_path / "checkpoints.db")),
-        database=SimpleNamespace(backend="memory"),
+        database=DatabaseConfig(backend="memory"),
         workflow_runtime=SimpleNamespace(
             max_events_per_run=1000,
             node_timeout_seconds=30,
@@ -162,6 +163,12 @@ async def _run_worker_once(
     run_id: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # deerflow's skills host path defaults to the upstream `skills/` tree; the
+    # enterprise skill bundle (fault-zeroing templates) lives in resources/skills.
+    monkeypatch.setattr(
+        "app.agentplatform.workflows.v2.file_roots._get_skills_host_path",
+        lambda: str(REPO_ROOT / "resources" / "skills"),
+    )
     definition = yaml.safe_load(WORKFLOW_PATH.read_text(encoding="utf-8"))
     await _make_canonical_run(
         durable_store,
@@ -193,9 +200,9 @@ async def test_production_worker_task_path_persists_all_fault_zeroing_events(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    monkeypatch.setattr("ideer.workflows.v2.file_roots.get_paths", lambda: Paths(str(tmp_path / "base")))
+    monkeypatch.setattr("app.agentplatform.workflows.v2.file_roots.get_paths", lambda: Paths(str(tmp_path / "base")))
     monkeypatch.setattr(
-        "ideer.workflows.v2.file_roots._get_skills_host_path",
+        "app.agentplatform.workflows.v2.file_roots._get_skills_host_path",
         lambda: str(REPO_ROOT / "resources" / "skills"),
     )
     calls: list[str] = []
@@ -227,7 +234,7 @@ async def test_host_path_inputs_fail_the_run_instead_of_completing(
 ) -> None:
     """Host paths are rejected when the canonical run is created — a run can
     never reach the worker with invalid file_access roots."""
-    monkeypatch.setattr("ideer.workflows.v2.file_roots.get_paths", lambda: Paths(str(tmp_path / "base")))
+    monkeypatch.setattr("app.agentplatform.workflows.v2.file_roots.get_paths", lambda: Paths(str(tmp_path / "base")))
     definition = yaml.safe_load(WORKFLOW_PATH.read_text(encoding="utf-8"))
     with pytest.raises(WorkflowInvalidRootsError) as exc_info:
         await _make_canonical_run(
@@ -258,7 +265,7 @@ async def test_missing_artifacts_pause_the_run_for_manual_resume(
     whose declared write roots produced no usable data must park the run as
     ``paused`` with an ``artifacts_missing`` interrupt instead of failing it,
     so an operator can fix the files and resume from the checkpoint."""
-    monkeypatch.setattr("ideer.workflows.v2.file_roots.get_paths", lambda: Paths(str(tmp_path / "base")))
+    monkeypatch.setattr("app.agentplatform.workflows.v2.file_roots.get_paths", lambda: Paths(str(tmp_path / "base")))
     calls: list[str] = []
     await _run_worker_once(
         durable_store,
@@ -289,7 +296,7 @@ async def test_precondition_skip_skips_corrective_actions_and_still_generates_ou
     """The real workflow's corrective_actions gate must skip when no root cause
     is confirmed (fault_tree.json `root_causes[*].status` has no `confirmed`),
     and generate_outputs must still complete the run with all 4 files."""
-    monkeypatch.setattr("ideer.workflows.v2.file_roots.get_paths", lambda: Paths(str(tmp_path / "base")))
+    monkeypatch.setattr("app.agentplatform.workflows.v2.file_roots.get_paths", lambda: Paths(str(tmp_path / "base")))
     calls: list[str] = []
     await _run_worker_once(
         durable_store,
@@ -321,7 +328,7 @@ async def test_fork_branch_failure_fails_run_and_persists_node_failure(
 ) -> None:
     """A failing fork branch must fail the run (default missing-artifact/failure
     semantics), persist the node_failed event, and never mark the join completed."""
-    monkeypatch.setattr("ideer.workflows.v2.file_roots.get_paths", lambda: Paths(str(tmp_path / "base")))
+    monkeypatch.setattr("app.agentplatform.workflows.v2.file_roots.get_paths", lambda: Paths(str(tmp_path / "base")))
     calls: list[str] = []
     await _run_worker_once(
         durable_store,
@@ -351,7 +358,7 @@ async def test_control_node_lifecycle_events_reach_the_event_stream(
 ) -> None:
     """fork_start and join_review must emit node_started/node_completed so the
     run graph shows real status for control nodes (fix/workflow-node-status)."""
-    monkeypatch.setattr("ideer.workflows.v2.file_roots.get_paths", lambda: Paths(str(tmp_path / "base")))
+    monkeypatch.setattr("app.agentplatform.workflows.v2.file_roots.get_paths", lambda: Paths(str(tmp_path / "base")))
     calls: list[str] = []
     await _run_worker_once(
         durable_store,
@@ -421,7 +428,7 @@ async def test_empty_payload_resume_advances_past_interrupt_gates(
     which would make the interrupt gate re-raise and the run stay paused
     forever. The production worker normalizes the empty payload.
     """
-    monkeypatch.setattr("ideer.workflows.v2.file_roots.get_paths", lambda: Paths(str(tmp_path / "base")))
+    monkeypatch.setattr("app.agentplatform.workflows.v2.file_roots.get_paths", lambda: Paths(str(tmp_path / "base")))
     definition = yaml.safe_load(GATED_WORKFLOW)
     await _make_canonical_run(durable_store, "run-gate-resume-empty", definition, {}, name="gated")
     registry = ActionAdapterRegistry({("tool", "finish"): FinishAgent()})
@@ -464,10 +471,10 @@ async def test_tool_adapter_injects_sandbox_runtime(
     agent nodes. The adapter must mirror the thread-scoped state/context the
     local sandbox derives (thread_id == run_id).
     """
-    monkeypatch.setattr("ideer.config.paths.get_paths", lambda: Paths(str(tmp_path / "base")))
+    monkeypatch.setattr("deerflow.config.paths.get_paths", lambda: Paths(str(tmp_path / "base")))
 
-    from ideer.sandbox.sandbox_provider import reset_sandbox_provider
-    from ideer.sandbox.tools import read_file_tool, write_file_tool
+    from deerflow.sandbox.sandbox_provider import reset_sandbox_provider
+    from deerflow.sandbox.tools import read_file_tool, write_file_tool
 
     reset_sandbox_provider()
 

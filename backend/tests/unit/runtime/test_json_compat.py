@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 from sqlalchemy import Column, Integer, MetaData, String, Table, create_engine, create_mock_engine, select
 
-from ideer.persistence.json_compat import (
+from deerflow.persistence.json_compat import (
     _INT64_MAX,
     _INT64_MIN,
     _PG,

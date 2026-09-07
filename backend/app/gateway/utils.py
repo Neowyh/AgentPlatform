@@ -7,8 +7,8 @@ import uuid
 
 from sqlalchemy import select
 
-from ideer.persistence.engine import get_session_factory
-from ideer.persistence.models.resource_metadata import ResourceMetadata
+from app.agentplatform.resource_models import ResourceMetadata
+from deerflow.persistence.engine import get_session_factory
 
 logger = logging.getLogger(__name__)
 

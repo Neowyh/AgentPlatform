@@ -1,20 +1,96 @@
-"""Additional tests for ideer.runtime.runs.worker — coverage gaps."""
+"""Additional tests for deerflow.runtime.runs.worker — coverage gaps."""
 
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from ideer.runtime.runs.schemas import RunStatus
-from ideer.runtime.runs.worker import (
-    RunContext,
+from deerflow.runtime.runs.manager import RunStartOutcome
+from deerflow.runtime.runs.schemas import RunStatus
+from deerflow.runtime.runs.worker import (
     _build_runtime_context,
     _install_runtime_context,
     _unpack_stream_item,
     run_agent,
 )
+
+# ---------------------------------------------------------------------------
+# Helpers (mocks shaped for the current run_agent contract)
+# ---------------------------------------------------------------------------
+
+
+def _make_record(**overrides):
+    record = MagicMock()
+    record.run_id = "run_1"
+    record.thread_id = "thread_1"
+    record.assistant_id = "lead_agent"
+    record.model_name = None
+    record.abort_event = MagicMock()
+    record.abort_event.is_set.return_value = False
+    record.abort_action = "interrupt"
+    record.status = RunStatus.success
+    record.ownership_lost = False
+    record.finalizing = False
+    record.task = None
+    record.user_id = None
+    record.metadata = {}
+    record.error = None
+    record.stop_reason = None
+    for k, v in overrides.items():
+        setattr(record, k, v)
+    return record
+
+
+def _make_ctx(**overrides):
+    ctx = MagicMock()
+    ctx.checkpointer = None
+    ctx.store = None
+    ctx.event_store = None
+    ctx.run_events_config = None
+    ctx.thread_store = None
+    ctx.app_config = None
+    ctx.mcp_task_repo = None
+    ctx.checkpoint_channel_mode = "full"
+    ctx.on_run_completed = None
+    for k, v in overrides.items():
+        setattr(ctx, k, v)
+    return ctx
+
+
+def _make_bridge():
+    bridge = MagicMock()
+    bridge.publish = AsyncMock()
+    bridge.publish_end = AsyncMock()
+    bridge.cleanup = AsyncMock()
+    return bridge
+
+
+def _make_run_manager():
+    run_manager = MagicMock()
+    run_manager.set_status = AsyncMock()
+    run_manager.set_status_if_not_cancelled = AsyncMock(return_value=None)
+    run_manager.set_finalizing = AsyncMock()
+    run_manager.wait_for_prior_finalizing = AsyncMock()
+    run_manager.try_start = AsyncMock(return_value=RunStartOutcome.started)
+    run_manager.has_later_started_run = AsyncMock(return_value=False)
+    run_manager.persist_current_status = AsyncMock()
+    run_manager.update_run_progress = AsyncMock()
+    run_manager.update_run_completion = AsyncMock()
+    run_manager.update_finalizing_progress = AsyncMock()
+    run_manager.update_model_name = AsyncMock()
+    run_manager.cleanup = AsyncMock()
+    return run_manager
+
+
+class _EmptyAgent:
+    metadata: dict = {}
+
+    async def astream(self, graph_input, config=None, stream_mode=None, subgraphs=False):
+        return
+        yield  # pragma: no cover
+
 
 # ---------------------------------------------------------------------------
 # _build_runtime_context — additional cases
@@ -57,15 +133,17 @@ class TestInstallRuntimeContextAdditional:
 
 class TestUnpackStreamItemAdditional:
     def test_three_tuple_without_subgraphs(self):
-        """Three-tuple without subgraphs should fallback to first mode."""
-        mode, chunk = _unpack_stream_item(("ns", "values", {"data": 1}), ["values"], False)
-        # Without subgraphs, three-tuple is not unpacked as (ns, mode, chunk)
-        # Falls back to first mode
+        """Three-tuple without subgraphs falls back to first mode with the raw item."""
+        mode, chunk, namespace = _unpack_stream_item(("ns", "values", {"data": 1}), ["values"], False)
         assert mode == "values"
+        assert chunk == ("ns", "values", {"data": 1})
+        assert namespace == ()
 
     def test_single_element_list_item(self):
-        mode, chunk = _unpack_stream_item(("values",), ["values"], False)
+        mode, chunk, namespace = _unpack_stream_item(("values",), ["values"], False)
         assert mode == "values"
+        assert chunk == ("values",)
+        assert namespace == ()
 
 
 # ---------------------------------------------------------------------------
@@ -77,412 +155,204 @@ class TestRunAgentAdditional:
     @pytest.mark.asyncio
     async def test_run_aborted_rollback_action(self):
         """Test run abort with rollback action."""
-        bridge = MagicMock()
-        bridge.publish = AsyncMock()
-        bridge.publish_end = AsyncMock()
-        bridge.cleanup = AsyncMock()
-
-        run_manager = MagicMock()
-        run_manager.set_status = AsyncMock()
-        run_manager.update_run_completion = AsyncMock()
-
-        record = MagicMock()
-        record.run_id = "run_1"
-        record.thread_id = "thread_1"
-        record.assistant_id = "lead_agent"
-        record.model_name = None
-        record.abort_event = MagicMock()
+        bridge = _make_bridge()
+        run_manager = _make_run_manager()
+        record = _make_record(abort_action="rollback", status=RunStatus.error)
         record.abort_event.is_set.return_value = True
-        record.abort_action = "rollback"
-        record.status = RunStatus.error
 
-        ctx = RunContext(checkpointer=None, store=None)
-
-        mock_agent = MagicMock()
-
-        async def _empty_astream(*args, **kwargs):
-            return
-            yield
-
-        mock_agent.astream = _empty_astream
-
-        def agent_factory(config=None):
-            return mock_agent
-
-        with patch("ideer.runtime.runs.worker.inject_langfuse_metadata"):
-            with patch("ideer.runtime.runs.worker.get_effective_user_id", return_value="user_1"):
-                with patch("ideer.runtime.runs.worker.os.environ", {}):
-                    with patch("ideer.runtime.runs.worker.resolve_root_run_name", return_value="test"):
-                        await run_agent(
-                            bridge,
-                            run_manager,
-                            record,
-                            ctx=ctx,
-                            agent_factory=agent_factory,
-                            graph_input={"messages": []},
-                            config={},
-                        )
+        await run_agent(
+            bridge,
+            run_manager,
+            record,
+            ctx=_make_ctx(),
+            agent_factory=lambda *, config: _EmptyAgent(),
+            graph_input={"messages": []},
+            config={},
+        )
 
         run_manager.set_status.assert_any_call("run_1", RunStatus.error, error="Rolled back by user")
 
     @pytest.mark.asyncio
     async def test_run_cancelled_rollback_action(self):
         """Test run cancellation with rollback action."""
-        bridge = MagicMock()
-        bridge.publish = AsyncMock()
-        bridge.publish_end = AsyncMock()
-        bridge.cleanup = AsyncMock()
 
-        run_manager = MagicMock()
-        run_manager.set_status = AsyncMock()
-        run_manager.update_run_completion = AsyncMock()
+        class CancellingAgent:
+            metadata: dict = {}
 
-        record = MagicMock()
-        record.run_id = "run_1"
-        record.thread_id = "thread_1"
-        record.assistant_id = "lead_agent"
-        record.model_name = None
-        record.abort_action = "rollback"
-        record.status = RunStatus.error
+            async def astream(self, graph_input, config=None, stream_mode=None, subgraphs=False):
+                raise asyncio.CancelledError()
+                yield  # pragma: no cover
 
-        ctx = RunContext(checkpointer=None, store=None)
+        bridge = _make_bridge()
+        run_manager = _make_run_manager()
+        record = _make_record(abort_action="rollback", status=RunStatus.error)
 
-        mock_agent = MagicMock()
-
-        async def cancelling_astream(*args, **kwargs):
-            raise asyncio.CancelledError()
-            yield
-
-        mock_agent.astream = cancelling_astream
-
-        def agent_factory(config=None):
-            return mock_agent
-
-        with patch("ideer.runtime.runs.worker.inject_langfuse_metadata"):
-            with patch("ideer.runtime.runs.worker.get_effective_user_id", return_value="user_1"):
-                with patch("ideer.runtime.runs.worker.os.environ", {}):
-                    with patch("ideer.runtime.runs.worker.resolve_root_run_name", return_value="test"):
-                        await run_agent(
-                            bridge,
-                            run_manager,
-                            record,
-                            ctx=ctx,
-                            agent_factory=agent_factory,
-                            graph_input={"messages": []},
-                            config={},
-                        )
+        await run_agent(
+            bridge,
+            run_manager,
+            record,
+            ctx=_make_ctx(),
+            agent_factory=lambda *, config: CancellingAgent(),
+            graph_input={"messages": []},
+            config={},
+        )
 
         run_manager.set_status.assert_any_call("run_1", RunStatus.error, error="Rolled back by user")
 
     @pytest.mark.asyncio
     async def test_run_with_model_name_resolution(self):
         """Test that model name is updated when agent metadata differs."""
-        bridge = MagicMock()
-        bridge.publish = AsyncMock()
-        bridge.publish_end = AsyncMock()
-        bridge.cleanup = AsyncMock()
+        bridge = _make_bridge()
+        run_manager = _make_run_manager()
+        record = _make_record(model_name="gpt-4")
 
-        run_manager = MagicMock()
-        run_manager.set_status = AsyncMock()
-        run_manager.update_model_name = AsyncMock()
-        run_manager.update_run_completion = AsyncMock()
+        class ModelAgent:
+            metadata = {"model_name": "gpt-4-turbo"}
 
-        record = MagicMock()
-        record.run_id = "run_1"
-        record.thread_id = "thread_1"
-        record.assistant_id = "lead_agent"
-        record.model_name = "gpt-4"
-        record.abort_event = MagicMock()
-        record.abort_event.is_set.return_value = False
-        record.status = RunStatus.success
+            async def astream(self, graph_input, config=None, stream_mode=None, subgraphs=False):
+                return
+                yield  # pragma: no cover
 
-        ctx = RunContext(checkpointer=None, store=None)
-
-        mock_agent = MagicMock()
-        mock_agent.metadata = {"model_name": "gpt-4-turbo"}
-
-        async def _empty_astream(*args, **kwargs):
-            return
-            yield
-
-        mock_agent.astream = _empty_astream
-
-        def agent_factory(config=None):
-            return mock_agent
-
-        with patch("ideer.runtime.runs.worker.inject_langfuse_metadata"):
-            with patch("ideer.runtime.runs.worker.get_effective_user_id", return_value="user_1"):
-                with patch("ideer.runtime.runs.worker.os.environ", {}):
-                    with patch("ideer.runtime.runs.worker.resolve_root_run_name", return_value="test"):
-                        await run_agent(
-                            bridge,
-                            run_manager,
-                            record,
-                            ctx=ctx,
-                            agent_factory=agent_factory,
-                            graph_input={"messages": []},
-                            config={},
-                        )
+        await run_agent(
+            bridge,
+            run_manager,
+            record,
+            ctx=_make_ctx(),
+            agent_factory=lambda *, config: ModelAgent(),
+            graph_input={"messages": []},
+            config={},
+        )
 
         run_manager.update_model_name.assert_called_with("run_1", "gpt-4-turbo")
 
     @pytest.mark.asyncio
     async def test_run_with_subgraphs(self):
         """Test run with subgraphs enabled."""
-        bridge = MagicMock()
-        bridge.publish = AsyncMock()
-        bridge.publish_end = AsyncMock()
-        bridge.cleanup = AsyncMock()
 
-        run_manager = MagicMock()
-        run_manager.set_status = AsyncMock()
-        run_manager.update_run_completion = AsyncMock()
+        class SubgraphAgent:
+            metadata: dict = {}
 
-        record = MagicMock()
-        record.run_id = "run_1"
-        record.thread_id = "thread_1"
-        record.assistant_id = "lead_agent"
-        record.model_name = None
-        record.abort_event = MagicMock()
-        record.abort_event.is_set.return_value = False
-        record.status = RunStatus.success
-
-        ctx = RunContext(checkpointer=None, store=None)
-
-        async def mock_astream(input, config=None, stream_mode=None, subgraphs=False):
-            if subgraphs:
+            async def astream(self, graph_input, config=None, stream_mode=None, subgraphs=False):
                 yield ("ns", "values", {"data": 1})
-            else:
-                yield ("values", {"data": 1})
 
-        mock_agent = MagicMock()
-        mock_agent.astream = mock_astream
-        mock_agent.metadata = {}
+        bridge = _make_bridge()
+        run_manager = _make_run_manager()
+        record = _make_record()
 
-        def agent_factory(config=None):
-            return mock_agent
-
-        with patch("ideer.runtime.runs.worker.inject_langfuse_metadata"):
-            with patch("ideer.runtime.runs.worker.get_effective_user_id", return_value="user_1"):
-                with patch("ideer.runtime.runs.worker.os.environ", {}):
-                    with patch("ideer.runtime.runs.worker.resolve_root_run_name", return_value="test"):
-                        await run_agent(
-                            bridge,
-                            run_manager,
-                            record,
-                            ctx=ctx,
-                            agent_factory=agent_factory,
-                            graph_input={"messages": []},
-                            config={},
-                            stream_modes=["values"],
-                            stream_subgraphs=True,
-                        )
+        await run_agent(
+            bridge,
+            run_manager,
+            record,
+            ctx=_make_ctx(),
+            agent_factory=lambda *, config: SubgraphAgent(),
+            graph_input={"messages": []},
+            config={},
+            stream_modes=["values"],
+            stream_subgraphs=True,
+        )
 
         bridge.publish.assert_called()
 
     @pytest.mark.asyncio
     async def test_run_with_thread_store(self):
         """Test run with thread_store for title sync."""
-        bridge = MagicMock()
-        bridge.publish = AsyncMock()
-        bridge.publish_end = AsyncMock()
-        bridge.cleanup = AsyncMock()
-
-        run_manager = MagicMock()
-        run_manager.set_status = AsyncMock()
-        run_manager.update_run_completion = AsyncMock()
-
-        record = MagicMock()
-        record.run_id = "run_1"
-        record.thread_id = "thread_1"
-        record.assistant_id = "lead_agent"
-        record.model_name = None
-        record.abort_event = MagicMock()
-        record.abort_event.is_set.return_value = False
-        record.status = RunStatus.success
+        bridge = _make_bridge()
+        run_manager = _make_run_manager()
+        record = _make_record()
 
         thread_store = MagicMock()
         thread_store.update_display_name = AsyncMock()
         thread_store.update_status = AsyncMock()
 
-        ctx = RunContext(checkpointer=None, thread_store=thread_store)
-
-        mock_agent = MagicMock()
-
-        async def _empty_astream(*args, **kwargs):
-            return
-            yield
-
-        mock_agent.astream = _empty_astream
-
-        def agent_factory(config=None):
-            return mock_agent
-
-        with patch("ideer.runtime.runs.worker.inject_langfuse_metadata"):
-            with patch("ideer.runtime.runs.worker.get_effective_user_id", return_value="user_1"):
-                with patch("ideer.runtime.runs.worker.os.environ", {}):
-                    with patch("ideer.runtime.runs.worker.resolve_root_run_name", return_value="test"):
-                        await run_agent(
-                            bridge,
-                            run_manager,
-                            record,
-                            ctx=ctx,
-                            agent_factory=agent_factory,
-                            graph_input={"messages": []},
-                            config={},
-                        )
+        await run_agent(
+            bridge,
+            run_manager,
+            record,
+            ctx=_make_ctx(thread_store=thread_store),
+            agent_factory=lambda *, config: _EmptyAgent(),
+            graph_input={"messages": []},
+            config={},
+        )
 
         thread_store.update_status.assert_called()
 
     @pytest.mark.asyncio
     async def test_run_messages_tuple_mode(self):
         """Test run with messages-tuple mode maps to 'messages'."""
-        bridge = MagicMock()
-        bridge.publish = AsyncMock()
-        bridge.publish_end = AsyncMock()
-        bridge.cleanup = AsyncMock()
 
-        run_manager = MagicMock()
-        run_manager.set_status = AsyncMock()
-        run_manager.update_run_completion = AsyncMock()
+        class MessagesAgent:
+            metadata: dict = {}
 
-        record = MagicMock()
-        record.run_id = "run_1"
-        record.thread_id = "thread_1"
-        record.assistant_id = "lead_agent"
-        record.model_name = None
-        record.abort_event = MagicMock()
-        record.abort_event.is_set.return_value = False
-        record.status = RunStatus.success
+            async def astream(self, graph_input, config=None, stream_mode=None, subgraphs=False):
+                assert stream_mode == "messages"
+                yield ("messages", {"content": "hi"})
 
-        ctx = RunContext(checkpointer=None, store=None)
+        bridge = _make_bridge()
+        run_manager = _make_run_manager()
+        record = _make_record()
 
-        async def mock_astream(input, config=None, stream_mode="values"):
-            yield ("messages", {"content": "hi"})
-
-        mock_agent = MagicMock()
-        mock_agent.astream = mock_astream
-        mock_agent.metadata = {}
-
-        def agent_factory(config=None):
-            return mock_agent
-
-        with patch("ideer.runtime.runs.worker.inject_langfuse_metadata"):
-            with patch("ideer.runtime.runs.worker.get_effective_user_id", return_value="user_1"):
-                with patch("ideer.runtime.runs.worker.os.environ", {}):
-                    with patch("ideer.runtime.runs.worker.resolve_root_run_name", return_value="test"):
-                        await run_agent(
-                            bridge,
-                            run_manager,
-                            record,
-                            ctx=ctx,
-                            agent_factory=agent_factory,
-                            graph_input={"messages": []},
-                            config={},
-                            stream_modes=["messages-tuple"],
-                        )
+        await run_agent(
+            bridge,
+            run_manager,
+            record,
+            ctx=_make_ctx(),
+            agent_factory=lambda *, config: MessagesAgent(),
+            graph_input={"messages": []},
+            config={},
+            stream_modes=["messages-tuple"],
+        )
 
         bridge.publish.assert_called()
 
     @pytest.mark.asyncio
-    async def test_run_invalid_stream_mode_fallback(self):
-        """Test that invalid stream modes are filtered out, falling back to values."""
-        bridge = MagicMock()
-        bridge.publish = AsyncMock()
-        bridge.publish_end = AsyncMock()
-        bridge.cleanup = AsyncMock()
+    async def test_run_invalid_stream_mode_rejected(self):
+        """Invalid stream modes now fail the run instead of silently falling back.
 
-        run_manager = MagicMock()
-        run_manager.set_status = AsyncMock()
-        run_manager.update_run_completion = AsyncMock()
+        Upstream replaced the old filtered-fallback behavior with
+        normalize_stream_modes raising UnsupportedStreamModeError.
+        """
+        bridge = _make_bridge()
+        run_manager = _make_run_manager()
+        record = _make_record()
 
-        record = MagicMock()
-        record.run_id = "run_1"
-        record.thread_id = "thread_1"
-        record.assistant_id = "lead_agent"
-        record.model_name = None
-        record.abort_event = MagicMock()
-        record.abort_event.is_set.return_value = False
-        record.status = RunStatus.success
+        await run_agent(
+            bridge,
+            run_manager,
+            record,
+            ctx=_make_ctx(),
+            agent_factory=lambda *, config: _EmptyAgent(),
+            graph_input={"messages": []},
+            config={},
+            stream_modes=["invalid_mode"],
+        )
 
-        ctx = RunContext(checkpointer=None, store=None)
-
-        async def mock_astream(input, config=None, stream_mode="values"):
-            yield {"data": "test"}
-
-        mock_agent = MagicMock()
-        mock_agent.astream = mock_astream
-        mock_agent.metadata = {}
-
-        def agent_factory(config=None):
-            return mock_agent
-
-        with patch("ideer.runtime.runs.worker.inject_langfuse_metadata"):
-            with patch("ideer.runtime.runs.worker.get_effective_user_id", return_value="user_1"):
-                with patch("ideer.runtime.runs.worker.os.environ", {}):
-                    with patch("ideer.runtime.runs.worker.resolve_root_run_name", return_value="test"):
-                        await run_agent(
-                            bridge,
-                            run_manager,
-                            record,
-                            ctx=ctx,
-                            agent_factory=agent_factory,
-                            graph_input={"messages": []},
-                            config={},
-                            stream_modes=["invalid_mode"],
-                        )
-
-        # Invalid mode should be filtered, values fallback used
-        bridge.publish.assert_called()
+        assert record is not None
+        run_manager.set_status_if_not_cancelled.assert_any_call(
+            "run_1",
+            RunStatus.error,
+            error="Unsupported stream mode(s): invalid_mode",
+        )
 
     @pytest.mark.asyncio
     async def test_run_abort_during_streaming(self):
         """Test abort during streaming stops processing."""
-        bridge = MagicMock()
-        bridge.publish = AsyncMock()
-        bridge.publish_end = AsyncMock()
-        bridge.cleanup = AsyncMock()
-
-        run_manager = MagicMock()
-        run_manager.set_status = AsyncMock()
-        run_manager.update_run_completion = AsyncMock()
-
-        record = MagicMock()
-        record.run_id = "run_1"
-        record.thread_id = "thread_1"
-        record.assistant_id = "lead_agent"
-        record.model_name = None
-        record.abort_event = MagicMock()
+        bridge = _make_bridge()
+        run_manager = _make_run_manager()
+        record = _make_record(status=RunStatus.interrupted)
         record.abort_event.is_set.return_value = True  # Always abort
-        record.abort_action = "interrupt"
-        record.status = RunStatus.interrupted
 
-        ctx = RunContext(checkpointer=None, store=None)
+        await run_agent(
+            bridge,
+            run_manager,
+            record,
+            ctx=_make_ctx(),
+            agent_factory=lambda *, config: _EmptyAgent(),
+            graph_input={"messages": []},
+            config={},
+        )
 
-        async def mock_astream(input, config=None, stream_mode="values"):
-            yield {"chunk": 1}
-            yield {"chunk": 2}
-
-        mock_agent = MagicMock()
-        mock_agent.astream = mock_astream
-        mock_agent.metadata = {}
-
-        def agent_factory(config=None):
-            return mock_agent
-
-        with patch("ideer.runtime.runs.worker.inject_langfuse_metadata"):
-            with patch("ideer.runtime.runs.worker.get_effective_user_id", return_value="user_1"):
-                with patch("ideer.runtime.runs.worker.os.environ", {}):
-                    with patch("ideer.runtime.runs.worker.resolve_root_run_name", return_value="test"):
-                        await run_agent(
-                            bridge,
-                            run_manager,
-                            record,
-                            ctx=ctx,
-                            agent_factory=agent_factory,
-                            graph_input={"messages": []},
-                            config={},
-                        )
-
-        # When abort is set, stream loop breaks immediately (no chunks published)
+        # When abort is set, no stream chunks are published (only the
+        # metadata frame) and the run ends interrupted.
+        for pub_call in bridge.publish.await_args_list:
+            assert pub_call.args[1] == "metadata"
         run_manager.set_status.assert_any_call("run_1", RunStatus.interrupted)

@@ -1,12 +1,11 @@
-"""Tests targeting uncovered conditional branches in ideer.agents.lead_agent.prompt.
+"""Tests targeting uncovered conditional branches in deerflow.agents.lead_agent.prompt.
 
 Each test function is named after the line range it covers.
 """
 
-import threading
 from types import SimpleNamespace
 
-from ideer.agents.lead_agent import prompt as prompt_module
+from deerflow.agents.lead_agent import prompt as prompt_module
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -32,22 +31,15 @@ def _set_skills_cache_state(*, skills=None, active=False, version=0):
 class TestRefreshWorkerExceptionBranch:
     """Cover the ``except Exception`` block in _refresh_enabled_skills_cache_worker."""
 
-    def test_worker_catches_load_exception_and_sets_empty_list(self, monkeypatch):
-        """When _load_enabled_skills_sync raises, skills should default to []."""
-        load_called = threading.Event()
-
-        def failing_load():
-            load_called.set()
-            raise RuntimeError("simulated I/O failure")
-
-        # Pre-seed: cache is None, refresh not yet active
+    def test_worker_catches_load_exception_and_keeps_cache(self, monkeypatch):
+        """Upstream: on load failure the worker keeps the cache untouched (stays
+        None), clears the refresh flag, and converges on the first iteration."""
         _set_skills_cache_state()
 
-        # We monkey-patch the sync loader so it always raises.
         monkeypatch.setattr(
             prompt_module,
             "_load_enabled_skills_sync",
-            failing_load,
+            lambda: (_ for _ in ()).throw(RuntimeError("simulated I/O failure")),
         )
         # Prevent version bump so the worker converges on the first iteration.
         monkeypatch.setattr(
@@ -56,12 +48,10 @@ class TestRefreshWorkerExceptionBranch:
             0,
         )
 
-        # Run the worker directly (it will return after the first successful converge).
         prompt_module._refresh_enabled_skills_cache_worker()
 
-        # The cache should hold an empty list (the fallback).
         with prompt_module._enabled_skills_lock:
-            assert prompt_module._enabled_skills_cache == []
+            assert prompt_module._enabled_skills_cache is None
             assert prompt_module._enabled_skills_refresh_active is False
 
     def test_worker_populates_cache_on_success(self, monkeypatch):
@@ -131,29 +121,23 @@ class TestGetMemoryContextGlobalConfig:
     """Cover the branch where app_config is None and the global memory config is used."""
 
     def test_uses_global_memory_config_when_app_config_is_none(self, monkeypatch):
+        """Upstream loads memory via the pluggable MemoryManager when no explicit config is given."""
         mem_config = SimpleNamespace(
             enabled=True,
             injection_enabled=True,
             max_injection_tokens=4096,
         )
+        manager = SimpleNamespace(get_context=lambda *, user_id, agent_name: "global-memory-text")
         monkeypatch.setattr(
-            "ideer.config.memory_config.get_memory_config",
+            "deerflow.config.memory_config.get_memory_config",
             lambda: mem_config,
         )
         monkeypatch.setattr(
-            "ideer.runtime.user_context.get_effective_user_id",
-            lambda: "u-1",
-        )
-        monkeypatch.setattr(
-            "ideer.agents.memory.get_memory_data",
-            lambda agent_name=None, **kw: {"facts": []},
-        )
-        monkeypatch.setattr(
-            "ideer.agents.memory.format_memory_for_injection",
-            lambda data, *, max_tokens: "global-memory-text",
+            "deerflow.agents.memory.get_memory_manager",
+            lambda: manager,
         )
 
-        ctx = prompt_module._get_memory_context(agent_name="test-agent", app_config=None)
+        ctx = prompt_module._get_memory_context(agent_name="test-agent", app_config=None, user_id="u-1")
 
         assert "<memory>" in ctx
         assert "global-memory-text" in ctx
@@ -161,7 +145,7 @@ class TestGetMemoryContextGlobalConfig:
     def test_returns_empty_when_memory_disabled_globally(self, monkeypatch):
         mem_config = SimpleNamespace(enabled=False, injection_enabled=True, max_injection_tokens=100)
         monkeypatch.setattr(
-            "ideer.config.memory_config.get_memory_config",
+            "deerflow.config.memory_config.get_memory_config",
             lambda: mem_config,
         )
 
@@ -177,20 +161,29 @@ class TestGetMemoryContextGlobalConfig:
 class TestGetSkillsPromptSectionEmptySignature:
     """Cover the branch where skill_signature is empty but available_key is not None."""
 
-    def test_returns_empty_when_no_skills_match_available_key(self, monkeypatch):
-        """When there are no skills but available_skills is a non-empty set, return ''."""
+    def _patch_world(self, monkeypatch, skills):
         monkeypatch.setattr(
             prompt_module,
             "get_enabled_skills_for_config",
-            lambda app_config=None: [],
+            lambda app_config=None, user_id=None: list(skills),
         )
         monkeypatch.setattr(
-            "ideer.config.get_app_config",
+            prompt_module,
+            "get_or_new_skill_storage",
+            lambda app_config=None: SimpleNamespace(load_skills=lambda enabled_only: list(skills)),
+        )
+        monkeypatch.setattr(
+            "deerflow.config.get_app_config",
             lambda: SimpleNamespace(
                 skills=SimpleNamespace(container_path="/mnt/skills"),
                 skill_evolution=SimpleNamespace(enabled=False),
             ),
         )
+        prompt_module._get_cached_skills_prompt_section.cache_clear()
+
+    def test_returns_empty_when_no_skills_match_available_key(self, monkeypatch):
+        """When there are no skills but available_skills is a non-empty set, return ''."""
+        self._patch_world(monkeypatch, [])
 
         result = prompt_module.get_skills_prompt_section(
             available_skills={"nonexistent-skill"},
@@ -203,20 +196,10 @@ class TestGetSkillsPromptSectionEmptySignature:
             name="real-skill",
             description="desc",
             category="builtin",
+            enabled=True,
             get_container_file_path=lambda base: f"{base}/real-skill/SKILL.md",
         )
-        monkeypatch.setattr(
-            prompt_module,
-            "get_enabled_skills_for_config",
-            lambda app_config=None: [skill],
-        )
-        monkeypatch.setattr(
-            "ideer.config.get_app_config",
-            lambda: SimpleNamespace(
-                skills=SimpleNamespace(container_path="/mnt/skills"),
-                skill_evolution=SimpleNamespace(enabled=False),
-            ),
-        )
+        self._patch_world(monkeypatch, [skill])
 
         # available_skills does NOT contain "real-skill"
         result = prompt_module.get_skills_prompt_section(
@@ -226,20 +209,16 @@ class TestGetSkillsPromptSectionEmptySignature:
 
 
 # ---------------------------------------------------------------------------
-# Lines 701-702 – get_deferred_tools_prompt_section exception branch
+# get_deferred_tools_prompt_section — empty deferred set
 # ---------------------------------------------------------------------------
 
 
 class TestGetDeferredToolsPromptSectionException:
-    """Cover the except block when get_app_config() raises."""
+    """Upstream renders from an explicit deferred-name set with no config I/O,
+    so there is no config-load failure branch to cover; empty set -> empty."""
 
-    def test_returns_empty_string_on_config_load_failure(self, monkeypatch):
-        def raise_config():
-            raise RuntimeError("config unavailable")
-
-        monkeypatch.setattr("ideer.config.get_app_config", raise_config)
-
-        result = prompt_module.get_deferred_tools_prompt_section(app_config=None)
+    def test_returns_empty_string_on_empty_deferred_names(self):
+        result = prompt_module.get_deferred_tools_prompt_section(deferred_names=frozenset())
         assert result == ""
 
 
@@ -255,7 +234,7 @@ class TestBuildAcpSectionException:
         def raise_acp():
             raise RuntimeError("acp agents unavailable")
 
-        monkeypatch.setattr("ideer.config.acp_config.get_acp_agents", raise_acp)
+        monkeypatch.setattr("deerflow.config.acp_config.get_acp_agents", raise_acp)
 
         result = prompt_module._build_acp_section(app_config=None)
         assert result == ""
@@ -273,7 +252,7 @@ class TestBuildCustomMountsSectionException:
         def raise_config():
             raise RuntimeError("config broken")
 
-        monkeypatch.setattr("ideer.config.get_app_config", raise_config)
+        monkeypatch.setattr("deerflow.config.get_app_config", raise_config)
 
         with caplog.at_level("ERROR"):
             result = prompt_module._build_custom_mounts_section(app_config=None)

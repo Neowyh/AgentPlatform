@@ -1,4 +1,4 @@
-"""Coverage tests for ideer.community.aio_sandbox.aio_sandbox — targeting 98%+.
+"""Coverage tests for deerflow.community.aio_sandbox.aio_sandbox — targeting 98%+.
 
 Covers all previously uncovered lines:
 - Lines 45, 50-53: base_url and home_dir properties
@@ -24,8 +24,8 @@ import pytest
 @pytest.fixture()
 def sandbox():
     """Create an AioSandbox with a mocked client."""
-    with patch("ideer.community.aio_sandbox.aio_sandbox.AioSandboxClient"):
-        from ideer.community.aio_sandbox.aio_sandbox import AioSandbox
+    with patch("deerflow.community.aio_sandbox.aio_sandbox.AioSandboxClient"):
+        from deerflow.community.aio_sandbox.aio_sandbox import AioSandbox
 
         sb = AioSandbox(id="test-sandbox", base_url="http://localhost:8080")
         return sb
@@ -34,8 +34,8 @@ def sandbox():
 @pytest.fixture()
 def sandbox_with_home():
     """Create an AioSandbox with an explicit home_dir."""
-    with patch("ideer.community.aio_sandbox.aio_sandbox.AioSandboxClient"):
-        from ideer.community.aio_sandbox.aio_sandbox import AioSandbox
+    with patch("deerflow.community.aio_sandbox.aio_sandbox.AioSandboxClient"):
+        from deerflow.community.aio_sandbox.aio_sandbox import AioSandbox
 
         sb = AioSandbox(id="test-sandbox", base_url="http://localhost:8080", home_dir="/home/user")
         return sb
@@ -51,8 +51,8 @@ class TestBaseUrl:
         assert sandbox.base_url == "http://localhost:8080"
 
     def test_base_url_is_set_on_init(self):
-        with patch("ideer.community.aio_sandbox.aio_sandbox.AioSandboxClient"):
-            from ideer.community.aio_sandbox.aio_sandbox import AioSandbox
+        with patch("deerflow.community.aio_sandbox.aio_sandbox.AioSandboxClient"):
+            from deerflow.community.aio_sandbox.aio_sandbox import AioSandbox
 
             sb = AioSandbox(id="test", base_url="http://example.com:9090")
             assert sb.base_url == "http://example.com:9090"
@@ -151,7 +151,7 @@ class TestDownloadFileMaxSize:
     def test_raises_oserror_when_exceeding_max_size(self, sandbox):
         """Line 139: file exceeds max download size raises OSError."""
         # Create a chunk that exceeds the 100MB limit
-        from ideer.community.aio_sandbox.aio_sandbox import _MAX_DOWNLOAD_SIZE
+        from deerflow.community.aio_sandbox.aio_sandbox import _MAX_DOWNLOAD_SIZE
 
         big_chunk = b"x" * (_MAX_DOWNLOAD_SIZE + 1)
 
@@ -162,7 +162,7 @@ class TestDownloadFileMaxSize:
 
     def test_exactly_at_max_size_succeeds(self, sandbox):
         """File exactly at max size should succeed."""
-        from ideer.community.aio_sandbox.aio_sandbox import _MAX_DOWNLOAD_SIZE
+        from deerflow.community.aio_sandbox.aio_sandbox import _MAX_DOWNLOAD_SIZE
 
         # Use chunks that total exactly the limit
         chunk = b"x" * _MAX_DOWNLOAD_SIZE
@@ -205,10 +205,10 @@ class TestListDirException:
         assert "/b/dir" in result
 
     def test_filters_blank_lines(self, sandbox):
-        """Blank lines are filtered out."""
+        """Blank lines are dropped; whitespace-only entries are preserved verbatim."""
         sandbox._client.shell.exec_command = MagicMock(return_value=SimpleNamespace(data=SimpleNamespace(output="/a\n\n/b\n  \n")))
         result = sandbox.list_dir("/test")
-        assert result == ["/a", "/b"]
+        assert result == ["/a", "/b", "  "]
 
 
 # ===========================================================================
@@ -263,7 +263,7 @@ class TestGlob:
         mock_result = SimpleNamespace(data=SimpleNamespace(files=["/test/a.py", "/test/b.py", "/test/__pycache__"]))
         sandbox._client.file.find_files = MagicMock(return_value=mock_result)
 
-        with patch("ideer.community.aio_sandbox.aio_sandbox.should_ignore_path", side_effect=lambda p: "__pycache__" in p):
+        with patch("deerflow.community.aio_sandbox.aio_sandbox.should_ignore_path", side_effect=lambda p: "__pycache__" in p):
             matches, truncated = sandbox.glob("/test", "**/*.py")
 
         assert "/test/a.py" in matches
@@ -294,7 +294,7 @@ class TestGlob:
         mock_result = SimpleNamespace(data=SimpleNamespace(files=entries))
         sandbox._client.file.list_path = MagicMock(return_value=mock_result)
 
-        with patch("ideer.community.aio_sandbox.aio_sandbox.should_ignore_path", return_value=False), patch("ideer.community.aio_sandbox.aio_sandbox.path_matches", side_effect=lambda pat, rel: rel.endswith(".py")):
+        with patch("deerflow.community.aio_sandbox.aio_sandbox.should_ignore_path", return_value=False), patch("deerflow.community.aio_sandbox.aio_sandbox.path_matches", side_effect=lambda pat, rel: rel.endswith(".py")):
             matches, truncated = sandbox.glob("/test", "**/*.py", include_dirs=True)
 
         # Should match file.py and subdir/other.py
@@ -308,7 +308,7 @@ class TestGlob:
         mock_result = SimpleNamespace(data=SimpleNamespace(files=entries))
         sandbox._client.file.list_path = MagicMock(return_value=mock_result)
 
-        with patch("ideer.community.aio_sandbox.aio_sandbox.should_ignore_path", return_value=False), patch("ideer.community.aio_sandbox.aio_sandbox.path_matches", return_value=True):
+        with patch("deerflow.community.aio_sandbox.aio_sandbox.should_ignore_path", return_value=False), patch("deerflow.community.aio_sandbox.aio_sandbox.path_matches", return_value=True):
             matches, truncated = sandbox.glob("/test", "**/*.py", include_dirs=True, max_results=3)
 
         assert len(matches) == 3
@@ -322,7 +322,7 @@ class TestGlob:
         mock_result = SimpleNamespace(data=SimpleNamespace(files=entries))
         sandbox._client.file.list_path = MagicMock(return_value=mock_result)
 
-        with patch("ideer.community.aio_sandbox.aio_sandbox.should_ignore_path", return_value=False), patch("ideer.community.aio_sandbox.aio_sandbox.path_matches", return_value=True):
+        with patch("deerflow.community.aio_sandbox.aio_sandbox.should_ignore_path", return_value=False), patch("deerflow.community.aio_sandbox.aio_sandbox.path_matches", return_value=True):
             matches, truncated = sandbox.glob("/", "**/*.py", include_dirs=True)
 
         assert "/file.py" in matches
@@ -336,7 +336,7 @@ class TestGlob:
         mock_result = SimpleNamespace(data=SimpleNamespace(files=entries))
         sandbox._client.file.list_path = MagicMock(return_value=mock_result)
 
-        with patch("ideer.community.aio_sandbox.aio_sandbox.should_ignore_path", return_value=False), patch("ideer.community.aio_sandbox.aio_sandbox.path_matches", return_value=True):
+        with patch("deerflow.community.aio_sandbox.aio_sandbox.should_ignore_path", return_value=False), patch("deerflow.community.aio_sandbox.aio_sandbox.path_matches", return_value=True):
             matches, truncated = sandbox.glob("/test", "**/*.py", include_dirs=True)
 
         assert "/other/file.py" not in matches
@@ -366,163 +366,163 @@ class TestGlob:
 
 
 class TestGrep:
+    @staticmethod
+    def _provider_match(file, line_number, line_content):
+        return SimpleNamespace(file=file, line_number=line_number, line_content=line_content)
+
     def test_grep_with_glob_filter(self, sandbox):
-        """Lines 237-238: grep with glob filter uses find_files."""
-        find_result = SimpleNamespace(data=SimpleNamespace(files=["/test/a.py", "/test/b.py"]))
-        sandbox._client.file.find_files = MagicMock(return_value=find_result)
+        """grep with glob filter keeps only matches whose rel path matches."""
+        grep_result = SimpleNamespace(
+            data=SimpleNamespace(
+                matches=[
+                    self._provider_match("/test/a.py", 1, "hello a"),
+                    self._provider_match("/test/b.md", 2, "hello b"),
+                ],
+                truncated=False,
+            )
+        )
+        sandbox._client.file.grep_files = MagicMock(return_value=grep_result)
 
-        search_result = SimpleNamespace(data=SimpleNamespace(line_numbers=[1, 3], matches=["hello", "world"]))
-        sandbox._client.file.search_in_file = MagicMock(return_value=search_result)
-
-        with patch("ideer.community.aio_sandbox.aio_sandbox.should_ignore_path", return_value=False):
-            with patch("ideer.community.aio_sandbox.aio_sandbox.truncate_line", side_effect=lambda x: x):
+        with patch("deerflow.community.aio_sandbox.aio_sandbox.should_ignore_path", return_value=False):
+            with patch("deerflow.community.aio_sandbox.aio_sandbox.truncate_line", side_effect=lambda x: x):
                 matches, truncated = sandbox.grep("/test", "hello", glob="**/*.py")
 
-        assert len(matches) == 4  # 2 matches per file, 2 files
+        assert [m.path for m in matches] == ["/test/a.py"]
+        assert matches[0].line_number == 1
+        assert matches[0].line == "hello a"
         assert truncated is False
 
     def test_grep_without_glob_filter(self, sandbox):
-        """Lines 240-242: grep without glob uses list_path."""
-        entries = [
-            SimpleNamespace(path="/test/a.py", is_directory=False),
-            SimpleNamespace(path="/test/subdir", is_directory=True),
-        ]
-        list_result = SimpleNamespace(data=SimpleNamespace(files=entries))
-        sandbox._client.file.list_path = MagicMock(return_value=list_result)
+        """grep without glob returns every provider match under the root."""
+        grep_result = SimpleNamespace(
+            data=SimpleNamespace(
+                matches=[
+                    self._provider_match("/test/a.py", 1, "found it"),
+                    self._provider_match("/test/subdir/b.py", 2, "found it too"),
+                ],
+                truncated=False,
+            )
+        )
+        sandbox._client.file.grep_files = MagicMock(return_value=grep_result)
 
-        search_result = SimpleNamespace(data=SimpleNamespace(line_numbers=[1], matches=["found it"]))
-        sandbox._client.file.search_in_file = MagicMock(return_value=search_result)
-
-        with patch("ideer.community.aio_sandbox.aio_sandbox.should_ignore_path", return_value=False):
-            with patch("ideer.community.aio_sandbox.aio_sandbox.truncate_line", side_effect=lambda x: x):
+        with patch("deerflow.community.aio_sandbox.aio_sandbox.should_ignore_path", return_value=False):
+            with patch("deerflow.community.aio_sandbox.aio_sandbox.truncate_line", side_effect=lambda x: x):
                 matches, truncated = sandbox.grep("/test", "found")
 
-        # Only a.py should be searched (subdir is_directory=True is filtered)
-        assert len(matches) == 1
+        assert len(matches) == 2
+        assert truncated is False
+
+    def test_grep_passes_literal_and_case_flags(self, sandbox):
+        """literal/case_sensitive map to fixed_strings/case_insensitive."""
+        grep_result = SimpleNamespace(data=SimpleNamespace(matches=[], truncated=False))
+        sandbox._client.file.grep_files = MagicMock(return_value=grep_result)
+
+        sandbox.grep("/test", "(literal)", literal=True, case_sensitive=True)
+
+        kwargs = sandbox._client.file.grep_files.call_args.kwargs
+        assert kwargs["fixed_strings"] is True
+        assert kwargs["case_insensitive"] is False
 
     def test_grep_skips_ignored_paths(self, sandbox):
-        """Lines 248-249: ignored paths are skipped."""
-        find_result = SimpleNamespace(data=SimpleNamespace(files=["/test/a.py", "/test/__pycache__/c.py"]))
-        sandbox._client.file.find_files = MagicMock(return_value=find_result)
+        """Ignored provider matches are skipped."""
+        grep_result = SimpleNamespace(
+            data=SimpleNamespace(
+                matches=[
+                    self._provider_match("/test/a.py", 1, "hello"),
+                    self._provider_match("/test/__pycache__/c.py", 1, "hello"),
+                ],
+                truncated=False,
+            )
+        )
+        sandbox._client.file.grep_files = MagicMock(return_value=grep_result)
 
-        search_result = SimpleNamespace(data=SimpleNamespace(line_numbers=[1], matches=["hello"]))
-        sandbox._client.file.search_in_file = MagicMock(return_value=search_result)
+        with patch("deerflow.community.aio_sandbox.aio_sandbox.should_ignore_path", side_effect=lambda p: "__pycache__" in p):
+            matches, truncated = sandbox.grep("/test", "hello")
 
-        with patch("ideer.community.aio_sandbox.aio_sandbox.should_ignore_path", side_effect=lambda p: "__pycache__" in p):
-            matches, truncated = sandbox.grep("/test", "hello", glob="**/*.py")
-
-        # search_in_file should only be called once (for a.py)
-        assert sandbox._client.file.search_in_file.call_count == 1
+        assert [m.path for m in matches] == ["/test/a.py"]
+        assert truncated is False
 
     def test_grep_truncates_at_max_results(self, sandbox):
-        """Lines 266-268: truncation when reaching max_results."""
-        files = [f"/test/f{i}.py" for i in range(10)]
-        find_result = SimpleNamespace(data=SimpleNamespace(files=files))
-        sandbox._client.file.find_files = MagicMock(return_value=find_result)
+        """Truncation when reaching max_results."""
+        grep_result = SimpleNamespace(
+            data=SimpleNamespace(
+                matches=[self._provider_match(f"/test/f{i}.py", 1, "match") for i in range(10)],
+                truncated=False,
+            )
+        )
+        sandbox._client.file.grep_files = MagicMock(return_value=grep_result)
 
-        search_result = SimpleNamespace(data=SimpleNamespace(line_numbers=[1], matches=["match"]))
-        sandbox._client.file.search_in_file = MagicMock(return_value=search_result)
-
-        with patch("ideer.community.aio_sandbox.aio_sandbox.should_ignore_path", return_value=False):
-            with patch("ideer.community.aio_sandbox.aio_sandbox.truncate_line", side_effect=lambda x: x):
-                matches, truncated = sandbox.grep("/test", "match", glob="**/*.py", max_results=3)
+        with patch("deerflow.community.aio_sandbox.aio_sandbox.should_ignore_path", return_value=False):
+            with patch("deerflow.community.aio_sandbox.aio_sandbox.truncate_line", side_effect=lambda x: x):
+                matches, truncated = sandbox.grep("/test", "match", max_results=3)
 
         assert len(matches) == 3
         assert truncated is True
 
     def test_grep_literal_mode(self, sandbox):
-        """Lines 229-233: literal mode escapes regex."""
-        find_result = SimpleNamespace(data=SimpleNamespace(files=["/test/a.py"]))
-        sandbox._client.file.find_files = MagicMock(return_value=find_result)
+        """Literal mode escapes the pattern before compiling."""
+        grep_result = SimpleNamespace(data=SimpleNamespace(matches=[self._provider_match("/test/a.py", 1, "found (literal)")], truncated=False))
+        sandbox._client.file.grep_files = MagicMock(return_value=grep_result)
 
-        search_result = SimpleNamespace(data=SimpleNamespace(line_numbers=[1], matches=["found (literal)"]))
-        sandbox._client.file.search_in_file = MagicMock(return_value=search_result)
-
-        with patch("ideer.community.aio_sandbox.aio_sandbox.should_ignore_path", return_value=False):
-            with patch("ideer.community.aio_sandbox.aio_sandbox.truncate_line", side_effect=lambda x: x):
-                matches, truncated = sandbox.grep("/test", "(literal)", glob="**/*.py", literal=True)
+        with patch("deerflow.community.aio_sandbox.aio_sandbox.should_ignore_path", return_value=False):
+            with patch("deerflow.community.aio_sandbox.aio_sandbox.truncate_line", side_effect=lambda x: x):
+                matches, truncated = sandbox.grep("/test", "(literal)", literal=True)
 
         assert len(matches) == 1
 
     def test_grep_case_sensitive(self, sandbox):
-        """Lines 233-234: case sensitive mode."""
-        find_result = SimpleNamespace(data=SimpleNamespace(files=["/test/a.py"]))
-        sandbox._client.file.find_files = MagicMock(return_value=find_result)
+        """Case sensitive mode compiles without IGNORECASE."""
+        grep_result = SimpleNamespace(data=SimpleNamespace(matches=[self._provider_match("/test/a.py", 1, "Hello")], truncated=False))
+        sandbox._client.file.grep_files = MagicMock(return_value=grep_result)
 
-        search_result = SimpleNamespace(data=SimpleNamespace(line_numbers=[1], matches=["Hello"]))
-        sandbox._client.file.search_in_file = MagicMock(return_value=search_result)
-
-        with patch("ideer.community.aio_sandbox.aio_sandbox.should_ignore_path", return_value=False):
-            with patch("ideer.community.aio_sandbox.aio_sandbox.truncate_line", side_effect=lambda x: x):
-                matches, truncated = sandbox.grep("/test", "Hello", glob="**/*.py", case_sensitive=True)
+        with patch("deerflow.community.aio_sandbox.aio_sandbox.should_ignore_path", return_value=False):
+            with patch("deerflow.community.aio_sandbox.aio_sandbox.truncate_line", side_effect=lambda x: x):
+                matches, truncated = sandbox.grep("/test", "Hello", case_sensitive=True)
 
         assert len(matches) == 1
 
     def test_grep_invalid_regex_raises(self, sandbox):
-        """Lines 232: invalid regex raises re.error."""
+        """Invalid regex raises re.error."""
         with pytest.raises(re.error):
             sandbox.grep("/test", "[invalid", glob="**/*.py")
 
     def test_grep_search_result_data_none(self, sandbox):
-        """Lines 253: search result data is None, skipped."""
-        find_result = SimpleNamespace(data=SimpleNamespace(files=["/test/a.py"]))
-        sandbox._client.file.find_files = MagicMock(return_value=find_result)
+        """Provider result with data None yields no matches."""
+        sandbox._client.file.grep_files = MagicMock(return_value=SimpleNamespace(data=None))
 
-        search_result = SimpleNamespace(data=None)
-        sandbox._client.file.search_in_file = MagicMock(return_value=search_result)
-
-        with patch("ideer.community.aio_sandbox.aio_sandbox.should_ignore_path", return_value=False):
-            matches, truncated = sandbox.grep("/test", "pattern", glob="**/*.py")
+        matches, truncated = sandbox.grep("/test", "pattern", glob="**/*.py")
 
         assert matches == []
         assert truncated is False
 
-    def test_grep_line_numbers_and_matches_empty(self, sandbox):
-        """When line_numbers and matches are empty/None."""
-        find_result = SimpleNamespace(data=SimpleNamespace(files=["/test/a.py"]))
-        sandbox._client.file.find_files = MagicMock(return_value=find_result)
+    def test_grep_provider_matches_empty(self, sandbox):
+        """Provider result with empty matches yields no matches."""
+        grep_result = SimpleNamespace(data=SimpleNamespace(matches=None, truncated=False))
+        sandbox._client.file.grep_files = MagicMock(return_value=grep_result)
 
-        search_result = SimpleNamespace(data=SimpleNamespace(line_numbers=None, matches=None))
-        sandbox._client.file.search_in_file = MagicMock(return_value=search_result)
-
-        with patch("ideer.community.aio_sandbox.aio_sandbox.should_ignore_path", return_value=False):
-            matches, truncated = sandbox.grep("/test", "pattern", glob="**/*.py")
+        matches, truncated = sandbox.grep("/test", "pattern", glob="**/*.py")
 
         assert matches == []
+        assert truncated is False
 
-    def test_grep_non_integer_line_number(self, sandbox):
-        """Line 262: non-integer line_number defaults to 0."""
-        find_result = SimpleNamespace(data=SimpleNamespace(files=["/test/a.py"]))
-        sandbox._client.file.find_files = MagicMock(return_value=find_result)
+    def test_grep_skips_matches_outside_root(self, sandbox):
+        """Provider matches outside the requested root are skipped."""
+        grep_result = SimpleNamespace(
+            data=SimpleNamespace(
+                matches=[
+                    self._provider_match("/test/a.py", 1, "hello"),
+                    self._provider_match("/elsewhere/b.py", 2, "hello"),
+                ],
+                truncated=False,
+            )
+        )
+        sandbox._client.file.grep_files = MagicMock(return_value=grep_result)
 
-        search_result = SimpleNamespace(data=SimpleNamespace(line_numbers=["not_int"], matches=["hello"]))
-        sandbox._client.file.search_in_file = MagicMock(return_value=search_result)
+        with patch("deerflow.community.aio_sandbox.aio_sandbox.should_ignore_path", return_value=False):
+            with patch("deerflow.community.aio_sandbox.aio_sandbox.truncate_line", side_effect=lambda x: x):
+                matches, truncated = sandbox.grep("/test", "hello")
 
-        with patch("ideer.community.aio_sandbox.aio_sandbox.should_ignore_path", return_value=False):
-            with patch("ideer.community.aio_sandbox.aio_sandbox.truncate_line", side_effect=lambda x: x):
-                matches, truncated = sandbox.grep("/test", "hello", glob="**/*.py")
-
-        assert len(matches) == 1
-        assert matches[0].line_number == 0
-
-    def test_grep_without_glob_filters_directories(self, sandbox):
-        """Lines 242: list_path results filter out directories."""
-        entries = [
-            SimpleNamespace(path="/test/a.py", is_directory=False),
-            SimpleNamespace(path="/test/subdir", is_directory=True),
-        ]
-        list_result = SimpleNamespace(data=SimpleNamespace(files=entries))
-        sandbox._client.file.list_path = MagicMock(return_value=list_result)
-
-        search_result = SimpleNamespace(data=SimpleNamespace(line_numbers=[1], matches=["found"]))
-        sandbox._client.file.search_in_file = MagicMock(return_value=search_result)
-
-        with patch("ideer.community.aio_sandbox.aio_sandbox.should_ignore_path", return_value=False):
-            with patch("ideer.community.aio_sandbox.aio_sandbox.truncate_line", side_effect=lambda x: x):
-                matches, truncated = sandbox.grep("/test", "found")
-
-        # Only a.py should be searched, not subdir
-        assert sandbox._client.file.search_in_file.call_count == 1
+        assert [m.path for m in matches] == ["/test/a.py"]
 
 
 # ===========================================================================
@@ -562,7 +562,7 @@ class TestUpdateFile:
 class TestDownloadFileEdgeCases:
     def test_download_exceeds_max_with_multiple_chunks(self, sandbox):
         """Multiple chunks that together exceed the max size."""
-        from ideer.community.aio_sandbox.aio_sandbox import _MAX_DOWNLOAD_SIZE
+        from deerflow.community.aio_sandbox.aio_sandbox import _MAX_DOWNLOAD_SIZE
 
         chunk_size = (_MAX_DOWNLOAD_SIZE // 2) + 1
         chunks = [b"x" * chunk_size, b"x" * chunk_size]

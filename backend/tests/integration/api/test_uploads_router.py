@@ -909,7 +909,7 @@ def test_upload_files_no_filename_skipped(tmp_path):
 
 def test_upload_files_unsafe_path_error_skipped(tmp_path):
     """UnsafeUploadPathError results in skipped_files, not a crash."""
-    from ideer.uploads.manager import UnsafeUploadPathError
+    from deerflow.uploads.manager import UnsafeUploadPathError
 
     thread_uploads_dir = tmp_path / "uploads"
     thread_uploads_dir.mkdir(parents=True)

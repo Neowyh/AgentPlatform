@@ -130,11 +130,13 @@ describe("DepartmentsPage", () => {
         email: "admin@example.com",
         system_role: "super_admin",
         needs_setup: false,
+        oauth_provider: null,
       },
       isAuthenticated: true,
       isLoading: false,
       logout: vi.fn(),
       refreshUser: vi.fn(),
+applyUser: vi.fn(),
     });
     mockListDepartments.mockResolvedValue({
       departments: mockDepartments,
@@ -1624,11 +1626,13 @@ describe("DepartmentsPage", () => {
         email: "user@example.com",
         system_role: "user",
         needs_setup: false,
+        oauth_provider: null,
       },
       isAuthenticated: true,
       isLoading: false,
       logout: vi.fn(),
       refreshUser: vi.fn(),
+applyUser: vi.fn(),
     });
 
     render(<DepartmentsPage />);
@@ -1643,11 +1647,13 @@ describe("DepartmentsPage", () => {
         email: "dept-admin@example.com",
         system_role: "department_admin",
         needs_setup: false,
+        oauth_provider: null,
       },
       isAuthenticated: true,
       isLoading: false,
       logout: vi.fn(),
       refreshUser: vi.fn(),
+applyUser: vi.fn(),
     });
 
     render(<DepartmentsPage />);

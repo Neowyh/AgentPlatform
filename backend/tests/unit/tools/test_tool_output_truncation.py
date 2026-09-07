@@ -6,7 +6,7 @@ These functions truncate long tool outputs to prevent context window overflow.
 - _truncate_ls_output: head-truncation, for ls tool
 """
 
-from ideer.sandbox.tools import _truncate_bash_output, _truncate_ls_output, _truncate_read_file_output
+from deerflow.sandbox.tools import _truncate_bash_output, _truncate_ls_output, _truncate_read_file_output
 
 # ---------------------------------------------------------------------------
 # _truncate_bash_output
@@ -83,7 +83,10 @@ class TestTruncateBashOutput:
     def test_small_max_chars_does_not_crash(self):
         output = "A" * 1000
         result = _truncate_bash_output(output, 10)
-        assert len(result) <= 10
+        # Upstream clamps the effective limit to the 32-char exit-marker floor
+        # (_BASH_OUTPUT_MIN_LIMIT_CHARS), so a configured limit of 1..31
+        # yields up to 32 chars.
+        assert len(result) <= 32
 
     def test_result_never_exceeds_max_chars_various_sizes(self):
         output = "X" * 50000

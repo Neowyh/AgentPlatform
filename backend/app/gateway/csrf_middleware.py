@@ -29,6 +29,12 @@ def generate_csrf_token() -> str:
     return secrets.token_urlsafe(CSRF_TOKEN_LENGTH)
 
 
+def auth_csrf_cookie_settings(request: Request) -> tuple[bool, int | None]:
+    """Return secure and max-age settings shared by auth handlers."""
+    secure = is_secure_request(request)
+    return secure, (60 * 60 * 24 if secure else None)
+
+
 def should_check_csrf(request: Request) -> bool:
     """Determine if a request needs CSRF validation.
 
@@ -109,6 +115,11 @@ def _configured_cors_origins() -> set[str]:
 def get_configured_cors_origins() -> set[str]:
     """Return normalized explicit browser origins from GATEWAY_CORS_ORIGINS."""
     return _configured_cors_origins()
+
+
+# Run-creating routes return the run id in this non-safelisted response header;
+# split-origin browser clients need it exposed for the LangGraph SDK.
+CORS_EXPOSED_HEADERS: tuple[str, ...] = ("Content-Location",)
 
 
 def _first_header_value(value: str | None) -> str | None:

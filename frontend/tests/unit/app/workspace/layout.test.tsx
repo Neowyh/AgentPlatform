@@ -19,6 +19,20 @@ vi.mock("@/core/auth/server", () => ({
   getServerSideUser: (...args: unknown[]) => mockGetServerSideUser(...args),
 }));
 
+// The layout reads the request locale on the server; `next/headers` cookie
+// access is unavailable under vitest, so stub the locale probe.
+vi.mock("@/core/i18n/server", () => ({
+  detectLocaleServer: async () => "en-US",
+}));
+
+vi.mock("@/core/i18n/context", () => ({
+  I18nProvider: ({
+    children,
+  }: {
+    children: React.ReactNode;
+  }) => <div data-testid="i18n-provider">{children}</div>,
+}));
+
 vi.mock("@/core/auth/types", () => ({
   assertNever: (x: never) => {
     throw new Error(`Unexpected auth result: ${JSON.stringify(x)}`);
@@ -198,61 +212,30 @@ describe("WorkspaceLayout", () => {
       });
     });
 
-    test("renders the unavailable message", async () => {
+    test("keeps rendering the workspace content with the children", async () => {
       render(await WorkspaceLayout({ children: <div>content</div> }));
 
+      // The merged layout no longer serves a bare static page: the workspace
+      // shell stays mounted (with the offline banner inside WorkspaceContent)
+      // so the UI keeps its usual recovery affordances.
+      expect(screen.getByText("content")).toBeInTheDocument();
       expect(
-        screen.getByText("Service temporarily unavailable."),
+        screen.getByTestId("workspace-content"),
       ).toBeInTheDocument();
     });
 
-    test("renders the restart hint", async () => {
+    test("wraps the shell in an AuthProvider so the offline banner can recover", async () => {
       render(await WorkspaceLayout({ children: <div>content</div> }));
 
-      expect(
-        screen.getByText(
-          "The backend may be restarting. Please wait a moment and try again.",
-        ),
-      ).toBeInTheDocument();
-    });
-
-    test("renders a Retry link pointing to /workspace", async () => {
-      render(await WorkspaceLayout({ children: <div>content</div> }));
-
-      const retryLink = screen.getByRole("link", { name: /retry/i });
-      expect(retryLink).toHaveAttribute("href", "/workspace");
-    });
-
-    test("renders a Logout & Reset button", async () => {
-      render(await WorkspaceLayout({ children: <div>content</div> }));
-
-      const logoutButton = screen.getByRole("button", {
-        name: /logout.*reset/i,
-      });
-      expect(logoutButton).toBeInTheDocument();
-    });
-
-    test("Logout button submits POST to /api/v1/auth/logout", async () => {
-      render(await WorkspaceLayout({ children: <div>content</div> }));
-
-      const form = screen
-        .getByRole("button", { name: /logout.*reset/i })
-        .closest("form");
-      expect(form).toHaveAttribute("action", "/api/v1/auth/logout");
-      expect(form).toHaveAttribute("method", "post");
+      const authProvider = screen.getByTestId("auth-provider");
+      expect(authProvider).toBeInTheDocument();
+      expect(authProvider).toHaveAttribute("data-user", "null");
     });
 
     test("does not redirect", async () => {
       render(await WorkspaceLayout({ children: <div>content</div> }));
 
       expect(mockRedirect).not.toHaveBeenCalled();
-    });
-
-    test("does not render children or AuthProvider", async () => {
-      render(await WorkspaceLayout({ children: <div>secret content</div> }));
-
-      expect(screen.queryByTestId("auth-provider")).not.toBeInTheDocument();
-      expect(screen.queryByText("secret content")).not.toBeInTheDocument();
     });
   });
 

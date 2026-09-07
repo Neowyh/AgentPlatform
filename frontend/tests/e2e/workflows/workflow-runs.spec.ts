@@ -195,7 +195,8 @@ test.describe("Workflow run detail", () => {
       .locator("xpath=ancestor::li");
     await artifactRow.getByRole("button", { name: "Preview" }).click();
 
-    await expect(page.locator("pre")).toContainText('"a"');
-    await expect(page.locator("pre")).toContainText("1");
+    const preview = page.getByText('{\n  "a": 1\n}');
+    await expect(preview).toContainText('"a"');
+    await expect(preview).toContainText("1");
   });
 });

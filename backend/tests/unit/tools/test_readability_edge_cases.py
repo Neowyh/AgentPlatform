@@ -12,7 +12,7 @@ from __future__ import annotations
 import subprocess
 from unittest.mock import patch
 
-from ideer.utils.readability import Article, ReadabilityExtractor
+from deerflow.utils.readability import Article, ReadabilityExtractor
 
 # ---------------------------------------------------------------------------
 # Article.to_markdown  --  line 25 (html_content is None / empty)
@@ -130,7 +130,7 @@ class TestToMessage:
         with no images, leaving content empty."""
         article = Article(title="", html_content="x")
         article.url = "https://example.com"
-        with patch.object(article, "to_markdown", return_value="nonempty"), patch("ideer.utils.readability.re.split", return_value=[""]):
+        with patch.object(article, "to_markdown", return_value="nonempty"), patch("deerflow.utils.readability.re.split", return_value=[""]):
             messages = article.to_message()
         # Both parts are empty strings; text parts are stripped to "" and skipped;
         # no odd-index parts exist (all indices are even), so content stays []
@@ -163,7 +163,7 @@ class TestExtractArticleBytesStderr:
             return {"title": "FB", "content": "<p>ok</p>"}
 
         monkeypatch.setattr(
-            "ideer.utils.readability.simple_json_from_html_string",
+            "deerflow.utils.readability.simple_json_from_html_string",
             _fake_simple_json,
         )
 
@@ -186,7 +186,7 @@ class TestExtractArticleBytesStderr:
             return {"title": "T", "content": "<p>ok</p>"}
 
         monkeypatch.setattr(
-            "ideer.utils.readability.simple_json_from_html_string",
+            "deerflow.utils.readability.simple_json_from_html_string",
             _fake_simple_json,
         )
 
@@ -207,7 +207,7 @@ class TestExtractArticleBytesStderr:
             return {"title": "T", "content": "<p>ok</p>"}
 
         monkeypatch.setattr(
-            "ideer.utils.readability.simple_json_from_html_string",
+            "deerflow.utils.readability.simple_json_from_html_string",
             _fake_simple_json,
         )
 
@@ -226,7 +226,7 @@ class TestExtractArticleEmptyContent:
     def test_extract_article_no_content_key(self, monkeypatch):
         """When article dict has no 'content' key, fallback is used."""
         monkeypatch.setattr(
-            "ideer.utils.readability.simple_json_from_html_string",
+            "deerflow.utils.readability.simple_json_from_html_string",
             lambda html, use_readability=False: {"title": "T"},
         )
         article = ReadabilityExtractor().extract_article("<html></html>")
@@ -235,7 +235,7 @@ class TestExtractArticleEmptyContent:
     def test_extract_article_empty_content_string(self, monkeypatch):
         """When content is empty string, fallback is used."""
         monkeypatch.setattr(
-            "ideer.utils.readability.simple_json_from_html_string",
+            "deerflow.utils.readability.simple_json_from_html_string",
             lambda html, use_readability=False: {"title": "T", "content": ""},
         )
         article = ReadabilityExtractor().extract_article("<html></html>")
@@ -244,7 +244,7 @@ class TestExtractArticleEmptyContent:
     def test_extract_article_whitespace_content(self, monkeypatch):
         """When content is whitespace-only, fallback is used."""
         monkeypatch.setattr(
-            "ideer.utils.readability.simple_json_from_html_string",
+            "deerflow.utils.readability.simple_json_from_html_string",
             lambda html, use_readability=False: {"title": "T", "content": "   "},
         )
         article = ReadabilityExtractor().extract_article("<html></html>")
@@ -253,7 +253,7 @@ class TestExtractArticleEmptyContent:
     def test_extract_article_no_title_key(self, monkeypatch):
         """When title is missing, default 'Untitled' is used (line 81)."""
         monkeypatch.setattr(
-            "ideer.utils.readability.simple_json_from_html_string",
+            "deerflow.utils.readability.simple_json_from_html_string",
             lambda html, use_readability=False: {"content": "<p>text</p>"},
         )
         article = ReadabilityExtractor().extract_article("<html></html>")
@@ -263,7 +263,7 @@ class TestExtractArticleEmptyContent:
     def test_extract_article_empty_title(self, monkeypatch):
         """When title is empty string, default 'Untitled' is used."""
         monkeypatch.setattr(
-            "ideer.utils.readability.simple_json_from_html_string",
+            "deerflow.utils.readability.simple_json_from_html_string",
             lambda html, use_readability=False: {"title": "", "content": "<p>ok</p>"},
         )
         article = ReadabilityExtractor().extract_article("<html></html>")
@@ -272,7 +272,7 @@ class TestExtractArticleEmptyContent:
     def test_extract_article_happy_path(self, monkeypatch):
         """Normal extraction returns title and content."""
         monkeypatch.setattr(
-            "ideer.utils.readability.simple_json_from_html_string",
+            "deerflow.utils.readability.simple_json_from_html_string",
             lambda html, use_readability=False: {
                 "title": "Real Title",
                 "content": "<p>Real content</p>",
@@ -298,7 +298,7 @@ class TestExtractArticleFileNotFoundError:
             return {"title": "FB", "content": "<p>fallback</p>"}
 
         monkeypatch.setattr(
-            "ideer.utils.readability.simple_json_from_html_string",
+            "deerflow.utils.readability.simple_json_from_html_string",
             _fake_simple_json,
         )
 

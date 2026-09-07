@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   render,
   screen,
@@ -17,9 +18,24 @@ vi.mock("@/core/i18n/hooks", () => ({
         install: "Install",
         download: "Download",
       },
+      artifactArchive: {
+        downloadCurrent: (count: number) => `Download all (${count})`,
+        currentVersionNotice: "Current version",
+        downloadFailed: "Download failed",
+      },
+      settings: {
+        skills: {
+          installAdminRequired: "Admin required",
+        },
+      },
     },
     changeLocale: vi.fn(),
   }),
+}));
+
+// Install is admin-gated; tests exercise the admin view.
+vi.mock("@/core/auth/AuthProvider", () => ({
+  useAuth: () => ({ user: { system_role: "super_admin" } }),
 }));
 
 const mockSelect = vi.fn();
@@ -32,7 +48,20 @@ vi.mock("@/components/workspace/artifacts/context", () => ({
 }));
 
 const mockInstallSkill = vi.fn();
+
+class MockSkillRequestError extends Error {
+  readonly status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+  get isAdminRequired(): boolean {
+    return this.status === 403;
+  }
+}
+
 vi.mock("@/core/skills/api", () => ({
+  SkillRequestError: MockSkillRequestError,
   installSkill: (...args: unknown[]) => mockInstallSkill(...args),
 }));
 
@@ -74,6 +103,16 @@ vi.mock("sonner", () => ({
 
 let ArtifactFileList: typeof import("@/components/workspace/artifacts/artifact-file-list").ArtifactFileList;
 
+// The list reads the archive manifest through react-query; provide a client.
+function renderWithProviders(ui: React.ReactElement) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>,
+  );
+}
+
 beforeEach(async () => {
   vi.clearAllMocks();
   const mod =
@@ -89,7 +128,7 @@ afterEach(() => {
 
 describe("ArtifactFileList", () => {
   test("renders file cards for each file", () => {
-    render(
+    renderWithProviders(
       <ArtifactFileList files={["report.pdf", "data.csv"]} threadId="t-1" />,
     );
     expect(screen.getByText("report.pdf")).toBeInTheDocument();
@@ -97,25 +136,25 @@ describe("ArtifactFileList", () => {
   });
 
   test("clicking a file card calls select and setOpen", () => {
-    render(<ArtifactFileList files={["file.txt"]} threadId="t-1" />);
+    renderWithProviders(<ArtifactFileList files={["file.txt"]} threadId="t-1" />);
     fireEvent.click(screen.getByText("file.txt"));
     expect(mockSelect).toHaveBeenCalledWith("file.txt");
     expect(mockSetOpen).toHaveBeenCalledWith(true);
   });
 
   test("renders download links for each file", () => {
-    render(<ArtifactFileList files={["doc.pdf"]} threadId="t-1" />);
+    renderWithProviders(<ArtifactFileList files={["doc.pdf"]} threadId="t-1" />);
     const downloadLinks = screen.getAllByText("Download");
     expect(downloadLinks.length).toBeGreaterThan(0);
   });
 
   test("does not render install button for non-.skill files", () => {
-    render(<ArtifactFileList files={["doc.pdf"]} threadId="t-1" />);
+    renderWithProviders(<ArtifactFileList files={["doc.pdf"]} threadId="t-1" />);
     expect(screen.queryByText("Install")).not.toBeInTheDocument();
   });
 
   test("renders install button for .skill files", () => {
-    render(<ArtifactFileList files={["my-skill.skill"]} threadId="t-1" />);
+    renderWithProviders(<ArtifactFileList files={["my-skill.skill"]} threadId="t-1" />);
     expect(screen.getByText("Install")).toBeInTheDocument();
   });
 
@@ -125,7 +164,7 @@ describe("ArtifactFileList", () => {
       message: "Installed!",
     });
 
-    render(<ArtifactFileList files={["test.skill"]} threadId="t-1" />);
+    renderWithProviders(<ArtifactFileList files={["test.skill"]} threadId="t-1" />);
 
     fireEvent.click(screen.getByText("Install"));
 
@@ -143,7 +182,7 @@ describe("ArtifactFileList", () => {
       message: "Skill installed",
     });
 
-    render(<ArtifactFileList files={["test.skill"]} threadId="t-1" />);
+    renderWithProviders(<ArtifactFileList files={["test.skill"]} threadId="t-1" />);
     fireEvent.click(screen.getByText("Install"));
 
     await waitFor(() => {
@@ -157,7 +196,7 @@ describe("ArtifactFileList", () => {
       message: "Install failed",
     });
 
-    render(<ArtifactFileList files={["test.skill"]} threadId="t-1" />);
+    renderWithProviders(<ArtifactFileList files={["test.skill"]} threadId="t-1" />);
     fireEvent.click(screen.getByText("Install"));
 
     await waitFor(() => {
@@ -168,7 +207,7 @@ describe("ArtifactFileList", () => {
   test("install API error shows error toast", async () => {
     mockInstallSkill.mockRejectedValue(new Error("Network error"));
 
-    render(<ArtifactFileList files={["test.skill"]} threadId="t-1" />);
+    renderWithProviders(<ArtifactFileList files={["test.skill"]} threadId="t-1" />);
     fireEvent.click(screen.getByText("Install"));
 
     await waitFor(() => {
@@ -177,7 +216,7 @@ describe("ArtifactFileList", () => {
   });
 
   test("renders empty list when files is empty", () => {
-    const { container } = render(
+    const { container } = renderWithProviders(
       <ArtifactFileList files={[]} threadId="t-1" />,
     );
     const list = container.querySelector("ul");
@@ -186,7 +225,7 @@ describe("ArtifactFileList", () => {
   });
 
   test("applies custom className", () => {
-    const { container } = render(
+    const { container } = renderWithProviders(
       <ArtifactFileList
         files={["f.txt"]}
         threadId="t-1"
@@ -197,7 +236,7 @@ describe("ArtifactFileList", () => {
   });
 
   test("download link has correct href", () => {
-    render(<ArtifactFileList files={["doc.pdf"]} threadId="t-1" />);
+    renderWithProviders(<ArtifactFileList files={["doc.pdf"]} threadId="t-1" />);
     const link = screen.getByText("Download").closest("a");
     expect(link).toHaveAttribute(
       "href",
@@ -206,18 +245,18 @@ describe("ArtifactFileList", () => {
   });
 
   test("renders file extension badge", () => {
-    render(<ArtifactFileList files={["report.pdf"]} threadId="t-1" />);
+    renderWithProviders(<ArtifactFileList files={["report.pdf"]} threadId="t-1" />);
     expect(screen.getByText("PDF file")).toBeInTheDocument();
   });
 
   test("renders file icon for each file", () => {
-    render(<ArtifactFileList files={["a.txt", "b.csv"]} threadId="t-1" />);
+    renderWithProviders(<ArtifactFileList files={["a.txt", "b.csv"]} threadId="t-1" />);
     const icons = screen.getAllByTestId("file-icon");
     expect(icons.length).toBe(2);
   });
 
   test("download link click stops propagation to prevent card selection", () => {
-    render(<ArtifactFileList files={["doc.pdf"]} threadId="t-1" />);
+    renderWithProviders(<ArtifactFileList files={["doc.pdf"]} threadId="t-1" />);
 
     const downloadLink = screen.getByText("Download").closest("a")!;
     const clickEvent = new MouseEvent("click", {

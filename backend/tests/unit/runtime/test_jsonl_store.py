@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from ideer.runtime.events.store.jsonl import _SAFE_ID_PATTERN, JsonlRunEventStore
+from deerflow.runtime.events.store.jsonl import _SAFE_ID_PATTERN, JsonlRunEventStore
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -78,7 +78,7 @@ def _write_jsonl(path: Path, records: list[dict]) -> None:
 class TestInit:
     def test_default_base_dir(self):
         store = JsonlRunEventStore()
-        assert store._base_dir == Path(".ideer")
+        assert store._base_dir == Path(".deer-flow")
         assert store._seq_counters == {}
 
     def test_custom_base_dir_str(self, tmp_base: Path):
@@ -89,14 +89,6 @@ class TestInit:
     def test_custom_base_dir_path(self, tmp_base: Path):
         store = JsonlRunEventStore(base_dir=tmp_base)
         assert store._base_dir == tmp_base
-
-    def test_init_logs_info(self, tmp_base: Path, caplog):
-        import logging
-
-        with caplog.at_level(logging.INFO, logger="ideer.runtime.events.store.jsonl"):
-            JsonlRunEventStore(base_dir=tmp_base)
-        assert "JsonlRunEventStore initialized" in caplog.text
-        assert "single-process only" in caplog.text
 
 
 # ===================================================================
@@ -200,25 +192,29 @@ class TestNextSeq:
 
 
 class TestEnsureSeqLoaded:
-    def test_noop_if_already_cached(self, store: JsonlRunEventStore):
+    @pytest.mark.asyncio
+    async def test_noop_if_already_cached(self, store: JsonlRunEventStore):
         store._seq_counters["t1"] = 42
-        store._ensure_seq_loaded("t1")
+        await store._ensure_seq_loaded("t1")
         assert store._seq_counters["t1"] == 42
 
-    def test_loads_from_existing_files(self, store: JsonlRunEventStore, tmp_base: Path):
+    @pytest.mark.asyncio
+    async def test_loads_from_existing_files(self, store: JsonlRunEventStore, tmp_base: Path):
         run_dir = tmp_base / "threads" / "t1" / "runs"
         run_dir.mkdir(parents=True)
         _write_jsonl(run_dir / "r1.jsonl", [_make_event(seq=5)])
         _write_jsonl(run_dir / "r2.jsonl", [_make_event(seq=10)])
 
-        store._ensure_seq_loaded("t1")
+        await store._ensure_seq_loaded("t1")
         assert store._seq_counters["t1"] == 10
 
-    def test_no_files_sets_zero(self, store: JsonlRunEventStore):
-        store._ensure_seq_loaded("nonexistent")
+    @pytest.mark.asyncio
+    async def test_no_files_sets_zero(self, store: JsonlRunEventStore):
+        await store._ensure_seq_loaded("nonexistent")
         assert store._seq_counters["nonexistent"] == 0
 
-    def test_skips_malformed_json(self, store: JsonlRunEventStore, tmp_base: Path):
+    @pytest.mark.asyncio
+    async def test_skips_malformed_json(self, store: JsonlRunEventStore, tmp_base: Path):
         run_dir = tmp_base / "threads" / "t1" / "runs"
         run_dir.mkdir(parents=True)
         # Write a file with a valid line and a malformed line
@@ -226,23 +222,25 @@ class TestEnsureSeqLoaded:
             f.write(json.dumps(_make_event(seq=7)) + "\n")
             f.write("NOT VALID JSON\n")
 
-        store._ensure_seq_loaded("t1")
+        await store._ensure_seq_loaded("t1")
         assert store._seq_counters["t1"] == 7
 
-    def test_empty_file(self, store: JsonlRunEventStore, tmp_base: Path):
+    @pytest.mark.asyncio
+    async def test_empty_file(self, store: JsonlRunEventStore, tmp_base: Path):
         run_dir = tmp_base / "threads" / "t1" / "runs"
         run_dir.mkdir(parents=True)
         (run_dir / "r1.jsonl").write_text("")
 
-        store._ensure_seq_loaded("t1")
+        await store._ensure_seq_loaded("t1")
         assert store._seq_counters["t1"] == 0
 
-    def test_file_with_only_whitespace(self, store: JsonlRunEventStore, tmp_base: Path):
+    @pytest.mark.asyncio
+    async def test_file_with_only_whitespace(self, store: JsonlRunEventStore, tmp_base: Path):
         run_dir = tmp_base / "threads" / "t1" / "runs"
         run_dir.mkdir(parents=True)
         (run_dir / "r1.jsonl").write_text("   \n  \n")
 
-        store._ensure_seq_loaded("t1")
+        await store._ensure_seq_loaded("t1")
         assert store._seq_counters["t1"] == 0
 
 

@@ -43,6 +43,8 @@ vi.mock("@/core/config", () => ({
 vi.mock("@/core/i18n/hooks", () => ({
   useI18n: () => ({
     t: {
+      conversation: { streamReplayGap: "Stream replay gap detected." },
+      pages: { newChat: "New chat" },
       uploads: { uploadingFiles: "Uploading files…" },
     },
     locale: "en",
@@ -50,7 +52,14 @@ vi.mock("@/core/i18n/hooks", () => ({
   }),
 }));
 
+const mockUseSubtaskContext = vi.hoisted(() => () => ({
+  tasks: {},
+  tasksRef: { current: {} as Record<string, unknown> },
+  setTasks: vi.fn(),
+}));
+
 vi.mock("@/core/tasks/context", () => ({
+  useSubtaskContext: mockUseSubtaskContext,
   useUpdateSubtask: mockUseUpdateSubtask,
 }));
 
@@ -81,11 +90,6 @@ vi.mock("@/core/threads/api", () => ({
   fetchThreadTokenUsage: mockFetchThreadTokenUsage,
 }));
 
-vi.mock("@/core/threads/token-usage", () => ({
-  threadTokenUsageQueryKey: (id?: string | null) =>
-    ["thread-token-usage", id] as const,
-}));
-
 vi.mock("@langchain/langgraph-sdk/react", () => ({
   useStream: mockUseStream,
 }));
@@ -95,6 +99,7 @@ vi.mock("@langchain/langgraph-sdk/react", () => ({
 import {
   mergeMessages,
   getVisibleOptimisticMessages,
+  getThreadHistoryNextPageParam,
   useThreads,
   useThreadRuns,
   useThreadTokenUsage,
@@ -476,7 +481,7 @@ describe("useThreads", () => {
 // ═══════════════════════════════════════════════════════════════════
 
 describe("useThreadRuns", () => {
-  it("returns empty array when threadId is undefined", async () => {
+  it("does not fetch and stays idle when threadId is undefined", async () => {
     const mockListRuns = vi.fn();
     mockGetAPIClient.mockReturnValue({ runs: { list: mockListRuns } });
 
@@ -485,9 +490,12 @@ describe("useThreadRuns", () => {
       wrapper,
     });
 
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    // The query is disabled without a threadId: it must never hit the API and
+    // must settle without an error.
+    await waitFor(() => expect(result.current.fetchStatus).toBe("idle"));
 
-    expect(result.current.data).toEqual([]);
+    expect(result.current.data).toBeUndefined();
+    expect(result.current.error).toBeNull();
     expect(mockListRuns).not.toHaveBeenCalled();
   });
 
@@ -697,21 +705,42 @@ describe("useDeleteThread", () => {
 
     // onSuccess called setQueriesData with a filter function
     expect(setQueriesDataSpy).toHaveBeenCalled();
-    const lastCall =
-      setQueriesDataSpy.mock.calls[setQueriesDataSpy.mock.calls.length - 1];
-    const filterFn = lastCall?.[1] as (
-      oldData: Array<{ thread_id: string }> | undefined,
-    ) => Array<{ thread_id: string }> | undefined;
-    const result2 = filterFn([
+    const callsWithUpdaters = setQueriesDataSpy.mock.calls.filter(
+      (call) => typeof call[1] === "function",
+    );
+    const searchUpdater = callsWithUpdaters.find((call) =>
+      JSON.stringify(call[0]?.queryKey ?? call[0]).includes("search"),
+    )?.[1] as (old: unknown) => unknown;
+    const infiniteUpdater = callsWithUpdaters.find((call) =>
+      JSON.stringify(call[0]?.queryKey ?? call[0]).includes("searchInfinite"),
+    )?.[1] as (old: unknown) => unknown;
+
+    // Flat search cache updater removes the deleted thread
+    expect(searchUpdater).toBeDefined();
+    const result2 = searchUpdater([
       { thread_id: "t1", values: { title: "Thread 1" } } as {
         thread_id: string;
       },
       { thread_id: "t2", values: { title: "Thread 2" } } as {
         thread_id: string;
       },
-    ]);
+    ]) as Array<{ thread_id: string }>;
     expect(result2).toHaveLength(1);
-    expect(result2?.[0]?.thread_id).toBe("t2");
+    expect(result2[0]?.thread_id).toBe("t2");
+
+    // Infinite cache updater removes the deleted thread from every page
+    expect(infiniteUpdater).toBeDefined();
+    const infiniteResult = infiniteUpdater({
+      pages: [
+        [
+          { thread_id: "t1", values: { title: "Thread 1" } },
+          { thread_id: "t2", values: { title: "Thread 2" } },
+        ],
+      ],
+      pageParams: [0],
+    }) as { pages: Array<Array<{ thread_id: string }>> };
+    expect(infiniteResult.pages[0]).toHaveLength(1);
+    expect(infiniteResult.pages[0]?.[0]?.thread_id).toBe("t2");
   });
 
   it("throws when backend delete returns non-ok response", async () => {
@@ -834,17 +863,45 @@ describe("useRenameThread", () => {
 
     // Verify the onSuccess callback called setQueriesData with the right updater
     expect(setQueriesDataSpy).toHaveBeenCalled();
-    const lastCall =
-      setQueriesDataSpy.mock.calls[setQueriesDataSpy.mock.calls.length - 1];
-    const updaterFn = lastCall?.[1] as (
-      oldData: Array<{ thread_id: string; values: { title: string } }>,
-    ) => Array<{ thread_id: string; values: { title: string } }>;
-    const result2 = updaterFn([
+    const updaterForFilter = (keyName: string) =>
+      setQueriesDataSpy.mock.calls.find(
+        (call) =>
+          call[0] &&
+          typeof call[0] === "object" &&
+          "queryKey" in call[0] &&
+          Array.isArray(call[0].queryKey) &&
+          call[0].queryKey[1] === keyName,
+      )?.[1] as (old: unknown) => unknown;
+
+    const searchUpdater = updaterForFilter("search");
+    const result2 = searchUpdater([
       { thread_id: "t1", values: { title: "Old Title" } },
       { thread_id: "t2", values: { title: "Other" } },
-    ]);
+    ]) as Array<{ thread_id: string; values: { title: string } }>;
     expect(result2[0]?.values.title).toBe("New Title");
     expect(result2[1]?.values.title).toBe("Other");
+
+    // Infinite cache updater renames the thread inside every page
+    const infiniteUpdater = updaterForFilter("searchInfinite");
+    const infiniteResult = infiniteUpdater({
+      pages: [
+        [
+          { thread_id: "t1", values: { title: "Old Title" } },
+          { thread_id: "t2", values: { title: "Other" } },
+        ],
+      ],
+      pageParams: [0],
+    }) as { pages: Array<Array<{ thread_id: string; values: { title: string } }>> };
+    expect(infiniteResult.pages[0]?.[0]?.values.title).toBe("New Title");
+    expect(infiniteResult.pages[0]?.[1]?.values.title).toBe("Other");
+
+    // Metadata cache updater renames the single cached thread
+    const metadataUpdater = updaterForFilter("metadata");
+    const metadataResult = metadataUpdater({
+      thread_id: "t1",
+      values: { title: "Old Title" },
+    }) as { thread_id: string; values: { title: string } };
+    expect(metadataResult.values.title).toBe("New Title");
   });
 
   it("leaves other threads unchanged in cache", async () => {
@@ -865,16 +922,22 @@ describe("useRenameThread", () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-    const lastCall =
-      setQueriesDataSpy.mock.calls[setQueriesDataSpy.mock.calls.length - 1];
-    const updaterFn = lastCall?.[1] as (
-      oldData: Array<{ thread_id: string; values: { title: string } }>,
-    ) => Array<{ thread_id: string; values: { title: string } }>;
+    const updaterForFilter = (keyName: string) =>
+      setQueriesDataSpy.mock.calls.find(
+        (call) =>
+          call[0] &&
+          typeof call[0] === "object" &&
+          "queryKey" in call[0] &&
+          Array.isArray(call[0].queryKey) &&
+          call[0].queryKey[1] === keyName,
+      )?.[1] as (old: unknown) => unknown;
+
+    const updaterFn = updaterForFilter("search");
     const result2 = updaterFn([
       { thread_id: "t1", values: { title: "A" } },
       { thread_id: "t2", values: { title: "B" } },
       { thread_id: "t3", values: { title: "C" } },
-    ]);
+    ]) as Array<{ thread_id: string; values: { title: string } }>;
     expect(result2[0]?.values.title).toBe("A");
     expect(result2[1]?.values.title).toBe("B Renamed");
     expect(result2[2]?.values.title).toBe("C");
@@ -900,24 +963,31 @@ describe("useThreadHistory", () => {
     expect(result.current.messages).toEqual([]);
   });
 
-  it("loads messages from runs successfully", async () => {
-    const runs = [{ run_id: "r1", created_at: "2024-01-01" }];
-    const mockListRuns = vi.fn().mockResolvedValue(runs);
-    mockGetAPIClient.mockReturnValue({ runs: { list: mockListRuns } });
-
-    const runMessages = [
-      {
-        content: { id: "m1", type: "human", content: "hello" },
-        metadata: { caller: "user" },
-      },
-      {
-        content: { id: "m2", type: "ai", content: "hi there" },
-        metadata: { caller: "lead_agent" },
-      },
-    ];
+  it("loads messages from the thread messages endpoint", async () => {
+    mockGetAPIClient.mockReturnValue({ runs: { list: vi.fn() } });
 
     mockFetchFn.mockResolvedValue({
-      json: async () => ({ data: runMessages, hasMore: false }),
+      ok: true,
+      json: async () => ({
+        data: [
+          {
+            run_id: "r1",
+            seq: 1,
+            content: { id: "m1", type: "human", content: "hello" },
+            metadata: { caller: "user" },
+            created_at: "2024-01-01",
+          },
+          {
+            run_id: "r1",
+            seq: 2,
+            content: { id: "m2", type: "ai", content: "hi there" },
+            metadata: { caller: "lead_agent" },
+            created_at: "2024-01-01",
+          },
+        ],
+        has_more: false,
+        next_before_seq: null,
+      }),
     });
 
     const { wrapper } = createWrapper();
@@ -933,103 +1003,102 @@ describe("useThreadHistory", () => {
     expect(result.current.messages[1]).toEqual(
       expect.objectContaining({ id: "m2" }),
     );
+    expect(mockFetchFn).toHaveBeenCalledWith(
+      expect.stringContaining("/api/threads/thread-1/messages/page"),
+      expect.objectContaining({ method: "GET" }),
+    );
   });
 
-  it("filters out middleware messages", async () => {
-    const runs = [{ run_id: "r1", created_at: "2024-01-01" }];
-    mockGetAPIClient.mockReturnValue({
-      runs: { list: vi.fn().mockResolvedValue(runs) },
+  it("filters out messages from superseded runs", async () => {
+    mockGetAPIClient.mockReturnValue({ runs: { list: vi.fn() } });
+
+    const runMessage = (
+      runId: string,
+      seq: number,
+      id: string,
+      caller: string,
+    ) => ({
+      run_id: runId,
+      seq,
+      content: { id, type: "human", content: `msg ${id}` },
+      metadata: { caller },
+      created_at: "2024-01-01",
     });
 
-    const runMessages = [
-      {
-        content: { id: "m1", type: "human", content: "hello" },
-        metadata: { caller: "user" },
-      },
-      {
-        content: { id: "m2", type: "ai", content: "internal" },
-        metadata: { caller: "middleware:summarize" },
-      },
-    ];
-
     mockFetchFn.mockResolvedValue({
-      json: async () => ({ data: runMessages, hasMore: false }),
+      ok: true,
+      json: async () => ({
+        data: [
+          runMessage("r1", 1, "m1", "user"),
+          runMessage("r2", 2, "m2", "lead_agent"),
+        ],
+        has_more: false,
+        next_before_seq: null,
+      }),
     });
 
     const { wrapper } = createWrapper();
-    const { result } = renderHook(() => useThreadHistory("thread-1"), {
-      wrapper,
-    });
+    const { result } = renderHook(
+      () =>
+        useThreadHistory("thread-1", {
+          pendingSupersededRunIds: new Set(["r1"]),
+        }),
+      { wrapper },
+    );
 
     await waitFor(() => expect(result.current.messages).toHaveLength(1));
 
     expect(result.current.messages[0]).toEqual(
-      expect.objectContaining({ id: "m1" }),
+      expect.objectContaining({ id: "m2" }),
     );
   });
 
-  it("warns when an older run reports lost messages and supplies its summary", async () => {
-    mockGetAPIClient.mockReturnValue({
-      runs: {
-        list: vi.fn().mockResolvedValue([
-          {
-            run_id: "r1",
-            created_at: "2024-01-01",
-            message_count: 2,
-            first_user_message: "original request",
-            last_assistant_message: "saved conclusion",
-          },
-        ]),
-      },
-    });
-    mockFetchFn.mockResolvedValue({
-      ok: true,
-      json: async () => ({ data: [], has_more: false }),
-    });
-
-    const { wrapper } = createWrapper();
-    renderHook(() => useThreadHistory("thread-1"), { wrapper });
-
-    await waitFor(() =>
-      expect(mockToastWarning).toHaveBeenCalledWith(
-        expect.stringContaining("original request → saved conclusion"),
-      ),
-    );
+  it("warns when a page reports has_more without a next cursor", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(
+        getThreadHistoryNextPageParam({
+          data: [],
+          has_more: true,
+          next_before_seq: null,
+        }),
+      ).toBeUndefined();
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("has_more without next_before_seq"),
+      );
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 
-  it("paginates through all pages of a run via before_seq", async () => {
-    const runs = [{ run_id: "r1", created_at: "2024-01-01" }];
-    const mockListRuns = vi.fn().mockResolvedValue(runs);
-    mockGetAPIClient.mockReturnValue({ runs: { list: mockListRuns } });
+  it("paginates through older pages via before_seq on loadMore", async () => {
+    mockGetAPIClient.mockReturnValue({ runs: { list: vi.fn() } });
 
-    const mkRunMessage = (seq: number) => ({
+    const mkRunMessage = (seq: number, id: string) => ({
       run_id: "r1",
       seq,
-      content: { id: `m${seq}`, type: "human", content: `msg ${seq}` },
+      content: { id, type: "human", content: `msg ${id}` },
       metadata: { caller: "user" },
+      created_at: "2024-01-01",
     });
 
     mockFetchFn.mockImplementation((url: string) => {
-      if (url.includes("before_seq=41")) {
+      if (String(url).includes("before_seq=41")) {
         return Promise.resolve({
+          ok: true,
           json: async () => ({
-            data: [mkRunMessage(31), mkRunMessage(32)],
-            has_more: true,
-          }),
-        });
-      }
-      if (url.includes("before_seq=31")) {
-        return Promise.resolve({
-          json: async () => ({
-            data: [mkRunMessage(21), mkRunMessage(22)],
+            data: [mkRunMessage(31, "m31"), mkRunMessage(32, "m32")],
             has_more: false,
+            next_before_seq: null,
           }),
         });
       }
       return Promise.resolve({
+        ok: true,
         json: async () => ({
-          data: [mkRunMessage(41), mkRunMessage(42)],
+          data: [mkRunMessage(41, "m41"), mkRunMessage(42, "m42")],
           has_more: true,
+          next_before_seq: 41,
         }),
       });
     });
@@ -1039,39 +1108,51 @@ describe("useThreadHistory", () => {
       wrapper,
     });
 
-    await waitFor(() => expect(result.current.messages).toHaveLength(6));
+    await waitFor(() => expect(result.current.messages).toHaveLength(2));
+    expect(result.current.messages.map((m) => m.id)).toEqual(["m41", "m42"]);
+    expect(result.current.hasMore).toBe(true);
 
-    expect(mockFetchFn).toHaveBeenCalledTimes(3);
-    expect(mockFetchFn.mock.calls.map(([url]) => String(url))).toEqual([
-      expect.stringContaining("/runs/r1/messages"),
-      expect.stringContaining("/runs/r1/messages?before_seq=41"),
-      expect.stringContaining("/runs/r1/messages?before_seq=31"),
-    ]);
+    await act(async () => {
+      await result.current.loadMore();
+    });
+
+    await waitFor(() => expect(result.current.messages).toHaveLength(4));
     expect(result.current.messages.map((m) => m.id)).toEqual([
-      "m21",
-      "m22",
       "m31",
       "m32",
       "m41",
       "m42",
     ]);
+    expect(result.current.hasMore).toBe(false);
+    expect(mockFetchFn.mock.calls.map(([url]) => String(url))).toEqual([
+      expect.stringContaining("/api/threads/thread-1/messages/page"),
+      expect.stringContaining("before_seq=41"),
+    ]);
   });
 
   it("resets state when threadId changes", async () => {
-    const runs = [{ run_id: "r1", created_at: "2024-01-01" }];
-    const mockListRuns = vi.fn().mockResolvedValue(runs);
-    mockGetAPIClient.mockReturnValue({ runs: { list: mockListRuns } });
+    mockGetAPIClient.mockReturnValue({ runs: { list: vi.fn() } });
 
-    mockFetchFn.mockResolvedValue({
-      json: async () => ({
-        data: [
-          {
-            content: { id: "m1", type: "human", content: "hello" },
-            metadata: { caller: "user" },
-          },
-        ],
-        hasMore: false,
-      }),
+    mockFetchFn.mockImplementation((url: string) => {
+      const isThread2 = String(url).includes("/threads/thread-2/");
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({
+          data: isThread2
+            ? []
+            : [
+                {
+                  run_id: "r1",
+                  seq: 1,
+                  content: { id: "m1", type: "human", content: "hello" },
+                  metadata: { caller: "user" },
+                  created_at: "2024-01-01",
+                },
+              ],
+          has_more: false,
+          next_before_seq: null,
+        }),
+      });
     });
 
     const { wrapper } = createWrapper();
@@ -1110,9 +1191,26 @@ describe("useThreadHistory", () => {
     expect(typeof result.current.hasMore).toBe("boolean");
   });
 
-  it("provides appendMessages function", async () => {
+  it("exposes loadMore pagination controls", async () => {
     mockGetAPIClient.mockReturnValue({
-      runs: { list: vi.fn().mockResolvedValue([]) },
+      runs: { list: vi.fn() },
+    });
+
+    mockFetchFn.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        data: [
+          {
+            run_id: "r1",
+            seq: 1,
+            content: { id: "m1", type: "ai", content: "loaded" },
+            metadata: { caller: "lead_agent" },
+            created_at: "2024-01-01",
+          },
+        ],
+        has_more: false,
+        next_before_seq: null,
+      }),
     });
 
     const { wrapper } = createWrapper();
@@ -1120,43 +1218,61 @@ describe("useThreadHistory", () => {
       wrapper,
     });
 
-    expect(typeof result.current.appendMessages).toBe("function");
+    await waitFor(() => expect(result.current.messages).toHaveLength(1));
 
-    act(() => {
-      result.current.appendMessages([
-        { id: "extra-1", type: "ai", content: "appended" } as Message,
-      ]);
-    });
-
-    expect(result.current.messages).toHaveLength(1);
-    expect(result.current.messages[0]).toEqual(
-      expect.objectContaining({ id: "extra-1" }),
-    );
+    expect(typeof result.current.loadMore).toBe("function");
+    expect(typeof result.current.hasMore).toBe("boolean");
+    expect(result.current.hasMore).toBe(false);
   });
 
-  it("deduplicates messages when appending", async () => {
+  it("deduplicates messages by identity across pages", async () => {
     mockGetAPIClient.mockReturnValue({
-      runs: { list: vi.fn().mockResolvedValue([]) },
+      runs: { list: vi.fn() },
     });
+
+    const runMessage = (seq: number, id: string, content: string) => ({
+      run_id: "r1",
+      seq,
+      content: { id, type: "ai", content },
+      metadata: { caller: "lead_agent" },
+      created_at: "2024-01-01",
+    });
+
+    // First (newest) page and an older page that repeats the same message id.
+    mockFetchFn
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          data: [runMessage(41, "m1", "first")],
+          has_more: true,
+          next_before_seq: 41,
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          data: [runMessage(41, "m1", "refreshed"), runMessage(40, "m2", "second")],
+          has_more: false,
+          next_before_seq: null,
+        }),
+      });
 
     const { wrapper } = createWrapper();
     const { result } = renderHook(() => useThreadHistory("thread-1"), {
       wrapper,
     });
 
-    const msg = { id: "m1", type: "ai", content: "first" } as Message;
-    const msgUpdated = { id: "m1", type: "ai", content: "updated" } as Message;
+    await waitFor(() => expect(result.current.messages).toHaveLength(1));
 
-    act(() => {
-      result.current.appendMessages([msg]);
-    });
-    act(() => {
-      result.current.appendMessages([msgUpdated]);
+    await act(async () => {
+      await result.current.loadMore();
     });
 
-    expect(result.current.messages).toHaveLength(1);
-    expect(result.current.messages[0]).toEqual(
-      expect.objectContaining({ content: "updated" }),
+    await waitFor(() => expect(result.current.messages).toHaveLength(2));
+    // Rows are reconciled in thread-global seq order (m2 at seq 40, m1 at seq 41).
+    expect(result.current.messages.map((m) => m.id)).toEqual(["m2", "m1"]);
+    expect(result.current.messages[1]).toEqual(
+      expect.objectContaining({ content: "first" }),
     );
   });
 
@@ -1410,7 +1526,10 @@ describe("useThreadStream", () => {
       { type: "text", text: "hello" },
     ]);
     expect(options.threadId).toBe("t1");
-    expect(options.streamSubgraphs).toBe(true);
+    // streamSubgraphs is intentionally not set: subtask progress arrives via
+    // root-namespace custom events, while subgraph frames would leak a
+    // delegated subagent's values/messages into the thread view (#4399).
+    expect(options.streamSubgraphs).toBeUndefined();
   });
 
   it("does not send when sendInFlight is true", async () => {
@@ -2447,10 +2566,12 @@ describe("useThreadStream", () => {
       });
     });
 
-    expect(mockUpdateSubtaskFn).toHaveBeenCalledWith({
-      id: "task-1",
-      latestMessage: taskMessage,
-    });
+    expect(mockUpdateSubtaskFn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "task-1",
+        latestMessage: taskMessage,
+      }),
+    );
   });
 
   it("handles onCustomEvent llm_retry", async () => {
@@ -2521,10 +2642,22 @@ describe("useThreadStream", () => {
   });
 
   it("handles onUpdateEvent with title update", async () => {
-    let streamOnUpdateEvent: ((data: unknown) => void) | undefined;
+    let streamOnUpdateEvent:
+      | ((
+          data: unknown,
+          context: {
+            mutate: (updater: (previous: unknown) => unknown) => void;
+          },
+        ) => void)
+      | undefined;
 
     mockUseStream.mockImplementation(
-      (options: { onUpdateEvent?: (data: unknown) => void } = {}) => {
+      (options: {
+          onUpdateEvent?: (
+            data: unknown,
+            context: { mutate: (updater: (previous: unknown) => unknown) => void }
+          ) => void;
+        } = {}) => {
         streamOnUpdateEvent = options.onUpdateEvent;
         return {
           messages: [] as Message[],
@@ -2557,7 +2690,7 @@ describe("useThreadStream", () => {
     act(() => {
       streamOnUpdateEvent?.({
         update: { title: "Updated Title" },
-      });
+      }, { mutate: vi.fn() });
     });
 
     const cached = queryClient.getQueryData<any[]>(["threads", "search"]);
@@ -2568,10 +2701,22 @@ describe("useThreadStream", () => {
   });
 
   it("ignores onUpdateEvent with no title", async () => {
-    let streamOnUpdateEvent: ((data: unknown) => void) | undefined;
+    let streamOnUpdateEvent:
+      | ((
+          data: unknown,
+          context: {
+            mutate: (updater: (previous: unknown) => unknown) => void;
+          },
+        ) => void)
+      | undefined;
 
     mockUseStream.mockImplementation(
-      (options: { onUpdateEvent?: (data: unknown) => void } = {}) => {
+      (options: {
+          onUpdateEvent?: (
+            data: unknown,
+            context: { mutate: (updater: (previous: unknown) => unknown) => void }
+          ) => void;
+        } = {}) => {
         streamOnUpdateEvent = options.onUpdateEvent;
         return {
           messages: [] as Message[],
@@ -2593,7 +2738,7 @@ describe("useThreadStream", () => {
 
     // Should not throw — Object.values of { messages: [] } is [[]] which has no "title"
     act(() => {
-      streamOnUpdateEvent?.({ update: { messages: [] } });
+      streamOnUpdateEvent?.({ update: { messages: [] } }, { mutate: vi.fn() });
     });
   });
 
@@ -2977,10 +3122,22 @@ describe("useThreadStream", () => {
   });
 
   it("handles onUpdateEvent with SummarizationMiddleware data", async () => {
-    let streamOnUpdateEvent: ((data: unknown) => void) | undefined;
+    let streamOnUpdateEvent:
+      | ((
+          data: unknown,
+          context: {
+            mutate: (updater: (previous: unknown) => unknown) => void;
+          },
+        ) => void)
+      | undefined;
 
     mockUseStream.mockImplementation(
-      (options: { onUpdateEvent?: (data: unknown) => void } = {}) => {
+      (options: {
+          onUpdateEvent?: (
+            data: unknown,
+            context: { mutate: (updater: (previous: unknown) => unknown) => void }
+          ) => void;
+        } = {}) => {
         streamOnUpdateEvent = options.onUpdateEvent;
         return {
           messages: [
@@ -3014,17 +3171,29 @@ describe("useThreadStream", () => {
             { id: "m1", type: "human", content: "keep boundary" },
           ],
         },
-      });
+      }, { mutate: vi.fn() });
     });
 
     // Should not throw — exercises the summarization path
   });
 
   it("handles onUpdateEvent SummarizationMiddleware with too few messages", async () => {
-    let streamOnUpdateEvent: ((data: unknown) => void) | undefined;
+    let streamOnUpdateEvent:
+      | ((
+          data: unknown,
+          context: {
+            mutate: (updater: (previous: unknown) => unknown) => void;
+          },
+        ) => void)
+      | undefined;
 
     mockUseStream.mockImplementation(
-      (options: { onUpdateEvent?: (data: unknown) => void } = {}) => {
+      (options: {
+          onUpdateEvent?: (
+            data: unknown,
+            context: { mutate: (updater: (previous: unknown) => unknown) => void }
+          ) => void;
+        } = {}) => {
         streamOnUpdateEvent = options.onUpdateEvent;
         return {
           messages: [] as Message[],
@@ -3050,17 +3219,29 @@ describe("useThreadStream", () => {
         "SummarizationMiddleware.before_model": {
           messages: [{ id: "m1", type: "human", content: "only one" }],
         },
-      });
+      }, { mutate: vi.fn() });
     });
 
     // Should not throw
   });
 
   it("handles onUpdateEvent SummarizationMiddleware with summary messages", async () => {
-    let streamOnUpdateEvent: ((data: unknown) => void) | undefined;
+    let streamOnUpdateEvent:
+      | ((
+          data: unknown,
+          context: {
+            mutate: (updater: (previous: unknown) => unknown) => void;
+          },
+        ) => void)
+      | undefined;
 
     mockUseStream.mockImplementation(
-      (options: { onUpdateEvent?: (data: unknown) => void } = {}) => {
+      (options: {
+          onUpdateEvent?: (
+            data: unknown,
+            context: { mutate: (updater: (previous: unknown) => unknown) => void }
+          ) => void;
+        } = {}) => {
         streamOnUpdateEvent = options.onUpdateEvent;
         return {
           messages: [
@@ -3098,17 +3279,29 @@ describe("useThreadStream", () => {
             { id: "m2", type: "ai", content: "a1" },
           ],
         },
-      });
+      }, { mutate: vi.fn() });
     });
 
     // Should not throw — exercises summary message tracking
   });
 
   it("handles onUpdateEvent SummarizationMiddleware with undefined message id", async () => {
-    let streamOnUpdateEvent: ((data: unknown) => void) | undefined;
+    let streamOnUpdateEvent:
+      | ((
+          data: unknown,
+          context: {
+            mutate: (updater: (previous: unknown) => unknown) => void;
+          },
+        ) => void)
+      | undefined;
 
     mockUseStream.mockImplementation(
-      (options: { onUpdateEvent?: (data: unknown) => void } = {}) => {
+      (options: {
+          onUpdateEvent?: (
+            data: unknown,
+            context: { mutate: (updater: (previous: unknown) => unknown) => void }
+          ) => void;
+        } = {}) => {
         streamOnUpdateEvent = options.onUpdateEvent;
         return {
           messages: [
@@ -3141,7 +3334,7 @@ describe("useThreadStream", () => {
             { id: "boundary", type: "ai", content: "boundary" },
           ],
         },
-      });
+      }, { mutate: vi.fn() });
     });
 
     // Should not throw
@@ -3682,10 +3875,22 @@ describe("useThreadStream", () => {
   });
 
   it("handles onUpdateEvent SummarizationMiddleware with null messages", async () => {
-    let streamOnUpdateEvent: ((data: unknown) => void) | undefined;
+    let streamOnUpdateEvent:
+      | ((
+          data: unknown,
+          context: {
+            mutate: (updater: (previous: unknown) => unknown) => void;
+          },
+        ) => void)
+      | undefined;
 
     mockUseStream.mockImplementation(
-      (options: { onUpdateEvent?: (data: unknown) => void } = {}) => {
+      (options: {
+          onUpdateEvent?: (
+            data: unknown,
+            context: { mutate: (updater: (previous: unknown) => unknown) => void }
+          ) => void;
+        } = {}) => {
         streamOnUpdateEvent = options.onUpdateEvent;
         return {
           messages: [] as Message[],
@@ -3711,7 +3916,7 @@ describe("useThreadStream", () => {
         "SummarizationMiddleware.before_model": {
           messages: null,
         },
-      });
+      }, { mutate: vi.fn() });
     });
 
     // Should not throw
@@ -3788,10 +3993,22 @@ describe("useThreadStream", () => {
   });
 
   it("handles onUpdateEvent with no matching data keys", async () => {
-    let streamOnUpdateEvent: ((data: unknown) => void) | undefined;
+    let streamOnUpdateEvent:
+      | ((
+          data: unknown,
+          context: {
+            mutate: (updater: (previous: unknown) => unknown) => void;
+          },
+        ) => void)
+      | undefined;
 
     mockUseStream.mockImplementation(
-      (options: { onUpdateEvent?: (data: unknown) => void } = {}) => {
+      (options: {
+          onUpdateEvent?: (
+            data: unknown,
+            context: { mutate: (updater: (previous: unknown) => unknown) => void }
+          ) => void;
+        } = {}) => {
         streamOnUpdateEvent = options.onUpdateEvent;
         return {
           messages: [] as Message[],
@@ -3816,17 +4033,29 @@ describe("useThreadStream", () => {
       streamOnUpdateEvent?.({
         someUpdate: { messages: ["msg1"] },
         anotherUpdate: { artifacts: ["a1"] },
-      });
+      }, { mutate: vi.fn() });
     });
 
     // Should not throw
   });
 
   it("handles onUpdateEvent with empty data object", async () => {
-    let streamOnUpdateEvent: ((data: unknown) => void) | undefined;
+    let streamOnUpdateEvent:
+      | ((
+          data: unknown,
+          context: {
+            mutate: (updater: (previous: unknown) => unknown) => void;
+          },
+        ) => void)
+      | undefined;
 
     mockUseStream.mockImplementation(
-      (options: { onUpdateEvent?: (data: unknown) => void } = {}) => {
+      (options: {
+          onUpdateEvent?: (
+            data: unknown,
+            context: { mutate: (updater: (previous: unknown) => unknown) => void }
+          ) => void;
+        } = {}) => {
         streamOnUpdateEvent = options.onUpdateEvent;
         return {
           messages: [] as Message[],
@@ -3848,7 +4077,7 @@ describe("useThreadStream", () => {
 
     // Empty object → Object.values returns []
     act(() => {
-      streamOnUpdateEvent?.({});
+      streamOnUpdateEvent?.({}, { mutate: vi.fn() });
     });
 
     // Should not throw
@@ -3889,10 +4118,22 @@ describe("useThreadStream", () => {
   });
 
   it("handles onUpdateEvent title update with undefined title", async () => {
-    let streamOnUpdateEvent: ((data: unknown) => void) | undefined;
+    let streamOnUpdateEvent:
+      | ((
+          data: unknown,
+          context: {
+            mutate: (updater: (previous: unknown) => unknown) => void;
+          },
+        ) => void)
+      | undefined;
 
     mockUseStream.mockImplementation(
-      (options: { onUpdateEvent?: (data: unknown) => void } = {}) => {
+      (options: {
+          onUpdateEvent?: (
+            data: unknown,
+            context: { mutate: (updater: (previous: unknown) => unknown) => void }
+          ) => void;
+        } = {}) => {
         streamOnUpdateEvent = options.onUpdateEvent;
         return {
           messages: [] as Message[],
@@ -3916,17 +4157,29 @@ describe("useThreadStream", () => {
     act(() => {
       streamOnUpdateEvent?.({
         update: { title: undefined },
-      });
+      }, { mutate: vi.fn() });
     });
 
     // Should not throw
   });
 
   it("handles onUpdateEvent title update with empty string title", async () => {
-    let streamOnUpdateEvent: ((data: unknown) => void) | undefined;
+    let streamOnUpdateEvent:
+      | ((
+          data: unknown,
+          context: {
+            mutate: (updater: (previous: unknown) => unknown) => void;
+          },
+        ) => void)
+      | undefined;
 
     mockUseStream.mockImplementation(
-      (options: { onUpdateEvent?: (data: unknown) => void } = {}) => {
+      (options: {
+          onUpdateEvent?: (
+            data: unknown,
+            context: { mutate: (updater: (previous: unknown) => unknown) => void }
+          ) => void;
+        } = {}) => {
         streamOnUpdateEvent = options.onUpdateEvent;
         return {
           messages: [] as Message[],
@@ -3950,7 +4203,7 @@ describe("useThreadStream", () => {
     act(() => {
       streamOnUpdateEvent?.({
         update: { title: "" },
-      });
+      }, { mutate: vi.fn() });
     });
 
     // Should not throw

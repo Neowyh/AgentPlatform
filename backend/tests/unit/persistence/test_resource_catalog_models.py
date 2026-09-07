@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from sqlalchemy import CheckConstraint, UniqueConstraint
 
-from ideer.persistence.models.resource_catalog import (
+from app.agentplatform.resource_models import (
     Resource,
     ResourceDependency,
     ResourceDraft,
@@ -16,8 +16,8 @@ from ideer.persistence.models.resource_catalog import (
     ResourceVersion,
     RunResourceSnapshot,
 )
-from ideer.persistence.models.visibility_application import VisibilityApplication
-from ideer.persistence.models.workflow_v2 import WorkflowV2RunRow
+from app.agentplatform.visibility_models import VisibilityApplication
+from deerflow.persistence.models.workflow_v2 import WorkflowV2RunRow
 
 
 def _unique_column_sets(model: type) -> set[tuple[str, ...]]:

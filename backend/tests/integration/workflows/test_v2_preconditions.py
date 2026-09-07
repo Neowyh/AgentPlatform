@@ -16,14 +16,16 @@ import pytest_asyncio
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from ideer.persistence.base import Base
-from ideer.persistence.models.workflow_v2 import WorkflowTaskRow
-from ideer.workflows.v2.adapters import ActionAdapterRegistry
-from ideer.workflows.v2.compiler import WorkflowGraphCompiler
-from ideer.workflows.v2.file_roots import make_host_resolver
-from ideer.workflows.v2.parser import parse_workflow_v2
-from ideer.workflows.v2.store import WorkflowV2Store
-from ideer.workflows.v2.worker import WorkflowWorker, workflow_snapshot
+from app.agentplatform import rbac_models as _rbac_models  # noqa: F401
+from app.agentplatform import resource_models as _resource_models  # noqa: F401
+from app.agentplatform.workflows.v2.adapters import ActionAdapterRegistry
+from app.agentplatform.workflows.v2.compiler import WorkflowGraphCompiler
+from app.agentplatform.workflows.v2.file_roots import make_host_resolver
+from app.agentplatform.workflows.v2.parser import parse_workflow_v2
+from app.agentplatform.workflows.v2.store import WorkflowV2Store
+from app.agentplatform.workflows.v2.worker import WorkflowWorker, workflow_snapshot
+from deerflow.persistence.base import Base
+from deerflow.persistence.models.workflow_v2 import WorkflowTaskRow
 
 _PRECOND_WORKFLOW = """
 schema_version: 2
@@ -111,8 +113,8 @@ def _executor(
         run = await store.get_run(task.run_id)
         assert run is not None
         definition = parse_workflow_v2(workflow)
-        import ideer.workflows.v2.file_roots as file_roots
-        from ideer.config.paths import Paths
+        import app.agentplatform.workflows.v2.file_roots as file_roots
+        from deerflow.config.paths import Paths
 
         file_roots.get_paths = lambda: Paths(str(base_dir))
 
@@ -199,8 +201,8 @@ async def test_precondition_failure_fails_node_with_specific_reason(
     durable_store: WorkflowV2Store,
     tmp_path: Path,
 ) -> None:
-    import ideer.workflows.v2.file_roots as file_roots
-    from ideer.config.paths import Paths
+    import app.agentplatform.workflows.v2.file_roots as file_roots
+    from deerflow.config.paths import Paths
 
     file_roots.get_paths = lambda: Paths(str(tmp_path))
     await durable_store.save_definition("precond", {}, "hash", "user-1")
@@ -234,8 +236,8 @@ async def test_precondition_pass_runs_the_node(
     durable_store: WorkflowV2Store,
     tmp_path: Path,
 ) -> None:
-    import ideer.workflows.v2.file_roots as file_roots
-    from ideer.config.paths import Paths
+    import app.agentplatform.workflows.v2.file_roots as file_roots
+    from deerflow.config.paths import Paths
 
     file_roots.get_paths = lambda: Paths(str(tmp_path))
     await durable_store.save_definition("precond", {}, "hash", "user-1")
@@ -264,8 +266,8 @@ async def test_precondition_failure_skips_node_and_continues(
     durable_store: WorkflowV2Store,
     tmp_path: Path,
 ) -> None:
-    import ideer.workflows.v2.file_roots as file_roots
-    from ideer.config.paths import Paths
+    import app.agentplatform.workflows.v2.file_roots as file_roots
+    from deerflow.config.paths import Paths
 
     file_roots.get_paths = lambda: Paths(str(tmp_path))
     await durable_store.save_definition("precond", {}, "hash", "user-1")

@@ -9,16 +9,19 @@ import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-import ideer.persistence.models  # noqa: F401
-from ideer.persistence.base import Base
-from ideer.persistence.models.resource_catalog import Resource, ResourceVersion, RunResourceSnapshot
-from ideer.resources.runtime import (
+import app.agentplatform.audit_model  # noqa: F401 - register audit_logs
+import app.agentplatform.rbac_models  # noqa: F401 - register users_ext
+import app.agentplatform.resource_models  # noqa: F401 - register resource tables
+import app.agentplatform.visibility_models  # noqa: F401 - register visibility tables
+from app.agentplatform.resource_models import Resource, ResourceVersion, RunResourceSnapshot
+from app.agentplatform.resources.runtime import (
     CanonicalResourceLoader,
     ResourceRuntimeError,
     intersect_tool_groups,
     resource_memory_key,
 )
-from ideer.resources.storage import ResourceStorage
+from app.agentplatform.resources.storage import ResourceStorage
+from deerflow.persistence.base import Base
 
 
 @pytest_asyncio.fixture
@@ -175,7 +178,7 @@ async def test_agent_skills_load_only_from_uuid_dependencies_in_same_snapshot(
         system_owned=False,
         authz_revision=1,
     )
-    from ideer.persistence.models.resource_catalog import ResourceDependency
+    from app.agentplatform.resource_models import ResourceDependency
 
     session.add_all(
         [
@@ -240,7 +243,7 @@ async def test_agent_skills_resolve_uuid_references_from_bundled_manifest(
         system_owned=False,
         authz_revision=1,
     )
-    from ideer.persistence.models.resource_catalog import ResourceDependency
+    from app.agentplatform.resource_models import ResourceDependency
 
     session.add_all(
         [

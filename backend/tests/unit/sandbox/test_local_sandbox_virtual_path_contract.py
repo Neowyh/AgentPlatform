@@ -3,7 +3,7 @@
 
 Today AIO sandbox already accepts /mnt/user-data/... paths directly because the
 container has those paths bind-mounted per-thread. LocalSandbox, however,
-externalises that translation to ``ideer.sandbox.tools`` via ``thread_data``,
+externalises that translation to ``deerflow.sandbox.tools`` via ``thread_data``,
 so any caller that bypasses tools.py (e.g. ``uploads.py`` syncing files into a
 remote sandbox via ``sandbox.update_file(virtual_path, ...)``) sees inconsistent
 behaviour.
@@ -23,8 +23,8 @@ from unittest.mock import patch
 
 import pytest
 
-from ideer.config.sandbox_config import SandboxConfig
-from ideer.sandbox.local.local_sandbox_provider import LocalSandboxProvider
+from deerflow.config.sandbox_config import SandboxConfig
+from deerflow.sandbox.local.local_sandbox_provider import LocalSandboxProvider
 
 
 def _build_config(skills_dir: Path) -> SimpleNamespace:
@@ -33,9 +33,9 @@ def _build_config(skills_dir: Path) -> SimpleNamespace:
         skills=SimpleNamespace(
             container_path="/mnt/skills",
             get_skills_path=lambda: skills_dir,
-            use="ideer.skills.storage.local_skill_storage:LocalSkillStorage",
+            use="deerflow.skills.storage.local_skill_storage:LocalSkillStorage",
         ),
-        sandbox=SandboxConfig(use="ideer.sandbox.local:LocalSandboxProvider", mounts=[]),
+        sandbox=SandboxConfig(use="deerflow.sandbox.local:LocalSandboxProvider", mounts=[]),
     )
 
 
@@ -46,8 +46,8 @@ def isolated_paths(monkeypatch, tmp_path):
     Without this, per-thread directories would be created under the developer's
     real ``.ideer/`` tree.
     """
-    monkeypatch.setenv("IDEER_HOME", str(tmp_path))
-    from ideer.config import paths as paths_module
+    monkeypatch.setenv("DEER_FLOW_HOME", str(tmp_path))
+    from deerflow.config import paths as paths_module
 
     monkeypatch.setattr(paths_module, "_paths", None)
     yield tmp_path
@@ -60,7 +60,7 @@ def provider(isolated_paths, tmp_path):
     skills_dir = tmp_path / "skills"
     skills_dir.mkdir()
     cfg = _build_config(skills_dir)
-    with patch("ideer.config.get_app_config", return_value=cfg):
+    with patch("deerflow.config.get_app_config", return_value=cfg):
         yield LocalSandboxProvider()
 
 
@@ -71,7 +71,10 @@ def provider(isolated_paths, tmp_path):
 
 def test_acquire_with_thread_id_returns_per_thread_id(provider):
     sandbox_id = provider.acquire("alpha")
-    assert sandbox_id == "local:alpha"
+    # Upstream scopes per-thread sandbox ids by the effective user id
+    # (local:<user_id>:<thread_id>); the conftest autouse fixture injects
+    # "test-user-autouse".
+    assert sandbox_id == "local:test-user-autouse:alpha"
 
 
 def test_acquire_without_thread_id_remains_legacy_local_id(provider):
@@ -233,7 +236,7 @@ def test_reset_clears_both_generic_and_per_thread_caches(provider):
 
 
 def test_is_local_sandbox_accepts_both_id_formats():
-    from ideer.sandbox.tools import is_local_sandbox
+    from deerflow.sandbox.tools import is_local_sandbox
 
     legacy = SimpleNamespace(state={"sandbox": {"sandbox_id": "local"}}, context={})
     per_thread = SimpleNamespace(state={"sandbox": {"sandbox_id": "local:alpha"}}, context={})
@@ -262,7 +265,7 @@ def test_concurrent_acquire_same_thread_yields_single_instance(provider):
     import threading
     import time
 
-    from ideer.sandbox.local import local_sandbox as local_sandbox_module
+    from deerflow.sandbox.local import local_sandbox as local_sandbox_module
 
     # Force a wide race window by slowing the LocalSandbox constructor down.
     original_init = local_sandbox_module.LocalSandbox.__init__
@@ -291,8 +294,10 @@ def test_concurrent_acquire_same_thread_yields_single_instance(provider):
     # Every racer must observe the same ``sandbox_id``…
     assert len(set(results)) == 1, f"Racers saw different ids: {results}"
     # …and the cache must hold exactly one instance for ``alpha``.
+    # Cache keys are (user_id, thread_id); the racer threads have no user
+    # contextvar, so the effective user falls back to "default".
     assert len(provider._thread_sandboxes) == 1
-    assert "alpha" in provider._thread_sandboxes
+    assert ("default", "alpha") in provider._thread_sandboxes
 
 
 def test_concurrent_acquire_distinct_threads_yields_distinct_instances(provider):
@@ -315,8 +320,8 @@ def test_concurrent_acquire_distinct_threads_yields_distinct_instances(provider)
     for t in threads:
         t.join()
 
-    assert set(sids.values()) == {f"local:t{i}" for i in range(6)}
-    assert set(provider._thread_sandboxes.keys()) == {f"t{i}" for i in range(6)}
+    assert set(sids.values()) == {f"local:default:t{i}" for i in range(6)}
+    assert set(provider._thread_sandboxes.keys()) == {("default", f"t{i}") for i in range(6)}
 
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -332,16 +337,16 @@ def test_thread_sandbox_cache_is_bounded(isolated_paths, tmp_path):
     skills_dir.mkdir()
     cfg = _build_config(skills_dir)
 
-    with patch("ideer.config.get_app_config", return_value=cfg):
+    with patch("deerflow.config.get_app_config", return_value=cfg):
         provider = LocalSandboxProvider(max_cached_threads=3)
 
     for i in range(5):
         provider.acquire(f"t{i}")
 
-    # Only the 3 most-recent thread_ids should be retained.
-    assert set(provider._thread_sandboxes.keys()) == {"t2", "t3", "t4"}
-    assert provider.get("local:t0") is None
-    assert provider.get("local:t4") is not None
+    # Only the 3 most-recent (user, thread) entries should be retained.
+    assert set(provider._thread_sandboxes.keys()) == {("test-user-autouse", f"t{i}") for i in (2, 3, 4)}
+    assert provider.get("local:test-user-autouse:t0") is None
+    assert provider.get("local:test-user-autouse:t4") is not None
 
 
 def test_lru_promotes_recently_used_thread(isolated_paths, tmp_path):
@@ -351,16 +356,16 @@ def test_lru_promotes_recently_used_thread(isolated_paths, tmp_path):
     skills_dir.mkdir()
     cfg = _build_config(skills_dir)
 
-    with patch("ideer.config.get_app_config", return_value=cfg):
+    with patch("deerflow.config.get_app_config", return_value=cfg):
         provider = LocalSandboxProvider(max_cached_threads=3)
 
     for name in ["a", "b", "c"]:
         provider.acquire(name)
     # Touch "a" via ``get`` so it becomes most-recently used.
-    provider.get("local:a")
+    provider.get("local:test-user-autouse:a")
     # Adding a fourth thread should evict "b" (the new LRU), not "a".
     provider.acquire("d")
 
-    assert "a" in provider._thread_sandboxes
-    assert "b" not in provider._thread_sandboxes
-    assert {"a", "c", "d"} == set(provider._thread_sandboxes.keys())
+    assert ("test-user-autouse", "a") in provider._thread_sandboxes
+    assert ("test-user-autouse", "b") not in provider._thread_sandboxes
+    assert {("test-user-autouse", n) for n in ("a", "c", "d")} == set(provider._thread_sandboxes.keys())

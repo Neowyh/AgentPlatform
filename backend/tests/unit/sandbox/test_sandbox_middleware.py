@@ -7,18 +7,18 @@ from langchain.agents.middleware import AgentMiddleware
 from langchain.tools import ToolRuntime
 from langgraph.runtime import Runtime
 
-from ideer.sandbox.middleware import SandboxMiddleware
-from ideer.sandbox.sandbox import Sandbox
-from ideer.sandbox.sandbox_provider import SandboxProvider, reset_sandbox_provider, set_sandbox_provider
-from ideer.sandbox.search import GrepMatch
-from ideer.sandbox.tools import ls_tool
+from deerflow.sandbox.middleware import SandboxMiddleware
+from deerflow.sandbox.sandbox import Sandbox
+from deerflow.sandbox.sandbox_provider import SandboxProvider, reset_sandbox_provider, set_sandbox_provider
+from deerflow.sandbox.search import GrepMatch
+from deerflow.sandbox.tools import ls_tool
 
 
 class _SyncProvider(SandboxProvider):
     def __init__(self) -> None:
         self.thread_ids: list[str | None] = []
 
-    def acquire(self, thread_id: str | None = None) -> str:
+    def acquire(self, thread_id: str | None = None, *, user_id: str | None = None) -> str:
         self.thread_ids.append(thread_id)
         return "sync-sandbox"
 
@@ -73,7 +73,7 @@ class _AsyncOnlyProvider(SandboxProvider):
     def acquire(self, thread_id: str | None = None) -> str:
         raise AssertionError("async middleware should not call sync acquire")
 
-    async def acquire_async(self, thread_id: str | None = None) -> str:
+    async def acquire_async(self, thread_id: str | None = None, *, user_id: str | None = None) -> str:
         self.thread_ids.append(thread_id)
         return "async-sandbox"
 
@@ -92,9 +92,9 @@ async def test_provider_default_acquire_async_offloads_sync_acquire(monkeypatch:
     provider = _SyncProvider()
     calls: list[tuple[object, tuple[object, ...]]] = []
 
-    async def fake_to_thread(func, /, *args):
-        calls.append((func, args))
-        return func(*args)
+    async def fake_to_thread(func, /, *args, **kwargs):
+        calls.append((func, args, kwargs))
+        return func(*args, **kwargs)
 
     monkeypatch.setattr(asyncio, "to_thread", fake_to_thread)
 
@@ -102,7 +102,8 @@ async def test_provider_default_acquire_async_offloads_sync_acquire(monkeypatch:
 
     assert sandbox_id == "sync-sandbox"
     assert provider.thread_ids == ["thread-1"]
-    assert calls == [(provider.acquire, ("thread-1",))]
+    # The default acquire_async forwards the user identity to the sync acquire.
+    assert calls == [(provider.acquire, ("thread-1",), {"user_id": None})]
 
 
 @pytest.mark.anyio

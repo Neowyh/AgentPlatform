@@ -4,9 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from ideer.config.paths import Paths
-from ideer.workflows.v2 import file_roots
-from ideer.workflows.v2.file_roots import (
+from app.agentplatform.workflows.v2 import file_roots
+from app.agentplatform.workflows.v2.file_roots import (
     collect_artifacts,
     make_host_resolver,
     materialize_state,
@@ -19,6 +18,7 @@ from ideer.workflows.v2.file_roots import (
     workflow_state_path,
     workflow_state_root,
 )
+from deerflow.config.paths import Paths
 
 
 class FakeMount:

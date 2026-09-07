@@ -28,7 +28,7 @@ This project has been extended with enterprise intranet platform capabilities on
 
 ### Workflow Engine
 - YAML DSL with 7 step types: agent, tool, human_review, condition, parallel, loop, retry
-- Core module: `backend/packages/harness/ideer/workflows/`
+- Core module: `backend/app/agentplatform/workflows/`
 - API: `backend/app/gateway/routers/workflows.py`
 - Frontend: `frontend/src/app/workspace/workflows/`
 

@@ -8,8 +8,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from ideer.config.extensions_config import McpOAuthConfig
-from ideer.mcp.oauth import (
+from deerflow.config.extensions_config import McpOAuthConfig
+from deerflow.mcp.oauth import (
     OAuthTokenManager,
     _OAuthToken,
     build_oauth_tool_interceptor,

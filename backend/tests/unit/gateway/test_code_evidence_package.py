@@ -5,8 +5,9 @@ from pathlib import PurePosixPath
 
 import pytest
 
-from ideer.uploads import code_evidence
-from ideer.uploads.code_evidence import CodeEvidencePackageError, _preflight
+from app.agentplatform import code_evidence
+from app.agentplatform.code_evidence import CodeEvidencePackageError, _preflight
+from deerflow.uploads.code_evidence import package_root as runtime_package_root
 
 
 def make_zip(entries: list[tuple[str, bytes, int | None]]):
@@ -105,3 +106,9 @@ def test_accept_package_applies_caller_compressed_size_limit():
             original_filename="evidence.zip",
             max_compressed_size=1,
         )
+
+
+@pytest.mark.parametrize("package_id", ["../escape", "/absolute", ""])
+def test_runtime_package_root_rejects_unvalidated_package_id(package_id):
+    with pytest.raises(ValueError, match="Invalid package id"):
+        runtime_package_root("thread-1", package_id)

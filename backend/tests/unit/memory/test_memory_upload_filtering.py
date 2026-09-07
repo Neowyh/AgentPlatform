@@ -9,8 +9,8 @@ persisting in long-term memory:
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
-from ideer.agents.memory.message_processing import detect_correction, detect_reinforcement, filter_messages_for_memory
-from ideer.agents.memory.updater import _strip_upload_mentions_from_memory
+from app.agentplatform.legacy.memory.message_processing import detect_correction, detect_reinforcement, filter_messages_for_memory
+from app.agentplatform.legacy.memory.updater import _strip_upload_mentions_from_memory
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -6,9 +6,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from ideer.tools.builtins.view_image_tool import view_image_tool
+from deerflow.tools.builtins.view_image_tool import view_image_tool
 
-view_image_module = importlib.import_module("ideer.tools.builtins.view_image_tool")
+view_image_module = importlib.import_module("deerflow.tools.builtins.view_image_tool")
 
 PNG_BYTES = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")
 
@@ -68,7 +68,9 @@ def test_view_image_reads_virtual_uploads_path(tmp_path: Path) -> None:
 
     assert _message_content(result) == "Successfully read image"
     viewed_image = result.update["viewed_images"]["/mnt/user-data/uploads/sample.png"]
-    assert viewed_image["base64"] == base64.b64encode(PNG_BYTES).decode("utf-8")
+    # Upstream persists only lightweight metadata in state (#4138): the image
+    # bytes are re-read from disk on demand, never checkpointed as base64.
+    assert "base64" not in viewed_image
     assert viewed_image["mime_type"] == "image/png"
 
 

@@ -1,4 +1,4 @@
-"""Tests for ideer.runtime.store.async_provider — async store factory."""
+"""Tests for deerflow.runtime.store.async_provider — async store factory."""
 
 from __future__ import annotations
 
@@ -9,11 +9,12 @@ import pytest
 
 
 def _make_config(type: str, connection_string: str | None = None):
-    return SimpleNamespace(type=type, connection_string=connection_string)
+    # Upstream CheckpointerConfig now carries postgres_schema for the postgres backend.
+    return SimpleNamespace(type=type, connection_string=connection_string, postgres_schema=None)
 
 
 def _make_app_config(checkpointer=None):
-    return SimpleNamespace(checkpointer=checkpointer)
+    return SimpleNamespace(checkpointer=checkpointer, database=None)
 
 
 # ---------------------------------------------------------------------------
@@ -24,7 +25,7 @@ def _make_app_config(checkpointer=None):
 class TestAsyncStore:
     @pytest.mark.asyncio
     async def test_memory_type(self):
-        from ideer.runtime.store.async_provider import _async_store
+        from deerflow.runtime.store.async_provider import _async_store
 
         config = _make_config("memory")
         async with _async_store(config) as store:
@@ -32,7 +33,7 @@ class TestAsyncStore:
 
     @pytest.mark.asyncio
     async def test_sqlite_type_success(self):
-        from ideer.runtime.store.async_provider import _async_store
+        from deerflow.runtime.store.async_provider import _async_store
 
         mock_store = AsyncMock()
         mock_store.setup = AsyncMock()
@@ -45,14 +46,14 @@ class TestAsyncStore:
 
         config = _make_config("sqlite", "test.db")
         with patch.dict("sys.modules", {"langgraph.store.sqlite.aio": mock_module}):
-            with patch("ideer.runtime.store.async_provider.resolve_sqlite_conn_str", return_value="/resolved.db"):
-                with patch("ideer.runtime.store.async_provider.ensure_sqlite_parent_dir"):
+            with patch("deerflow.runtime.store.async_provider.resolve_sqlite_conn_str", return_value="/resolved.db"):
+                with patch("deerflow.runtime.store.async_provider.ensure_sqlite_parent_dir"):
                     async with _async_store(config) as store:
                         assert store is mock_store
 
     @pytest.mark.asyncio
     async def test_sqlite_type_default_conn_string(self):
-        from ideer.runtime.store.async_provider import _async_store
+        from deerflow.runtime.store.async_provider import _async_store
 
         mock_store = AsyncMock()
         mock_store.setup = AsyncMock()
@@ -65,15 +66,15 @@ class TestAsyncStore:
 
         config = _make_config("sqlite", None)  # no connection_string
         with patch.dict("sys.modules", {"langgraph.store.sqlite.aio": mock_module}):
-            with patch("ideer.runtime.store.async_provider.resolve_sqlite_conn_str", return_value="/default.db"):
-                with patch("ideer.runtime.store.async_provider.ensure_sqlite_parent_dir"):
+            with patch("deerflow.runtime.store.async_provider.resolve_sqlite_conn_str", return_value="/default.db"):
+                with patch("deerflow.runtime.store.async_provider.ensure_sqlite_parent_dir"):
                     async with _async_store(config) as store:
                         assert store is mock_store
                     mock_module.AsyncSqliteStore.from_conn_string.assert_called_with("/default.db")
 
     @pytest.mark.asyncio
     async def test_sqlite_import_error(self):
-        from ideer.runtime.store.async_provider import _async_store
+        from deerflow.runtime.store.async_provider import _async_store
 
         config = _make_config("sqlite", "test.db")
         with patch.dict("sys.modules", {"langgraph.store.sqlite.aio": None}):
@@ -83,7 +84,7 @@ class TestAsyncStore:
 
     @pytest.mark.asyncio
     async def test_postgres_type_success(self):
-        from ideer.runtime.store.async_provider import _async_store
+        from deerflow.runtime.store.async_provider import _async_store
 
         mock_store = AsyncMock()
         mock_store.setup = AsyncMock()
@@ -101,7 +102,7 @@ class TestAsyncStore:
 
     @pytest.mark.asyncio
     async def test_postgres_no_connection_string(self):
-        from ideer.runtime.store.async_provider import _async_store
+        from deerflow.runtime.store.async_provider import _async_store
 
         config = _make_config("postgres", None)
         mock_module = MagicMock()
@@ -112,7 +113,7 @@ class TestAsyncStore:
 
     @pytest.mark.asyncio
     async def test_postgres_import_error(self):
-        from ideer.runtime.store.async_provider import _async_store
+        from deerflow.runtime.store.async_provider import _async_store
 
         config = _make_config("postgres", "postgresql://localhost/db")
         with patch.dict("sys.modules", {"langgraph.store.postgres.aio": None}):
@@ -122,7 +123,7 @@ class TestAsyncStore:
 
     @pytest.mark.asyncio
     async def test_unknown_type(self):
-        from ideer.runtime.store.async_provider import _async_store
+        from deerflow.runtime.store.async_provider import _async_store
 
         config = _make_config("firestore")
         with pytest.raises(ValueError, match="Unknown store backend type"):
@@ -138,7 +139,7 @@ class TestAsyncStore:
 class TestMakeStore:
     @pytest.mark.asyncio
     async def test_no_checkpointer_config_warns(self):
-        from ideer.runtime.store.async_provider import make_store
+        from deerflow.runtime.store.async_provider import make_store
 
         app_config = _make_app_config(checkpointer=None)
         async with make_store(app_config) as store:
@@ -146,7 +147,7 @@ class TestMakeStore:
 
     @pytest.mark.asyncio
     async def test_with_checkpointer_config(self):
-        from ideer.runtime.store.async_provider import make_store
+        from deerflow.runtime.store.async_provider import make_store
 
         app_config = _make_app_config(checkpointer=_make_config("memory"))
         async with make_store(app_config) as store:
@@ -154,9 +155,9 @@ class TestMakeStore:
 
     @pytest.mark.asyncio
     async def test_default_app_config(self):
-        from ideer.runtime.store.async_provider import make_store
+        from deerflow.runtime.store.async_provider import make_store
 
-        with patch("ideer.runtime.store.async_provider.get_app_config") as mock_get:
+        with patch("deerflow.runtime.store.async_provider.get_app_config") as mock_get:
             mock_get.return_value = _make_app_config(checkpointer=_make_config("memory"))
             async with make_store() as store:
                 assert store is not None

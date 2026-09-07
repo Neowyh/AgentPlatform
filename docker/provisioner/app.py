@@ -66,6 +66,30 @@ SAFE_THREAD_ID_PATTERN = r"^[A-Za-z0-9_\-]+$"
 SAFE_USER_ID_PATTERN = r"^[A-Za-z0-9_\-]+$"
 DEFAULT_USER_ID = "default"
 
+# Keep the provisioner-side mount contract structurally identical to the
+# DeerFlow remote backend.  The contract test reads these literals so a new
+# managed category or integration mount cannot be accepted by one side only.
+DEFAULT_SKILLS_CONTAINER_PATH = "/mnt/skills"
+ALLOWED_EXTRA_MOUNT_PATHS = {
+    "/mnt/acp-workspace",
+    "/mnt/integrations/lark-cli/config",
+    "/mnt/integrations/lark-cli/config/locks",
+    "/mnt/integrations/lark-cli/data",
+    "/mnt/integrations/lark-cli/runtime",
+}
+MANAGED_SKILL_CATEGORY_NAMES = (
+    "public",
+    "custom",
+    "legacy",
+    "integrations",
+)
+RESERVED_SANDBOX_MOUNT_PATHS = (
+    "/mnt/user-data",
+    "/mnt/acp-workspace",
+    "/mnt/integrations/lark-cli",
+)
+MAX_EXTRA_MOUNTS = 10
+
 # Path to the kubeconfig *inside* the provisioner container.
 # Typically the host's ~/.kube/config is mounted here.
 KUBECONFIG_PATH = os.environ.get("KUBECONFIG_PATH", "/root/.kube/config")

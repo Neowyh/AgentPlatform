@@ -37,7 +37,7 @@ models:
     api_key: $OPENAI_API_KEY
     base_url: $OPENAI_API_BASE
 sandbox:
-  use: ideer.sandbox.local:LocalSandboxProvider
+  use: deerflow.sandbox.local:LocalSandboxProvider
 agents_api:
   enabled: true
 title:
@@ -116,6 +116,28 @@ class _ScriptedAgent:
                 self.controller.cancelled.set()
                 raise
 
+    async def aget_state(self, config):
+        """Materialize the latest checkpoint the way ``CheckpointStateAccessor`` does.
+
+        Production reads pre-run state through ``graph.aget_state``; the scripted
+        double is not a real graph, so it rebuilds the same snapshot view (config,
+        values, metadata) directly from its checkpointer.
+        """
+        from types import SimpleNamespace
+
+        checkpointer = self.checkpointer
+        if checkpointer is None:
+            return None
+        checkpoint_tuple = await checkpointer.aget_tuple(config)
+        if checkpoint_tuple is None:
+            return None
+        checkpoint = getattr(checkpoint_tuple, "checkpoint", {}) or {}
+        return SimpleNamespace(
+            config=getattr(checkpoint_tuple, "config", None) or config,
+            values=dict(checkpoint.get("channel_values", {}) or {}),
+            metadata=dict(getattr(checkpoint_tuple, "metadata", {}) or {}),
+        )
+
 
 def _make_agent_factory(controller: _RunController, **agent_kwargs):
     def factory(*, config):
@@ -153,17 +175,17 @@ def _build_fake_setup_agent_model(agent_name: str):
 def isolated_deer_flow_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     home = tmp_path / "ideer-home"
     home.mkdir()
-    monkeypatch.setenv("IDEER_HOME", str(home))
+    monkeypatch.setenv("DEER_FLOW_HOME", str(home))
     monkeypatch.setenv("OPENAI_API_KEY", "sk-fake-key-not-used")
     monkeypatch.setenv("OPENAI_API_BASE", "https://example.invalid")
 
     staged_config = tmp_path / "config.yaml"
     staged_config.write_text(_MINIMAL_CONFIG_YAML, encoding="utf-8")
-    monkeypatch.setenv("IDEER_CONFIG_PATH", str(staged_config))
+    monkeypatch.setenv("DEER_FLOW_CONFIG_PATH", str(staged_config))
 
     staged_extensions_config = tmp_path / "extensions_config.json"
     staged_extensions_config.write_text('{"mcpServers": {}, "skills": {}}', encoding="utf-8")
-    monkeypatch.setenv("IDEER_EXTENSIONS_CONFIG_PATH", str(staged_extensions_config))
+    monkeypatch.setenv("DEER_FLOW_EXTENSIONS_CONFIG_PATH", str(staged_extensions_config))
     return home
 
 
@@ -172,11 +194,11 @@ def _reset_process_singletons(monkeypatch: pytest.MonkeyPatch) -> None:
 
     The Gateway app/lifespan path reads process-wide caches before wiring
     request-scoped dependencies. These E2E tests stage a temporary
-    ``config.yaml``/``extensions_config.json`` and ``IDEER_HOME``, so the
+    ``config.yaml``/``extensions_config.json`` and ``DEER_FLOW_HOME``, so the
     caches below must be reset before app creation:
 
     - app_config / extensions_config: parsed config file caches.
-    - paths: ``IDEER_HOME``-derived filesystem paths.
+    - paths: ``DEER_FLOW_HOME``-derived filesystem paths.
     - persistence.engine: SQLAlchemy engine/session factory for the sqlite dir.
     - app.gateway.deps: cached local auth provider/repository.
 
@@ -186,10 +208,11 @@ def _reset_process_singletons(monkeypatch: pytest.MonkeyPatch) -> None:
     """
 
     from app.gateway import deps as deps_module
-    from ideer.config import app_config as app_config_module
-    from ideer.config import extensions_config as extensions_config_module
-    from ideer.config import paths as paths_module
-    from ideer.persistence import engine as engine_module
+    from app.gateway.routers import auth as auth_router_module
+    from deerflow.config import app_config as app_config_module
+    from deerflow.config import extensions_config as extensions_config_module
+    from deerflow.config import paths as paths_module
+    from deerflow.persistence import engine as engine_module
 
     for module, attr, value in (
         (app_config_module, "_app_config", None),
@@ -203,6 +226,9 @@ def _reset_process_singletons(monkeypatch: pytest.MonkeyPatch) -> None:
         (engine_module, "_session_factory", None),
         (deps_module, "_cached_local_provider", None),
         (deps_module, "_cached_repo", None),
+        # Per-IP registration limiter is process-wide; without a reset the
+        # 4th registration in the file would trip the production 3/hour cap.
+        (auth_router_module, "_registration_attempts", {}),
     ):
         monkeypatch.setattr(module, attr, value, raising=False)
 
@@ -217,7 +243,7 @@ def _preserve_process_config_singletons(monkeypatch: pytest.MonkeyPatch) -> None
     loading the isolated test config does not leak into later tests.
     """
 
-    from ideer.config import (
+    from deerflow.config import (
         acp_config,
         checkpointer_config,
         guardrails_config,
@@ -248,7 +274,7 @@ def isolated_app(isolated_deer_flow_home: Path, monkeypatch: pytest.MonkeyPatch)
     _preserve_process_config_singletons(monkeypatch)
     _reset_process_singletons(monkeypatch)
 
-    from ideer.config import app_config as app_config_module
+    from deerflow.config import app_config as app_config_module
 
     cfg = app_config_module.get_app_config()
     cfg.database.sqlite_dir = str(isolated_deer_flow_home / "db")
@@ -479,7 +505,7 @@ def test_stream_run_executes_real_lead_agent_setup_agent_business_path(isolated_
 
     with (
         patch(
-            "ideer.agents.lead_agent.agent.create_chat_model",
+            "deerflow.agents.lead_agent.agent.create_chat_model",
             new=_build_fake_setup_agent_model(agent_name),
         ),
         TestClient(isolated_app) as client,
@@ -531,8 +557,8 @@ def test_stream_run_executes_real_lead_agent_setup_agent_business_path(isolated_
 
         from sqlalchemy import select
 
-        from ideer.persistence.engine import get_session_factory
-        from ideer.persistence.models.resource_catalog import Resource
+        from app.agentplatform.resource_models import Resource
+        from deerflow.persistence.engine import get_session_factory
 
         async def _fetch_catalog_agent() -> tuple[str, str, int]:
             async with get_session_factory()() as session:
@@ -598,7 +624,7 @@ def test_cancel_interrupt_stops_running_background_run(isolated_app):
 async def test_sse_consumer_disconnect_cancels_inflight_run():
     """A disconnected SSE request should cancel an in-flight run when configured."""
     from app.gateway.services import sse_consumer
-    from ideer.runtime import DisconnectMode, MemoryStreamBridge, RunManager, RunStatus
+    from deerflow.runtime import DisconnectMode, MemoryStreamBridge, RunManager, RunStatus
 
     bridge = MemoryStreamBridge()
     run_manager = RunManager()

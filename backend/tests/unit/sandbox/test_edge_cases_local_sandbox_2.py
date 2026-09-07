@@ -1,4 +1,4 @@
-"""Additional coverage tests for ideer.sandbox.local.local_sandbox.
+"""Additional coverage tests for deerflow.sandbox.local.local_sandbox.
 
 Targets missed lines:
 - Lines 65-67: _find_first_available_shell with relative shell name found via shutil.which
@@ -18,7 +18,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from ideer.sandbox.local.local_sandbox import LocalSandbox, PathMapping
+from deerflow.sandbox.local.local_sandbox import LocalSandbox, PathMapping
 
 
 class TestFindFirstAvailableShellRelative:
@@ -96,48 +96,57 @@ class TestExecuteCommandWindows:
     """Lines 305, 318-329: Windows shell execution paths."""
 
     def test_powershell_args(self):
-        """Line 318-319: PowerShell execution args."""
+        """PowerShell execution args."""
         sandbox = LocalSandbox("test")
-        mock_result = MagicMock()
-        mock_result.stdout = "output"
-        mock_result.stderr = ""
-        mock_result.returncode = 0
+        captured: dict = {}
+
+        def _fake_run_windows(args, timeout, env=None):
+            captured["args"] = args
+            captured["env"] = env
+            return ("output", "", 0, False)
 
         with (
             patch("os.name", "nt"),
             patch.object(LocalSandbox, "_get_shell", return_value=r"C:\pwsh.exe"),
-            patch("subprocess.run", return_value=mock_result) as mock_run,
+            patch.object(LocalSandbox, "_run_windows_command", side_effect=_fake_run_windows),
         ):
             sandbox.execute_command("echo hello")
 
-        call_args = mock_run.call_args
-        assert call_args[0][0] == [r"C:\pwsh.exe", "-NoProfile", "-Command", "echo hello"]
+        # Upstream runs Windows commands via _run_windows_command (Popen with
+        # Windows-only creationflags), so the arg shape is asserted there.
+        assert captured["args"] == [r"C:\pwsh.exe", "-NoProfile", "-Command", "echo hello"]
 
     def test_cmd_shell_args(self):
-        """Line 320-321: cmd.exe execution args."""
+        """cmd.exe execution args."""
         sandbox = LocalSandbox("test")
-        mock_result = MagicMock()
-        mock_result.stdout = "output"
-        mock_result.stderr = ""
-        mock_result.returncode = 0
+        captured: dict = {}
+
+        def _fake_run_windows(args, timeout, env=None):
+            captured["args"] = args
+            captured["env"] = env
+            return ("output", "", 0, False)
 
         with (
             patch("os.name", "nt"),
             patch.object(LocalSandbox, "_get_shell", return_value="cmd.exe"),
-            patch("subprocess.run", return_value=mock_result) as mock_run,
+            patch.object(LocalSandbox, "_run_windows_command", side_effect=_fake_run_windows),
         ):
             sandbox.execute_command("dir")
 
-        call_args = mock_run.call_args
-        assert call_args[0][0] == ["cmd.exe", "/c", "dir"]
+        assert captured["args"] == ["cmd.exe", "/c", "dir"]
 
     def test_msys_shell_args_with_env(self):
-        """Lines 323-329: MSYS shell on Windows sets MSYS env vars."""
-        sandbox = LocalSandbox("test")
-        mock_result = MagicMock()
-        mock_result.stdout = "output"
-        mock_result.stderr = ""
-        mock_result.returncode = 0
+        """MSYS shell on Windows sets the MSYS arg-conversion exclusion env var."""
+        sandbox = LocalSandbox(
+            "test",
+            [PathMapping(container_path="/mnt/user-data", local_path="/tmp/data")],
+        )
+        captured: dict = {}
+
+        def _fake_run_windows(args, timeout, env=None):
+            captured["args"] = args
+            captured["env"] = env
+            return ("output", "", 0, False)
 
         with (
             patch("os.name", "nt"),
@@ -145,15 +154,17 @@ class TestExecuteCommandWindows:
             patch.object(LocalSandbox, "_is_msys_shell", return_value=True),
             patch.object(LocalSandbox, "_is_powershell", return_value=False),
             patch.object(LocalSandbox, "_is_cmd_shell", return_value=False),
-            patch("subprocess.run", return_value=mock_result) as mock_run,
+            patch.object(LocalSandbox, "_run_windows_command", side_effect=_fake_run_windows),
         ):
             sandbox.execute_command("echo hello")
 
-        call_args = mock_run.call_args
-        assert call_args[0][0] == ["/git/bin/bash.exe", "-c", "echo hello"]
-        env = call_args[1].get("env")
+        assert captured["args"] == ["/git/bin/bash.exe", "-c", "echo hello"]
+        env = captured.get("env")
         assert env is not None
-        assert env.get("MSYS_NO_PATHCONV") == "1"
+        # Upstream excludes only the sandbox-owned virtual roots instead of
+        # disabling conversion wholesale (MSYS2_ARG_CONV_EXCL, not the legacy
+        # blanket MSYS_NO_PATHCONV).
+        assert env.get("MSYS2_ARG_CONV_EXCL") == "/mnt/user-data"
 
     def test_windows_shell_found_returns_shell(self):
         """Line 304-305: Windows shell found via _find_first_available_shell."""
@@ -171,14 +182,10 @@ class TestExecuteCommandStderr:
 
     def test_stderr_appended(self):
         sandbox = LocalSandbox("test")
-        mock_result = MagicMock()
-        mock_result.stdout = "output"
-        mock_result.stderr = "some error"
-        mock_result.returncode = 0
 
         with (
             patch.object(LocalSandbox, "_get_shell", return_value="/bin/bash"),
-            patch("subprocess.run", return_value=mock_result),
+            patch.object(LocalSandbox, "_run_posix_command", return_value=("output", "some error", 0, False)),
         ):
             result = sandbox.execute_command("cmd")
 
@@ -201,14 +208,10 @@ class TestExecuteCommandStderr:
 
     def test_no_output_returns_placeholder(self):
         sandbox = LocalSandbox("test")
-        mock_result = MagicMock()
-        mock_result.stdout = ""
-        mock_result.stderr = ""
-        mock_result.returncode = 0
 
         with (
             patch.object(LocalSandbox, "_get_shell", return_value="/bin/bash"),
-            patch("subprocess.run", return_value=mock_result),
+            patch.object(LocalSandbox, "_run_posix_command", return_value=("", "", 0, False)),
         ):
             result = sandbox.execute_command("cmd")
 
@@ -216,14 +219,10 @@ class TestExecuteCommandStderr:
 
     def test_only_stderr_no_stdout(self):
         sandbox = LocalSandbox("test")
-        mock_result = MagicMock()
-        mock_result.stdout = ""
-        mock_result.stderr = "error only"
-        mock_result.returncode = 0
 
         with (
             patch.object(LocalSandbox, "_get_shell", return_value="/bin/bash"),
-            patch("subprocess.run", return_value=mock_result),
+            patch.object(LocalSandbox, "_run_posix_command", return_value=("", "error only", 0, False)),
         ):
             result = sandbox.execute_command("cmd")
 
@@ -245,7 +244,7 @@ class TestDownloadFileEdgeCases:
         data_dir.mkdir()
         (data_dir / "file.txt").write_bytes(b"hello world")
 
-        from ideer.config.paths import VIRTUAL_PATH_PREFIX
+        from deerflow.config.paths import VIRTUAL_PATH_PREFIX
 
         sandbox = LocalSandbox("test", [PathMapping(container_path=VIRTUAL_PATH_PREFIX, local_path=str(data_dir))])
         result = sandbox.download_file(f"{VIRTUAL_PATH_PREFIX}/file.txt")
@@ -314,7 +313,7 @@ class TestDownloadFileOSError:
         data_dir.mkdir()
         (data_dir / "file.txt").write_bytes(b"test")
 
-        from ideer.config.paths import VIRTUAL_PATH_PREFIX
+        from deerflow.config.paths import VIRTUAL_PATH_PREFIX
 
         sandbox = LocalSandbox("test", [PathMapping(container_path=VIRTUAL_PATH_PREFIX, local_path=str(data_dir))])
 
@@ -370,7 +369,7 @@ class TestDownloadPrefixNormalization:
         data_dir.mkdir()
         (data_dir / "file.txt").write_bytes(b"test")
 
-        from ideer.config.paths import VIRTUAL_PATH_PREFIX
+        from deerflow.config.paths import VIRTUAL_PATH_PREFIX
 
         sandbox = LocalSandbox("test", [PathMapping(container_path=VIRTUAL_PATH_PREFIX, local_path=str(data_dir))])
         # On Linux, backslash is part of filename. Test that prefix matching

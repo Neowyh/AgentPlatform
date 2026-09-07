@@ -5,6 +5,15 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 let mockPathname = "/workspace/chats";
 
+// WorkspaceHeader reads the sidebar state for its collapsible trigger.
+vi.mock("@/components/ui/sidebar", () => ({
+  useSidebar: () => ({ state: "expanded", open: true }),
+  SidebarTrigger: (props: any) => (
+    <div data-testid="sidebar-trigger" {...props} />
+  ),
+  SidebarSeparator: (props: any) => <div {...props} />,
+}));
+
 vi.mock("next/navigation", () => ({
   usePathname: () => mockPathname,
 }));

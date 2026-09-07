@@ -1,6 +1,6 @@
 """Image search import handling and DDGS filter forwarding.
 
-The existing test file patches 'ideer.community.image_search.tools.DDGS' but
+The existing test file patches 'deerflow.community.image_search.tools.DDGS' but
 DDGS is imported locally inside _search_images, so that attribute doesn't exist.
 This file patches the import correctly using patch.dict("sys.modules", ...).
 """
@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from ideer.community.image_search.tools import _search_images
+from deerflow.community.image_search.tools import _search_images
 
 # ---------------------------------------------------------------------------
 # Helpers

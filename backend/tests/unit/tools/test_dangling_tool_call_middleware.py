@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
-from ideer.agents.middlewares.dangling_tool_call_middleware import (
+from deerflow.agents.middlewares.dangling_tool_call_middleware import (
     DanglingToolCallMiddleware,
 )
 
@@ -303,7 +303,9 @@ class TestBuildPatchedMessagesPatching:
         assert isinstance(patched[4], ToolMessage)
         assert patched[4].tool_call_id == "call_2"
 
-    def test_orphan_tool_message_is_preserved_during_grouping(self):
+    def test_orphan_tool_message_is_dropped_during_grouping(self):
+        # Upstream drops orphan ToolMessages from the model request (persisted
+        # state untouched) so strict providers do not reject them with HTTP 400.
         mw = DanglingToolCallMiddleware()
         orphan = _tool_msg("orphan_call", "orphan")
         msgs = [
@@ -319,9 +321,9 @@ class TestBuildPatchedMessagesPatching:
         assert isinstance(patched[0], AIMessage)
         assert isinstance(patched[1], ToolMessage)
         assert patched[1].tool_call_id == "call_1"
-        assert patched[2] is orphan
-        assert isinstance(patched[3], HumanMessage)
-        assert patched.count(orphan) == 1
+        assert isinstance(patched[2], HumanMessage)
+        assert len(patched) == 3
+        assert orphan not in patched
 
     def test_invalid_tool_call_is_patched(self):
         mw = DanglingToolCallMiddleware()
@@ -333,7 +335,7 @@ class TestBuildPatchedMessagesPatching:
         assert patched[1].tool_call_id == "write_file:36"
         assert patched[1].name == "write_file"
         assert patched[1].status == "error"
-        assert "arguments were invalid" in patched[1].content
+        assert "failed before execution" in patched[1].content
         assert "Failed to parse tool arguments" in patched[1].content
 
     def test_valid_and_invalid_tool_calls_are_both_patched(self):
@@ -351,13 +353,21 @@ class TestBuildPatchedMessagesPatching:
         assert len(tool_msgs) == 2
         assert {tm.tool_call_id for tm in tool_msgs} == {"call_1", "write_file:36"}
 
-    def test_invalid_tool_call_already_responded_is_not_patched(self):
+    def test_invalid_tool_call_already_responded_reuses_existing_result(self):
+        # Upstream re-groups the transcript (the malformed args are normalized on
+        # the AI message) but must reuse the existing result instead of injecting
+        # a duplicate synthetic placeholder for the same call id.
         mw = DanglingToolCallMiddleware()
+        existing = _tool_msg("write_file:36", "write_file")
         msgs = [
             _ai_with_invalid_tool_calls([_invalid_tc()]),
-            _tool_msg("write_file:36", "write_file"),
+            existing,
         ]
-        assert mw._build_patched_messages(msgs) is None
+        patched = mw._build_patched_messages(msgs)
+        assert patched is not None
+        tool_msgs = [m for m in patched if isinstance(m, ToolMessage)]
+        assert tool_msgs == [existing]
+        assert sum(1 for m in patched if getattr(m, "type", None) == "ai") == 1
 
 
 class TestWrapModelCall:

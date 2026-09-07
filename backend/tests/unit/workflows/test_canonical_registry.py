@@ -8,14 +8,17 @@ from types import SimpleNamespace
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-import ideer.persistence.models  # noqa: F401
-import ideer.tools.tools
+import app.agentplatform.audit_model  # noqa: F401 - register audit_logs
+import app.agentplatform.rbac_models  # noqa: F401 - register users_ext
+import app.agentplatform.resource_models  # noqa: F401 - register resource tables
+import app.agentplatform.visibility_models  # noqa: F401 - register visibility tables
+import deerflow.tools.tools
+from app.agentplatform.resource_models import Resource, ResourceVersion, RunResourceSnapshot
+from app.agentplatform.resources.canonical_sandbox import canonical_run_key
+from app.agentplatform.resources.storage import ResourceStorage
+from app.agentplatform.workflows.v2.adapters import ActionResolutionError
 from app.workflow_worker import build_canonical_registry
-from ideer.persistence.base import Base
-from ideer.persistence.models.resource_catalog import Resource, ResourceVersion, RunResourceSnapshot
-from ideer.resources.canonical_sandbox import canonical_run_key
-from ideer.resources.storage import ResourceStorage
-from ideer.workflows.v2.adapters import ActionResolutionError
+from deerflow.persistence.base import Base
 
 
 @pytest.mark.asyncio
@@ -76,7 +79,7 @@ async def test_canonical_registry_uses_uuid_and_frozen_runner_tool_groups(
 
     tools = [SimpleNamespace(name="read_file", group="read"), SimpleNamespace(name="write_file", group="write")]
     monkeypatch.setattr(
-        ideer.tools.tools,
+        deerflow.tools.tools,
         "get_available_tools",
         lambda groups=None, app_config=None: [tool for tool in tools if groups is None or tool.group in groups],
     )
@@ -90,8 +93,9 @@ async def test_canonical_registry_uses_uuid_and_frozen_runner_tool_groups(
 
     assert registry.resolve("agent", agent_id).definition.resource_id == agent_id
     assert registry.resolve("tool", "read_file").tool.name == "read_file"
-    with pytest.raises(ActionResolutionError):
-        registry.resolve("agent", "writer")
+    # Workflow definitions author agent actions by slug; the slug resolves to
+    # the same snapshot-frozen adapter (an alias, never a re-resolution).
+    assert registry.resolve("agent", "writer").definition.resource_id == agent_id
     with pytest.raises(ActionResolutionError):
         registry.resolve("tool", "write_file")
     assert (tmp_path / "resources" / "run-skill-views" / canonical_run_key("run-1") / "custom").is_dir()

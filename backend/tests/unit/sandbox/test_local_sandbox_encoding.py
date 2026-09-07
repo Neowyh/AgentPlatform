@@ -1,8 +1,7 @@
 import builtins
-from types import SimpleNamespace
 
-import ideer.sandbox.local.local_sandbox as local_sandbox
-from ideer.sandbox.local.local_sandbox import LocalSandbox
+import deerflow.sandbox.local.local_sandbox as local_sandbox
+from deerflow.sandbox.local.local_sandbox import LocalSandbox, PathMapping
 
 
 def _open(base, file, mode="r", *args, **kwargs):
@@ -79,111 +78,93 @@ def test_get_shell_uses_cmd_as_last_windows_fallback(monkeypatch):
 
 
 def test_execute_command_uses_powershell_command_mode_on_windows(monkeypatch):
-    calls: list[tuple[object, dict]] = []
+    captured: dict = {}
 
-    def fake_run(*args, **kwargs):
-        calls.append((args[0], kwargs))
-        return SimpleNamespace(stdout="ok", stderr="", returncode=0)
+    def fake_run_windows(args, timeout, env=None):
+        captured["args"] = args
+        captured["env"] = env
+        return ("ok", "", 0, False)
 
     monkeypatch.setattr(local_sandbox.os, "name", "nt")
     monkeypatch.setattr(LocalSandbox, "_get_shell", staticmethod(lambda: r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"))
-    monkeypatch.setattr(local_sandbox.subprocess, "run", fake_run)
+    monkeypatch.setattr(LocalSandbox, "_run_windows_command", staticmethod(fake_run_windows))
 
     output = LocalSandbox("t").execute_command("Write-Output hello")
 
     assert output == "ok"
-    assert calls == [
-        (
-            [
-                r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
-                "-NoProfile",
-                "-Command",
-                "Write-Output hello",
-            ],
-            {
-                "shell": False,
-                "capture_output": True,
-                "text": True,
-                "timeout": 600,
-                "env": None,
-            },
-        )
+    assert captured["args"] == [
+        r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
+        "-NoProfile",
+        "-Command",
+        "Write-Output hello",
     ]
+    # The environment is always built (inherits os.environ minus secrets).
+    assert isinstance(captured["env"], dict)
 
 
 def test_execute_command_uses_posix_shell_command_mode_on_windows(monkeypatch):
-    calls: list[tuple[object, dict]] = []
+    captured: dict = {}
 
-    def fake_run(*args, **kwargs):
-        calls.append((args[0], kwargs))
-        return SimpleNamespace(stdout="ok", stderr="", returncode=0)
+    def fake_run_windows(args, timeout, env=None):
+        captured["args"] = args
+        captured["env"] = env
+        return ("ok", "", 0, False)
 
     monkeypatch.setattr(local_sandbox.os, "name", "nt")
     monkeypatch.setattr(local_sandbox.os, "environ", {"PATH": r"C:\Program Files\Git\bin"})
     monkeypatch.setattr(LocalSandbox, "_get_shell", staticmethod(lambda: r"C:\Program Files\Git\bin\sh.exe"))
-    monkeypatch.setattr(local_sandbox.subprocess, "run", fake_run)
+    monkeypatch.setattr(LocalSandbox, "_run_windows_command", staticmethod(fake_run_windows))
 
-    output = LocalSandbox("t").execute_command("echo hello")
+    # A path mapping gives the sandbox an owned root to exclude from MSYS
+    # argument conversion (the legacy blanket MSYS_NO_PATHCONV is gone).
+    sandbox = LocalSandbox("t", [PathMapping(container_path="/mnt/user-data", local_path="/tmp/data")])
+
+    output = sandbox.execute_command("echo hello")
 
     assert output == "ok"
-    assert calls == [
-        (
-            [r"C:\Program Files\Git\bin\sh.exe", "-c", "echo hello"],
-            {
-                "shell": False,
-                "capture_output": True,
-                "text": True,
-                "timeout": 600,
-                "env": {
-                    "PATH": r"C:\Program Files\Git\bin",
-                    "MSYS_NO_PATHCONV": "1",
-                    "MSYS2_ARG_CONV_EXCL": "*",
-                },
-            },
-        )
-    ]
+    assert captured["args"] == [r"C:\Program Files\Git\bin\sh.exe", "-c", "echo hello"]
+    env = captured["env"]
+    assert env is not None
+    assert env.get("PATH") == r"C:\Program Files\Git\bin"
+    assert "MSYS_NO_PATHCONV" not in env
+    assert env.get("MSYS2_ARG_CONV_EXCL") == "/mnt/user-data"
 
 
 def test_execute_command_does_not_set_msys_env_for_non_msys_posix_shell_on_windows(monkeypatch):
-    calls: list[tuple[object, dict]] = []
+    captured: dict = {}
 
-    def fake_run(*args, **kwargs):
-        calls.append((args[0], kwargs))
-        return SimpleNamespace(stdout="ok", stderr="", returncode=0)
+    def fake_run_windows(args, timeout, env=None):
+        captured["args"] = args
+        captured["env"] = env
+        return ("ok", "", 0, False)
 
     monkeypatch.setattr(local_sandbox.os, "name", "nt")
     monkeypatch.setattr(LocalSandbox, "_get_shell", staticmethod(lambda: r"C:\tools\busybox\sh.exe"))
-    monkeypatch.setattr(local_sandbox.subprocess, "run", fake_run)
+    monkeypatch.setattr(LocalSandbox, "_run_windows_command", staticmethod(fake_run_windows))
 
     output = LocalSandbox("t").execute_command("echo /mnt/skills/demo")
 
     assert output == "ok"
-    assert calls[0][1]["env"] is None
+    env = captured["env"]
+    assert env is not None
+    assert "MSYS_NO_PATHCONV" not in env
+    assert "MSYS2_ARG_CONV_EXCL" not in env
 
 
 def test_execute_command_uses_cmd_command_mode_on_windows(monkeypatch):
-    calls: list[tuple[object, dict]] = []
+    captured: dict = {}
 
-    def fake_run(*args, **kwargs):
-        calls.append((args[0], kwargs))
-        return SimpleNamespace(stdout="ok", stderr="", returncode=0)
+    def fake_run_windows(args, timeout, env=None):
+        captured["args"] = args
+        captured["env"] = env
+        return ("ok", "", 0, False)
 
     monkeypatch.setattr(local_sandbox.os, "name", "nt")
     monkeypatch.setattr(LocalSandbox, "_get_shell", staticmethod(lambda: r"C:\Windows\System32\cmd.exe"))
-    monkeypatch.setattr(local_sandbox.subprocess, "run", fake_run)
+    monkeypatch.setattr(LocalSandbox, "_run_windows_command", staticmethod(fake_run_windows))
 
     output = LocalSandbox("t").execute_command("echo hello")
 
     assert output == "ok"
-    assert calls == [
-        (
-            [r"C:\Windows\System32\cmd.exe", "/c", "echo hello"],
-            {
-                "shell": False,
-                "capture_output": True,
-                "text": True,
-                "timeout": 600,
-                "env": None,
-            },
-        )
-    ]
+    assert captured["args"] == [r"C:\Windows\System32\cmd.exe", "/c", "echo hello"]
+    assert isinstance(captured["env"], dict)

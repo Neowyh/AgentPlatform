@@ -1,16 +1,28 @@
-import {
-  extractError,
-  formatDetail,
-  parseErrorDetail,
-  type ErrorDetail,
-} from "@/core/api/errors";
+import { extractError, parseErrorDetail } from "@/core/api/errors";
 import { fetch } from "@/core/api/fetcher";
 import { getBackendBaseURL } from "@/core/config";
-import { getResourceSummary } from "@/core/resources/summaries";
 
+export { fetchAgentsApiEnabled } from "@/core/features/api";
 import type { Agent, CreateAgentRequest, UpdateAgentRequest } from "./types";
 
-interface CanonicalAgentResource {
+const BACKEND_UNAVAILABLE_STATUSES = new Set([502, 503, 504]);
+export class AgentNameCheckError extends Error {
+  constructor(
+    message: string,
+    public readonly reason: "backend_unreachable" | "request_failed",
+    public readonly detail: string | null = null,
+  ) {
+    super(message);
+    this.name = "AgentNameCheckError";
+  }
+}
+export class AgentsApiDisabledError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AgentsApiDisabledError";
+  }
+}
+type Resource = {
   id: string;
   type: "agent";
   slug: string;
@@ -19,107 +31,80 @@ interface CanonicalAgentResource {
   owner_id: string;
   visibility: string;
   scope_department_id: string | null;
-  latest_version: number;
-  draft_revision: number;
-  system_owned: boolean;
-  can_modify: boolean;
+  latest_version?: number;
+  draft_revision?: number;
+  system_owned?: boolean;
+  can_modify?: boolean;
   is_favorited?: boolean;
-}
-
-function fromCanonicalResource(resource: CanonicalAgentResource): Agent {
+};
+function fromResource(resource: Resource, content?: unknown): Agent {
+  const payload =
+    content && typeof content === "object"
+      ? (content as { config?: Record<string, unknown>; soul?: string | null })
+      : {};
+  const config =
+    payload.config ??
+    (content && typeof content === "object"
+      ? (content as Record<string, unknown>)
+      : {});
   return {
     resource_id: resource.id,
     slug: resource.slug,
-    draft_revision: resource.draft_revision,
-    name: resource.display_name,
-    description: resource.description ?? resource.display_name,
-    summary: getResourceSummary(
-      resource.slug,
-      resource.description ?? resource.display_name,
-    ),
-    model: null,
-    tool_groups: null,
-    skills: null,
-    read_only: !resource.can_modify,
+    name: resource.slug,
+    description:
+      (config.description as string) ??
+      resource.description ??
+      resource.display_name,
+    model: (config.model as string) ?? null,
+    tool_groups: (config.tool_groups as string[]) ?? null,
+    skills: (config.skills as string[]) ?? null,
+    allowed_subagents: (config.allowed_subagents as string[]) ?? null,
+    model_settings: (config.model_settings as Agent["model_settings"]) ?? null,
+    thinking_enabled: (config.thinking_enabled as boolean) ?? null,
+    reasoning_effort:
+      (config.reasoning_effort as Agent["reasoning_effort"]) ?? null,
+    soul: payload.soul ?? null,
+    read_only: resource.can_modify === false,
     visibility: resource.visibility,
     owner_id: resource.owner_id,
     department_id: resource.scope_department_id,
+    latest_version: resource.latest_version,
+    draft_revision: resource.draft_revision,
+    can_modify: resource.can_modify,
+    system_owned: resource.system_owned,
     is_favorited: resource.is_favorited,
   };
 }
-
-function fromCanonicalPublished(payload: {
-  resource: CanonicalAgentResource;
-  content: {
-    config: {
-      description?: string;
-      model?: string | null;
-      tool_groups?: string[] | null;
-      skills?: string[] | null;
-    };
-    soul: string;
-  };
-}): Agent {
-  const agent = fromCanonicalResource(payload.resource);
-  return {
-    ...agent,
-    description: payload.content.config.description ?? "",
-    summary: getResourceSummary(
-      payload.resource.slug,
-      payload.content.config.description ?? "",
-    ),
-    model: payload.content.config.model ?? null,
-    tool_groups: payload.content.config.tool_groups ?? null,
-    skills: payload.content.config.skills ?? null,
-    soul: payload.content.soul,
-  };
+async function fail(res: Response, message: string): Promise<never> {
+  await extractError(res, message);
+  throw new Error(message);
 }
-
-async function getCanonicalAgent(resourceId: string): Promise<Agent> {
-  const res = await fetch(
-    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resourceId)}/published`,
-  );
-  if (!res.ok) await extractError(res, `Agent '${resourceId}' not found`);
-  return fromCanonicalPublished(
-    (await res.json()) as Parameters<typeof fromCanonicalPublished>[0],
-  );
-}
-
-export class AgentNameCheckError extends Error {
-  constructor(
-    message: string,
-    public readonly reason: "backend_unreachable" | "request_failed",
-  ) {
-    super(message);
-    this.name = "AgentNameCheckError";
-  }
-}
-
 export async function listAgents(): Promise<Agent[]> {
-  const items: CanonicalAgentResource[] = [];
-  const limit = 200;
-  for (let offset = 0; ; offset += limit) {
-    const canonicalRes = await fetch(
-      `${getBackendBaseURL()}/api/resources?type=agent&limit=${limit}${offset ? `&offset=${offset}` : ""}`,
+  const agents: Agent[] = [];
+  for (let offset = 0; ; offset += 200) {
+    const res = await fetch(
+      `${getBackendBaseURL()}/api/resources?type=agent&limit=200${offset ? `&offset=${offset}` : ""}`,
     );
-    if (!canonicalRes.ok)
-      await extractError(canonicalRes, "Failed to load canonical agents");
-    const canonical = (await canonicalRes.json()) as {
-      items: CanonicalAgentResource[];
-      total: number;
-    };
-    items.push(...canonical.items);
-    if (items.length >= canonical.total || canonical.items.length === 0) break;
+    if (!res.ok) await fail(res, "Failed to load canonical agents");
+    const data = (await res.json()) as { items: Resource[]; total: number };
+    agents.push(...data.items.map((item) => fromResource(item)));
+    if (agents.length >= data.total || data.items.length === 0) return agents;
   }
-  return items.map(fromCanonicalResource);
 }
-
-export async function getAgent(identifier: string): Promise<Agent> {
-  return getCanonicalAgent(identifier);
+export async function getAgent(id: string): Promise<Agent> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(id)}/published`,
+  );
+  if (!res.ok) await fail(res, `Agent '${id}' not found`);
+  const payload = (await res.json()) as {
+    resource: Resource;
+    content: unknown;
+  };
+  return fromResource(payload.resource, payload.content);
 }
-
 export async function createAgent(request: CreateAgentRequest): Promise<Agent> {
-  const createRes = await fetch(`${getBackendBaseURL()}/api/resources`, {
+  const base = getBackendBaseURL();
+  const res = await fetch(`${base}/api/resources`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -129,174 +114,148 @@ export async function createAgent(request: CreateAgentRequest): Promise<Agent> {
       storage_kind: "filesystem",
     }),
   });
-  if (!createRes.ok) {
-    await extractError(createRes, "Failed to create Agent resource");
-  }
-  const resource = (await createRes.json()) as CanonicalAgentResource;
-  try {
-    const config = {
-      description: request.description,
-      model: request.model,
-      tool_groups: request.tool_groups,
-      skills: request.skills,
-    };
-    const draftRes = await fetch(
-      `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resource.id)}/agent-draft`,
-      {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          config,
-          soul: request.soul ?? "",
-          expected_revision: 0,
-        }),
-      },
-    );
-    if (!draftRes.ok)
-      await extractError(draftRes, "Failed to save Agent draft");
-    const draft = (await draftRes.json()) as { revision: number };
-    const publishRes = await fetch(
-      `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resource.id)}/publish`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          expected_draft_revision: draft.revision,
-          scan_result: {},
-        }),
-      },
-    );
-    if (!publishRes.ok)
-      await extractError(publishRes, "Failed to publish Agent");
-    await publishRes.json();
-    if (request.visibility && request.visibility !== "private") {
-      const visibilityRes = await fetch(
-        `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resource.id)}/visibility-applications`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            target_visibility: request.visibility,
-            reason: "Requested during Agent creation",
-          }),
-        },
-      );
-      if (!visibilityRes.ok) {
-        await extractError(visibilityRes, "Failed to request Agent visibility");
-      }
-    }
-    return fromCanonicalResource({ ...resource, latest_version: 1 });
-  } catch (error) {
-    await fetch(
-      `${getBackendBaseURL()}/api/resources/${encodeURIComponent(resource.id)}/archive`,
-      { method: "POST" },
-    ).catch(() => undefined);
-    throw error;
-  }
-}
-
-export async function updateAgent(
-  name: string,
-  request: UpdateAgentRequest,
-): Promise<Agent | void> {
-  const config = {
-    description: request.description,
-    model: request.model,
-    tool_groups: request.tool_groups,
-    skills: request.skills,
-  };
-  const draftRes = await fetch(
-    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(name)}/agent-draft`,
+  if (!res.ok) await fail(res, "Failed to create Agent resource");
+  const resource = (await res.json()) as Resource;
+  const draft = await fetch(
+    `${base}/api/resources/${resource.id}/agent-draft`,
     {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        config,
-        soul: request.soul ?? "",
-        expected_revision: request.draft_revision,
+        config: { ...request, name: undefined },
+        soul: request.soul,
+        expected_revision: 0,
       }),
     },
   );
-  if (!draftRes.ok) await extractError(draftRes, "Failed to save Agent draft");
-  const draft = (await draftRes.json()) as { revision: number };
-  const publishRes = await fetch(
-    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(name)}/publish`,
+  if (!draft.ok) await fail(draft, "Failed to save Agent draft");
+  const draftPayload = (await draft.json()) as { revision: number };
+  const publish = await fetch(`${base}/api/resources/${resource.id}/publish`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      expected_draft_revision: draftPayload.revision,
+      scan_result: {},
+    }),
+  });
+  if (!publish.ok) await fail(publish, "Failed to publish Agent");
+  if (request.visibility && request.visibility !== "private") {
+    const approval = await fetch(
+      `${base}/api/resources/${resource.id}/visibility-applications`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ target_visibility: request.visibility }),
+      },
+    );
+    if (!approval.ok)
+      await fail(approval, "Failed to submit Agent visibility request");
+  }
+  return fromResource({
+    ...resource,
+    latest_version: 1,
+    draft_revision: draftPayload.revision,
+  });
+}
+export async function updateAgent(
+  id: string,
+  request: UpdateAgentRequest,
+): Promise<Agent> {
+  const base = getBackendBaseURL();
+  const draft = await fetch(
+    `${base}/api/resources/${encodeURIComponent(id)}/agent-draft`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        config: { ...request, name: undefined },
+        soul: request.soul,
+        expected_revision: request.draft_revision ?? 0,
+      }),
+    },
+  );
+  if (!draft.ok) await fail(draft, "Failed to update agent");
+  const payload = (await draft.json()) as { revision: number };
+  const publish = await fetch(
+    `${base}/api/resources/${encodeURIComponent(id)}/publish`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        expected_draft_revision: draft.revision,
+        expected_draft_revision: payload.revision,
         scan_result: {},
       }),
     },
   );
-  if (!publishRes.ok) await extractError(publishRes, "Failed to publish Agent");
-  await publishRes.json();
-  return;
+  if (!publish.ok) await fail(publish, "Failed to publish Agent");
+  return getAgent(id);
 }
-
-export async function deleteAgent(name: string): Promise<void> {
+export async function deleteAgent(id: string): Promise<void> {
   const res = await fetch(
-    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(name)}/archive`,
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(id)}/archive`,
     { method: "POST" },
   );
-  if (!res.ok) await extractError(res, "Failed to archive Agent");
+  if (!res.ok) await fail(res, "Failed to delete agent");
 }
-
+export async function toggleAgentFavorite(
+  id: string,
+  isFavorited = false,
+): Promise<{ success: boolean; is_favorited: boolean }> {
+  const res = await fetch(
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(id)}/favorite`,
+    { method: isFavorited ? "DELETE" : "POST" },
+  );
+  if (!res.ok) await fail(res, "Failed to update Agent favorite");
+  return { success: true, is_favorited: !isFavorited };
+}
 export async function checkAgentName(
   name: string,
 ): Promise<{ available: boolean; name: string }> {
-  let aliasRes: Response;
+  let res: Response;
   try {
-    aliasRes = await fetch(
+    res = await fetch(
       `${getBackendBaseURL()}/api/resources/aliases/agent/${encodeURIComponent(name)}`,
     );
   } catch {
     throw new AgentNameCheckError(
-      "Could not reach the iDeer backend.",
+      "Could not reach the iDeer backend",
       "backend_unreachable",
     );
   }
-  if (aliasRes.ok) return { available: false, name };
-  if (aliasRes.status === 404) return { available: true, name };
-  const detail = (await parseErrorDetail(aliasRes))?.detail;
-  throw new AgentNameCheckError(
-    formatDetail(detail, "Failed to check agent name", aliasRes.statusText),
-    "request_failed",
-  );
+  if (res.status === 404) return { available: true, name };
+  if (!res.ok) {
+    const parsed = await parseErrorDetail(res);
+    const detail = typeof parsed?.detail === "string" ? parsed.detail : null;
+    if (BACKEND_UNAVAILABLE_STATUSES.has(res.status))
+      throw new AgentNameCheckError(
+        "Could not reach the iDeer backend",
+        "backend_unreachable",
+        detail,
+      );
+    throw new AgentNameCheckError(
+      detail ?? `Failed to check agent name: ${res.statusText}`,
+      "request_failed",
+      detail,
+    );
+  }
+  return { available: false, name };
 }
-
-// ── Export / Import ──────────────────────────────────────────────
-
-export async function exportAgent(name: string): Promise<Blob> {
+export async function exportAgent(id: string): Promise<Blob> {
   const res = await fetch(
-    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(name)}/export`,
+    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(id)}/export`,
     { method: "GET" },
   );
-  if (!res.ok) await extractError(res, "Failed to export agent");
+  if (!res.ok) await fail(res, "Failed to export agent");
   return res.blob();
 }
-
 export async function importAgent(file: File): Promise<Agent> {
-  const form = new FormData();
-  form.append("archive", file);
-  const response = await fetch(
-    `${getBackendBaseURL()}/api/resources/import/agent`,
-    { method: "POST", body: form },
-  );
-  if (!response.ok) await extractError(response, "Failed to import agent");
-  const resource = (await response.json()) as CanonicalAgentResource;
-  return getCanonicalAgent(resource.id);
-}
-
-export async function toggleAgentFavorite(
-  name: string,
-  isFavorited = false,
-): Promise<{ success: boolean; is_favorited: boolean }> {
-  const res = await fetch(
-    `${getBackendBaseURL()}/api/resources/${encodeURIComponent(name)}/favorite`,
-    { method: isFavorited ? "DELETE" : "POST" },
-  );
-  if (!res.ok) await extractError(res, "Failed to update favorite");
-  return { success: true, is_favorited: !isFavorited };
+  const body = new FormData();
+  body.append("archive", file);
+  const res = await fetch(`${getBackendBaseURL()}/api/resources/import/agent`, {
+    method: "POST",
+    body,
+  });
+  if (!res.ok) await fail(res, "Failed to import agent");
+  const resource = (await res.json()) as Resource;
+  return getAgent(resource.id);
 }

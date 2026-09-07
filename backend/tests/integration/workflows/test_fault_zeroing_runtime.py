@@ -14,9 +14,9 @@ from pathlib import Path
 import pytest
 from langgraph.checkpoint.memory import MemorySaver
 
-from ideer.workflows.v2.adapters import ActionAdapterRegistry
-from ideer.workflows.v2.compiler import WorkflowGraphCompiler
-from ideer.workflows.v2.parser import parse_workflow_v2_file
+from app.agentplatform.workflows.v2.adapters import ActionAdapterRegistry
+from app.agentplatform.workflows.v2.compiler import WorkflowGraphCompiler
+from app.agentplatform.workflows.v2.parser import parse_workflow_v2_file
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 WORKFLOW_PATH = REPO_ROOT / "resources" / "workflows" / "fault-zeroing.yaml"
@@ -234,7 +234,7 @@ async def test_fault_zeroing_evidence_assessment_retries_on_transient_failure(tm
     async def no_sleep(_seconds: float) -> None:
         return None
 
-    monkeypatch.setattr("ideer.workflows.v2.compiler.asyncio.sleep", no_sleep)
+    monkeypatch.setattr("app.agentplatform.workflows.v2.compiler.asyncio.sleep", no_sleep)
 
     delegate = NodeStub([])
     attempts = 0

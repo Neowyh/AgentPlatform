@@ -1,4 +1,4 @@
-"""Comprehensive tests for ideer.models.claude_provider.ClaudeChatModel.
+"""Comprehensive tests for deerflow.models.claude_provider.ClaudeChatModel.
 
 Covers all public and private methods: model_post_init, credential loading
 paths, OAuth detection, prompt caching, thinking budget, billing injection,
@@ -31,7 +31,7 @@ def _make_model(**overrides: Any):
     client is created.  The caller can still control ``_is_oauth`` and other
     private attrs afterwards.
     """
-    from ideer.models.claude_provider import ClaudeChatModel
+    from deerflow.models.claude_provider import ClaudeChatModel
 
     defaults: dict[str, Any] = {
         "model": "claude-sonnet-4-6",
@@ -63,17 +63,17 @@ def _make_model(**overrides: Any):
 
 class TestModuleConstants:
     def test_max_retries(self):
-        from ideer.models.claude_provider import MAX_RETRIES
+        from deerflow.models.claude_provider import MAX_RETRIES
 
         assert MAX_RETRIES == 3
 
     def test_thinking_budget_ratio(self):
-        from ideer.models.claude_provider import THINKING_BUDGET_RATIO
+        from deerflow.models.claude_provider import THINKING_BUDGET_RATIO
 
         assert THINKING_BUDGET_RATIO == 0.8
 
     def test_oauth_billing_header_default(self):
-        from ideer.models.claude_provider import OAUTH_BILLING_HEADER
+        from deerflow.models.claude_provider import OAUTH_BILLING_HEADER
 
         assert "cc_version=" in OAUTH_BILLING_HEADER
 
@@ -82,7 +82,7 @@ class TestModuleConstants:
         import importlib
         import os
 
-        import ideer.models.claude_provider as mod
+        import deerflow.models.claude_provider as mod
 
         old_val = os.environ.get("ANTHROPIC_BILLING_HEADER")
         os.environ["ANTHROPIC_BILLING_HEADER"] = "custom-header"
@@ -126,23 +126,23 @@ class TestValidateRetryConfig:
 class TestModelPostInit:
     """Test the real model_post_init with mocked credential_loader."""
 
-    @patch("ideer.models.claude_provider.ChatAnthropic.model_post_init")
-    @patch("ideer.models.credential_loader.load_claude_code_credential", return_value=None)
-    @patch("ideer.models.credential_loader.is_oauth_token", return_value=False)
+    @patch("deerflow.models.claude_provider.ChatAnthropic.model_post_init")
+    @patch("deerflow.models.credential_loader.load_claude_code_credential", return_value=None)
+    @patch("deerflow.models.credential_loader.is_oauth_token", return_value=False)
     def test_standard_api_key(self, mock_is_oauth, mock_load_cred, mock_super_init):
         """Plain API key passes through without OAuth setup."""
-        from ideer.models.claude_provider import ClaudeChatModel
+        from deerflow.models.claude_provider import ClaudeChatModel
 
         model = ClaudeChatModel(model="claude-sonnet-4-6", anthropic_api_key=API_KEY)
         assert model._is_oauth is False
         assert model._oauth_access_token == ""
         mock_super_init.assert_called_once()
 
-    @patch("ideer.models.claude_provider.ChatAnthropic.model_post_init")
-    @patch("ideer.models.credential_loader.is_oauth_token", return_value=True)
+    @patch("deerflow.models.claude_provider.ChatAnthropic.model_post_init")
+    @patch("deerflow.models.credential_loader.is_oauth_token", return_value=True)
     def test_oauth_token_detected(self, mock_is_oauth, mock_super_init):
         """OAuth token triggers _is_oauth, sets headers, disables caching."""
-        from ideer.models.claude_provider import ClaudeChatModel
+        from deerflow.models.claude_provider import ClaudeChatModel
 
         # Provide stub clients after super().model_post_init
         mock_super_init.side_effect = lambda ctx: None
@@ -161,12 +161,12 @@ class TestModelPostInit:
         assert model.enable_prompt_caching is False
         assert "anthropic-beta" in model.default_headers
 
-    @patch("ideer.models.claude_provider.ChatAnthropic.model_post_init")
-    @patch("ideer.models.credential_loader.load_claude_code_credential")
-    @patch("ideer.models.credential_loader.is_oauth_token", return_value=True)
+    @patch("deerflow.models.claude_provider.ChatAnthropic.model_post_init")
+    @patch("deerflow.models.credential_loader.load_claude_code_credential")
+    @patch("deerflow.models.credential_loader.is_oauth_token", return_value=True)
     def test_fallback_to_claude_code_credential(self, mock_is_oauth, mock_load_cred, mock_super_init):
         """When api_key is empty, loads credential from Claude Code CLI."""
-        from ideer.models.claude_provider import ClaudeChatModel
+        from deerflow.models.claude_provider import ClaudeChatModel
 
         cred = SimpleNamespace(access_token=OAUTH_TOKEN, source="claude-cli-env")
         mock_load_cred.return_value = cred
@@ -180,12 +180,12 @@ class TestModelPostInit:
         assert model._is_oauth is True
         mock_load_cred.assert_called_once()
 
-    @patch("ideer.models.claude_provider.ChatAnthropic.model_post_init")
-    @patch("ideer.models.credential_loader.load_claude_code_credential")
-    @patch("ideer.models.credential_loader.is_oauth_token", return_value=False)
+    @patch("deerflow.models.claude_provider.ChatAnthropic.model_post_init")
+    @patch("deerflow.models.credential_loader.load_claude_code_credential")
+    @patch("deerflow.models.credential_loader.is_oauth_token", return_value=False)
     def test_placeholder_key_falls_back(self, mock_is_oauth, mock_load_cred, mock_super_init):
         """Placeholder key 'your-anthropic-api-key' triggers credential lookup."""
-        from ideer.models.claude_provider import ClaudeChatModel
+        from deerflow.models.claude_provider import ClaudeChatModel
 
         cred = SimpleNamespace(access_token=API_KEY, source="claude-cli-env")
         mock_load_cred.return_value = cred
@@ -198,14 +198,14 @@ class TestModelPostInit:
 
         mock_load_cred.assert_called_once()
 
-    @patch("ideer.models.claude_provider.ChatAnthropic.model_post_init")
-    @patch("ideer.models.credential_loader.load_claude_code_credential", return_value=None)
-    @patch("ideer.models.credential_loader.is_oauth_token", return_value=False)
+    @patch("deerflow.models.claude_provider.ChatAnthropic.model_post_init")
+    @patch("deerflow.models.credential_loader.load_claude_code_credential", return_value=None)
+    @patch("deerflow.models.credential_loader.is_oauth_token", return_value=False)
     def test_no_key_no_credential_logs_warning(self, mock_is_oauth, mock_load_cred, mock_super_init, caplog):
         """When no key and no credential, logs a warning."""
         import logging
 
-        from ideer.models.claude_provider import ClaudeChatModel
+        from deerflow.models.claude_provider import ClaudeChatModel
 
         mock_super_init.side_effect = lambda ctx: None
 
@@ -217,12 +217,12 @@ class TestModelPostInit:
 
         assert "No Anthropic API key" in caplog.text
 
-    @patch("ideer.models.claude_provider.ChatAnthropic.model_post_init")
-    @patch("ideer.models.credential_loader.load_claude_code_credential", return_value=None)
-    @patch("ideer.models.credential_loader.is_oauth_token", return_value=False)
+    @patch("deerflow.models.claude_provider.ChatAnthropic.model_post_init")
+    @patch("deerflow.models.credential_loader.load_claude_code_credential", return_value=None)
+    @patch("deerflow.models.credential_loader.is_oauth_token", return_value=False)
     def test_string_api_key_converted_to_secretstr(self, mock_is_oauth, mock_load_cred, mock_super_init):
         """A plain string api_key is wrapped in SecretStr."""
-        from ideer.models.claude_provider import ClaudeChatModel
+        from deerflow.models.claude_provider import ClaudeChatModel
 
         mock_super_init.side_effect = lambda ctx: None
 
@@ -233,12 +233,12 @@ class TestModelPostInit:
 
         assert isinstance(model.anthropic_api_key, SecretStr)
 
-    @patch("ideer.models.claude_provider.ChatAnthropic.model_post_init")
-    @patch("ideer.models.credential_loader.load_claude_code_credential")
-    @patch("ideer.models.credential_loader.is_oauth_token", return_value=True)
+    @patch("deerflow.models.claude_provider.ChatAnthropic.model_post_init")
+    @patch("deerflow.models.credential_loader.load_claude_code_credential")
+    @patch("deerflow.models.credential_loader.is_oauth_token", return_value=True)
     def test_oauth_patches_both_clients(self, mock_is_oauth, mock_load_cred, mock_super_init):
         """OAuth path calls _patch_client_oauth on both sync and async clients."""
-        from ideer.models.claude_provider import ClaudeChatModel
+        from deerflow.models.claude_provider import ClaudeChatModel
 
         mock_super_init.side_effect = lambda ctx: None
 
@@ -291,7 +291,7 @@ class TestPatchClientOauth:
 
 class TestApplyOauthBilling:
     def test_injects_billing_into_empty_system(self):
-        from ideer.models.claude_provider import OAUTH_BILLING_HEADER
+        from deerflow.models.claude_provider import OAUTH_BILLING_HEADER
 
         model = _make_model()
         payload: dict[str, Any] = {}
@@ -301,7 +301,7 @@ class TestApplyOauthBilling:
         assert payload["system"][0]["text"] == OAUTH_BILLING_HEADER
 
     def test_injects_billing_into_list_system(self):
-        from ideer.models.claude_provider import OAUTH_BILLING_HEADER
+        from deerflow.models.claude_provider import OAUTH_BILLING_HEADER
 
         model = _make_model()
         existing = {"type": "text", "text": "You are helpful."}
@@ -312,7 +312,7 @@ class TestApplyOauthBilling:
         assert payload["system"][0]["text"] == OAUTH_BILLING_HEADER
 
     def test_deduplicates_existing_billing_in_list(self):
-        from ideer.models.claude_provider import OAUTH_BILLING_HEADER
+        from deerflow.models.claude_provider import OAUTH_BILLING_HEADER
 
         model = _make_model()
         billing = {"type": "text", "text": OAUTH_BILLING_HEADER}
@@ -326,7 +326,7 @@ class TestApplyOauthBilling:
         assert len(billing_blocks) == 1
 
     def test_injects_billing_into_string_system_without_existing(self):
-        from ideer.models.claude_provider import OAUTH_BILLING_HEADER
+        from deerflow.models.claude_provider import OAUTH_BILLING_HEADER
 
         model = _make_model()
         payload: dict[str, Any] = {"system": "You are helpful."}
@@ -338,7 +338,7 @@ class TestApplyOauthBilling:
         assert payload["system"][1]["text"] == "You are helpful."
 
     def test_injects_billing_into_string_system_with_existing(self):
-        from ideer.models.claude_provider import OAUTH_BILLING_HEADER
+        from deerflow.models.claude_provider import OAUTH_BILLING_HEADER
 
         model = _make_model()
         payload: dict[str, Any] = {"system": f"prefix {OAUTH_BILLING_HEADER} suffix"}
@@ -356,7 +356,7 @@ class TestApplyOauthBilling:
         assert "user_id" in payload["metadata"]
         user_id = json.loads(payload["metadata"]["user_id"])
         assert "device_id" in user_id
-        assert user_id["account_uuid"] == "ideer"
+        assert user_id["account_uuid"] == "deerflow"
         assert "session_id" in user_id
 
     def test_preserves_existing_metadata_user_id(self):
@@ -642,7 +642,7 @@ class TestStripCacheControl:
                 {"type": "text", "text": "hi", "cache_control": {"type": "ephemeral"}},
             ],
         }
-        from ideer.models.claude_provider import ClaudeChatModel
+        from deerflow.models.claude_provider import ClaudeChatModel
 
         ClaudeChatModel._strip_cache_control(payload)
         assert "cache_control" not in payload["system"][0]
@@ -658,7 +658,7 @@ class TestStripCacheControl:
                 },
             ],
         }
-        from ideer.models.claude_provider import ClaudeChatModel
+        from deerflow.models.claude_provider import ClaudeChatModel
 
         ClaudeChatModel._strip_cache_control(payload)
         assert "cache_control" not in payload["messages"][0]["content"][0]
@@ -669,43 +669,43 @@ class TestStripCacheControl:
                 {"name": "t1", "cache_control": {"type": "ephemeral"}},
             ],
         }
-        from ideer.models.claude_provider import ClaudeChatModel
+        from deerflow.models.claude_provider import ClaudeChatModel
 
         ClaudeChatModel._strip_cache_control(payload)
         assert "cache_control" not in payload["tools"][0]
 
     def test_noop_on_empty_payload(self):
-        from ideer.models.claude_provider import ClaudeChatModel
+        from deerflow.models.claude_provider import ClaudeChatModel
 
         payload: dict[str, Any] = {}
         ClaudeChatModel._strip_cache_control(payload)
 
     def test_skips_non_list_system(self):
-        from ideer.models.claude_provider import ClaudeChatModel
+        from deerflow.models.claude_provider import ClaudeChatModel
 
         payload: dict[str, Any] = {"system": "string system"}
         ClaudeChatModel._strip_cache_control(payload)
 
     def test_skips_non_list_messages(self):
-        from ideer.models.claude_provider import ClaudeChatModel
+        from deerflow.models.claude_provider import ClaudeChatModel
 
         payload: dict[str, Any] = {"messages": "string messages"}
         ClaudeChatModel._strip_cache_control(payload)
 
     def test_skips_non_dict_items_in_system(self):
-        from ideer.models.claude_provider import ClaudeChatModel
+        from deerflow.models.claude_provider import ClaudeChatModel
 
         payload: dict[str, Any] = {"system": ["string-item", 42]}
         ClaudeChatModel._strip_cache_control(payload)
 
     def test_skips_non_dict_items_in_messages(self):
-        from ideer.models.claude_provider import ClaudeChatModel
+        from deerflow.models.claude_provider import ClaudeChatModel
 
         payload: dict[str, Any] = {"messages": ["string-item"]}
         ClaudeChatModel._strip_cache_control(payload)
 
     def test_skips_non_dict_content_blocks(self):
-        from ideer.models.claude_provider import ClaudeChatModel
+        from deerflow.models.claude_provider import ClaudeChatModel
 
         payload: dict[str, Any] = {
             "messages": [
@@ -716,7 +716,7 @@ class TestStripCacheControl:
 
     def test_strips_from_non_list_content(self):
         """When content is not a list, dict items still get cache_control stripped at the item level."""
-        from ideer.models.claude_provider import ClaudeChatModel
+        from deerflow.models.claude_provider import ClaudeChatModel
 
         payload: dict[str, Any] = {
             "messages": [
@@ -727,13 +727,13 @@ class TestStripCacheControl:
         ClaudeChatModel._strip_cache_control(payload)
 
     def test_skips_non_list_tools(self):
-        from ideer.models.claude_provider import ClaudeChatModel
+        from deerflow.models.claude_provider import ClaudeChatModel
 
         payload: dict[str, Any] = {"tools": "not a list"}
         ClaudeChatModel._strip_cache_control(payload)
 
     def test_skips_non_dict_tools(self):
-        from ideer.models.claude_provider import ClaudeChatModel
+        from deerflow.models.claude_provider import ClaudeChatModel
 
         payload: dict[str, Any] = {"tools": ["string-tool", 42]}
         ClaudeChatModel._strip_cache_control(payload)
@@ -753,7 +753,7 @@ class TestGetRequestPayload:
             patch.object(model, "_apply_oauth_billing") as mock_billing,
             patch.object(model, "_apply_prompt_caching") as mock_caching,
             patch.object(model, "_apply_thinking_budget") as mock_thinking,
-            patch("ideer.models.claude_provider.ChatAnthropic._get_request_payload", return_value={"test": True}),
+            patch("deerflow.models.claude_provider.ChatAnthropic._get_request_payload", return_value={"test": True}),
         ):
             model._get_request_payload("hello")
 
@@ -769,7 +769,7 @@ class TestGetRequestPayload:
             patch.object(model, "_apply_oauth_billing") as mock_billing,
             patch.object(model, "_apply_prompt_caching"),
             patch.object(model, "_apply_thinking_budget"),
-            patch("ideer.models.claude_provider.ChatAnthropic._get_request_payload", return_value={"test": True}),
+            patch("deerflow.models.claude_provider.ChatAnthropic._get_request_payload", return_value={"test": True}),
         ):
             model._get_request_payload("hello")
 
@@ -783,7 +783,7 @@ class TestGetRequestPayload:
             patch.object(model, "_apply_oauth_billing") as mock_billing,
             patch.object(model, "_apply_prompt_caching") as mock_caching,
             patch.object(model, "_apply_thinking_budget") as mock_thinking,
-            patch("ideer.models.claude_provider.ChatAnthropic._get_request_payload", return_value={"test": True}),
+            patch("deerflow.models.claude_provider.ChatAnthropic._get_request_payload", return_value={"test": True}),
         ):
             model._get_request_payload("hello")
 
@@ -797,7 +797,7 @@ class TestGetRequestPayload:
 
         with (
             patch.object(model, "_apply_thinking_budget") as mock_thinking,
-            patch("ideer.models.claude_provider.ChatAnthropic._get_request_payload", return_value={"test": True}),
+            patch("deerflow.models.claude_provider.ChatAnthropic._get_request_payload", return_value={"test": True}),
         ):
             model._get_request_payload("hello")
 
@@ -816,7 +816,7 @@ class TestCreateMethods:
 
         with (
             patch.object(model, "_strip_cache_control") as mock_strip,
-            patch("ideer.models.claude_provider.ChatAnthropic._create", return_value="result"),
+            patch("deerflow.models.claude_provider.ChatAnthropic._create", return_value="result"),
         ):
             result = model._create({"test": True})
 
@@ -829,7 +829,7 @@ class TestCreateMethods:
 
         with (
             patch.object(model, "_strip_cache_control") as mock_strip,
-            patch("ideer.models.claude_provider.ChatAnthropic._create", return_value="result"),
+            patch("deerflow.models.claude_provider.ChatAnthropic._create", return_value="result"),
         ):
             model._create({"test": True})
 
@@ -842,7 +842,7 @@ class TestCreateMethods:
 
         with (
             patch.object(model, "_strip_cache_control") as mock_strip,
-            patch("ideer.models.claude_provider.ChatAnthropic._acreate", new_callable=AsyncMock, return_value="result"),
+            patch("deerflow.models.claude_provider.ChatAnthropic._acreate", new_callable=AsyncMock, return_value="result"),
         ):
             result = await model._acreate({"test": True})
 
@@ -856,7 +856,7 @@ class TestCreateMethods:
 
         with (
             patch.object(model, "_strip_cache_control") as mock_strip,
-            patch("ideer.models.claude_provider.ChatAnthropic._acreate", new_callable=AsyncMock, return_value="result"),
+            patch("deerflow.models.claude_provider.ChatAnthropic._acreate", new_callable=AsyncMock, return_value="result"),
         ):
             await model._acreate({"test": True})
 
@@ -870,7 +870,7 @@ class TestCreateMethods:
 
 class TestCalcBackoffMs:
     def test_attempt_1(self):
-        from ideer.models.claude_provider import ClaudeChatModel
+        from deerflow.models.claude_provider import ClaudeChatModel
 
         error = anthropic.RateLimitError(
             message="rate limited",
@@ -882,7 +882,7 @@ class TestCalcBackoffMs:
         assert ms == 2400
 
     def test_attempt_2(self):
-        from ideer.models.claude_provider import ClaudeChatModel
+        from deerflow.models.claude_provider import ClaudeChatModel
 
         error = anthropic.RateLimitError(
             message="rate limited",
@@ -894,7 +894,7 @@ class TestCalcBackoffMs:
         assert ms == 4800
 
     def test_attempt_3(self):
-        from ideer.models.claude_provider import ClaudeChatModel
+        from deerflow.models.claude_provider import ClaudeChatModel
 
         error = anthropic.RateLimitError(
             message="rate limited",
@@ -906,7 +906,7 @@ class TestCalcBackoffMs:
         assert ms == 9600
 
     def test_retry_after_header_overrides(self):
-        from ideer.models.claude_provider import ClaudeChatModel
+        from deerflow.models.claude_provider import ClaudeChatModel
 
         resp = MagicMock()
         resp.headers = {"Retry-After": "10"}
@@ -919,7 +919,7 @@ class TestCalcBackoffMs:
         assert ms == 10000
 
     def test_retry_after_invalid_value_ignored(self):
-        from ideer.models.claude_provider import ClaudeChatModel
+        from deerflow.models.claude_provider import ClaudeChatModel
 
         resp = MagicMock()
         resp.headers = {"Retry-After": "not-a-number"}
@@ -933,7 +933,7 @@ class TestCalcBackoffMs:
         assert ms == 2400
 
     def test_no_retry_after_header(self):
-        from ideer.models.claude_provider import ClaudeChatModel
+        from deerflow.models.claude_provider import ClaudeChatModel
 
         error = anthropic.InternalServerError(
             message="server error",
@@ -944,7 +944,7 @@ class TestCalcBackoffMs:
         assert ms == 2400
 
     def test_error_without_response_attr(self):
-        from ideer.models.claude_provider import ClaudeChatModel
+        from deerflow.models.claude_provider import ClaudeChatModel
 
         error = Exception("generic error")
         ms = ClaudeChatModel._calc_backoff_ms(1, error)
@@ -952,7 +952,7 @@ class TestCalcBackoffMs:
 
     def test_error_with_none_response_attr(self):
         """Error whose .response attribute is None (not an anthropic SDK error)."""
-        from ideer.models.claude_provider import ClaudeChatModel
+        from deerflow.models.claude_provider import ClaudeChatModel
 
         error = Exception("generic")
         error.response = None  # type: ignore[attr-defined]
@@ -960,7 +960,7 @@ class TestCalcBackoffMs:
         assert ms == 2400
 
     def test_retry_after_none_value_ignored(self):
-        from ideer.models.claude_provider import ClaudeChatModel
+        from deerflow.models.claude_provider import ClaudeChatModel
 
         resp = MagicMock()
         resp.headers = {"Retry-After": None}
@@ -983,7 +983,7 @@ class TestGenerateSync:
         model = _make_model(retry_max_attempts=3)
         messages = [MagicMock()]
 
-        with patch("ideer.models.claude_provider.ChatAnthropic._generate", return_value="ok") as mock_gen:
+        with patch("deerflow.models.claude_provider.ChatAnthropic._generate", return_value="ok") as mock_gen:
             result = model._generate(messages)
 
         assert result == "ok"
@@ -1000,7 +1000,7 @@ class TestGenerateSync:
         )
 
         with (
-            patch("ideer.models.claude_provider.ChatAnthropic._generate", side_effect=[rate_error, "ok"]) as mock_gen,
+            patch("deerflow.models.claude_provider.ChatAnthropic._generate", side_effect=[rate_error, "ok"]) as mock_gen,
             patch("time.sleep"),
         ):
             result = model._generate(messages)
@@ -1019,7 +1019,7 @@ class TestGenerateSync:
         )
 
         with (
-            patch("ideer.models.claude_provider.ChatAnthropic._generate", side_effect=[server_error, "ok"]) as mock_gen,
+            patch("deerflow.models.claude_provider.ChatAnthropic._generate", side_effect=[server_error, "ok"]) as mock_gen,
             patch("time.sleep"),
         ):
             result = model._generate(messages)
@@ -1038,7 +1038,7 @@ class TestGenerateSync:
         )
 
         with (
-            patch("ideer.models.claude_provider.ChatAnthropic._generate", side_effect=rate_error),
+            patch("deerflow.models.claude_provider.ChatAnthropic._generate", side_effect=rate_error),
             patch("time.sleep"),
             pytest.raises(anthropic.RateLimitError),
         ):
@@ -1055,7 +1055,7 @@ class TestGenerateSync:
         )
 
         with (
-            patch("ideer.models.claude_provider.ChatAnthropic._generate", side_effect=server_error),
+            patch("deerflow.models.claude_provider.ChatAnthropic._generate", side_effect=server_error),
             patch("time.sleep"),
             pytest.raises(anthropic.InternalServerError),
         ):
@@ -1068,7 +1068,7 @@ class TestGenerateSync:
 
         with (
             patch.object(model, "_patch_client_oauth") as mock_patch,
-            patch("ideer.models.claude_provider.ChatAnthropic._generate", return_value="ok"),
+            patch("deerflow.models.claude_provider.ChatAnthropic._generate", return_value="ok"),
         ):
             model._generate(messages)
 
@@ -1081,7 +1081,7 @@ class TestGenerateSync:
 
         with (
             patch.object(model, "_patch_client_oauth") as mock_patch,
-            patch("ideer.models.claude_provider.ChatAnthropic._generate", return_value="ok"),
+            patch("deerflow.models.claude_provider.ChatAnthropic._generate", return_value="ok"),
         ):
             model._generate(messages)
 
@@ -1094,7 +1094,7 @@ class TestGenerateSync:
 
         with (
             patch(
-                "ideer.models.claude_provider.ChatAnthropic._generate",
+                "deerflow.models.claude_provider.ChatAnthropic._generate",
                 side_effect=ValueError("bad input"),
             ),
             pytest.raises(ValueError, match="bad input"),
@@ -1114,7 +1114,7 @@ class TestGenerateSync:
         )
 
         with (
-            patch("ideer.models.claude_provider.ChatAnthropic._generate", side_effect=[rate_error, "ok"]),
+            patch("deerflow.models.claude_provider.ChatAnthropic._generate", side_effect=[rate_error, "ok"]),
             patch("time.sleep"),
             caplog.at_level(logging.WARNING),
         ):
@@ -1134,7 +1134,7 @@ class TestGenerateAsync:
         model = _make_model(retry_max_attempts=3)
         messages = [MagicMock()]
 
-        with patch("ideer.models.claude_provider.ChatAnthropic._agenerate", new_callable=AsyncMock, return_value="ok") as mock_gen:
+        with patch("deerflow.models.claude_provider.ChatAnthropic._agenerate", new_callable=AsyncMock, return_value="ok") as mock_gen:
             result = await model._agenerate(messages)
 
         assert result == "ok"
@@ -1153,7 +1153,7 @@ class TestGenerateAsync:
 
         with (
             patch(
-                "ideer.models.claude_provider.ChatAnthropic._agenerate",
+                "deerflow.models.claude_provider.ChatAnthropic._agenerate",
                 new_callable=AsyncMock,
                 side_effect=[rate_error, "ok"],
             ) as mock_gen,
@@ -1177,7 +1177,7 @@ class TestGenerateAsync:
 
         with (
             patch(
-                "ideer.models.claude_provider.ChatAnthropic._agenerate",
+                "deerflow.models.claude_provider.ChatAnthropic._agenerate",
                 new_callable=AsyncMock,
                 side_effect=[server_error, "ok"],
             ),
@@ -1200,7 +1200,7 @@ class TestGenerateAsync:
 
         with (
             patch(
-                "ideer.models.claude_provider.ChatAnthropic._agenerate",
+                "deerflow.models.claude_provider.ChatAnthropic._agenerate",
                 new_callable=AsyncMock,
                 side_effect=rate_error,
             ),
@@ -1222,7 +1222,7 @@ class TestGenerateAsync:
 
         with (
             patch(
-                "ideer.models.claude_provider.ChatAnthropic._agenerate",
+                "deerflow.models.claude_provider.ChatAnthropic._agenerate",
                 new_callable=AsyncMock,
                 side_effect=server_error,
             ),
@@ -1240,7 +1240,7 @@ class TestGenerateAsync:
         with (
             patch.object(model, "_patch_client_oauth") as mock_patch,
             patch(
-                "ideer.models.claude_provider.ChatAnthropic._agenerate",
+                "deerflow.models.claude_provider.ChatAnthropic._agenerate",
                 new_callable=AsyncMock,
                 return_value="ok",
             ),
@@ -1258,7 +1258,7 @@ class TestGenerateAsync:
         with (
             patch.object(model, "_patch_client_oauth") as mock_patch,
             patch(
-                "ideer.models.claude_provider.ChatAnthropic._agenerate",
+                "deerflow.models.claude_provider.ChatAnthropic._agenerate",
                 new_callable=AsyncMock,
                 return_value="ok",
             ),
@@ -1274,7 +1274,7 @@ class TestGenerateAsync:
 
         with (
             patch(
-                "ideer.models.claude_provider.ChatAnthropic._agenerate",
+                "deerflow.models.claude_provider.ChatAnthropic._agenerate",
                 new_callable=AsyncMock,
                 side_effect=ValueError("bad input"),
             ),
@@ -1297,7 +1297,7 @@ class TestGenerateAsync:
 
         with (
             patch(
-                "ideer.models.claude_provider.ChatAnthropic._agenerate",
+                "deerflow.models.claude_provider.ChatAnthropic._agenerate",
                 new_callable=AsyncMock,
                 side_effect=[rate_error, "ok"],
             ),
@@ -1323,7 +1323,7 @@ class TestGenerateAsync:
 
         with (
             patch(
-                "ideer.models.claude_provider.ChatAnthropic._agenerate",
+                "deerflow.models.claude_provider.ChatAnthropic._agenerate",
                 new_callable=AsyncMock,
                 side_effect=[server_error, "ok"],
             ),
@@ -1343,7 +1343,7 @@ class TestGenerateAsync:
 class TestIntegratedPayload:
     def test_full_payload_pipeline_oauth(self):
         """OAuth + caching disabled + thinking = billing + thinking budget."""
-        from ideer.models.claude_provider import OAUTH_BILLING_HEADER
+        from deerflow.models.claude_provider import OAUTH_BILLING_HEADER
 
         model = _make_model(enable_prompt_caching=False, auto_thinking_budget=True, max_tokens=10000)
         model._is_oauth = True
@@ -1355,7 +1355,7 @@ class TestIntegratedPayload:
             "max_tokens": 10000,
         }
 
-        with patch("ideer.models.claude_provider.ChatAnthropic._get_request_payload", return_value=payload):
+        with patch("deerflow.models.claude_provider.ChatAnthropic._get_request_payload", return_value=payload):
             result = model._get_request_payload("hello")
 
         # Billing should be injected
@@ -1378,7 +1378,7 @@ class TestIntegratedPayload:
             ],
         }
 
-        with patch("ideer.models.claude_provider.ChatAnthropic._get_request_payload", return_value=payload):
+        with patch("deerflow.models.claude_provider.ChatAnthropic._get_request_payload", return_value=payload):
             result = model._get_request_payload("hello")
 
         # Cache control should be applied to system blocks
@@ -1391,7 +1391,7 @@ class TestIntegratedPayload:
 
         payload: dict[str, Any] = {"system": "test"}
 
-        with patch("ideer.models.claude_provider.ChatAnthropic._get_request_payload", return_value=payload):
+        with patch("deerflow.models.claude_provider.ChatAnthropic._get_request_payload", return_value=payload):
             result = model._get_request_payload("hello")
 
         assert result == {"system": "test"}
@@ -1403,12 +1403,12 @@ class TestIntegratedPayload:
 
 
 class TestSecretStrHandling:
-    @patch("ideer.models.claude_provider.ChatAnthropic.model_post_init")
-    @patch("ideer.models.credential_loader.load_claude_code_credential", return_value=None)
-    @patch("ideer.models.credential_loader.is_oauth_token", return_value=False)
+    @patch("deerflow.models.claude_provider.ChatAnthropic.model_post_init")
+    @patch("deerflow.models.credential_loader.load_claude_code_credential", return_value=None)
+    @patch("deerflow.models.credential_loader.is_oauth_token", return_value=False)
     def test_secretstr_key_extracted(self, mock_is_oauth, mock_load_cred, mock_super_init):
         """SecretStr api_key is properly extracted for credential check."""
-        from ideer.models.claude_provider import ClaudeChatModel
+        from deerflow.models.claude_provider import ClaudeChatModel
 
         mock_super_init.side_effect = lambda ctx: None
 
@@ -1420,12 +1420,12 @@ class TestSecretStrHandling:
         # Should NOT have called load_claude_code_credential because key is valid
         mock_load_cred.assert_not_called()
 
-    @patch("ideer.models.claude_provider.ChatAnthropic.model_post_init")
-    @patch("ideer.models.credential_loader.load_claude_code_credential", return_value=None)
-    @patch("ideer.models.credential_loader.is_oauth_token", return_value=False)
+    @patch("deerflow.models.claude_provider.ChatAnthropic.model_post_init")
+    @patch("deerflow.models.credential_loader.load_claude_code_credential", return_value=None)
+    @patch("deerflow.models.credential_loader.is_oauth_token", return_value=False)
     def test_empty_string_api_key_triggers_credential_lookup(self, mock_is_oauth, mock_load_cred, mock_super_init):
         """When api_key is empty string, credential lookup is triggered."""
-        from ideer.models.claude_provider import ClaudeChatModel
+        from deerflow.models.claude_provider import ClaudeChatModel
 
         mock_super_init.side_effect = lambda ctx: None
 
@@ -1437,12 +1437,12 @@ class TestSecretStrHandling:
         # model_post_init is called once in the constructor and once manually
         assert mock_load_cred.call_count >= 1
 
-    @patch("ideer.models.claude_provider.ChatAnthropic.model_post_init")
-    @patch("ideer.models.credential_loader.load_claude_code_credential")
-    @patch("ideer.models.credential_loader.is_oauth_token", return_value=True)
+    @patch("deerflow.models.claude_provider.ChatAnthropic.model_post_init")
+    @patch("deerflow.models.credential_loader.load_claude_code_credential")
+    @patch("deerflow.models.credential_loader.is_oauth_token", return_value=True)
     def test_credential_access_token_set_as_api_key(self, mock_is_oauth, mock_load_cred, mock_super_init):
         """When credential is loaded, its access_token becomes the api_key."""
-        from ideer.models.claude_provider import ClaudeChatModel
+        from deerflow.models.claude_provider import ClaudeChatModel
 
         cred = SimpleNamespace(access_token=OAUTH_TOKEN, source="claude-cli-env")
         mock_load_cred.return_value = cred

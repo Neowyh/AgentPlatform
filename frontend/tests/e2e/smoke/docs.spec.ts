@@ -7,7 +7,7 @@ test.describe("Public documentation", () => {
     const home = await page.goto("/zh/docs");
     expect(home?.status()).toBe(200);
     await expect(
-      page.getByRole("heading", { name: "iDeer 文档" }),
+      page.getByRole("heading", { name: "DeerFlow 文档" }),
     ).toBeVisible();
 
     await page.goto("/zh/docs/application/quick-start");

@@ -1,8 +1,11 @@
+import { fileURLToPath } from "node:url";
+
 /**
  * Run `build` or `dev` with `SKIP_ENV_VALIDATION` to skip env validation. This is especially useful
  * for Docker builds.
  */
 import "./src/env.js";
+import { getAllowedDevOrigins } from "./src/dev-origins.js";
 
 function getInternalServiceURL(envKey, fallbackURL) {
   const configured = process.env[envKey]?.trim();
@@ -16,7 +19,6 @@ const withNextra = nextra({});
 
 /** @type {import("next").NextConfig} */
 const config = {
-  distDir: process.env.IDEER_NEXT_DIST_DIR || ".next",
   output:
     process.env.NEXT_CONFIG_BUILD_OUTPUT === "standalone"
       ? "standalone"
@@ -25,11 +27,15 @@ const config = {
     locales: ["en", "zh"],
     defaultLocale: "en",
   },
+  turbopack: {
+    root: fileURLToPath(new URL(".", import.meta.url)),
+  },
   devIndicators: false,
+  allowedDevOrigins: getAllowedDevOrigins(),
   async rewrites() {
     const rewrites = [];
     const gatewayURL = getInternalServiceURL(
-      "IDEER_INTERNAL_GATEWAY_BASE_URL",
+      "DEER_FLOW_INTERNAL_GATEWAY_BASE_URL",
       "http://127.0.0.1:8001",
     );
 

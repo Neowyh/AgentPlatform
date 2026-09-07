@@ -77,7 +77,9 @@ describe("listAgents", () => {
     expect(result).toEqual([
       expect.objectContaining({
         resource_id: "11111111-1111-1111-1111-111111111111",
-        name: "Shared Agent",
+        // Post-merge canonical surface: `name` mirrors the route identity
+        // (slug) so API-identifier consumers can pass it back verbatim.
+        name: "shared-agent",
         slug: "shared-agent",
         read_only: true,
       }),
@@ -131,7 +133,7 @@ describe("listAgents", () => {
     const result = await listAgents();
     expect(result).toHaveLength(201);
     expect(result.at(-1)).toEqual(
-      expect.objectContaining({ name: "Second Expert" }),
+      expect.objectContaining({ name: "second" }),
     );
     expect(mockFetch).toHaveBeenNthCalledWith(
       2,
@@ -200,7 +202,8 @@ describe("listAgents", () => {
     expect(result).toEqual(
       expect.objectContaining({
         resource_id: "11111111-1111-1111-1111-111111111111",
-        name: "Shared Agent",
+        // `name` mirrors the route identity (slug) on the post-merge surface.
+        name: "shared-agent",
         description: "Shared description",
         soul: "Shared soul",
       }),
@@ -345,9 +348,33 @@ describe("updateAgent", () => {
       .mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve({ version: 2 }),
+      })
+      // Post-merge updateAgent re-reads the published agent so callers get
+      // the fresh published state back.
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            resource: {
+              id: resourceId,
+              type: "agent",
+              slug: "shared-agent",
+              display_name: "Shared Agent",
+              owner_id: "owner",
+              visibility: "private",
+              scope_department_id: null,
+              latest_version: 2,
+              draft_revision: 3,
+              can_modify: true,
+            },
+            content: {
+              config: { description: "Updated" },
+              soul: "Soul",
+            },
+          }),
       });
 
-    await updateAgent(resourceId, {
+    const result = await updateAgent(resourceId, {
       description: "Updated",
       skills: ["22222222-2222-2222-2222-222222222222"],
       soul: "Soul",
@@ -367,6 +394,15 @@ describe("updateAgent", () => {
       `http://localhost:8000/api/resources/${resourceId}/publish`,
       expect.objectContaining({ method: "POST" }),
     );
+    expect(mockFetch).toHaveBeenNthCalledWith(
+      3,
+      `http://localhost:8000/api/resources/${resourceId}/published`,
+    );
+    expect(result).toMatchObject({
+      resource_id: resourceId,
+      description: "Updated",
+      soul: "Soul",
+    });
   });
 });
 
