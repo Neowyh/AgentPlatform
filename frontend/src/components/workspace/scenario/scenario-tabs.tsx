@@ -30,7 +30,7 @@ export function ScenarioTabs({ selected, onSelect }: ScenarioTabsProps) {
 
   return (
     <div
-      className="bg-background/80 border-border/50 flex items-center justify-center gap-2 rounded-full border p-1.5 shadow-sm backdrop-blur-md"
+      className="bg-background/80 border-border/50 flex max-w-full items-center justify-center gap-2 overflow-x-auto rounded-full border p-1.5 shadow-sm backdrop-blur-md [&::-webkit-scrollbar]:hidden"
       role="tablist"
       data-testid="scenario-tabs"
       onKeyDown={onKeyDown}
@@ -49,7 +49,7 @@ export function ScenarioTabs({ selected, onSelect }: ScenarioTabsProps) {
             tabIndex={isActive ? 0 : -1}
             data-state={isActive ? "active" : "inactive"}
             className={cn(
-              "type-body flex items-center gap-2 rounded-full border px-6 py-3 font-medium transition-all",
+              "type-body flex shrink-0 items-center gap-2 rounded-full border px-6 py-3 font-medium transition-all",
               isActive
                 ? "bg-muted text-foreground border-transparent font-semibold shadow-sm"
                 : "text-muted-foreground hover:bg-muted/60 hover:text-foreground border-transparent",

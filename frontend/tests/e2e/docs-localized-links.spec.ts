@@ -70,14 +70,17 @@ test.describe("Localized documentation links", () => {
   }) => {
     await page.goto("/en/docs/application/quick-start");
 
+    const contentBase =
+      "https://github.com/Neowyh/AgentPlatform/tree/product/offline-1.x/frontend/src/content";
+
     await expect(
       page.getByRole("link", { name: "Question? Give us feedback" }),
-    ).toHaveAttribute("href", /github\.com\/bytedance\/deer-flow\/issues\/new/);
-    await expect(
-      page.getByRole("link", { name: "Edit this page" }),
     ).toHaveAttribute(
       "href",
-      "https://github.com/bytedance/deer-flow/tree/main/frontend/src/content/en/application/quick-start.mdx",
+      /github\.com\/Neowyh\/AgentPlatform\/issues\/new/,
     );
+    await expect(
+      page.getByRole("link", { name: "Edit this page" }),
+    ).toHaveAttribute("href", `${contentBase}/en/application/quick-start.mdx`);
   });
 });

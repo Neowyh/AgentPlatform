@@ -24,7 +24,7 @@ export default async function BlogLayout({ children }) {
       }
       pageMap={pageMap}
       sidebar={{ defaultOpen: true }}
-      docsRepositoryBase="https://github.com/Neowyh/AgentPlatform/tree/product/offline-1.x/frontend/src/content"
+      docsRepositoryBase="https://github.com/Neowyh/AgentPlatform/tree/product/offline-1.x/frontend"
       footer={<Footer />}
     >
       {children}

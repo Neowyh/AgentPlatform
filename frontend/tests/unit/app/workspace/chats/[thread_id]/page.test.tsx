@@ -99,6 +99,12 @@ vi.mock("@/components/workspace/export-trigger", () => ({
   ExportTrigger: () => <div data-testid="export-trigger" />,
 }));
 
+vi.mock("@/components/ui/sidebar", () => ({
+  SidebarTrigger: (props: any) => (
+    <button data-testid="sidebar-trigger" {...props} />
+  ),
+}));
+
 vi.mock("@/components/workspace/input-box", () => ({
   InputBox: (props: any) => {
     mockLastInputBoxProps.current = props;

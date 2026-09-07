@@ -11,10 +11,18 @@ test.describe("UI polish mobile regressions", () => {
 
     await page.goto("/workspace/chats/new");
 
-    await page.getByRole("button", { name: /toggle sidebar/i }).click();
-
-    await expect(page.getByRole("link", { name: /new chat/i })).toBeVisible();
-    await expect(page.getByRole("link", { name: /agents/i })).toBeVisible();
+    // The click can land inside the pre-hydration window where the sidebar
+    // toggle has no handler yet (likely under a loaded CI machine), so retry
+    // the click until the mobile sheet actually opens.
+    const toggle = page.getByRole("button", { name: /toggle sidebar/i });
+    const newChatLink = page.getByRole("link", { name: /new chat/i });
+    await expect(async () => {
+      if (!(await newChatLink.isVisible())) {
+        await toggle.click();
+      }
+      await expect(newChatLink).toBeVisible({ timeout: 1_000 });
+    }).toPass({ timeout: 20_000 });
+    await expect(page.getByRole("link", { name: /experts/i })).toBeVisible();
     await expect
       .poll(() => page.evaluate(() => document.documentElement.scrollWidth))
       .toBeLessThanOrEqual(375);

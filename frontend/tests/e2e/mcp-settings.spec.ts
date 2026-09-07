@@ -60,7 +60,7 @@ test.describe("MCP server settings", () => {
     await expect(settingsDialog).toBeVisible();
     await settingsDialog.getByRole("button", { name: "Edit remote" }).click();
 
-    const editor = page.getByRole("dialog", { name: "Edit MCP server" });
+    const editor = page.getByRole("dialog", { name: "Edit Server" });
     const definitionBox = editor.getByRole("textbox");
     const definition = JSON.parse(await definitionBox.inputValue()) as {
       mcpServers: typeof servers;

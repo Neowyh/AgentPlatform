@@ -13,6 +13,12 @@ vi.mock("@/components/workspace/artifacts", () => ({
   ),
 }));
 
+vi.mock("@/components/workspace/browser-view", () => ({
+  BrowserViewProvider: ({ children }: any) => (
+    <div data-testid="browser-view-provider">{children}</div>
+  ),
+}));
+
 vi.mock("@/core/tasks/context", () => ({
   SubtasksProvider: ({ children }: any) => (
     <div data-testid="subtasks-provider">{children}</div>
@@ -51,6 +57,15 @@ describe("ChatProviders", () => {
       </ChatProviders>,
     );
     expect(screen.getByTestId("artifacts-provider")).toBeInTheDocument();
+  });
+
+  test("renders BrowserViewProvider", () => {
+    render(
+      <ChatProviders>
+        <div>child</div>
+      </ChatProviders>,
+    );
+    expect(screen.getByTestId("browser-view-provider")).toBeInTheDocument();
   });
 
   test("renders PromptInputProvider", () => {

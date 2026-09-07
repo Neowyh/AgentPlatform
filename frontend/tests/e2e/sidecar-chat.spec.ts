@@ -131,7 +131,7 @@ async function expectSidecarSelectionToolbarActions(page: Page, text: string) {
   throw lastError;
 }
 
-async function expectComposerHeightsEqual(page: Page) {
+async function expectComposersBottomAligned(page: Page) {
   const metrics = await page.evaluate(() => {
     const findFormByPlaceholder = (pattern: RegExp) => {
       const textarea = Array.from(document.querySelectorAll("textarea")).find(
@@ -156,7 +156,11 @@ async function expectComposerHeightsEqual(page: Page) {
 
   expect(metrics.main).not.toBeNull();
   expect(metrics.sidecar).not.toBeNull();
-  expect(metrics.sidecar?.height).toBe(metrics.main?.height);
+  // The fused workbench composer carries more actions than the compact
+  // sidecar composer (Reasoning Effort, Skill), and its toolbar wraps to a
+  // second row in the side-by-side layout, so exact heights are no longer
+  // equal. The invariant that must still hold is bottom alignment: both
+  // composers sit the same distance above the viewport bottom.
   expect(metrics.sidecar?.bottomGap).toBe(metrics.main?.bottomGap);
 }
 
@@ -230,7 +234,12 @@ async function expectSidecarModelPinnedToSubmit(page: Page) {
   }
 
   expect(sidecarModel.left).toBeGreaterThan(sidecarMode.right);
-  expect(sidecar.gap).toBe(main.gap);
+  // The main composer carries an extra right-group action (Skill invocation)
+  // that the compact sidecar composer intentionally omits, so the raw
+  // model→submit gaps differ between the two. The invariant to protect is that
+  // the sidecar's model stays adjacent to Submit (base flex gap, no free
+  // space) instead of drifting away from the right-pinned cluster.
+  expect(sidecar.gap).toBeLessThan(24);
   expect(sidecarModel.left).toBeGreaterThanOrEqual(sidecar.formLeft);
   expect(sidecarSubmit.right).toBeLessThanOrEqual(sidecar.formRight);
   expect(sidecar.overflows).toBe(false);
@@ -854,7 +863,7 @@ test.describe("Side chat", () => {
       "Add to conversation",
     );
     await expect(quoteAttachment).toContainText("1 selected text fragment");
-    await expectComposerHeightsEqual(page);
+    await expectComposersBottomAligned(page);
     await quoteAttachment
       .getByRole("button", { name: /clear selected references/i })
       .click();
@@ -948,7 +957,7 @@ test.describe("Side chat", () => {
 
     await expect(sidecarInput).toHaveValue("");
     await expect(sidecarReference).toBeHidden();
-    await expectComposerHeightsEqual(page);
+    await expectComposersBottomAligned(page);
     await expect(page.getByTestId("sidecar-header-trigger")).toBeVisible();
 
     // Hiding the side chat is owned by the header trigger; the panel's own

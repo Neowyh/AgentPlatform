@@ -420,6 +420,11 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
     return route.fallback();
   });
 
+  // Threads created at runtime (e.g. sidecar threads via the gateway create)
+  // join thread search results without shadowing a seeded thread with the
+  // same id, whose content other assertions may still navigate to.
+  const createdThreads: MockThread[] = [];
+
   // Thread search — sidebar thread list & chats list page
   void page.route(
     /\/(?:api\/langgraph|mock\/api)\/threads\/search$/,
@@ -437,10 +442,12 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
           ? threads.length
           : Math.max(0, request.limit);
       // The gateway keeps pinned threads in the first page regardless of
-      // recency, so the mock sorts them before slicing.
-      const isPinned = (t: (typeof threads)[number]) =>
+      // recency, so the mock sorts them before slicing. Threads created at
+      // runtime (e.g. sidecar threads) join the seeded pool for search.
+      const allThreads = [...threads, ...createdThreads];
+      const isPinned = (t: (typeof allThreads)[number]) =>
         t.metadata?.[THREAD_PINNED_METADATA_KEY] === true;
-      const orderedThreads = [...threads].sort(
+      const orderedThreads = [...allThreads].sort(
         (a, b) =>
           Number(isPinned(b)) - Number(isPinned(a)) ||
           Date.parse(b.updated_at ?? "0") - Date.parse(a.updated_at ?? "0"),
@@ -481,6 +488,38 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
       });
     }
     return route.fallback();
+  });
+
+  // Gateway thread create — used by the sidecar flow (POST /api/threads with
+  // deerflow_sidecar metadata). Responds with the deterministic sidecar id so
+  // specs can route the sidecar thread's state/history/stream endpoints.
+  void page.route("**/api/threads", (route) => {
+    if (route.request().method() !== "POST") {
+      return route.fallback();
+    }
+    const body = route.request().postDataJSON() as {
+      metadata?: Record<string, unknown>;
+    } | null;
+    const created: MockThread = {
+      thread_id: MOCK_SIDECAR_THREAD_ID,
+      title: "Side chat",
+      updated_at: new Date().toISOString(),
+      metadata: body?.metadata ?? {},
+      messages: [],
+    };
+    createdThreads.push(created);
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        thread_id: created.thread_id,
+        created_at: new Date().toISOString(),
+        updated_at: created.updated_at,
+        metadata: created.metadata,
+        status: "idle",
+        values: { title: created.title },
+      }),
+    });
   });
 
   // Thread update (PATCH) — metadata update after creation.
@@ -525,6 +564,25 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
           metadata: { ...(seeded?.metadata ?? {}), ...(body?.metadata ?? {}) },
         }),
       });
+    }
+    if (route.request().method() === "DELETE") {
+      const url = new URL(route.request().url());
+      const threadId = decodeURIComponent(url.pathname.split("/").pop() ?? "");
+      // Mirror the gateway's `require_existing=True` ownership guard: deleting
+      // an already-removed thread 404s. `useDeleteThread` first deletes via the
+      // LangGraph route (which drops the thread_meta row) and then hits the
+      // gateway route, so this reproduces the real double-delete 404 the
+      // frontend must treat as idempotent success.
+      const index = threads.findIndex((t) => t.thread_id === threadId);
+      if (index < 0) {
+        return route.fulfill({
+          status: 404,
+          contentType: "application/json",
+          body: JSON.stringify({ detail: `Thread ${threadId} not found` }),
+        });
+      }
+      threads.splice(index, 1);
+      return route.fulfill({ status: 204 });
     }
     return route.fallback();
   });
@@ -908,6 +966,182 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
         max_files: 10,
         max_file_size: 50 * 1024 * 1024,
         max_total_size: 100 * 1024 * 1024,
+      }),
+    });
+  });
+
+  // ── Lark / Feishu CLI integration ───────────────────────────
+  // Mirrors the gateway contract: status probes, skill-pack install, app
+  // configuration (config/start + config/complete), and user authorization
+  // (auth/start + auth/complete). Generation values round-trip so the UI's
+  // generation-chaining assertions observe a realistic handshake.
+  let larkIntegrationStatus = {
+    installed: false,
+    version: "v1.0.65",
+    manifest_version: null as string | null,
+    latest_available_version: "v1.0.65" as string | null,
+    runtime_version_mismatch: false,
+    app_configured: false,
+    app_id: null as string | null,
+    app_brand: null as string | null,
+    skills_expected: 27,
+    skills_installed: 0,
+    installed_skills: [] as string[],
+    enabled_skills: [] as string[],
+    install_path: "/tmp/deer-flow/integrations/skills/lark-cli",
+    cli: {
+      available: false,
+      path: null as string | null,
+      version: null as string | null,
+      error: "lark-cli is not on PATH" as string | null,
+    },
+    auth: {
+      status: "unavailable",
+      message: "lark-cli is not installed on the Gateway" as string | null,
+      user: null as string | null,
+      verified: false,
+    },
+    sandbox_runtime_mode: "none" as
+      | "none"
+      | "gateway-download"
+      | "init-container",
+    sandbox_runtime_ready: false,
+    sandbox_runtime_detail: null as string | null,
+  };
+  void page.route("**/api/integrations/lark/status", (route) => {
+    if (route.request().method() !== "GET") {
+      return route.fallback();
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(larkIntegrationStatus),
+    });
+  });
+  void page.route("**/api/integrations/lark/install", (route) => {
+    if (route.request().method() !== "POST") {
+      return route.fallback();
+    }
+    larkIntegrationStatus = {
+      ...larkIntegrationStatus,
+      installed: true,
+      manifest_version: "v1.0.65",
+      skills_installed: 3,
+      installed_skills: ["lark-doc", "lark-im", "lark-shared"],
+      enabled_skills: ["lark-doc", "lark-im", "lark-shared"],
+      cli: {
+        available: true,
+        path: "/usr/bin/lark-cli",
+        version: "lark-cli version v1.0.65",
+        error: null,
+      },
+      auth: {
+        status: "not_configured",
+        message: "Lark app is not configured",
+        user: null,
+        verified: false,
+      },
+      sandbox_runtime_mode: "init-container",
+      sandbox_runtime_ready: true,
+      sandbox_runtime_detail: null,
+    };
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        success: true,
+        installed_skills: ["lark-doc", "lark-im", "lark-shared"],
+        message: "Installed 3 Lark/Feishu skills.",
+        status: larkIntegrationStatus,
+      }),
+    });
+  });
+  void page.route("**/api/integrations/lark/config/start", (route) => {
+    if (route.request().method() !== "POST") {
+      return route.fallback();
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        verification_url: "https://open.feishu.cn/page/cli?user_code=config",
+        device_code: "mock-config-device-code",
+        generation: "config-generation",
+        expires_in: 600,
+        interval: 5,
+        user_code: "config",
+        brand: "feishu",
+      }),
+    });
+  });
+  void page.route("**/api/integrations/lark/config/complete", (route) => {
+    if (route.request().method() !== "POST") {
+      return route.fallback();
+    }
+    const body = route.request().postDataJSON() as { generation?: string };
+    larkIntegrationStatus = {
+      ...larkIntegrationStatus,
+      app_configured: true,
+      app_id: "cli_mock",
+      app_brand: "feishu",
+      auth: {
+        status: "not_authorized",
+        message: "Lark user authorization is not configured",
+        user: null,
+        verified: false,
+      },
+    };
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        success: true,
+        message: "Lark/Feishu connection setup completed.",
+        generation: body.generation ?? "config-generation",
+        status: larkIntegrationStatus,
+      }),
+    });
+  });
+  void page.route("**/api/integrations/lark/auth/start", (route) => {
+    if (route.request().method() !== "POST") {
+      return route.fallback();
+    }
+    const body = route.request().postDataJSON() as { generation?: string };
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        verification_url: "https://open.feishu.cn/auth/mock-device",
+        device_code: "mock-device-code",
+        generation: body.generation ?? "auth-generation",
+        expires_in: 600,
+        user_code: null,
+        hint: null,
+      }),
+    });
+  });
+  void page.route("**/api/integrations/lark/auth/complete", (route) => {
+    if (route.request().method() !== "POST") {
+      return route.fallback();
+    }
+    const body = route.request().postDataJSON() as { generation?: string };
+    larkIntegrationStatus = {
+      ...larkIntegrationStatus,
+      auth: {
+        status: "authenticated",
+        message: "Lark/Feishu authorization is live-verified.",
+        user: "Alice",
+        verified: true,
+      },
+    };
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        success: true,
+        message: "Lark/Feishu authorization completed.",
+        generation: body.generation ?? "auth-generation",
+        status: larkIntegrationStatus,
       }),
     });
   });

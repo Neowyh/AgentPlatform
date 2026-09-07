@@ -30,7 +30,7 @@ export default async function DocLayout({ children, params }) {
         />
       }
       pageMap={pageMap}
-      docsRepositoryBase="https://github.com/Neowyh/AgentPlatform/tree/product/offline-1.x/frontend/src/content"
+      docsRepositoryBase="https://github.com/Neowyh/AgentPlatform/tree/product/offline-1.x/frontend"
       footer={<Footer className="mt-0" />}
       i18n={i18n}
       // ... Your additional layout options

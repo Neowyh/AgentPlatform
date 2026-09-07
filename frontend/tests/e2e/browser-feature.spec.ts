@@ -8,6 +8,7 @@ test.describe("Browser feature flag", () => {
   }) => {
     mockLangGraphAPI(page, {
       threads: [{ thread_id: MOCK_THREAD_ID, title: "Browser Enabled" }],
+      features: { browserControlEnabled: true },
     });
 
     await page.goto(`/workspace/chats/${MOCK_THREAD_ID}`);

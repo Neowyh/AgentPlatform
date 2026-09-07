@@ -76,6 +76,16 @@ vi.mock("@/components/workspace/settings/notification-settings-page", () => ({
     <div data-testid="notification-page">Notification Page</div>
   ),
 }));
+vi.mock("@/components/workspace/settings/channels-settings-page", () => ({
+  ChannelsSettingsPage: () => (
+    <div data-testid="channels-page">Channels Page</div>
+  ),
+}));
+vi.mock("@/components/workspace/settings/integrations-settings-page", () => ({
+  IntegrationsSettingsPage: () => (
+    <div data-testid="integrations-page">Integrations Page</div>
+  ),
+}));
 vi.mock("@/components/workspace/settings/skill-settings-page", () => ({
   SkillSettingsPage: ({ onClose }: { onClose?: () => void }) => (
     <div data-testid="skills-page">
@@ -101,6 +111,8 @@ const mockT = {
       account: "Account",
       appearance: "Appearance",
       notification: "Notifications",
+      channels: "Channels",
+      integrations: "Integrations",
       memory: "Memory",
       tools: "Tools",
       skills: "Skills",
@@ -163,7 +175,9 @@ describe("SettingsDialog", () => {
     expect(screen.getByTestId("settings-tab-appearance")).toBeInTheDocument();
     expect(screen.getByTestId("settings-tab-notification")).toBeInTheDocument();
     expect(screen.getByTestId("settings-tab-memory")).toBeInTheDocument();
-    expect(screen.queryByTestId("settings-tab-tools")).not.toBeInTheDocument();
+    expect(screen.getByTestId("settings-tab-channels")).toBeInTheDocument();
+    expect(screen.getByTestId("settings-tab-integrations")).toBeInTheDocument();
+    expect(screen.getByTestId("settings-tab-tools")).toBeInTheDocument();
     expect(screen.queryByTestId("settings-tab-skills")).not.toBeInTheDocument();
     expect(screen.getByTestId("settings-tab-about")).toBeInTheDocument();
   });
@@ -174,7 +188,9 @@ describe("SettingsDialog", () => {
     expect(screen.getByText("Appearance")).toBeInTheDocument();
     expect(screen.getByText("Notifications")).toBeInTheDocument();
     expect(screen.getByText("Memory")).toBeInTheDocument();
-    expect(screen.queryByText("Tools")).not.toBeInTheDocument();
+    expect(screen.getByText("Channels")).toBeInTheDocument();
+    expect(screen.getByText("Integrations")).toBeInTheDocument();
+    expect(screen.getByText("Tools")).toBeInTheDocument();
     expect(screen.queryByText("Skills")).not.toBeInTheDocument();
     expect(screen.getByText("About")).toBeInTheDocument();
   });
@@ -230,6 +246,39 @@ describe("SettingsDialog", () => {
       />,
     );
     expect(screen.getByTestId("notification-page")).toBeInTheDocument();
+  });
+
+  test("opens to channels section when specified", () => {
+    render(
+      <SettingsDialog
+        open={true}
+        onOpenChange={vi.fn()}
+        defaultSection="channels"
+      />,
+    );
+    expect(screen.getByTestId("channels-page")).toBeInTheDocument();
+  });
+
+  test("opens to integrations section when specified", () => {
+    render(
+      <SettingsDialog
+        open={true}
+        onOpenChange={vi.fn()}
+        defaultSection="integrations"
+      />,
+    );
+    expect(screen.getByTestId("integrations-page")).toBeInTheDocument();
+  });
+
+  test("opens to tools section when specified", () => {
+    render(
+      <SettingsDialog
+        open={true}
+        onOpenChange={vi.fn()}
+        defaultSection="tools"
+      />,
+    );
+    expect(screen.getByTestId("tools-page")).toBeInTheDocument();
   });
 
   // ── Section switching ────────────────────────────────────────────────────
