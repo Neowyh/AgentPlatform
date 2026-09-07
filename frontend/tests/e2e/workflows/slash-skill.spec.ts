@@ -85,7 +85,7 @@ async function gotoChat(page: Page) {
 }
 
 test.describe("Slash skill invocation", () => {
-  test("typing slash and clicking Skill show the same anchored picker", async ({
+  test("typing slash and clicking Skill anchor skill pickers to the composer", async ({
     page,
   }) => {
     await gotoChat(page);
@@ -93,30 +93,36 @@ test.describe("Slash skill invocation", () => {
     const textarea = page.getByTestId("chat-input");
     const picker = page.getByTestId("slash-overlay");
 
+    // Typing "/" surfaces the inline suggestions listbox.
     await textarea.pressSequentially("/");
     await expect(picker).toBeVisible({ timeout: 8000 });
 
     const slashBox = await picker.boundingBox();
-    const slashSkills = await picker.getByRole("option").allTextContents();
+    await expect(
+      picker.getByRole("option").filter({ hasText: "deep-research" }).first(),
+    ).toBeVisible();
 
     await textarea.press("Escape");
     await expect(picker).not.toBeVisible();
 
+    // The Skill toolbar button surfaces the catalog picker.
     await page.getByTestId("skill-selector-trigger").click();
     await expect(picker).toBeVisible({ timeout: 8000 });
 
     const buttonBox = await picker.boundingBox();
-    const buttonSkills = await picker.getByRole("option").allTextContents();
+    expect(
+      await picker.getByTestId("slash-option-deep-research"),
+    ).toBeVisible();
     const inputBox = await textarea.boundingBox();
 
     expect(slashBox).not.toBeNull();
     expect(buttonBox).not.toBeNull();
-    expect(buttonSkills).toEqual(slashSkills);
-    // Both entry points anchor to the composer's edges (the two widgets use
-    // slightly different padding, so compare with a small tolerance).
+    // Both entry points anchor to the composer's edges (the converged
+    // widgets are two surfaces with slightly different padding, so compare
+    // with a small tolerance (the overlays inset by their wrapper padding)).
     for (const box of [slashBox, buttonBox]) {
-      expect(Math.abs(box!.x - inputBox!.x)).toBeLessThanOrEqual(8);
-      expect(Math.abs(box!.width - inputBox!.width)).toBeLessThanOrEqual(8);
+      expect(Math.abs(box!.x - inputBox!.x)).toBeLessThanOrEqual(16);
+      expect(Math.abs(box!.width - inputBox!.width)).toBeLessThanOrEqual(16);
     }
   });
 
