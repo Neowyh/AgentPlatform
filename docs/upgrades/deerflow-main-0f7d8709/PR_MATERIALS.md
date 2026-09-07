@@ -60,3 +60,23 @@
 The focused thread-history/sidebar regression cases passed after the pagination and missing-thread route fixes. A required fresh full rerun was started with `--workers=2 --retries=2`, but is recorded as **incomplete**: the local dev server exited around test 85/348 after 3.8 minutes (28 passed, 1 flaky, 296 did not run), and the remaining attempts reported `ERR_CONNECTION_REFUSED`. The prior completed full-run result remains the comparable corpus result above: 311 passed / 14 failed / 3 flaky / 20 skipped.
 
 The subsequent final run used a rebuilt production bundle/server and completed the full 348-test corpus with **328 passed / 20 skipped / 0 failed / 0 flaky** under `--workers=2 --retries=2`. The earlier incomplete run is retained above as historical environment evidence; this final result is authoritative for handoff completion.
+
+## Closure round (2026-09-08): remaining-item sweep
+
+| Commit | 内容 |
+|---|---|
+| `800f95e3` | debug 脚本六处 ideer import 重指向 deerflow |
+| `cd213197` | mock run stream 对齐网关生命周期契约（Content-Location + 流后 history head），启用完成通知 E2E |
+| `ebd05081` | Patch Ledger 数量与迁移报告/治理文档路径修正 |
+| `e47e8eb6` | canonical run 准入携带冻结 run id（PATCH-013） |
+| `bffec84c` | workflow 沙箱工作区对齐 run 键契约（scope ≤64 + 桥接钉路径） |
+| `711589d8` | initialized-DB 验收套件（memory restart / shared-resource / skill projection / snapshot freeze / real sub-agent receipt） |
+
+新增：`EXTERNAL_ACCEPTANCE_HANDOFF.md` 承接 Docker/air-gap、PostgreSQL、
+fault-zeroing 低延迟端点三项外部验收。
+
+| Lane | 结果 | 证据 |
+|---|---|---|
+| closure-round focused suites | 13 passed（initialized-DB 验收 + canonical sandbox focused）；run-manager 129 passed；threads 单测 224/224；chat/sidecar/agent-chat E2E 55/55 | 本轮提交前聚焦验证 |
+| fault-zeroing bounded attempt | incomplete（环境性）：`node_timeout=10800`，case-01 进入真实 subagent 链仍在预算内执行；chatgpt.com 不可达故 codex 备选不可用 | BASELINE_REPORT 2026-09-08 增补 |
+| external handoff | 交接清单就绪 | `EXTERNAL_ACCEPTANCE_HANDOFF.md` |

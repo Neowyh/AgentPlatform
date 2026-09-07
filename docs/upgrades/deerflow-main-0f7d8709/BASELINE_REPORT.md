@@ -627,3 +627,40 @@ claimed.
 |---|---|---|
 | Full mock-e2e final run | **passed** | On a rebuilt production bundle/server, `--retries=2 --workers=2` completed 348 collected tests: **328 passed / 20 skipped / 0 failed / 0 flaky** in 3.1 minutes. |
 | Final residual fixes | passed | Corrected 320px landing overflow, host-aware locale-cookie setup, WorkBuddy placeholder-selection timing, follow-up close-button contrast, agent-pill scroll focusability, and settled suggestion-animation sampling for axe. |
+
+## Session addendum (2026-09-08, closure round): remaining-item sweep
+
+This round executed the plan's remaining sandbox-executable work against the
+approved closure plan (debug/new-chat fixes, initialized-DB acceptance
+suite, bounded fault-zeroing retry, external handoff).
+
+| Check | Result | Classification / note |
+|---|---|---|
+| `backend/debug.py` de-ideered | passed | Six `ideer.*` imports re-pointed to the surviving `deerflow` symbols (config/agents/mcp/paths/user_context); py_compile + per-symbol import smoke + ruff clean. |
+| new-chat lifecycle defect | fixed | Root causes were mock/gateway contract drift, not product code: the mock run-stream response carried no `Content-Location` (SDK `onRunCreated`→`onCreated`→`onStart` never fired) and created threads had no post-run history head (so `onFinish`'s refetch saw nothing). Mock aligned with the gateway header format + streamed-exchange head; the `fixme` completion-notification spec is enabled and green (2/2). The earlier hook dead-branch hypothesis was refuted by the unit suite (`sendMessage("new")` argument contract) and reverted. Threads unit 224/224; chat/title-sync 34/34; sidecar/agent-chat/init-ordering 21/21. |
+| Docs inventory corrections | passed | Patch-ledger counts aligned to the measured harness diff; migration-report and governance cutover paths re-pointed to the post-P7 enterprise tree. |
+| Initialized-DB acceptance suite (§24-A/C/D/E/F/G/K) | passed | New `tests/integration/conftest.py` + `_gateway_e2e_env.py` staging helpers; five suites added: memory restart (2), shared-resource caller-isolated run (1), canonical run skill projection (1), snapshot freeze/recovery on a seeded catalog (3), real sub-agent receipt workflow (1; skips under this sandbox's pytest loop — aiosqlite cross-thread wakeup — and completes green as a plain `asyncio.run` flow, validated 2026-09-08: claimed=True, status=completed, real sandbox write at the run workspace, node report cites `[r1]`). |
+| Product fix: canonical admission identity (PATCH-013) | fixed | `start_run` passed `run_id` to upstream admission, which neither accepts nor carries it — every canonical resource run over the gateway API crashed with TypeError and the frozen identity could not be honored (caught by the new shared-resource E2E). Admission now accepts an optional run id; run-manager focused suites 129 passed. |
+| Product fix: workflow sandbox workspace contract | fixed | The canonical sandbox scope encoded the thread in base64 and exceeded the 64-char thread-id budget, so every workflow agent node failed validation; scope now carries a bounded per-(run, thread) digest, the resolver keys user-data on the run workspace (thread_dir(run_id) — the file-roots/artifact-gate layout), and a bridge middleware pins thread_data to that workspace while scoped. Canonical-sandbox focused tests updated to the bounded contract (6 passed); workflow integration suites green. |
+| Fault-zeroing bounded attempt | incomplete (environmental) | `node_timeout_seconds=10800` via `DEER_FLOW_CONFIG_PATH` override (deepseek primary; the codex alternate is unusable here — chatgpt.com unreachable). The first case progressed to the real sub-agent chain and was still running inside budget when this report closed; deductive_tree latency remains generation-bound, not network-bound. Worker chain 8/8; honest-record maintained. |
+| Not runnable in sandbox | honest record | check-intranet (no Docker), offline fresh install (air-gapped host), PostgreSQL fixtures (no endpoint). Consolidated into `EXTERNAL_ACCEPTANCE_HANDOFF.md`. |
+| Lane records | deferred to pr-standard | Backend standard + frontend standard + pr-standard run after this addendum (see PR_MATERIALS). |
+
+### Closure round addendum notes (2026-09-08, lanes)
+
+- `make test` baseline defect fixed: the target set `PYTHONPATH=.` only, so
+  the top-level test-support imports (`from conftest import …`,
+  `from _agent_e2e_helpers import …`) that the contracts and integration
+  suites rely on failed collection (74 errors) before any test ran. The
+  target now matches the canonical lane environment (`PYTHONPATH=.:tests`).
+  Verified: full tree collects 26156 tests; the only remaining collection
+  errors are the two `tests/blocking_io/` files the target already ignores
+  (stale imports of `thread_runs._build_archive_without_abandoning_worker` /
+  `artifacts.ArtifactUpdateRequest` removed by the upstream merge — pre-existing,
+  recorded for the blocking-io lane owners).
+- `frontend rstest` baseline note: `lazy-panels.test.ts` ("loads each
+  settings page from its active section") fails identically at the round
+  baseline commit `e40049f2` (worktree-verified) — settings-source drift from
+  the earlier restore commits, not a convergence regression. The
+  `message-group` css-extension error is an rstest worker flake (green on
+  rerun).
