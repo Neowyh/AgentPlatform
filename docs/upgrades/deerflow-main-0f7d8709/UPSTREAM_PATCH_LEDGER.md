@@ -8,7 +8,7 @@ against the locked DeerFlow commit `0f7d8709d3bbf0be26460b6277fbad9329302243`.
 
 | Scope | Comparison | Local patch count | Status |
 |---|---|---:|---|
-| `backend/packages/harness/deerflow/**` | `git diff 0f7d8709d3bbf0be26460b6277fbad9329302243 -- backend/packages/harness/deerflow` plus untracked files | 15 files / 529 insertions, 24 deletions | registered below; not closed |
+| `backend/packages/harness/deerflow/**` | `git diff 0f7d8709d3bbf0be26460b6277fbad9329302243 -- backend/packages/harness/deerflow` plus untracked files | 15 files / 550 insertions, 34 deletions | registered below; not closed |
 
 The integration branch currently keeps AgentPlatform-specific behavior in the
 control plane and extension layers; no untracked or unregistered DeerFlow

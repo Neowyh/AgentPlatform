@@ -8,7 +8,7 @@ Alembic script trees:
 
 | Database boundary | Migration tree | Current head | Ownership |
 |---|---|---|---|
-| AgentPlatform control plane | `backend/packages/harness/ideer/persistence/migrations` | `20260828_run_snapshot_selection_role` | resources, workflow governance, users and enterprise control-plane tables |
+| AgentPlatform control plane | `backend/app/agentplatform/persistence/migrations` | `20260828_run_snapshot_selection_role` | resources, workflow governance, users and enterprise control-plane tables |
 | DeerFlow runtime | `backend/packages/harness/deerflow/persistence/migrations` | `0018_oauth_identity_pg_partial` | runtime runs, scheduler, MCP tasks, sub-agent batches and runtime auth tables |
 
 The trees each have one head. They remain separate revision histories, but the
@@ -22,7 +22,7 @@ The histories are therefore not rewritten or falsely joined.
 
 | Check | Result | Evidence |
 |---|---|---|
-| AgentPlatform migration heads | passed | `alembic -c packages/harness/ideer/persistence/migrations/alembic.ini heads` → `20260828_run_snapshot_selection_role (head)` |
+| AgentPlatform migration heads | passed | `alembic -c app/agentplatform/persistence/migrations/alembic.ini heads` → `20260828_run_snapshot_selection_role (head)` |
 | DeerFlow migration heads | passed | `alembic -c packages/harness/deerflow/persistence/migrations/alembic.ini heads` → `0018_oauth_identity_pg_partial (head)` |
 | Version-table isolation bridge | passed | Dedicated `deerflow_alembic_version` config/env path plus legacy adoption tests (3 passed) and bootstrap URL/config tests (8 passed) |
 | Existing local SQLite revision | passed | `alembic ... current` reports `20260828_run_snapshot_selection_role (head)` |
