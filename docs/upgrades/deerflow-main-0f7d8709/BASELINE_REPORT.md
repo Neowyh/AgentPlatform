@@ -670,3 +670,15 @@ suite, bounded fault-zeroing retry, external handoff).
 | Check | Result | Note |
 |---|---|---|
 | pr-standard first pass | 11888 passed / 19 skipped / 1 collection error | The error was self-inflicted: `tests/integration/conftest.py` registered as the top-level module name `conftest`, shadowing `tests/conftest.py` for the contracts suites' `from conftest import _make_rbac_user`. Fixtures moved into the root conftest, the nested conftest removed, `_gateway_e2e_env.py` relocated to `tests/`; contracts + all new suites re-verified green (44 passed). pr-standard re-run follows. |
+
+### Closure round addendum (2026-09-08, fault-zeroing bounded attempt outcome)
+
+The 10800s-budget attempt concluded: case_01 progressed through the intake
+pause → operator confirm → resumed execution, and the `deductive_tree` node
+still hit `workflow_node_timeout` (run `fz-01-20260907T153622Z-e8cc90`,
+status `failed`, error `工作流节点执行超时`) — the same generation-latency
+boundary as the 900s/1800s/3600s attempts, now confirmed at a 3-hour
+per-node budget against the DeepSeek endpoint. Verdict unchanged: worker
+chain guarded 8/8 by integration tests; live acceptance remains
+`incomplete (environmental)` per the honest record, pending a low-latency
+endpoint (see `EXTERNAL_ACCEPTANCE_HANDOFF.md` §3).
