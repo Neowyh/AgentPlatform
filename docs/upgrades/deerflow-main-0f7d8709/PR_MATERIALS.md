@@ -88,3 +88,13 @@ fault-zeroing 低延迟端点三项外部验收。
 | pr-standard（完整重跑，含本轮全部改动） | **passed**（exit 0）：backend-standard 546s ✓、frontend-standard 79s ✓（356 files / 9913 tests）、frontend-smoke 69s ✓（21 specs） |
 | 附加修复 | `settings-dialog` 单测两条断言停留在 Skills 分区恢复前状态（基线 e40049f2 worktree 复验既有失败），更新至恢复后语义 23/23 绿；`make test` 的 PYTHONPATH 基线缺陷修复（`.:tests`，对齐 canonical lane）；nested conftest 遮蔽根 conftest 模块名导致 contracts 收集失败——fixtures 上移根 conftest |
 | fault-zeroing bounded attempt | `node_timeout=10800` 尝试在合并时点仍在预算内执行（fz-01 running）；codex 备选因 chatgpt.com 不可达未启用；维持 incomplete honest-record |
+
+## Merge record (2026-09-08)
+
+`integration/deerflow-main-0f7d8709` → `develop` merged locally at `cd28a054`
+(`--no-ff`), §29 Git DoD verified (`merge-base --is-ancestor 0f7d8709… HEAD`
+exit 0). Push to `origin/develop` pending maintainer confirmation. The
+fault-zeroing bounded attempt (10800s budget) was still executing
+case-01/deductive_tree at merge time; its outcome lands in
+`backend/.deer-flow/acceptance/fault-zeroing/20260907T153622Z/workflow.db`
+and must be appended to `BASELINE_REPORT.md` when it concludes.
