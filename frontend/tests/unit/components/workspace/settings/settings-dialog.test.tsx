@@ -169,7 +169,7 @@ describe("SettingsDialog", () => {
 
   // ── Navigation tabs ──────────────────────────────────────────────────────
 
-  test("renders settings sections without migrated capability tabs", () => {
+  test("renders settings sections including the restored skills tab", () => {
     render(<SettingsDialog open={true} onOpenChange={vi.fn()} />);
     expect(screen.getByTestId("settings-tab-account")).toBeInTheDocument();
     expect(screen.getByTestId("settings-tab-appearance")).toBeInTheDocument();
@@ -178,7 +178,7 @@ describe("SettingsDialog", () => {
     expect(screen.getByTestId("settings-tab-channels")).toBeInTheDocument();
     expect(screen.getByTestId("settings-tab-integrations")).toBeInTheDocument();
     expect(screen.getByTestId("settings-tab-tools")).toBeInTheDocument();
-    expect(screen.queryByTestId("settings-tab-skills")).not.toBeInTheDocument();
+    expect(screen.getByTestId("settings-tab-skills")).toBeInTheDocument();
     expect(screen.getByTestId("settings-tab-about")).toBeInTheDocument();
   });
 
@@ -191,7 +191,7 @@ describe("SettingsDialog", () => {
     expect(screen.getByText("Channels")).toBeInTheDocument();
     expect(screen.getByText("Integrations")).toBeInTheDocument();
     expect(screen.getByText("Tools")).toBeInTheDocument();
-    expect(screen.queryByText("Skills")).not.toBeInTheDocument();
+    expect(screen.getByText("Skills")).toBeInTheDocument();
     expect(screen.getByText("About")).toBeInTheDocument();
   });
 
