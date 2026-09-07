@@ -87,13 +87,7 @@ test.describe("Notification settings", () => {
       ]);
   });
 
-  // KNOWN DEFECT (needs SDK wiring investigation): submitting from
-  // /workspace/chats/new never fires the stream lifecycle callbacks
-  // (onStart/onThreadCreated/onFinish) in the merged build - the reply
-  // renders but history.replaceState to the thread URL and the completion
-  // notification never happen. Verified with an instrumented probe
-  // (replaceState calls, network log, 20s window).
-  test.fixme("sends a completion notification when chat finishes while the page is unfocused", async ({
+  test("sends a completion notification when chat finishes while the page is unfocused", async ({
     page,
   }) => {
     mockLangGraphAPI(page);

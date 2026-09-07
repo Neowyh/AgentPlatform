@@ -20,6 +20,11 @@ export const THREAD_PINNED_METADATA_KEY = "deerflow_pinned";
 export const MOCK_THREAD_ID_2 = "00000000-0000-0000-0000-000000000002";
 export const MOCK_RUN_ID = "00000000-0000-0000-0000-000000000099";
 
+// Checkpoint heads for threads streamed during the current mock session,
+// keyed by thread id. The gateway persists a durable history head after a
+// run; created threads need the same or SDK post-run refetches see nothing.
+const streamedThreadHeads = new Map<string, unknown[]>();
+
 const STATIC_DEMO_THREAD_IDS = new Set<string>(DEMO_THREAD_IDS);
 
 function isStaticDemoRequest(url: URL, threadId: string): boolean {
@@ -372,6 +377,7 @@ function artifactPathFromMockURL(url: string) {
  * for a real backend.
  */
 export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
+  streamedThreadHeads.clear();
   const threads = options?.threads ?? [];
   const agents = options?.agents ?? [];
   const artifacts = options?.artifacts ?? {};
@@ -705,6 +711,29 @@ export function mockLangGraphAPI(page: Page, options?: MockAPIOptions) {
                   },
                 ],
                 artifacts: matchingThread.artifacts ?? [],
+              },
+              next: [],
+              metadata: {},
+              created_at: "2025-01-01T00:00:00Z",
+              parent_config: null,
+            },
+          ]),
+        });
+      }
+
+      // Created threads that streamed get a checkpoint head with the mock
+      // exchange (gateway post-run semantics); other new threads are empty.
+      const streamed = streamedThreadHeads.get(threadId);
+      if (streamed) {
+        const created = createdThreads.find((t) => t.thread_id === threadId);
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify([
+            {
+              values: {
+                title: created?.title ?? "New Chat",
+                messages: streamed,
               },
               next: [],
               metadata: {},
@@ -2483,25 +2512,29 @@ export function handleRunStream(
     id: "msg-ai-1",
     content: "Hello from iDeer!",
   };
+  const url = new URL(route.request().url());
+  const threadId =
+    /\/threads\/([^/]+)\/runs\/stream$/.exec(url.pathname)?.[1] ??
+    MOCK_THREAD_ID;
+  const humanMessage = {
+    type: "human",
+    id: "msg-human-1",
+    content: [{ type: "text", text: "Hello" }],
+  };
+  const streamedMessages = [
+    humanMessage,
+    { ...aiMessage, metadata: overrides?.messageMetadata },
+  ];
+  streamedThreadHeads.set(threadId, streamedMessages);
   const events = [
     {
       event: "metadata",
-      data: { run_id: MOCK_RUN_ID, thread_id: MOCK_THREAD_ID },
+      data: { run_id: MOCK_RUN_ID, thread_id: threadId },
     },
     {
       event: "values",
       data: {
-        messages: [
-          {
-            type: "human",
-            id: "msg-human-1",
-            content: [{ type: "text", text: "Hello" }],
-          },
-          {
-            ...aiMessage,
-            metadata: overrides?.messageMetadata,
-          },
-        ],
+        messages: streamedMessages,
       },
     },
     ...(latestGoal !== null
@@ -2522,6 +2555,11 @@ export function handleRunStream(
   return route.fulfill({
     status: 200,
     contentType: "text/event-stream",
+    headers: {
+      // The gateway returns run metadata in this header (thread_runs.py) and
+      // the SDK extracts run/thread ids from it to fire onCreated -> onStart.
+      "Content-Location": `/api/threads/${threadId}/runs/${MOCK_RUN_ID}`,
+    },
     body,
   });
 }
