@@ -22,7 +22,17 @@ def test_scope_round_trip_keeps_data_thread_separate_from_run_identity() -> None
 
     scope = canonical_sandbox_scope("thread-42", run_id)
 
-    assert parse_canonical_sandbox_scope(scope) == ("thread-42", run_id)
+    # The scope must fit DeerFlow's 64-character thread-id budget, so the
+    # thread component is a per-(run, thread) digest; it stays stable across
+    # retries and distinct across runs and threads.
+    assert len(scope) <= 64
+    key, parsed_run_id = parse_canonical_sandbox_scope(scope)
+    assert parsed_run_id == run_id
+    assert key != "thread-42"
+    assert key == parse_canonical_sandbox_scope(canonical_sandbox_scope("thread-42", run_id))[0]
+    other_run = str(uuid.uuid4())
+    assert parse_canonical_sandbox_scope(canonical_sandbox_scope("thread-42", other_run))[0] != key
+    assert parse_canonical_sandbox_scope(canonical_sandbox_scope("thread-43", run_id))[0] != key
     assert parse_canonical_sandbox_scope("thread-42") is None
 
 
@@ -91,9 +101,11 @@ def test_local_provider_scopes_mount_to_exact_run_view(monkeypatch: pytest.Monke
     mapping = next(value for value in sandbox.path_mappings if value.container_path == CANONICAL_SKILLS_CONTAINER_PATH)
     assert mapping.local_path == str(view)
     assert mapping.read_only is True
-    # User-data directories stay keyed on the underlying data thread.
+    # User-data directories key on the run workspace — the same
+    # ``thread_dir(run_id)`` layout the workflow file-roots resolver and the
+    # artifact gate verify against.
     user_data = next(value for value in sandbox.path_mappings if value.container_path == "/mnt/user-data")
-    assert "thread-42" in user_data.local_path
+    assert run_id in user_data.local_path
 
 
 def test_local_provider_fails_closed_when_run_skill_view_is_missing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

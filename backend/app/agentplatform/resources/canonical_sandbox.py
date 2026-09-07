@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import base64
+import hashlib
 import os
 import uuid
 from pathlib import Path
@@ -14,6 +14,7 @@ from deerflow.config.paths import get_paths, join_host_path
 # bypassing the enabled-only `/mnt/skills` projection contract.
 CANONICAL_SKILLS_CONTAINER_PATH = "/mnt/skills"
 _SCOPE_PREFIX = "canonical_run_"
+_THREAD_KEY_LENGTH = 16
 _RUN_NAMESPACE = uuid.UUID("3ea44ca0-e819-5064-91b7-224484411da3")
 
 
@@ -25,29 +26,34 @@ def canonical_run_key(run_id: str) -> str:
 
 
 def canonical_sandbox_scope(thread_id: str, run_id: str) -> str:
-    """Return a filesystem-safe sandbox key unique to one frozen Run."""
+    """Return a filesystem-safe sandbox key unique to one frozen Run.
+
+    The scope has to pass DeerFlow's 64-character thread-id budget
+    (``utils.thread_id.validate_thread_id``), so the per-thread component is a
+    short digest of ``(run, thread)`` instead of an encoded id. Uniqueness per
+    frozen Run and thread is preserved; the digest is deterministic, so host
+    directories stay stable across retries of the same run.
+    """
 
     canonical_run_id = canonical_run_key(run_id)
-    encoded_thread = base64.urlsafe_b64encode(thread_id.encode("utf-8")).decode("ascii").rstrip("=")
-    return f"{_SCOPE_PREFIX}{canonical_run_id.replace('-', '')}_{encoded_thread}"
+    digest = hashlib.sha256(f"{canonical_run_id}:{thread_id}".encode()).hexdigest()[:16]
+    return f"{_SCOPE_PREFIX}{canonical_run_id.replace('-', '')}_{digest}"
 
 
 def parse_canonical_sandbox_scope(scope: str | None) -> tuple[str, str] | None:
     if not scope or not scope.startswith(_SCOPE_PREFIX):
         return None
     payload = scope[len(_SCOPE_PREFIX) :]
-    run_hex, separator, encoded_thread = payload.partition("_")
-    if not separator or not encoded_thread:
+    run_hex, separator, thread_key = payload.partition("_")
+    if not separator or len(run_hex) != 32 or len(thread_key) != _THREAD_KEY_LENGTH:
         return None
     try:
+        bytes.fromhex(run_hex)
+        int(thread_key, 16)
         run_id = str(uuid.UUID(hex=run_hex))
-        padding = "=" * (-len(encoded_thread) % 4)
-        thread_id = base64.b64decode(encoded_thread + padding, altchars=b"-_", validate=True).decode("utf-8")
-    except (UnicodeDecodeError, ValueError):
+    except ValueError:
         return None
-    if not thread_id:
-        return None
-    return thread_id, run_id
+    return thread_key, run_id
 
 
 def canonical_run_skill_view_path(run_id: str) -> Path:
@@ -66,16 +72,17 @@ def canonical_run_skill_view_host_path(run_id: str) -> str:
 def _resolve_run_skill_view(sandbox_identity: str) -> tuple[str, Path] | None:
     """Resolver hook for DeerFlow's local sandbox provider.
 
-    Returns ``(data_thread_id, run_skill_view)`` for canonical run identities
-    so the provider maps ``/mnt/skills`` to the frozen read-only view and keys
-    user-data directories on the underlying thread. ``None`` for ordinary
-    identities (the managed skills projection applies).
+    Returns ``(run_id, run_skill_view)`` for canonical run identities so the
+    provider maps ``/mnt/skills`` to the frozen read-only view and keys
+    user-data directories on the run workspace — the same ``thread_dir(run_id)``
+    layout the workflow file-roots resolver and the artifact gate use.
+    ``None`` for ordinary identities (the managed skills projection applies).
     """
     scope = parse_canonical_sandbox_scope(sandbox_identity)
     if scope is None:
         return None
-    data_thread_id, run_id = scope
-    return data_thread_id, canonical_run_skill_view_path(run_id)
+    _thread_key, run_id = scope
+    return run_id, canonical_run_skill_view_path(run_id)
 
 
 def install_run_skill_view_resolver() -> None:

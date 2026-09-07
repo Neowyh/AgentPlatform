@@ -28,7 +28,10 @@ import asyncio
 import uuid
 from contextvars import ContextVar
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, override
+
+from langchain.agents import AgentState
+from langchain.agents.middleware import AgentMiddleware
 
 from app.agentplatform.workflows.v2.filesystem_scope import FilesystemScopeMiddleware
 from deerflow.subagents import executor as _executor_module
@@ -38,6 +41,43 @@ from deerflow.subagents.executor import SubagentExecutor, SubagentStatus
 __all__ = ["SubagentStatus", "WorkflowSubagentConfig", "WorkflowSubagentExecutor"]
 
 _PENDING_FILE_SCOPE: ContextVar[list[Any] | None] = ContextVar("workflow_file_scope_middlewares", default=None)
+
+
+class RunWorkspacePathsMiddleware(AgentMiddleware[AgentState]):
+    """Pin ``thread_data`` to the run workspace while the sandbox is scoped.
+
+    The bridge scopes the sandbox thread so the provider can recognize the
+    frozen run (``canonical_sandbox_scope``), but the upstream thread-data
+    middleware derives ``/mnt/user-data`` host paths from that scoped identity,
+    while the workflow file-roots contract — and the artifact gate — key the
+    run workspace on the raw run id (``thread_id == run_id``). Appended after
+    the upstream middleware, this override re-points the workspace, uploads and
+    outputs mappings at the run workspace so tool writes land where the gate
+    verifies them.
+    """
+
+    def __init__(self, *, run_id: str) -> None:
+        self.run_id = run_id
+
+    @override
+    def before_agent(self, state: AgentState, runtime: Any) -> dict[str, Any] | None:
+        from app.agentplatform.workflows.v2.file_roots import make_host_resolver
+        from deerflow.runtime.user_context import resolve_runtime_user_id
+
+        user_id = resolve_runtime_user_id(runtime)
+        resolver = make_host_resolver(self.run_id, user_id)
+        thread_data = dict(state.get("thread_data") or {})
+        updated = False
+        for key, virtual in (
+            ("workspace_path", "/mnt/user-data/workspace"),
+            ("uploads_path", "/mnt/user-data/uploads"),
+            ("outputs_path", "/mnt/user-data/outputs"),
+        ):
+            host = resolver(virtual)
+            if host is not None and thread_data.get(key) != host:
+                thread_data[key] = host
+                updated = True
+        return {"thread_data": thread_data} if updated else None
 
 
 def _install_scope_aware_create_agent() -> None:
@@ -105,13 +145,19 @@ class WorkflowSubagentExecutor(SubagentExecutor):
             scoped = True
 
         pending_middlewares: list[Any] | None = None
-        if file_access is not None:
-            pending_middlewares = [
-                FilesystemScopeMiddleware(
-                    read_roots=file_access.get("read", []),
-                    write_roots=file_access.get("write", []),
+        if file_access is not None or scoped:
+            pending_middlewares = []
+            if scoped:
+                pending_middlewares.append(RunWorkspacePathsMiddleware(run_id=str(canonical_run_id) if not isinstance(canonical_run_id, str) else canonical_run_id))
+            if file_access is not None:
+                pending_middlewares.append(
+                    FilesystemScopeMiddleware(
+                        read_roots=file_access.get("read", []),
+                        write_roots=file_access.get("write", []),
+                    )
                 )
-            ]
+            if not pending_middlewares:
+                pending_middlewares = None
         token = _PENDING_FILE_SCOPE.set(pending_middlewares)
         try:
             if progress_callback is None:
