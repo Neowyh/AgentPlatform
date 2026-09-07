@@ -71,10 +71,15 @@ def reset_process_singletons(monkeypatch: pytest.MonkeyPatch) -> None:
 
     from app.gateway import deps as deps_module
     from app.gateway.routers import auth as auth_router_module
+    from deerflow.agents.memory import manager as memory_manager_module
     from deerflow.config import app_config as app_config_module
     from deerflow.config import extensions_config as extensions_config_module
     from deerflow.config import paths as paths_module
     from deerflow.persistence import engine as engine_module
+
+    # The cached memory manager binds the previous test's DEER_FLOW_HOME; a
+    # "restart" over a new home must observe the filesystem, not the cache.
+    memory_manager_module.reset_memory_manager()
 
     for module, attr, value in (
         (app_config_module, "_app_config", None),
