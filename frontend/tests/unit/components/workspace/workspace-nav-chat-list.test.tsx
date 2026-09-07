@@ -3,13 +3,17 @@ import { render as renderBase, screen, cleanup } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 vi.mock("@/core/auth/AuthProvider", () => ({
-  useAuth: () => ({ user: { id: "u1", email: "user@test.com", system_role: "user" } }),
+  useAuth: () => ({
+    user: { id: "u1", email: "user@test.com", system_role: "user" },
+  }),
 }));
 
 const render = (ui: React.ReactElement, options?: any) =>
   renderBase(
     <QueryClientProvider
-      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+      client={
+        new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      }
     >
       {ui}
     </QueryClientProvider>,
@@ -52,6 +56,7 @@ vi.mock("@/core/i18n/hooks", () => ({
         chats: "Chats",
         agents: "Agents",
         scheduledTasks: "Scheduled tasks",
+        workflows: "Workflows",
         agentsDisabledTooltip: "Agents are not enabled",
       },
     },
@@ -111,13 +116,14 @@ afterEach(() => {
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe("WorkspaceNavChatList", () => {
-  test("renders three navigation items: chats, agents, scheduled tasks", () => {
+  test("renders four navigation items: chats, agents, scheduled tasks, workflows", () => {
     render(<WorkspaceNavChatList />);
     const items = screen.getAllByTestId("sidebar-menu-item");
-    expect(items).toHaveLength(3);
+    expect(items).toHaveLength(4);
     expect(screen.getByText("Chats")).toBeInTheDocument();
     expect(screen.getByText("Agents")).toBeInTheDocument();
     expect(screen.getByText("Scheduled tasks")).toBeInTheDocument();
+    expect(screen.getByText("Workflows")).toBeInTheDocument();
   });
 
   test("marks Chats as active when on chats path", () => {

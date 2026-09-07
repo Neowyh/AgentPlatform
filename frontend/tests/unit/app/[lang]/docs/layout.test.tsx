@@ -81,7 +81,7 @@ describe("DocLayout", () => {
     render(await DocLayout({ children: <div>content</div>, params }));
     expect(screen.getByTestId("nextra-layout")).toHaveAttribute(
       "data-docs-repository-base",
-      "https://github.com/Neowyh/AgentPlatform/tree/product/offline-1.x/frontend/src/content",
+      "https://github.com/Neowyh/AgentPlatform/tree/product/offline-1.x/frontend",
     );
   });
 

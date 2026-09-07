@@ -25,11 +25,15 @@ test.describe("Thread history", () => {
 
     await page.goto("/workspace/chats/new");
 
-    // Both thread titles should appear in the sidebar
-    await expect(page.getByText("First conversation")).toBeVisible({
-      timeout: 15_000,
-    });
-    await expect(page.getByText("Second conversation")).toBeVisible();
+    // Both thread titles should appear in the sidebar. Scope to the thread
+    // list: the workbench recent-summary mirrors the same links on this page.
+    const threadList = page.getByTestId("thread-list");
+    await expect(
+      threadList.getByRole("link", { name: "First conversation" }),
+    ).toBeVisible({ timeout: 15_000 });
+    await expect(
+      threadList.getByRole("link", { name: "Second conversation" }),
+    ).toBeVisible();
   });
 
   test("clicking a thread in sidebar navigates to it", async ({ page }) => {
@@ -37,8 +41,10 @@ test.describe("Thread history", () => {
 
     await page.goto("/workspace/chats/new");
 
-    // Wait for sidebar to populate
-    const firstThread = page.getByText("First conversation");
+    // Wait for sidebar to populate (scoped like above)
+    const firstThread = page
+      .getByTestId("thread-list")
+      .getByRole("link", { name: "First conversation" });
     await expect(firstThread).toBeVisible({ timeout: 15_000 });
 
     // Click on the first thread

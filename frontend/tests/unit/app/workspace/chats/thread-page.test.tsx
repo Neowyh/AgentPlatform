@@ -2,6 +2,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
+import { SidebarProvider } from "@/components/ui/sidebar";
+
 vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
   useParams: () => ({}),
@@ -216,8 +218,12 @@ function renderWithProviders(ui: React.ReactElement) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
+  // The page header renders a SidebarTrigger, which requires the sidebar
+  // context (the workspace layout provides it in the real app).
   return render(
-    <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>,
+    <SidebarProvider>
+      <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>
+    </SidebarProvider>,
   );
 }
 
