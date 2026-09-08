@@ -137,8 +137,11 @@ def _tool_error(exc: Exception, settings: _RAGFlowRetrievalSettings) -> str:
         logger.warning("RAGFlow API rejected a read-only tool request (code=%s)", exc.code)
         return f"Error: {safe_detail}"
     if isinstance(exc, RAGFlowConnectionError):
+        # §51: the endpoint stays admin-side (log only); the model sees the
+        # sanitized code. The raw provider detail can carry internal hostnames,
+        # so only the exception class name survives.
         logger.warning("RAGFlow connection failed for %s (%s)", base_url, type(exc).__name__)
-        return f"Error: Unable to connect to RAGFlow ({base_url}): {safe_detail}"
+        return f"Error: RAGFlow knowledge retrieval is unavailable (connection_error: {type(exc).__name__})."
     if isinstance(exc, RAGFlowProtocolError):
         logger.warning("RAGFlow returned an invalid response for a read-only tool request (%s)", type(exc).__name__)
         return f"Error: RAGFlow request failed: {safe_detail}"
