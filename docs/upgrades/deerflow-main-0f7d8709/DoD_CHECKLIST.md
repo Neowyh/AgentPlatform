@@ -16,7 +16,8 @@ Verdict against the convergence plan's §29 DoD after the closure round.
 
 ## AgentPlatform
 
-- ✅ Resource Governance V2 (canonical `/api/resources`, UUID/version/hash, visibility, fingerprints on migrated data).
+- ✅ Resource Governance V2 (canonical `/api/resources`, UUID/version/hash, visibility, fingerprints on migrated data; the resources API-client layer is byte-identical to the pre-merge baseline).
+- ✅ Frontend entry-form parity: all 44 pre-merge routes preserved, iDeer brand/landing intact, settings sections restored; the four upstream routers the converged frontend calls are now mounted (features, integrations, scheduled-tasks, input-polish) — the repo's scheduled-task lifecycle test passes again; `/api/agents` deliberately remains unmounted as the non-canonical source.
 - ✅ Workflow V2 (frozen snapshots survive recovery; closure walks; durable runtime tables).
 - ✅ Business packages: SRS smoke ALL CHECKS PASSED; fault-zeroing worker chain 8/8.
 - ✅ Run Resource Snapshot: fresh + existing fixtures (SQLite + PostgreSQL).
