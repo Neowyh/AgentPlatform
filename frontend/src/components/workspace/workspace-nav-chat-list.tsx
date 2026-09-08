@@ -1,9 +1,11 @@
 "use client";
 
 import {
+  BookOpenIcon,
   BotIcon,
   CalendarClock,
   MessagesSquare,
+  NetworkIcon,
   WorkflowIcon,
 } from "lucide-react";
 import Link from "next/link";
@@ -35,6 +37,20 @@ export function WorkspaceNavChatList() {
             <Link href="/workspace/chats">
               <MessagesSquare />
               <span>{t.sidebar.chats}</span>
+            </Link>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            isActive={
+              pathname.startsWith("/workspace/capabilities") ||
+              pathname.startsWith("/workspace/resources")
+            }
+            asChild
+          >
+            <Link href="/workspace/capabilities/experts">
+              <NetworkIcon />
+              <span>{t.sidebar.capabilities}</span>
             </Link>
           </SidebarMenuButton>
         </SidebarMenuItem>
@@ -99,6 +115,17 @@ export function WorkspaceNavChatList() {
             <Link href="/workspace/workflows">
               <WorkflowIcon />
               <span>{t.sidebar.workflows}</span>
+            </Link>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            isActive={pathname.startsWith("/workspace/library")}
+            asChild
+          >
+            <Link href="/workspace/library">
+              <BookOpenIcon />
+              <span>{t.sidebar.library}</span>
             </Link>
           </SidebarMenuButton>
         </SidebarMenuItem>

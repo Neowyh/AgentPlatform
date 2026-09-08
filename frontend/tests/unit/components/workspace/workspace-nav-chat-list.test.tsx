@@ -54,6 +54,8 @@ vi.mock("@/core/i18n/hooks", () => ({
     t: {
       sidebar: {
         chats: "Chats",
+        capabilities: "Experts · Skills · Connectors",
+        library: "Library",
         agents: "Agents",
         scheduledTasks: "Scheduled tasks",
         workflows: "Workflows",
@@ -116,14 +118,16 @@ afterEach(() => {
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe("WorkspaceNavChatList", () => {
-  test("renders four navigation items: chats, agents, scheduled tasks, workflows", () => {
+  test("renders six navigation items including the restored iDeer entries", () => {
     render(<WorkspaceNavChatList />);
     const items = screen.getAllByTestId("sidebar-menu-item");
-    expect(items).toHaveLength(4);
+    expect(items).toHaveLength(6);
     expect(screen.getByText("Chats")).toBeInTheDocument();
+    expect(screen.getByText("Experts · Skills · Connectors")).toBeInTheDocument();
     expect(screen.getByText("Agents")).toBeInTheDocument();
     expect(screen.getByText("Scheduled tasks")).toBeInTheDocument();
     expect(screen.getByText("Workflows")).toBeInTheDocument();
+    expect(screen.getByText("Library")).toBeInTheDocument();
   });
 
   test("marks Chats as active when on chats path", () => {
@@ -134,18 +138,31 @@ describe("WorkspaceNavChatList", () => {
     expect(buttons[1]!.getAttribute("data-is-active")).toBe("false");
   });
 
+  test("marks Capabilities active across its routes", () => {
+    for (const path of [
+      "/workspace/capabilities/experts",
+      "/workspace/resources",
+    ]) {
+      mockPathname = path;
+      render(<WorkspaceNavChatList />);
+      const buttons = screen.getAllByTestId("sidebar-menu-button");
+      expect(buttons[1]!.getAttribute("data-is-active")).toBe("true");
+      cleanup();
+    }
+  });
+
   test("marks Agents as active on the agents path", () => {
     mockPathname = "/workspace/agents";
     render(<WorkspaceNavChatList />);
     const buttons = screen.getAllByTestId("sidebar-menu-button");
-    expect(buttons[1]!.getAttribute("data-is-active")).toBe("true");
+    expect(buttons[2]!.getAttribute("data-is-active")).toBe("true");
   });
 
   test("marks Scheduled tasks as active on its path", () => {
     mockPathname = "/workspace/scheduled-tasks";
     render(<WorkspaceNavChatList />);
     const buttons = screen.getAllByTestId("sidebar-menu-button");
-    expect(buttons[2]!.getAttribute("data-is-active")).toBe("true");
+    expect(buttons[3]!.getAttribute("data-is-active")).toBe("true");
   });
 
   test("renders Agents as a plain link when the agents API is enabled", () => {
@@ -167,12 +184,12 @@ describe("WorkspaceNavChatList", () => {
   });
 
   test("marks Chats as inactive on other paths", () => {
-    mockPathname = "/workspace/library";
+    mockPathname = "/workspace/automations";
     render(<WorkspaceNavChatList />);
     const buttons = screen.getAllByTestId("sidebar-menu-button");
     // Chats and Scheduled tasks stay inactive; the disabled Agents entry has
     // no active state at all.
     expect(buttons[0]!.getAttribute("data-is-active")).toBe("false");
-    expect(buttons[2]!.getAttribute("data-is-active")).toBe("false");
+    expect(buttons[3]!.getAttribute("data-is-active")).toBe("false");
   });
 });
