@@ -200,7 +200,9 @@ services:
       - ELASTIC_PASSWORD=${RAGFLOW_ELASTIC_PASSWORD:-infini_rag_flow}
       # Tenant-default embedding provider seed (see
       # docker/ragflow/service_conf.yaml.template). Empty values keep the
-      # seed inert; configure the provider in the RAGFlow UI instead.
+      # seed inert; configure the provider in the RAGFlow UI instead. With
+      # the bundled TEI service (`--profile tei`) the intranet endpoint is
+      # http://ragflow-tei:80/v1 (model from RAGFLOW_TEI_MODEL).
       - RAGFLOW_EMBEDDING_BASE_URL=${RAGFLOW_EMBEDDING_BASE_URL:-}
       - RAGFLOW_EMBEDDING_API_KEY=${RAGFLOW_EMBEDDING_API_KEY:-}
       - RAGFLOW_EMBEDDING_MODEL_NAME=${RAGFLOW_EMBEDDING_MODEL_NAME:-}
@@ -235,9 +237,36 @@ services:
       retries: 40
       start_period: 90s
 
+  # ── Optional intranet embedding service (TEI) ─────────────────────────────
+  # Acts as the deployment's embedding endpoint for dev hosts that have no
+  # separate intranet model service. Enabled explicitly:
+  #   ... up -d ragflow ragflow-tei --profile tei
+  # Then bind it to the tenant in the RAGFlow UI as an OpenAI-API-Compatible
+  # provider with base URL http://ragflow-tei:80/v1, or preseed via
+  # RAGFLOW_EMBEDDING_* (docker/ragflow/.env.example).
+  ragflow-tei:
+    profiles:
+      - tei
+    image: ${RAGFLOW_TEI_IMAGE:-infiniflow/text-embeddings-inference:cpu-1.8}
+    container_name: ideer-ragflow-tei
+    command: ["--model-id", "${RAGFLOW_TEI_MODEL:-BAAI/bge-small-en-v1.5}", "--auto-truncate"]
+    ports:
+      - "${RAGFLOW_BIND_HOST:-127.0.0.1}:${RAGFLOW_TEI_PORT:-9997}:80"
+    environment:
+      # Offline hosts: point at the internal HuggingFace mirror by pre-loading
+      # the model into the /data volume (huggingface_hub cache layout).
+      - HF_ENDPOINT=${RAGFLOW_TEF_ENDPOINT:-https://hf-mirror.com}
+      - HF_HUB_OFFLINE=${RAGFLOW_TEI_OFFLINE:-0}
+    volumes:
+      - ragflow-tei-data:/data
+    networks:
+      - deer-flow-dev
+    restart: unless-stopped
+
 volumes:
   ragflow-mysql-data:
   ragflow-minio-data:
   ragflow-redis-data:
   ragflow-es-data:
   ragflow-logs:
+  ragflow-tei-data:
