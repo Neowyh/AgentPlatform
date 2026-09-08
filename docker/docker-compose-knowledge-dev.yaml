@@ -1,0 +1,243 @@
+# Optional RAGFlow knowledge-dev overlay.
+#
+# Brings up a self-contained RAGFlow stack (RAGFlow server + MySQL metadata,
+# MinIO object storage, Valkey queue, Elasticsearch doc engine) so the
+# gateway's `knowledge_search` tool has a real retrieval engine in the dev
+# environment. Designed for intranet/offline hosts: every image reference
+# goes through a ${VAR:-default} override, and the embedding/LLM endpoints
+# point at intranet services — nothing in this profile needs a public-network
+# route or public DNS at runtime once the images are loaded locally.
+#
+# Services join the dev compose network (`deer-flow-dev`), so the gateway
+# reaches RAGFlow at http://ragflow:9380. Host-published ports bind to
+# 127.0.0.1 unless RAGFLOW_BIND_HOST is set.
+#
+# Usage (from the repository root):
+#
+#   cp docker/ragflow/.env.example docker/ragflow/.env   # then edit values
+#   docker compose -p ideer-dev \
+#     -f docker/docker-compose-dev.yaml \
+#     -f docker/docker-compose-knowledge-dev.yaml \
+#     --env-file docker/ragflow/.env up -d ragflow
+#
+# `up -d ragflow` starts RAGFlow plus its dependency closure only; the base
+# dev services are not started or changed. Run `down`/`logs`/`ps` with the
+# same -f pair (and --env-file) so Compose sees the same project.
+#
+# Offline/intranet preparation: pre-load the pinned images into the local
+# Docker daemon while a registry mirror is reachable, e.g.
+#   docker compose -p ideer-dev -f docker/docker-compose-dev.yaml \
+#     -f docker/docker-compose-knowledge-dev.yaml \
+#     --env-file docker/ragflow/.env pull ragflow ragflow-es01 ragflow-mysql ragflow-minio ragflow-redis
+# After that, start/stop/run works with no public route or DNS.
+#
+# One-time RAGFlow bootstrap (operator, after `up`):
+#   1. Open http://127.0.0.1:${RAGFLOW_WEB_PORT:-8080} and sign up.
+#   2. In the RAGFlow UI add a model provider pointing at the intranet
+#      embedding service (e.g. OpenAI-API-compatible base URL, see
+#      RAGFLOW_EMBEDDING_* in docker/ragflow/.env) and set it as the tenant's
+#      default embedding model. RAGFlow >=0.27 binds model providers
+#      per-tenant; the user_default_llm block in
+#      docker/ragflow/service_conf.yaml.template only seeds defaults.
+#   3. Create a dataset with that embedding model, and generate an API key
+#      for the `knowledge_search` tool in the iDeer config.yaml (ticket 05).
+#
+# Secrets policy: API keys and intranet endpoint URLs live only in the
+# untracked docker/ragflow/.env (already covered by the repo's .gitignore
+# `.env` rule), never in tracked files. The infra passwords default to
+# RAGFlow's public upstream dev values and are overridden the same way, so
+# every service and healthcheck sees identical values.
+
+services:
+  # ── RAGFlow metadata (MySQL) ─────────────────────────────────────────────
+  ragflow-mysql:
+    image: ${RAGFLOW_MYSQL_IMAGE:-mysql:8.0.40}
+    container_name: ideer-ragflow-mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=${RAGFLOW_MYSQL_PASSWORD:-infini_rag_flow}
+      - TZ=${RAGFLOW_TZ:-Asia/Shanghai}
+    command:
+      --max_connections=1000
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --default-authentication-plugin=mysql_native_password
+      --tls_version="TLSv1.2,TLSv1.3"
+      --init-file /data/application/init.sql
+      --binlog_expire_logs_seconds=604800
+    ports:
+      - "${RAGFLOW_BIND_HOST:-127.0.0.1}:${RAGFLOW_MYSQL_PORT:-4455}:3306"
+    volumes:
+      - ragflow-mysql-data:/var/lib/mysql
+      - ./ragflow/mysql-init.sql:/data/application/init.sql:ro
+    networks:
+      - deer-flow-dev
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-uroot", "-p${RAGFLOW_MYSQL_PASSWORD:-infini_rag_flow}"]
+      interval: 10s
+      timeout: 10s
+      retries: 60
+      start_period: 30s
+
+  # ── RAGFlow object storage (MinIO) ───────────────────────────────────────
+  # RELEASE.2025-06-13T11-33-47Z is the release RAGFlow itself shipped with
+  # through v0.20.5 (its compose used this image + this healthcheck); the
+  # pgsty/silo image is upstream's current choice and also works.
+  ragflow-minio:
+    image: ${RAGFLOW_MINIO_IMAGE:-quay.io/minio/minio:RELEASE.2025-06-13T11-33-47Z}
+    container_name: ideer-ragflow-minio
+    command: ["server", "--console-address", ":9001", "/data"]
+    ports:
+      - "${RAGFLOW_BIND_HOST:-127.0.0.1}:${RAGFLOW_MINIO_PORT:-9002}:9000"
+      - "${RAGFLOW_BIND_HOST:-127.0.0.1}:${RAGFLOW_MINIO_CONSOLE_PORT:-9003}:9001"
+    environment:
+      - MINIO_ROOT_USER=${RAGFLOW_MINIO_USER:-rag_flow}
+      - MINIO_ROOT_PASSWORD=${RAGFLOW_MINIO_PASSWORD:-infini_rag_flow}
+    volumes:
+      - ragflow-minio-data:/data
+    networks:
+      - deer-flow-dev
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 15s
+      timeout: 10s
+      retries: 60
+      start_period: 15s
+
+  # ── RAGFlow queue (Valkey, redis-server entrypoint) ──────────────────────
+  ragflow-redis:
+    image: ${RAGFLOW_REDIS_IMAGE:-valkey/valkey:8}
+    container_name: ideer-ragflow-redis
+    command: ["redis-server", "--requirepass", "${RAGFLOW_REDIS_PASSWORD:-infini_rag_flow}", "--maxmemory", "128mb", "--maxmemory-policy", "volatile-lru"]
+    ports:
+      - "${RAGFLOW_BIND_HOST:-127.0.0.1}:${RAGFLOW_REDIS_PORT:-6381}:6379"
+    volumes:
+      - ragflow-redis-data:/data
+    networks:
+      - deer-flow-dev
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a ${RAGFLOW_REDIS_PASSWORD:-infini_rag_flow} ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 60
+      start_period: 10s
+
+  # ── RAGFlow doc engine (Elasticsearch) ───────────────────────────────────
+  ragflow-es01:
+    image: ${RAGFLOW_ES_IMAGE:-elasticsearch:8.11.3}
+    container_name: ideer-ragflow-es01
+    volumes:
+      - ragflow-es-data:/usr/share/elasticsearch/data
+    # Official ES image ACL on /tmp denies writes for user elasticsearch
+    # (r-x only); entrypoint.sh needs a writable temp dir for bash here-docs.
+    tmpfs:
+      - /tmp:mode=1777,size=512m
+    ports:
+      - "${RAGFLOW_BIND_HOST:-127.0.0.1}:${RAGFLOW_ES_PORT:-1200}:9200"
+    environment:
+      - node.name=es01
+      - ELASTIC_PASSWORD=${RAGFLOW_ELASTIC_PASSWORD:-infini_rag_flow}
+      - bootstrap.memory_lock=false
+      - discovery.type=single-node
+      - xpack.security.enabled=true
+      - xpack.security.http.ssl.enabled=false
+      - xpack.security.transport.ssl.enabled=false
+      - cluster.routing.allocation.disk.watermark.low=5gb
+      - cluster.routing.allocation.disk.watermark.high=3gb
+      - cluster.routing.allocation.disk.watermark.flood_stage=2gb
+      - ES_JAVA_OPTS=${RAGFLOW_ES_JAVA_OPTS:--Xms1g -Xmx1g}
+    networks:
+      - deer-flow-dev
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl http://localhost:9200"]
+      interval: 10s
+      timeout: 10s
+      retries: 60
+      start_period: 30s
+
+  # ── RAGFlow server ────────────────────────────────────────────────────────
+  ragflow:
+    image: ${RAGFLOW_IMAGE:-infiniflow/ragflow:v0.27.1}
+    container_name: ideer-ragflow
+    # Same entrypoint flags as upstream's compose: the admin server backs the
+    # UI, and the provider-table migration prepares model-provider tables on a
+    # fresh metadata DB before the web server starts.
+    command: ["--enable-adminserver", "--init-model-provider-tables"]
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+      nproc:
+        soft: 65535
+        hard: 65535
+    ports:
+      - "${RAGFLOW_BIND_HOST:-127.0.0.1}:${RAGFLOW_HTTP_PORT:-9380}:9380"
+      - "${RAGFLOW_BIND_HOST:-127.0.0.1}:${RAGFLOW_WEB_PORT:-8080}:80"
+    environment:
+      # Runtime selection: MySQL metadata + Elasticsearch doc engine + CPU.
+      - DOC_ENGINE=elasticsearch
+      - DB_TYPE=mysql
+      - DEVICE=cpu
+      # Required: the entrypoint only starts the python API server (and admin
+      # server) when API_PROXY_SCHEME is python/hybrid; unset leaves 9380 dead.
+      - API_PROXY_SCHEME=python
+      - TZ=${RAGFLOW_TZ:-Asia/Shanghai}
+      - MEM_LIMIT=${RAGFLOW_MEM_LIMIT:-8073741824}
+      # service_conf.yaml.template values (rendered by the image entrypoint).
+      - MYSQL_HOST=ragflow-mysql
+      - MYSQL_PORT=3306
+      - MYSQL_DBNAME=rag_flow
+      - MYSQL_PASSWORD=${RAGFLOW_MYSQL_PASSWORD:-infini_rag_flow}
+      - MINIO_HOST=ragflow-minio:9000
+      - MINIO_USER=${RAGFLOW_MINIO_USER:-rag_flow}
+      - MINIO_PASSWORD=${RAGFLOW_MINIO_PASSWORD:-infini_rag_flow}
+      - REDIS_HOST=ragflow-redis:6379
+      - REDIS_PASSWORD=${RAGFLOW_REDIS_PASSWORD:-infini_rag_flow}
+      - ES_HOST=ragflow-es01
+      - ELASTIC_PASSWORD=${RAGFLOW_ELASTIC_PASSWORD:-infini_rag_flow}
+      # Tenant-default embedding provider seed (see
+      # docker/ragflow/service_conf.yaml.template). Empty values keep the
+      # seed inert; configure the provider in the RAGFlow UI instead.
+      - RAGFLOW_EMBEDDING_BASE_URL=${RAGFLOW_EMBEDDING_BASE_URL:-}
+      - RAGFLOW_EMBEDDING_API_KEY=${RAGFLOW_EMBEDDING_API_KEY:-}
+      - RAGFLOW_EMBEDDING_MODEL_NAME=${RAGFLOW_EMBEDDING_MODEL_NAME:-}
+      # Registration stays enabled so smoke scripts can create a tenant
+      # account through the API.
+      - REGISTER_ENABLED=${RAGFLOW_REGISTER_ENABLED:-1}
+    volumes:
+      - ./ragflow/service_conf.yaml.template:/ragflow/conf/service_conf.yaml.template:ro
+      - ragflow-logs:/ragflow/logs
+    depends_on:
+      ragflow-mysql:
+        condition: service_healthy
+      ragflow-minio:
+        condition: service_healthy
+      ragflow-redis:
+        condition: service_healthy
+      ragflow-es01:
+        condition: service_healthy
+    extra_hosts:
+      # Lets RAGFlow reach intranet services published on the host (e.g. a
+      # vLLM/OpenAI-compatible embedding endpoint) via host.docker.internal.
+      - "host.docker.internal:host-gateway"
+    networks:
+      - deer-flow-dev
+    restart: unless-stopped
+    healthcheck:
+      # /api/v1/system/healthz returns 200 only when the doc engine, object
+      # storage, and metadata DB are all reachable — a real readiness gate.
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9380/api/v1/system/healthz"]
+      interval: 15s
+      timeout: 10s
+      retries: 40
+      start_period: 90s
+
+volumes:
+  ragflow-mysql-data:
+  ragflow-minio-data:
+  ragflow-redis-data:
+  ragflow-es-data:
+  ragflow-logs:

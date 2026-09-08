@@ -1,0 +1,54 @@
+# RAGFlow service configuration template for the iDeer knowledge-dev profile.
+#
+# Mounted over /ragflow/conf/service_conf.yaml.template. The image entrypoint
+# renders it into service_conf.yaml by expanding default-pattern placeholders
+# from the ragflow container environment (the compose file maps them). Every
+# connection target below resolves inside the deer-flow-dev compose network,
+# so no public-network route or DNS is needed at runtime.
+#
+# NOTE: every line of this file is passed through shell eval by the RAGFlow
+# entrypoint, so comment text must stay free of backticks, $() and similar
+# shell metacharacters.
+general:
+  heartbeat_interval: 3s
+ragflow:
+  host: ${RAGFLOW_HOST:-0.0.0.0}
+  http_port: 9380
+mysql:
+  name: '${MYSQL_DBNAME:-rag_flow}'
+  user: '${MYSQL_USER:-root}'
+  password: '${MYSQL_PASSWORD:-infini_rag_flow}'
+  host: '${MYSQL_HOST:-ragflow-mysql}'
+  port: ${MYSQL_PORT:-3306}
+  max_connections: 900
+  stale_timeout: 300
+  max_allowed_packet: ${MYSQL_MAX_PACKET:-1073741824}
+minio:
+  user: '${MINIO_USER:-rag_flow}'
+  password: '${MINIO_PASSWORD:-infini_rag_flow}'
+  host: '${MINIO_HOST:-ragflow-minio:9000}'
+  bucket: '${MINIO_BUCKET:-}'
+  prefix_path: '${MINIO_PREFIX_PATH:-}'
+es:
+  hosts: 'http://${ES_HOST:-ragflow-es01}:9200'
+  username: '${ES_USER:-elastic}'
+  password: '${ELASTIC_PASSWORD:-infini_rag_flow}'
+redis:
+  db: 1
+  username: '${REDIS_USERNAME:-}'
+  password: '${REDIS_PASSWORD:-infini_rag_flow}'
+  host: '${REDIS_HOST:-ragflow-redis:6379}'
+# Optional tenant-default embedding provider seed. The iDeer knowledge-dev
+# compose file passes the RAGFLOW_EMBEDDING_* variables through; empty values
+# render the inert defaults below and the provider is configured in the RAGFlow
+# UI instead (RAGFlow 0.27+ binds model providers per-tenant via the UI/API).
+# RAGFLOW_EMBEDDING_MODEL_NAME must match the model name exposed by the intranet
+# endpoint (e.g. bge-m3 on a vLLM OpenAI-compatible server).
+user_default_llm:
+  default_models:
+    embedding_model:
+      name: '${RAGFLOW_EMBEDDING_MODEL_NAME:-}'
+      api_key: '${RAGFLOW_EMBEDDING_API_KEY:-xxx}'
+      base_url: '${RAGFLOW_EMBEDDING_BASE_URL:-http://host.docker.internal:9997}'
+log:
+  level: info
