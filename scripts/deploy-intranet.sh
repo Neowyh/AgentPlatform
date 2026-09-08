@@ -807,7 +807,12 @@ initialize_super_admin() {
 find_super_admin_id() {
     # shellcheck disable=SC1090
     . "$ENV_FILE"
-    local db="${IDEER_HOME:-$RUNTIME_DIR/data}/data/ideer.db"
+    # The DeerFlow convergence renamed the runtime DB file (ideer.db ->
+    # deerflow.db); prefer the new name and fall back to the legacy one so
+    # pre-convergence bundles still upgrade cleanly.
+    local base="${IDEER_HOME:-$RUNTIME_DIR/data}/data"
+    local db="$base/deerflow.db"
+    [ -f "$db" ] || db="$base/ideer.db"
     [ -f "$db" ] || return 0
     python3 - "$db" <<'PY'
 import sqlite3, sys
