@@ -49,6 +49,12 @@ class _FakeInspector:
     def get_table_names(self):
         return list(self.existing)
 
+    def get_columns(self, table_name: str):
+        return []
+
+    def get_indexes(self, table_name: str):
+        return []
+
 
 class _OpRecorder:
     """Record alembic op calls. ``existing_tables`` feeds the inspector guard
@@ -261,6 +267,7 @@ def test_audit_logs_migration_declares_indexes_and_drop_order(monkeypatch):
 
 def test_users_ext_disabled_migration_adds_column_indexes_and_reverses(monkeypatch):
     migration = _load("f3a2b1c4d5e6_add_disabled_column_and_indexes")
+    monkeypatch.setattr(migration.sa, "inspect", lambda bind: op.inspector)
     op = _OpRecorder()
     monkeypatch.setattr(migration, "op", op)
 

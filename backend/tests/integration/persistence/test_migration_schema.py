@@ -241,3 +241,186 @@ class TestUnifiedMigrationChain:
         versions = _get_version_rows(db_url)
         assert versions.get(VERSION_TABLE) == [MERGE_REVISION]
         assert DEERFLOW_VERSION_TABLE not in versions
+
+    def test_create_all_current_database_stamps_merge(self, tmp_path: Path) -> None:
+        """Crash-recovery pin: a database whose tables carry *current* model
+        shapes but no version rows (an interrupted empty-branch bootstrap)
+        must be stamped to the merge position, not replayed.
+
+        Replaying the chain against create_all-shaped tables crashes on the
+        unguarded ``create_table`` revisions and on SQLite batch
+        ``add_column`` (alembic assumes the column is new and builds a
+        contradictory column-order dependency -- the
+        ``CircularDependencyError`` seen on ``f3a2b1c4d5e6`` against
+        ``users_ext``). The bridge's create_all-current check recognizes the
+        shape and stamps ``MERGE_REVISION`` directly.
+        """
+        import deerflow.persistence.models  # noqa: F401  -- registers runtime models
+        from deerflow.persistence.base import Base
+
+        db_path = tmp_path / "test.db"
+        db_url = f"sqlite+aiosqlite:///{db_path}"
+
+        sync_engine = create_engine(_sync_url(db_url))
+        try:
+            Base.metadata.create_all(sync_engine)
+        finally:
+            sync_engine.dispose()
+
+        command.upgrade(make_alembic_config(db_url), "head")
+
+        assert _get_version_rows(db_url).get(VERSION_TABLE) == [MERGE_REVISION]
+        # The stamp must not have created anything new: table set unchanged.
+        engine = create_engine(_sync_url(db_url))
+        try:
+            with engine.connect() as conn:
+                assert set(Base.metadata.tables).issubset({r[0] for r in conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'")).fetchall()})
+        finally:
+            engine.dispose()
+
+    def test_pre_alembic_enterprise_database_upgrades_to_head(self, tmp_path: Path) -> None:
+        """The earliest enterprise deployments (pre-2026-06-03, before the
+        control-plane chain started recording versions) carry only the
+        hand-provisioned core tables -- departments, users_ext (without the
+        later ``disabled`` column), and the runtime core five -- and no
+        ``alembic_version`` row. A single CLI ``upgrade head`` must take
+        that database to the merge head.
+
+        The runtime branch replays from base (``0001_baseline`` is
+        create_table-guarded, the post-baseline column revisions idempotent
+        via ``safe_add_column``) and the control-plane branch creates the
+        resource/workflow/audit families from scratch.
+        """
+        db_path = tmp_path / "test.db"
+        db_url = f"sqlite+aiosqlite:///{db_path}"
+
+        sync_engine = create_engine(_sync_url(db_url))
+        try:
+            with sync_engine.begin() as conn:
+                # The control-plane core family (16147afec43b's DDL) at its
+                # pre-2026-06-03 shape.
+                conn.execute(text("CREATE TABLE departments (id VARCHAR(36) NOT NULL PRIMARY KEY, name VARCHAR(128) NOT NULL UNIQUE, description VARCHAR(512), created_at DATETIME DEFAULT CURRENT_TIMESTAMP)"))
+                conn.execute(
+                    text(
+                        "CREATE TABLE users_ext ("
+                        "id VARCHAR(36) NOT NULL PRIMARY KEY, "
+                        "username VARCHAR(128) NOT NULL UNIQUE, "
+                        "role VARCHAR(32), "
+                        "department_id VARCHAR(36) REFERENCES departments(id), "
+                        "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
+                        "last_login DATETIME)"
+                    )
+                )
+                # The runtime core five as the era's create_all produced them
+                # (pre-#3658: no token_usage_by_model; nullable columns).
+                conn.execute(
+                    text(
+                        "CREATE TABLE users ("
+                        "id VARCHAR(36) NOT NULL PRIMARY KEY, "
+                        "email VARCHAR(320) NOT NULL, "
+                        "password_hash VARCHAR(128), "
+                        "system_role VARCHAR(16) NOT NULL, "
+                        "created_at DATETIME NOT NULL, "
+                        "oauth_provider VARCHAR(32), "
+                        "oauth_id VARCHAR(128), "
+                        "needs_setup BOOLEAN NOT NULL, "
+                        "token_version INTEGER NOT NULL)"
+                    )
+                )
+                conn.execute(text("CREATE UNIQUE INDEX ix_users_email ON users (email)"))
+                conn.execute(
+                    text(
+                        "CREATE TABLE runs ("
+                        "run_id VARCHAR(64) NOT NULL PRIMARY KEY, "
+                        "thread_id VARCHAR(64) NOT NULL, "
+                        "assistant_id VARCHAR(128), "
+                        "user_id VARCHAR(64), "
+                        "status VARCHAR(20), "
+                        "model_name VARCHAR(128), "
+                        "multitask_strategy VARCHAR(20), "
+                        "metadata_json JSON, "
+                        "kwargs_json JSON, "
+                        "error TEXT, "
+                        "message_count INTEGER, "
+                        "first_human_message TEXT, "
+                        "last_ai_message TEXT, "
+                        "total_input_tokens INTEGER, "
+                        "total_output_tokens INTEGER, "
+                        "total_tokens INTEGER, "
+                        "llm_call_count INTEGER, "
+                        "lead_agent_tokens INTEGER, "
+                        "subagent_tokens INTEGER, "
+                        "middleware_tokens INTEGER, "
+                        "follow_up_to_run_id VARCHAR(64), "
+                        "created_at DATETIME, "
+                        "updated_at DATETIME)"
+                    )
+                )
+                conn.execute(
+                    text(
+                        "CREATE TABLE threads_meta ("
+                        "thread_id VARCHAR(64) NOT NULL PRIMARY KEY, "
+                        "assistant_id VARCHAR(128), "
+                        "user_id VARCHAR(64), "
+                        "display_name VARCHAR(256), "
+                        "status VARCHAR(20), "
+                        "metadata_json JSON, "
+                        "created_at DATETIME, "
+                        "updated_at DATETIME)"
+                    )
+                )
+                conn.execute(
+                    text(
+                        "CREATE TABLE run_events ("
+                        "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
+                        "thread_id VARCHAR(64) NOT NULL, "
+                        "run_id VARCHAR(64) NOT NULL, "
+                        "user_id VARCHAR(64), "
+                        "event_type VARCHAR(32) NOT NULL, "
+                        "category VARCHAR(16) NOT NULL, "
+                        "content TEXT, "
+                        "event_metadata JSON, "
+                        "seq INTEGER NOT NULL, "
+                        "created_at DATETIME, "
+                        "CONSTRAINT uq_events_thread_seq UNIQUE (thread_id, seq))"
+                    )
+                )
+                conn.execute(
+                    text(
+                        "CREATE TABLE feedback ("
+                        "feedback_id VARCHAR(64) NOT NULL PRIMARY KEY, "
+                        "run_id VARCHAR(64) NOT NULL, "
+                        "thread_id VARCHAR(64) NOT NULL, "
+                        "user_id VARCHAR(64), "
+                        "message_id VARCHAR(64), "
+                        "rating INTEGER NOT NULL, "
+                        "comment TEXT, "
+                        "created_at DATETIME, "
+                        "CONSTRAINT uq_feedback_thread_run_user UNIQUE (thread_id, run_id, user_id))"
+                    )
+                )
+        finally:
+            sync_engine.dispose()
+
+        command.upgrade(make_alembic_config(db_url), "head")
+
+        assert _get_version_rows(db_url).get(VERSION_TABLE) == [MERGE_REVISION]
+        engine = create_engine(_sync_url(db_url))
+        try:
+            with engine.connect() as conn:
+                tables = {r[0] for r in conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'")).fetchall()}
+                # The control-plane family landed...
+                for expected in ("resource_metadata", "resources", "resource_versions", "workflow_v2_runs", "run_resource_snapshots", "audit_logs", "skill_applications"):
+                    assert expected in tables, f"{expected} missing after upgrade"
+                # ...the runtime family landed (its post-baseline revisions
+                # replayed over the pre-#3658 core five)...
+                for expected in ("channel_connections", "agents", "mcp_tasks", "scheduled_tasks", "personal_access_tokens", "subagent_batches"):
+                    assert expected in tables, f"{expected} missing after upgrade"
+                # ...and the drifted core shapes were repaired, not duplicated.
+                runs_cols = [r[1] for r in conn.execute(text("PRAGMA table_info(runs)")).fetchall()]
+                assert runs_cols.count("token_usage_by_model") == 1
+                assert runs_cols.count("stop_reason") == 1
+                users_ext_cols = [r[1] for r in conn.execute(text("PRAGMA table_info(users_ext)")).fetchall()]
+                assert users_ext_cols.count("disabled") == 1
+        finally:
+            engine.dispose()

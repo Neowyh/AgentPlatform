@@ -14,6 +14,12 @@ End-to-end shape:
 The pre-fix codepath would have raised
 ``sqlalchemy.exc.OperationalError: no such column: runs.token_usage_by_model``
 on step 3.
+
+Shape note (unified-chain era): a real pre-#3658 deployment predates the
+AgentPlatform control-plane table family entirely -- the runtime tables were
+created by the era's ``create_all`` and no ``alembic_version`` row exists.
+The fixtures below therefore build the runtime family only (and then ALTER
+away the column the issue is about), not the full unified metadata.
 """
 
 from __future__ import annotations
@@ -32,22 +38,51 @@ from deerflow.persistence.run import RunRepository
 
 pytestmark = pytest.mark.asyncio
 
+# Tables the AgentPlatform control-plane chain owns. A pre-#3658 runtime-era
+# deployment predates all of them; the legacy bootstrap's later upgrade of the
+# unified chain creates them from base.
+_CONTROL_PLANE_TABLES = frozenset(
+    {
+        "audit_logs",
+        "departments",
+        "resource_dependencies",
+        "resource_drafts",
+        "resource_favorites",
+        "resource_metadata",
+        "resource_notifications",
+        "resource_versions",
+        "resources",
+        "run_resource_snapshots",
+        "users_ext",
+        "visibility_applications",
+        "workflow_commands",
+        "workflow_definition_versions",
+        "workflow_lease_audit",
+        "workflow_tasks",
+        "workflow_v2_events",
+        "workflow_v2_runs",
+    }
+)
+
 
 def _seed_pre_3658_database(db_path: Path) -> None:
     """Build a DB that looks like a pre-PR-#3658 deployment.
 
     Uses the synchronous ``sqlite3`` driver so the seed is independent of the
-    async engine under test.
+    async engine under test. ``create_all`` renders the *current* metadata;
+    dropping the control-plane family (which a runtime-era deployment never
+    had) leaves the pre-#3658 runtime shape, and the final ``ALTER`` removes
+    the column the issue is about.
     """
     db_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Easiest way to get the legacy shape exactly right: create_all then
-    # ALTER away the new column.
     sync_url = f"sqlite:///{db_path.as_posix()}"
     sync_engine = sa.create_engine(sync_url)
     try:
         Base.metadata.create_all(sync_engine)
         with sync_engine.begin() as conn:
+            for table in sorted(_CONTROL_PLANE_TABLES):
+                conn.execute(sa.text(f"DROP TABLE {table}"))
             conn.execute(sa.text("ALTER TABLE runs DROP COLUMN token_usage_by_model"))
     finally:
         sync_engine.dispose()
@@ -104,7 +139,12 @@ async def test_legacy_database_with_manual_alter_still_bootstraps(tmp_path: Path
     try:
         Base.metadata.create_all(sync_engine)
         # Don't strip the column -- this is the "user already ran the
-        # workaround" case where create_all already produced it.
+        # workaround" case where create_all already produced it. Same shape
+        # rule as ``_seed_pre_3658_database``: drop the control-plane family
+        # a runtime-era deployment never had.
+        with sync_engine.begin() as conn:
+            for table in sorted(_CONTROL_PLANE_TABLES):
+                conn.execute(sa.text(f"DROP TABLE {table}"))
     finally:
         sync_engine.dispose()
 

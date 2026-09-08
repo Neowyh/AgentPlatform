@@ -171,6 +171,23 @@ def adopt_unified_version_state(sync_conn) -> None:
         logging.getLogger(__name__).info("chain-meta: restamped unified position %s", desired)
         return
 
+    if not unified_rows and not runtime_rows and _is_create_all_current(sync_conn, tables):
+        # create_all-current state (no version rows anywhere, but every
+        # runtime-metadata table and column exists): the schema is at head
+        # by construction -- the same invariant the bootstrap's empty branch
+        # relies on (``create_all`` + ``stamp head``). This is the
+        # crash-recovery shape of an interrupted empty branch, and stamping
+        # the merge position avoids replaying the whole chain against
+        # already-current tables (unguarded ``create_table`` /
+        # batch-``add_column`` revisions would crash). Drifted databases
+        # fail the column check and fall through to a full replay, where the
+        # idempotent helpers repair them.
+        if VERSION_TABLE not in tables:
+            sync_conn.execute(text(f"CREATE TABLE {VERSION_TABLE} (version_num VARCHAR(255) NOT NULL)"))
+        sync_conn.execute(text(f"INSERT INTO {VERSION_TABLE} (version_num) VALUES (:revision)"), {"revision": MERGE_REVISION})
+        logging.getLogger(__name__).info("chain-meta: create_all-current state stamped to %s", MERGE_REVISION)
+        return
+
     if has_control_plane_ddl and not unified_rows:
         # Enterprise DDL without a version row: pre-alembic enterprise DB.
         # Leave the (absent) version state to the caller's stamp branch.
@@ -179,3 +196,37 @@ def adopt_unified_version_state(sync_conn) -> None:
     # Anything else (fresh DB, unknown rows) is left to alembic's own
     # handling; unknown rows fail loudly in ScriptDirectory rather than
     # being silently restamped here.
+
+
+def _is_create_all_current(sync_conn, tables: set[str]) -> bool:
+    """True when *sync_conn*'s schema matches ``Base.metadata`` exactly.
+
+    Every runtime-metadata table must exist and carry every model column.
+    This is the signature of a database produced by
+    ``Base.metadata.create_all`` against the current models (the empty
+    branch's fast path), as opposed to a drifted legacy database that needs
+    the chain's idempotent repairs. ``deerflow.persistence.models`` is
+    imported lazily so this module stays import-light.
+    """
+    from sqlalchemy import inspect as sa_inspect
+
+    try:
+        import deerflow.persistence.models  # noqa: F401  -- registers runtime models
+        from deerflow.persistence.base import Base
+    except ImportError:
+        # Models unavailable: the create_all-current check cannot be
+        # answered -- fall through to the chain's own handling (same
+        # tolerance as the bootstrap/env model imports).
+        return False
+
+    metadata_tables = Base.metadata.tables
+    if not metadata_tables or not tables:
+        return False
+    if not set(metadata_tables).issubset(tables):
+        return False
+    insp = sa_inspect(sync_conn)
+    for table_name, table in metadata_tables.items():
+        reflected = {c["name"] for c in insp.get_columns(table_name)}
+        if not {c.name for c in table.columns}.issubset(reflected):
+            return False
+    return True
