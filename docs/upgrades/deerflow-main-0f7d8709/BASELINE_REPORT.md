@@ -738,3 +738,24 @@ and ordering (chats, capabilities, agents, scheduled-tasks, workflows,
 library); nav tests updated to the six-item form (frontend suite 9914
 green). Lesson recorded: entry-parity checks must cover visible navigation
 links, not just route files.
+
+
+### Closure round addendum (2026-09-08, full entry sweep + merge principles)
+
+Systematic entry-parity sweep replacing manual checking:
+
+| Layer | Scope | Result |
+|---|---|---|
+| 1. Route files | 35 baseline page routes | all present at HEAD |
+| 2. Visible nav | baseline sidebar hrefs | all present (after the capabilities/library restore) |
+| 3. i18n sidebar keys | zh-CN sidebar block | no key lost (3 upstream additions) |
+| 4. API orphans | frontend /api calls vs real create_app() route table | no orphan (4 groups fixed earlier confirmed closed) |
+
+Additional verified surfaces: bottom admin menu 7/7 identical; settings
+sections 5 → 9 with zero loss; landing header/footer/mobile-nav internal
+links unchanged (after the brand fix). The 35-entry table with per-entry
+reachability is in the session record; the four-layer check is now a
+script (`scripts/check-frontend-entry-parity.sh`) and the merge rules are
+codified in `FRONTEND_MERGE_PRINCIPLES.md` (P1 superset, P2 entry =
+route+link+i18n, P3 API contract closure, P4 fix placement, P5 brand
+pass-through, P6 test pinning).
