@@ -253,9 +253,14 @@ services:
     ports:
       - "${RAGFLOW_BIND_HOST:-127.0.0.1}:${RAGFLOW_TEI_PORT:-9997}:80"
     environment:
-      # Offline hosts: point at the internal HuggingFace mirror by pre-loading
-      # the model into the /data volume (huggingface_hub cache layout).
-      - HF_ENDPOINT=${RAGFLOW_TEF_ENDPOINT:-https://hf-mirror.com}
+      # Default: direct huggingface.co (an EMPTY value would break the TEI
+      # downloader with "relative URL without a base" — always set a URL).
+      # hf-mirror.com is known to fail with TEI 1.8 (missing etag header);
+      # override RAGFLOW_TEI_ENDPOINT only with a mirror proven to work in
+      # your environment. For fully offline hosts, pre-load the model into
+      # the ragflow-tei-data volume (huggingface_hub cache layout) and set
+      # RAGFLOW_TEI_OFFLINE=1.
+      - HF_ENDPOINT=${RAGFLOW_TEI_ENDPOINT:-https://huggingface.co}
       - HF_HUB_OFFLINE=${RAGFLOW_TEI_OFFLINE:-0}
     volumes:
       - ragflow-tei-data:/data
