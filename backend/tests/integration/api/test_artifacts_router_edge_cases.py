@@ -150,7 +150,7 @@ def _make_test_app(monkeypatch, artifact_path):
     monkeypatch.setattr(
         artifacts_router,
         "resolve_thread_virtual_path",
-        lambda _tid, _path: artifact_path,
+        lambda _tid, _path, user_id=None: artifact_path,
     )
     return app
 

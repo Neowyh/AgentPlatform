@@ -40,7 +40,9 @@ import asyncio
 import functools
 import inspect
 import logging
+import uuid
 from collections.abc import Callable
+from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar
 
@@ -54,6 +56,7 @@ from deerflow.config.authorization_config import AuthorizationConfig
 if TYPE_CHECKING:
     from app.agentplatform.rbac_models import UserModel
     from app.gateway.auth.models import User
+    from deerflow.config.app_config import AppConfig
 
 logger = logging.getLogger(__name__)
 
@@ -241,6 +244,183 @@ async def resolve_route_permissions(user: User, *, is_internal: bool) -> list[st
 
     results = await asyncio.gather(*[_evaluate(permission) for permission in _ALL_PERMISSIONS])
     return [permission for permission in results if permission is not None]
+
+
+def _route_authz_context(user: User, *, is_internal: bool) -> dict:
+    """Build the shared Principal context dict for a request-scoped user.
+
+    Applies the ``INTERNAL_SYSTEM_ROLE → None`` pop so internal callers fall
+    under ``default_role`` (mirrors ``inject_authenticated_user_context``).
+    Used by ``resolve_model_authorization`` and ``authorize_sandbox_for_request``
+    so every route-level authorization path builds the identity the same way.
+    """
+    from app.gateway.internal_auth import INTERNAL_SYSTEM_ROLE
+
+    user_role = getattr(user, "system_role", None)
+    if user_role == INTERNAL_SYSTEM_ROLE:
+        user_role = None
+    return {
+        "user_id": str(user.id),
+        "user_role": user_role,
+        "oauth_provider": getattr(user, "oauth_provider", None),
+        "oauth_id": getattr(user, "oauth_id", None),
+        "is_internal": is_internal,
+    }
+
+
+def authorize_sandbox_for_request(
+    user: User,
+    *,
+    is_internal: bool,
+    app_config: AppConfig | None,
+) -> None:
+    """Check ``sandbox:execute`` for a Gateway request before sandbox acquisition.
+
+    Thin wrapper over the harness-level ``authorize_sandbox_execution`` that
+    builds the Principal from the request-scoped ``user`` — the same identity
+    construction as ``resolve_model_authorization`` (including the
+    ``INTERNAL_SYSTEM_ROLE → None`` pop). Raises
+    :class:`~deerflow.sandbox.exceptions.SandboxAuthorizationError` on deny or
+    on provider-resolution failure under ``fail_closed``; callers translate
+    that into skipping the sandbox sync (not an HTTP error, since the primary
+    operation — e.g. file upload — can proceed without it).
+
+    No-op when ``authorization.enabled`` is false.
+    """
+    from deerflow.authz.sandbox_authz import authorize_sandbox_execution
+    from deerflow.sandbox.exceptions import SandboxAuthorizationError
+
+    config = _get_route_authorization_config()
+    if config.enabled is not True:
+        return
+
+    context = _route_authz_context(user, is_internal=is_internal)
+
+    try:
+        authorize_sandbox_execution(
+            context=context,
+            app_config=app_config,
+        )
+    except SandboxAuthorizationError:
+        raise
+    except Exception:
+        # Defense-in-depth: provider resolution and authorize() errors are
+        # already converted to SandboxAuthorizationError (or allowed under
+        # fail-open) one layer down inside authorize_sandbox_execution, so this
+        # normally only catches config-read failures here (e.g. get_config()
+        # raising in a config-less environment). Those must not 500 the
+        # upload/artifact route — degrade per fail_closed instead.
+        logger.warning("Failed to resolve authorization provider for sandbox:execute", exc_info=True)
+        if config.fail_closed:
+            raise SandboxAuthorizationError(role=context.get("user_role")) from None
+
+
+@dataclass(slots=True)
+class SandboxRequestLease:
+    """One Gateway request's process-local use of a sandbox client."""
+
+    sandbox: object | None
+    sandbox_id: str | None
+    denied: bool
+    owner_id: str | None
+    provider: object | None
+
+    async def release(self) -> None:
+        """Drop the request holder without bypassing concurrent executions."""
+        if self.owner_id is None or self.provider is None:
+            return
+        from deerflow.sandbox.lease import get_sandbox_lease_manager
+
+        owner_id = self.owner_id
+        self.owner_id = None
+        await get_sandbox_lease_manager(self.provider).release_async(owner_id)
+
+
+async def try_acquire_sandbox_for_request(
+    request: Request,
+    sandbox_provider,
+    thread_id: str,
+    *,
+    user_id: str,
+    app_config: AppConfig | None,
+    owner_prefix: str = "gateway",
+    release_on_last: bool = True,
+) -> SandboxRequestLease:
+    """Gate + acquire the thread sandbox for a Gateway sync path.
+
+    Single entry point for the uploads/artifacts sandbox-sync paths so the
+    deny/skip semantics live in one place: runs the ``sandbox:execute`` gate
+    for the request's user, then acquires the sandbox under a unique request
+    holder. Callers must await :meth:`SandboxRequestLease.release` after their
+    last client operation.
+
+    - denied role → no sandbox/owner and ``denied=True``: acquisition was skipped by policy;
+      the primary operation (upload / artifact edit) proceeds without the
+      sandbox copy.
+    - allowed → ``sandbox`` is the acquired instance, or ``sandbox is None`` when
+      the provider lost it right after acquiring (infrastructure error —
+      callers surface it as 500 / RuntimeError respectively, since that is
+      not a policy decision).
+    - ``request is None`` (direct-call tests) and unresolvable users skip the
+      gate — same fail-open semantics as the models routes' anonymous bypass.
+    """
+    from deerflow.sandbox.exceptions import SandboxAuthorizationError
+
+    try:
+        from app.gateway.deps import get_optional_user_from_request
+
+        user = await get_optional_user_from_request(request) if request is not None else None
+        if user is not None:
+            authorize_sandbox_for_request(user, is_internal=_is_internal_caller(request, user), app_config=app_config)
+    except SandboxAuthorizationError:
+        logger.info("Sandbox sync skipped: sandbox execution not permitted for this caller (thread_id=%s)", thread_id)
+        return SandboxRequestLease(
+            sandbox=None,
+            sandbox_id=None,
+            denied=True,
+            owner_id=None,
+            provider=None,
+        )
+
+    from deerflow.sandbox.lease import get_sandbox_lease_manager
+
+    owner_id = f"{owner_prefix}:{uuid.uuid4()}"
+    sandbox_id = await get_sandbox_lease_manager(sandbox_provider).acquire_async(
+        owner_id,
+        thread_id,
+        user_id=user_id,
+        release_on_last=release_on_last,
+    )
+    return SandboxRequestLease(
+        sandbox=sandbox_provider.get(sandbox_id),
+        sandbox_id=sandbox_id,
+        denied=False,
+        owner_id=owner_id,
+        provider=sandbox_provider,
+    )
+
+
+def _is_internal_caller(request: Request, user: Any) -> bool:
+    """Determine if the request originates from a trusted internal caller.
+
+    Checks three signals (any one suffices):
+    1. ``request.state.auth_source == AUTH_SOURCE_INTERNAL`` (set by AuthMiddleware).
+    2. ``user.system_role == INTERNAL_SYSTEM_ROLE`` (synthetic internal user).
+    3. The request carries a valid internal auth token header (decorator-only path
+       where AuthMiddleware may not have stamped ``auth_source`` yet).
+    """
+    from app.gateway.auth_disabled import AUTH_SOURCE_INTERNAL
+    from app.gateway.internal_auth import INTERNAL_AUTH_HEADER_NAME, INTERNAL_SYSTEM_ROLE, is_valid_internal_auth_token
+
+    if getattr(getattr(request, "state", None), "auth_source", None) == AUTH_SOURCE_INTERNAL:
+        return True
+    if getattr(user, "system_role", None) == INTERNAL_SYSTEM_ROLE:
+        return True
+    # Decorator-only path: check the internal token header directly.
+    internal_token = request.headers.get(INTERNAL_AUTH_HEADER_NAME) if hasattr(request, "headers") else None
+    if internal_token and is_valid_internal_auth_token(internal_token):
+        return True
+    return False
 
 
 _RBAC_IDENTITY_ATTR = "_ideer_rbac_user"
