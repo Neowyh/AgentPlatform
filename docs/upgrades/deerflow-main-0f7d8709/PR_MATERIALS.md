@@ -98,3 +98,13 @@ fault-zeroing bounded attempt (10800s budget) was still executing
 case-01/deductive_tree at merge time; its outcome lands in
 `backend/.deer-flow/acceptance/fault-zeroing/20260907T153622Z/workflow.db`
 and must be appended to `BASELINE_REPORT.md` when it concludes.
+
+## P1-P3 closure round (2026-09-08,晚)
+
+| Lane / item | 结果 |
+|---|---|
+| Gate 5 PostgreSQL fresh + existing fixtures | **passed**，Gate 5 关闭（3 个方言缺陷修复，报告已更新） |
+| Gate 8 bundle 构建 | **passed**：dist/intranet/ideer-20260908-4b12ca2d（3.5GB，SHA256SUMS） |
+| Gate 8 check-intranet 8 步 | **passed**：0 errors / 0 warnings（prepare 后） |
+| Gate 5/8 材料材料状态 | §28 #5 (DB Migration) 与 #11 (Offline) 的 honest-record 缺口全部补齐；仅 air-gap 真机安装 + fault-zeroing 低延迟端点两项留在部署环境 |
+| P3 清理 | settings-dialog 懒加载回归修复（bundle 边界 3/3 + dialog 23/23 + tsc/eslint 绿）；blocking_io 5/5 自愈确认 |
