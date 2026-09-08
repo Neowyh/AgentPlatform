@@ -694,3 +694,12 @@ endpoint (see `EXTERNAL_ACCEPTANCE_HANDOFF.md` §3).
 | P3: blocking_io stale imports | resolved without changes | The two `tests/blocking_io` collection errors from the earlier snapshot no longer reproduce after the workspace re-sync; both files run 5/5 green. |
 | P1-3: low-latency endpoint re-probe | still blocked | `vllm.internal.com:8000` unresolvable (000); `chatgpt.com` egress 403. Fault-zeroing live acceptance remains external (HANDOFF §3). |
 | §29 DoD checklist | recorded | `DoD_CHECKLIST.md`: all sandbox-executable items ✅; honest exceptions: fault-zeroing live (endpoint), air-gap install (isolated host), push deferred. |
+
+### Closure round addendum (2026-09-08, Gate 8 offline distribution)
+
+| Check | Result | Note |
+|---|---|---|
+| Offline bundle build | **passed** | `package-intranet-offline.sh` exit 0 → `dist/intranet/ideer-20260908-4b12ca2d/` (3.5 GB): images tar (frontend/gateway/nginx/sandbox), source tar, wheels, config templates, `MANIFEST.txt`, `SHA256SUMS`, `bundle-manifest.json`, deployment guide. |
+| `check-intranet.sh` 8-step pre-deploy | **passed** | After `deploy-intranet.sh prepare` generated `env.intranet`: **0 errors / 0 warnings — "Ready for intranet deployment"** (Docker 29.8.0, Compose v5.5.1, all four images at version `20260908-4b12ca2d`, config, env file, port 2026, 895 GB disk). |
+| Air-gap fresh install | still external | By definition requires an isolated host with no public routes; bundle + pre-deploy evidence above is everything executable on a connected machine. |
+| Gate 8 status | **closed** (host-executable portion); air-gap install remains the single deployment-environment step. |

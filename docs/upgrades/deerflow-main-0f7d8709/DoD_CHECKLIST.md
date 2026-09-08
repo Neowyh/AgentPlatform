@@ -46,7 +46,9 @@ Verdict against the convergence plan's §29 DoD after the closure round.
 
 ## Offline
 
-- ⚠️ Bundle build + `check-intranet.sh`: in progress on this host (Docker newly available); **air-gap fresh install** still requires an isolated host by definition.
+- ✅ Bundle build: `dist/intranet/ideer-20260908-4b12ca2d/` (3.5 GB, SHA256SUMS + manifest).
+- ✅ `check-intranet.sh`: 8/8 steps, **0 errors / 0 warnings** after `deploy-intranet.sh prepare`.
+- ⚠️ Air-gap fresh install still requires an isolated host by definition (bundle + pre-deploy evidence complete).
 - ✅ No public-API dependency in the intranet profile (config checks; default-deny).
 
 ## Merge
@@ -56,6 +58,6 @@ Verdict against the convergence plan's §29 DoD after the closure round.
 
 ## Remaining externals (tracked in EXTERNAL_ACCEPTANCE_HANDOFF.md)
 
-1. Air-gap fresh install on an isolated host (§24-J checklist).
+1. ~~Air-gap fresh install~~ — bundle + pre-deploy checks complete; only the §24-J checklist run on an isolated host remains.
 2. Fault-zeroing live run against a low-latency intranet endpoint.
 3. (Optional hardening) PostgreSQL schema/constraint differential review beyond the fixture smokes.
