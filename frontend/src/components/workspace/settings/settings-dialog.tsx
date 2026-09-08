@@ -11,6 +11,7 @@ import {
   UserIcon,
   WrenchIcon,
 } from "lucide-react";
+import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
 
 import {
@@ -27,10 +28,24 @@ import { ChannelsSettingsPage } from "@/components/workspace/settings/channels-s
 import { IntegrationsSettingsPage } from "@/components/workspace/settings/integrations-settings-page";
 import { MemorySettingsPage } from "@/components/workspace/settings/memory-settings-page";
 import { NotificationSettingsPage } from "@/components/workspace/settings/notification-settings-page";
-import { SkillSettingsPage } from "@/components/workspace/settings/skill-settings-page";
-import { ToolSettingsPage } from "@/components/workspace/settings/tool-settings-page";
 import { useI18n } from "@/core/i18n/hooks";
 import { cn } from "@/lib/utils";
+
+// The skill/tool management pages are heavy (Markdown editors, MCP clients);
+// keep them out of the dialog bundle while the restored sections stay
+// reachable — the boundary guard in lazy-panels.test.ts pins this.
+const SkillSettingsPage = dynamic(
+  () =>
+    import("@/components/workspace/settings/skill-settings-page").then(
+      (module) => module.SkillSettingsPage,
+    ),
+);
+const ToolSettingsPage = dynamic(
+  () =>
+    import("@/components/workspace/settings/tool-settings-page").then(
+      (module) => module.ToolSettingsPage,
+    ),
+);
 
 export type SettingsSection =
   | "account"

@@ -270,7 +270,7 @@ describe("SettingsDialog", () => {
     expect(screen.getByTestId("integrations-page")).toBeInTheDocument();
   });
 
-  test("opens to tools section when specified", () => {
+  test("opens to tools section when specified", async () => {
     render(
       <SettingsDialog
         open={true}
@@ -278,7 +278,8 @@ describe("SettingsDialog", () => {
         defaultSection="tools"
       />,
     );
-    expect(screen.getByTestId("tools-page")).toBeInTheDocument();
+    // The tools page loads behind a dynamic() bundle boundary.
+    expect(await screen.findByTestId("tools-page")).toBeInTheDocument();
   });
 
   // ── Section switching ────────────────────────────────────────────────────
