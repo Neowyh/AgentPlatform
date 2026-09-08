@@ -455,13 +455,22 @@ restart the Gateway during an active run.
 
 ### Schema Migrations
 
-DeerFlow's application tables (`runs`, `threads_meta`, `feedback`, `users`,
-`run_events`, and the `channel_*` tables) are owned by alembic. The Gateway
-runs `alembic upgrade head` automatically on startup via
+The full application schema -- DeerFlow runtime tables (`runs`,
+`threads_meta`, `feedback`, `users`, `run_events`, `channel_*`) AND the
+AgentPlatform control-plane tables (`resource_metadata`, `departments`,
+`users_ext`, workflow governance) -- is owned by ONE forward-only alembic
+chain (merge revision `20260908_unify_migration_chains`, single
+`alembic_version` table). `alembic heads` reports exactly one head. The
+Gateway runs `alembic upgrade head` automatically on startup via
 `bootstrap_schema(engine, backend=...)`, so operators do not run `alembic`
-manually in production. Bootstrap is concurrency-safe (Postgres advisory lock
-across processes; per-engine `asyncio.Lock` inside one SQLite process) and
-idempotent against pre-existing schemas (empty / legacy / versioned).
+manually in production (`scripts/serve.sh` runs the same command through
+`packages/harness/deerflow/persistence/migrations/alembic.ini`). Bootstrap is
+concurrency-safe (Postgres advisory lock across processes; per-engine
+`asyncio.Lock` inside one SQLite process) and idempotent against pre-existing
+schemas (empty / legacy / versioned). Databases from the dual-chain era keep
+their runtime head in the retired `deerflow_alembic_version` table; the
+bridge in `migrations/_chain_meta.py` adopts and drops it on the next
+upgrade.
 
 When you add or change an ORM model, ship the change as a new revision under
 `packages/harness/deerflow/persistence/migrations/versions/`:

@@ -1,10 +1,20 @@
-"""Comprehensive integration tests for Alembic database migrations.
+"""Integration tests for the unified Alembic migration chain.
 
-Tests cover:
-- Full upgrade from scratch to head
-- Downgrade round-trip (upgrade -> downgrade -> upgrade)
-- Each migration step is individually reversible
-- Head schema matches ORM model definitions
+One forward-only chain joins the AgentPlatform control-plane revisions and
+the DeerFlow runtime revisions (merge revision
+``20260908_unify_migration_chains``), tracked in the single default
+``alembic_version`` table. Tests cover:
+
+- Full upgrade from an empty database to the single head
+- Head identity: ``alembic heads`` reports exactly the merge revision
+- Head schema covers the full ORM metadata (both table families)
+- Idempotent re-upgrade (``upgrade head`` at head is a no-op)
+- Gateway bootstrap after the CLI upgrade is a no-op and vice versa
+
+Downgrade round-trips are deliberately absent: the convergence plan pins
+migrations as forward-only (收敛方案 Gate 5), and the two branches share
+table names (runs/threads_meta/run_events/feedback/users), so downgrade past
+the merge revision is not a supported operation.
 """
 
 from __future__ import annotations
@@ -12,13 +22,21 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from alembic.command import downgrade, upgrade
+from alembic import command
 from alembic.config import Config as AlembicConfig
 from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, inspect, text
-from sqlalchemy import exc as sa_exc
 
-MIGRATIONS_DIR = Path(__file__).resolve().parents[3] / "app" / "agentplatform" / "persistence" / "migrations"
+from deerflow.persistence.migrations._chain_meta import (
+    CONTROL_PLANE_HEAD,
+    DEERFLOW_VERSION_TABLE,
+    MERGE_REVISION,
+    RUNTIME_HEAD,
+    VERSION_TABLE,
+    version_locations,
+)
+
+MIGRATIONS_DIR = Path(__file__).resolve().parents[3] / "packages" / "harness" / "deerflow" / "persistence" / "migrations"
 
 # The alembic URL uses the async driver.  For post-migration verification
 # we open the same SQLite file with a synchronous engine (no greenlet needed).
@@ -32,17 +50,24 @@ _SYNC_PREFIX = "sqlite:///"
 
 
 def make_alembic_config(db_url: str) -> AlembicConfig:
-    """Build an Alembic config pointing at the project's migration scripts."""
-    alembic_cfg = AlembicConfig(str(MIGRATIONS_DIR / "alembic.ini"))
-    alembic_cfg.set_main_option("script_location", str(MIGRATIONS_DIR))
-    alembic_cfg.set_main_option("sqlalchemy.url", db_url)
-    return alembic_cfg
+    """Build an Alembic config pointing at the unified migration scripts.
+
+    Built as a bare config (not from ``alembic.ini``) with an explicit URL so
+    the tests never touch a real deployment database, and with
+    ``version_locations`` mirroring the ini so both version directories are
+    visible.
+    """
+    cfg = AlembicConfig()
+    cfg.set_main_option("script_location", str(MIGRATIONS_DIR))
+    cfg.set_main_option("path_separator", "space")
+    cfg.set_main_option("version_locations", version_locations(MIGRATIONS_DIR))
+    cfg.set_main_option("sqlalchemy.url", db_url)
+    return cfg
 
 
 def get_head_revision() -> str:
-    """Return the current head revision identifier."""
-    cfg = make_alembic_config("sqlite+aiosqlite:///:memory:")
-    return ScriptDirectory.from_config(cfg).get_current_head()
+    """Return the unified chain's head revision identifier."""
+    return ScriptDirectory.from_config(make_alembic_config("sqlite+aiosqlite:///:memory:")).get_current_head()
 
 
 def _sync_url(async_url: str) -> str:
@@ -52,101 +77,49 @@ def _sync_url(async_url: str) -> str:
 
 
 def _get_table_names(db_url: str) -> set[str]:
-    url = _sync_url(db_url)
-    engine = create_engine(url)
-    with engine.connect() as conn:
-        inspector = inspect(conn)
-        tables = set(inspector.get_table_names())
-    engine.dispose()
-    return tables
-
-
-def _get_current_revision(db_url: str) -> str | None:
-    url = _sync_url(db_url)
-    engine = create_engine(url)
+    engine = create_engine(_sync_url(db_url))
     try:
         with engine.connect() as conn:
-            try:
-                result = conn.execute(text("SELECT version_num FROM alembic_version"))
-                row = result.fetchone()
-                return row[0] if row else None
-            except sa_exc.OperationalError:
-                return None
+            return set(inspect(conn).get_table_names())
     finally:
         engine.dispose()
 
 
-def _get_table_schema(db_url: str) -> dict[str, dict[str, tuple[str, bool]]]:
-    """Return {table_name: {col_name: (type_name, nullable)}} for all tables."""
-    url = _sync_url(db_url)
-    engine = create_engine(url)
-    with engine.connect() as conn:
-        inspector = inspect(conn)
-        schema = {}
-        for table_name in sorted(inspector.get_table_names()):
-            schema[table_name] = {c["name"]: (type(c["type"]).__name__, c.get("nullable", True)) for c in inspector.get_columns(table_name)}
-    engine.dispose()
-    return schema
+def _get_version_rows(db_url: str) -> dict[str, list[str]]:
+    """Return {version_table: rows} for both the unified and legacy tables."""
+    engine = create_engine(_sync_url(db_url))
+    try:
+        with engine.connect() as conn:
+            tables = set(inspect(conn).get_table_names())
+            rows: dict[str, list[str]] = {}
+            for table in (VERSION_TABLE, DEERFLOW_VERSION_TABLE):
+                if table in tables:
+                    rows[table] = [str(r[0]) for r in conn.execute(text(f"SELECT version_num FROM {table}")).fetchall()]
+            return rows
+    finally:
+        engine.dispose()
 
 
-def _get_orm_tables() -> set[str]:
-    """Return the set of ORM-model table names registered on Base.metadata."""
-    import deerflow.persistence.models  # noqa: F401 — registers models with Base.metadata
-    from deerflow.persistence.base import Base
-
-    return set(Base.metadata.tables.keys())
-
-
-def _get_all_revisions() -> list:
-    cfg = make_alembic_config("sqlite+aiosqlite:///:memory:")
-    return list(ScriptDirectory.from_config(cfg).walk_revisions())
-
-
-def _bootstrap_runtime_schema(db_url: str) -> None:
-    """Run the deerflow runtime schema bootstrap against a migrated DB.
-
-    Production enterprise deployments apply the enterprise Alembic tree first
-    and let ``deerflow.persistence.bootstrap`` backfill the deerflow-owned
-    tables at startup; tests that assert full ORM coverage mirror that order.
-    """
-    import asyncio
-
+async def _bootstrap_schema(db_url: str) -> None:
+    """Run the Gateway bootstrap (init_engine's schema step) against *db_url*."""
     from sqlalchemy.ext.asyncio import create_async_engine
 
     from deerflow.persistence.bootstrap import bootstrap_schema
 
-    async def _run() -> None:
-        engine = create_async_engine(db_url)
-        try:
-            await bootstrap_schema(engine, backend="sqlite")
-        finally:
-            await engine.dispose()
-
-    asyncio.run(_run())
+    engine = create_async_engine(db_url)
+    try:
+        await bootstrap_schema(engine, backend="sqlite")
+    finally:
+        await engine.dispose()
 
 
-def _get_non_merge_revisions() -> list[str]:
-    return [rev.revision for rev in _get_all_revisions() if rev.down_revision is not None and not isinstance(rev.down_revision, tuple)]
+def _full_orm_tables() -> set[str]:
+    """All ORM tables the Gateway registers: runtime + enterprise models."""
+    import app.gateway.app  # noqa: F401  -- registers enterprise models
+    import deerflow.persistence.models  # noqa: F401  -- registers runtime models
+    from deerflow.persistence.base import Base
 
-
-def _get_parent_revision(rev: str) -> str:
-    for r in _get_all_revisions():
-        if r.revision == rev:
-            if isinstance(r.down_revision, tuple):
-                return r.down_revision[0]
-            return r.down_revision  # type: ignore[return-value]
-    msg = f"Revision {rev!r} not found in migration tree"
-    raise ValueError(msg)
-
-
-NON_MERGE_REVISIONS = _get_non_merge_revisions()
-
-
-def _get_merge_revisions() -> list[str]:
-    return [rev.revision for rev in _get_all_revisions() if isinstance(rev.down_revision, tuple)]
-
-
-MERGE_REVISIONS = _get_merge_revisions()
+    return set(Base.metadata.tables.keys())
 
 
 # ---------------------------------------------------------------------------
@@ -155,235 +128,116 @@ MERGE_REVISIONS = _get_merge_revisions()
 
 
 @pytest.mark.serial
-class TestAlembicMigrations:
-    """Integration tests for Alembic database migrations."""
+class TestUnifiedMigrationChain:
+    """Integration tests for the unified Alembic migration chain."""
 
-    # -----------------------------------------------------------------------
-    # Test 1: Full upgrade from blank DB to head
-    # -----------------------------------------------------------------------
+    def test_single_head_is_the_merge_revision(self) -> None:
+        script = ScriptDirectory.from_config(make_alembic_config("sqlite+aiosqlite:///:memory:"))
+        assert list(script.get_heads()) == [MERGE_REVISION]
+        merge = script.get_revision(MERGE_REVISION)
+        assert set(merge._normalized_down_revisions) == {CONTROL_PLANE_HEAD, RUNTIME_HEAD}
 
     def test_upgrade_from_scratch_to_head(self, tmp_path: Path) -> None:
-        """Verify enterprise migrations plus runtime bootstrap create all tables."""
+        """One ``alembic upgrade head`` takes an empty DB to the single head."""
         db_path = tmp_path / "test.db"
         db_url = f"sqlite+aiosqlite:///{db_path}"
-        cfg = make_alembic_config(db_url)
 
-        upgrade(cfg, "head")
-        _bootstrap_runtime_schema(db_url)
-
-        current = _get_current_revision(db_url)
-        assert current == get_head_revision(), f"Expected head revision {get_head_revision()}, got {current}"
+        command.upgrade(make_alembic_config(db_url), "head")
 
         tables = _get_table_names(db_url)
-        expected = _get_orm_tables()
+        expected = _full_orm_tables()
         assert tables >= expected, f"Missing tables: {expected - tables}"
 
-    # -----------------------------------------------------------------------
-    # Test 2: Downgrade one step and re-upgrade — schema must match
-    # -----------------------------------------------------------------------
+        versions = _get_version_rows(db_url)
+        assert versions.get(VERSION_TABLE) == [MERGE_REVISION]
+        # The dual-chain era's dedicated table must not come back.
+        assert DEERFLOW_VERSION_TABLE not in versions
 
-    def test_downgrade_round_trip(self, tmp_path: Path) -> None:
-        """Upgrade to head, downgrade one step, then re-upgrade.
-
-        The column-level schema after the round-trip must be identical
-        to the original.
-        """
-        head = get_head_revision()
-        if head in MERGE_REVISIONS:
-            pytest.skip("Head is a merge revision; downgrade -1 is ambiguous")
-
+    def test_head_schema_matches_full_orm_metadata(self, tmp_path: Path) -> None:
+        """Every ORM table + column (both families) exists in the DB at head."""
         db_path = tmp_path / "test.db"
         db_url = f"sqlite+aiosqlite:///{db_path}"
-        cfg = make_alembic_config(db_url)
 
-        upgrade(cfg, "head")
-        schema_after_upgrade = _get_table_schema(db_url)
+        command.upgrade(make_alembic_config(db_url), "head")
 
-        downgrade(cfg, "-1")
-        upgrade(cfg, "+1")
-
-        schema_after_round_trip = _get_table_schema(db_url)
-        schema_after_upgrade.pop("alembic_version", None)
-        schema_after_round_trip.pop("alembic_version", None)
-        assert schema_after_upgrade == schema_after_round_trip, "Schema after downgrade-then-re-upgrade differs from original"
-
-    # -----------------------------------------------------------------------
-    # Test 3: Each migration step is individually reversible
-    # -----------------------------------------------------------------------
-
-    @pytest.mark.parametrize("rev", NON_MERGE_REVISIONS)
-    def test_each_migration_step_is_reversible(self, tmp_path: Path, rev: str) -> None:
-        """For each non-merge revision: upgrade -> downgrade -> re-upgrade.
-
-        Verifies:
-        - upgrade reaches the target revision
-        - downgrade reaches the parent revision
-        - re-upgrade reaches the target revision again
-        - column-level schema before downgrade matches schema after re-upgrade
-        """
-        parent = _get_parent_revision(rev)
-        db_path = tmp_path / "test.db"
-        db_url = f"sqlite+aiosqlite:///{db_path}"
-        cfg = make_alembic_config(db_url)
-
-        upgrade(cfg, rev)
-
-        current = _get_current_revision(db_url)
-        assert current == rev, f"Expected revision {rev}, got {current}"
-
-        schema_before = _get_table_schema(db_url)
-        schema_before.pop("alembic_version", None)
-
-        downgrade(cfg, parent)
-
-        after_downgrade = _get_current_revision(db_url)
-        assert after_downgrade == parent, f"Expected {parent} after downgrade, got {after_downgrade}"
-
-        upgrade(cfg, rev)
-
-        after_upgrade = _get_current_revision(db_url)
-        assert after_upgrade == rev, f"Expected {rev} after re-upgrade, got {after_upgrade}"
-
-        schema_after = _get_table_schema(db_url)
-        schema_after.pop("alembic_version", None)
-        assert schema_before == schema_after, f"Schema after round-trip for {rev} differs"
-
-    # -----------------------------------------------------------------------
-    # Test 4: Head schema matches ORM model definitions
-    # -----------------------------------------------------------------------
-
-    def test_head_schema_matches_orm_models(self, tmp_path: Path) -> None:
-        """Verify every ORM-model table + column exists in the DB at head
-        (after the runtime bootstrap backfill) and that column types and
-        nullability match.
-        """
-        db_path = tmp_path / "test.db"
-        db_url = f"sqlite+aiosqlite:///{db_path}"
-        cfg = make_alembic_config(db_url)
-
-        upgrade(cfg, "head")
-        _bootstrap_runtime_schema(db_url)
-
-        orm_tables = _get_orm_tables()
-        sync_url = _sync_url(db_url)
-
-        engine = create_engine(sync_url)
+        engine = create_engine(_sync_url(db_url))
         try:
             with engine.connect() as conn:
                 inspector = inspect(conn)
-                db_table_names = set(inspector.get_table_names()) - {"alembic_version"}
-
-                missing = orm_tables - db_table_names
-                assert not missing, f"ORM tables missing from DB: {missing}"
-
+                db_table_names = set(inspector.get_table_names()) - {VERSION_TABLE}
                 from deerflow.persistence.base import Base
 
-                for table_name in sorted(orm_tables):
-                    db_cols: dict[str, tuple[object, bool]] = {c["name"]: (c["type"], c.get("nullable", True)) for c in inspector.get_columns(table_name)}
-
-                    for (
-                        col_name,
-                        orm_col,
-                    ) in Base.metadata.tables[table_name].columns.items():
-                        assert col_name in db_cols, f"Column {table_name}.{col_name} exists in ORM but is missing in DB"
-                        db_type, db_nullable = db_cols[col_name]
-                        orm_type = orm_col.type
-                        orm_nullable = orm_col.nullable
-                        assert isinstance(db_type, type(orm_type)), f"Column {table_name}.{col_name}: DB type {type(db_type).__name__} is not compatible with ORM type {type(orm_type).__name__}"
-                        if orm_nullable is False and db_nullable is True:
-                            import warnings
-
-                            warnings.warn(f"Column {table_name}.{col_name}: ORM says NOT NULL but DB allows NULLs (migration may lack nullable=False)")
+                for table_name in sorted(_full_orm_tables()):
+                    assert table_name in db_table_names, f"ORM table {table_name} missing from DB"
+                    db_cols = {c["name"] for c in inspector.get_columns(table_name)}
+                    orm_cols = set(Base.metadata.tables[table_name].columns.keys())
+                    missing = orm_cols - db_cols
+                    assert not missing, f"Columns of {table_name} missing from DB: {missing}"
         finally:
             engine.dispose()
 
-    # -----------------------------------------------------------------------
-    # Test 5: Merge revisions round-trip (regression baseline)
-    # -----------------------------------------------------------------------
-
-    @pytest.mark.parametrize("rev", MERGE_REVISIONS)
-    def test_merge_revision_round_trip(self, tmp_path: Path, rev: str) -> None:
-        """Each merge revision can be upgraded to without error.
-
-        Merge revisions carry no schema changes themselves; this test
-        serves as a regression baseline ensuring merge-point upgrades
-        do not crash and correctly record the revision.
-        """
+    def test_re_upgrade_at_head_is_a_noop(self, tmp_path: Path) -> None:
         db_path = tmp_path / "test.db"
         db_url = f"sqlite+aiosqlite:///{db_path}"
         cfg = make_alembic_config(db_url)
 
-        upgrade(cfg, rev)
-        current = _get_current_revision(db_url)
-        assert current == rev, f"Expected {rev}, got {current}"
+        command.upgrade(cfg, "head")
+        command.upgrade(cfg, "head")
 
-        schema = _get_table_schema(db_url)
-        assert "alembic_version" in schema
-
-    # -----------------------------------------------------------------------
-    # Test 6: _stamp_alembic_head interaction test
-    # -----------------------------------------------------------------------
+        assert _get_version_rows(db_url).get(VERSION_TABLE) == [MERGE_REVISION]
 
     @pytest.mark.asyncio
-    async def test_stamp_alembic_head_interaction(self, tmp_path: Path) -> None:
-        """End-to-end dual-tree version-table interaction test.
-
-        The historic ``engine._stamp_alembic_head`` helper was superseded by
-        the ``deerflow.persistence.bootstrap`` state machine, which records
-        its revisions in a dedicated ``deerflow_alembic_version`` table. This
-        test verifies the production coexistence contract:
-
-        1. Applies the enterprise tree to head (standard ``alembic_version``).
-        2. Runs the runtime bootstrap, which takes the legacy branch,
-           backfills deerflow-owned tables and stamps the deerflow head.
-        3. Verifies full ORM coverage and that each version table records
-           its own tree's head.
-        4. Verifies a second bootstrap run is a no-op and leaves both
-           version tables untouched.
+    async def test_gateway_bootstrap_after_cli_upgrade_is_a_noop(self, tmp_path: Path) -> None:
+        """serve.sh upgrades first, then the Gateway's bootstrap must observe
+        the unified head and do nothing (versioned branch).
         """
         from sqlalchemy.ext.asyncio import create_async_engine
 
-        import deerflow.persistence.models  # noqa: F401
-        from deerflow.persistence.base import Base
-        from deerflow.persistence.bootstrap import _get_head_revision, bootstrap_schema
-
-        db_path = tmp_path / "test_stamp.db"
+        db_path = tmp_path / "test.db"
         db_url = f"sqlite+aiosqlite:///{db_path}"
 
-        upgrade(make_alembic_config(db_url), "head")
+        command.upgrade(make_alembic_config(db_url), "head")
 
         engine = create_async_engine(db_url)
         try:
-            await bootstrap_schema(engine, backend="sqlite")
+            await _bootstrap_schema(db_url)
+            assert _get_version_rows(db_url).get(VERSION_TABLE) == [MERGE_REVISION]
+            assert DEERFLOW_VERSION_TABLE not in _get_version_rows(db_url)
 
-            head_rev = _get_head_revision()
-            enterprise_rev = _get_current_revision(db_url)
-
-            def _read_versions(sync_conn):
-                from sqlalchemy import inspect as sa_inspect
-
-                insp = sa_inspect(sync_conn)
-                deer_rows = []
-                if "deerflow_alembic_version" in insp.get_table_names():
-                    deer_rows = [str(r[0]) for r in sync_conn.execute(text("SELECT version_num FROM deerflow_alembic_version")).fetchall()]
-                ent_rows = [str(r[0]) for r in sync_conn.execute(text("SELECT version_num FROM alembic_version")).fetchall()]
-                return deer_rows, ent_rows
-
-            async with engine.begin() as conn:
-                deer_rows, ent_rows = await conn.run_sync(_read_versions)
-                tables = set(await conn.run_sync(lambda c: inspect(c).get_table_names()))
-
-            assert deer_rows == [head_rev], f"Expected deerflow version table at {head_rev}, got {deer_rows}"
-            assert ent_rows == [enterprise_rev], f"Expected enterprise version table at {enterprise_rev}, got {ent_rows}"
-
-            missing = set(Base.metadata.tables) - tables
-            assert not missing, f"ORM tables missing after bootstrap: {missing}"
-
-            # Second bootstrap run must be a no-op on the versioned branch.
-            await bootstrap_schema(engine, backend="sqlite")
-            async with engine.begin() as conn:
-                deer_rows_after, ent_rows_after = await conn.run_sync(_read_versions)
-            assert deer_rows_after == deer_rows
-            assert ent_rows_after == ent_rows
+            # Second bootstrap run: still a no-op.
+            await _bootstrap_schema(db_url)
+            assert _get_version_rows(db_url).get(VERSION_TABLE) == [MERGE_REVISION]
         finally:
             await engine.dispose()
+
+    @pytest.mark.asyncio
+    async def test_gateway_bootstrap_on_runtime_head_database(self, tmp_path: Path) -> None:
+        """A pre-unification Gateway DB (runtime head in the dedicated table,
+        enterprise tables from create_all) is restamped to both branch heads
+        by the bridge; the upgrade then runs only the merge revision.
+        """
+        from sqlalchemy import text
+
+        db_path = tmp_path / "test.db"
+        db_url = f"sqlite+aiosqlite:///{db_path}"
+
+        # Shape the legacy state directly: full ORM tables via create_all
+        # (mirrors the Gateway's empty branch) + a dedicated runtime version
+        # table at the runtime head, no unified version table.
+        import deerflow.persistence.models  # noqa: F401
+        from deerflow.persistence.base import Base
+
+        sync_engine = create_engine(_sync_url(db_url))
+        try:
+            Base.metadata.create_all(sync_engine)
+            with sync_engine.begin() as conn:
+                conn.execute(text(f"CREATE TABLE {DEERFLOW_VERSION_TABLE} (version_num VARCHAR(32) NOT NULL)"))
+                conn.execute(text(f"INSERT INTO {DEERFLOW_VERSION_TABLE} VALUES ('{RUNTIME_HEAD}')"))
+        finally:
+            sync_engine.dispose()
+
+        await _bootstrap_schema(db_url)
+
+        versions = _get_version_rows(db_url)
+        assert versions.get(VERSION_TABLE) == [MERGE_REVISION]
+        assert DEERFLOW_VERSION_TABLE not in versions

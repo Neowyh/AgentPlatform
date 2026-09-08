@@ -21,31 +21,42 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     """Create departments and users_ext tables for RBAC.
 
-    Uses checkfirst=True so the migration is safe to run on databases
-    where these tables may already exist (e.g. created by create_all).
+    PATCH (2026-09-08, unified migration chain / PATCH-006 closure): the
+    docstring previously claimed ``checkfirst=True`` semantics, but the
+    ``op.create_table`` calls were never actually guarded. The unified
+    chain (merge revision ``20260908_unify_migration_chains``) can replay
+    this revision against databases where the Gateway's ``create_all``
+    already created both tables (e.g. TUI-shaped databases recorded at the
+    runtime head). The inspector guard below implements the documented
+    behavior without changing the applied DDL. Recorded in
+    ``docs/upgrades/deerflow-main-0f7d8709/UPSTREAM_PATCH_LEDGER.md``.
     """
-    op.create_table(
-        "departments",
-        sa.Column("id", sa.String(length=36), nullable=False),
-        sa.Column("name", sa.String(length=128), nullable=False),
-        sa.Column("description", sa.String(length=512), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=True),
-        sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("name"),
-    )
+    existing = set(sa.inspect(op.get_bind()).get_table_names())
 
-    op.create_table(
-        "users_ext",
-        sa.Column("id", sa.String(length=36), nullable=False),
-        sa.Column("username", sa.String(length=128), nullable=False),
-        sa.Column("role", sa.String(length=32), nullable=True),
-        sa.Column("department_id", sa.String(length=36), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=True),
-        sa.Column("last_login", sa.DateTime(timezone=True), nullable=True),
-        sa.ForeignKeyConstraint(["department_id"], ["departments.id"]),
-        sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("username"),
-    )
+    if "departments" not in existing:
+        op.create_table(
+            "departments",
+            sa.Column("id", sa.String(length=36), nullable=False),
+            sa.Column("name", sa.String(length=128), nullable=False),
+            sa.Column("description", sa.String(length=512), nullable=True),
+            sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=True),
+            sa.PrimaryKeyConstraint("id"),
+            sa.UniqueConstraint("name"),
+        )
+
+    if "users_ext" not in existing:
+        op.create_table(
+            "users_ext",
+            sa.Column("id", sa.String(length=36), nullable=False),
+            sa.Column("username", sa.String(length=128), nullable=False),
+            sa.Column("role", sa.String(length=32), nullable=True),
+            sa.Column("department_id", sa.String(length=36), nullable=True),
+            sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=True),
+            sa.Column("last_login", sa.DateTime(timezone=True), nullable=True),
+            sa.ForeignKeyConstraint(["department_id"], ["departments.id"]),
+            sa.PrimaryKeyConstraint("id"),
+            sa.UniqueConstraint("username"),
+        )
 
 
 def downgrade() -> None:

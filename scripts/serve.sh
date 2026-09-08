@@ -462,11 +462,13 @@ mkdir -p logs
 mkdir -p temp/client_body_temp temp/proxy_temp temp/fastcgi_temp temp/uwsgi_temp temp/scgi_temp
 
 # 0. Database migrations
-# Run from backend/ so relative sqlite_dir ".ideer/data" resolves to
-# backend/.ideer/data/ideer.db, matching Gateway startup (env.py further
-# resolves from config.yaml and ensures the parent dir exists).
+# Single unified chain (control-plane + runtime revisions, joined by the
+# merge revision 20260908_unify_migration_chains, one ``alembic_version``
+# table). env.py resolves the database URL from config.yaml exactly like the
+# Gateway engine (sqlite_dir/deerflow.db, anchored at backend/), so this and
+# the Gateway auto-upgrade converge on one database file.
 echo "Running database migrations..."
-(cd "$REPO_ROOT/backend" && uv run alembic -c app/agentplatform/persistence/migrations/alembic.ini upgrade head) || { echo "✗ Database migrations failed"; cleanup 1; }
+(cd "$REPO_ROOT/backend" && uv run alembic -c packages/harness/deerflow/persistence/migrations/alembic.ini upgrade head) || { echo "✗ Database migrations failed"; cleanup 1; }
 echo "✓ Database migrations completed"
 
 # ── Runtime state directory continuity ───────────────────────────────────────

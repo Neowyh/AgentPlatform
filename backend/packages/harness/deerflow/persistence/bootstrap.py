@@ -1,4 +1,4 @@
-"""Hybrid schema bootstrap for DeerFlow's application tables.
+"""Hybrid schema bootstrap for the unified iDeer application schema.
 
 Replaces the unconditional ``Base.metadata.create_all`` at Gateway startup.
 Combines two ideas:
@@ -8,19 +8,28 @@ Combines two ideas:
    defaults, index/FK names, type affinity) without anyone having to hand-keep
    a mirror baseline in sync with the models.
 2. **Alembic owns every change from baseline onward.** Any new ORM column /
-   table / index must ship as a revision under ``migrations/versions/``.
+   table / index must ship as a revision under the unified migration chain
+   (runtime ``migrations/versions/`` + control-plane
+   ``app/agentplatform/persistence/migrations/versions/``, joined by the
+   merge revision ``20260908_unify_migration_chains``).
 
 Three-branch decision (see ``_decide_state``)
 ---------------------------------------------
 
 | DB state                              | Action                                  |
 |---------------------------------------|-----------------------------------------|
-| empty (no DeerFlow tables)            | ``create_all`` + ``alembic stamp head`` |
-| legacy (DeerFlow tables, no alembic)  | ``create_all`` (baseline tables only, as backfill) + ``stamp 0001_baseline`` + ``upgrade head`` |
+| empty (no app tables)                 | ``create_all`` + ``alembic stamp head`` |
+| legacy (app tables, no alembic row)   | ``create_all`` (baseline tables only, as backfill) + ``stamp 0001_baseline`` + ``upgrade head`` |
 | versioned (``alembic_version`` row)   | ``alembic upgrade head``                |
 
+The unified chain keeps its state in the default ``alembic_version`` table.
+Pre-unification states (runtime head in the dedicated
+``deerflow_alembic_version`` table, or a control-plane head without any
+runtime record) are bridged into it before any upgrade runs -- see
+``migrations/_chain_meta.adopt_unified_version_state``.
+
 The legacy branch handles pre-alembic databases that already have at least one
-DeerFlow-owned table. ``create_all`` runs first because stamping at
+app-owned table. ``create_all`` runs first because stamping at
 ``0001_baseline`` makes alembic skip the baseline's own ``create_table`` DDL on
 the subsequent upgrade -- so any baseline table introduced into
 ``Base.metadata`` after the user's DB was first provisioned (e.g. the
@@ -97,12 +106,14 @@ logger = logging.getLogger(__name__)
 # Where the alembic environment lives, relative to this file.
 _MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
 
-# AgentPlatform's control-plane migrations historically used the default
-# ``alembic_version`` table. DeerFlow is a separate runtime migration chain;
-# keeping its revision state in a dedicated table prevents one chain from
-# attempting to upgrade the other chain's head.
-_VERSION_TABLE = "deerflow_alembic_version"
-_LEGACY_VERSION_TABLE = "alembic_version"
+# The unified migration chain (control-plane + runtime, joined by
+# ``20260908_unify_migration_chains``) tracks its revision state in the
+# default ``alembic_version`` table -- the table the AgentPlatform
+# control-plane chain has always used. The dual-chain era's dedicated
+# ``deerflow_alembic_version`` table is bridged into it by the migration
+# env (``migrations/_chain_meta.adopt_unified_version_state``) before any
+# upgrade runs.
+_VERSION_TABLE = "alembic_version"
 
 # Cached migration head, computed once per process from the disk script tree.
 _HEAD_REVISION: str | None = None
@@ -246,7 +257,9 @@ def _get_alembic_config(engine: AsyncEngine, *, postgres_schema: str = "") -> Al
 
     Avoids reading ``alembic.ini`` from disk so the production runtime doesn't
     depend on a working-directory-relative file lookup. The ``script_location``
-    is anchored at the package path on disk.
+    is anchored at the package path on disk. ``version_locations`` mirrors the
+    ini value so the ScriptDirectory also sees the control-plane revisions
+    that live outside this tree (``_chain_meta.version_locations``).
 
     When *postgres_schema* is set it is forwarded as the ``deerflow_pg_schema``
     main option so ``env.py`` can pin its alembic-spawned engine's
@@ -255,21 +268,26 @@ def _get_alembic_config(engine: AsyncEngine, *, postgres_schema: str = "") -> Al
     ``alembic_version`` and all migration DDL in the default (``public``)
     schema while the app tables land in the custom schema.
     """
+    from deerflow.persistence.migrations._chain_meta import version_locations
+
     cfg = AlembicConfig()
     cfg.set_main_option("script_location", str(_MIGRATIONS_DIR))
+    cfg.set_main_option("version_locations", version_locations(_MIGRATIONS_DIR))
     cfg.set_main_option("sqlalchemy.url", _alembic_safe_url(engine))
-    cfg.set_main_option("version_table", _VERSION_TABLE)
     if postgres_schema:
         cfg.set_main_option("deerflow_pg_schema", postgres_schema)
     return cfg
 
 
 def _get_head_revision() -> str:
-    """Return the head revision id from ``versions/``, cached per process."""
+    """Return the unified chain's head revision id, cached per process."""
     global _HEAD_REVISION
     if _HEAD_REVISION is None:
+        from deerflow.persistence.migrations._chain_meta import version_locations
+
         cfg = AlembicConfig()
         cfg.set_main_option("script_location", str(_MIGRATIONS_DIR))
+        cfg.set_main_option("version_locations", version_locations(_MIGRATIONS_DIR))
         script = ScriptDirectory.from_config(cfg)
         head = script.get_current_head()
         if head is None:
@@ -299,37 +317,25 @@ def _reflect_state(sync_conn: Any) -> dict[str, bool]:
     insp = sa_inspect(sync_conn)
     reflected = set(insp.get_table_names())
     metadata_tables = set(Base.metadata.tables)
-    has_version = _VERSION_TABLE in reflected
-    # Adopt old DeerFlow-only databases that predate the dedicated table. An
-    # AgentPlatform control-plane revision (date/word based) must not be
-    # mistaken for a DeerFlow revision (numeric 0001/0018).
-    if not has_version and _LEGACY_VERSION_TABLE in reflected:
-        rows = sync_conn.execute(text(f"SELECT version_num FROM {_LEGACY_VERSION_TABLE}")).fetchall()
-        has_version = any(str(row[0]).startswith(("000", "001")) for row in rows)
     return {
-        "has_alembic_version": has_version,
+        "has_alembic_version": _VERSION_TABLE in reflected,
         "has_deerflow_tables": bool(reflected & metadata_tables),
     }
 
 
 def _adopt_legacy_version_table(sync_conn: Any) -> None:
-    """Copy a legacy DeerFlow revision into the dedicated version table.
+    """Bridge pre-unification version state into the unified version table.
 
-    Older dual-runtime databases used the shared ``alembic_version`` table.
-    Only numeric DeerFlow revisions are adopted; AgentPlatform control-plane
-    revisions remain untouched and are never used to drive DeerFlow upgrades.
+    The dual-chain bootstrap stamped runtime revisions into the dedicated
+    ``deerflow_alembic_version`` table.
+    ``_chain_meta.adopt_unified_version_state`` carries out the adoption (and
+    retires the dedicated table) for every legacy state; the Gateway path
+    (this call, inside ``bootstrap_schema``) and the CLI path (``env.py``)
+    share that one implementation.
     """
-    insp = sa_inspect(sync_conn)
-    tables = set(insp.get_table_names())
-    if _VERSION_TABLE in tables or _LEGACY_VERSION_TABLE not in tables:
-        return
-    rows = sync_conn.execute(text(f"SELECT version_num FROM {_LEGACY_VERSION_TABLE}")).fetchall()
-    revisions = [str(row[0]) for row in rows if str(row[0]).startswith(("000", "001"))]
-    if not revisions:
-        return
-    sync_conn.execute(text(f"CREATE TABLE {_VERSION_TABLE} (version_num VARCHAR(32) NOT NULL)"))
-    for revision in revisions:
-        sync_conn.execute(text(f"INSERT INTO {_VERSION_TABLE} (version_num) VALUES (:revision)"), {"revision": revision})
+    from deerflow.persistence.migrations._chain_meta import adopt_unified_version_state
+
+    adopt_unified_version_state(sync_conn)
 
 
 def _decide_state(state: dict[str, bool]) -> str:
@@ -541,6 +547,15 @@ async def bootstrap_schema(engine: AsyncEngine, *, backend: str, postgres_schema
         decision = _decide_state(state)
 
         if decision == "empty":
+            # create_all renders whatever ``Base.metadata`` holds at call
+            # time. The Gateway imports the enterprise models at module scope
+            # (app.gateway.app -> app.agentplatform.*), so production fresh
+            # starts create both table families and stamping the head is
+            # exact. A runtime-only import surface (TUI) stamps the same head
+            # over runtime tables only -- identical to the pre-unification
+            # behavior (which stamped the runtime head); the enterprise DDL
+            # lands when the Gateway's create_all later runs on a genuinely
+            # empty database.
             logger.info("bootstrap: branch=empty -> create_all + stamp head (%s)", head)
             async with engine.begin() as conn:
                 await conn.run_sync(_run_create_all_sync)
