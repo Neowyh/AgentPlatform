@@ -682,3 +682,15 @@ per-node budget against the DeepSeek endpoint. Verdict unchanged: worker
 chain guarded 8/8 by integration tests; live acceptance remains
 `incomplete (environmental)` per the honest record, pending a low-latency
 endpoint (see `EXTERNAL_ACCEPTANCE_HANDOFF.md` §3).
+
+### Closure round addendum (2026-09-08, P1–P3 completion)
+
+| Check | Result | Classification / note |
+|---|---|---|
+| Gate 5: PostgreSQL fresh fixture | **passed** | postgres:16 container. Enterprise tree `upgrade head` → `20260828_run_snapshot_selection_role` (26 tables); runtime bootstrap → `0018_oauth_identity_pg_partial` (40 tables). Bundled seed 73 resources / 61 dependency edges; two-phase gateway boot (initialize admin → restart triggers lifespan seed); ResourceService visibility + closure walk (workflow→agent→skill); WorkflowV2Store canonical run created/read with JSON inputs roundtrip; event append; durable runtime tables present. |
+| Gate 5: PostgreSQL existing fixture | **passed** | Legacy SQLite dev DB copied → upgraded on both trees in a temp copy → data copied into PG `ideer_existing`. Normalized per-table SHA256 fingerprints match the upgraded source exactly (resources 73 / resource_versions 77 / runs 7); roles preserved (super_admin 1); runs aggregate readable (7 rows / 344,036 tokens); heads unchanged. |
+| Gate 5 dialect defects found & fixed | fixed | (1) `f3a2b1c4d5e6` boolean column with numeric server default → `sa.false()`; (2) `drop_deleted_at` unconditional `sqlite_master` query → SQLAlchemy inspector; (3) enterprise `env.py`: async migration path never committed its DDL (whole upgrade rolled back on dispose — masked historically by the app's bootstrap path) + Alembic's 32-char `version_num` rejected the tree's 33-char date-based revision ids → pre-create a VARCHAR(255) version table. All no-ops for already-migrated SQLite databases. Migration suites: persistence 96, migrations-env 19, version-table isolation — green. |
+| P3: settings lazy-load drift | fixed | The restored Skills/Tools settings pages statically rejoined the dialog bundle, tripping the interaction-only bundle-boundary guard (baseline-verified pre-existing failure). Both pages now load via `next/dynamic`; guard 3/3, dialog suite 23/23, tsc clean. |
+| P3: blocking_io stale imports | resolved without changes | The two `tests/blocking_io` collection errors from the earlier snapshot no longer reproduce after the workspace re-sync; both files run 5/5 green. |
+| P1-3: low-latency endpoint re-probe | still blocked | `vllm.internal.com:8000` unresolvable (000); `chatgpt.com` egress 403. Fault-zeroing live acceptance remains external (HANDOFF §3). |
+| §29 DoD checklist | recorded | `DoD_CHECKLIST.md`: all sandbox-executable items ✅; honest exceptions: fault-zeroing live (endpoint), air-gap install (isolated host), push deferred. |
