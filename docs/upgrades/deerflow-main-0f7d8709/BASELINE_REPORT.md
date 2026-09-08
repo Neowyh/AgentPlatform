@@ -703,3 +703,14 @@ endpoint (see `EXTERNAL_ACCEPTANCE_HANDOFF.md` §3).
 | `check-intranet.sh` 8-step pre-deploy | **passed** | After `deploy-intranet.sh prepare` generated `env.intranet`: **0 errors / 0 warnings — "Ready for intranet deployment"** (Docker 29.8.0, Compose v5.5.1, all four images at version `20260908-4b12ca2d`, config, env file, port 2026, 895 GB disk). |
 | Air-gap fresh install | still external | By definition requires an isolated host with no public routes; bundle + pre-deploy evidence above is everything executable on a connected machine. |
 | Gate 8 status | **closed** (host-executable portion); air-gap install remains the single deployment-environment step. |
+
+### Closure round addendum (2026-09-08, live intranet deployment smoke)
+
+| Check | Result | Note |
+|---|---|---|
+| Full stack deployment from the bundle | **passed** | `deploy-intranet.sh up` on the host: 4 containers (frontend/gateway/nginx/workflow-worker) all healthy; super admin initialized; bundled resources seeded **73/73**. |
+| Deployment defect found & fixed | fixed | `find_super_admin_id` still looked for `ideer.db` after the convergence renamed the runtime DB to `deerflow.db`, so fresh deployments failed resource initialization. Now prefers the new name with legacy fallback (deploy script suite 36/36). |
+| §24-J functional smoke on the deployed stack | **passed** | setup-status `needs_setup:false`; local login 200; `/api/resources` returns all 73 bundled resources across agent/skill/workflow (fault-zeroing v1 present); `/api/models` 200; thread create 200; file upload 200; frontend 200. |
+| Restart persistence | **passed** | `deploy-intranet.sh restart` → all containers healthy; 73 resources + 1 super admin intact in the runtime DB (API and direct read agree). |
+| Model-dependent §24-J rows | external | Agent Run / Skill execution / Memory write need a reachable model endpoint (`vllm.internal.com` unresolvable here) — unchanged HANDOFF §3. |
+| Gate 8 status | **closed** to the maximum extent possible on a networked host; the only remaining step is the §24-J checklist on an isolated air-gapped host with the same bundle. |
