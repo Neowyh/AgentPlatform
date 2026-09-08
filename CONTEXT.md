@@ -277,7 +277,7 @@ _Avoid_: Execution, Job, Task
 ## Access & Visibility
 
 **Resource**:
-A canonical catalog entry for a Skill, Agent, or Workflow with owner, visibility, lifecycle status, and versioned content.
+A canonical catalog entry for a Skill, Agent, Workflow, or KnowledgeBase with owner, visibility, lifecycle status, and versioned content.
 _Avoid_: ResourceVersion, ResourceDraft
 
 **Department**:
@@ -291,6 +291,66 @@ _Avoid_: Permission, Scope
 **UserRole**:
 The platform role determining capabilities: viewer, user, department_admin, or super_admin.
 _Avoid_: Role, Permission level
+
+## Knowledge
+
+**KnowledgeBase**:
+A governed enterprise knowledge collection and the fourth first-class Resource type. It records what the organization formally knows and is strictly separate from Memory, which records personal or agent experience.
+_Avoid_: Document library, RAG dataset, knowledge graph
+
+**Knowledge Revision**:
+An immutable manifest of the logical documents and content hashes a KnowledgeBase contained at a moment in time. Published revisions never change, so past Runs stay reproducible.
+_Avoid_: Knowledge snapshot, document version
+
+**LIVE / PINNED**:
+The two dependency modes between an Agent or Workflow and a KnowledgeBase. LIVE resolves the latest published revision at Run start; PINNED fixes one revision. Both freeze at Run start and never drift mid-Run.
+_Avoid_: Dynamic/static reference
+
+**Effective Knowledge Scope**:
+The set of KnowledgeBases a Run may actually search, computed as the intersection of resource dependency, caller permission, Workflow policy, runtime authorization, and environment availability. KnowledgeBases outside the scope stay invisible to the model.
+_Avoid_: Knowledge permission, retrieval whitelist
+
+**Retrieval Receipt**:
+The evidence record of one knowledge search: which Run and caller, which KnowledgeBase revision, which query, which documents and locations were hit, and with what scores.
+_Avoid_: Search log, retrieval history
+
+## Devices & Local Execution
+
+**ExecutionTarget**:
+The location where execution actually happens, with SERVER and USER_DEVICE as the first-stage values. Execution location must be declared explicitly; a server tool never silently becomes a local one.
+_Avoid_: Runtime environment, sandbox type
+
+**Device**:
+A user-bound terminal computer registered in the Control Plane. A Device is an identity entity, not a Resource, and the model never selects or addresses a Device directly.
+_Avoid_: Terminal, machine, node
+
+**Local Runtime**:
+The trusted execution node running on a user's device that connects outbound to the server. It is an execution plane only, never a second Agent runtime.
+_Avoid_: Desktop client, agent app
+
+**Local Task**:
+One unit of work delegated to a Device, always owned by a legitimate Run and Tool Call. No bypass exists for issuing background commands without a Run.
+_Avoid_: Remote command, job
+
+**Local Capability**:
+A local operation a Device reports it can perform, such as file access, Python execution, or local MCP. The effective capability is the intersection of agent declaration, caller authorization, device capability, local policy, and platform policy, trimmed at assembly time so unauthorized capabilities are invisible to the model.
+_Avoid_: Tool toggle, permission flag
+
+**Local Policy**:
+The device-side rules that re-authorize a delegated task locally. A local DENY always overrides a server ALLOW; server authorization only permits delegation and cannot force execution.
+_Avoid_: Device settings
+
+**User Consent**:
+Explicit user approval for risky local operations, graded Level 0 (safe read, may auto-run), Level 1 (modify or execute, per local policy), and Level 2 (dangerous, denied by default). Consent binds to the exact request content and cannot be reused for a modified task.
+_Avoid_: Permission popup
+
+**Allowed Roots**:
+The directory list a user explicitly grants the Local Runtime. The model sees logical roots only, and every access is verified against canonical resolved paths.
+_Avoid_: Disk permission, file whitelist
+
+**Local Secret**:
+A credential stored only in the device's OS secure store. The server references it by logical name and never sees the plaintext.
+_Avoid_: Terminal credential, local password
 
 ## Memory & Artifacts
 
@@ -329,6 +389,26 @@ _Avoid_: Files merely exist, root cause must be confirmed, model self-certificat
 **Todo**:
 A task item within a Thread's state, with status pending, in_progress, or completed.
 _Avoid_: Task, Checklist item
+
+## Evidence
+
+**Run Evidence**:
+The single unified evidence collection for a Run: resource and knowledge snapshots, authorization context, tool receipts, retrieval receipts, local execution receipts, and artifact receipts. Evidence has exactly one source of truth, and every item links back to its Run.
+_Avoid_: Log, audit trail
+
+**Tool Receipt**:
+DeerFlow's proof record for one tool call, and the parent evidence for retrieval receipts, local execution receipts, and artifact receipts.
+_Avoid_: Tool log, call record
+
+**Local Execution Receipt**:
+The device's proof record for one local task: what ran, which consent and policy applied, exit status, and artifact hashes. It hangs under a Tool Receipt and lands in Run Evidence.
+_Avoid_: Execution log
+
+## Runtime Integration
+
+**Extension**:
+The preferred mechanism for AgentPlatform to integrate with the DeerFlow runtime. Integration priority is fixed: Extension, then Adapter, then a registered runtime patch; any change under the DeerFlow harness must be recorded in the Upstream Patch Ledger.
+_Avoid_: Plugin, hack
 
 ## Workflow Internals
 
