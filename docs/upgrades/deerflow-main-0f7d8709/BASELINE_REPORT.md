@@ -725,3 +725,16 @@ The deploy-script fix landed AFTER the first bundle was assembled, leaving
 fixed script, and the source tar contains the fixed lookup. The stale
 `ideer-20260908-4b12ca2d` directory remains only as root-owned runtime
 debris from the deployment smoke (`sudo rm -rf` to discard).
+
+
+### Closure round addendum (2026-09-08, sidebar entry parity)
+
+Route-file parity was not enough: the merged sidebar kept the upstream
+four-item nav set and silently dropped two iDeer entries — **capabilities**
+(the resource-center link to `/workspace/capabilities/experts`) and
+**library** (`/workspace/library`) — while their routes, pages, and i18n
+labels all survived the merge. Both are restored in the baseline position
+and ordering (chats, capabilities, agents, scheduled-tasks, workflows,
+library); nav tests updated to the six-item form (frontend suite 9914
+green). Lesson recorded: entry-parity checks must cover visible navigation
+links, not just route files.
