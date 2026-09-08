@@ -22,7 +22,9 @@ def upgrade() -> None:
     """Drop deleted_at column and its indexes from resource_metadata."""
     with op.batch_alter_table("resource_metadata") as batch_op:
         conn = op.get_bind()
-        existing = {row.name for row in conn.exec_driver_sql("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='resource_metadata'").fetchall()}
+        # Inspector works on every dialect; the raw sqlite_master query is
+        # SQLite-only and crashes PostgreSQL migrations.
+        existing = {idx["name"] for idx in sa.inspect(conn).get_indexes("resource_metadata")}
         for idx in ("ix_resource_metadata_deleted", "ix_resource_meta_type_visibility", "ix_resource_meta_owner_active", "ix_resource_meta_dept_active"):
             if idx in existing:
                 batch_op.drop_index(idx)

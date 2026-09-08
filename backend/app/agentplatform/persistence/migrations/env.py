@@ -172,6 +172,13 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection):
+    # This tree uses date-based revision ids longer than Alembic's default
+    # VARCHAR(32) version_num (SQLite never enforced the length, PostgreSQL
+    # does). Pre-create the version table wide enough before Alembic would
+    # auto-create it at 32; existing tables are untouched (no-op).
+    connection.exec_driver_sql(
+        "CREATE TABLE IF NOT EXISTS alembic_version (version_num VARCHAR(255) NOT NULL)"
+    )
     context.configure(
         connection=connection,
         target_metadata=target_metadata,
@@ -205,6 +212,11 @@ async def _run_async_migrations_online(url: str) -> None:
     connectable = create_async_engine(url)
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)
+        # do_run_migrations executes DDL on this connection; without an
+        # explicit commit the async connection rolls everything back on
+        # dispose (the sync path commits inside Alembic's transaction
+        # manager, the async path does not).
+        await connection.commit()
     await connectable.dispose()
 
 

@@ -21,7 +21,9 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     """Add disabled column and role/department_id indexes to users_ext."""
     with op.batch_alter_table("users_ext", schema=None) as batch_op:
-        batch_op.add_column(sa.Column("disabled", sa.Boolean(), nullable=False, server_default=sa.text("0")))
+        # sa.false() renders 0 on SQLite and false on PostgreSQL; a literal
+        # "0" is rejected by PostgreSQL for a boolean column.
+        batch_op.add_column(sa.Column("disabled", sa.Boolean(), nullable=False, server_default=sa.false()))
         batch_op.create_index("ix_users_ext_role", ["role"], unique=False)
         batch_op.create_index("ix_users_ext_department_id", ["department_id"], unique=False)
 

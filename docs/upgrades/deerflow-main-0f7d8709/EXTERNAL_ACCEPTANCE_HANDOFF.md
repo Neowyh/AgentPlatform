@@ -36,7 +36,9 @@ install → login → vLLM → file upload → Office → Resource → Workflow 
 **Record to:** `BASELINE_REPORT.md` new session addendum + `PR_MATERIALS.md`
 lane table (`check-intranet`, `offline fresh install` rows).
 
-## 2. PostgreSQL migration acceptance (Gate 5)
+## 2. PostgreSQL migration acceptance (Gate 5) — **CLOSED 2026-09-08** (see MIGRATION_ACCEPTANCE_REPORT.md)
+
+<details><summary>Original instructions</summary>
 
 **Precondition:** any PostgreSQL 14+ endpoint reachable from the backend
 (`psql` or Docker `postgres:16`).
@@ -61,8 +63,7 @@ uv run python ../scripts/seed_bundled_resources.py  # then one canonical run
 schema, constraints, and JSON semantics match the SQLite fixtures;
 `ResourceService` + `RunRepository` + scheduler + durable batch smoke pass.
 
-**Record to:** `MIGRATION_ACCEPTANCE_REPORT.md` "PostgreSQL fresh/existing
-fixtures" row (currently *not run*) and the Gate 5 status paragraph.
+</details>
 
 ## 3. Fault-zeroing live end-to-end (§24-H, §28 material #9)
 
