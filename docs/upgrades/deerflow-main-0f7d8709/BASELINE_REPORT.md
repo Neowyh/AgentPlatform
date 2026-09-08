@@ -714,3 +714,14 @@ endpoint (see `EXTERNAL_ACCEPTANCE_HANDOFF.md` §3).
 | Restart persistence | **passed** | `deploy-intranet.sh restart` → all containers healthy; 73 resources + 1 super admin intact in the runtime DB (API and direct read agree). |
 | Model-dependent §24-J rows | external | Agent Run / Skill execution / Memory write need a reachable model endpoint (`vllm.internal.com` unresolvable here) — unchanged HANDOFF §3. |
 | Gate 8 status | **closed** to the maximum extent possible on a networked host; the only remaining step is the §24-J checklist on an isolated air-gapped host with the same bundle. |
+
+### Closure round addendum (2026-09-08, bundle rebuild)
+
+The deploy-script fix landed AFTER the first bundle was assembled, leaving
+`SHA256SUMS` and the embedded source tar stale for `deploy-intranet.sh`
+(`sha256sum -c` FAILED on exactly that file). The bundle was rebuilt with
+`--force` → `dist/intranet/ideer-20260908-00b9ec95/` (3.5 GB). Verification:
+`SHA256SUMS` 8/8 OK, `bundle-manifest.json` source-file hash matches the
+fixed script, and the source tar contains the fixed lookup. The stale
+`ideer-20260908-4b12ca2d` directory remains only as root-owned runtime
+debris from the deployment smoke (`sudo rm -rf` to discard).
