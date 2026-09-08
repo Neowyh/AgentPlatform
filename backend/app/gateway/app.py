@@ -29,12 +29,16 @@ from app.gateway.routers import (
     auth,
     automations,
     channels,
+    features,
     feedback,
+    input_polish,
+    integrations,
     mcp,
     memory,
     models,
     resources,
     runs,
+    scheduled_tasks,
     suggestions,
     thread_runs,
     threads,
@@ -788,6 +792,19 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
 
     # Visibility Applications API is mounted at /api/visibility-applications
     app.include_router(visibility_applications.router)
+
+    # Upstream convergence routers: the frontend entries that ship with the
+    # merged tree call these, so mount them exactly like deerflow main does.
+    app.include_router(features.router)
+
+    # Integrations API is mounted at /api/integrations
+    app.include_router(integrations.router)
+
+    # Scheduled Tasks API is mounted at /api/scheduled-tasks
+    app.include_router(scheduled_tasks.router)
+
+    # Input Polish API is mounted at /api/input-polish
+    app.include_router(input_polish.router)
 
     @app.get("/health", tags=["health"])
     async def health_check() -> dict[str, str]:

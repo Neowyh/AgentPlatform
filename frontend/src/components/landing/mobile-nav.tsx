@@ -29,7 +29,7 @@ export function MobileNav({ links }: { links: MobileNavLink[] }) {
       </SheetTrigger>
       <SheetContent side="right" className="w-64">
         <SheetHeader>
-          <SheetTitle className="type-page-title font-serif">DeerFlow</SheetTitle>
+          <SheetTitle className="type-page-title font-serif">iDeer</SheetTitle>
         </SheetHeader>
         <nav className="flex flex-col gap-1 px-4 text-base font-medium">
           {links.map((link) => (
