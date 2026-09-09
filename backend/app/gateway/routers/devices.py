@@ -228,6 +228,8 @@ async def device_websocket(websocket: WebSocket) -> None:
             device, device_session = await service._authorized_session(hello.device_id, session_token)
             if device_session.id != hello.session_id or device.public_key != public_key_text:
                 raise ProtocolError("SESSION_MISMATCH", "device session or public key does not match")
+            if device.policy_hash is not None and hello.payload.get("policy_hash") != device.policy_hash:
+                raise ProtocolError("POLICY_HASH_MISMATCH", "device policy hash does not match registration")
             if compatibility == ProtocolCompatibility.BLOCKED:
                 device.status = "blocked"
                 await session.commit()
@@ -242,6 +244,18 @@ async def device_websocket(websocket: WebSocket) -> None:
         while True:
             message = TaskEnvelope.model_validate_json(await websocket.receive_text())
             await broker.receive(connection, message)
+            if message.type == MessageType.HEARTBEAT:
+                sf = get_session_factory()
+                if sf is None:
+                    raise ProtocolError("PERSISTENCE_UNAVAILABLE", "device persistence is unavailable")
+                async with sf() as session:
+                    from app.device_control.service import DeviceControlService
+
+                    await DeviceControlService(session).heartbeat(
+                        connection.device_id,
+                        connection.session_token,
+                        capabilities=message.payload.get("capabilities"),
+                    )
     except WebSocketDisconnect:
         pass
     except (ProtocolError, DeviceControlError, ValueError):
