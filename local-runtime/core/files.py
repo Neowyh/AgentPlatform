@@ -3,13 +3,25 @@
 from __future__ import annotations
 
 import os
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
 
 class FileAccessError(Exception):
     """A user-safe file error; physical paths are never included."""
+
+    def __init__(self, code: str, message: str | None = None) -> None:
+        self.code = code
+        super().__init__(message or code.lower().replace("_", " "))
+
+
+INVALID_PATH = "INVALID_PATH"
+OUTSIDE_ALLOWED_ROOTS = "OUTSIDE_ALLOWED_ROOTS"
+NOT_FOUND = "NOT_FOUND"
+NOT_A_FILE = "NOT_A_FILE"
+NOT_A_DIRECTORY = "NOT_A_DIRECTORY"
+PERMISSION_DENIED = "PERMISSION_DENIED"
+LOCKED_OR_UNAVAILABLE = "LOCKED_OR_UNAVAILABLE"
 
 
 @dataclass(frozen=True)
@@ -19,7 +31,7 @@ class RootConfig:
 
     def __post_init__(self) -> None:
         logical = "/" + self.logical_root.strip("/")
-        if logical == "/" or "\\" in logical or ".." in logical.split("/"):
+        if logical == "/" or "\\" in logical or any(part == ".." for part in logical.split("/")):
             raise ValueError("logical root must be named")
         object.__setattr__(self, "logical_root", logical)
         object.__setattr__(self, "physical_root", Path(self.physical_root).resolve(strict=False))
@@ -30,8 +42,12 @@ class LocalFileStore:
         self.roots = tuple(roots)
 
     def _resolve(self, logical_path: str) -> tuple[RootConfig, Path]:
-        if not logical_path.startswith("/") or "\\" in logical_path:
-            raise FileAccessError("invalid logical path")
+        if not isinstance(logical_path, str) or not logical_path.startswith("/") or "\\" in logical_path:
+            raise FileAccessError(INVALID_PATH, "invalid logical path")
+        if logical_path.startswith("//"):
+            raise FileAccessError(INVALID_PATH, "outside allowed roots")
+        if any(part == ".." for part in logical_path.split("/")):
+            raise FileAccessError(OUTSIDE_ALLOWED_ROOTS, "outside allowed roots")
         normalized = os.path.normpath(logical_path.replace("\\", "/"))
         normalized_key = os.path.normcase(normalized)
         matches = [
@@ -41,14 +57,17 @@ class LocalFileStore:
             or normalized_key.startswith(os.path.normcase(r.logical_root + "/"))
         ]
         if not matches:
-            raise FileAccessError("outside allowed roots")
+            raise FileAccessError(OUTSIDE_ALLOWED_ROOTS, "outside allowed roots")
         root = max(matches, key=lambda item: len(item.logical_root))
         suffix = normalized[len(root.logical_root) :].lstrip("/")
-        candidate = (root.physical_root / suffix).resolve(strict=False)
+        try:
+            candidate = (root.physical_root / suffix).resolve(strict=False)
+        except (OSError, RuntimeError) as exc:
+            raise FileAccessError(LOCKED_OR_UNAVAILABLE, "locked or unavailable") from exc
         try:
             candidate.relative_to(root.physical_root)
         except ValueError as exc:
-            raise FileAccessError("outside allowed roots") from exc
+            raise FileAccessError(OUTSIDE_ALLOWED_ROOTS, "outside allowed roots") from exc
         return root, candidate
 
     def resolve(self, logical_path: str) -> Path:
@@ -57,11 +76,29 @@ class LocalFileStore:
 
     def list(self, logical_path: str) -> list[str]:
         root, path = self._resolve(logical_path)
-        if not path.exists():
-            raise FileAccessError("not found")
-        if not path.is_dir():
-            raise FileAccessError("not a directory")
-        return sorted(f"{root.logical_root}/{item.relative_to(root.physical_root).as_posix()}" for item in path.iterdir() if item.resolve(strict=False).is_relative_to(root.physical_root))
+        try:
+            if not path.exists():
+                raise FileAccessError(NOT_FOUND, "not found")
+            if not path.is_dir():
+                raise FileAccessError(NOT_A_DIRECTORY, "not a directory")
+            entries: list[str] = []
+            for item in path.iterdir():
+                try:
+                    resolved = item.resolve(strict=True)
+                except (OSError, RuntimeError) as exc:
+                    raise FileAccessError(LOCKED_OR_UNAVAILABLE, "locked or unavailable") from exc
+                try:
+                    relative = resolved.relative_to(root.physical_root)
+                except ValueError as exc:
+                    raise FileAccessError(OUTSIDE_ALLOWED_ROOTS, "outside allowed roots") from exc
+                entries.append(f"{root.logical_root}/{relative.as_posix()}")
+            return sorted(entries)
+        except FileAccessError:
+            raise
+        except PermissionError as exc:
+            raise FileAccessError(PERMISSION_DENIED, "permission denied") from exc
+        except OSError as exc:
+            raise FileAccessError(LOCKED_OR_UNAVAILABLE, "locked or unavailable") from exc
 
     def read(self, logical_path: str) -> str:
         _, path = self._resolve(logical_path)
@@ -71,27 +108,12 @@ class LocalFileStore:
             with os.fdopen(fd, "r", encoding="utf-8") as stream:
                 return stream.read()
         except FileNotFoundError as exc:
-            raise FileAccessError("not found") from exc
+            raise FileAccessError(NOT_FOUND, "not found") from exc
         except IsADirectoryError as exc:
-            raise FileAccessError("not a file") from exc
+            raise FileAccessError(NOT_A_FILE, "not a file") from exc
         except PermissionError as exc:
-            raise FileAccessError("permission denied") from exc
+            raise FileAccessError(PERMISSION_DENIED, "permission denied") from exc
         except OSError as exc:
             if nofollow and getattr(exc, "errno", None) in {40, 62}:
-                raise FileAccessError("outside allowed roots") from exc
-            raise FileAccessError("locked or unavailable") from exc
-
-    def write(self, logical_path: str, content: str) -> None:
-        _, path = self._resolve(logical_path)
-        if path.exists() and not path.is_file():
-            raise FileAccessError("not a file")
-        path.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            fd, temporary = tempfile.mkstemp(prefix=".local-write-", dir=path.parent)
-            with os.fdopen(fd, "w", encoding="utf-8") as stream:
-                stream.write(content)
-                stream.flush()
-                os.fsync(stream.fileno())
-            os.replace(temporary, path)
-        except PermissionError as exc:
-            raise FileAccessError("permission denied") from exc
+                raise FileAccessError(OUTSIDE_ALLOWED_ROOTS, "outside allowed roots") from exc
+            raise FileAccessError(LOCKED_OR_UNAVAILABLE, "locked or unavailable") from exc

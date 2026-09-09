@@ -78,7 +78,9 @@ class TaskResponse(BaseModel):
     tool_call_id: str
     expires_at: datetime
     receipt: dict | None = None
+    result: object = None
     error: str | None = None
+    error_code: str | None = None
 
     @classmethod
     def from_record(cls, record) -> TaskResponse:
@@ -91,7 +93,9 @@ class TaskResponse(BaseModel):
             tool_call_id=record.tool_call_id,
             expires_at=record.expires_at,
             receipt=record.receipt,
+            result=record.result,
             error=record.error,
+            error_code=record.error_code,
         )
 
 

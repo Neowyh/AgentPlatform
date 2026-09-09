@@ -9,6 +9,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from websockets.asyncio.client import ClientConnection, connect
 
 from .file_service import FileTaskResult, LocalFileService
+from .files import FileAccessError
 from .policy import LocalPolicy, PolicyDecision
 from .protocol import (
     MessageType,
@@ -145,33 +146,56 @@ class LocalRuntimeClient:
                 separators=(",", ":"),
             )
         )
-        receipt = await self.handle_echo_task(envelope)
-        await self.connection.send(
-            json.dumps(
-                sign_envelope(
-                    private_key=self.private_key,
-                    message_type=MessageType.TASK_PROGRESS,
-                    device_id=self.device_id,
-                    session_id=self.session_id or "",
-                    task_id=task_id,
-                    payload={"fraction": 1.0},
-                ),
-                separators=(",", ":"),
-            )
+        operation = str(envelope.payload.get("operation", ""))
+        try:
+            if operation == "echo":
+                result = envelope.payload.get("value")
+                receipt = await self.handle_echo_task(envelope)
+            elif operation in {"local.files.list", "local.files.read"}:
+                file_task = self.handle_file_task(operation, dict(envelope.payload))
+                if file_task.decision is not PolicyDecision.ALLOW:
+                    await self._send_error(task_id, file_task.decision.value, "POLICY_DENIED", envelope.payload, operation)
+                    return
+                result = file_task.value
+                receipt = self._file_receipt(envelope, operation, result)
+            else:
+                raise ValueError("unsupported operation")
+        except FileAccessError as exc:
+            await self._send_error(task_id, str(exc), exc.code, envelope.payload, operation)
+            return
+        except (RuntimeError, ValueError, TypeError, KeyError) as exc:
+            await self._send_error(task_id, str(exc), "INVALID_TASK", envelope.payload, operation)
+            return
+        await self.connection.send(json.dumps(sign_envelope(
+            private_key=self.private_key, message_type=MessageType.TASK_PROGRESS,
+            device_id=self.device_id, session_id=self.session_id or "", task_id=task_id,
+            payload={"fraction": 1.0},
+        ), separators=(",", ":")))
+        await self.connection.send(json.dumps(sign_envelope(
+            private_key=self.private_key, message_type=MessageType.TASK_RESULT,
+            device_id=self.device_id, session_id=self.session_id or "", task_id=task_id,
+            payload={"result": result, "receipt": receipt.as_dict()},
+        ), separators=(",", ":")))
+
+    def _file_receipt(self, envelope: Any, capability: str, result: Any) -> LocalExecutionReceipt:
+        payload = dict(envelope.payload)
+        return LocalExecutionReceipt(
+            run_id=str(payload.get("run_id", "")), task_id=envelope.task_id or "",
+            capability=capability, policy_decision=PolicyDecision.ALLOW.value,
+            status="completed", payload_hash=content_hash(payload), result_hash=content_hash(result),
         )
-        await self.connection.send(
-            json.dumps(
-                sign_envelope(
-                    private_key=self.private_key,
-                    message_type=MessageType.TASK_RESULT,
-                    device_id=self.device_id,
-                    session_id=self.session_id or "",
-                    task_id=task_id,
-                    payload={"receipt": receipt.as_dict()},
-                ),
-                separators=(",", ":"),
-            )
+
+    async def _send_error(self, task_id: str, message: str, code: str, payload: dict[str, Any], capability: str) -> None:
+        assert self.connection is not None
+        receipt = LocalExecutionReceipt(
+            run_id=str(payload.get("run_id", "")), task_id=task_id, capability=capability,
+            policy_decision="allow", status="failed", payload_hash=content_hash(payload),
         )
+        await self.connection.send(json.dumps(sign_envelope(
+            private_key=self.private_key, message_type=MessageType.ERROR,
+            device_id=self.device_id, session_id=self.session_id or "", task_id=task_id,
+            payload={"error_code": code, "message": message, "receipt": receipt.as_dict()},
+        ), separators=(",", ":")))
 
     async def handle_echo_task(self, envelope: Any) -> LocalExecutionReceipt:
         """Apply Local Policy and return a receipt without executing system commands."""
