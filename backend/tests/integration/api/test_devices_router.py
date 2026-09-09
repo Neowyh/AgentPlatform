@@ -1,7 +1,12 @@
+import asyncio
+import sys
 from collections.abc import AsyncIterator
+from pathlib import Path
 
+import httpx
 import pytest
 import pytest_asyncio
+import uvicorn
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -13,6 +18,9 @@ from app.device_control.protocol import MessageType, TaskEnvelope, public_key_te
 from app.gateway.authz import get_current_rbac_user
 from app.gateway.routers import devices
 from deerflow.persistence.base import Base
+
+sys.path.insert(0, str(Path(__file__).parents[4] / "local-runtime"))
+from core.transport import LocalRuntimeClient
 
 
 @pytest_asyncio.fixture
@@ -183,3 +191,86 @@ async def test_websocket_device_initiates_and_receives_signed_echo_receipt(devic
             assert status.status_code == 200
             assert status.json()["status"] == "completed"
             assert status.json()["receipt"]["task_id"] == task.task_id
+
+
+@pytest.mark.asyncio
+async def test_local_runtime_client_completes_echo_through_temporary_service(device_factory) -> None:
+    app = FastAPI()
+    app.include_router(devices.router)
+    owner = UserModel(id="owner", username="owner@example.com", role="user")
+    app.dependency_overrides[get_current_rbac_user] = lambda: owner
+    broker = get_device_broker()
+    broker.connections.clear()
+    broker.tasks.clear()
+    device_key = Ed25519PrivateKey.generate()
+    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=0, log_level="error"))
+    server_task = asyncio.create_task(server.serve())
+    try:
+        for _ in range(100):
+            if server.started and server.servers:
+                break
+            await asyncio.sleep(0.01)
+        assert server.started and server.servers
+        port = server.servers[0].sockets[0].getsockname()[1]
+
+        async with httpx.AsyncClient(base_url=f"http://127.0.0.1:{port}") as client:
+            pairing = (await client.post("/api/devices/pairing")).json()
+            registered = (
+                await client.post(
+                    "/api/devices/register",
+                    json={
+                        "pairing_code": pairing["code"],
+                        "name": "Local runtime",
+                        "public_key": public_key_text(device_key.public_key()),
+                        "protocol_version": "1",
+                        "runtime_version": "0.1.0",
+                        "capabilities": ["echo"],
+                    },
+                )
+            ).json()
+            device = registered["device"]
+            assert (await client.post(f"/api/devices/pairing/{pairing['pairing_id']}/confirm", json={"code": pairing["code"]})).status_code == 200
+            completed = (
+                await client.post(
+                    "/api/devices/register/complete",
+                    json={
+                        "device_id": device["id"],
+                        "public_key": public_key_text(device_key.public_key()),
+                        "claim_token": registered["claim_token"],
+                    },
+                )
+            ).json()
+            runtime = LocalRuntimeClient(
+                server_url=f"ws://127.0.0.1:{port}/api/devices/ws",
+                device_id=device["id"],
+                session_token=completed["session_token"],
+                session_id=completed["session_id"],
+                private_key=device_key,
+            )
+            runtime_task = asyncio.create_task(runtime.run())
+            for _ in range(100):
+                if device["id"] in broker.connections:
+                    break
+                await asyncio.sleep(0.01)
+            if runtime_task.done():
+                runtime_task.result()
+            assert device["id"] in broker.connections
+
+            dispatched = await client.post(
+                f"/api/devices/{device['id']}/tasks/echo",
+                json={"run_id": "runtime-run", "tool_call_id": "runtime-tool", "value": "hello"},
+            )
+            assert dispatched.status_code == 200
+            task_id = dispatched.json()["task_id"]
+            for _ in range(100):
+                status = (await client.get(f"/api/devices/tasks/{task_id}")).json()
+                if status["status"] == "completed":
+                    break
+                await asyncio.sleep(0.01)
+            assert status["status"] == "completed"
+            assert status["receipt"]["status"] == "completed"
+            runtime.connection and await runtime.connection.close()
+            await asyncio.wait_for(runtime_task, timeout=1)
+    finally:
+        server.should_exit = True
+        await asyncio.wait_for(server_task, timeout=5)
