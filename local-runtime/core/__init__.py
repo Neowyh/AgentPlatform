@@ -2,7 +2,7 @@
 
 from .artifacts import ArtifactUploader, MemoryArtifactUploader
 from .capabilities import CapabilityAnnouncement, CapabilityRegistry
-from .consent import ConsentStore, request_hash
+from .consent import ConsentExchange, ConsentRequest, ConsentStore, request_hash
 from .file_service import FileTaskResult, LocalFileService
 from .files import FileAccessError, LocalFileStore, RootConfig
 from .policy import LocalPolicy, PolicyDecision
@@ -14,6 +14,8 @@ __all__ = [
     "ArtifactUploader",
     "CapabilityAnnouncement",
     "CapabilityRegistry",
+    "ConsentExchange",
+    "ConsentRequest",
     "ConsentStore",
     "FileAccessError",
     "FileTaskResult",

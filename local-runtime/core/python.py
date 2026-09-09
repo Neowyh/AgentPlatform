@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import subprocess
 import sys
 from dataclasses import dataclass
 from enum import StrEnum
@@ -101,20 +102,29 @@ class PythonExecutor:
             for key, value in os.environ.items()
             if key in {"PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP"}
         }
+        process_options = {
+            "cwd": working_root,
+            "env": env,
+            "stdout": asyncio.subprocess.PIPE,
+            "stderr": asyncio.subprocess.PIPE,
+        }
+        if os.name == "nt":
+            process_options["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+        else:
+            process_options["start_new_session"] = True
         process = await asyncio.create_subprocess_exec(
             sys.executable,
             "-I",
             "-c",
             script,
             *(args or []),
-            cwd=working_root,
-            env=env,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            start_new_session=(os.name != "nt"),
+            **process_options,
         )
+        assert process.stdout is not None and process.stderr is not None
+        stdout_task = asyncio.create_task(self._read_bounded(process.stdout))
+        stderr_task = asyncio.create_task(self._read_bounded(process.stderr))
         try:
-            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout)
+            await asyncio.wait_for(process.wait(), timeout)
             status = (
                 PythonTaskStatus.COMPLETED
                 if process.returncode == 0
@@ -122,18 +132,24 @@ class PythonExecutor:
             )
         except asyncio.TimeoutError:
             self._terminate(process)
-            await process.communicate()
-            return PythonResult(
-                PythonTaskStatus.TIMED_OUT, None, "", "execution timed out"
-            )
+            await process.wait()
+            status = PythonTaskStatus.TIMED_OUT
         except asyncio.CancelledError:
             self._terminate(process)
-            await process.communicate()
-            return PythonResult(
-                PythonTaskStatus.CANCELLED, None, "", "execution cancelled"
-            )
+            await process.wait()
+            status = PythonTaskStatus.CANCELLED
+        stdout, stderr = await asyncio.gather(stdout_task, stderr_task)
+        if status is PythonTaskStatus.TIMED_OUT:
+            stderr = "execution timed out"
+        elif status is PythonTaskStatus.CANCELLED:
+            stderr = "execution cancelled"
         return PythonResult(
-            status, process.returncode, self._bound(stdout), self._bound(stderr)
+            status,
+            process.returncode
+            if status not in {PythonTaskStatus.TIMED_OUT, PythonTaskStatus.CANCELLED}
+            else None,
+            stdout,
+            stderr,
         )
 
     @staticmethod
@@ -144,7 +160,24 @@ class PythonExecutor:
                 return
             except ProcessLookupError:
                 return
+        if os.name == "nt" and process.pid is not None:
+            subprocess.run(
+                ["taskkill", "/T", "/F", "/PID", str(process.pid)],
+                capture_output=True,
+                check=False,
+            )
+            return
         process.kill()
 
-    def _bound(self, value: bytes) -> str:
-        return value[: self.max_output_bytes].decode("utf-8", errors="replace")
+    async def _read_bounded(self, stream: asyncio.StreamReader) -> str:
+        chunks: list[bytes] = []
+        remaining = self.max_output_bytes
+        while True:
+            chunk = await stream.read(4096)
+            if not chunk:
+                break
+            if remaining > 0:
+                kept = chunk[:remaining]
+                chunks.append(kept)
+                remaining -= len(kept)
+        return b"".join(chunks).decode("utf-8", errors="replace")

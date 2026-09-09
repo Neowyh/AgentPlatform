@@ -24,6 +24,7 @@ def assemble_tools(
     tools: Iterable[BaseTool],
     *,
     deferred_names: Iterable[str] = (),
+    allowed_names: Iterable[str] | None = None,
 ) -> ToolSet:
     """Partition tools into an immutable active/deferred value.
 
@@ -31,10 +32,13 @@ def assemble_tools(
     offline, allow-list, and model-specific policy before invoking it.
     """
     deferred = frozenset(deferred_names)
+    allowed = None if allowed_names is None else frozenset(allowed_names)
     active_tools: list[BaseTool] = []
     deferred_tools: list[BaseTool] = []
     seen: set[str] = set()
     for tool in tools:
+        if allowed is not None and tool.name not in allowed:
+            continue
         if tool.name in seen:
             continue
         seen.add(tool.name)

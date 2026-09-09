@@ -77,3 +77,21 @@ async def test_offline_task_and_cancel_are_explicit_and_no_system_command_is_run
         expires_in=timedelta(seconds=-1),
     )
     assert broker.get_task(expired.task_id).status == TaskStatus.EXPIRED
+
+
+@pytest.mark.asyncio
+async def test_capability_update_is_stored_without_a_task_id() -> None:
+    broker = DeviceBroker()
+    device_key = Ed25519PrivateKey.generate()
+    connection = DeviceConnection("device-cap", "session-cap", "token", device_key.public_key(), FakeWebSocket())
+    await broker.attach(connection)
+
+    message = sign_envelope(
+        private_key=device_key,
+        message_type=MessageType.CAPABILITY_UPDATE,
+        device_id="device-cap",
+        session_id="session-cap",
+        payload={"capabilities": ["local.files.read"]},
+    )
+    assert await broker.receive(connection, message) is None
+    assert connection.capabilities == {"local.files.read"}

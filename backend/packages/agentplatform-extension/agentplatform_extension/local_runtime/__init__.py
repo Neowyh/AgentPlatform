@@ -3,7 +3,7 @@
 from .authorization import LocalAuthorization, child_authorization
 from .receipts import tool_receipt_from_local
 from .routing import DeviceRoute, RunDeviceRouter
-from .tools import LOCAL_TOOLS, LocalTool, assemble_local_tools
+from .tools import LOCAL_TOOLS, LocalTool, assemble_local_tools, filter_local_tools
 
 __all__ = [
     "LocalAuthorization",
@@ -14,4 +14,5 @@ __all__ = [
     "LOCAL_TOOLS",
     "LocalTool",
     "assemble_local_tools",
+    "filter_local_tools",
 ]

@@ -1,4 +1,4 @@
-from core.consent import ConsentStore, request_hash
+from core.consent import ConsentExchange, ConsentStore, request_hash
 from core.policy import LocalPolicy, PolicyDecision
 
 
@@ -14,6 +14,49 @@ def test_consent_is_bound_to_payload_hash_and_can_be_always_allowed() -> None:
     digest = request_hash(payload)
     store.approve("local.files.write", digest)
     assert store.consume("local.files.write", digest) is True
-    assert store.consume("local.files.write", request_hash({**payload, "content": "two"})) is False
+    assert (
+        store.consume("local.files.write", request_hash({**payload, "content": "two"}))
+        is False
+    )
     store.set_always_allow("local.files.write")
     assert store.consume("local.files.write", "different") is True
+
+
+def test_consent_audit_records_actor_time_and_denial_revokes_pending_approval() -> None:
+    store = ConsentStore()
+    digest = request_hash({"path": "/projects/a.txt"})
+    store.approve(
+        "local.files.write", digest, actor_id="alice", decided_at="2026-09-09T10:00:00Z"
+    )
+    store.deny(
+        "local.files.write", digest, actor_id="alice", decided_at="2026-09-09T10:01:00Z"
+    )
+
+    assert store.consume("local.files.write", digest) is False
+    assert store.audit[-1] == {
+        "capability": "local.files.write",
+        "request_hash": digest,
+        "decision": "denied",
+        "actor_id": "alice",
+        "decided_at": "2026-09-09T10:01:00Z",
+    }
+
+
+def test_consent_exchange_rejects_execution_when_approved_payload_changes() -> None:
+    exchange = ConsentExchange(ConsentStore())
+    request = exchange.create_request(
+        "local.files.write", {"path": "/projects/a.txt", "content": "one"}
+    )
+
+    exchange.decide(
+        request, approved=True, actor_id="alice", decided_at="2026-09-09T10:00:00Z"
+    )
+
+    assert (
+        exchange.authorize(request, {"path": "/projects/a.txt", "content": "two"})
+        is False
+    )
+    assert (
+        exchange.authorize(request, {"path": "/projects/a.txt", "content": "one"})
+        is True
+    )

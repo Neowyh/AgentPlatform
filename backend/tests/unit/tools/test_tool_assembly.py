@@ -21,3 +21,12 @@ def test_assemble_tools_returns_explicit_deduplicated_active_and_deferred_sets()
     assert [tool.name for tool in result.active] == ["active"]
     assert [tool.name for tool in result.deferred] == ["deferred"]
     assert result.deferred_names == frozenset({"deferred"})
+
+
+def test_assemble_tools_filters_tools_not_in_the_effective_capability_set():
+    result = assemble_tools(
+        [_tool("local.files.read"), _tool("local.python"), _tool("builtin")],
+        allowed_names={"local.files.read", "builtin"},
+    )
+
+    assert [tool.name for tool in result.active] == ["local.files.read", "builtin"]

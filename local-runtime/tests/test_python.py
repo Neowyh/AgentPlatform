@@ -22,3 +22,15 @@ def test_python_executor_timeout(tmp_path: Path) -> None:
         )
     )
     assert result.status is PythonTaskStatus.TIMED_OUT
+
+
+def test_python_executor_bounds_output_without_retaining_the_full_stream(
+    tmp_path: Path,
+) -> None:
+    result = asyncio.run(
+        PythonExecutor(max_output_bytes=32).run(
+            "print('x' * 1000000)", working_root=tmp_path, timeout=5
+        )
+    )
+
+    assert len(result.stdout.encode()) <= 32

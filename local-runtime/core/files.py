@@ -70,14 +70,21 @@ class LocalFileStore:
 
     def read(self, logical_path: str) -> str:
         _, path = self._resolve(logical_path)
-        if not path.exists():
-            raise FileAccessError("not found")
-        if not path.is_file():
-            raise FileAccessError("not a file")
+        nofollow = getattr(os, "O_NOFOLLOW", 0)
         try:
-            return path.read_text(encoding="utf-8")
+            fd = os.open(path, os.O_RDONLY | nofollow)
+            with os.fdopen(fd, "r", encoding="utf-8") as stream:
+                return stream.read()
+        except FileNotFoundError as exc:
+            raise FileAccessError("not found") from exc
+        except IsADirectoryError as exc:
+            raise FileAccessError("not a file") from exc
         except PermissionError as exc:
             raise FileAccessError("permission denied") from exc
+        except OSError as exc:
+            if nofollow and getattr(exc, "errno", None) in {40, 62}:
+                raise FileAccessError("outside allowed roots") from exc
+            raise FileAccessError("locked or unavailable") from exc
 
     def write(self, logical_path: str, content: str) -> None:
         _, path = self._resolve(logical_path)

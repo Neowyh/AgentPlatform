@@ -4,6 +4,7 @@ from agentplatform_extension.local_runtime import (
     RunDeviceRouter,
     assemble_local_tools,
     child_authorization,
+    filter_local_tools,
 )
 
 
@@ -28,3 +29,12 @@ def test_route_is_frozen_and_child_cannot_expand_capabilities() -> None:
     else:
         raise AssertionError("route must be frozen")
     assert child_authorization(_authorization(), {"local.python", "local.files.write"}).effective == {"local.python"}
+
+
+def test_local_filter_preserves_server_tools_and_drops_unauthorized_local_tools() -> None:
+    tools = (*assemble_local_tools(_authorization()),)
+    tools += (type(tools[0])("server.tool", "server"),)
+
+    filtered = filter_local_tools(tools, LocalAuthorization())
+
+    assert [tool.name for tool in filtered] == ["server.tool"]

@@ -23,3 +23,9 @@ LOCAL_TOOLS = (
 
 def assemble_local_tools(authorization: LocalAuthorization) -> tuple[LocalTool, ...]:
     return tuple(tool for tool in LOCAL_TOOLS if authorization.allows(tool.name))
+
+
+def filter_local_tools(tools: tuple[LocalTool, ...], authorization: LocalAuthorization) -> tuple[LocalTool, ...]:
+    """Apply local capability visibility while retaining ordinary server tools."""
+    effective = authorization.effective
+    return tuple(tool for tool in tools if not tool.name.startswith("local.") or tool.name in effective)
