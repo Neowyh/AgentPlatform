@@ -18,6 +18,7 @@ from uuid import uuid4
 
 import pytest
 import pytest_asyncio
+from _resource_catalog import publish_resource
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.agentplatform.resources.runtime import _json_hash
@@ -71,32 +72,13 @@ async def seeded_catalog(durable_store):
     )
     async with durable_store() as session:
         service = ResourceService(session, actor)
-        skill, _ = await _publish(service, resource_type="skill", slug="snapshot-skill", storage_kind="filesystem", content={"name": "snapshot-skill", "description": "frozen skill"})
-        agent, _ = await _publish(service, resource_type="agent", slug="snapshot-agent", storage_kind="filesystem", content={"name": "snapshot-agent", "description": "frozen agent"})
-        workflow, _ = await _publish(service, resource_type="workflow", slug="snapshot-freeze", storage_kind="database", content=MINIMAL_DEFINITION)
+        skill, _ = await publish_resource(service, resource_type="skill", slug="snapshot-skill", storage_kind="filesystem", content={"name": "snapshot-skill", "description": "frozen skill"})
+        agent, _ = await publish_resource(service, resource_type="agent", slug="snapshot-agent", storage_kind="filesystem", content={"name": "snapshot-agent", "description": "frozen agent"})
+        workflow, _ = await publish_resource(service, resource_type="workflow", slug="snapshot-freeze", storage_kind="database", content=MINIMAL_DEFINITION)
         await service.replace_dependencies(agent.id, [skill.id])
         await service.replace_dependencies(workflow.id, [agent.id])
         await session.commit()
         return {"workflow": workflow.id, "agent": agent.id, "skill": skill.id}
-
-
-async def _publish(service: ResourceService, *, resource_type: str, slug: str, storage_kind: str, content: dict):
-    resource = await service.create_resource(
-        resource_type=resource_type,
-        slug=slug,
-        display_name=slug,
-        storage_kind=storage_kind,
-    )
-    await service.save_draft(
-        resource.id,
-        expected_revision=resource.draft_revision,
-        content_hash=_json_hash(content),
-        storage_key=f"{resource.storage_key}/versions/1",
-        content=content,
-    )
-    # save_draft bumps draft_revision in-session; publish must observe it.
-    version = await service.publish(resource.id, expected_draft_revision=resource.draft_revision, scan_result={})
-    return resource, version
 
 
 async def _publish_new_version(durable_store, resource_id: str, content: dict) -> int:

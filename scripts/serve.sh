@@ -493,6 +493,25 @@ run_service() {
 mkdir -p logs
 mkdir -p temp/client_body_temp temp/proxy_temp temp/fastcgi_temp temp/uwsgi_temp temp/scgi_temp
 
+# 0. Database migrations
+# Single unified chain (control-plane + runtime revisions, joined by the
+# merge revision 20260908_unify_migration_chains, one ``alembic_version``
+# table). env.py resolves the database URL from config.yaml exactly like the
+# Gateway engine (sqlite_dir/deerflow.db, anchored at backend/), so this and
+# the Gateway auto-upgrade converge on one database file.
+echo "Running database migrations..."
+(cd "$REPO_ROOT/backend" && uv run alembic -c packages/harness/deerflow/persistence/migrations/alembic.ini upgrade head) || { echo "✗ Database migrations failed"; cleanup 1; }
+echo "✓ Database migrations completed"
+
+# ── Runtime state directory continuity ───────────────────────────────────────
+# Existing pre-convergence installs keep their backend/.ideer state directory:
+# when DEER_FLOW_HOME was not set explicitly and the legacy directory exists,
+# adopt it so memory, agents, threads and skills views stay with the data
+# written by the legacy runtime. Fresh installs default to .deer-flow.
+if [ -z "${DEER_FLOW_HOME:-}" ] && [ -d "$REPO_ROOT/backend/.ideer" ]; then
+    export DEER_FLOW_HOME="$REPO_ROOT/backend/.ideer"
+fi
+
 # 1. Gateway API
 run_service "Gateway" \
     "cd backend && PYTHONPATH=. uv run --no-sync uvicorn app.gateway.app:app --host 0.0.0.0 --port 8001 $GATEWAY_EXTRA_FLAGS > ../logs/gateway.log 2>&1" \

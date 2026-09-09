@@ -70,7 +70,15 @@ class ReadabilityExtractor:
                 stderr_info,
                 exc_info=True,
             )
-            article = simple_json_from_html_string(html, use_readability=False)
+            try:
+                article = simple_json_from_html_string(html, use_readability=False)
+            except (IndexError, TypeError, ValueError) as fallback_exc:
+                logger.warning(
+                    "Pure-Python readability extraction failed with %s; using empty article",
+                    type(fallback_exc).__name__,
+                    exc_info=True,
+                )
+                article = {}
 
         html_content = article.get("content")
         if not html_content or not str(html_content).strip():

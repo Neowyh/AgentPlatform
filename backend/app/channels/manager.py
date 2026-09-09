@@ -461,6 +461,33 @@ def _thread_channel_metadata(msg: InboundMessage) -> dict[str, Any]:
     return {"channel_source": channel_source}
 
 
+def _format_uploaded_files_block(files: list[dict[str, Any]]) -> str:
+    """Render uploaded-file metadata for the model without exposing host paths."""
+    lines = [
+        "<uploaded_files>",
+        "The following files were uploaded in this message:",
+        "",
+    ]
+    if not files:
+        lines.append("(empty)")
+    else:
+        for file_info in files:
+            filename = file_info.get("filename", "")
+            size = int(file_info.get("size") or 0)
+            size_kb = size / 1024 if size else 0
+            size_str = f"{size_kb:.1f} KB" if size_kb < 1024 else f"{size_kb / 1024:.1f} MB"
+            path = file_info.get("path", "")
+            file_kind = "image" if file_info.get("is_image") else "file"
+            lines.append(f"- {filename} ({size_str})")
+            lines.append(f"  Type: {file_kind}")
+            lines.append(f"  Path: {path}")
+            lines.append("")
+    lines.append("Use `read_file` for text-based files and documents.")
+    lines.append("Use `view_image` for image files (jpg, jpeg, png, webp) so the model can inspect the image content.")
+    lines.append("</uploaded_files>")
+    return "\n".join(lines)
+
+
 def _extract_text_content(content: Any) -> str:
     """Extract text from a streaming payload content field."""
     if isinstance(content, str):

@@ -29,6 +29,7 @@ from app.agentplatform.workflows.v2.parser import parse_workflow_v2
 from app.agentplatform.workflows.v2.store import WorkflowV2Store
 from app.agentplatform.workflows.v2.worker import WorkflowPaused, WorkflowWorker, workflow_snapshot
 from deerflow.persistence.base import Base
+from deerflow.persistence.migrations._chain_meta import version_locations
 from deerflow.persistence.models.workflow_v2 import WorkflowLeaseAuditRow, WorkflowTaskRow
 
 _APPROVAL_WORKFLOW = """
@@ -319,10 +320,15 @@ async def test_concurrent_claims_never_duplicate_a_task(durable_store: WorkflowV
 @pytest.mark.serial
 def test_v1_runs_stay_readable_but_active_runs_are_failed_by_the_v2_migration(tmp_path: Path) -> None:
     """Upgrade a real v1 database instead of asserting migration call shapes."""
-    migrations_dir = Path(__file__).resolve().parents[3] / "app" / "agentplatform" / "persistence" / "migrations"
+    # The unified chain (PATCH-006 closure) retired the control-plane
+    # alembic.ini/env.py entry; revisions are reached through the single
+    # deerflow script_location plus the merged version_locations.
+    migrations_dir = Path(__file__).resolve().parents[3] / "packages" / "harness" / "deerflow" / "persistence" / "migrations"
     db_path = tmp_path / "legacy.db"
-    config = AlembicConfig(str(migrations_dir / "alembic.ini"))
+    config = AlembicConfig()
     config.set_main_option("script_location", str(migrations_dir))
+    config.set_main_option("path_separator", "space")
+    config.set_main_option("version_locations", version_locations(migrations_dir))
     config.set_main_option("sqlalchemy.url", f"sqlite+aiosqlite:///{db_path}")
     upgrade(config, "9a8b7c6d5e4f")
 

@@ -43,11 +43,15 @@ class VerifiedEnvelope:
 
 
 def _canonical(value: Any) -> bytes:
-    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return json.dumps(
+        value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
 
 
 def public_key_text(private_key: Ed25519PrivateKey) -> str:
-    return base64.urlsafe_b64encode(private_key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)).decode("ascii")
+    return base64.urlsafe_b64encode(
+        private_key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+    ).decode("ascii")
 
 
 def new_session_id() -> str:
@@ -79,7 +83,9 @@ def sign_envelope(
         "payload_hash": hashlib.sha256(_canonical(payload)).hexdigest(),
     }
     signed = dict(unsigned)
-    signed["signature"] = base64.urlsafe_b64encode(private_key.sign(_canonical(unsigned))).decode("ascii")
+    signed["signature"] = base64.urlsafe_b64encode(
+        private_key.sign(_canonical(unsigned))
+    ).decode("ascii")
     return signed
 
 
@@ -90,11 +96,16 @@ def verify_envelope(
     expected_device_id: str,
     expected_session_id: str,
 ) -> VerifiedEnvelope:
-    if message.get("device_id") != expected_device_id or message.get("session_id") != expected_session_id:
+    if (
+        message.get("device_id") != expected_device_id
+        or message.get("session_id") != expected_session_id
+    ):
         raise ProtocolError("SESSION_MISMATCH")
     try:
         expires_at = datetime.fromisoformat(str(message["expires_at"]))
-        expires_at = expires_at.replace(tzinfo=UTC) if expires_at.tzinfo is None else expires_at
+        expires_at = (
+            expires_at.replace(tzinfo=UTC) if expires_at.tzinfo is None else expires_at
+        )
         if expires_at <= datetime.now(UTC):
             raise ProtocolError("MESSAGE_EXPIRED")
         payload = dict(message["payload"])
@@ -106,7 +117,9 @@ def verify_envelope(
 
         unsigned = dict(message)
         unsigned.pop("signature", None)
-        Ed25519PublicKey.from_public_bytes(public_key).verify(signature, _canonical(unsigned))
+        Ed25519PublicKey.from_public_bytes(public_key).verify(
+            signature, _canonical(unsigned)
+        )
         return VerifiedEnvelope(
             MessageType(message["type"]),
             expected_device_id,

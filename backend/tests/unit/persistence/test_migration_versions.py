@@ -42,8 +42,29 @@ class _BatchOpRecorder:
         self.created_checks.append((constraint_name, condition))
 
 
+class _FakeInspector:
+    def __init__(self, existing: list[str] | None = None):
+        self.existing = existing or []
+
+    def get_table_names(self):
+        return list(self.existing)
+
+    def get_columns(self, table_name: str):
+        return []
+
+    def get_indexes(self, table_name: str):
+        return []
+
+
 class _OpRecorder:
-    def __init__(self):
+    """Record alembic op calls. ``existing_tables`` feeds the inspector guard
+    that some revisions consult before ``create_table`` (unified-chain
+    replay safety); an empty set means the guard lets every DDL through, so
+    the recorder sees exactly the same ops as before the guards existed.
+    """
+
+    def __init__(self, existing_tables: list[str] | None = None):
+        self.inspector = _FakeInspector(existing_tables)
         self.executed_sql: list[str] = []
         self.created_tables: list[tuple[str, tuple[object, ...]]] = []
         self.dropped_tables: list[str] = []
@@ -55,6 +76,9 @@ class _OpRecorder:
 
     def execute(self, sql: str):
         self.executed_sql.append(sql)
+
+    def get_bind(self):
+        return None
 
     def create_table(self, table_name: str, *columns):
         self.created_tables.append((table_name, columns))
@@ -111,6 +135,7 @@ def test_not_null_constraints_migration_backfills_and_toggles_nullable(monkeypat
 
 def test_missing_core_tables_migration_declares_tables_indexes_and_drop_order(monkeypatch):
     migration = _load("c4d5e6f7a8b9_add_missing_core_tables")
+    monkeypatch.setattr(migration.sa, "inspect", lambda bind: op.inspector)
     op = _OpRecorder()
     monkeypatch.setattr(migration, "op", op)
 
@@ -161,6 +186,7 @@ def test_resource_tables_migration_declares_indexes_and_drop_order(monkeypatch):
 
 def test_departments_users_ext_migration_declares_tables_and_drop_order(monkeypatch):
     migration = _load("16147afec43b_add_departments_and_users_ext_tables")
+    monkeypatch.setattr(migration.sa, "inspect", lambda bind: op.inspector)
     op = _OpRecorder()
     monkeypatch.setattr(migration, "op", op)
 
@@ -241,6 +267,7 @@ def test_audit_logs_migration_declares_indexes_and_drop_order(monkeypatch):
 
 def test_users_ext_disabled_migration_adds_column_indexes_and_reverses(monkeypatch):
     migration = _load("f3a2b1c4d5e6_add_disabled_column_and_indexes")
+    monkeypatch.setattr(migration.sa, "inspect", lambda bind: op.inspector)
     op = _OpRecorder()
     monkeypatch.setattr(migration, "op", op)
 

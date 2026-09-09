@@ -9,12 +9,17 @@ from __future__ import annotations
 import importlib.util
 import os
 import sys
+import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
+
+_TEST_RUNTIME = tempfile.TemporaryDirectory(prefix="ideer-test-runtime-")
+_TEST_RUNTIME_PATH = Path(_TEST_RUNTIME.name)
+
 
 # Make 'app' and 'deerflow' importable from any working directory
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -279,3 +284,24 @@ def isolated_app(isolated_deer_flow_home: Path, monkeypatch: pytest.MonkeyPatch)
     from app.gateway.app import create_app
 
     return create_app()
+
+
+@pytest.fixture(autouse=True)
+def _test_runtime_config(monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest) -> None:
+    if request.path.name.startswith("test_app_config"):
+        return
+    if os.getenv("DEER_FLOW_CONFIG_PATH"):
+        return
+
+    config_path = _TEST_RUNTIME_PATH / "config.yaml"
+    if not config_path.is_file():
+        repo_root = Path(__file__).resolve().parents[2]
+        config_path.write_text(
+            (repo_root / "config.example.yaml").read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+    monkeypatch.setenv("DEER_FLOW_CONFIG_PATH", str(config_path))
+    monkeypatch.setenv("DEER_FLOW_HOME", str(_TEST_RUNTIME_PATH / "home"))
+    extensions_path = _TEST_RUNTIME_PATH / "extensions_config.json"
+    extensions_path.write_text('{"mcpServers": {}, "skills": {}}', encoding="utf-8")
+    monkeypatch.setenv("DEER_FLOW_EXTENSIONS_CONFIG_PATH", str(extensions_path))

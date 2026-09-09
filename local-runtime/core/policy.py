@@ -20,8 +20,10 @@ class LocalPolicy:
     always_allow_capabilities: frozenset[str] = field(default_factory=frozenset)
     dangerous_capabilities: frozenset[str] = field(default_factory=frozenset)
 
-    def authorize(self, capability: str, payload: dict[str, Any], *, consent: bool = False) -> PolicyDecision:
-        del payload
+    def authorize(
+        self, capability: str, payload: dict[str, Any], *, consent: bool = False
+    ) -> PolicyDecision:
+        del payload  # The policy seam receives the exact payload for future rules.
         if capability in self.denied_capabilities:
             return PolicyDecision.DENY
         if capability in self.dangerous_capabilities:

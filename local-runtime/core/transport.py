@@ -76,7 +76,9 @@ class LocalRuntimeClient:
                 "policy_hash": self.policy_hash,
             },
         )
-        await self.connection.send(json.dumps(hello, ensure_ascii=False, separators=(",", ":")))
+        await self.connection.send(
+            json.dumps(hello, ensure_ascii=False, separators=(",", ":"))
+        )
 
     async def send_capability_update(self) -> None:
         """Publish the current device capability set to the server registry."""
@@ -173,7 +175,9 @@ class LocalRuntimeClient:
         payload = dict(envelope.payload)
         decision = self.policy.authorize("echo", payload)
         status = "completed" if decision == PolicyDecision.ALLOW else decision.value
-        result_hash = content_hash(payload) if decision == PolicyDecision.ALLOW else None
+        result_hash = (
+            content_hash(payload) if decision == PolicyDecision.ALLOW else None
+        )
         return LocalExecutionReceipt(
             run_id=str(payload.get("run_id", "")),
             task_id=task_id,
@@ -183,7 +187,6 @@ class LocalRuntimeClient:
             payload_hash=content_hash(payload),
             result_hash=result_hash,
         )
-
     def handle_file_task(self, capability: str, payload: dict[str, Any], *, consent: bool = False) -> FileTaskResult:
         """Execute a list/read task through the configured logical-root store."""
         if capability not in {"local.files.list", "local.files.read"}:
