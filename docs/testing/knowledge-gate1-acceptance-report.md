@@ -180,6 +180,28 @@ HTTP 层无真实服务；Windows 侧探测同样不通）。断网 leg 以同�
 缺陷 B 建议修复环境泄漏或为标准 lane 提供 `-p no:cacheprovider` 级别的隔离）。本票改动的影响面
 由聚焦测试（864 passed）与影响分析（`_tool_error` 单一上游调用方，LOW risk）覆盖。
 
+### 6.2 后续修复记录（同日）
+
+两处挂死阻塞已修复（commit `c7032ef7`）：根因是合并丢失实现——a956bbc03 的 GET/POST 路由分离
+与 405 action 守卫、b53c1ae0e 的 store-only 202 与 `_compute_retry_after`、8a78c264b 的
+`wait_for_run_completion`，测试留存而实现被覆盖。按当前架构恢复后：
+
+- `tests/test_multi_worker_run_ownership.py` 91 passed（原挂死 + 被遮挡的 5 个失败全部修复）
+- `tests/test_stream_get_action_rejected.py` + `test_openapi_operation_ids.py` + `test_sse_observer_disconnect.py` 全绿
+- 根 conftest 为裸 `@pytest.mark.requires_llm` marker 注册 skip 语义（CI/无 key 运行时判定），
+  CI 模式下 client e2e 双文件 3.2s 完成（22 skipped），不再真实调用 LLM
+- 全量 lane 从"挂死无法完成"变为 17.5 分钟完整跑通（24841 passed / 912 failed / 64 errors）
+
+§6.1 所述"环境泄漏"经复测证伪：为验收时 `-k` 命中两个文件同名测试导致的误读（passed 的来自
+无 skip 语义的 integration 版），skipif 本身未失效。
+
+912 failed / 64 errors 为仓库既有的测试-实现漂移（与本票改动无关，基线对照 channels +
+threads_router 190 failed 完全一致）：PAT `auth_source` 中间件接线缺失、regenerate prepare
+三个 handler 丢失（`_prepare_regenerate_payload` 等特性级恢复，建议独立票）、workflow V2 真实
+DB leg 挂起（Agent A 线）、`python-docx` 依赖未声明、thread_id 契约扫描依赖完整 app.state。
+另 `tests/unit/scripts/test_intranet_deploy_scripts.py::test_package_manifest_records_custom_skills_and_exclusion`
+在本机执行真实打包脚本耗时超过 10 分钟（CI 干净树适用，本机建议跳过）。
+
 ## 附录：验收命令与退出码
 
 ```text
