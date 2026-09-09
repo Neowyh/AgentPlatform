@@ -113,3 +113,16 @@ docs/zero_agent_eval_cases/outputs/
 temp/
 .monocle/
 .entry-parity-routes.txt
+
+# Local runtime data (contains .jwt_secret and per-user state; never track)
+.deer-flow/
+
+# Tool state directories
+.ua/
+.workbuddy/
+.zcode/
+
+# Root-level dependency and test artifacts
+node_modules/
+/test-results/
+frontend/dev-log/
