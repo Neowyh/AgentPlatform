@@ -75,6 +75,10 @@ dev = [
     # TUI runtime dep (also declared as the deerflow-harness[tui] extra); kept in
     # the dev group so the terminal workbench can be run and tested locally / in CI.
     "textual>=0.80",
+    # python-docx is an optional runtime enhancement (docx_rich degrades without
+    # it); pinned in the dev group so the file-conversion tests can always
+    # exercise the docx parsing path without forcing it onto production installs.
+    "python-docx>=1.1.2",
 ]
 
 [tool.pytest.ini_options]
