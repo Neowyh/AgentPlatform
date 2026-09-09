@@ -38,6 +38,7 @@ class PairingChallenge:
 @dataclass(frozen=True)
 class RegisteredDevice:
     device: DeviceModel
+    session_id: str
     session_token: str
     session_expires_at: datetime
 
@@ -101,14 +102,8 @@ class DeviceControlService:
         token = secrets.token_urlsafe(32)
         session_expires_at = datetime.now(UTC) + DEVICE_SESSION_TTL
         self.session.add(device)
-        self.session.add(
-            DeviceSessionModel(
-                id=str(uuid4()),
-                device_id=device.id,
-                token_digest=hash_secret(token),
-                expires_at=session_expires_at,
-            )
-        )
+        session_id = str(uuid4())
+        self.session.add(DeviceSessionModel(id=session_id, device_id=device.id, token_digest=hash_secret(token), expires_at=session_expires_at))
         pairing.status = PairingStatus.CLAIMED
         pairing.claimed_at = datetime.now(UTC)
         pairing.device_id = device.id
@@ -118,7 +113,7 @@ class DeviceControlService:
             await self.session.rollback()
             raise DeviceControlError("DEVICE_ALREADY_REGISTERED", "device name or public key is already registered", 409) from exc
         await self.session.refresh(device)
-        return RegisteredDevice(device, token, session_expires_at)
+        return RegisteredDevice(device, session_id, token, session_expires_at)
 
     async def list_devices(self, *, owner_id: str | None = None) -> list[DeviceModel]:
         stmt = select(DeviceModel).order_by(DeviceModel.created_at.desc())

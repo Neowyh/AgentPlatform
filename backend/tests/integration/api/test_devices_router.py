@@ -2,11 +2,14 @@ from collections.abc import AsyncIterator
 
 import pytest
 import pytest_asyncio
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.agentplatform.rbac_models import UserModel
+from app.device_control.broker import get_device_broker
+from app.device_control.protocol import MessageType, TaskEnvelope, public_key_text, sign_envelope
 from app.gateway.authz import get_current_rbac_user
 from app.gateway.routers import devices
 from deerflow.persistence.base import Base
@@ -74,3 +77,78 @@ async def test_device_http_gate_covers_pair_online_offline_revoke(device_factory
         denied = client.post(f"/api/devices/{device_id}/heartbeat", headers={"X-Device-Session": token}, json={})
         assert denied.status_code == 403
         assert denied.json()["detail"]["code"] == "DEVICE_REVOKED"
+
+
+@pytest.mark.asyncio
+async def test_websocket_device_initiates_and_receives_signed_echo_receipt(device_factory) -> None:
+    app = FastAPI()
+    app.include_router(devices.router)
+    owner = UserModel(id="owner", username="owner@example.com", role="user")
+    app.dependency_overrides[get_current_rbac_user] = lambda: owner
+    broker = get_device_broker()
+    broker.connections.clear()
+    broker.tasks.clear()
+    device_key = Ed25519PrivateKey.generate()
+
+    with TestClient(app) as client:
+        pairing = client.post("/api/devices/pairing").json()
+        registered = client.post(
+            "/api/devices/register",
+            json={
+                "pairing_code": pairing["code"],
+                "name": "Broker laptop",
+                "public_key": public_key_text(device_key.public_key()),
+                "protocol_version": "1",
+                "runtime_version": "0.1.0",
+                "capabilities": ["echo"],
+            },
+        ).json()
+        device = registered["device"]
+        session_id = registered["session_id"]
+        token = registered["session_token"]
+
+        with client.websocket_connect("/api/devices/ws") as websocket:
+            hello = sign_envelope(
+                private_key=device_key,
+                message_type=MessageType.HELLO,
+                device_id=device["id"],
+                session_id=session_id,
+                payload={
+                    "session_token": token,
+                    "public_key": public_key_text(device_key.public_key()),
+                    "protocol_version": "1",
+                    "runtime_version": "0.1.0",
+                    "capabilities": ["echo"],
+                },
+            )
+            websocket.send_text(hello.model_dump_json(by_alias=True))
+            server_hello = TaskEnvelope.model_validate_json(websocket.receive_text())
+            assert server_hello.type == MessageType.HELLO
+
+            dispatched = client.post(
+                f"/api/devices/{device['id']}/tasks/echo",
+                json={"run_id": "run-echo", "tool_call_id": "tool-echo", "value": "hello"},
+            ).json()
+            task = TaskEnvelope.model_validate_json(websocket.receive_text())
+            task.verify(public_key=broker.server_private_key.public_key(), expected_device_id=device["id"], expected_session_id=session_id)
+            assert task.task_id == dispatched["task_id"]
+
+            for message_type, payload in (
+                (MessageType.TASK_ACK, {"accepted": True}),
+                (MessageType.TASK_PROGRESS, {"fraction": 1.0}),
+                (MessageType.TASK_RESULT, {"receipt": {"status": "completed", "task_id": task.task_id}}),
+            ):
+                response = sign_envelope(
+                    private_key=device_key,
+                    message_type=message_type,
+                    device_id=device["id"],
+                    session_id=session_id,
+                    task_id=task.task_id,
+                    payload=payload,
+                )
+                websocket.send_text(response.model_dump_json(by_alias=True))
+
+            status = client.get(f"/api/devices/tasks/{task.task_id}")
+            assert status.status_code == 200
+            assert status.json()["status"] == "completed"
+            assert status.json()["receipt"]["task_id"] == task.task_id

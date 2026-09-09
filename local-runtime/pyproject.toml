@@ -1,0 +1,9 @@
+[project]
+name = "ideer-local-runtime"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = ["cryptography>=43", "websockets>=14"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
