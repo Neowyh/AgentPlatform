@@ -66,7 +66,7 @@ class LocalRuntimeClient:
             session_id=self.session_id,
             payload={
                 "session_token": self.session_token,
-                "public_key": public_key_text(self.private_key.public_key()),
+                "public_key": public_key_text(self.private_key),
                 "protocol_version": self.protocol_version,
                 "runtime_version": self.runtime_version,
                 "capabilities": list(self.capabilities),

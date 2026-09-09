@@ -68,6 +68,8 @@ def sign_envelope(
     task_id: str | None = None,
 ) -> dict[str, Any]:
     issued_at = datetime.now(UTC)
+    issued_at_text = issued_at.isoformat().replace("+00:00", "Z")
+    expires_at_text = (issued_at + timedelta(minutes=5)).isoformat().replace("+00:00", "Z")
     unsigned = {
         "protocol": "1",
         "type": message_type.value,
@@ -75,8 +77,8 @@ def sign_envelope(
         "device_id": device_id,
         "session_id": session_id,
         "task_id": task_id,
-        "issued_at": issued_at.isoformat(),
-        "expires_at": (issued_at + timedelta(minutes=5)).isoformat(),
+        "issued_at": issued_at_text,
+        "expires_at": expires_at_text,
         "payload": payload,
         "payload_hash": hashlib.sha256(_canonical(payload)).hexdigest(),
     }

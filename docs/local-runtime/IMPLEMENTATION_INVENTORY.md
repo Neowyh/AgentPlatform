@@ -1,8 +1,7 @@
 # Local Runtime implementation inventory
 
 This inventory records the current code seams used by the M7 implementation.
-Paths and symbols were checked against the current branch before device code was
-added.
+Paths and symbols below are implemented on the M7 branch.
 
 | Concern | Current location | Symbol / evidence | M7 use |
 | --- | --- | --- | --- |
@@ -19,16 +18,16 @@ added.
 | Workflow evidence | `backend/app/agentplatform/workflows/v2/store.py` and `backend/app/workflow_worker.py` | `_canonical_run_evidence`, `_workflow_run_evidence_context` | Preserve run ownership and receipt lineage |
 | Existing run cancellation | `backend/app/gateway/routers/thread_runs.py`, `backend/app/gateway/routers/runs.py` | run lifecycle request/response models and handlers | Parent semantics for local task cancel/expiry |
 | Extension loading | `backend/packages/harness/deerflow/extensions/` and `backend/app/gateway/app.py` | extension loader plus `_configure_extensions` | Keep Local Runtime integration outside harness patches |
+| Device control plane | `backend/app/device_control/` | `models.py`, `pairing.py`, `protocol.py`, `broker.py`, `service.py` | Pairing, owner confirmation, sessions, signed broker, and lifecycle |
+| Device HTTP API | `backend/app/gateway/routers/devices.py` | pairing, register/complete, lifecycle, task, and WebSocket routes | Browser and runtime control plane boundary |
+| Device persistence | `backend/app/agentplatform/persistence/migrations/versions/20260909_device_control_plane.py` | device, pairing, and session tables | Durable ownership and one-time claims |
+| Local Runtime client | `local-runtime/core/transport.py` | `LocalRuntimeClient` | Outbound WebSocket HELLO and signed echo execution |
+| Local Runtime protocol | `local-runtime/core/protocol.py` | envelope signing and verification | Wire-compatible signed messages |
 | Test helpers | `backend/tests/conftest.py`, `backend/tests/_gateway_e2e_env.py`, `backend/tests/_router_auth_helpers.py` | database, app, and authenticated-client fixtures | Device and protocol test setup |
 
-## Planned M7 files
-
-The implementation should add a focused `backend/app/device_control/` package
-for models, pairing, lifecycle, protocol, and broker services, plus thin
-routers and migrations. It should add `local-runtime/` as a top-level Python
-client skeleton. No code under `backend/packages/harness/deerflow/` is required
-for the control-plane boundary; any exception must be recorded in the upstream
-patch ledger before editing.
+The M7 implementation keeps the control plane outside
+`backend/packages/harness/deerflow/`. The only shared harness changes are the
+test-lane hardening recorded in [PATCH_LEDGER.md](PATCH_LEDGER.md).
 
 ## Reusable behavior
 
