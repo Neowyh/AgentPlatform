@@ -1,7 +1,7 @@
 """add device identity, pairing, and session tables
 
 Revision ID: 20260909_device_control_plane
-Revises: 20260828_run_snapshot_selection_role
+Revises: 20260908_unify_migration_chains
 """
 
 from collections.abc import Sequence
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "20260909_device_control_plane"
-down_revision: str | None = "20260828_run_snapshot_selection_role"
+down_revision: str | None = "20260908_unify_migration_chains"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
