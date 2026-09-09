@@ -9,13 +9,13 @@ from agentplatform_extension.local_runtime import (
 
 
 def _authorization() -> LocalAuthorization:
-    values = frozenset({"local.files.read", "local.python"})
+    values = frozenset({"local.files.list", "local.files.read"})
     return LocalAuthorization(*(values,) * 6, device_online=True)
 
 
 def test_tools_are_hidden_when_device_is_offline_and_intersection_is_strict() -> None:
     auth = _authorization()
-    assert {tool.name for tool in assemble_local_tools(auth)} == {"local.files.read", "local.python"}
+    assert {tool.name for tool in assemble_local_tools(auth)} == {"local.files.list", "local.files.read"}
     assert assemble_local_tools(LocalAuthorization()) == ()
 
 
@@ -28,7 +28,7 @@ def test_route_is_frozen_and_child_cannot_expand_capabilities() -> None:
         pass
     else:
         raise AssertionError("route must be frozen")
-    assert child_authorization(_authorization(), {"local.python", "local.files.write"}).effective == {"local.python"}
+    assert child_authorization(_authorization(), {"local.python", "local.files.write"}).effective == set()
 
 
 def test_local_filter_preserves_server_tools_and_drops_unauthorized_local_tools() -> None:

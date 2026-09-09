@@ -164,6 +164,8 @@ class DeviceBroker:
         )
         if envelope.type == MessageType.HEARTBEAT:
             return None
+        if envelope.type == MessageType.CAPABILITY_UPDATE:
+            return None
         if envelope.task_id is None:
             raise ProtocolError("TASK_ID_REQUIRED", "task lifecycle messages require task_id")
         record = self._task(envelope.task_id)

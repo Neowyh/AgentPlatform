@@ -16,8 +16,6 @@ class LocalTool:
 LOCAL_TOOLS = (
     LocalTool("local.files.list", "List files under an explicitly allowed local root."),
     LocalTool("local.files.read", "Read a file under an explicitly allowed local root."),
-    LocalTool("local.files.write", "Write a file after local consent."),
-    LocalTool("local.python", "Run a Python task under an allowed local root."),
 )
 
 

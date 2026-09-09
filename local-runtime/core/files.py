@@ -19,7 +19,7 @@ class RootConfig:
 
     def __post_init__(self) -> None:
         logical = "/" + self.logical_root.strip("/")
-        if logical == "/":
+        if logical == "/" or "\\" in logical or ".." in logical.split("/"):
             raise ValueError("logical root must be named")
         object.__setattr__(self, "logical_root", logical)
         object.__setattr__(self, "physical_root", Path(self.physical_root).resolve(strict=False))
@@ -33,7 +33,13 @@ class LocalFileStore:
         if not logical_path.startswith("/") or "\\" in logical_path:
             raise FileAccessError("invalid logical path")
         normalized = os.path.normpath(logical_path.replace("\\", "/"))
-        matches = [r for r in self.roots if normalized == r.logical_root or normalized.startswith(r.logical_root + "/")]
+        normalized_key = os.path.normcase(normalized)
+        matches = [
+            r
+            for r in self.roots
+            if normalized_key == os.path.normcase(r.logical_root)
+            or normalized_key.startswith(os.path.normcase(r.logical_root + "/"))
+        ]
         if not matches:
             raise FileAccessError("outside allowed roots")
         root = max(matches, key=lambda item: len(item.logical_root))

@@ -33,7 +33,7 @@ class LocalRuntimeClient:
         session_id: str | None = None,
         protocol_version: str = "1",
         runtime_version: str = "0.1.0",
-        capabilities: tuple[str, ...] = ("echo",),
+        capabilities: tuple[str, ...] | None = None,
         policy_hash: str | None = None,
         server_public_key: str | None = None,
         policy: LocalPolicy | None = None,
@@ -46,7 +46,11 @@ class LocalRuntimeClient:
         self.private_key = private_key
         self.protocol_version = protocol_version
         self.runtime_version = runtime_version
-        self.capabilities = capabilities
+        self.capabilities = capabilities if capabilities is not None else (
+            ("echo", "local.files.list", "local.files.read")
+            if file_service is not None
+            else ("echo",)
+        )
         self.policy_hash = policy_hash
         self.server_public_key = server_public_key
         self.policy = policy or LocalPolicy()
@@ -193,4 +197,5 @@ class LocalRuntimeClient:
             raise ValueError("unsupported local file capability")
         if self.file_service is None:
             raise RuntimeError("file_service is required for local file tasks")
-        return self.file_service.execute(capability, payload, consent=consent)
+        del consent  # File reads are Level 0 and never require a consent round trip.
+        return self.file_service.execute(capability, payload)

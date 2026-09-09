@@ -273,7 +273,7 @@ async def device_websocket(websocket: WebSocket) -> None:
         while True:
             message = TaskEnvelope.model_validate_json(await websocket.receive_text())
             await broker.receive(connection, message)
-            if message.type == MessageType.HEARTBEAT:
+            if message.type in {MessageType.HEARTBEAT, MessageType.CAPABILITY_UPDATE}:
                 sf = get_session_factory()
                 if sf is None:
                     raise ProtocolError("PERSISTENCE_UNAVAILABLE", "device persistence is unavailable")

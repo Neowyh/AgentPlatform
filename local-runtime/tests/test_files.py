@@ -6,6 +6,12 @@ import pytest
 from core.files import FileAccessError, LocalFileStore, RootConfig
 
 
+@pytest.mark.parametrize("logical_root", ["/", "/../outside", r"\\server\share"])
+def test_root_names_must_be_logical_names(tmp_path: Path, logical_root: str) -> None:
+    with pytest.raises(ValueError, match="logical root must be named"):
+        RootConfig(logical_root, tmp_path)
+
+
 def test_list_and_read_expose_only_logical_paths(tmp_path: Path) -> None:
     root = tmp_path / "Projects"
     root.mkdir()
