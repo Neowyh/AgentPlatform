@@ -14,34 +14,73 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import uuid
+from copy import deepcopy
 from datetime import UTC, datetime
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response, StreamingResponse
+from langchain_core.messages import BaseMessage
 from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
 
 from app.gateway.artifact_archive import ArtifactArchiveError, ArtifactArchiveResult, build_artifact_archive
 from app.gateway.authz import require_cancel_permission_if, require_permission
-from app.gateway.deps import get_checkpointer, get_current_user, get_feedback_repo, get_run_event_store, get_run_manager, get_run_store, get_stream_bridge
+from app.gateway.checkpoint_lineage import (
+    CheckpointLineageError,
+    CheckpointParentMissingError,
+    checkpoint_configurable,
+    checkpoint_messages,
+    find_checkpoint_before_message,
+    find_checkpoint_before_message_chronologically,
+    is_duration_only_checkpoint,
+)
+from app.gateway.deps import get_current_user, get_feedback_repo, get_run_event_store, get_run_manager, get_run_store, get_stream_bridge
 from app.gateway.internal_auth import get_trusted_internal_owner_user_id
-from app.gateway.services import sse_consumer, start_run, wait_for_run_completion
+from app.gateway.services import build_checkpoint_state_accessor, build_thread_checkpoint_state_accessor, sse_consumer, start_run, wait_for_run_completion
 from app.gateway.utils import sanitize_log_param
+from deerflow.agents.middlewares.dynamic_context_middleware import strip_injected_user_message_id_suffix
 from deerflow.authz.sandbox_authz import safe_app_config_async
 from deerflow.config.paths import get_paths, make_safe_user_id
 from deerflow.runtime import CancelOutcome, ConflictError, RunRecord, RunStatus, ThreadOperationKind, serialize_channel_values
 from deerflow.runtime.secret_context import redact_config_secrets, redact_metadata_secrets
 from deerflow.runtime.user_context import get_effective_user_id
+from deerflow.utils.messages import ORIGINAL_USER_CONTENT_KEY, get_original_user_content_text, message_to_text
 from deerflow.utils.thread_id import ThreadId
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/threads", tags=["runs"])
 _artifact_archive_slots = asyncio.Semaphore(4)
+REGENERATE_HISTORY_SCAN_LIMIT = 200
+REGENERATE_HISTORY_RAW_SCAN_LIMIT = REGENERATE_HISTORY_SCAN_LIMIT * 2
+_MISSING_REGENERATE_BASE_DETAIL = "Could not find an addressable checkpoint before the target user message"
+_UNSAFE_REGENERATE_LINEAGE_DETAIL = "Could not safely resolve the checkpoint before the target user message"
 
 
 class ArtifactArchiveManifestResponse(BaseModel):
     file_count: int
+
+
+class RegeneratePrepareRequest(BaseModel):
+    message_id: str = Field(..., min_length=1, description="Assistant message id to regenerate")
+
+
+class RegeneratePrepareResponse(BaseModel):
+    input: dict[str, Any]
+    checkpoint: dict[str, Any]
+    metadata: dict[str, Any]
+    target_run_id: str
+
+
+class EditRegeneratePrepareRequest(BaseModel):
+    human_message_id: str = Field(..., min_length=1, description="Source human message id to edit and rerun")
+    replacement_text: str = Field(..., min_length=1, description="Replacement user-visible text")
+
+
+class EditRegeneratePrepareResponse(RegeneratePrepareResponse):
+    replacement_human_message_id: str
+    source_message_ids: list[str]
 
 
 # ---------------------------------------------------------------------------
@@ -224,9 +263,384 @@ async def _response_with_message_summary(record: RunRecord, event_store) -> RunR
     return response
 
 
+def _message_id(message: Any) -> str | None:
+    value = getattr(message, "id", None)
+    if value is None and isinstance(message, dict):
+        value = message.get("id")
+    return str(value) if value else None
+
+
+def _message_type(message: Any) -> str | None:
+    value = getattr(message, "type", None)
+    if value is None and isinstance(message, dict):
+        value = message.get("type") or message.get("role")
+    return "ai" if value == "assistant" else str(value) if value else None
+
+
+def _message_name(message: Any) -> str | None:
+    value = getattr(message, "name", None)
+    if value is None and isinstance(message, dict):
+        value = message.get("name")
+    return str(value) if value else None
+
+
+def _message_content(message: Any) -> Any:
+    return message.get("content") if isinstance(message, dict) else getattr(message, "content", None)
+
+
+def _message_text(message: Any) -> str:
+    return message_to_text(message)
+
+
+def _message_additional_kwargs(message: Any) -> dict[str, Any]:
+    value = getattr(message, "additional_kwargs", None)
+    if value is None and isinstance(message, dict):
+        value = message.get("additional_kwargs")
+    return dict(value or {}) if isinstance(value, dict) else {}
+
+
+def _message_tool_calls(message: Any) -> list[Any]:
+    value = getattr(message, "tool_calls", None)
+    if value is None and isinstance(message, dict):
+        value = message.get("tool_calls")
+    if value is None:
+        value = _message_additional_kwargs(message).get("tool_calls")
+    return list(value) if isinstance(value, list) else []
+
+
+def _is_hidden_or_control_message(message: Any) -> bool:
+    return _message_type(message) == "remove" or _message_name(message) == "summary" or _message_additional_kwargs(message).get("hide_from_ui") is True
+
+
+def _is_visible_human_message(message: Any) -> bool:
+    return _message_type(message) == "human" and not _is_hidden_or_control_message(message)
+
+
+def _is_visible_ai_message(message: Any) -> bool:
+    return _message_type(message) == "ai" and not _is_hidden_or_control_message(message)
+
+
+def _checkpoint_messages(snapshot: Any) -> list[Any]:
+    return checkpoint_messages(snapshot)
+
+
+def _checkpoint_values(snapshot: Any) -> dict[str, Any]:
+    values = getattr(snapshot, "values", None)
+    return dict(values) if isinstance(values, dict) else {}
+
+
+def _checkpoint_configurable(checkpoint_tuple: Any) -> dict[str, Any]:
+    return checkpoint_configurable(checkpoint_tuple)
+
+
+def _checkpoint_response(checkpoint_tuple: Any) -> dict[str, Any]:
+    configurable = _checkpoint_configurable(checkpoint_tuple)
+    checkpoint_id = configurable.get("checkpoint_id")
+    if not checkpoint_id:
+        raise HTTPException(status_code=409, detail="Checkpoint is missing checkpoint_id")
+    return {
+        "checkpoint_ns": str(configurable.get("checkpoint_ns") or ""),
+        "checkpoint_id": str(checkpoint_id),
+        "checkpoint_map": configurable.get("checkpoint_map"),
+    }
+
+
+def _clean_human_message_for_regenerate(message: Any) -> dict[str, Any]:
+    additional_kwargs = _message_additional_kwargs(message)
+    content = get_original_user_content_text(_message_content(message), additional_kwargs)
+    additional_kwargs.pop(ORIGINAL_USER_CONTENT_KEY, None)
+    additional_kwargs.pop("hide_from_ui", None)
+    clean_message: dict[str, Any] = {
+        "type": "human",
+        "content": [{"type": "text", "text": content}],
+        "additional_kwargs": additional_kwargs,
+    }
+    message_id = strip_injected_user_message_id_suffix(_message_id(message))
+    if message_id:
+        clean_message["id"] = message_id
+    if name := _message_name(message):
+        clean_message["name"] = name
+    return clean_message
+
+
+def _clean_human_message_for_edit(message: Any, *, replacement_id: str, replacement_text: str) -> dict[str, Any]:
+    source_kwargs = _message_additional_kwargs(message)
+    additional_kwargs = {key: deepcopy(source_kwargs[key]) for key in ("files", "referenced_message_contexts") if key in source_kwargs}
+    clean_message: dict[str, Any] = {
+        "type": "human",
+        "id": replacement_id,
+        "content": [{"type": "text", "text": replacement_text}],
+        "additional_kwargs": additional_kwargs,
+    }
+    if name := _message_name(message):
+        clean_message["name"] = name
+    return clean_message
+
+
+def _is_terminal_assistant_text_message(message: Any) -> bool:
+    return _is_visible_ai_message(message) and bool(_message_text(message).strip()) and not _message_tool_calls(message)
+
+
+def _has_title(values: dict[str, Any]) -> bool:
+    return isinstance(values.get("title"), str) and bool(values["title"])
+
+
+def _has_active_goal(snapshot: Any) -> bool:
+    goal = _checkpoint_values(snapshot).get("goal")
+    return isinstance(goal, dict) and goal.get("status") == "active"
+
+
+def _latest_editable_turn(messages: list[Any], human_message_id: str) -> tuple[int, Any, int, Any, list[str]]:
+    latest_human_index = next((index for index in range(len(messages) - 1, -1, -1) if _is_visible_human_message(messages[index])), None)
+    if latest_human_index is None or _message_id(messages[latest_human_index]) != human_message_id:
+        raise HTTPException(status_code=409, detail="Only the latest completed user turn can be edited")
+    source_human = messages[latest_human_index]
+    last_ai_index: int | None = None
+    for index, message in enumerate(messages[latest_human_index + 1 :], start=latest_human_index + 1):
+        if _is_visible_human_message(message):
+            break
+        if _is_visible_ai_message(message):
+            last_ai_index = index
+    if last_ai_index is None or not _is_terminal_assistant_text_message(messages[last_ai_index]):
+        raise HTTPException(status_code=409, detail="Only completed assistant text turns can be edited")
+    source_message_ids = [message_id for message in messages[latest_human_index : last_ai_index + 1] if (message_id := _message_id(message))]
+    return latest_human_index, source_human, last_ai_index, messages[last_ai_index], source_message_ids
+
+
+def _event_message_id(row: dict[str, Any]) -> str | None:
+    content = row.get("content")
+    return _message_id(content) if isinstance(content, (BaseMessage, dict)) else None
+
+
+def _run_last_ai_matches_message(record: RunRecord, message: Any) -> bool:
+    last_ai_message = (record.last_ai_message or "").strip()
+    target_text = _message_text(message).strip()
+    return bool(last_ai_message and target_text) and last_ai_message == target_text[: len(last_ai_message)]
+
+
+async def _find_target_run_id(thread_id: str, message_id: str, target_message: Any, source_human: Any, request: Request) -> str:
+    rows = await get_run_event_store(request).list_messages(thread_id, limit=REGENERATE_HISTORY_SCAN_LIMIT)
+    for row in reversed(rows):
+        if row.get("event_type") in {"ai_message", "llm.ai.response"} and _event_message_id(row) == message_id:
+            if isinstance(run_id := row.get("run_id"), str) and run_id:
+                return run_id
+    if isinstance(source_run_id := _message_additional_kwargs(source_human).get("run_id"), str) and source_run_id:
+        return source_run_id
+    run_mgr = get_run_manager(request)
+    user_id = await get_current_user(request)
+    records = await run_mgr.list_by_thread(thread_id, user_id=user_id, limit=10)
+    if fallback_record := next((record for record in records if record.status == RunStatus.success and _run_last_ai_matches_message(record, target_message)), None):
+        return fallback_record.run_id
+    if len(rows) >= REGENERATE_HISTORY_SCAN_LIMIT:
+        logger.warning("Could not find source run for regenerate message %s in recent run events for thread %s (limit=%s)", message_id, thread_id, REGENERATE_HISTORY_SCAN_LIMIT)
+    raise HTTPException(status_code=409, detail="Could not find source run for assistant message")
+
+
+async def _find_base_checkpoint_before_human(thread_id: str, human_message_id: str, request: Request, *, head_checkpoint: Any | None = None) -> Any:
+    accessor, base_config = await build_thread_checkpoint_state_accessor(request, thread_id=thread_id)
+    if head_checkpoint is not None:
+        try:
+            return await find_checkpoint_before_message(accessor, head_checkpoint, human_message_id, max_depth=REGENERATE_HISTORY_RAW_SCAN_LIMIT)
+        except CheckpointParentMissingError:
+            logger.debug("Could not resolve parent lineage for regenerate thread %s; falling back to history scan", sanitize_log_param(thread_id), exc_info=True)
+        except CheckpointLineageError as exc:
+            logger.warning("Rejected unsafe checkpoint lineage for regenerate thread %s", sanitize_log_param(thread_id), exc_info=True)
+            raise HTTPException(status_code=409, detail=_UNSAFE_REGENERATE_LINEAGE_DETAIL) from exc
+    try:
+        raw_checkpoints = await accessor.ahistory(base_config, limit=REGENERATE_HISTORY_RAW_SCAN_LIMIT)
+        checkpoints = [item for item in raw_checkpoints if not is_duration_only_checkpoint(item)]
+    except Exception as exc:
+        logger.exception("Failed to list checkpoints for regenerate thread %s", thread_id)
+        raise HTTPException(status_code=500, detail="Failed to inspect checkpoint history") from exc
+    previous_checkpoint, target_found = find_checkpoint_before_message_chronologically(raw_checkpoints, human_message_id)
+    if target_found:
+        if previous_checkpoint is None:
+            raise HTTPException(status_code=409, detail=_MISSING_REGENERATE_BASE_DETAIL)
+        return previous_checkpoint
+    if len(checkpoints) >= REGENERATE_HISTORY_SCAN_LIMIT:
+        logger.warning("Could not locate target user message %s in recent checkpoint history for thread %s (limit=%s)", human_message_id, thread_id, REGENERATE_HISTORY_SCAN_LIMIT)
+    raise HTTPException(status_code=409, detail=f"Could not locate target user message in recent checkpoint history (limit={REGENERATE_HISTORY_SCAN_LIMIT})")
+
+
+def _run_status_value(record: Any) -> str | None:
+    status = getattr(record, "status", None)
+    return status.value if isinstance(status, RunStatus) else str(status) if status is not None else None
+
+
+async def _require_successful_source_run(thread_id: str, run_id: str, request: Request) -> RunRecord:
+    run_mgr = get_run_manager(request)
+    user_id = await get_current_user(request)
+    record = await run_mgr.get(run_id, user_id=user_id)
+    if record is None:
+        records = await run_mgr.list_by_thread(thread_id, user_id=user_id, limit=20)
+        record = next((candidate for candidate in records if getattr(candidate, "run_id", None) == run_id), None)
+    if record is None or (record_thread_id := getattr(record, "thread_id", None)) and record_thread_id != thread_id:
+        raise HTTPException(status_code=409, detail="Could not find source run for assistant message")
+    if _run_status_value(record) != RunStatus.success.value:
+        raise HTTPException(status_code=409, detail="Only successful assistant runs can be edited and rerun")
+    return record
+
+
+async def _find_interrupted_target_run_id(thread_id: str, source_human: Any, request: Request) -> str | None:
+    source_run_id = _message_additional_kwargs(source_human).get("run_id")
+    if not isinstance(source_run_id, str) or not source_run_id:
+        return None
+    run_mgr = get_run_manager(request)
+    user_id = await get_current_user(request)
+    record = await run_mgr.get(source_run_id, user_id=user_id)
+    if record is None:
+        records = await run_mgr.list_by_thread(thread_id, user_id=user_id, limit=20)
+        record = next((candidate for candidate in records if getattr(candidate, "run_id", None) == source_run_id), None)
+    if record is None or getattr(record, "thread_id", None) != thread_id or _run_status_value(record) != RunStatus.interrupted.value:
+        return None
+    return source_run_id
+
+
+async def _prepare_regenerate_payload(thread_id: str, message_id: str, request: Request) -> RegeneratePrepareResponse:
+    accessor, latest_config = await build_thread_checkpoint_state_accessor(request, thread_id=thread_id)
+    try:
+        latest_checkpoint = await accessor.aget(latest_config)
+    except Exception as exc:
+        logger.exception("Failed to read latest checkpoint for regenerate thread %s", thread_id)
+        raise HTTPException(status_code=500, detail="Failed to read latest checkpoint") from exc
+    if not _checkpoint_configurable(latest_checkpoint).get("checkpoint_id"):
+        raise HTTPException(status_code=404, detail=f"Thread {thread_id} has no checkpoint")
+
+    messages = _checkpoint_messages(latest_checkpoint)
+    target_index = next((index for index, message in enumerate(messages) if _message_id(message) == message_id), None)
+    if target_index is None:
+        previous_human = next((message for message in reversed(messages) if _is_visible_human_message(message)), None)
+        target_run_id = await _find_interrupted_target_run_id(thread_id, previous_human, request) if previous_human is not None else None
+        if target_run_id is None:
+            raise HTTPException(status_code=404, detail=f"Message {message_id} not found")
+    else:
+        target_message = messages[target_index]
+        if not _is_visible_ai_message(target_message):
+            raise HTTPException(status_code=409, detail="Only visible assistant messages can be regenerated")
+        latest_visible_ai = next((message for message in reversed(messages) if _is_visible_ai_message(message)), None)
+        if _message_id(latest_visible_ai) != message_id:
+            raise HTTPException(status_code=409, detail="Only the latest assistant message can be regenerated")
+        previous_human = next((message for message in reversed(messages[:target_index]) if _is_visible_human_message(message)), None)
+        target_run_id = await _find_target_run_id(thread_id, message_id, target_message, previous_human, request) if previous_human is not None else None
+    if previous_human is None:
+        raise HTTPException(status_code=409, detail="Could not find the user message for this assistant response")
+    if target_run_id is None:
+        raise HTTPException(status_code=409, detail="Could not find source run for assistant message")
+    previous_human_id = _message_id(previous_human)
+    if not previous_human_id:
+        raise HTTPException(status_code=409, detail="The source user message is missing an id")
+
+    checkpoint = _checkpoint_response(await _find_base_checkpoint_before_human(thread_id, previous_human_id, request, head_checkpoint=latest_checkpoint))
+    regenerate_input: dict[str, Any] = {"messages": [_clean_human_message_for_regenerate(previous_human)]}
+    latest_title = _checkpoint_values(latest_checkpoint).get("title")
+    if isinstance(latest_title, str) and latest_title:
+        regenerate_input["title"] = latest_title
+    return RegeneratePrepareResponse(
+        input=regenerate_input,
+        checkpoint=checkpoint,
+        metadata={
+            "regenerate_from_message_id": message_id,
+            "regenerate_from_run_id": target_run_id,
+            "regenerate_checkpoint_id": checkpoint["checkpoint_id"],
+        },
+        target_run_id=target_run_id,
+    )
+
+
+async def _prepare_edit_regenerate_payload(
+    thread_id: str,
+    human_message_id: str,
+    replacement_text: str,
+    request: Request,
+) -> EditRegeneratePrepareResponse:
+    normalized_text = replacement_text.strip()
+    if not normalized_text:
+        raise HTTPException(status_code=409, detail="Edited message cannot be empty")
+    accessor, latest_config = await build_thread_checkpoint_state_accessor(request, thread_id=thread_id)
+    try:
+        latest_checkpoint = await accessor.aget(latest_config)
+    except Exception as exc:
+        logger.exception("Failed to read latest checkpoint for edit replay thread %s", thread_id)
+        raise HTTPException(status_code=500, detail="Failed to read latest checkpoint") from exc
+    if not _checkpoint_configurable(latest_checkpoint).get("checkpoint_id"):
+        raise HTTPException(status_code=404, detail=f"Thread {thread_id} has no checkpoint")
+    if _has_active_goal(latest_checkpoint):
+        raise HTTPException(status_code=409, detail="Cannot edit while a goal is active")
+
+    _, source_human, _, source_ai, source_message_ids = _latest_editable_turn(_checkpoint_messages(latest_checkpoint), human_message_id)
+    source_text = get_original_user_content_text(_message_content(source_human), _message_additional_kwargs(source_human)).strip()
+    if normalized_text == source_text:
+        raise HTTPException(status_code=409, detail="Edited message is unchanged")
+    source_human_id = _message_id(source_human)
+    source_ai_id = _message_id(source_ai)
+    if not source_human_id:
+        raise HTTPException(status_code=409, detail="The source user message is missing an id")
+    if not source_ai_id:
+        raise HTTPException(status_code=409, detail="The source assistant message is missing an id")
+
+    base_checkpoint = await _find_base_checkpoint_before_human(thread_id, source_human_id, request, head_checkpoint=latest_checkpoint)
+    target_run_id = await _find_target_run_id(thread_id, source_ai_id, source_ai, source_human, request)
+    source_record = await _require_successful_source_run(thread_id, target_run_id, request)
+    checkpoint = _checkpoint_response(base_checkpoint)
+    replacement_human_message_id = str(uuid.uuid4())
+    source_metadata = getattr(source_record, "metadata", None) or {}
+    existing_group_id = source_metadata.get("edit_version_group_id") if isinstance(source_metadata, dict) else None
+    edit_version_group_id = existing_group_id if isinstance(existing_group_id, str) and existing_group_id else source_human_id
+    edit_input: dict[str, Any] = {
+        "messages": [
+            _clean_human_message_for_edit(
+                source_human,
+                replacement_id=replacement_human_message_id,
+                replacement_text=normalized_text,
+            )
+        ]
+    }
+    latest_title = _checkpoint_values(latest_checkpoint).get("title")
+    if _has_title(_checkpoint_values(base_checkpoint)) and isinstance(latest_title, str) and latest_title:
+        edit_input["title"] = latest_title
+    return EditRegeneratePrepareResponse(
+        input=edit_input,
+        checkpoint=checkpoint,
+        metadata={
+            "replay_kind": "edit",
+            "regenerate_from_message_id": source_ai_id,
+            "regenerate_from_run_id": target_run_id,
+            "regenerate_checkpoint_id": checkpoint["checkpoint_id"],
+            "edit_from_message_id": source_human_id,
+            "edit_message_id": replacement_human_message_id,
+            "edit_version_group_id": edit_version_group_id,
+        },
+        target_run_id=target_run_id,
+        replacement_human_message_id=replacement_human_message_id,
+        source_message_ids=source_message_ids,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
+
+
+@router.post("/{thread_id}/runs/regenerate/prepare", response_model=RegeneratePrepareResponse)
+@require_permission("runs", "create", owner_check=True, require_existing=True)
+async def prepare_regenerate_run(
+    thread_id: ThreadId,
+    body: RegeneratePrepareRequest,
+    request: Request,
+) -> RegeneratePrepareResponse:
+    """Prepare input and checkpoint for regenerating the latest assistant turn."""
+    return await _prepare_regenerate_payload(thread_id, body.message_id, request)
+
+
+@router.post("/{thread_id}/runs/edit-regenerate/prepare", response_model=EditRegeneratePrepareResponse)
+@require_permission("runs", "create", owner_check=True, require_existing=True)
+async def prepare_edit_regenerate_run(
+    thread_id: ThreadId,
+    body: EditRegeneratePrepareRequest,
+    request: Request,
+) -> EditRegeneratePrepareResponse:
+    """Prepare input and checkpoint for editing then rerunning the latest user turn."""
+    return await _prepare_edit_regenerate_payload(thread_id, body.human_message_id, body.replacement_text, request)
 
 
 @router.post("/{thread_id}/runs", response_model=RunResponse)
@@ -269,24 +683,26 @@ async def stream_run(thread_id: str, body: RunCreateRequest, request: Request) -
 @require_permission("runs", "create", owner_check=True, require_existing=True)
 async def wait_run(thread_id: str, body: RunCreateRequest, request: Request) -> dict:
     """Create a run and block until it completes, returning the final state."""
+    bridge = get_stream_bridge(request)
+    run_mgr = get_run_manager(request)
     record = await start_run(body, thread_id, request)
 
+    completed = True
     if record.task is not None:
-        try:
-            await record.task
-        except asyncio.CancelledError:
-            pass
+        completed = await wait_for_run_completion(bridge, record, request, run_mgr)
 
-    checkpointer = get_checkpointer(request)
-    config = {"configurable": {"thread_id": thread_id}}
-    try:
-        checkpoint_tuple = await checkpointer.aget_tuple(config)
-        if checkpoint_tuple is not None:
-            checkpoint = getattr(checkpoint_tuple, "checkpoint", {}) or {}
-            channel_values = checkpoint.get("channel_values", {})
-            return serialize_channel_values(channel_values)
-    except Exception:
-        logger.exception("Failed to fetch final state for run %s", record.run_id)
+    if completed:
+        try:
+            accessor, config = build_checkpoint_state_accessor(
+                request,
+                thread_id=thread_id,
+                assistant_id=body.assistant_id,
+            )
+            snapshot = await accessor.aget(config)
+            if _checkpoint_configurable(snapshot).get("checkpoint_id"):
+                return serialize_channel_values(snapshot.values)
+        except Exception:
+            logger.exception("Failed to fetch final state for run %s", record.run_id)
 
     return {"status": record.status.value, "error": record.error}
 
