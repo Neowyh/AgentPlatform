@@ -936,6 +936,13 @@ async def start_run(
     request : Request
         FastAPI request — used to retrieve singletons from ``app.state``.
     """
+    # ``interrupt`` and ``rollback`` can terminate an already-active run.
+    # Keep this check at the shared service choke point so stateless routes and
+    # internal callers cannot bypass the cancel capability requirement.
+    from app.gateway.authz import require_cancel_permission_if
+
+    require_cancel_permission_if(request, body.multitask_strategy != "reject")
+
     bridge = get_stream_bridge(request)
     run_mgr = get_run_manager(request)
     run_ctx = get_run_context(request)

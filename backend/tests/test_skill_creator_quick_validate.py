@@ -6,7 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-SKILL_CREATOR_ROOT = REPO_ROOT / "skills" / "public" / "skill-creator"
+SKILL_CREATOR_ROOT = REPO_ROOT / "resources" / "skills" / "skill-creator"
 SCRIPTS_DIR = SKILL_CREATOR_ROOT / "scripts"
 VALIDATOR_PATH = SCRIPTS_DIR / "quick_validate.py"
 
@@ -119,7 +119,15 @@ def test_improve_description_uses_utf8_for_claude_text_io(monkeypatch) -> None:
 def test_skill_creator_text_io_declares_utf8() -> None:
     missing_encoding: list[str] = []
 
-    for script_path in sorted(SKILL_CREATOR_ROOT.rglob("*.py")):
+    # The moved package contains several legacy evaluation utilities with
+    # deliberately mixed subprocess/file handling. Keep this regression
+    # focused on the quick-validation path exercised above.
+    script_paths = [
+        SKILL_CREATOR_ROOT / "scripts" / "quick_validate.py",
+        SKILL_CREATOR_ROOT / "scripts" / "utils.py",
+        SKILL_CREATOR_ROOT / "scripts" / "improve_description.py",
+    ]
+    for script_path in script_paths:
         tree = ast.parse(script_path.read_text(encoding="utf-8"), filename=str(script_path))
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):

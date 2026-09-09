@@ -4,11 +4,10 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
-from app.agentplatform.rbac_models import UserModel, UserRole
-from app.gateway.authz import get_current_rbac_user, require_role
+from app.gateway.deps import require_admin_user
 
 logger = logging.getLogger(__name__)
 
@@ -38,12 +37,12 @@ async def get_channels_status() -> ChannelStatusResponse:
 
 
 @router.post("/{name}/restart", response_model=ChannelRestartResponse)
-@require_role(UserRole.USER, UserRole.DEPARTMENT_ADMIN, UserRole.SUPER_ADMIN)
 async def restart_channel(
     name: str,
-    current_user: UserModel = Depends(get_current_rbac_user),
+    request: Request,
 ) -> ChannelRestartResponse:
     """Restart a specific IM channel."""
+    await require_admin_user(request, detail="Admin privileges required to manage channel runtime workers.")
     from app.channels.service import get_channel_service
 
     service = get_channel_service()

@@ -645,7 +645,7 @@ async def prepare_edit_regenerate_run(
 
 @router.post("/{thread_id}/runs", response_model=RunResponse)
 @require_permission("runs", "create", owner_check=True, require_existing=True)
-async def create_run(thread_id: str, body: RunCreateRequest, request: Request) -> RunResponse:
+async def create_run(thread_id: ThreadId, body: RunCreateRequest, request: Request) -> RunResponse:
     """Create a background run (returns immediately)."""
     record = await start_run(body, thread_id, request)
     return _record_to_response(record)
@@ -653,7 +653,7 @@ async def create_run(thread_id: str, body: RunCreateRequest, request: Request) -
 
 @router.post("/{thread_id}/runs/stream")
 @require_permission("runs", "create", owner_check=True, require_existing=True)
-async def stream_run(thread_id: str, body: RunCreateRequest, request: Request) -> StreamingResponse:
+async def stream_run(thread_id: ThreadId, body: RunCreateRequest, request: Request) -> StreamingResponse:
     """Create a run and stream events via SSE.
 
     The response includes a ``Content-Location`` header with the run's
@@ -681,7 +681,7 @@ async def stream_run(thread_id: str, body: RunCreateRequest, request: Request) -
 
 @router.post("/{thread_id}/runs/wait", response_model=dict)
 @require_permission("runs", "create", owner_check=True, require_existing=True)
-async def wait_run(thread_id: str, body: RunCreateRequest, request: Request) -> dict:
+async def wait_run(thread_id: ThreadId, body: RunCreateRequest, request: Request) -> dict:
     """Create a run and block until it completes, returning the final state."""
     bridge = get_stream_bridge(request)
     run_mgr = get_run_manager(request)
@@ -709,7 +709,7 @@ async def wait_run(thread_id: str, body: RunCreateRequest, request: Request) -> 
 
 @router.get("/{thread_id}/runs", response_model=list[RunResponse])
 @require_permission("runs", "read", owner_check=True)
-async def list_runs(thread_id: str, request: Request) -> list[RunResponse]:
+async def list_runs(thread_id: ThreadId, request: Request) -> list[RunResponse]:
     """List all runs for a thread."""
     run_mgr = get_run_manager(request)
     event_store = get_run_event_store(request)
@@ -720,7 +720,7 @@ async def list_runs(thread_id: str, request: Request) -> list[RunResponse]:
 
 @router.get("/{thread_id}/runs/{run_id}", response_model=RunResponse)
 @require_permission("runs", "read", owner_check=True)
-async def get_run(thread_id: str, run_id: str, request: Request) -> RunResponse:
+async def get_run(thread_id: ThreadId, run_id: str, request: Request) -> RunResponse:
     """Get details of a specific run."""
     run_mgr = get_run_manager(request)
     user_id = await get_current_user(request)
@@ -733,7 +733,7 @@ async def get_run(thread_id: str, run_id: str, request: Request) -> RunResponse:
 @router.post("/{thread_id}/runs/{run_id}/cancel")
 @require_permission("runs", "cancel", owner_check=True, require_existing=True)
 async def cancel_run(
-    thread_id: str,
+    thread_id: ThreadId,
     run_id: str,
     request: Request,
     wait: bool = Query(default=False, description="Block until run completes after cancel"),
@@ -776,7 +776,7 @@ async def cancel_run(
 
 @router.get("/{thread_id}/runs/{run_id}/join")
 @require_permission("runs", "read", owner_check=True)
-async def join_run(thread_id: str, run_id: str, request: Request) -> StreamingResponse:
+async def join_run(thread_id: ThreadId, run_id: str, request: Request) -> StreamingResponse:
     """Join an existing run's SSE stream."""
     run_mgr = get_run_manager(request)
     record = await run_mgr.get(run_id)
@@ -908,7 +908,7 @@ async def join_existing_run_stream(thread_id: ThreadId, run_id: str, request: Re
 @router.get("/{thread_id}/messages")
 @require_permission("runs", "read", owner_check=True)
 async def list_thread_messages(
-    thread_id: str,
+    thread_id: ThreadId,
     request: Request,
     limit: int = Query(default=50, le=200),
     before_seq: int | None = Query(default=None),
@@ -953,7 +953,7 @@ async def list_thread_messages(
 @router.get("/{thread_id}/runs/{run_id}/messages")
 @require_permission("runs", "read", owner_check=True)
 async def list_run_messages(
-    thread_id: str,
+    thread_id: ThreadId,
     run_id: str,
     request: Request,
     limit: int = Query(default=50, le=200, ge=1),
@@ -1127,7 +1127,7 @@ async def create_run_artifact_archive(
 @router.get("/{thread_id}/runs/{run_id}/events")
 @require_permission("runs", "read", owner_check=True)
 async def list_run_events(
-    thread_id: str,
+    thread_id: ThreadId,
     run_id: str,
     request: Request,
     event_types: str | None = Query(default=None),
@@ -1142,7 +1142,7 @@ async def list_run_events(
 @router.get("/{thread_id}/token-usage", response_model=ThreadTokenUsageResponse)
 @require_permission("threads", "read", owner_check=True)
 async def thread_token_usage(
-    thread_id: str,
+    thread_id: ThreadId,
     request: Request,
     include_active: bool = Query(default=False, description="Include running run progress snapshots"),
 ) -> ThreadTokenUsageResponse:

@@ -29,6 +29,7 @@ from deerflow.runtime import serialize_channel_values
 from deerflow.runtime.goal import DEFAULT_MAX_GOAL_CONTINUATIONS, build_goal_state, ensure_thread_checkpoint, goal_thread_lock, read_thread_goal, write_thread_goal
 from deerflow.runtime.secret_context import redact_metadata_secrets
 from deerflow.runtime.user_context import get_effective_user_id
+from deerflow.utils.thread_id import ThreadId
 from deerflow.utils.time import coerce_iso, now_iso
 
 logger = logging.getLogger(__name__)
@@ -413,7 +414,7 @@ async def search_threads(body: ThreadSearchRequest, request: Request) -> list[Th
 
 @router.patch("/{thread_id}", response_model=ThreadResponse)
 @require_permission("threads", "write", owner_check=True, require_existing=True)
-async def patch_thread(thread_id: str, body: ThreadPatchRequest, request: Request) -> ThreadResponse:
+async def patch_thread(thread_id: ThreadId, body: ThreadPatchRequest, request: Request) -> ThreadResponse:
     """Merge metadata into a thread record."""
     from app.gateway.deps import get_thread_store
 
@@ -442,7 +443,7 @@ async def patch_thread(thread_id: str, body: ThreadPatchRequest, request: Reques
 
 @router.get("/{thread_id}", response_model=ThreadResponse)
 @require_permission("threads", "read", owner_check=True)
-async def get_thread(thread_id: str, request: Request) -> ThreadResponse:
+async def get_thread(thread_id: ThreadId, request: Request) -> ThreadResponse:
     """Get thread info.
 
     Reads metadata from the ThreadMetaStore and derives the accurate
@@ -500,7 +501,7 @@ async def get_thread(thread_id: str, request: Request) -> ThreadResponse:
 # ---------------------------------------------------------------------------
 @router.get("/{thread_id}/goal", response_model=ThreadGoalResponse)
 @require_permission("threads", "read", owner_check=True)
-async def get_thread_goal(thread_id: str, request: Request) -> ThreadGoalResponse:
+async def get_thread_goal(thread_id: ThreadId, request: Request) -> ThreadGoalResponse:
     """Return the active Claude-style goal for a thread, if any."""
     checkpointer = get_checkpointer(request)
     try:
@@ -513,7 +514,7 @@ async def get_thread_goal(thread_id: str, request: Request) -> ThreadGoalRespons
 
 @router.put("/{thread_id}/goal", response_model=ThreadGoalResponse)
 @require_permission("threads", "write", owner_check=True)
-async def set_thread_goal(thread_id: str, body: ThreadGoalRequest, request: Request) -> ThreadGoalResponse:
+async def set_thread_goal(thread_id: ThreadId, body: ThreadGoalRequest, request: Request) -> ThreadGoalResponse:
     """Set or replace the active goal for a thread.
 
     ``/chats/new`` pages already hold a generated UUID before the first run, so
@@ -535,7 +536,7 @@ async def set_thread_goal(thread_id: str, body: ThreadGoalRequest, request: Requ
 
 @router.delete("/{thread_id}/goal", response_model=ThreadGoalResponse)
 @require_permission("threads", "write", owner_check=True)
-async def clear_thread_goal(thread_id: str, request: Request) -> ThreadGoalResponse:
+async def clear_thread_goal(thread_id: ThreadId, request: Request) -> ThreadGoalResponse:
     """Clear the active goal for a thread."""
     checkpointer = get_checkpointer(request)
     try:
@@ -554,7 +555,7 @@ async def clear_thread_goal(thread_id: str, request: Request) -> ThreadGoalRespo
 
 @router.get("/{thread_id}/state", response_model=ThreadStateResponse)
 @require_permission("threads", "read", owner_check=True)
-async def get_thread_state(thread_id: str, request: Request) -> ThreadStateResponse:
+async def get_thread_state(thread_id: ThreadId, request: Request) -> ThreadStateResponse:
     """Get the latest state snapshot for a thread.
 
     Channel values are serialized to ensure LangChain message objects
@@ -606,7 +607,7 @@ async def get_thread_state(thread_id: str, request: Request) -> ThreadStateRespo
 
 @router.post("/{thread_id}/state", response_model=ThreadStateResponse)
 @require_permission("threads", "write", owner_check=True, require_existing=True)
-async def update_thread_state(thread_id: str, body: ThreadStateUpdateRequest, request: Request) -> ThreadStateResponse:
+async def update_thread_state(thread_id: ThreadId, body: ThreadStateUpdateRequest, request: Request) -> ThreadStateResponse:
     """Update thread state (e.g. for human-in-the-loop resume or title rename).
 
     Writes a new checkpoint that merges *body.values* into the latest
@@ -710,7 +711,7 @@ async def update_thread_state(thread_id: str, body: ThreadStateUpdateRequest, re
 
 @router.post("/{thread_id}/history", response_model=list[HistoryEntry])
 @require_permission("threads", "read", owner_check=True)
-async def get_thread_history(thread_id: str, body: ThreadHistoryRequest, request: Request) -> list[HistoryEntry]:
+async def get_thread_history(thread_id: ThreadId, body: ThreadHistoryRequest, request: Request) -> list[HistoryEntry]:
     """Get checkpoint history for a thread.
 
     Messages are read from the checkpointer's channel values (the

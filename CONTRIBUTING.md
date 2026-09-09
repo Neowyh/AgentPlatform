@@ -329,6 +329,8 @@ Every pull request triggers the following CI workflows:
 - Read the [Documentation](backend/docs/)
 - Ask questions in [Discussions](https://github.com/bytedance/ideer/discussions)
 
+Backend live-test commands are documented with `make test-live` and the `DEER_FLOW_RUN_LIVE_TESTS` opt-in.
+
 ## License
 
 By contributing to iDeer, you agree that your contributions will be licensed under the [MIT License](./LICENSE).

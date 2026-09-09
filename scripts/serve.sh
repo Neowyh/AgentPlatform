@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# serve.sh — Unified iDeer service launcher
+# serve.sh — Unified DeerFlow service launcher
 #
 # Usage:
 #   ./scripts/serve.sh [--dev|--prod] [--daemon] [--stop|--restart]
@@ -11,14 +11,16 @@
 #   --daemon    Run all services in background (nohup), exit after startup
 #
 # Actions:
-#   --skip-install  Skip dependency installation (faster restart)
-#   --stop      Stop all running services and exit
-#   --restart   Stop all services, then start with the given mode flags
+#   --skip-install        Skip dependency installation (faster restart)
+#   --skip-frontend-build With --prod, reuse the existing .next build via `next start`
+#                         instead of `next build` (opt-in; fails if no build exists)
+#   --stop                Stop all running services and exit
+#   --restart             Stop all services, then start with the given mode flags
 #
 # Examples:
-#   ./scripts/serve.sh --dev                 # Gateway + workflow worker, hot reload
-#   ./scripts/serve.sh --prod                # Gateway + workflow worker, production
-#   ./scripts/serve.sh --dev --daemon        # Gateway + workflow worker, background
+#   ./scripts/serve.sh --dev                 # Gateway dev, hot reload
+#   ./scripts/serve.sh --prod                # Gateway prod
+#   ./scripts/serve.sh --dev --daemon        # Gateway dev, background
 #   ./scripts/serve.sh --stop                # Stop all services
 #   ./scripts/serve.sh --restart --dev       # Restart dev services
 #
@@ -29,8 +31,6 @@ set -e
 REPO_ROOT="$(builtin cd "$(dirname "${BASH_SOURCE[0]}")/.." >/dev/null 2>&1 && pwd -P)"
 cd "$REPO_ROOT"
 
-WORKFLOW_WORKER_PID_FILE="$REPO_ROOT/logs/workflow-worker.pid"
-
 # ── Load .env ────────────────────────────────────────────────────────────────
 
 if [ -f "$REPO_ROOT/.env" ]; then
@@ -39,11 +39,31 @@ if [ -f "$REPO_ROOT/.env" ]; then
     set +a
 fi
 
+_pick_python() {
+    local candidate
+    for candidate in python3 python py; do
+        # Probe through `env` as well: the frontend is launched as
+        # `env PORT=3000 "$DEERFLOW_PNPM_PYTHON" ...` (FRONTEND_CMD below), and on
+        # Windows/Git Bash the Microsoft Store python aliases under WindowsApps
+        # are skipped by Bash's own PATH lookup yet still resolved (and fail to
+        # exec) inside /usr/bin/env. A bare "$candidate" probe passes while the
+        # real launch dies with: env: 'python3': No such file or directory
+        if command -v "$candidate" >/dev/null 2>&1 \
+            && "$candidate" -c 'import sys; raise SystemExit(0 if sys.version_info.major >= 3 else 1)' >/dev/null 2>&1 \
+            && env "$candidate" -c 'import sys; raise SystemExit(0 if sys.version_info.major >= 3 else 1)' >/dev/null 2>&1; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
 # ── Argument parsing ─────────────────────────────────────────────────────────
 
 DEV_MODE=true
 DAEMON_MODE=false
 SKIP_INSTALL=false
+SKIP_FRONTEND_BUILD=false
 ACTION="start"   # start | stop | restart
 
 for arg in "$@"; do
@@ -52,11 +72,12 @@ for arg in "$@"; do
         --prod)    DEV_MODE=false ;;
         --daemon)  DAEMON_MODE=true ;;
         --skip-install) SKIP_INSTALL=true ;;
+        --skip-frontend-build) SKIP_FRONTEND_BUILD=true ;;
         --stop)    ACTION="stop" ;;
         --restart) ACTION="restart" ;;
         *)
             echo "Unknown argument: $arg"
-            echo "Usage: $0 [--dev|--prod] [--daemon] [--skip-install] [--stop|--restart]"
+            echo "Usage: $0 [--dev|--prod] [--daemon] [--skip-install] [--skip-frontend-build] [--stop|--restart]"
             exit 1
             ;;
     esac
@@ -64,25 +85,66 @@ done
 
 # ── Stop helper ──────────────────────────────────────────────────────────────
 
-_is_repo_pid() {
-    local pid=$1
-    # 方法1：通过 lsof 检查进程打开的文件
-    if lsof -p "$pid" 2>/dev/null | grep -qF "$REPO_ROOT"; then
+# Every deer-flow worktree (the main checkout + each linked worktree) hardcodes
+# the same dev ports (8001/3000/2026), so a service started from ANY of them
+# must be reclaimable from here — otherwise `make stop`/`make dev` in this
+# worktree can neither kill nor take over a port held by a sibling worktree.
+# DEERFLOW_ROOTS is that set of roots; processes living outside all of them
+# (e.g. an unrelated project on port 3000) are still never touched.
+# Sorted most-specific-first (longest path first): a linked worktree lives
+# under the main checkout, so both roots are substrings of its files — checking
+# the deeper root first attributes a reclaimed port to the right worktree.
+DEERFLOW_ROOTS="$(
+    {
+        printf '%s\n' "$REPO_ROOT"
+        git -C "$REPO_ROOT" worktree list --porcelain 2>/dev/null |
+            awk '/^worktree /{print $2}'
+    } | awk 'NF && !seen[$0]++ {print length($0)"\t"$0}' | sort -rn | sed 's/^[0-9]*\t//'
+)"
+
+# True if PID has an open file/cwd under any deer-flow worktree root. The
+# trailing slash keeps a sibling dir like ".../deer-flow-notes" from matching
+# the ".../deer-flow" root.
+_is_deerflow_pid() {
+    local pid=$1 files root
+
+    # Daemon children inherit DEERFLOW_DAEMON_ROOT from run_service. Checking
+    # it (Linux only — macOS has no /proc) identifies processes like
+    # next-server that lsof misses, so the name/port reaps in stop_all can
+    # claim them.
+    if [ -r "/proc/$pid/environ" ] &&
+        tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null | grep -Fxq "DEERFLOW_DAEMON_ROOT=$REPO_ROOT"; then
         return 0
     fi
-    # 方法2：通过 /proc 检查进程工作目录（Linux）
-    if [ -d "/proc/$pid/cwd" ]; then
-        local cwd
-        cwd=$(readlink -f "/proc/$pid/cwd" 2>/dev/null)
-        if [[ "$cwd" == "$REPO_ROOT"* ]]; then
-            return 0
-        fi
-    fi
-    # 方法3：通过 ps 检查进程命令行
-    if ps -p "$pid" -o args= 2>/dev/null | grep -qF "$REPO_ROOT"; then
-        return 0
-    fi
+
+    files=$(lsof -b -w -p "$pid" 2>/dev/null) || return 1
+    while IFS= read -r root; do
+        [ -n "$root" ] || continue
+        case "$files" in
+            *"$root"/*) return 0 ;;
+        esac
+    done <<< "$DEERFLOW_ROOTS"
     return 1
+}
+
+# Report ports about to be reclaimed from a *different* worktree, so stopping
+# (or starting, which stops first) isn't silently killing someone else's run.
+_report_reclaimed_ports() {
+    local port pid files root owner
+    for port in 8001 3000 2026; do
+        for pid in $(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null); do
+            _is_deerflow_pid "$pid" || continue
+            files=$(lsof -b -w -p "$pid" 2>/dev/null)
+            case "$files" in *"$REPO_ROOT"/*) continue ;; esac  # this worktree — normal
+            owner=""
+            while IFS= read -r root; do
+                [ -n "$root" ] || continue
+                case "$files" in *"$root"/*) owner="$root"; break ;; esac
+            done <<< "$DEERFLOW_ROOTS"
+            echo "  ↻ Reclaiming port $port from another worktree: ${owner:-?}"
+            break
+        done
+    done
 }
 
 _kill_repo_processes() {
@@ -91,7 +153,7 @@ _kill_repo_processes() {
     local pids=""
 
     while IFS= read -r pid; do
-        if [ -n "$pid" ] && _is_repo_pid "$pid"; then
+        if [ -n "$pid" ] && _is_deerflow_pid "$pid"; then
             case " $pids " in
                 *" $pid "*) ;;
                 *) pids="$pids $pid" ;;
@@ -110,7 +172,7 @@ _kill_repo_port() {
     local pids=""
 
     while IFS= read -r pid; do
-        if [ -n "$pid" ] && _is_repo_pid "$pid"; then
+        if [ -n "$pid" ] && _is_deerflow_pid "$pid"; then
             case " $pids " in
                 *" $pid "*) ;;
                 *) pids="$pids $pid" ;;
@@ -119,19 +181,7 @@ _kill_repo_port() {
     done < <(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null || true)
 
     if [ -n "$pids" ]; then
-        # 优雅退出：先 SIGTERM，超时后 SIGKILL
-        kill $pids 2>/dev/null || true
-        sleep 2
-        # 检查是否还有存活的进程
-        local alive=""
-        for pid in $pids; do
-            if kill -0 "$pid" 2>/dev/null; then
-                alive="$alive $pid"
-            fi
-        done
-        if [ -n "$alive" ]; then
-            kill -9 $alive 2>/dev/null || true
-        fi
+        kill -9 $pids 2>/dev/null || true
     fi
 }
 
@@ -165,17 +215,23 @@ _is_repo_nginx_pid() {
     local args
 
     command=$(ps -p "$pid" -o comm= 2>/dev/null) || return 1
+    # nginx rewrites argv[0] for master/worker processes. On macOS,
+    # `ps -o comm=` can report that rewritten form instead of the binary name.
     case "$command" in
-        nginx|*/nginx) ;;
+        nginx|*/nginx|nginx:*) ;;
         *) return 1 ;;
     esac
 
     args=$(ps -p "$pid" -o args= 2>/dev/null) || return 1
-    case "$args" in
-        *"$REPO_ROOT/docker/nginx/nginx.local.conf"*|*"$REPO_ROOT"*) return 0 ;;
-    esac
+    local root
+    while IFS= read -r root; do
+        [ -n "$root" ] || continue
+        case "$args" in
+            *"$root"/docker/nginx/nginx.local.conf*|*"$root"/*) return 0 ;;
+        esac
+    done <<< "$DEERFLOW_ROOTS"
 
-    _is_repo_pid "$pid"
+    _is_deerflow_pid "$pid"
 }
 
 _kill_repo_nginx() {
@@ -205,50 +261,34 @@ _kill_repo_nginx() {
 
 stop_all() {
     echo "Stopping all services..."
-    
-    # 检查是否有本仓库的服务在运行
-    local has_services=false
-    
-    # 检查 workflow worker PID 文件
-    if [ -f "$WORKFLOW_WORKER_PID_FILE" ]; then
-        local worker_pid
-        worker_pid=$(cat "$WORKFLOW_WORKER_PID_FILE")
-        if [ -n "$worker_pid" ] && kill -0 "$worker_pid" 2>/dev/null; then
-            has_services=true
-        fi
-    fi
-    
-    # 检查端口是否有服务在监听
-    if _is_port_listening 8001 || _is_port_listening 3000 || _is_port_listening 2026; then
-        has_services=true
-    fi
-    
-    if [ "$has_services" = false ]; then
-        echo "  No services running, skipping cleanup."
-        return 0
-    fi
-    
-    if [ -f "$WORKFLOW_WORKER_PID_FILE" ]; then
-        worker_pid=$(cat "$WORKFLOW_WORKER_PID_FILE")
-        if [ -n "$worker_pid" ] && kill -0 "$worker_pid" 2>/dev/null && _is_repo_pid "$worker_pid"; then
-            kill "$worker_pid" 2>/dev/null || true
-        fi
-        rm -f "$WORKFLOW_WORKER_PID_FILE"
-    fi
-    _kill_repo_processes "python -m app.workflow_worker"
+    _report_reclaimed_ports
     _kill_repo_processes "uvicorn app.gateway.app:app"
     _kill_repo_processes "next dev"
     _kill_repo_processes "next start"
-    _kill_repo_processes "next-server (v"
+    _kill_repo_processes "next-server"
     nginx -c "$REPO_ROOT/docker/nginx/nginx.local.conf" -p "$REPO_ROOT" -s quit 2>/dev/null || true
     sleep 1
     _kill_repo_nginx
-    # Force-kill any survivors still holding the service ports
+    # Force-kill any survivors still holding the service ports. 2026 is included
+    # so a lingering nginx (or any deer-flow process) that _kill_repo_nginx did
+    # not match by name still gets reclaimed — otherwise `make dev` fails its
+    # nginx port preflight.
     _kill_repo_port 8001
     _kill_repo_port 3000
-    ./scripts/cleanup-containers.sh ideer-sandbox 2>/dev/null || true
+    _kill_repo_port 2026
+    bash ./scripts/cleanup-containers.sh deer-flow-sandbox 2>/dev/null || true
     echo "✓ All services stopped"
 }
+
+# Validate the reusable frontend build before any stop_all runs, so start and
+# restart never tear down a healthy stack only to fail here. --stop is exempt.
+if [ "$ACTION" != "stop" ] && ! $DEV_MODE && $SKIP_FRONTEND_BUILD; then
+    if [ ! -f "$REPO_ROOT/frontend/.next/BUILD_ID" ]; then
+        echo "✗ --skip-frontend-build requires an existing frontend build."
+        echo "  Run 'make start' once (full build), or: cd frontend && pnpm run build"
+        exit 1
+    fi
+fi
 
 # ── Action routing ───────────────────────────────────────────────────────────
 
@@ -266,33 +306,62 @@ fi
 
 # Mode label for banner
 if $DEV_MODE; then
-    MODE_LABEL="DEV (Gateway + workflow worker, hot-reload enabled)"
+    MODE_LABEL="DEV (Gateway runtime, hot-reload enabled)"
 else
-    MODE_LABEL="PROD (Gateway + workflow worker, optimized)"
+    MODE_LABEL="PROD (Gateway runtime, optimized)"
 fi
 
 if $DAEMON_MODE; then
     MODE_LABEL="$MODE_LABEL [daemon]"
 fi
 
+# Resolve pnpm through the same runner used by make check/install. Exporting
+# these values keeps paths with spaces intact when run_service invokes sh -c.
+if ! DEERFLOW_PNPM_PYTHON="$(_pick_python)"; then
+    echo "Python 3 is required to run pnpm."
+    exit 1
+fi
+DEERFLOW_PNPM_RUNNER="$REPO_ROOT/scripts/pnpm.py"
+export DEERFLOW_PNPM_PYTHON DEERFLOW_PNPM_RUNNER
+
 # Frontend command
 if $DEV_MODE; then
-    FRONTEND_CMD="pnpm run dev"
-else
-    if command -v python3 >/dev/null 2>&1; then
-        PYTHON_BIN="python3"
-    elif command -v python >/dev/null 2>&1; then
-        PYTHON_BIN="python"
-    else
-        echo "Python is required to generate BETTER_AUTH_SECRET."
-        exit 1
+    FRONTEND_CMD='env PORT=3000 "$DEERFLOW_PNPM_PYTHON" "$DEERFLOW_PNPM_RUNNER" run dev'
+    if $SKIP_FRONTEND_BUILD; then
+        echo "  Note: --skip-frontend-build is ignored in dev mode (next dev does not build)."
     fi
-    FRONTEND_CMD="env BETTER_AUTH_SECRET=$($PYTHON_BIN -c 'import secrets; print(secrets.token_hex(16))') pnpm run preview"
+elif $SKIP_FRONTEND_BUILD; then
+    # The BUILD_ID preflight above already guarantees a reusable build exists.
+    FRONTEND_CMD="env PORT=3000 BETTER_AUTH_SECRET=$($DEERFLOW_PNPM_PYTHON -c 'import secrets; print(secrets.token_hex(16))') \"\$DEERFLOW_PNPM_PYTHON\" \"\$DEERFLOW_PNPM_RUNNER\" run start"
+else
+    FRONTEND_CMD="env PORT=3000 BETTER_AUTH_SECRET=$($DEERFLOW_PNPM_PYTHON -c 'import secrets; print(secrets.token_hex(16))') \"\$DEERFLOW_PNPM_PYTHON\" \"\$DEERFLOW_PNPM_RUNNER\" run preview"
 fi
+
+# Runtime path defaults. Local `make dev` launches Gateway from `backend/`,
+# so pin DeerFlow-owned state to the expected backend runtime directory and
+# create it before uvicorn builds its reload exclude filter.
+if [ -z "$DEER_FLOW_PROJECT_ROOT" ]; then
+    export DEER_FLOW_PROJECT_ROOT="$REPO_ROOT"
+fi
+
+BACKEND_RUNTIME_HOME="$REPO_ROOT/backend/.deer-flow"
+if [ -z "$DEER_FLOW_HOME" ]; then
+    export DEER_FLOW_HOME="$BACKEND_RUNTIME_HOME"
+fi
+
+# `backend/sandbox` is excluded from uvicorn's reload watcher below. uvicorn only
+# excludes an absolute path directly when it already exists as a directory;
+# otherwise it globs the pattern, and Python 3.12's pathlib rejects absolute glob
+# patterns with NotImplementedError, crashing `make dev` on a fresh checkout
+# (#3459 / #3454). Creating it here keeps every absolute exclude on the is_dir path.
+mkdir -p "$DEER_FLOW_HOME" "$BACKEND_RUNTIME_HOME" "$REPO_ROOT/backend/sandbox"
+DEER_FLOW_HOME="$(cd "$DEER_FLOW_HOME" && pwd -P)"
+BACKEND_RUNTIME_HOME="$(cd "$BACKEND_RUNTIME_HOME" && pwd -P)"
+export DEER_FLOW_HOME
 
 # Extra flags for uvicorn
 if $DEV_MODE && ! $DAEMON_MODE; then
-    GATEWAY_EXTRA_FLAGS="--reload --reload-include='*.yaml' --reload-include='.env' --reload-exclude='*.pyc' --reload-exclude='__pycache__' --reload-exclude='sandbox/' --reload-exclude='.ideer/'"
+    GATEWAY_EXTRA_FLAGS="--reload --reload-include='*.yaml' --reload-include='.env' --reload-exclude='*.pyc' --reload-exclude='__pycache__' --reload-exclude='$REPO_ROOT/backend/sandbox' --reload-exclude='$DEER_FLOW_HOME' --reload-exclude='$BACKEND_RUNTIME_HOME'"
 else
     GATEWAY_EXTRA_FLAGS=""
 fi
@@ -307,28 +376,23 @@ fi
 # ── Config check ─────────────────────────────────────────────────────────────
 
 if ! { \
-        [ -n "$IDEER_CONFIG_PATH" ] && [ -f "$IDEER_CONFIG_PATH" ] || \
+        [ -n "$DEER_FLOW_CONFIG_PATH" ] && [ -f "$DEER_FLOW_CONFIG_PATH" ] || \
         [ -f backend/config.yaml ] || \
         [ -f config.yaml ]; \
     }; then
-    echo "✗ No iDeer config file found."
+    echo "✗ No DeerFlow config file found."
     echo "  Run 'make setup' (recommended) or 'make config' to generate config.yaml."
     exit 1
 fi
 
-"$REPO_ROOT/scripts/config-upgrade.sh"
+bash "$REPO_ROOT/scripts/config-upgrade.sh"
 
 # ── Install dependencies ────────────────────────────────────────────────────
 
-# Pick a Python for the extras detector. Falls back to plain `python` for
-# Windows/Git Bash where only `python` is on PATH.
-if command -v python3 >/dev/null 2>&1; then
-    DETECT_PYTHON="python3"
-elif command -v python >/dev/null 2>&1; then
-    DETECT_PYTHON="python"
-else
-    DETECT_PYTHON=""
-fi
+# Pick a runnable Python for the extras detector. On Windows/Git Bash,
+# `python3` can resolve to the Microsoft Store alias in WindowsApps, which is
+# present on PATH but not executable from Bash.
+DETECT_PYTHON="$(_pick_python || true)"
 
 # Resolve uv extras (postgres, etc.) from UV_EXTRAS or config.yaml so that
 # `uv sync` does not wipe out optional dependencies on every restart. See
@@ -351,11 +415,11 @@ if ! $SKIP_INSTALL; then
     if [ -n "$UV_EXTRAS_FLAGS" ]; then
         echo "  • uv extras: $UV_EXTRAS_FLAGS"
     fi
-    # `--all-packages` propagates extras into workspace members (ideer-harness
+    # `--all-packages` propagates extras into workspace members (deerflow-harness
     # in particular). Required for postgres extras — see PR #2584.
     # Intentionally unquoted to splat multiple `--extra X` pairs.
-    (cd backend && uv sync --quiet --all-packages $UV_EXTRAS_FLAGS) || { echo "✗ Backend dependency install failed"; exit 1; }
-    (cd frontend && pnpm install --silent) || { echo "✗ Frontend dependency install failed"; exit 1; }
+    (cd backend && uv sync --locked --quiet --all-packages $UV_EXTRAS_FLAGS) || { echo "✗ Backend dependency install failed"; exit 1; }
+    (cd frontend && "$DEERFLOW_PNPM_PYTHON" "$DEERFLOW_PNPM_RUNNER" install --silent) || { echo "✗ Frontend dependency install failed"; exit 1; }
     echo "✓ Dependencies synced"
 else
     echo "⏩ Skipping dependency install (--skip-install)"
@@ -365,14 +429,16 @@ fi
 
 echo ""
 echo "=========================================="
-echo "  Starting iDeer"
+echo "  Starting DeerFlow"
 echo "=========================================="
 echo ""
 echo "  Mode: $MODE_LABEL"
+if ! $DEV_MODE && $SKIP_FRONTEND_BUILD; then
+    echo "  (frontend: reusing existing build)"
+fi
 echo ""
 echo "  Services:"
 echo "    Gateway     → localhost:8001  (REST API + agent runtime)"
-echo "    Worker      → workflow-worker (durable workflow tasks)"
 echo "    Frontend    → localhost:3000  (Next.js)"
 echo "    Nginx       → localhost:2026  (reverse proxy)"
 echo ""
@@ -387,11 +453,8 @@ cleanup() {
     exit "$status"
 }
 
-# 仅在非 daemon 模式下设置陷阱，daemon 模式下进程已 detach，不需要陷阱
-if ! $DAEMON_MODE; then
-    trap 'cleanup 130' INT
-    trap 'cleanup 143' TERM
-fi
+trap 'cleanup 130' INT
+trap 'cleanup 143' TERM
 
 # ── Helper: start a service ──────────────────────────────────────────────────
 
@@ -401,24 +464,22 @@ run_service() {
     local name="$1" cmd="$2" port="$3" timeout="$4"
 
     if _is_port_listening "$port"; then
-        echo "  Port $port is in use, attempting to stop existing service..."
-        _kill_repo_port "$port"
-        sleep 1
-        if _is_port_listening "$port"; then
-            echo "✗ $name cannot start because port $port is still in use."
-            echo "  If it belongs to this worktree, run 'make stop'; otherwise free the port manually."
-            cleanup 1
-        fi
+        echo "✗ $name cannot start because port $port is already in use."
+        echo "  If it belongs to this worktree, run 'make stop'; otherwise free the port manually."
+        cleanup 1
     fi
 
     echo "Starting $name..."
     if $DAEMON_MODE; then
-        nohup sh -c "$cmd" > /dev/null 2>&1 &
+        # Tag the daemon so every descendant (pnpm → next → next-server)
+        # carries DEERFLOW_DAEMON_ROOT in its environment, letting
+        # _is_deerflow_pid recognize it at stop time.
+        nohup env DEERFLOW_DAEMON_ROOT="$REPO_ROOT" sh -c "$cmd" > /dev/null 2>&1 &
     else
         sh -c "$cmd" &
     fi
 
-    "$REPO_ROOT/scripts/wait-for-port.sh" "$port" "$timeout" "$name" || {
+    bash ./scripts/wait-for-port.sh "$port" "$timeout" "$name" || {
         local logfile="logs/$(echo "$name" | tr '[:upper:]' '[:lower:]' | tr ' ' '-').log"
         echo "✗ $name failed to start."
         [ -f "$logfile" ] && tail -20 "$logfile"
@@ -427,71 +488,22 @@ run_service() {
     echo "✓ $name started on localhost:$port"
 }
 
-run_workflow_worker() {
-    local worker_pid
-
-    if [ -f "$WORKFLOW_WORKER_PID_FILE" ]; then
-        worker_pid=$(cat "$WORKFLOW_WORKER_PID_FILE")
-        if [ -n "$worker_pid" ] && kill -0 "$worker_pid" 2>/dev/null && _is_repo_pid "$worker_pid"; then
-            echo "✗ Workflow worker cannot start because it is already running (pid $worker_pid)."
-            cleanup 1
-        fi
-        rm -f "$WORKFLOW_WORKER_PID_FILE"
-    fi
-
-    echo "Starting Workflow worker..."
-    if $DAEMON_MODE; then
-        nohup sh -c "cd '$REPO_ROOT/backend' && PYTHONPATH=. uv run python -m app.workflow_worker" > logs/workflow-worker.log 2>&1 &
-    else
-        (cd backend && PYTHONPATH=. uv run python -m app.workflow_worker > ../logs/workflow-worker.log 2>&1) &
-    fi
-    worker_pid=$!
-    echo "$worker_pid" > "$WORKFLOW_WORKER_PID_FILE"
-    sleep 1
-    if ! kill -0 "$worker_pid" 2>/dev/null; then
-        echo "✗ Workflow worker failed to start."
-        tail -20 logs/workflow-worker.log 2>/dev/null || true
-        cleanup 1
-    fi
-    echo "✓ Workflow worker started (pid $worker_pid)"
-}
-
 # ── Start services ───────────────────────────────────────────────────────────
 
 mkdir -p logs
 mkdir -p temp/client_body_temp temp/proxy_temp temp/fastcgi_temp temp/uwsgi_temp temp/scgi_temp
-
-# 0. Database migrations
-# Run from backend/ so relative sqlite_dir ".ideer/data" resolves to
-# backend/.ideer/data/ideer.db, matching Gateway startup (env.py further
-# resolves from config.yaml and ensures the parent dir exists).
-echo "Running database migrations..."
-(cd "$REPO_ROOT/backend" && uv run alembic -c app/agentplatform/persistence/migrations/alembic.ini upgrade head) || { echo "✗ Database migrations failed"; cleanup 1; }
-echo "✓ Database migrations completed"
-
-# ── Runtime state directory continuity ───────────────────────────────────────
-# Existing pre-convergence installs keep their backend/.ideer state directory:
-# when DEER_FLOW_HOME was not set explicitly and the legacy directory exists,
-# adopt it so memory, agents, threads and skills views stay with the data
-# written by the legacy runtime. Fresh installs default to .deer-flow.
-if [ -z "${DEER_FLOW_HOME:-}" ] && [ -d "$REPO_ROOT/backend/.ideer" ]; then
-    export DEER_FLOW_HOME="$REPO_ROOT/backend/.ideer"
-fi
 
 # 1. Gateway API
 run_service "Gateway" \
     "cd backend && PYTHONPATH=. uv run --no-sync uvicorn app.gateway.app:app --host 0.0.0.0 --port 8001 $GATEWAY_EXTRA_FLAGS > ../logs/gateway.log 2>&1" \
     8001 30
 
-# 2. Durable workflow task consumer
-run_workflow_worker
-
-# 3. Frontend
+# 2. Frontend
 run_service "Frontend" \
-    "cd frontend && env PORT=3000 $FRONTEND_CMD > ../logs/frontend.log 2>&1" \
+    "cd frontend && $FRONTEND_CMD > ../logs/frontend.log 2>&1" \
     3000 300
 
-# 4. Nginx
+# 3. Nginx
 run_service "Nginx" \
     "nginx -g 'daemon off;' -c '$REPO_ROOT/docker/nginx/nginx.local.conf' -p '$REPO_ROOT' > logs/nginx.log 2>&1" \
     2026 10
@@ -500,7 +512,7 @@ run_service "Nginx" \
 
 echo ""
 echo "=========================================="
-echo "  ✓ iDeer is running!  [$MODE_LABEL]"
+echo "  ✓ DeerFlow is running!  [$MODE_LABEL]"
 echo "=========================================="
 echo ""
 echo "  🌐 http://localhost:2026"
@@ -509,7 +521,7 @@ echo "  Routing: Frontend → Nginx → Gateway"
 echo "  API:     /api/langgraph/*  →  Gateway agent runtime"
 echo "           /api/*              →  Gateway REST API (8001)"
 echo ""
-echo "  📋 Logs: logs/{gateway,workflow-worker,frontend,nginx}.log"
+echo "  📋 Logs: logs/{gateway,frontend,nginx}.log"
 echo ""
 
 if $DAEMON_MODE; then
