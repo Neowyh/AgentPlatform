@@ -23,7 +23,6 @@ from pathlib import Path
 
 import pytest
 from alembic import command
-from alembic.config import Config as AlembicConfig
 from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, inspect, text
 
@@ -33,10 +32,8 @@ from deerflow.persistence.migrations._chain_meta import (
     MERGE_REVISION,
     RUNTIME_HEAD,
     VERSION_TABLE,
-    version_locations,
 )
-
-MIGRATIONS_DIR = Path(__file__).resolve().parents[3] / "packages" / "harness" / "deerflow" / "persistence" / "migrations"
+from tests._migration_test_support import unified_alembic_config
 
 # The alembic URL uses the async driver.  For post-migration verification
 # we open the same SQLite file with a synchronous engine (no greenlet needed).
@@ -49,20 +46,9 @@ _SYNC_PREFIX = "sqlite:///"
 # ---------------------------------------------------------------------------
 
 
-def make_alembic_config(db_url: str) -> AlembicConfig:
-    """Build an Alembic config pointing at the unified migration scripts.
-
-    Built as a bare config (not from ``alembic.ini``) with an explicit URL so
-    the tests never touch a real deployment database, and with
-    ``version_locations`` mirroring the ini so both version directories are
-    visible.
-    """
-    cfg = AlembicConfig()
-    cfg.set_main_option("script_location", str(MIGRATIONS_DIR))
-    cfg.set_main_option("path_separator", "space")
-    cfg.set_main_option("version_locations", version_locations(MIGRATIONS_DIR))
-    cfg.set_main_option("sqlalchemy.url", db_url)
-    return cfg
+def make_alembic_config(db_url: str):
+    """Alembic config pointing at the unified migration scripts (shared helper)."""
+    return unified_alembic_config(db_url)
 
 
 def get_head_revision() -> str:
