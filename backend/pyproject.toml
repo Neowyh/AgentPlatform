@@ -59,6 +59,9 @@ extensions = []
 dev = [
     "blockbuster>=1.5.26,<1.6",
     "hypothesis>=6.100,<7",
+    # Starlette's TestClient requires the maintained httpx2 package; without
+    # it Starlette falls back to legacy httpx and its ASGI transport hangs.
+    "httpx2>=2.0.0",
     "jsonschema>=4.26.0",
     "prompt-toolkit>=3.0.0",
     "pytest>=9.0.3",
