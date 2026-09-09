@@ -151,6 +151,13 @@ def record_tool_receipt(receipt: Mapping[str, Any]) -> None:
     _append_evidence_item("tool_receipts", receipt)
 
 
+def record_local_execution_receipt(receipt: Mapping[str, Any], *, tool_call_id: str | None = None) -> None:
+    """Attach a device receipt as a child of the canonical tool receipt ledger."""
+    from agentplatform_extension.local_runtime.receipts import tool_receipt_from_local
+
+    record_tool_receipt(tool_receipt_from_local(receipt, tool_call_id=tool_call_id))
+
+
 def record_subagent_verification(verification: Mapping[str, Any]) -> None:
     """Record a sub-agent verification verdict in the active Run envelope."""
 

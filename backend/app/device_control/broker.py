@@ -40,6 +40,7 @@ class DeviceConnection:
     public_key: Ed25519PublicKey
     websocket: WebSocketLike
     tasks_allowed: bool = True
+    capabilities: frozenset[str] = field(default_factory=frozenset)
     seen_task_ids: set[str] = field(default_factory=set)
     seen_message_ids: set[str] = field(default_factory=set)
 
@@ -163,6 +164,12 @@ class DeviceBroker:
             seen_message_ids=connection.seen_message_ids,
         )
         if envelope.type == MessageType.HEARTBEAT:
+            return None
+        if envelope.type == MessageType.CAPABILITY_UPDATE:
+            values = envelope.payload.get("capabilities", ())
+            if not isinstance(values, list | tuple | set):
+                raise ProtocolError("CAPABILITIES_INVALID", "capability update is invalid")
+            connection.capabilities = frozenset(str(value) for value in values)
             return None
         if envelope.task_id is None:
             raise ProtocolError("TASK_ID_REQUIRED", "task lifecycle messages require task_id")

@@ -77,11 +77,30 @@ class LocalRuntimeClient:
             json.dumps(hello, ensure_ascii=False, separators=(",", ":"))
         )
 
+    async def send_capability_update(self) -> None:
+        """Publish the current device capability set to the server registry."""
+        if self.connection is None or self.session_id is None:
+            raise RuntimeError("connect and send_hello must be called first")
+        message = sign_envelope(
+            private_key=self.private_key,
+            message_type=MessageType.CAPABILITY_UPDATE,
+            device_id=self.device_id,
+            session_id=self.session_id,
+            payload={
+                "capabilities": list(self.capabilities),
+                "policy_hash": self.policy_hash,
+            },
+        )
+        await self.connection.send(
+            json.dumps(message, ensure_ascii=False, separators=(",", ":"))
+        )
+
     async def run(self) -> None:
         """Receive signed tasks and return ACK/progress/result envelopes."""
         if self.connection is None:
             await self.connect()
         await self.send_hello()
+        await self.send_capability_update()
         assert self.connection is not None
         server_hello = json.loads(await self.connection.recv())
         configured_key = self.server_public_key or str(

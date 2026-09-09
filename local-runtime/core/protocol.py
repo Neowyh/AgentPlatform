@@ -69,7 +69,9 @@ def sign_envelope(
 ) -> dict[str, Any]:
     issued_at = datetime.now(UTC)
     issued_at_text = issued_at.isoformat().replace("+00:00", "Z")
-    expires_at_text = (issued_at + timedelta(minutes=5)).isoformat().replace("+00:00", "Z")
+    expires_at_text = (
+        (issued_at + timedelta(minutes=5)).isoformat().replace("+00:00", "Z")
+    )
     unsigned = {
         "protocol": "1",
         "type": message_type.value,
