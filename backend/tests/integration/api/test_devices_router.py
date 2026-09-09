@@ -55,8 +55,26 @@ async def test_device_http_gate_covers_pair_online_offline_revoke(device_factory
         assert registered.status_code == 200
         registration = registered.json()
         device_id = registration["device"]["id"]
-        token = registration["session_token"]
+        assert "session_token" not in registration
         assert registration["device"]["status"] == "pending"
+
+        confirmed = client.post(
+            f"/api/devices/pairing/{challenge['pairing_id']}/confirm",
+            json={"code": challenge["code"]},
+        )
+        assert confirmed.status_code == 200
+        assert confirmed.json()["id"] == device_id
+
+        completed = client.post(
+            "/api/devices/register/complete",
+            json={
+                "device_id": device_id,
+                "public_key": "ssh-ed25519 AAAA-http-device-key",
+                "claim_token": registration["claim_token"],
+            },
+        )
+        assert completed.status_code == 200
+        token = completed.json()["session_token"]
 
         detail = client.get(f"/api/devices/{device_id}")
         assert detail.status_code == 200
@@ -104,8 +122,21 @@ async def test_websocket_device_initiates_and_receives_signed_echo_receipt(devic
             },
         ).json()
         device = registered["device"]
-        session_id = registered["session_id"]
-        token = registered["session_token"]
+        confirmed = client.post(
+            f"/api/devices/pairing/{pairing['pairing_id']}/confirm",
+            json={"code": pairing["code"]},
+        )
+        assert confirmed.status_code == 200
+        completed = client.post(
+            "/api/devices/register/complete",
+            json={
+                "device_id": device["id"],
+                "public_key": public_key_text(device_key.public_key()),
+                "claim_token": registered["claim_token"],
+            },
+        ).json()
+        session_id = completed["session_id"]
+        token = completed["session_token"]
 
         with client.websocket_connect("/api/devices/ws") as websocket:
             hello = sign_envelope(

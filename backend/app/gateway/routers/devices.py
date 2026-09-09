@@ -37,6 +37,23 @@ class DeviceRegisterRequest(BaseModel):
 
 class DeviceRegisterResponse(BaseModel):
     device: dict
+    pairing_id: str
+    claim_token: str
+    claim_expires_at: datetime
+
+
+class DeviceRegistrationCompleteRequest(BaseModel):
+    device_id: str = Field(min_length=1)
+    public_key: str = Field(min_length=32)
+    claim_token: str = Field(min_length=16)
+
+
+class PairingConfirmRequest(BaseModel):
+    code: str = Field(min_length=8)
+
+
+class DeviceSessionResponse(BaseModel):
+    device: dict
     session_id: str
     session_token: str
     session_expires_at: datetime
@@ -130,8 +147,20 @@ async def create_pairing(current_user: UserModel = Depends(get_current_rbac_user
 
 @router.post("/register", response_model=DeviceRegisterResponse)
 async def register_device(payload: DeviceRegisterRequest) -> DeviceRegisterResponse:
-    registered = await _run(lambda service: service.register_device(**payload.model_dump()))
-    return DeviceRegisterResponse(device=DeviceResponse.from_model(registered.device).model_dump(), session_id=registered.session_id, session_token=registered.session_token, session_expires_at=registered.session_expires_at)
+    claim = await _run(lambda service: service.register_device(**payload.model_dump()))
+    return DeviceRegisterResponse(device=DeviceResponse.from_model(claim.device).model_dump(), pairing_id=claim.pairing_id, claim_token=claim.claim_token, claim_expires_at=claim.claim_expires_at)
+
+
+@router.post("/pairing/{pairing_id}/confirm", response_model=DeviceResponse)
+async def confirm_pairing(pairing_id: str, payload: PairingConfirmRequest, current_user: UserModel = Depends(get_current_rbac_user)) -> DeviceResponse:
+    device = await _run(lambda service: service.confirm_pairing(pairing_id, owner_id=str(current_user.id), code=payload.code))
+    return DeviceResponse.from_model(device)
+
+
+@router.post("/register/complete", response_model=DeviceSessionResponse)
+async def complete_registration(payload: DeviceRegistrationCompleteRequest) -> DeviceSessionResponse:
+    registered = await _run(lambda service: service.complete_registration(**payload.model_dump()))
+    return DeviceSessionResponse(device=DeviceResponse.from_model(registered.device).model_dump(), session_id=registered.session_id, session_token=registered.session_token, session_expires_at=registered.session_expires_at)
 
 
 @router.get("", response_model=list[DeviceResponse])

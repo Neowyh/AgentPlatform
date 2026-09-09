@@ -42,18 +42,32 @@ async def test_pair_register_heartbeat_disconnect_and_revoke(session: AsyncSessi
     assert registered.device.status == DeviceStatus.PENDING
     assert registered.device.capabilities == ["echo"]
 
-    online = await service.heartbeat(registered.device.id, registered.session_token)
+    with pytest.raises(DeviceControlError, match="confirmation is required"):
+        await service.complete_registration(
+            device_id=registered.device.id,
+            public_key="ssh-ed25519 AAAA-device-public-key",
+            claim_token=registered.claim_token,
+        )
+
+    await service.confirm_pairing(challenge.pairing_id, owner_id="owner", code=challenge.code)
+    completed = await service.complete_registration(
+        device_id=registered.device.id,
+        public_key="ssh-ed25519 AAAA-device-public-key",
+        claim_token=registered.claim_token,
+    )
+
+    online = await service.heartbeat(completed.device.id, completed.session_token)
     assert online.status == DeviceStatus.ONLINE
     assert online.last_seen is not None
 
-    offline = await service.disconnect(registered.device.id, registered.session_token)
+    offline = await service.disconnect(completed.device.id, completed.session_token)
     assert offline.status == DeviceStatus.OFFLINE
 
-    revoked = await service.revoke(registered.device.id, actor_id="owner", is_admin=False)
+    revoked = await service.revoke(completed.device.id, actor_id="owner", is_admin=False)
     assert revoked.status == DeviceStatus.REVOKED
 
     with pytest.raises(DeviceControlError, match="cannot connect"):
-        await service.heartbeat(registered.device.id, registered.session_token)
+        await service.heartbeat(completed.device.id, completed.session_token)
 
 
 @pytest.mark.asyncio
@@ -95,6 +109,9 @@ async def test_non_owner_cannot_revoke_or_read_device(session: AsyncSession) -> 
         capabilities=[],
         policy_hash=None,
     )
+
+    with pytest.raises(DeviceControlError, match="not available"):
+        await service.confirm_pairing(challenge.pairing_id, owner_id="other", code=challenge.code)
 
     with pytest.raises(DeviceControlError, match="only the owner"):
         await service.revoke(registered.device.id, actor_id="other", is_admin=False)

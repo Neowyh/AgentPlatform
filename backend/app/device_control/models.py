@@ -27,6 +27,8 @@ class DeviceStatus(StrEnum):
 class PairingStatus(StrEnum):
     OPEN = "open"
     CLAIMED = "claimed"
+    CONFIRMED = "confirmed"
+    COMPLETED = "completed"
     EXPIRED = "expired"
 
 
@@ -68,6 +70,9 @@ class PairingSessionModel(Base):
     status: Mapped[str] = mapped_column(String(16), nullable=False, default=PairingStatus.OPEN)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    claim_token_digest: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
+    claim_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     device_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
 

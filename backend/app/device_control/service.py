@@ -16,6 +16,11 @@ from .pairing import PairingError, consume_pairing_code, hash_secret, new_pairin
 
 PAIRING_TTL = timedelta(minutes=10)
 DEVICE_SESSION_TTL = timedelta(hours=1)
+DEVICE_CLAIM_TTL = timedelta(minutes=10)
+
+
+def _as_utc(value: datetime) -> datetime:
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value
 
 
 class DeviceControlError(PairingError):
@@ -41,6 +46,14 @@ class RegisteredDevice:
     session_id: str
     session_token: str
     session_expires_at: datetime
+
+
+@dataclass(frozen=True)
+class DeviceClaim:
+    device: DeviceModel
+    pairing_id: str
+    claim_token: str
+    claim_expires_at: datetime
 
 
 class DeviceControlService:
@@ -73,7 +86,7 @@ class DeviceControlService:
         runtime_version: str,
         capabilities: list[str],
         policy_hash: str | None,
-    ) -> RegisteredDevice:
+    ) -> DeviceClaim:
         pairing = (await self.session.execute(select(PairingSessionModel).where(PairingSessionModel.code_digest == hash_secret(pairing_code)).with_for_update())).scalar_one_or_none()
         if pairing is None:
             raise DeviceControlError("PAIRING_INVALID", "pairing code invalid", 400)
@@ -99,13 +112,13 @@ class DeviceControlService:
             capabilities=sorted(set(capabilities)),
             policy_hash=policy_hash,
         )
-        token = secrets.token_urlsafe(32)
-        session_expires_at = datetime.now(UTC) + DEVICE_SESSION_TTL
+        claim_token = secrets.token_urlsafe(32)
+        claim_expires_at = datetime.now(UTC) + DEVICE_CLAIM_TTL
         self.session.add(device)
-        session_id = str(uuid4())
-        self.session.add(DeviceSessionModel(id=session_id, device_id=device.id, token_digest=hash_secret(token), expires_at=session_expires_at))
         pairing.status = PairingStatus.CLAIMED
         pairing.claimed_at = datetime.now(UTC)
+        pairing.claim_token_digest = hash_secret(claim_token)
+        pairing.claim_expires_at = claim_expires_at
         pairing.device_id = device.id
         try:
             await self.session.commit()
@@ -113,6 +126,46 @@ class DeviceControlService:
             await self.session.rollback()
             raise DeviceControlError("DEVICE_ALREADY_REGISTERED", "device name or public key is already registered", 409) from exc
         await self.session.refresh(device)
+        return DeviceClaim(device, pairing.id, claim_token, claim_expires_at)
+
+    async def confirm_pairing(self, pairing_id: str, *, owner_id: str, code: str) -> DeviceModel:
+        pairing = (await self.session.execute(select(PairingSessionModel).where(PairingSessionModel.id == pairing_id).with_for_update())).scalar_one_or_none()
+        if pairing is None or pairing.owner_id != owner_id:
+            raise DeviceControlError("PAIRING_NOT_FOUND", "pairing challenge is not available", 404)
+        if pairing.status != PairingStatus.CLAIMED:
+            raise DeviceControlError("PAIRING_NOT_CONFIRMABLE", "pairing challenge is not waiting for confirmation", 409)
+        try:
+            consume_pairing_code(pairing.code_digest, code, expires_at=pairing.expires_at, consumed=False)
+        except PairingError as exc:
+            code_name = "PAIRING_EXPIRED" if "expired" in str(exc) else "PAIRING_INVALID"
+            raise DeviceControlError(code_name, str(exc), 409 if code_name == "PAIRING_EXPIRED" else 400) from exc
+        device = await self._get_device(pairing.device_id or "")
+        pairing.status = PairingStatus.CONFIRMED
+        pairing.confirmed_at = datetime.now(UTC)
+        await self.session.commit()
+        await self.session.refresh(device)
+        return device
+
+    async def complete_registration(self, *, device_id: str, public_key: str, claim_token: str) -> RegisteredDevice:
+        pairing = (await self.session.execute(select(PairingSessionModel).where(PairingSessionModel.device_id == device_id).with_for_update())).scalar_one_or_none()
+        if pairing is None or pairing.status != PairingStatus.CONFIRMED:
+            raise DeviceControlError("PAIRING_NOT_CONFIRMED", "owner confirmation is required before registration", 409)
+        if pairing.claim_expires_at is None or _as_utc(pairing.claim_expires_at) <= datetime.now(UTC):
+            pairing.status = PairingStatus.EXPIRED
+            await self.session.commit()
+            raise DeviceControlError("PAIRING_EXPIRED", "device claim expired", 409)
+        if pairing.claim_token_digest != hash_secret(claim_token):
+            raise DeviceControlError("PAIRING_CLAIM_INVALID", "device claim token is invalid", 401)
+        device = await self._get_device(device_id)
+        if device.public_key != public_key:
+            raise DeviceControlError("DEVICE_KEY_MISMATCH", "device public key does not match the claim", 401)
+        token = secrets.token_urlsafe(32)
+        session_expires_at = datetime.now(UTC) + DEVICE_SESSION_TTL
+        session_id = str(uuid4())
+        self.session.add(DeviceSessionModel(id=session_id, device_id=device.id, token_digest=hash_secret(token), expires_at=session_expires_at))
+        pairing.status = PairingStatus.COMPLETED
+        pairing.claim_token_digest = None
+        await self.session.commit()
         return RegisteredDevice(device, session_id, token, session_expires_at)
 
     async def list_devices(self, *, owner_id: str | None = None) -> list[DeviceModel]:

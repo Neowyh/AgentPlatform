@@ -44,6 +44,9 @@ def upgrade() -> None:
         sa.Column("status", sa.String(length=16), nullable=False),
         sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("claimed_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("confirmed_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("claim_token_digest", sa.String(length=64), nullable=True, unique=True),
+        sa.Column("claim_expires_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("device_id", sa.String(length=36), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
     )

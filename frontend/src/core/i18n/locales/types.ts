@@ -1426,6 +1426,32 @@ export interface Translations {
       viewDetails: string;
       loading: string;
     };
+    devices: {
+      pageTitle: string;
+      pageDescription: string;
+      createPairing: string;
+      pairingCode: string;
+      pairingInstructions: string;
+      confirmPairing: string;
+      confirming: string;
+      loading: string;
+      empty: string;
+      revoke: string;
+      revokeConfirm: string;
+      revoked: string;
+      status: string;
+      runtime: string;
+      protocol: string;
+      capabilities: string;
+      lastSeen: string;
+      never: string;
+      pending: string;
+      online: string;
+      offline: string;
+      blocked: string;
+      outdated: string;
+      error: string;
+    };
     users: {
       pageTitle: string;
       subtitleSuperAdmin: string;
@@ -1679,5 +1705,4 @@ export interface Translations {
       redirecting: string;
     };
   };
-
 }
