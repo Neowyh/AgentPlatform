@@ -37,6 +37,7 @@ from app.gateway.auth.session_cookie_state import SKIP_AUTH_CSRF_COOKIE_STATE_AT
 from app.gateway.auth.user_provisioning import get_or_provision_oidc_user
 from app.gateway.csrf_middleware import CSRF_COOKIE_NAME, _request_origin, auth_csrf_cookie_settings, generate_csrf_token, is_secure_request
 from app.gateway.deps import get_current_user_from_request, get_local_provider
+from app.gateway.rbac_users import create_auth_user_with_rbac
 from deerflow.config.auth_config import OIDCProviderConfig
 
 logger = logging.getLogger(__name__)
@@ -470,7 +471,22 @@ async def register(request: Request, response: Response, body: RegisterRequest):
         )
 
     try:
-        user = await get_local_provider().create_user(email=body.email, password=body.password, system_role="user")
+        from app.agentplatform.rbac_models import UserRole
+        from deerflow.persistence.engine import get_session_factory
+
+        sf = get_session_factory()
+        if sf is None:
+            raise HTTPException(status_code=503, detail="Authorization service temporarily unavailable")
+        async with sf() as session:
+            user = await create_auth_user_with_rbac(
+                session,
+                email=str(body.email),
+                password=body.password,
+                username=str(body.email),
+                role=UserRole.USER,
+            )
+    except HTTPException:
+        raise
     except ValueError:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -562,10 +578,13 @@ async def change_password(request: Request, response: Response, body: ChangePass
 async def get_me(request: Request):
     """Get current authenticated user info."""
     user = await get_current_user_from_request(request)
+    from app.gateway.auth_disabled import AUTH_SOURCE_AUTH_DISABLED
+
+    role = "user" if getattr(request.state, "auth_source", None) == AUTH_SOURCE_AUTH_DISABLED else await _platform_role_for_user(str(user.id))
     return UserResponse(
         id=str(user.id),
         email=user.email,
-        system_role=user.system_role,
+        system_role=role,
         needs_setup=user.needs_setup,
         oauth_provider=user.oauth_provider,
     )
@@ -706,6 +725,49 @@ _SETUP_STATUS_INFLIGHT: dict[str, asyncio.Task[dict]] = {}
 _SETUP_STATUS_INFLIGHT_GUARD = asyncio.Lock()
 
 
+async def _count_active_super_admin_users() -> int:
+    """Count valid platform administrators; authentication roles are not authorization."""
+    from sqlalchemy import func, select
+
+    from app.agentplatform.rbac_models import UserModel, UserRole
+    from deerflow.persistence.engine import get_session_factory
+
+    sf = get_session_factory()
+    if sf is None:
+        raise HTTPException(status_code=503, detail="Authorization service temporarily unavailable")
+    async with sf() as session:
+        return int(
+            await session.scalar(
+                select(func.count())
+                .select_from(UserModel)
+                .where(
+                    UserModel.role == UserRole.SUPER_ADMIN,
+                    UserModel.disabled.is_(False),
+                )
+            )
+            or 0
+        )
+
+
+async def _platform_role_for_user(user_id: str) -> str:
+    from sqlalchemy import select
+
+    from app.agentplatform.rbac_models import UserModel, UserRole
+    from deerflow.persistence.engine import get_session_factory
+
+    sf = get_session_factory()
+    if sf is None:
+        raise HTTPException(status_code=503, detail="Authorization service temporarily unavailable")
+    async with sf() as session:
+        profile = await session.scalar(select(UserModel).where(UserModel.id == user_id))
+    if profile is None or profile.disabled:
+        raise HTTPException(status_code=403, detail="Authenticated user has no active RBAC profile")
+    try:
+        return UserRole(profile.role).value
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail="Authenticated user has an invalid RBAC role") from exc
+
+
 @router.get("/setup-status")
 async def setup_status(request: Request):
     """Check if an admin account exists. Returns needs_setup=True when no admin exists."""
@@ -742,7 +804,7 @@ async def setup_status(request: Request):
                         del _SETUP_STATUS_CACHE[k]
 
             async def _compute_setup_status() -> dict:
-                admin_count = await get_local_provider().count_admin_users()
+                admin_count = await _count_active_super_admin_users()
                 return {"needs_setup": admin_count == 0, "registration_enabled": _local_registration_enabled()}
 
             task = asyncio.create_task(_compute_setup_status())
@@ -783,31 +845,52 @@ async def initialize_admin(request: Request, response: Response, body: Initializ
     On success, the admin account is created with ``needs_setup=False`` and
     the session cookie is set.
     """
-    admin_count = await get_local_provider().count_admin_users()
-    if admin_count > 0:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=AuthErrorResponse(code=AuthErrorCode.SYSTEM_ALREADY_INITIALIZED, message="System already initialized").model_dump(),
-        )
+    from sqlalchemy import text
+    from sqlalchemy.exc import IntegrityError
 
+    from app.agentplatform.rbac_models import UserRole
+    from deerflow.persistence.engine import get_session_factory
+
+    sf = get_session_factory()
+    if sf is None:
+        raise HTTPException(status_code=503, detail="Authorization service temporarily unavailable")
     try:
-        user = await get_local_provider().create_user(email=body.email, password=body.password, system_role="admin", needs_setup=False)
-    except ValueError:
-        admin_count = await get_local_provider().count_admin_users()
-        if admin_count == 0:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=AuthErrorResponse(code=AuthErrorCode.EMAIL_ALREADY_EXISTS, message="Email already registered").model_dump(),
+        async with sf() as session:
+            # SQLite's write transaction serializes the qualification check and
+            # both inserts. PostgreSQL obtains the equivalent transaction lock
+            # through an advisory lock before checking the current head.
+            dialect = session.bind.dialect.name if session.bind is not None else ""
+            if dialect == "sqlite":
+                await session.execute(text("BEGIN IMMEDIATE"))
+            elif dialect == "postgresql":
+                await session.execute(text("SELECT pg_advisory_xact_lock(hashtext('ideer.auth.initialize'))"))
+            admin_count = int(await session.scalar(text("SELECT count(*) FROM users_ext WHERE role = 'super_admin' AND disabled = false")) or 0)
+            if admin_count > 0:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=AuthErrorResponse(code=AuthErrorCode.SYSTEM_ALREADY_INITIALIZED, message="System already initialized").model_dump())
+            user = await create_auth_user_with_rbac(
+                session,
+                email=str(body.email),
+                password=body.password,
+                username=str(body.email),
+                role=UserRole.SUPER_ADMIN,
+                needs_setup=False,
             )
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=AuthErrorResponse(code=AuthErrorCode.SYSTEM_ALREADY_INITIALIZED, message="System already initialized").model_dump(),
-        )
+    except HTTPException:
+        raise
+    except (ValueError, IntegrityError) as exc:
+        # A duplicate email is a client conflict; a concurrent initializer is
+        # reported as already initialized after its transaction commits.
+        if await _count_active_super_admin_users() > 0:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=AuthErrorResponse(code=AuthErrorCode.SYSTEM_ALREADY_INITIALIZED, message="System already initialized").model_dump()) from exc
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=AuthErrorResponse(code=AuthErrorCode.EMAIL_ALREADY_EXISTS, message="Email already registered").model_dump()) from exc
 
     token = create_access_token(str(user.id), token_version=user.token_version)
     _set_session_cookie(response, token, request, remember_me=body.remember_me)
 
-    return UserResponse(id=str(user.id), email=user.email, system_role=user.system_role, oauth_provider=user.oauth_provider)
+    from app.gateway.app import _seed_bundled_resources
+
+    await _seed_bundled_resources()
+    return UserResponse(id=str(user.id), email=user.email, system_role="super_admin", oauth_provider=user.oauth_provider)
 
 
 # ── OIDC / SSO Endpoints ────────────────────────────────────────────────

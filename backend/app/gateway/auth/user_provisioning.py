@@ -12,9 +12,12 @@ import logging
 
 from fastapi import HTTPException, status
 
+from app.agentplatform.rbac_models import UserRole
 from app.gateway.auth.local_provider import LocalAuthProvider
 from app.gateway.auth.oidc import OIDCIdentity
+from app.gateway.rbac_users import create_auth_user_with_rbac
 from deerflow.config.auth_config import OIDCProviderConfig
+from deerflow.persistence.engine import get_session_factory
 
 logger = logging.getLogger(__name__)
 
@@ -84,12 +87,19 @@ async def get_or_provision_oidc_user(
 
     role = _resolve_role(email, provider_config.admin_emails)
     try:
-        user = await local_provider.create_oauth_user(
-            email=email,
-            oauth_provider=provider_id,
-            oauth_id=identity.subject,
-            system_role=role,
-        )
+        sf = get_session_factory()
+        if sf is None:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Authorization service temporarily unavailable")
+        async with sf() as session:
+            user = await create_auth_user_with_rbac(
+                session,
+                email=email,
+                password=None,
+                username=email,
+                role=UserRole.SUPER_ADMIN if role == "super_admin" else UserRole.USER,
+                oauth_provider=provider_id,
+                oauth_id=identity.subject,
+            )
     except ValueError:
         # Lost a race: a concurrent callback (double-click, replayed code) already
         # inserted a row that collides on the unique index. Re-resolve instead of
@@ -109,4 +119,4 @@ async def get_or_provision_oidc_user(
 def _resolve_role(email: str, admin_emails: list[str]) -> str:
     """Return ``admin`` if the email is in the admin list, otherwise ``user``."""
     email_lower = email.lower()
-    return "admin" if any(e.lower() == email_lower for e in admin_emails) else "user"
+    return "super_admin" if any(e.lower() == email_lower for e in admin_emails) else "user"

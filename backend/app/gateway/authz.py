@@ -460,6 +460,11 @@ async def _authenticate(request: Request) -> AuthContext:
     if user is None:
         return AuthContext(user=None, permissions=[])
 
+    # Internal and auth-disabled requests have an explicit trusted source;
+    # they do not impersonate a platform role from either user table.
+    if _is_internal_caller(request, user):
+        return AuthContext(user=user, permissions=list(_ALL_PERMISSIONS))
+
     # BUG-06: Map roles to permissions instead of granting all
     _VIEWER_PERMISSIONS: list[str] = [
         Permissions.THREADS_READ,
@@ -480,23 +485,15 @@ async def _authenticate(request: Request) -> AuthContext:
             result = await session.execute(stmt)
             rbac_user = result.scalar_one_or_none()
             if rbac_user is None:
-                rbac_user = UserModel(
-                    id=str(user.id),
-                    username=getattr(user, "email", str(user.id)),
-                    role=UserRole.USER.value,
-                    department_id=None,
-                )
-                session.add(rbac_user)
-                await session.commit()
-                await session.refresh(rbac_user)
-                logger.info("Auto-created RBAC user %s with role %s", user.id, rbac_user.role)
+                logger.error("Authenticated user %s has no RBAC profile", user.id)
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Authenticated user has no RBAC profile")
             if rbac_user.disabled:
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User account is disabled")
             try:
                 role = UserRole(rbac_user.role)
             except (TypeError, ValueError):
-                logger.error("Invalid role '%s' for user %s, defaulting to viewer permissions", rbac_user.role, user.id)
-                role = UserRole.VIEWER
+                logger.error("Invalid role '%s' for user %s", rbac_user.role, user.id)
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Authenticated user has an invalid RBAC role")
             # T2: cache the resolved identity on the request so downstream
             # run preparation (alias resolve, canonical freeze) reuses it
             # instead of issuing duplicate UserModel SELECTs.
@@ -873,6 +870,15 @@ async def get_current_rbac_user(request: Request) -> UserModel:
 
     user_id = str(user.id)
 
+    if _is_internal_caller(request, user):
+        return SimpleNamespace(
+            id=user_id,
+            username=getattr(user, "email", user_id),
+            role="super_admin",
+            department_id=None,
+            disabled=False,
+        )
+
     sf = get_session_factory()
     if sf is None:
         raise HTTPException(status_code=500, detail="Database not initialized")
@@ -895,8 +901,8 @@ async def get_current_rbac_user(request: Request) -> UserModel:
     try:
         UserRole(rbac_user.role)
     except ValueError:
-        logger.error("Invalid role '%s' for user %s, defaulting to viewer", rbac_user.role, rbac_user.id)
-        rbac_user.role = UserRole.VIEWER
+        logger.error("Invalid role '%s' for user %s", rbac_user.role, rbac_user.id)
+        raise HTTPException(status_code=403, detail="Authenticated user has an invalid RBAC role")
 
     return rbac_user
 
