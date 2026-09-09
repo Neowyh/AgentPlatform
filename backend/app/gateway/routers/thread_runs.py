@@ -14,18 +14,19 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+from datetime import UTC, datetime
 from typing import Any, Literal
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
 
 from app.gateway.artifact_archive import ArtifactArchiveError, ArtifactArchiveResult, build_artifact_archive
-from app.gateway.authz import require_permission
+from app.gateway.authz import require_cancel_permission_if, require_permission
 from app.gateway.deps import get_checkpointer, get_current_user, get_feedback_repo, get_run_event_store, get_run_manager, get_run_store, get_stream_bridge
 from app.gateway.internal_auth import get_trusted_internal_owner_user_id
-from app.gateway.services import sse_consumer, start_run
+from app.gateway.services import sse_consumer, start_run, wait_for_run_completion
 from app.gateway.utils import sanitize_log_param
 from deerflow.authz.sandbox_authz import safe_app_config_async
 from deerflow.config.paths import get_paths, make_safe_user_id
@@ -121,6 +122,20 @@ class ThreadTokenUsageResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+def require_cancel_permission_when_action(request: Request, action: str | None) -> None:
+    """Conditionally require ``runs:cancel`` for cancel-then-stream requests.
+
+    ``stream_existing_run`` is gated at ``runs:read`` so action-less stream
+    joins keep working with read-only credentials, but its ``action`` branch
+    cancels the run — a separate permission. A read-only PAT (or any read-only
+    credential) must not reach the cancel path, and decorators cannot express
+    query-parameter-conditional permissions, so the check lives here. See
+    ``authz.require_cancel_permission_if`` — the shared primitive for every
+    request dimension that carries cancel capability.
+    """
+    require_cancel_permission_if(request, action is not None)
+
+
 def _cancel_conflict_detail(run_id: str, record: RunRecord) -> str:
     if record.status in (RunStatus.pending, RunStatus.running):
         return f"Run {run_id} is not active on this worker and cannot be cancelled"
@@ -138,6 +153,29 @@ _CANCEL_ACCEPTED_OUTCOMES = frozenset({CancelOutcome.cancelled, CancelOutcome.re
 def _cancel_rejected(run_id: str, record: RunRecord, outcome: CancelOutcome) -> HTTPException:
     headers = {"Retry-After": "5"} if outcome is CancelOutcome.lease_valid_elsewhere else None
     return HTTPException(status_code=409, detail=_cancel_conflict_detail(run_id, record), headers=headers)
+
+
+def _compute_retry_after(lease_expires_at: str | None, grace_seconds: int) -> int | None:
+    """Return seconds until the lease expires + grace, for ``Retry-After``.
+
+    Returns ``None`` when the lease is NULL or unparseable so the caller
+    can decide whether to send a generic 409 without the header.
+
+    The ``max(1, ...)`` floor means a lease just about to expire yields
+    ``Retry-After: 1``.  This is a lower bound, not a recommended poll
+    interval — clients that honour this header should apply minimum
+    backoff / jitter rather than retrying every second.
+    """
+    if lease_expires_at is None:
+        return None
+    try:
+        dt = datetime.fromisoformat(lease_expires_at)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=UTC)
+    except (ValueError, TypeError):
+        return None
+    remaining = (dt - datetime.now(UTC)).total_seconds() + grace_seconds
+    return max(1, int(remaining))
 
 
 def _record_to_response(record: RunRecord) -> RunResponse:
@@ -308,6 +346,15 @@ async def cancel_run(
             pass
         return Response(status_code=204)
 
+    if wait and cancelled == CancelOutcome.requested:
+        bridge = get_stream_bridge(request)
+        if record.store_only and bridge.supports_cross_process:
+            # wait=true observes the remote owner's finalization through the
+            # shared bridge instead of answering 202 immediately.
+            completed = await wait_for_run_completion(bridge, record, request, run_mgr)
+            if completed:
+                return Response(status_code=204)
+
     return Response(status_code=202)
 
 
@@ -324,7 +371,7 @@ async def join_run(thread_id: str, run_id: str, request: Request) -> StreamingRe
 
     bridge = get_stream_bridge(request)
     return StreamingResponse(
-        sse_consumer(bridge, record, request, run_mgr),
+        sse_consumer(bridge, record, request, run_mgr, apply_on_disconnect=False),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -334,22 +381,37 @@ async def join_run(thread_id: str, run_id: str, request: Request) -> StreamingRe
     )
 
 
-@router.api_route("/{thread_id}/runs/{run_id}/stream", methods=["GET", "POST"], response_model=None)
-@require_permission("runs", "read", owner_check=True)
-async def stream_existing_run(
-    thread_id: str,
+def _reject_get_stream_action(
+    action: Literal["interrupt", "rollback"] | None = Query(default=None, include_in_schema=False),
+) -> None:
+    """Keep the GET join read-only before thread ownership or run lookup."""
+    if action is not None:
+        # SameSite=Lax still sends the session cookie on a cross-site top-level
+        # safe navigation. Reject the state-changing action before the endpoint
+        # wrapper performs its thread ownership lookup.
+        raise HTTPException(
+            status_code=405,
+            detail="`action` is only supported on POST requests",
+            headers={"Allow": "POST"},
+        )
+
+
+async def _stream_existing_run(
+    thread_id: ThreadId,
     run_id: str,
     request: Request,
-    action: Literal["interrupt", "rollback"] | None = Query(default=None, description="Cancel action"),
-    wait: int = Query(default=0, description="Block until cancelled (1) or return immediately (0)"),
-):
-    """Join an existing run's SSE stream (GET), or cancel-then-stream (POST).
+    *,
+    action: Literal["interrupt", "rollback"] | None,
+    wait: int,
+) -> Response:
+    """Join an existing run's SSE stream, optionally cancelling it first.
 
     The LangGraph SDK's ``joinStream`` and ``useStream`` stop button both use
     ``POST`` to this endpoint.  When ``action=interrupt`` or ``action=rollback``
     is present the run is cancelled first; the response then streams any
     remaining buffered events so the client observes a clean shutdown.
     """
+    require_cancel_permission_when_action(request, action)
     run_mgr = get_run_manager(request)
     record = await run_mgr.get(run_id)
     if record is None or record.thread_id != thread_id:
@@ -357,7 +419,9 @@ async def stream_existing_run(
     if record.store_only and action is None:
         raise HTTPException(status_code=409, detail=f"Run {run_id} is not active on this worker and cannot be streamed")
 
-    # Cancel if an action was requested (stop-button / interrupt flow)
+    # Cancel if an action was requested (stop-button / interrupt flow). The
+    # cancel/reject outcomes resolve before the bridge dependency so a
+    # rejected cancel never fails on missing stream state.
     if action is not None:
         cancelled = await run_mgr.cancel(run_id, action=action)
         if cancelled not in _CANCEL_ACCEPTED_OUTCOMES:
@@ -370,8 +434,19 @@ async def stream_existing_run(
             return Response(status_code=204)
 
     bridge = get_stream_bridge(request)
+    if action is not None:
+        if record.store_only and not bridge.supports_cross_process:
+            # The cancel request is durable (the store records ``cancel_action``),
+            # but the run executes on another worker and this bridge cannot
+            # observe the owner's stream — an SSE subscription here would hang
+            # forever waiting for events it can never see.
+            return Response(status_code=202)
+        if wait and cancelled == CancelOutcome.requested:
+            completed = await wait_for_run_completion(bridge, record, request, run_mgr)
+            return Response(status_code=204 if completed else 202)
+
     return StreamingResponse(
-        sse_consumer(bridge, record, request, run_mgr),
+        sse_consumer(bridge, record, request, run_mgr, apply_on_disconnect=False),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -379,6 +454,34 @@ async def stream_existing_run(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+# Register POST before GET to preserve the historical route precedence and
+# Allow header, while separate signatures keep cancel-only parameters off the
+# GET schema. The shared route name keeps generated operationIds stable.
+@router.post("/{thread_id}/runs/{run_id}/stream", response_model=None, name="stream_existing_run")
+@require_permission("runs", "read", owner_check=True)
+async def stream_existing_run(
+    thread_id: ThreadId,
+    run_id: str,
+    request: Request,
+    action: Literal["interrupt", "rollback"] | None = Query(default=None, description="Cancel action"),
+    wait: int = Query(default=0, description="Block until cancelled (1) or return immediately (0)"),
+) -> Response:
+    """Join an existing run's SSE stream, optionally cancelling it first."""
+    return await _stream_existing_run(thread_id, run_id, request, action=action, wait=wait)
+
+
+@router.get(
+    "/{thread_id}/runs/{run_id}/stream",
+    response_model=None,
+    dependencies=[Depends(_reject_get_stream_action)],
+    name="stream_existing_run",
+)
+@require_permission("runs", "read", owner_check=True)
+async def join_existing_run_stream(thread_id: ThreadId, run_id: str, request: Request) -> Response:
+    """Join an existing run's observation-only SSE stream."""
+    return await _stream_existing_run(thread_id, run_id, request, action=None, wait=0)
 
 
 # ---------------------------------------------------------------------------

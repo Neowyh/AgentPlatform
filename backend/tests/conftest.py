@@ -7,6 +7,7 @@ issues when unit-testing lightweight config/registry code in isolation.
 from __future__ import annotations
 
 import importlib.util
+import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -18,6 +19,24 @@ import pytest
 # Make 'app' and 'deerflow' importable from any working directory
 sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    """Give the ``requires_llm`` marker its skip semantics, globally.
+
+    ``tests/test_client_e2e.py`` defines a local ``requires_llm = pytest.mark.skipif(...)``
+    decorator, but other files (integration/API e2e, live-model units) annotate with the
+    bare ``@pytest.mark.requires_llm`` marker, which without this hook never skips —
+    so those tests really called the LLM in every lane run.  Evaluated at run setup
+    (not import time) so a collection-order environment leak cannot re-enable them.
+    """
+    skip_requires_llm = pytest.mark.skipif(
+        os.getenv("CI", "").lower() in ("true", "1") or not os.getenv("OPENAI_API_KEY"),
+        reason="Requires LLM API key — skipped in CI or when OPENAI_API_KEY is unset",
+    )
+    for item in items:
+        if "requires_llm" in item.keywords:
+            item.add_marker(skip_requires_llm)
 
 
 def _make_rbac_user(
