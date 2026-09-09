@@ -565,9 +565,29 @@ async def test_connection_error_is_english_and_does_not_leak_key(
     with caplog.at_level(logging.WARNING, logger="deerflow.community.ragflow.tools"):
         result = await ragflow_tools.knowledge_search("leave")
 
-    assert result == "Error: Unable to connect to RAGFlow (http://ragflow.test): ConnectError: refused [REDACTED]"
+    assert result == "Error: RAGFlow knowledge retrieval is unavailable (connection_error: RAGFlowConnectionError)."
     assert "ragflow-secret" not in result
     assert "ragflow-secret" not in caplog.text
+
+
+@pytest.mark.anyio
+async def test_connection_error_does_not_leak_internal_base_url(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Gate 1: model/user-facing errors carry the sanitized code, not the endpoint; logs stay traceable (§51)."""
+    fake = FakeRAGFlowClient(error=RAGFlowConnectionError("ConnectError: All connection attempts failed"))
+    _install(monkeypatch, fake, config=_config(base_url="http://intranet-ragflow.internal:9380", datasets=[DATASET_ID_1]))
+
+    with caplog.at_level(logging.WARNING, logger="deerflow.community.ragflow.tools"):
+        result = await ragflow_tools.knowledge_search("leave")
+
+    assert result.startswith("Error: RAGFlow knowledge retrieval is unavailable (connection_error:")
+    assert "intranet-ragflow.internal" not in result
+    assert "9380" not in result
+    assert "All connection attempts failed" not in result
+    # Admin-side traceability: the endpoint stays in the warning log.
+    assert "intranet-ragflow.internal" in caplog.text
 
 
 @pytest.mark.anyio

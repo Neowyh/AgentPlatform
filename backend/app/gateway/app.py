@@ -29,6 +29,7 @@ from app.gateway.routers import (
     auth,
     automations,
     channels,
+    devices,
     features,
     feedback,
     input_polish,
@@ -765,6 +766,9 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
 
     # Channels API is mounted at /api/channels
     app.include_router(channels.router)
+
+    # Device control-plane API is mounted at /api/devices.
+    app.include_router(devices.router)
 
     # Assistants compatibility API (LangGraph Platform stub)
     app.include_router(assistants_compat.router)

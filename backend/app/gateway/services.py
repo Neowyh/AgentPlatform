@@ -35,6 +35,7 @@ from deerflow.config import get_app_config
 from deerflow.runtime import (
     END_SENTINEL,
     HEARTBEAT_SENTINEL,
+    ORPHAN_RECOVERY_STOP_REASON,
     CheckpointStateAccessor,
     ConflictError,
     DisconnectMode,
@@ -42,6 +43,7 @@ from deerflow.runtime import (
     RunRecord,
     RunStatus,
     StreamBridge,
+    StreamGap,
     UnsupportedStrategyError,
     build_state_mutation_graph,
     run_agent,
@@ -1124,19 +1126,147 @@ async def launch_scheduled_thread_run(
     return {"run_id": record.run_id, "thread_id": record.thread_id}
 
 
+_TERMINAL_RUN_STATUSES = {
+    RunStatus.success,
+    RunStatus.error,
+    RunStatus.timeout,
+    RunStatus.interrupted,
+}
+
+
+def _run_is_terminal(record: RunRecord) -> bool:
+    return record.status in _TERMINAL_RUN_STATUSES
+
+
+async def _terminal_record_stream_missing(bridge: StreamBridge, record: RunRecord) -> bool:
+    """True when a terminal run has no retained stream on bridges that can tell."""
+    if not _run_is_terminal(record):
+        return False
+    stream_exists = getattr(bridge, "stream_exists", None)
+    if stream_exists is None:
+        return False
+    try:
+        return not bool(await stream_exists(record.run_id))
+    except Exception:
+        logger.debug(
+            "Failed to probe stream existence for terminal run %s",
+            sanitize_log_param(record.run_id),
+            exc_info=True,
+        )
+        return False
+
+
+async def _orphan_recovery_observed_after_heartbeat(
+    record: RunRecord,
+    run_mgr: RunManager,
+) -> bool:
+    """Return whether durable orphan recovery is the consumer's liveness edge.
+
+    A normal terminal status is not sufficient: the producer persists status
+    before publishing its final error/data frames and END. Orphan recovery is
+    different because the producer is known to be gone and the durable
+    ``stop_reason`` is written atomically with the terminal status. Only that
+    explicit signal may synthesize END after a heartbeat.
+    """
+    if not record.store_only:
+        return False
+    refreshed = await run_mgr.get(record.run_id, user_id=record.user_id)
+    return refreshed is not None and _run_is_terminal(refreshed) and refreshed.stop_reason == ORPHAN_RECOVERY_STOP_REASON
+
+
+async def wait_for_run_completion(
+    bridge: StreamBridge,
+    record: RunRecord,
+    request: Request,
+    run_mgr: RunManager,
+) -> bool:
+    """Block until the run publishes ``END_SENTINEL``, honouring on_disconnect.
+
+    The non-streaming ``/wait`` endpoints used to ``await record.task``
+    directly with no disconnect handling.  When the client (or an
+    intermediate HTTP proxy) timed out during a long tool call such as
+    ``pip install``, the handler would swallow ``CancelledError`` and
+    serialize whatever checkpoint happened to exist — masking a half-finished
+    run as a normal completion (issue #3265).
+
+    This helper consumes the same bridge that ``sse_consumer`` does so the
+    wait path shares its disconnect semantics: each wake-up polls
+    ``request.is_disconnected()``; on a real disconnect it cancels the
+    background run when ``record.on_disconnect`` is ``cancel``.  The bridge's
+    heartbeat sentinels guarantee at least one wake-up per
+    ``heartbeat_interval`` even when the agent emits no events for a while.
+
+    Returns:
+        ``True`` when ``END_SENTINEL`` was observed (run reached a terminal
+        state), ``False`` when the loop exited because the client
+        disconnected.  Callers must skip checkpoint serialization on
+        ``False`` so a partial checkpoint is not returned as a normal
+        response.
+    """
+    completed = False
+    if await _terminal_record_stream_missing(bridge, record):
+        return True
+
+    resume_from_event_id: str | None = None
+    try:
+        while True:
+            gap_seen = False
+            async for entry in bridge.subscribe(record.run_id, last_event_id=resume_from_event_id):
+                # END_SENTINEL means the run reached a terminal state; honour it
+                # even if the client just disconnected so the caller still serializes
+                # the real final checkpoint.
+                if entry is END_SENTINEL:
+                    completed = True
+                    return True
+                if isinstance(entry, StreamGap):
+                    # The wait API only needs terminal completion, not a complete
+                    # event replay. Resume at the retained tail rather than
+                    # treating a bridge gap as a client disconnect.
+                    resume_from_event_id = entry.latest_available_event_id
+                    gap_seen = True
+                    break
+                if entry is HEARTBEAT_SENTINEL and await _orphan_recovery_observed_after_heartbeat(record, run_mgr):
+                    completed = True
+                    return True
+                if await request.is_disconnected():
+                    return False
+                # Heartbeats and regular events: keep waiting for END_SENTINEL.
+            if not gap_seen:
+                return completed
+    finally:
+        if not completed and record.status in (RunStatus.pending, RunStatus.running):
+            if record.on_disconnect == DisconnectMode.cancel:
+                await run_mgr.cancel(record.run_id)
+
+
 async def sse_consumer(
     bridge: StreamBridge,
     record: RunRecord,
     request: Request,
     run_mgr: RunManager,
+    *,
+    apply_on_disconnect: bool = True,
 ):
     """Async generator that yields SSE frames from the bridge.
 
-    The ``finally`` block implements ``on_disconnect`` semantics:
+    The ``finally`` block implements ``on_disconnect`` semantics, but only for
+    the stream returned by the *creating* endpoint (``apply_on_disconnect=True``):
+
     - ``cancel``: abort the background task on client disconnect.
     - ``continue``: let the task run; events are discarded.
+
+    Join/observer streams pass ``apply_on_disconnect=False``: the creator's
+    cancel-on-disconnect policy expresses the creator's intent for their own
+    connection, and a read-only observer closing a join must not cancel the
+    run (a runs:read-only credential would otherwise cancel without
+    runs:cancel just by disconnecting).
     """
     last_event_id = request.headers.get("Last-Event-ID")
+    if await _terminal_record_stream_missing(bridge, record):
+        # A terminal run with no retained stream will never publish END;
+        # emit it immediately so joiners don't hang on an empty bridge.
+        yield format_sse("end", None)
+        return
     try:
         async for entry in bridge.subscribe(record.run_id, last_event_id=last_event_id):
             if await request.is_disconnected():
@@ -1153,6 +1283,8 @@ async def sse_consumer(
             yield format_sse(entry.event, entry.data, event_id=entry.id or None)
 
     finally:
-        if record.status in (RunStatus.pending, RunStatus.running):
+        # Only the creator's own stream may cancel-on-disconnect — never an
+        # observer join, and never a run executing on another worker.
+        if apply_on_disconnect and not record.store_only and record.status in (RunStatus.pending, RunStatus.running):
             if record.on_disconnect == DisconnectMode.cancel:
                 await run_mgr.cancel(record.run_id)

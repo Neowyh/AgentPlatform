@@ -62,27 +62,46 @@ def _clear_managed_definitions_cache() -> None:
 
 def _managed_definitions(*, app_config: Any | None = None) -> tuple[ManagedSubagentDefinition, ...]:
     """Load and cache deployment-managed definitions until their signature changes."""
-    store_config = app_config if hasattr(app_config, "agent_storage") else None
-    store = get_managed_subagent_store(store_config)
-    cache_key = store.cache_identity()
+    # Resolving the default managed-subagent store can load AppConfig. AppConfig
+    # synchronizes its subagent singleton as a side effect, which would discard
+    # a runtime override set through load_subagents_config_from_dict() just
+    # before this lookup. Preserve that public singleton while resolving the
+    # persistence backend, then restore it if the backend load changed it.
+    previous_subagents_config = None
+    if app_config is None:
+        from deerflow.config.subagents_config import get_subagents_app_config, load_subagents_config_from_dict
 
-    with _managed_definitions_cache_lock:
-        checked_at = time.monotonic()
-        cached = _managed_definitions_cache.get(cache_key)
-        # A prompt/catalog pass can resolve every managed name separately.
-        # Avoid repeating the file stat sweep or SQL signature query for each
-        # lookup while keeping cross-process changes visible within one second.
-        if cached is not None and checked_at - cached[0] < _MANAGED_SIGNATURE_TTL_SECONDS:
-            return cached[2]
+        previous_subagents_config = get_subagents_app_config().model_dump()
 
-        signature = store.signature()
-        if cached is not None and cached[1] == signature:
-            _managed_definitions_cache[cache_key] = (checked_at, signature, cached[2])
-            return cached[2]
+    try:
+        store_config = app_config if hasattr(app_config, "agent_storage") else None
+        store = get_managed_subagent_store(store_config)
+        cache_key = store.cache_identity()
 
-        definitions = tuple(store.list())
-        _managed_definitions_cache[cache_key] = (checked_at, signature, definitions)
-        return definitions
+        with _managed_definitions_cache_lock:
+            checked_at = time.monotonic()
+            cached = _managed_definitions_cache.get(cache_key)
+            # A prompt/catalog pass can resolve every managed name separately.
+            # Avoid repeating the file stat sweep or SQL signature query for each
+            # lookup while keeping cross-process changes visible within one second.
+            if cached is not None and checked_at - cached[0] < _MANAGED_SIGNATURE_TTL_SECONDS:
+                return cached[2]
+
+            signature = store.signature()
+            if cached is not None and cached[1] == signature:
+                _managed_definitions_cache[cache_key] = (checked_at, signature, cached[2])
+                return cached[2]
+
+            definitions = tuple(store.list())
+            _managed_definitions_cache[cache_key] = (checked_at, signature, definitions)
+            return definitions
+    finally:
+        if previous_subagents_config is not None:
+            from deerflow.config.subagents_config import get_subagents_app_config, load_subagents_config_from_dict
+
+            current_subagents_config = get_subagents_app_config().model_dump()
+            if current_subagents_config != previous_subagents_config:
+                load_subagents_config_from_dict(previous_subagents_config)
 
 
 def _build_managed_subagent_config(name: str, *, app_config: Any | None = None) -> SubagentConfig | None:

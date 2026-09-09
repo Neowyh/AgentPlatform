@@ -873,6 +873,7 @@ class TestSSEConsumer:
         record.run_id = "run-cancel"
         record.status = RunStatus.running
         record.on_disconnect = DisconnectMode.cancel
+        record.store_only = False
 
         request = MagicMock()
         request.headers = {"Last-Event-ID": "last-evt"}

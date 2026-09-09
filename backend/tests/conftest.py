@@ -7,7 +7,9 @@ issues when unit-testing lightweight config/registry code in isolation.
 from __future__ import annotations
 
 import importlib.util
+import os
 import sys
+import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -15,9 +17,31 @@ from uuid import uuid4
 
 import pytest
 
+_TEST_RUNTIME = tempfile.TemporaryDirectory(prefix="ideer-test-runtime-")
+_TEST_RUNTIME_PATH = Path(_TEST_RUNTIME.name)
+
+
 # Make 'app' and 'deerflow' importable from any working directory
 sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    """Give the ``requires_llm`` marker its skip semantics, globally.
+
+    ``tests/test_client_e2e.py`` defines a local ``requires_llm = pytest.mark.skipif(...)``
+    decorator, but other files (integration/API e2e, live-model units) annotate with the
+    bare ``@pytest.mark.requires_llm`` marker, which without this hook never skips —
+    so those tests really called the LLM in every lane run.  Evaluated at run setup
+    (not import time) so a collection-order environment leak cannot re-enable them.
+    """
+    skip_requires_llm = pytest.mark.skipif(
+        os.getenv("CI", "").lower() in ("true", "1") or not os.getenv("OPENAI_API_KEY"),
+        reason="Requires LLM API key — skipped in CI or when OPENAI_API_KEY is unset",
+    )
+    for item in items:
+        if "requires_llm" in item.keywords:
+            item.add_marker(skip_requires_llm)
 
 
 def _make_rbac_user(
@@ -260,3 +284,24 @@ def isolated_app(isolated_deer_flow_home: Path, monkeypatch: pytest.MonkeyPatch)
     from app.gateway.app import create_app
 
     return create_app()
+
+
+@pytest.fixture(autouse=True)
+def _test_runtime_config(monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest) -> None:
+    if request.path.name.startswith("test_app_config"):
+        return
+    if os.getenv("DEER_FLOW_CONFIG_PATH"):
+        return
+
+    config_path = _TEST_RUNTIME_PATH / "config.yaml"
+    if not config_path.is_file():
+        repo_root = Path(__file__).resolve().parents[2]
+        config_path.write_text(
+            (repo_root / "config.example.yaml").read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+    monkeypatch.setenv("DEER_FLOW_CONFIG_PATH", str(config_path))
+    monkeypatch.setenv("DEER_FLOW_HOME", str(_TEST_RUNTIME_PATH / "home"))
+    extensions_path = _TEST_RUNTIME_PATH / "extensions_config.json"
+    extensions_path.write_text('{"mcpServers": {}, "skills": {}}', encoding="utf-8")
+    monkeypatch.setenv("DEER_FLOW_EXTENSIONS_CONFIG_PATH", str(extensions_path))
