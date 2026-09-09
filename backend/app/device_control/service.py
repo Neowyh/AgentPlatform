@@ -8,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .models import DeviceModel, DeviceSessionModel, DeviceStatus, PairingSessionModel, PairingStatus
@@ -111,7 +112,11 @@ class DeviceControlService:
         pairing.status = PairingStatus.CLAIMED
         pairing.claimed_at = datetime.now(UTC)
         pairing.device_id = device.id
-        await self.session.commit()
+        try:
+            await self.session.commit()
+        except IntegrityError as exc:
+            await self.session.rollback()
+            raise DeviceControlError("DEVICE_ALREADY_REGISTERED", "device name or public key is already registered", 409) from exc
         await self.session.refresh(device)
         return RegisteredDevice(device, token, session_expires_at)
 
@@ -120,6 +125,12 @@ class DeviceControlService:
         if owner_id is not None:
             stmt = stmt.where(DeviceModel.owner_id == owner_id)
         return list((await self.session.execute(stmt)).scalars())
+
+    async def get_device(self, device_id: str, *, actor_id: str, is_admin: bool) -> DeviceModel:
+        device = await self._get_device(device_id)
+        if not is_admin and device.owner_id != actor_id:
+            raise DeviceControlError("DEVICE_FORBIDDEN", "only the owner or an administrator may view this device", 403)
+        return device
 
     async def heartbeat(self, device_id: str, token: str, *, capabilities: list[str] | None = None) -> DeviceModel:
         device = await self._get_device(device_id)

@@ -55,6 +55,10 @@ async def test_device_http_gate_covers_pair_online_offline_revoke(device_factory
         token = registration["session_token"]
         assert registration["device"]["status"] == "pending"
 
+        detail = client.get(f"/api/devices/{device_id}")
+        assert detail.status_code == 200
+        assert detail.json()["id"] == device_id
+
         online = client.post(f"/api/devices/{device_id}/heartbeat", headers={"X-Device-Session": token}, json={})
         assert online.status_code == 200
         assert online.json()["status"] == "online"

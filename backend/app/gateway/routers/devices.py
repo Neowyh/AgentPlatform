@@ -106,6 +106,13 @@ async def list_devices(current_user: UserModel = Depends(get_current_rbac_user))
     return [DeviceResponse.from_model(device) for device in devices]
 
 
+@router.get("/{device_id}", response_model=DeviceResponse)
+async def get_device(device_id: str, current_user: UserModel = Depends(get_current_rbac_user)) -> DeviceResponse:
+    is_admin = current_user.role in {UserRole.SUPER_ADMIN.value, UserRole.DEPARTMENT_ADMIN.value}
+    device = await _run(lambda service: service.get_device(device_id, actor_id=str(current_user.id), is_admin=is_admin))
+    return DeviceResponse.from_model(device)
+
+
 @router.post("/{device_id}/heartbeat", response_model=DeviceResponse)
 async def heartbeat(device_id: str, payload: DeviceHeartbeatRequest, x_device_session: str | None = Header(default=None)) -> DeviceResponse:
     if not x_device_session:

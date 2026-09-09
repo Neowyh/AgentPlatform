@@ -16,5 +16,6 @@ def test_device_router_owns_control_plane_paths() -> None:
 
     assert "/api/devices/pairing" in paths
     assert "/api/devices/register" in paths
+    assert "/api/devices/{device_id}" in paths
     assert "/api/devices/{device_id}/heartbeat" in paths
     assert "/api/devices/{device_id}/revoke" in paths

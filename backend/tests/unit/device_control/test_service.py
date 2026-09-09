@@ -18,6 +18,7 @@ async def session() -> AsyncIterator[AsyncSession]:
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as value:
         value.add(UserModel(id="owner", username="owner@example.com", role="user"))
+        value.add(UserModel(id="other", username="other@example.com", role="user"))
         await value.commit()
         yield value
     await engine.dispose()
@@ -79,3 +80,23 @@ async def test_pairing_is_owner_scoped_and_replay_is_rejected(session: AsyncSess
             capabilities=[],
             policy_hash=None,
         )
+
+
+@pytest.mark.asyncio
+async def test_non_owner_cannot_revoke_or_read_device(session: AsyncSession) -> None:
+    service = DeviceControlService(session)
+    challenge = await service.create_pairing("owner")
+    registered = await service.register_device(
+        pairing_code=challenge.code,
+        name="Laptop",
+        public_key="ssh-ed25519 AAAA-device-public-key-4",
+        protocol_version="1",
+        runtime_version="0.1.0",
+        capabilities=[],
+        policy_hash=None,
+    )
+
+    with pytest.raises(DeviceControlError, match="only the owner"):
+        await service.revoke(registered.device.id, actor_id="other", is_admin=False)
+    with pytest.raises(DeviceControlError, match="only the owner"):
+        await service.get_device(registered.device.id, actor_id="other", is_admin=False)
