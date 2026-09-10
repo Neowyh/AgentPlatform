@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from app.agentplatform.skills.chip_software_package import (
@@ -66,6 +67,18 @@ def test_user_callable_run_returns_two_auditable_artifacts() -> None:
     assert any(row["pin"] == "PA0" for row in result.structured_rows)
     assert all(row["source"] for row in result.structured_rows)
     assert all(row["confidence"] in {"confirmed", "review_required"} for row in result.structured_rows)
+    table = json.loads(result.artifacts["chip-software-table.json"])
+    assert table["scope"] == [
+        "startup_reset",
+        "clock",
+        "memory",
+        "pin_mux",
+        "peripheral",
+        "register",
+        "interrupt",
+        "dma",
+        "errata_impact",
+    ]
 
 
 def test_mixed_part_or_package_is_rejected_without_merging_facts() -> None:

@@ -108,7 +108,11 @@ def extract_chip_software_package(documents: list[ChipSoftwareDocument], *, targ
     result.artifacts = {
         "embedded-software-knowledge-brief.md": _render_brief(result),
         "chip-software-table.json": json.dumps(
-            {"target": {"part": target_part, "package": target_package}, "rows": rows},
+            {
+                "target": {"part": target_part, "package": target_package},
+                "scope": list(_TOPICS),
+                "rows": rows,
+            },
             ensure_ascii=False,
             indent=2,
         ),
