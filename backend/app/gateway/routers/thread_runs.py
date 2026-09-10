@@ -38,6 +38,7 @@ from app.gateway.checkpoint_lineage import (
 )
 from app.gateway.deps import get_current_user, get_feedback_repo, get_run_event_store, get_run_manager, get_run_store, get_stream_bridge
 from app.gateway.internal_auth import get_trusted_internal_owner_user_id
+from app.gateway.run_models import RunCreateRequest as SharedRunCreateRequest
 from app.gateway.services import build_checkpoint_state_accessor, build_thread_checkpoint_state_accessor, sse_consumer, start_run, wait_for_run_completion
 from app.gateway.utils import sanitize_log_param
 from deerflow.agents.middlewares.dynamic_context_middleware import strip_injected_user_message_id_suffix
@@ -54,6 +55,7 @@ router = APIRouter(prefix="/api/threads", tags=["runs"])
 _artifact_archive_slots = asyncio.Semaphore(4)
 REGENERATE_HISTORY_SCAN_LIMIT = 200
 REGENERATE_HISTORY_RAW_SCAN_LIMIT = REGENERATE_HISTORY_SCAN_LIMIT * 2
+THREAD_MESSAGE_PAGE_SCAN_BATCH = 201
 _MISSING_REGENERATE_BASE_DETAIL = "Could not find an addressable checkpoint before the target user message"
 _UNSAFE_REGENERATE_LINEAGE_DETAIL = "Could not safely resolve the checkpoint before the target user message"
 
@@ -83,32 +85,20 @@ class EditRegeneratePrepareResponse(RegeneratePrepareResponse):
     source_message_ids: list[str]
 
 
+class ThreadMessagesPageResponse(BaseModel):
+    data: list[dict[str, Any]]
+    has_more: bool
+    next_before_seq: int | None = None
+
+
 # ---------------------------------------------------------------------------
 # Request / response models
 # ---------------------------------------------------------------------------
 
 
-class RunCreateRequest(BaseModel):
-    assistant_id: str | None = Field(default=None, description="Agent / assistant to use")
-    input: dict[str, Any] | None = Field(default=None, description="Graph input (e.g. {messages: [...]})")
-    command: dict[str, Any] | None = Field(default=None, description="LangGraph Command")
-    metadata: dict[str, Any] | None = Field(default=None, description="Run metadata")
-    config: dict[str, Any] | None = Field(default=None, description="RunnableConfig overrides")
-    context: dict[str, Any] | None = Field(default=None, description="iDeer context overrides (model_name, thinking_enabled, agent_resource_id, skill_resource_id, skill_name, skill_names, etc.)")
-    webhook: str | None = Field(default=None, description="Completion callback URL")
-    checkpoint_id: str | None = Field(default=None, description="Resume from checkpoint")
-    checkpoint: dict[str, Any] | None = Field(default=None, description="Full checkpoint object")
-    interrupt_before: list[str] | Literal["*"] | None = Field(default=None, description="Nodes to interrupt before")
-    interrupt_after: list[str] | Literal["*"] | None = Field(default=None, description="Nodes to interrupt after")
-    stream_mode: list[str] | str | None = Field(default=None, description="Stream mode(s)")
-    stream_subgraphs: bool = Field(default=False, description="Include subgraph events")
-    stream_resumable: bool | None = Field(default=None, description="SSE resumable mode")
-    on_disconnect: Literal["cancel", "continue"] = Field(default="cancel", description="Behaviour on SSE disconnect")
-    on_completion: Literal["delete", "keep"] = Field(default="keep", description="Delete temp thread on completion")
-    multitask_strategy: Literal["reject", "rollback", "interrupt", "enqueue"] = Field(default="reject", description="Concurrency strategy")
-    after_seconds: float | None = Field(default=None, description="Delayed execution")
-    if_not_exists: Literal["reject", "create"] = Field(default="create", description="Thread creation policy")
-    feedback_keys: list[str] | None = Field(default=None, description="LangSmith feedback keys")
+class RunCreateRequest(SharedRunCreateRequest):
+    """Shared LangGraph run contract plus DeerFlow evidence options."""
+
     evidence_mode: Literal["document", "code", "hybrid"] = Field(default="hybrid", description="Internal evidence strategy for fault-analysis runs")
     code_package_id: str | None = Field(default=None, description="Validated Thread-private Code Evidence Package")
 
@@ -905,14 +895,136 @@ async def join_existing_run_stream(thread_id: ThreadId, run_id: str, request: Re
 # ---------------------------------------------------------------------------
 
 
+def compute_run_durations(runs) -> dict[str, int]:
+    from datetime import datetime
+
+    durations: dict[str, int] = {}
+    for run in runs:
+        if run.created_at and run.updated_at:
+            try:
+                created = datetime.fromisoformat(run.created_at.replace("Z", "+00:00"))
+                updated = datetime.fromisoformat(run.updated_at.replace("Z", "+00:00"))
+                durations[run.run_id] = int((updated - created).total_seconds())
+            except Exception:
+                logger.warning("Failed to parse timestamps for run %s", run.run_id, exc_info=True)
+    return durations
+
+
+def stamp_turn_duration_on_last_ai(messages, run_durations: dict[str, int]) -> None:
+    """Attach each run duration to its final visible assistant message."""
+    stamped: set[str] = set()
+    for message in reversed(messages):
+        run_id = message.get("run_id")
+        if not run_id or run_id in stamped or run_id not in run_durations:
+            continue
+        content = message.get("content")
+        payload = content if isinstance(content, dict) else message
+        metadata = message.get("metadata") or {}
+        if payload.get("type") == "ai" and not str(metadata.get("caller", "")).startswith("middleware:"):
+            payload.setdefault("additional_kwargs", {})["turn_duration"] = run_durations[run_id]
+            stamped.add(run_id)
+
+
+def _is_middleware_message_row(row: dict[str, Any]) -> bool:
+    return str((row.get("metadata") or {}).get("caller", "")).startswith("middleware:")
+
+
+async def _scan_thread_message_page(
+    thread_id: str,
+    *,
+    limit: int,
+    before_seq: int | None,
+    request: Request,
+    user_id: str | None,
+) -> tuple[list[dict[str, Any]], bool]:
+    event_store = get_run_event_store(request)
+    run_mgr = get_run_manager(request)
+    superseded_run_ids = await run_mgr.list_successful_regenerate_sources(thread_id, user_id=user_id)
+    visible_desc: list[dict[str, Any]] = []
+    scan_before = before_seq
+    while len(visible_desc) < limit + 1:
+        raw = await event_store.list_messages(
+            thread_id,
+            limit=THREAD_MESSAGE_PAGE_SCAN_BATCH,
+            before_seq=scan_before,
+            user_id=user_id,
+        )
+        if not raw:
+            break
+        if any(not isinstance(row.get("seq"), int) for row in raw):
+            raise RuntimeError("Run event message rows are missing sequence values")
+        for row in reversed(raw):
+            if _is_middleware_message_row(row) or row.get("run_id") in superseded_run_ids:
+                continue
+            visible_desc.append(row)
+            if len(visible_desc) == limit + 1:
+                break
+        next_scan_before = min(row["seq"] for row in raw)
+        if scan_before is not None and next_scan_before >= scan_before:
+            raise RuntimeError("Run event message scan did not advance its cursor")
+        scan_before = next_scan_before
+        if len(raw) < THREAD_MESSAGE_PAGE_SCAN_BATCH:
+            break
+    has_more = len(visible_desc) > limit
+    return list(reversed(visible_desc[:limit])), has_more
+
+
+async def _enrich_thread_message_page(
+    thread_id: str,
+    rows: list[dict[str, Any]],
+    *,
+    request: Request,
+    user_id: str | None,
+) -> list[dict[str, Any]]:
+    data = deepcopy(rows)
+    if not data:
+        return data
+    run_ids = {row["run_id"] for row in data if isinstance(row.get("run_id"), str)}
+    run_mgr = get_run_manager(request)
+    records = await run_mgr.get_many_by_thread(thread_id, run_ids, user_id=user_id)
+    run_durations = compute_run_durations(records.values())
+    event_store = get_run_event_store(request)
+    last_ai_seq_by_run = await event_store.get_last_visible_ai_seq_by_run(thread_id, run_ids, user_id=user_id)
+    feedback_map: dict[str, dict] = {}
+    feedback_run_ids = {run_id for row in data if isinstance((run_id := row.get("run_id")), str) and row.get("seq") == last_ai_seq_by_run.get(run_id)}
+    if feedback_run_ids:
+        feedback_map = await get_feedback_repo(request).list_by_run_ids(thread_id, feedback_run_ids, user_id=user_id)
+    for row in data:
+        run_id = row.get("run_id")
+        row["feedback"] = None
+        if row.get("seq") == last_ai_seq_by_run.get(run_id) and run_id in feedback_map:
+            feedback = feedback_map[run_id]
+            row["feedback"] = {"feedback_id": feedback["feedback_id"], "rating": feedback["rating"], "comment": feedback.get("comment")}
+        content = row.get("content")
+        if isinstance(content, dict) and content.get("type") == "ai" and run_id in run_durations:
+            content.setdefault("additional_kwargs", {})["turn_duration"] = run_durations[run_id]
+    return data
+
+
+@router.get("/{thread_id}/messages/page", response_model=ThreadMessagesPageResponse)
+@require_permission("runs", "read", owner_check=True)
+async def list_thread_messages_page(
+    thread_id: ThreadId,
+    request: Request,
+    limit: int = Query(default=50, ge=1, le=200),
+    before_seq: int | None = Query(default=None, ge=1),
+) -> ThreadMessagesPageResponse:
+    if "after_seq" in request.query_params:
+        raise HTTPException(status_code=422, detail="after_seq is not supported by this backward-only endpoint")
+    user_id = await get_current_user(request)
+    rows, has_more = await _scan_thread_message_page(thread_id, limit=limit, before_seq=before_seq, request=request, user_id=user_id)
+    data = await _enrich_thread_message_page(thread_id, rows, request=request, user_id=user_id)
+    return ThreadMessagesPageResponse(data=data, has_more=has_more, next_before_seq=data[0]["seq"] if has_more else None)
+
+
 @router.get("/{thread_id}/messages")
 @require_permission("runs", "read", owner_check=True)
 async def list_thread_messages(
     thread_id: ThreadId,
     request: Request,
-    limit: int = Query(default=50, le=200),
-    before_seq: int | None = Query(default=None),
-    after_seq: int | None = Query(default=None),
+    limit: int = Query(default=50, le=200, ge=1),
+    before_seq: int | None = Query(default=None, ge=1),
+    after_seq: int | None = Query(default=None, ge=1),
 ) -> list[dict]:
     """Return displayable messages for a thread (across all runs), with feedback attached."""
     event_store = get_run_event_store(request)
@@ -1131,7 +1243,7 @@ async def list_run_events(
     run_id: str,
     request: Request,
     event_types: str | None = Query(default=None),
-    limit: int = Query(default=500, le=2000),
+    limit: int = Query(default=500, le=2000, ge=1),
 ) -> list[dict]:
     """Return the full event stream for a run (debug/audit)."""
     event_store = get_run_event_store(request)

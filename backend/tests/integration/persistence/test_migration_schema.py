@@ -35,6 +35,8 @@ from deerflow.persistence.migrations._chain_meta import (
 )
 from tests._migration_test_support import unified_alembic_config
 
+CURRENT_HEAD = "20260909_device_control_plane"
+
 # The alembic URL uses the async driver.  For post-migration verification
 # we open the same SQLite file with a synchronous engine (no greenlet needed).
 _ASYNC_PREFIX = "sqlite+aiosqlite:///"
@@ -119,7 +121,7 @@ class TestUnifiedMigrationChain:
 
     def test_single_head_is_the_merge_revision(self) -> None:
         script = ScriptDirectory.from_config(make_alembic_config("sqlite+aiosqlite:///:memory:"))
-        assert list(script.get_heads()) == [MERGE_REVISION]
+        assert list(script.get_heads()) == [CURRENT_HEAD]
         merge = script.get_revision(MERGE_REVISION)
         assert set(merge._normalized_down_revisions) == {CONTROL_PLANE_HEAD, RUNTIME_HEAD}
 
@@ -135,7 +137,7 @@ class TestUnifiedMigrationChain:
         assert tables >= expected, f"Missing tables: {expected - tables}"
 
         versions = _get_version_rows(db_url)
-        assert versions.get(VERSION_TABLE) == [MERGE_REVISION]
+        assert versions.get(VERSION_TABLE) == [CURRENT_HEAD]
         # The dual-chain era's dedicated table must not come back.
         assert DEERFLOW_VERSION_TABLE not in versions
 
@@ -170,7 +172,7 @@ class TestUnifiedMigrationChain:
         command.upgrade(cfg, "head")
         command.upgrade(cfg, "head")
 
-        assert _get_version_rows(db_url).get(VERSION_TABLE) == [MERGE_REVISION]
+        assert _get_version_rows(db_url).get(VERSION_TABLE) == [CURRENT_HEAD]
 
     @pytest.mark.asyncio
     async def test_gateway_bootstrap_after_cli_upgrade_is_a_noop(self, tmp_path: Path) -> None:
@@ -187,12 +189,12 @@ class TestUnifiedMigrationChain:
         engine = create_async_engine(db_url)
         try:
             await _bootstrap_schema(db_url)
-            assert _get_version_rows(db_url).get(VERSION_TABLE) == [MERGE_REVISION]
+            assert _get_version_rows(db_url).get(VERSION_TABLE) == [CURRENT_HEAD]
             assert DEERFLOW_VERSION_TABLE not in _get_version_rows(db_url)
 
             # Second bootstrap run: still a no-op.
             await _bootstrap_schema(db_url)
-            assert _get_version_rows(db_url).get(VERSION_TABLE) == [MERGE_REVISION]
+            assert _get_version_rows(db_url).get(VERSION_TABLE) == [CURRENT_HEAD]
         finally:
             await engine.dispose()
 
@@ -225,7 +227,7 @@ class TestUnifiedMigrationChain:
         await _bootstrap_schema(db_url)
 
         versions = _get_version_rows(db_url)
-        assert versions.get(VERSION_TABLE) == [MERGE_REVISION]
+        assert versions.get(VERSION_TABLE) == [CURRENT_HEAD]
         assert DEERFLOW_VERSION_TABLE not in versions
 
     def test_create_all_current_database_stamps_merge(self, tmp_path: Path) -> None:
@@ -255,7 +257,7 @@ class TestUnifiedMigrationChain:
 
         command.upgrade(make_alembic_config(db_url), "head")
 
-        assert _get_version_rows(db_url).get(VERSION_TABLE) == [MERGE_REVISION]
+        assert _get_version_rows(db_url).get(VERSION_TABLE) == [CURRENT_HEAD]
         # The stamp must not have created anything new: table set unchanged.
         engine = create_engine(_sync_url(db_url))
         try:
@@ -390,7 +392,7 @@ class TestUnifiedMigrationChain:
 
         command.upgrade(make_alembic_config(db_url), "head")
 
-        assert _get_version_rows(db_url).get(VERSION_TABLE) == [MERGE_REVISION]
+        assert _get_version_rows(db_url).get(VERSION_TABLE) == [CURRENT_HEAD]
         engine = create_engine(_sync_url(db_url))
         try:
             with engine.connect() as conn:

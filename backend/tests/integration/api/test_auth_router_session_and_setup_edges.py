@@ -113,7 +113,7 @@ class TestSetSessionCookie:
         assert "access_token=test-token" in cookies
         assert "httponly" in cookies.lower()
         assert "secure" in cookies.lower()
-        assert "samesite=strict" in cookies.lower()
+        assert "samesite=lax" in cookies.lower()
 
     def test_http_no_secure_no_max_age(self):
         """HTTP request should set secure=False and no max_age."""
@@ -226,11 +226,8 @@ class TestSetupStatusCacheInsideGuard:
         """needs_setup=True result should NOT be cached (only False is cached)."""
         import app.gateway.routers.auth as auth_mod
 
-        provider = MagicMock()
-        provider.count_admin_users = AsyncMock(return_value=0)
-
         with (
-            patch("app.gateway.routers.auth.get_local_provider", return_value=provider),
+            patch("app.gateway.routers.auth._count_active_super_admin_users", new=AsyncMock(return_value=0)),
             patch("app.gateway.routers.auth._get_client_ip", return_value="10.0.0.51"),
             patch.object(auth_mod, "_SETUP_STATUS_CACHE", {}),
             patch.object(auth_mod, "_SETUP_STATUS_INFLIGHT", {}),

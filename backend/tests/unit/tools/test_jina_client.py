@@ -88,6 +88,7 @@ async def test_crawl_transient_failure_logs_without_traceback(jina_client, monke
         raise httpx.ConnectTimeout("timed out")
 
     monkeypatch.setattr(httpx.AsyncClient, "post", mock_post)
+    monkeypatch.setattr(jina_client_module, "_api_key_warned", True)
 
     with caplog.at_level(logging.DEBUG, logger="deerflow.community.jina_ai.jina_client"):
         result = await jina_client.crawl("https://example.com")

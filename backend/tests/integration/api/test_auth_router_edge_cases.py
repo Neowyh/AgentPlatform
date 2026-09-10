@@ -17,7 +17,6 @@ from app.gateway.auth.models import User
 from app.gateway.routers.auth import (
     _check_rate_limit,
     _get_client_ip,
-    _record_login_failure,
     _trusted_proxies,
 )
 from app.gateway.routers.auth import (
@@ -246,7 +245,6 @@ class TestSetupStatusCacheEviction:
         """Cache eviction removes stale entries when at capacity."""
         import app.gateway.routers.auth as auth_mod
 
-        provider = _patch_provider(count_admin=1)
         now = time.time()
         cache: dict = {}
         inflight: dict = {}
@@ -257,7 +255,7 @@ class TestSetupStatusCacheEviction:
             cache[f"stale-{i}"] = (now - auth_mod._SETUP_STATUS_CACHE_TTL_SECONDS - 100, {"needs_setup": False})
 
         with (
-            patch("app.gateway.routers.auth.get_local_provider", return_value=provider),
+            patch("app.gateway.routers.auth._count_active_super_admin_users", new_callable=AsyncMock, return_value=0),
             patch("app.gateway.routers.auth._get_client_ip", return_value="10.0.0.99"),
             patch.object(auth_mod, "_SETUP_STATUS_CACHE", cache),
             patch.object(auth_mod, "_SETUP_STATUS_INFLIGHT", inflight),
@@ -275,7 +273,6 @@ class TestSetupStatusCacheEviction:
         """Cache eviction removes half by time when still full after stale removal."""
         import app.gateway.routers.auth as auth_mod
 
-        provider = _patch_provider(count_admin=1)
         now = time.time()
         cache: dict = {}
         inflight: dict = {}
@@ -286,7 +283,7 @@ class TestSetupStatusCacheEviction:
             cache[f"active-{i}"] = (now, {"needs_setup": False})
 
         with (
-            patch("app.gateway.routers.auth.get_local_provider", return_value=provider),
+            patch("app.gateway.routers.auth._count_active_super_admin_users", new_callable=AsyncMock, return_value=0),
             patch("app.gateway.routers.auth._get_client_ip", return_value="10.0.0.99"),
             patch.object(auth_mod, "_SETUP_STATUS_CACHE", cache),
             patch.object(auth_mod, "_SETUP_STATUS_INFLIGHT", inflight),
@@ -312,17 +309,16 @@ class TestInitializeAdminRace:
     """Lines 482-484: create_user ValueError during initialize raises 409."""
 
     def test_initialize_race_condition(self):
-        """Concurrent create_user raising ValueError triggers 409."""
-        provider = _patch_provider(count_admin=0)
+        """A concurrent initializer winning the insert is reported as 409."""
         session = AsyncMock()
+        session.scalar = AsyncMock(return_value=0)
         context = AsyncMock()
         context.__aenter__ = AsyncMock(return_value=session)
         context.__aexit__ = AsyncMock(return_value=False)
 
         with (
-            patch("app.gateway.routers.auth.get_local_provider", return_value=provider),
-            patch("app.gateway.routers.auth._count_active_super_admin_users", new_callable=AsyncMock, return_value=0),
-            patch("app.gateway.routers.auth.get_session_factory", return_value=MagicMock(return_value=context)),
+            patch("app.gateway.routers.auth._count_active_super_admin_users", new_callable=AsyncMock, return_value=1),
+            patch("deerflow.persistence.engine.get_session_factory", return_value=MagicMock(return_value=context)),
             patch("app.gateway.routers.auth.create_auth_user_with_rbac", new_callable=AsyncMock, side_effect=IntegrityError("insert", {}, Exception())),
         ):
             app = _make_app()
@@ -344,24 +340,24 @@ class TestInitializeAdminRace:
 
 
 class TestOAuthUnsupportedProvider:
-    """Line 506: Unsupported OAuth provider returns 400."""
+    """OIDC is the only OAuth surface; disabled SSO is a 404 for any provider."""
 
     def test_unsupported_provider(self):
-        """OAuth login with unsupported provider returns 400."""
+        """OAuth login with SSO disabled returns 404 for any provider id."""
         app = _make_app()
         with TestClient(app) as client:
             resp = client.get("/api/v1/auth/oauth/twitter")
 
-        assert resp.status_code == 400
-        assert "Unsupported OAuth provider" in resp.json()["detail"]
+        assert resp.status_code == 404
+        assert "SSO authentication is not enabled" in resp.json()["detail"]
 
     def test_supported_provider_returns_501(self):
-        """OAuth login with supported provider still returns 501 (not implemented)."""
+        """OAuth login with SSO disabled also surfaces the 404, not a stub."""
         app = _make_app()
         with TestClient(app) as client:
             resp = client.get("/api/v1/auth/oauth/github")
 
-        assert resp.status_code == 501
+        assert resp.status_code == 404
         data = resp.json()
         assert "detail" in data
 
@@ -445,25 +441,26 @@ class TestGetClientIp:
 
 
 class TestCheckRateLimit:
-    def test_expired_lockout_allows(self):
-        """After lockout period expires, IP should be allowed again."""
+    @pytest.mark.asyncio
+    async def test_expired_lockout_allows(self):
+        """After the committed sentence is served, the IP is released."""
         from app.gateway.routers.auth import _login_attempts
 
         _login_attempts.clear()
         ip = "10.99.99.99"
-        # Simulate 5 failures with expired lockout
-        _login_attempts[ip] = (5, time.time() - 1)
-        _check_rate_limit(ip)  # Should not raise (lockout expired)
+        _login_attempts[ip] = (5, time.time() - 3600, 1800.0)
+        await _check_rate_limit(ip)
         assert ip not in _login_attempts
 
-    def test_lockout_not_yet_expired(self):
+    @pytest.mark.asyncio
+    async def test_lockout_not_yet_expired(self):
         from app.gateway.routers.auth import _login_attempts
 
         _login_attempts.clear()
         ip = "10.99.99.98"
-        _login_attempts[ip] = (5, time.time() + 300)
+        _login_attempts[ip] = (5, time.time(), 1800.0)
         with pytest.raises(HTTPException) as exc_info:
-            _check_rate_limit(ip)
+            await _check_rate_limit(ip)
         assert exc_info.value.status_code == 429
 
 
@@ -474,51 +471,55 @@ class TestCheckRateLimit:
 
 class TestRecordLoginFailure:
     def test_eviction_when_dict_full(self):
-        from app.gateway.routers.auth import _MAX_TRACKED_IPS, _login_attempts
+        from app.gateway.routers.auth import _MAX_TRACKED_IPS, _login_attempts, _record_failure_under_policy
 
         _login_attempts.clear()
-        # Fill dict to capacity with expired lockouts
+        # Fill dict to capacity with served sentences
         now = time.time()
         for i in range(_MAX_TRACKED_IPS):
-            _login_attempts[f"ip-{i}"] = (5, now - 100)
+            _login_attempts[f"ip-{i}"] = (5, now - 100, 50.0)
         # This should trigger eviction
-        _record_login_failure("new-ip")
+        _record_failure_under_policy("new-ip", 5, 1800.0)
         assert "new-ip" in _login_attempts
 
     def test_eviction_when_still_full(self):
-        from app.gateway.routers.auth import _MAX_TRACKED_IPS, _login_attempts
+        from app.gateway.routers.auth import _MAX_TRACKED_IPS, _login_attempts, _record_failure_under_policy
 
         _login_attempts.clear()
         now = time.time()
-        # Fill with active lockouts (not expired)
+        # Fill with live lockouts (not served yet)
         for i in range(_MAX_TRACKED_IPS):
-            _login_attempts[f"ip-{i}"] = (5, now + 300)
+            _login_attempts[f"ip-{i}"] = (5, now, 1800.0)
         # Trigger eviction — should evict cheapest-to-lose half
-        _record_login_failure("new-ip")
+        _record_failure_under_policy("new-ip", 5, 1800.0)
         assert "new-ip" in _login_attempts
         assert len(_login_attempts) <= _MAX_TRACKED_IPS
 
     def test_lockout_triggered_at_max(self):
-        from app.gateway.routers.auth import _MAX_LOGIN_ATTEMPTS, _login_attempts
+        from app.gateway.routers.auth import _login_attempts, _login_throttle_policy, _record_failure_under_policy
 
         _login_attempts.clear()
         ip = "test-ip"
-        for _ in range(_MAX_LOGIN_ATTEMPTS):
-            _record_login_failure(ip)
-        fail_count, lock_until = _login_attempts[ip]
-        assert fail_count == _MAX_LOGIN_ATTEMPTS
-        assert lock_until > time.time()
+        max_attempts, lockout_seconds = _login_throttle_policy()
+        for _ in range(max_attempts):
+            _record_failure_under_policy(ip, max_attempts, lockout_seconds)
+        fail_count, locked_at, locked_duration = _login_attempts[ip]
+        assert fail_count == max_attempts
+        assert locked_at > time.time() - 5
+        assert locked_duration == lockout_seconds
 
     def test_below_max_no_lockout(self):
-        from app.gateway.routers.auth import _MAX_LOGIN_ATTEMPTS, _login_attempts
+        from app.gateway.routers.auth import _login_attempts, _login_throttle_policy, _record_failure_under_policy
 
         _login_attempts.clear()
         ip = "test-ip2"
-        for _ in range(_MAX_LOGIN_ATTEMPTS - 1):
-            _record_login_failure(ip)
-        fail_count, lock_until = _login_attempts[ip]
-        assert fail_count == _MAX_LOGIN_ATTEMPTS - 1
-        assert lock_until == 0.0
+        max_attempts, lockout_seconds = _login_throttle_policy()
+        for _ in range(max_attempts - 1):
+            _record_failure_under_policy(ip, max_attempts, lockout_seconds)
+        fail_count, locked_at, locked_duration = _login_attempts[ip]
+        assert fail_count == max_attempts - 1
+        assert locked_at == 0.0
+        assert locked_duration == 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -550,26 +551,19 @@ class TestPasswordIsCommon:
 
 
 class TestLoginDisabledUser:
-    """auth.py:362-364: disabled RBAC user is rejected at login."""
+    """Login is credential-only; a disabled platform profile is enforced at
+    authorization (users_ext), never by consulting RBAC during login."""
 
-    def test_disabled_user_login_returns_403(self):
+    def test_login_does_not_consult_rbac_profile(self):
         user = _fake_user()
         provider = _patch_provider(authenticate_return=user)
 
-        rbac_user = MagicMock()
-        rbac_user.disabled = True
-
-        session = AsyncMock()
-        result = MagicMock()
-        result.scalar_one_or_none.return_value = rbac_user
-        session.execute = AsyncMock(return_value=result)
-        context = AsyncMock()
-        context.__aenter__ = AsyncMock(return_value=session)
-        context.__aexit__ = AsyncMock(return_value=False)
+        def _no_db(*args, **kwargs):
+            raise AssertionError("login must not read the RBAC profile")
 
         with (
             patch("app.gateway.routers.auth.get_local_provider", return_value=provider),
-            patch("app.gateway.routers.auth.get_session_factory", return_value=MagicMock(return_value=context)),
+            patch("deerflow.persistence.engine.get_session_factory", side_effect=_no_db),
             patch("app.gateway.routers.auth._get_client_ip", return_value="127.0.0.1"),
         ):
             app = _make_app()
@@ -579,143 +573,115 @@ class TestLoginDisabledUser:
                     data={"username": "disabled@example.com", "password": "AnyPass123!"},
                 )
 
+        assert resp.status_code == 200
+        assert resp.json()["needs_setup"] is False
+
+
+# ---------------------------------------------------------------------------
+# GET /me — platform role resolution (no auto-provisioning)
+# ---------------------------------------------------------------------------
+
+
+class TestMeProfileResolution:
+    """GET /me reads the platform role from users_ext and never auto-creates one."""
+
+    def _me_patches(self, user, scalar_return):
+        session = AsyncMock()
+        session.scalar = AsyncMock(return_value=scalar_return)
+        context = AsyncMock()
+        context.__aenter__ = AsyncMock(return_value=session)
+        context.__aexit__ = AsyncMock(return_value=False)
+        return (
+            patch("app.gateway.routers.auth.get_current_user_from_request", new_callable=AsyncMock, return_value=user),
+            patch("deerflow.persistence.engine.get_session_factory", return_value=MagicMock(return_value=context)),
+        )
+
+    def test_me_missing_profile_is_rejected(self):
+        """An authenticated user without a platform profile is denied (403)."""
+        user = _fake_user(email="newuser@example.com")
+        p1, p2 = self._me_patches(user, scalar_return=None)
+        with p1, p2:
+            app = _make_app()
+            with TestClient(app) as client:
+                resp = client.get("/api/v1/auth/me")
+
         assert resp.status_code == 403
-        detail = resp.json()["detail"]
-        assert detail["code"] == "user_disabled"
-        assert "disabled" in detail["message"]
+        assert "no active RBAC profile" in resp.json()["detail"]
+
+    def test_me_disabled_profile_is_rejected(self):
+        user = _fake_user(email="disabled@example.com")
+        profile = MagicMock()
+        profile.role = "user"
+        profile.disabled = True
+        p1, p2 = self._me_patches(user, scalar_return=profile)
+        with p1, p2:
+            app = _make_app()
+            with TestClient(app) as client:
+                resp = client.get("/api/v1/auth/me")
+
+        assert resp.status_code == 403
+
+    def test_me_invalid_role_is_rejected(self):
+        user = _fake_user(email="odd@example.com")
+        profile = MagicMock()
+        profile.role = "not-a-role"
+        profile.disabled = False
+        p1, p2 = self._me_patches(user, scalar_return=profile)
+        with p1, p2:
+            app = _make_app()
+            with TestClient(app) as client:
+                resp = client.get("/api/v1/auth/me")
+
+        assert resp.status_code == 403
+
+    def test_me_platform_role_wins_over_auth_row(self):
+        """The platform profile is the authority, even when the auth row
+        still carries the legacy 'admin' role."""
+        user = _fake_user(email="legacy@example.com", system_role="admin")
+        profile = MagicMock()
+        profile.role = "viewer"
+        profile.disabled = False
+        p1, p2 = self._me_patches(user, scalar_return=profile)
+        with p1, p2:
+            app = _make_app()
+            with TestClient(app) as client:
+                resp = client.get("/api/v1/auth/me")
+
+        assert resp.status_code == 200
+        assert resp.json()["system_role"] == "viewer"
 
 
 # ---------------------------------------------------------------------------
-# auth.py:319-324 — registration rate limiting
+# auth.py — login lockout (per-IP)
 # ---------------------------------------------------------------------------
 
 
-class TestRegistrationRateLimit:
-    """auth.py:319-324: _check_registration_rate_limit resets expired window and raises 429."""
+class TestLoginRateLimit:
+    """_check_rate_limit releases served lockouts and raises 429 while locked."""
 
-    def test_window_expired_resets_counter(self):
-        from app.gateway.routers.auth import _check_registration_rate_limit, _registration_attempts
+    @pytest.mark.asyncio
+    async def test_served_lockout_is_cleared(self):
+        from app.gateway.routers.auth import _check_rate_limit, _login_attempts
 
-        _registration_attempts.clear()
+        _login_attempts.clear()
         ip = "10.0.0.99"
-        _registration_attempts[ip] = (3, time.time() - 7200)
-        _check_registration_rate_limit(ip)
-        count, window_start = _registration_attempts[ip]
-        assert count == 1
-        assert window_start > time.time() - 5
+        _login_attempts[ip] = (99, time.time() - 7200, 3600.0)
+        await _check_rate_limit(ip)
+        assert ip not in _login_attempts
 
-    def test_rate_limit_raised_when_exceeded(self):
-        from app.gateway.routers.auth import _check_registration_rate_limit, _registration_attempts
+    @pytest.mark.asyncio
+    async def test_rate_limit_raised_while_locked(self):
+        from app.gateway.routers.auth import _check_rate_limit, _login_attempts
 
-        _registration_attempts.clear()
+        _login_attempts.clear()
         ip = "10.0.0.100"
-        _registration_attempts[ip] = (3, time.time())
+        _login_attempts[ip] = (99, time.time(), 3600.0)
         with pytest.raises(HTTPException) as exc_info:
-            _check_registration_rate_limit(ip)
+            await _check_rate_limit(ip)
         assert exc_info.value.status_code == 429
-        assert "Too many registration" in str(exc_info.value.detail)
+        assert "Too many login" in str(exc_info.value.detail)
 
 
 # ---------------------------------------------------------------------------
 # auth.py:481-498 — GET /me auto-creates UserModel and handles IntegrityError
 # ---------------------------------------------------------------------------
-
-
-class TestMeAutoCreateProfile:
-    """auth.py:481-498: /me auto-creates UserModel when missing, with IntegrityError recovery."""
-
-    def test_me_auto_creates_rbac_user(self):
-        user = _fake_user(email="newuser@example.com")
-        rbac_user = MagicMock()
-        rbac_user.role = "user"
-        rbac_user.disabled = False
-
-        session = AsyncMock()
-        result1 = MagicMock()
-        result1.scalar_one_or_none.return_value = None
-        result2 = MagicMock()
-        result2.scalar_one_or_none.return_value = rbac_user
-        session.execute = AsyncMock(side_effect=[result1, result2])
-        session.add = MagicMock()
-        session.commit = AsyncMock()
-        session.refresh = AsyncMock()
-        context = AsyncMock()
-        context.__aenter__ = AsyncMock(return_value=session)
-        context.__aexit__ = AsyncMock(return_value=False)
-
-        with (
-            patch("app.gateway.routers.auth.get_current_user_from_request", new_callable=AsyncMock, return_value=user),
-            patch("app.gateway.routers.auth.get_session_factory", return_value=MagicMock(return_value=context)),
-        ):
-            app = _make_app()
-            with TestClient(app) as client:
-                resp = client.get("/api/v1/auth/me")
-
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["email"] == "newuser@example.com"
-        assert data["system_role"] == "user"
-        created_profile = session.add.call_args.args[0]
-        assert created_profile.id == str(user.id)
-        assert created_profile.username == "newuser@example.com"
-        assert created_profile.role == "user"
-        session.commit.assert_awaited_once()
-        session.refresh.assert_awaited_once_with(created_profile)
-
-    def test_me_auto_create_integrity_error_then_found(self):
-        user = _fake_user(email="race@example.com")
-        rbac_user = MagicMock()
-        rbac_user.role = "user"
-        rbac_user.disabled = False
-
-        session = AsyncMock()
-        result1 = MagicMock()
-        result1.scalar_one_or_none.return_value = None
-        result2 = MagicMock()
-        result2.scalar_one_or_none.return_value = rbac_user
-        session.execute = AsyncMock(side_effect=[result1, result2])
-        session.add = MagicMock()
-        session.commit = AsyncMock(side_effect=[IntegrityError("insert", {}, Exception("dup")), None])
-        session.rollback = AsyncMock()
-        session.refresh = AsyncMock()
-        context = AsyncMock()
-        context.__aenter__ = AsyncMock(return_value=session)
-        context.__aexit__ = AsyncMock(return_value=False)
-
-        with (
-            patch("app.gateway.routers.auth.get_current_user_from_request", new_callable=AsyncMock, return_value=user),
-            patch("app.gateway.routers.auth.get_session_factory", return_value=MagicMock(return_value=context)),
-        ):
-            app = _make_app()
-            with TestClient(app) as client:
-                resp = client.get("/api/v1/auth/me")
-
-        assert resp.status_code == 200
-        assert resp.json()["email"] == "race@example.com"
-        session.add.assert_called_once()
-        session.rollback.assert_awaited_once()
-        assert session.execute.await_count == 2
-
-    def test_me_auto_create_integrity_error_all_raises_500(self):
-        user = _fake_user(email="lost@example.com")
-
-        session = AsyncMock()
-        result = MagicMock()
-        result.scalar_one_or_none.return_value = None
-        session.execute = AsyncMock(return_value=result)
-        session.add = MagicMock()
-        session.commit = AsyncMock(side_effect=IntegrityError("insert", {}, Exception("dup")))
-        session.rollback = AsyncMock()
-        context = AsyncMock()
-        context.__aenter__ = AsyncMock(return_value=session)
-        context.__aexit__ = AsyncMock(return_value=False)
-
-        with (
-            patch("app.gateway.routers.auth.get_current_user_from_request", new_callable=AsyncMock, return_value=user),
-            patch("app.gateway.routers.auth.get_session_factory", return_value=MagicMock(return_value=context)),
-        ):
-            app = _make_app()
-            with TestClient(app) as client:
-                resp = client.get("/api/v1/auth/me")
-
-        assert resp.status_code == 500

@@ -285,7 +285,8 @@ class TestAuthenticate:
         assert Permissions.THREADS_WRITE in ctx.permissions
 
     @pytest.mark.asyncio
-    async def test_null_role_logs_error_and_gets_viewer_permissions(self, caplog):
+    async def test_null_role_is_rejected(self, caplog):
+        """An invalid users_ext role denies platform access (no viewer fallback)."""
         user = _make_user()
         mock_rbac_user = _make_user_model(role=None)
         mock_session = AsyncMock()
@@ -301,15 +302,15 @@ class TestAuthenticate:
             patch("deerflow.persistence.engine.get_session_factory", return_value=mock_sf),
         ):
             with caplog.at_level(logging.ERROR):
-                ctx = await _authenticate(MagicMock(spec=Request))
+                with pytest.raises(HTTPException) as exc_info:
+                    await _authenticate(MagicMock(spec=Request))
 
-        assert ctx.user is user
-        assert Permissions.THREADS_READ in ctx.permissions
-        assert Permissions.THREADS_WRITE not in ctx.permissions
-        assert "Invalid role" in caplog.text
+        assert exc_info.value.status_code == 403
+        assert "invalid RBAC role" in exc_info.value.detail
 
     @pytest.mark.asyncio
-    async def test_no_rbac_user_found_creates_user_permissions(self):
+    async def test_no_rbac_user_found_is_rejected_without_database_write(self):
+        """A missing RBAC profile denies access; authentication is never auto-provisioned."""
         user = _make_user()
         mock_session = AsyncMock()
         mock_result = MagicMock()
@@ -324,12 +325,12 @@ class TestAuthenticate:
             patch("app.gateway.deps.get_optional_user_from_request", new_callable=AsyncMock, return_value=user),
             patch("deerflow.persistence.engine.get_session_factory", return_value=mock_sf),
         ):
-            ctx = await _authenticate(MagicMock(spec=Request))
+            with pytest.raises(HTTPException) as exc_info:
+                await _authenticate(MagicMock(spec=Request))
 
-        added_user = mock_session.add.call_args[0][0]
-        assert added_user.role == "user"
-        assert ctx.user is user
-        assert Permissions.THREADS_WRITE in ctx.permissions
+        assert exc_info.value.status_code == 403
+        assert "no RBAC profile" in exc_info.value.detail
+        mock_session.add.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_session_factory_none_raises_503(self):
@@ -1326,8 +1327,8 @@ class TestGetCurrentRbacUser:
         assert result.role == "user"
 
     @pytest.mark.asyncio
-    async def test_invalid_role_defaults_to_viewer(self, caplog):
-        """When role is an invalid enum value, default to VIEWER."""
+    async def test_invalid_role_is_rejected(self, caplog):
+        """An invalid enum value denies access instead of downgrading to VIEWER."""
         user = _make_user()
 
         req = MagicMock(spec=Request)
@@ -1344,10 +1345,10 @@ class TestGetCurrentRbacUser:
 
         with patch("deerflow.persistence.engine.get_session_factory", return_value=mock_sf):
             with caplog.at_level(logging.ERROR):
-                result = await get_current_rbac_user(req)
+                with pytest.raises(HTTPException) as exc_info:
+                    await get_current_rbac_user(req)
 
-        # The role should be fixed to VIEWER
-        assert result.role == "viewer"
+        assert exc_info.value.status_code == 403
         assert "Invalid role" in caplog.text
 
     @pytest.mark.asyncio

@@ -1,5 +1,5 @@
 import re
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from _router_auth_helpers import make_authed_test_app
@@ -59,6 +59,8 @@ def _build_thread_app() -> tuple[FastAPI, InMemoryStore, InMemorySaver]:
     checkpointer = InMemorySaver()
     app.state.store = store
     app.state.checkpointer = checkpointer
+    app.state.run_event_store = MagicMock()
+    app.state.run_event_store.list_messages = AsyncMock(return_value=[])
     app.state.thread_store = _PermissiveThreadMetaStore(store)
     app.include_router(threads.router)
     return app, store, checkpointer
@@ -115,6 +117,11 @@ def test_delete_thread_route_cleans_thread_directory(tmp_path):
 
     app = make_authed_test_app()
     app.include_router(threads.router)
+    reservation = MagicMock()
+    reservation.__aenter__ = AsyncMock(return_value=None)
+    reservation.__aexit__ = AsyncMock(return_value=False)
+    app.state.run_manager = MagicMock()
+    app.state.run_manager.reserve_thread_operation.return_value = reservation
 
     with patch("app.gateway.routers.threads.get_paths", return_value=paths):
         with TestClient(app) as client:

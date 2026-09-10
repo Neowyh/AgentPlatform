@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from unittest.mock import AsyncMock, MagicMock
+from uuid import UUID
 
 from _router_auth_helpers import make_authed_test_app
 from fastapi.testclient import TestClient
@@ -12,6 +13,8 @@ from app.gateway.routers import thread_runs
 from deerflow.runtime import RunManager
 from deerflow.runtime.runs.store.memory import MemoryRunStore
 
+_ROUTER_USER_ID = "11111111-1111-4111-8111-111111111111"
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -19,7 +22,9 @@ from deerflow.runtime.runs.store.memory import MemoryRunStore
 
 def _make_app(event_store=None, run_manager=None):
     """Build a test FastAPI app with stub auth and mocked state."""
-    app = make_authed_test_app()
+    from app.gateway.auth.models import User
+
+    app = make_authed_test_app(user_factory=lambda: User(id=UUID(_ROUTER_USER_ID), email="router-test@example.com", password_hash="x", system_role="user"))
     app.include_router(thread_runs.router)
 
     if event_store is not None:
@@ -49,6 +54,7 @@ def _make_store_only_run_manager() -> RunManager:
             thread_id="thread-store",
             assistant_id="lead_agent",
             status="running",
+            user_id=_ROUTER_USER_ID,
             multitask_strategy="reject",
             metadata={},
             kwargs={},

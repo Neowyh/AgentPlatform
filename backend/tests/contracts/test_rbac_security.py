@@ -511,8 +511,8 @@ class TestGetCurrentRbacUserEdgeCases:
         assert exc_info.value.status_code == 503
 
     @pytest.mark.asyncio
-    async def test_none_role_in_db_defaults_to_viewer_permissions(self):
-        """A NULL role has only the viewer read permission set."""
+    async def test_none_role_in_db_is_rejected(self):
+        """A NULL role denies platform access (fail-closed, no viewer fallback)."""
         auth_user = MagicMock()
         auth_user.id = str(uuid4())
 
@@ -536,9 +536,9 @@ class TestGetCurrentRbacUserEdgeCases:
         ):
             req = MagicMock()
             req.state = type("S", (), {})()
-            ctx = await _authenticate(req)
-        assert ctx.has_permission("threads", "read") is True
-        assert ctx.has_permission("threads", "write") is False
+            with pytest.raises(HTTPException) as exc_info:
+                await _authenticate(req)
+        assert exc_info.value.status_code == 403
 
 
 # =====================================================================

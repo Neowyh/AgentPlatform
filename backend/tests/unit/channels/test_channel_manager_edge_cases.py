@@ -590,11 +590,12 @@ class TestHandleChatLine761:
         ):
             await mgr._handle_chat(msg)
             mock_pub.assert_called()
-            # The agent should have received the uploaded files block in the input
+            # Uploaded files ride in additional_kwargs; the visible text is
+            # untouched (hidden context must not leak into the prompt echo).
             call_args = mock_client.runs.wait.call_args
-            input_text = call_args[1]["input"]["messages"][0]["content"]
-            assert "uploaded_files" in input_text
-            assert "data.csv" in input_text
+            message = call_args[1]["input"]["messages"][0]
+            assert message["content"] == "see attached"
+            assert message["additional_kwargs"]["files"] == uploaded_files
 
 
 # ===========================================================================
@@ -727,6 +728,7 @@ class TestHandleStreamingChatLine899:
                 "lead_agent",
                 {},
                 {},
+                {"role": "user", "content": "hello"},
             )
             final_msg = mock_pub.call_args_list[-1][0][0]
             assert THREAD_BUSY_MESSAGE in final_msg.text
@@ -770,6 +772,7 @@ class TestHandleStreamingChatLine906:
                 "lead_agent",
                 {},
                 {},
+                {"role": "user", "content": "hello"},
             )
             final_msg = mock_pub.call_args_list[-1][0][0]
             # Falls back to "(No response from agent)"
@@ -812,6 +815,7 @@ class TestHandleStreamingChatLine906Alternate:
                 "lead_agent",
                 {},
                 {},
+                {"role": "user", "content": "hello"},
             )
             final_msg = mock_pub.call_args_list[-1][0][0]
             assert "error" in final_msg.text.lower()
@@ -1006,6 +1010,7 @@ class TestHandleStreamingChatWithAttachments:
                 "lead_agent",
                 {},
                 {},
+                {"role": "user", "content": "hello"},
             )
             final_msg = mock_pub.call_args_list[-1][0][0]
             assert "report.xlsx" in final_msg.text

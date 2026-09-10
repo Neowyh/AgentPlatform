@@ -16,6 +16,12 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    # Gateway bootstrap may encounter a pre-versioned database whose current
+    # ORM metadata was already created by ``create_all``.  Treat the device
+    # family as already applied in that shape so upgrading from the legacy
+    # runtime head does not replay CREATE TABLE statements.
+    if sa.inspect(op.get_bind()).has_table("device_control_devices"):
+        return
     op.create_table(
         "device_control_devices",
         sa.Column("id", sa.String(length=36), primary_key=True),

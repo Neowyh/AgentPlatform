@@ -253,15 +253,15 @@ def test_build_run_config_context_custom_agent_injects_agent_name():
     assert config["configurable"] == {"thread_id": "thread-1", "agent_name": "finalis"}
 
 
-def test_resolve_agent_factory_returns_make_lead_agent():
-    """resolve_agent_factory always returns make_lead_agent regardless of assistant_id."""
+def test_resolve_agent_factory_returns_canonical_factory():
+    """resolve_agent_factory always returns the canonical lead-agent factory."""
     from app.gateway.services import resolve_agent_factory
-    from deerflow.agents.lead_agent.agent import make_lead_agent
+    from deerflow.agents.lead_agent.agent import assemble_lead_agent
 
-    assert resolve_agent_factory(None) is make_lead_agent
-    assert resolve_agent_factory("lead_agent") is make_lead_agent
-    assert resolve_agent_factory("finalis") is make_lead_agent
-    assert resolve_agent_factory("custom-agent-123") is make_lead_agent
+    assert resolve_agent_factory(None) is assemble_lead_agent
+    assert resolve_agent_factory("lead_agent") is assemble_lead_agent
+    assert resolve_agent_factory("finalis") is assemble_lead_agent
+    assert resolve_agent_factory("custom-agent-123") is assemble_lead_agent
 
 
 # ---------------------------------------------------------------------------

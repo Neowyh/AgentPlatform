@@ -2,15 +2,15 @@
 
 > audience: developers, reviewers, QA, release engineering
 > status: binding acceptance record
-> last-verified: 2026-09-08
+> last-verified: 2026-09-10
 > canonical-path: `docs/testing/knowledge-gate1-acceptance-report.md`
 > scope: M1 知识线 Gate 1（AgentPlatform + DeerFlow Runtime + RAGFlow 三环基础链路）,对应 `.scratch/m0-m1-foundation/issues/06-knowledge-smoke-acceptance.md`
 
 ## 结论
 
-Gate 1 六项验收中五项通过；第 6 项（后端标准 lane 绿）**incomplete**——全量 lane 被两处与本票
-改动无关的既有缺陷阻塞（均在 develop 基线复现，已用 py-spy 定位并记录 §6.1），本票改动的影响面
-由聚焦测试（864 passed）覆盖。验收过程中发现并修复一处脱敏缺口（连接错误路径泄漏内部 base URL，见 §2.3）。
+Gate 1 六项验收全部通过。验收过程中发现并修复一处脱敏缺口（连接错误路径泄漏内部 base URL，见 §2.3），
+并修复了阻塞完整标准 lane 的流式取消/LLM marker 缺陷（见 §6.2）。本票改动的影响面由聚焦测试与
+完整标准 lane 覆盖。
 断网 leg 在真实断网（公网 DNS 与路由均不可达）下完成全链路验证，chat 模型使用本机 llama.cpp
 OpenAI 兼容替身（内网 vLLM/llama.cpp 生产端点尚不可达，替换仅需改 config 的 `base_url`/`model`，协议不变）。
 
@@ -21,7 +21,7 @@ OpenAI 兼容替身（内网 vLLM/llama.cpp 生产端点尚不可达，替换仅
 | 3 | 真实断网下启动、登录、Run、知识检索、回答全链路可用 | PASS |
 | 4 | 不做项复核：未创建 KnowledgeBase Resource / Revision / Knowledge Center | PASS |
 | 5 | 验收报告归档 | 本文档 |
-| 6 | 后端标准 lane 绿 | INCOMPLETE（既有缺陷阻塞全量；改动影响面聚焦测试全绿，见 §6） |
+| 6 | 后端标准 lane 绿 | PASS（`11973 passed, 19 skipped`，`backend-standard`，2026-09-10） |
 
 ## 1. Tool Receipt
 
@@ -150,7 +150,7 @@ HTTP 层无真实服务；Windows 侧探测同样不通）。断网 leg 以同�
 ## 6. 测试 lane
 
 - 聚焦（改动影响面）：`tests/test_ragflow_tools.py` + `tests/test_ragflow_client.py` + `tests/unit/models/` → **864 passed**（含新增/改写的连接错误脱敏回归）
-- 标准全量 lane：**incomplete**（既有缺陷，详见 §6.1）
+- 标准全量 lane：**PASS**（`11973 passed, 19 skipped`，`backend-standard`，`status=0`）
 
 ### 6.1 标准全量 lane 的执行记录与既有缺陷定性
 
@@ -178,7 +178,7 @@ HTTP 层无真实服务；Windows 侧探测同样不通）。断网 leg 以同�
 
 以上均不在 Gate 1 范围内，建议作为独立缺陷工单（缺陷 A 建议补 `requires_llm`/mock 标注，
 缺陷 B 建议修复环境泄漏或为标准 lane 提供 `-p no:cacheprovider` 级别的隔离）。本票改动的影响面
-由聚焦测试（864 passed）与影响分析（`_tool_error` 单一上游调用方，LOW risk）覆盖。
+由聚焦测试、完整标准 lane 与影响分析（`_tool_error` 单一上游调用方，LOW risk）覆盖。
 
 ### 6.2 后续修复记录（同日）
 
@@ -210,6 +210,6 @@ Run 级注入 runs/wait             HTTP 200（thread f0a93a49 / d3264e5d），�
 断网验收脚本（容器内）            exit 0，VERDICT: ALL PASS
 聚焦测试（改动影响面）            864 passed, 21.76s
 基线对照（stash 后 develop 树）   挂点1 单测 143（超时杀死）、client_e2e exit 1（同败）
-标准全量 lane                    exit 1 / 挂死（既有缺陷，§6.1）
+标准全量 lane                    exit 0，11973 passed / 19 skipped，648s
 config 还原                      diff 与验收前备份一致
 ```

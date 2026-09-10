@@ -269,20 +269,24 @@ class TestMergeStreamText:
 
         assert _merge_stream_text("", "new") == "new"
 
-    def test_chunk_equals_existing(self):
+    def test_chunk_equals_existing_is_a_fresh_delta(self):
         from app.channels.manager import _merge_stream_text
 
-        assert _merge_stream_text("text", "text") == "text"
+        # Channels feed only deltas: an equal chunk is a new token to keep
+        # (CJK reduplication: '谢' + '谢' = '谢谢'), not a re-delivery.
+        assert _merge_stream_text("text", "text") == "texttext"
 
     def test_chunk_starts_with_existing(self):
         from app.channels.manager import _merge_stream_text
 
         assert _merge_stream_text("hel", "hello") == "hello"
 
-    def test_existing_ends_with_chunk(self):
+    def test_existing_ends_with_chunk_still_appends(self):
         from app.channels.manager import _merge_stream_text
 
-        assert _merge_stream_text("hello", "llo") == "hello"
+        # Only a strictly longer cumulative re-delivery collapses; a suffix
+        # delta is appended ('hel' + 'l' = 'hell').
+        assert _merge_stream_text("hello", "llo") == "hellollo"
 
     def test_concat(self):
         from app.channels.manager import _merge_stream_text
@@ -425,20 +429,22 @@ class TestPrepareArtifactDelivery:
 class TestAccumulateStreamText:
     """Tests for _accumulate_stream_text."""
 
-    def test_string_payload(self):
+    def test_string_payload_is_unattributable_and_dropped(self):
         from app.channels.manager import _accumulate_stream_text
 
+        # A bare str carries no message type, so it cannot be attributed to
+        # the assistant and must never reach an IM channel.
         buffers = {}
         text, msg_id = _accumulate_stream_text(buffers, None, "hello")
-        assert text == "hello"
-        assert msg_id == "__default__"
+        assert text is None
+        assert msg_id is None
 
-    def test_string_payload_with_existing_id(self):
+    def test_string_payload_with_existing_id_is_dropped(self):
         from app.channels.manager import _accumulate_stream_text
 
         buffers = {}
         text, msg_id = _accumulate_stream_text(buffers, "existing_id", "hello")
-        assert text == "hello"
+        assert text is None
         assert msg_id == "existing_id"
 
     def test_non_mapping_payload(self):
@@ -821,9 +827,14 @@ class TestNormalizeStreamModes:
         assert normalize_stream_modes(None) == ["values"]
 
     def test_string(self):
+        import pytest as _pytest
+
         from app.gateway.services import normalize_stream_modes
 
-        assert normalize_stream_modes("messages") == ["messages"]
+        # Only the LangGraph stream-mode surface is accepted.
+        assert normalize_stream_modes("values") == ["values"]
+        with _pytest.raises(ValueError):
+            normalize_stream_modes("messages")
 
     def test_list(self):
         from app.gateway.services import normalize_stream_modes
@@ -836,10 +847,12 @@ class TestNormalizeStreamModes:
         assert normalize_stream_modes([]) == ["values"]
 
     def test_empty_string(self):
+        import pytest as _pytest
+
         from app.gateway.services import normalize_stream_modes
 
-        # Empty string is a str, so isinstance branch returns [""]
-        assert normalize_stream_modes("") == [""]
+        with _pytest.raises(ValueError):
+            normalize_stream_modes("")
 
 
 class TestNormalizeInput:

@@ -246,11 +246,12 @@ class SQLiteUserRepository(UserRepository):
         stmt = select(UserRow).where(func.lower(UserRow.email) == _normalize_email(email)).order_by(UserRow.created_at, UserRow.id).limit(1)
         async with self._sf() as session:
             result = await session.execute(stmt)
-            row = result.scalars().first()
-            # Older repository doubles expose scalar_one_or_none only. This
-            # compatibility fallback preserves the public result shape while
-            # keeping production reads on the deterministic scalars path.
-            if not isinstance(row, UserRow):
+            try:
+                row = result.scalars().first()
+            except AttributeError:
+                # Older repository doubles expose scalar_one_or_none only. This
+                # compatibility fallback preserves the public result shape while
+                # keeping production reads on the deterministic scalars path.
                 row = result.scalar_one_or_none()
             return self._row_to_user(row) if row is not None else None
 

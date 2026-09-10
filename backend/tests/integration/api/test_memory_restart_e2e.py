@@ -107,18 +107,12 @@ def test_memory_facts_survive_gateway_restart_and_stay_user_scoped(
         )
         assert login.status_code in (200, 204), login.text
         facts = _facts(client)
-        assert [fact["content"] for fact in facts] == [OWNER_FACT], (
-            "facts must survive a full gateway restart"
-        )
+        assert [fact["content"] for fact in facts] == [OWNER_FACT], "facts must survive a full gateway restart"
 
         # The fact is durable inside the per-user DeerMem scope (facts live
         # as Markdown files below users/<id>/agents/<agent>/facts/).
         user_dir = home / "users" / owner_id
-        durable = "\n".join(
-            path.read_text(encoding="utf-8", errors="replace")
-            for path in user_dir.rglob("*")
-            if path.is_file()
-        )
+        durable = "\n".join(path.read_text(encoding="utf-8", errors="replace") for path in user_dir.rglob("*") if path.is_file())
         assert OWNER_FACT in durable, f"fact not durable under {user_dir}"
 
 

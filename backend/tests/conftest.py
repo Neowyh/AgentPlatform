@@ -214,25 +214,31 @@ def _isolate_trace_context():
 
 
 @pytest.fixture(autouse=True)
-def _reset_registration_rate_limit():
-    """Reset the per-IP registration limiter around every test.
+def _reset_auth_throttle_state():
+    """Reset process-wide auth throttle state around every test.
 
-    ``app.gateway.routers.auth._registration_attempts`` is a process-wide
-    module global, while the production cap is 3 registrations per IP per
-    hour. In a single pytest process the accumulator therefore leaks across
-    test files and every integration suite that exercises the register
-    endpoint starts tripping synthetic 429s after the first three attempts.
-    Clearing it per test keeps the production limit itself under test.
+    The login lockout table (``_login_attempts``) and the per-IP
+    ``/setup-status`` result cache are module globals. Without a reset the
+    lockout accumulator leaks across test files (synthetic 429s once an IP
+    crosses ``max_login_attempts``) and ``setup-status`` serves a stale
+    needs_setup answer recorded by an earlier test.
     """
     try:
-        from app.gateway.routers.auth import _registration_attempts
-    except ImportError:
+        from app.gateway import routers
+
+        auth_router = routers.auth
+    except (ImportError, AttributeError):
         yield
         return
 
-    _registration_attempts.clear()
+    def _clear():
+        getattr(auth_router, "_login_attempts", None) and auth_router._login_attempts.clear()
+        getattr(auth_router, "_SETUP_STATUS_CACHE", None) and auth_router._SETUP_STATUS_CACHE.clear()
+        getattr(auth_router, "_SETUP_STATUS_INFLIGHT", None) and auth_router._SETUP_STATUS_INFLIGHT.clear()
+
+    _clear()
     yield
-    _registration_attempts.clear()
+    _clear()
 
 
 @pytest.fixture(autouse=True)

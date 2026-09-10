@@ -9,6 +9,8 @@ owner filtering works automatically via the sentinel pattern.
 Fine-grained permission checks remain in authz.py decorators.
 """
 
+import logging
+import time
 from collections.abc import Callable
 
 from fastapi import HTTPException, Request, Response
@@ -29,6 +31,8 @@ from app.gateway.authz import AuthContext, resolve_route_permissions
 from app.gateway.internal_auth import INTERNAL_AUTH_HEADER_NAME, get_internal_user, is_valid_internal_auth_token
 from app.gateway.request_path import get_request_route_path
 from deerflow.runtime.user_context import reset_current_user, set_current_user
+
+logger = logging.getLogger(__name__)
 
 # Paths that never require authentication.
 _PUBLIC_PATH_PREFIXES: tuple[str, ...] = (
@@ -89,6 +93,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if _is_public(get_request_route_path(request)):
             return await call_next(request)
 
+        # T1 first-token timing: auth is the first pre-token segment.
+        auth_started = time.perf_counter()
+
         internal_user = None
         if is_valid_internal_auth_token(request.headers.get(INTERNAL_AUTH_HEADER_NAME)):
             internal_user = get_internal_user()
@@ -140,13 +147,29 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         request.state.user = user
         request.state.auth_source = auth_source
+
+        # The platform identity (users_ext) is the only authorization source.
+        # Trusted sources (internal/auth-disabled) return None and fall to the
+        # provider default; session and PAT callers resolve — or are denied —
+        # through the same fail-closed read the decorators reuse.
+        from app.gateway.authz import resolve_platform_identity
+
+        identity = await resolve_platform_identity(request, user)
+        platform_role = identity.get("role") if identity is not None else None
+
         permissions = await resolve_route_permissions(
             user,
             is_internal=auth_source == AUTH_SOURCE_INTERNAL,
+            platform_role=platform_role,
         )
         if auth_source == AUTH_SOURCE_PAT:
             permissions = [permission for permission in permissions if permission in pat_scopes]
         request.state.auth = AuthContext(user=user, permissions=permissions)
+        logger.info(
+            "first_token_timing stage=auth elapsed_ms=%.1f path=%s",
+            (time.perf_counter() - auth_started) * 1000,
+            get_request_route_path(request),
+        )
         token = set_current_user(user)
         try:
             return await call_next(request)

@@ -20,15 +20,23 @@ pytestmark = pytest.mark.no_auto_user
 
 def _make_app():
 
+    from app.gateway.auth.models import User
     from app.gateway.authz import get_current_rbac_user
 
-    app = make_authed_test_app()
+    app = make_authed_test_app(
+        user_factory=lambda: User(
+            email="router-admin@example.com",
+            password_hash="x",
+            system_role="admin",
+        )
+    )
     app.include_router(channels_router)
 
-    # Mock the RBAC user for @require_role decorators
+    # Channel management routes are admin-gated via require_admin_user, which
+    # reads request.state.user.system_role — the stub user must be an admin.
     rbac_user = MagicMock()
     rbac_user.id = "test-user-id"
-    rbac_user.role = "user"
+    rbac_user.role = "super_admin"
     rbac_user.department_id = None
     rbac_user.disabled = False
 

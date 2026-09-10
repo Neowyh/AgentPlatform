@@ -155,6 +155,12 @@ _ALL_PERMISSIONS: list[str] = [
     Permissions.MODELS_READ,
 ]
 
+# BUG-06: viewers are read-only; every other platform role gets the full set.
+_VIEWER_PERMISSIONS: list[str] = [
+    Permissions.THREADS_READ,
+    Permissions.RUNS_READ,
+]
+
 
 def _make_test_request_stub() -> Any:
     """Create a minimal request-like object for direct unit calls.
@@ -199,8 +205,15 @@ def _get_cached_route_provider(config: AuthorizationConfig) -> AuthorizationProv
     return provider
 
 
-async def resolve_route_permissions(user: User, *, is_internal: bool) -> list[str]:
-    """Return route permissions for *user*, evaluating each action independently."""
+async def resolve_route_permissions(user: User, *, is_internal: bool, platform_role: str | None = None) -> list[str]:
+    """Return route permissions for *user*, evaluating each action independently.
+
+    ``platform_role`` is the server-resolved platform role (users_ext). The
+    legacy auth-table ``system_role`` is never consulted here: trusted
+    internal callers pass ``platform_role=None`` (they fall to the provider's
+    ``default_role``), and every regular caller must present the resolved
+    platform identity.
+    """
     config = _get_route_authorization_config()
     if config.enabled is not True:
         return list(_ALL_PERMISSIONS)
@@ -212,11 +225,7 @@ async def resolve_route_permissions(user: User, *, is_internal: bool) -> list[st
         logger.warning("Failed to resolve authorization provider for Gateway routes", exc_info=True)
         return [] if config.fail_closed else list(_ALL_PERMISSIONS)
 
-    from app.gateway.internal_auth import INTERNAL_SYSTEM_ROLE
-
-    user_role = getattr(user, "system_role", None)
-    if user_role == INTERNAL_SYSTEM_ROLE:
-        user_role = None
+    user_role = platform_role
     principal = build_principal_from_context(
         {
             "user_id": str(user.id),
@@ -246,22 +255,19 @@ async def resolve_route_permissions(user: User, *, is_internal: bool) -> list[st
     return [permission for permission in results if permission is not None]
 
 
-def _route_authz_context(user: User, *, is_internal: bool) -> dict:
+def _route_authz_context(user: User, *, is_internal: bool, platform_role: str | None = None) -> dict:
     """Build the shared Principal context dict for a request-scoped user.
 
-    Applies the ``INTERNAL_SYSTEM_ROLE → None`` pop so internal callers fall
-    under ``default_role`` (mirrors ``inject_authenticated_user_context``).
-    Used by ``resolve_model_authorization`` and ``authorize_sandbox_for_request``
-    so every route-level authorization path builds the identity the same way.
+    ``platform_role`` is the server-resolved platform role (users_ext). The
+    legacy auth-table ``system_role`` is never consulted: trusted internal
+    callers pass ``platform_role=None`` (mirrors
+    ``inject_authenticated_user_context``) and fall under ``default_role``.
+    Used by ``authorize_sandbox_for_request`` so route-level authorization
+    builds the identity the same way the middleware does.
     """
-    from app.gateway.internal_auth import INTERNAL_SYSTEM_ROLE
-
-    user_role = getattr(user, "system_role", None)
-    if user_role == INTERNAL_SYSTEM_ROLE:
-        user_role = None
     return {
         "user_id": str(user.id),
-        "user_role": user_role,
+        "user_role": platform_role,
         "oauth_provider": getattr(user, "oauth_provider", None),
         "oauth_id": getattr(user, "oauth_id", None),
         "is_internal": is_internal,
@@ -272,6 +278,7 @@ def authorize_sandbox_for_request(
     user: User,
     *,
     is_internal: bool,
+    platform_role: str | None = None,
     app_config: AppConfig | None,
 ) -> None:
     """Check ``sandbox:execute`` for a Gateway request before sandbox acquisition.
@@ -294,7 +301,7 @@ def authorize_sandbox_for_request(
     if config.enabled is not True:
         return
 
-    context = _route_authz_context(user, is_internal=is_internal)
+    context = _route_authz_context(user, is_internal=is_internal, platform_role=platform_role)
 
     try:
         authorize_sandbox_execution(
@@ -371,7 +378,13 @@ async def try_acquire_sandbox_for_request(
 
         user = await get_optional_user_from_request(request) if request is not None else None
         if user is not None:
-            authorize_sandbox_for_request(user, is_internal=_is_internal_caller(request, user), app_config=app_config)
+            identity = await resolve_platform_identity(request, user) if request is not None else None
+            authorize_sandbox_for_request(
+                user,
+                is_internal=_is_internal_caller(request, user),
+                platform_role=identity.get("role") if identity is not None else None,
+                app_config=app_config,
+            )
     except SandboxAuthorizationError:
         logger.info("Sandbox sync skipped: sandbox execution not permitted for this caller (thread_id=%s)", thread_id)
         return SandboxRequestLease(
@@ -443,13 +456,74 @@ def _cached_rbac_identity(request: Request, user_id: str) -> dict[str, Any] | No
     return cached
 
 
+async def resolve_platform_identity(request: Request, user: Any) -> dict[str, Any] | None:
+    """Resolve the platform identity for *user* from ``users_ext``.
+
+    The single authoritative read for per-request identity: trusted sources
+    (internal token, auth-disabled mode) return ``None`` — they never
+    impersonate a platform role. Session and PAT callers are fail-closed: a
+    missing profile, a disabled flag, or an invalid role denies access (403)
+    and a database failure degrades to 503. The result is cached on the
+    request, so a role change or disable takes effect on the next request.
+    """
+    from app.gateway.auth_disabled import AUTH_SOURCE_AUTH_DISABLED, AUTH_SOURCE_INTERNAL
+
+    auth_source = getattr(getattr(request, "state", None), "auth_source", None)
+    if auth_source in (AUTH_SOURCE_INTERNAL, AUTH_SOURCE_AUTH_DISABLED):
+        return None
+
+    cached = _cached_rbac_identity(request, str(user.id))
+    if cached is not None:
+        return cached
+
+    try:
+        from sqlalchemy import select
+
+        from app.agentplatform.rbac_models import UserModel, UserRole
+        from deerflow.persistence.engine import get_session_factory
+
+        sf = get_session_factory()
+        if sf is None:
+            raise RuntimeError("Database not initialized")
+        async with sf() as session:
+            result = await session.execute(select(UserModel).where(UserModel.id == str(user.id)))
+            rbac_user = result.scalar_one_or_none()
+    except Exception as exc:
+        # Fail-closed: an RBAC lookup failure (DB down, engine missing) must
+        # deny access rather than fall back to the legacy auth role.
+        logger.error("RBAC lookup failed for user %s, denying access: %s", user.id, exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authorization service temporarily unavailable",
+        ) from exc
+
+    if rbac_user is None:
+        logger.error("Authenticated user %s has no RBAC profile", user.id)
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Authenticated user has no RBAC profile")
+    if rbac_user.disabled:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User account is disabled")
+    try:
+        UserRole(rbac_user.role)
+    except (TypeError, ValueError):
+        logger.error("Invalid role '%s' for user %s", rbac_user.role, user.id)
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Authenticated user has an invalid RBAC role") from None
+
+    _stash_rbac_identity(
+        request,
+        user_id=str(user.id),
+        department_id=str(rbac_user.department_id) if rbac_user.department_id is not None else None,
+        role=str(rbac_user.role),
+    )
+    return _cached_rbac_identity(request, str(user.id))
+
+
 async def _authenticate(request: Request) -> AuthContext:
     """Authenticate request and return AuthContext.
 
     Delegates to deps.get_optional_user_from_request() for the JWT→User pipeline.
     Returns AuthContext with user=None for anonymous requests.
 
-    Permission mapping by role:
+    Permission mapping by platform role (users_ext):
     - super_admin / department_admin / user: all permissions
     - viewer: read-only (threads:read, runs:read)
     """
@@ -465,60 +539,11 @@ async def _authenticate(request: Request) -> AuthContext:
     if _is_internal_caller(request, user):
         return AuthContext(user=user, permissions=list(_ALL_PERMISSIONS))
 
-    # BUG-06: Map roles to permissions instead of granting all
-    _VIEWER_PERMISSIONS: list[str] = [
-        Permissions.THREADS_READ,
-        Permissions.RUNS_READ,
-    ]
-
-    try:
-        from sqlalchemy import select
-
-        from app.agentplatform.rbac_models import UserModel
-        from deerflow.persistence.engine import get_session_factory
-
-        sf = get_session_factory()
-        if sf is None:
-            raise RuntimeError("Database not initialized")
-        async with sf() as session:
-            stmt = select(UserModel).where(UserModel.id == str(user.id))
-            result = await session.execute(stmt)
-            rbac_user = result.scalar_one_or_none()
-            if rbac_user is None:
-                logger.error("Authenticated user %s has no RBAC profile", user.id)
-                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Authenticated user has no RBAC profile")
-            if rbac_user.disabled:
-                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User account is disabled")
-            try:
-                role = UserRole(rbac_user.role)
-            except (TypeError, ValueError):
-                logger.error("Invalid role '%s' for user %s", rbac_user.role, user.id)
-                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Authenticated user has an invalid RBAC role")
-            # T2: cache the resolved identity on the request so downstream
-            # run preparation (alias resolve, canonical freeze) reuses it
-            # instead of issuing duplicate UserModel SELECTs.
-            _stash_rbac_identity(
-                request,
-                user_id=str(user.id),
-                department_id=str(rbac_user.department_id) if rbac_user.department_id is not None else None,
-                role=str(rbac_user.role),
-            )
-            if role == UserRole.VIEWER:
-                return AuthContext(user=user, permissions=_VIEWER_PERMISSIONS)
-    except Exception as exc:
-        if isinstance(exc, HTTPException):
-            raise
-        # Fail-closed: RBAC lookup failed (DB down, etc.) — deny access
-        # rather than granting full permissions.  A DB outage should not
-        # become a privilege-escalation vector.  Log at error level so
-        # operators are alerted to the degraded state.
-        logger.error("RBAC lookup failed for user %s, denying access: %s", user.id, exc)
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Authorization service temporarily unavailable",
-        )
+    identity = await resolve_platform_identity(request, user)
 
     # Authenticated non-viewer RBAC roles get the normal write-capable set.
+    if identity is not None and identity.get("role") == UserRole.VIEWER.value:
+        return AuthContext(user=user, permissions=_VIEWER_PERMISSIONS)
     return AuthContext(user=user, permissions=_ALL_PERMISSIONS)
 
 

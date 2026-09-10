@@ -51,17 +51,18 @@ def _persistence_engine(tmp_path):
     asyncio.run(init_engine("sqlite", url=url, sqlite_dir=str(tmp_path)))
     deps._cached_local_provider = None
     deps._cached_repo = None
-    # Reset per-IP rate limiter state so register/login tests do not leak
-    # quota into each other (each test simulates a fresh server process).
-    auth_router._registration_attempts.clear()
+    # Reset per-IP throttle state so login tests do not leak lockouts and
+    # setup-status does not serve a stale answer (each test simulates a
+    # fresh server process).
     auth_router._login_attempts.clear()
+    auth_router._SETUP_STATUS_CACHE.clear()
     try:
         yield
     finally:
         deps._cached_local_provider = None
         deps._cached_repo = None
-        auth_router._registration_attempts.clear()
         auth_router._login_attempts.clear()
+        auth_router._SETUP_STATUS_CACHE.clear()
         asyncio.run(close_engine())
 
 

@@ -9,17 +9,21 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import inspect
 import json
 import logging
 import re
 import uuid
-from collections.abc import Mapping
+from collections.abc import AsyncIterator, Mapping
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from typing import Any
 
+from deerflow_extension_api import PROVENANCE_KEYS
 from fastapi import HTTPException, Request
 from langchain_core.messages import BaseMessage
 from langchain_core.messages.utils import convert_to_messages
+from langgraph.types import Command
 
 # Canonical (Resource-catalog) bootstrap for in-run agent creation. The gateway
 # composition owns the enterprise behavior, so the wrap is installed once at
@@ -28,10 +32,22 @@ from app.agentplatform.agent_bootstrap import install as _install_canonical_agen
 from app.agentplatform.resources.canonical_sandbox import install_run_skill_view_resolver as _install_run_skill_view_resolver
 from app.gateway.auth_disabled import AUTH_SOURCE_INTERNAL
 from app.gateway.authz import _cached_rbac_identity
-from app.gateway.deps import get_checkpointer, get_run_context, get_run_manager, get_stream_bridge
-from app.gateway.internal_auth import INTERNAL_OWNER_USER_ID_HEADER_NAME, INTERNAL_SYSTEM_ROLE, get_internal_user
+from app.gateway.deps import get_checkpointer, get_local_provider, get_run_context, get_run_manager, get_stream_bridge
+from app.gateway.internal_auth import (
+    INTERNAL_OWNER_USER_ID_HEADER_NAME,
+    INTERNAL_SYSTEM_ROLE,
+    get_internal_user,
+    get_trusted_internal_owner_user_id,
+)
 from app.gateway.utils import sanitize_log_param
+from app.mcp_tasks.errors import PermanentNotificationError
+from deerflow.agents.middlewares.dynamic_context_middleware import _DYNAMIC_CONTEXT_REMINDER_KEY, _REMINDER_DATE_KEY
+from deerflow.agents.middlewares.input_sanitization_middleware import frame_untrusted_text
+from deerflow.agents.middlewares.tool_receipt import TOOL_RECEIPT_KEY, TOOL_RECEIPT_LEDGER_KEY
+from deerflow.agents.middlewares.tool_transform_meta import TOOL_TRANSFORMS_KEY
+from deerflow.agents.middlewares.view_image_middleware import _IMAGE_CONTEXT_MESSAGE_MARKER_KEY
 from deerflow.config import get_app_config
+from deerflow.config.database_config import resolve_checkpoint_graph_cache_max
 from deerflow.runtime import (
     END_SENTINEL,
     HEARTBEAT_SENTINEL,
@@ -39,11 +55,13 @@ from deerflow.runtime import (
     CheckpointStateAccessor,
     ConflictError,
     DisconnectMode,
+    RunContext,
     RunManager,
     RunRecord,
     RunStatus,
     StreamBridge,
     StreamGap,
+    ThreadOperationKind,
     UnsupportedStrategyError,
     build_state_mutation_graph,
     run_agent,
@@ -54,8 +72,16 @@ from deerflow.runtime.checkpoint_mode import (
     inject_checkpoint_mode,
 )
 from deerflow.runtime.checkpoint_state import graph_state_schema
+from deerflow.runtime.events.message_identity import MESSAGE_SEQ_KEY
+from deerflow.runtime.goal import goal_thread_lock
+from deerflow.runtime.journal import build_checkpoint_history_seed_events
 from deerflow.runtime.runs.naming import resolve_root_run_name
-from deerflow.trace_context import ensure_trace_context
+from deerflow.runtime.secret_context import LegacyRunMetadataSecretError, redact_config_secrets, validate_run_metadata_secrets
+from deerflow.runtime.user_context import reset_current_user, set_current_user
+from deerflow.subagents.status_contract import SUBAGENT_ACCEPTANCE_VERDICT_KEY, SUBAGENT_RECEIPT_VERDICT_KEY, SUBAGENT_TOOL_RECEIPTS_KEY
+from deerflow.trace_context import DEERFLOW_TRACE_METADATA_KEY, ensure_trace_context, ensure_trace_id
+from deerflow.utils.messages import ORIGINAL_USER_CONTENT_KEY
+from deerflow.utils.thread_id import validate_thread_id
 
 _install_canonical_agent_bootstrap()
 # Canonical runs key their sandboxes on a run-scoped identity; teach the
@@ -63,6 +89,43 @@ _install_canonical_agent_bootstrap()
 _install_run_skill_view_resolver()
 
 logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def reserve_checkpoint_write(
+    request: Request,
+    thread_id: str,
+    *,
+    user_id: str | None = None,
+) -> AsyncIterator[None]:
+    """Serialize an out-of-run checkpoint writer against thread operations."""
+    run_manager = get_run_manager(request)
+    async with goal_thread_lock(thread_id):
+        async with run_manager.reserve_thread_operation(
+            thread_id,
+            kind=ThreadOperationKind.checkpoint_write,
+            user_id=user_id,
+        ):
+            yield
+
+
+_THREAD_METADATA_SETUP_TIMEOUT_SECONDS = 5.0
+_SERVER_OWNED_MESSAGE_METADATA_KEYS = (
+    frozenset(
+        {
+            _DYNAMIC_CONTEXT_REMINDER_KEY,
+            _REMINDER_DATE_KEY,
+            _IMAGE_CONTEXT_MESSAGE_MARKER_KEY,
+            TOOL_RECEIPT_KEY,
+            TOOL_RECEIPT_LEDGER_KEY,
+            TOOL_TRANSFORMS_KEY,
+            SUBAGENT_TOOL_RECEIPTS_KEY,
+            SUBAGENT_RECEIPT_VERDICT_KEY,
+            SUBAGENT_ACCEPTANCE_VERDICT_KEY,
+        }
+    )
+    | PROVENANCE_KEYS
+)
 
 
 def prompt_template_hash(prompt_template: str) -> str:
@@ -103,12 +166,37 @@ def normalize_stream_modes(raw: list[str] | str | None) -> list[str]:
     """
     if raw is None:
         return ["values"]
-    if isinstance(raw, str):
-        return [raw]
-    return raw if raw else ["values"]
+    modes = [raw] if isinstance(raw, str) else (raw if raw else ["values"])
+    supported = {"values", "messages-tuple", "updates", "custom"}
+    unsupported = [mode for mode in modes if mode not in supported]
+    if unsupported:
+        raise ValueError(f"Unsupported stream mode: {unsupported[0]}")
+    return modes
 
 
-def normalize_input(raw_input: dict[str, Any] | None) -> dict[str, Any]:
+def _strip_external_message_metadata(message: Any) -> Any:
+    if isinstance(message, dict) and isinstance(message.get("additional_kwargs"), dict):
+        additional_kwargs = {key: value for key, value in message["additional_kwargs"].items() if key != ORIGINAL_USER_CONTENT_KEY and key != MESSAGE_SEQ_KEY and key not in _SERVER_OWNED_MESSAGE_METADATA_KEYS}
+        return {**message, "additional_kwargs": additional_kwargs}
+    if not isinstance(message, BaseMessage):
+        return message
+    additional_kwargs = dict(message.additional_kwargs)
+    additional_kwargs.pop(ORIGINAL_USER_CONTENT_KEY, None)
+    additional_kwargs.pop(MESSAGE_SEQ_KEY, None)
+    for key in _SERVER_OWNED_MESSAGE_METADATA_KEYS:
+        additional_kwargs.pop(key, None)
+    if additional_kwargs == message.additional_kwargs:
+        return message
+    return message.model_copy(update={"additional_kwargs": additional_kwargs})
+
+
+def _strip_external_delegation_verdict(entry: Any) -> Any:
+    if isinstance(entry, dict):
+        return {key: value for key, value in entry.items() if key not in {"receipt_verdict", "acceptance_verdict"}}
+    return entry
+
+
+def normalize_input(raw_input: dict[str, Any] | None, *, trusted_internal: bool = False) -> dict[str, Any]:
     """Convert LangGraph Platform input format to LangChain state dict.
 
     Delegates dict→message coercion to ``langchain_core.messages.utils.convert_to_messages``
@@ -140,8 +228,19 @@ def normalize_input(raw_input: dict[str, Any] | None) -> dict[str, Any]:
                     ) from exc
             else:
                 converted.append(msg)
-        return {**raw_input, "messages": converted}
-    return raw_input
+        if not trusted_internal:
+            converted = [_strip_external_message_metadata(message) for message in converted]
+        result = {**raw_input, "messages": converted}
+    else:
+        result = raw_input
+    if not trusted_internal and isinstance(result.get("delegations"), list):
+        result = {**result, "delegations": [_strip_external_delegation_verdict(item) for item in result["delegations"]]}
+    return result
+
+
+def strip_server_owned_state_metadata(values: Mapping[str, Any]) -> dict[str, Any]:
+    """Strip host-owned metadata from message-like values in every channel."""
+    return {channel: [_strip_external_message_metadata(item) for item in value] if isinstance(value, list) else _strip_external_message_metadata(value) for channel, value in values.items()}
 
 
 def validate_evidence_selection(evidence_mode: str | None, code_package_id: str | None) -> tuple[str, str | None]:
@@ -174,6 +273,7 @@ _CONTEXT_CONFIGURABLE_KEYS: frozenset[str] = frozenset(
         "is_plan_mode",
         "subagent_enabled",
         "max_concurrent_subagents",
+        "max_total_subagents",
         "agent_name",
         "agent_resource_id",
         "is_bootstrap",
@@ -186,6 +286,8 @@ _CONTEXT_CONFIGURABLE_KEYS: frozenset[str] = frozenset(
         "code_evidence_manifest",
     }
 )
+
+_CONTEXT_ONLY_KEYS: frozenset[str] = frozenset({"github_token", "disable_clarification"})
 
 _CONTEXT_INTERNAL_CALLER_KEYS: frozenset[str] = frozenset({"non_interactive"})
 _SERVER_OWNED_AUTHZ_CONTEXT_KEYS: frozenset[str] = frozenset(
@@ -242,6 +344,10 @@ def merge_run_context_overrides(
                 configurable.setdefault(key, context[key])
             if isinstance(runtime_context, dict):
                 runtime_context.setdefault(key, context[key])
+    if isinstance(runtime_context, dict):
+        for key in _CONTEXT_ONLY_KEYS:
+            if key in context:
+                runtime_context.setdefault(key, context[key])
     if "user_id" in context and isinstance(runtime_context, dict):
         runtime_context.setdefault("user_id", context["user_id"])
     if internal and "channel_user_id" in context and isinstance(runtime_context, dict):
@@ -262,6 +368,7 @@ def inject_authenticated_user_context(
     config: dict[str, Any],
     request: Request,
     *,
+    internal_owner_user: Any | None = None,
     request_context: Mapping[str, Any] | None = None,
 ) -> None:
     """Stamp the authenticated user into the run context for background tools.
@@ -288,26 +395,49 @@ def inject_authenticated_user_context(
         if channel_user_id is not None:
             runtime_context["channel_user_id"] = channel_user_id
 
-    user = getattr(request.state, "user", None)
+    user = internal_owner_user or getattr(request.state, "user", None)
     user_id = getattr(user, "id", None)
     if user_id is None:
+        runtime_context.pop("user_id", None)
+        if isinstance(configurable, dict):
+            configurable.pop("user_id", None)
         return
 
-    if getattr(user, "system_role", None) == INTERNAL_SYSTEM_ROLE:
+    if internal_owner_user is None and getattr(user, "system_role", None) == INTERNAL_SYSTEM_ROLE:
         runtime_context.pop("user_role", None)
         runtime_context.pop("oauth_provider", None)
         runtime_context.pop("oauth_id", None)
         return
 
     runtime_context["user_id"] = str(user_id)
+    # The platform identity cache is the only role source. The middleware (or
+    # _authenticate) resolves users_ext before handlers run, so the cache is
+    # always present here for session/PAT callers; when it is absent (direct
+    # embedded calls) the role is omitted rather than falling back to the
+    # legacy auth-table value, which would silently re-escalate a downgraded
+    # or unprovisioned account.
     cached_identity = getattr(getattr(request, "state", None), "_ideer_rbac_user", None)
     resolved_role = cached_identity.get("role") if isinstance(cached_identity, dict) else None
-    runtime_context["user_role"] = resolved_role or getattr(user, "system_role", None)
+    if resolved_role is not None:
+        runtime_context["user_role"] = resolved_role
     runtime_context["oauth_provider"] = getattr(user, "oauth_provider", None)
     runtime_context["oauth_id"] = getattr(user, "oauth_id", None)
     department_id = cached_identity.get("department_id") if isinstance(cached_identity, dict) else None
     if department_id is not None:
         runtime_context["authz_attributes"] = {"department_id": str(department_id)}
+
+
+async def resolve_trusted_internal_owner_for_attribution(request: Request, owner_user_id: str | None) -> Any | None:
+    if not owner_user_id:
+        return None
+    user = getattr(request.state, "user", None)
+    if getattr(user, "system_role", None) != INTERNAL_SYSTEM_ROLE:
+        return None
+    try:
+        return await get_local_provider().get_user(owner_user_id)
+    except Exception:
+        logger.exception("Failed to resolve trusted internal owner %s", sanitize_log_param(owner_user_id))
+        return None
 
 
 def resolve_agent_factory(assistant_id: str | None):
@@ -319,9 +449,9 @@ def resolve_agent_factory(assistant_id: str | None):
     same factory; the routing happens inside ``make_lead_agent`` when it reads
     ``cfg["agent_name"]``.
     """
-    from deerflow.agents.lead_agent.agent import make_lead_agent
+    from deerflow.agents.lead_agent.agent import assemble_lead_agent
 
-    return make_lead_agent
+    return assemble_lead_agent
 
 
 def _canonical_assistant_id(assistant_id: str | None) -> str | None:
@@ -566,18 +696,38 @@ def build_checkpoint_state_mutation_accessor(
 # cached reference keeps the old config alive, so id-reuse cannot produce a
 # false hit. Bounded: cleared when too many distinct assistants appear.
 _STATE_ACCESSOR_GRAPH_CACHE_MAX = 64
-_state_accessor_graph_cache: dict[tuple[str | None, str], tuple[Any, Any, Any]] = {}
+_state_accessor_graph_cache: dict[tuple[str | None, str, int | None], tuple[Any, Any, Any]] = {}
 
 
-def _state_accessor_graph(agent_factory: Any, assistant_id: str | None, mode: str, config: dict[str, Any]) -> Any:
+def _accessor_graph_cache_max(app_config: Any) -> int:
+    return resolve_checkpoint_graph_cache_max(
+        getattr(app_config, "database", None),
+        "accessor_graph_max",
+        _STATE_ACCESSOR_GRAPH_CACHE_MAX,
+    )
+
+
+def _state_accessor_graph(
+    agent_factory: Any,
+    assistant_id: str | None,
+    mode: str,
+    snapshot_frequency: int | None,
+    config: dict[str, Any],
+) -> Any:
     app_config = (config.get("context") or {}).get("app_config")
-    key = (assistant_id, mode)
+    key = (assistant_id, mode, snapshot_frequency)
     cached = _state_accessor_graph_cache.get(key)
     if cached is not None and cached[0] is agent_factory and cached[1] is app_config:
         return cached[2]
-    if len(_state_accessor_graph_cache) >= _STATE_ACCESSOR_GRAPH_CACHE_MAX:
+    if len(_state_accessor_graph_cache) >= _accessor_graph_cache_max(app_config):
         _state_accessor_graph_cache.clear()
     graph = agent_factory(config=config)
+    try:
+        from deerflow.agents.lead_agent.agent import unwrap_agent_graph
+
+        graph = unwrap_agent_graph(graph)
+    except Exception:
+        pass
     _state_accessor_graph_cache[key] = (agent_factory, app_config, graph)
     return graph
 
@@ -679,7 +829,13 @@ def build_checkpoint_state_accessor(
 
     agent_factory = resolve_agent_factory(assistant_id)
     try:
-        graph = _state_accessor_graph(agent_factory, assistant_id, ctx.checkpoint_channel_mode, config)
+        graph = _state_accessor_graph(
+            agent_factory,
+            assistant_id,
+            ctx.checkpoint_channel_mode,
+            getattr(ctx, "snapshot_frequency", None),
+            config,
+        )
     except Exception:
         if ctx.checkpoint_channel_mode != "full":
             # Delta materialization needs the graph's channel table; there is
@@ -917,12 +1073,98 @@ async def _resolve_canonical_alias(assistant_id: str | None, request: Request) -
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
+async def ensure_checkpoint_history_seeded(
+    request: Request,
+    *,
+    thread_id: str,
+    assistant_id: str | None,
+) -> None:
+    """Backfill an empty run-event feed from an existing checkpoint head."""
+    event_store = request.app.state.run_event_store
+    existing_messages = event_store.list_messages(thread_id, limit=1, user_id=None)
+    if inspect.isawaitable(existing_messages):
+        existing_messages = await existing_messages
+    if existing_messages:
+        return
+    checkpoint_config = {"configurable": {"thread_id": thread_id, "checkpoint_ns": ""}}
+    checkpoint = get_checkpointer(request).aget_tuple(checkpoint_config)
+    if inspect.isawaitable(checkpoint):
+        checkpoint = await checkpoint
+    if checkpoint is None:
+        return
+    accessor, config = build_checkpoint_state_accessor(
+        request,
+        thread_id=thread_id,
+        assistant_id=assistant_id,
+    )
+    snapshot = await accessor.aget(config)
+    values = getattr(snapshot, "values", None)
+    messages = values.get("messages") if isinstance(values, dict) else None
+    if not isinstance(messages, list) or not messages:
+        return
+    events = build_checkpoint_history_seed_events(
+        messages,
+        thread_id=thread_id,
+        run_id_prefix=f"checkpoint-seed-{thread_id}",
+    )
+    if events:
+        await event_store.put_batch(events)
+        logger.info("Seeded %d checkpoint-history events for thread %s", len(events), thread_id)
+
+
+def _consume_task_result(task: asyncio.Task) -> None:
+    if not task.cancelled():
+        task.exception()
+
+
+def _log_thread_metadata_task_result(task: asyncio.Task, *, thread_id: str) -> None:
+    if task.cancelled():
+        return
+    try:
+        task.result()
+    except asyncio.CancelledError:
+        return
+    except Exception:
+        logger.warning(
+            "Failed to ensure thread_meta for %s after worker detached (non-fatal)",
+            sanitize_log_param(thread_id),
+            exc_info=True,
+        )
+
+
+async def _ensure_thread_metadata(
+    run_ctx: RunContext,
+    record: RunRecord,
+    *,
+    owner_user_id: str | None,
+    require_existing_thread: bool = False,
+    metadata: dict[str, Any] | None = None,
+) -> None:
+    thread_store = run_ctx.thread_store
+    existing = await thread_store.get(record.thread_id)
+    if existing is None and owner_user_id:
+        unscoped = await thread_store.get(record.thread_id, user_id=None)
+        if unscoped is not None:
+            if unscoped.get("user_id") != owner_user_id:
+                await thread_store.update_owner(record.thread_id, owner_user_id, user_id=None)
+            existing = await thread_store.get(record.thread_id)
+    if existing is None:
+        if require_existing_thread:
+            raise LookupError(f"Thread {record.thread_id} was deleted during run admission")
+        await thread_store.create(
+            record.thread_id,
+            assistant_id=record.assistant_id,
+            metadata=record.metadata if metadata is None else metadata,
+        )
+
+
 async def start_run(
     body: Any,
     thread_id: str,
     request: Request,
     *,
     idempotency_key: str | None = None,
+    require_existing_thread: bool = False,
 ) -> RunRecord:
     """Create a RunRecord and launch the background agent task.
 
@@ -936,6 +1178,17 @@ async def start_run(
     request : Request
         FastAPI request — used to retrieve singletons from ``app.state``.
     """
+    try:
+        validate_thread_id(thread_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    try:
+        validate_run_metadata_secrets(getattr(body, "metadata", None))
+        config_metadata = (getattr(body, "config", None) or {}).get("metadata")
+        validate_run_metadata_secrets(config_metadata)
+    except LegacyRunMetadataSecretError as exc:
+        raise HTTPException(status_code=422, detail="legacy auth_token is unsupported; use config.context.secrets") from exc
+
     # ``interrupt`` and ``rollback`` can terminate an already-active run.
     # Keep this check at the shared service choke point so stateless routes and
     # internal callers cannot bypass the cancel capability requirement.
@@ -958,14 +1211,50 @@ async def start_run(
     canonical_factory = prepared.canonical_factory
     model_name = prepared.model_name
     run_metadata = prepared.run_metadata
+    if prepared.evidence_mode == "hybrid" and "evidence_mode" not in (getattr(body, "metadata", None) or {}):
+        run_metadata = {key: value for key, value in run_metadata.items() if key != "evidence_mode"}
+    trace_id = ensure_trace_id()
+    run_metadata = {**run_metadata, DEERFLOW_TRACE_METADATA_KEY: trace_id}
+
+    owner_user_id = get_trusted_internal_owner_user_id(request)
+    if owner_user_id is None:
+        owner_user_id = getattr(getattr(request, "state", None), "user", None)
+        owner_user_id = getattr(owner_user_id, "id", None)
+        if owner_user_id is not None:
+            # Session JWTs carry UUID ids; every store column and lookup key
+            # is the canonical string form.
+            owner_user_id = str(owner_user_id)
+
+    if require_existing_thread:
+        if await run_ctx.thread_store.get(thread_id, user_id=owner_user_id) is None:
+            raise HTTPException(status_code=404, detail=f"Thread {thread_id} not found")
+
+    # Validate checkpoint admission before the durable run row is created.
+    if getattr(body, "command", None) is not None:
+        graph_input = Command(**body.command)
+    else:
+        graph_input = normalize_input(
+            body.input,
+            trusted_internal=getattr(getattr(request, "state", None), "auth_source", None) == AUTH_SOURCE_INTERNAL,
+        )
+    config = build_run_config(thread_id, body.config, run_metadata, assistant_id=body.assistant_id)
+    await apply_checkpoint_to_run_config(config, body=body, thread_id=thread_id, request=request)
 
     try:
+        await ensure_checkpoint_history_seeded(
+            request,
+            thread_id=thread_id,
+            assistant_id=body.assistant_id,
+        )
+        if require_existing_thread and await run_ctx.thread_store.get(thread_id, user_id=owner_user_id) is None:
+            raise HTTPException(status_code=404, detail=f"Thread {thread_id} not found")
         create_kwargs = {
             "on_disconnect": disconnect,
             "metadata": run_metadata,
-            "kwargs": {"input": body.input, "config": body.config},
+            "kwargs": {"input": body.input, "config": redact_config_secrets(body.config)},
             "multitask_strategy": body.multitask_strategy,
             "model_name": model_name,
+            "user_id": owner_user_id,
         }
         if canonical_run_id:
             create_kwargs["run_id"] = canonical_run_id
@@ -982,32 +1271,7 @@ async def start_run(
         await discard_canonical_snapshot(canonical_run_id)
         raise
 
-    # Upsert thread metadata so the thread appears in /threads/search,
-    # even for threads that were never explicitly created via POST /threads
-    # (e.g. stateless runs).
-    # T2: runs in the background — thread listing freshness must not block
-    # the first token. Failures were and remain non-fatal (warning only).
-    async def _upsert_thread_meta() -> None:
-        try:
-            existing = await run_ctx.thread_store.get(thread_id)
-            if existing is None:
-                await run_ctx.thread_store.create(
-                    thread_id,
-                    assistant_id=body.assistant_id,
-                    metadata=run_metadata,
-                )
-            else:
-                await run_ctx.thread_store.update_status(thread_id, "running")
-        except Exception:
-            logger.warning("Failed to upsert thread_meta for %s (non-fatal)", sanitize_log_param(thread_id))
-
-    _upsert_task = asyncio.create_task(_upsert_thread_meta())
-
     agent_factory = canonical_factory or resolve_agent_factory(body.assistant_id)
-    graph_input = normalize_input(body.input)
-    config = build_run_config(thread_id, body.config, body.metadata, assistant_id=body.assistant_id)
-    await apply_checkpoint_to_run_config(config, body=body, thread_id=thread_id, request=request)
-
     if canonical_run_id:
         for container_name in ("context", "configurable"):
             container = config.setdefault(container_name, {})
@@ -1022,7 +1286,15 @@ async def start_run(
     merge_run_context_overrides(config, body_context, internal=is_internal_caller)
     if not is_internal_caller:
         strip_internal_context_keys(config)
-    inject_authenticated_user_context(config, request, request_context=body_context)
+    request_context_values = getattr(body, "config", None) or {}
+    needs_owner_attribution = isinstance(request_context_values.get("context"), dict) and any(key in request_context_values["context"] for key in ("user_role", "oauth_provider", "oauth_id", "authz_attributes"))
+    internal_owner_user = await resolve_trusted_internal_owner_for_attribution(request, owner_user_id) if needs_owner_attribution else None
+    inject_authenticated_user_context(
+        config,
+        request,
+        internal_owner_user=internal_owner_user,
+        request_context=body_context,
+    )
 
     stream_modes = normalize_stream_modes(body.stream_mode)
 
@@ -1038,6 +1310,58 @@ async def start_run(
     run_evidence_binding = getattr(prepared, "evidence_binding", None)
 
     async def _execute_run() -> None:
+        metadata_task = asyncio.create_task(
+            _ensure_thread_metadata(
+                run_ctx,
+                record,
+                owner_user_id=owner_user_id,
+                require_existing_thread=require_existing_thread,
+                metadata=getattr(body, "metadata", None) or {},
+            )
+        )
+        abort_task = asyncio.create_task(record.abort_event.wait())
+        metadata_failure: Exception | None = None
+        metadata_failure_logged = False
+        try:
+            done, _ = await asyncio.wait(
+                (metadata_task, abort_task),
+                timeout=_THREAD_METADATA_SETUP_TIMEOUT_SECONDS,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if metadata_task in done:
+                try:
+                    metadata_task.result()
+                except asyncio.CancelledError:
+                    pass
+                except Exception as exc:
+                    metadata_failure = exc
+                    metadata_failure_logged = True
+                    logger.warning(
+                        "Failed to ensure thread_meta for %s%s",
+                        sanitize_log_param(thread_id),
+                        "" if require_existing_thread else " (non-fatal)",
+                        exc_info=True,
+                    )
+            elif abort_task not in done:
+                logger.warning(
+                    "Timed out ensuring thread_meta for %s after %.1fs",
+                    sanitize_log_param(thread_id),
+                    _THREAD_METADATA_SETUP_TIMEOUT_SECONDS,
+                )
+                if require_existing_thread:
+                    metadata_failure = TimeoutError("Timed out verifying existing thread metadata")
+        finally:
+            if metadata_task.done():
+                if not metadata_failure_logged:
+                    _log_thread_metadata_task_result(metadata_task, thread_id=thread_id)
+            else:
+                metadata_task.cancel()
+                metadata_task.add_done_callback(lambda task: _log_thread_metadata_task_result(task, thread_id=thread_id))
+            if not abort_task.done():
+                abort_task.cancel()
+                abort_task.add_done_callback(_consume_task_result)
+        if metadata_failure is not None and require_existing_thread:
+            await run_mgr.fail_start_if_pending(record.run_id, error=str(metadata_failure))
         await run_agent(
             bridge,
             run_mgr,
@@ -1052,13 +1376,18 @@ async def start_run(
             interrupt_after=body.interrupt_after,
         )
 
-    if run_evidence_binding is not None:
-        from agentplatform_extension.evidence import bind_run_evidence
+    owner_context_token = set_current_user(SimpleNamespace(id=owner_user_id)) if owner_user_id else None
+    try:
+        if run_evidence_binding is not None:
+            from agentplatform_extension.evidence import bind_run_evidence
 
-        with bind_run_evidence(run_evidence_binding):
+            with bind_run_evidence(run_evidence_binding):
+                task = asyncio.create_task(_execute_run())
+        else:
             task = asyncio.create_task(_execute_run())
-    else:
-        task = asyncio.create_task(_execute_run())
+    finally:
+        if owner_context_token is not None:
+            reset_current_user(owner_context_token)
     record.task = task
 
     # Title sync is handled by worker.py's finally block which reads the
@@ -1130,6 +1459,74 @@ async def launch_scheduled_thread_run(
     idempotency_key = f"scheduled-task:{scheduled_task_run_id}" if isinstance(scheduled_task_run_id, str) else None
     with ensure_trace_context():
         record = await start_run(body, thread_id, request, idempotency_key=idempotency_key)
+    return {"run_id": record.run_id, "thread_id": record.thread_id}
+
+
+def _mcp_task_notification_prompt(event: dict[str, Any]) -> str:
+    payload = frame_untrusted_text(json.dumps(event, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str))
+    instruction = (
+        "A durable background MCP task has an update that requires the user's attention. "
+        "Explain the update clearly and concisely. Do not expose or ask for a remote task ID. "
+        "When status is input_required, show the question but explain that this MCP integration "
+        "cannot resume the remote task with user input yet. When tracking_degraded is true, explain "
+        "that DeerFlow will continue retrying at a lower frequency."
+    )
+    return f"{instruction}\n\n{payload}"
+
+
+async def launch_mcp_task_notification_run(
+    *,
+    app: Any,
+    thread_id: str,
+    assistant_id: str | None,
+    owner_user_id: str,
+    task_id: str,
+    dispatch_version: int,
+    dispatch_attempt: int,
+    event: dict[str, Any],
+) -> dict[str, Any]:
+    from app.gateway.routers.thread_runs import RunCreateRequest
+
+    request = SimpleNamespace(
+        app=app,
+        headers={INTERNAL_OWNER_USER_ID_HEADER_NAME: owner_user_id},
+        state=SimpleNamespace(user=get_internal_user(), auth_source=AUTH_SOURCE_INTERNAL),
+        cookies={},
+    )
+    body = RunCreateRequest(
+        assistant_id=assistant_id,
+        input={
+            "messages": [
+                {
+                    "role": "user",
+                    "content": _mcp_task_notification_prompt(event),
+                    "additional_kwargs": {"hide_from_ui": True},
+                }
+            ]
+        },
+        metadata={
+            "mcp_task_notification": {
+                "task_id": task_id,
+                "dispatch_version": dispatch_version,
+                "dispatch_attempt": dispatch_attempt,
+            }
+        },
+        context={"non_interactive": True, "user_id": owner_user_id},
+    )
+    try:
+        record = await start_run(
+            body,
+            thread_id,
+            request,
+            idempotency_key=f"mcp-task:{task_id}:{dispatch_version}:{dispatch_attempt}",
+            require_existing_thread=True,
+        )
+    except HTTPException as exc:
+        if exc.status_code == 409:
+            raise ConflictError(str(exc.detail)) from exc
+        if exc.status_code == 404:
+            raise PermanentNotificationError(str(exc.detail)) from exc
+        raise
     return {"run_id": record.run_id, "thread_id": record.thread_id}
 
 
@@ -1274,10 +1671,26 @@ async def sse_consumer(
         # emit it immediately so joiners don't hang on an empty bridge.
         yield format_sse("end", None)
         return
+    gap_emitted = False
     try:
         async for entry in bridge.subscribe(record.run_id, last_event_id=last_event_id):
             if await request.is_disconnected():
                 break
+
+            if isinstance(entry, StreamGap):
+                gap_emitted = True
+                yield format_sse(
+                    "gap",
+                    {
+                        "code": "stream_replay_gap",
+                        "run_id": record.run_id,
+                        "requested_event_id": entry.requested_event_id,
+                        "earliest_available_event_id": entry.earliest_available_event_id,
+                        "latest_available_event_id": entry.latest_available_event_id,
+                        "recovery": "reload_durable_state",
+                    },
+                )
+                return
 
             if entry is HEARTBEAT_SENTINEL:
                 yield ": heartbeat\n\n"
@@ -1292,6 +1705,6 @@ async def sse_consumer(
     finally:
         # Only the creator's own stream may cancel-on-disconnect — never an
         # observer join, and never a run executing on another worker.
-        if apply_on_disconnect and not record.store_only and record.status in (RunStatus.pending, RunStatus.running):
+        if apply_on_disconnect and not gap_emitted and not record.store_only and record.status in (RunStatus.pending, RunStatus.running):
             if record.on_disconnect == DisconnectMode.cancel:
                 await run_mgr.cancel(record.run_id)

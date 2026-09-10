@@ -25,7 +25,6 @@ from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import IntegrityError, OperationalError, ProgrammingError
 
-from app.agentplatform.rbac_models import UserRole
 from app.gateway.authz import (
     AuthContext,
     Permissions,
@@ -1404,8 +1403,8 @@ class TestInvalidRoleHandling:
     """Edge cases around invalid or null roles."""
 
     @pytest.mark.asyncio
-    async def test_invalid_role_defaults_to_viewer(self):
-        """User with invalid role string gets downgraded to viewer."""
+    async def test_invalid_role_is_rejected(self):
+        """A user with an invalid role string is denied instead of downgraded to viewer."""
         user = MagicMock()
         user.id = str(uuid4())
 
@@ -1424,13 +1423,14 @@ class TestInvalidRoleHandling:
         mock_sf = MagicMock(return_value=mock_session)
 
         with patch("deerflow.persistence.engine.get_session_factory", return_value=mock_sf):
-            result = await get_current_rbac_user(req)
+            with pytest.raises(HTTPException) as exc_info:
+                await get_current_rbac_user(req)
 
-        assert result.role == UserRole.VIEWER
+        assert exc_info.value.status_code == 403
 
     @pytest.mark.asyncio
-    async def test_null_role_gets_viewer_permissions(self):
-        """A NULL role fails closed to the read-only viewer permission set."""
+    async def test_null_role_is_rejected(self):
+        """A NULL role denies platform access (fail-closed, no viewer fallback)."""
         from app.gateway.authz import _authenticate
 
         user = MagicMock()
@@ -1460,9 +1460,9 @@ class TestInvalidRoleHandling:
         ):
             req = MagicMock()
             req.state = type("S", (), {})()
-            ctx = await _authenticate(req)
-        assert ctx.has_permission("threads", "read")
-        assert not ctx.has_permission("threads", "write")
+            with pytest.raises(HTTPException) as exc_info:
+                await _authenticate(req)
+        assert exc_info.value.status_code == 403
 
     @pytest.mark.asyncio
     async def test_require_role_with_invalid_role_value(self):

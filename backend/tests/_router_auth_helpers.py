@@ -37,6 +37,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 
 from app.gateway.auth.models import User
+from app.gateway.auth_disabled import AUTH_SOURCE_AUTH_DISABLED
 from app.gateway.authz import AuthContext, Permissions
 
 # Default permission set granted to the stub user. Mirrors `_ALL_PERMISSIONS`
@@ -78,6 +79,9 @@ class _StubAuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         user = self._user_factory()
         request.state.user = user
+        # Bare router tests explicitly model the trusted auth-disabled path;
+        # this prevents production RBAC lookup from requiring a database.
+        request.state.auth_source = AUTH_SOURCE_AUTH_DISABLED
         request.state.auth = AuthContext(user=user, permissions=list(_STUB_PERMISSIONS))
         return await call_next(request)
 

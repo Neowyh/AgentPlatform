@@ -27,6 +27,13 @@ def _make_mock_session():
     return mock_session, mock_sf
 
 
+def _empty_result():
+    result = MagicMock()
+    result.scalars.return_value.first.return_value = None
+    result.scalar_one_or_none.return_value = None
+    return result
+
+
 def _make_repo(mock_sf):
     return SQLiteUserRepository(mock_sf)
 
@@ -50,9 +57,7 @@ class TestSQLParameterization:
             compiled = stmt.compile(compile_kwargs={"literal_binds": False})
             sql_str = str(compiled)
             tracker.append(sql_str)
-            result = MagicMock()
-            result.scalar_one_or_none.return_value = None
-            return result
+            return _empty_result()
 
         mock_session.execute = tracking_execute
 
@@ -65,7 +70,7 @@ class TestSQLParameterization:
         sql = tracker[0]
         # Verify the query uses a parameter placeholder, not the literal value
         assert "test@example.com" not in sql, f"Email value appears literally in SQL — possible injection risk.\nSQL: {sql}"
-        assert ":email_1" in sql or "?" in sql, f"SQL does not contain parameter placeholder.\nSQL: {sql}"
+        assert any(token in sql for token in (":email_1", ":lower_1", "?")), f"SQL does not contain parameter placeholder.\nSQL: {sql}"
         assert "email" in sql.lower(), "Query should reference the email column"
 
     @pytest.mark.parametrize(
@@ -89,9 +94,7 @@ class TestSQLParameterization:
         async def capturing_execute(stmt, *args, **kwargs):
             nonlocal captured_stmt
             captured_stmt = stmt
-            result = MagicMock()
-            result.scalar_one_or_none.return_value = None
-            return result
+            return _empty_result()
 
         mock_session.execute = capturing_execute
 
@@ -142,9 +145,7 @@ class TestSQLParameterization:
         async def capturing_execute(stmt, *args, **kwargs):
             nonlocal captured_stmt
             captured_stmt = stmt
-            result = MagicMock()
-            result.scalar_one_or_none.return_value = None
-            return result
+            return _empty_result()
 
         mock_session.execute = capturing_execute
 
@@ -295,9 +296,7 @@ class TestRepositoryLayerPattern:
         async def capturing_execute(stmt, *args, **kwargs):
             nonlocal captured_stmt
             captured_stmt = stmt
-            result = MagicMock()
-            result.scalar_one_or_none.return_value = None
-            return result
+            return _empty_result()
 
         mock_session.execute = capturing_execute
 

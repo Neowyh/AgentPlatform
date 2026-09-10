@@ -14,10 +14,11 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.gateway.routers import thread_runs
-from deerflow.runtime import CancelOutcome, RunRecord, RunStatus
+from deerflow.runtime import CancelOutcome, DisconnectMode, RunRecord, RunStatus
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -40,6 +41,7 @@ def _make_run_record(
     record.task = task
     record.assistant_id = "lead_agent"
     record.metadata = {}
+    record.on_disconnect = DisconnectMode.cancel
     record.kwargs = {}
     record.multitask_strategy = "reject"
     record.created_at = "2026-01-01T00:00:00Z"
@@ -56,15 +58,53 @@ def _make_run_record(
     return record
 
 
+class _ImmediateEndBridge:
+    """Bridge stub whose streams end immediately (terminal run)."""
+
+    async def subscribe(self, run_id, last_event_id=None):
+        from deerflow.runtime import END_SENTINEL
+
+        yield END_SENTINEL
+
+
+def _immediate_end_bridge():
+    return _ImmediateEndBridge()
+
+
 def _make_app(**state_attrs):
     """Build a test app with stub auth and optional state attributes."""
     from _router_auth_helpers import make_authed_test_app
 
     app = make_authed_test_app()
     app.include_router(thread_runs.router)
+    # wait_run materializes final state through the checkpoint accessor, so the
+    # dependency getters need the singletons the real composition installs.
+    bridge = MagicMock()
+    bridge.subscribe = _immediate_end_bridge().subscribe
+    app.state.stream_bridge = bridge
+    app.state.run_store = MagicMock()
+    app.state.run_event_store = MagicMock()
+    app.state.run_event_store.list_messages = AsyncMock(return_value=[])
+    app.state.run_event_store.get_last_visible_ai_seq_by_run = AsyncMock(return_value={})
+    app.state.feedback_repo = MagicMock()
+    app.state.feedback_repo.list_by_run_ids = AsyncMock(return_value={})
+    app.state.checkpoint_channel_mode = "full"
     for key, val in state_attrs.items():
         setattr(app.state, key, val)
     return app
+
+
+@pytest.fixture(autouse=True)
+def _no_lead_graph(monkeypatch):
+    """Force the raw-checkpointer read path (no agent assembly in unit tests)."""
+
+    def _resolver(assistant_id=None):
+        def _build(config=None, **kwargs):
+            raise RuntimeError("no agent graph in unit tests")
+
+        return _build
+
+    monkeypatch.setattr("app.gateway.services.resolve_agent_factory", _resolver)
 
 
 # ---------------------------------------------------------------------------
@@ -77,7 +117,7 @@ class TestWaitRunCancelledError:
 
     @patch("app.gateway.routers.thread_runs.start_run")
     @patch("app.gateway.routers.thread_runs.get_run_manager")
-    @patch("app.gateway.routers.thread_runs.get_checkpointer")
+    @patch("app.gateway.deps.get_checkpointer")
     def test_wait_run_task_cancelled_returns_status(self, mock_get_cp, mock_get_rm, mock_start_run):
         """When the background task is cancelled, wait_run catches CancelledError and returns status."""
 
@@ -112,7 +152,7 @@ class TestWaitRunCheckpointFound:
     @patch("app.gateway.routers.thread_runs.serialize_channel_values")
     @patch("app.gateway.routers.thread_runs.start_run")
     @patch("app.gateway.routers.thread_runs.get_run_manager")
-    @patch("app.gateway.routers.thread_runs.get_checkpointer")
+    @patch("app.gateway.deps.get_checkpointer")
     def test_wait_run_with_checkpoint_returns_serialized_values(self, mock_get_cp, mock_get_rm, mock_start_run, mock_serialize):
         """When a checkpoint exists, wait_run returns serialized channel values."""
         record = _make_run_record(status=RunStatus.success)
@@ -122,6 +162,7 @@ class TestWaitRunCheckpointFound:
 
         checkpoint_tuple = MagicMock()
         checkpoint_tuple.checkpoint = {"channel_values": {"messages": [{"role": "user", "content": "hi"}]}}
+        checkpoint_tuple.config = {"configurable": {"checkpoint_id": "cp-final"}}
         checkpointer = MagicMock()
         checkpointer.aget_tuple = AsyncMock(return_value=checkpoint_tuple)
         mock_get_cp.return_value = checkpointer
@@ -140,7 +181,7 @@ class TestWaitRunCheckpointFound:
     @patch("app.gateway.routers.thread_runs.serialize_channel_values")
     @patch("app.gateway.routers.thread_runs.start_run")
     @patch("app.gateway.routers.thread_runs.get_run_manager")
-    @patch("app.gateway.routers.thread_runs.get_checkpointer")
+    @patch("app.gateway.deps.get_checkpointer")
     def test_wait_run_checkpoint_empty_channel_values(self, mock_get_cp, mock_get_rm, mock_start_run, mock_serialize):
         """When checkpoint exists but has no channel_values, returns empty dict."""
         record = _make_run_record(status=RunStatus.success)
@@ -150,6 +191,7 @@ class TestWaitRunCheckpointFound:
 
         checkpoint_tuple = MagicMock()
         checkpoint_tuple.checkpoint = {}
+        checkpoint_tuple.config = {"configurable": {"checkpoint_id": "cp-final"}}
         checkpointer = MagicMock()
         checkpointer.aget_tuple = AsyncMock(return_value=checkpoint_tuple)
         mock_get_cp.return_value = checkpointer
@@ -166,7 +208,7 @@ class TestWaitRunCheckpointFound:
     @patch("app.gateway.routers.thread_runs.serialize_channel_values")
     @patch("app.gateway.routers.thread_runs.start_run")
     @patch("app.gateway.routers.thread_runs.get_run_manager")
-    @patch("app.gateway.routers.thread_runs.get_checkpointer")
+    @patch("app.gateway.deps.get_checkpointer")
     def test_wait_run_checkpoint_none_attribute(self, mock_get_cp, mock_get_rm, mock_start_run, mock_serialize):
         """When getattr returns None, falls back to empty dict for channel_values."""
         record = _make_run_record(status=RunStatus.success)

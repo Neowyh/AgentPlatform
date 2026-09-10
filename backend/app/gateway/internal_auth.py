@@ -72,7 +72,9 @@ def create_internal_auth_headers(*, owner_user_id: str | None = None) -> dict[st
 
 def is_valid_internal_auth_token(token: str | None) -> bool:
     """Return True when *token* matches this Gateway worker's internal token."""
-    return bool(token) and secrets.compare_digest(token, _get_internal_token())
+    if not isinstance(token, str) or not token:
+        return False
+    return secrets.compare_digest(token, _get_internal_token())
 
 
 def get_internal_user(owner_user_id: str | None = None):

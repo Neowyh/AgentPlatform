@@ -15,6 +15,7 @@ from fastapi.responses import StreamingResponse
 
 from app.gateway.authz import require_permission
 from app.gateway.deps import get_feedback_repo, get_run_event_store, get_run_manager, get_run_store, get_stream_bridge
+from app.gateway.pagination import trim_run_message_page
 from app.gateway.routers.thread_runs import RunCreateRequest
 from app.gateway.services import build_checkpoint_state_accessor, sse_consumer, start_run, wait_for_run_completion
 from deerflow.runtime import serialize_channel_values
@@ -112,8 +113,8 @@ async def run_messages(
     run_id: str,
     request: Request,
     limit: int = Query(default=50, le=200, ge=1),
-    before_seq: int | None = Query(default=None),
-    after_seq: int | None = Query(default=None),
+    before_seq: int | None = Query(default=None, ge=1),
+    after_seq: int | None = Query(default=None, ge=1),
 ) -> dict:
     """Return paginated messages for a run (cursor-based).
 
@@ -133,8 +134,7 @@ async def run_messages(
         before_seq=before_seq,
         after_seq=after_seq,
     )
-    has_more = len(rows) > limit
-    data = rows[:limit] if has_more else rows
+    data, has_more = trim_run_message_page(rows, limit=limit, after_seq=after_seq)
     return {"data": data, "has_more": has_more}
 
 

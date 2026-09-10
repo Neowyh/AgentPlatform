@@ -185,7 +185,7 @@ class TestFromAppConfig:
 
         app_cfg = _make_app_config(extra={"channels": {"slack": {"enabled": True}}})
         ChannelService.from_app_config(app_cfg)
-        mock_init.assert_called_once_with(channels_config={"slack": {"enabled": True}})
+        mock_init.assert_called_once_with(channels_config={"slack": {"enabled": True}}, connection_repo=None, require_bound_identity=True, app_config=mock_init.call_args.kwargs["app_config"], get_stream_bridge=None)
 
     @patch("app.channels.service.ChannelService.__init__", return_value=None)
     def test_from_app_config_without_channels_key(self, mock_init):
@@ -193,7 +193,7 @@ class TestFromAppConfig:
 
         app_cfg = _make_app_config(extra={})
         ChannelService.from_app_config(app_cfg)
-        mock_init.assert_called_once_with(channels_config={})
+        mock_init.assert_called_once_with(channels_config={}, connection_repo=None, require_bound_identity=True, app_config=mock_init.call_args.kwargs["app_config"], get_stream_bridge=None)
 
     @patch("app.channels.service.ChannelService.__init__", return_value=None)
     def test_from_app_config_none_extra(self, mock_init):
@@ -202,7 +202,7 @@ class TestFromAppConfig:
         app_cfg = _make_app_config(extra=None)
         app_cfg.model_extra = None
         ChannelService.from_app_config(app_cfg)
-        mock_init.assert_called_once_with(channels_config={})
+        mock_init.assert_called_once_with(channels_config={}, connection_repo=None, require_bound_identity=True, app_config=mock_init.call_args.kwargs["app_config"], get_stream_bridge=None)
 
     @patch("deerflow.config.app_config.get_app_config")
     @patch("app.channels.service.ChannelService.__init__", return_value=None)
@@ -212,7 +212,7 @@ class TestFromAppConfig:
         mock_get.return_value = _make_app_config(extra={"channels": {"feishu": {}}})
         ChannelService.from_app_config(None)
         mock_get.assert_called_once()
-        mock_init.assert_called_once_with(channels_config={"feishu": {}})
+        mock_init.assert_called_once_with(channels_config={"feishu": {}}, connection_repo=None, require_bound_identity=True, app_config=mock_init.call_args.kwargs["app_config"], get_stream_bridge=None)
 
 
 # ---------------------------------------------------------------------------
@@ -400,10 +400,14 @@ class TestChannelServiceStop:
         svc._channels = {"err": ch_err, "ok": ch_ok}
         svc.manager = AsyncMock()
 
-        await svc.stop()
+        with pytest.raises(ExceptionGroup) as exc_info:
+            await svc.stop()
         ch_err.stop.assert_awaited_once()
         ch_ok.stop.assert_awaited_once()
-        assert svc._channels == {}
+        # The failed transport stays owned so its resources are not hidden;
+        # the healthy one is detached.
+        assert set(svc._channels) == {"err"}
+        assert any(isinstance(exc, RuntimeError) for exc in exc_info.value.exceptions)
 
     @pytest.mark.asyncio
     @patch("app.channels.service.ChannelManager")
@@ -764,7 +768,7 @@ class TestSingletonFunctions:
         svc_mod._channel_service = None
         try:
             result = await svc_mod.start_channel_service("fake_config")
-            mock_svc_cls.from_app_config.assert_called_once_with("fake_config")
+            mock_svc_cls.from_app_config.assert_called_once_with("fake_config", get_stream_bridge=None)
             mock_instance.start.assert_awaited_once()
             assert result is mock_instance
             assert svc_mod._channel_service is mock_instance
@@ -823,20 +827,20 @@ class TestRegistries:
     def test_channel_registry_entries(self):
         from app.channels.service import _CHANNEL_REGISTRY
 
-        expected = {"dingtalk", "discord", "feishu", "slack", "telegram", "wechat", "wecom"}
+        expected = {"buzz", "dingtalk", "discord", "feishu", "github", "slack", "telegram", "wechat", "wecom"}
         assert set(_CHANNEL_REGISTRY.keys()) == expected
 
     def test_channel_credential_keys_entries(self):
         from app.channels.service import _CHANNEL_CREDENTIAL_KEYS
 
-        expected = {"dingtalk", "discord", "feishu", "slack", "telegram", "wechat", "wecom"}
+        expected = {"buzz", "dingtalk", "discord", "feishu", "slack", "telegram", "wechat", "wecom"}
         assert set(_CHANNEL_CREDENTIAL_KEYS.keys()) == expected
 
     def test_env_var_constants(self):
         from app.channels.service import _CHANNELS_GATEWAY_URL_ENV, _CHANNELS_LANGGRAPH_URL_ENV
 
-        assert _CHANNELS_LANGGRAPH_URL_ENV == "IDEER_CHANNELS_LANGGRAPH_URL"
-        assert _CHANNELS_GATEWAY_URL_ENV == "IDEER_CHANNELS_GATEWAY_URL"
+        assert _CHANNELS_LANGGRAPH_URL_ENV == "DEER_FLOW_CHANNELS_LANGGRAPH_URL"
+        assert _CHANNELS_GATEWAY_URL_ENV == "DEER_FLOW_CHANNELS_GATEWAY_URL"
 
 
 # ---------------------------------------------------------------------------
@@ -1035,7 +1039,10 @@ class TestCoverageCompleteness:
         svc.manager = AsyncMock()
         svc._running = True
 
-        await svc.stop()
+        # The channel failure still surfaces as an ExceptionGroup, but the
+        # service flag is cleared before the transports are stopped.
+        with pytest.raises(ExceptionGroup):
+            await svc.stop()
         assert svc._running is False
 
     @pytest.mark.asyncio
@@ -1050,7 +1057,7 @@ class TestCoverageCompleteness:
         svc_mod._channel_service = None
         try:
             result = await svc_mod.start_channel_service()
-            mock_svc_cls.from_app_config.assert_called_once_with(None)
+            mock_svc_cls.from_app_config.assert_called_once_with(None, get_stream_bridge=None)
             assert result is mock_instance
         finally:
             svc_mod._channel_service = original

@@ -89,6 +89,7 @@ async def test_preload_failure_does_not_fail_start_run():
     record = MagicMock()
     record.run_id = "run-123"
     record.task = None
+    record.abort_event = asyncio.Event()
     run_mgr.create_or_reject.return_value = record
     body = SimpleNamespace(
         assistant_id="lead_agent",
@@ -115,6 +116,7 @@ async def test_preload_failure_does_not_fail_start_run():
         model_name=None,
         run_metadata={},
         memory_preload_task=warmer,
+        evidence_mode="hybrid",
     )
     with (
         patch("app.gateway.services.get_stream_bridge", return_value=bridge),
@@ -154,6 +156,7 @@ async def test_start_run_binds_dynamic_evidence_to_background_worker():
     request.state = SimpleNamespace(user=SimpleNamespace(id="caller-1"))
     request.headers = {}
     record = MagicMock(run_id="run-1", task=None)
+    record.abort_event = asyncio.Event()
     run_mgr.create_or_reject.return_value = record
     body = SimpleNamespace(
         assistant_id="lead_agent",
@@ -185,6 +188,7 @@ async def test_start_run_binds_dynamic_evidence_to_background_worker():
         run_metadata={},
         memory_preload_task=None,
         evidence_binding=binding,
+        evidence_mode="hybrid",
     )
     with (
         patch("app.gateway.services.get_stream_bridge", return_value=bridge),

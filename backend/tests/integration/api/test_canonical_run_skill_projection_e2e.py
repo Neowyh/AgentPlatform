@@ -117,10 +117,12 @@ def _parse_sse(transcript: str) -> list[dict]:
         lines = [line for line in block.splitlines() if line.startswith("data: ")]
         name = next((line for line in block.splitlines() if line.startswith("event: ")), None)
         if name and lines:
-            events.append({
-                "event": name.removeprefix("event: ").strip(),
-                "data": json.loads(lines[0].removeprefix("data: ")),
-            })
+            events.append(
+                {
+                    "event": name.removeprefix("event: ").strip(),
+                    "data": json.loads(lines[0].removeprefix("data: ")),
+                }
+            )
     return events
 
 
@@ -135,7 +137,7 @@ def test_canonical_run_projects_frozen_skill_view_only(
         patch("deerflow.agents.lead_agent.agent.create_chat_model", new=lambda *args, **kwargs: fake_model),
         TestClient(isolated_app) as client,
     ):
-        owner_csrf = register_user(client, email=OWNER_EMAIL)
+        register_user(client, email=OWNER_EMAIL)
         owner_id = auth_user_id(client)
         agent_id, skill_id = _seed_shared_agent_with_skill(isolated_deer_flow_home, owner_id)
 
@@ -177,14 +179,8 @@ def test_canonical_run_projects_frozen_skill_view_only(
         view_root = isolated_deer_flow_home / "resources" / "run-skill-views" / run_id
         assert view_root.is_dir(), f"missing run skill view at {view_root}"
         skill_dirs = list((view_root / "custom").iterdir()) if (view_root / "custom").is_dir() else []
-        assert [path.name for path in skill_dirs] == [skill_id], (
-            "the view must contain exactly the frozen dependency skill"
-        )
-        projected = {
-            str(path.relative_to(view_root / "custom" / skill_id)): path.read_text(encoding="utf-8")
-            for path in (view_root / "custom" / skill_id).rglob("*")
-            if path.is_file()
-        }
+        assert [path.name for path in skill_dirs] == [skill_id], "the view must contain exactly the frozen dependency skill"
+        projected = {str(path.relative_to(view_root / "custom" / skill_id)): path.read_text(encoding="utf-8") for path in (view_root / "custom" / skill_id).rglob("*") if path.is_file()}
         assert projected.get("SKILL.md") == SKILL_FILES["SKILL.md"]
         assert projected.get("references/notes.md") == SKILL_FILES["references/notes.md"]
         del agent_id

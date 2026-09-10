@@ -171,23 +171,26 @@ class TestTrustedProxies:
 
 
 class TestCheckRateLimit:
-    def test_no_record(self):
+    @pytest.mark.asyncio
+    async def test_no_record(self):
         _login_attempts.clear()
-        _check_rate_limit("10.99.99.99")  # Should not raise
+        await _check_rate_limit("10.99.99.99")  # Should not raise
 
-    def test_expired_lockout_allows(self):
+    @pytest.mark.asyncio
+    async def test_expired_lockout_allows(self):
         _login_attempts.clear()
         ip = "10.99.99.98"
-        _login_attempts[ip] = (5, time.time() - 1)
-        _check_rate_limit(ip)  # Should not raise
+        _login_attempts[ip] = (5, time.time() - 3600, 1800.0)
+        await _check_rate_limit(ip)
         assert ip not in _login_attempts
 
-    def test_lockout_not_expired(self):
+    @pytest.mark.asyncio
+    async def test_lockout_not_expired(self):
         _login_attempts.clear()
         ip = "10.99.99.97"
-        _login_attempts[ip] = (5, time.time() + 300)
+        _login_attempts[ip] = (5, time.time(), 1800.0)
         with pytest.raises(Exception) as exc_info:
-            _check_rate_limit(ip)
+            await _check_rate_limit(ip)
         assert exc_info.value.status_code == 429
 
 
@@ -197,47 +200,54 @@ class TestCheckRateLimit:
 
 
 class TestRecordLoginFailure:
-    def test_new_ip(self):
+    @pytest.mark.asyncio
+    async def test_new_ip(self):
         _login_attempts.clear()
-        _record_login_failure("new-ip")
+        await _record_login_failure("new-ip")
         assert "new-ip" in _login_attempts
 
-    def test_existing_ip_increments(self):
+    @pytest.mark.asyncio
+    async def test_existing_ip_increments(self):
         _login_attempts.clear()
         ip = "test-ip"
-        _record_login_failure(ip)
-        _record_login_failure(ip)
+        await _record_login_failure(ip)
+        await _record_login_failure(ip)
         assert _login_attempts[ip][0] == 2
 
-    def test_lockout_at_max(self):
-        from app.gateway.routers.auth import _MAX_LOGIN_ATTEMPTS
+    @pytest.mark.asyncio
+    async def test_lockout_at_max(self):
+        from app.gateway.routers.auth import _login_throttle_policy
 
         _login_attempts.clear()
         ip = "lockout-ip"
-        for _ in range(_MAX_LOGIN_ATTEMPTS):
-            _record_login_failure(ip)
-        fail_count, lock_until = _login_attempts[ip]
-        assert fail_count == _MAX_LOGIN_ATTEMPTS
-        assert lock_until > time.time()
+        max_attempts, lockout_seconds = _login_throttle_policy()
+        for _ in range(max_attempts):
+            await _record_login_failure(ip)
+        fail_count, locked_at, locked_duration = _login_attempts[ip]
+        assert fail_count == max_attempts
+        assert locked_at > time.time() - 5
+        assert locked_duration == lockout_seconds
 
-    def test_eviction_when_dict_full(self):
-        from app.gateway.routers.auth import _MAX_TRACKED_IPS
+    @pytest.mark.asyncio
+    async def test_eviction_when_dict_full(self):
+        from app.gateway.routers.auth import _MAX_TRACKED_IPS, _record_failure_under_policy
 
         _login_attempts.clear()
         now = time.time()
         for i in range(_MAX_TRACKED_IPS):
-            _login_attempts[f"ip-{i}"] = (5, now - 100)
-        _record_login_failure("new-ip")
+            _login_attempts[f"ip-{i}"] = (5, now - 100, 50.0)
+        _record_failure_under_policy("new-ip", 5, 1800.0)
         assert "new-ip" in _login_attempts
 
-    def test_eviction_when_still_full(self):
-        from app.gateway.routers.auth import _MAX_TRACKED_IPS
+    @pytest.mark.asyncio
+    async def test_eviction_when_still_full(self):
+        from app.gateway.routers.auth import _MAX_TRACKED_IPS, _record_failure_under_policy
 
         _login_attempts.clear()
         now = time.time()
         for i in range(_MAX_TRACKED_IPS):
-            _login_attempts[f"ip-{i}"] = (5, now + 300)
-        _record_login_failure("new-ip")
+            _login_attempts[f"ip-{i}"] = (5, now, 1800.0)
+        _record_failure_under_policy("new-ip", 5, 1800.0)
         assert "new-ip" in _login_attempts
         assert len(_login_attempts) <= _MAX_TRACKED_IPS
 
@@ -506,10 +516,21 @@ class TestChangePassword:
 
 class TestGetMe:
     def test_get_me(self):
+        """The exposed role is the platform role from users_ext."""
         user = _fake_user(email="me@example.com", system_role="admin", needs_setup=True)
+        profile = MagicMock()
+        profile.role = "user"
+        profile.disabled = False
+
+        session = AsyncMock()
+        session.scalar = AsyncMock(return_value=profile)
+        context = AsyncMock()
+        context.__aenter__ = AsyncMock(return_value=session)
+        context.__aexit__ = AsyncMock(return_value=False)
 
         with (
             patch("app.gateway.routers.auth.get_current_user_from_request", new_callable=AsyncMock, return_value=user),
+            patch("deerflow.persistence.engine.get_session_factory", return_value=MagicMock(return_value=context)),
         ):
             app = _make_app()
             with TestClient(app) as client:
@@ -663,8 +684,14 @@ class TestSetupStatus:
 
 class TestInitializeAdmin:
     def test_admin_exists_returns_409(self):
+        """An existing active super admin blocks re-initialization."""
+        session = AsyncMock()
+        session.scalar = AsyncMock(return_value=1)
+        context = AsyncMock()
+        context.__aenter__ = AsyncMock(return_value=session)
+        context.__aexit__ = AsyncMock(return_value=False)
         with (
-            patch("app.gateway.routers.auth._count_active_super_admin_users", new_callable=AsyncMock, return_value=1),
+            patch("deerflow.persistence.engine.get_session_factory", return_value=MagicMock(return_value=context)),
         ):
             app = _make_app()
             with TestClient(app) as client:
@@ -678,9 +705,23 @@ class TestInitializeAdmin:
         assert "detail" in data
 
     def test_success(self):
+        session = AsyncMock()
+        session.scalar = AsyncMock(return_value=0)
+        context = AsyncMock()
+        context.__aenter__ = AsyncMock(return_value=session)
+        context.__aexit__ = AsyncMock(return_value=False)
+        created = MagicMock()
+        created.id = uuid4()
+        created.email = "admin@example.com"
+        created.token_version = 0
+        created.oauth_provider = None
+        created.password_hash = "x"
+        created.needs_setup = False
         with (
-            patch("app.gateway.routers.auth._count_active_super_admin_users", new_callable=AsyncMock, return_value=0),
+            patch("deerflow.persistence.engine.get_session_factory", return_value=MagicMock(return_value=context)),
+            patch("app.gateway.routers.auth.create_auth_user_with_rbac", new_callable=AsyncMock, return_value=created),
             patch("app.gateway.routers.auth.create_access_token", return_value="admin-jwt"),
+            patch("app.gateway.app._seed_bundled_resources", new_callable=AsyncMock),
         ):
             app = _make_app()
             with TestClient(app) as client:
@@ -694,21 +735,28 @@ class TestInitializeAdmin:
         assert resp.json()["system_role"] == "super_admin"
 
     def test_race_condition(self):
-        """Concurrent duplicate auth user creation triggers 409."""
-        app = _make_app()
-        with TestClient(app) as client:
-            client.post(
-                "/api/v1/auth/register",
-                json={"email": "admin@example.com", "password": "StrongPass123!"},
-            )
-            resp = client.post(
-                "/api/v1/auth/initialize",
-                json={"email": "admin@example.com", "password": "AdminPass123!"},
-            )
+        """An existing account with the same email is a 400 conflict, never an
+        implicit promotion of that account."""
+        session = AsyncMock()
+        session.scalar = AsyncMock(return_value=0)
+        context = AsyncMock()
+        context.__aenter__ = AsyncMock(return_value=session)
+        context.__aexit__ = AsyncMock(return_value=False)
+        with (
+            patch("deerflow.persistence.engine.get_session_factory", return_value=MagicMock(return_value=context)),
+            patch("app.gateway.routers.auth.create_auth_user_with_rbac", new_callable=AsyncMock, side_effect=ValueError("User already exists")),
+            patch("app.gateway.routers.auth._count_active_super_admin_users", new_callable=AsyncMock, return_value=0),
+        ):
+            app = _make_app()
+            with TestClient(app) as client:
+                resp = client.post(
+                    "/api/v1/auth/initialize",
+                    json={"email": "admin@example.com", "password": "AdminPass123!"},
+                )
 
-        assert resp.status_code == 409
+        assert resp.status_code == 400
         data = resp.json()
-        assert "detail" in data
+        assert data["detail"]["code"] == "email_already_exists"
 
 
 # ---------------------------------------------------------------------------
@@ -717,18 +765,20 @@ class TestInitializeAdmin:
 
 
 class TestOAuth:
+    """OIDC replaced the per-provider stubs; disabled SSO is a 404."""
+
     def test_unsupported_provider(self):
         app = _make_app()
         with TestClient(app) as client:
             resp = client.get("/api/v1/auth/oauth/twitter")
-        assert resp.status_code == 400
-        assert "Unsupported" in resp.json()["detail"]
+        assert resp.status_code == 404
+        assert "SSO authentication is not enabled" in resp.json()["detail"]
 
     def test_supported_provider_501(self):
         app = _make_app()
         with TestClient(app) as client:
             resp = client.get("/api/v1/auth/oauth/github")
-        assert resp.status_code == 501
+        assert resp.status_code == 404
         data = resp.json()
         assert "detail" in data
 
@@ -736,6 +786,6 @@ class TestOAuth:
         app = _make_app()
         with TestClient(app) as client:
             resp = client.get("/api/v1/auth/callback/github?code=abc&state=xyz")
-        assert resp.status_code == 501
+        assert resp.status_code == 404
         data = resp.json()
         assert "detail" in data

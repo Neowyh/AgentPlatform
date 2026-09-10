@@ -544,7 +544,7 @@ class TestRegisterEndpointPasswordPolicy:
         user = _fake_user()
 
         with (
-            patch("app.gateway.routers.auth.get_session_factory", return_value=_mock_session_factory()),
+            patch("deerflow.persistence.engine.get_session_factory", return_value=_mock_session_factory()),
             patch("app.gateway.routers.auth.create_auth_user_with_rbac", new_callable=AsyncMock, return_value=user),
             patch("app.gateway.routers.auth.create_access_token", return_value="fake-jwt"),
             patch("app.gateway.routers.auth._set_session_cookie"),
@@ -667,9 +667,15 @@ class TestInitializeEndpointPasswordPolicy:
         """Initialize endpoint accepts strong password."""
         user = _fake_user(email="admin@example.com", system_role="admin")
 
+        session = AsyncMock()
+        session.scalar = AsyncMock(return_value=0)
+        context = AsyncMock()
+        context.__aenter__ = AsyncMock(return_value=session)
+        context.__aexit__ = AsyncMock(return_value=False)
+
         with (
-            patch("app.gateway.routers.auth._count_active_super_admin_users", new_callable=AsyncMock, return_value=0),
-            patch("app.gateway.routers.auth.get_session_factory", return_value=_mock_session_factory()),
+            patch("deerflow.persistence.engine.get_session_factory", return_value=MagicMock(return_value=context)),
+            patch("app.gateway.app._seed_bundled_resources", new_callable=AsyncMock),
             patch("app.gateway.routers.auth.create_auth_user_with_rbac", new_callable=AsyncMock, return_value=user),
             patch("app.gateway.routers.auth.create_access_token", return_value="admin-jwt"),
             patch("app.gateway.routers.auth._set_session_cookie"),
