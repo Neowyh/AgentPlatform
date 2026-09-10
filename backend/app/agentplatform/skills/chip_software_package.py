@@ -111,6 +111,12 @@ def extract_chip_software_package(documents: list[ChipSoftwareDocument], *, targ
             {
                 "target": {"part": target_part, "package": target_package},
                 "scope": list(_TOPICS),
+                "source_set": {
+                    "accepted": validation.accepted,
+                    "accepted_documents": list(validation.accepted_documents),
+                    "issues": list(validation.issues),
+                    "gaps": list(validation.gaps),
+                },
                 "rows": rows,
             },
             ensure_ascii=False,

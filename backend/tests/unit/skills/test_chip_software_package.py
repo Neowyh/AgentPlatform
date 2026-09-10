@@ -105,6 +105,9 @@ def test_missing_manual_and_errata_are_visible_as_gaps() -> None:
     assert "reference_manual_or_programming_manual" in result.validation.gaps
     assert "errata" in result.validation.gaps
     assert "资料缺口" in result.artifacts["embedded-software-knowledge-brief.md"]
+    table = json.loads(result.artifacts["chip-software-table.json"])
+    assert table["source_set"]["accepted_documents"] == ["deer-m4-datasheet.pdf"]
+    assert "reference_manual_or_programming_manual" in table["source_set"]["gaps"]
 
 
 def test_conflicting_pin_evidence_is_review_required_in_both_artifacts() -> None:
