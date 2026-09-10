@@ -194,6 +194,9 @@ def _apply_conflict_gate(rows: list[dict[str, Any]]) -> None:
 
 def _render_brief(result: ChipSoftwarePackage) -> str:
     validation = result.validation
+    rows_by_topic: dict[str, list[dict[str, Any]]] = {topic: [] for topic in _TOPICS}
+    for row in result.structured_rows:
+        rows_by_topic.setdefault(row.get("topic", ""), []).append(row)
     lines = [
         "# Embedded software knowledge brief",
         "",
@@ -202,11 +205,27 @@ def _render_brief(result: ChipSoftwarePackage) -> str:
         f"- Accepted source documents: {', '.join(validation.accepted_documents) or 'none'}",
         "- Scope: startup/reset, clock, memory, pin mux, peripherals, registers, interrupts, DMA and errata.",
         "",
-        "## Evidence status",
-        "",
-        "`confirmed` is directly supported by a consistent source location. `review_required` is visible but must not be consumed as an automated fact.",
+        "## Development coverage",
         "",
     ]
+    for topic in _TOPICS:
+        lines.extend([f"### {topic}", ""])
+        topic_rows = rows_by_topic[topic]
+        if not topic_rows:
+            lines.append("- `review_required` — No source-backed conclusion extracted; 需人工复核")
+            continue
+        for row in topic_rows:
+            label = row.get("claim") or f"{row.get('pin')}: {row.get('signal')}"
+            lines.append(f"- `{row['confidence']}` — {label} ([{row['source']}])")
+        lines.append("")
+    lines.extend(
+        [
+            "## Evidence status",
+            "",
+            "`confirmed` is directly supported by a consistent source location. `review_required` is visible but must not be consumed as an automated fact.",
+            "",
+        ]
+    )
     for row in result.structured_rows:
         label = row.get("claim") or f"{row.get('pin')}: {row.get('signal')}"
         note = f"; {row['review_note']}" if row.get("review_note") else ""

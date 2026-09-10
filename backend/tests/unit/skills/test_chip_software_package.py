@@ -67,6 +67,15 @@ def test_user_callable_run_returns_two_auditable_artifacts() -> None:
     assert any(row["pin"] == "PA0" for row in result.structured_rows)
     assert all(row["source"] for row in result.structured_rows)
     assert all(row["confidence"] in {"confirmed", "review_required"} for row in result.structured_rows)
+    assert {
+        "pin",
+        "signal",
+        "alternate_function",
+        "peripheral",
+        "interrupt",
+        "source",
+        "confidence",
+    }.issubset(result.structured_rows[0])
     table = json.loads(result.artifacts["chip-software-table.json"])
     assert table["scope"] == [
         "startup_reset",
@@ -79,6 +88,21 @@ def test_user_callable_run_returns_two_auditable_artifacts() -> None:
         "dma",
         "errata_impact",
     ]
+
+
+def test_brief_reports_uncovered_development_topics_without_inventing_facts() -> None:
+    result = extract_chip_software_package(
+        [document("deer-m4-datasheet.pdf", "datasheet", content="TOPIC: clock | claim=HSE supports 8 MHz crystal")],
+        target_part="DEER-M4",
+        target_package="LQFP64",
+    )
+
+    brief = result.artifacts["embedded-software-knowledge-brief.md"]
+    assert "## Development coverage" in brief
+    assert "### peripheral" in brief
+    assert "`review_required` — No source-backed conclusion extracted; 需人工复核" in brief
+    assert "### clock" in brief
+    assert "HSE supports 8 MHz crystal" in brief
 
 
 def test_mixed_part_or_package_is_rejected_without_merging_facts() -> None:
