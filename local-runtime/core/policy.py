@@ -30,10 +30,7 @@ class LocalPolicy:
             return PolicyDecision.DENY
         if capability in self.always_allow_capabilities:
             return PolicyDecision.ALLOW
-        level_one = capability in self.consent_required_capabilities or capability in {
-            "local.files.write",
-            "local.python",
-        }
+        level_one = capability in {"local.files.write", "local.python"}
         if level_one and not consent:
             return PolicyDecision.CONSENT_REQUIRED
         return PolicyDecision.ALLOW

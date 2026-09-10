@@ -12,6 +12,7 @@ Targets missed lines:
 from __future__ import annotations
 
 import asyncio
+import uuid
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -182,6 +183,13 @@ class TestStartRun:
 
         run_mgr = MagicMock()
         run_mgr.create_or_reject = AsyncMock()
+
+        def _record_with_abort_event(*args, **kwargs):
+            rec = run_mgr.create_or_reject.return_value
+            rec.abort_event = SimpleNamespace(wait=AsyncMock(return_value=None))
+            return rec
+
+        run_mgr.create_or_reject.side_effect = _record_with_abort_event
         run_mgr.cancel = AsyncMock()
 
         run_ctx = MagicMock()
@@ -269,7 +277,8 @@ class TestStartRun:
             patch("app.gateway.services.resolve_agent_factory") as legacy_factory,
             patch("app.gateway.services.run_agent", new_callable=AsyncMock) as run_agent,
             patch("app.gateway.run_preparation.get_app_config") as mock_app_config,
-            patch("app.gateway.services.uuid.uuid4", return_value="canonical-run"),
+            patch("app.gateway.services.uuid.uuid4", return_value=uuid.UUID(int=1)),
+            patch("app.gateway.services.ensure_trace_id", return_value="trace-canonical"),
         ):
             prepare.return_value = canonical_factory
             mock_app_config.return_value.get_model_config.return_value = None
@@ -284,15 +293,15 @@ class TestStartRun:
         prepare.assert_awaited_once_with(
             assistant_id,
             request,
-            "canonical-run",
+            str(uuid.UUID(int=1)),
             diagnostic_context={"evidence_mode": "hybrid", "code_evidence_source": None},
             thread_id="thread-1",
         )
-        assert run_mgr.create_or_reject.call_args.kwargs["run_id"] == "canonical-run"
+        assert run_mgr.create_or_reject.call_args.kwargs["run_id"] == str(uuid.UUID(int=1))
         legacy_factory.assert_not_called()
         config = run_agent.call_args.kwargs["config"]
-        assert config["context"]["canonical_run_id"] == "canonical-run"
-        assert config["configurable"]["canonical_run_id"] == "canonical-run"
+        assert config["context"]["canonical_run_id"] == str(uuid.UUID(int=1))
+        assert config["configurable"]["canonical_run_id"] == str(uuid.UUID(int=1))
 
     @pytest.mark.asyncio
     async def test_start_run_uuid_discards_prepared_snapshot_when_run_is_rejected(self, mock_deps):
@@ -321,7 +330,8 @@ class TestStartRun:
             patch("app.gateway.run_preparation._prepare_canonical_agent_run", new_callable=AsyncMock),
             patch("app.gateway.run_preparation._discard_canonical_run_snapshot", new_callable=AsyncMock) as discard,
             patch("app.gateway.run_preparation.get_app_config") as mock_app_config,
-            patch("app.gateway.services.uuid.uuid4", return_value="rejected-run"),
+            patch("app.gateway.services.uuid.uuid4", return_value=uuid.UUID(int=2)),
+            patch("app.gateway.services.ensure_trace_id", return_value="trace-rejected"),
         ):
             mock_app_config.return_value.get_model_config.return_value = None
             from app.gateway.services import start_run
@@ -330,7 +340,7 @@ class TestStartRun:
                 await start_run(body, "thread-1", request)
 
         assert exc_info.value.status_code == 409
-        discard.assert_awaited_once_with("rejected-run")
+        discard.assert_awaited_once_with(str(uuid.UUID(int=2)))
 
     @pytest.mark.asyncio
     async def test_start_run_with_model_name(self, mock_deps):
@@ -565,8 +575,8 @@ class TestStartRun:
             result = await start_run(body, "thread-1", request)
 
         assert result == record
-        await _drain_background_upsert(run_ctx.thread_store.update_status)
-        run_ctx.thread_store.update_status.assert_called_once_with("thread-1", "running")
+        # The existing thread is reused as-is; creation and status writes are
+        # owned by the metadata helper and the run worker respectively.
         run_ctx.thread_store.create.assert_not_called()
 
     @pytest.mark.asyncio
@@ -652,13 +662,14 @@ class TestNormalizeInputAdditional:
 
 
 class TestResolveAgentFactoryAdditional:
-    def test_returns_make_lead_agent(self):
+    def test_returns_canonical_lead_agent_factory(self):
+        """All assistant ids resolve to the canonical lead-agent factory."""
         from app.gateway.services import resolve_agent_factory
-        from deerflow.agents.lead_agent.agent import make_lead_agent
+        from deerflow.agents.lead_agent.agent import assemble_lead_agent
 
-        assert resolve_agent_factory(None) is make_lead_agent
-        assert resolve_agent_factory("lead_agent") is make_lead_agent
-        assert resolve_agent_factory("finalis") is make_lead_agent
+        assert resolve_agent_factory(None) is assemble_lead_agent
+        assert resolve_agent_factory("lead_agent") is assemble_lead_agent
+        assert resolve_agent_factory("finalis") is assemble_lead_agent
 
 
 class TestBuildRunConfigContextAdditional:

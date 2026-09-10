@@ -17,7 +17,7 @@ def _mock_deps(release: asyncio.Event, get_side_effect=None):
     run_mgr.create_or_reject = AsyncMock()
     run_mgr.cancel = AsyncMock()
 
-    async def _blocked_get(thread_id):
+    async def _blocked_get(thread_id, **_kwargs):
         if get_side_effect is not None:
             raise get_side_effect
         await release.wait()
@@ -70,6 +70,7 @@ async def test_start_run_returns_before_upsert_completes():
     record = MagicMock()
     record.run_id = "run-123"
     record.task = None
+    record.abort_event = asyncio.Event()
     run_mgr.create_or_reject.return_value = record
     patches = _patches(bridge, run_mgr, run_ctx)
 
@@ -90,10 +91,9 @@ async def test_start_run_returns_before_upsert_completes():
         finally:
             release.set()
         await asyncio.wait_for(task, timeout=5)
-        for _ in range(200):
-            await asyncio.sleep(0.01)
-            if run_ctx.thread_store.create.called:
-                break
+        # Drive the fire-and-forget background run to completion; the upsert
+        # is awaited inside it, so its create is observable afterwards.
+        await asyncio.wait_for(record.task, timeout=10)
         run_ctx.thread_store.create.assert_called_once()
 
 
@@ -104,6 +104,7 @@ async def test_upsert_failure_does_not_fail_start_run():
     record = MagicMock()
     record.run_id = "run-123"
     record.task = None
+    record.abort_event = asyncio.Event()
     run_mgr.create_or_reject.return_value = record
     patches = _patches(bridge, run_mgr, run_ctx)
 

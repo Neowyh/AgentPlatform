@@ -18,6 +18,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from _router_auth_helpers import make_authed_test_app
 from fastapi.testclient import TestClient
+from langgraph.checkpoint.base import empty_checkpoint
 
 from app.gateway.routers.threads import router as threads_router
 
@@ -29,10 +30,22 @@ THREAD_ID = "thread-1"
 def _make_app(thread_store=None, checkpointer=None):
     app = make_authed_test_app()
     app.include_router(threads_router)
+    if thread_store is None:
+        thread_store = MagicMock()
+        thread_store.get = AsyncMock(return_value=None)
+        thread_store.check_access = AsyncMock(return_value=True)
+    app.state.thread_store = thread_store
     if thread_store is not None:
         app.state.thread_store = thread_store
     if checkpointer is not None:
         app.state.checkpointer = checkpointer
+    app.state.run_event_store = MagicMock()
+    app.state.run_event_store.list_messages = AsyncMock(return_value=[])
+    reservation = MagicMock()
+    reservation.__aenter__ = AsyncMock(return_value=None)
+    reservation.__aexit__ = AsyncMock(return_value=False)
+    app.state.run_manager = MagicMock()
+    app.state.run_manager.reserve_thread_operation.return_value = reservation
     return app
 
 
@@ -91,6 +104,7 @@ def _make_checkpointer(
     cp.get = AsyncMock(return_value=get_state_result)
     cp.aget_tuple = AsyncMock(return_value=get_tuple_result)
     cp.aput = AsyncMock(return_value=None)
+    cp.aput_writes = AsyncMock(return_value=None)
     cp.adelete_thread = AsyncMock(return_value=True)
     cp.alist = MagicMock(return_value=_AsyncListIterator(history_result or []))
     cp.put = AsyncMock(return_value=True)
@@ -283,7 +297,7 @@ class TestGetThreadState:
 class TestUpdateThreadState:
     """Tests for POST /api/threads/{thread_id}/state."""
 
-    def test_update_thread_state(self):
+    def test_update_thread_state(self, monkeypatch):
         """Update thread state succeeds."""
         store = _make_thread_store()
         cp = _make_checkpointer(
@@ -291,10 +305,15 @@ class TestUpdateThreadState:
                 pending_writes=None,
                 tasks=[],
                 metadata={"created_at": "2026-01-01T00:00:00Z"},
-                checkpoint={"channel_values": {"messages": []}},
+                checkpoint=empty_checkpoint(),
                 config={"configurable": {"checkpoint_id": "ckpt-1"}},
                 parent_config=None,
             )
+        )
+        cp.aput.return_value = {"configurable": {"thread_id": THREAD_ID, "checkpoint_id": "ckpt-1"}}
+        monkeypatch.setattr(
+            "app.gateway.services.resolve_agent_factory",
+            lambda assistant_id=None: lambda config=None, **kwargs: (_ for _ in ()).throw(RuntimeError("no graph")),
         )
         app = _make_app(thread_store=store, checkpointer=cp)
         with TestClient(app) as client:

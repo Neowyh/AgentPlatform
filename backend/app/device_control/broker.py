@@ -56,7 +56,9 @@ class TaskRecord:
     expires_at: datetime
     status: TaskStatus = TaskStatus.CREATED
     receipt: dict[str, Any] | None = None
+    result: Any = None
     error: str | None = None
+    error_code: str | None = None
 
 
 class DeviceBroker:
@@ -109,11 +111,34 @@ class DeviceBroker:
         value: Any,
         expires_in: timedelta = timedelta(minutes=5),
     ) -> TaskRecord:
+        return await self.send_task(
+            device_id=device_id,
+            operation="echo",
+            path=value,
+            run_id=run_id,
+            tool_call_id=tool_call_id,
+            expires_in=expires_in,
+            payload_extra={"value": value},
+        )
+
+    async def send_task(
+        self,
+        *,
+        device_id: str,
+        operation: str,
+        path: Any,
+        run_id: str,
+        tool_call_id: str,
+        expires_in: timedelta = timedelta(minutes=5),
+        payload_extra: dict[str, Any] | None = None,
+    ) -> TaskRecord:
         connection = self.connections.get(device_id)
         now = datetime.now(UTC)
         task_id = str(uuid4())
         expires_at = now + expires_in
-        payload = {"operation": "echo", "value": value, "run_id": run_id, "tool_call_id": tool_call_id}
+        payload = {"operation": operation, "path": path, "run_id": run_id, "tool_call_id": tool_call_id}
+        if payload_extra:
+            payload.update(payload_extra)
         record = TaskRecord(task_id, device_id, connection.session_id if connection else "", run_id, tool_call_id, payload, expires_at)
         self.tasks[task_id] = record
         if connection is None:
@@ -167,7 +192,7 @@ class DeviceBroker:
             return None
         if envelope.type == MessageType.CAPABILITY_UPDATE:
             values = envelope.payload.get("capabilities", ())
-            if not isinstance(values, list | tuple | set):
+            if not isinstance(values, (list, tuple, set)):
                 raise ProtocolError("CAPABILITIES_INVALID", "capability update is invalid")
             connection.capabilities = frozenset(str(value) for value in values)
             return None
@@ -185,10 +210,13 @@ class DeviceBroker:
             record.status = TaskStatus.PROGRESS
         elif envelope.type == MessageType.TASK_RESULT:
             record.status = TaskStatus.COMPLETED
+            record.result = envelope.payload.get("result")
             record.receipt = envelope.payload.get("receipt") or envelope.payload
         elif envelope.type == MessageType.ERROR:
             record.status = TaskStatus.FAILED
+            record.error_code = str(envelope.payload.get("error_code", "DEVICE_ERROR"))
             record.error = str(envelope.payload.get("message", "device reported an error"))
+            record.receipt = envelope.payload.get("receipt")
         else:
             raise ProtocolError("MESSAGE_UNEXPECTED", f"unexpected device message: {envelope.type}")
         return record

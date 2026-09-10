@@ -173,7 +173,7 @@ class TestGetUserByEmail:
         repo, mock_session = _make_repo()
         row = _make_user_row(email="search@test.com")
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = row
+        mock_result.scalars.return_value.first.return_value = row
         mock_session.execute = AsyncMock(return_value=mock_result)
 
         result = await repo.get_user_by_email("search@test.com")
@@ -184,7 +184,7 @@ class TestGetUserByEmail:
     async def test_not_found(self):
         repo, mock_session = _make_repo()
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None
+        mock_result.scalars.return_value.first.return_value = None
         mock_session.execute = AsyncMock(return_value=mock_result)
 
         result = await repo.get_user_by_email("missing@test.com")

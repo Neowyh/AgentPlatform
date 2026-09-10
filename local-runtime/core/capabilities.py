@@ -35,16 +35,5 @@ class CapabilityRegistry:
         device = self._devices.get(device_id)
         if device is None or not device.online:
             return frozenset()
-        compatible = (
-            device.capabilities
-            if device.policy_compatible is None
-            else device.policy_compatible
-        )
-        return frozenset(
-            agent
-            & caller
-            & set(device.capabilities)
-            & set(compatible)
-            & workflow
-            & platform
-        )
+        compatible = device.capabilities if device.policy_compatible is None else device.policy_compatible
+        return frozenset(agent & caller & set(device.capabilities) & set(compatible) & workflow & platform)

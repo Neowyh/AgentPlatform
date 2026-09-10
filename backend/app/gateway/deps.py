@@ -841,7 +841,12 @@ async def get_current_user_from_request(request: Request):
 
 
 async def is_admin_user(request: Request) -> bool:
-    """Return whether the authenticated caller is an admin user.
+    """Return whether the authenticated caller may use instance-admin routes.
+
+    The platform role (``users_ext``) is the only authorization source: a
+    caller is an admin when their resolved platform role is ``super_admin``.
+    The legacy auth-table ``system_role`` is never consulted — an old ``admin``
+    row without a matching platform profile grants nothing.
 
     ``AuthMiddleware`` normally stamps ``request.state.user`` before the request
     reaches a router. Falling back to the strict dependency keeps the route safe
@@ -849,15 +854,16 @@ async def is_admin_user(request: Request) -> bool:
     global middleware.
 
     Centralising this here means a future change to the admin definition (e.g.
-    allowing an internal system role, adding audit logging, or switching to a
-    permission-based check) lands in one place instead of drifting across the
-    per-router copies that previously existed in ``mcp``, ``channel_connections``
-    and ``channels``.
+    adding audit logging, or switching to a permission-based check) lands in one
+    place instead of drifting across the per-router copies that previously
+    existed in ``mcp``, ``channel_connections`` and ``channels``.
     """
     # PAT credentials never carry admin capability: no scope in the PAT
     # universe grants it, so an admin's automation token must not unlock
     # admin-only routes (skill installs, integration credentials, MCP config).
-    from app.gateway.auth_disabled import AUTH_SOURCE_PAT
+    from app.agentplatform.rbac_models import UserRole
+    from app.gateway.auth_disabled import AUTH_SOURCE_AUTH_DISABLED, AUTH_SOURCE_PAT
+    from app.gateway.authz import resolve_platform_identity
 
     if getattr(request.state, "auth_source", None) == AUTH_SOURCE_PAT:
         return False
@@ -865,7 +871,13 @@ async def is_admin_user(request: Request) -> bool:
     if user is None:
         user = await get_current_user_from_request(request)
 
-    return getattr(user, "system_role", None) == "admin"
+    # The auth-disabled synthetic user is a dev/E2E bypass with an explicit
+    # trusted source; it keeps its historical admin capability.
+    if getattr(request.state, "auth_source", None) == AUTH_SOURCE_AUTH_DISABLED:
+        return True
+
+    identity = await resolve_platform_identity(request, user)
+    return identity is not None and identity.get("role") == UserRole.SUPER_ADMIN.value
 
 
 async def require_admin_user(request: Request, *, detail: str) -> None:

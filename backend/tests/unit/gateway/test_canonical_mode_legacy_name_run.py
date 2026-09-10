@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import uuid
 from collections.abc import AsyncIterator
 from pathlib import Path
 from types import SimpleNamespace
@@ -71,6 +73,10 @@ def _no_db(monkeypatch: pytest.MonkeyPatch) -> None:
         raise AssertionError("database must not be consulted")
 
     monkeypatch.setattr("deerflow.persistence.engine.get_session_factory", explode)
+
+
+# Deterministic canonical run id: uuid4().hex must stay valid for trace ids.
+CANONICAL_RUN_UUID = uuid.UUID("c0e1d2a3-0000-4000-8000-000000000001")
 
 
 class TestResolveCanonicalAlias:
@@ -217,7 +223,8 @@ class TestStartRunCanonicalLegacyName:
     async def test_canonical_mode_resolves_legacy_name_via_alias(self, mock_deps, monkeypatch: pytest.MonkeyPatch):
         bridge, run_mgr, run_ctx, request = mock_deps
         resource_id = "22222222-2222-2222-2222-222222222222"
-        record = MagicMock(run_id="canonical-run", task=None)
+        record = MagicMock(run_id=str(CANONICAL_RUN_UUID), task=None)
+        record.abort_event = asyncio.Event()
         run_mgr.create_or_reject.return_value = record
 
         with (
@@ -228,7 +235,8 @@ class TestStartRunCanonicalLegacyName:
             patch("app.gateway.run_preparation._prepare_canonical_agent_run", new_callable=AsyncMock) as prepare,
             patch("app.gateway.services.run_agent", new_callable=AsyncMock),
             patch("app.gateway.run_preparation.get_app_config") as mock_app_config,
-            patch("app.gateway.services.uuid.uuid4", return_value="canonical-run"),
+            patch("app.gateway.services.uuid.uuid4", return_value=CANONICAL_RUN_UUID),
+            patch("app.gateway.services.ensure_trace_id", return_value="trace-canonical"),
         ):
             mock_app_config.return_value.get_model_config.return_value = None
             from app.gateway.services import start_run
@@ -240,11 +248,11 @@ class TestStartRunCanonicalLegacyName:
         prepare.assert_awaited_once_with(
             resource_id,
             request,
-            "canonical-run",
+            str(CANONICAL_RUN_UUID),
             diagnostic_context={"evidence_mode": "hybrid", "code_evidence_source": None},
             thread_id="thread-1",
         )
-        assert run_mgr.create_or_reject.call_args.kwargs["run_id"] == "canonical-run"
+        assert run_mgr.create_or_reject.call_args.kwargs["run_id"] == str(CANONICAL_RUN_UUID)
 
     @pytest.mark.asyncio
     async def test_canonical_mode_fails_closed_when_alias_missing(self, mock_deps, monkeypatch: pytest.MonkeyPatch):
@@ -300,7 +308,8 @@ class TestStartRunCanonicalLegacyName:
     async def test_canonical_mode_resolves_context_agent_name_uuid(self, mock_deps, monkeypatch: pytest.MonkeyPatch):
         bridge, run_mgr, run_ctx, request = mock_deps
         resource_id = "11111111-1111-1111-1111-111111111111"
-        record = MagicMock(run_id="canonical-run", task=None)
+        record = MagicMock(run_id=str(CANONICAL_RUN_UUID), task=None)
+        record.abort_event = asyncio.Event()
         run_mgr.create_or_reject.return_value = record
 
         with (
@@ -311,7 +320,8 @@ class TestStartRunCanonicalLegacyName:
             patch("app.gateway.run_preparation._prepare_canonical_agent_run", new_callable=AsyncMock) as prepare,
             patch("app.gateway.services.run_agent", new_callable=AsyncMock),
             patch("app.gateway.run_preparation.get_app_config") as mock_app_config,
-            patch("app.gateway.services.uuid.uuid4", return_value="canonical-run"),
+            patch("app.gateway.services.uuid.uuid4", return_value=CANONICAL_RUN_UUID),
+            patch("app.gateway.services.ensure_trace_id", return_value="trace-canonical"),
         ):
             mock_app_config.return_value.get_model_config.return_value = None
             from app.gateway.services import start_run
@@ -323,7 +333,7 @@ class TestStartRunCanonicalLegacyName:
         prepare.assert_awaited_once_with(
             resource_id,
             request,
-            "canonical-run",
+            str(CANONICAL_RUN_UUID),
             diagnostic_context={
                 "agent_name": resource_id,
                 "evidence_mode": "hybrid",
@@ -331,13 +341,14 @@ class TestStartRunCanonicalLegacyName:
             },
             thread_id="thread-1",
         )
-        assert run_mgr.create_or_reject.call_args.kwargs["run_id"] == "canonical-run"
+        assert run_mgr.create_or_reject.call_args.kwargs["run_id"] == str(CANONICAL_RUN_UUID)
 
     @pytest.mark.asyncio
     async def test_canonical_mode_resolves_context_agent_name_legacy_name(self, mock_deps, monkeypatch: pytest.MonkeyPatch):
         bridge, run_mgr, run_ctx, request = mock_deps
         resource_id = "22222222-2222-2222-2222-222222222222"
-        record = MagicMock(run_id="canonical-run", task=None)
+        record = MagicMock(run_id=str(CANONICAL_RUN_UUID), task=None)
+        record.abort_event = asyncio.Event()
         run_mgr.create_or_reject.return_value = record
 
         with (
@@ -348,7 +359,8 @@ class TestStartRunCanonicalLegacyName:
             patch("app.gateway.run_preparation._prepare_canonical_agent_run", new_callable=AsyncMock) as prepare,
             patch("app.gateway.services.run_agent", new_callable=AsyncMock),
             patch("app.gateway.run_preparation.get_app_config") as mock_app_config,
-            patch("app.gateway.services.uuid.uuid4", return_value="canonical-run"),
+            patch("app.gateway.services.uuid.uuid4", return_value=CANONICAL_RUN_UUID),
+            patch("app.gateway.services.ensure_trace_id", return_value="trace-canonical"),
         ):
             mock_app_config.return_value.get_model_config.return_value = None
             from app.gateway.services import start_run
@@ -360,7 +372,7 @@ class TestStartRunCanonicalLegacyName:
         prepare.assert_awaited_once_with(
             resource_id,
             request,
-            "canonical-run",
+            str(CANONICAL_RUN_UUID),
             diagnostic_context={
                 "agent_name": "writer",
                 "evidence_mode": "hybrid",
@@ -373,7 +385,8 @@ class TestStartRunCanonicalLegacyName:
     async def test_dual_mode_resolves_context_agent_name_uuid(self, mock_deps, monkeypatch: pytest.MonkeyPatch):
         bridge, run_mgr, run_ctx, request = mock_deps
         resource_id = "11111111-1111-1111-1111-111111111111"
-        record = MagicMock(run_id="canonical-run", task=None)
+        record = MagicMock(run_id=str(CANONICAL_RUN_UUID), task=None)
+        record.abort_event = asyncio.Event()
         run_mgr.create_or_reject.return_value = record
 
         with (
@@ -384,7 +397,8 @@ class TestStartRunCanonicalLegacyName:
             patch("app.gateway.run_preparation._prepare_canonical_agent_run", new_callable=AsyncMock) as prepare,
             patch("app.gateway.services.run_agent", new_callable=AsyncMock),
             patch("app.gateway.run_preparation.get_app_config") as mock_app_config,
-            patch("app.gateway.services.uuid.uuid4", return_value="canonical-run"),
+            patch("app.gateway.services.uuid.uuid4", return_value=CANONICAL_RUN_UUID),
+            patch("app.gateway.services.ensure_trace_id", return_value="trace-canonical"),
         ):
             mock_app_config.return_value.get_model_config.return_value = None
             from app.gateway.services import start_run
@@ -396,7 +410,7 @@ class TestStartRunCanonicalLegacyName:
         prepare.assert_awaited_once_with(
             resource_id,
             request,
-            "canonical-run",
+            str(CANONICAL_RUN_UUID),
             diagnostic_context={
                 "agent_name": resource_id,
                 "evidence_mode": "hybrid",

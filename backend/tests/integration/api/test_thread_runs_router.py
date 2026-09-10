@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.gateway.routers import thread_runs
@@ -29,6 +30,20 @@ from app.gateway.routers.thread_runs import (
     _response_with_message_summary,
 )
 from deerflow.runtime import CancelOutcome, RunRecord, RunStatus
+
+
+@pytest.fixture(autouse=True)
+def _no_lead_graph(monkeypatch):
+    """Force the raw-checkpointer read path (no agent assembly in router tests)."""
+
+    def _resolver(assistant_id=None):
+        def _build(config=None, **kwargs):
+            raise RuntimeError("no agent graph in router tests")
+
+        return _build
+
+    monkeypatch.setattr("app.gateway.services.resolve_agent_factory", _resolver)
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -67,6 +82,15 @@ def _make_run_record(
     return record
 
 
+class _ImmediateEndBridge:
+    """Bridge stub whose streams end immediately (terminal run)."""
+
+    async def subscribe(self, run_id, last_event_id=None):
+        from deerflow.runtime import END_SENTINEL
+
+        yield END_SENTINEL
+
+
 def _make_app(**state_attrs):
     """Build a test app with stub auth and optional state attributes."""
     from _router_auth_helpers import make_authed_test_app
@@ -76,6 +100,13 @@ def _make_app(**state_attrs):
     event_store = MagicMock()
     event_store.list_messages_by_run = AsyncMock(return_value=[])
     app.state.run_event_store = event_store
+    # wait_run materializes final state and streams completion, so the
+    # dependency getters need the singletons the real composition installs.
+    app.state.stream_bridge = _ImmediateEndBridge()
+    app.state.run_store = MagicMock()
+    app.state.run_manager = MagicMock()
+    app.state.feedback_repo = MagicMock()
+    app.state.checkpoint_channel_mode = "full"
     for key, val in state_attrs.items():
         setattr(app.state, key, val)
     return app
@@ -212,7 +243,7 @@ class TestWaitRun:
 
     @patch("app.gateway.routers.thread_runs.start_run")
     @patch("app.gateway.routers.thread_runs.get_run_manager")
-    @patch("app.gateway.routers.thread_runs.get_checkpointer")
+    @patch("app.gateway.deps.get_checkpointer")
     def test_wait_run_returns_status_on_no_checkpoint(self, mock_get_cp, mock_get_rm, mock_start_run):
         """Returns status/error when checkpointer has no tuple."""
         record = _make_run_record(status=RunStatus.success)
@@ -231,7 +262,7 @@ class TestWaitRun:
 
     @patch("app.gateway.routers.thread_runs.start_run")
     @patch("app.gateway.routers.thread_runs.get_run_manager")
-    @patch("app.gateway.routers.thread_runs.get_checkpointer")
+    @patch("app.gateway.deps.get_checkpointer")
     def test_wait_run_handles_checkpointer_exception(self, mock_get_cp, mock_get_rm, mock_start_run):
         """Gracefully handles checkpointer exceptions."""
         record = _make_run_record(status=RunStatus.error)

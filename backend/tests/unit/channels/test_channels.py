@@ -700,8 +700,8 @@ class TestChannelManager:
             await _wait_for(lambda: len(outbound_received) >= 1)
             await manager.stop()
 
-            mock_client.runs.wait.assert_called_once()
-            call_args = mock_client.runs.wait.call_args
+            mock_client.runs.stream.assert_called_once()
+            call_args = mock_client.runs.stream.call_args
             assert call_args[0][1] == "lead_agent"
             assert call_args[1]["config"]["recursion_limit"] == 55
             assert call_args[1]["config"]["configurable"]["checkpoint_ns"] == ""
@@ -882,8 +882,8 @@ class TestChannelManager:
             await _wait_for(lambda: len(outbound_received) >= 1)
             await manager.stop()
 
-            mock_client.runs.wait.assert_called_once()
-            call_args = mock_client.runs.wait.call_args
+            mock_client.runs.stream.assert_called_once()
+            call_args = mock_client.runs.stream.call_args
             assert call_args[0][1] == "lead_agent"
             assert call_args[1]["config"]["recursion_limit"] == 77
             assert call_args[1]["context"]["thinking_enabled"] is True
@@ -993,7 +993,8 @@ class TestChannelManager:
             await manager.stop()
 
             mock_client.runs.stream.assert_called_once()
-            assert [msg.text for msg in outbound_received] == ["Hello", "Hello world", "Hello world"]
+            # Intermediate frames carry the typing cursor; the final frame is clean.
+            assert [msg.text for msg in outbound_received] == ["Hello ▉", "Hello world ▉", "Hello world"]
             assert [msg.is_final for msg in outbound_received] == [False, False, True]
             assert all(msg.thread_ts == "om-source-1" for msg in outbound_received)
 
@@ -1307,15 +1308,15 @@ class TestChannelManager:
                 )
                 await bus.publish_inbound(msg)
 
-            await _wait_for(lambda: mock_client.runs.wait.call_count >= 2)
+            await _wait_for(lambda: mock_client.runs.stream.call_count >= 2)
             await manager.stop()
 
             # threads.create should be called only ONCE (second message reuses the thread)
             mock_client.threads.create.assert_called_once()
 
-            # Both runs.wait calls should use the same thread_id
-            assert mock_client.runs.wait.call_count == 2
-            for call in mock_client.runs.wait.call_args_list:
+            # Both runs.stream calls should use the same thread_id
+            assert mock_client.runs.stream.call_count == 2
+            for call in mock_client.runs.stream.call_args_list:
                 assert call[0][0] == "private-thread-1"
 
         _run(go())
@@ -2260,8 +2261,8 @@ class TestChannelService:
     def test_service_urls_fall_back_to_env(self, monkeypatch):
         from app.channels.service import ChannelService
 
-        monkeypatch.setenv("IDEER_CHANNELS_LANGGRAPH_URL", "http://gateway:8001/api")
-        monkeypatch.setenv("IDEER_CHANNELS_GATEWAY_URL", "http://gateway:8001")
+        monkeypatch.setenv("DEER_FLOW_CHANNELS_LANGGRAPH_URL", "http://gateway:8001/api")
+        monkeypatch.setenv("DEER_FLOW_CHANNELS_GATEWAY_URL", "http://gateway:8001")
 
         service = ChannelService(channels_config={})
 
@@ -2271,8 +2272,8 @@ class TestChannelService:
     def test_config_service_urls_override_env(self, monkeypatch):
         from app.channels.service import ChannelService
 
-        monkeypatch.setenv("IDEER_CHANNELS_LANGGRAPH_URL", "http://gateway:8001/api")
-        monkeypatch.setenv("IDEER_CHANNELS_GATEWAY_URL", "http://gateway:8001")
+        monkeypatch.setenv("DEER_FLOW_CHANNELS_LANGGRAPH_URL", "http://gateway:8001/api")
+        monkeypatch.setenv("DEER_FLOW_CHANNELS_GATEWAY_URL", "http://gateway:8001")
 
         service = ChannelService(
             channels_config={

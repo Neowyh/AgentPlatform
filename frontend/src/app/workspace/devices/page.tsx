@@ -178,7 +178,7 @@ export default function DevicesPage() {
                     {statusLabels[device.status]}
                   </Badge>
                 </CardHeader>
-                <CardContent className="space-y-3 text-sm">
+                <CardContent className="type-supporting space-y-3">
                   <div className="grid grid-cols-2 gap-2">
                     <span className="text-muted-foreground">
                       {t.admin.devices.runtime}

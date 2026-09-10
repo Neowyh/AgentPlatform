@@ -145,6 +145,7 @@ _PG_LOCK_KEY = 0x0DEE_12F1_0BEE_3682
 # (or vice versa) fires that test.
 _BASELINE_TABLE_NAMES: frozenset[str] = frozenset(
     {
+        _VERSION_TABLE,
         "channel_connections",
         "channel_conversations",
         "channel_credentials",

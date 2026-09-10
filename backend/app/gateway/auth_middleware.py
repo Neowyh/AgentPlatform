@@ -19,7 +19,17 @@ from starlette.responses import JSONResponse
 from starlette.types import ASGIApp
 
 from app.gateway.auth.errors import AuthErrorCode, AuthErrorResponse
+from app.gateway.auth_disabled import (
+    AUTH_SOURCE_AUTH_DISABLED,
+    AUTH_SOURCE_INTERNAL,
+    AUTH_SOURCE_PAT,
+    AUTH_SOURCE_SESSION,
+    get_auth_disabled_user,
+    is_auth_disabled,
+)
+from app.gateway.authz import AuthContext, resolve_route_permissions
 from app.gateway.internal_auth import INTERNAL_AUTH_HEADER_NAME, get_internal_user, is_valid_internal_auth_token
+from app.gateway.request_path import get_request_route_path
 from deerflow.runtime.user_context import reset_current_user, set_current_user
 
 logger = logging.getLogger(__name__)
@@ -30,6 +40,9 @@ _PUBLIC_PATH_PREFIXES: tuple[str, ...] = (
     "/docs",
     "/redoc",
     "/openapi.json",
+    "/api/v1/auth/oauth/",
+    "/api/v1/auth/callback/",
+    "/api/webhooks/",
 )
 
 # Exact auth paths that are public (login/register/status check).
@@ -41,6 +54,7 @@ _PUBLIC_EXACT_PATHS: frozenset[str] = frozenset(
         "/api/v1/auth/logout",
         "/api/v1/auth/setup-status",
         "/api/v1/auth/initialize",
+        "/api/v1/auth/providers",
     }
 )
 
@@ -76,7 +90,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        if _is_public(request.url.path):
+        if _is_public(get_request_route_path(request)):
             return await call_next(request)
 
         # T1 first-token timing: auth is the first pre-token segment.
@@ -86,8 +100,41 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if is_valid_internal_auth_token(request.headers.get(INTERNAL_AUTH_HEADER_NAME)):
             internal_user = get_internal_user()
 
-        # Non-public path: require session cookie
-        if internal_user is None and not request.cookies.get("access_token"):
+        auth_source = AUTH_SOURCE_SESSION
+        access_token = request.cookies.get("access_token")
+        authorization = request.headers.get("authorization")
+        pat_scopes: frozenset[str] = frozenset()
+
+        if internal_user is not None:
+            user = internal_user
+            auth_source = AUTH_SOURCE_INTERNAL
+        elif authorization is not None and not is_auth_disabled():
+            from app.gateway.auth.pat import authenticate_pat, is_pat_allowed_route
+
+            try:
+                user, pat_scopes = await authenticate_pat(request.app, authorization)
+            except HTTPException as exc:
+                return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+            if not is_pat_allowed_route(request.method, get_request_route_path(request)):
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": "PAT credentials are not permitted on this route"},
+                )
+            auth_source = AUTH_SOURCE_PAT
+        elif access_token:
+            from app.gateway.deps import get_current_user_from_request
+
+            try:
+                user = await get_current_user_from_request(request)
+            except HTTPException as exc:
+                if not is_auth_disabled():
+                    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+                user = get_auth_disabled_user()
+                auth_source = AUTH_SOURCE_AUTH_DISABLED
+        elif is_auth_disabled():
+            user = get_auth_disabled_user()
+            auth_source = AUTH_SOURCE_AUTH_DISABLED
+        else:
             return JSONResponse(
                 status_code=401,
                 content={
@@ -98,38 +145,30 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 },
             )
 
-        # Strict JWT validation: reject junk/expired tokens with 401
-        # right here instead of silently passing through. This closes
-        # the "junk cookie bypass" gap (AUTH_TEST_PLAN test 7.5.8):
-        # without this, non-isolation routes like /api/models would
-        # accept any cookie-shaped string as authentication.
-        #
-        # We call the *strict* resolver so that fine-grained error
-        # codes (token_expired, token_invalid, user_not_found, …)
-        # propagate from AuthErrorCode, not get flattened into one
-        # generic code. BaseHTTPMiddleware doesn't let HTTPException
-        # bubble up, so we catch and render it as JSONResponse here.
-        from app.gateway.deps import get_current_user_from_request
-
-        if internal_user is not None:
-            user = internal_user
-        else:
-            try:
-                user = await get_current_user_from_request(request)
-            except HTTPException as exc:
-                return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
-
-        # Stamp request.state.user (for the contextvar pattern).
-        # Do NOT set request.state.auth here — let require_permission
-        # call _authenticate() which maps RBAC roles to the correct
-        # permission set (viewer gets read-only, etc.). The RBAC user
-        # is cached on request.state._ideer_rbac_user so the second
-        # query is a cache hit, not a duplicate DB roundtrip.
         request.state.user = user
+        request.state.auth_source = auth_source
+
+        # The platform identity (users_ext) is the only authorization source.
+        # Trusted sources (internal/auth-disabled) return None and fall to the
+        # provider default; session and PAT callers resolve — or are denied —
+        # through the same fail-closed read the decorators reuse.
+        from app.gateway.authz import resolve_platform_identity
+
+        identity = await resolve_platform_identity(request, user)
+        platform_role = identity.get("role") if identity is not None else None
+
+        permissions = await resolve_route_permissions(
+            user,
+            is_internal=auth_source == AUTH_SOURCE_INTERNAL,
+            platform_role=platform_role,
+        )
+        if auth_source == AUTH_SOURCE_PAT:
+            permissions = [permission for permission in permissions if permission in pat_scopes]
+        request.state.auth = AuthContext(user=user, permissions=permissions)
         logger.info(
             "first_token_timing stage=auth elapsed_ms=%.1f path=%s",
             (time.perf_counter() - auth_started) * 1000,
-            request.url.path,
+            get_request_route_path(request),
         )
         token = set_current_user(user)
         try:

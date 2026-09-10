@@ -34,6 +34,7 @@ from deerflow.persistence.base import Base
 from deerflow.persistence.bootstrap import (
     _BASELINE_INDEX_NAMES,
     _BASELINE_TABLE_NAMES,
+    _VERSION_TABLE,
     _decide_state,
     _get_alembic_config,
     _get_head_revision,
@@ -82,7 +83,7 @@ async def _runs_index_names(engine) -> set[str]:
 
 async def _alembic_version(engine) -> str | None:
     async with engine.connect() as conn:
-        row = await conn.execute(sa.text("SELECT version_num FROM alembic_version"))
+        row = await conn.execute(sa.text(f"SELECT version_num FROM {_VERSION_TABLE}"))
         return row.scalar()
 
 
@@ -143,7 +144,7 @@ async def test_empty_branch_creates_all_and_stamps_head(tmp_path: Path) -> None:
             "channel_credentials",
             "channel_conversations",
             "channel_oauth_states",
-            "alembic_version",
+            _VERSION_TABLE,
         }:
             assert required in tables, f"missing table: {required}"
         assert "token_usage_by_model" in await _runs_columns(engine)
@@ -173,7 +174,7 @@ async def test_legacy_without_column_branch_upgrades(tmp_path: Path) -> None:
     try:
         await _seed_legacy_without_column(engine)
         assert "token_usage_by_model" not in await _runs_columns(engine)
-        assert "alembic_version" not in await _table_names(engine)
+        assert _VERSION_TABLE not in await _table_names(engine)
 
         await bootstrap_schema(engine, backend="sqlite")
 
@@ -202,7 +203,7 @@ async def test_legacy_missing_channel_tables_get_backfilled(tmp_path: Path) -> N
         # branch (has_deerflow_tables=True, no alembic_version) while the
         # channel_* tables are absent.
         assert "runs" in tables
-        assert "alembic_version" not in tables
+        assert _VERSION_TABLE not in tables
         for missing in {
             "channel_connections",
             "channel_credentials",
@@ -241,7 +242,7 @@ async def test_legacy_with_column_branch_upgrade_is_idempotent(tmp_path: Path) -
     try:
         await _seed_legacy_with_column(engine)
         assert "token_usage_by_model" in await _runs_columns(engine)
-        assert "alembic_version" not in await _table_names(engine)
+        assert _VERSION_TABLE not in await _table_names(engine)
         cols_before = await _runs_columns(engine)
 
         await bootstrap_schema(engine, backend="sqlite")
@@ -475,7 +476,7 @@ def _reflect_columns_sync(sync_conn) -> dict[str, dict[str, dict]]:
         # our schema -- one path creates it (upgrade) and the other doesn't
         # (create_all), so comparing it would produce a guaranteed false
         # positive every run.
-        if table == "alembic_version":
+        if table == _VERSION_TABLE:
             continue
         out[table] = {c["name"]: c for c in insp.get_columns(table)}
     return out
@@ -554,9 +555,9 @@ async def test_baseline_table_names_constant_matches_0001(tmp_path: Path) -> Non
 
         async with engine.connect() as conn:
             reflected = await conn.run_sync(lambda c: set(sa.inspect(c).get_table_names()))
-        # ``alembic_version`` is alembic's bookkeeping table, not part of
+        # ``_VERSION_TABLE`` is alembic's bookkeeping table, not part of
         # our schema -- the constant is about DeerFlow-owned baseline tables.
-        reflected.discard("alembic_version")
+        reflected.discard(_VERSION_TABLE)
 
         assert reflected == _BASELINE_TABLE_NAMES, f"_BASELINE_TABLE_NAMES drifted from 0001_baseline.upgrade()'s output: only-in-0001={sorted(reflected - _BASELINE_TABLE_NAMES)} only-in-constant={sorted(_BASELINE_TABLE_NAMES - reflected)}"
     finally:
@@ -581,9 +582,9 @@ async def test_baseline_index_names_constant_matches_0001(tmp_path: Path) -> Non
                 indexes = await conn.run_sync(lambda c, t=table_name: {ix["name"] for ix in sa.inspect(c).get_indexes(t)})
                 all_indexes.update(indexes)
 
-        # alembic_version also gets an index from alembic's own table --
+        # The version table also gets an index from alembic's own table --
         # filter it out like the table guard filters alembic_version.
-        all_indexes.discard("ix_alembic_version")
+        all_indexes.discard(f"ix_{_VERSION_TABLE}")
 
         assert all_indexes == _BASELINE_INDEX_NAMES, (
             f"_BASELINE_INDEX_NAMES drifted from 0001_baseline.upgrade()'s output:\nonly-in-0001={sorted(all_indexes - _BASELINE_INDEX_NAMES)}\nonly-in-constant={sorted(_BASELINE_INDEX_NAMES - all_indexes)}"

@@ -104,10 +104,12 @@ def _parse_sse(transcript: str) -> list[dict]:
         lines = [line for line in block.splitlines() if line.startswith("data: ")]
         name = next((line for line in block.splitlines() if line.startswith("event: ")), None)
         if name and lines:
-            events.append({
-                "event": name.removeprefix("event: ").strip(),
-                "data": json.loads(lines[0].removeprefix("data: ")),
-            })
+            events.append(
+                {
+                    "event": name.removeprefix("event: ").strip(),
+                    "data": json.loads(lines[0].removeprefix("data: ")),
+                }
+            )
     return events
 
 
@@ -170,8 +172,6 @@ def test_caller_runs_owner_shared_agent_with_caller_scoped_evidence(
         assert authorization.get("caller_user_id") == caller_id, authorization
         assert authorization.get("memory_scope") == caller_id, authorization
         assert authorization.get("effective_agent_id") == agent_id, authorization
-        assert owner_id not in json.dumps(authorization), (
-            "owner identity must not leak into the caller's evidence envelope"
-        )
+        assert owner_id not in json.dumps(authorization), "owner identity must not leak into the caller's evidence envelope"
         snapshot_refs = evidence.get("resource_snapshots") or []
         assert [ref.get("resource_id") for ref in snapshot_refs] == [agent_id]

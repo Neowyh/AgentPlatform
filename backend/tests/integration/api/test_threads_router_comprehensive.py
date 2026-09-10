@@ -5,6 +5,7 @@ Covers all endpoints, helpers, models, and error paths for 98%+ coverage.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -40,6 +41,22 @@ def _make_app():
     mock_checkpointer = AsyncMock()
     app.state.checkpointer = mock_checkpointer
 
+    # Thread routes reserve thread operations and read event sequences, so the
+    # dependency getters need the same singletons the real composition installs.
+    app.state.run_manager = MagicMock()
+    reservation = MagicMock()
+    reservation.__aenter__ = AsyncMock(return_value=None)
+    reservation.__aexit__ = AsyncMock(return_value=False)
+    app.state.run_manager.reserve_thread_operation = MagicMock(return_value=reservation)
+    app.state.run_manager.list_successful_regenerate_sources = AsyncMock(return_value=[])
+    app.state.run_manager.get_many_by_thread = AsyncMock(return_value={})
+    app.state.run_event_store = MagicMock()
+    app.state.run_event_store.list_messages = AsyncMock(return_value=[])
+    app.state.run_event_store.get_last_visible_ai_seq_by_run = AsyncMock(return_value={})
+    app.state.feedback_repo = MagicMock()
+    app.state.feedback_repo.list_by_run_ids = AsyncMock(return_value={})
+    app.state.checkpoint_channel_mode = "full"
+
     # make_authed_test_app already sets app.state.thread_store to a MagicMock
     # with check_access=AsyncMock(return_value=True). We grab a reference.
     mock_thread_store = app.state.thread_store
@@ -73,6 +90,102 @@ def _make_checkpoint_tuple(
     cp.tasks = tasks or []
     cp.pending_writes = pending_writes or []
     return cp
+
+
+class _FakeStateGraph:
+    """Interface-explicit async double for the compiled lead graph.
+
+    The state routes consume checkpoints through ``CheckpointStateAccessor``
+    (graph methods), not raw checkpointer tuples. The double translates
+    ``aget_tuple``/``alist`` results into StateSnapshot-shaped objects so the
+    tests keep describing checkpoints while the routes exercise the same
+    graph-backed accessor path production uses.
+    """
+
+    checkpointer = None
+    last_as_node = None
+
+    @staticmethod
+    def _snapshot(config, tup):
+        if tup is None:
+            return None
+        snapshot = SimpleNamespace()
+        snapshot.config = getattr(tup, "config", None) or config
+        checkpoint = getattr(tup, "checkpoint", None)
+        checkpoint = checkpoint if isinstance(checkpoint, dict) else {}
+        values = checkpoint.get("channel_values")
+        snapshot.values = dict(values) if isinstance(values, dict) else {}
+        metadata = getattr(tup, "metadata", None)
+        snapshot.metadata = dict(metadata) if isinstance(metadata, dict) else {}
+        snapshot.parent_config = getattr(tup, "parent_config", None)
+        snapshot.created_at = checkpoint.get("ts") or snapshot.metadata.get("created_at", "")
+        snapshot.tasks = tuple(getattr(tup, "tasks", None) or ())
+        snapshot.tasks_known = True
+        snapshot.next = tuple(task.name for task in snapshot.tasks if getattr(task, "name", None))
+        return snapshot
+
+    async def aget_state(self, config):
+        snapshot = self._snapshot(config, await self.checkpointer.aget_tuple(config))
+        if snapshot is not None:
+            # Label the snapshot with the checkpoint the caller asked for, the
+            # way a compiled graph labels get_state(config) results.
+            requested = (config or {}).get("configurable", {}).get("checkpoint_id")
+            if requested and (snapshot.config or {}).get("configurable", {}).get("checkpoint_id") != requested:
+                base = snapshot.config or {}
+                snapshot.config = {
+                    **base,
+                    "configurable": {**(base.get("configurable") or {}), "checkpoint_id": requested},
+                }
+        return snapshot
+
+    async def aget_state_history(self, config, *, limit=None):
+        if limit is not None and limit <= 0:
+            return
+            yield  # pragma: no cover - makes this an async generator
+        result = []
+        before = None
+        walk_config = config
+        if (config or {}).get("configurable", {}).get("checkpoint_id"):
+            # Mirror Pregel: the configured checkpoint_id starts the walk
+            # inclusively, while alist(before=...) is exclusive.
+            before = config
+            walk_config = {
+                **config,
+                "configurable": {k: v for k, v in config.get("configurable", {}).items() if k != "checkpoint_id"},
+            }
+            anchor = await self.checkpointer.aget_tuple(config)
+            if anchor is not None:
+                result.append(anchor)
+        remaining = None if limit is None else max(limit - len(result), 0)
+        async for tup in self.checkpointer.alist(walk_config, before=before, limit=remaining):
+            result.append(tup)
+            if limit is not None and len(result) >= limit:
+                break
+        for tup in result:
+            yield self._snapshot(config, tup)
+
+    async def aupdate_state(self, config, values, as_node=None):
+        # Writes go through the checkpointer; return its config result exactly
+        # like a compiled graph would.
+        _FakeStateGraph.last_as_node = as_node
+        return await self.checkpointer.aput(config, None, values, {})
+
+
+@pytest.fixture(autouse=True)
+def _fake_lead_graph(monkeypatch):
+    """Resolve the lead graph to the explicit double for every test.
+
+    ``build_checkpoint_state_accessor`` assembles the real lead agent, which
+    requires configured chat models. The double keeps the file hermetic.
+    """
+
+    def _resolver(assistant_id=None):
+        return lambda config=None, **kwargs: _FakeStateGraph()
+
+    _FakeStateGraph.last_as_node = None
+
+    monkeypatch.setattr("app.gateway.services.resolve_agent_factory", _resolver)
+    monkeypatch.setattr("app.gateway.services.build_state_mutation_graph", lambda *args, **kwargs: _FakeStateGraph())
 
 
 # ===========================================================================
@@ -114,25 +227,27 @@ class TestDeriveThreadStatus:
     """Tests for _derive_thread_status."""
 
     def test_none_checkpoint_returns_idle(self):
-        assert _derive_thread_status(None) == "idle"
+        assert _derive_thread_status(None, []) == "idle"
 
     def test_no_pending_writes_no_tasks_returns_idle(self):
         cp = _make_checkpoint_tuple(pending_writes=[], tasks=[])
-        assert _derive_thread_status(cp) == "idle"
+        assert _derive_thread_status(cp, []) == "idle"
 
     def test_error_in_pending_writes(self):
         cp = _make_checkpoint_tuple(pending_writes=[["ns", "__error__", "boom"]])
-        assert _derive_thread_status(cp) == "error"
+        assert _derive_thread_status(cp, [["ns", "__error__", "boom"]]) == "error"
 
     def test_error_in_second_pending_write(self):
-        cp = _make_checkpoint_tuple(pending_writes=[["ns", "other", "val"], ["ns", "__error__", "boom"]])
-        assert _derive_thread_status(cp) == "error"
+        pending_writes = [["ns", "other", "val"], ["ns", "__error__", "boom"]]
+        cp = _make_checkpoint_tuple(pending_writes=pending_writes)
+        assert _derive_thread_status(cp, pending_writes) == "error"
 
     def test_tasks_present_returns_interrupted(self):
         task = MagicMock()
         task.name = "some_node"
+        task.error = None
         cp = _make_checkpoint_tuple(tasks=[task])
-        assert _derive_thread_status(cp) == "interrupted"
+        assert _derive_thread_status(cp, []) == "interrupted"
 
     def test_error_takes_precedence_over_tasks(self):
         task = MagicMock()
@@ -140,30 +255,31 @@ class TestDeriveThreadStatus:
             pending_writes=[["ns", "__error__", "fail"]],
             tasks=[task],
         )
-        assert _derive_thread_status(cp) == "error"
+        assert _derive_thread_status(cp, [["ns", "__error__", "fail"]]) == "error"
 
     def test_pending_write_short_tuple_ignored(self):
         # len(pw) < 2 means the error check is skipped
         cp = _make_checkpoint_tuple(pending_writes=[["ns"]])
-        assert _derive_thread_status(cp) == "idle"
+        assert _derive_thread_status(cp, [["ns"]]) == "idle"
 
     def test_pending_writes_none(self):
         cp = MagicMock()
         cp.pending_writes = None
         cp.tasks = None
-        assert _derive_thread_status(cp) == "idle"
+        assert _derive_thread_status(cp, []) == "idle"
 
     def test_pending_writes_empty_tasks_present(self):
         task = MagicMock()
         task.name = "node"
+        task.error = None
         cp = MagicMock()
         cp.pending_writes = []
         cp.tasks = [task]
-        assert _derive_thread_status(cp) == "interrupted"
+        assert _derive_thread_status(cp, []) == "interrupted"
 
     def test_tasks_not_error_channel(self):
         cp = _make_checkpoint_tuple(pending_writes=[["ns", "result", "ok"]])
-        assert _derive_thread_status(cp) == "idle"
+        assert _derive_thread_status(cp, [["ns", "result", "ok"]]) == "idle"
 
 
 class TestDeleteThreadData:
@@ -720,7 +836,7 @@ class TestPatchThread:
 class TestGetThread:
     """Tests for GET /api/threads/{thread_id}."""
 
-    @patch("app.gateway.routers.threads.serialize_channel_values", side_effect=lambda x: x)
+    @patch("app.gateway.routers.threads.serialize_channel_values_for_api", side_effect=lambda x: x)
     @patch("app.gateway.routers.threads.coerce_iso", side_effect=lambda x: x)
     def test_get_from_thread_store(self, mock_coerce, mock_serialize):
         app, cp, ts = _make_app()
@@ -745,7 +861,7 @@ class TestGetThread:
         assert data["thread_id"] == "t1"
         assert data["metadata"] == {"k": "v"}
 
-    @patch("app.gateway.routers.threads.serialize_channel_values", side_effect=lambda x: x)
+    @patch("app.gateway.routers.threads.serialize_channel_values_for_api", side_effect=lambda x: x)
     @patch("app.gateway.routers.threads.coerce_iso", side_effect=lambda x: x)
     def test_get_legacy_thread_from_checkpoint(self, mock_coerce, mock_serialize):
         """Thread exists in checkpointer but not in thread_meta."""
@@ -771,7 +887,7 @@ class TestGetThread:
         resp = client.get("/api/threads/nonexistent")
         assert resp.status_code == 404
 
-    @patch("app.gateway.routers.threads.serialize_channel_values", side_effect=lambda x: x)
+    @patch("app.gateway.routers.threads.serialize_channel_values_for_api", side_effect=lambda x: x)
     @patch("app.gateway.routers.threads.coerce_iso", side_effect=lambda x: x)
     def test_get_checkpoint_exception_raises_500(self, mock_coerce, mock_serialize):
         app, cp, ts = _make_app()
@@ -782,7 +898,7 @@ class TestGetThread:
         assert resp.status_code == 500
 
     @patch("app.gateway.routers.threads._derive_thread_status", return_value="error")
-    @patch("app.gateway.routers.threads.serialize_channel_values", side_effect=lambda x: x)
+    @patch("app.gateway.routers.threads.serialize_channel_values_for_api", side_effect=lambda x: x)
     @patch("app.gateway.routers.threads.coerce_iso", side_effect=lambda x: x)
     def test_get_uses_derived_status(self, mock_coerce, mock_serialize, mock_derive):
         app, cp, ts = _make_app()
@@ -793,7 +909,7 @@ class TestGetThread:
         assert resp.status_code == 200
         assert resp.json()["status"] == "error"
 
-    @patch("app.gateway.routers.threads.serialize_channel_values", side_effect=lambda x: x)
+    @patch("app.gateway.routers.threads.serialize_channel_values_for_api", side_effect=lambda x: x)
     @patch("app.gateway.routers.threads.coerce_iso", side_effect=lambda x: x)
     def test_get_no_checkpoint_uses_record_status(self, mock_coerce, mock_serialize):
         """When checkpoint is None, fall back to record status."""
@@ -808,7 +924,7 @@ class TestGetThread:
         assert resp.status_code == 200
         assert resp.json()["status"] == "busy"
 
-    @patch("app.gateway.routers.threads.serialize_channel_values", side_effect=lambda x: x)
+    @patch("app.gateway.routers.threads.serialize_channel_values_for_api", side_effect=lambda x: x)
     @patch("app.gateway.routers.threads.coerce_iso", side_effect=lambda x: x)
     def test_get_legacy_thread_updated_at_fallback(self, mock_coerce, mock_serialize):
         """Legacy thread with no updated_at falls back to created_at."""
@@ -823,7 +939,7 @@ class TestGetThread:
         resp = client.get("/api/threads/t1")
         assert resp.status_code == 200
 
-    @patch("app.gateway.routers.threads.serialize_channel_values", side_effect=lambda x: x)
+    @patch("app.gateway.routers.threads.serialize_channel_values_for_api", side_effect=lambda x: x)
     @patch("app.gateway.routers.threads.coerce_iso", side_effect=lambda x: x)
     def test_get_legacy_thread_no_metadata(self, mock_coerce, mock_serialize):
         """Legacy checkpoint with empty metadata."""
@@ -835,7 +951,7 @@ class TestGetThread:
         resp = client.get("/api/threads/t1")
         assert resp.status_code == 200
 
-    @patch("app.gateway.routers.threads.serialize_channel_values", side_effect=lambda x: x)
+    @patch("app.gateway.routers.threads.serialize_channel_values_for_api", side_effect=lambda x: x)
     @patch("app.gateway.routers.threads.coerce_iso", side_effect=lambda x: x)
     def test_get_checkpoint_has_channel_values(self, mock_coerce, mock_serialize):
         app, cp, ts = _make_app()
@@ -858,7 +974,7 @@ class TestGetThread:
 class TestGetThreadState:
     """Tests for GET /api/threads/{thread_id}/state."""
 
-    @patch("app.gateway.routers.threads.serialize_channel_values", side_effect=lambda x: x)
+    @patch("app.gateway.routers.threads.serialize_channel_values_for_api", side_effect=lambda x: x)
     @patch("app.gateway.routers.threads.coerce_iso", side_effect=lambda x: x)
     def test_get_state_success(self, mock_coerce, mock_serialize):
         app, cp, ts = _make_app()
@@ -897,7 +1013,7 @@ class TestGetThreadState:
         resp = client.get("/api/threads/t1/state")
         assert resp.status_code == 500
 
-    @patch("app.gateway.routers.threads.serialize_channel_values", side_effect=lambda x: x)
+    @patch("app.gateway.routers.threads.serialize_channel_values_for_api", side_effect=lambda x: x)
     @patch("app.gateway.routers.threads.coerce_iso", side_effect=lambda x: x)
     def test_get_state_no_parent(self, mock_coerce, mock_serialize):
         app, cp, ts = _make_app()
@@ -911,9 +1027,10 @@ class TestGetThreadState:
         assert resp.status_code == 200
         assert resp.json()["parent_checkpoint_id"] is None
 
-    @patch("app.gateway.routers.threads.serialize_channel_values", side_effect=lambda x: x)
+    @patch("app.gateway.routers.threads.serialize_channel_values_for_api", side_effect=lambda x: x)
     @patch("app.gateway.routers.threads.coerce_iso", side_effect=lambda x: x)
     def test_get_state_no_checkpoint_id_in_config(self, mock_coerce, mock_serialize):
+        """A checkpoint without an id is unaddressable — 404, not a guess."""
         app, cp, ts = _make_app()
         cp.aget_tuple = AsyncMock(
             return_value=_make_checkpoint_tuple(
@@ -922,25 +1039,26 @@ class TestGetThreadState:
         )
         client = TestClient(app)
         resp = client.get("/api/threads/t1/state")
-        assert resp.status_code == 200
-        assert resp.json()["checkpoint_id"] is None
+        assert resp.status_code == 404
 
-    @patch("app.gateway.routers.threads.serialize_channel_values", side_effect=lambda x: x)
+    @patch("app.gateway.routers.threads.serialize_channel_values_for_api", side_effect=lambda x: x)
     @patch("app.gateway.routers.threads.coerce_iso", side_effect=lambda x: x)
     def test_get_state_empty_checkpoint(self, mock_coerce, mock_serialize):
+        """An empty checkpoint still carries the caller-requested identity."""
         app, cp, ts = _make_app()
         cp_tuple = MagicMock()
         cp_tuple.checkpoint = None
         cp_tuple.metadata = {}
-        cp_tuple.config = {}
+        cp_tuple.config = {"configurable": {"checkpoint_id": "cp-empty"}}
         cp_tuple.parent_config = None
         cp_tuple.tasks = []
         cp.aget_tuple = AsyncMock(return_value=cp_tuple)
         client = TestClient(app)
         resp = client.get("/api/threads/t1/state")
         assert resp.status_code == 200
+        assert resp.json()["checkpoint_id"] == "cp-empty"
 
-    @patch("app.gateway.routers.threads.serialize_channel_values", side_effect=lambda x: x)
+    @patch("app.gateway.routers.threads.serialize_channel_values_for_api", side_effect=lambda x: x)
     @patch("app.gateway.routers.threads.coerce_iso", side_effect=lambda x: x)
     def test_get_state_tasks_with_no_name_attr(self, mock_coerce, mock_serialize):
         app, cp, ts = _make_app()
@@ -961,7 +1079,7 @@ class TestGetThreadState:
 class TestUpdateThreadState:
     """Tests for POST /api/threads/{thread_id}/state."""
 
-    @patch("app.gateway.routers.threads.serialize_channel_values", side_effect=lambda x: x)
+    @patch("app.gateway.routers.threads.serialize_channel_values_for_api", side_effect=lambda x: x)
     @patch("app.gateway.routers.threads.now_iso", return_value="2026-01-02T00:00:00+00:00")
     @patch("app.gateway.routers.threads.coerce_iso", side_effect=lambda x: x)
     def test_update_values(self, mock_coerce, mock_now, mock_serialize):
@@ -979,7 +1097,7 @@ class TestUpdateThreadState:
         data = resp.json()
         assert data["checkpoint_id"] == "cp-new"
 
-    @patch("app.gateway.routers.threads.serialize_channel_values", side_effect=lambda x: x)
+    @patch("app.gateway.routers.threads.serialize_channel_values_for_api", side_effect=lambda x: x)
     @patch("app.gateway.routers.threads.now_iso", return_value="2026-01-02T00:00:00+00:00")
     @patch("app.gateway.routers.threads.coerce_iso", side_effect=lambda x: x)
     def test_update_with_as_node(self, mock_coerce, mock_now, mock_serialize):
@@ -1000,14 +1118,13 @@ class TestUpdateThreadState:
             },
         )
         assert resp.status_code == 200
-        # Verify aput was called with metadata containing source=update
+        assert resp.json()["checkpoint_id"] == "cp-new"
+        # as_node reaches the graph update; values reach the checkpointer unwrapped
+        assert _FakeStateGraph.last_as_node == "human"
         put_call = cp.aput.call_args
-        meta = put_call[0][2]
-        assert meta["source"] == "update"
-        assert meta["step"] == 2
-        assert meta["writes"] == {"human": {"title": "New Title"}}
+        assert put_call[0][2] == {"title": "New Title"}
 
-    @patch("app.gateway.routers.threads.serialize_channel_values", side_effect=lambda x: x)
+    @patch("app.gateway.routers.threads.serialize_channel_values_for_api", side_effect=lambda x: x)
     @patch("app.gateway.routers.threads.now_iso", return_value="2026-01-02T00:00:00+00:00")
     @patch("app.gateway.routers.threads.coerce_iso", side_effect=lambda x: x)
     def test_update_syncs_title(self, mock_coerce, mock_now, mock_serialize):
@@ -1022,9 +1139,9 @@ class TestUpdateThreadState:
         client = TestClient(app)
         resp = client.post("/api/threads/t1/state", json={"values": {"title": "New Title"}})
         assert resp.status_code == 200
-        ts.update_display_name.assert_called_once_with("t1", "New Title")
+        ts.update_display_name.assert_called_once_with("t1", "New Title", remove_metadata_keys=("branch_title_sequence",))
 
-    @patch("app.gateway.routers.threads.serialize_channel_values", side_effect=lambda x: x)
+    @patch("app.gateway.routers.threads.serialize_channel_values_for_api", side_effect=lambda x: x)
     @patch("app.gateway.routers.threads.now_iso", return_value="2026-01-02T00:00:00+00:00")
     @patch("app.gateway.routers.threads.coerce_iso", side_effect=lambda x: x)
     def test_update_empty_title_skipped(self, mock_coerce, mock_now, mock_serialize):
@@ -1041,7 +1158,7 @@ class TestUpdateThreadState:
         assert resp.status_code == 200
         ts.update_display_name.assert_not_called()
 
-    @patch("app.gateway.routers.threads.serialize_channel_values", side_effect=lambda x: x)
+    @patch("app.gateway.routers.threads.serialize_channel_values_for_api", side_effect=lambda x: x)
     @patch("app.gateway.routers.threads.now_iso", return_value="2026-01-02T00:00:00+00:00")
     @patch("app.gateway.routers.threads.coerce_iso", side_effect=lambda x: x)
     def test_update_title_sync_error_swallowed(self, mock_coerce, mock_now, mock_serialize):
@@ -1058,8 +1175,9 @@ class TestUpdateThreadState:
         assert resp.status_code == 200
 
     def test_update_not_found(self):
+        """Updating an untracked thread is denied by the ownership check."""
         app, cp, ts = _make_app()
-        cp.aget_tuple = AsyncMock(return_value=None)
+        ts.check_access = AsyncMock(return_value=False)
         client = TestClient(app)
         resp = client.post("/api/threads/t1/state", json={"values": {"k": "v"}})
         assert resp.status_code == 404
@@ -1071,7 +1189,7 @@ class TestUpdateThreadState:
         resp = client.post("/api/threads/t1/state", json={"values": {"k": "v"}})
         assert resp.status_code == 500
 
-    @patch("app.gateway.routers.threads.serialize_channel_values", side_effect=lambda x: x)
+    @patch("app.gateway.routers.threads.serialize_channel_values_for_api", side_effect=lambda x: x)
     @patch("app.gateway.routers.threads.now_iso", return_value="2026-01-02T00:00:00+00:00")
     @patch("app.gateway.routers.threads.coerce_iso", side_effect=lambda x: x)
     def test_update_aput_error_raises_500(self, mock_coerce, mock_now, mock_serialize):
@@ -1086,7 +1204,7 @@ class TestUpdateThreadState:
         resp = client.post("/api/threads/t1/state", json={"values": {"k": "v"}})
         assert resp.status_code == 500
 
-    @patch("app.gateway.routers.threads.serialize_channel_values", side_effect=lambda x: x)
+    @patch("app.gateway.routers.threads.serialize_channel_values_for_api", side_effect=lambda x: x)
     @patch("app.gateway.routers.threads.now_iso", return_value="2026-01-02T00:00:00+00:00")
     @patch("app.gateway.routers.threads.coerce_iso", side_effect=lambda x: x)
     def test_update_no_values(self, mock_coerce, mock_now, mock_serialize):
@@ -1102,7 +1220,7 @@ class TestUpdateThreadState:
         resp = client.post("/api/threads/t1/state", json={})
         assert resp.status_code == 200
 
-    @patch("app.gateway.routers.threads.serialize_channel_values", side_effect=lambda x: x)
+    @patch("app.gateway.routers.threads.serialize_channel_values_for_api", side_effect=lambda x: x)
     @patch("app.gateway.routers.threads.now_iso", return_value="2026-01-02T00:00:00+00:00")
     @patch("app.gateway.routers.threads.coerce_iso", side_effect=lambda x: x)
     def test_update_with_checkpoint_id(self, mock_coerce, mock_now, mock_serialize):
@@ -1122,27 +1240,28 @@ class TestUpdateThreadState:
             },
         )
         assert resp.status_code == 200
-        # Verify read_config includes checkpoint_id
-        read_call = cp.aget_tuple.call_args[0][0]
-        assert read_call["configurable"]["checkpoint_id"] == "cp-specific"
+        # The selected checkpoint is read first with the requested id
+        first_read = cp.aget_tuple.call_args_list[0][0][0]
+        assert first_read["configurable"]["checkpoint_id"] == "cp-specific"
 
-    @patch("app.gateway.routers.threads.serialize_channel_values", side_effect=lambda x: x)
+    @patch("app.gateway.routers.threads.serialize_channel_values_for_api", side_effect=lambda x: x)
     @patch("app.gateway.routers.threads.now_iso", return_value="2026-01-02T00:00:00+00:00")
     @patch("app.gateway.routers.threads.coerce_iso", side_effect=lambda x: x)
-    def test_update_aput_returns_non_dict(self, mock_coerce, mock_now, mock_serialize):
+    def test_update_response_reflects_aput_config(self, mock_coerce, mock_now, mock_serialize):
+        """The response carries the checkpoint id returned by the write."""
         app, cp, ts = _make_app()
         cp.aget_tuple = AsyncMock(
             return_value=_make_checkpoint_tuple(
                 metadata={"created_at": "2026-01-01"},
             )
         )
-        cp.aput = AsyncMock(return_value="not-a-dict")
+        cp.aput = AsyncMock(return_value={"configurable": {"checkpoint_id": "cp-brand-new"}})
         client = TestClient(app)
         resp = client.post("/api/threads/t1/state", json={"values": {"k": "v"}})
         assert resp.status_code == 200
-        assert resp.json()["checkpoint_id"] is None
+        assert resp.json()["checkpoint_id"] == "cp-brand-new"
 
-    @patch("app.gateway.routers.threads.serialize_channel_values", side_effect=lambda x: x)
+    @patch("app.gateway.routers.threads.serialize_channel_values_for_api", side_effect=lambda x: x)
     @patch("app.gateway.routers.threads.now_iso", return_value="2026-01-02T00:00:00+00:00")
     @patch("app.gateway.routers.threads.coerce_iso", side_effect=lambda x: x)
     def test_update_as_node_default_step(self, mock_coerce, mock_now, mock_serialize):
@@ -1163,9 +1282,7 @@ class TestUpdateThreadState:
             },
         )
         assert resp.status_code == 200
-        put_call = cp.aput.call_args
-        meta = put_call[0][2]
-        assert meta["step"] == 1  # 0 + 1
+        assert _FakeStateGraph.last_as_node == "human"
 
 
 # ===========================================================================
@@ -1176,12 +1293,12 @@ class TestUpdateThreadState:
 class TestGetThreadHistory:
     """Tests for POST /api/threads/{thread_id}/history."""
 
-    @patch("app.gateway.routers.threads.serialize_channel_values", side_effect=lambda x: x)
+    @patch("app.gateway.routers.threads.serialize_channel_values_for_api", side_effect=lambda x: x)
     @patch("app.gateway.routers.threads.coerce_iso", side_effect=lambda x: x)
     def test_history_returns_entries(self, mock_coerce, mock_serialize):
         app, cp, ts = _make_app()
 
-        async def mock_alist(config, limit=10):
+        async def mock_alist(config, limit=10, before=None):
             for i in range(2):
                 cp_tuple = _make_checkpoint_tuple(
                     channel_values={"messages": [f"msg-{i}"], "title": "T"},
@@ -1200,12 +1317,12 @@ class TestGetThreadHistory:
         assert data[0]["checkpoint_id"] == "cp-0"
         assert data[1]["checkpoint_id"] == "cp-1"
 
-    @patch("app.gateway.routers.threads.serialize_channel_values", side_effect=lambda x: x)
+    @patch("app.gateway.routers.threads.serialize_channel_values_for_api", side_effect=lambda x: x)
     @patch("app.gateway.routers.threads.coerce_iso", side_effect=lambda x: x)
     def test_history_messages_only_on_latest(self, mock_coerce, mock_serialize):
         app, cp, ts = _make_app()
 
-        async def mock_alist(config, limit=10):
+        async def mock_alist(config, limit=10, before=None):
             for i in range(2):
                 yield _make_checkpoint_tuple(
                     channel_values={"messages": [f"msg-{i}"]},
@@ -1223,12 +1340,12 @@ class TestGetThreadHistory:
         # Second entry should NOT have messages
         assert "messages" not in data[1]["values"]
 
-    @patch("app.gateway.routers.threads.serialize_channel_values", side_effect=lambda x: x)
+    @patch("app.gateway.routers.threads.serialize_channel_values_for_api", side_effect=lambda x: x)
     @patch("app.gateway.routers.threads.coerce_iso", side_effect=lambda x: x)
     def test_history_empty(self, mock_coerce, mock_serialize):
         app, cp, ts = _make_app()
 
-        async def mock_alist(config, limit=10):
+        async def mock_alist(config, limit=10, before=None):
             return
             yield  # make it an async generator
 
@@ -1242,7 +1359,7 @@ class TestGetThreadHistory:
     def test_history_error_raises_500(self, mock_coerce):
         app, cp, ts = _make_app()
 
-        async def mock_alist(config, limit=10):
+        async def mock_alist(config, limit=10, before=None):
             raise RuntimeError("fail")
             yield  # make it an async generator
 
@@ -1251,12 +1368,13 @@ class TestGetThreadHistory:
         resp = client.post("/api/threads/t1/history", json={})
         assert resp.status_code == 500
 
-    @patch("app.gateway.routers.threads.serialize_channel_values", side_effect=lambda x: x)
+    @patch("app.gateway.routers.threads.serialize_channel_values_for_api", side_effect=lambda x: x)
     @patch("app.gateway.routers.threads.coerce_iso", side_effect=lambda x: x)
     def test_history_with_before_cursor(self, mock_coerce, mock_serialize):
         app, cp, ts = _make_app()
+        cp.aget_tuple = AsyncMock(return_value=None)
 
-        async def mock_alist(config, limit=10):
+        async def mock_alist(config, limit=10, before=None):
             yield _make_checkpoint_tuple(
                 metadata={"created_at": "2026-01-01", "step": 0},
                 config={"configurable": {"checkpoint_id": "cp-0"}},
@@ -1269,14 +1387,14 @@ class TestGetThreadHistory:
         # Verify config passed to alist includes checkpoint_id
         # We can't easily inspect this with the mock pattern, but the endpoint should work
 
-    @patch("app.gateway.routers.threads.serialize_channel_values", side_effect=lambda x: x)
+    @patch("app.gateway.routers.threads.serialize_channel_values_for_api", side_effect=lambda x: x)
     @patch("app.gateway.routers.threads.coerce_iso", side_effect=lambda x: x)
     def test_history_with_tasks(self, mock_coerce, mock_serialize):
         app, cp, ts = _make_app()
         task = MagicMock()
         task.name = "node1"
 
-        async def mock_alist(config, limit=10):
+        async def mock_alist(config, limit=10, before=None):
             yield _make_checkpoint_tuple(
                 metadata={"created_at": "2026-01-01", "step": 0},
                 config={"configurable": {"checkpoint_id": "cp-0"}},
@@ -1290,12 +1408,12 @@ class TestGetThreadHistory:
         data = resp.json()
         assert data[0]["next"] == ["node1"]
 
-    @patch("app.gateway.routers.threads.serialize_channel_values", side_effect=lambda x: x)
+    @patch("app.gateway.routers.threads.serialize_channel_values_for_api", side_effect=lambda x: x)
     @patch("app.gateway.routers.threads.coerce_iso", side_effect=lambda x: x)
     def test_history_strips_internal_keys_from_metadata(self, mock_coerce, mock_serialize):
         app, cp, ts = _make_app()
 
-        async def mock_alist(config, limit=10):
+        async def mock_alist(config, limit=10, before=None):
             yield _make_checkpoint_tuple(
                 metadata={
                     "created_at": "2026-01-01",
@@ -1320,12 +1438,12 @@ class TestGetThreadHistory:
         assert "created_at" not in meta
         assert "source" not in meta
 
-    @patch("app.gateway.routers.threads.serialize_channel_values", side_effect=lambda x: x)
+    @patch("app.gateway.routers.threads.serialize_channel_values_for_api", side_effect=lambda x: x)
     @patch("app.gateway.routers.threads.coerce_iso", side_effect=lambda x: x)
     def test_history_with_thread_data_channel(self, mock_coerce, mock_serialize):
         app, cp, ts = _make_app()
 
-        async def mock_alist(config, limit=10):
+        async def mock_alist(config, limit=10, before=None):
             yield _make_checkpoint_tuple(
                 channel_values={"thread_data": {"key": "val"}},
                 metadata={"created_at": "2026-01-01", "step": 0},
@@ -1339,12 +1457,12 @@ class TestGetThreadHistory:
         data = resp.json()
         assert data[0]["values"]["thread_data"] == {"key": "val"}
 
-    @patch("app.gateway.routers.threads.serialize_channel_values", side_effect=lambda x: x)
+    @patch("app.gateway.routers.threads.serialize_channel_values_for_api", side_effect=lambda x: x)
     @patch("app.gateway.routers.threads.coerce_iso", side_effect=lambda x: x)
     def test_history_no_title_no_thread_data_no_messages(self, mock_coerce, mock_serialize):
         app, cp, ts = _make_app()
 
-        async def mock_alist(config, limit=10):
+        async def mock_alist(config, limit=10, before=None):
             yield _make_checkpoint_tuple(
                 channel_values={},
                 metadata={"created_at": "2026-01-01", "step": 0},
@@ -1358,12 +1476,12 @@ class TestGetThreadHistory:
         data = resp.json()
         assert data[0]["values"] == {}
 
-    @patch("app.gateway.routers.threads.serialize_channel_values", side_effect=lambda x: x)
+    @patch("app.gateway.routers.threads.serialize_channel_values_for_api", side_effect=lambda x: x)
     @patch("app.gateway.routers.threads.coerce_iso", side_effect=lambda x: x)
     def test_history_empty_messages(self, mock_coerce, mock_serialize):
         app, cp, ts = _make_app()
 
-        async def mock_alist(config, limit=10):
+        async def mock_alist(config, limit=10, before=None):
             yield _make_checkpoint_tuple(
                 channel_values={"messages": []},
                 metadata={"created_at": "2026-01-01", "step": 0},
@@ -1375,13 +1493,13 @@ class TestGetThreadHistory:
         resp = client.post("/api/threads/t1/history", json={})
         assert resp.status_code == 200
 
-    @patch("app.gateway.routers.threads.serialize_channel_values", side_effect=lambda x: x)
+    @patch("app.gateway.routers.threads.serialize_channel_values_for_api", side_effect=lambda x: x)
     @patch("app.gateway.routers.threads.coerce_iso", side_effect=lambda x: x)
     def test_history_tasks_with_no_name(self, mock_coerce, mock_serialize):
         app, cp, ts = _make_app()
         task = MagicMock(spec=[])  # no name attribute
 
-        async def mock_alist(config, limit=10):
+        async def mock_alist(config, limit=10, before=None):
             yield _make_checkpoint_tuple(
                 metadata={"created_at": "2026-01-01", "step": 0},
                 config={"configurable": {"checkpoint_id": "cp-0"}},
@@ -1403,7 +1521,7 @@ class TestGetThreadHistory:
 class TestEdgeCases:
     """Edge cases and cross-cutting concerns."""
 
-    @patch("app.gateway.routers.threads.serialize_channel_values", side_effect=lambda x: x)
+    @patch("app.gateway.routers.threads.serialize_channel_values_for_api", side_effect=lambda x: x)
     @patch("app.gateway.routers.threads.coerce_iso", side_effect=lambda x: x)
     def test_get_thread_legacy_record_synthesis_with_none_metadata(self, mock_coerce, mock_serialize):
         """Legacy checkpoint with None metadata."""
@@ -1412,7 +1530,7 @@ class TestEdgeCases:
         cp_tuple = MagicMock()
         cp_tuple.checkpoint = {"channel_values": {}}
         cp_tuple.metadata = None
-        cp_tuple.config = {}
+        cp_tuple.config = {"configurable": {"checkpoint_id": "cp-legacy"}}
         cp_tuple.parent_config = None
         cp_tuple.tasks = []
         cp_tuple.pending_writes = []
@@ -1421,7 +1539,7 @@ class TestEdgeCases:
         resp = client.get("/api/threads/t1")
         assert resp.status_code == 200
 
-    @patch("app.gateway.routers.threads.serialize_channel_values", side_effect=lambda x: x)
+    @patch("app.gateway.routers.threads.serialize_channel_values_for_api", side_effect=lambda x: x)
     @patch("app.gateway.routers.threads.coerce_iso", side_effect=lambda x: x)
     def test_get_thread_legacy_record_synthesis_updated_at_from_created(self, mock_coerce, mock_serialize):
         """Legacy thread: updated_at falls back to created_at."""
@@ -1481,7 +1599,7 @@ class TestEdgeCases:
         put_config = cp.aput.call_args[0][0]
         assert put_config["configurable"]["checkpoint_ns"] == ""
 
-    @patch("app.gateway.routers.threads.serialize_channel_values", side_effect=lambda x: x)
+    @patch("app.gateway.routers.threads.serialize_channel_values_for_api", side_effect=lambda x: x)
     @patch("app.gateway.routers.threads.coerce_iso", side_effect=lambda x: x)
     def test_update_state_write_config_has_empty_ns(self, mock_coerce, mock_serialize):
         with patch("app.gateway.routers.threads.now_iso", return_value="2026-01-02T00:00:00+00:00"):
@@ -1499,12 +1617,12 @@ class TestEdgeCases:
             assert put_config["configurable"]["checkpoint_ns"] == ""
             assert "checkpoint_id" not in put_config["configurable"]
 
-    @patch("app.gateway.routers.threads.serialize_channel_values", side_effect=lambda x: x)
+    @patch("app.gateway.routers.threads.serialize_channel_values_for_api", side_effect=lambda x: x)
     @patch("app.gateway.routers.threads.coerce_iso", side_effect=lambda x: x)
     def test_history_read_config_without_checkpoint_id(self, mock_coerce, mock_serialize):
         app, cp, ts = _make_app()
 
-        async def mock_alist(config, limit=10):
+        async def mock_alist(config, limit=10, before=None):
             assert "checkpoint_id" not in config["configurable"]
             yield _make_checkpoint_tuple(
                 metadata={"created_at": "2026-01-01", "step": 0},
@@ -1516,13 +1634,18 @@ class TestEdgeCases:
         resp = client.post("/api/threads/t1/history", json={})
         assert resp.status_code == 200
 
-    @patch("app.gateway.routers.threads.serialize_channel_values", side_effect=lambda x: x)
+    @patch("app.gateway.routers.threads.serialize_channel_values_for_api", side_effect=lambda x: x)
     @patch("app.gateway.routers.threads.coerce_iso", side_effect=lambda x: x)
     def test_history_read_config_with_before(self, mock_coerce, mock_serialize):
         app, cp, ts = _make_app()
 
-        async def mock_alist(config, limit=10):
-            assert config["configurable"]["checkpoint_id"] == "cp-before"
+        cp.aget_tuple = AsyncMock(return_value=None)
+
+        async def mock_alist(config, limit=10, before=None):
+            # The anchor id moves into the exclusive `before` cursor; the walk
+            # config itself must not re-select the anchor checkpoint.
+            assert config["configurable"].get("checkpoint_id") is None
+            assert before["configurable"]["checkpoint_id"] == "cp-before"
             yield _make_checkpoint_tuple(
                 metadata={"created_at": "2026-01-01", "step": 0},
                 config={"configurable": {"checkpoint_id": "cp-0"}},
@@ -1546,7 +1669,7 @@ class TestEdgeCases:
         create_args = ts.create.call_args
         assert create_args[0][0] == "t1"
 
-    @patch("app.gateway.routers.threads.serialize_channel_values", side_effect=lambda x: x)
+    @patch("app.gateway.routers.threads.serialize_channel_values_for_api", side_effect=lambda x: x)
     @patch("app.gateway.routers.threads.coerce_iso", side_effect=lambda x: x)
     def test_update_state_merges_values_into_channel(self, mock_coerce, mock_serialize):
         with patch("app.gateway.routers.threads.now_iso", return_value="2026-01-02T00:00:00+00:00"):
@@ -1561,12 +1684,12 @@ class TestEdgeCases:
             client = TestClient(app)
             resp = client.post("/api/threads/t1/state", json={"values": {"new_key": "new_val"}})
             assert resp.status_code == 200
-            # Verify aput was called with merged channel values
-            put_checkpoint = cp.aput.call_args[0][1]
-            assert put_checkpoint["channel_values"]["old_key"] == "old_val"
-            assert put_checkpoint["channel_values"]["new_key"] == "new_val"
+            # The graph update carries the new writes; merging into the
+            # accumulated channel values is the compiled graph's job.
+            put_writes = cp.aput.call_args[0][2]
+            assert put_writes == {"new_key": "new_val"}
 
-    @patch("app.gateway.routers.threads.serialize_channel_values", side_effect=lambda x: x)
+    @patch("app.gateway.routers.threads.serialize_channel_values_for_api", side_effect=lambda x: x)
     @patch("app.gateway.routers.threads.coerce_iso", side_effect=lambda x: x)
     def test_get_state_checkpoint_config_has_no_configurable(self, mock_coerce, mock_serialize):
         app, cp, ts = _make_app()
@@ -1579,10 +1702,9 @@ class TestEdgeCases:
         cp.aget_tuple = AsyncMock(return_value=cp_tuple)
         client = TestClient(app)
         resp = client.get("/api/threads/t1/state")
-        assert resp.status_code == 200
-        assert resp.json()["checkpoint_id"] is None
+        assert resp.status_code == 404
 
-    @patch("app.gateway.routers.threads.serialize_channel_values", side_effect=lambda x: x)
+    @patch("app.gateway.routers.threads.serialize_channel_values_for_api", side_effect=lambda x: x)
     @patch("app.gateway.routers.threads.coerce_iso", side_effect=lambda x: x)
     def test_get_state_parent_config_has_no_configurable(self, mock_coerce, mock_serialize):
         app, cp, ts = _make_app()
@@ -1598,12 +1720,12 @@ class TestEdgeCases:
         assert resp.status_code == 200
         assert resp.json()["parent_checkpoint_id"] is None
 
-    @patch("app.gateway.routers.threads.serialize_channel_values", side_effect=lambda x: x)
+    @patch("app.gateway.routers.threads.serialize_channel_values_for_api", side_effect=lambda x: x)
     @patch("app.gateway.routers.threads.coerce_iso", side_effect=lambda x: x)
     def test_history_parent_config_has_no_configurable(self, mock_coerce, mock_serialize):
         app, cp, ts = _make_app()
 
-        async def mock_alist(config, limit=10):
+        async def mock_alist(config, limit=10, before=None):
             cp_tuple = _make_checkpoint_tuple(
                 metadata={"created_at": "2026-01-01", "step": 0},
                 config={"configurable": {"checkpoint_id": "cp-0"}},
@@ -1621,13 +1743,13 @@ class TestEdgeCases:
     def test_derive_thread_status_pending_write_exact_two_elements(self):
         """pw with exactly 2 elements: pw[1] check."""
         cp = _make_checkpoint_tuple(pending_writes=[["ns", "__error__"]])
-        assert _derive_thread_status(cp) == "error"
+        assert _derive_thread_status(cp, [["ns", "__error__"]]) == "error"
 
     def test_derive_thread_status_pending_write_not_error(self):
         cp = _make_checkpoint_tuple(pending_writes=[["ns", "result"]])
-        assert _derive_thread_status(cp) == "idle"
+        assert _derive_thread_status(cp, [["ns", "result"]]) == "idle"
 
-    @patch("app.gateway.routers.threads.serialize_channel_values", side_effect=lambda x: x)
+    @patch("app.gateway.routers.threads.serialize_channel_values_for_api", side_effect=lambda x: x)
     @patch("app.gateway.routers.threads.coerce_iso", side_effect=lambda x: x)
     def test_get_thread_checkpoint_none_no_record(self, mock_coerce, mock_serialize):
         """Both record and checkpoint are None -> 404."""
@@ -1638,24 +1760,20 @@ class TestEdgeCases:
         resp = client.get("/api/threads/t1")
         assert resp.status_code == 404
 
-    @patch("app.gateway.routers.threads.serialize_channel_values", side_effect=lambda x: x)
+    @patch("app.gateway.routers.threads.serialize_channel_values_for_api", side_effect=lambda x: x)
     @patch("app.gateway.routers.threads.coerce_iso", side_effect=lambda x: x)
     def test_get_thread_record_none_after_legacy_synthesis(self, mock_coerce, mock_serialize):
-        """record is None, checkpoint_tuple not None but ckpt_meta is None -> record stays None -> 404."""
+        """record None + checkpoint without an id cannot synthesize identity -> 404."""
         app, cp, ts = _make_app()
         ts.get = AsyncMock(return_value=None)
         cp_tuple = MagicMock()
         cp_tuple.checkpoint = {"channel_values": {}}
-        cp_tuple.metadata = None  # This makes ckpt_meta = None
+        cp_tuple.metadata = None
         cp_tuple.config = {}
         cp_tuple.parent_config = None
         cp_tuple.tasks = []
         cp_tuple.pending_writes = []
         cp.aget_tuple = AsyncMock(return_value=cp_tuple)
         client = TestClient(app)
-        # record = None, checkpoint_tuple not None -> enters the "if record is None and checkpoint_tuple is not None" branch
-        # ckpt_meta = getattr(...) or {} -> None or {} = {}
-        # record is synthesized from empty ckpt_meta
         resp = client.get("/api/threads/t1")
-        # This should actually succeed because ckpt_meta becomes {} and record is synthesized
-        assert resp.status_code == 200
+        assert resp.status_code == 404

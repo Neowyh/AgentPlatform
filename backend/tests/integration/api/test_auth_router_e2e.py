@@ -298,13 +298,12 @@ class TestGetMe:
     """Tests for GET /api/v1/auth/me."""
 
     def test_get_me_authenticated(self):
-        """Get me returns current user info."""
+        """Get me returns the platform role resolved from users_ext."""
         user = _fake_user(email="me@example.com", system_role="user")
 
-        with patch(
-            "app.gateway.routers.auth.get_current_user_from_request",
-            new_callable=AsyncMock,
-            return_value=user,
+        with (
+            patch("app.gateway.routers.auth.get_current_user_from_request", new_callable=AsyncMock, return_value=user),
+            patch("app.gateway.routers.auth._platform_role_for_user", new_callable=AsyncMock, return_value="user"),
         ):
             app = _make_app()
             with TestClient(app) as client:
@@ -383,18 +382,34 @@ class TestInitializeAdmin:
         assert data["system_role"] == "super_admin"
 
     def test_initialize_already_done(self):
-        """Initialize admin fails when already initialized."""
-        with (
-            patch("app.gateway.routers.auth._count_active_super_admin_users", new_callable=AsyncMock, return_value=1),
-        ):
-            app = _make_app()
-            with TestClient(app) as client:
-                resp = client.post(
-                    "/api/v1/auth/initialize",
-                    json={"email": "admin@example.com", "password": "AdminPass123!"},
-                )
+        """Initialize admin fails when a real super admin profile exists."""
+        asyncio.run(self._seed_super_admin())
+        app = _make_app()
+        with TestClient(app) as client:
+            resp = client.post(
+                "/api/v1/auth/initialize",
+                json={"email": "admin@example.com", "password": "AdminPass123!"},
+            )
 
         assert resp.status_code == 409
+        assert resp.json()["detail"]["code"] == "system_already_initialized"
+
+    @staticmethod
+    async def _seed_super_admin():
+        from app.agentplatform.rbac_models import UserRole
+        from app.gateway.rbac_users import create_auth_user_with_rbac
+        from deerflow.persistence.engine import get_session_factory
+
+        sf = get_session_factory()
+        async with sf() as session:
+            await create_auth_user_with_rbac(
+                session,
+                email="first-admin@example.com",
+                password="FirstAdmin123!",
+                username="first-admin@example.com",
+                role=UserRole.SUPER_ADMIN,
+                needs_setup=False,
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -403,18 +418,16 @@ class TestInitializeAdmin:
 
 
 class TestOAuth:
-    """Tests for OAuth endpoints (currently placeholders)."""
+    """OAuth endpoints are OIDC-backed; disabled SSO is a 404, not a stub."""
 
     def test_oauth_login_placeholder(self):
-        """OAuth login endpoint returns 501 (not implemented)."""
         app = _make_app()
         with TestClient(app) as client:
             resp = client.get("/api/v1/auth/oauth/google")
-        assert resp.status_code == 501
+        assert resp.status_code == 404
 
     def test_oauth_callback_placeholder(self):
-        """OAuth callback endpoint returns 501 (not implemented)."""
         app = _make_app()
         with TestClient(app) as client:
             resp = client.get("/api/v1/auth/callback/google", params={"code": "x", "state": "y"})
-        assert resp.status_code == 501
+        assert resp.status_code == 404

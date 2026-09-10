@@ -136,6 +136,10 @@ class _ScriptedAgent:
             config=getattr(checkpoint_tuple, "config", None) or config,
             values=dict(checkpoint.get("channel_values", {}) or {}),
             metadata=dict(getattr(checkpoint_tuple, "metadata", {}) or {}),
+            parent_config=getattr(checkpoint_tuple, "parent_config", None),
+            created_at=checkpoint.get("ts") or getattr(checkpoint_tuple, "metadata", {}).get("created_at", ""),
+            tasks=(),
+            next=(),
         )
 
 
@@ -226,9 +230,9 @@ def _reset_process_singletons(monkeypatch: pytest.MonkeyPatch) -> None:
         (engine_module, "_session_factory", None),
         (deps_module, "_cached_local_provider", None),
         (deps_module, "_cached_repo", None),
-        # Per-IP registration limiter is process-wide; without a reset the
-        # 4th registration in the file would trip the production 3/hour cap.
-        (auth_router_module, "_registration_attempts", {}),
+        # Per-IP login lockout table is process-wide; without a reset one
+        # file's failed logins would lock the next file out with 429s.
+        (auth_router_module, "_login_attempts", {}),
     ):
         monkeypatch.setattr(module, attr, value, raising=False)
 

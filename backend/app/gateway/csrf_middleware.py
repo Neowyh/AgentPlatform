@@ -14,6 +14,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp
 
+from app.gateway.auth.session_cookie_state import SESSION_COOKIE_MAX_AGE_STATE_ATTR
+
 CSRF_COOKIE_NAME = "csrf_token"
 CSRF_HEADER_NAME = "X-CSRF-Token"
 CSRF_TOKEN_LENGTH = 64  # bytes
@@ -220,12 +222,20 @@ class CSRFMiddleware(BaseHTTPMiddleware):
             # Generate a new CSRF token for the session
             csrf_token = generate_csrf_token()
             is_https = is_secure_request(request)
+            # A successful auth handler has already resolved remember_me and
+            # stamped the exact access-token lifetime on request.state. Keep
+            # the double-submit cookie in lockstep; unauthenticated failures
+            # retain the short auth-cookie fallback policy.
+            max_age = getattr(request.state, SESSION_COOKIE_MAX_AGE_STATE_ATTR, None)
+            if not hasattr(request.state, SESSION_COOKIE_MAX_AGE_STATE_ATTR):
+                _, max_age = auth_csrf_cookie_settings(request)
             response.set_cookie(
                 key=CSRF_COOKIE_NAME,
                 value=csrf_token,
                 httponly=False,  # Must be JS-readable for Double Submit Cookie pattern
                 secure=is_https,
                 samesite="strict",
+                max_age=max_age,
             )
 
         return response

@@ -60,9 +60,31 @@ def _make_outbound(**overrides) -> OutboundMessage:
     return OutboundMessage(**defaults)
 
 
+def _make_bus() -> AsyncMock:
+    """An async-safe bus double for lifecycle paths.
+
+    ``get_inbound`` blocks forever so workers idle like a quiet queue, and the
+    queue-size attribute is a real number for the start log line.
+    """
+
+    async def _hang() -> InboundMessage:
+        await asyncio.sleep(3600)
+
+    bus = AsyncMock()
+    bus.inbound_queue_maxsize = 16
+    bus.inbound_queue = MagicMock()
+    bus.inbound_queue.empty.return_value = True
+    # Sync surface stays sync so workers see plain booleans/ints.
+    bus.open_inbound = MagicMock()
+    bus.close_inbound = MagicMock(return_value=0)
+    bus.discard_pending_inbound = MagicMock(return_value=0)
+    bus.get_inbound.side_effect = _hang
+    return bus
+
+
 def _make_manager(**overrides) -> ChannelManager:
     defaults = {
-        "bus": MagicMock(),
+        "bus": _make_bus(),
         "store": MagicMock(),
     }
     defaults.update(overrides)
@@ -303,13 +325,14 @@ class TestMergeStreamText:
         assert _merge_stream_text("", "chunk") == "chunk"
 
     def test_identical(self):
-        assert _merge_stream_text("text", "text") == "text"
+        # Channels feed deltas: equal content is a fresh token (CJK reduplication).
+        assert _merge_stream_text("text", "text") == "texttext"
 
     def test_cumulative(self):
         assert _merge_stream_text("hel", "hello") == "hello"
 
     def test_duplicate_suffix(self):
-        assert _merge_stream_text("hello", "lo") == "hello"
+        assert _merge_stream_text("hello", "lo") == "hellolo"
 
     def test_append(self):
         assert _merge_stream_text("hello", " world") == "hello world"
@@ -341,10 +364,11 @@ class TestExtractStreamMessageId:
 
 class TestAccumulateStreamText:
     def test_string_payload(self):
+        # A bare str carries no message type; it is unattributable and dropped.
         buffers = {}
         text, mid = _accumulate_stream_text(buffers, None, "hello")
-        assert text == "hello"
-        assert mid == "__default__"
+        assert text is None
+        assert mid is None
 
     def test_dict_payload(self):
         buffers = {}
@@ -545,30 +569,33 @@ class TestChannelManagerInit:
 
 class TestChannelManagerLifecycle:
     @pytest.mark.asyncio
-    async def test_start(self):
+    async def test_start_spawns_worker_pool(self):
         mgr = _make_manager()
         await mgr.start()
         assert mgr._running is True
-        assert mgr._semaphore is not None
-        assert mgr._task is not None
+        assert mgr._worker_tasks
+        assert all(not task.done() for task in mgr._worker_tasks)
+        mgr.bus.open_inbound.assert_called_once()
         await mgr.stop()
 
     @pytest.mark.asyncio
     async def test_start_already_running(self):
         mgr = _make_manager()
         await mgr.start()
-        task1 = mgr._task
+        tasks1 = set(mgr._worker_tasks)
         await mgr.start()
-        assert mgr._task is task1
+        assert mgr._worker_tasks == tasks1
         await mgr.stop()
 
     @pytest.mark.asyncio
-    async def test_stop(self):
+    async def test_stop_drains_and_joins_workers(self):
         mgr = _make_manager()
         await mgr.start()
+        mgr.bus.join_inbound.assert_not_called()
         await mgr.stop()
         assert mgr._running is False
-        assert mgr._task is None
+        assert not mgr._worker_tasks
+        mgr.bus.join_inbound.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -684,7 +711,7 @@ class TestHandleMessage:
 
         with patch.object(mgr, "_handle_chat", new_callable=AsyncMock) as mock_chat:
             await mgr._handle_message(msg)
-            mock_chat.assert_called_once_with(msg)
+            mock_chat.assert_called_once_with(msg, bound_identity_checked=True)
 
     @pytest.mark.asyncio
     async def test_command_message(self):
@@ -1055,7 +1082,7 @@ class TestHandleStreamingChat:
 
         with patch("app.channels.service.get_channel_service", return_value=None):
             with patch.object(mgr.bus, "publish_outbound", new_callable=AsyncMock) as mock_pub:
-                await mgr._handle_streaming_chat(mock_client, msg, "thread_1", "lead_agent", {}, {})
+                await mgr._handle_streaming_chat(mock_client, msg, "thread_1", "lead_agent", {}, {}, {"role": "user", "content": "hello"})
                 # Should have published at least the final message
                 assert mock_pub.call_count >= 1
                 last_call = mock_pub.call_args_list[-1][0][0]
@@ -1077,7 +1104,7 @@ class TestHandleStreamingChat:
 
         with patch("app.channels.service.get_channel_service", return_value=None):
             with patch.object(mgr.bus, "publish_outbound", new_callable=AsyncMock) as mock_pub:
-                await mgr._handle_streaming_chat(mock_client, msg, "thread_1", "lead_agent", {}, {})
+                await mgr._handle_streaming_chat(mock_client, msg, "thread_1", "lead_agent", {}, {}, {"role": "user", "content": "hello"})
                 assert mock_pub.call_count >= 1
 
 

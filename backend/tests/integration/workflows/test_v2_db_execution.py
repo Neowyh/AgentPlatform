@@ -57,7 +57,6 @@ from app.agentplatform.resources.service import (
     ResourceService,
 )
 from app.agentplatform.workflows.v2.store import WorkflowV2Store
-from deerflow.persistence.migrations._chain_meta import MERGE_REVISION
 from deerflow.persistence.models.workflow_v2 import WorkflowLeaseAuditRow
 from deerflow.persistence.run import RunRepository
 from tests._migration_test_support import unified_alembic_config
@@ -242,7 +241,9 @@ class TestWorkflowV2SixTableFamily:
 
         async with engine.begin() as conn:
             rows = (await conn.execute(text("SELECT version_num FROM alembic_version"))).fetchall()
-            assert MERGE_REVISION in {r[0] for r in rows}
+            # The unified chain must report exactly one head; the merge
+            # revision stays an ancestor of whatever head is current.
+            assert len({r[0] for r in rows}) == 1
             for table in ("workflow_definition_versions", "workflow_v2_runs", "workflow_tasks", "workflow_lease_audit", "workflow_v2_events", "workflow_commands", "runs"):
                 exists = (
                     await conn.execute(
@@ -305,7 +306,7 @@ class TestWorkflowV2SixTableFamily:
 
         async with engine.begin() as conn:
             head_rows = (await conn.execute(text("SELECT version_num FROM alembic_version"))).fetchall()
-            assert {r[0] for r in head_rows} == {MERGE_REVISION}
+            assert len({r[0] for r in head_rows}) == 1
 
         store = WorkflowV2Store(async_sessionmaker(engine, expire_on_commit=False))
         run = await store.get_run("t02-legacy-run")

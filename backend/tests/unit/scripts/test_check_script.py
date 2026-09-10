@@ -13,6 +13,14 @@ assert spec.loader is not None
 check_script = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(check_script)
 
+# pnpm command resolution lives in scripts/pnpm.py (imported by check.py).
+PNPM_SCRIPT_PATH = REPO_ROOT / "scripts" / "pnpm.py"
+pnpm_spec = importlib.util.spec_from_file_location("ideer_pnpm_script", PNPM_SCRIPT_PATH)
+assert pnpm_spec is not None
+assert pnpm_spec.loader is not None
+pnpm_script = importlib.util.module_from_spec(pnpm_spec)
+pnpm_spec.loader.exec_module(pnpm_script)
+
 
 def test_find_pnpm_command_prefers_resolved_executable(monkeypatch):
     def fake_which(name: str) -> str | None:
@@ -22,9 +30,9 @@ def test_find_pnpm_command_prefers_resolved_executable(monkeypatch):
             return r"C:\Users\tester\AppData\Roaming\npm\pnpm.cmd"
         return None
 
-    monkeypatch.setattr(check_script.shutil, "which", fake_which)
+    monkeypatch.setattr(pnpm_script.shutil, "which", fake_which)
 
-    assert check_script.find_pnpm_command() == [r"C:\Users\tester\AppData\Roaming\npm\pnpm.CMD"]
+    assert pnpm_script.find_pnpm_command() == [r"C:\Users\tester\AppData\Roaming\npm\pnpm.CMD"]
 
 
 def test_find_pnpm_command_falls_back_to_corepack(monkeypatch):
@@ -33,9 +41,9 @@ def test_find_pnpm_command_falls_back_to_corepack(monkeypatch):
             return r"C:\Program Files\nodejs\corepack.exe"
         return None
 
-    monkeypatch.setattr(check_script.shutil, "which", fake_which)
+    monkeypatch.setattr(pnpm_script.shutil, "which", fake_which)
 
-    assert check_script.find_pnpm_command() == [
+    assert pnpm_script.find_pnpm_command() == [
         r"C:\Program Files\nodejs\corepack.exe",
         "pnpm",
     ]
@@ -49,9 +57,9 @@ def test_find_pnpm_command_falls_back_to_corepack_cmd(monkeypatch):
             return r"C:\Program Files\nodejs\corepack.cmd"
         return None
 
-    monkeypatch.setattr(check_script.shutil, "which", fake_which)
+    monkeypatch.setattr(pnpm_script.shutil, "which", fake_which)
 
-    assert check_script.find_pnpm_command() == [
+    assert pnpm_script.find_pnpm_command() == [
         r"C:\Program Files\nodejs\corepack.cmd",
         "pnpm",
     ]

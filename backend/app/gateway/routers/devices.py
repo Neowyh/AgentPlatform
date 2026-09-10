@@ -78,7 +78,9 @@ class TaskResponse(BaseModel):
     tool_call_id: str
     expires_at: datetime
     receipt: dict | None = None
+    result: object = None
     error: str | None = None
+    error_code: str | None = None
 
     @classmethod
     def from_record(cls, record) -> TaskResponse:
@@ -91,7 +93,9 @@ class TaskResponse(BaseModel):
             tool_call_id=record.tool_call_id,
             expires_at=record.expires_at,
             receipt=record.receipt,
+            result=record.result,
             error=record.error,
+            error_code=record.error_code,
         )
 
 
@@ -273,7 +277,7 @@ async def device_websocket(websocket: WebSocket) -> None:
         while True:
             message = TaskEnvelope.model_validate_json(await websocket.receive_text())
             await broker.receive(connection, message)
-            if message.type == MessageType.HEARTBEAT:
+            if message.type in {MessageType.HEARTBEAT, MessageType.CAPABILITY_UPDATE}:
                 sf = get_session_factory()
                 if sf is None:
                     raise ProtocolError("PERSISTENCE_UNAVAILABLE", "device persistence is unavailable")

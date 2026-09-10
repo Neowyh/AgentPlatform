@@ -37,7 +37,9 @@ def _url(tmp_path: Path) -> str:
 
 async def _alembic_version(engine) -> str | None:
     async with engine.connect() as conn:
-        row = await conn.execute(sa.text("SELECT version_num FROM alembic_version"))
+        from deerflow.persistence.bootstrap import _VERSION_TABLE
+
+        row = await conn.execute(sa.text(f"SELECT version_num FROM {_VERSION_TABLE}"))
         return row.scalar()
 
 

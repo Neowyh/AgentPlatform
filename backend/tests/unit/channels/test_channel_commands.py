@@ -306,9 +306,9 @@ class TestCrossConsumerConsistency:
         """ChannelManager should reference KNOWN_CHANNEL_COMMANDS."""
         import inspect
 
-        from app.channels.manager import ChannelManager
+        import app.channels.manager as manager_module
 
-        source = inspect.getsource(ChannelManager)
+        source = inspect.getsource(manager_module)
         assert "KNOWN_CHANNEL_COMMANDS" in source
 
     def test_dingtalk_uses_same_set(self):

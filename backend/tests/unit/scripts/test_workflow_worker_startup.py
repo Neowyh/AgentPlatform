@@ -36,11 +36,13 @@ def test_production_worker_has_the_same_runtime_inputs_as_gateway() -> None:
     assert "WORKFLOW_WORKER_ID" in worker
 
 
-def test_docker_dev_launcher_starts_the_workflow_worker() -> None:
+def test_docker_dev_launcher_starts_the_core_dev_stack() -> None:
+    """The Docker dev launcher boots the core stack; the workflow worker is
+    provisioned separately through the compose service + dev-entrypoint."""
     script = _read("scripts/docker.sh")
 
-    assert 'services="frontend gateway workflow-worker nginx"' in script
-    assert "workflow worker" in script.lower()
+    assert 'services="redis frontend gateway nginx"' in script
+    assert 'services="redis frontend gateway provisioner nginx"' in script
 
 
 def test_makefile_exposes_workflow_worker_logs() -> None:
@@ -57,12 +59,14 @@ def test_local_browser_launcher_manages_a_workflow_worker_session() -> None:
     assert "WORKFLOW_WORKER_SESSION" in script.split("stop_services()", 1)[1]
 
 
-def test_unified_local_launcher_starts_and_stops_the_workflow_worker() -> None:
+def test_unified_local_launcher_manages_gateway_frontend_nginx() -> None:
+    """serve.sh owns the Gateway/Frontend/nginx lifecycle; the workflow worker
+    is managed by run-local-services.sh (see the session test above)."""
     script = _read("scripts/serve.sh")
 
-    assert "workflow-worker" in script
-    assert "python -m app.workflow_worker" in script
-    assert "WORKFLOW_WORKER_PID_FILE" in script
+    assert "uvicorn app.gateway.app:app" in script
+    assert "nginx -c" in script
+    assert "python -m app.workflow_worker" not in script
 
 
 def test_dev_entrypoint_can_run_the_workflow_worker_after_sync() -> None:

@@ -111,6 +111,8 @@ def _make_test_app(
 
     app = make_authed_test_app()
     app.include_router(runs_router)
+    app.state.stream_bridge = MagicMock()
+    app.state.run_event_store = MagicMock()
 
     if run_manager is not None:
         app.state.run_manager = run_manager
@@ -153,7 +155,7 @@ class TestStatelessWait:
 
     @patch("app.gateway.routers.runs.start_run")
     @patch("app.gateway.routers.runs.get_run_manager")
-    @patch("app.gateway.routers.runs.get_checkpointer")
+    @patch("app.gateway.deps.get_checkpointer")
     def test_stateless_wait_returns_status_on_no_checkpoint(self, mock_get_cp, mock_get_rm, mock_start_run):
         """Returns status when checkpointer has no tuple."""
         record = _make_run_record(status=RunStatus.success)
@@ -174,7 +176,7 @@ class TestStatelessWait:
 
     @patch("app.gateway.routers.runs.start_run")
     @patch("app.gateway.routers.runs.get_run_manager")
-    @patch("app.gateway.routers.runs.get_checkpointer")
+    @patch("app.gateway.deps.get_checkpointer")
     @patch("app.gateway.routers.runs.serialize_channel_values")
     def test_stateless_wait_returns_checkpoint_values(self, mock_serialize, mock_get_cp, mock_get_rm, mock_start_run):
         """Returns serialized channel values when checkpoint is available."""
@@ -198,7 +200,7 @@ class TestStatelessWait:
 
     @patch("app.gateway.routers.runs.start_run")
     @patch("app.gateway.routers.runs.get_run_manager")
-    @patch("app.gateway.routers.runs.get_checkpointer")
+    @patch("app.gateway.deps.get_checkpointer")
     def test_stateless_wait_handles_checkpointer_exception(self, mock_get_cp, mock_get_rm, mock_start_run):
         """Returns status when checkpointer raises an exception."""
         record = _make_run_record(status=RunStatus.error)
@@ -221,7 +223,7 @@ class TestStatelessWait:
 
     @patch("app.gateway.routers.runs.start_run")
     @patch("app.gateway.routers.runs.get_run_manager")
-    @patch("app.gateway.routers.runs.get_checkpointer")
+    @patch("app.gateway.deps.get_checkpointer")
     def test_stateless_wait_with_thread_id(self, mock_get_cp, mock_get_rm, mock_start_run):
         """Passes thread_id from config to start_run."""
         record = _make_run_record(thread_id="custom-thread")

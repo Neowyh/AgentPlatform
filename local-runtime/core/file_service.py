@@ -31,6 +31,8 @@ class LocalFileService:
     def execute(
         self, capability: str, payload: dict[str, Any], *, consent: bool = False
     ) -> FileTaskResult:
+        if capability not in {"local.files.list", "local.files.read", "local.files.write"}:
+            raise ValueError("unsupported local file capability")
         digest = request_hash(payload)
         decision = self.policy.authorize(
             capability,
@@ -46,4 +48,3 @@ class LocalFileService:
         if capability == "local.files.write":
             self.files.write(str(payload["path"]), str(payload["content"]))
             return FileTaskResult(decision, {"written": True})
-        raise ValueError("unsupported local file capability")

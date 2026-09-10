@@ -9,9 +9,7 @@ from typing import Any
 
 
 def request_hash(payload: object) -> str:
-    encoded = json.dumps(
-        payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
-    ).encode()
+    encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
     return hashlib.sha256(encoded).hexdigest()
 
 
@@ -37,9 +35,7 @@ class ConsentStore:
         decided_at: str | None = None,
     ) -> None:
         self._approved.add((capability, digest))
-        self.audit.append(
-            self._audit_entry(capability, digest, "approved", actor_id, decided_at)
-        )
+        self.audit.append(self._audit_entry(capability, digest, "approved", actor_id, decided_at))
 
     def deny(
         self,
@@ -50,9 +46,7 @@ class ConsentStore:
         decided_at: str | None = None,
     ) -> None:
         self._approved.discard((capability, digest))
-        self.audit.append(
-            self._audit_entry(capability, digest, "denied", actor_id, decided_at)
-        )
+        self.audit.append(self._audit_entry(capability, digest, "denied", actor_id, decided_at))
 
     @staticmethod
     def _audit_entry(
@@ -91,9 +85,7 @@ class ConsentExchange:
     def __init__(self, store: ConsentStore) -> None:
         self.store = store
 
-    def create_request(
-        self, capability: str, payload: dict[str, Any]
-    ) -> ConsentRequest:
+    def create_request(self, capability: str, payload: dict[str, Any]) -> ConsentRequest:
         return ConsentRequest(capability, dict(payload), request_hash(payload))
 
     def decide(

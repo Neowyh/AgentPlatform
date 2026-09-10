@@ -6,16 +6,27 @@ issues when unit-testing lightweight config/registry code in isolation.
 
 from __future__ import annotations
 
+import asyncio
 import importlib.util
 import os
 import sys
 import tempfile
+from functools import wraps
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
+
+try:
+    import uvloop
+except ImportError:  # pragma: no cover - uvicorn[standard] provides uvloop here
+    pass
+else:
+    # The restricted runner cannot wake a selector loop from another thread.
+    # Install the compatible policy before tests create their own event loops.
+    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
 _TEST_RUNTIME = tempfile.TemporaryDirectory(prefix="ideer-test-runtime-")
 _TEST_RUNTIME_PATH = Path(_TEST_RUNTIME.name)
@@ -203,25 +214,31 @@ def _isolate_trace_context():
 
 
 @pytest.fixture(autouse=True)
-def _reset_registration_rate_limit():
-    """Reset the per-IP registration limiter around every test.
+def _reset_auth_throttle_state():
+    """Reset process-wide auth throttle state around every test.
 
-    ``app.gateway.routers.auth._registration_attempts`` is a process-wide
-    module global, while the production cap is 3 registrations per IP per
-    hour. In a single pytest process the accumulator therefore leaks across
-    test files and every integration suite that exercises the register
-    endpoint starts tripping synthetic 429s after the first three attempts.
-    Clearing it per test keeps the production limit itself under test.
+    The login lockout table (``_login_attempts``) and the per-IP
+    ``/setup-status`` result cache are module globals. Without a reset the
+    lockout accumulator leaks across test files (synthetic 429s once an IP
+    crosses ``max_login_attempts``) and ``setup-status`` serves a stale
+    needs_setup answer recorded by an earlier test.
     """
     try:
-        from app.gateway.routers.auth import _registration_attempts
-    except ImportError:
+        from app.gateway import routers
+
+        auth_router = routers.auth
+    except (ImportError, AttributeError):
         yield
         return
 
-    _registration_attempts.clear()
+    def _clear():
+        getattr(auth_router, "_login_attempts", None) and auth_router._login_attempts.clear()
+        getattr(auth_router, "_SETUP_STATUS_CACHE", None) and auth_router._SETUP_STATUS_CACHE.clear()
+        getattr(auth_router, "_SETUP_STATUS_INFLIGHT", None) and auth_router._SETUP_STATUS_INFLIGHT.clear()
+
+    _clear()
     yield
-    _registration_attempts.clear()
+    _clear()
 
 
 @pytest.fixture(autouse=True)
@@ -251,6 +268,48 @@ def _auto_user_context(request):
         yield
     finally:
         reset_current_user(token)
+
+
+@pytest.fixture(autouse=True)
+def _use_uvloop_for_testclient(monkeypatch):
+    """Use uvloop for TestClient's portal in the restricted test runner.
+
+    The runner's default asyncio selector does not wake a loop from another
+    thread, which leaves Starlette's synchronous TestClient waiting forever.
+    uvloop provides the same asyncio API while preserving the cross-thread
+    wakeup that TestClient requires. This is test-only; application runtime
+    event-loop configuration is unchanged.
+    """
+    from starlette.testclient import TestClient
+
+    original_init = TestClient.__init__
+
+    @wraps(original_init)
+    def init_with_uvloop(self, *args, **kwargs):
+        kwargs.setdefault("backend_options", {"use_uvloop": True})
+        return original_init(self, *args, **kwargs)
+
+    monkeypatch.setattr(TestClient, "__init__", init_with_uvloop)
+    yield
+
+
+@pytest.fixture(scope="session")
+def event_loop_policy():
+    """Use uvloop for pytest-asyncio's loop in the restricted test runner.
+
+    Async database drivers such as aiosqlite also notify the event loop from
+    worker threads. The runner's default selector loop cannot receive those
+    notifications, while uvloop supports the required cross-thread wakeup.
+    """
+    import uvloop
+
+    return uvloop.EventLoopPolicy()
+
+
+@pytest.fixture(scope="module")
+def anyio_backend():
+    """Run AnyIO tests on uvloop in the restricted test runner."""
+    return ("asyncio", {"use_uvloop": True})
 
 
 # ── Gateway-level integration fixtures ──────────────────────────────────────
