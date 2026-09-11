@@ -14,6 +14,11 @@ const mocks = vi.hoisted(() => ({
   mutateAsync: vi.fn().mockResolvedValue({}),
 }));
 
+const resourceMocks = vi.hoisted(() => ({
+  listKnowledgeBases: vi.fn().mockResolvedValue([]),
+  getResourceDependencies: vi.fn().mockResolvedValue([]),
+}));
+
 vi.mock("next/navigation", () => ({
   useParams: () => ({ agent_name: "test-agent" }),
   useRouter: () => ({ push: mocks.push }),
@@ -105,6 +110,8 @@ vi.mock("@/core/skills/hooks", () => ({
     error: null,
   })),
 }));
+
+vi.mock("@/core/resources/api", () => resourceMocks);
 
 vi.mock("@/components/workspace/workspace-breadcrumb", () => ({
   WorkspaceBreadcrumb: () => <div data-testid="breadcrumb" />,
@@ -220,6 +227,8 @@ beforeEach(() => {
   mocks.push.mockClear();
   mocks.toastSuccess.mockClear();
   mocks.toastError.mockClear();
+  resourceMocks.listKnowledgeBases.mockReset().mockResolvedValue([]);
+  resourceMocks.getResourceDependencies.mockReset().mockResolvedValue([]);
 
   // Reset agent state to defaults
   agentState.agent = { ...DEFAULT_AGENT };
@@ -822,6 +831,34 @@ describe("AgentEditPage", () => {
           "/workspace/capabilities/experts/test-agent",
         );
       });
+    });
+  });
+
+  test("saves a selected logical knowledge base dependency", async () => {
+    agentState.agent = { ...DEFAULT_AGENT, resource_id: "agent-1" };
+    resourceMocks.listKnowledgeBases.mockResolvedValue([
+      { id: "kb-1", slug: "docs", display_name: "Docs" },
+    ]);
+
+    const user = userEvent.setup();
+    render(<AgentEditPage />);
+    const checkbox = await screen.findByRole("checkbox", { name: /Docs/ });
+    await user.click(checkbox);
+    await user.click(screen.getByText("Save Changes"));
+
+    await waitFor(() => {
+      expect(mocks.mutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          request: expect.objectContaining({
+            knowledge_dependencies: [
+              expect.objectContaining({
+                resource_id: "kb-1",
+                dependency_mode: "live",
+              }),
+            ],
+          }),
+        }),
+      );
     });
   });
 

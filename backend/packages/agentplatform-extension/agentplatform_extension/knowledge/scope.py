@@ -39,3 +39,8 @@ class KnowledgeScope:
 
     def as_mapping(self) -> dict[str, object]:
         return {"logical_selectors": sorted(self.logical_selectors), "dataset_allowlist": sorted(self.dataset_allowlist), "bindings": dict(self.bindings)}
+
+    def model_mapping(self) -> dict[str, object]:
+        """Return the selector-only projection safe to expose to the model."""
+
+        return {"logical_selectors": sorted(self.logical_selectors)}

@@ -15,6 +15,21 @@ from fastapi import HTTPException, Request
 from app.gateway.authz import _cached_rbac_identity
 
 
+def _scope_restriction(context: dict[str, Any], key: str) -> set[str] | None:
+    """Read an optional logical/provider KB restriction from run context."""
+
+    value = context.get(key)
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return {value}
+    if isinstance(value, dict):
+        return {item for item in value if isinstance(item, str) and item.strip()}
+    if isinstance(value, (list, tuple, set, frozenset)):
+        return {item for item in value if isinstance(item, str) and item.strip()}
+    return set()
+
+
 class SelectedSkillOutsideClosure(Exception):
     """Diagnostic-only conflict for an Expert/Skill mismatch."""
 
@@ -57,6 +72,7 @@ async def prepare_canonical_agent_run(
         VisibilityClosureError,
     )
     from app.agentplatform.runtime_adapter import build_canonical_agent_factory
+    from deerflow.config.app_config import get_app_config
     from deerflow.config.paths import get_paths
     from deerflow.persistence.engine import get_session_factory
 
@@ -142,7 +158,26 @@ async def prepare_canonical_agent_run(
             if knowledge_resources:
                 rows = await session.execute(select(KnowledgeBase).where(KnowledgeBase.resource_id.in_(knowledge_resources)))
                 bindings = {knowledge_resources[row.resource_id].slug: row.provider_dataset_id for row in rows.scalars()}
-            knowledge_scope = calculate_effective_knowledge_scope(bindings)
+            run_context = diagnostic_context or {}
+            tool_config = None
+            try:
+                tool_config = get_app_config().get_tool_config("knowledge_search")
+            except Exception:
+                # A deployment policy that cannot be read must deny retrieval;
+                # treating it as absent would turn a configuration failure into
+                # an authorization bypass.
+                tool_config = None
+                deployment_allowed = set()
+            else:
+                deployment_allowed = getattr(tool_config, "datasets", None)
+            caller_allowed = {item.resource.slug for item in knowledge_resources.values()}
+            knowledge_scope = calculate_effective_knowledge_scope(
+                bindings,
+                caller_allowed=caller_allowed,
+                workflow_allowed=_scope_restriction(run_context, "knowledge_scope"),
+                runtime_allowed=_scope_restriction(run_context, "runtime_knowledge_scope"),
+                deployment_allowed=deployment_allowed,
+            )
             await asyncio.to_thread(
                 storage.create_run_skill_view,
                 run_id,

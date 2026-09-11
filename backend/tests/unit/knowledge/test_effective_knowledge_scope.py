@@ -66,3 +66,13 @@ async def test_adapted_tool_passes_only_resolved_dataset_to_provider() -> None:
     assert calls == [{"query": "find", "dataset_ids": ["opaque"]}]
     with pytest.raises(KnowledgeAccessDenied):
         await adapted.ainvoke({"query": "find", "knowledge_base": "opaque"})
+
+
+def test_adapted_tool_exposes_logical_selector_schema_without_provider_id() -> None:
+    tool = type("Tool", (), {"name": "knowledge_search", "coroutine": lambda *_args, **_kwargs: None})()
+    adapted = adapt_knowledge_tools([tool], KnowledgeScope.from_bindings({"docs": "opaque"}))[0]
+
+    schema = adapted.args_schema.model_json_schema()
+    assert set(schema["properties"]) == {"query", "knowledge_base"}
+    assert "dataset_id" not in schema["properties"]
+    assert schema["required"] == ["query", "knowledge_base"]

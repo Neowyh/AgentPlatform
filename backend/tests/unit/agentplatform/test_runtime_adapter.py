@@ -136,3 +136,26 @@ def test_canonical_factory_scopes_tools_at_the_upstream_import_seam(monkeypatch)
 
     assert observed and observed[0][0].name == "knowledge_search"
     assert observed[0][0].__class__.__name__ == "_ScopedTool"
+
+
+def test_canonical_factory_does_not_expose_provider_dataset_ids_to_model(monkeypatch) -> None:
+    captured: dict = {}
+
+    def fake_assemble(config, *, app_config=None, frozen=None):
+        captured["frozen"] = frozen
+        return SimpleNamespace(graph="graph")
+
+    monkeypatch.setattr("app.agentplatform.runtime_adapter.assemble_lead_agent", fake_assemble)
+    definition = _Definition("agent", 1, "hash", Path("/tmp/agent"), object(), "soul")
+
+    factory = build_canonical_agent_factory(
+        definition,
+        [],
+        runner_tool_groups=None,
+        knowledge_scope=KnowledgeScope.from_bindings({"docs": "opaque-dataset"}),
+    )
+    factory({"configurable": {}})
+
+    resource = captured["frozen"].resource
+    assert resource["knowledge_scope"] == {"logical_selectors": ["docs"]}
+    assert "opaque-dataset" not in repr(resource)

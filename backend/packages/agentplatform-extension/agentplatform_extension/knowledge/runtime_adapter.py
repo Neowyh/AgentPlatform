@@ -6,6 +6,8 @@ import inspect
 from collections.abc import Callable, Mapping
 from typing import Any
 
+from pydantic import BaseModel, Field
+
 from agentplatform_extension.knowledge.scope import KnowledgeScope
 
 KNOWLEDGE_ACCESS_DENIED = "KNOWLEDGE_ACCESS_DENIED"
@@ -15,6 +17,13 @@ class KnowledgeAccessDenied(PermissionError):
     """Raised when a Run requests a knowledge source outside its scope."""
 
     code = KNOWLEDGE_ACCESS_DENIED
+
+
+class KnowledgeSearchInput(BaseModel):
+    """Model-facing arguments for a run-scoped knowledge search."""
+
+    query: str = Field(min_length=1)
+    knowledge_base: str = Field(min_length=1, description="Logical knowledge base selector")
 
 
 class KnowledgeRuntimeAdapter:
@@ -47,6 +56,7 @@ def adapt_knowledge_tools(tools: list[Any], scope: KnowledgeScope) -> list[Any]:
         class _ScopedTool:
             name = "knowledge_search"
             description = getattr(original, "description", "")
+            args_schema = KnowledgeSearchInput
 
             @staticmethod
             def _arguments(args: Mapping[str, Any]) -> tuple[str, str]:

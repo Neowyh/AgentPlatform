@@ -30,6 +30,10 @@ const {
   mockResolvedTheme: { value: "dark" as string },
 }));
 
+const resourceMocks = vi.hoisted(() => ({
+  listKnowledgeBases: vi.fn().mockResolvedValue([]),
+}));
+
 vi.mock("next/navigation", () => ({
   useParams: () => ({ workflow_name: "test-workflow" }),
   useRouter: () => ({ push: mockPush }),
@@ -84,6 +88,8 @@ vi.mock("@/core/workflows/validate", () => ({
   validateYaml: (...args: any[]) => mockValidateYaml(...args),
 }));
 
+vi.mock("@/core/resources/api", () => resourceMocks);
+
 vi.mock("@uiw/react-codemirror", () => ({
   __esModule: true,
   default: ({ value, onChange }: any) => (
@@ -123,6 +129,7 @@ afterEach(() => {
 
 describe("WorkflowEditPage", () => {
   beforeEach(() => {
+    resourceMocks.listKnowledgeBases.mockReset().mockResolvedValue([]);
     mockUseWorkflow.mockReturnValue({
       workflow: {
         name: "test-workflow",
@@ -239,6 +246,44 @@ describe("WorkflowEditPage", () => {
       expect(mockMutateAsync).toHaveBeenCalledWith({
         name: "test-workflow",
         data: { yaml_content: "name: test\nsteps: []", version: 1 },
+      });
+    });
+  });
+
+  test("saves LIVE knowledge base dependencies with a workflow draft", async () => {
+    resourceMocks.listKnowledgeBases.mockResolvedValue([
+      { id: "kb-1", slug: "docs", display_name: "Docs" },
+    ]);
+    mockUseWorkflow.mockReturnValue({
+      workflow: {
+        name: "test-workflow",
+        resource_id: "workflow-1",
+        version: "1",
+        draft_revision: 2,
+        yaml_content: "name: test\nsteps: []",
+        knowledge_dependencies: [],
+      },
+      isLoading: false,
+    });
+
+    render(<WorkflowEditPage />);
+    const checkbox = await waitFor(() =>
+      screen.getByRole("checkbox", { name: /Docs/ }),
+    );
+    fireEvent.click(checkbox);
+    fireEvent.click(screen.getByText("Save Changes"));
+
+    await waitFor(() => {
+      expect(mockMutateAsync).toHaveBeenCalledWith({
+        name: "test-workflow",
+        data: expect.objectContaining({
+          knowledge_dependencies: [
+            expect.objectContaining({
+              resource_id: "kb-1",
+              dependency_mode: "live",
+            }),
+          ],
+        }),
       });
     });
   });
